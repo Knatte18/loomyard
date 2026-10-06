@@ -32,9 +32,7 @@ func writeFixtureRepo(t *testing.T, files map[string]string) string {
 	return root
 }
 
-// TestRunCLIIn_EachVerb_Answers drives each of the four verbs against a fixture repository and
-// asserts exit 0 and a parseable JSON payload for a positive answer, and a non-zero exit for expand
-// on a directory, which is not a type and answers not_found.
+// TestRunCLIIn_EachVerb_Answers drives each of the four verbs against a fixture repository and asserts exit 0 and a parseable JSON payload for a positive answer, and a non-zero exit for expand on a directory, which is not a type and answers not_found.
 func TestRunCLIIn_EachVerb_Answers(t *testing.T) {
 	t.Parallel()
 
@@ -182,10 +180,7 @@ func TestRunCLIIn_Resolve_PerGlyphAnswers(t *testing.T) {
 	})
 }
 
-// TestRunCLIIn_Glyphs_GoldenAgainstFacade asserts glyphs' emitted bytes, as JSON and as --text, are
-// byte-identical to the facade's own RenderGlyphsJSON and RenderGlyphsText rendering of the same
-// answer, computed directly against quarry.Open/Glyphs -- the copied-verbatim guarantee this verb
-// exists to provide.
+// TestRunCLIIn_Glyphs_GoldenAgainstFacade asserts glyphs' emitted bytes, as JSON and as --text, are byte-identical to the facade's own RenderGlyphsJSON and RenderGlyphsText rendering of the same answer, computed directly against quarry.Open/Glyphs -- the copied-verbatim guarantee this verb exists to provide.
 func TestRunCLIIn_Glyphs_GoldenAgainstFacade(t *testing.T) {
 	t.Parallel()
 
@@ -292,9 +287,7 @@ func TestRunCLIIn_GlyphsText_TestFileFilter(t *testing.T) {
 	}
 }
 
-// TestRunCLIIn_TextFlagRefusals asserts the --text paths that fail exit non-zero: a failing glyphs
-// query under --text still emits the JSON error envelope, and --text is glyphs-only so the other
-// verbs reject it.
+// TestRunCLIIn_TextFlagRefusals asserts the --text paths that fail exit non-zero: a failing glyphs query under --text still emits the JSON error envelope, and --text is glyphs-only so the other verbs reject it.
 func TestRunCLIIn_TextFlagRefusals(t *testing.T) {
 	t.Parallel()
 

@@ -204,8 +204,7 @@ func TestStepEnvelope_FieldMapping(t *testing.T) {
 	}
 }
 
-// TestStepKinds_IsExactlyFive asserts the closed refusal-kind vocabulary is exactly the five
-// declared constants and no larger, each non-empty and distinct.
+// TestStepKinds_IsExactlyFive asserts the closed refusal-kind vocabulary is exactly the five declared constants and no larger, each non-empty and distinct.
 //
 //testtiming:keep pins the closed five-kind refusal vocabulary, a guard that fires when a kind is added or duplicated
 func TestStepKinds_IsExactlyFive(t *testing.T) {

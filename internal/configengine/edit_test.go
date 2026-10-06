@@ -23,10 +23,7 @@ type editStep struct {
 	leave bool
 }
 
-// TestEdit pins the editing loop: a missing file is scaffolded from the template before the editor
-// runs, invalid YAML re-opens the editor, an editor that leaves invalid YAML unchanged or fails
-// aborts with ErrAborted and removes only a file Edit scaffolded, and a base directory without
-// _lyx/ is refused with the not-initialized error before any editor runs.
+// TestEdit pins the editing loop: a missing file is scaffolded from the template before the editor runs, invalid YAML re-opens the editor, an editor that leaves invalid YAML unchanged or fails aborts with ErrAborted and removes only a file Edit scaffolded, and a base directory without _lyx/ is refused with the not-initialized error before any editor runs.
 func TestEdit(t *testing.T) {
 	t.Parallel()
 	const template = "key1: value1\nkey2: value2\n"
@@ -153,8 +150,7 @@ func TestEdit(t *testing.T) {
 	}
 }
 
-// TestEditPath_ScaffoldsIntoMissingParentDir tests that EditPath on a path whose parent directory
-// does not exist scaffolds the template there, applies the editor's write and returns nil.
+// TestEditPath_ScaffoldsIntoMissingParentDir tests that EditPath on a path whose parent directory does not exist scaffolds the template there, applies the editor's write and returns nil.
 //
 //testtiming:keep pins that EditPath creates a missing parent directory chain, which the covering Edit tests never exercise
 func TestEditPath_ScaffoldsIntoMissingParentDir(t *testing.T) {

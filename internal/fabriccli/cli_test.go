@@ -1,8 +1,6 @@
 //go:build integration
 
-// cli_test.go covers the fabric CLI's clone and reconcile-backfill verbs against local bare remotes,
-// and holds the helpers the package's other integration files share: the cwd-fallback subprocess
-// entry point, runFabric and gitOutputCLI.
+// cli_test.go covers the fabric CLI's clone and reconcile-backfill verbs against local bare remotes, and holds the helpers the package's other integration files share: the cwd-fallback subprocess entry point, runFabric and gitOutputCLI.
 
 package fabriccli_test
 
@@ -26,18 +24,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// lyxFabricCLISubprocessCwdEnv is the env var that gates this file's re-exec entry point below: when
-// set, the process is not a normal `go test` run but a subprocess spawned by
-// the cwd-fallback step of TestRunCLI_CleanHubScenario, deliberately standing in a target directory via
-// exec.Command's Dir field so fabriccli.RunCLI's Getwd fallback can be observed for real, without any
-// t.Chdir/os.Chdir call anywhere in this file — this file is on the cwdmutation guard's subject set in
-// cmd/lyx/cwdmutation_test.go and carries no exemption.
+// lyxFabricCLISubprocessCwdEnv is the env var that gates this file's re-exec entry point below: when set, the process is not a normal `go test` run but a subprocess spawned by the cwd-fallback step of TestRunCLI_CleanHubScenario, deliberately standing in a target directory via exec.Command's Dir field so fabriccli.RunCLI's Getwd fallback can be observed for real, without any t.Chdir/os.Chdir call anywhere in this file — this file is on the cwdmutation guard's subject set in cmd/lyx/cwdmutation_test.go and carries no exemption.
 const lyxFabricCLISubprocessCwdEnv = "LYX_FABRICCLI_SUBPROCESS_CWD"
 
-// init intercepts the subprocess-mode re-exec before testing.Main ever runs, so the child process's
-// stdout carries only fabriccli.RunCLI's own JSON output — never the "=== RUN"/"--- PASS" noise `go
-// test` would otherwise interleave with it, which would defeat the byte-for-byte comparison
-// that step performs against fabriccli.RunCLIIn's output.
+// init intercepts the subprocess-mode re-exec before testing.Main ever runs, so the child process's stdout carries only fabriccli.RunCLI's own JSON output — never the "=== RUN"/"--- PASS" noise `go test` would otherwise interleave with it, which would defeat the byte-for-byte comparison that step performs against fabriccli.RunCLIIn's output.
 func init() {
 	if os.Getenv(lyxFabricCLISubprocessCwdEnv) == "" {
 		return
@@ -194,8 +184,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 }
 
 // TestRunCLI_CloneDestination asserts where "fabric clone" puts the hub and which anchor it echoes:
-// with --into the hub lands under that directory and not under the seam cwd RunCLIIn was given, and
-// without it the hub lands at the resolved seam cwd, --into's default.
+// with --into the hub lands under that directory and not under the seam cwd RunCLIIn was given, and without it the hub lands at the resolved seam cwd, --into's default.
 // With no --subpath the anchor is the default root anchor ".".
 func TestRunCLI_CloneDestination(t *testing.T) {
 	t.Parallel()

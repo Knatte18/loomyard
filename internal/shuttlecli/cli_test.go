@@ -142,10 +142,7 @@ func parseSingleEnvelope(t *testing.T, out []byte) map[string]any {
 	return envelope
 }
 
-// TestRunCLI_PositionalArgValidation verifies that "lyx shuttle interrupt" and "lyx shuttle send"
-// enforce their exact positional arguments (<guid>, and <guid> <text>) via cobra's Args validation,
-// which runs before PersistentPreRunE — so this fires even against a non-git directory with no
-// config to resolve.
+// TestRunCLI_PositionalArgValidation verifies that "lyx shuttle interrupt" and "lyx shuttle send" enforce their exact positional arguments (<guid>, and <guid> <text>) via cobra's Args validation, which runs before PersistentPreRunE — so this fires even against a non-git directory with no config to resolve.
 // Each subtest changes the process working directory, so none runs in parallel.
 func TestRunCLI_PositionalArgValidation(t *testing.T) {
 	tests := []struct {

@@ -85,9 +85,7 @@ func TestDiscussionSpec(t *testing.T) {
 	}
 }
 
-// TestDiscussionSpec_Refuses verifies DiscussionSpec rejects an empty slug, and, when stencilsDir does not exist,
-// returns an error naming the missing stencil rather than silently falling back to the embedded default,
-// per the missing-board-is-a-hard-error Shared Decision.
+// TestDiscussionSpec_Refuses verifies DiscussionSpec rejects an empty slug, and, when stencilsDir does not exist, returns an error naming the missing stencil rather than silently falling back to the embedded default, per the missing-board-is-a-hard-error Shared Decision.
 func TestDiscussionSpec_Refuses(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -126,9 +124,7 @@ func TestDiscussionSpec_Refuses(t *testing.T) {
 	}
 }
 
-// TestDiscussionSpec_ReadsStencilAtCallTime verifies DiscussionSpec's prompt reflects an on-disk edit
-// to the stencils directory rather than the embedded default, per the runtime-read-not-embed Shared
-// Decision.
+// TestDiscussionSpec_ReadsStencilAtCallTime verifies DiscussionSpec's prompt reflects an on-disk edit to the stencils directory rather than the embedded default, per the runtime-read-not-embed Shared Decision.
 //
 //testtiming:keep pins that an on-disk edit of the stencil reaches the prompt, which the covering spec test never edits
 func TestDiscussionSpec_ReadsStencilAtCallTime(t *testing.T) {
@@ -159,8 +155,7 @@ func TestDiscussionSpec_ReadsStencilAtCallTime(t *testing.T) {
 	}
 }
 
-// TestDiscussionSpec_PatternDirective proves DiscussionSpec injects the designer directive when
-// PATTERN.md exists at the worktree root, and renders none without it.
+// TestDiscussionSpec_PatternDirective proves DiscussionSpec injects the designer directive when PATTERN.md exists at the worktree root, and renders none without it.
 // It uses a non-"." AnchorRel, so the root the directive reads is told apart from the anchor path.
 //
 //testtiming:keep pins the designer directive text and its place before Step 1 for the discussion prompt, which the covering tests do not assert

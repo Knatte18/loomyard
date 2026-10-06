@@ -6,8 +6,7 @@ package render
 
 import "testing"
 
-// The pinned psmux value is the only place a checksum is compared against a literal rather than
-// against layoutChecksum itself.
+// The pinned psmux value is the only place a checksum is compared against a literal rather than against layoutChecksum itself.
 //
 //testtiming:keep pins the psmux-verified checksum literal, which no covering test compares against; they all recompute it through layoutChecksum
 func TestLayoutChecksum(t *testing.T) {

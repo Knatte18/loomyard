@@ -12,10 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/preflight"
 )
 
-// TestFormatFailures covers the rendering the Stuck log line carries: every determined failure, each
-// as "check: reason", so no violation is silently dropped from the one account a human gets.
-// A Failure whose Check is a CheckID this package does not itself declare is carried through
-// verbatim rather than mapped, so a check added elsewhere still reaches the operator.
+// TestFormatFailures covers the rendering the Stuck log line carries: every determined failure, each as "check: reason", so no violation is silently dropped from the one account a human gets.
+// A Failure whose Check is a CheckID this package does not itself declare is carried through verbatim rather than mapped, so a check added elsewhere still reaches the operator.
 //
 //testtiming:keep pins the exact "check: reason" rendering and its separators, which the broken-precondition test covering its blocks only reaches through one failure
 func TestFormatFailures(t *testing.T) {

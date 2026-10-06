@@ -367,8 +367,7 @@ producers:
 			wantErrSub: `shedbuild: producer 1 "dup": duplicate name, already defined by producer 0`,
 		},
 		{
-			// A stray "---" mid-recipe once silently truncated the producer graph: Parse decoded
-			// once and stopped, so a self-consistent prefix ran as a truncated pipeline.
+			// A stray "---" mid-recipe once silently truncated the producer graph: Parse decoded once and stopped, so a self-consistent prefix ran as a truncated pipeline.
 			name: "second YAML document is refused, not dropped",
 			yaml: `version: 1
 entry: row1

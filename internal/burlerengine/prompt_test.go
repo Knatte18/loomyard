@@ -177,18 +177,9 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_MinimalProfile proves a minimal valid profile composes cleanly through stencil
-// (no unfilled-marker error) and one render satisfies every part of composePrompt's contract:
-// the combined prompt carries the profile's content (both output paths and the verbatim rubric text),
-// a Target.Paths directory entry is annotated as one while a file entry is not, a non-empty
-// orchestrator comes back with exactly three instructionFile entries whose Path values equal the
-// three path parameters in order (the contract Engine.Run relies on to write each rendered file to
-// the path the orchestrator names), and the orchestrator carries no downstream instruction body.
-// The five tokens the orchestrator must not carry are disjoint from its retained two-jobs framing
-// (including the job-B one-liner "even if the verdict was APPROVED — non-blocking polish still gets
-// fixed"): each appears only inside a downstream instruction file's body, so a regression that
-// inlines one back trips the guard on the first offending token without colliding with the
-// orchestrator's legitimate bare-word "verdict"/"findings" usage.
+// TestComposePrompt_MinimalProfile proves a minimal valid profile composes cleanly through stencil (no unfilled-marker error) and one render satisfies every part of composePrompt's contract:
+// the combined prompt carries the profile's content (both output paths and the verbatim rubric text), a Target.Paths directory entry is annotated as one while a file entry is not, a non-empty orchestrator comes back with exactly three instructionFile entries whose Path values equal the three path parameters in order (the contract Engine.Run relies on to write each rendered file to the path the orchestrator names), and the orchestrator carries no downstream instruction body.
+// The five tokens the orchestrator must not carry are disjoint from its retained two-jobs framing (including the job-B one-liner "even if the verdict was APPROVED — non-blocking polish still gets fixed"): each appears only inside a downstream instruction file's body, so a regression that inlines one back trips the guard on the first offending token without colliding with the orchestrator's legitimate bare-word "verdict"/"findings" usage.
 //
 //testtiming:keep pins the profile content, the directory annotation, the three instruction file paths and the orchestrator's exclusion of downstream bodies, which the cluster-rules test covering its blocks does not assert
 func TestComposePrompt_MinimalProfile(t *testing.T) {
@@ -399,10 +390,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 		requireContains(t, got, "never call the Agent tool")
 		requireContains(t, got, "never run any git command")
 
-		// The cluster round's load-bearing fork-discipline statements: this content is composed
-		// dynamically by clusterRulesBlock into instruction 2, not baked into
-		// burler-step-2-review.md itself, so an edit that silently waters any of them down fails
-		// here rather than only in human review.
+		// The cluster round's load-bearing fork-discipline statements: this content is composed dynamically by clusterRulesBlock into instruction 2, not baked into burler-step-2-review.md itself, so an edit that silently waters any of them down fails here rather than only in human review.
 		instruction1, instruction2, instruction3 := files[0].Content, files[1].Content, files[2].Content
 		for _, statement := range []string{
 			"SINGLE message",
@@ -419,9 +407,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 			requireContains(t, instruction2, statement)
 		}
 
-		// Each block helper's rendered content lands in its intended instruction file and nowhere
-		// else: fix_scope_rules is instruction 3's alone, cluster_rules (the lens names) is
-		// instruction 2's alone, and pattern_directive/target is instruction 1's alone.
+		// Each block helper's rendered content lands in its intended instruction file and nowhere else: fix_scope_rules is instruction 3's alone, cluster_rules (the lens names) is instruction 2's alone, and pattern_directive/target is instruction 1's alone.
 		requireContains(t, instruction3, "Write surface")
 		requireNotContains(t, orchestrator, "Write surface")
 		requireNotContains(t, instruction1, "Write surface")

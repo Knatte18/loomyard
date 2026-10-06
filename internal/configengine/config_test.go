@@ -129,10 +129,7 @@ func checkLoaded(t *testing.T, tc loadCase, resolved []byte, buf *logcapture.Buf
 	assertFileUnchanged(t, path, tc.content)
 }
 
-// TestLoad pins what the strict loader returns for a present file: file values beat template
-// defaults, a missing key loads at its template default with one fill line and the file untouched,
-// a present empty value or emptied list is kept, an extra key is tolerated, env markers resolve, and
-// a declared open map is carried whole.
+// TestLoad pins what the strict loader returns for a present file: file values beat template defaults, a missing key loads at its template default with one fill line and the file untouched, a present empty value or emptied list is kept, an extra key is tolerated, env markers resolve, and a declared open map is carried whole.
 // It serializes its rows because they swap the process-global logger output and set env variables.
 func TestLoad(t *testing.T) {
 	tests := []loadCase{
@@ -319,9 +316,7 @@ func TestLoad_Refusals(t *testing.T) {
 	}
 }
 
-// TestLoadOrTemplate pins the degrading loader: proven absence of _lyx/, of the config file or of
-// the base directory resolves the template with env overrides honored, and a present file loads
-// exactly as the strict loader loads it.
+// TestLoadOrTemplate pins the degrading loader: proven absence of _lyx/, of the config file or of the base directory resolves the template with env overrides honored, and a present file loads exactly as the strict loader loads it.
 // It serializes its rows because they swap the process-global logger output and set env variables.
 func TestLoadOrTemplate(t *testing.T) {
 	tests := []struct {
@@ -427,10 +422,7 @@ func TestLoadOrTemplate(t *testing.T) {
 	}
 }
 
-// TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate pins the fallback tail's own error
-// wrap: with no _lyx/ on disk, a template whose required ${env:NAME} marker has no variable returns
-// an error naming "config template:" and the module, and never a config-file path that does not
-// exist.
+// TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate pins the fallback tail's own error wrap: with no _lyx/ on disk, a template whose required ${env:NAME} marker has no variable returns an error naming "config template:" and the module, and never a config-file path that does not exist.
 func TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate(t *testing.T) {
 	t.Parallel()
 	baseDir := t.TempDir()
@@ -450,9 +442,7 @@ func TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate(t *testing.T) {
 	}
 }
 
-// TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback tests absence-only discrimination: an _lyx/
-// that exists but cannot be stat'd makes LoadOrTemplate return an error rather than falling back to
-// the template.
+// TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback tests absence-only discrimination: an _lyx/ that exists but cannot be stat'd makes LoadOrTemplate return an error rather than falling back to the template.
 //
 //testtiming:keep pins that an _lyx/ that cannot be stat'd errors instead of resolving the template, which no covering test reaches
 func TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback(t *testing.T) {
@@ -487,10 +477,7 @@ func TestLoadOrTemplate_LyxDirStatFailure_DoesNotFallback(t *testing.T) {
 	}
 }
 
-// TestFindBaseDir pins that a base directory holding _lyx/ is returned as is, and that one without
-// it is refused with an error that satisfies errors.Is(err, ErrNotInitialized) -- the sentinel is
-// wrapped, not returned bare -- while its text still says "not initialized", since strict callers
-// match on that text.
+// TestFindBaseDir pins that a base directory holding _lyx/ is returned as is, and that one without it is refused with an error that satisfies errors.Is(err, ErrNotInitialized) -- the sentinel is wrapped, not returned bare -- while its text still says "not initialized", since strict callers match on that text.
 //
 //testtiming:keep pins FindBaseDir's own return value and its wrapped sentinel, which the covering Edit rows only match as text
 func TestFindBaseDir(t *testing.T) {
@@ -531,8 +518,7 @@ func TestFindBaseDir(t *testing.T) {
 	}
 }
 
-// TestErrNotInitialized_NotMatchedByUnrelatedError tests that a hand-constructed, unrelated error
-// does not satisfy errors.Is(err, configengine.ErrNotInitialized).
+// TestErrNotInitialized_NotMatchedByUnrelatedError tests that a hand-constructed, unrelated error does not satisfy errors.Is(err, configengine.ErrNotInitialized).
 //
 //testtiming:keep pins that the sentinel matches by identity and not by message text, which no covering test asserts
 func TestErrNotInitialized_NotMatchedByUnrelatedError(t *testing.T) {
@@ -544,10 +530,7 @@ func TestErrNotInitialized_NotMatchedByUnrelatedError(t *testing.T) {
 	}
 }
 
-// TestConfigPaths pins the path constructors configengine singly declares: ConfigDir and
-// ConfigFile live under LyxDirName, StagingFile lives under the .lyx counterpart, ConfigFileRel is
-// relative and in lockstep with ConfigFile, and LyxDirName is "_lyx" -- the token internal/lyxdirs
-// is the sole declarer of.
+// TestConfigPaths pins the path constructors configengine singly declares: ConfigDir and ConfigFile live under LyxDirName, StagingFile lives under the .lyx counterpart, ConfigFileRel is relative and in lockstep with ConfigFile, and LyxDirName is "_lyx" -- the token internal/lyxdirs is the sole declarer of.
 func TestConfigPaths(t *testing.T) {
 	t.Parallel()
 

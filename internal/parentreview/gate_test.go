@@ -590,8 +590,7 @@ func TestGate_HeldGateKeepsWaitingNotifyUntilLive(t *testing.T) {
 	}
 }
 
-// TestGate_ResendAfterDelivery covers the delivery record's effect on the throttled re-prompt: a
-// failed delivery does not stop resends, and a recorded delivery does.
+// TestGate_ResendAfterDelivery covers the delivery record's effect on the throttled re-prompt: a failed delivery does not stop resends, and a recorded delivery does.
 func TestGate_ResendAfterDelivery(t *testing.T) {
 	t.Parallel()
 
@@ -623,8 +622,7 @@ func TestGate_ResendAfterDelivery(t *testing.T) {
 	}
 }
 
-// TestApprovePasses covers an approve verdict on the opened round: the gate passes, the final passes,
-// and a gate built with PassAtCap passes.
+// TestApprovePasses covers an approve verdict on the opened round: the gate passes, the final passes, and a gate built with PassAtCap passes.
 func TestApprovePasses(t *testing.T) {
 	t.Parallel()
 
@@ -663,8 +661,7 @@ func TestApprovePasses(t *testing.T) {
 	}
 }
 
-// TestSupersedingApprovePasses covers a superseding approve recorded over the cap's reject: both the
-// gate, which first fails terminal at the cap, and the final pass.
+// TestSupersedingApprovePasses covers a superseding approve recorded over the cap's reject: both the gate, which first fails terminal at the cap, and the final pass.
 func TestSupersedingApprovePasses(t *testing.T) {
 	t.Parallel()
 

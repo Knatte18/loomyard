@@ -128,10 +128,7 @@ func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 	}
 }
 
-// TestValidate_FormatAndApproval covers format-unrecognized and plan-unapproved together, since
-// both stem from the same overview frontmatter and contracts/specs/loom-plan-spec.md checks
-// them as a pair; ValidateFormat reports the same format-unrecognized but never plan-unapproved,
-// whether approved: is true, false, or (Go's zero value) absent.
+// TestValidate_FormatAndApproval covers format-unrecognized and plan-unapproved together, since both stem from the same overview frontmatter and contracts/specs/loom-plan-spec.md checks them as a pair; ValidateFormat reports the same format-unrecognized but never plan-unapproved, whether approved: is true, false, or (Go's zero value) absent.
 func TestValidate_FormatAndApproval(t *testing.T) {
 	t.Parallel()
 
@@ -176,10 +173,7 @@ func TestValidate_FormatAndApproval(t *testing.T) {
 	}
 }
 
-// TestValidate_FormatAndApprovalOrder asserts Validate's finding order still matches
-// contracts/specs/loom-plan-spec.md's fixed order when a plan trips both format-unrecognized and
-// plan-unapproved at once: format-unrecognized first, plan-unapproved second, any remaining
-// findings after them.
+// TestValidate_FormatAndApprovalOrder asserts Validate's finding order still matches contracts/specs/loom-plan-spec.md's fixed order when a plan trips both format-unrecognized and plan-unapproved at once: format-unrecognized first, plan-unapproved second, any remaining findings after them.
 //
 //testtiming:keep pins the fixed finding order of format-unrecognized then plan-unapproved, which TestValidate_FormatAndApproval counts but does not order
 func TestValidate_FormatAndApprovalOrder(t *testing.T) {
@@ -211,10 +205,7 @@ func TestValidate_FormatAndApprovalOrder(t *testing.T) {
 }
 
 // TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck is R6-22's regression test:
-// bare-symbol-target and directory-target gated on the literal "none" while every sibling
-// alphabet-gated check gated on planLanguage, so under an unrecognized language: those two kept
-// classifying refs ParsePlan never canonicalized. plan-language-unrecognized already blocks such a
-// plan, so the extra findings were noise.
+// bare-symbol-target and directory-target gated on the literal "none" while every sibling alphabet-gated check gated on planLanguage, so under an unrecognized language: those two kept classifying refs ParsePlan never canonicalized. plan-language-unrecognized already blocks such a plan, so the extra findings were noise.
 //
 //testtiming:keep pins that an unrecognized language silences the alphabet-gated checks (R6-22), which its covering tests do not assert
 func TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck(t *testing.T) {
@@ -305,8 +296,7 @@ func TestValidate_IndexFileMismatch(t *testing.T) {
 	})
 }
 
-// TestValidate_CardTypeMissing covers card-type-missing: zero type labels produces one finding,
-// while one label or more than one label both produce none — carrying multiple labels is legal.
+// TestValidate_CardTypeMissing covers card-type-missing: zero type labels produces one finding, while one label or more than one label both produce none — carrying multiple labels is legal.
 //
 //testtiming:keep pins the card-type-missing finding for zero type labels and its absence for several, which its covering tests do not assert
 func TestValidate_CardTypeMissing(t *testing.T) {
@@ -438,9 +428,7 @@ func TestValidate_CardRetiredLabel(t *testing.T) {
 	})
 }
 
-// TestValidate_CardPathMalformed covers card-path-malformed: the check applies to path-shaped
-// entries only — a malformed symbol-shaped entry produces no finding, while a malformed
-// path-shaped entry in the same list does.
+// TestValidate_CardPathMalformed covers card-path-malformed: the check applies to path-shaped entries only — a malformed symbol-shaped entry produces no finding, while a malformed path-shaped entry in the same list does.
 //
 //testtiming:keep pins the card-path-malformed finding on path-shaped and glyph-reached entries, which its covering tests do not assert
 func TestValidate_CardPathMalformed(t *testing.T) {
@@ -791,9 +779,7 @@ func TestValidate_RenamePairShape(t *testing.T) {
 	})
 }
 
-// TestValidate_RenameMechanicMissing covers rename-mechanic-missing: a Rename card with an empty
-// Plan.RenameMechanic produces one plan-level finding, and a plan whose only cards are other
-// types produces none even with an empty section.
+// TestValidate_RenameMechanicMissing covers rename-mechanic-missing: a Rename card with an empty Plan.RenameMechanic produces one plan-level finding, and a plan whose only cards are other types produces none even with an empty section.
 //
 //testtiming:keep pins the rename-mechanic-missing finding, which its covering tests do not assert
 func TestValidate_RenameMechanicMissing(t *testing.T) {
@@ -847,9 +833,7 @@ func TestValidate_RenameMechanicMissing(t *testing.T) {
 	})
 }
 
-// TestValidate_CardMissingField covers card-missing-field: every card must carry Intent:, and a
-// card of type Edit or Delete must also carry ImpactSummary: — a Create, Rename, Move, Prosa, or
-// Custom card without ImpactSummary produces no finding.
+// TestValidate_CardMissingField covers card-missing-field: every card must carry Intent:, and a card of type Edit or Delete must also carry ImpactSummary: — a Create, Rename, Move, Prosa, or Custom card without ImpactSummary produces no finding.
 //
 //testtiming:keep pins the card-missing-field finding per card type, which its covering tests do not assert
 func TestValidate_CardMissingField(t *testing.T) {
@@ -1023,8 +1007,7 @@ func TestValidate_CardFieldEmpty(t *testing.T) {
 	})
 }
 
-// TestValidate_CardFieldOverlap covers card-field-overlap: an entry present in both a card's own
-// Targets and its own Uses.
+// TestValidate_CardFieldOverlap covers card-field-overlap: an entry present in both a card's own Targets and its own Uses.
 //
 //testtiming:keep pins the card-field-overlap finding, which its covering tests do not assert
 func TestValidate_CardFieldOverlap(t *testing.T) {
@@ -1180,8 +1163,7 @@ func TestValidate_CardNumbering(t *testing.T) {
 	})
 }
 
-// TestValidate_PathMissing exhaustively pins path-missing's type-conditional rework, using a
-// hermetic t.TempDir() worktree root for every case.
+// TestValidate_PathMissing exhaustively pins path-missing's type-conditional rework, using a hermetic t.TempDir() worktree root for every case.
 //
 //testtiming:keep pins the path-missing finding per card type, group and glyph shape, which its covering tests do not assert
 func TestValidate_PathMissing(t *testing.T) {
@@ -1420,8 +1402,7 @@ func TestValidate_PathMissing(t *testing.T) {
 	})
 }
 
-// TestValidate_CommitSubjectMismatch covers commit-subject-mismatch: a present Commit: must start
-// with the card's own "N: " prefix.
+// TestValidate_CommitSubjectMismatch covers commit-subject-mismatch: a present Commit: must start with the card's own "N: " prefix.
 //
 //testtiming:keep pins the commit-subject-mismatch finding, which its covering tests do not assert
 func TestValidate_CommitSubjectMismatch(t *testing.T) {
@@ -1439,11 +1420,7 @@ func TestValidate_CommitSubjectMismatch(t *testing.T) {
 	})
 }
 
-// TestValidate_CustomCardBoundByGenericChecks proves a Custom card remains bound by the
-// card-generic checks despite being validate.go's explicit escape hatch on the type-conditional
-// checks (path-missing's own-target exemption, card-missing-field's ImpactSummary exemption): a
-// malformed path-shaped target, a missing Intent:, an entry duplicated across Targets and Uses,
-// and a badly prefixed Commit: each still fire, so a blanket-skip regression would fail this test.
+// TestValidate_CustomCardBoundByGenericChecks proves a Custom card remains bound by the card-generic checks despite being validate.go's explicit escape hatch on the type-conditional checks (path-missing's own-target exemption, card-missing-field's ImpactSummary exemption): a malformed path-shaped target, a missing Intent:, an entry duplicated across Targets and Uses, and a badly prefixed Commit: each still fire, so a blanket-skip regression would fail this test.
 //
 //testtiming:keep pins that a Custom card stays bound by the generic checks, which its covering tests do not assert together
 func TestValidate_CustomCardBoundByGenericChecks(t *testing.T) {
@@ -1466,9 +1443,7 @@ func TestValidate_CustomCardBoundByGenericChecks(t *testing.T) {
 	}
 }
 
-// TestValidate_LanguageRecognized covers plan-language-unrecognized: "go" and "none" are accepted,
-// as is "" (the zero value, meaning absent — matching Plan.Language's own documented "absent
-// defaults to go" rule), and any other value is exactly one finding.
+// TestValidate_LanguageRecognized covers plan-language-unrecognized: "go" and "none" are accepted, as is "" (the zero value, meaning absent — matching Plan.Language's own documented "absent defaults to go" rule), and any other value is exactly one finding.
 //
 //testtiming:keep pins the plan-language-unrecognized finding, which its covering tests do not assert
 func TestValidate_LanguageRecognized(t *testing.T) {
@@ -1496,9 +1471,7 @@ func TestValidate_LanguageRecognized(t *testing.T) {
 	}
 }
 
-// TestValidate_BareSymbolTarget covers bare-symbol-target: any Targets/Uses entry classifying as
-// a bare package-qualified symbol is a hard finding under a glyph-enabled plan.Language, and is
-// skipped entirely under "none".
+// TestValidate_BareSymbolTarget covers bare-symbol-target: any Targets/Uses entry classifying as a bare package-qualified symbol is a hard finding under a glyph-enabled plan.Language, and is skipped entirely under "none".
 //
 //testtiming:keep pins the bare-symbol-target finding, which its covering tests do not assert
 func TestValidate_BareSymbolTarget(t *testing.T) {
@@ -1547,9 +1520,8 @@ func TestValidate_BareSymbolTarget(t *testing.T) {
 	})
 }
 
-// TestValidate_DirectoryTarget covers directory-target: a path-shaped entry with a "/" and no
-// file extension names a directory rather than a file, and is skipped entirely under "none". A
-// slash-free extensionless entry (e.g. "Makefile") is out of scope for this check by design.
+// TestValidate_DirectoryTarget covers directory-target: a path-shaped entry with a "/" and no file extension names a directory rather than a file, and is skipped entirely under "none".
+// A slash-free extensionless entry (e.g. "Makefile") is out of scope for this check by design.
 //
 //testtiming:keep pins the directory-target finding and its file-self-glyph remedy text, which its covering tests do not assert
 func TestValidate_DirectoryTarget(t *testing.T) {
@@ -1694,17 +1666,9 @@ func TestValidate_GlyphMalformed(t *testing.T) {
 	})
 }
 
-// TestValidate_RootFilenameCanonicalizesEndToEnd is R9-1's regression: a plan spelling a
-// repository-root extensionless filename — classifyRef rule 4's own case, the rule that exists
-// precisely so such a filename HAS a legal spelling — must reach the validator (and, past it,
-// every glyph-backed layer in internal/planglyph) as a self glyph, not as a bare token quarry
-// rejects before resolution.
+// TestValidate_RootFilenameCanonicalizesEndToEnd is R9-1's regression: a plan spelling a repository-root extensionless filename — classifyRef rule 4's own case, the rule that exists precisely so such a filename HAS a legal spelling — must reach the validator (and, past it, every glyph-backed layer in internal/planglyph) as a self glyph, not as a bare token quarry rejects before resolution.
 //
-// Left uncanonicalized, "LICENSE" validated 100% clean here while producing a false
-// prosa-symbol-target on a Prosa group, and then made the batch that created it permanently
-// unrecordable: DoneChecks handed quarry the bare token, quarry answered a pre-resolution
-// rejection, and doneCheckVerdicts read the rejection as "did not resolve" — a blocking
-// create-not-done against a card that had done its job.
+// Left uncanonicalized, "LICENSE" validated 100% clean here while producing a false prosa-symbol-target on a Prosa group, and then made the batch that created it permanently unrecordable: DoneChecks handed quarry the bare token, quarry answered a pre-resolution rejection, and doneCheckVerdicts read the rejection as "did not resolve" — a blocking create-not-done against a card that had done its job.
 //
 //testtiming:keep pins the end-to-end canonicalization of repository-root filenames (R9-1), which its covering tests do not assert
 func TestValidate_RootFilenameCanonicalizesEndToEnd(t *testing.T) {

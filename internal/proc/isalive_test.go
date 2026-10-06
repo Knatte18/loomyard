@@ -1,8 +1,5 @@
-// isalive_test.go covers IsAlive, defined identically-named on both platforms, so this file needs
-// no //go:build tag.
-// It is allowed under this package's Test Tier Purity Invariant allowlist entry ("process control
-// is the package's subject — its tests must spawn"): the "exited child" row spawns a short-lived
-// exec.Command child to obtain a confirmed-dead PID fixture.
+// isalive_test.go covers IsAlive, defined identically-named on both platforms, so this file needs no //go:build tag.
+// It is allowed under this package's Test Tier Purity Invariant allowlist entry ("process control is the package's subject — its tests must spawn"): the "exited child" row spawns a short-lived exec.Command child to obtain a confirmed-dead PID fixture.
 
 package proc
 
@@ -33,8 +30,7 @@ func exitedChildPID(t *testing.T) int {
 	return pid
 }
 
-// TestIsAlive asserts IsAlive reports true for the test process's own PID, which is alive for the
-// duration of the test, and false for the PID of a child that has exited.
+// TestIsAlive asserts IsAlive reports true for the test process's own PID, which is alive for the duration of the test, and false for the PID of a child that has exited.
 func TestIsAlive(t *testing.T) {
 	t.Parallel()
 

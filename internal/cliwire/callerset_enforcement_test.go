@@ -131,15 +131,10 @@ func callsDerive(astFile *ast.File, standalonestateAlias string) bool {
 	return found
 }
 
-// TestCallsDerive is a direct unit test over callsDerive rather than a planted whole-repo fixture,
-// so each regression lives beside the function it protects.
-// A package that captures standalonestate.Derive as a function value first, rather than calling it
-// directly, is exactly as much a second production caller as a direct-call package is, and must be
-// caught the same way (crucible round sonnet-xhigh-r8, CW-1).
-// The ordinary direct-call form the pre-fix walk already caught must still be caught after widening
-// the match to bare selector expressions.
-// The widened match must still discriminate on both the selected name and the receiver alias, so an
-// unrelated method named Derive is not a false positive.
+// TestCallsDerive is a direct unit test over callsDerive rather than a planted whole-repo fixture, so each regression lives beside the function it protects.
+// A package that captures standalonestate.Derive as a function value first, rather than calling it directly, is exactly as much a second production caller as a direct-call package is, and must be caught the same way (crucible round sonnet-xhigh-r8, CW-1).
+// The ordinary direct-call form the pre-fix walk already caught must still be caught after widening the match to bare selector expressions.
+// The widened match must still discriminate on both the selected name and the receiver alias, so an unrelated method named Derive is not a false positive.
 //
 //testtiming:keep a guard self-check: pins that the selector walk catches a direct call and a captured function value and spares an unrelated Derive, which the real-tree scan never exercises
 func TestCallsDerive(t *testing.T) {

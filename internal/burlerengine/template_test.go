@@ -1,13 +1,6 @@
-// template_test.go proves each of the four shipped round-prompt assets actually fills through stencil
-// with its own required marker subset, that the three optional directives of instruction 1 render
-// cleanly empty and placed ahead of its first work instruction, and that composePrompt reads a round
-// prompt from disk at call time.
-// The assets' load-bearing statements and the orchestrator's exclusion of downstream bodies are
-// pinned from a full composePrompt render in prompt_test.go (PATTERN-review-round's machine half).
-// The four assets are read from the top-level stencils package's exported embedded defaults
-// (stencils.BurlerTemplateRoundOrchestrator etc.) rather than this package's own now-deleted
-// package-private vars — a cross-package import, not a rename, since composePrompt itself reads its
-// four prompts from disk at call time via stencilstore.Read (see prompt.go).
+// template_test.go proves each of the four shipped round-prompt assets actually fills through stencil with its own required marker subset, that the three optional directives of instruction 1 render cleanly empty and placed ahead of its first work instruction, and that composePrompt reads a round prompt from disk at call time.
+// The assets' load-bearing statements and the orchestrator's exclusion of downstream bodies are pinned from a full composePrompt render in prompt_test.go (PATTERN-review-round's machine half).
+// The four assets are read from the top-level stencils package's exported embedded defaults (stencils.BurlerTemplateRoundOrchestrator etc.) rather than this package's own now-deleted package-private vars — a cross-package import, not a rename, since composePrompt itself reads its four prompts from disk at call time via stencilstore.Read (see prompt.go).
 
 package burlerengine
 
@@ -149,15 +142,8 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestTemplate_OptionalDirectives asserts pattern_directive, friction_directive and focus_directive
-// each behave as an optional marker on instruction 1: an empty value renders cleanly with no
-// leftover `{{`, no orphan heading and, for pattern_directive, no stray blank-line block where the
-// directive would have sat, and a non-empty value places the directive block ahead of the first work
-// instruction ("## What to review (the target)").
-// A marker-free template (the literal {{.friction_directive}} stripped from the shipped bytes) still
-// fills cleanly while a non-empty directive value is supplied -- the composer's optional-marker
-// guarantee runs one direction only (see stencil.FillOptional's own doc comment), so a marker's
-// absence from the template must never be an error.
+// TestTemplate_OptionalDirectives asserts pattern_directive, friction_directive and focus_directive each behave as an optional marker on instruction 1: an empty value renders cleanly with no leftover `{{`, no orphan heading and, for pattern_directive, no stray blank-line block where the directive would have sat, and a non-empty value places the directive block ahead of the first work instruction ("## What to review (the target)").
+// A marker-free template (the literal {{.friction_directive}} stripped from the shipped bytes) still fills cleanly while a non-empty directive value is supplied -- the composer's optional-marker guarantee runs one direction only (see stencil.FillOptional's own doc comment), so a marker's absence from the template must never be an error.
 func TestTemplate_OptionalDirectives(t *testing.T) {
 	t.Parallel()
 
@@ -223,12 +209,8 @@ func TestTemplate_OptionalDirectives(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_ReadsEditedStencilFromDisk proves composePrompt reads a round prompt from
-// stencilsDir on every call rather than from any compiled-in default: overwriting
-// burler/burler-step-2-review.md on disk with a modified body, after building stencilsDir from the
-// shipped defaults, must have that modified text — not the shipped default's own text — reach the
-// composed instruction 2 file. This pins the runtime-read-not-embed Shared Decision at the
-// burlerengine call site.
+// TestComposePrompt_ReadsEditedStencilFromDisk proves composePrompt reads a round prompt from stencilsDir on every call rather than from any compiled-in default: overwriting burler/burler-step-2-review.md on disk with a modified body, after building stencilsDir from the shipped defaults, must have that modified text — not the shipped default's own text — reach the composed instruction 2 file.
+// This pins the runtime-read-not-embed Shared Decision at the burlerengine call site.
 //
 //testtiming:keep pins that an edited on-disk instruction-2 body reaches the composed instruction 2 file, which the cluster test covering its blocks never edits
 func TestComposePrompt_ReadsEditedStencilFromDisk(t *testing.T) {

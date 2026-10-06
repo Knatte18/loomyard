@@ -1,9 +1,6 @@
-// suite_test.go contains unit tests for the suite launcher functions: binary fingerprinting, scheme
-// rendering, git-exclude management, and the runSuite orchestration.
+// suite_test.go contains unit tests for the suite launcher functions: binary fingerprinting, scheme rendering, git-exclude management, and the runSuite orchestration.
 // All tests use seam stubs and temp directories -- no real lyx, claude, or network calls are made.
-// The runSuite and launchAgent tests rewrite package-level seams (devBinPath, lookPath, launchAgent,
-// reedDown, interactiveStdio) or os.Stderr, so they do not call t.Parallel; the pure tests run in
-// parallel, which Go starts only after every serial test has restored its seams.
+// The runSuite and launchAgent tests rewrite package-level seams (devBinPath, lookPath, launchAgent, reedDown, interactiveStdio) or os.Stderr, so they do not call t.Parallel; the pure tests run in parallel, which Go starts only after every serial test has restored its seams.
 
 package main
 
@@ -19,8 +16,7 @@ import (
 	"time"
 )
 
-// TestBinaryFingerprint verifies that binaryFingerprint returns the correct size, SHA256
-// prefix, and path for a real temp file, and returns an error when the target file does not exist.
+// TestBinaryFingerprint verifies that binaryFingerprint returns the correct size, SHA256 prefix, and path for a real temp file, and returns an error when the target file does not exist.
 func TestBinaryFingerprint(t *testing.T) {
 	t.Parallel()
 
@@ -63,8 +59,7 @@ func TestBinaryFingerprint(t *testing.T) {
 	}
 }
 
-// TestRenderScheme_ContainsHeaderAndBody verifies that renderScheme embeds the fingerprint header
-// and suite body, and that header() renders a "- Source: %s" line for both sourceDev and sourceProd.
+// TestRenderScheme_ContainsHeaderAndBody verifies that renderScheme embeds the fingerprint header and suite body, and that header() renders a "- Source: %s" line for both sourceDev and sourceProd.
 //
 //testtiming:keep pins the exact fingerprint fields and suite body renderScheme writes, which the runSuite tests only reach through a fixed header marker
 func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
@@ -295,12 +290,7 @@ func TestRunSuite_HubAbsent(t *testing.T) {
 	}
 }
 
-// TestRunSuite_PerSuiteSpec verifies, for each suite runSuite is parameterized over, that a default
-// run removes a stale sandbox-report.json before the agent launches, calls launchAgent with the
-// repo directory, the resolved claude, the suite's default instruction and an empty binDir (a prod
-// resolution), writes only its own scheme file with the fingerprint header and embedded doc body,
-// and registers that file and the report in .git/info/exclude; and that a -prompt override reaches
-// launchAgent verbatim.
+// TestRunSuite_PerSuiteSpec verifies, for each suite runSuite is parameterized over, that a default run removes a stale sandbox-report.json before the agent launches, calls launchAgent with the repo directory, the resolved claude, the suite's default instruction and an empty binDir (a prod resolution), writes only its own scheme file with the fingerprint header and embedded doc body, and registers that file and the report in .git/info/exclude; and that a -prompt override reaches launchAgent verbatim.
 func TestRunSuite_PerSuiteSpec(t *testing.T) {
 	suites := []suiteSpec{mainSuite, reedSuite, shuttleSuite}
 	tests := []struct {
@@ -565,10 +555,7 @@ func TestSuiteSpecs_ReedTeardownFlag(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ReedTeardown verifies that a live-reed suite calls reedDown exactly once, after the
-// agent session ends and whatever the agent's exit code, with the repo directory and the resolved
-// lyx; that the core suite never calls it; and that a reedDown error does not turn a completed
-// session into a launcher failure.
+// TestRunSuite_ReedTeardown verifies that a live-reed suite calls reedDown exactly once, after the agent session ends and whatever the agent's exit code, with the repo directory and the resolved lyx; that the core suite never calls it; and that a reedDown error does not turn a completed session into a launcher failure.
 func TestRunSuite_ReedTeardown(t *testing.T) {
 	tests := []struct {
 		name        string

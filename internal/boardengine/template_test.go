@@ -1,7 +1,6 @@
 // template_test.go — tests for the boardengine ConfigTemplate generator.
 //
-// Covers: ConfigTemplate parses as YAML and resolves to the correct defaults, every required key
-// present, when the environment is empty.
+// Covers: ConfigTemplate parses as YAML and resolves to the correct defaults, every required key present, when the environment is empty.
 
 package boardengine
 

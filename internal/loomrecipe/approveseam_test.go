@@ -25,11 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
-// TestShippedRecipe_SeamsWiredOnPlanBouncerOnly parses the real embedded recipes.LoomRecipe
-// and asserts each seam key's shipped shape: approve_seam: plan and skip_seam: rework-exempt each sit on the Plan-Bouncer row and no
-// other row, and require_approved is present on no row at all -- the key is no longer recognized by any
-// registry entry now that both rows sharing the old PlanValidate engine are deleted, and a row
-// carrying it would fail construction outright rather than silently doing nothing.
+// TestShippedRecipe_SeamsWiredOnPlanBouncerOnly parses the real embedded recipes.LoomRecipe and asserts each seam key's shipped shape: approve_seam: plan and skip_seam: rework-exempt each sit on the Plan-Bouncer row and no other row, and require_approved is present on no row at all -- the key is no longer recognized by any registry entry now that both rows sharing the old PlanValidate engine are deleted, and a row carrying it would fail construction outright rather than silently doing nothing.
 //
 //testtiming:keep pins which shipped rows carry approve_seam and skip_seam, which TestApproveSeam_FailsToBuild never reads off the shipped recipe
 func TestShippedRecipe_SeamsWiredOnPlanBouncerOnly(t *testing.T) {
@@ -90,12 +86,7 @@ func approveSeamFixture(approveSeam string) string {
 		approveSeamLine
 }
 
-// TestApproveSeam_FailsToBuild parses a one-row recipe naming approve_seam on a Bouncer row and builds it, asserting Build fails
-// for a nil Env.ApprovePlan under approve_seam: plan -- a present approve_seam key is guarded by requireSeam on env.ApprovePlan exactly as commit_seam is
-// guarded on env.CommitPlan/env.CommitDiscussion, so a document naming the key against a nil seam
-// must never silently build a Bouncer whose Approve closure is nil --
-// and for a value bouncerEntry does not recognize: approve_seam names env.ApprovePlan and nothing else,
-// so any value other than "plan" is a build-time error, not a silently-ignored key.
+// TestApproveSeam_FailsToBuild parses a one-row recipe naming approve_seam on a Bouncer row and builds it, asserting Build fails for a nil Env.ApprovePlan under approve_seam: plan -- a present approve_seam key is guarded by requireSeam on env.ApprovePlan exactly as commit_seam is guarded on env.CommitPlan/env.CommitDiscussion, so a document naming the key against a nil seam must never silently build a Bouncer whose Approve closure is nil -- and for a value bouncerEntry does not recognize: approve_seam names env.ApprovePlan and nothing else, so any value other than "plan" is a build-time error, not a silently-ignored key.
 func TestApproveSeam_FailsToBuild(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

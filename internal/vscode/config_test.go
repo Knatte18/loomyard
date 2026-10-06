@@ -11,8 +11,7 @@ import (
 	"testing"
 )
 
-// TestWriteVSCodeConfigCreatesFilesWhenAbsent pins the full generated interactive config: the
-// settings.json keys and the four-task chain with its entry task, commands, args and presentation.
+// TestWriteVSCodeConfigCreatesFilesWhenAbsent pins the full generated interactive config: the settings.json keys and the four-task chain with its entry task, commands, args and presentation.
 //
 //testtiming:keep pins the whole interactive settings.json and four-task chain shape, which no covering test asserts
 func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
@@ -266,8 +265,7 @@ func taskLabels(tasks []map[string]any) []string {
 	return labels
 }
 
-// TestWriteConfigFallsBackToBareNames pins that an empty lyx or claude path degrades to the bare
-// binary name in the generated tasks, for both task chains.
+// TestWriteConfigFallsBackToBareNames pins that an empty lyx or claude path degrades to the bare binary name in the generated tasks, for both task chains.
 func TestWriteConfigFallsBackToBareNames(t *testing.T) {
 	t.Parallel()
 
@@ -327,8 +325,7 @@ func TestWriteConfigFallsBackToBareNames(t *testing.T) {
 	}
 }
 
-// TestWriteConfigKeepsSettingsAndOverwritesTasks pins that a rerun leaves an existing settings.json
-// untouched and replaces an existing tasks.json with the requested chain.
+// TestWriteConfigKeepsSettingsAndOverwritesTasks pins that a rerun leaves an existing settings.json untouched and replaces an existing tasks.json with the requested chain.
 //
 //testtiming:keep pins the untouched settings.json and the overwritten tasks.json per chain, which the gitignore test does not assert
 func TestWriteConfigKeepsSettingsAndOverwritesTasks(t *testing.T) {
@@ -381,8 +378,7 @@ func TestWriteConfigKeepsSettingsAndOverwritesTasks(t *testing.T) {
 	}
 }
 
-// TestWriteConfigLeavesGitignoreAlone pins that WriteConfig neither creates a .gitignore nor
-// modifies an existing one, for both task chains.
+// TestWriteConfigLeavesGitignoreAlone pins that WriteConfig neither creates a .gitignore nor modifies an existing one, for both task chains.
 //
 //testtiming:keep pins that no .gitignore is created or modified, which its covering tests do not assert
 func TestWriteConfigLeavesGitignoreAlone(t *testing.T) {

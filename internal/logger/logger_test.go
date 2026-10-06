@@ -1,7 +1,5 @@
-// logger_test.go verifies how records route to stderr and the durable sink by level and verbosity,
-// the LYX_LOG_LEVEL and LYX_LOG_FILE environment seams, and the SetOutput test seam.
-// No test in this file calls t.Parallel: each mutates process-global logger state (verbosity, the
-// output writer, the durable sink, LYX_* environment variables) that the tests share.
+// logger_test.go verifies how records route to stderr and the durable sink by level and verbosity, the LYX_LOG_LEVEL and LYX_LOG_FILE environment seams, and the SetOutput test seam.
+// No test in this file calls t.Parallel: each mutates process-global logger state (verbosity, the output writer, the durable sink, LYX_* environment variables) that the tests share.
 
 package logger
 
@@ -26,11 +24,8 @@ func withCapturedOutput(t *testing.T) *bytes.Buffer {
 
 var originalOut = out
 
-// TestLogging_RoutesRecordsByLevelAndVerbosity pins the dual-handler fan-out: Warn reaches stderr and
-// the durable sink at every verbosity, Info reaches the durable sink always and stderr from -v,
-// Debug reaches stderr only at -vv and never the durable sink.
-// Every record a half receives carries the current trace ID, and a Warn with no durable sink armed
-// still reaches stderr.
+// TestLogging_RoutesRecordsByLevelAndVerbosity pins the dual-handler fan-out: Warn reaches stderr and the durable sink at every verbosity, Info reaches the durable sink always and stderr from -v, Debug reaches stderr only at -vv and never the durable sink.
+// Every record a half receives carries the current trace ID, and a Warn with no durable sink armed still reaches stderr.
 func TestLogging_RoutesRecordsByLevelAndVerbosity(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -170,8 +165,7 @@ func TestConfigureFromEnv_UnopenableLogFileFallsBackToStderr(t *testing.T) {
 	}
 }
 
-// TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker verifies concurrent
-// writes produce one file and one marker.
+// TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker verifies concurrent writes produce one file and one marker.
 //
 //testtiming:keep pins one sink file and one truncation marker under concurrent first writers, which the serial size-cap test does not exercise
 func TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker(t *testing.T) {

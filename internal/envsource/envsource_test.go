@@ -10,8 +10,7 @@ import (
 	"testing"
 )
 
-// TestDotEnv verifies that DotEnv joins baseDir with the ".env" filename — moved here from
-// hubgeometry's own unit test now that envsource is the single declarer of the ".env" token.
+// TestDotEnv verifies that DotEnv joins baseDir with the ".env" filename — moved here from hubgeometry's own unit test now that envsource is the single declarer of the ".env" token.
 //
 //testtiming:keep pins the ".env" filename token itself, which the covering Build rows only read back through DotEnv
 func TestDotEnv(t *testing.T) {
@@ -108,8 +107,7 @@ VAR2=  leading  space`,
 	}
 }
 
-// TestBuild pins the merged environment: .env entries and OS variables both appear, the OS value
-// wins a shared key, and an absent or empty .env leaves just the OS variables.
+// TestBuild pins the merged environment: .env entries and OS variables both appear, the OS value wins a shared key, and an absent or empty .env leaves just the OS variables.
 // It serializes its rows because they set process environment variables.
 func TestBuild(t *testing.T) {
 	tests := []struct {

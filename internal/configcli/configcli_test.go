@@ -1,11 +1,8 @@
 // configcli_test.go — unit and integration tests for configcli.
 //
-// Unit tests (untagged): dispatch/editOne/printModule/printAll with fake editor+sync over temp
-// baseDirs seeded via the paths helpers.
-// Integration test (//go:build integration): e2e test with real fabriccli.RunCLI over a real hub
-// built by the hubforge package.
-// The git-init-backed reconcile scenario lives in reconcile_integration_test.go per the Test Tier
-// Purity Invariant.
+// Unit tests (untagged): dispatch/editOne/printModule/printAll with fake editor+sync over temp baseDirs seeded via the paths helpers.
+// Integration test (//go:build integration): e2e test with real fabriccli.RunCLI over a real hub built by the hubforge package.
+// The git-init-backed reconcile scenario lives in reconcile_integration_test.go per the Test Tier Purity Invariant.
 
 package configcli
 
@@ -95,9 +92,7 @@ func newHubFixture(t *testing.T) hubFixture {
 	return fx
 }
 
-// TestEditOne pins the single-module edit: a valid edit is synced and reported as a JSON success,
-// an unknown module is refused with the known list before anything runs, an editor failure aborts
-// before the sync, and a failing sync is reported with its own output.
+// TestEditOne pins the single-module edit: a valid edit is synced and reported as a JSON success, an unknown module is refused with the known list before anything runs, an editor failure aborts before the sync, and a failing sync is reported with its own output.
 func TestEditOne(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -185,11 +180,8 @@ func TestEditOne(t *testing.T) {
 	}
 }
 
-// TestRunCLIIn_FromNonGitDirectory pins the verbs that answer before any layout resolves: bare
-// `lyx config` prints help naming reconcile, menu and every module; a bad argument, and a verb that
-// needs a repository, each exit 1 with a JSON error envelope naming the way forward.
-// The bare row passes an empty argument list, since a nil one would make cobra read the test
-// binary's own flags.
+// TestRunCLIIn_FromNonGitDirectory pins the verbs that answer before any layout resolves: bare `lyx config` prints help naming reconcile, menu and every module; a bad argument, and a verb that needs a repository, each exit 1 with a JSON error envelope naming the way forward.
+// The bare row passes an empty argument list, since a nil one would make cobra read the test binary's own flags.
 func TestRunCLIIn_FromNonGitDirectory(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -284,9 +276,7 @@ func TestNoModuleSharesNameWithSubcommand(t *testing.T) {
 	}
 }
 
-// TestConfigLong verifies that the config command's Long help text names every module in
-// configreg.Names(), so it stays in sync with the registry rather than drifting from a hardcoded
-// list, and documents the EDITOR/VISUAL editor fallback and the --set flag.
+// TestConfigLong verifies that the config command's Long help text names every module in configreg.Names(), so it stays in sync with the registry rather than drifting from a hardcoded list, and documents the EDITOR/VISUAL editor fallback and the --set flag.
 func TestConfigLong(t *testing.T) {
 	t.Parallel()
 	longText := Command().Long
@@ -298,9 +288,7 @@ func TestConfigLong(t *testing.T) {
 	}
 }
 
-// runMenuWith runs menu over a hub fixture with the given input and editor,
-// seeding each named module at the dir the registry says holds it,
-// and returning the exit code, the output and the sync tracker.
+// runMenuWith runs menu over a hub fixture with the given input and editor, seeding each named module at the dir the registry says holds it, and returning the exit code, the output and the sync tracker.
 func runMenuWith(t *testing.T, input string, editor configengine.EditorFunc, seed ...string) (int, string, *fakeSyncTracker) {
 	t.Helper()
 	fx := newHubFixture(t)
@@ -318,10 +306,7 @@ func runMenuWith(t *testing.T, input string, editor configengine.EditorFunc, see
 	return code, out.String(), tracker
 }
 
-// TestMenu pins the interactive menu: a valid selection edits and syncs the module, quit exits 0
-// without either, a non-number and an out-of-range number each exit 1 with an invalid message and
-// without either, and the listing marks seeded modules (configured) and unseeded ones (default),
-// looking for a hub-wide module at the board dir and for any other at the worktree.
+// TestMenu pins the interactive menu: a valid selection edits and syncs the module, quit exits 0 without either, a non-number and an out-of-range number each exit 1 with an invalid message and without either, and the listing marks seeded modules (configured) and unseeded ones (default), looking for a hub-wide module at the board dir and for any other at the worktree.
 func TestMenu(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -449,10 +434,7 @@ func assertJSONOkContains(t *testing.T, output string, wantFields map[string]any
 	}
 }
 
-// TestPrint pins the --print form, which never opens an editor: a seeded module's on-disk YAML is
-// emitted verbatim, a known module with no file is an ok:false envelope, an unknown module is an
-// ok:false envelope naming it, and the aggregate form prints a deterministic header for every
-// registry module with inline YAML for seeded ones and "# (not configured)" for absent ones.
+// TestPrint pins the --print form, which never opens an editor: a seeded module's on-disk YAML is emitted verbatim, a known module with no file is an ok:false envelope, an unknown module is an ok:false envelope naming it, and the aggregate form prints a deterministic header for every registry module with inline YAML for seeded ones and "# (not configured)" for absent ones.
 func TestPrint(t *testing.T) {
 	t.Parallel()
 	const loomYAML = "discussion_timeout_min: 60\n"
@@ -515,10 +497,7 @@ func TestPrint(t *testing.T) {
 	}
 }
 
-// TestDispatchSet pins the --set path on a per-worktree module: it never opens the editor, syncs
-// once for a successful write and never for a refused one, reports an orphan key it preserved in the
-// envelope's "preserved" field and omits the field for a clean file, and refuses an unknown key, a
-// --print/--set pair, a missing module and a value without '='.
+// TestDispatchSet pins the --set path on a per-worktree module: it never opens the editor, syncs once for a successful write and never for a refused one, reports an orphan key it preserved in the envelope's "preserved" field and omits the field for a clean file, and refuses an unknown key, a --print/--set pair, a missing module and a value without '='.
 func TestDispatchSet(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

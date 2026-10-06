@@ -46,8 +46,7 @@ producers:
 	}
 }
 
-// TestLoad_UnreadableAbsolutePathErrors asserts an absolute path naming no file, and one naming a
-// directory, each error.
+// TestLoad_UnreadableAbsolutePathErrors asserts an absolute path naming no file, and one naming a directory, each error.
 func TestLoad_UnreadableAbsolutePathErrors(t *testing.T) {
 	t.Parallel()
 

@@ -2,10 +2,7 @@
 
 // sync_test.go — unit tests for the background pusher (sync.go).
 //
-// Exercises Sync against a LOCAL bare repo (no network, no dummy remote): a
-// commit + push, a burst coalescing into one commit, BOARD_SKIP_PUSH committing
-// without pushing, BOARD_SKIP_GIT doing nothing, lock files staying untracked,
-// and the clean-tree and nothing-pending no-ops.
+// Exercises Sync against a LOCAL bare repo (no network, no dummy remote): a commit + push, a burst coalescing into one commit, BOARD_SKIP_PUSH committing without pushing, BOARD_SKIP_GIT doing nothing, lock files staying untracked, and the clean-tree and nothing-pending no-ops.
 
 package boardtest
 
@@ -236,12 +233,8 @@ func stepSyncSkipPushCommitsLocallyOnly(t *testing.T, f *syncFixture) {
 	}
 }
 
-// stepSyncNothingPendingSkipsPushEntirely locks in the conditional-push contract the pre-gitrepo
-// pushUnpushed provided: a Sync that finds a clean tree and nothing ahead of upstream must not
-// contact the remote at all.
-// The unreachable-remote setup makes any push attempt fail loudly, so an unconditional
-// per-iteration push (the regression this guards against) turns into a test failure instead of a
-// silent wasted round-trip.
+// stepSyncNothingPendingSkipsPushEntirely locks in the conditional-push contract the pre-gitrepo pushUnpushed provided: a Sync that finds a clean tree and nothing ahead of upstream must not contact the remote at all.
+// The unreachable-remote setup makes any push attempt fail loudly, so an unconditional per-iteration push (the regression this guards against) turns into a test failure instead of a silent wasted round-trip.
 // It runs last: it leaves origin pointing at a path that does not exist.
 func stepSyncNothingPendingSkipsPushEntirely(t *testing.T, f *syncFixture) {
 	w := boardengine.New(f.syncConfig())

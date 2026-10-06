@@ -30,12 +30,7 @@ func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 	}
 }
 
-// TestDecodeProfile covers decodeProfile's strict YAML decode: a full valid profile (every field
-// lands on its Profile field, including the boolean/zero-value edge cases tool-use: true and
-// cluster-fan: "standard" that a zero-value-blind mapping bug could silently drop), a minimal
-// valid profile, an unknown key (rejected per the yaml-strictness-split decision's
-// KnownFields(true)), the now-removed cluster-n key specifically (rejected the same way), and
-// malformed YAML.
+// TestDecodeProfile covers decodeProfile's strict YAML decode: a full valid profile (every field lands on its Profile field, including the boolean/zero-value edge cases tool-use: true and cluster-fan: "standard" that a zero-value-blind mapping bug could silently drop), a minimal valid profile, an unknown key (rejected per the yaml-strictness-split decision's KnownFields(true)), the now-removed cluster-n key specifically (rejected the same way), and malformed YAML.
 //
 //testtiming:keep pins every Profile field mapping and the strict-decode rejections, which the run-verb tests covering its blocks only reach through one failing profile
 func TestDecodeProfile(t *testing.T) {

@@ -1,8 +1,4 @@
-// prepare_test.go covers Prepare's spec handling: an unrealizable effort, permission mode, resume
-// session id or model-plus-version combination is rejected before any artifact is written (mirroring
-// TestPrepare_PromptLaunchLimit's before-artifacts guarantee), the flags a valid spec threads into
-// Launch.Cmd and Launch.ResumeCmd, the --append-system-prompt notice, ResumeSessionID adoption, and
-// the skills-deferred prompt pointer.
+// prepare_test.go covers Prepare's spec handling: an unrealizable effort, permission mode, resume session id or model-plus-version combination is rejected before any artifact is written (mirroring TestPrepare_PromptLaunchLimit's before-artifacts guarantee), the flags a valid spec threads into Launch.Cmd and Launch.ResumeCmd, the --append-system-prompt notice, ResumeSessionID adoption, and the skills-deferred prompt pointer.
 
 package claudeengine
 
@@ -15,10 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// TestPrepare_RejectedBeforeArtifacts proves every unrealizable spec value fails Prepare before
-// prompt.md/settings.json are written — the same before-artifacts guarantee
-// TestPrepare_PromptLaunchLimit pins for the prompt-size guard, since a half-prepared run dir would
-// look resumable to a later diagnosis pass.
+// TestPrepare_RejectedBeforeArtifacts proves every unrealizable spec value fails Prepare before prompt.md/settings.json are written — the same before-artifacts guarantee TestPrepare_PromptLaunchLimit pins for the prompt-size guard, since a half-prepared run dir would look resumable to a later diagnosis pass.
 // A dashed model with a Version is a contradiction: the id already pins its own version.
 func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
 	t.Parallel()
@@ -66,14 +59,11 @@ type flagExpectation struct {
 }
 
 // TestPrepare_ThreadsSpecIntoLaunchCmds proves Prepare threads the spec into the commands it returns.
-// A valid effort is rendered as buildLaunchCmd would; an empty effort emits no --effort flag at all,
-// deferring entirely to claude's own default;
-// a bare-word model plus a dotted version composes the pinned id ("sonnet" + "4.5" ->
-// "claude-sonnet-4-5") rather than the bare-word model;
+// A valid effort is rendered as buildLaunchCmd would; an empty effort emits no --effort flag at all, deferring entirely to claude's own default;
+// a bare-word model plus a dotted version composes the pinned id ("sonnet" + "4.5" -> "claude-sonnet-4-5") rather than the bare-word model;
 // ForkSubagents wraps the line in the CLAUDE_CODE_FORK_SUBAGENT env prefix, and AllowAgentTool does not remove it;
 // an empty ResumeSessionID mints a session as before;
-// and the resolved permission mode decides --dangerously-skip-permissions on the launch line and the
-// resume line alike.
+// and the resolved permission mode decides --dangerously-skip-permissions on the launch line and the resume line alike.
 func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 	t.Parallel()
 
@@ -163,8 +153,7 @@ func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 	}
 }
 
-// TestPrepare_ResumeSessionID proves a spec carrying ResumeSessionID launches that session with --resume
-// and names the same id on the resume line and in Launch.SessionID.
+// TestPrepare_ResumeSessionID proves a spec carrying ResumeSessionID launches that session with --resume and names the same id on the resume line and in Launch.SessionID.
 //
 //testtiming:keep pins that a ResumeSessionID launches with --resume, no --session-id, and the same id on the resume line and in Launch.SessionID, which its covering tests do not assert
 func TestPrepare_ResumeSessionID(t *testing.T) {

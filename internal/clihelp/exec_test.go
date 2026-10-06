@@ -79,9 +79,7 @@ func TestExecute_UnknownSubcommandReturnsOneAndWritesUnknownCommand(t *testing.T
 	}
 }
 
-// TestWrap_ShortCircuitsAfterAbort verifies that a WrapRun- or WrapRunCtx-wrapped handler
-// short-circuits without running when Abort was called on the command's context before the leaf
-// fired, and that Execute reports the aborted code.
+// TestWrap_ShortCircuitsAfterAbort verifies that a WrapRun- or WrapRunCtx-wrapped handler short-circuits without running when Abort was called on the command's context before the leaf fired, and that Execute reports the aborted code.
 func TestWrap_ShortCircuitsAfterAbort(t *testing.T) {
 	t.Parallel()
 

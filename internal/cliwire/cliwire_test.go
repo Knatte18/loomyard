@@ -1,21 +1,12 @@
-// cliwire_test.go pins the shared wiring prologue's behaviour at tier 1: every case is untagged,
-// spawns no process, and resolves no cwd.
+// cliwire_test.go pins the shared wiring prologue's behaviour at tier 1: every case is untagged, spawns no process, and resolves no cwd.
 //
-// The ResolveStandalone tests stay serial: each redirects XDG_STATE_HOME and LOCALAPPDATA, and the
-// logger's durable sink, which are process-global state.
+// The ResolveStandalone tests stay serial: each redirects XDG_STATE_HOME and LOCALAPPDATA, and the logger's durable sink, which are process-global state.
 //
-// websterFixture and burlerFixture are test fixtures mirroring the real descriptors declared in
-// webstercli and burlercli. They exist so this package's own tests never import either caller
-// package -- the descriptor-carries-variance split would otherwise force cliwire's tests to depend
-// on the very packages it must stay ignorant of.
+// websterFixture and burlerFixture are test fixtures mirroring the real descriptors declared in webstercli and burlercli.
+// They exist so this package's own tests never import either caller package -- the descriptor-carries-variance split would otherwise force cliwire's tests to depend on the very packages it must stay ignorant of.
 //
-// A divergence between a fixture here and its real descriptor is NOT caught by these tests, nor by
-// the existing composition tests in webstercli/burlercli, nor by either package's
-// cli_integration_test.go: after batch 2, no surviving test in either CLI package asserts a
-// descriptor field's text (the retained TestWire_TargetDirRefusedInHubMode there only checks that
-// the error mentions --target-dir). What catches it is the per-package
-// TestWireModule_DescriptorIsVerbatim test batch 2 cards 6 and 7 add, which pins each real
-// wireModule's own field values and produced refusals.
+// A divergence between a fixture here and its real descriptor is NOT caught by these tests, nor by the existing composition tests in webstercli/burlercli, nor by either package's cli_integration_test.go: after batch 2, no surviving test in either CLI package asserts a descriptor field's text (the retained TestWire_TargetDirRefusedInHubMode there only checks that the error mentions --target-dir).
+// What catches it is the per-package TestWireModule_DescriptorIsVerbatim test batch 2 cards 6 and 7 add, which pins each real wireModule's own field values and produced refusals.
 
 package cliwire
 
@@ -188,10 +179,7 @@ func TestModule_ResolveStandaloneTarget(t *testing.T) {
 	}
 }
 
-// TestRepositoryRootOf covers the repository-root lift: a subdirectory resolves to the repository
-// root, the nearest ".git" wins over the topmost, a directory with no repository above it is
-// returned unchanged, and a ".git" FILE (as a linked worktree records it) counts as a repository
-// root.
+// TestRepositoryRootOf covers the repository-root lift: a subdirectory resolves to the repository root, the nearest ".git" wins over the topmost, a directory with no repository above it is returned unchanged, and a ".git" FILE (as a linked worktree records it) counts as a repository root.
 //
 //testtiming:keep pins the nearest-wins and .git-file lift rules, which the target-resolution cases never reach
 func TestRepositoryRootOf(t *testing.T) {
@@ -246,13 +234,8 @@ func TestRepositoryRootOf(t *testing.T) {
 	})
 }
 
-// TestModule_RefuseNestedStandaloneGeometry covers the nested-geometry refusal over both fixtures,
-// asserting both wordings verbatim -- this is what pins the per-CLI noun phrases as descriptor data.
-// It also carries R6-15's regression: the target has already been through standalonestate.Normalize
-// with every symlink resolved, while the derived state directory had not, so a state home that
-// reaches INSIDE the target only through a symlink used to read as disjoint -- and lyx then wrote
-// its state tree, run locks and trace logs into the operator's own checkout, which is precisely
-// what this guard exists to prevent.
+// TestModule_RefuseNestedStandaloneGeometry covers the nested-geometry refusal over both fixtures, asserting both wordings verbatim -- this is what pins the per-CLI noun phrases as descriptor data.
+// It also carries R6-15's regression: the target has already been through standalonestate.Normalize with every symlink resolved, while the derived state directory had not, so a state home that reaches INSIDE the target only through a symlink used to read as disjoint -- and lyx then wrote its state tree, run locks and trace logs into the operator's own checkout, which is precisely what this guard exists to prevent.
 func TestModule_RefuseNestedStandaloneGeometry(t *testing.T) {
 	t.Parallel()
 
@@ -294,9 +277,7 @@ func TestModule_RefuseNestedStandaloneGeometry(t *testing.T) {
 			})
 
 			t.Run("SeesThroughASymlinkedStateHome", func(t *testing.T) {
-				// The leaf (<stateHome>/lyx/<hash8>) is deliberately absent: a first run's own leaf
-				// does not exist yet, which is exactly when plain EvalSymlinks gives up and falls back
-				// to Clean.
+				// The leaf (<stateHome>/lyx/<hash8>) is deliberately absent: a first run's own leaf does not exist yet, which is exactly when plain EvalSymlinks gives up and falls back to Clean.
 				target := standalonestate.Normalize(t.TempDir())
 				inside := filepath.Join(target, "state-home")
 				if err := os.MkdirAll(inside, 0o755); err != nil {
@@ -316,11 +297,7 @@ func TestModule_RefuseNestedStandaloneGeometry(t *testing.T) {
 	}
 }
 
-// TestSamePlanDirAndResolvePlanDir covers the default-vs-override recognition rules both functions
-// share: a "." or trailing-separator spelling of the default is the default, not an override; a
-// symlinked spelling of the default likewise (the second half of R6-15); an empty told value
-// resolves to the default with overridden false; and a genuinely different told directory resolves
-// to itself with overridden true.
+// TestSamePlanDirAndResolvePlanDir covers the default-vs-override recognition rules both functions share: a "." or trailing-separator spelling of the default is the default, not an override; a symlinked spelling of the default likewise (the second half of R6-15); an empty told value resolves to the default with overridden false; and a genuinely different told directory resolves to itself with overridden true.
 //
 //testtiming:keep pins the default-versus-override spellings and the overridden flag, which the plan-rule refusals never reach
 func TestSamePlanDirAndResolvePlanDir(t *testing.T) {
@@ -545,12 +522,8 @@ func TestResolveStandalone_SinkRedirectOrdering(t *testing.T) {
 	})
 }
 
-// requireSpecsSeeded asserts a successful standalone resolve populated Standalone.SpecsDir: at
-// standalonegeom.SpecsDir(res.StateDir), as an absolute path (a deployed spec lives outside the
-// agent's own worktree, so the rendered marker must be absolute for the agent to open it at all),
-// with every registered spec on disk and carrying a parseable stamp.
-// A resolvable-but-empty specs directory would reproduce the original dead reference while looking
-// correct from a path assertion alone, which is what asserting file existence catches.
+// requireSpecsSeeded asserts a successful standalone resolve populated Standalone.SpecsDir: at standalonegeom.SpecsDir(res.StateDir), as an absolute path (a deployed spec lives outside the agent's own worktree, so the rendered marker must be absolute for the agent to open it at all), with every registered spec on disk and carrying a parseable stamp.
+// A resolvable-but-empty specs directory would reproduce the original dead reference while looking correct from a path assertion alone, which is what asserting file existence catches.
 func requireSpecsSeeded(t *testing.T, res Standalone) {
 	t.Helper()
 
@@ -574,12 +547,7 @@ func requireSpecsSeeded(t *testing.T, res Standalone) {
 	}
 }
 
-// TestResolveStandalone_Stencils covers the stencils and specs resolve-and-seed steps: the derived
-// default is seeded on disk, an explicitly-told stencils directory is returned as given and gains no
-// entries, a told stencils directory never suppresses the specs seed (which has no override flag of
-// its own and inherits the stencils skip only if that inheritance is a bug), a told directory that
-// is absent or a file is refused, and a seed failure on the derived default is a hard error naming
-// both the module and the directory.
+// TestResolveStandalone_Stencils covers the stencils and specs resolve-and-seed steps: the derived default is seeded on disk, an explicitly-told stencils directory is returned as given and gains no entries, a told stencils directory never suppresses the specs seed (which has no override flag of its own and inherits the stencils skip only if that inheritance is a bug), a told directory that is absent or a file is refused, and a seed failure on the derived default is a hard error naming both the module and the directory.
 func TestResolveStandalone_Stencils(t *testing.T) {
 	t.Run("DerivedDefaultIsSeeded", func(t *testing.T) {
 		setStandaloneStateRoot(t)
@@ -635,9 +603,7 @@ func TestResolveStandalone_Stencils(t *testing.T) {
 		requireSpecsSeeded(t, result)
 	})
 
-	// R7-F2's regression rows: --stencils-dir was the one told-directory flag with no check at the
-	// wiring boundary, so a typo'd value was honoured silently and failed only at the first prompt
-	// render -- after the run lock and (standalone) the reed session's tmux boot.
+	// R7-F2's regression rows: --stencils-dir was the one told-directory flag with no check at the wiring boundary, so a typo'd value was honoured silently and failed only at the first prompt render -- after the run lock and (standalone) the reed session's tmux boot.
 	refusals := []struct {
 		name         string
 		makeTold     func(t *testing.T) string

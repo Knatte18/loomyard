@@ -1,7 +1,5 @@
 // cli_test.go covers armFromSeed's seed-driven arming: the run-id positional defaulting to "self", the pinned refusal precedence (run-id listing, unknown recipe, verb gate, the recipe's own refusal), and run's positional-argument arity.
-// It stays untagged Tier 1 throughout: armFromSeed performs no lyxcwd.Resolve of its own (cli.go's own doc comment),
-// so every case here drives it directly against a hand-built *lyxcwd.Location, with no real git repository behind it --
-// matching the repo's own convention that a real lyxcwd.Resolve spawn belongs only in an integration-tagged file (internal/lyxcwd/lyxcwd_test.go is the precedent).
+// It stays untagged Tier 1 throughout: armFromSeed performs no lyxcwd.Resolve of its own (cli.go's own doc comment), so every case here drives it directly against a hand-built *lyxcwd.Location, with no real git repository behind it -- matching the repo's own convention that a real lyxcwd.Resolve spawn belongs only in an integration-tagged file (internal/lyxcwd/lyxcwd_test.go is the precedent).
 package shedcli
 
 import (
@@ -73,13 +71,8 @@ func TestArmFromSeed_MissingRunRefusalCarriesNoKindField(t *testing.T) {
 }
 
 // TestArmFromSeed_RefusalPrecedence pins armFromSeed's refusals as a table, in the order they fire.
-// Stage 1 (lyxcwd.Resolve's own not-a-git-repository sentinel) sits above armFromSeed entirely, inside
-// resolvePersistentPreRun, which calls lyxcwd.Resolve unconditionally before ever calling
-// armFromSeed -- first by construction, not by a value armFromSeed itself could reorder -- and is
-// exercised by lyxcwd's own integration-tagged suite (internal/lyxcwd/lyxcwd_test.go).
-// The rows pin stages 2 through 4 against the identical location and verb shape, so a regression
-// reordering any of them shows up as the wrong row's assertion failing rather than a passing test
-// for the wrong reason.
+// Stage 1 (lyxcwd.Resolve's own not-a-git-repository sentinel) sits above armFromSeed entirely, inside resolvePersistentPreRun, which calls lyxcwd.Resolve unconditionally before ever calling armFromSeed -- first by construction, not by a value armFromSeed itself could reorder -- and is exercised by lyxcwd's own integration-tagged suite (internal/lyxcwd/lyxcwd_test.go).
+// The rows pin stages 2 through 4 against the identical location and verb shape, so a regression reordering any of them shows up as the wrong row's assertion failing rather than a passing test for the wrong reason.
 // Rows shrink or replace entries of the package-global recipes table, so neither the rows nor this test run in parallel.
 func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 	tests := []struct {
@@ -105,8 +98,7 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 			wants: []string{"no seed found", "alpha", "bravo", "charlie", "lyx shed seed charlie --recipe"},
 		},
 		{
-			// shedrun.ReadSeed never validates Recipe against shedrun's own vocabulary (only Driver),
-			// so a hand-edited or stale seed.json naming an unrecognised recipe is a real, reachable case.
+			// shedrun.ReadSeed never validates Recipe against shedrun's own vocabulary (only Driver), so a hand-edited or stale seed.json naming an unrecognised recipe is a real, reachable case.
 			name: "stage2_seed-naming-unknown-recipe",
 			setup: func(t *testing.T, loc *lyxcwd.Location) {
 				if err := os.MkdirAll(shedrun.RunDir(loc, "some-run"), 0o755); err != nil {

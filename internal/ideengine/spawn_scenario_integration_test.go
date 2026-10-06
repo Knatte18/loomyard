@@ -1,7 +1,6 @@
 //go:build integration
 
-// spawn_scenario_integration_test.go drives Spawn and SpawnDriven as scenarios over one hubforge hub per anchor,
-// so a hub is built once per anchor instead of once per check.
+// spawn_scenario_integration_test.go drives Spawn and SpawnDriven as scenarios over one hubforge hub per anchor, so a hub is built once per anchor instead of once per check.
 // Serial by design: every step swaps the package-level CodeLauncher, and the driven steps swap the logger output.
 
 package ideengine
@@ -15,8 +14,7 @@ import (
 )
 
 // spawnStepRunner returns a runner of named steps over h.
-// Every step starts with the repo-wide info/exclude restored to its state in a fresh hub,
-// because Spawn appends to it and an earlier step's lines would otherwise satisfy a later step's exclude assertions.
+// Every step starts with the repo-wide info/exclude restored to its state in a fresh hub, because Spawn appends to it and an earlier step's lines would otherwise satisfy a later step's exclude assertions.
 func spawnStepRunner(t *testing.T, h *hubforge.Hub) func(name string, step func(t *testing.T)) bool {
 	t.Helper()
 	excludePath := sharedExcludePath(t, fabricengine.WorktreePath(h.Location, primeOf(t, h)))

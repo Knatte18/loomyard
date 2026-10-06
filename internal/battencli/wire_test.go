@@ -24,15 +24,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestWire_BuildsLazilyForANonexistentTaskWorktree asserts wire returns no error even though the
-// managed task worktree named by slug does not exist anywhere on disk -- the mechanical proof that
-// wire itself resolves nothing about that worktree -- and that all lazy seams are each present as an
-// injected closure after wire returns, not already-evaluated values: the status-path resolver
-// (Env.InnerRun.ResolveStatus), the spawn directory (Env.InnerRun.Spawn), both teardown halves
-// (Env.Teardown.Shutdown, Env.Teardown.Remove) and the rest listed below, plus the durable status
-// file's commit seam (shedPaths.CommitStatus).
-// Covering every seam separately is deliberate: eager evaluation is exactly the failure laziness
-// exists to avoid, and a check on only one seam would let the others regress silently.
+// TestWire_BuildsLazilyForANonexistentTaskWorktree asserts wire returns no error even though the managed task worktree named by slug does not exist anywhere on disk -- the mechanical proof that wire itself resolves nothing about that worktree -- and that all lazy seams are each present as an injected closure after wire returns, not already-evaluated values: the status-path resolver (Env.InnerRun.ResolveStatus), the spawn directory (Env.InnerRun.Spawn), both teardown halves (Env.Teardown.Shutdown, Env.Teardown.Remove) and the rest listed below, plus the durable status file's commit seam (shedPaths.CommitStatus).
+// Covering every seam separately is deliberate: eager evaluation is exactly the failure laziness exists to avoid, and a check on only one seam would let the others regress silently.
 func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
 	t.Parallel()
 
@@ -205,13 +198,8 @@ func TestChildSeedFor_CarriesRecipeDriverAndParams(t *testing.T) {
 	}
 }
 
-// TestChildSpawnError asserts a child bootstrap's exit status is turned into a diagnosis: a
-// non-zero exit carries the child's own output, a silent child passes the run error through, a nil
-// run error stays nil, and over-long output is truncated with an explicit marker, on a valid UTF-8
-// boundary even when a multi-byte rune straddles it -- a naive byte slice at maxChildOutputInError
-// can land mid-rune and embed an invalid tail.
-// Only the start refusal of kind shedrun.StartNotParkedKind reaches InnerRun as
-// battenshed.ErrChildNotParked, wherever it sits in the output.
+// TestChildSpawnError asserts a child bootstrap's exit status is turned into a diagnosis: a non-zero exit carries the child's own output, a silent child passes the run error through, a nil run error stays nil, and over-long output is truncated with an explicit marker, on a valid UTF-8 boundary even when a multi-byte rune straddles it -- a naive byte slice at maxChildOutputInError can land mid-rune and embed an invalid tail.
+// Only the start refusal of kind shedrun.StartNotParkedKind reaches InnerRun as battenshed.ErrChildNotParked, wherever it sits in the output.
 func TestChildSpawnError(t *testing.T) {
 	t.Parallel()
 
@@ -326,16 +314,11 @@ func TestChildSpawnError(t *testing.T) {
 	}
 }
 
-// TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal asserts an unmaterialized task worktree is
-// reported on its own terms.
-// taskWorktreePresent, the create row's idempotency probe, answers false with no error, so a
-// genuinely absent worktree still reaches fabric's own create rather than short-circuiting the row.
-// taskWorktreeLocation names the run and the expected path and points at a real remedy, never a
-// fabric command that would actually mutate prime itself, rather than the resolver's generic "not a
-// git repository" failure.
+// TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal asserts an unmaterialized task worktree is reported on its own terms.
+// taskWorktreePresent, the create row's idempotency probe, answers false with no error, so a genuinely absent worktree still reaches fabric's own create rather than short-circuiting the row.
+// taskWorktreeLocation names the run and the expected path and points at a real remedy, never a fabric command that would actually mutate prime itself, rather than the resolver's generic "not a git repository" failure.
 //
-// The present case needs a real git worktree and so lives at the integration tier
-// (TestBattenIntegration_Rows); this suite stays untagged and never spawns git.
+// The present case needs a real git worktree and so lives at the integration tier (TestBattenIntegration_Rows); this suite stays untagged and never spawns git.
 //
 //testtiming:keep pins the absent-pair answer and the refusal's wording, which the covering tests never assert
 func TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal(t *testing.T) {
@@ -454,11 +437,7 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 	}
 }
 
-// TestFinishRemoval asserts a removal that finds nothing of the pair reports done -- the state a
-// process killed right after Remove succeeded leaves, since shedengine persists the transition only
-// after the producer returns -- rather than stranding the run at teardown, that a finished
-// half-removed pair reports done, and that a remote branch left behind halts the row resumable,
-// with no verdict naming the retired sibling-remnant refusal or its fabric prune remedy.
+// TestFinishRemoval asserts a removal that finds nothing of the pair reports done -- the state a process killed right after Remove succeeded leaves, since shedengine persists the transition only after the producer returns -- rather than stranding the run at teardown, that a finished half-removed pair reports done, and that a remote branch left behind halts the row resumable, with no verdict naming the retired sibling-remnant refusal or its fabric prune remedy.
 // The real half-removed state is driven at the integration tier.
 //
 //testtiming:keep pins that no removal verdict names the retired fabric prune remedy, which the integration steps never assert

@@ -1,9 +1,7 @@
 //go:build integration
 
-// reconcile_integration_test.go holds the reconcile scenario that spawns
-// gitexec.RunGit(["init"], …) to seed a real git repo: the dry-run and --apply round trips and the
-// --set-then-reconcile drift check. This file is integration-tagged per the Test Tier
-// Purity Invariant; the spawn-free not-a-git-repo assertion lives in TestRunCLIIn_FromNonGitDirectory.
+// reconcile_integration_test.go holds the reconcile scenario that spawns gitexec.RunGit(["init"], …) to seed a real git repo: the dry-run and --apply round trips and the --set-then-reconcile drift check.
+// This file is integration-tagged per the Test Tier Purity Invariant; the spawn-free not-a-git-repo assertion lives in TestRunCLIIn_FromNonGitDirectory.
 
 package configcli
 
@@ -48,12 +46,8 @@ func reconcileModule(t *testing.T, result map[string]any, module string) map[str
 	return nil
 }
 
-// TestConfigReconcileInGitRepo runs `lyx config reconcile` over one git repository: a dry run
-// reports without writing, a --set-planted orphan key is reported by reconcile instead of being lost,
-// and --apply writes the missing module files and retires a per-worktree hub-wide copy the hub file
-// subsumes.
-// Its steps run in this order in one repository; the apply step relies on the dry-run step having
-// left reed.yaml unwritten.
+// TestConfigReconcileInGitRepo runs `lyx config reconcile` over one git repository: a dry run reports without writing, a --set-planted orphan key is reported by reconcile instead of being lost, and --apply writes the missing module files and retires a per-worktree hub-wide copy the hub file subsumes.
+// Its steps run in this order in one repository; the apply step relies on the dry-run step having left reed.yaml unwritten.
 // The scenario runs in one repository so it spawns git once.
 func TestConfigReconcileInGitRepo(t *testing.T) {
 	t.Parallel()
@@ -146,8 +140,7 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		if applied, _ := result["applied"].(bool); !applied {
 			t.Error("applied is false; want true")
 		}
-		// Hub-wide modules are never written per-worktree, so "reed" is the generic module this
-		// reconcile-writes-to-disk assertion exercises.
+		// Hub-wide modules are never written per-worktree, so "reed" is the generic module this reconcile-writes-to-disk assertion exercises.
 		if _, err := os.Stat(reedPath); err != nil {
 			t.Errorf("reed.yaml not created: %v", err)
 		}

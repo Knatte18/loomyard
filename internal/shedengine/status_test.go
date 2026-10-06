@@ -1,5 +1,4 @@
-// status_test.go covers the JSON round-trip TDD candidate for Status: an in-memory marshal/unmarshal
-// round-trip and State.valid's enum gate.
+// status_test.go covers the JSON round-trip TDD candidate for Status: an in-memory marshal/unmarshal round-trip and State.valid's enum gate.
 
 package shedengine
 

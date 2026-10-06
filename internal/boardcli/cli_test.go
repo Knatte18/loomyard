@@ -2,18 +2,13 @@
 
 // cli_test.go — tests for the board CLI (cli.go).
 //
-// Drives RunCLI in-process and asserts the JSON + exit-code contract for each
-// subcommand: JSON envelope shape (ok=true/false), exit codes (0 for success,
-// 1 for error), and each verb's distinctive field (task, tasks[], Home.md written).
+// Drives RunCLI in-process and asserts the JSON + exit-code contract for each subcommand: JSON envelope shape (ok=true/false), exit codes (0 for success, 1 for error), and each verb's distinctive field (task, tasks[], Home.md written).
 //
-// Board data dir strategy: TestCLI seeds one git repo (git init) as its cwd
-// so that PersistentPreRunE can call lyxcwd.Resolve without error. The board data
-// dir is then Hub/_board where Hub = filepath.Dir(cwd). This is the production
-// code path; no --board-path injection is used for operational tests.
+// Board data dir strategy: TestCLI seeds one git repo (git init) as its cwd so that PersistentPreRunE can call lyxcwd.Resolve without error.
+// The board data dir is then Hub/_board where Hub = filepath.Dir(cwd).
+// This is the production code path; no --board-path injection is used for operational tests.
 //
-// seedCwd spawns "git init" and every RunCLI call spawns "git rev-parse" via
-// lyxcwd.Resolve, so this file is integration-tagged per the Test Tier
-// Purity Invariant; spawn-free CLI tests live in cli_unit_test.go.
+// seedCwd spawns "git init" and every RunCLI call spawns "git rev-parse" via lyxcwd.Resolve, so this file is integration-tagged per the Test Tier Purity Invariant; spawn-free CLI tests live in cli_unit_test.go.
 
 package boardcli_test
 
@@ -32,10 +27,8 @@ import (
 // defaultHubBoardConfig is the hub board.yaml every step starts from.
 const defaultHubBoardConfig = "readme: Home.md\ndesign_prefix: proposal-\n"
 
-// seedCwd creates a temp directory with the default hub board.yaml,
-// initialises a git repo there (so lyxcwd.Resolve succeeds), changes to that
-// directory, and returns the cwd path. The board data dir is Hub/_board where
-// Hub = filepath.Dir(cwd); callers can compute it as fabricengine.BoardDir(filepath.Dir(cwd)).
+// seedCwd creates a temp directory with the default hub board.yaml, initialises a git repo there (so lyxcwd.Resolve succeeds), changes to that directory, and returns the cwd path.
+// The board data dir is Hub/_board where Hub = filepath.Dir(cwd); callers can compute it as fabricengine.BoardDir(filepath.Dir(cwd)).
 func seedCwd(t *testing.T) string {
 	t.Helper()
 
@@ -131,8 +124,7 @@ func TestCLI(t *testing.T) {
 // upsert, list, get, set-status, rerender.
 // Each case asserts exit 0 + ok=true + the verb's distinctive field.
 //
-// Folds: TestCLIUpsertTask, TestCLIListTasks, TestCLIGetTask, TestCLISetPhase, TestCLIRerender (as
-// subtests preserving original names)
+// Folds: TestCLIUpsertTask, TestCLIListTasks, TestCLIGetTask, TestCLISetPhase, TestCLIRerender (as subtests preserving original names)
 func stepContract(t *testing.T, f *cliFixture) {
 
 	tests := []struct {
@@ -271,8 +263,7 @@ func stepContract(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepErrorAndEdgeCases tests error paths and edge cases: null task for nonexistent get, error
-// for nonexistent remove.
+// stepErrorAndEdgeCases tests error paths and edge cases: null task for nonexistent get, error for nonexistent remove.
 // The not-initialized refusal is covered by the LoadsHubBoardConfig step.
 //
 // Folds: TestCLIGetNonexistentTask (null task case), TestCLIRemoveNonexistentTask (exit 1 + error)
@@ -356,8 +347,7 @@ func stepErrorAndEdgeCases(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepStrictPayloadShapes verifies the strict key/shape validation added in Card 5 for set-deps,
-// upsert-batch, and merge (top-level and inner set_status object).
+// stepStrictPayloadShapes verifies the strict key/shape validation added in Card 5 for set-deps, upsert-batch, and merge (top-level and inner set_status object).
 func stepStrictPayloadShapes(t *testing.T, f *cliFixture) {
 
 	tests := []struct {
@@ -579,8 +569,7 @@ func stepStrictPayloadShapes(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepLookupContract covers the slug-or-id lookup contract on get, set-status, and remove: both
-// key forms succeed;
+// stepLookupContract covers the slug-or-id lookup contract on get, set-status, and remove: both key forms succeed;
 // id=0 resolves the first-created task;
 // neither key and both keys error;
 // unknown keys (e.g.
@@ -896,8 +885,7 @@ func stepLoadsHubBoardConfig(t *testing.T, f *cliFixture) {
 // The fixture's real git repo lets lyxcwd.Resolve succeed.
 func stepBoardPathResolution(t *testing.T, f *cliFixture) {
 	// The fixture's repository is the worktree and its parent is the hub:
-	// lyxcwd.Resolve(worktree) derives Hub = topDir, so
-	// fabricengine.BoardDir(Hub) = filepath.Join(topDir, "_board").
+	// lyxcwd.Resolve(worktree) derives Hub = topDir, so fabricengine.BoardDir(Hub) = filepath.Join(topDir, "_board").
 	topDir := filepath.Dir(f.cwd)
 
 	expectedBoardDir := fabricengine.BoardDir(topDir)

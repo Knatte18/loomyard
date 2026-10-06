@@ -148,17 +148,12 @@ type dotFillHarness struct {
 	reedSession   string
 }
 
-// newDotFillHarness boots a dot-fill measurement's full fixture on a hub of its own: a reed session
-// carrying Selvage plus two strand panes, and a private harness tmux server sized cols x rows to host
-// the attach client(s) that observe it.
+// newDotFillHarness boots a dot-fill measurement's full fixture on a hub of its own: a reed session carrying Selvage plus two strand panes, and a private harness tmux server sized cols x rows to host the attach client(s) that observe it.
 func newDotFillHarness(t *testing.T, cols, rows int) *dotFillHarness {
 	t.Helper()
 
-	// This is the watchdog-off-in-every-smoke-scenario Shared Decision: it must land before any
-	// reed verb runs, so every config load in this process resolves the watchdog key to "off". Its
-	// mechanical consequence is that resizeSignalHookCommand answers "", so reed's window-resized
-	// array holds the resize-pane pins and no signal entry — the array shape every rewrite and
-	// readback helper below is written against.
+	// This is the watchdog-off-in-every-smoke-scenario Shared Decision: it must land before any reed verb runs, so every config load in this process resolves the watchdog key to "off".
+	// Its mechanical consequence is that resizeSignalHookCommand answers "", so reed's window-resized array holds the resize-pane pins and no signal entry — the array shape every rewrite and readback helper below is written against.
 	t.Setenv("LYX_REED_WATCHDOG", "off")
 
 	tmuxBinaryPath(t)
@@ -172,9 +167,7 @@ func newDotFillHarness(t *testing.T, cols, rows int) *dotFillHarness {
 	return newDotFillHarnessOn(t, worktree, cols, rows)
 }
 
-// newDotFillHarnessOn restarts the reed session of worktree, a prime worktree whose tests set
-// LYX_REED_WATCHDOG=off, with Selvage plus two strand panes, and boots a private harness tmux server
-// sized cols x rows to host the attach client(s) that observe it.
+// newDotFillHarnessOn restarts the reed session of worktree, a prime worktree whose tests set LYX_REED_WATCHDOG=off, with Selvage plus two strand panes, and boots a private harness tmux server sized cols x rows to host the attach client(s) that observe it.
 // The harness pane starts in worktree, so the attach command it runs resolves that worktree.
 func newDotFillHarnessOn(t *testing.T, worktree string, cols, rows int) *dotFillHarness {
 	t.Helper()
@@ -329,17 +322,11 @@ func assertOnlyPinEntries(t *testing.T, entries []string) {
 	}
 }
 
-// TestSmokeDotFill runs the dot-fill claims against one hub whose prime worktree is restarted for each
-// step: every step brings up a fresh reed session with two strands and its own private harness server,
-// so the steps share the one hub build and do not rely on each other's results.
-// The scenario does not call t.Parallel, because it sets LYX_REED_WATCHDOG, which every config load in
-// the process reads.
+// TestSmokeDotFill runs the dot-fill claims against one hub whose prime worktree is restarted for each step: every step brings up a fresh reed session with two strands and its own private harness server, so the steps share the one hub build and do not rely on each other's results.
+// The scenario does not call t.Parallel, because it sets LYX_REED_WATCHDOG, which every config load in the process reads.
 func TestSmokeDotFill(t *testing.T) {
-	// This is the watchdog-off-in-every-smoke-scenario Shared Decision: it must land before any
-	// reed verb runs, so every config load in this process resolves the watchdog key to "off". Its
-	// mechanical consequence is that resizeSignalHookCommand answers "", so reed's window-resized
-	// array holds the resize-pane pins and no signal entry — the array shape every rewrite and
-	// readback helper below is written against.
+	// This is the watchdog-off-in-every-smoke-scenario Shared Decision: it must land before any reed verb runs, so every config load in this process resolves the watchdog key to "off".
+	// Its mechanical consequence is that resizeSignalHookCommand answers "", so reed's window-resized array holds the resize-pane pins and no signal entry — the array shape every rewrite and readback helper below is written against.
 	t.Setenv("LYX_REED_WATCHDOG", "off")
 
 	tmuxBinaryPath(t)
@@ -351,12 +338,10 @@ func TestSmokeDotFill(t *testing.T) {
 		RunCLIIn(prime, &buf, []string{"down"})
 	})
 
-	// FloorIsCleanOnASettledAttach validates dotRunFloor against a settled attach with no
-	// trigger fired: no resize, no input delivered beyond the attach itself.
+	// FloorIsCleanOnASettledAttach validates dotRunFloor against a settled attach with no trigger fired: no resize, no input delivered beyond the attach itself.
 	//
-	// A failure here means something in reed's own rendered output produces a run of at least dotRunFloor
-	// dots on one line. That is itself news, and the remedy is to report it — never to raise the floor
-	// until this test goes quiet.
+	// A failure here means something in reed's own rendered output produces a run of at least dotRunFloor dots on one line.
+	// That is itself news, and the remedy is to report it — never to raise the floor until this test goes quiet.
 	if !t.Run("FloorIsCleanOnASettledAttach", func(t *testing.T) {
 		h := newDotFillHarnessOn(t, prime, 140, 42)
 		paneID := harnessOnlyPaneID(t, h.tmuxPath, h.harnessSocket, "h")
@@ -372,17 +357,11 @@ func TestSmokeDotFill(t *testing.T) {
 		return
 	}
 
-	// ResizeControl is the resize-trigger control scenario: it proves the harness still
-	// reproduces the dot-fill artifact on a real window-dimension change (root-cause-model decision) by
-	// resizing reed's own window in both directions after rewriting reed's own window-resized array to
-	// pins only, and asserting the padding paint appears while the window stands smaller than the
-	// attached client and clears once the window grows back past it.
+	// ResizeControl is the resize-trigger control scenario: it proves the harness still reproduces the dot-fill artifact on a real window-dimension change (root-cause-model decision) by resizing reed's own window in both directions after rewriting reed's own window-resized array to pins only, and asserting the padding paint appears while the window stands smaller than the attached client and clears once the window grows back past it.
 	//
-	// A control that does not hit means the harness can no longer reproduce the bug, and every companion
-	// absence assertion in the batches built on this one has become vacuous — so a miss here is a run
-	// failure, not a skip. This test does not assert the artifact appears on every size or on every run;
-	// that asymmetry is exactly why this control exists as an executable assertion rather than as a note in
-	// a commit message.
+	// A control that does not hit means the harness can no longer reproduce the bug, and every companion absence assertion in the batches built on this one has become vacuous — so a miss here is a run failure, not a skip.
+	// This test does not assert the artifact appears on every size or on every run;
+	// that asymmetry is exactly why this control exists as an executable assertion rather than as a note in a commit message.
 	if !t.Run("ResizeControl", func(t *testing.T) {
 		h := newDotFillHarnessOn(t, prime, 140, 42)
 		paneID := harnessOnlyPaneID(t, h.tmuxPath, h.harnessSocket, "h")
@@ -434,20 +413,13 @@ func TestSmokeDotFill(t *testing.T) {
 		return
 	}
 
-	// ResizeTreatment is the resize-trigger treatment scenario, the fix-side companion to
-	// ResizeControl above. It shares the control's setup exactly — newDotFillHarnessOn,
-	// harnessOnlyPaneID, attachIn — and fires the same shrink-then-grow resize-window trigger. It differs
-	// in one way: it leaves reed's own window-resized array untouched rather than rewriting it, so this
-	// scenario always observes whatever reed itself installs.
+	// ResizeTreatment is the resize-trigger treatment scenario, the fix-side companion to ResizeControl above.
+	// It shares the control's setup exactly — newDotFillHarnessOn, harnessOnlyPaneID, attachIn — and fires the same shrink-then-grow resize-window trigger.
+	// It differs in one way: it leaves reed's own window-resized array untouched rather than rewriting it, so this scenario always observes whatever reed itself installs.
 	//
-	// Per the Measurement record (repaint candidates) block in internal/reedengine/doc.go's package doc
-	// comment, neither measured repaint candidate was accepted: both cleared the dot-fill artifact but both
-	// were rejected on the repaint-must-not-self-retrigger decision's exactly-one-fire criterion. No repaint
-	// entry ships from this task, so this scenario is INVERTED rather than skipped or deleted: it asserts
-	// the artifact still appears on the resize trigger. This makes the scenario a live tripwire — if a
-	// future tmux release or a future reed change makes the artifact stop appearing on its own (for
-	// instance because a repaint mechanism is added later without updating this test), this scenario fails
-	// and someone finds out, which a t.Skip would never do.
+	// Per the Measurement record (repaint candidates) block in internal/reedengine/doc.go's package doc comment, neither measured repaint candidate was accepted: both cleared the dot-fill artifact but both were rejected on the repaint-must-not-self-retrigger decision's exactly-one-fire criterion.
+	// No repaint entry ships from this task, so this scenario is INVERTED rather than skipped or deleted: it asserts the artifact still appears on the resize trigger.
+	// This makes the scenario a live tripwire — if a future tmux release or a future reed change makes the artifact stop appearing on its own (for instance because a repaint mechanism is added later without updating this test), this scenario fails and someone finds out, which a t.Skip would never do.
 	if !t.Run("ResizeTreatment", func(t *testing.T) {
 		h := newDotFillHarnessOn(t, prime, 140, 42)
 		paneID := harnessOnlyPaneID(t, h.tmuxPath, h.harnessSocket, "h")
@@ -478,14 +450,11 @@ func TestSmokeDotFill(t *testing.T) {
 		return
 	}
 
-	// CrossClientControl is the cross-client-trigger control scenario. It is control-only —
-	// there is no cross-client treatment scenario, in any branch of the measurement gate — per the
-	// uncovered-subset-is-documented-not-fixed decision: this is a documentation-of-behaviour test, not a
-	// fix test.
+	// CrossClientControl is the cross-client-trigger control scenario.
+	// It is control-only — there is no cross-client treatment scenario, in any branch of the measurement gate — per the uncovered-subset-is-documented-not-fixed decision: this is a documentation-of-behaviour test, not a fix test.
 	//
-	// Under root-cause-model, these dots are the UNCOVERED subset: the window shrank to the toucher
-	// client's size, so the taller observed client has real estate with nothing behind it and tmux is
-	// padding it correctly. No repaint mechanism can remove them.
+	// Under root-cause-model, these dots are the UNCOVERED subset: the window shrank to the toucher client's size, so the taller observed client has real estate with nothing behind it and tmux is padding it correctly.
+	// No repaint mechanism can remove them.
 	t.Run("CrossClientControl", func(t *testing.T) {
 		h := newDotFillHarnessOn(t, prime, 140, 42)
 

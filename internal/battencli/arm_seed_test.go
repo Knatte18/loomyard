@@ -16,11 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestArmSeed_RunAndStepSeedBeforeWire asserts a first "lyx batten run <slug>" and a first
-// "lyx batten step <slug>" each write a fresh seed when none exists, whether or not LYX_STRAND_NAME
-// is set -- the seeding arm performs ahead of wire building the Env, per the batch's own
-// auto-seed-runs-inside-arm-ahead-of-wire decision. The seed carries recipe: "batten", never the
-// Board task's own type.
+// TestArmSeed_RunAndStepSeedBeforeWire asserts a first "lyx batten run <slug>" and a first "lyx batten step <slug>" each write a fresh seed when none exists, whether or not LYX_STRAND_NAME is set -- the seeding arm performs ahead of wire building the Env, per the batch's own auto-seed-runs-inside-arm-ahead-of-wire decision.
+// The seed carries recipe: "batten", never the Board task's own type.
 func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 	// No t.Parallel: each subtest sets the process environment through t.Setenv.
 	for _, verb := range []string{"run", "step"} {
@@ -106,10 +103,7 @@ func TestArmSeed_TypedChildDriverIsValidatedAheadOfTheSeedRead(t *testing.T) {
 	}
 }
 
-// TestRefuseSelfAddress asserts an omitted positional argument refuses by name before the
-// auto-seed gate ever runs rather than silently taking the self default, an explicitly typed slug
-// of "self" refuses as a reservation collision -- a different refusal, though both resolve to the
-// identical run-id value -- and an ordinary slug reaches neither.
+// TestRefuseSelfAddress asserts an omitted positional argument refuses by name before the auto-seed gate ever runs rather than silently taking the self default, an explicitly typed slug of "self" refuses as a reservation collision -- a different refusal, though both resolve to the identical run-id value -- and an ordinary slug reaches neither.
 func TestRefuseSelfAddress(t *testing.T) {
 	t.Parallel()
 
@@ -158,8 +152,7 @@ func TestArmSeed_NoSeedGivesTheListingRefusal_SeedPresentWithNoStatusGivesFoundF
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 	c := &battenCLI{}
 
-	// No seed at all: armSeed itself refuses with the listing and seeds nothing -- the
-	// read-only-verbs-create-no-state rule, easy to lose in a refactor of arm.
+	// No seed at all: armSeed itself refuses with the listing and seeds nothing -- the read-only-verbs-create-no-state rule, easy to lose in a refactor of arm.
 	for _, verb := range []string{"status", "pause"} {
 		err := c.armSeed(loc, "unseeded-slug", verb)
 		if err == nil {

@@ -182,9 +182,7 @@ func TestWorktreeTeardown_CancelledContext(t *testing.T) {
 	}
 }
 
-// TestRecordAbandonedSession asserts the teardown row's abandoned-session record is written when a
-// session was abandoned and cleared when a later teardown abandoned none, and that the producer's
-// own Done path writes it, not only the helper in isolation.
+// TestRecordAbandonedSession asserts the teardown row's abandoned-session record is written when a session was abandoned and cleared when a later teardown abandoned none, and that the producer's own Done path writes it, not only the helper in isolation.
 //
 //testtiming:keep pins the record's write, its clearing of a stale record and its write from the Done path, which the covering teardown tests never read
 func TestRecordAbandonedSession(t *testing.T) {
@@ -227,9 +225,7 @@ func TestRecordAbandonedSession(t *testing.T) {
 	}
 }
 
-// TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree asserts the row runs Shutdown strictly
-// before Remove and reports Done whether the prime lock is free at once or contended for a few
-// polls first, sleeping once per contended poll, and releases the lock afterwards.
+// TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree asserts the row runs Shutdown strictly before Remove and reports Done whether the prime lock is free at once or contended for a few polls first, sleeping once per contended poll, and releases the lock afterwards.
 func TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree(t *testing.T) {
 	t.Parallel()
 

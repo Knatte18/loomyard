@@ -26,11 +26,8 @@ func runHelp(t *testing.T, args ...string) string {
 	return buf.String()
 }
 
-// TestHelpSchema_LeafCommands asserts that each board leaf command's --help output contains the
-// documented field names for the post-batch-1 schema and does not contain any removed token
-// (id_or_slug, phase, group).
-// Every slug-taking verb's help also states the limit formatted from boardengine.MaxSlugLength,
-// so the sentence cannot drift from validation.
+// TestHelpSchema_LeafCommands asserts that each board leaf command's --help output contains the documented field names for the post-batch-1 schema and does not contain any removed token (id_or_slug, phase, group).
+// Every slug-taking verb's help also states the limit formatted from boardengine.MaxSlugLength, so the sentence cannot drift from validation.
 //
 //testtiming:keep pins every leaf command's documented field names, removed tokens and slug-limit sentence in --help, which its covering test does not assert
 func TestHelpSchema_LeafCommands(t *testing.T) {

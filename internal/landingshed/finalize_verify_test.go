@@ -1,5 +1,4 @@
-// finalize_verify_test.go covers the clean-tree checks and the post-merge verify gate as Finalize.mergeInStep wires them around every parent merge-in,
-// against fake verifytree seams, a scripted resolver and the package's fake merger.
+// finalize_verify_test.go covers the clean-tree checks and the post-merge verify gate as Finalize.mergeInStep wires them around every parent merge-in, against fake verifytree seams, a scripted resolver and the package's fake merger.
 // None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
 
 package landingshed
@@ -165,9 +164,7 @@ func TestFinalizeVerify_DirtyTreeHalts(t *testing.T) {
 	}
 }
 
-// TestFinalizeVerify_RetryMergeInIsBracketedAgain pins that the merge-in-required retry's second merge-in is verified
-// and clean-checked like the first: a second verify that fails, or a dirty tree after the retry's merge-in, ends Stuck
-// and nothing lands.
+// TestFinalizeVerify_RetryMergeInIsBracketedAgain pins that the merge-in-required retry's second merge-in is verified and clean-checked like the first: a second verify that fails, or a dirty tree after the retry's merge-in, ends Stuck and nothing lands.
 func TestFinalizeVerify_RetryMergeInIsBracketedAgain(t *testing.T) {
 	tests := []struct {
 		name  string

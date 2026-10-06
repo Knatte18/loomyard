@@ -12,8 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// TestParsePlan_PlanLevelSections asserts the three plan-level sections are exposed verbatim from
-// the golden fixture and each defaults to "" when its heading is absent.
+// TestParsePlan_PlanLevelSections asserts the three plan-level sections are exposed verbatim from the golden fixture and each defaults to "" when its heading is absent.
 //
 //testtiming:keep pins the three plan-level section bodies verbatim, which the golden fixture zero-findings test does not assert
 func TestParsePlan_PlanLevelSections(t *testing.T) {
@@ -83,11 +82,7 @@ func TestParsePlan_PlanLevelSections(t *testing.T) {
 	})
 }
 
-// TestParsePlan_VerifySection_ChainsEveryLine pins that a multi-line "## verify:" section is
-// carried whole, one command per line chained with " && ", rather than truncated to its first
-// line: the plan stencil tells the planner the section holds one or more commands, and a plan
-// whose section read `go vet ./...` then `go test ./...` had its tests silently skipped by
-// webster's integration gate (crucible round fable-high-r2).
+// TestParsePlan_VerifySection_ChainsEveryLine pins that a multi-line "## verify:" section is carried whole, one command per line chained with " && ", rather than truncated to its first line: the plan stencil tells the planner the section holds one or more commands, and a plan whose section read `go vet ./...` then `go test ./...` had its tests silently skipped by webster's integration gate (crucible round fable-high-r2).
 // The fence and comment rows pin that code-fence lines and full-line "#" comments are skipped rather than chained (issue #285).
 //
 //testtiming:keep pins how a multi-line verify section chains into one command, which its covering tests do not assert

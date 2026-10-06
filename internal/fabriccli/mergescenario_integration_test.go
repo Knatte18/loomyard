@@ -193,8 +193,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 		run  func(t *testing.T)
 	}{
 		{"MergeInConflictThenContinueConcludes", func(t *testing.T) {
-			// merge-in into a warp-side conflict yields the failure envelope's sorted "conflicts" array
-			// and "partial": false; resolving in the worktree and "merge --continue" concludes it.
+			// merge-in into a warp-side conflict yields the failure envelope's sorted "conflicts" array and "partial": false; resolving in the worktree and "merge --continue" concludes it.
 			divergeConflicting(t, h, "continue-feature", "continue-conflict.txt")
 
 			mergeInEnv := mergeInExpectingConflict(t, h, "continue-feature")
@@ -271,8 +270,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 		}},
 		{"MergeStageResolvesAWarpSideConflict", func(t *testing.T) {
 			// The merge-stage -> merge --continue flow end-to-end against an ordinary warp-side conflict:
-			// resolve the content, prove "merge --continue" still refuses before staging, stage with
-			// "merge-stage", and conclude.
+			// resolve the content, prove "merge --continue" still refuses before staging, stage with "merge-stage", and conclude.
 			const conflictPath = "merge-stage-clash.txt"
 			divergeConflicting(t, h, "stage-feature", conflictPath)
 
@@ -319,8 +317,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			}
 		}},
 		{"MergeStageRejectsAPathThatIsNotConflicted", func(t *testing.T) {
-			// A path conflicted on neither side is an error rather than a silent skip, and nothing is
-			// staged, so a typo cannot leave the merge half-resolved.
+			// A path conflicted on neither side is an error rather than a silent skip, and nothing is staged, so a typo cannot leave the merge half-resolved.
 			divergeConflicting(t, h, "reject-feature", "reject-conflict.txt")
 			mergeInExpectingConflict(t, h, "reject-feature")
 			defer abortParkedMerge(t, h)
@@ -334,8 +331,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 				t.Errorf("RunCLI(merge-stage) error output = %q; want it to name %q", output, bogusPath)
 			}
 
-			// The good path in the same call must NOT have been staged: the verb partitions every path
-			// before staging anything, so one bad path fails the whole call.
+			// The good path in the same call must NOT have been staged: the verb partitions every path before staging anything, so one bad path fails the whole call.
 			statusCmd := exec.Command("git", "diff", "--name-only", "--diff-filter=U")
 			statusCmd.Dir = h.PrimeWorktree()
 			out, err := statusCmd.Output()
@@ -347,10 +343,8 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			}
 		}},
 		{"MergeContinuePartialStagingListsTheRemainingPaths", func(t *testing.T) {
-			// The operator staged SOME of the reported paths and not all of them: the unresolved-conflicts
-			// refusal reports the remaining paths under "unresolved" and carries no "conflicts" key at
-			// all, since "conflicts" is the documented discriminator between a conflict result and a hard
-			// failure. Both conflicting paths are warp-side: the weft side is not a merge participant.
+			// The operator staged SOME of the reported paths and not all of them: the unresolved-conflicts refusal reports the remaining paths under "unresolved" and carries no "conflicts" key at all, since "conflicts" is the documented discriminator between a conflict result and a hard failure.
+			// Both conflicting paths are warp-side: the weft side is not a merge participant.
 			setupConflictingDivergenceCLI(t, h.PrimeWorktree(), "partial-feature", "partial-a.txt")
 			setupConflictingDivergenceCLI(t, h.PrimeWorktree(), "partial-feature", "partial-b.txt")
 			branchAtCurrentHEADCLI(t, h.PrimeWeft(), "partial-feature-weft")
@@ -381,9 +375,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			}
 		}},
 		{"MergeStageEchoesEachPathOnce", func(t *testing.T) {
-			// A path passed twice in one call stages fine (the engine tolerates the duplicate) but
-			// appears ONCE in "staged": an envelope claiming two stagings for one path reports
-			// something that did not happen twice.
+			// A path passed twice in one call stages fine (the engine tolerates the duplicate) but appears ONCE in "staged": an envelope claiming two stagings for one path reports something that did not happen twice.
 			divergeConflicting(t, h, "echo-feature", "echo-conflict.txt")
 			mergeInExpectingConflict(t, h, "echo-feature")
 			defer abortParkedMerge(t, h)
@@ -403,9 +395,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			}
 		}},
 		{"StatusReportsMergeInProgressWhileAMergeIsParked", func(t *testing.T) {
-			// status run from the pair holding a parked conflicted merge reports "merge_in_progress"
-			// present and true — the assertion that proves the field reads the real record rather than a
-			// hardcoded constant.
+			// status run from the pair holding a parked conflicted merge reports "merge_in_progress" present and true — the assertion that proves the field reads the real record rather than a hardcoded constant.
 			divergeConflicting(t, h, "status-feature", "status-conflict.txt")
 			mergeInExpectingConflict(t, h, "status-feature")
 			defer abortParkedMerge(t, h)
@@ -440,9 +430,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			}
 		}},
 		{"MergeCleanSquashFromTargetPair", func(t *testing.T) {
-			// A clean "merge <branch> --squash" from a second, unrelated pair's worktree, the
-			// target-pair Merge verb's own shape: the source pair's branches are seeded on the prime
-			// pair, and Merge is invoked with cwd on the target pair instead.
+			// A clean "merge <branch> --squash" from a second, unrelated pair's worktree, the target-pair Merge verb's own shape: the source pair's branches are seeded on the prime pair, and Merge is invoked with cwd on the target pair instead.
 			hubforge.AddPair(t, h, "squash-target")
 
 			commitOnBranchCLI(t, h.PrimeWorktree(), "squash-feature", "warp-feature.txt", "warp feature\n", "warp: add feature")
@@ -459,8 +447,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			}
 		}},
 		{"MergeConflictSelfAbortsWithErrMergeInRequired", func(t *testing.T) {
-			// A "merge <branch>" on a target pair that would conflict reports the fixed
-			// ErrMergeInRequired message and leaves the target pair unchanged.
+			// A "merge <branch>" on a target pair that would conflict reports the fixed ErrMergeInRequired message and leaves the target pair unchanged.
 			hubforge.AddPair(t, h, "abort-target")
 
 			gitkit.CommitFile(t, h.PairWarpWorktree("abort-target"), "selfabort-conflict.txt", "target content\n", "target: seed selfabort-conflict.txt")

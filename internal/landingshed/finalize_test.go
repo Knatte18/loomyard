@@ -1,7 +1,5 @@
-// finalize_test.go covers Finalize against a faked resolver and a faked parent-pair opener closure
-// returning a scripted merge outcome. This tier lives in the package itself too, for the same
-// reason as its sibling: the resolver seam and the parentMerger seam it substitutes are both
-// unexported.
+// finalize_test.go covers Finalize against a faked resolver and a faked parent-pair opener closure returning a scripted merge outcome.
+// This tier lives in the package itself too, for the same reason as its sibling: the resolver seam and the parentMerger seam it substitutes are both unexported.
 // None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
 
 package landingshed
@@ -116,8 +114,7 @@ func TestNewFinalize_Refusals(t *testing.T) {
 
 // --- Call behaviour ---
 
-// TestFinalize_MergeMarkPushOrderAndVerdict pins that a landed merge is marked done on the board and then pushed to the parent's upstream before Done,
-// honouring Deps.PushSkipped, that a failed push is Stuck rather than Done, and that neither a failing push nor a failing board seam changes what the other is called for.
+// TestFinalize_MergeMarkPushOrderAndVerdict pins that a landed merge is marked done on the board and then pushed to the parent's upstream before Done, honouring Deps.PushSkipped, that a failed push is Stuck rather than Done, and that neither a failing push nor a failing board seam changes what the other is called for.
 func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -167,9 +164,7 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 	}
 }
 
-// TestFinalize_MergeOptionsCarriesComposedMessage asserts the merge-in runs first and a successful parent-side merge passes MergeOptions
-// carrying the task branch as its source, both the composed final-summary message and the configured Squash value, for both merge
-// shapes -- the message is set whether or not Squash is true.
+// TestFinalize_MergeOptionsCarriesComposedMessage asserts the merge-in runs first and a successful parent-side merge passes MergeOptions carrying the task branch as its source, both the composed final-summary message and the configured Squash value, for both merge shapes -- the message is set whether or not Squash is true.
 //
 //testtiming:keep pins the composed MergeOptions.Message, its Co-Authored-By trailer and the Squash value for both merge shapes, which its covering tests do not assert
 func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
@@ -217,9 +212,7 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 	}
 }
 
-// TestFinalize_UnusableSummaryArtifact_ErrorBeforeMergeOrCommit asserts a missing or malformed final-summary
-// artifact makes Call return an error with no merge attempted and no status commit performed --
-// proving the top-of-Call parse runs before either.
+// TestFinalize_UnusableSummaryArtifact_ErrorBeforeMergeOrCommit asserts a missing or malformed final-summary artifact makes Call return an error with no merge attempted and no status commit performed -- proving the top-of-Call parse runs before either.
 func TestFinalize_UnusableSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -260,8 +253,7 @@ func TestFinalize_UnusableSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T)
 	}
 }
 
-// TestFinalize_MergeInRequiredRetry pins that an ErrMergeInRequired merge is retried exactly once with the same composed message,
-// and that the board seam runs once, after the retry that lands, never after a failed attempt.
+// TestFinalize_MergeInRequiredRetry pins that an ErrMergeInRequired merge is retried exactly once with the same composed message, and that the board seam runs once, after the retry that lands, never after a failed attempt.
 func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -308,8 +300,7 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 	}
 }
 
-// TestFinalize_StuckReasons pins, for each way a landing stops Stuck, the reason it surfaces, that the board seam is never called,
-// and that no stuck-reason file is written.
+// TestFinalize_StuckReasons pins, for each way a landing stops Stuck, the reason it surfaces, that the board seam is never called, and that no stuck-reason file is written.
 func TestFinalize_StuckReasons(t *testing.T) {
 	guardErr := &fabricengine.MergeGuardError{Reasons: []string{"worktree dirty"}}
 	tests := []struct {
@@ -449,9 +440,7 @@ func installCloseServer(t *testing.T, s *closeServer) {
 }
 
 // TestFinalize_ClosingPullRequestAfterLanding pins what a landed task does to its pull request:
-// an open one gets a comment naming the landing head and the parent branch and is closed, a merge that
-// reports AlreadyUpToDate counts as landed and names the head the parent reports, and a non-open
-// pull request, a failed close, a parent needing no pull request and a skipped push each still end Done.
+// an open one gets a comment naming the landing head and the parent branch and is closed, a merge that reports AlreadyUpToDate counts as landed and names the head the parent reports, and a non-open pull request, a failed close, a parent needing no pull request and a skipped push each still end Done.
 // Every case marks the task done and calls the push once.
 func TestFinalize_ClosingPullRequestAfterLanding(t *testing.T) {
 	lookupOnly := []string{"GET /repos/acme/widgets/pulls"}

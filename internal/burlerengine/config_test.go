@@ -43,9 +43,7 @@ func loadSeededConfig(t *testing.T) Config {
 	return cfg
 }
 
-// TestLoadConfig covers LoadConfig's three non-template outcomes: an absent file and a
-// comments-only file both yield the zero Config, and an unknown top-level field is rejected with a
-// burler:-prefixed decode error.
+// TestLoadConfig covers LoadConfig's three non-template outcomes: an absent file and a comments-only file both yield the zero Config, and an unknown top-level field is rejected with a burler:-prefixed decode error.
 func TestLoadConfig(t *testing.T) {
 	t.Parallel()
 
@@ -88,13 +86,8 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_DecodesAndIsSelfConsistent proves the embedded seed template is itself valid
-// burler.yaml content -- it decodes cleanly through LoadConfig's own strict decode path, the same
-// one every real hub's seeded file goes through -- and that its internal cross-references and
-// lengths hold: both seeded fans exist, every fan entry names a defined lens, and no lens carries
-// hard-exclusion phrasing.
-// The spike (docs/research/session-fork-spike.md, Q2) found "ignore everything else" lenses
-// measurably suppressed cross-category coverage, so every lens is emphasis-only by design.
+// TestConfigTemplate_DecodesAndIsSelfConsistent proves the embedded seed template is itself valid burler.yaml content -- it decodes cleanly through LoadConfig's own strict decode path, the same one every real hub's seeded file goes through -- and that its internal cross-references and lengths hold: both seeded fans exist, every fan entry names a defined lens, and no lens carries hard-exclusion phrasing.
+// The spike (docs/research/session-fork-spike.md, Q2) found "ignore everything else" lenses measurably suppressed cross-category coverage, so every lens is emphasis-only by design.
 //
 //testtiming:keep pins the seeded lens and fan counts, the defined-lens cross-references and the no-"ignore " phrasing, which the ResolveFan test covering its blocks does not assert
 func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {

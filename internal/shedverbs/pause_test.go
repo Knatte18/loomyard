@@ -50,10 +50,8 @@ func TestPauseCmd_SetsPauseRequested(t *testing.T) {
 	}
 }
 
-// TestPauseCmd_AbsentFile covers both shipped absent-file wordings: pause reports the told message
-// verbatim when the status file does not exist.
-// With EnsureStatusLockDir over a never-created lock parent, the parent is created and the call proceeds to the told message
-// rather than failing in lock acquisition.
+// TestPauseCmd_AbsentFile covers both shipped absent-file wordings: pause reports the told message verbatim when the status file does not exist.
+// With EnsureStatusLockDir over a never-created lock parent, the parent is created and the call proceeds to the told message rather than failing in lock acquisition.
 func TestPauseCmd_AbsentFile(t *testing.T) {
 	tests := []struct {
 		name                string

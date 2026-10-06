@@ -64,8 +64,7 @@ func TestResolveJudge(t *testing.T) {
 	}
 }
 
-// TestResolveReviewAndJudge_MalformedSpec verifies an ungrammatical review or judge model-spec returns an error
-// naming its role, rather than being silently carried into a producer's spawn site.
+// TestResolveReviewAndJudge_MalformedSpec verifies an ungrammatical review or judge model-spec returns an error naming its role, rather than being silently carried into a producer's spawn site.
 func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

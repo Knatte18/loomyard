@@ -38,15 +38,9 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// TestVerify_Scenario is a scenario over one scratch repo, run as named steps in one order, each
-// reaching one rule of Verify: a dirty tree is refused, a record is written only after a pass and
-// only when HEAD did not move during the run, the marker is present only while the command runs, a
-// skip needs a record naming HEAD's tree and the same command, and DirtyPaths names special and
-// renamed paths verbatim.
+// TestVerify_Scenario is a scenario over one scratch repo, run as named steps in one order, each reaching one rule of Verify: a dirty tree is refused, a record is written only after a pass and only when HEAD did not move during the run, the marker is present only while the command runs, a skip needs a record naming HEAD's tree and the same command, and DirtyPaths names special and renamed paths verbatim.
 // The steps share one repo, so the test is parallel as a whole and no step is.
-// The steps up to the first pass rely on no record existing yet, so they run before it; each step
-// after it relies on the record the one before left, and the last step relies on being last because
-// it dirties the tree.
+// The steps up to the first pass rely on no record existing yet, so they run before it; each step after it relies on the record the one before left, and the last step relies on being last because it dirties the tree.
 func TestVerify_Scenario(t *testing.T) {
 	t.Parallel()
 

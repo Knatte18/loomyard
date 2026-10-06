@@ -1,25 +1,9 @@
 //go:build integration
 
-// verbs_test.go covers webstercli's git-backed/spawn-backed verbs
-// (begin-batch, record-batch, recover-batch, run) through the RunCLI seam:
-// a real scratch git repo backs WorktreeRoot, a real *shuttleengine.Runner
-// wired over local fake shuttleengine.ReedOps/shuttleengine.Engine doubles
-// is the starter/injector seam, webster's own fixture pattern — a fake
-// struct alone cannot satisfy these interfaces, since a
-// genuine *shuttleengine.Run's StrandGUID is only ever minted by a real
-// Runner.Start), and run's own Master spawn is a local fake MasterStarter
-// (mirroring websterengine's own runlevel_test.go runFakeStarter). Most
-// tests build a *websterCLI literal directly (bypassing Command()'s
-// PersistentPreRunE) and drive one verb's cobra.Command through
-// clihelp.Execute, webster's own package-local injection point for these
-// tests; seedPersistentPreRunFixture and its tests are the deliberate
-// exception, driving Command()'s real PersistentPreRunE through RunCLIIn.
-// WEFT_SKIP_GIT=1 is set on every test that reaches a
-// fabricSync call, so no real records sibling worktree is needed; the one test
-// that must PROVE fabricSync was never reached (ErrRunBusy) instead leaves
-// WEFT_SKIP_GIT unset and asserts the envelope carries no fabric-sync or
-// fabricengine error text -- the failure a reached fabricSync would stamp
-// in this records-less geometry.
+// verbs_test.go covers webstercli's git-backed/spawn-backed verbs (begin-batch, record-batch, recover-batch, run) through the RunCLI seam:
+// a real scratch git repo backs WorktreeRoot, a real *shuttleengine.Runner wired over local fake shuttleengine.ReedOps/shuttleengine.Engine doubles is the starter/injector seam, webster's own fixture pattern — a fake struct alone cannot satisfy these interfaces, since a genuine *shuttleengine.Run's StrandGUID is only ever minted by a real Runner.Start), and run's own Master spawn is a local fake MasterStarter (mirroring websterengine's own runlevel_test.go runFakeStarter).
+// Most tests build a *websterCLI literal directly (bypassing Command()'s PersistentPreRunE) and drive one verb's cobra.Command through clihelp.Execute, webster's own package-local injection point for these tests; seedPersistentPreRunFixture and its tests are the deliberate exception, driving Command()'s real PersistentPreRunE through RunCLIIn.
+// WEFT_SKIP_GIT=1 is set on every test that reaches a fabricSync call, so no real records sibling worktree is needed; the one test that must PROVE fabricSync was never reached (ErrRunBusy) instead leaves WEFT_SKIP_GIT unset and asserts the envelope carries no fabric-sync or fabricengine error text -- the failure a reached fabricSync would stamp in this records-less geometry.
 
 package webstercli
 
@@ -672,10 +656,8 @@ func seedPersistentPreRunConfig(t *testing.T, h *hubforge.Hub, batcherConfig str
 	})
 }
 
-// TestPersistentPreRunE_BatcherSelection proves the load-time batcher selection (batcher.Active(baseDir), wired into PersistentPreRunE)
-// through the `status` verb, which never itself touches the batcher, over one hub whose batcher.yaml each step rewrites:
-// an unknown active: name is a true fail-fast gate that aborts before any verb's RunE ever runs, with an output.Err envelope naming the bad batcher key,
-// and the default (empty) active: key resolves to the identity batchifier, so the command proceeds normally through the rest of PersistentPreRunE and into the verb's own RunE.
+// TestPersistentPreRunE_BatcherSelection proves the load-time batcher selection (batcher.Active(baseDir), wired into PersistentPreRunE) through the `status` verb, which never itself touches the batcher, over one hub whose batcher.yaml each step rewrites:
+// an unknown active: name is a true fail-fast gate that aborts before any verb's RunE ever runs, with an output.Err envelope naming the bad batcher key, and the default (empty) active: key resolves to the identity batchifier, so the command proceeds normally through the rest of PersistentPreRunE and into the verb's own RunE.
 // The steps share one hub and each rewrites its own config, so none relies on another's result.
 // The scenario calls t.Parallel as a whole and no step does, since the steps share the one hub.
 func TestPersistentPreRunE_BatcherSelection(t *testing.T) {

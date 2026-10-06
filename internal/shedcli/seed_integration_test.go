@@ -14,9 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// seedBattenRefusedOutsidePrime asserts a batten seed is written in the hub's prime
-// worktree and refused in a task worktree, where every batten verb refuses too, leaving no run
-// directory behind there.
+// seedBattenRefusedOutsidePrime asserts a batten seed is written in the hub's prime worktree and refused in a task worktree, where every batten verb refuses too, leaving no run directory behind there.
 func seedBattenRefusedOutsidePrime(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "seed-here")
 

@@ -1,6 +1,5 @@
 // jsonhelp_test.go asserts the --json help schema at multiple levels of the lyx command tree.
-// Each row drives the run() seam with --json and validates that the captured output is valid JSON
-// matching the {name, short, commands, flags} schema.
+// Each row drives the run() seam with --json and validates that the captured output is valid JSON matching the {name, short, commands, flags} schema.
 // It also confirms that hidden and meta flags are absent from the flags array.
 
 package main
@@ -63,8 +62,7 @@ func commandNames(cmds []helpJSONCmd) map[string]bool {
 	return names
 }
 
-// TestJSONHelp_Schema asserts "--json" help exits 0 and produces valid JSON with the expected
-// schema fields at the root, a verb module, a module with one verb and a leaf verb.
+// TestJSONHelp_Schema asserts "--json" help exits 0 and produces valid JSON with the expected schema fields at the root, a verb module, a module with one verb and a leaf verb.
 // run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
 func TestJSONHelp_Schema(t *testing.T) {
 	tests := []struct {

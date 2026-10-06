@@ -1,11 +1,7 @@
 //go:build integration
 
-// hub_test.go proves the bare-pair template builder and the CloneAndWire-backed hub factory each do
-// what their doc comments claim: the template carries the symbolic-ref gotcha's fix and a genuinely
-// empty weft bare, and NewHub produces a real, fully-wired fabric hub rather than a hand-assembled
-// stand-in — the whole reason NewHub calls CloneAndWire instead of CloneHub alone.
-// It also proves the helpers a built hub offers — the config seeders, AddPair, AddPairWith and
-// OpenFabric — and that hub teardown is safe.
+// hub_test.go proves the bare-pair template builder and the CloneAndWire-backed hub factory each do what their doc comments claim: the template carries the symbolic-ref gotcha's fix and a genuinely empty weft bare, and NewHub produces a real, fully-wired fabric hub rather than a hand-assembled stand-in — the whole reason NewHub calls CloneAndWire instead of CloneHub alone.
+// It also proves the helpers a built hub offers — the config seeders, AddPair, AddPairWith and OpenFabric — and that hub teardown is safe.
 
 package hubforge
 
@@ -69,10 +65,8 @@ func TestBuildBareTemplate(t *testing.T) {
 }
 
 // TestNewHub runs the factory and helper checks over one hub per anchor, "." and "backend".
-// Running at "backend" is the point of the anchored hub: a "."-only test passes even when a seeding or
-// resolution base is wrong, because there the anchored and un-anchored weft paths coincide.
-// Steps run serially in this order: the config steps come before the steps that add pairs, and the
-// fabric-config seed comes last because it changes the branch prefix later pairs would inherit.
+// Running at "backend" is the point of the anchored hub: a "."-only test passes even when a seeding or resolution base is wrong, because there the anchored and un-anchored weft paths coincide.
+// Steps run serially in this order: the config steps come before the steps that add pairs, and the fabric-config seed comes last because it changes the branch prefix later pairs would inherit.
 // Each anchor's scenario calls t.Parallel; no step does, because they share the one hub.
 func TestNewHub(t *testing.T) {
 	t.Parallel()
@@ -111,9 +105,8 @@ func TestNewHub(t *testing.T) {
 					}
 				}},
 				{"ConfigMaterializedWithoutSeeding", func(t *testing.T) {
-					// A freshly built hub already carries a materialized config file for at least one
-					// registered module without any seeding call. This is what licenses deleting a
-					// SeedConfig call rather than retargeting it, so it is not optional colour.
+					// A freshly built hub already carries a materialized config file for at least one registered module without any seeding call.
+					// This is what licenses deleting a SeedConfig call rather than retargeting it, so it is not optional colour.
 					const module = "loom"
 					template, ok := configreg.Template(module)
 					if !ok {
@@ -141,10 +134,7 @@ func TestNewHub(t *testing.T) {
 					}
 				}},
 				{"SeedConfigRedundantSeedDoesNotFatal", func(t *testing.T) {
-					// SeedConfig returns normally when handed a seed byte-identical to what the clone
-					// already committed -- a seed that stages nothing, exactly the shape its --allow-empty
-					// commit exists to tolerate -- and a genuinely different seed still lands on disk,
-					// proving --allow-empty did not turn the helper into a no-op.
+					// SeedConfig returns normally when handed a seed byte-identical to what the clone already committed -- a seed that stages nothing, exactly the shape its --allow-empty commit exists to tolerate -- and a genuinely different seed still lands on disk, proving --allow-empty did not turn the helper into a no-op.
 					loomConfigPath := configengine.ConfigFile(h.WeftBase, "loom")
 					original, err := os.ReadFile(loomConfigPath)
 					if err != nil {
@@ -242,10 +232,7 @@ func TestNewHub(t *testing.T) {
 					}
 				}},
 				{"SeedFabricConfig_CommitsAndLeavesBoardClean", func(t *testing.T) {
-					// SeedFabricConfig's write is visible at h.BoardDir() and leaves the board clean — the
-					// commit through fabricengine.NewBolt is what makes an uncommitted seed unsafe rather
-					// than merely untidy, since h.BoardDir() is the checkout the destruction gate's
-					// dirtiness check observes.
+					// SeedFabricConfig's write is visible at h.BoardDir() and leaves the board clean — the commit through fabricengine.NewBolt is what makes an uncommitted seed unsafe rather than merely untidy, since h.BoardDir() is the checkout the destruction gate's dirtiness check observes.
 					const override = "pathspec: []\nbranch_prefix: fabric-seeded\n"
 					SeedFabricConfig(t, h, override)
 
@@ -272,10 +259,7 @@ func TestNewHub(t *testing.T) {
 	}
 }
 
-// assertRealHub runs the real-hub assertions against h: every path is sourced
-// through fabricengine's own name accessors — BoardDir, WiredNames — and lyxdirs/lyxcwd's own
-// exported names, never a hardcoded string, because a hardcoded string is precisely the invented
-// shape this whole task removes.
+// assertRealHub runs the real-hub assertions against h: every path is sourced through fabricengine's own name accessors — BoardDir, WiredNames — and lyxdirs/lyxcwd's own exported names, never a hardcoded string, because a hardcoded string is precisely the invented shape this whole task removes.
 func assertRealHub(t *testing.T, h *Hub) {
 	t.Helper()
 

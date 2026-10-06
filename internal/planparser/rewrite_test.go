@@ -120,8 +120,7 @@ func TestRewriteRefs_TwoCardsSpellOneCanonicalStringDifferently(t *testing.T) {
 	}
 }
 
-// TestRewriteRefs_NothingToSubstituteLeavesFileUntouched asserts a substitution map that is empty,
-// or whose keys match nothing the plan carries, leaves a card file byte-identical.
+// TestRewriteRefs_NothingToSubstituteLeavesFileUntouched asserts a substitution map that is empty, or whose keys match nothing the plan carries, leaves a card file byte-identical.
 func TestRewriteRefs_NothingToSubstituteLeavesFileUntouched(t *testing.T) {
 	t.Parallel()
 

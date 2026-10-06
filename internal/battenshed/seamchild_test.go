@@ -54,10 +54,7 @@ func newSeedChildDeps(boardType string, boardErr error, driver string, driverErr
 	return calls, deps
 }
 
-// TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver asserts the two-source split the row
-// depends on: the seed's recipe comes from the Board's own type, read at Call time rather than
-// captured at wiring time, and defaults when the Board names none, while its driver comes from the
-// injected ChildDriver, never from one collapsed source.
+// TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver asserts the two-source split the row depends on: the seed's recipe comes from the Board's own type, read at Call time rather than captured at wiring time, and defaults when the Board names none, while its driver comes from the injected ChildDriver, never from one collapsed source.
 func TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver(t *testing.T) {
 	t.Parallel()
 
@@ -239,9 +236,7 @@ func TestSeedChild_ChildDriverFailureIsReturnedError(t *testing.T) {
 	}
 }
 
-// TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation asserts the two hard-error paths
-// (the child-driver read and the seed write) carry the cancelled-context diagnosis rather than the
-// raw underlying error, when ctx is cancelled by the time the failing seam call itself returns.
+// TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation asserts the two hard-error paths (the child-driver read and the seed write) carry the cancelled-context diagnosis rather than the raw underlying error, when ctx is cancelled by the time the failing seam call itself returns.
 func TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) {
 	t.Parallel()
 

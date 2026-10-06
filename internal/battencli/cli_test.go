@@ -42,13 +42,8 @@ func battenCommandNamed(parent *cobra.Command, verb string) *cobra.Command {
 	return nil
 }
 
-// TestCommand_EveryVerbArity asserts each of the four verbs' own Args validator, checked
-// independently per verb rather than by reading one shared value, accepts both zero and one
-// positional and rejects two -- cobra.MaximumNArgs(1), the one arity contract all three surfaces
-// ("lyx shed", "lyx batten", "lyx loom") share -- and that two positionals fail the whole command
-// through cobra's own arity error, regardless of cwd, before PersistentPreRunE ever runs.
-// Accepting zero is what lets "lyx batten run" with no argument reach arm's own refuseSelfAddress
-// (arm_seed_test.go) with a named message, rather than stopping at cobra's generic count error.
+// TestCommand_EveryVerbArity asserts each of the four verbs' own Args validator, checked independently per verb rather than by reading one shared value, accepts both zero and one positional and rejects two -- cobra.MaximumNArgs(1), the one arity contract all three surfaces ("lyx shed", "lyx batten", "lyx loom") share -- and that two positionals fail the whole command through cobra's own arity error, regardless of cwd, before PersistentPreRunE ever runs.
+// Accepting zero is what lets "lyx batten run" with no argument reach arm's own refuseSelfAddress (arm_seed_test.go) with a named message, rather than stopping at cobra's generic count error.
 func TestCommand_EveryVerbArity(t *testing.T) {
 	t.Parallel()
 
@@ -99,9 +94,7 @@ func TestArmSeed_DriverFlagMatrix(t *testing.T) {
 	}{
 		{"BothGo", shedrun.DriverGo, shedrun.DriverGo, false, ""},
 		{"ChildDriverLLMAccepted", shedrun.DriverGo, shedrun.DriverLLM, false, ""},
-		// Batten has no bootstrap verb, so the driver it seeds itself with IS the process the
-		// operator typed and there is no spawn seam to branch on a seed's driver: the refusal names
-		// the missing bootstrap verb.
+		// Batten has no bootstrap verb, so the driver it seeds itself with IS the process the operator typed and there is no spawn seam to branch on a seed's driver: the refusal names the missing bootstrap verb.
 		{"OwnDriverLLMRefused", shedrun.DriverLLM, shedrun.DriverGo, true, "no bootstrap verb"},
 		{"BothLLMRefusedByOwnDriver", shedrun.DriverLLM, shedrun.DriverLLM, true, "no bootstrap verb"},
 		{"OwnDriverUnknownRefused", "rust", shedrun.DriverGo, true, ""},

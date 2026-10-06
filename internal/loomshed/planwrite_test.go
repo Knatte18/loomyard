@@ -457,9 +457,7 @@ func TestPlanWrite_NilCommitSeamIsANamedError(t *testing.T) {
 	}
 }
 
-// TestPlanWrite_PassesStuckReasonThrough pins that the decorator returns the wrapped producer's
-// Reason unchanged, both for the asking shape (empty Path, nothing committed) and the gate-failed
-// shape (non-empty Path, committed).
+// TestPlanWrite_PassesStuckReasonThrough pins that the decorator returns the wrapped producer's Reason unchanged, both for the asking shape (empty Path, nothing committed) and the gate-failed shape (non-empty Path, committed).
 //
 //testtiming:keep pins that the wrapped producer's Reason reaches the caller unchanged in both stuck shapes, which TestPlanWrite_Call never asserts
 func TestPlanWrite_PassesStuckReasonThrough(t *testing.T) {

@@ -24,8 +24,7 @@ func gatedOutcomeProducer(outcome Outcome, outputPath string, gateAttempts *int)
 }
 
 // TestStep_GateAttempts pins what Step records of a producer's gate attempts, in the returned history and in the status file:
-// an exhausted gate's count, a pass-after-retry count, and a first-try pass shown as a non-nil zero (a distinct verdict from an ungated call),
-// while an ungated producer gains no gate_attempts field.
+// an exhausted gate's count, a pass-after-retry count, and a first-try pass shown as a non-nil zero (a distinct verdict from an ungated call), while an ungated producer gains no gate_attempts field.
 func TestStep_GateAttempts(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

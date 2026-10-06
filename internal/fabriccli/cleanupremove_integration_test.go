@@ -86,9 +86,7 @@ func warpEntryOf(t *testing.T, env envelope.Envelope, raw, branch string) map[st
 // TestRunCLI_CleanupRemoveScenario runs the cleanup, prune and remove checks over one hub.
 // It stays serial (no t.Parallel): the steps that stub the open-PR lookup swap a package-level variable, which is process-global state.
 // Steps run serially in this order, each tolerating the branches earlier steps leave behind:
-// the all-protected step runs first because it needs a hub with no deletable branch,
-// the steps that break or remove the weft origin run last because every later push would fail,
-// and the pair the no-origin remove needs is added before the origin is broken, since `add` pushes.
+// the all-protected step runs first because it needs a hub with no deletable branch, the steps that break or remove the weft origin run last because every later push would fail, and the pair the no-origin remove needs is added before the origin is broken, since `add` pushes.
 func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	weftRoot, err := fabricengine.WeftRepoRoot(h.Location)
@@ -103,10 +101,8 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 		run  func(t *testing.T)
 	}{
 		{"CleanupAllProtectedEntriesExitZero", func(t *testing.T) {
-			// A cleanup run whose entries are all Protected — here the primary weft branch (always
-			// present) plus an unmanaged legacy branch — and therefore carry no Error at all, still
-			// exits 0. Asserts Protected with an EMPTY Error: Cleanup never sets Error on a protected or
-			// unmanaged entry.
+			// A cleanup run whose entries are all Protected — here the primary weft branch (always present) plus an unmanaged legacy branch — and therefore carry no Error at all, still exits 0.
+			// Asserts Protected with an EMPTY Error: Cleanup never sets Error on a protected or unmanaged entry.
 			// No "-weft" suffix: unmanaged, reported but never deletable — WeftWarpSlug rejects it.
 			const unmanagedBranch = "cli-cleanup-unmanaged-legacy"
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, unmanagedBranch)
@@ -141,10 +137,8 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			}
 		}},
 		{"PruneProtectedOrUnownedEntryStillExitsZero", func(t *testing.T) {
-			// A prune run with a Protected or Unowned entry still exits 0 — the regression guard that
-			// prune's carve-out survived untouched while cleanup left it.
-			// An ordinary operator directory that is not a git checkout at all and was never fabric's,
-			// named so WeftWarpSlug accepts it and prune's orphan pass enumerates it as Unowned.
+			// A prune run with a Protected or Unowned entry still exits 0 — the regression guard that prune's carve-out survived untouched while cleanup left it.
+			// An ordinary operator directory that is not a git checkout at all and was never fabric's, named so WeftWarpSlug accepts it and prune's orphan pass enumerates it as Unowned.
 			unowned := filepath.Join(h.Path, "cli-prune-unowned-weft")
 			if err := os.MkdirAll(unowned, 0o755); err != nil {
 				t.Fatalf("create unowned hub directory: %v", err)
@@ -175,10 +169,8 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			}
 		}},
 		{"RemoveRemoteSuccessEnvelopeCarriesRemoteBranchDeleted", func(t *testing.T) {
-			// remove --remote's success envelope carries remote_branch_deleted — the regression guard
-			// for the hand-built fields map, which would otherwise drop every new field silently while
-			// the struct still declared them. It asserts the key's presence, not only its value, so a
-			// dropped key fails rather than reading as false.
+			// remove --remote's success envelope carries remote_branch_deleted — the regression guard for the hand-built fields map, which would otherwise drop every new field silently while the struct still declared them.
+			// It asserts the key's presence, not only its value, so a dropped key fails rather than reading as false.
 			const slug = "cli-remove-remote"
 
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
@@ -241,9 +233,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			}
 		}},
 		{"CleanupRemoteAloneWithoutApplyDeletesNothing", func(t *testing.T) {
-			// --remote alone on cleanup, without --apply, performs no deletion on either side and exits
-			// 0 — the flag-matrix corner an operator is most likely to get wrong, and the one the help
-			// text now promises explicitly.
+			// --remote alone on cleanup, without --apply, performs no deletion on either side and exits 0 — the flag-matrix corner an operator is most likely to get wrong, and the one the help text now promises explicitly.
 			branch := fabricengine.WeftBranchName("cli-remote-no-apply")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, branch)
 			remoteEnvelopePushBranch(t, weftRoot, branch)
@@ -332,11 +322,9 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			}
 		}},
 		{"CleanupLocalFailureExitsNonZero", func(t *testing.T) {
-			// A cleanup run where one entry carries a local Error — the git branch -D itself failed —
-			// exits non-zero. This is the one existing-path change this task makes deliberately, and it
-			// needs its own pinned test because nothing else in the suite would notice the verdict
-			// flipping back. Induced by pre-creating the branch's own ref lock file, so `git branch -D`
-			// cannot acquire the lock it needs.
+			// A cleanup run where one entry carries a local Error — the git branch -D itself failed — exits non-zero.
+			// This is the one existing-path change this task makes deliberately, and it needs its own pinned test because nothing else in the suite would notice the verdict flipping back.
+			// Induced by pre-creating the branch's own ref lock file, so `git branch -D` cannot acquire the lock it needs.
 			branch := fabricengine.WeftBranchName("cli-cleanup-local-fail")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, branch)
 
@@ -377,19 +365,16 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			}
 		}},
 		{"AddPairForTheNoOriginRemove", func(t *testing.T) {
-			// Prepares RemoveNoOriginUnderRemoteExitsZero: `add` pushes, so it must run while the weft
-			// origin still works.
+			// Prepares RemoveNoOriginUnderRemoteExitsZero: `add` pushes, so it must run while the weft origin still works.
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", noOriginSlug); code != 0 {
 				t.Fatalf("RunCLI(add %s) = %d; want 0\noutput: %s", noOriginSlug, code, output)
 			}
 		}},
 		{"CleanupRemoteFailureExitsNonZero", func(t *testing.T) {
-			// A cleanup run whose weft origin is unreachable exits non-zero, emits "ok":false, and still
-			// carries the full entries array with the failing branch's own reason. Induced by pointing
-			// the weft repo's origin at a filesystem path that does not exist. The archive tag push is
-			// the first remote step and runs before any deletion, so its failure keeps the branch and the
-			// envelope reports "partial":false with the reason in the entry's error. Asserts the
-			// envelope carries no "refusal" key — a synthesised fmt.Errorf can never match RefusalOf.
+			// A cleanup run whose weft origin is unreachable exits non-zero, emits "ok":false, and still carries the full entries array with the failing branch's own reason.
+			// Induced by pointing the weft repo's origin at a filesystem path that does not exist.
+			// The archive tag push is the first remote step and runs before any deletion, so its failure keeps the branch and the envelope reports "partial":false with the reason in the entry's error.
+			// Asserts the envelope carries no "refusal" key — a synthesised fmt.Errorf can never match RefusalOf.
 			branch := fabricengine.WeftBranchName("cli-cleanup-remote-fail")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, branch)
 			remoteEnvelopeBreakOrigin(t, weftRoot)
@@ -431,11 +416,8 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			}
 		}},
 		{"CleanupNoOriginUnderApplyAndRemoteExitsZero", func(t *testing.T) {
-			// The no-origin path from the CLI on both verbs: a weft repo with its remote removed exits 0
-			// with the reason in remote_skipped_reason and, for cleanup, no entries[].remote_error. Both
-			// halves are needed — an asymmetric exit code for one configuration state across the two
-			// verbs is the defect the remote-failure-non-fatal-in-engine-fatal-in-cli decision exists to
-			// prevent, and only a CLI-level test can observe an exit code at all.
+			// The no-origin path from the CLI on both verbs: a weft repo with its remote removed exits 0 with the reason in remote_skipped_reason and, for cleanup, no entries[].remote_error.
+			// Both halves are needed — an asymmetric exit code for one configuration state across the two verbs is the defect the remote-failure-non-fatal-in-engine-fatal-in-cli decision exists to prevent, and only a CLI-level test can observe an exit code at all.
 			branch := fabricengine.WeftBranchName("cli-cleanup-no-origin")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, branch)
 			remoteEnvelopeRemoveOrigin(t, weftRoot)
@@ -466,8 +448,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			}
 		}},
 		{"RemoveNoOriginUnderRemoteExitsZero", func(t *testing.T) {
-			// The remove half of the no-origin contract; relies on the previous step having removed the
-			// weft origin after the pair was added.
+			// The remove half of the no-origin contract; relies on the previous step having removed the weft origin after the pair was added.
 			code, output := runFabric(t, h.PrimeWorktree(), "remove", "--remote", noOriginSlug)
 			if code != 0 {
 				t.Fatalf("RunCLI(remove --remote %s) with no origin = %d; want 0\noutput: %s", noOriginSlug, code, output)

@@ -80,8 +80,7 @@ func assertStatusesAgree(t *testing.T, stepped, run Status) {
 	}
 }
 
-// TestStepRunEquivalence drives each fixture to a terminal state with repeated Step calls and once with Run,
-// and asserts the two agree on the status file and on the Run result versus the final StepResult.
+// TestStepRunEquivalence drives each fixture to a terminal state with repeated Step calls and once with Run, and asserts the two agree on the status file and on the Run result versus the final StepResult.
 func TestStepRunEquivalence(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

@@ -1,9 +1,6 @@
 //go:build integration
 
-// pull_test.go covers Repo.Pull against a real bare remote and clones, reusing
-// push_test.go's bare-remote/clone fixtures (newBareRemote, newRepoWithRemote,
-// cloneFromBare) since a fast-forward pull needs the same
-// bare-remote-plus-clones shape the push rebase-retry tests already build.
+// pull_test.go covers Repo.Pull against a real bare remote and clones, reusing push_test.go's bare-remote/clone fixtures (newBareRemote, newRepoWithRemote, cloneFromBare) since a fast-forward pull needs the same bare-remote-plus-clones shape the push rebase-retry tests already build.
 
 package gitrepo_test
 
@@ -16,11 +13,8 @@ import (
 
 // TestPull drives Pull through one bare remote and two clones.
 // Pull() first fast-forwards the local branch when the remote has commits this clone lacks.
-// It then enforces the fast-forward-only contract: a local branch with its own unpushed commit,
-// pulling from a remote that has diverged from underneath it, is refused with an error rather than
-// folded into a merge commit — and local history is left untouched.
-// The steps run serially in that order and share the remote and both clones: the diverged step
-// relies on clone A having pulled everything the fast-forward step pushed.
+// It then enforces the fast-forward-only contract: a local branch with its own unpushed commit, pulling from a remote that has diverged from underneath it, is refused with an error rather than folded into a merge commit — and local history is left untouched.
+// The steps run serially in that order and share the remote and both clones: the diverged step relies on clone A having pulled everything the fast-forward step pushed.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestPull(t *testing.T) {
 	t.Parallel()
@@ -66,8 +60,7 @@ func TestPull(t *testing.T) {
 			t.Fatalf("Push() from clone B error = %v; want nil", err)
 		}
 
-		// Clone A commits its own conflicting local change without pushing, diverging from the
-		// remote it is about to try to Pull from.
+		// Clone A commits its own conflicting local change without pushing, diverging from the remote it is about to try to Pull from.
 		writeFile(t, cloneAPath, "shared.txt", "from A\n")
 		commitAll(t, cloneAPath, "commit from A")
 		localHead := requireCurrentSHA(t, repoA)

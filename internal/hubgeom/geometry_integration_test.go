@@ -1,9 +1,7 @@
 //go:build integration
 
 // geometry_integration_test.go drives ReedGeometry and WebsterGeometry against one real hub from hubforge:
-// the prime's reed geometry carries the hub's shortname with no slug or parent,
-// a task worktree carries its slug and the parent its origin record names, or none when the origin names none,
-// and a hub with no .lyx-shortname yields an empty shortname and no error.
+// the prime's reed geometry carries the hub's shortname with no slug or parent, a task worktree carries its slug and the parent its origin record names, or none when the origin names none, and a hub with no .lyx-shortname yields an empty shortname and no error.
 
 package hubgeom_test
 

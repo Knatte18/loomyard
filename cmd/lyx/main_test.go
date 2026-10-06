@@ -1,10 +1,8 @@
 // main_test.go — tests for the module dispatcher (main.go).
 //
-// Drives run() directly: module routing from an uninitialized repo, and that the root hook mints
-// nothing under test.
+// Drives run() directly: module routing from an uninitialized repo, and that the root hook mints nothing under test.
 // Help paths and unknown modules live in exitcode_test.go.
-// The three tests that spawn gitexec's RunGit(["init"], …) to seed a real git repo live in
-// main_integration_test.go per the Test Tier Purity Invariant.
+// The three tests that spawn gitexec's RunGit(["init"], …) to seed a real git repo live in main_integration_test.go per the Test Tier Purity Invariant.
 
 package main
 
@@ -19,8 +17,7 @@ import (
 
 // These tests cover module routing, not board behaviour (that lives in internal/boardcli).
 
-// TestRunDispatchesToUninitializedRepoModules asserts modules that need a lyx tree fail with exit 1
-// when dispatched from a temp cwd that has no _lyx/ directory.
+// TestRunDispatchesToUninitializedRepoModules asserts modules that need a lyx tree fail with exit 1 when dispatched from a temp cwd that has no _lyx/ directory.
 // Each row chdirs, which is process-global state, so neither the test nor its rows run in parallel.
 func TestRunDispatchesToUninitializedRepoModules(t *testing.T) {
 	tests := []struct {
@@ -47,8 +44,7 @@ func TestRunDispatchesToUninitializedRepoModules(t *testing.T) {
 	}
 }
 
-// TestRootHookSuppressedUnderTest verifies the root hook mints/exports nothing under
-// testing.Testing().
+// TestRootHookSuppressedUnderTest verifies the root hook mints/exports nothing under testing.Testing().
 //
 //testtiming:keep pins that the root hook mints no trace id and opens no durable sink under testing.Testing(), which the tree walk never reads
 func TestRootHookSuppressedUnderTest(t *testing.T) {

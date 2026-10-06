@@ -38,10 +38,7 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 }
 
 // TestActive asserts Active resolves the configured batchifier from batcher.yaml:
-// the template verbatim (which must itself parse as plain YAML) resolves the documented empty default,
-// an explicit active: value resolves its registered batchifier,
-// an absent batcher.yaml or an absent _lyx/ degrades to the embedded template's batchifier rather than erroring,
-// and an unregistered active: value surfaces Select's own unknown-batcher error naming the value.
+// the template verbatim (which must itself parse as plain YAML) resolves the documented empty default, an explicit active: value resolves its registered batchifier, an absent batcher.yaml or an absent _lyx/ degrades to the embedded template's batchifier rather than erroring, and an unregistered active: value surfaces Select's own unknown-batcher error naming the value.
 func TestActive(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

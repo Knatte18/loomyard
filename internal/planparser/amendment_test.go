@@ -1,6 +1,4 @@
-// amendment_test.go covers AppendAmendment: a first append creating the file with its heading and
-// every field rendered; a second append leaving the first entry byte-identical and adding the
-// second below it; and a wrapped error convention matching this package's other write paths.
+// amendment_test.go covers AppendAmendment: a first append creating the file with its heading and every field rendered; a second append leaving the first entry byte-identical and adding the second below it; and a wrapped error convention matching this package's other write paths.
 
 package planparser_test
 
@@ -13,9 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// TestAppendAmendment_AppendsEntries asserts a first append creates the file with its fixed heading
-// and every field, and a second append leaves the first entry byte-identical and adds the second
-// below it.
+// TestAppendAmendment_AppendsEntries asserts a first append creates the file with its fixed heading and every field, and a second append leaves the first entry byte-identical and adds the second below it.
 func TestAppendAmendment_AppendsEntries(t *testing.T) {
 	t.Parallel()
 

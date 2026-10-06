@@ -76,8 +76,7 @@ func clusterExcludesMismatches(r shedbuild.Recipe) []string {
 	return msgs
 }
 
-// TestShippedRecipe_ClusterExcludesAgreesWithPartnerFan asserts the shipped loom recipe has no
-// Bouncer/BurlerRound pair whose cluster_excludes disagrees with the partner's cluster fan.
+// TestShippedRecipe_ClusterExcludesAgreesWithPartnerFan asserts the shipped loom recipe has no Bouncer/BurlerRound pair whose cluster_excludes disagrees with the partner's cluster fan.
 //
 //testtiming:keep pins that no shipped Bouncer/BurlerRound pair disagrees on cluster_excludes, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestShippedRecipe_ClusterExcludesAgreesWithPartnerFan(t *testing.T) {

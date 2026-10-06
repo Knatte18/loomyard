@@ -128,15 +128,10 @@ func bannedDeclNamesIn(astFile *ast.File) []string {
 	return names
 }
 
-// TestBannedDeclNamesIn is a direct unit test over bannedDeclNamesIn rather than a planted
-// whole-repo fixture, so each regression lives beside the function it protects.
-// A banned helper re-declared as a package-level var holding a func literal is exactly as much a
-// re-implementation as the same name declared with `func`, and must be caught the same way
-// (crucible round sonnet-xhigh-r8, CW-2).
-// The ordinary `func` form the pre-fix walk already caught must still be caught after widening the
-// match to package-level var/const declarations.
-// The widened match must still discriminate on name, so an ordinary unrelated package-level var is
-// not a false positive.
+// TestBannedDeclNamesIn is a direct unit test over bannedDeclNamesIn rather than a planted whole-repo fixture, so each regression lives beside the function it protects.
+// A banned helper re-declared as a package-level var holding a func literal is exactly as much a re-implementation as the same name declared with `func`, and must be caught the same way (crucible round sonnet-xhigh-r8, CW-2).
+// The ordinary `func` form the pre-fix walk already caught must still be caught after widening the match to package-level var/const declarations.
+// The widened match must still discriminate on name, so an ordinary unrelated package-level var is not a false positive.
 //
 //testtiming:keep a guard self-check: pins that the declaration walk catches each banned shape and spares an unrelated name, which the real-tree scan never exercises
 func TestBannedDeclNamesIn(t *testing.T) {

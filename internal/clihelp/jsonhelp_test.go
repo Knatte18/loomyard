@@ -49,9 +49,7 @@ func buildJSONHelpRoot() (*cobra.Command, *bool) {
 	return root, &jsonFlag
 }
 
-// TestInstallJSONHelp_RendersSchema renders the synthetic root's help once with the json flag set
-// and asserts the output is a valid JSON document whose fields carry the command's own text, its
-// child and its domain flag, and omit hidden flags, meta flags and cobra's built-in subcommands.
+// TestInstallJSONHelp_RendersSchema renders the synthetic root's help once with the json flag set and asserts the output is a valid JSON document whose fields carry the command's own text, its child and its domain flag, and omit hidden flags, meta flags and cobra's built-in subcommands.
 func TestInstallJSONHelp_RendersSchema(t *testing.T) {
 	t.Parallel()
 

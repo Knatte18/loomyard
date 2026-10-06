@@ -1,13 +1,8 @@
-// publish_test.go covers Publish against a faked resolver, a faked push closure recording its call
-// order, and a faked GitHub client swapped in through the NewGitHubClient seam pointed at a local
-// httptest server -- exactly the way internal/selfreportengine's own test does it. No test contacts
-// a real service or a real model.
+// publish_test.go covers Publish against a faked resolver, a faked push closure recording its call order, and a faked GitHub client swapped in through the NewGitHubClient seam pointed at a local httptest server -- exactly the way internal/selfreportengine's own test does it.
+// No test contacts a real service or a real model.
 //
-// This tier lives in the package itself rather than an external test package, which is what lets it
-// substitute the unexported resolver seam directly by constructing a Publish literal with a
-// recordingResolver in its resolver field -- bypassing NewPublish's own resolver construction, which
-// always builds a real *mergeresolve.Resolver. On that path the told session-runner value (Shuttle)
-// is never driven, since the resolver's own behaviour is covered by its own tier in batch 3.
+// This tier lives in the package itself rather than an external test package, which is what lets it substitute the unexported resolver seam directly by constructing a Publish literal with a recordingResolver in its resolver field -- bypassing NewPublish's own resolver construction, which always builds a real *mergeresolve.Resolver.
+// On that path the told session-runner value (Shuttle) is never driven, since the resolver's own behaviour is covered by its own tier in batch 3.
 // None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
 
 package landingshed
@@ -192,9 +187,7 @@ func TestNewPublish_Refusals(t *testing.T) {
 		{"nil OpenFabric", func(d *Deps) { d.PushBranch = noPush }, "Deps.OpenFabric"},
 		{"nil PushBranch", func(d *Deps) { d.OpenFabric = nilFabric }, "Deps.PushBranch"},
 		{"empty DescriptionPath", func(d *Deps) { d.OpenFabric, d.PushBranch, d.DescriptionPath = nilFabric, noPush, "" }, "Deps.DescriptionPath"},
-		// OpenFabric returns a typed-nil *fabricengine.Fabric: mergeresolve.New checks its Fabric field
-		// for a nil interface, which a typed-nil pointer does not satisfy, so this case reaches the
-		// Shuttle check without ever invoking a method on the fabric handle.
+		// OpenFabric returns a typed-nil *fabricengine.Fabric: mergeresolve.New checks its Fabric field for a nil interface, which a typed-nil pointer does not satisfy, so this case reaches the Shuttle check without ever invoking a method on the fabric handle.
 		{"nil Shuttle", func(d *Deps) { d.OpenFabric, d.PushBranch, d.Shuttle = nilFabric, noPush, nil }, "Shuttle"},
 	}
 	for _, tt := range tests {
@@ -210,8 +203,7 @@ func TestNewPublish_Refusals(t *testing.T) {
 
 // --- Call behaviour ---
 
-// TestPublish_NoPullRequestRequired_DoneWithoutMergeIn pins that a parent branch outside the require-PR list ends Done
-// with no merge-in, whether or not the push is skipped.
+// TestPublish_NoPullRequestRequired_DoneWithoutMergeIn pins that a parent branch outside the require-PR list ends Done with no merge-in, whether or not the push is skipped.
 //
 //testtiming:keep pins that the resolver is never called when no pull request is required, which its covering tests do not assert
 func TestPublish_NoPullRequestRequired_DoneWithoutMergeIn(t *testing.T) {
@@ -345,9 +337,7 @@ func runAndGetReason(t *testing.T, p *Publish) string {
 	return requireReason(t, ptr)
 }
 
-// TestPublish_GitHubFailures pins that each GitHub failure site ends with its usual verdict -- Stuck for a client the factory
-// cannot build or a non-transient API error, a classified transient error for a 5xx -- and that the site's logger.Warn line
-// carries the action and cause field keys, plus owner and repo wherever a request was made.
+// TestPublish_GitHubFailures pins that each GitHub failure site ends with its usual verdict -- Stuck for a client the factory cannot build or a non-transient API error, a classified transient error for a 5xx -- and that the site's logger.Warn line carries the action and cause field keys, plus owner and repo wherever a request was made.
 // The cases that fail through the API are the ones reason-classification itself is exercised for, in TestPublishGitHubErrorReason_ClassifiesDistinctly.
 func TestPublish_GitHubFailures(t *testing.T) {
 	tests := []struct {
@@ -426,8 +416,7 @@ func TestPublish_GitHubFailures(t *testing.T) {
 	}
 }
 
-// TestPublish_NoExistingPR_CreatesAndLogsOnce pins the create path: push, then list, then create, with the change
-// description as title and body, and the one GitHub write landing in the durable trace exactly once carrying the created pull request's number.
+// TestPublish_NoExistingPR_CreatesAndLogsOnce pins the create path: push, then list, then create, with the change description as title and body, and the one GitHub write landing in the durable trace exactly once carrying the created pull request's number.
 // It never runs in parallel: the sink override is package-level state.
 func TestPublish_NoExistingPR_CreatesAndLogsOnce(t *testing.T) {
 	logger.SetDurableSinkDir(t.TempDir())
@@ -477,9 +466,7 @@ func TestPublish_NoExistingPR_CreatesAndLogsOnce(t *testing.T) {
 	}
 }
 
-// TestPublish_OpenPullRequest pins what Publish does when an open pull request already exists: it edits the
-// title and body only when they differ from the change description, never creates, and treats a 5xx edit
-// failure as a classified transient error but any other as Stuck.
+// TestPublish_OpenPullRequest pins what Publish does when an open pull request already exists: it edits the title and body only when they differ from the change description, never creates, and treats a 5xx edit failure as a classified transient error but any other as Stuck.
 func TestPublish_OpenPullRequest(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -545,9 +532,7 @@ func TestPublish_OpenPullRequest(t *testing.T) {
 	}
 }
 
-// TestPublish_ExistingClosedPullRequest pins the verdict for a closed pull request: a merged one is Done, found
-// through "merged_at" because GitHub's List Pull Requests endpoint never populates the "merged" boolean on any item
-// (confirmed live against a real merged PR -- only the single-PR Get endpoint reports "merged":true, crucible round 3's F-R3-1);
+// TestPublish_ExistingClosedPullRequest pins the verdict for a closed pull request: a merged one is Done, found through "merged_at" because GitHub's List Pull Requests endpoint never populates the "merged" boolean on any item (confirmed live against a real merged PR -- only the single-PR Get endpoint reports "merged":true, crucible round 3's F-R3-1);
 // an unmerged one is Stuck with a reason naming the closure, ending with the pull request's URL when it carries one.
 // The list bodies are deliberately the real List response shape, so a mock the real API would never produce cannot pass here.
 func TestPublish_ExistingClosedPullRequest(t *testing.T) {

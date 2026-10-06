@@ -1,14 +1,8 @@
 // cli_test.go covers the webstercli cobra seam through RunCLI: the PersistentPreRunE group-command guard and the help-tree stale-language check.
-// It also covers the spawn-free verbs (validate, status, pause, await-batch, rebaseline, restore-plan, and the no-run refusals of accept-audit and restore-plan) and fabricSync's
-// SkipGit-before-Open guard ordering directly, since none of those need a live tmux/claude substrate
-// or even a git repository beyond a plain t.TempDir().
-// Pathspec-shape coverage now lives in sync_integration_test.go, which proves the exclude-file
-// transients stay uncommitted through a real git repo rather than asserting a pathspec string shape
-// against a since-deleted helper.
-// Every fixture here builds a *websterCLI literal directly, bypassing Command()'s
-// PersistentPreRunE, webster's own package-local injection point for these tests.
-// Every other verb's own behavior (begin-batch, record-batch, recover-batch, run) is covered by
-// verbs_test.go.
+// It also covers the spawn-free verbs (validate, status, pause, await-batch, rebaseline, restore-plan, and the no-run refusals of accept-audit and restore-plan) and fabricSync's SkipGit-before-Open guard ordering directly, since none of those need a live tmux/claude substrate or even a git repository beyond a plain t.TempDir().
+// Pathspec-shape coverage now lives in sync_integration_test.go, which proves the exclude-file transients stay uncommitted through a real git repo rather than asserting a pathspec string shape against a since-deleted helper.
+// Every fixture here builds a *websterCLI literal directly, bypassing Command()'s PersistentPreRunE, webster's own package-local injection point for these tests.
+// Every other verb's own behavior (begin-batch, record-batch, recover-batch, run) is covered by verbs_test.go.
 package webstercli
 
 import (
@@ -76,8 +70,7 @@ func containsString(haystack []string, needle string) bool {
 	return false
 }
 
-// TestFabricSync_GuardOrdering verifies the WEFT_SKIP_GIT bypass short-circuits before path validation,
-// and that without it fabricSync validates the pair's paths before any git work.
+// TestFabricSync_GuardOrdering verifies the WEFT_SKIP_GIT bypass short-circuits before path validation, and that without it fabricSync validates the pair's paths before any git work.
 // It sets WEFT_SKIP_GIT and WEFT_SKIP_PUSH, so it is not parallel.
 func TestFabricSync_GuardOrdering(t *testing.T) {
 	cases := []struct {
@@ -160,8 +153,7 @@ func seedValidPlanDir(t *testing.T, dir string) {
 }
 
 // TestValidateCmd_Envelopes drives validate over one plan state per row and checks its exit code and envelope:
-// a clean plan, a missing plan, a finding keyed by card (never by batch), an informational-only finding that still reports success,
-// a blocking finding that carries its own severity, and a worktree root quarry cannot open, which names quarry rather than the plan.
+// a clean plan, a missing plan, a finding keyed by card (never by batch), an informational-only finding that still reports success, a blocking finding that carries its own severity, and a worktree root quarry cannot open, which names quarry rather than the plan.
 func TestValidateCmd_Envelopes(t *testing.T) {
 	t.Parallel()
 
@@ -404,21 +396,9 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 	}
 }
 
-// TestValidateCmd_RebaselinesStalePlanFingerprint is WS-1's own regression test (crucible round
-// sonnet-xhigh-r8): validate's own resolve pass can rewrite the plan on disk (handle
-// canonicalization) exactly as begin-batch's own ValidateDispatch call can, but before this fix it
-// never restamped state.json's PlanFingerprint afterward the way every bracket verb already does —
-// so a run's crash/resume guard silently desynced from a plan validate itself had just rewritten,
-// and the next begin-batch/record-batch/run refused the (validate's own sanctioned) edit as a
-// foreign one, forcing --fresh and discarding the run's progress.
+// TestValidateCmd_RebaselinesStalePlanFingerprint is WS-1's own regression test (crucible round sonnet-xhigh-r8): validate's own resolve pass can rewrite the plan on disk (handle canonicalization) exactly as begin-batch's own ValidateDispatch call can, but before this fix it never restamped state.json's PlanFingerprint afterward the way every bracket verb already does — so a run's crash/resume guard silently desynced from a plan validate itself had just rewritten, and the next begin-batch/record-batch/run refused the (validate's own sanctioned) edit as a foreign one, forcing --fresh and discarding the run's progress.
 //
-// This drives the observable end state directly rather than depending on quarry's own handle
-// grammar to construct a genuine mid-call rewrite: state.json is seeded with a fingerprint that
-// does NOT match the real on-disk plan (standing in for "the plan changed since state.json was last
-// written, by validate's own rewrite or otherwise"), and the assertion is that validate corrects it
-// to the plan's actual current fingerprint — the same unconditional re-baseline begin-batch performs
-// after every ValidateDispatch call, regardless of whether that specific call happened to rewrite
-// anything.
+// This drives the observable end state directly rather than depending on quarry's own handle grammar to construct a genuine mid-call rewrite: state.json is seeded with a fingerprint that does NOT match the real on-disk plan (standing in for "the plan changed since state.json was last written, by validate's own rewrite or otherwise"), and the assertion is that validate corrects it to the plan's actual current fingerprint — the same unconditional re-baseline begin-batch performs after every ValidateDispatch call, regardless of whether that specific call happened to rewrite anything.
 //
 //testtiming:keep pins that validate restamps a stale plan fingerprint and leaves the run's other state fields untouched, which its covering tests do not assert
 func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
@@ -471,8 +451,7 @@ func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
 }
 
 // TestBringUpDisposition_RecoverAndRun proves the two verbs that spawn an agent boot the standalone reed session first, each with its own watch disposition.
-// recover-batch is R4-11's regression: it spawns a COLD recovery strand through reed.AddStrand, which needs a live reed session, but it never called the in-process bring-up seam wireStandalone arms,
-// so in standalone mode (where the session is gone once a run ends) it failed inside AddStrand advising `lyx reed up`, a hub-only verb that cannot reach standalone geometry.
+// recover-batch is R4-11's regression: it spawns a COLD recovery strand through reed.AddStrand, which needs a live reed session, but it never called the in-process bring-up seam wireStandalone arms, so in standalone mode (where the session is gone once a run ends) it failed inside AddStrand advising `lyx reed up`, a hub-only verb that cannot reach standalone geometry.
 // Its batch 99 exists in no plan, so findBatch refuses it immediately: the bring-up message can only win over the batch-not-found message if the guard runs before the spawn machinery, which makes this an ordering proof.
 // recover-batch is short-lived and its context would be gone before a bound watcher observed anything, so it passes watch: false; run binds the watcher to the run's own context and passes watch: true.
 // Each row's fake returns an error so the call ends right after the reedUp check, never reaching the spawn.
@@ -548,18 +527,12 @@ func TestBringUpDisposition_RecoverAndRun(t *testing.T) {
 // the flag is a contract term, not an implementation detail.
 var singleFlagEnvelope = regexp.MustCompile(`map\[string\]any\{"([a-z_]+)": true\}`)
 
-// TestMasterStencilCoversEverySingleFlagRefusal is R4-34's direct regression test. record-batch
-// emitted {"card_not_done": true} on an ErrCardNotDone refusal, but the Master stencil's failure
-// ladder carried no rung for it, so Master fell through to generic error handling on a refusal with
-// a specific meaning and a specific disposition.
+// TestMasterStencilCoversEverySingleFlagRefusal is R4-34's direct regression test. record-batch emitted {"card_not_done": true} on an ErrCardNotDone refusal, but the Master stencil's failure ladder carried no rung for it, so Master fell through to generic error handling on a refusal with a specific meaning and a specific disposition.
 // record-batch's own flags today are batch_failed and report_archived, which ride in multi-field envelopes (with batch, and warnings on the first) and so are outside this regexp's shape;
 // the master stencil's ladder names both all the same.
 //
-// The flag set is read out of this package's own source rather than pinned as a list, because a
-// hand-maintained list is forgotten by exactly the change that adds a new flag -- which is how this
-// gap arose. What the regexp deliberately does NOT cover is a flag riding along inside a
-// multi-field envelope (status's own "paused" report field, for instance): those are state a caller
-// reads, not refusals a ladder must answer.
+// The flag set is read out of this package's own source rather than pinned as a list, because a hand-maintained list is forgotten by exactly the change that adds a new flag -- which is how this gap arose.
+// What the regexp deliberately does NOT cover is a flag riding along inside a multi-field envelope (status's own "paused" report field, for instance): those are state a caller reads, not refusals a ladder must answer.
 //
 //testtiming:keep a guard that fires when a single-flag refusal envelope is missing from the master stencil's failure ladder, which its covering test does not assert
 func TestMasterStencilCoversEverySingleFlagRefusal(t *testing.T) {
@@ -668,8 +641,7 @@ func TestPauseCmd_RequestsPauseIdempotent(t *testing.T) {
 
 var fakeDigest = websterengine.Digest{Batch: "01-first", Status: websterengine.DigestStatusDone}
 
-// testPlanFingerprint recomputes the plan-identity hash websterengine's own unexported fingerprint computes -- duplicated here since
-// this test lives in webstercli, an external package, and that algorithm is deliberately not exported.
+// testPlanFingerprint recomputes the plan-identity hash websterengine's own unexported fingerprint computes -- duplicated here since this test lives in webstercli, an external package, and that algorithm is deliberately not exported.
 // It must stay in lock-step with websterengine's own implementation: a SHA-256 digest over every "*.md" file's sorted name and contents in planDir.
 func testPlanFingerprint(t *testing.T, planDir string) string {
 	t.Helper()
@@ -748,8 +720,7 @@ func writeBatchReport(t *testing.T, reportsDir, headSHA string) {
 	}
 }
 
-// seedTwoCardPlan rewrites the plan in planDir as two cards: card 1 "only" and card 2 "second" with the given intent text,
-// so a later edit to card 2 changes the plan fingerprint without touching card 1.
+// seedTwoCardPlan rewrites the plan in planDir as two cards: card 1 "only" and card 2 "second" with the given intent text, so a later edit to card 2 changes the plan fingerprint without touching card 1.
 func seedTwoCardPlan(t *testing.T, planDir, secondIntent string) {
 	t.Helper()
 	plankit.Write(t, planDir, plankit.Plan{
@@ -791,11 +762,7 @@ func wantWayForward(t *testing.T, got, substr string) {
 	}
 }
 
-// TestAwaitBatchCmd_ReportPresenceEnvelope proves await-batch's two envelopes: {"report": true} the
-// moment the batch's report file exists, and {"report": false} once the bounded wait elapses with no report
-// -- the first step passes --wait 1ns explicitly to keep the window near-instant, versus the production default
-// (websterengine.DefaultAwaitWaitS) used whenever --wait is omitted -- with no state.json
-// ever read or written, since the verb is deliberately stateless.
+// TestAwaitBatchCmd_ReportPresenceEnvelope proves await-batch's two envelopes: {"report": true} the moment the batch's report file exists, and {"report": false} once the bounded wait elapses with no report -- the first step passes --wait 1ns explicitly to keep the window near-instant, versus the production default (websterengine.DefaultAwaitWaitS) used whenever --wait is omitted -- with no state.json ever read or written, since the verb is deliberately stateless.
 // The scenario calls t.Parallel as a whole and no step does, since the steps share the one CLI.
 func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
 	t.Parallel()
@@ -940,8 +907,7 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 }
 
 // TestValidateCmd_RefusesOverviewEditWithoutRestamp proves validate refuses a plan whose 00-overview.md changed since the run recorded it:
-// it exits non-zero naming rebaseline and leaves PlanFileHashes and PlanFingerprint untouched in state.json,
-// and the next run entry's fingerprint check still refuses the edit.
+// it exits non-zero naming rebaseline and leaves PlanFileHashes and PlanFingerprint untouched in state.json, and the next run entry's fingerprint check still refuses the edit.
 // It sets WEFT_SKIP_GIT, so it is not parallel.
 func TestValidateCmd_RefusesOverviewEditWithoutRestamp(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
@@ -1095,8 +1061,7 @@ func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
 }
 
 // TestRebaselineCmd_Refusals proves each refused rebaseline exits non-zero with its way forward and leaves state.json byte-identical:
-// an edited card the operator did not name (naming --card), a --card value that is not a positive integer (a usage error naming the value),
-// and a removed card whose batch was begun (naming --fresh).
+// an edited card the operator did not name (naming --card), a --card value that is not a positive integer (a usage error naming the value), and a removed card whose batch was begun (naming --fresh).
 // It sets WEFT_SKIP_GIT, so it is not parallel.
 func TestRebaselineCmd_Refusals(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")

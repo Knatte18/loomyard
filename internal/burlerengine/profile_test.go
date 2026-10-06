@@ -76,14 +76,11 @@ func writeFixtureFile(t *testing.T, root, name, content string) {
 }
 
 // TestProfile_Validate table-drives validate over the happy paths and every fail-loud rule.
-// The two path-resolution rows also assert, through check, that every path field is rewritten in
-// place to a cleaned absolute path: relative entries are joined onto worktreeRoot per entry, and an
-// already-absolute entry outside worktreeRoot survives unchanged apart from filepath.Clean.
+// The two path-resolution rows also assert, through check, that every path field is rewritten in place to a cleaned absolute path: relative entries are joined onto worktreeRoot per entry, and an already-absolute entry outside worktreeRoot survives unchanged apart from filepath.Clean.
 func TestProfile_Validate(t *testing.T) {
 	t.Parallel()
 
-	// outsideTarget is an existing absolute path in a directory of its own, outside every
-	// subtest's worktree root; subtests only read it.
+	// outsideTarget is an existing absolute path in a directory of its own, outside every subtest's worktree root; subtests only read it.
 	elsewhere := t.TempDir()
 	writeFixtureFile(t, elsewhere, "outside.txt", "outside content")
 	outsideTarget := filepath.Join(elsewhere, "outside.txt")
@@ -101,8 +98,7 @@ func TestProfile_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			// A relative Fasit entry beside an already-absolute one proves both branches of
-			// resolvePath run inside a single field.
+			// A relative Fasit entry beside an already-absolute one proves both branches of resolvePath run inside a single field.
 			name: "every path field resolves in place",
 			mutate: func(t *testing.T, root string, p *Profile) {
 				p.Fasit.Paths = []string{"fasit.txt", filepath.Join(root, "fasit.txt")}
@@ -393,11 +389,7 @@ func TestProfile_Validate(t *testing.T) {
 	}
 }
 
-// TestProfileValidate_ClusterExclude table-drives Profile.ClusterExclude
-// through validate: the no-exclusion happy path, a single-name drop, an
-// absent-name no-op, a duplicate-name no-op, an exclude-everything no-op,
-// the ClusterExclude-without-ClusterFan error, and an empty ClusterFan leaving the lenses nil --
-// clustering is never on unless a profile names a fan.
+// TestProfileValidate_ClusterExclude table-drives Profile.ClusterExclude through validate: the no-exclusion happy path, a single-name drop, an absent-name no-op, a duplicate-name no-op, an exclude-everything no-op, the ClusterExclude-without-ClusterFan error, and an empty ClusterFan leaving the lenses nil -- clustering is never on unless a profile names a fan.
 //
 //testtiming:keep pins the exclusion semantics, the resolved lens order and text and the ClusterExclude-without-ClusterFan error, which the Validate table covering its blocks does not assert
 func TestProfileValidate_ClusterExclude(t *testing.T) {

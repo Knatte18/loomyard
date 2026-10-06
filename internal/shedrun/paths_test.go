@@ -26,8 +26,7 @@ func syntheticLocation(t *testing.T) *lyxcwd.Location {
 	}
 }
 
-// TestPathConstructors pins every path constructor's layout under the anchor: durable files under _lyx/shed/<run>,
-// ephemeral ones under .lyx/shed/<run>.
+// TestPathConstructors pins every path constructor's layout under the anchor: durable files under _lyx/shed/<run>, ephemeral ones under .lyx/shed/<run>.
 func TestPathConstructors(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -130,9 +129,7 @@ func TestDriveReportsRel(t *testing.T) {
 	}
 }
 
-// TestLocksAreDistinct pins that a run's RunLock and StatusLock never share a file, which shedengine.Shed's
-// own validation rejects outright (a shared file would hang on the first persist rather than fail),
-// and that PrimeRunLock is a distinct hub-scoped lock from any single run-id's locks.
+// TestLocksAreDistinct pins that a run's RunLock and StatusLock never share a file, which shedengine.Shed's own validation rejects outright (a shared file would hang on the first persist rather than fail), and that PrimeRunLock is a distinct hub-scoped lock from any single run-id's locks.
 //
 //testtiming:keep pins that RunLock, StatusLock and PrimeRunLock never share a file, which its covering tests do not
 func TestLocksAreDistinct(t *testing.T) {

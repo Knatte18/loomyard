@@ -1,6 +1,4 @@
-// stencilstore_test.go covers BodyHash (and so NormalizeLF), ParseStamp, ApplyStamp, and Classify
-// against hermetic in-memory content -- no t.TempDir() is needed for these, since none of them touch
-// disk.
+// stencilstore_test.go covers BodyHash (and so NormalizeLF), ParseStamp, ApplyStamp, and Classify against hermetic in-memory content -- no t.TempDir() is needed for these, since none of them touch disk.
 
 package stencilstore
 

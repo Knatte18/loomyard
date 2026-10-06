@@ -63,15 +63,8 @@ func readCardFile(t *testing.T, dir string, n int, slug string) string {
 	return string(data)
 }
 
-// TestCanonicalizeHandles_Rewrites covers CanonicalizeHandles rewriting the draft handles of a plan
-// into their canonical spelling without a finding.
-// Create declarations and a Rename-derived declaration ride one batched call; each declaration is
-// matched back to its own handle by position, so a handle sorting after another's whose declared
-// identifier differs from its member name must not be cross-wired; the rewrite lands on every card
-// referencing the handle; a Rename's unit comes from the old side's resolved glyph, never from the
-// draft, so a misspelled unit does not survive; and a method rename derives a method declaration,
-// where the receiver clause once produced "func (c *Counter.Tallyer) Count() int", which quarry
-// rejected as member_too_deep, so no method could be renamed through the glyph alphabet at all.
+// TestCanonicalizeHandles_Rewrites covers CanonicalizeHandles rewriting the draft handles of a plan into their canonical spelling without a finding.
+// Create declarations and a Rename-derived declaration ride one batched call; each declaration is matched back to its own handle by position, so a handle sorting after another's whose declared identifier differs from its member name must not be cross-wired; the rewrite lands on every card referencing the handle; a Rename's unit comes from the old side's resolved glyph, never from the draft, so a misspelled unit does not survive; and a method rename derives a method declaration, where the receiver clause once produced "func (c *Counter.Tallyer) Count() int", which quarry rejected as member_too_deep, so no method could be renamed through the glyph alphabet at all.
 func TestCanonicalizeHandles_Rewrites(t *testing.T) {
 	t.Parallel()
 
@@ -88,9 +81,7 @@ func TestCanonicalizeHandles_Rewrites(t *testing.T) {
 		wantAbsent  map[int][]string
 	}{
 		{
-			// Each Create declaration's own draft handle already names its computed identifier verbatim
-			// (plan:sub#A -> func A() {}), so canonicalization is a no-op rewrite for those three; the
-			// point is that all four sources rode the same batched call and none reported a finding.
+			// Each Create declaration's own draft handle already names its computed identifier verbatim (plan:sub#A -> func A() {}), so canonicalization is a no-op rewrite for those three; the point is that all four sources rode the same batched call and none reported a finding.
 			name:    "batched call covers both sources",
 			files:   oldFoo,
 			resolve: []string{"sub#Old"},
@@ -138,9 +129,7 @@ func TestCanonicalizeHandles_Rewrites(t *testing.T) {
 			wantPresent: map[int][]string{1: {"plan:sub#Counter.Tally"}},
 		},
 		{
-			// The declared identifier ("ActualNew") deliberately differs from the draft handle's own
-			// member name ("New"), so the rewrite is verifiable against a changed string on both the
-			// declaring card and the referencing card.
+			// The declared identifier ("ActualNew") deliberately differs from the draft handle's own member name ("New"), so the rewrite is verifiable against a changed string on both the declaring card and the referencing card.
 			name: "rewrite lands on every referencing card",
 			cards: map[int]string{
 				1: "**Create:**\n- `plan:sub#New` -> `func ActualNew() {}`\n\n**Intent:** one\n",

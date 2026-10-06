@@ -43,11 +43,8 @@ func TestKillPID_KillsLiveProcess(t *testing.T) {
 	}
 }
 
-// TestKillPID_DeadPIDReturnsError takes the PID of a child that has exited and asserts KillPID
-// returns a non-nil error without panicking.
-// This matches the PID-reuse trust KillPID documents: a dead PID has no live process to terminate,
-// so the platform call underneath (FindProcess/Kill) must surface that as an error rather than
-// succeeding silently.
+// TestKillPID_DeadPIDReturnsError takes the PID of a child that has exited and asserts KillPID returns a non-nil error without panicking.
+// This matches the PID-reuse trust KillPID documents: a dead PID has no live process to terminate, so the platform call underneath (FindProcess/Kill) must surface that as an error rather than succeeding silently.
 func TestKillPID_DeadPIDReturnsError(t *testing.T) {
 	t.Parallel()
 

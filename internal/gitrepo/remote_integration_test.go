@@ -1,8 +1,6 @@
 //go:build integration
 
-// remote_integration_test.go covers RemoteURL against a real git repository, reusing
-// gitrepo_test.go's fixture helpers (newRepo, writeFile, commitAll) and push_test.go's
-// newBareRemote/newRepoWithRemote helpers for a repo carrying a configured origin remote.
+// remote_integration_test.go covers RemoteURL against a real git repository, reusing gitrepo_test.go's fixture helpers (newRepo, writeFile, commitAll) and push_test.go's newBareRemote/newRepoWithRemote helpers for a repo carrying a configured origin remote.
 
 package gitrepo_test
 
@@ -11,10 +9,7 @@ import (
 	"testing"
 )
 
-// TestRemoteURL covers RemoteURL against a repository whose only remote is origin: the configured
-// origin's URL comes back exactly as git reports it, and a requested remote the repository does not
-// have — here a misspelled one — returns an empty string alongside an error naming the requested
-// remote, rather than silently resolving to a different configured remote.
+// TestRemoteURL covers RemoteURL against a repository whose only remote is origin: the configured origin's URL comes back exactly as git reports it, and a requested remote the repository does not have — here a misspelled one — returns an empty string alongside an error naming the requested remote, rather than silently resolving to a different configured remote.
 func TestRemoteURL(t *testing.T) {
 	t.Parallel()
 

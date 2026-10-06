@@ -84,8 +84,7 @@ func openFabricAtLanding(t *testing.T, path string) *fabricengine.Fabric {
 	return f
 }
 
-// newFinalizeAt builds a Finalize that lands the task pair at taskCode into the parent pair at parentCode, over the fake
-// conflict-resolution session shuttle.
+// newFinalizeAt builds a Finalize that lands the task pair at taskCode into the parent pair at parentCode, over the fake conflict-resolution session shuttle.
 func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttle *shedfake.MergeShuttle) *landingshed.Finalize {
 	t.Helper()
 	deps := landingshed.NewTestDeps(t)
@@ -111,20 +110,12 @@ func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttl
 
 // TestFinalize_OverRealHub lands tasks into a parent pair of one hub, a step at a time.
 //
-// The first step builds a task pair and a parent pair off the hub, diverges both on conflict.txt (a genuine code-side conflict) and
-// diverges the task pair alone on a second, clean records-side file, runs Finalize with a fake session that writes a real
-// resolution to the conflicted file, and asserts that the parent pair's code side afterward carries the
-// task's resolved content and the squash setting took effect there, that the parent pair's records side is
-// left byte-identical -- the records side is not a merge participant, per this task's own
-// no-caller-facing-signature-change-in-fabric-shaped change to Fabric.Merge -- and that no merge
-// record is left behind on either pair.
+// The first step builds a task pair and a parent pair off the hub, diverges both on conflict.txt (a genuine code-side conflict) and diverges the task pair alone on a second, clean records-side file, runs Finalize with a fake session that writes a real resolution to the conflicted file, and asserts that the parent pair's code side afterward carries the task's resolved content and the squash setting took effect there, that the parent pair's records side is left byte-identical -- the records side is not a merge participant, per this task's own no-caller-facing-signature-change-in-fabric-shaped change to Fabric.Merge -- and that no merge record is left behind on either pair.
 //
-// The second step lands a second task into the same parent once, then calls Finalize again on the
-// same pair, and asserts the second call is Done with no second landing commit.
+// The second step lands a second task into the same parent once, then calls Finalize again on the same pair, and asserts the second call is Done with no second landing commit.
 // A fresh Finalize over a parent that already carries the task's squashed diff behaves the same way.
 //
-// The steps share one hub and one parent pair, and the second relies on the first having landed into that parent,
-// so no step runs in parallel and the top-level test calls t.Parallel because the hub is its own.
+// The steps share one hub and one parent pair, and the second relies on the first having landed into that parent, so no step runs in parallel and the top-level test calls t.Parallel because the hub is its own.
 func TestFinalize_OverRealHub(t *testing.T) {
 	t.Parallel()
 

@@ -43,10 +43,8 @@ func rootKeyOrder(t *testing.T, data []byte) []string {
 	return order
 }
 
-// TestFillMissing pins the merge: missing keys are inserted whole and reported by path, and every
-// value, shape and byte the file already holds survives.
-// A row sets wantBytes to pin the merged bytes exactly, wantMap to pin the decoded document, and
-// wantOrder to pin the top-level key order.
+// TestFillMissing pins the merge: missing keys are inserted whole and reported by path, and every value, shape and byte the file already holds survives.
+// A row sets wantBytes to pin the merged bytes exactly, wantMap to pin the decoded document, and wantOrder to pin the top-level key order.
 func TestFillMissing(t *testing.T) {
 	t.Parallel()
 	noOpExisting := "# keep me\nname:   spaced   # trailing\nselvage:\n    height_rows: 1\n    width: 2\nstatus_line:\n  enabled: no\n"

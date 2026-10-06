@@ -1,40 +1,18 @@
 //go:build integration
 
-// parity_test.go asserts byte-identical envelopes from the same fixture across the two invocation
-// paths -- "lyx <module> <verb> [<run-id>]" and "lyx shed <verb> [<run-id>]" -- for every verb/
-// recipe pair this table supports, plus the lightweight-wiring proof.
+// parity_test.go asserts byte-identical envelopes from the same fixture across the two invocation paths -- "lyx <module> <verb> [<run-id>]" and "lyx shed <verb> [<run-id>]" -- for every verb/ recipe pair this table supports, plus the lightweight-wiring proof.
 //
-// Every case here is tier 2: RunCLIIn reaches each module's PersistentPreRunE and therefore
-// lyxcwd.Resolve, which spawns git through internal/gitexec, and the Test Tier Purity Invariant bans
-// gitexec.Run outside tier-tagged files -- loom's own run additionally calls
-// c.reed.Up() and fabricengine.Open. internal/loomcli/parity_test.go is the precedent for the
-// comparison shape but not for the tier -- its own header states no test there calls RunCLIIn, so it
-// stays tier 1.
+// Every case here is tier 2: RunCLIIn reaches each module's PersistentPreRunE and therefore lyxcwd.Resolve, which spawns git through internal/gitexec, and the Test Tier Purity Invariant bans gitexec.Run outside tier-tagged files -- loom's own run additionally calls c.reed.Up() and fabricengine.Open. internal/loomcli/parity_test.go is the precedent for the comparison shape but not for the tier -- its own header states no test there calls RunCLIIn, so it stays tier 1.
 //
-// Every case that drives a verb through "lyx shed" first writes the addressed run-id's own seed via
-// shedrun.WriteSeed: shedcli's own pre-run reads a seed before it can resolve which recipe arms the
-// invocation, and both module paths (loomcli's own resolveRunID, battencli's own armSeed) apply
-// their own seed-presence check too, so a missing seed would refuse before either side ever reaches
-// the fixture behaviour a case means to compare.
+// Every case that drives a verb through "lyx shed" first writes the addressed run-id's own seed via shedrun.WriteSeed: shedcli's own pre-run reads a seed before it can resolve which recipe arms the invocation, and both module paths (loomcli's own resolveRunID, battencli's own armSeed) apply their own seed-presence check too, so a missing seed would refuse before either side ever reaches the fixture behaviour a case means to compare.
 //
-// The comparison itself is a plain byte-for-byte equality of the two captured stdout buffers, rather
-// than loomcli's own three-way producer-vs-CLI verdict mapping: this suite compares two already-
-// materialized CLI outputs against each other, not a producer's own outcome against a CLI's
-// envelope, so there is no second vocabulary to map onto a shared verdict type -- byte equality is
-// the direct and correct check, and it is what "byte-identical" means to a supervisor parsing the
-// line.
+// The comparison itself is a plain byte-for-byte equality of the two captured stdout buffers, rather than loomcli's own three-way producer-vs-CLI verdict mapping: this suite compares two already- materialized CLI outputs against each other, not a producer's own outcome against a CLI's envelope, so there is no second vocabulary to map onto a shared verdict type -- byte equality is the direct and correct check, and it is what "byte-identical" means to a supervisor parsing the line.
 //
 // Every fixture below is pinned to an arm that refuses or completes strictly above the substrate:
-// no parity case here may reach reed, tmux, an LLM producer, or shed.Run/shed.Step's own producer
-// call. run's arm is a hub with no loom status file, refusing at the very first statement in loom's
-// PreRun;
+// no parity case here may reach reed, tmux, an LLM producer, or shed.Run/shed.Step's own producer call. run's arm is a hub with no loom status file, refusing at the very first statement in loom's PreRun;
 // step's arm is a hub whose run lock is already held, refusing at the early run-lock probe above seedAndCommitBootstrap and reed Up;
-// status and pause are read-only and never reach the substrate on any path, so they are driven against a seeded status file to exercise the
-// success envelope; and batten's run is driven against a slug whose persisted status is
-// StateDone, which refuses inside batten's own PreRun before BuildShed is ever called. That bound
-// is what keeps this suite in the integration tier rather than pushing it to tmux, and it is also
-// why it proves what it needs to: the two paths' divergence risk lives entirely in arming and
-// pre-run resolution, which every one of these arms exercises in full.
+// status and pause are read-only and never reach the substrate on any path, so they are driven against a seeded status file to exercise the success envelope; and batten's run is driven against a slug whose persisted status is StateDone, which refuses inside batten's own PreRun before BuildShed is ever called.
+// That bound is what keeps this suite in the integration tier rather than pushing it to tmux, and it is also why it proves what it needs to: the two paths' divergence risk lives entirely in arming and pre-run resolution, which every one of these arms exercises in full.
 
 package shedcli
 
@@ -114,9 +92,7 @@ func runBoth(t *testing.T, label string, moduleFn, shedFn func() (exitCode int, 
 	}
 }
 
-// parityLoomRunNoStatusFile drives "lyx loom run" and "lyx shed run" over a fresh pair seeded
-// at "self" for loom but with no loom status file, which refuses at the very first statement in
-// loomPreRun -- well above reed.Up() and fabricengine.Open.
+// parityLoomRunNoStatusFile drives "lyx loom run" and "lyx shed run" over a fresh pair seeded at "self" for loom but with no loom status file, which refuses at the very first statement in loomPreRun -- well above reed.Up() and fabricengine.Open.
 func parityLoomRunNoStatusFile(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-run")
 	cwd := h.PairWarpWorktree("parity-run")
@@ -228,9 +204,7 @@ func parityLoomStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 	}
 }
 
-// parityBattenStepRunLockBusy drives "lyx batten step <slug>" and "lyx shed step <slug>" over a
-// batten-seeded slug whose run lock is already held, which refuses with kind: busy, and asserts the
-// envelope names the slug's scratch_dir and no friction_dir.
+// parityBattenStepRunLockBusy drives "lyx batten step <slug>" and "lyx shed step <slug>" over a batten-seeded slug whose run lock is already held, which refuses with kind: busy, and asserts the envelope names the slug's scratch_dir and no friction_dir.
 func parityBattenStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 	cwd := h.PrimeWorktree()
 	const slug = "parity-batten-step-busy"
@@ -277,9 +251,7 @@ func parityBattenStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 	}
 }
 
-// parityLoomStatusSeeded drives "lyx loom status" and "lyx shed status" over a pair seeded at
-// "self" for loom with a seeded status file, exercising the success envelope: status is read-only
-// and lightweight-wired, and never reaches the substrate on any path.
+// parityLoomStatusSeeded drives "lyx loom status" and "lyx shed status" over a pair seeded at "self" for loom with a seeded status file, exercising the success envelope: status is read-only and lightweight-wired, and never reaches the substrate on any path.
 func parityLoomStatusSeeded(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-status")
 	cwd := h.PairWarpWorktree("parity-status")
@@ -305,10 +277,7 @@ func parityLoomStatusSeeded(t *testing.T, h *hubforge.Hub) {
 	)
 }
 
-// parityLoomPauseSeeded drives "lyx loom pause" and "lyx shed pause" over a pair seeded at
-// "self" for loom with a seeded status file, exercising the success envelope. pause mutates
-// PauseRequested, but the mutation is idempotent and the envelope carries only status_file, so
-// running both invocations sequentially over the same fixture does not disturb the comparison.
+// parityLoomPauseSeeded drives "lyx loom pause" and "lyx shed pause" over a pair seeded at "self" for loom with a seeded status file, exercising the success envelope. pause mutates PauseRequested, but the mutation is idempotent and the envelope carries only status_file, so running both invocations sequentially over the same fixture does not disturb the comparison.
 func parityLoomPauseSeeded(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-pause")
 	cwd := h.PairWarpWorktree("parity-pause")
@@ -334,9 +303,7 @@ func parityLoomPauseSeeded(t *testing.T, h *hubforge.Hub) {
 	)
 }
 
-// parityBattenRunStateDone drives "lyx batten run <slug>" and "lyx shed run <slug>" over a
-// slug seeded for batten whose persisted status is StateDone, which refuses inside batten's own
-// PreRun before BuildShed is ever called.
+// parityBattenRunStateDone drives "lyx batten run <slug>" and "lyx shed run <slug>" over a slug seeded for batten whose persisted status is StateDone, which refuses inside batten's own PreRun before BuildShed is ever called.
 func parityBattenRunStateDone(t *testing.T, h *hubforge.Hub) {
 	cwd := h.PrimeWorktree()
 	const slug = "parity-batten-done"
@@ -370,11 +337,8 @@ func parityBattenRunStateDone(t *testing.T, h *hubforge.Hub) {
 	)
 }
 
-// parityLightweightWiringStatusSucceedsWhenRunRefuses is the proof "lyx shed status" reaches
-// loom's lightweight wiring rather than the full wire(): over a pair seeded at "self" for loom whose
-// loom module config is deliberately broken in a way that refuses "lyx shed run", "lyx shed status"
-// must still succeed. A verb-blind arming would silently reintroduce the exact hazard
-// wireLightweight exists to avoid, on this path only.
+// parityLightweightWiringStatusSucceedsWhenRunRefuses is the proof "lyx shed status" reaches loom's lightweight wiring rather than the full wire(): over a pair seeded at "self" for loom whose loom module config is deliberately broken in a way that refuses "lyx shed run", "lyx shed status" must still succeed.
+// A verb-blind arming would silently reintroduce the exact hazard wireLightweight exists to avoid, on this path only.
 func parityLightweightWiringStatusSucceedsWhenRunRefuses(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-lightweight")
 	cwd := h.PairWarpWorktree("parity-lightweight")
@@ -412,8 +376,7 @@ func parityLightweightWiringStatusSucceedsWhenRunRefuses(t *testing.T, h *hubfor
 	}
 }
 
-// TestParity_Scenario drives every module-versus-shed parity case over one hub; each step addresses its own pair or slug,
-// so a step relies on no earlier step's state and the fixed order only lets a failing step stop the run.
+// TestParity_Scenario drives every module-versus-shed parity case over one hub; each step addresses its own pair or slug, so a step relies on no earlier step's state and the fixed order only lets a failing step stop the run.
 // The scenario calls t.Parallel as a whole: its steps share the hub fixture and the process-global durable sink dir the busy step sets, so no step does.
 func TestParity_Scenario(t *testing.T) {
 	t.Parallel()

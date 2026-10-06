@@ -111,9 +111,7 @@ func TestDirective_PerRole(t *testing.T) {
 }
 
 // TestDirective_RendersNothing pins every case that renders no directive and reads no stencil, asserted by pointing stencilsDir at a path that does not exist:
-// a stray directory without PATTERN.md, nothing at all, an empty or whitespace-only file (neither carries an overview to inline),
-// PATTERN.md as a directory (not a readable index), a subdirectory of a root that holds the overview (Directive reads <root>/PATTERN.md and nothing else, so callers pass the worktree root, never an anchor path),
-// an empty root, and an unknown or zero Role even when PATTERN is active.
+// a stray directory without PATTERN.md, nothing at all, an empty or whitespace-only file (neither carries an overview to inline), PATTERN.md as a directory (not a readable index), a subdirectory of a root that holds the overview (Directive reads <root>/PATTERN.md and nothing else, so callers pass the worktree root, never an anchor path), an empty root, and an unknown or zero Role even when PATTERN is active.
 // An eager-read refactor that would break the engines' inactive-PATTERN fixtures fails here first, locally.
 func TestDirective_RendersNothing(t *testing.T) {
 	t.Parallel()
@@ -259,13 +257,8 @@ func TestDirective_FilesystemFailuresAreErrors(t *testing.T) {
 	}
 }
 
-// TestDirective_EmptyRoot pins the empty-root guard: several Deps structs are assembled
-// field-by-field by CLI callers that could leave the root unset,
-// and an unguarded resolution here would take down all five agent paths for a slip unrelated to
-// PATTERN.
-// The return-value assertion alone would be insufficient: an inactive PATTERN returns the same
-// ("", nil) pair, so only the absence of the stat distinguishes the guard from a cwd-dependent
-// lookalike.
+// TestDirective_EmptyRoot pins the empty-root guard: several Deps structs are assembled field-by-field by CLI callers that could leave the root unset, and an unguarded resolution here would take down all five agent paths for a slip unrelated to PATTERN.
+// The return-value assertion alone would be insufficient: an inactive PATTERN returns the same ("", nil) pair, so only the absence of the stat distinguishes the guard from a cwd-dependent lookalike.
 // The stat seam is process-global, so this test stays serial.
 func TestDirective_EmptyRoot(t *testing.T) {
 	statAttempted := false

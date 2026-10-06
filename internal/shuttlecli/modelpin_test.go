@@ -96,10 +96,8 @@ func TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel(t *testing.T) {
 	}
 }
 
-// TestSmokeSuite_ModelPinConstantIsDeclaredAndNonEmpty pins the other half: the constant every site
-// threads must actually exist and carry a value.
-// Without this, deleting the declaration and the references together would leave the scan above
-// finding nothing to complain about.
+// TestSmokeSuite_ModelPinConstantIsDeclaredAndNonEmpty pins the other half: the constant every site threads must actually exist and carry a value.
+// Without this, deleting the declaration and the references together would leave the scan above finding nothing to complain about.
 //
 //testtiming:keep a guard that fires when the model-pin constant is missing or empty, which no covering test asserts
 func TestSmokeSuite_ModelPinConstantIsDeclaredAndNonEmpty(t *testing.T) {

@@ -20,8 +20,7 @@ func stuckHistory(names ...string) []HistoryEntry {
 }
 
 // TestEpisodeStuckCount_GotoResets pins which producers' stuck episodes a goto history entry ends:
-// the target's whole segment, only the target row when it has no segment, nothing for an absent target,
-// and a stuck after a goto counts from one.
+// the target's whole segment, only the target row when it has no segment, nothing for an absent target, and a stuck after a goto counts from one.
 func TestEpisodeStuckCount_GotoResets(t *testing.T) {
 	t.Parallel()
 	ps := gotoTestProducers()

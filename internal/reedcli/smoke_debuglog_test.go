@@ -1,12 +1,7 @@
 //go:build tmux
 
-// smoke_debuglog_test.go exercises the composed live behavior of the
-// debug_log opt-in: a real boot with LYX_REED_DEBUG=1 must write a genuine
-// tmux verbose server log into the hub's _board/.lyx/logs/ dir, and the
-// boot-time prune must have already trimmed pre-existing logs there down to
-// the newest 2, and repeated crash boots must keep every debug log shape bounded. This is the one
-// live-tmux composed scenario for this batch; debugLogArgs and planLogPrune's own unit tests already
-// cover the pure planning logic in isolation (see internal/reedengine/serverlog_test.go).
+// smoke_debuglog_test.go exercises the composed live behavior of the debug_log opt-in: a real boot with LYX_REED_DEBUG=1 must write a genuine tmux verbose server log into the hub's _board/.lyx/logs/ dir, and the boot-time prune must have already trimmed pre-existing logs there down to the newest 2, and repeated crash boots must keep every debug log shape bounded.
+// This is the one live-tmux composed scenario for this batch; debugLogArgs and planLogPrune's own unit tests already cover the pure planning logic in isolation (see internal/reedengine/serverlog_test.go).
 
 package reedcli
 
@@ -23,12 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// TestSmokeDebugLog arms debug_log through LYX_REED_DEBUG on one hub's prime worktree, one step per
-// verbosity.
-// The steps run serially in a fixed order; the second starts from the logs the first left behind, which
-// only tightens its bound.
-// The scenario does not call t.Parallel, because each step sets LYX_REED_DEBUG, which every boot in the
-// process reads.
+// TestSmokeDebugLog arms debug_log through LYX_REED_DEBUG on one hub's prime worktree, one step per verbosity.
+// The steps run serially in a fixed order; the second starts from the logs the first left behind, which only tightens its bound.
+// The scenario does not call t.Parallel, because each step sets LYX_REED_DEBUG, which every boot in the process reads.
 func TestSmokeDebugLog(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
@@ -41,9 +33,7 @@ func TestSmokeDebugLog(t *testing.T) {
 	})
 	logsDir := fabricengine.HubLogsDir(h.Location.HubPath)
 
-	// ArmedBootPrunesOldLogsAndWritesAFreshOne arms debug_log via LYX_REED_DEBUG=1 and checks log
-	// rotation: the boot-time prune trims pre-existing logs down to the newest 2, and the fresh boot's
-	// own verbose log appears.
+	// ArmedBootPrunesOldLogsAndWritesAFreshOne arms debug_log via LYX_REED_DEBUG=1 and checks log rotation: the boot-time prune trims pre-existing logs down to the newest 2, and the fresh boot's own verbose log appears.
 	if !t.Run("ArmedBootPrunesOldLogsAndWritesAFreshOne", func(t *testing.T) {
 		t.Setenv("LYX_REED_DEBUG", "1")
 
@@ -84,20 +74,9 @@ func TestSmokeDebugLog(t *testing.T) {
 		return
 	}
 
-	// RepeatedCrashBootsBoundServerClientAndOutLogs pins a real defect found live-driving debug_log
-	// against native tmux (not reproducible against psmux, the Windows dev-box default the original
-	// debug-logging batch was developed/reviewed against): -v/-vv are GLOBAL tmux flags on the spawn
-	// invocation, and that invocation is simultaneously a CLIENT (the local process issuing the
-	// command) and, once forked, the SERVER it starts — so a debug-armed boot leaves BOTH a
-	// tmux-server-<pid>.log (documented, already pruned) and a tmux-client-<pid>.log (previously
-	// unpruned — it accumulated unbounded across repeated debug-armed boots since
-	// pruneServerLogsLocked only ever matched the server-prefixed shape).
-	// At -vv (debug_log: 2) the server additionally writes a tmux-out-<pid>.log protocol-output log — a
-	// THIRD shape that only appears at the higher verbosity, so the earlier client-log fix (driven at
-	// -v) never surfaced it and it too accumulated unbounded across repeated -vv boots.
-	// This step runs at LYX_REED_DEBUG=2 (which emits all three shapes, a strict superset of -v) so
-	// five kill-server-then-up cycles must leave at most 3 of EACH prefix in the hub logs dir, never an
-	// unbounded pile of any of them.
+	// RepeatedCrashBootsBoundServerClientAndOutLogs pins a real defect found live-driving debug_log against native tmux (not reproducible against psmux, the Windows dev-box default the original debug-logging batch was developed/reviewed against): -v/-vv are GLOBAL tmux flags on the spawn invocation, and that invocation is simultaneously a CLIENT (the local process issuing the command) and, once forked, the SERVER it starts — so a debug-armed boot leaves BOTH a tmux-server-<pid>.log (documented, already pruned) and a tmux-client-<pid>.log (previously unpruned — it accumulated unbounded across repeated debug-armed boots since pruneServerLogsLocked only ever matched the server-prefixed shape).
+	// At -vv (debug_log: 2) the server additionally writes a tmux-out-<pid>.log protocol-output log — a THIRD shape that only appears at the higher verbosity, so the earlier client-log fix (driven at -v) never surfaced it and it too accumulated unbounded across repeated -vv boots.
+	// This step runs at LYX_REED_DEBUG=2 (which emits all three shapes, a strict superset of -v) so five kill-server-then-up cycles must leave at most 3 of EACH prefix in the hub logs dir, never an unbounded pile of any of them.
 	t.Run("RepeatedCrashBootsBoundServerClientAndOutLogs", func(t *testing.T) {
 		t.Setenv("LYX_REED_DEBUG", "2")
 

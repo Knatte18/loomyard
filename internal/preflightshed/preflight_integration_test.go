@@ -64,17 +64,11 @@ func setupPreflightWrapperFixture(t *testing.T) *hubforge.Hub {
 }
 
 // TestPreflight_Scenario is a scenario over one fixture hub, run as named steps in one order:
-// preconditions that all pass yield shedengine.Done, a call on an already-cancelled context returns
-// an error with no verdict, and a deliberately broken precondition -- an untracked file left in the
-// prime worktree, failing the worktree cleanliness check -- yields shedengine.Stuck with its way
-// forward, after which clearing the dirt lets the same row proceed.
+// preconditions that all pass yield shedengine.Done, a call on an already-cancelled context returns an error with no verdict, and a deliberately broken precondition -- an untracked file left in the prime worktree, failing the worktree cleanliness check -- yields shedengine.Stuck with its way forward, after which clearing the dirt lets the same row proceed.
 // The steps share one hub, so the test is parallel as a whole and no step is.
 // The last step relies on being last: it dirties the worktree the earlier steps need clean.
 //
-// The cancelled step is Tier 2, not Tier 1, because preflight.Check reaches lyxcwd.Resolve's git
-// spawn unconditionally, so every path that calls Check at all is Tier 2 regardless of what it
-// returns -- the producer holds no injectable seam between entryErr and the Check call that would
-// let it run without a real fixture.
+// The cancelled step is Tier 2, not Tier 1, because preflight.Check reaches lyxcwd.Resolve's git spawn unconditionally, so every path that calls Check at all is Tier 2 regardless of what it returns -- the producer holds no injectable seam between entryErr and the Check call that would let it run without a real fixture.
 func TestPreflight_Scenario(t *testing.T) {
 	t.Parallel()
 

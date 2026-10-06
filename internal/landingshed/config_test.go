@@ -25,8 +25,7 @@ func seedLandingConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
-// TestLoadConfig_TemplateDefaults verifies the template's default values round-trip, including the
-// single-entry base-branch list, the squash default and the three Describe-related keys.
+// TestLoadConfig_TemplateDefaults verifies the template's default values round-trip, including the single-entry base-branch list, the squash default and the three Describe-related keys.
 func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	t.Parallel()
 
@@ -60,9 +59,7 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_InvalidKeys verifies a hand-edited landing.yaml with an ungrammatical model-spec or
-// an empty co_authored_by fails loud at load time, naming the key, rather than being silently
-// carried into the spawn site that reads it.
+// TestLoadConfig_InvalidKeys verifies a hand-edited landing.yaml with an ungrammatical model-spec or an empty co_authored_by fails loud at load time, naming the key, rather than being silently carried into the spawn site that reads it.
 func TestLoadConfig_InvalidKeys(t *testing.T) {
 	t.Parallel()
 

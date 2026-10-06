@@ -37,8 +37,7 @@ func setupBoardConfig(t *testing.T) {
 	t.Chdir(cwd)
 }
 
-// TestExitCode_HelpPaths asserts help paths exit 0, never emit JSON error envelopes, and name the
-// modules or text a help listing must carry.
+// TestExitCode_HelpPaths asserts help paths exit 0, never emit JSON error envelopes, and name the modules or text a help listing must carry.
 // run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
 func TestExitCode_HelpPaths(t *testing.T) {
 	tests := []struct {
@@ -76,8 +75,7 @@ func TestExitCode_HelpPaths(t *testing.T) {
 	}
 }
 
-// TestExitCode_UnknownModule asserts unknown modules, including the removed "update" verb, exit 1
-// with "unknown command" in the JSON error field.
+// TestExitCode_UnknownModule asserts unknown modules, including the removed "update" verb, exit 1 with "unknown command" in the JSON error field.
 // run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
 func TestExitCode_UnknownModule(t *testing.T) {
 	tests := []struct {

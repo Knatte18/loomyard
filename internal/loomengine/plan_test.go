@@ -20,9 +20,7 @@ import (
 // TestPlanSpec verifies PlanSpec's field mapping and its composed prompt, at an unanchored location and at a subpath-anchored one.
 // The anchored row has a non-"." AnchorRel so the anchor path and the worktree path are distinguishable strings:
 // PlanSpec's plan-path call sites must pass layout.AnchorPath() and never layout.WorktreePath().
-// The prompt states every told path (the specs directory absolute, a deployed spec sitting outside the agent's own worktree),
-// leaves no marker unrendered, and never names the support log: the Plan-never-reads-support-log boundary is asserted
-// at build/test time over Plan-Write's producer definition rather than per run.
+// The prompt states every told path (the specs directory absolute, a deployed spec sitting outside the agent's own worktree), leaves no marker unrendered, and never names the support log: the Plan-never-reads-support-log boundary is asserted at build/test time over Plan-Write's producer definition rather than per run.
 //
 //testtiming:keep pins OutputFiles, Interactive, Role, Effort, Timeout and every told path in the prompt, which TestProducerSpecs_SkillsAndParentDirective does not assert
 func TestPlanSpec(t *testing.T) {
@@ -101,11 +99,8 @@ func TestPlanSpec(t *testing.T) {
 	}
 }
 
-// TestPlanSpec_PatternDirective verifies PlanSpec's pattern_directive: PATTERN.md at the worktree root renders the directive before Step 1,
-// and with none the prompt renders cleanly.
-// The directive's call site passes layout.WorktreePath() and never layout.AnchorPath(), since PATTERN.md sits at the worktree root,
-// which in a subpath-anchored hub is not the anchor path; the anchored rows use a non-"." AnchorRel and a real t.TempDir() hub
-// because the positive direction must actually create files under WorktreePath() and have PlanSpec read them there.
+// TestPlanSpec_PatternDirective verifies PlanSpec's pattern_directive: PATTERN.md at the worktree root renders the directive before Step 1, and with none the prompt renders cleanly.
+// The directive's call site passes layout.WorktreePath() and never layout.AnchorPath(), since PATTERN.md sits at the worktree root, which in a subpath-anchored hub is not the anchor path; the anchored rows use a non-"." AnchorRel and a real t.TempDir() hub because the positive direction must actually create files under WorktreePath() and have PlanSpec read them there.
 //
 //testtiming:keep pins that PATTERN.md is read from the worktree root and not the anchor path, and the clean render without it, which its covering tests do not assert
 func TestPlanSpec_PatternDirective(t *testing.T) {

@@ -1,8 +1,6 @@
 //go:build tmux
 
-// cli_integration_test.go holds the reedcli scenario that builds a real fixture hub (hubforge.NewHub)
-// with reed config resolution against a real fixture hub, so this file is integration-tagged per
-// the Test Tier Purity Invariant.
+// cli_integration_test.go holds the reedcli scenario that builds a real fixture hub (hubforge.NewHub) with reed config resolution against a real fixture hub, so this file is integration-tagged per the Test Tier Purity Invariant.
 
 package reedcli
 
@@ -48,12 +46,9 @@ func skipWithoutMultiplexer(t *testing.T, h *hubforge.Hub) {
 	tmuxkit.KillOnCleanup(t, cfg.Tmux, reedengine.ServerName(h.Path))
 }
 
-// TestRunCLI_ColdHub drives the verbs against one fixture hub whose prime worktree starts cold, with
-// reed's registered ConfigTemplate() already materialized via fabriccli.CloneAndWire so no explicit
-// seeding is needed.
-// The steps run serially in a fixed order: the refusal steps first, while no session or state exists,
-// then the step that persists a state file (and removes it again), and last the step that boots a
-// session. A later step relies on the earlier steps leaving the hub cold.
+// TestRunCLI_ColdHub drives the verbs against one fixture hub whose prime worktree starts cold, with reed's registered ConfigTemplate() already materialized via fabriccli.CloneAndWire so no explicit seeding is needed.
+// The steps run serially in a fixed order: the refusal steps first, while no session or state exists, then the step that persists a state file (and removes it again), and last the step that boots a session.
+// A later step relies on the earlier steps leaving the hub cold.
 // The scenario calls t.Parallel but no step does, because every step shares the one hub.
 func TestRunCLI_ColdHub(t *testing.T) {
 	t.Parallel()
@@ -82,12 +77,7 @@ func TestRunCLI_ColdHub(t *testing.T) {
 		return
 	}
 
-	// AddIfAbsentNoName_RejectsBeforeSessionCheck verifies that `add --if-absent` with no --name is
-	// rejected by the engine's --name requirement, and specifically BEFORE the session pre-flight that
-	// would otherwise self-heal the cold worktree (AddNotUp_SelfHealsAndSucceeds): against a fixture hub
-	// with no session up, the error must name the --name requirement, never the "no reed session"
-	// message, and a rejected call must never boot a session as residue over what is actually a missing
-	// --name.
+	// AddIfAbsentNoName_RejectsBeforeSessionCheck verifies that `add --if-absent` with no --name is rejected by the engine's --name requirement, and specifically BEFORE the session pre-flight that would otherwise self-heal the cold worktree (AddNotUp_SelfHealsAndSucceeds): against a fixture hub with no session up, the error must name the --name requirement, never the "no reed session" message, and a rejected call must never boot a session as residue over what is actually a missing --name.
 	if !t.Run("AddIfAbsentNoName_RejectsBeforeSessionCheck", func(t *testing.T) {
 		var out bytes.Buffer
 		exitCode := RunCLIIn(worktree, &out, []string{"add", "--if-absent", "--cmd", "pwsh -NoExit -Command Write-Host ready"})
@@ -115,9 +105,7 @@ func TestRunCLI_ColdHub(t *testing.T) {
 		return
 	}
 
-	// AddIfAbsentNoCmd_StillRequiresCmd verifies that --if-absent relaxes nothing about --cmd: it stays
-	// required, so `add --if-absent --name claude` with no --cmd must still fail with cobra's
-	// missing-required-flag error.
+	// AddIfAbsentNoCmd_StillRequiresCmd verifies that --if-absent relaxes nothing about --cmd: it stays required, so `add --if-absent --name claude` with no --cmd must still fail with cobra's missing-required-flag error.
 	if !t.Run("AddIfAbsentNoCmd_StillRequiresCmd", func(t *testing.T) {
 		var out bytes.Buffer
 		exitCode := RunCLIIn(worktree, &out, []string{"add", "--if-absent", "--name", "claude"})
@@ -134,8 +122,7 @@ func TestRunCLI_ColdHub(t *testing.T) {
 		return
 	}
 
-	// RemoveNotUp_FriendlyError verifies that running `remove` before `up` surfaces the friendly "no
-	// reed session" error.
+	// RemoveNotUp_FriendlyError verifies that running `remove` before `up` surfaces the friendly "no reed session" error.
 	if !t.Run("RemoveNotUp_FriendlyError", func(t *testing.T) {
 		var out bytes.Buffer
 		exitCode := RunCLIIn(worktree, &out, []string{"remove", "does-not-exist"})
@@ -152,8 +139,7 @@ func TestRunCLI_ColdHub(t *testing.T) {
 		return
 	}
 
-	// StatusNotUp_EnrichedResumeHint verifies that running `status` before `up` with persisted strands
-	// surfaces the enriched "lyx reed resume" message.
+	// StatusNotUp_EnrichedResumeHint verifies that running `status` before `up` with persisted strands surfaces the enriched "lyx reed resume" message.
 	// It removes the state file it persists, so the next step finds the worktree cold again.
 	if !t.Run("StatusNotUp_EnrichedResumeHint", func(t *testing.T) {
 		stateDir := filepath.Join(h.Location.WorktreePath(), ".lyx")
@@ -189,13 +175,8 @@ func TestRunCLI_ColdHub(t *testing.T) {
 		return
 	}
 
-	// AddNotUp_SelfHealsAndSucceeds verifies that running `add` before `up` no longer refuses with the
-	// friendly "no reed session" error: add boots this worktree's session itself, exits zero with the
-	// ordinary guid-and-name envelope, and the `status` verb -- which still refuses on a cold worktree
-	// (ResolvesLayoutAndConfig) -- then succeeds against the session add deposited, naming this
-	// worktree's own socket and session and listing the new strand live. It is the integration-tier twin
-	// of smoke_coldstart_test.go's TestSmokeColdStart/ColdAddBootsAndAddsInOneCall, written against this
-	// file's in-process RunCLIIn fixture rather than the smoke tier's multiplexer probes.
+	// AddNotUp_SelfHealsAndSucceeds verifies that running `add` before `up` no longer refuses with the friendly "no reed session" error: add boots this worktree's session itself, exits zero with the ordinary guid-and-name envelope, and the `status` verb -- which still refuses on a cold worktree (ResolvesLayoutAndConfig) -- then succeeds against the session add deposited, naming this worktree's own socket and session and listing the new strand live.
+	// It is the integration-tier twin of smoke_coldstart_test.go's TestSmokeColdStart/ColdAddBootsAndAddsInOneCall, written against this file's in-process RunCLIIn fixture rather than the smoke tier's multiplexer probes.
 	t.Run("AddNotUp_SelfHealsAndSucceeds", func(t *testing.T) {
 		skipWithoutMultiplexer(t, h)
 		t.Cleanup(func() {

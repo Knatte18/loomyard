@@ -1,6 +1,4 @@
-// registry_test.go table-drives Registry.Resolve: bracket-over-default precedence,
-// whole-entry lookups, unknown-alias/escape-form behaviour, input immutability, and the zero-value
-// Registry's fail-clean shape.
+// registry_test.go table-drives Registry.Resolve: bracket-over-default precedence, whole-entry lookups, unknown-alias/escape-form behaviour, input immutability, and the zero-value Registry's fail-clean shape.
 
 package modelspec
 

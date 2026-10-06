@@ -1,11 +1,5 @@
-// rules_test.go golden-tests the composed Rules entry point: the below-parent stack ordered by
-// insertion, hidden-strand exclusion, empty/single-strand/parent-child edges, the
-// checksum-prefix invariant, the declared-focus override, purity across repeated calls, pane-order
-// resequencing to physical pane position, the Selvage bottom-band enumeration (Params.Selvage) and
-// the empty-stack Selvage sole cell.
-// It also pins the two layout regimes a real (as opposed to config-pinned) terminal box makes
-// reachable: a budget-satisfying box where height.go's clamps never fire, and a too-short box where
-// they must — the latter with exact cell heights, so no clamped cell is ever non-positive.
+// rules_test.go golden-tests the composed Rules entry point: the below-parent stack ordered by insertion, hidden-strand exclusion, empty/single-strand/parent-child edges, the checksum-prefix invariant, the declared-focus override, purity across repeated calls, pane-order resequencing to physical pane position, the Selvage bottom-band enumeration (Params.Selvage) and the empty-stack Selvage sole cell.
+// It also pins the two layout regimes a real (as opposed to config-pinned) terminal box makes reachable: a budget-satisfying box where height.go's clamps never fire, and a too-short box where they must — the latter with exact cell heights, so no clamped cell is ever non-positive.
 
 package render
 
@@ -56,13 +50,9 @@ func TestRulesGolden(t *testing.T) {
 			wantFocus: "%3", // bottom-most/active default
 		},
 		{
-			// A persisted Display.Focus flag wins regardless of depth: focusTarget scans for the
-			// bottom-most Display.Focus strand before falling back to bottom-most-overall. This is the
-			// outcome an implementer is most likely to read as a bug and "fix", and it is not: in a
-			// worktree opened through the VS Code chain the operator's own working pane already exists
-			// and is the agent session the chain focused. This pins an assumption internal/loomcli
-			// relies on rather than declares, which is why the test lives here beside the code that
-			// owns it.
+			// A persisted Display.Focus flag wins regardless of depth: focusTarget scans for the bottom-most Display.Focus strand before falling back to bottom-most-overall.
+			// This is the outcome an implementer is most likely to read as a bug and "fix", and it is not: in a worktree opened through the VS Code chain the operator's own working pane already exists and is the agent session the chain focused.
+			// This pins an assumption internal/loomcli relies on rather than declares, which is why the test lives here beside the code that owns it.
 			name:      "DeclaredFocusStrandWinsOverBottomMost",
 			strands:   belowParentChainWithRootFocus(),
 			box:       Box{X: 0, Y: 0, W: 100, H: 21},
@@ -95,13 +85,8 @@ func TestRulesGolden(t *testing.T) {
 			wantFocus: "%7",
 		},
 		{
-			// The loom shape endorsed by discussion decision
-			// childless-full-height-is-acceptable's counterpart: a
-			// below-parent root parent with a single below-parent child
-			// collapses the parent to CollapsedRows once the child is
-			// present, and the child takes the remainder. The height-layer
-			// form of this is height_test.go's TestStackHeights; this
-			// case only proves the same shape survives through Rules.
+			// The loom shape endorsed by discussion decision childless-full-height-is-acceptable's counterpart: a below-parent root parent with a single below-parent child collapses the parent to CollapsedRows once the child is present, and the child takes the remainder.
+			// The height-layer form of this is height_test.go's TestStackHeights; this case only proves the same shape survives through Rules.
 			name: "BelowParentRootChildCollapsesRootToStripChildTakesRemainder",
 			strands: []Strand{
 				{GUID: "parent", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
@@ -112,8 +97,7 @@ func TestRulesGolden(t *testing.T) {
 			wantFocus: "%2",
 		},
 		{
-			// The strand-table order alone decides which strand is bottom-most: a child listed before
-			// its parent collapses, and the parent takes the remainder and the focus.
+			// The strand-table order alone decides which strand is bottom-most: a child listed before its parent collapses, and the parent takes the remainder and the focus.
 			name: "OrdersTheStackByInsertionNotParentChain",
 			strands: []Strand{
 				{GUID: "child", Parent: "parent", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
@@ -142,15 +126,9 @@ func TestRulesGolden(t *testing.T) {
 			wantFocus: "%3",
 		},
 		{
-			// The below-parent stack laid out in the shrunk region at the top, followed by a
-			// fixed-height Selvage cell at the bottom — the emitted window_layout must enumerate every
-			// strand cell plus the Selvage cell so the live-pane count the caller's select-layout
-			// applies against matches tmux's actual pane set. bandHeight=3 (unclamped: with the Selvage
-			// band's own one-row divider budget subtracted first (box.H-1=20), MinFullRows=3 leaves 17
-			// rows for the stack). The stack region is {X:0,Y:0,W:100,H:17}: usable=17-2 dividers=15,
-			// root and mid collapse to CollapsedRows (2 each) and active takes the remaining 11. The
-			// strand cells end on row 16 (box.H-B-2 with a one-row divider before the band), the Selvage
-			// cell occupies rows 18..20 (box.H-B..box.H-1), and the band never affects focus.
+			// The below-parent stack laid out in the shrunk region at the top, followed by a fixed-height Selvage cell at the bottom — the emitted window_layout must enumerate every strand cell plus the Selvage cell so the live-pane count the caller's select-layout applies against matches tmux's actual pane set. bandHeight=3 (unclamped: with the Selvage band's own one-row divider budget subtracted first (box.H-1=20), MinFullRows=3 leaves 17 rows for the stack).
+			// The stack region is {X:0,Y:0,W:100,H:17}: usable=17-2 dividers=15, root and mid collapse to CollapsedRows (2 each) and active takes the remaining 11.
+			// The strand cells end on row 16 (box.H-B-2 with a one-row divider before the band), the Selvage cell occupies rows 18..20 (box.H-B..box.H-1), and the band never affects focus.
 			name:      "SelvageBandEnumeratesEveryStrandCellPlusSelvage",
 			strands:   belowParentChain(),
 			box:       Box{X: 0, Y: 0, W: 100, H: 21},
@@ -175,11 +153,8 @@ func TestRulesGolden(t *testing.T) {
 			wantFocus: "%3",
 		},
 		{
-			// With a Selvage pane and ZERO placed strands, Rules emits the Selvage band as a
-			// bracket-less single-cell body claiming the whole box — the same shape tmux reports for a
-			// one-pane window — never a zero-height Selvage cell inside a group.
-			// Unreachable through applyLayoutLocked today (anyPlacedStrand gates the apply),
-			// but Rules is a pure function whose contract must hold for any caller.
+			// With a Selvage pane and ZERO placed strands, Rules emits the Selvage band as a bracket-less single-cell body claiming the whole box — the same shape tmux reports for a one-pane window — never a zero-height Selvage cell inside a group.
+			// Unreachable through applyLayoutLocked today (anyPlacedStrand gates the apply), but Rules is a pure function whose contract must hold for any caller.
 			name:      "SelvageWithNoStrandsClaimsWholeBoxAsSoleCell",
 			strands:   nil,
 			box:       Box{X: 0, Y: 0, W: 100, H: 21},
@@ -268,18 +243,16 @@ func TestRulesPaneOrder(t *testing.T) {
 		wantFocus string
 	}{
 		{
-			// Physical order inverted vs table order: %20 (child) sits on top. Child keeps its
-			// intended bottom-most height (17) but is emitted first (at y=0); root keeps its collapsed
-			// height (2) but lands at the bottom. Focus stays id-based: the active/bottom strand,
-			// regardless of where it physically sits.
+			// Physical order inverted vs table order: %20 (child) sits on top.
+			// Child keeps its intended bottom-most height (17) but is emitted first (at y=0); root keeps its collapsed height (2) but lands at the bottom.
+			// Focus stays id-based: the active/bottom strand, regardless of where it physically sits.
 			name:      "InvertedPhysicalOrderEmitsCellsAtPhysicalPositions",
 			paneOrder: []string{"%20", "%10"},
 			wantBody:  "100x20,0,0[100x17,0,0,20,100x2,0,18,10]",
 			wantFocus: "%20",
 		},
 		{
-			// paneOrder naming only a pane render never placed: the intended order survives at the
-			// tail, identical to the nil-paneOrder shape.
+			// paneOrder naming only a pane render never placed: the intended order survives at the tail, identical to the nil-paneOrder shape.
 			name:      "UnknownIDsKeepIntendedTailOrder",
 			paneOrder: []string{"%99"},
 			wantBody:  "100x20,0,0[100x2,0,0,10,100x17,0,3,20]",
@@ -326,12 +299,8 @@ func paneNumberCounts(layout string) map[string]int {
 }
 
 // TestRules_NeverEmitsOnePaneNumberTwice is the regression guard for the R5 review's R5-F3.
-// tmux does not REJECT a window_layout string naming one pane twice: it accepts it with exit 0,
-// assigns cells positionally, and destroys every pane the short cell list no longer covers
-// (reproduced live, tmux 3.6 — one `lyx reed up` reduced a two-pane session to one, reported
-// ok:true, and then reported the strand live against the Selvage pane).
-// Rules is documented as pure and TOTAL, so it must be structurally incapable of producing that
-// string no matter how corrupt the strand table it is handed.
+// tmux does not REJECT a window_layout string naming one pane twice: it accepts it with exit 0, assigns cells positionally, and destroys every pane the short cell list no longer covers (reproduced live, tmux 3.6 — one `lyx reed up` reduced a two-pane session to one, reported ok:true, and then reported the strand live against the Selvage pane).
+// Rules is documented as pure and TOTAL, so it must be structurally incapable of producing that string no matter how corrupt the strand table it is handed.
 //
 //testtiming:keep pins that no pane number appears twice in the emitted layout, which its covering tests never count
 func TestRules_NeverEmitsOnePaneNumberTwice(t *testing.T) {
@@ -391,9 +360,7 @@ func TestRules_NeverEmitsOnePaneNumberTwice(t *testing.T) {
 	}
 }
 
-// TestRules_KeepsTheFirstOwnerWhenPaneCellsCollide pins WHICH strand survives a collision, so the
-// repair stays deterministic rather than merely non-destructive: the Selvage band always keeps its
-// own pane, and among strands the earlier table entry wins.
+// TestRules_KeepsTheFirstOwnerWhenPaneCellsCollide pins WHICH strand survives a collision, so the repair stays deterministic rather than merely non-destructive: the Selvage band always keeps its own pane, and among strands the earlier table entry wins.
 //
 //testtiming:keep pins that the earlier table entry survives a pane-cell collision, which the layout-only assertions of its covering tests cannot see
 func TestRules_KeepsTheFirstOwnerWhenPaneCellsCollide(t *testing.T) {

@@ -1,13 +1,7 @@
 //go:build integration
 
-// parity_test.go carries the differential-parity harness lifted from
-// internal/gitnativepoc/harness_test.go into package gitrepo_test: fixture
-// builders beyond newRepo/writeFile/commitAll (already defined in
-// gitrepo_test.go and reused directly here), repo-shaping helpers the parity
-// cases need, and comparison helpers that report an oracle-vs-implementation
-// divergence with both values so a failing case is diagnosable without
-// re-running it under a debugger. The parity cases built on this scaffolding
-// follow the helpers; the linked-worktree parity cases live in gogit_test.go.
+// parity_test.go carries the differential-parity harness lifted from internal/gitnativepoc/harness_test.go into package gitrepo_test: fixture builders beyond newRepo/writeFile/commitAll (already defined in gitrepo_test.go and reused directly here), repo-shaping helpers the parity cases need, and comparison helpers that report an oracle-vs-implementation divergence with both values so a failing case is diagnosable without re-running it under a debugger.
+// The parity cases built on this scaffolding follow the helpers; the linked-worktree parity cases live in gogit_test.go.
 
 package gitrepo_test
 
@@ -140,11 +134,8 @@ func resolveRevOrFatal(t *testing.T, dir, rev string) string {
 	return strings.TrimSpace(stdout)
 }
 
-// TestParity drives the oracle and gitrepo through one committed repository, asserting they agree on
-// CurrentSHA, SHAExists, ChangedFilesSince and CurrentBranch.
-// The steps run serially in one order and share the repository's state: the file-list steps each
-// take their own base commit and add commits on main, and the detached-HEAD step runs before the
-// orphan step because both leave HEAD off main.
+// TestParity drives the oracle and gitrepo through one committed repository, asserting they agree on CurrentSHA, SHAExists, ChangedFilesSince and CurrentBranch.
+// The steps run serially in one order and share the repository's state: the file-list steps each take their own base commit and add commits on main, and the detached-HEAD step runs before the orphan step because both leave HEAD off main.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestParity(t *testing.T) {
 	t.Parallel()
@@ -171,12 +162,8 @@ func TestParity(t *testing.T) {
 
 			assertParitySHA(t, oracleSHA, implSHA)
 		}},
-		// A well-formed-but-absent SHA and a non-hex string both fold into false without either
-		// side treating the lookup itself as a failure worth surfacing.
-		// A tree or blob SHA — a real, valid-hex object name, just not a commit — is false too,
-		// never true: the `^{commit}` peel is what makes this so, and it is exactly what the
-		// missing and non-hex rows cannot distinguish, since neither of those SHAs resolves to any
-		// object at all.
+		// A well-formed-but-absent SHA and a non-hex string both fold into false without either side treating the lookup itself as a failure worth surfacing.
+		// A tree or blob SHA — a real, valid-hex object name, just not a commit — is false too, never true: the `^{commit}` peel is what makes this so, and it is exactly what the missing and non-hex rows cannot distinguish, since neither of those SHAs resolves to any object at all.
 		{"SHAExists agrees on committed, missing, non-hex, tree and blob shas", func(t *testing.T) {
 			tests := []struct {
 				name string
@@ -214,15 +201,13 @@ func TestParity(t *testing.T) {
 				t.Errorf("CurrentBranch() = %q, want %q", implBranch, "main")
 			}
 		}},
-		// Each side returns its own ErrInvalidSHA-class sentinel before either ever resolves or
-		// diffs anything.
+		// Each side returns its own ErrInvalidSHA-class sentinel before either ever resolves or diffs anything.
 		{"ChangedFilesSince rejects a non-hex sha", func(t *testing.T) {
 			if _, err := repo.ChangedFilesSince("not-a-sha!!"); !errors.Is(err, gitrepo.ErrInvalidSHA) {
 				t.Errorf("ChangedFilesSince(non-hex) error = %v, want gitrepo.ErrInvalidSHA", err)
 			}
 		}},
-		// Both return a non-ASCII filename verbatim — the on-disk literal, never core.quotePath's
-		// C-quoted escape form — and agree with each other.
+		// Both return a non-ASCII filename verbatim — the on-disk literal, never core.quotePath's C-quoted escape form — and agree with each other.
 		{"ChangedFilesSince returns a non-ASCII path verbatim on both sides", func(t *testing.T) {
 			since := requireCurrentSHA(t, repo)
 			const filename = "å.txt"
@@ -247,10 +232,7 @@ func TestParity(t *testing.T) {
 
 			assertParityFileList(t, oracleFiles, implFiles)
 		}},
-		// Both report a pure rename (identical content, the case git's default rename detection
-		// folds into one entry) as its old path (deleted) and new path (added) separately, never
-		// folded into one entry, exercising the --no-renames convention both the oracle and the
-		// implementation must apply; and agree with each other.
+		// Both report a pure rename (identical content, the case git's default rename detection folds into one entry) as its old path (deleted) and new path (added) separately, never folded into one entry, exercising the --no-renames convention both the oracle and the implementation must apply; and agree with each other.
 		{"ChangedFilesSince reports both sides of a rename on both sides", func(t *testing.T) {
 			const oldName, newName = "old.txt", "new.txt"
 			writeFile(t, dir, oldName, "content that stays identical")
@@ -278,8 +260,7 @@ func TestParity(t *testing.T) {
 			}
 			assertParityFileList(t, oracleFiles, implFiles)
 		}},
-		// A detached HEAD must be an error, never an empty string — a caller never mistakes "no
-		// branch captured" for a legitimate branch name.
+		// A detached HEAD must be an error, never an empty string — a caller never mistakes "no branch captured" for a legitimate branch name.
 		{"CurrentBranch agrees on a detached HEAD", func(t *testing.T) {
 			gitkit.MustRun(t, dir, "git", "checkout", "--detach", requireCurrentSHA(t, repo))
 
@@ -318,10 +299,7 @@ func TestParity(t *testing.T) {
 }
 
 // TestParity_UnbornHEAD asserts the oracle and gitrepo agree on an unborn HEAD.
-// CurrentSHA maps git's ambiguous-HEAD stderr shape to each side's own sentinel
-// (gitoracle.ErrNoCommits and gitrepo.ErrNoCommits), so the cross-target class comparison — never a
-// raw string comparison, since the two sides never produce byte-identical errors — is what proves
-// agreement.
+// CurrentSHA maps git's ambiguous-HEAD stderr shape to each side's own sentinel (gitoracle.ErrNoCommits and gitrepo.ErrNoCommits), so the cross-target class comparison — never a raw string comparison, since the two sides never produce byte-identical errors — is what proves agreement.
 // CurrentBranch succeeds on an unborn HEAD and prints the branch name even with no commit yet.
 func TestParity_UnbornHEAD(t *testing.T) {
 	t.Parallel()
@@ -370,12 +348,8 @@ func forcePackIndexFreeze(t *testing.T, repo *gitrepo.Repo) {
 	}
 }
 
-// TestMixedBackend_PreWarmedHandleSeesCLICommit asserts the trailing r.CurrentSHA() call of
-// StageAndCommit and of its wildcard sibling StageAllAndCommit — a go-git ref read — sees the commit
-// its own preceding `git commit` call just wrote, even when the Repo's go-git handle was warmed
-// (opened and cached) before that commit landed.
-// This is the call-granular boundary's central mixed-backend site: a stale answer here would hand a
-// wrong SHA to any caller that records the return value as the checkout's new baseline.
+// TestMixedBackend_PreWarmedHandleSeesCLICommit asserts the trailing r.CurrentSHA() call of StageAndCommit and of its wildcard sibling StageAllAndCommit — a go-git ref read — sees the commit its own preceding `git commit` call just wrote, even when the Repo's go-git handle was warmed (opened and cached) before that commit landed.
+// This is the call-granular boundary's central mixed-backend site: a stale answer here would hand a wrong SHA to any caller that records the return value as the checkout's new baseline.
 // The rows run serially against one repository and one warmed handle.
 func TestMixedBackend_PreWarmedHandleSeesCLICommit(t *testing.T) {
 	t.Parallel()

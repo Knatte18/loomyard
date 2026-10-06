@@ -11,8 +11,7 @@ import (
 
 func strPtr(s string) *string { return &s }
 
-// TestRenderCompact asserts the compact listing aligns columns by display width, shows the status bracket only when a status is set,
-// leaves no trailing gap without labels, keeps the input order and prints nothing for no input.
+// TestRenderCompact asserts the compact listing aligns columns by display width, shows the status bracket only when a status is set, leaves no trailing gap without labels, keeps the input order and prints nothing for no input.
 //
 //testtiming:keep pins the column alignment, multi-byte widths, status bracket, label gap and ordering of the compact listing, which its covering test asserts for one listing only
 func TestRenderCompact(t *testing.T) {

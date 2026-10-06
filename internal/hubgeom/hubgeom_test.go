@@ -17,8 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// TestReedGeometry pins every ReedGeometry field against a fixture whose hub, worktree root and
-// anchor path are distinct directories.
+// TestReedGeometry pins every ReedGeometry field against a fixture whose hub, worktree root and anchor path are distinct directories.
 // The prime is told no slug and a task worktree its own name as the slug.
 //
 //testtiming:keep pins the field-by-field geometry of a prime and of an anchored task worktree, which the integration tests covering its blocks only see through a real hub
@@ -96,8 +95,7 @@ func TestReedGeometry(t *testing.T) {
 	}
 }
 
-// TestBurlerGeometry pins BurlerGeometry's roots against a subpath-anchored fixture, whose hub,
-// worktree root and anchor path are three distinct directories.
+// TestBurlerGeometry pins BurlerGeometry's roots against a subpath-anchored fixture, whose hub, worktree root and anchor path are three distinct directories.
 //
 //testtiming:keep pins that WorktreeRoot is the anchor path while RepoRoot stays the worktree path, which the origin-record test covering its blocks never reads
 func TestBurlerGeometry(t *testing.T) {
@@ -129,9 +127,7 @@ func TestBurlerGeometry(t *testing.T) {
 		t.Errorf("BurlerGeometry(l).RepoRoot = %q; want %q (l.WorktreePath(), not the anchor path)", got.RepoRoot, worktreeRoot)
 	}
 	if got.WorktreeRoot == worktreeRoot {
-		// The subpath-anchored fixture must catch a later "simplification" that repoints
-		// BurlerGeometry's WorktreeRoot fill at l.WorktreePath(): the two only coincide when
-		// AnchorRel is ".", which this fixture deliberately is not.
+		// The subpath-anchored fixture must catch a later "simplification" that repoints BurlerGeometry's WorktreeRoot fill at l.WorktreePath(): the two only coincide when AnchorRel is ".", which this fixture deliberately is not.
 		t.Errorf("BurlerGeometry(l).WorktreeRoot = %q; want != WorktreeRoot %q", got.WorktreeRoot, worktreeRoot)
 	}
 }

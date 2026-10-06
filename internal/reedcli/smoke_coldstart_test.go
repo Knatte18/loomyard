@@ -1,16 +1,9 @@
 //go:build tmux
 
-// smoke_coldstart_test.go pins the headline scenario this task adds: `lyx reed add` and `lyx reed
-// attach`, run against a worktree that was never brought up and carries no persisted state file at
-// all, boot the substrate themselves rather than refusing with the friendly no-session error. The
-// scenario drives a real multiplexer against one forged hub, giving each step its own never-brought-up
-// sibling worktree, using the package's existing fixture vocabulary (see smoke_test.go) rather than any
-// new fixture machinery.
+// smoke_coldstart_test.go pins the headline scenario this task adds: `lyx reed add` and `lyx reed attach`, run against a worktree that was never brought up and carries no persisted state file at all, boot the substrate themselves rather than refusing with the friendly no-session error.
+// The scenario drives a real multiplexer against one forged hub, giving each step its own never-brought-up sibling worktree, using the package's existing fixture vocabulary (see smoke_test.go) rather than any new fixture machinery.
 //
-// A freshly forged worktree still refuses the status verb before anything boots, so a test that
-// needs this worktree's socket and session name before any boot derives them from reedengine's own
-// exported ServerName and SessionName free functions rather than from socketAndSessionIn, which
-// drives `status` under the hood.
+// A freshly forged worktree still refuses the status verb before anything boots, so a test that needs this worktree's socket and session name before any boot derives them from reedengine's own exported ServerName and SessionName free functions rather than from socketAndSessionIn, which drives `status` under the hood.
 
 package reedcli
 
@@ -59,10 +52,8 @@ func runReedCLINoFatal(t *testing.T, exe, dir string, timeout time.Duration, arg
 	return ""
 }
 
-// TestSmokeColdStart runs the cold-start claims against one hub, each step on its own fresh sibling
-// worktree so the worktree is never brought up and carries no state file when the step begins.
-// The steps are independent of each other's results; they run serially because they share the hub's one
-// tmux server, and the scenario calls t.Parallel but no step does for that reason.
+// TestSmokeColdStart runs the cold-start claims against one hub, each step on its own fresh sibling worktree so the worktree is never brought up and carries no state file when the step begins.
+// The steps are independent of each other's results; they run serially because they share the hub's one tmux server, and the scenario calls t.Parallel but no step does for that reason.
 func TestSmokeColdStart(t *testing.T) {
 	t.Parallel()
 	tmuxPath := tmuxBinaryPath(t)
@@ -85,11 +76,8 @@ func TestSmokeColdStart(t *testing.T) {
 		return worktree
 	}
 
-	// ColdAddBootsAndAddsInOneCall is the headline scenario this task adds: on a worktree never brought
-	// up, with no persisted state file, `add` exits zero, its envelope carries a guid, and the
-	// multiplexer afterwards lists this worktree's session on the hub socket. The session holds the
-	// header pane as well as the strand's own pane, proving the delegate path ran the whole boot body
-	// an explicit `up` plus `add` would, rather than only spawning a bare server.
+	// ColdAddBootsAndAddsInOneCall is the headline scenario this task adds: on a worktree never brought up, with no persisted state file, `add` exits zero, its envelope carries a guid, and the multiplexer afterwards lists this worktree's session on the hub socket.
+	// The session holds the header pane as well as the strand's own pane, proving the delegate path ran the whole boot body an explicit `up` plus `add` would, rather than only spawning a bare server.
 	if !t.Run("ColdAddBootsAndAddsInOneCall", func(t *testing.T) {
 		worktree := coldWorktree(t, "cold-headline")
 
@@ -109,13 +97,8 @@ func TestSmokeColdStart(t *testing.T) {
 		return
 	}
 
-	// ColdAttachBootsThenFailsOnTheTerminalHandoverNotOnNoSession pins the other self-healing verb: on a
-	// worktree never brought up, `attach` run without a controlling terminal must fail with the
-	// multiplexer's own terminal error, never with the friendly no-session JSON envelope, and the
-	// session must exist on the socket afterwards either way. The distinction between those two failure
-	// modes is the whole assertion -- a no-session refusal would mean attach never reached the boot at
-	// all, while the terminal error is only reachable once the boot has already succeeded and the
-	// handover tail took over stdio.
+	// ColdAttachBootsThenFailsOnTheTerminalHandoverNotOnNoSession pins the other self-healing verb: on a worktree never brought up, `attach` run without a controlling terminal must fail with the multiplexer's own terminal error, never with the friendly no-session JSON envelope, and the session must exist on the socket afterwards either way.
+	// The distinction between those two failure modes is the whole assertion -- a no-session refusal would mean attach never reached the boot at all, while the terminal error is only reachable once the boot has already succeeded and the handover tail took over stdio.
 	if !t.Run("ColdAttachBootsThenFailsOnTheTerminalHandoverNotOnNoSession", func(t *testing.T) {
 		worktree := coldWorktree(t, "cold-attach")
 
@@ -136,11 +119,7 @@ func TestSmokeColdStart(t *testing.T) {
 		return
 	}
 
-	// ColdAddWithIfAbsentRelaunchesOnlyTheMatchedStrand pins the observable consequence of up semantics
-	// rather than resume semantics on the --if-absent path: with two strands persisted and the server
-	// dead, a cold `add --if-absent` naming one of them must boot and relaunch exactly that strand --
-	// one pane for it, not two entries under one name -- and must leave the other strand unrelaunched,
-	// since a cold boot (unlike resume) never replays the whole persisted table.
+	// ColdAddWithIfAbsentRelaunchesOnlyTheMatchedStrand pins the observable consequence of up semantics rather than resume semantics on the --if-absent path: with two strands persisted and the server dead, a cold `add --if-absent` naming one of them must boot and relaunch exactly that strand -- one pane for it, not two entries under one name -- and must leave the other strand unrelaunched, since a cold boot (unlike resume) never replays the whole persisted table.
 	// It kills the hub's tmux server, so it runs after the steps that need a live session of their own.
 	if !t.Run("ColdAddWithIfAbsentRelaunchesOnlyTheMatchedStrand", func(t *testing.T) {
 		worktree := coldWorktree(t, "cold-ifabsent")
@@ -203,13 +182,9 @@ func TestSmokeColdStart(t *testing.T) {
 		return
 	}
 
-	// ColdAddOnAnUnreadableStateFileBootsThenFailsWithTheResidueAccepted pins the Shared Decision that
-	// corrupt `reed.json` boots the session first and then fails with the state loader's corrupt-file
-	// diagnosis, leaving a bare session behind: on a worktree never brought up whose .lyx/reed.json
-	// holds truncated bytes, `add` exits non-zero naming the file and the teardown verb, AND a session
-	// now exists on the socket. Both halves are the assertion. The residue is the deliberately accepted
-	// cost of matching `up`'s own behaviour -- a later change to that posture must fail this step
-	// loudly instead of passing silently.
+	// ColdAddOnAnUnreadableStateFileBootsThenFailsWithTheResidueAccepted pins the Shared Decision that corrupt `reed.json` boots the session first and then fails with the state loader's corrupt-file diagnosis, leaving a bare session behind: on a worktree never brought up whose .lyx/reed.json holds truncated bytes, `add` exits non-zero naming the file and the teardown verb, AND a session now exists on the socket.
+	// Both halves are the assertion.
+	// The residue is the deliberately accepted cost of matching `up`'s own behaviour -- a later change to that posture must fail this step loudly instead of passing silently.
 	t.Run("ColdAddOnAnUnreadableStateFileBootsThenFailsWithTheResidueAccepted", func(t *testing.T) {
 		worktree := coldWorktree(t, "cold-unreadable")
 

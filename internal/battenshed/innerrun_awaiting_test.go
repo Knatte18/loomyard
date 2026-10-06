@@ -473,9 +473,7 @@ func TestInnerRun_DoneWaitIsNeitherCountedNorBlockedByTheRunningBudget(t *testin
 	}
 }
 
-// TestInnerRun_AwaitingPollsFoldIntoOneHistoryEntry asserts an awaiting wait is not counted against
-// the running budget -- every poll routes back to Run-Shed, still running, even with the budget
-// fully spent -- and that the polls fold into one budget-exempt history entry.
+// TestInnerRun_AwaitingPollsFoldIntoOneHistoryEntry asserts an awaiting wait is not counted against the running budget -- every poll routes back to Run-Shed, still running, even with the budget fully spent -- and that the polls fold into one budget-exempt history entry.
 func TestInnerRun_AwaitingPollsFoldIntoOneHistoryEntry(t *testing.T) {
 	const counted = 3
 	const polls = 10

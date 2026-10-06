@@ -233,10 +233,7 @@ func execImportName(file *ast.File) (name string, ok bool) {
 	return "", false
 }
 
-// TestSpawnObservability_DetectionHelper exercises fileHasUnloggedSpawn directly against small
-// in-memory Go sources, independent of the live tree, pinning the exact matching behaviour the header
-// comment's "AST, not substring" section argues for — most importantly the doc-comment case, which is
-// the phantom-violation shape a substring guard would get wrong.
+// TestSpawnObservability_DetectionHelper exercises fileHasUnloggedSpawn directly against small in-memory Go sources, independent of the live tree, pinning the exact matching behaviour the header comment's "AST, not substring" section argues for — most importantly the doc-comment case, which is the phantom-violation shape a substring guard would get wrong.
 //
 //testtiming:keep proves the TestSpawnObservability_ProductionSpawnsAreLogged guard's AST matching fires on unlogged spawns and ignores doc-comment mentions
 func TestSpawnObservability_DetectionHelper(t *testing.T) {

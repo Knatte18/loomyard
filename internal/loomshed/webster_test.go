@@ -152,8 +152,7 @@ func TestWebsterProducer_CommitsTheRunRecordOnDoneOnly(t *testing.T) {
 	}
 }
 
-// TestWebsterProducer_PassesStuckReasonThrough pins the pass-through from
-// shedadapters.WebsterProducer: a stuck run's StuckReason arrives as the returned Reason.
+// TestWebsterProducer_PassesStuckReasonThrough pins the pass-through from shedadapters.WebsterProducer: a stuck run's StuckReason arrives as the returned Reason.
 //
 //testtiming:keep pins that a stuck run's StuckReason arrives as the returned Reason, which TestWebsterProducer_Call never asserts
 func TestWebsterProducer_PassesStuckReasonThrough(t *testing.T) {

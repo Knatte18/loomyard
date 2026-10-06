@@ -96,13 +96,9 @@ func assertCheckSet(t *testing.T, got preflight.Report, want ...preflight.CheckI
 	}
 }
 
-// TestHealthyHub is a scenario over one healthy paired code+fabric worktree, run as named steps in
-// one order: CheckResolved reports it OK, both predicates hold at the worktree, only HubPresent holds
-// at the board, ResolveMode selects hub mode at the anchor, and a subpath-anchored hub is validated
-// on its merits rather than short-circuited.
+// TestHealthyHub is a scenario over one healthy paired code+fabric worktree, run as named steps in one order: CheckResolved reports it OK, both predicates hold at the worktree, only HubPresent holds at the board, ResolveMode selects hub mode at the anchor, and a subpath-anchored hub is validated on its merits rather than short-circuited.
 // The steps share one fixture hub, so the test is parallel as a whole and no step is.
-// The last step relies on being last: it writes the anchor marker, so every step after it would see a
-// subpath-anchored hub.
+// The last step relies on being last: it writes the anchor marker, so every step after it would see a subpath-anchored hub.
 func TestHealthyHub(t *testing.T) {
 	t.Parallel()
 
@@ -118,8 +114,7 @@ func TestHealthyHub(t *testing.T) {
 		return
 	}
 
-	// Wired is an exported predicate whose true branch would otherwise be exercised only indirectly,
-	// through the fabricengine.Ready call inside CheckResolved.
+	// Wired is an exported predicate whose true branch would otherwise be exercised only indirectly, through the fabricengine.Ready call inside CheckResolved.
 	if !t.Run("both predicates hold at the worktree", func(t *testing.T) {
 		cwd := h.PrimeWorktree()
 
@@ -136,9 +131,7 @@ func TestHealthyHub(t *testing.T) {
 		return
 	}
 
-	// Pins why both predicates ship: with cwd at <hub>/_board, HubPresent returns true (the
-	// hub-level lyx directory exists there) but Wired returns false (fabricengine.Ready probes the
-	// paired sibling of the current worktree, not the hub, and _board has none).
+	// Pins why both predicates ship: with cwd at <hub>/_board, HubPresent returns true (the hub-level lyx directory exists there) but Wired returns false (fabricengine.Ready probes the paired sibling of the current worktree, not the hub, and _board has none).
 	if !t.Run("only HubPresent holds at the board", func(t *testing.T) {
 		board := h.BoardDir()
 
@@ -232,24 +225,14 @@ func replaceJunction(t *testing.T, codeLink string, replace func()) {
 	replace()
 }
 
-// TestCheckResolved_Failures table-drives CheckResolved over a healthy hub corrupted one way per row,
-// each row building its own hub, asserting the exact CheckID set the corruption classifies as.
+// TestCheckResolved_Failures table-drives CheckResolved over a healthy hub corrupted one way per row, each row building its own hub, asserting the exact CheckID set the corruption classifies as.
 //
-// A fabricengine.PrimeName failure short-circuits with only a geometry failure and no other check
-// recorded.
-// All three ways cleanliness can observe a dirty repo (an untracked-only file, a tracked-and-modified
-// file and a staged file) classify as worktree-clean, across both sides of the pair.
-// A removed paired-sibling worktree reports fabric-ready, and a branch mismatch classifies as
-// fabric-sync, not junction.
-// All three of Healthy's junction-drift shapes -- missing, not-a-link and points-elsewhere --
-// classify as junction via Healthy's typed Cause rather than a substring match, each against BOTH
-// junctions (_lyx and a second, non-_lyx one) so the classification is proven for the second
-// junction too.
-// A repo-wide fabric.yaml that fails to load classifies as junction as well (the
-// CauseConfigLoadFailed/CheckJunction equivalence pinned by healthy-typed-reason), not as a distinct
-// CheckID of its own.
-// Independently tripped checks (a dirty code side and a branch-diverged pair) are both collected into
-// one Report rather than the first short-circuiting the rest.
+// A fabricengine.PrimeName failure short-circuits with only a geometry failure and no other check recorded.
+// All three ways cleanliness can observe a dirty repo (an untracked-only file, a tracked-and-modified file and a staged file) classify as worktree-clean, across both sides of the pair.
+// A removed paired-sibling worktree reports fabric-ready, and a branch mismatch classifies as fabric-sync, not junction.
+// All three of Healthy's junction-drift shapes -- missing, not-a-link and points-elsewhere -- classify as junction via Healthy's typed Cause rather than a substring match, each against BOTH junctions (_lyx and a second, non-_lyx one) so the classification is proven for the second junction too.
+// A repo-wide fabric.yaml that fails to load classifies as junction as well (the CauseConfigLoadFailed/CheckJunction equivalence pinned by healthy-typed-reason), not as a distinct CheckID of its own.
+// Independently tripped checks (a dirty code side and a branch-diverged pair) are both collected into one Report rather than the first short-circuiting the rest.
 func TestCheckResolved_Failures(t *testing.T) {
 	t.Parallel()
 
@@ -261,10 +244,7 @@ func TestCheckResolved_Failures(t *testing.T) {
 
 	rows := []row{
 		{
-			// Break `git worktree list --porcelain` at the anchor path without breaking
-			// `git rev-parse --show-toplevel`, so this exercises PrimeName's own failure path rather
-			// than lyxcwd.Resolve's -- CheckResolved(l) starts directly from an already-resolved
-			// Location and never re-resolves.
+			// Break `git worktree list --porcelain` at the anchor path without breaking `git rev-parse --show-toplevel`, so this exercises PrimeName's own failure path rather than lyxcwd.Resolve's -- CheckResolved(l) starts directly from an already-resolved Location and never re-resolves.
 			name: "PrimeNameFailure",
 			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) {
 				dotGit := filepath.Join(h.Location.WorktreePath(), ".git")
@@ -488,10 +468,8 @@ func TestCheckResolved_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
 	assertCheckSet(t, report)
 }
 
-// TestResolveMode pins ResolveMode's standalone and refuse rows (its hub row is a step of
-// TestHealthyHub). PlainRepoSubdirectory and RefuseWiredWorktreeSubdirectory are the pair the
-// design's r4 review exposed: both arrive as lyxcwd.ErrCwdOutsideAnchor from lyxcwd.Resolve and must
-// diverge -- see each row's own comment below.
+// TestResolveMode pins ResolveMode's standalone and refuse rows (its hub row is a step of TestHealthyHub).
+// PlainRepoSubdirectory and RefuseWiredWorktreeSubdirectory are the pair the design's r4 review exposed: both arrive as lyxcwd.ErrCwdOutsideAnchor from lyxcwd.Resolve and must diverge -- see each row's own comment below.
 func TestResolveMode(t *testing.T) {
 	t.Parallel()
 

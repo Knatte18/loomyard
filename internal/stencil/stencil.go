@@ -215,9 +215,7 @@ func presentButEmptyBranchMarkers(root *parse.ListNode, values map[string]string
 				if confidentlyTrue(n.Pipe, values) {
 					walk(n.List.Nodes)
 				}
-				// A false or unresolvable condition is left entirely to the existing lazy
-				// missingkey=error path at execution time
-				// (see the forgotten_discriminator and branch_internal_absent rows of TestFill).
+				// A false or unresolvable condition is left entirely to the existing lazy missingkey=error path at execution time (see the forgotten_discriminator and branch_internal_absent rows of TestFill).
 				// This function only adds coverage for a branch confidently known to run.
 			}
 		}

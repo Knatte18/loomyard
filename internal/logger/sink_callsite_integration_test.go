@@ -59,17 +59,12 @@ func armFallbackSinkFrom(t *testing.T, repo string) {
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 }
 
-// TestDurableSink_CwdFallbackFollowsLyxOwnership drives R6-6's fix at its call site in one git
-// repository, added to between its steps.
-// The scenario's top-level test does not call t.Parallel, because its steps chdir and set
-// environment variables, which t.Chdir and t.Setenv refuse under t.Parallel; the step after the
-// first relies on the repository the first step left behind.
+// TestDurableSink_CwdFallbackFollowsLyxOwnership drives R6-6's fix at its call site in one git repository, added to between its steps.
+// The scenario's top-level test does not call t.Parallel, because its steps chdir and set environment variables, which t.Chdir and t.Setenv refuse under t.Parallel; the step after the first relies on the repository the first step left behind.
 func TestDurableSink_CwdFallbackFollowsLyxOwnership(t *testing.T) {
 	repo := initPlainGitRepo(t, t.TempDir())
 
-	// A plain git repository lyx does not own (no _lyx at its root) gets NO .lyx tree from an Info
-	// record — before the fix, every non-zero-exit refusal wrote <repo>/.lyx/logs/trace-*.log into
-	// the operator's own checkout.
+	// A plain git repository lyx does not own (no _lyx at its root) gets NO .lyx tree from an Info record — before the fix, every non-zero-exit refusal wrote <repo>/.lyx/logs/trace-*.log into the operator's own checkout.
 	if !t.Run("a plain checkout is never armed", func(t *testing.T) {
 		armFallbackSinkFrom(t, repo)
 
@@ -82,9 +77,7 @@ func TestDurableSink_CwdFallbackFollowsLyxOwnership(t *testing.T) {
 		return
 	}
 
-	// The mirror case, relying on the step above's repository: with _lyx now present at the root,
-	// the same record must arm the fallback and land a trace file under <repo>/.lyx/logs — the
-	// worktree the fallback exists for.
+	// The mirror case, relying on the step above's repository: with _lyx now present at the root, the same record must arm the fallback and land a trace file under <repo>/.lyx/logs — the worktree the fallback exists for.
 	t.Run("a lyx-owned worktree is armed", func(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(repo, lyxdirs.LyxDirName), 0o755); err != nil {
 			t.Fatalf("MkdirAll() error = %v", err)

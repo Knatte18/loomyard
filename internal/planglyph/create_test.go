@@ -26,15 +26,9 @@ func createPlan(target string) *planparser.Plan {
 	}
 }
 
-// TestCreateFindings_ResolvedTargets covers createFindings' inversion of a resolve answer for a
-// Create target: a found or multipart target already exists and blocks, a missing symbol in an
-// existing unit passes, and a missing symbol in a missing unit is informational.
+// TestCreateFindings_ResolvedTargets covers createFindings' inversion of a resolve answer for a Create target: a found or multipart target already exists and blocks, a missing symbol in an existing unit passes, and a missing symbol in a missing unit is informational.
 // A glyph target is answered by a real resolve of a fixture repository.
-// A plan: handle target is answered by an index keyed by the handle the card itself spells: the
-// handle is the shape the plan format prescribes for creating something genuinely new, so leaving
-// it out left the inversion — and its misspelled-unit protection — inert in exactly the case it
-// exists for; an index with no entry for the handle leaves createFindings running cleanly with no
-// finding, rather than inventing a verdict it has no answer for.
+// A plan: handle target is answered by an index keyed by the handle the card itself spells: the handle is the shape the plan format prescribes for creating something genuinely new, so leaving it out left the inversion — and its misspelled-unit protection — inert in exactly the case it exists for; an index with no entry for the handle leaves createFindings running cleanly with no finding, rather than inventing a verdict it has no answer for.
 func TestCreateFindings_ResolvedTargets(t *testing.T) {
 	t.Parallel()
 

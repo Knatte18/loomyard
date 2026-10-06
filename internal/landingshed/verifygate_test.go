@@ -88,8 +88,7 @@ func newGateFixture(t *testing.T, command string, closureErr error) *gateFixture
 	return f
 }
 
-// TestVerifyGate_CheckMapsVerifyResult pins how each verifytree status turns into the gate's verdict,
-// and that the verify seam receives the configured command, the gate's paths and the calling producer's site label.
+// TestVerifyGate_CheckMapsVerifyResult pins how each verifytree status turns into the gate's verdict, and that the verify seam receives the configured command, the gate's paths and the calling producer's site label.
 func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 	t.Parallel()
 
@@ -167,8 +166,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 	}
 }
 
-// TestVerifyGate_CheckWithoutCommandSkipsVerify pins that a gate with no command to run proceeds without calling verify,
-// warning once when the command closure answers empty and staying silent when no closure is wired.
+// TestVerifyGate_CheckWithoutCommandSkipsVerify pins that a gate with no command to run proceeds without calling verify, warning once when the command closure answers empty and staying silent when no closure is wired.
 //
 // It stays serial because logcapture swaps the process-global logger.
 func TestVerifyGate_CheckWithoutCommandSkipsVerify(t *testing.T) {
@@ -236,8 +234,7 @@ func TestVerifyGate_Cancellation(t *testing.T) {
 	}
 }
 
-// TestVerifyGate_Clean pins the clean-tree check: a clean tree gives no reason, a dirty one names the point and the paths (capped),
-// a status failure is an error naming the producer, and the check runs with no verify command and with a zero-value gate.
+// TestVerifyGate_Clean pins the clean-tree check: a clean tree gives no reason, a dirty one names the point and the paths (capped), a status failure is an error naming the producer, and the check runs with no verify command and with a zero-value gate.
 func TestVerifyGate_Clean(t *testing.T) {
 	t.Parallel()
 

@@ -42,8 +42,7 @@ func mustUpsert(t *testing.T, b *boardengine.Board, fields map[string]any) {
 	}
 }
 
-// TestImportIssueNewEntry asserts importing an issue creates a note carrying the issue's title, body link, number and configured labels,
-// drops the labels the vocabulary lacks, and honours an explicit title, brief and label set.
+// TestImportIssueNewEntry asserts importing an issue creates a note carrying the issue's title, body link, number and configured labels, drops the labels the vocabulary lacks, and honours an explicit title, brief and label set.
 func TestImportIssueNewEntry(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

@@ -315,8 +315,7 @@ func TestStatusCmd_LastStep(t *testing.T) {
 	}
 }
 
-// TestLastStepOf_BuildIdentity has a recorder write its identity,
-// and checks lastStepOf reports it back with binary_changed false for the same running identity and true for a different known one;
+// TestLastStepOf_BuildIdentity has a recorder write its identity, and checks lastStepOf reports it back with binary_changed false for the same running identity and true for a different known one;
 // a hand-written record without identity fields never reports a change.
 //
 //testtiming:keep pins binary_changed for a different identity and a legacy record without identity fields, which its covering tests do not

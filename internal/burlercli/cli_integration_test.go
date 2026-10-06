@@ -17,23 +17,15 @@ import (
 	"testing"
 )
 
-// TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched drives "run" from
-// a temporary directory that is not a git repository at all -- lyxcwd.Resolve fails there, so
-// preflight.ResolveMode folds it into standalone mode rather than refusing outright.
-// It redirects the standalone state directory to a temporary one via XDG_STATE_HOME/LOCALAPPDATA
-// before calling RunCLIIn, since without that redirect the real Derive would resolve into the
-// operator's actual home directory. The redirect is why this test is not marked t.Parallel():
+// TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched drives "run" from a temporary directory that is not a git repository at all -- lyxcwd.Resolve fails there, so preflight.ResolveMode folds it into standalone mode rather than refusing outright.
+// It redirects the standalone state directory to a temporary one via XDG_STATE_HOME/LOCALAPPDATA before calling RunCLIIn, since without that redirect the real Derive would resolve into the operator's actual home directory.
+// The redirect is why this test is not marked t.Parallel():
 // t.Setenv panics under a parallel test.
 //
-// No --profile is passed, so once the pre-run itself succeeds "run" reaches its own manual flag-shape
-// gate and refuses there with "burler: --profile is required" -- proving the pre-run got all the way
-// through wiring rather than dying earlier with a cwd-resolution error, which would produce a
-// completely different message.
+// No --profile is passed, so once the pre-run itself succeeds "run" reaches its own manual flag-shape gate and refuses there with "burler: --profile is required" -- proving the pre-run got all the way through wiring rather than dying earlier with a cwd-resolution error, which would produce a completely different message.
 //
-// The same invocation proves the two-roots split's whole point: the target directory itself -- the
-// operator's git repository -- gains no hidden state tree, no lock file, and no rendered prompt from a
-// standalone invocation. Every durable and scratch artifact lives under the derived state directory
-// instead, and the absence needs a real Derive call and a real filesystem to assert against.
+// The same invocation proves the two-roots split's whole point: the target directory itself -- the operator's git repository -- gains no hidden state tree, no lock file, and no rendered prompt from a standalone invocation.
+// Every durable and scratch artifact lives under the derived state directory instead, and the absence needs a real Derive call and a real filesystem to assert against.
 func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched(t *testing.T) {
 	target := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())

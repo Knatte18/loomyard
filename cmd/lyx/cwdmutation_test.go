@@ -111,11 +111,7 @@ func firstCwdMutationToken(content string) (string, bool) {
 	return "", false
 }
 
-// TestCwdMutationGuard_NotVacuous proves this guard's matcher actually fires, mirroring how
-// tierpurity_test.go carries its own banned tokens as test data: a planted violation string trips
-// firstCwdMutationToken, and the one real allowlisted file — which genuinely still contains a banned
-// token, read fresh from disk rather than assumed — is proven to stay silent through the allowlist
-// branch, not through an accidental absence of the token it exists to exempt.
+// TestCwdMutationGuard_NotVacuous proves this guard's matcher actually fires, mirroring how tierpurity_test.go carries its own banned tokens as test data: a planted violation string trips firstCwdMutationToken, and the one real allowlisted file — which genuinely still contains a banned token, read fresh from disk rather than assumed — is proven to stay silent through the allowlist branch, not through an accidental absence of the token it exists to exempt.
 //
 //testtiming:keep proves the TestCwdMutation_MigratedFilesStayChdirFree guard fires on a planted violation and stays silent for its allowlisted file
 func TestCwdMutationGuard_NotVacuous(t *testing.T) {

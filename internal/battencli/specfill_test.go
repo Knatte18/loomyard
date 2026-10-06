@@ -13,10 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestSpecFor_FillsRunIdentityForSlug verifies that a spec armed for a slug carries that slug as
-// RunID, a StepsDir and ScratchDir under its .lyx tree, batten's own routing and its own
-// missing-status way forward, an empty FrictionDir since batten carries no agent friction
-// directory, and, for the step verb, a non-nil BuildShed.
+// TestSpecFor_FillsRunIdentityForSlug verifies that a spec armed for a slug carries that slug as RunID, a StepsDir and ScratchDir under its .lyx tree, batten's own routing and its own missing-status way forward, an empty FrictionDir since batten carries no agent friction directory, and, for the step verb, a non-nil BuildShed.
 func TestSpecFor_FillsRunIdentityForSlug(t *testing.T) {
 	t.Parallel()
 

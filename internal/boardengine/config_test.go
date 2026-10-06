@@ -1,7 +1,6 @@
 // config_test.go — unit tests for boardengine.LoadConfig.
 //
-// Covers: scalar keys with template defaults, ignored path: keys, label maps and lists, label
-// refusals, the not-initialized error path, Outputs and Vocabulary.
+// Covers: scalar keys with template defaults, ignored path: keys, label maps and lists, label refusals, the not-initialized error path, Outputs and Vocabulary.
 
 package boardengine_test
 
@@ -189,8 +188,7 @@ func TestLoadConfig_LabelsRefused(t *testing.T) {
 	}
 }
 
-// TestVocabulary asserts IsType and Known for a type, a plain label, an unknown label and the
-// empty vocabulary of a path-only Config.
+// TestVocabulary asserts IsType and Known for a type, a plain label, an unknown label and the empty vocabulary of a path-only Config.
 //
 //testtiming:keep pins the IsType and Known answers for a type, a plain label, an unknown label and the empty vocabulary, which its covering test never asserts
 func TestVocabulary(t *testing.T) {

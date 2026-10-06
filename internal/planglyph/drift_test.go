@@ -1,7 +1,4 @@
-// drift_test.go covers DetectDrift with hand-built deltas: the gates decide before any git call,
-// and the repair revalidates through quarry reading plain fixture files, so these tests stay in the
-// untagged tier — the half driving a delta from a real git repository lives in
-// delta_integration_test.go.
+// drift_test.go covers DetectDrift with hand-built deltas: the gates decide before any git call, and the repair revalidates through quarry reading plain fixture files, so these tests stay in the untagged tier — the half driving a delta from a real git repository lives in delta_integration_test.go.
 
 package planglyph
 
@@ -19,9 +16,7 @@ import (
 
 const driftTestTimestamp = "2026-01-01T00:00:00Z"
 
-// requireExactTierRepair asserts an exact-tier rename sub#Old -> sub#New was auto-repaired in card
-// 1 of the plan under dir: the card names the new glyph only, and the amendments file carries
-// exactly one entry holding every string of wantAmendment.
+// requireExactTierRepair asserts an exact-tier rename sub#Old -> sub#New was auto-repaired in card 1 of the plan under dir: the card names the new glyph only, and the amendments file carries exactly one entry holding every string of wantAmendment.
 func requireExactTierRepair(t *testing.T, dir string, wantAmendment []string) {
 	t.Helper()
 
@@ -74,21 +69,11 @@ func TestDetectDrift_ExactTierRenameAutoRepairsAndAmends(t *testing.T) {
 	requireExactTierRepair(t, dir, []string{driftTestTimestamp, "1-card1", "sub#Old", "sub#New", "exact", "deadbeef"})
 }
 
-// TestDetectDrift_HandBuiltDelta covers the findings and side effects of DetectDrift's gates over a
-// hand-built delta.
-// Gate one reads the FULL plan's declared Rename pairs, not the pending view: the card whose rename
-// the delta reports is exactly the one record-batch excludes from the pending view, and an index
-// built over pending let the declared rename fall through to the repair path, rewritten plan-wide
-// as exact-tier drift with an amendment.
-// Two cards declaring a rename of the SAME old symbol are legal under every plan-format check, and
-// gate one must recognize either card's own declared destination.
-// The pair's New side is a plan: handle, not a bare glyph: the plan format REQUIRES that of a
-// symbol Rename pair (rename-to-not-handle), so a bare-glyph fixture would test a shape no real
-// plan can carry.
-// An evidence-tier candidate is informational with every signal field in its detail, leaves the
-// plan bytes identical and appends no amendment; quarry leaves its endpoints in Deleted, so the
-// deleted-symbol sweep must not report a blocking finding beside the informational candidate that
-// contradicts it, or the batch dies before any reviewer sees the evidence.
+// TestDetectDrift_HandBuiltDelta covers the findings and side effects of DetectDrift's gates over a hand-built delta.
+// Gate one reads the FULL plan's declared Rename pairs, not the pending view: the card whose rename the delta reports is exactly the one record-batch excludes from the pending view, and an index built over pending let the declared rename fall through to the repair path, rewritten plan-wide as exact-tier drift with an amendment.
+// Two cards declaring a rename of the SAME old symbol are legal under every plan-format check, and gate one must recognize either card's own declared destination.
+// The pair's New side is a plan: handle, not a bare glyph: the plan format REQUIRES that of a symbol Rename pair (rename-to-not-handle), so a bare-glyph fixture would test a shape no real plan can carry.
+// An evidence-tier candidate is informational with every signal field in its detail, leaves the plan bytes identical and appends no amendment; quarry leaves its endpoints in Deleted, so the deleted-symbol sweep must not report a blocking finding beside the informational candidate that contradicts it, or the batch dies before any reviewer sees the evidence.
 func TestDetectDrift_HandBuiltDelta(t *testing.T) {
 	t.Parallel()
 
@@ -301,14 +286,8 @@ func TestDetectDrift_RepairIntoAnUnresolvableGlyphIsReported(t *testing.T) {
 	}
 }
 
-// TestEnsurePostRepairCoverage covers the per-key answer coverage guard: a target the post-repair
-// batch actually requested, but which the resolve answer does not cover, must fail closed with
-// ErrQuarryUnavailable naming the missing target — exactly as doneCheckVerdicts' own per-key guard
-// does (donecheck.go) — rather than let the miss pass silently through DetectDrift's
-// introduced-glyph filter.
-// A result set covering every requested target returns nil even when the results ALSO carry an
-// answer for a glyph outside the requested batch: the introduced-glyph-absent-from-batch case stays
-// a silent pass, since the guard's scope is answer coverage of the requested targets only.
+// TestEnsurePostRepairCoverage covers the per-key answer coverage guard: a target the post-repair batch actually requested, but which the resolve answer does not cover, must fail closed with ErrQuarryUnavailable naming the missing target — exactly as doneCheckVerdicts' own per-key guard does (donecheck.go) — rather than let the miss pass silently through DetectDrift's introduced-glyph filter.
+// A result set covering every requested target returns nil even when the results ALSO carry an answer for a glyph outside the requested batch: the introduced-glyph-absent-from-batch case stays a silent pass, since the guard's scope is answer coverage of the requested targets only.
 func TestEnsurePostRepairCoverage(t *testing.T) {
 	t.Parallel()
 

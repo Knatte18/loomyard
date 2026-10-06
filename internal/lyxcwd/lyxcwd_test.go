@@ -1,10 +1,6 @@
 //go:build integration
 
-// lyxcwd_test.go covers Location resolution against a real git checkout: Resolve's
-// record-wins + strict cwd-equals-anchor gate, the marker-absent "." fallback, ResolveWorktree's
-// gate-free counterpart used by internal callers that resolve geometry from a worktree root rather
-// than an acting cwd, the stale-marker refusal, and the ErrNotAGitRepo path for directories outside
-// a git repo.
+// lyxcwd_test.go covers Location resolution against a real git checkout: Resolve's record-wins + strict cwd-equals-anchor gate, the marker-absent "." fallback, ResolveWorktree's gate-free counterpart used by internal callers that resolve geometry from a worktree root rather than an acting cwd, the stale-marker refusal, and the ErrNotAGitRepo path for directories outside a git repo.
 
 package lyxcwd_test
 
@@ -62,10 +58,8 @@ func requireAnchorRel(t *testing.T, cwd, want string) {
 	}
 }
 
-// TestResolve_AnchorScenario copies one git checkout and runs each resolution case as a step over it,
-// in the order below; each step starts from the anchor marker state the step before it left.
-// The steps run serially, and the top-level test calls t.Parallel and no step does, because the
-// steps share the one checkout and its recorded marker.
+// TestResolve_AnchorScenario copies one git checkout and runs each resolution case as a step over it, in the order below; each step starts from the anchor marker state the step before it left.
+// The steps run serially, and the top-level test calls t.Parallel and no step does, because the steps share the one checkout and its recorded marker.
 //
 // Steps: no marker recorded; a root (".") anchor; a subpath ("backend") anchor; a stale pre-rename marker.
 func TestResolve_AnchorScenario(t *testing.T) {
@@ -89,8 +83,7 @@ func TestResolve_AnchorScenario(t *testing.T) {
 		}
 	}
 
-	// With no anchor recorded, AnchorRel falls back to "." with no error at the worktree root,
-	// never to a cwd-derived relative path, which would make the Location name a lie.
+	// With no anchor recorded, AnchorRel falls back to "." with no error at the worktree root, never to a cwd-derived relative path, which would make the Location name a lie.
 	// The strict gate applies unconditionally, so a subdirectory errors.
 	if !t.Run("no marker recorded", func(t *testing.T) {
 		layout, err := lyxcwd.Resolve(root)
@@ -109,8 +102,7 @@ func TestResolve_AnchorScenario(t *testing.T) {
 		if want := filepath.Dir(root); layout.HubPath != want {
 			t.Errorf("layout.HubPath = %q; want %q", layout.HubPath, want)
 		}
-		// RepoName is derived by trimming HubSuffix off the container directory's base name; this
-		// fixture's container has no "-LYXHUB" suffix, so RepoName is simply its base name unchanged.
+		// RepoName is derived by trimming HubSuffix off the container directory's base name; this fixture's container has no "-LYXHUB" suffix, so RepoName is simply its base name unchanged.
 		if want := strings.TrimSuffix(filepath.Base(layout.HubPath), fabricengine.HubSuffix); layout.RepoName != want {
 			t.Errorf("layout.RepoName = %q; want %q", layout.RepoName, want)
 		}
@@ -130,11 +122,8 @@ func TestResolve_AnchorScenario(t *testing.T) {
 		return
 	}
 
-	// A subpath anchor resolves from exactly the anchored directory; a descendant, a sibling and the
-	// repo root above it are hard errors wrapping ErrCwdOutsideAnchor.
-	// ResolveWorktree from a worktree root that sits ABOVE the anchor returns the recorded subpath
-	// and no ErrCwdOutsideAnchor: this gate-free behavior is what distinguishes it from Resolve, and
-	// is the exact geometry fabricengine's layout fallback hits.
+	// A subpath anchor resolves from exactly the anchored directory; a descendant, a sibling and the repo root above it are hard errors wrapping ErrCwdOutsideAnchor.
+	// ResolveWorktree from a worktree root that sits ABOVE the anchor returns the recorded subpath and no ErrCwdOutsideAnchor: this gate-free behavior is what distinguishes it from Resolve, and is the exact geometry fabricengine's layout fallback hits.
 	if !t.Run("subpath anchor", func(t *testing.T) {
 		writeAnchor(t, base.HubPath, "backend")
 
@@ -160,11 +149,8 @@ func TestResolve_AnchorScenario(t *testing.T) {
 		return
 	}
 
-	// The read side refuses a hub that recorded its subpath under the pre-rename marker name and
-	// never migrated.
-	// Falling back to "." there re-anchors the whole repo at its root, after which fabric's own
-	// repair verb wires a second junction set at that root, so both the gated and the gate-free
-	// resolver must refuse instead.
+	// The read side refuses a hub that recorded its subpath under the pre-rename marker name and never migrated.
+	// Falling back to "." there re-anchors the whole repo at its root, after which fabric's own repair verb wires a second junction set at that root, so both the gated and the gate-free resolver must refuse instead.
 	t.Run("stale marker", func(t *testing.T) {
 		boardDir := fabricengine.BoardDir(base.HubPath)
 		if err := os.Remove(filepath.Join(boardDir, lyxcwd.AnchorFileName)); err != nil {

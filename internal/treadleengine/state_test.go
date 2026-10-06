@@ -42,9 +42,7 @@ func TestLoadOrInitState(t *testing.T) {
 		}
 	})
 
-	// The resumed state is read back through state.ReadJSON, so every field of the seeded rounds
-	// must survive the saveState/read cycle: the first round sets every roundRecord field,
-	// including the *bool GatePassed.
+	// The resumed state is read back through state.ReadJSON, so every field of the seeded rounds must survive the saveState/read cycle: the first round sets every roundRecord field, including the *bool GatePassed.
 	t.Run("unfinished state with matching hash resumes at the next round", func(t *testing.T) {
 		runDir := t.TempDir()
 		gatePassed := true

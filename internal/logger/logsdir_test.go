@@ -13,8 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// TestLogsDir_AnchorsAtAnchorPath pins that LogsDir is rooted at the Location's AnchorPath: for an
-// unanchored Location that equals the worktree path, and for a subpath-anchored one it differs.
+// TestLogsDir_AnchorsAtAnchorPath pins that LogsDir is rooted at the Location's AnchorPath: for an unanchored Location that equals the worktree path, and for a subpath-anchored one it differs.
 //
 //testtiming:keep pins LogsDir path arithmetic for unanchored and subpath-anchored Locations without git, which its covering integration scenario reaches only for the unanchored repository root
 func TestLogsDir_AnchorsAtAnchorPath(t *testing.T) {

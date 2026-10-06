@@ -1,9 +1,6 @@
 //go:build integration
 
-// fetch_integration_test.go covers Repo.Fetch, and the remote-failure paths of Fetch and Pull, against real git repositories,
-// reusing push_test.go's bare-remote/clone fixtures (newBareRemote,
-// newRepoWithRemote, cloneFromBare) since Fetch needs the same
-// bare-remote-plus-clones shape those tests already build.
+// fetch_integration_test.go covers Repo.Fetch, and the remote-failure paths of Fetch and Pull, against real git repositories, reusing push_test.go's bare-remote/clone fixtures (newBareRemote, newRepoWithRemote, cloneFromBare) since Fetch needs the same bare-remote-plus-clones shape those tests already build.
 
 package gitrepo_test
 
@@ -69,15 +66,10 @@ func TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD(t *testing.T) 
 	}
 }
 
-// TestRemoteFailurePaths covers how Fetch and Pull report a repository whose remote is missing or
-// unreachable.
-// Bare `git fetch` with zero remotes configured enumerates the configured remotes and, finding
-// none, exits 0 having done nothing — it never needs a merge target the way `git pull --ff-only`
-// does, so it cannot fail that way at all.
-// Fetch's error path is instead exercised against a remote whose URL cannot be reached, the closest
-// real analogue to Pull's no-remote error.
-// Each error must name the repo path (per the documented error style) and must never leak git's raw
-// "fatal:"-prefixed stderr.
+// TestRemoteFailurePaths covers how Fetch and Pull report a repository whose remote is missing or unreachable.
+// Bare `git fetch` with zero remotes configured enumerates the configured remotes and, finding none, exits 0 having done nothing — it never needs a merge target the way `git pull --ff-only` does, so it cannot fail that way at all.
+// Fetch's error path is instead exercised against a remote whose URL cannot be reached, the closest real analogue to Pull's no-remote error.
+// Each error must name the repo path (per the documented error style) and must never leak git's raw "fatal:"-prefixed stderr.
 func TestRemoteFailurePaths(t *testing.T) {
 	t.Parallel()
 

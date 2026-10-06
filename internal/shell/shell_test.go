@@ -1,9 +1,6 @@
-// shell_test.go table-tests both pane-shell implementations: argument quoting across plain,
-// space-containing, and quote-containing inputs, and the exact Invoke/WithEnv/ExportEnv/
-// PrependPathEntry/Chain/Source/EnvRef/Touch/ScriptExt output each impl composes.
+// shell_test.go table-tests both pane-shell implementations: argument quoting across plain, space-containing, and quote-containing inputs, and the exact Invoke/WithEnv/ExportEnv/ PrependPathEntry/Chain/Source/EnvRef/Touch/ScriptExt output each impl composes.
 // One test per Shell method; each table holds both dialects' rows, named "<dialect>/<case>".
-// The pwsh quoting cases are migrated verbatim from claudeengine's former TestPwshSingleQuote so
-// the coverage moves with the logic it tests.
+// The pwsh quoting cases are migrated verbatim from claudeengine's former TestPwshSingleQuote so the coverage moves with the logic it tests.
 
 package shell
 

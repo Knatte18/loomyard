@@ -295,12 +295,8 @@ func TestPlanReapCycle(t *testing.T) {
 
 // TestWorktreeRootGoneAndHubIsLiveDir drives both path predicates over the same path shapes.
 // A missing path and a plain file are gone and not live, a directory is the reverse.
-// The unreadable row pins the one case where treating an unreadable path as gone would destroy live
-// work: a stat that fails with neither a not-exist result nor success (the EACCES shape) must answer
-// false — conservative — from both predicates, and deliberately not each other's negation.
-// That row is skipped on Windows, where directory mode bits do not deny traversal this way, and
-// skipped when the test runs as uid 0, where mode bits are not enforced at all — in both cases the
-// stat would succeed and the assertion would pass for the wrong reason.
+// The unreadable row pins the one case where treating an unreadable path as gone would destroy live work: a stat that fails with neither a not-exist result nor success (the EACCES shape) must answer false — conservative — from both predicates, and deliberately not each other's negation.
+// That row is skipped on Windows, where directory mode bits do not deny traversal this way, and skipped when the test runs as uid 0, where mode bits are not enforced at all — in both cases the stat would succeed and the assertion would pass for the wrong reason.
 func TestWorktreeRootGoneAndHubIsLiveDir(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -419,9 +415,7 @@ func TestValidateWatchdogFlags(t *testing.T) {
 	}
 }
 
-// watchdogDefaultTiming guards against a test-only default silently becoming production's cadence,
-// mirroring the coverage internal/reedengine/watchloop_test.go already gives its own default-timing
-// constructor.
+// watchdogDefaultTiming guards against a test-only default silently becoming production's cadence, mirroring the coverage internal/reedengine/watchloop_test.go already gives its own default-timing constructor.
 //
 //testtiming:keep a guard that fires when watchdogDefaultTiming diverges from the production cadence constants, which no covering test asserts
 func TestWatchdogDefaultTiming(t *testing.T) {

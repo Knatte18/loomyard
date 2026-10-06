@@ -17,10 +17,7 @@ type sample struct {
 	N    int
 }
 
-// TestWriteJSON_RoundTripOverwriteAndLayout writes a value, reads it back, overwrites it with a
-// different one, and verifies the second read returns the new value, the file is JSON indented by two
-// spaces, and the directory holds only the data file and its lock file at exactly path + ".lock",
-// with no .tmp- entries left behind.
+// TestWriteJSON_RoundTripOverwriteAndLayout writes a value, reads it back, overwrites it with a different one, and verifies the second read returns the new value, the file is JSON indented by two spaces, and the directory holds only the data file and its lock file at exactly path + ".lock", with no .tmp- entries left behind.
 //
 //testtiming:keep pins the two-space indentation and the data-plus-lock-only directory layout, which no covering test asserts
 func TestWriteJSON_RoundTripOverwriteAndLayout(t *testing.T) {
@@ -83,8 +80,7 @@ func TestWriteJSON_RoundTripOverwriteAndLayout(t *testing.T) {
 	}
 }
 
-// TestMissingFile reads a never-written path and verifies found=false, err=nil, and that the parent
-// dir and lock file now exist.
+// TestMissingFile reads a never-written path and verifies found=false, err=nil, and that the parent dir and lock file now exist.
 //
 //testtiming:keep pins the parent directory and lock file ReadJSON creates for a missing path, which the UpdateJSON tests never assert
 func TestMissingFile(t *testing.T) {
@@ -116,8 +112,7 @@ func TestMissingFile(t *testing.T) {
 	}
 }
 
-// TestCorruptFile writes invalid JSON and verifies ReadJSON returns a non-nil error, and that
-// UpdateJSON aborts the same way without running mutate or touching the file.
+// TestCorruptFile writes invalid JSON and verifies ReadJSON returns a non-nil error, and that UpdateJSON aborts the same way without running mutate or touching the file.
 //
 //testtiming:keep named by internal/loomcli's smoke test as the lenient read's decode-failure pin
 func TestCorruptFile(t *testing.T) {

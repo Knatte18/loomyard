@@ -1,7 +1,4 @@
-// set_test.go contains table-driven tests for SetValues, covering unknown-key rejection,
-// byte-for-byte round-tripping of tricky values, comment/order preservation, orphan-key
-// preservation, list keys and open maps, and the partial-existing regression case that motivated
-// Card 1's always-mutate-the-template-tree design.
+// set_test.go contains table-driven tests for SetValues, covering unknown-key rejection, byte-for-byte round-tripping of tricky values, comment/order preservation, orphan-key preservation, list keys and open maps, and the partial-existing regression case that motivated Card 1's always-mutate-the-template-tree design.
 
 package yamlengine
 
@@ -17,10 +14,7 @@ const (
 	listKeyTemplate    = "require_pr_to_base: [\"main\"] # bases\nsquash: true\n"
 )
 
-// TestSetValues pins what a successful SetValues merges: the requested values land byte-for-byte,
-// every other key keeps its existing value or its template default, template comments and key order
-// survive, an orphan top-level key is preserved whole and reported, list keys and open maps are set
-// whole, and a second call on the merged output reproduces it.
+// TestSetValues pins what a successful SetValues merges: the requested values land byte-for-byte, every other key keeps its existing value or its template default, template comments and key order survive, an orphan top-level key is preserved whole and reported, list keys and open maps are set whole, and a second call on the merged output reproduces it.
 func TestSetValues(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -69,8 +63,7 @@ func TestSetValues(t *testing.T) {
 			inOrder:    []string{"key1: ", "key2: "},
 		},
 		{
-			// The plan-review round-1 regression: a key in the template but absent from a non-empty,
-			// partial existing must still be applied rather than silently dropped.
+			// The plan-review round-1 regression: a key in the template but absent from a non-empty, partial existing must still be applied rather than silently dropped.
 			name:       "partial existing does not suppress the set",
 			template:   "key1: default1\nkey2: default2\nkey3: default3\n",
 			existing:   "key1: user_val1\n",
@@ -197,8 +190,7 @@ func TestSetValues(t *testing.T) {
 	}
 }
 
-// TestSetValues_UnknownKeys pins that an unknown key rejects the whole call: Unknown names it,
-// Merged is nil so no partial mutation is observable, and Known lists what was settable.
+// TestSetValues_UnknownKeys pins that an unknown key rejects the whole call: Unknown names it, Merged is nil so no partial mutation is observable, and Known lists what was settable.
 func TestSetValues_UnknownKeys(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

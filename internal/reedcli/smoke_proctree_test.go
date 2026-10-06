@@ -81,9 +81,7 @@ func linuxProcArgv(pid int) ([]string, bool) {
 	return strings.Split(trimmed, "\x00"), true
 }
 
-// linuxIsWatchdogDaemon reports whether pid is a `lyx reed watchdog` daemon, the one process an attach
-// leaves running past its harness server: it detaches into its own session and idles out on its own
-// production schedule.
+// linuxIsWatchdogDaemon reports whether pid is a `lyx reed watchdog` daemon, the one process an attach leaves running past its harness server: it detaches into its own session and idles out on its own production schedule.
 func linuxIsWatchdogDaemon(pid int) bool {
 	argv, ok := linuxProcArgv(pid)
 	if !ok {

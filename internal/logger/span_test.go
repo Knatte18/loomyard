@@ -1,10 +1,6 @@
-// span_test.go covers Span's explicit-parent dotted-path construction, sibling independence (no
-// global to leak between spans), End's record levels, and the durable sink's visibility of span=
-// records versus open/close records.
-// Every sink-touching case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one
-// call across cases, per sink.go's SetDurableSinkDir doc.
-// No test in this file calls t.Parallel: each mutates process-global logger state (verbosity, the
-// output writer, the durable sink).
+// span_test.go covers Span's explicit-parent dotted-path construction, sibling independence (no global to leak between spans), End's record levels, and the durable sink's visibility of span= records versus open/close records.
+// Every sink-touching case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one call across cases, per sink.go's SetDurableSinkDir doc.
+// No test in this file calls t.Parallel: each mutates process-global logger state (verbosity, the output writer, the durable sink).
 
 package logger
 
@@ -14,9 +10,7 @@ import (
 	"testing"
 )
 
-// TestSpan_PathsAreExplicitAndIndependentOfSiblings pins that a span's path comes from its explicit
-// parent chain: nesting yields a dotted path, and neither an ended nor a never-ended sibling shows
-// up in another span's path.
+// TestSpan_PathsAreExplicitAndIndependentOfSiblings pins that a span's path comes from its explicit parent chain: nesting yields a dotted path, and neither an ended nor a never-ended sibling shows up in another span's path.
 //
 //testtiming:keep pins the dotted span path and sibling independence on stderr, which TestSpan_DurableSinkCarriesInfoSpanPathButNoOpenCloseRecords asserts only for the durable sink
 func TestSpan_PathsAreExplicitAndIndependentOfSiblings(t *testing.T) {
@@ -76,8 +70,7 @@ func TestSpan_PathsAreExplicitAndIndependentOfSiblings(t *testing.T) {
 	}
 }
 
-// TestSpan_EndWithErrorReachesBothSinksAtWarn pins that End(err) records the error text at Warn on
-// stderr and in the durable sink.
+// TestSpan_EndWithErrorReachesBothSinksAtWarn pins that End(err) records the error text at Warn on stderr and in the durable sink.
 func TestSpan_EndWithErrorReachesBothSinksAtWarn(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
@@ -101,9 +94,7 @@ func TestSpan_EndWithErrorReachesBothSinksAtWarn(t *testing.T) {
 	}
 }
 
-// TestSpan_DurableSinkCarriesInfoSpanPathButNoOpenCloseRecords pins that an Info record inside a
-// span carries span=<path> into the durable sink while the span's open and close records, which emit
-// at Debug, stay out of it.
+// TestSpan_DurableSinkCarriesInfoSpanPathButNoOpenCloseRecords pins that an Info record inside a span carries span=<path> into the durable sink while the span's open and close records, which emit at Debug, stay out of it.
 //
 //testtiming:keep pins that open and close records stay out of the durable sink, which its covering tests do not assert
 func TestSpan_DurableSinkCarriesInfoSpanPathButNoOpenCloseRecords(t *testing.T) {

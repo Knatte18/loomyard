@@ -51,9 +51,7 @@ func stencilNamesOnDisk(t *testing.T) []string {
 	return names
 }
 
-// TestRegistry_MatchesOnDiskTree verifies the registry and the on-disk *.md tree name exactly the
-// same stencils in both directions: a .md present but unregistered fails, and a registered name with
-// no .md fails.
+// TestRegistry_MatchesOnDiskTree verifies the registry and the on-disk *.md tree name exactly the same stencils in both directions: a .md present but unregistered fails, and a registered name with no .md fails.
 //
 //testtiming:keep pins that the registry and the on-disk stencil tree name the same stencils in both directions, which no other test compares
 func TestRegistry_MatchesOnDiskTree(t *testing.T) {
@@ -94,12 +92,8 @@ func TestRegistry_MatchesOnDiskTree(t *testing.T) {
 	}
 }
 
-// TestRegistry_DefaultsAndRelPathAreConsistent verifies every registered entry's Default returns
-// non-empty bytes, and that stencilstore.RelPath(name) resolves to the file's actual relative path --
-// pinning the family-from-first-token derivation against the on-disk layout.
-// It also pins the generic Bouncer prompt templates by name, so a later accidental removal fails
-// with a message naming the Bouncer rather than as a diff in the generic on-disk-tree comparison
-// TestRegistry_MatchesOnDiskTree performs.
+// TestRegistry_DefaultsAndRelPathAreConsistent verifies every registered entry's Default returns non-empty bytes, and that stencilstore.RelPath(name) resolves to the file's actual relative path -- pinning the family-from-first-token derivation against the on-disk layout.
+// It also pins the generic Bouncer prompt templates by name, so a later accidental removal fails with a message naming the Bouncer rather than as a diff in the generic on-disk-tree comparison TestRegistry_MatchesOnDiskTree performs.
 //
 //testtiming:keep pins that RelPath resolves each registered name to its real file and that the Bouncer templates stay registered, which the scans over stencil bodies do not
 func TestRegistry_DefaultsAndRelPathAreConsistent(t *testing.T) {

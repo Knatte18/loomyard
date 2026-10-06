@@ -166,9 +166,7 @@ func assertCommitSeam(t testing.TB, r shedbuild.Recipe, burlerRow shedbuild.Row,
 	}
 }
 
-// TestShippedRecipe_OverlayBurlersCommitThroughSeam parses the real embedded recipes.LoomRecipe and
-// runs assertOverlayBurlerCommitSeams against it, unmodified -- a straight read of the shipped file,
-// never a mutated copy.
+// TestShippedRecipe_OverlayBurlersCommitThroughSeam parses the real embedded recipes.LoomRecipe and runs assertOverlayBurlerCommitSeams against it, unmodified -- a straight read of the shipped file, never a mutated copy.
 //
 //testtiming:keep pins that the shipped overlay Burlers commit through their partner Bouncer's seam, which TestOverlayBurlerCommitSeams_RejectsBadShapes only checks on hand-written recipes
 func TestShippedRecipe_OverlayBurlersCommitThroughSeam(t *testing.T) {
@@ -220,10 +218,7 @@ func runOverlaySeamRule(t *testing.T, name string, r shedbuild.Recipe) (reported
 	return reported
 }
 
-// TestOverlayBurlerCommitSeams_RejectsBadShapes table-drives assertOverlayBurlerCommitSeams over
-// small hand-written recipe YAML documents, each fed through the identical shedbuild.Parse the
-// shipped-recipe test uses, asserting the rule reports (or, for the two accept cases, does not
-// report) a failure for the shape each case names.
+// TestOverlayBurlerCommitSeams_RejectsBadShapes table-drives assertOverlayBurlerCommitSeams over small hand-written recipe YAML documents, each fed through the identical shedbuild.Parse the shipped-recipe test uses, asserting the rule reports (or, for the two accept cases, does not report) a failure for the shape each case names.
 //
 //testtiming:keep pins that the seam rule rejects each bad overlay shape, a guard self-check the shipped-recipe test never exercises
 func TestOverlayBurlerCommitSeams_RejectsBadShapes(t *testing.T) {

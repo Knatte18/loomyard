@@ -7,9 +7,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// TestNewPreflight_CarriesToldName asserts NewPreflight hardcodes nothing: the returned
-// shedengine.ShedProducer's concrete type is *preflightProducer, and its name and cwd fields hold
-// the told constructor arguments verbatim.
+// TestNewPreflight_CarriesToldName asserts NewPreflight hardcodes nothing: the returned shedengine.ShedProducer's concrete type is *preflightProducer, and its name and cwd fields hold the told constructor arguments verbatim.
 //
 //testtiming:keep pins the told name and cwd landing on the producer's fields, which the cancelled-call test covering its blocks never reads
 func TestNewPreflight_CarriesToldName(t *testing.T) {

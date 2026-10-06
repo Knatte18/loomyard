@@ -12,11 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// TestRegistry_NamesAndDefaults pins Registry().Names() to the exact ordered slice: the
-// order is the order `lyx stencil list` prints them in, and the names are what
-// stencilstore.RelPath derives the deployed family directory from.
-// It then verifies every registered name resolves to known, non-empty default bytes,
-// and that an unregistered name resolves to nil, false.
+// TestRegistry_NamesAndDefaults pins Registry().Names() to the exact ordered slice: the order is the order `lyx stencil list` prints them in, and the names are what stencilstore.RelPath derives the deployed family directory from.
+// It then verifies every registered name resolves to known, non-empty default bytes, and that an unregistered name resolves to nil, false.
 func TestRegistry_NamesAndDefaults(t *testing.T) {
 	t.Parallel()
 

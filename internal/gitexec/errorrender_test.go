@@ -54,8 +54,7 @@ func TestGitError_Error(t *testing.T) {
 			want: `git rev-parse HEAD: exit 128`,
 		},
 		// Dir is carried for a caller that wants to name the directory itself and is never rendered:
-		// nearly every wrapper already names the repo or worktree it operated on, so rendering Dir
-		// would put the same path twice into the part of the message an operator reads first.
+		// nearly every wrapper already names the repo or worktree it operated on, so rendering Dir would put the same path twice into the part of the message an operator reads first.
 		{
 			name: "DirNotRendered",
 			err:  &gitexec.GitError{Args: []string{"status", "--porcelain"}, Dir: "/tmp/some/worktree/path", ExitCode: 128, Stderr: "fatal: not a git repository"},

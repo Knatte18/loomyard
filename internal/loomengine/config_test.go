@@ -88,10 +88,7 @@ func templateConfig() Config {
 }
 
 // TestLoadConfig_Loads verifies each loom.yaml shape that must load, against the whole Config it yields:
-// the template's own values, a retired key ignored, explicit overrides, present-but-empty and null friction and driver values
-// (Tier 2 off, "defer to the provider default"), keys absent from an already-seeded file at their template defaults,
-// zero timeouts (shuttleengine.Spec treats zero as "defer to shuttle's run_timeout_min", so the negative guard must not sweep them up),
-// and a checkpoint above the budget (a run that never rules CIRCLING and reaches the budget escalation instead).
+// the template's own values, a retired key ignored, explicit overrides, present-but-empty and null friction and driver values (Tier 2 off, "defer to the provider default"), keys absent from an already-seeded file at their template defaults, zero timeouts (shuttleengine.Spec treats zero as "defer to shuttle's run_timeout_min", so the negative guard must not sweep them up), and a checkpoint above the budget (a run that never rules CIRCLING and reaches the budget escalation instead).
 func TestLoadConfig_Loads(t *testing.T) {
 	t.Parallel()
 	// legacyContents is a file seeded before the friction, driver, judge, parent-review and review-budget keys existed.
@@ -212,9 +209,7 @@ review_timeout_min: 240
 }
 
 // TestLoadConfig_Refuses verifies each invalid loom.yaml is refused at load time, naming the offending key:
-// an ungrammatical model-spec (rather than being silently carried into a producer's spawn site),
-// a parent_review_wait_min or review key below one (the sibling timeouts' "0 defers to shuttle" carve-out does not apply to them) with the way forward,
-// and a negative timeout (which would otherwise surface only when the producer it governs first spawns).
+// an ungrammatical model-spec (rather than being silently carried into a producer's spawn site), a parent_review_wait_min or review key below one (the sibling timeouts' "0 defers to shuttle" carve-out does not apply to them) with the way forward, and a negative timeout (which would otherwise surface only when the producer it governs first spawns).
 func TestLoadConfig_Refuses(t *testing.T) {
 	t.Parallel()
 	const positiveIntegerForward = "set it to a positive integer in loom.yaml"
@@ -276,18 +271,12 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	}
 }
 
-// TestLoomDriverLogAndBootstrapLock covers LoomDriverLog and LoomBootstrapLock at both an
-// unanchored and a subpath-anchored *lyxcwd.Location, hand-built rather than spawned.
+// TestLoomDriverLogAndBootstrapLock covers LoomDriverLog and LoomBootstrapLock at both an unanchored and a subpath-anchored *lyxcwd.Location, hand-built rather than spawned.
 //
 // It also proves the two survive card 12's status/run-lock relocation onto shedrun.RunDir:
-// LoomBootstrapLock must never collide with shedrun's own StatusLock or RunLock for the same
-// location and shedrun.SelfRunID, exactly as it never collided with loomengine's own
-// now-deleted LoomStatusLock/LoomRunLock before the relocation -- this is what makes the
-// overview's loomDirName-survives-the-status-relocation decision checkable rather than asserted.
+// LoomBootstrapLock must never collide with shedrun's own StatusLock or RunLock for the same location and shedrun.SelfRunID, exactly as it never collided with loomengine's own now-deleted LoomStatusLock/LoomRunLock before the relocation -- this is what makes the overview's loomDirName-survives-the-status-relocation decision checkable rather than asserted.
 //
-// LoomScratchDir names exactly the directory the driver log and the bootstrap lock share, so the
-// three never drift apart, and that directory is loom's own scratch tree under .lyx/loom/, distinct
-// from the run directory's .lyx/shed/<runID>/ mirror that shedrun.ScratchDir names.
+// LoomScratchDir names exactly the directory the driver log and the bootstrap lock share, so the three never drift apart, and that directory is loom's own scratch tree under .lyx/loom/, distinct from the run directory's .lyx/shed/<runID>/ mirror that shedrun.ScratchDir names.
 func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -373,11 +362,8 @@ func TestLandingAndApprovalAccessors(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_ContainsEveryConfigYAMLTag walks Config's fields via reflection and asserts
-// every yaml tag appears in the template text -- so a struct field added without a matching
-// template line is caught mechanically rather than relying on review to notice the gap.
-// The Config Strictness Invariant makes a struct field with no matching template key a silent hole
-// rather than a load error, which is exactly what this check guards against.
+// TestConfigTemplate_ContainsEveryConfigYAMLTag walks Config's fields via reflection and asserts every yaml tag appears in the template text -- so a struct field added without a matching template line is caught mechanically rather than relying on review to notice the gap.
+// The Config Strictness Invariant makes a struct field with no matching template key a silent hole rather than a load error, which is exactly what this check guards against.
 //
 //testtiming:keep pins that every Config yaml tag has a template line, a reflection check no LoadConfig case makes
 func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {

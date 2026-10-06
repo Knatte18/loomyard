@@ -21,11 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// TestBattenPreStep_SeedsAbsentStatus asserts battenPreStep seeds a fresh status file -- current
-// producer Worktree-Create, state running -- when none is persisted yet, before shed.Step ever
-// reads it. Without this, stepLocked's own read gate would hit an absent status and hard-error,
-// which shedverbs/step.go reports as kind: "producer" -- a driver would repair that round after
-// round, so an unseeded first step must not surface as a producer failure.
+// TestBattenPreStep_SeedsAbsentStatus asserts battenPreStep seeds a fresh status file -- current producer Worktree-Create, state running -- when none is persisted yet, before shed.Step ever reads it.
+// Without this, stepLocked's own read gate would hit an absent status and hard-error, which shedverbs/step.go reports as kind: "producer" -- a driver would repair that round after round, so an unseeded first step must not surface as a producer failure.
 //
 //testtiming:keep pins the seeded status's current producer and state, which the end-to-end step test never reads
 func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
@@ -55,11 +52,7 @@ func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
 	}
 }
 
-// TestBattenPreStep_RefusalKinds asserts each pre-producer failure maps to its own refusal kind,
-// with a non-nil error that is never transient: a held run lock is shedverbs.KindBusy, a status file
-// that exists but fails to decode is shedverbs.KindUnseeded, and a status already in StateDone --
-// "any other pre-producer failure" -- is shedverbs.KindBootstrap, whose remedy names the whole
-// abandon path.
+// TestBattenPreStep_RefusalKinds asserts each pre-producer failure maps to its own refusal kind, with a non-nil error that is never transient: a held run lock is shedverbs.KindBusy, a status file that exists but fails to decode is shedverbs.KindUnseeded, and a status already in StateDone -- "any other pre-producer failure" -- is shedverbs.KindBootstrap, whose remedy names the whole abandon path.
 func TestBattenPreStep_RefusalKinds(t *testing.T) {
 	t.Parallel()
 
@@ -90,8 +83,7 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 			wantKind: shedverbs.KindUnseeded,
 		},
 		{
-			// A torn-down pair keeps its task branch locally and on the remote, so deleting the run
-			// directory alone leads straight into the create row's leftover-branch refusal.
+			// A torn-down pair keeps its task branch locally and on the remote, so deleting the run directory alone leads straight into the create row's leftover-branch refusal.
 			name: "DoneSlugIsBootstrap",
 			arrange: func(t *testing.T, c *battenCLI) {
 				writeStatus(t, c, shedengine.Status{

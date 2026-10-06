@@ -147,8 +147,7 @@ func writeLegacySeedFile(t *testing.T, l *lyxcwd.Location, body string) {
 	}
 }
 
-// TestSeed_LegacyParentKey pins that a seed.json carrying the retired parent key still reads, is dropped on a round trip,
-// agrees with an identical new seed, and that any other unknown key is still refused.
+// TestSeed_LegacyParentKey pins that a seed.json carrying the retired parent key still reads, is dropped on a round trip, agrees with an identical new seed, and that any other unknown key is still refused.
 func TestSeed_LegacyParentKey(t *testing.T) {
 	t.Parallel()
 	t.Run("decodes and is dropped on a round trip", func(t *testing.T) {

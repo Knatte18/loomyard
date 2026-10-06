@@ -47,9 +47,7 @@ func sectionsWithout(skip ...string) string {
 	return b.String()
 }
 
-// TestValidate_CleanRecords asserts a record carrying every required heading yields no finding,
-// whatever else the file holds: trailing whitespace on a heading, headings in any order, an extra
-// heading, the optional notes section absent, and a directory standing in for the support log.
+// TestValidate_CleanRecords asserts a record carrying every required heading yields no finding, whatever else the file holds: trailing whitespace on a heading, headings in any order, an extra heading, the optional notes section absent, and a directory standing in for the support log.
 //
 //testtiming:keep pins that a record with every required heading yields no finding across whitespace, order, extra-heading and support-directory variants, which its covering test does not assert
 func TestValidate_CleanRecords(t *testing.T) {
@@ -78,8 +76,7 @@ func TestValidate_CleanRecords(t *testing.T) {
 		{name: "heading with trailing whitespace still counts", content: padded.String()},
 		{name: "headings out of order are not validated", content: outOfOrder.String()},
 		{name: "extra unexpected heading", content: allSectionsContent() + "## Some Extra Heading\n\nextra body.\n"},
-		// os.Stat accepts a directory as "exists", so the support-log check is exhaustively
-		// "both files exist"; an is-regular-file test would be a new check.
+		// os.Stat accepts a directory as "exists", so the support-log check is exhaustively "both files exist"; an is-regular-file test would be a new check.
 		{name: "support log path is a directory", content: allSectionsContent(), supportIsDir: true},
 	}
 	for _, tt := range tests {
@@ -105,8 +102,7 @@ func TestValidate_CleanRecords(t *testing.T) {
 	}
 }
 
-// TestValidate_MissingHeadings asserts one section-missing finding per absent required heading,
-// each at the decision record's path and naming its heading, in heading order.
+// TestValidate_MissingHeadings asserts one section-missing finding per absent required heading, each at the decision record's path and naming its heading, in heading order.
 //
 //testtiming:keep pins the section-missing finding per absent heading with its path and detail, which its covering test does not assert
 func TestValidate_MissingHeadings(t *testing.T) {
@@ -247,12 +243,7 @@ func TestValidate_DecisionRecordPathIsDirectory(t *testing.T) {
 }
 
 // TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt is R6-28's regression test.
-// A bufio.Scanner stops at the first line over bufio.MaxScanTokenSize (64 KB) and reports it only
-// through scanner.Err(), which was never checked — so one pasted base64 blob or minified snippet,
-// entirely ordinary in an agent-written discussion document, made every heading below it report
-// missing. loomshed's Discussion-Write and Discussion-Burler gates map that to a re-prompt against
-// the still-live session, holding the handoff until the gate passes or its attempt budget escalates
-// to a human.
+// A bufio.Scanner stops at the first line over bufio.MaxScanTokenSize (64 KB) and reports it only through scanner.Err(), which was never checked — so one pasted base64 blob or minified snippet, entirely ordinary in an agent-written discussion document, made every heading below it report missing. loomshed's Discussion-Write and Discussion-Burler gates map that to a re-prompt against the still-live session, holding the handoff until the gate passes or its attempt budget escalates to a human.
 //
 //testtiming:keep pins the R6-28 regression that a line over 64 KB does not hide the headings below it, which its covering test does not assert
 func TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt(t *testing.T) {

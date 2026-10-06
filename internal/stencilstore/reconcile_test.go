@@ -1,8 +1,6 @@
-// reconcile_test.go covers Read, Reconcile, and ForceRefresh against a bare t.TempDir(), with no
-// git and no hub fixture -- see fakeRegistry below for the Registry stand-in every test here uses.
+// reconcile_test.go covers Read, Reconcile, and ForceRefresh against a bare t.TempDir(), with no git and no hub fixture -- see fakeRegistry below for the Registry stand-in every test here uses.
 //
-// The tests that capture the logger's output swap process-global state, so they stay serial and run
-// before the parallel ones resume.
+// The tests that capture the logger's output swap process-global state, so they stay serial and run before the parallel ones resume.
 
 package stencilstore
 
@@ -90,9 +88,7 @@ func seedGitattributesForTest(t *testing.T, baseDir string) {
 	}
 }
 
-// TestReconcile_SeedsAbsentFileAndGitattributesOnce covers the seeding run: an absent board copy is
-// written stamped with its own hash and reported in written, and .gitattributes is seeded then too,
-// but never rewritten once it exists and never listed by the registry.
+// TestReconcile_SeedsAbsentFileAndGitattributesOnce covers the seeding run: an absent board copy is written stamped with its own hash and reported in written, and .gitattributes is seeded then too, but never rewritten once it exists and never listed by the registry.
 func TestReconcile_SeedsAbsentFileAndGitattributesOnce(t *testing.T) {
 	t.Parallel()
 
@@ -148,9 +144,7 @@ func TestReconcile_SeedsAbsentFileAndGitattributesOnce(t *testing.T) {
 	}
 }
 
-// TestReconcile_UntouchedBoardCopy covers a board copy still matching its own stamp across a second
-// reconcile: an unchanged default leaves every file alone, and a changed default refreshes it in
-// production mode but never in dev mode.
+// TestReconcile_UntouchedBoardCopy covers a board copy still matching its own stamp across a second reconcile: an unchanged default leaves every file alone, and a changed default refreshes it in production mode but never in dev mode.
 func TestReconcile_UntouchedBoardCopy(t *testing.T) {
 	t.Parallel()
 
@@ -206,9 +200,7 @@ func TestReconcile_UntouchedBoardCopy(t *testing.T) {
 	}
 }
 
-// TestReconcile_RestampsRowWhoseBodyMatchesDefault covers a board copy whose body equals the shipped
-// default but whose stamp names an older hash (an edit later reverted): both modes restamp it, and
-// it classifies as untouched afterwards.
+// TestReconcile_RestampsRowWhoseBodyMatchesDefault covers a board copy whose body equals the shipped default but whose stamp names an older hash (an edit later reverted): both modes restamp it, and it classifies as untouched afterwards.
 func TestReconcile_RestampsRowWhoseBodyMatchesDefault(t *testing.T) {
 	t.Parallel()
 
@@ -280,8 +272,7 @@ func TestForceRefresh_PerformsRefreshRowFromDevSkippedFile(t *testing.T) {
 	}
 }
 
-// TestReconcile_EditedBoardCopyIsNeverModified covers a board copy reconcile must leave alone even
-// under a newer default: a hand-edited body under its old stamp, and a body with no stamp at all.
+// TestReconcile_EditedBoardCopyIsNeverModified covers a board copy reconcile must leave alone even under a newer default: a hand-edited body under its old stamp, and a body with no stamp at all.
 // Read returns the content as it is on disk.
 func TestReconcile_EditedBoardCopyIsNeverModified(t *testing.T) {
 	t.Parallel()
@@ -325,9 +316,7 @@ func TestReconcile_EditedBoardCopyIsNeverModified(t *testing.T) {
 	}
 }
 
-// TestReconcile_SourceDirNeverFailsReconcile covers the port-back drift comparison never failing a
-// reconcile: an empty sourceDir skips it, and a worktree source that differs from the board copy
-// only warns.
+// TestReconcile_SourceDirNeverFailsReconcile covers the port-back drift comparison never failing a reconcile: an empty sourceDir skips it, and a worktree source that differs from the board copy only warns.
 func TestReconcile_SourceDirNeverFailsReconcile(t *testing.T) {
 	t.Parallel()
 

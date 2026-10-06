@@ -86,9 +86,7 @@ func TestInnerRun_LaterSpawnsInSameRunDoNotReopen(t *testing.T) {
 	}
 }
 
-// TestInnerRun_OpensIDEOncePerRunAcrossAMarker asserts the once-marker gates the open: an approved
-// resume after an earlier open does not reopen, an approved resume with no marker opens once, and
-// a stale marker left from an earlier run does not suppress the open for a fresh child.
+// TestInnerRun_OpensIDEOncePerRunAcrossAMarker asserts the once-marker gates the open: an approved resume after an earlier open does not reopen, an approved resume with no marker opens once, and a stale marker left from an earlier run does not suppress the open for a fresh child.
 //
 //testtiming:keep pins that the once-marker gates the IDE open, which the covering resume tests never count
 func TestInnerRun_OpensIDEOncePerRunAcrossAMarker(t *testing.T) {

@@ -41,11 +41,8 @@ func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 }
 
 // TestInterruptPolicies_MatchEngineIdentity cross-checks loomshed.InterruptPolicies against the row-to-engine mapping read off wantProducerTable:
-// every row whose engine is "Webster" must carry loomshed.InterruptPolicyHandback,
-// and every row whose engine is anything else must carry loomshed.InterruptPolicyReinvoke.
-// This is the assertion that keeps a
-// row which changes adapter from silently keeping the wrong policy, and the engine-name side is
-// what makes the Webster exception derivable rather than hand-maintained.
+// every row whose engine is "Webster" must carry loomshed.InterruptPolicyHandback, and every row whose engine is anything else must carry loomshed.InterruptPolicyReinvoke.
+// This is the assertion that keeps a row which changes adapter from silently keeping the wrong policy, and the engine-name side is what makes the Webster exception derivable rather than hand-maintained.
 //
 //testtiming:keep pins the Webster-handback and reinvoke-otherwise policy per row engine, which TestApproveSeam_FailsToBuild never asserts
 func TestInterruptPolicies_MatchEngineIdentity(t *testing.T) {

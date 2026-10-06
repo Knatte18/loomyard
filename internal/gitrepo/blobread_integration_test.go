@@ -1,10 +1,7 @@
 //go:build integration
 
-// blobread_integration_test.go covers the history reads — FileAtRevision, PathRevisions and
-// IsAncestor's real-git reachability — against one real git repository with two commits built under
-// t.TempDir(), reusing gitrepo_test.go's newRepo, writeFile, and commitAll fixture helpers.
-// IsAncestor's argument-validation guard lives in the untagged ancestry_test.go, because a
-// //go:build constraint applies per file, not per function.
+// blobread_integration_test.go covers the history reads — FileAtRevision, PathRevisions and IsAncestor's real-git reachability — against one real git repository with two commits built under t.TempDir(), reusing gitrepo_test.go's newRepo, writeFile, and commitAll fixture helpers.
+// IsAncestor's argument-validation guard lives in the untagged ancestry_test.go, because a //go:build constraint applies per file, not per function.
 
 package gitrepo_test
 
@@ -15,10 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
-// TestHistoryReads drives the history reads over one repository: commit A writes a.txt as "version
-// one" and commit B rewrites it as "version two".
-// Every step only reads, so the steps run serially in one order over the shared repository and
-// depend on nothing an earlier step does.
+// TestHistoryReads drives the history reads over one repository: commit A writes a.txt as "version one" and commit B rewrites it as "version two".
+// Every step only reads, so the steps run serially in one order over the shared repository and depend on nothing an earlier step does.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestHistoryReads(t *testing.T) {
 	t.Parallel()
@@ -35,8 +30,7 @@ func TestHistoryReads(t *testing.T) {
 		name string
 		run  func(t *testing.T)
 	}{
-		// IsAncestor answers (true, nil) when an ancestor, (false, nil) when not, and an error for
-		// an absent SHA.
+		// IsAncestor answers (true, nil) when an ancestor, (false, nil) when not, and an error for an absent SHA.
 		{"IsAncestor answers reachability", func(t *testing.T) {
 			got, err := repo.IsAncestor(shaA, shaB)
 			if err != nil {
@@ -59,8 +53,7 @@ func TestHistoryReads(t *testing.T) {
 				t.Fatal("IsAncestor(absent SHA, B) error = nil; want an error (merge-base cannot classify an unknown commit)")
 			}
 		}},
-		// FileAtRevision returns a file's exact stored bytes at an older commit, unaffected by a
-		// later change to the working-tree copy.
+		// FileAtRevision returns a file's exact stored bytes at an older commit, unaffected by a later change to the working-tree copy.
 		{"FileAtRevision returns the exact bytes at an older commit", func(t *testing.T) {
 			got, err := repo.FileAtRevision(shaA, "a.txt")
 			if err != nil {
@@ -70,8 +63,7 @@ func TestHistoryReads(t *testing.T) {
 				t.Errorf("FileAtRevision(%s, a.txt) = %q; want %q", shaA, got, "version one")
 			}
 		}},
-		// ErrPathNotAtRevision for a path absent from that revision's tree is distinguishable from
-		// a malformed-revision error.
+		// ErrPathNotAtRevision for a path absent from that revision's tree is distinguishable from a malformed-revision error.
 		{"FileAtRevision distinguishes an absent path from an invalid sha", func(t *testing.T) {
 			_, err := repo.FileAtRevision(shaB, "missing.txt")
 			if !errors.Is(err, gitrepo.ErrPathNotAtRevision) {

@@ -43,11 +43,7 @@ type moduleWant struct {
 	fileNotContains []string
 }
 
-// TestReconcileAll pins what a run does to each module's file and Result: a dry run reports and
-// writes nothing, an apply adds the template's missing keys and prunes stale ones, an absent file is
-// seeded from the template, and a seed-only module ("models" today) is materialized verbatim exactly
-// once and never rewritten after -- not even to resurrect a key the operator removed -- while a
-// non-seed-only module in the same run is still pruned.
+// TestReconcileAll pins what a run does to each module's file and Result: a dry run reports and writes nothing, an apply adds the template's missing keys and prunes stale ones, an absent file is seeded from the template, and a seed-only module ("models" today) is materialized verbatim exactly once and never rewritten after -- not even to resurrect a key the operator removed -- while a non-seed-only module in the same run is still pruned.
 func TestReconcileAll(t *testing.T) {
 	t.Parallel()
 	const loomStale = "discussion_timeout_min: 480\nstale_key: old_value\n"
@@ -392,8 +388,7 @@ func TestReconcileHubWideAt_MigratesLegacyFabricConfig(t *testing.T) {
 			wantPruned:   []string{"warp", "weft"},
 		},
 		{
-			// _lyx is structural, injected in code and never read from the pathspec key, so the
-			// template-default empty pathspec is the expected value.
+			// _lyx is structural, injected in code and never read from the pathspec key, so the template-default empty pathspec is the expected value.
 			name:         "only warp.yaml present, pathspec falls back to template default",
 			legacyFirst:  "branch_prefix: hanf/\n",
 			apply:        true,

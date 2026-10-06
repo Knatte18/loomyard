@@ -45,8 +45,7 @@ func primeSettingsPath(h *hubforge.Hub, prime string) string {
 	return filepath.Join(h.Path, prime, h.Location.AnchorRel, ".vscode", "settings.json")
 }
 
-// resetPrimeEditorState removes the prime's untracked .vscode directory and the hub workspace file,
-// returning the prime to the state of a freshly built hub for a step that depends on it.
+// resetPrimeEditorState removes the prime's untracked .vscode directory and the hub workspace file, returning the prime to the state of a freshly built hub for a step that depends on it.
 func resetPrimeEditorState(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 	prime := primeOf(t, h)

@@ -97,10 +97,7 @@ func writeStatus(t *testing.T, c *battenCLI, st shedengine.Status) {
 	}
 }
 
-// TestRunCmd_ResumeDispositions covers StateRunning, StateBlocked, StateFailed and StatePaused, each
-// resuming silently from the persisted current producer, and an absent status file, which is a fresh
-// start and not a refusal: every fake succeeds trivially, so the whole run completes and the verb
-// reports success, with a history_length key matching the persisted history.
+// TestRunCmd_ResumeDispositions covers StateRunning, StateBlocked, StateFailed and StatePaused, each resuming silently from the persisted current producer, and an absent status file, which is a fresh start and not a refusal: every fake succeeds trivially, so the whole run completes and the verb reports success, with a history_length key matching the persisted history.
 func TestRunCmd_ResumeDispositions(t *testing.T) {
 	t.Parallel()
 
@@ -136,8 +133,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 				t.Errorf("run(%s) output missing ok:true envelope; got: %q", tt.name, out.String())
 			}
 
-			// The envelope's history_length key, free from the generic body's own len(result.History),
-			// matches the run's own persisted history length.
+			// The envelope's history_length key, free from the generic body's own len(result.History), matches the run's own persisted history length.
 			var envelope map[string]any
 			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
 				t.Fatalf("decode envelope: %v; output: %s", err, out.String())

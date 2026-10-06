@@ -44,10 +44,7 @@ func reachedEngines() map[string]bool {
 	return reached
 }
 
-// TestCoverageGuard asserts every name in shedrecipe.Names() is in the union of loomrecipe.RecipeEngines()
-// and battenrecipe.RecipeEngines(), or is on coverageGuardAllowedUnreachableEngines,
-// and carries the guard's own drift direction: an allowlist entry naming an engine that is no longer registered,
-// or that some consumer now does reach, fails rather than lingering.
+// TestCoverageGuard asserts every name in shedrecipe.Names() is in the union of loomrecipe.RecipeEngines() and battenrecipe.RecipeEngines(), or is on coverageGuardAllowedUnreachableEngines, and carries the guard's own drift direction: an allowlist entry naming an engine that is no longer registered, or that some consumer now does reach, fails rather than lingering.
 //
 //testtiming:keep pins that every registered engine is reached or allowlisted, and that the allowlist does not drift, a guard that fires on a new registry key
 func TestCoverageGuard(t *testing.T) {

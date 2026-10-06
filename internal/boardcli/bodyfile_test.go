@@ -19,8 +19,7 @@ func writeBodyFile(t *testing.T, content string) string {
 	return path
 }
 
-// TestApplyBodyFile asserts applyBodyFile sets the body from a file, from stdin and from an empty file,
-// and refuses a missing file, a body already in the payload and stdin claimed for both payload and body.
+// TestApplyBodyFile asserts applyBodyFile sets the body from a file, from stdin and from an empty file, and refuses a missing file, a body already in the payload and stdin claimed for both payload and body.
 func TestApplyBodyFile(t *testing.T) {
 	t.Parallel()
 	str := func(s string) *string { return &s }

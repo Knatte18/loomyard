@@ -17,11 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// TestWriteSeed_SucceedsWithNoSeedPresent covers the pre-run exemption first: "lyx shed seed
-// <run-id> --recipe <name>" succeeds with no seed present and no recipe armed -- writeSeed itself
-// never calls Arm at all, structurally, and this is the case resolvePersistentPreRun would
-// otherwise refuse three different ways (no seed to read, an unresolvable recipe, and a verb gate
-// with nothing to gate).
+// TestWriteSeed_SucceedsWithNoSeedPresent covers the pre-run exemption first: "lyx shed seed <run-id> --recipe <name>" succeeds with no seed present and no recipe armed -- writeSeed itself never calls Arm at all, structurally, and this is the case resolvePersistentPreRun would otherwise refuse three different ways (no seed to read, an unresolvable recipe, and a verb gate with nothing to gate).
 // The seed reads back carrying the recipe and the driver: the default when none is passed, the typed llm driver otherwise.
 func TestWriteSeed_SucceedsWithNoSeedPresent(t *testing.T) {
 	t.Parallel()
@@ -62,9 +58,7 @@ func TestWriteSeed_SucceedsWithNoSeedPresent(t *testing.T) {
 	}
 }
 
-// TestResolveSeedDriver pins the driver default against the recipe's bootstrap-verb capability: an
-// empty flag defaults to llm where a bootstrap verb can boot the driver session and to go where none
-// can, and a typed value passes through unchanged either way.
+// TestResolveSeedDriver pins the driver default against the recipe's bootstrap-verb capability: an empty flag defaults to llm where a bootstrap verb can boot the driver session and to go where none can, and a typed value passes through unchanged either way.
 //
 //testtiming:keep pins the driver default and pass-through per bootstrap-verb capability, which its covering tests do not
 func TestResolveSeedDriver(t *testing.T) {
@@ -190,8 +184,7 @@ func TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability(t *testing.T) {
 	})
 }
 
-// TestParseSeedParams asserts a well-formed set of "key=value" entries parses into the expected map,
-// including a value containing its own "=" (split only on the first), and that an entry with no "=" or an empty key refuses.
+// TestParseSeedParams asserts a well-formed set of "key=value" entries parses into the expected map, including a value containing its own "=" (split only on the first), and that an entry with no "=" or an empty key refuses.
 func TestParseSeedParams(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -218,8 +211,7 @@ func TestParseSeedParams(t *testing.T) {
 	}
 }
 
-// TestWriteSeed_IdempotentAgainstAnIdenticalSeedAndRefusesADisagreeingOne asserts calling writeSeed twice with the identical
-// seed is a no-op the second time, and that it refuses once an existing seed disagrees with the incoming one.
+// TestWriteSeed_IdempotentAgainstAnIdenticalSeedAndRefusesADisagreeingOne asserts calling writeSeed twice with the identical seed is a no-op the second time, and that it refuses once an existing seed disagrees with the incoming one.
 func TestWriteSeed_IdempotentAgainstAnIdenticalSeedAndRefusesADisagreeingOne(t *testing.T) {
 	t.Parallel()
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}

@@ -41,10 +41,7 @@ func newMinimalStencilsDir(t *testing.T) string {
 	return dir
 }
 
-// TestComposePrompt_RendersMarkers verifies the rendered prompt of each mode has no unrendered markers, contains
-// the slug, the paths and the board-read command, and names no skill (skills load from the spec, not the stencil),
-// that the modes carry different language (and modeRules returns distinct non-empty strings for them),
-// and that the autonomous output and its mode rules name no nonexistent `--auto` flag.
+// TestComposePrompt_RendersMarkers verifies the rendered prompt of each mode has no unrendered markers, contains the slug, the paths and the board-read command, and names no skill (skills load from the spec, not the stencil), that the modes carry different language (and modeRules returns distinct non-empty strings for them), and that the autonomous output and its mode rules name no nonexistent `--auto` flag.
 func TestComposePrompt_RendersMarkers(t *testing.T) {
 	t.Parallel()
 	const (
@@ -115,12 +112,7 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 	}
 }
 
-// TestCompose_FrictionDirective verifies, for the discussion and the plan composer, that a real friction directive resolved via
-// friction.NotePath/friction.Directive exactly as the spec builders resolve one lands its resolved absolute note path verbatim in the prompt
-// (the property that catches a composer wiring the wrong path); that an empty directive (Tier 2 off) over a stencilsDir carrying no friction-directive stencil still renders
-// with no friction content (the composer reads no friction stencil of its own); and that a seeded template whose bytes carry no {{.friction_directive}}
-// literal still composes while Tier 2 is enabled -- the operator-edited-stencil and dev-build case, since internal/stencilstore/reconcile.go never refreshes
-// a StateEdited stencil, so it must degrade to a warning rather than a failed run.
+// TestCompose_FrictionDirective verifies, for the discussion and the plan composer, that a real friction directive resolved via friction.NotePath/friction.Directive exactly as the spec builders resolve one lands its resolved absolute note path verbatim in the prompt (the property that catches a composer wiring the wrong path); that an empty directive (Tier 2 off) over a stencilsDir carrying no friction-directive stencil still renders with no friction content (the composer reads no friction stencil of its own); and that a seeded template whose bytes carry no {{.friction_directive}} literal still composes while Tier 2 is enabled -- the operator-edited-stencil and dev-build case, since internal/stencilstore/reconcile.go never refreshes a StateEdited stencil, so it must degrade to a warning rather than a failed run.
 func TestCompose_FrictionDirective(t *testing.T) {
 	t.Parallel()
 	const (

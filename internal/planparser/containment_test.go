@@ -13,14 +13,8 @@ import (
 )
 
 // TestSyntacticContainment asserts which Targets pairings across cards overlap on one unit:
-// a member glyph or a file self glyph against the self glyph of its own direct directory on
-// another card produces exactly one containment-unit-overlap finding, attributed to the
-// finer-grained card; the same refs on one card (a card cannot conflict with itself), two member
-// glyphs in one unit (the whole point of symbol granularity), two files in one directory and a file
-// against an unrelated or ancestor directory produce none.
-// The file-vs-directory pairing is crucible round fable-high-r10, F4: it involves no member glyph,
-// so neither the member pairing nor planglyph's resolve-backed member-vs-file tier ever compared
-// them, and a whole-unit target and one of its own files dispatched blind in parallel.
+// a member glyph or a file self glyph against the self glyph of its own direct directory on another card produces exactly one containment-unit-overlap finding, attributed to the finer-grained card; the same refs on one card (a card cannot conflict with itself), two member glyphs in one unit (the whole point of symbol granularity), two files in one directory and a file against an unrelated or ancestor directory produce none.
+// The file-vs-directory pairing is crucible round fable-high-r10, F4: it involves no member glyph, so neither the member pairing nor planglyph's resolve-backed member-vs-file tier ever compared them, and a whole-unit target and one of its own files dispatched blind in parallel.
 func TestSyntacticContainment(t *testing.T) {
 	t.Parallel()
 

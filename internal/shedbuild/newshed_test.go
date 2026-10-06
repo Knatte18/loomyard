@@ -16,10 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
-// TestNewShed_FieldCompleteAssembly asserts NewShed returns a *shedengine.Shed whose Producers
-// length matches the parsed recipe's own row count, whose StatusPath, LockPath, StatusLockPath,
-// MaxBounces, CommitStatus, RunID and MissingStatusWayForward fields are copied verbatim from the
-// passed ShedPaths, and whose Transient classifier is wired.
+// TestNewShed_FieldCompleteAssembly asserts NewShed returns a *shedengine.Shed whose Producers length matches the parsed recipe's own row count, whose StatusPath, LockPath, StatusLockPath, MaxBounces, CommitStatus, RunID and MissingStatusWayForward fields are copied verbatim from the passed ShedPaths, and whose Transient classifier is wired.
 func TestNewShed_FieldCompleteAssembly(t *testing.T) {
 	t.Parallel()
 
@@ -83,8 +80,7 @@ producers:
 		t.Errorf("shed.RunID, MissingStatusWayForward = %q, %q; want the told values", shed.RunID, shed.MissingStatusWayForward)
 	}
 
-	// The assembled Shed classifies a never-ready agent start as agent-start and a plain error as
-	// not transient.
+	// The assembled Shed classifies a never-ready agent start as agent-start and a plain error as not transient.
 	if shed.Transient == nil {
 		t.Fatal("shed.Transient = nil; want the shedtransient classifier")
 	}

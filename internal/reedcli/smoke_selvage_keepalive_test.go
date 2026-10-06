@@ -1,17 +1,10 @@
 //go:build tmux
 
-// smoke_selvage_keepalive_test.go pins Selvage's keepalive guarantee — the job the header pane's
-// `--blocking` process once served before this task, now served by a permanent, deliberately
-// ordinary shell pane instead of a custom blocking mechanism. There is no analogue of the old
-// blockForever/deadlock-avoidance test here: Selvage runs the operator's configured shell
-// (e.cfg.Shell) directly, so there is no reed-authored blocking loop left to pin against a runtime
-// deadlock detector. What survives is the guarantee itself — a session with Selvage in it never
-// dies just because every strand died — pinned instead against the real mechanism: an ordinary
-// shell surviving a killed sibling pane, surviving Ctrl-C at its own idle prompt, and surviving
-// Ctrl-C to a foreground job running inside it. Tagged smoke because untagged reedcli tests must
-// not spawn processes (Test Tier Purity Invariant).
-// The scenario also pins Selvage's placement (physically bottom-most, never a strand's pane) and the
-// status-line options `up` pins into the session.
+// smoke_selvage_keepalive_test.go pins Selvage's keepalive guarantee — the job the header pane's `--blocking` process once served before this task, now served by a permanent, deliberately ordinary shell pane instead of a custom blocking mechanism.
+// There is no analogue of the old blockForever/deadlock-avoidance test here: Selvage runs the operator's configured shell (e.cfg.Shell) directly, so there is no reed-authored blocking loop left to pin against a runtime deadlock detector.
+// What survives is the guarantee itself — a session with Selvage in it never dies just because every strand died — pinned instead against the real mechanism: an ordinary shell surviving a killed sibling pane, surviving Ctrl-C at its own idle prompt, and surviving Ctrl-C to a foreground job running inside it.
+// Tagged smoke because untagged reedcli tests must not spawn processes (Test Tier Purity Invariant).
+// The scenario also pins Selvage's placement (physically bottom-most, never a strand's pane) and the status-line options `up` pins into the session.
 
 package reedcli
 
@@ -41,11 +34,9 @@ func selvagePaneID(t *testing.T, worktree string) string {
 	return st.SelvagePaneID
 }
 
-// TestSmokeSelvage runs the Selvage claims against one hub's prime worktree, each step starting from a
-// freshly restarted session, so the steps share the one hub build and the one tmux server.
+// TestSmokeSelvage runs the Selvage claims against one hub's prime worktree, each step starting from a freshly restarted session, so the steps share the one hub build and the one tmux server.
 // The steps run serially in a fixed order and do not rely on each other's results.
-// The scenario calls t.Parallel but no step does, because every step shares the one hub and its tmux
-// server.
+// The scenario calls t.Parallel but no step does, because every step shares the one hub and its tmux server.
 func TestSmokeSelvage(t *testing.T) {
 	t.Parallel()
 	tmuxPath := tmuxBinaryPath(t)
@@ -58,21 +49,13 @@ func TestSmokeSelvage(t *testing.T) {
 		RunCLIIn(prime, &buf, []string{"down"})
 	})
 
-	// SurvivesUpAddRemoveAndReconcile pins Selvage's keepalive guarantee: the always-present Selvage
-	// pane must survive a full up -> add -> remove -> add cycle and every reconcile along the way, and it
-	// is never a strand's pane — because a strand's pane is always a fresh split (planPaneTarget never
-	// targets Selvage while any non-Selvage pane exists), and Selvage is exempt from both halves of
-	// reconcile's kill schedule — and, the whole point, still alive even when the strand table
-	// momentarily drops to zero after a remove.
-	// It mirrors TestSmokeLifecycle/UpWithOnlyForeignPanesKeepsSessionUsable's tmux-driven verification
-	// style (list-panes via the real binary, not reed's own reporting) but for Selvage instead of a
-	// foreign pane.
+	// SurvivesUpAddRemoveAndReconcile pins Selvage's keepalive guarantee: the always-present Selvage pane must survive a full up -> add -> remove -> add cycle and every reconcile along the way, and it is never a strand's pane — because a strand's pane is always a fresh split (planPaneTarget never targets Selvage while any non-Selvage pane exists), and Selvage is exempt from both halves of reconcile's kill schedule — and, the whole point, still alive even when the strand table momentarily drops to zero after a remove.
+	// It mirrors TestSmokeLifecycle/UpWithOnlyForeignPanesKeepsSessionUsable's tmux-driven verification style (list-panes via the real binary, not reed's own reporting) but for Selvage instead of a foreign pane.
 	if !t.Run("SurvivesUpAddRemoveAndReconcile", func(t *testing.T) {
 		restartSession(t, prime)
 
-		// up boots Selvage before any strand exists. Read the persisted pane id
-		// directly from reed.json (status carries no Selvage field)
-		// rather than assuming which of the session's panes it is.
+		// up boots Selvage before any strand exists.
+		// Read the persisted pane id directly from reed.json (status carries no Selvage field) rather than assuming which of the session's panes it is.
 		selvage := selvagePaneID(t, prime)
 
 		socket, session := socketAndSessionIn(t, prime)
@@ -85,13 +68,8 @@ func TestSmokeSelvage(t *testing.T) {
 		}
 		requireSelvageAlive("right after up (zero strands)")
 
-		// add: the preceding up's own reconcile already reaped the session's
-		// pre-Selvage pane (the same zero-strands-plus-alive-Selvage reap
-		// TestSmokeLifecycle/UpWithOnlyForeignPanesKeepsSessionUsable pins), so Selvage
-		// is the session's only pane when this first strand is added.
-		// planPaneTarget's Selvage-as-last-resort fallback then splits off
-		// Selvage itself — Selvage stays alive as the split TARGET, and the
-		// strand lands on the freshly split pane, never on Selvage.
+		// add: the preceding up's own reconcile already reaped the session's pre-Selvage pane (the same zero-strands-plus-alive-Selvage reap TestSmokeLifecycle/UpWithOnlyForeignPanesKeepsSessionUsable pins), so Selvage is the session's only pane when this first strand is added.
+		// planPaneTarget's Selvage-as-last-resort fallback then splits off Selvage itself — Selvage stays alive as the split TARGET, and the strand lands on the freshly split pane, never on Selvage.
 		guid := addStrandIn(t, prime, "pwsh -NoExit -Command Write-Host ready", "--name", "first")
 		requireSelvageAlive("after add")
 
@@ -118,8 +96,7 @@ func TestSmokeSelvage(t *testing.T) {
 		}
 		requireSelvageAlive("after removing the sole strand (zero strands tracked)")
 
-		// A reconciling verb (up) with zero strands must not disturb Selvage
-		// either — the same-shaped assertion the foreign-pane step makes for a foreign pane.
+		// A reconciling verb (up) with zero strands must not disturb Selvage either — the same-shaped assertion the foreign-pane step makes for a foreign pane.
 		mustRunReed(t, prime, "up")
 		requireSelvageAlive("after a reconciling up with zero strands")
 
@@ -143,10 +120,7 @@ func TestSmokeSelvage(t *testing.T) {
 		return
 	}
 
-	// SurvivesKillingEveryStrandPane pins the keepalive job itself: tmux destroys a session once its
-	// last window loses its last pane, so with every strand pane force-killed via tmux (not reed's own
-	// remove, which would already tear its bookkeeping down cleanly), Selvage alone must be enough to
-	// keep the session — and a subsequent reed verb usable — alive.
+	// SurvivesKillingEveryStrandPane pins the keepalive job itself: tmux destroys a session once its last window loses its last pane, so with every strand pane force-killed via tmux (not reed's own remove, which would already tear its bookkeeping down cleanly), Selvage alone must be enough to keep the session — and a subsequent reed verb usable — alive.
 	if !t.Run("SurvivesKillingEveryStrandPane", func(t *testing.T) {
 		restartSession(t, prime)
 		selvage := selvagePaneID(t, prime)
@@ -177,9 +151,7 @@ func TestSmokeSelvage(t *testing.T) {
 		return
 	}
 
-	// StaysPhysicallyBottomMostAcrossAddsAndRemoves pins the physical-position rule module-local to this
-	// package (see internal/reedengine/doc.go): Selvage is always the pane with the largest pane_top, in
-	// every state a series of adds and removes can leave the window in.
+	// StaysPhysicallyBottomMostAcrossAddsAndRemoves pins the physical-position rule module-local to this package (see internal/reedengine/doc.go): Selvage is always the pane with the largest pane_top, in every state a series of adds and removes can leave the window in.
 	if !t.Run("StaysPhysicallyBottomMostAcrossAddsAndRemoves", func(t *testing.T) {
 		restartSession(t, prime)
 		selvage := selvagePaneID(t, prime)
@@ -228,10 +200,7 @@ func TestSmokeSelvage(t *testing.T) {
 		return
 	}
 
-	// SurvivesCtrlCAtIdlePrompt pins the first of the two ordinary-shell survival claims in
-	// internal/reedengine/doc.go's design record: interactive bash ignores SIGINT while waiting at its
-	// own idle prompt, so a Ctrl-C sent directly to Selvage must never take the pane — or the session it
-	// anchors — down.
+	// SurvivesCtrlCAtIdlePrompt pins the first of the two ordinary-shell survival claims in internal/reedengine/doc.go's design record: interactive bash ignores SIGINT while waiting at its own idle prompt, so a Ctrl-C sent directly to Selvage must never take the pane — or the session it anchors — down.
 	if !t.Run("SurvivesCtrlCAtIdlePrompt", func(t *testing.T) {
 		restartSession(t, prime)
 		selvage := selvagePaneID(t, prime)
@@ -257,8 +226,7 @@ func TestSmokeSelvage(t *testing.T) {
 		return
 	}
 
-	// SurvivesCtrlCKillingAForegroundJob pins the second ordinary-shell survival claim: Ctrl-C to a
-	// foreground job running inside Selvage kills only that job, never the shell pane itself.
+	// SurvivesCtrlCKillingAForegroundJob pins the second ordinary-shell survival claim: Ctrl-C to a foreground job running inside Selvage kills only that job, never the shell pane itself.
 	if !t.Run("SurvivesCtrlCKillingAForegroundJob", func(t *testing.T) {
 		restartSession(t, prime)
 		selvage := selvagePaneID(t, prime)
@@ -312,22 +280,11 @@ func TestSmokeSelvage(t *testing.T) {
 	}
 
 	// StatusLinePinsIdentityAndPosition pins pinGeometryOptionsLocked's status-line pins after `up`:
-	// `#{status}` reads "on", `#{status-position}` reads "bottom", and `#{status-left}` names the repo,
-	// the worktree and the hub's absolute path, which the embedded default template renders
-	// ("{{.repo}}/{{.worktree}} · {{.hub}}") — the rendered text itself, not merely that `up` succeeded.
-	// Content is no longer assertable against any pane at all (pinGeometryOptionsLocked pins it into
-	// tmux's status-line option), so the assertion is a `display-message -p '#{status-left}'` readback
-	// rather than a pane-content poll, and the former 1-row pane-clamping regression the old header-pane
-	// test also pinned has no counterpart either — the status-line is not a pane and carries no row
-	// budget of its own to clamp against.
+	// `#{status}` reads "on", `#{status-position}` reads "bottom", and `#{status-left}` names the repo, the worktree and the hub's absolute path, which the embedded default template renders ("{{.repo}}/{{.worktree}} · {{.hub}}") — the rendered text itself, not merely that `up` succeeded.
+	// Content is no longer assertable against any pane at all (pinGeometryOptionsLocked pins it into tmux's status-line option), so the assertion is a `display-message -p '#{status-left}'` readback rather than a pane-content poll, and the former 1-row pane-clamping regression the old header-pane test also pinned has no counterpart either — the status-line is not a pane and carries no row budget of its own to clamp against.
 	//
-	// On Windows the identity values are not asserted directly — per the
-	// windows-status-line-is-an-unbranched-accepted-degrade Shared Decision, psmux may refuse some or all
-	// of the seven status-line set-option calls, and reed does not branch to compensate. What is asserted
-	// there instead is the SELF-CORRECTING half: whatever `#{status}` reads back, the reserved-row count
-	// it implies must match the window the layout was actually planned against, so a psmux that refuses
-	// the options fails the identity assertion loudly (an operator watching the status-line notices)
-	// rather than silently corrupting the layout.
+	// On Windows the identity values are not asserted directly — per the windows-status-line-is-an-unbranched-accepted-degrade Shared Decision, psmux may refuse some or all of the seven status-line set-option calls, and reed does not branch to compensate.
+	// What is asserted there instead is the SELF-CORRECTING half: whatever `#{status}` reads back, the reserved-row count it implies must match the window the layout was actually planned against, so a psmux that refuses the options fails the identity assertion loudly (an operator watching the status-line notices) rather than silently corrupting the layout.
 	t.Run("StatusLinePinsIdentityAndPosition", func(t *testing.T) {
 		restartSession(t, prime)
 		socket, session := socketAndSessionIn(t, prime)

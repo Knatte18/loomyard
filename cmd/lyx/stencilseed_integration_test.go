@@ -1,13 +1,10 @@
 //go:build integration
 
 // stencilseed_integration_test.go pins the root pre-run's stencil-seed path against real hubs.
-// stencilSeedTarget's hub-presence gate is pinned against the defect that a plain repository with no
-// hub-level sibling used to seed a fictional hub, and against a narrowing onto preflight.Wired, which
-// would stop seeding in three real-hub situations that seed correctly today.
+// stencilSeedTarget's hub-presence gate is pinned against the defect that a plain repository with no hub-level sibling used to seed a fictional hub, and against a narrowing onto preflight.Wired, which would stop seeding in three real-hub situations that seed correctly today.
 // seedStencilsAt is driven directly because seedStencils is a no-op under testing.Testing():
 // the first call seeds and commits both subtrees, and a second call writes nothing.
-// A command driven through the root is asserted to leave the hub unseeded under go test and never to
-// widen its envelope with a mutations or partial key.
+// A command driven through the root is asserted to leave the hub unseeded under go test and never to widen its envelope with a mutations or partial key.
 
 package main
 
@@ -53,10 +50,8 @@ func TestStencilSeedTarget_PlainRepoHasNoHub(t *testing.T) {
 }
 
 // TestStencilSeeding_HubScenario drives seedStencilsAt and stencilSeedTarget against one hubforge hub.
-// The steps run serially in this order and the first-seed steps rely on the first seed that the
-// "first seed" step performs; the last step removes a worktree, so it stays last.
-// The test calls t.Parallel but no step does, because the steps share the one hub fixture and its
-// mutations.
+// The steps run serially in this order and the first-seed steps rely on the first seed that the "first seed" step performs; the last step removes a worktree, so it stays last.
+// The test calls t.Parallel but no step does, because the steps share the one hub fixture and its mutations.
 func TestStencilSeeding_HubScenario(t *testing.T) {
 	t.Parallel()
 
@@ -166,12 +161,10 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 		return
 	}
 
-	// Every one of these target rows would fail if the gate were preflight.Wired instead of
-	// preflight.HubPresent, which is why they are here.
+	// Every one of these target rows would fail if the gate were preflight.Wired instead of preflight.HubPresent, which is why they are here.
 	targets := []struct {
 		name string
-		// cwd returns the directory to inject as the resolved cwd; it may mutate the hub, so the
-		// rows run in order and the destructive row is last.
+		// cwd returns the directory to inject as the resolved cwd; it may mutate the hub, so the rows run in order and the destructive row is last.
 		cwd          func(t *testing.T) string
 		wantWorktree string
 	}{
@@ -215,11 +208,7 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 	}
 }
 
-// TestSeedStencils_NoOpAndEnvelopeUnderRoot drives one read-only command through the root against a
-// real hub and asserts both that seedStencils stays a no-op under testing.Testing() -- without that
-// guard every untagged cmd/lyx test driving a Runnable command would spawn git -- and that the
-// emitted JSON object carries neither a "mutations" nor a "partial" key, so a pre-run seed never
-// widens a command's envelope.
+// TestSeedStencils_NoOpAndEnvelopeUnderRoot drives one read-only command through the root against a real hub and asserts both that seedStencils stays a no-op under testing.Testing() -- without that guard every untagged cmd/lyx test driving a Runnable command would spawn git -- and that the emitted JSON object carries neither a "mutations" nor a "partial" key, so a pre-run seed never widens a command's envelope.
 // It chdirs, which is process-global state, so it does not run in parallel.
 func TestSeedStencils_NoOpAndEnvelopeUnderRoot(t *testing.T) {
 	hub := hubforge.NewHub(t, ".")

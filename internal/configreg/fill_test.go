@@ -132,9 +132,7 @@ func moduleTemplate(t *testing.T, module string) string {
 	return fn()
 }
 
-// TestFill loads each module's real template with part of it missing and checks the load fills the
-// gap at the template default, leaves the file untouched and logs one fill line naming the module and
-// key-path; an empty but present file loads as the template.
+// TestFill loads each module's real template with part of it missing and checks the load fills the gap at the template default, leaves the file untouched and logs one fill line naming the module and key-path; an empty but present file loads as the template.
 // It serializes its rows because they swap the process-global logger output.
 func TestFill(t *testing.T) {
 	type fillRow struct {

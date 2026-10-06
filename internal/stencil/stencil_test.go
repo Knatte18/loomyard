@@ -1,7 +1,5 @@
 // stencil_test.go is the black-box contract test for stencil.Fill and stencil.FillOptional:
-// one table covers the happy path, the unfilled-top-level-marker guard (including sorting/dedup),
-// the incremental branch-internal guard, conditional sections, the leading-comment strip, the
-// no-HTML-escaping guarantee, and FillOptional's optional-marker exemption from both guards.
+// one table covers the happy path, the unfilled-top-level-marker guard (including sorting/dedup), the incremental branch-internal guard, conditional sections, the leading-comment strip, the no-HTML-escaping guarantee, and FillOptional's optional-marker exemption from both guards.
 
 package stencil_test
 
@@ -13,8 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// fillCase is one row of TestFill: a template and values rendered through stencil.Fill, or through
-// stencil.FillOptional when optional is non-nil.
+// fillCase is one row of TestFill: a template and values rendered through stencil.Fill, or through stencil.FillOptional when optional is non-nil.
 type fillCase struct {
 	name       string
 	template   string
@@ -43,10 +40,8 @@ func errText(err error) string {
 }
 
 // TestFill renders every row and asserts the exact output or the error shape.
-// Every row must leave the caller's values map untouched, and rendered a second time must give
-// byte-identical output and error text.
-// A row without optional names is also rendered through FillOptional(template, values, nil), which
-// must match Fill byte for byte.
+// Every row must leave the caller's values map untouched, and rendered a second time must give byte-identical output and error text.
+// A row without optional names is also rendered through FillOptional(template, values, nil), which must match Fill byte for byte.
 func TestFill(t *testing.T) {
 	t.Parallel()
 
@@ -198,8 +193,7 @@ func TestFill(t *testing.T) {
 			errContains: "Body",
 		},
 		{
-			// The discriminator is absent from values, so the static guard adds nothing and the
-			// execution-time missingkey=error path fires.
+			// The discriminator is absent from values, so the static guard adds nothing and the execution-time missingkey=error path fires.
 			name:     "branch_present_but_empty_unresolvable_condition_left_to_execution",
 			template: branchTemplate,
 			values:   map[string]string{"Body": ""},
@@ -240,8 +234,7 @@ func TestFill(t *testing.T) {
 			wantOutput: "Extra: ",
 		},
 		{
-			// The same TrimSpace definition of empty that governs the top-level guard governs the
-			// optional seeding.
+			// The same TrimSpace definition of empty that governs the top-level guard governs the optional seeding.
 			name:       "optional_whitespace_only_normalises_to_empty",
 			template:   "Extra: [{{.Extra}}]",
 			values:     map[string]string{"Extra": "   "},
@@ -278,8 +271,7 @@ func TestFill(t *testing.T) {
 			errContains: "Fasit",
 		},
 		{
-			// The exemption removes a name from the offenders list rather than suppressing the
-			// whole error.
+			// The exemption removes a name from the offenders list rather than suppressing the whole error.
 			name:     "mix_of_optional_and_required_empty_reports_only_required",
 			template: "Fasit: {{.Fasit}}\nExtra: {{.Extra}}",
 			values:   map[string]string{"Fasit": "", "Extra": ""},

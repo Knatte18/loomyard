@@ -171,10 +171,7 @@ func hash8For(t *testing.T, target string) string {
 }
 
 // TestWire_StandaloneMode wires one standalone CLI over a plain target and checks everything the mode promises at once:
-// the two-roots split (the worktree root, also the fork-audit workdir and the {{.worktree_root}} prompt token, is the target while every _lyx/.lyx path and module config base resolves under the derived state directory),
-// the nil-or-eager seams (a non-nil RefMatcher that never matches, no fabric opener, an armed in-process reed bring-up, an empty friction directory),
-// the default plan directory with its run-refusal mark clear,
-// and a runner whose public entry points return their ordinary verdict instead of a told-path refusal.
+// the two-roots split (the worktree root, also the fork-audit workdir and the {{.worktree_root}} prompt token, is the target while every _lyx/.lyx path and module config base resolves under the derived state directory), the nil-or-eager seams (a non-nil RefMatcher that never matches, no fabric opener, an armed in-process reed bring-up, an empty friction directory), the default plan directory with its run-refusal mark clear, and a runner whose public entry points return their ordinary verdict instead of a told-path refusal.
 // It sets XDG_STATE_HOME and LOCALAPPDATA, so it is not parallel.
 func TestWire_StandaloneMode(t *testing.T) {
 	target := t.TempDir()
@@ -248,8 +245,7 @@ func TestWire_StandaloneMode(t *testing.T) {
 	}
 }
 
-// TestWire_PlanDirResolution covers an explicit --plan-dir override in each mode, a spelling of the hub default that is no override,
-// and the standalone refusal for an absent default plan directory.
+// TestWire_PlanDirResolution covers an explicit --plan-dir override in each mode, a spelling of the hub default that is no override, and the standalone refusal for an absent default plan directory.
 func TestWire_PlanDirResolution(t *testing.T) {
 	t.Run("ExplicitOverride_HubMode", func(t *testing.T) {
 		hub := t.TempDir()
@@ -446,10 +442,8 @@ func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
 	}
 }
 
-// TestWireHub_LeavesDurableSinkDirUntouched guards against a later refactor quietly routing hub
-// mode through the standalone sink redirect. It sets a sentinel override before calling wireHub,
-// then asserts the sink still writes to that sentinel afterward -- a wireHub that had overwritten
-// the override would have put the trace file somewhere else.
+// TestWireHub_LeavesDurableSinkDirUntouched guards against a later refactor quietly routing hub mode through the standalone sink redirect.
+// It sets a sentinel override before calling wireHub, then asserts the sink still writes to that sentinel afterward -- a wireHub that had overwritten the override would have put the trace file somewhere else.
 //
 //testtiming:keep pins that wireHub leaves the durable sink override untouched, which its covering test does not assert
 func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
@@ -762,10 +756,8 @@ func TestReedUpSeam_WatcherLifecycle(t *testing.T) {
 	})
 }
 
-// TestProductionFiles_NeverReferenceHubWatchdogMechanism proves this package's production files never
-// reference the detached per-hub watchdog daemon's mechanism: standalone computes no hub lock path
-// (fabricengine.HubScratchDir) and spawns no daemon (the "reed watchdog" verb). Both belong to
-// hub mode alone, per this batch's own scope note.
+// TestProductionFiles_NeverReferenceHubWatchdogMechanism proves this package's production files never reference the detached per-hub watchdog daemon's mechanism: standalone computes no hub lock path (fabricengine.HubScratchDir) and spawns no daemon (the "reed watchdog" verb).
+// Both belong to hub mode alone, per this batch's own scope note.
 //
 //testtiming:keep internal/loomcli/cli_test.go names this test
 func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {

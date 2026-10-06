@@ -5,11 +5,7 @@ package preflight
 
 import "testing"
 
-// TestReport_AddFailure covers AddFailure on a Report shaped the way a check's return value is
-// shaped -- OK explicitly set true before any AddFailure call, rather than the bare zero value whose
-// OK defaults to false with an empty Failures slice and so does not itself satisfy the invariant: each
-// recorded failure is appended in order with its check and reason, and the first one flips OK to
-// false, so OK == (len(Failures) == 0) holds before and after.
+// TestReport_AddFailure covers AddFailure on a Report shaped the way a check's return value is shaped -- OK explicitly set true before any AddFailure call, rather than the bare zero value whose OK defaults to false with an empty Failures slice and so does not itself satisfy the invariant: each recorded failure is appended in order with its check and reason, and the first one flips OK to false, so OK == (len(Failures) == 0) holds before and after.
 //
 //testtiming:keep pins AddFailure's append order, failure fields and OK flip, which the CheckResolved table covering its blocks only reads back through the CheckID set
 func TestReport_AddFailure(t *testing.T) {

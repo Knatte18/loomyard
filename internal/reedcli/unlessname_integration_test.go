@@ -57,11 +57,8 @@ func unlessPanes(t *testing.T, tmux, socket, session string) string {
 	return string(out)
 }
 
-// TestUnlessName runs the --unless-name claims against one hub whose prime worktree accumulates strands
-// across the steps: no orch adds as today, a live orch makes the add a no-op, and a dead orch pane
-// lets the add proceed. The steps run serially in a fixed order and each later step relies on the
-// earlier step's session; the scenario calls t.Parallel but no step does, because every step shares the
-// one hub, session and strand table.
+// TestUnlessName runs the --unless-name claims against one hub whose prime worktree accumulates strands across the steps: no orch adds as today, a live orch makes the add a no-op, and a dead orch pane lets the add proceed.
+// The steps run serially in a fixed order and each later step relies on the earlier step's session; the scenario calls t.Parallel but no step does, because every step shares the one hub, session and strand table.
 func TestUnlessName(t *testing.T) {
 	t.Parallel()
 	h := hubforge.NewHub(t, ".")
@@ -92,8 +89,7 @@ func TestUnlessName(t *testing.T) {
 		return
 	}
 
-	// The orch strand stays behind for the dead-orch step, whose session the claude strand of the first
-	// step keeps alive once the orch pane is gone.
+	// The orch strand stays behind for the dead-orch step, whose session the claude strand of the first step keeps alive once the orch pane is gone.
 	var orchName string
 	if !t.Run("LiveOrchSkipsAndDisturbsNothing", func(t *testing.T) {
 		code, orch := unlessRun(t, worktree, "add", "--name", "orch", "--cmd", coldAddLaunchCmd())

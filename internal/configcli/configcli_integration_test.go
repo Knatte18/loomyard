@@ -22,23 +22,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// TestConfigOverRealHub drives configuration edits through a real hub with one pair: a per-worktree
-// module edit is synced into the pair's fabric worktree while the code side stays pristine, and a hub-wide
-// module `--set` changes the hub file and commits it in _board with no per-worktree copy written.
+// TestConfigOverRealHub drives configuration edits through a real hub with one pair: a per-worktree module edit is synced into the pair's fabric worktree while the code side stays pristine, and a hub-wide module `--set` changes the hub file and commits it in _board with no per-worktree copy written.
 // Its steps run in this order on one hub and pair, so the scenario builds the hub once.
-// It does not call t.Parallel: it sets WEFT_SKIP_GIT and WEFT_SKIP_PUSH below, and t.Setenv panics
-// under t.Parallel.
+// It does not call t.Parallel: it sets WEFT_SKIP_GIT and WEFT_SKIP_PUSH below, and t.Setenv panics under t.Parallel.
 func TestConfigOverRealHub(t *testing.T) {
 	const slug = "config-hub-test"
 
-	// fabriccli.CloneAndWire has already materialized every registered module's config plus the
-	// repo-wide fabric.yaml at BoardDir, and the records-side primary already sits on its
-	// WeftBranchName-suffixed branch.
+	// fabriccli.CloneAndWire has already materialized every registered module's config plus the repo-wide fabric.yaml at BoardDir, and the records-side primary already sits on its WeftBranchName-suffixed branch.
 	h := hubforge.NewHub(t, ".")
 
-	// Topology.Add wires the new pair's junctions itself, reading the wired name-set from the real
-	// repo-wide fabric.yaml. Without that the worktree has no _lyx, so configengine.Edit→FindBaseDir
-	// would error.
+	// Topology.Add wires the new pair's junctions itself, reading the wired name-set from the real repo-wide fabric.yaml.
+	// Without that the worktree has no _lyx, so configengine.Edit→FindBaseDir would error.
 	if _, err := h.Topology.Add(h.Location, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("Topology.Add(%q): %v", slug, err)
 	}

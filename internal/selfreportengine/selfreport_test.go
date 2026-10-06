@@ -97,9 +97,7 @@ func installFailingGitHubClientFactory(t *testing.T, err error) {
 	t.Cleanup(func() { NewGitHubClient = orig })
 }
 
-// TestDefaultLabels verifies that DefaultLabels returns exactly the single-element "bug" default
-// the automatic and manual filing paths share, and that each call returns its own slice, so
-// mutating one call's result cannot corrupt the default seen by the next caller.
+// TestDefaultLabels verifies that DefaultLabels returns exactly the single-element "bug" default the automatic and manual filing paths share, and that each call returns its own slice, so mutating one call's result cannot corrupt the default seen by the next caller.
 func TestDefaultLabels(t *testing.T) {
 	first := DefaultLabels()
 	second := DefaultLabels()
@@ -115,9 +113,7 @@ func TestDefaultLabels(t *testing.T) {
 	}
 }
 
-// TestCreateIssue_Success drives the successful path with and without a body: the returned url and
-// number match the server's typed response, and the request sent carries the expected method, path,
-// title, labels in order and, only when a body was given, the "body" field.
+// TestCreateIssue_Success drives the successful path with and without a body: the returned url and number match the server's typed response, and the request sent carries the expected method, path, title, labels in order and, only when a body was given, the "body" field.
 func TestCreateIssue_Success(t *testing.T) {
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/42"
 	tests := []struct {

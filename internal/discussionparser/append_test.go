@@ -34,9 +34,7 @@ func readFile(t *testing.T, path string) string {
 	return string(data)
 }
 
-// TestAppendDecision_AppendsAtEndOfDecisionsSection asserts the entry lands after the Decisions
-// section's last non-blank line, ignoring a heading inside a fence, and that the support log and the
-// rest of the record stay byte-identical.
+// TestAppendDecision_AppendsAtEndOfDecisionsSection asserts the entry lands after the Decisions section's last non-blank line, ignoring a heading inside a fence, and that the support log and the rest of the record stay byte-identical.
 func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 	t.Parallel()
 

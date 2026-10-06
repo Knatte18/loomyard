@@ -1,8 +1,6 @@
-// report_test.go contains unit tests for the sandbox-report.json contract and the fetchReport
-// validate/stamp/fetch pipeline.
+// report_test.go contains unit tests for the sandbox-report.json contract and the fetchReport validate/stamp/fetch pipeline.
 // All tests use t.TempDir() -- no real lyx, claude, or network calls are made.
-// The runFetch tests rewrite the package-level devBinPath and lookPath seams, so they do not call
-// t.Parallel; the fetchReport tests touch no seam and run in parallel.
+// The runFetch tests rewrite the package-level devBinPath and lookPath seams, so they do not call t.Parallel; the fetchReport tests touch no seam and run in parallel.
 
 package main
 
@@ -49,9 +47,7 @@ func scratchIsEmpty(t *testing.T, loomyardRoot string) bool {
 	return len(entries) == 0
 }
 
-// TestFetchReport_AcceptsValidReport verifies a valid report is fetched into a .scratch directory
-// that fetchReport creates, with its meta stamped from the binary's fingerprint over whatever meta
-// the report carried; a present but empty items array is accepted, not rejected as malformed.
+// TestFetchReport_AcceptsValidReport verifies a valid report is fetched into a .scratch directory that fetchReport creates, with its meta stamped from the binary's fingerprint over whatever meta the report carried; a present but empty items array is accepted, not rejected as malformed.
 //
 //testtiming:keep pins the stamped fingerprint and the decoded items of a fetched report, which TestRunFetch_StampsTheResolvedBinary reads only as far as the source
 func TestFetchReport_AcceptsValidReport(t *testing.T) {
@@ -133,11 +129,7 @@ func TestFetchReport_AcceptsValidReport(t *testing.T) {
 	}
 }
 
-// TestFetchReport_RejectsInvalidReport verifies every unusable report is refused with an error that
-// names the cause, and that nothing is written to .scratch: a missing items key, truncated JSON
-// (the error names the source path), a missing or incorrect "source" field, and an absent file
-// (a missing-file error distinct from the JSON parse error, so an operator can tell "the agent wrote
-// nothing" from "the agent wrote garbage").
+// TestFetchReport_RejectsInvalidReport verifies every unusable report is refused with an error that names the cause, and that nothing is written to .scratch: a missing items key, truncated JSON (the error names the source path), a missing or incorrect "source" field, and an absent file (a missing-file error distinct from the JSON parse error, so an operator can tell "the agent wrote nothing" from "the agent wrote garbage").
 func TestFetchReport_RejectsInvalidReport(t *testing.T) {
 	t.Parallel()
 
@@ -222,9 +214,7 @@ func stubLyxLookPath(t *testing.T, fakeLyx string) func() {
 	}
 }
 
-// TestRunFetch_StampsTheResolvedBinary verifies runFetch fetches a valid report and stamps it with
-// the fingerprint of the binary resolveLyx picked: the on-PATH binary as prod, or the dev binary as
-// dev without consulting PATH at all.
+// TestRunFetch_StampsTheResolvedBinary verifies runFetch fetches a valid report and stamps it with the fingerprint of the binary resolveLyx picked: the on-PATH binary as prod, or the dev binary as dev without consulting PATH at all.
 func TestRunFetch_StampsTheResolvedBinary(t *testing.T) {
 	tests := []struct {
 		name       string

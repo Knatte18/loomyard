@@ -1,10 +1,7 @@
 //go:build integration
 
-// cli_integration_test.go drives the stencil module through RunCLIIn against one real fabric hub
-// built by internal/hubforge, exercising list, validate, diff (both modes), sync, and the promote
-// round trip end to end as the serial steps of TestStencilCLI_Scenario. It is Tier 2: it builds a
-// real hub and spawns git, so it needs gitkit.HermeticGitEnv() (see testmain_test.go) and the
-// integration build tag.
+// cli_integration_test.go drives the stencil module through RunCLIIn against one real fabric hub built by internal/hubforge, exercising list, validate, diff (both modes), sync, and the promote round trip end to end as the serial steps of TestStencilCLI_Scenario.
+// It is Tier 2: it builds a real hub and spawns git, so it needs gitkit.HermeticGitEnv() (see testmain_test.go) and the integration build tag.
 
 package stencilcli
 
@@ -95,19 +92,15 @@ func diffAllEntryDiffers(t *testing.T, env map[string]any, name string) bool {
 	return false
 }
 
-// hubStep is one serial step of TestStencilCLI_Scenario, run against the scenario's one hub and its
-// prime worktree.
+// hubStep is one serial step of TestStencilCLI_Scenario, run against the scenario's one hub and its prime worktree.
 type hubStep struct {
 	name string
 	run  func(t *testing.T, h *hubforge.Hub, worktree string)
 }
 
 // TestStencilCLI_Scenario builds one hub and runs the stencil CLI's steps against it in order.
-// A step relies on the hub state the steps before it left: the first sync seeds every board copy,
-// the source-tree refusals run before any step creates contracts/stencils/, and each later step
-// edits a board copy of its own (registry names 0 and 1, 2 and 3, 4, 5) so none disturbs another.
-// The steps share one hub and one worktree, so none calls t.Parallel; the scenario itself does, as
-// it touches no state outside its own hub except the logger output the last step swaps and restores.
+// A step relies on the hub state the steps before it left: the first sync seeds every board copy, the source-tree refusals run before any step creates contracts/stencils/, and each later step edits a board copy of its own (registry names 0 and 1, 2 and 3, 4, 5) so none disturbs another.
+// The steps share one hub and one worktree, so none calls t.Parallel; the scenario itself does, as it touches no state outside its own hub except the logger output the last step swaps and restores.
 func TestStencilCLI_Scenario(t *testing.T) {
 	t.Parallel()
 
@@ -131,8 +124,7 @@ func TestStencilCLI_Scenario(t *testing.T) {
 	}
 }
 
-// stepListAfterFirstSync runs the hub's first sync and asserts list names every registered stencil
-// and spec, and every stencil in the untouched state.
+// stepListAfterFirstSync runs the hub's first sync and asserts list names every registered stencil and spec, and every stencil in the untouched state.
 func stepListAfterFirstSync(t *testing.T, h *hubforge.Hub, worktree string) {
 	if _, code, raw := runCLI(t, worktree, "sync"); code != 0 {
 		t.Fatalf("stencil sync = %d; want 0. output: %s", code, raw)
@@ -193,9 +185,7 @@ func stepListAfterFirstSync(t *testing.T, h *hubforge.Hub, worktree string) {
 	}
 }
 
-// stepValidateReportsErrorAndWarning breaks two board copies directly -- one gains a marker unknown
-// to its shipped default, one loses a marker its shipped default declares -- and asserts validate
-// reports the first as an error, the second as a warning, and exits non-zero overall.
+// stepValidateReportsErrorAndWarning breaks two board copies directly -- one gains a marker unknown to its shipped default, one loses a marker its shipped default declares -- and asserts validate reports the first as an error, the second as a warning, and exits non-zero overall.
 func stepValidateReportsErrorAndWarning(t *testing.T, h *hubforge.Hub, worktree string) {
 	registryNames := stencils.Registry().Names()
 	stencilsDir := fabricengine.StencilsDir(h.Path)
@@ -272,8 +262,7 @@ func stepValidateReportsErrorAndWarning(t *testing.T, h *hubforge.Hub, worktree 
 	}
 }
 
-// stepSecondSyncIsIdempotent asserts a second sync straight after the first, with nothing changed in
-// between, writes nothing, creates no commit, and returns an empty mutations array.
+// stepSecondSyncIsIdempotent asserts a second sync straight after the first, with nothing changed in between, writes nothing, creates no commit, and returns an empty mutations array.
 func stepSecondSyncIsIdempotent(t *testing.T, h *hubforge.Hub, worktree string) {
 	env, code, raw := runCLI(t, worktree, "sync")
 	if code != 0 {
@@ -291,11 +280,7 @@ func stepSecondSyncIsIdempotent(t *testing.T, h *hubforge.Hub, worktree string) 
 	}
 }
 
-// stepDiffOne covers both `diff <name>` outcomes: a recoverable base (a fabricated
-// historical board revision committed directly to board history, then diffed against today's real
-// shipped default) and an unrecoverable one (an on-disk stamp matching no board history revision at
-// all), asserting the latter reports found:false with an explicit reason and a non-empty fallback
-// diff rather than a silently empty one.
+// stepDiffOne covers both `diff <name>` outcomes: a recoverable base (a fabricated historical board revision committed directly to board history, then diffed against today's real shipped default) and an unrecoverable one (an on-disk stamp matching no board history revision at all), asserting the latter reports found:false with an explicit reason and a non-empty fallback diff rather than a silently empty one.
 func stepDiffOne(t *testing.T, h *hubforge.Hub, worktree string) {
 	boardDir := h.BoardDir()
 	stencilsDir := fabricengine.StencilsDir(h.Path)
@@ -350,11 +335,7 @@ func stepDiffOne(t *testing.T, h *hubforge.Hub, worktree string) {
 	}
 }
 
-// stepPromoteRoundTripAndDiffAll closes the loop: it edits the board copy, confirms
-// diff --all --exit-code fails on the unported edit, runs promote, confirms the source tree received
-// exactly the edit with the stamp line stripped and that diff --all --exit-code now succeeds, then
-// simulates the next deploy landing the promoted content as the new shipped default and confirms the
-// reconciliation row restamps the board copy back to the untouched state.
+// stepPromoteRoundTripAndDiffAll closes the loop: it edits the board copy, confirms diff --all --exit-code fails on the unported edit, runs promote, confirms the source tree received exactly the edit with the stamp line stripped and that diff --all --exit-code now succeeds, then simulates the next deploy landing the promoted content as the new shipped default and confirms the reconciliation row restamps the board copy back to the untouched state.
 func stepPromoteRoundTripAndDiffAll(t *testing.T, h *hubforge.Hub, worktree string) {
 	stencilsDir := fabricengine.StencilsDir(h.Path)
 	sourceRoot := filepath.Join(worktree, "contracts", "stencils")
@@ -436,9 +417,7 @@ func stepPromoteRoundTripAndDiffAll(t *testing.T, h *hubforge.Hub, worktree stri
 	}
 }
 
-// stepPromoteAndDiffAllRequireSourceTree asserts that both promote and diff --all fail
-// loudly, naming the missing tree, rather than no-op or create one, when the worktree carries no
-// contracts/stencils/ source tree at all.
+// stepPromoteAndDiffAllRequireSourceTree asserts that both promote and diff --all fail loudly, naming the missing tree, rather than no-op or create one, when the worktree carries no contracts/stencils/ source tree at all.
 // It must run before any step creates that tree.
 func stepPromoteAndDiffAllRequireSourceTree(t *testing.T, h *hubforge.Hub, worktree string) {
 	sourceRoot := filepath.Join(worktree, "contracts", "stencils")
@@ -460,9 +439,7 @@ func stepPromoteAndDiffAllRequireSourceTree(t *testing.T, h *hubforge.Hub, workt
 	}
 }
 
-// stepPromoteRequiresMatchingSourceFile asserts promote errors, naming the missing file,
-// rather than creating one, when the worktree's contracts/stencils/ source tree exists but the target
-// stencil's own family subfile is absent from it.
+// stepPromoteRequiresMatchingSourceFile asserts promote errors, naming the missing file, rather than creating one, when the worktree's contracts/stencils/ source tree exists but the target stencil's own family subfile is absent from it.
 // It creates the tree's root, so it runs after the step that needs the tree absent.
 func stepPromoteRequiresMatchingSourceFile(t *testing.T, h *hubforge.Hub, worktree string) {
 	sourceRoot := filepath.Join(worktree, "contracts", "stencils")
@@ -485,8 +462,7 @@ func stepPromoteRequiresMatchingSourceFile(t *testing.T, h *hubforge.Hub, worktr
 	}
 }
 
-// stepDriftWarningNeverBlocksExitCode asserts the port-back drift warning fires as a
-// plain logger.Warn line and never affects sync's exit code.
+// stepDriftWarningNeverBlocksExitCode asserts the port-back drift warning fires as a plain logger.Warn line and never affects sync's exit code.
 func stepDriftWarningNeverBlocksExitCode(t *testing.T, h *hubforge.Hub, worktree string) {
 	sourceRoot := filepath.Join(worktree, "contracts", "stencils")
 

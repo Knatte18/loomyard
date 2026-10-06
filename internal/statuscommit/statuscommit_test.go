@@ -9,8 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
-// TestNew_OrdinaryPath covers the path with no merge in progress: the seam commits with the message
-// its prefix names, then runs afterCommit, then pushes.
+// TestNew_OrdinaryPath covers the path with no merge in progress: the seam commits with the message its prefix names, then runs afterCommit, then pushes.
 func TestNew_OrdinaryPath(t *testing.T) {
 	t.Parallel()
 
@@ -113,13 +112,9 @@ func TestNew_CommitErrorPropagates(t *testing.T) {
 	}
 }
 
-// TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip covers a commit failure the second probe
-// explains: the probe is unlocked, so a merge can go live between the first probe and the commit.
-// Driven live during review: without the re-probe, a MERGE_HEAD landing in that window failed the
-// path-scoped commit with git's "cannot do a partial commit during a merge" and killed the run.
-// Both a re-probe that reports the merge live and one that cannot read the state take the skip
-// disposition, never the halt: an unreadable re-probe is the same untrustworthy-git-state category
-// the skip exists for.
+// TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip covers a commit failure the second probe explains: the probe is unlocked, so a merge can go live between the first probe and the commit.
+// Driven live during review: without the re-probe, a MERGE_HEAD landing in that window failed the path-scoped commit with git's "cannot do a partial commit during a merge" and killed the run.
+// Both a re-probe that reports the merge live and one that cannot read the state take the skip disposition, never the halt: an unreadable re-probe is the same untrustworthy-git-state category the skip exists for.
 func TestNew_CommitFailureExplainedByTheReProbeTakesTheSkip(t *testing.T) {
 	t.Parallel()
 

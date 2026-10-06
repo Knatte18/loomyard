@@ -53,9 +53,7 @@ func stripGoComments(data []byte) []byte {
 	return out
 }
 
-// TestStripGoComments locks in the comment-stripping guard: banned tokens that appear only in
-// comments must be removed, while identical tokens in real code (including string literals) must
-// survive untouched.
+// TestStripGoComments locks in the comment-stripping guard: banned tokens that appear only in comments must be removed, while identical tokens in real code (including string literals) must survive untouched.
 //
 //testtiming:keep pins that the comment stripper removes a banned token only from comments, which the enforcement scans covering its blocks never assert on literal source
 func TestStripGoComments(t *testing.T) {

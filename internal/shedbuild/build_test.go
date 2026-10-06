@@ -12,8 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
-// TestBuild_RowsCarryRoutingInRecipeOrder asserts Build returns one definition per row, in recipe
-// order, each carrying its row's routing fields and a producer.
+// TestBuild_RowsCarryRoutingInRecipeOrder asserts Build returns one definition per row, in recipe order, each carrying its row's routing fields and a producer.
 func TestBuild_RowsCarryRoutingInRecipeOrder(t *testing.T) {
 	t.Parallel()
 
@@ -46,8 +45,7 @@ func TestBuild_RowsCarryRoutingInRecipeOrder(t *testing.T) {
 	}
 }
 
-// TestBuild_Errors asserts each Build failure wraps the shedbuild prefix and names the offending
-// row's index and name, an unknown engine, or the rejected config key.
+// TestBuild_Errors asserts each Build failure wraps the shedbuild prefix and names the offending row's index and name, an unknown engine, or the rejected config key.
 func TestBuild_Errors(t *testing.T) {
 	t.Parallel()
 
@@ -81,8 +79,7 @@ func TestBuild_Errors(t *testing.T) {
 			wantSubs: []string{"0", "LLM-Row", "stencil"},
 		},
 		{
-			// Proves cfg reaches the constructor rather than being dropped: an engine that accepts
-			// no config keys rejects a non-empty block through its own unknown-key check.
+			// Proves cfg reaches the constructor rather than being dropped: an engine that accepts no config keys rejects a non-empty block through its own unknown-key check.
 			name:     "non-empty config on an engine that accepts none",
 			rows:     []Row{{Name: "Stub-Row", Engine: "Stub", Config: map[string]any{"bogus": "value"}}},
 			fullEnv:  true,

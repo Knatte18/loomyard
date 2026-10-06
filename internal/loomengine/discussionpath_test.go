@@ -12,10 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
-// TestDiscussionPaths pins the discussion directory, the decision record and the support log at the
-// anchor, and that DiscussionDirRel is the relative form DiscussionDir composes from.
-// The anchored row's AnchorRel differs from "." to prove the accessors follow the anchored subpath,
-// not the bare worktree root; the unanchored row's anchor path equals the worktree path.
+// TestDiscussionPaths pins the discussion directory, the decision record and the support log at the anchor, and that DiscussionDirRel is the relative form DiscussionDir composes from.
+// The anchored row's AnchorRel differs from "." to prove the accessors follow the anchored subpath, not the bare worktree root; the unanchored row's anchor path equals the worktree path.
 //
 //testtiming:keep pins the exact discussion directory, decision record and support log paths at an anchored and an unanchored location, which the covering spec tests only pass through unasserted
 func TestDiscussionPaths(t *testing.T) {

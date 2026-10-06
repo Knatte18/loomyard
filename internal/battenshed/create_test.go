@@ -79,10 +79,7 @@ func readStuckFile(t *testing.T, scratchDir, producer string, ptr shedengine.Out
 	return string(data)
 }
 
-// TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim asserts every createWorktree error
-// parks the row Stuck with the error's own text in the reason file, unreworded -- fabric's
-// pre-existing-branch remedy wording and its bare dirty-worktree string included -- and releases
-// the prime lock.
+// TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim asserts every createWorktree error parks the row Stuck with the error's own text in the reason file, unreworded -- fabric's pre-existing-branch remedy wording and its bare dirty-worktree string included -- and releases the prime lock.
 func TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim(t *testing.T) {
 	t.Parallel()
 
@@ -223,9 +220,7 @@ func TestWorktreeCreate_CancelledAfterSuccessfulCreate(t *testing.T) {
 	}
 }
 
-// TestWorktreeCreate_CreatesOnceTheLockIsFree asserts the row creates the worktree and reports Done
-// whether the prime lock is free at once or contended for a few polls first, sleeping once per
-// contended poll, and releases the lock afterwards.
+// TestWorktreeCreate_CreatesOnceTheLockIsFree asserts the row creates the worktree and reports Done whether the prime lock is free at once or contended for a few polls first, sleeping once per contended poll, and releases the lock afterwards.
 func TestWorktreeCreate_CreatesOnceTheLockIsFree(t *testing.T) {
 	t.Parallel()
 

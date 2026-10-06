@@ -43,8 +43,7 @@ func TestResolveRunID(t *testing.T) {
 	}
 }
 
-// TestRunDirResolution pins which directory a run-id addresses: the slug dir for a new run,
-// the legacy self dir while only it exists, the slug dir once both exist, and an unrelated id's own dir.
+// TestRunDirResolution pins which directory a run-id addresses: the slug dir for a new run, the legacy self dir while only it exists, the slug dir once both exist, and an unrelated id's own dir.
 func TestRunDirResolution(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

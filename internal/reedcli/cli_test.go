@@ -1,8 +1,7 @@
 // cli_test.go covers the reedcli cobra seam through RunCLI: watchdog's flag refusals and the not-a-git-repo error surface.
 // No live tmux session is required by any test in this file;
 // the real up/add/status/down round-trip lives in smoke_test.go behind //go:build tmux || llm.
-// Config resolution against a real fixture hub now lives in cli_integration_test.go per the Test
-// Tier Purity Invariant.
+// Config resolution against a real fixture hub now lives in cli_integration_test.go per the Test Tier Purity Invariant.
 // Every test here calls t.Chdir, which is process-global state, so none calls t.Parallel.
 
 package reedcli
@@ -15,14 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
-// TestRunCLI_Watchdog_RefusesBadHubPath verifies that watchdog refuses both an absent and a relative
-// --hub-path on the envelope, before it ever blocks.
-// The non-git row also verifies that "watchdog" takes the PersistentPreRunE's early return: invoked
-// from a directory that is not a git repository, it must not fail with lyxcwd.Resolve's
-// not-a-git-repository error — the verb must run with no git repository present at all. Its own RunE
-// then reports the missing --hub-path flag on the envelope instead, which is the observable proof
-// that PersistentPreRunE returned nil (skipping c.eng population) rather than aborting into the
-// git-repo error.
+// TestRunCLI_Watchdog_RefusesBadHubPath verifies that watchdog refuses both an absent and a relative --hub-path on the envelope, before it ever blocks.
+// The non-git row also verifies that "watchdog" takes the PersistentPreRunE's early return: invoked from a directory that is not a git repository, it must not fail with lyxcwd.Resolve's not-a-git-repository error — the verb must run with no git repository present at all.
+// Its own RunE then reports the missing --hub-path flag on the envelope instead, which is the observable proof that PersistentPreRunE returned nil (skipping c.eng population) rather than aborting into the git-repo error.
 func TestRunCLI_Watchdog_RefusesBadHubPath(t *testing.T) {
 	tests := []struct {
 		name string

@@ -27,8 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
-// TestRunDispatchesToBoard dispatches a succeeding and a failing board command against one seeded
-// repo and checks the exit code and envelope each propagates.
+// TestRunDispatchesToBoard dispatches a succeeding and a failing board command against one seeded repo and checks the exit code and envelope each propagates.
 // It chdirs, which is process-global state, so neither it nor its steps run in parallel.
 func TestRunDispatchesToBoard(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")

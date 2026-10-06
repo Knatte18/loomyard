@@ -228,18 +228,13 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 	}
 }
 
-// TestMutationRecord_FabricengineProductionSource is the Mutation Record Invariant's guard (see
-// `PATTERN-mutation-record`).
+// TestMutationRecord_FabricengineProductionSource is the Mutation Record Invariant's guard (see `PATTERN-mutation-record`).
 // It takes its module root from scankit and asserts two things by raw source inspection, never by inspecting an executor's body:
 //
-//  1. Every executor named in destructiveGuardRecordingExecutors declares a leading
-//     `rec *Mutations` parameter in internal/fabricengine/destroy.go.
-//  2. Every result type named in destructiveGuardMutatingResultTypes embeds MutationRecord, and
-//     every result type named in destructiveGuardReadOnlyResultTypes does not.
+//  1. Every executor named in destructiveGuardRecordingExecutors declares a leading `rec *Mutations` parameter in internal/fabricengine/destroy.go.
+//  2. Every result type named in destructiveGuardMutatingResultTypes embeds MutationRecord, and every result type named in destructiveGuardReadOnlyResultTypes does not.
 //
-// See this file's header comment for this guard's blind spots: it pins the parameter and the
-// embed by declaration inspection only, never that an executor body actually appends, nor that
-// what it appends is correct.
+// See this file's header comment for this guard's blind spots: it pins the parameter and the embed by declaration inspection only, never that an executor body actually appends, nor that what it appends is correct.
 //
 //testtiming:keep internal/fabricengine/doc.go names this test as the Mutation Record Invariant's guard
 func TestMutationRecord_FabricengineProductionSource(t *testing.T) {

@@ -178,8 +178,7 @@ func BenchmarkStep_LongHistory(b *testing.B) {
 	}
 }
 
-// TestEpisodeStuckCount_SegmentDoneEndsEpisode covers a Burler-round row, which only ever returns
-// Stuck: its segment's Bouncer passing ends its episode, while a standalone row counts on.
+// TestEpisodeStuckCount_SegmentDoneEndsEpisode covers a Burler-round row, which only ever returns Stuck: its segment's Bouncer passing ends its episode, while a standalone row counts on.
 //
 //testtiming:keep pins that a segment Bouncer's done ends a Burler-round row's episode and segmentEnders of a standalone row is nil, which its covering tests do not
 func TestEpisodeStuckCount_SegmentDoneEndsEpisode(t *testing.T) {

@@ -17,9 +17,7 @@ func sortedCopy(keys []string) []string {
 	return out
 }
 
-// TestReconcile pins the merge: added and removed report template-only and file-only key paths,
-// user values, template comments and template key order survive in merged, lists and open maps are
-// carried whole, and reconciling the merged output again changes nothing.
+// TestReconcile pins the merge: added and removed report template-only and file-only key paths, user values, template comments and template key order survive in merged, lists and open maps are carried whole, and reconciling the merged output again changes nothing.
 func TestReconcile(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -181,8 +179,7 @@ func TestReconcile(t *testing.T) {
 	}
 }
 
-// TestMissingKeys pins which template key paths a file lacks: an empty value counts as present,
-// a list is a default rather than a minimum length, and an open map satisfies every leaf under it.
+// TestMissingKeys pins which template key paths a file lacks: an empty value counts as present, a list is a default rather than a minimum length, and an open map satisfies every leaf under it.
 func TestMissingKeys(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

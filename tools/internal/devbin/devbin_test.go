@@ -10,9 +10,7 @@ import (
 	"testing"
 )
 
-// TestDevBinPaths_DeriveFromRepoRoot verifies RepoRoot returns the root directory with this
-// package's source beneath it, Dir returns RepoRoot + ".dev-bin", and BinPath returns the
-// platform's binary name inside Dir.
+// TestDevBinPaths_DeriveFromRepoRoot verifies RepoRoot returns the root directory with this package's source beneath it, Dir returns RepoRoot + ".dev-bin", and BinPath returns the platform's binary name inside Dir.
 func TestDevBinPaths_DeriveFromRepoRoot(t *testing.T) {
 	t.Parallel()
 

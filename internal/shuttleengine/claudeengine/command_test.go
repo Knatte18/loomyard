@@ -326,11 +326,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 	}
 }
 
-// TestValidateEffort covers validateEffort's full input space: the empty string (defers to claude's
-// default), every exact-lowercase valid value, and both an unrecognized value and a wrong-case
-// valid value (case sensitivity is load-bearing — claude only warns-and-ignores an unrecognized
-// value rather than failing, so a silently-accepted "High" would defeat the whole hard-error
-// guarantee).
+// TestValidateEffort covers validateEffort's full input space: the empty string (defers to claude's default), every exact-lowercase valid value, and both an unrecognized value and a wrong-case valid value (case sensitivity is load-bearing — claude only warns-and-ignores an unrecognized value rather than failing, so a silently-accepted "High" would defeat the whole hard-error guarantee).
 //
 //testtiming:keep pins the accepted effort values and the wrong-case rejection, which its covering tests do not assert row by row
 func TestValidateEffort(t *testing.T) {

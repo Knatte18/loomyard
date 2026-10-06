@@ -99,8 +99,7 @@ func TestNewPRGate_Refusals(t *testing.T) {
 	}
 }
 
-// TestPRGate_Verdicts walks the gate's decision table: which pull request state and which approval or rejection record yield
-// Done, Awaiting (with the reason's way forward) or Stuck.
+// TestPRGate_Verdicts walks the gate's decision table: which pull request state and which approval or rejection record yield Done, Awaiting (with the reason's way forward) or Stuck.
 // It stays serial because the fixture swaps the package-level NewGitHubClient.
 func TestPRGate_Verdicts(t *testing.T) {
 	closedAtHead := fmt.Sprintf(`[{"number":3,"state":"closed","head":{"sha":%q}}]`, prGateHead)
@@ -254,9 +253,7 @@ func TestPRGate_Verdicts(t *testing.T) {
 }
 
 // TestPRGate_ReturnedErrors pins the failures Call returns as an error rather than a verdict:
-// a transient query failure (classified), a TaskHead error, and a cancellation, whether the context was already
-// cancelled at entry or was cancelled after the pull-request query, inside TaskHead, when a matching approval would
-// otherwise have reported Done.
+// a transient query failure (classified), a TaskHead error, and a cancellation, whether the context was already cancelled at entry or was cancelled after the pull-request query, inside TaskHead, when a matching approval would otherwise have reported Done.
 // It stays serial because the fixture swaps the package-level NewGitHubClient.
 func TestPRGate_ReturnedErrors(t *testing.T) {
 	tests := []struct {

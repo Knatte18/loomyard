@@ -323,17 +323,10 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 	})
 }
 
-// TestEngine_Run_ShuttleOutcomes table-drives Run over every shuttle outcome and the review-file
-// parse path.
-// A non-done outcome (asking, died, timeout, and a died run that never started) carries through to
-// Result.Outcome with an empty Verdict and a nil error.
-// A done outcome parses its review file into VerdictBlocking with its findings or VerdictApproved
-// with none, and fails loud -- never defaulting a verdict -- on a review file that was never written
-// (a fake-shuttle-only scenario; the real shuttle's file-contract polling makes it impossible in
-// production) or whose frontmatter is malformed; a hard shuttle error is wrapped, not swallowed.
-// Whatever the outcome, the shuttle's identities, last assistant message, kept RunDir and NotStarted
-// flag pass through to the Result unchanged: the RunDir passthrough is what lets a caller point at
-// the kept shuttle run dir for a died or timed-out round.
+// TestEngine_Run_ShuttleOutcomes table-drives Run over every shuttle outcome and the review-file parse path.
+// A non-done outcome (asking, died, timeout, and a died run that never started) carries through to Result.Outcome with an empty Verdict and a nil error.
+// A done outcome parses its review file into VerdictBlocking with its findings or VerdictApproved with none, and fails loud -- never defaulting a verdict -- on a review file that was never written (a fake-shuttle-only scenario; the real shuttle's file-contract polling makes it impossible in production) or whose frontmatter is malformed; a hard shuttle error is wrapped, not swallowed.
+// Whatever the outcome, the shuttle's identities, last assistant message, kept RunDir and NotStarted flag pass through to the Result unchanged: the RunDir passthrough is what lets a caller point at the kept shuttle run dir for a died or timed-out round.
 func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
 	t.Parallel()
 
@@ -471,14 +464,9 @@ func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
 
 // TestEngine_Run_GateOutcomes table-drives Run over a round's gate list.
 // A round carrying the zero GateSpec behaves exactly as an ungated round, with Result.Gate nil.
-// A round whose gate fails returns a Result with Gate populated and Passed false, Verdict and
-// Findings left empty, Outcome still OutcomeDone and a nil error -- with the review file never read:
-// no review file is left on disk, so a "missing review file" error would mean the gate-failure
-// short-circuit did not fire before the parse step.
-// Engine.Run wraps every gate entry's closure in repairReportBeforeGate before handing it to
-// RunGated, so the failing entry's closure the shuttle received is the wrapped one the round
-// actually ran; re-invoking it (the told closure is pure) recovers the findings text the failing
-// attempt produced, which must name this round's own review path and fixer-report path.
+// A round whose gate fails returns a Result with Gate populated and Passed false, Verdict and Findings left empty, Outcome still OutcomeDone and a nil error -- with the review file never read:
+// no review file is left on disk, so a "missing review file" error would mean the gate-failure short-circuit did not fire before the parse step.
+// Engine.Run wraps every gate entry's closure in repairReportBeforeGate before handing it to RunGated, so the failing entry's closure the shuttle received is the wrapped one the round actually ran; re-invoking it (the told closure is pure) recovers the findings text the failing attempt produced, which must name this round's own review path and fixer-report path.
 // The caller's gate list is left as it was.
 func TestEngine_Run_GateOutcomes(t *testing.T) {
 	t.Parallel()

@@ -50,8 +50,7 @@ func TestResolveDriver(t *testing.T) {
 	}
 }
 
-// TestResolveDriver_Refuses verifies an alias absent from the registry and an ungrammatical driver model-spec each return an error
-// naming the driver role, rather than being silently carried into the driver session's spawn site.
+// TestResolveDriver_Refuses verifies an alias absent from the registry and an ungrammatical driver model-spec each return an error naming the driver role, rather than being silently carried into the driver session's spawn site.
 func TestResolveDriver_Refuses(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

@@ -30,9 +30,7 @@ func reedStatuslineCommand(t *testing.T) *cobra.Command {
 	return nil
 }
 
-// TestSkipStencilSeed_HonoursTheAnnotation drives skipStencilSeed directly against synthetic
-// *cobra.Command values, and against the real "lyx reed statusline" command, which must carry the
-// annotation or the gate is worthless.
+// TestSkipStencilSeed_HonoursTheAnnotation drives skipStencilSeed directly against synthetic *cobra.Command values, and against the real "lyx reed statusline" command, which must carry the annotation or the gate is worthless.
 func TestSkipStencilSeed_HonoursTheAnnotation(t *testing.T) {
 	t.Parallel()
 

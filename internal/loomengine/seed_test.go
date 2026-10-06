@@ -55,14 +55,10 @@ func coherentFreshProduct() Status {
 	}
 }
 
-// TestCheckSeed drives CheckSeed over each seed a run can be started from, against loom's own row
-// ("Loom-Preflight", tolerating the generic "Preflight" row before it) unless a row names another producer.
+// TestCheckSeed drives CheckSeed over each seed a run can be started from, against loom's own row ("Loom-Preflight", tolerating the generic "Preflight" row before it) unless a row names another producer.
 // A coherent seed reports OK; each incoherent one reports the failure that names its defect:
-// a missing file, a file that does not decode (malformed JSON, an unknown top-level field), a product that does not decode as loom's status shape,
-// an out-of-vocabulary history outcome (the file a broken adapter leaves behind, since Shed records an outcome verbatim)
-// whose failure ends in the seed-a-new-run way forward, and a told producer name that is genuinely told rather than assumed.
-// The deep-lock-parent row is the MkdirAll guard's regression: only the lock parent is missing, and that guard stops a worktree
-// with no ephemeral tree from escalating the verdict to an infra error.
+// a missing file, a file that does not decode (malformed JSON, an unknown top-level field), a product that does not decode as loom's status shape, an out-of-vocabulary history outcome (the file a broken adapter leaves behind, since Shed records an outcome verbatim) whose failure ends in the seed-a-new-run way forward, and a told producer name that is genuinely told rather than assumed.
+// The deep-lock-parent row is the MkdirAll guard's regression: only the lock parent is missing, and that guard stops a worktree with no ephemeral tree from escalating the verdict to an infra error.
 func TestCheckSeed(t *testing.T) {
 	t.Parallel()
 	loomRowTolerated := []string{"Preflight", "Loom-Preflight"}

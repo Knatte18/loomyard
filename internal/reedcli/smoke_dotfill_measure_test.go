@@ -176,10 +176,7 @@ func TestSmokeRepaintCandidateMeasurement(t *testing.T) {
 	})
 }
 
-// measureRepaintCandidate runs one candidate's measurement: boot the same harness the resize control
-// uses, install candidateBodyFor(h)'s body into reed's window-resized array (after the pins, before
-// the fire counter), fire the resize trigger exactly as TestSmokeDotFill/ResizeControl does, and log
-// the REPAINT-MEASUREMENT line card 11 transcribes into the measurement record.
+// measureRepaintCandidate runs one candidate's measurement: boot the same harness the resize control uses, install candidateBodyFor(h)'s body into reed's window-resized array (after the pins, before the fire counter), fire the resize trigger exactly as TestSmokeDotFill/ResizeControl does, and log the REPAINT-MEASUREMENT line card 11 transcribes into the measurement record.
 func measureRepaintCandidate(t *testing.T, name string, candidateBodyFor func(*dotFillHarness) string) {
 	h := newDotFillHarness(t, 140, 42)
 	paneID := harnessOnlyPaneID(t, h.tmuxPath, h.harnessSocket, "h")
@@ -198,8 +195,7 @@ func measureRepaintCandidate(t *testing.T, name string, candidateBodyFor func(*d
 	readBack := windowResizedEntries(t, h.tmuxPath, h.reedSocket, h.reedSession)
 	assertCandidateInstalled(t, readBack, pins, candidateBody)
 
-	// Fire the trigger exactly as TestSmokeDotFill/ResizeControl does: resize-window on reed's own
-	// socket and session, shrink then grow.
+	// Fire the trigger exactly as TestSmokeDotFill/ResizeControl does: resize-window on reed's own socket and session, shrink then grow.
 	if err := exec.Command(h.tmuxPath, "-L", h.reedSocket, "resize-window", "-t", h.reedSession, "-x", "80", "-y", "24").Run(); err != nil {
 		t.Fatalf("resize-window shrink: %v", err)
 	}

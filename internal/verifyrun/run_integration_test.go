@@ -32,9 +32,7 @@ func runCapture(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-// TestRun table-drives Run over a command that exits: one that passes captures both of its streams,
-// a non-zero exit is reported as its code with no error, whether the output goes to a buffer or is
-// discarded, and the command runs in the told working directory.
+// TestRun table-drives Run over a command that exits: one that passes captures both of its streams, a non-zero exit is reported as its code with no error, whether the output goes to a buffer or is discarded, and the command runs in the told working directory.
 func TestRun(t *testing.T) {
 	t.Parallel()
 

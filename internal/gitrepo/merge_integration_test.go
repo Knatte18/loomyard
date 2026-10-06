@@ -19,8 +19,7 @@ import (
 // nonASCIIName is a filename outside core.quotepath's default ASCII set.
 const nonASCIIName = "ä-nöte.txt"
 
-// commitOnNewBranch creates branch from the current HEAD, commits content to file on it, and
-// returns to main.
+// commitOnNewBranch creates branch from the current HEAD, commits content to file on it, and returns to main.
 func commitOnNewBranch(t *testing.T, dir, branch, file, content string) {
 	t.Helper()
 
@@ -46,12 +45,9 @@ func stagedChanges(t *testing.T, dir string) bool {
 	return code == 1
 }
 
-// TestMergePrimitives drives MergeStart, MergeConclude, MergeFFOnly, ConflictedFiles,
-// MergeHeadPresent and MergeHeads through one repository.
+// TestMergePrimitives drives MergeStart, MergeConclude, MergeFFOnly, ConflictedFiles, MergeHeadPresent and MergeHeads through one repository.
 // The repository carries a base commit with base.txt, shared.txt and a non-ASCII file.
-// Every step starts by returning main to that base commit, clearing any merge state and untracked
-// files, and forks branches with names of its own, so the steps run serially in one order but
-// depend on nothing an earlier step leaves behind.
+// Every step starts by returning main to that base commit, clearing any merge state and untracked files, and forks branches with names of its own, so the steps run serially in one order but depend on nothing an earlier step leaves behind.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestMergePrimitives(t *testing.T) {
 	t.Parallel()
@@ -118,11 +114,8 @@ func TestMergePrimitives(t *testing.T) {
 				t.Errorf("MergeHeads() on a clean checkout = %v (nil: %t); want an empty, non-nil slice", heads, heads == nil)
 			}
 		}},
-		// Two branches edit the same line: the conflicted outcome carries a nil error (a conflict
-		// is a result, not an error), leaves unmerged index entries and a live MERGE_HEAD, and
-		// ConflictedFiles names the path.
-		// ResetHard to the pre-merge SHA is the abort mechanism: it must clear both
-		// MergeHeadPresent and ConflictedFiles.
+		// Two branches edit the same line: the conflicted outcome carries a nil error (a conflict is a result, not an error), leaves unmerged index entries and a live MERGE_HEAD, and ConflictedFiles names the path.
+		// ResetHard to the pre-merge SHA is the abort mechanism: it must clear both MergeHeadPresent and ConflictedFiles.
 		{"a conflicted merge reports its conflict and is aborted by ResetHard", func(t *testing.T) {
 			toBase(t)
 			branch := conflict(t, "shared.txt")
@@ -178,11 +171,7 @@ func TestMergePrimitives(t *testing.T) {
 				t.Errorf("ConflictedFiles() after ResetHard() = %v; want empty", conflicted)
 			}
 		}},
-		// ConflictedFiles returns the raw path bytes for a conflicted filename outside
-		// core.quotepath's default ASCII set, never git's C-quoted form (`"\303\244.txt"`, quotes
-		// included) that `--name-only` without `-z` emits — the quoted form is not a real worktree
-		// path, and fabricengine's visible-tree mapping misclassified a mappable conflict as
-		// unmergeable on it.
+		// ConflictedFiles returns the raw path bytes for a conflicted filename outside core.quotepath's default ASCII set, never git's C-quoted form (`"\303\244.txt"`, quotes included) that `--name-only` without `-z` emits — the quoted form is not a real worktree path, and fabricengine's visible-tree mapping misclassified a mappable conflict as unmergeable on it.
 		{"ConflictedFiles returns a non-ASCII path raw, never quoted", func(t *testing.T) {
 			toBase(t)
 			branch := conflict(t, nonASCIIName)
@@ -200,9 +189,7 @@ func TestMergePrimitives(t *testing.T) {
 				t.Errorf("ConflictedFiles() = %q; want [%q] — the raw bytes, not git's C-quoted rendering", got, nonASCIIName)
 			}
 		}},
-		// A non-conflicting, non-fast-forward merge stages the change and leaves HEAD unmoved and
-		// the merge uncommitted; MergeConclude with a non-empty message commits with exactly that
-		// message, and MergeHeadPresent is false afterwards.
+		// A non-conflicting, non-fast-forward merge stages the change and leaves HEAD unmoved and the merge uncommitted; MergeConclude with a non-empty message commits with exactly that message, and MergeHeadPresent is false afterwards.
 		{"a clean merge stages uncommitted and MergeConclude commits the explicit message", func(t *testing.T) {
 			toBase(t)
 			branch := newBranchName()
@@ -239,8 +226,7 @@ func TestMergePrimitives(t *testing.T) {
 				t.Error("MergeHeadPresent() after MergeConclude() = true; want false")
 			}
 		}},
-		// MergeConclude with an empty message takes git's own prepared MERGE_MSG rather than
-		// opening an editor.
+		// MergeConclude with an empty message takes git's own prepared MERGE_MSG rather than opening an editor.
 		{"MergeConclude with an empty message uses the prepared message", func(t *testing.T) {
 			toBase(t)
 			branch := newBranchName()
@@ -264,12 +250,8 @@ func TestMergePrimitives(t *testing.T) {
 		}},
 		{"MergeStart outcomes", func(t *testing.T) {
 			// An operator's own `merge.ff` setting must not change what MergeStart does.
-			// With `merge.ff = only` the plain `git merge --no-commit <ref>` MergeStart used to run
-			// aborted every non-fast-forward merge with `fatal: Not possible to fast-forward`,
-			// which MergeStart classified as a genuine error, so every fabric merge into a target
-			// that had moved self-aborted and failed.
-			// With `merge.ff = false` the reverse holds: a fast-forward would fabricate a merge
-			// commit and be classified MergeStaged instead of MergeFastForwarded.
+			// With `merge.ff = only` the plain `git merge --no-commit <ref>` MergeStart used to run aborted every non-fast-forward merge with `fatal: Not possible to fast-forward`, which MergeStart classified as a genuine error, so every fabric merge into a target that had moved self-aborted and failed.
+			// With `merge.ff = false` the reverse holds: a fast-forward would fabricate a merge commit and be classified MergeStaged instead of MergeFastForwarded.
 			tests := []struct {
 				name          string
 				squash        bool
@@ -282,8 +264,7 @@ func TestMergePrimitives(t *testing.T) {
 				wantMergeHead bool
 			}{
 				{name: "a clean merge stages without moving HEAD", featureEdits: true, mainEdits: true, wantOutcome: gitrepo.MergeStaged, wantStaged: true, wantMergeHead: true},
-				// The documented ff-defeats---no-commit behaviour: a fast-forward-eligible merge
-				// moves HEAD, stages nothing and leaves no MERGE_HEAD, even under --no-commit.
+				// The documented ff-defeats---no-commit behaviour: a fast-forward-eligible merge moves HEAD, stages nothing and leaves no MERGE_HEAD, even under --no-commit.
 				{name: "a fast-forward moves HEAD and stages nothing", featureEdits: true, wantOutcome: gitrepo.MergeFastForwarded, wantHeadMoved: true},
 				{name: "an ancestor source is already up to date", wantOutcome: gitrepo.MergeAlreadyUpToDate},
 				{name: "a squash of a diverging branch stages without MERGE_HEAD", squash: true, featureEdits: true, mainEdits: true, wantOutcome: gitrepo.MergeStaged, wantStaged: true},
@@ -337,18 +318,10 @@ func TestMergePrimitives(t *testing.T) {
 				}
 			}
 		}},
-		// A real, non-fast-forward merge whose result tree happens to equal HEAD's own tree must
-		// classify as MergeStaged, not MergeAlreadyUpToDate.
-		// The fixture is the everyday shape a cherry-pick, backport, or duplicated hand-edit
-		// produces: the source branch and the current branch each reach the same content
-		// independently, so the source is not an ancestor of HEAD, yet merging it stages nothing
-		// and moves no HEAD.
-		// Before the fix, classification read only those two signals and returned
-		// MergeAlreadyUpToDate while git had written a live MERGE_HEAD -- so fabric reported a
-		// clean no-op, deleted its merge-state record, and abandoned a merge in progress that no
-		// fabric verb could then clear.
-		// The squash row is the companion direction: squash writes no MERGE_HEAD and genuinely
-		// has nothing to commit, so it must keep classifying as MergeAlreadyUpToDate.
+		// A real, non-fast-forward merge whose result tree happens to equal HEAD's own tree must classify as MergeStaged, not MergeAlreadyUpToDate.
+		// The fixture is the everyday shape a cherry-pick, backport, or duplicated hand-edit produces: the source branch and the current branch each reach the same content independently, so the source is not an ancestor of HEAD, yet merging it stages nothing and moves no HEAD.
+		// Before the fix, classification read only those two signals and returned MergeAlreadyUpToDate while git had written a live MERGE_HEAD -- so fabric reported a clean no-op, deleted its merge-state record, and abandoned a merge in progress that no fabric verb could then clear.
+		// The squash row is the companion direction: squash writes no MERGE_HEAD and genuinely has nothing to commit, so it must keep classifying as MergeAlreadyUpToDate.
 		{"an empty result tree is classified staged, not already up to date", func(t *testing.T) {
 			tests := []struct {
 				name           string
@@ -396,8 +369,7 @@ func TestMergePrimitives(t *testing.T) {
 						t.Errorf("CurrentSHA() = %q; want unchanged %q — this fixture's whole point is that HEAD does not move", got, headBefore)
 					}
 
-					// A MergeStaged classification is only honest if the merge really is
-					// concludable.
+					// A MergeStaged classification is only honest if the merge really is concludable.
 					if !tt.wantConcludeOK {
 						return
 					}
@@ -439,13 +411,8 @@ func TestMergePrimitives(t *testing.T) {
 				t.Errorf("MergeHeads() mid-merge = %v; want exactly [%s]", heads, featureSHA)
 			}
 		}},
-		// The reason MergeHeads reads MERGE_HEAD rather than shelling `git rev-parse --verify
-		// --quiet MERGE_HEAD` a second time: for a two-head merge, rev-parse reports only the
-		// FIRST head, so a caller comparing that single answer against an expected SHA accepts
-		// `git merge --no-commit <expected> <decoy>` as if it were `git merge <expected>`.
-		// The step asserts BOTH halves — the full list MergeHeads returns, and the truncated
-		// answer the rev-parse spelling gives for the same state — so rewriting MergeHeads onto
-		// rev-parse fails here rather than silently reintroducing the first-entry-only read.
+		// The reason MergeHeads reads MERGE_HEAD rather than shelling `git rev-parse --verify --quiet MERGE_HEAD` a second time: for a two-head merge, rev-parse reports only the FIRST head, so a caller comparing that single answer against an expected SHA accepts `git merge --no-commit <expected> <decoy>` as if it were `git merge <expected>`.
+		// The step asserts BOTH halves — the full list MergeHeads returns, and the truncated answer the rev-parse spelling gives for the same state — so rewriting MergeHeads onto rev-parse fails here rather than silently reintroducing the first-entry-only read.
 		{"MergeHeads enumerates every head of an octopus", func(t *testing.T) {
 			toBase(t)
 			first, second := newBranchName(), newBranchName()
@@ -457,9 +424,7 @@ func TestMergePrimitives(t *testing.T) {
 			secondSHA := resolveForTest(t, repo, second)
 			gitkit.MustRun(t, dir, "git", "merge", "--no-commit", "--no-ff", first, second)
 
-			// Precondition, asserted rather than assumed: the rev-parse spelling really does
-			// truncate here, or this step would pass against the very implementation it exists to
-			// forbid.
+			// Precondition, asserted rather than assumed: the rev-parse spelling really does truncate here, or this step would pass against the very implementation it exists to forbid.
 			stdout, _, code, err := runGit(t, dir, "rev-parse", "--verify", "--quiet", "MERGE_HEAD")
 			if err != nil || code != 0 {
 				t.Fatalf("git rev-parse --verify --quiet MERGE_HEAD = (code %d, %v); want it to succeed on the octopus", code, err)
@@ -489,8 +454,7 @@ func TestMergePrimitives(t *testing.T) {
 				t.Errorf("CurrentSHA() after MergeFFOnly(%s) = %q; want %q", branch, got, aheadSHA)
 			}
 		}},
-		// MergeFFOnly returns a non-nil error and leaves HEAD unmoved when the target has
-		// genuinely diverged — never silently discarding local commits the way reset --hard would.
+		// MergeFFOnly returns a non-nil error and leaves HEAD unmoved when the target has genuinely diverged — never silently discarding local commits the way reset --hard would.
 		{"MergeFFOnly fails loudly on a diverged pair", func(t *testing.T) {
 			toBase(t)
 			branch := newBranchName()
@@ -513,9 +477,7 @@ func TestMergePrimitives(t *testing.T) {
 	}
 }
 
-// TestMergeResolveSHA covers ResolveSHA against a clone of a bare remote: a branch name, an
-// origin/<branch> remote-tracking ref and a full SHA all resolve to the same 40-character SHA, and a
-// ref that resolves nowhere returns an error.
+// TestMergeResolveSHA covers ResolveSHA against a clone of a bare remote: a branch name, an origin/<branch> remote-tracking ref and a full SHA all resolve to the same 40-character SHA, and a ref that resolves nowhere returns an error.
 func TestMergeResolveSHA(t *testing.T) {
 	t.Parallel()
 
@@ -568,8 +530,7 @@ func TestMergeResolveSHA(t *testing.T) {
 	})
 }
 
-// resolveForTest resolves ref through the Repo under test, failing the test on error — the fixture
-// helper the merge steps name their expected SHAs with.
+// resolveForTest resolves ref through the Repo under test, failing the test on error — the fixture helper the merge steps name their expected SHAs with.
 func resolveForTest(t *testing.T, repo *gitrepo.Repo, ref string) string {
 	t.Helper()
 

@@ -1,8 +1,5 @@
-// donecheck_test.go covers doneCheckVerdicts, the pure half of DoneChecks: the three done rules
-// applied to a hand-built answer index, plus the coverage guard that refuses an answer set which
-// does not cover a target the caller asked about.
-// It touches no repository at all — DoneChecks' own resolve-backed half is covered by
-// donecheck_resolve_test.go instead.
+// donecheck_test.go covers doneCheckVerdicts, the pure half of DoneChecks: the three done rules applied to a hand-built answer index, plus the coverage guard that refuses an answer set which does not cover a target the caller asked about.
+// It touches no repository at all — DoneChecks' own resolve-backed half is covered by donecheck_resolve_test.go instead.
 
 package planglyph
 
@@ -46,8 +43,7 @@ func TestDoneCheckVerdicts_UncoveredTargetIsInfrastructureNotAPass(t *testing.T)
 	}
 }
 
-// TestDoneCheckVerdicts_Rules pins the three done rules against a fully covering answer index, so
-// the guard above cannot be satisfied by a version that simply always errors.
+// TestDoneCheckVerdicts_Rules pins the three done rules against a fully covering answer index, so the guard above cannot be satisfied by a version that simply always errors.
 //
 //testtiming:keep pins the ambiguous rows and the per-arm rule table, which the resolve-backed DoneChecks tests reach only for found and not_found
 func TestDoneCheckVerdicts_Rules(t *testing.T) {

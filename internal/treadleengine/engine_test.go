@@ -648,9 +648,7 @@ func TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced(t *testing.T) {
 			t.Errorf("Rounds[1].HandoffPath = %q; want empty (no handoff file was ever written)", st.Rounds[1].HandoffPath)
 		}
 
-		// With no handoff ever produced, the judge call's read-set is exactly the all-reviews
-		// list: the degrade path a block with handoff maintenance disabled, or simply never
-		// yet exercised, must still behave identically to the pre-handoff loop.
+		// With no handoff ever produced, the judge call's read-set is exactly the all-reviews list: the degrade path a block with handoff maintenance disabled, or simply never yet exercised, must still behave identically to the pre-handoff loop.
 		if len(qs.specs) != 1 {
 			t.Fatalf("queuedShuttle called %d times; want exactly 1", len(qs.specs))
 		}

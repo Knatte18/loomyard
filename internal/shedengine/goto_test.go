@@ -99,8 +99,7 @@ func TestGoto_RunLockHeldRefusesAndLeavesFile(t *testing.T) {
 	}
 }
 
-// TestGoto_RefusalNamesWayForward pins that a refused goto names its way forward and leaves the status file untouched,
-// and that taking the way forward (where one exists) moves the run.
+// TestGoto_RefusalNamesWayForward pins that a refused goto names its way forward and leaves the status file untouched, and that taking the way forward (where one exists) moves the run.
 func TestGoto_RefusalNamesWayForward(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -142,8 +141,7 @@ func TestGoto_RefusalNamesWayForward(t *testing.T) {
 	}
 }
 
-// TestGoto_MissingStatusFileWayForward pins that goto over a missing status file names seeding the run
-// (a told clause replaces the generic seed advice), after which goto moves the seeded run.
+// TestGoto_MissingStatusFileWayForward pins that goto over a missing status file names seeding the run (a told clause replaces the generic seed advice), after which goto moves the seeded run.
 func TestGoto_MissingStatusFileWayForward(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -365,8 +363,7 @@ func TestGoto_RunningRunRefusedUntilPaused(t *testing.T) {
 	}
 }
 
-// TestGoto_BlockedRunAdmitsOnlyEarlierRows pins which rows a blocked run's goto refuses and admits,
-// relative to the row it is blocked at: forward rows are refused, the row itself, an earlier row and an offshoot's partner are admitted.
+// TestGoto_BlockedRunAdmitsOnlyEarlierRows pins which rows a blocked run's goto refuses and admits, relative to the row it is blocked at: forward rows are refused, the row itself, an earlier row and an offshoot's partner are admitted.
 // A row removed from the list falls back to the latest history entry's successor.
 func TestGoto_BlockedRunAdmitsOnlyEarlierRows(t *testing.T) {
 	t.Parallel()

@@ -112,15 +112,10 @@ func targetingMarkerValues() map[string]string {
 	}
 }
 
-// TestShippedTemplates table-drives the four shipped judge, triage and targeting templates through
-// the two properties each must hold.
-// States load-bearing rules: the template carries its load-bearing phrases, so an edit that silently
-// weakens one fails here rather than only in human review. The judge templates (circling and
-// milestone) and the triage template also carry the quoted-rationale rule, and the judge templates
-// the handoff-maintenance rules; targeting produces no verdict, so it has no rationale-quoting rule
-// to pin.
-// Fills with all markers: stencil.Fill succeeds when every required marker is supplied and fails,
-// naming the marker, when any single one is absent.
+// TestShippedTemplates table-drives the four shipped judge, triage and targeting templates through the two properties each must hold.
+// States load-bearing rules: the template carries its load-bearing phrases, so an edit that silently weakens one fails here rather than only in human review.
+// The judge templates (circling and milestone) and the triage template also carry the quoted-rationale rule, and the judge templates the handoff-maintenance rules; targeting produces no verdict, so it has no rationale-quoting rule to pin.
+// Fills with all markers: stencil.Fill succeeds when every required marker is supplied and fails, naming the marker, when any single one is absent.
 func TestShippedTemplates(t *testing.T) {
 	t.Parallel()
 
@@ -156,8 +151,7 @@ func TestShippedTemplates(t *testing.T) {
 			requiredMarkers: []string{"round", "hard_cap", "prior_reviews", "verdict_path", "previous_handoff", "handoff_path", "parent_directive"},
 		},
 		{
-			// The asking-triage template's vocabulary, the one-line-restate-the-blocker rule and
-			// the single-output-file instruction.
+			// The asking-triage template's vocabulary, the one-line-restate-the-blocker rule and the single-output-file instruction.
 			name:            "triage",
 			template:        stencils.TreadleTemplateTriage,
 			phrases:         []string{"RETRY", "GIVE_UP", "restate", "EXACTLY ONE"},
@@ -166,8 +160,7 @@ func TestShippedTemplates(t *testing.T) {
 			requiredMarkers: []string{"round", "question", "verdict_path", "parent_directive"},
 		},
 		{
-			// The pre-round targeting template's read-the-handoff instruction, exactly-one-output-file
-			// rule and free-form (no frontmatter) output rule.
+			// The pre-round targeting template's read-the-handoff instruction, exactly-one-output-file rule and free-form (no frontmatter) output rule.
 			name:            "targeting",
 			template:        stencils.TreadleTemplateTargeting,
 			phrases:         []string{"Read the previous handoff at", "EXACTLY ONE", "free-form prose", "NO `---`-delimited YAML frontmatter"},

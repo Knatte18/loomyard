@@ -86,8 +86,7 @@ func TestResolveLyx_DevBinaryMissingAndLookPathFails(t *testing.T) {
 	}
 }
 
-// TestPrependPath verifies that prependPath makes dir the first PATH segment, leaves non-PATH env
-// vars untouched, returns environ unchanged when dir is empty, and edits a Windows-form "Path=..."
+// TestPrependPath verifies that prependPath makes dir the first PATH segment, leaves non-PATH env vars untouched, returns environ unchanged when dir is empty, and edits a Windows-form "Path=..."
 // entry in place without appending a duplicate "PATH=" entry.
 func TestPrependPath(t *testing.T) {
 	t.Parallel()

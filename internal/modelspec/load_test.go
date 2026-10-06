@@ -24,8 +24,7 @@ func writeModelsYAML(t *testing.T, baseDir, contents string) {
 	}
 }
 
-// TestLoadRegistry_YieldsBuiltins asserts a missing models.yaml and a comments-only one both yield exactly the four built-in aliases,
-// each with its own name as model and no defaults.
+// TestLoadRegistry_YieldsBuiltins asserts a missing models.yaml and a comments-only one both yield exactly the four built-in aliases, each with its own name as model and no defaults.
 func TestLoadRegistry_YieldsBuiltins(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

@@ -80,8 +80,7 @@ func TestBreakCyclesTerminatesAndKeepsEveryStrand(t *testing.T) {
 			},
 		},
 		{
-			// The parent chain plays no part in ordering: a child inserted before its parent stays
-			// before it, and every strand keeps its input position.
+			// The parent chain plays no part in ordering: a child inserted before its parent stays before it, and every strand keeps its input position.
 			"AcyclicChildBeforeParentKeepsInsertionOrder",
 			[]Strand{
 				{GUID: "c", Parent: "a"},
@@ -128,8 +127,7 @@ func TestBreakCyclesTerminatesAndKeepsEveryStrand(t *testing.T) {
 				}
 			}
 
-			// orderStack must also produce a total ordering (every strand
-			// exactly once) over the repaired chain, in insertion order.
+			// orderStack must also produce a total ordering (every strand exactly once) over the repaired chain, in insertion order.
 			ordered := orderStack(fixed)
 			if len(ordered) != len(tt.strands) {
 				t.Fatalf("orderStack(breakCycles(...)) returned %d strands, want %d", len(ordered), len(tt.strands))

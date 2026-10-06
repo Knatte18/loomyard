@@ -197,9 +197,7 @@ func TestDiscussionWrite_NilCommitSeamIsANamedError(t *testing.T) {
 	}
 }
 
-// TestDiscussionWrite_PassesStuckReasonThrough pins that the decorator returns the wrapped
-// producer's Reason unchanged, both for the asking shape (empty Path, nothing committed) and the
-// gate-failed shape (non-empty Path, committed).
+// TestDiscussionWrite_PassesStuckReasonThrough pins that the decorator returns the wrapped producer's Reason unchanged, both for the asking shape (empty Path, nothing committed) and the gate-failed shape (non-empty Path, committed).
 //
 //testtiming:keep pins that the wrapped producer's Reason reaches the caller unchanged in both stuck shapes, which TestDiscussionWrite_Call never asserts
 func TestDiscussionWrite_PassesStuckReasonThrough(t *testing.T) {

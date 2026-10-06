@@ -92,11 +92,8 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 		wantReason string
 	}{
 		{
-			// A done child whose driver is gone must never itself be Stuck: ProducerDef.OnStuck is a
-			// static per-producer value, so it routes every Stuck from this row back to itself with no
-			// per-verdict distinction possible.
-			// Every Stuck this row returns is a timed wait; the halted arm's budget-exempt waits are
-			// covered in innerrun_halted_test.go.
+			// A done child whose driver is gone must never itself be Stuck: ProducerDef.OnStuck is a static per-producer value, so it routes every Stuck from this row back to itself with no per-verdict distinction possible.
+			// Every Stuck this row returns is a timed wait; the halted arm's budget-exempt waits are covered in innerrun_halted_test.go.
 			name:     "AlreadyDone",
 			statuses: []statusResult{{status: shedengine.Status{State: shedengine.StateDone}, found: true}},
 			wantDone: true,
@@ -239,10 +236,7 @@ func TestInnerRun_CancelledContext(t *testing.T) {
 	}
 }
 
-// TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation asserts the three hard-error paths
-// (the status-path resolve, the pre-spawn read and the post-spawn read) carry the cancelled-context
-// diagnosis rather than the raw underlying error, when ctx is cancelled by the time the failing
-// seam call itself returns.
+// TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation asserts the three hard-error paths (the status-path resolve, the pre-spawn read and the post-spawn read) carry the cancelled-context diagnosis rather than the raw underlying error, when ctx is cancelled by the time the failing seam call itself returns.
 func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) {
 	t.Parallel()
 

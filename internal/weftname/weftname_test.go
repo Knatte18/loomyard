@@ -12,13 +12,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestSiblingPaths covers SiblingPath's and BareSiblingPath's container/base joins over a range of
-// path shapes, including a nested container and a multi-segment base.
-// Every row also asserts the relationship gitkit's fixture builders depend on: a weft sibling's
-// bare-remote fixture name is SiblingPath's own result with "-bare" appended, never an
-// independently-derived literal.
-// That is the drift BareSiblingPath exists to prevent between production geometry and the on-disk
-// shape test fixtures must reproduce for the same input.
+// TestSiblingPaths covers SiblingPath's and BareSiblingPath's container/base joins over a range of path shapes, including a nested container and a multi-segment base.
+// Every row also asserts the relationship gitkit's fixture builders depend on: a weft sibling's bare-remote fixture name is SiblingPath's own result with "-bare" appended, never an independently-derived literal.
+// That is the drift BareSiblingPath exists to prevent between production geometry and the on-disk shape test fixtures must reproduce for the same input.
 func TestSiblingPaths(t *testing.T) {
 	t.Parallel()
 

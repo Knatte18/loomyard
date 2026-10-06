@@ -17,10 +17,8 @@ import (
 )
 
 // TestStatuslineCmd builds a reedCLI whose Engine is real enough to run statuslineCmd's RunE:
-// StatusLineText dereferences e.cfg unconditionally, so a bare &reedCLI{} would panic here. An empty
-// Config.StatusLine.Template falls back to the embedded default template, and RepoName/HubPath are
-// the only two Geometry fields tokenvocab.Ctx consumes, so this renders cleanly with no filesystem
-// or process I/O.
+// StatusLineText dereferences e.cfg unconditionally, so a bare &reedCLI{} would panic here.
+// An empty Config.StatusLine.Template falls back to the embedded default template, and RepoName/HubPath are the only two Geometry fields tokenvocab.Ctx consumes, so this renders cleanly with no filesystem or process I/O.
 func TestStatuslineCmd(t *testing.T) {
 	t.Parallel()
 	c := &reedCLI{eng: reedengine.New(reedengine.Config{}, reedengine.Geometry{RepoName: "test-repo", WorktreeName: "test-worktree", HubPath: t.TempDir()})}

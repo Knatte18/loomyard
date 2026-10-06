@@ -1,14 +1,9 @@
 // cli_test.go contains white-box unit tests for the selfreport CLI.
 //
-// Tests live in package selfreportcli (same package as the production code) so the local stdin seam
-// can be replaced without exporting it.
-// The GitHub transport is swapped via the exported selfreportengine.NewGitHubClient seam, injected
-// with a real go-github client pointed at an httptest server rather than a fake RunGH -- that
-// server is what lets these tests assert on the actual request shape (method, path, JSON body)
-// instead of an argv slice that no longer exists.
+// Tests live in package selfreportcli (same package as the production code) so the local stdin seam can be replaced without exporting it.
+// The GitHub transport is swapped via the exported selfreportengine.NewGitHubClient seam, injected with a real go-github client pointed at an httptest server rather than a fake RunGH -- that server is what lets these tests assert on the actual request shape (method, path, JSON body) instead of an argv slice that no longer exists.
 // All tests drive the full cobra->flag->CreateIssue->go-github pipeline through RunCLI.
-// No test calls t.Parallel: each swaps the package-level NewGitHubClient seam, and the stdin
-// rows swap the stdin seam.
+// No test calls t.Parallel: each swaps the package-level NewGitHubClient seam, and the stdin rows swap the stdin seam.
 
 package selfreportcli
 
@@ -111,8 +106,7 @@ func installFailingGitHubClientFactory(t *testing.T, err error) {
 }
 
 // runCLI drives RunCLI into a buffer and returns the exit code and output text.
-// No args are passed as an empty slice, because cobra reads os.Args when handed nil and would
-// then parse a test binary's own -test.* flags.
+// No args are passed as an empty slice, because cobra reads os.Args when handed nil and would then parse a test binary's own -test.* flags.
 func runCLI(t *testing.T, args ...string) (int, string) {
 	t.Helper()
 	if args == nil {
@@ -138,9 +132,7 @@ func labelsFromBody(body map[string]any) []string {
 	return labels
 }
 
-// TestRunCreate_Success drives the successful create flow through each flag combination: exit 0,
-// ok:true, the url and number of the server's typed response, and a request whose method, path,
-// title, labels and body field match what the flags asked for.
+// TestRunCreate_Success drives the successful create flow through each flag combination: exit 0, ok:true, the url and number of the server's typed response, and a request whose method, path, title, labels and body field match what the flags asked for.
 func TestRunCreate_Success(t *testing.T) {
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/123"
 	const markdownBody = "# Bug Report\n\nThis is a *markdown* body.\nSecond paragraph.\n"
@@ -226,10 +218,7 @@ func TestRunCreate_Success(t *testing.T) {
 	}
 }
 
-// TestRunCreate_Failure verifies that each way the create call can fail yields ok:false with exit
-// 1 and an error message naming the cause: a client factory that cannot resolve a token, a non-2xx
-// response (the message text surfaces) and a connection refused (a non-empty message distinct from an
-// API rejection).
+// TestRunCreate_Failure verifies that each way the create call can fail yields ok:false with exit 1 and an error message naming the cause: a client factory that cannot resolve a token, a non-2xx response (the message text surfaces) and a connection refused (a non-empty message distinct from an API rejection).
 func TestRunCreate_Failure(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -265,9 +254,7 @@ func TestRunCreate_Failure(t *testing.T) {
 	}
 }
 
-// TestRunCLI_RefusedBeforeTransport verifies the cobra-level surface of the selfreport group: a
-// bare invocation lists create, an unknown subcommand gets the shared envelope, and a wrong
-// positional count gets cobra's "accepts 1 arg(s)" message; none of them reaches the transport.
+// TestRunCLI_RefusedBeforeTransport verifies the cobra-level surface of the selfreport group: a bare invocation lists create, an unknown subcommand gets the shared envelope, and a wrong positional count gets cobra's "accepts 1 arg(s)" message; none of them reaches the transport.
 func TestRunCLI_RefusedBeforeTransport(t *testing.T) {
 	tests := []struct {
 		name       string

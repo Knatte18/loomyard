@@ -18,17 +18,12 @@ func runStatusRel(loc *lyxcwd.Location, runID string) string {
 }
 
 // TestNewCommitStatusSeam covers the on-disk no-op-transition skip over a real temp-file marker:
-//   - a repeated (producer, state) pair commits and pushes exactly once, not twice, across two calls
-//     to the same seam instance;
-//   - the skip still holds when the seam is rebuilt from scratch between calls, the shape a fresh
-//     "lyx batten step" process takes -- the one case that proves the on-disk marker rather than an
-//     in-closure variable;
+//   - a repeated (producer, state) pair commits and pushes exactly once, not twice, across two calls to the same seam instance;
+//   - the skip still holds when the seam is rebuilt from scratch between calls, the shape a fresh "lyx batten step" process takes -- the one case that proves the on-disk marker rather than an in-closure variable;
 //   - a changed pair commits and pushes again rather than being absorbed by the skip;
-//   - a missing or corrupt marker falls back to committing once rather than erroring, since the
-//     marker is a cache and losing it costs one redundant commit, never correctness.
+//   - a missing or corrupt marker falls back to committing once rather than erroring, since the marker is a cache and losing it costs one redundant commit, never correctness.
 //
-// The commit message pins batten's own prefix, which the shared core's tests cannot, since they
-// render whatever prefix they are given.
+// The commit message pins batten's own prefix, which the shared core's tests cannot, since they render whatever prefix they are given.
 func TestNewCommitStatusSeam(t *testing.T) {
 	t.Parallel()
 
@@ -96,10 +91,8 @@ func TestNewCommitStatusSeam(t *testing.T) {
 	}
 }
 
-// TestBattenRunCommitPaths asserts a status transition commits the run's seed alongside its status
-// once one exists, and commits the status alone while none does.
-// A run directory is durable, fabric-synced state: a status committed without its seed leaves a
-// resumed machine able to read how far the run came but not what it is running.
+// TestBattenRunCommitPaths asserts a status transition commits the run's seed alongside its status once one exists, and commits the status alone while none does.
+// A run directory is durable, fabric-synced state: a status committed without its seed leaves a resumed machine able to read how far the run came but not what it is running.
 //
 //testtiming:keep pins the seed-alongside-status commit paths, which the end-to-end rows never assert
 func TestBattenRunCommitPaths(t *testing.T) {

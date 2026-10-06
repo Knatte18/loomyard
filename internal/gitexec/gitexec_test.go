@@ -14,11 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// TestRunGit pins RunGit's contract: a successful command returns its stdout with exit 0, a
-// non-zero exit is reported through the exit code and stderr with a nil error, and an exec-level
-// failure (a cwd that does not exist) returns exit -1 with blanked stdout and stderr.
-// The non-zero row also shows the cwd parameter is respected: run in the package directory
-// instead, `git status` would succeed.
+// TestRunGit pins RunGit's contract: a successful command returns its stdout with exit 0, a non-zero exit is reported through the exit code and stderr with a nil error, and an exec-level failure (a cwd that does not exist) returns exit -1 with blanked stdout and stderr.
+// The non-zero row also shows the cwd parameter is respected: run in the package directory instead, `git status` would succeed.
 func TestRunGit(t *testing.T) {
 	t.Parallel()
 
@@ -74,11 +71,7 @@ func TestRunGit(t *testing.T) {
 	}
 }
 
-// TestRun pins Run's contract: a successful command returns its stdout with a nil error; a
-// non-zero exit is recoverable via errors.As as *gitexec.GitError carrying the exit code, the args
-// and dir it was given and non-empty stderr; and an exec-level failure — a cwd that does not
-// exist — returns a non-nil error that errors.As does NOT match as *gitexec.GitError, the
-// distinction every errors.As recovery site depends on.
+// TestRun pins Run's contract: a successful command returns its stdout with a nil error; a non-zero exit is recoverable via errors.As as *gitexec.GitError carrying the exit code, the args and dir it was given and non-empty stderr; and an exec-level failure — a cwd that does not exist — returns a non-nil error that errors.As does NOT match as *gitexec.GitError, the distinction every errors.As recovery site depends on.
 func TestRun(t *testing.T) {
 	t.Parallel()
 
@@ -131,10 +124,8 @@ func TestRun(t *testing.T) {
 	}
 }
 
-// TestRun_StdoutOnError tests that stdout is still returned alongside a
-// *GitError, using a command that writes to stdout and then exits non-zero:
-// `git diff --exit-code` prints the diff to stdout and exits 1 when the
-// working tree differs from the last commit.
+// TestRun_StdoutOnError tests that stdout is still returned alongside a *GitError, using a command that writes to stdout and then exits non-zero:
+// `git diff --exit-code` prints the diff to stdout and exits 1 when the working tree differs from the last commit.
 //
 //testtiming:keep pins that stdout is returned alongside a *GitError, which the covering tests discard
 func TestRun_StdoutOnError(t *testing.T) {

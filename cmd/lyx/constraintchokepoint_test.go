@@ -95,9 +95,7 @@ func TestGlyphConversionChokepoint_NoLocalConversion(t *testing.T) {
 	}
 }
 
-// TestGlyphChokepointViolation_FiresOnOffendingStaysQuietOnCompliant proves the guard itself
-// fires on a synthetic offending source string and stays quiet on a compliant one, so the guard
-// is tested rather than merely asserted.
+// TestGlyphChokepointViolation_FiresOnOffendingStaysQuietOnCompliant proves the guard itself fires on a synthetic offending source string and stays quiet on a compliant one, so the guard is tested rather than merely asserted.
 //
 //testtiming:keep proves the TestGlyphConversionChokepoint_NoLocalConversion guard fires on a synthetic offending source and stays quiet on a compliant one
 func TestGlyphChokepointViolation_FiresOnOffendingStaysQuietOnCompliant(t *testing.T) {

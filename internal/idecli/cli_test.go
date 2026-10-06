@@ -15,11 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/ideengine"
 )
 
-// TestRunCLI_SpawnScenario drives "lyx ide spawn" against one hub: dispatch with a stubbed launcher,
-// then the missing-slug error. Neither step depends on the other's state.
-// Stays serial (no t.Parallel): the dispatch step swaps the package-level ideengine.CodeLauncher and
-// restores it in a defer, which under t.Parallel() is both a data race on a production package-level
-// variable and a restore firing while sibling tests still run.
+// TestRunCLI_SpawnScenario drives "lyx ide spawn" against one hub: dispatch with a stubbed launcher, then the missing-slug error.
+// Neither step depends on the other's state.
+// Stays serial (no t.Parallel): the dispatch step swaps the package-level ideengine.CodeLauncher and restores it in a defer, which under t.Parallel() is both a data race on a production package-level variable and a restore firing while sibling tests still run.
 func TestRunCLI_SpawnScenario(t *testing.T) {
 	// Create a real hub so lyxcwd.Resolve succeeds inside the PersistentPreRunE.
 	h := hubforge.NewHub(t, ".")

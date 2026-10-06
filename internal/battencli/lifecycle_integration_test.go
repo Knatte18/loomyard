@@ -157,11 +157,8 @@ func gitShow(t *testing.T, dir, spec string) []byte {
 	return out
 }
 
-// TestBattenIntegration_Rows runs the end-to-end rows over one hubforge hub, each step on its own
-// slug so its pair, branches and records stay apart from every other step's.
-// The steps share only the hub itself -- its prime worktree, records origin and board -- and a step
-// that changes it for the next one restores it before returning, except the last, which dirties the
-// prime worktree and so relies on running after every step that creates a pair.
+// TestBattenIntegration_Rows runs the end-to-end rows over one hubforge hub, each step on its own slug so its pair, branches and records stay apart from every other step's.
+// The steps share only the hub itself -- its prime worktree, records origin and board -- and a step that changes it for the next one restores it before returning, except the last, which dirties the prime worktree and so relies on running after every step that creates a pair.
 // The test calls t.Parallel and no step does: the steps serialise on that one shared hub.
 func TestBattenIntegration_Rows(t *testing.T) {
 	t.Parallel()
@@ -204,14 +201,9 @@ func TestBattenIntegration_Rows(t *testing.T) {
 	}
 }
 
-// stepSeedChild_WritesASeedTheChildBootstrapAgreesWith drives Worktree-Create and
-// Seed-Child for real, then asserts the property the child's own bootstrap depends on: re-writing
-// the seed the way that bootstrap will must be accepted by shedrun.WriteSeed, not refused as a
-// disagreement.
+// stepSeedChild_WritesASeedTheChildBootstrapAgreesWith drives Worktree-Create and Seed-Child for real, then asserts the property the child's own bootstrap depends on: re-writing the seed the way that bootstrap will must be accepted by shedrun.WriteSeed, not refused as a disagreement.
 //
-// It reconstructs that seed's shape from the recorded origin rather than importing internal/loomcli,
-// and asserts the recorded parent is what landed in the param, so the shape cannot drift into
-// agreeing with itself while disagreeing with loom.
+// It reconstructs that seed's shape from the recorded origin rather than importing internal/loomcli, and asserts the recorded parent is what landed in the param, so the shape cannot drift into agreeing with itself while disagreeing with loom.
 func stepSeedChild_WritesASeedTheChildBootstrapAgreesWith(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-seed-agrees"
 	seedBoardTask(t, h, slug, "loom")
@@ -271,12 +263,7 @@ func stepSeedChild_WritesASeedTheChildBootstrapAgreesWith(t *testing.T, h *hubfo
 	}
 }
 
-// stepSeedChild_WriteSeedRewrapsARealDisagreeingChildSeed pins the WriteSeed
-// closure's own rewrap of shedrun.ErrDisagreeingSeed into battenshed.ErrDisagreeingChildSeed
-// (wire.go): plants a real, pre-existing child seed that disagrees with what the closure is about
-// to write, then calls c.env.SeedChild.WriteSeed directly, the production closure, rather than
-// stubbing the sentinel already wrapped -- so a future edit that drops the rewrap fails here rather
-// than only in a test that never reaches the real shedrun.WriteSeed call.
+// stepSeedChild_WriteSeedRewrapsARealDisagreeingChildSeed pins the WriteSeed closure's own rewrap of shedrun.ErrDisagreeingSeed into battenshed.ErrDisagreeingChildSeed (wire.go): plants a real, pre-existing child seed that disagrees with what the closure is about to write, then calls c.env.SeedChild.WriteSeed directly, the production closure, rather than stubbing the sentinel already wrapped -- so a future edit that drops the rewrap fails here rather than only in a test that never reaches the real shedrun.WriteSeed call.
 func stepSeedChild_WriteSeedRewrapsARealDisagreeingChildSeed(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-seed-disagrees"
 	seedBoardTask(t, h, slug, "loom")
@@ -304,12 +291,9 @@ func stepSeedChild_WriteSeedRewrapsARealDisagreeingChildSeed(t *testing.T, h *hu
 	}
 }
 
-// stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring drives the two
-// InnerRun seams every other test in this file replaces -- the real Env.InnerRun.ResolveStatus and
-// Env.InnerRun.ReadStatus -- against a freshly created pair that has never run.
+// stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring drives the two InnerRun seams every other test in this file replaces -- the real Env.InnerRun.ResolveStatus and Env.InnerRun.ReadStatus -- against a freshly created pair that has never run.
 //
-// It asserts the producer's own contract: no status file yet reports found == false with a nil
-// error, which is what tells innerRunProducer.Call to spawn.
+// It asserts the producer's own contract: no status file yet reports found == false with a nil error, which is what tells innerRunProducer.Call to spawn.
 func stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-real-readstatus"
 	hubforge.AddPair(t, h, slug)
@@ -336,13 +320,8 @@ func stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring(t *testing.T
 	}
 }
 
-// stepFourRowRun_SeedsChildCommitsAndTearsDown drives a spawn stub plus a
-// read-status answering StateDone through the whole four-row list one row at a time: Worktree-Create,
-// Seed-Child, Run-Shed, Worktree-Teardown.
-// It asserts the pair exists on disk after the create row, that the child's own
-// _lyx/shed/<slug>/seed.json exists after the seed row, names the Board task's own "type" as its
-// recipe, and is committed (not merely written) on the child's own records pair, and that the pair is
-// gone after the teardown row.
+// stepFourRowRun_SeedsChildCommitsAndTearsDown drives a spawn stub plus a read-status answering StateDone through the whole four-row list one row at a time: Worktree-Create, Seed-Child, Run-Shed, Worktree-Teardown.
+// It asserts the pair exists on disk after the create row, that the child's own _lyx/shed/<slug>/seed.json exists after the seed row, names the Board task's own "type" as its recipe, and is committed (not merely written) on the child's own records pair, and that the pair is gone after the teardown row.
 func stepFourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-four-row"
 	seedBoardTask(t, h, slug, "loom")
@@ -424,10 +403,7 @@ func remoteBranchExists(bareDir, branch string) bool {
 	return exec.Command("git", "-C", bareDir, "rev-parse", "--verify", "refs/heads/"+branch).Run() == nil
 }
 
-// stepTeardown_AlreadyGonePairFinishesItsBranchDeletion re-enters the removal
-// half with both worktrees already gone but the pair's other-side branch left behind -- a removal
-// killed after its worktree removals, before its branch deletions finished -- and asserts the row
-// deletes that branch locally and on the remote rather than reporting done over it.
+// stepTeardown_AlreadyGonePairFinishesItsBranchDeletion re-enters the removal half with both worktrees already gone but the pair's other-side branch left behind -- a removal killed after its worktree removals, before its branch deletions finished -- and asserts the row deletes that branch locally and on the remote rather than reporting done over it.
 // A branch surviving on the remote makes a later create of the slug refuse its push.
 func stepTeardown_AlreadyGonePairFinishesItsBranchDeletion(t *testing.T, h *hubforge.Hub) {
 	tests := []struct {
@@ -576,8 +552,7 @@ func stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably(t *testing.T, h *
 	}
 }
 
-// stepTeardown_AlreadyGonePairWithNoBranchIsDone re-enters the removal half after
-// a removal that finished completely -- the transition just not yet persisted -- and asserts done.
+// stepTeardown_AlreadyGonePairWithNoBranchIsDone re-enters the removal half after a removal that finished completely -- the transition just not yet persisted -- and asserts done.
 func stepTeardown_AlreadyGonePairWithNoBranchIsDone(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-teardown-finished"
 	hubforge.AddPair(t, h, slug)
@@ -592,20 +567,13 @@ func stepTeardown_AlreadyGonePairWithNoBranchIsDone(t *testing.T, h *hubforge.Hu
 	}
 }
 
-// stepStepDrivenRunShed_ReturnsAfterOnePollInterval proves Run-Shed's step-driven
-// re-entrancy: a still-running child yields a re-entrant "lyx batten step" that returns after one
-// poll_interval_s rather than holding for the child's whole duration.
+// stepStepDrivenRunShed_ReturnsAfterOnePollInterval proves Run-Shed's step-driven re-entrancy: a still-running child yields a re-entrant "lyx batten step" that returns after one poll_interval_s rather than holding for the child's whole duration.
 //
-// It proves exactly that bound and nothing more. The step BLOCKS for one poll_interval_s and then
-// returns, because the sleep stays inside Call and the row cannot see which verb drove it -- the
-// bounded return is the property the re-entrancy decision buys; it is not a non-blocking step, and
-// nothing here makes it one.
+// It proves exactly that bound and nothing more.
+// The step BLOCKS for one poll_interval_s and then returns, because the sleep stays inside Call and the row cannot see which verb drove it -- the bounded return is the property the re-entrancy decision buys; it is not a non-blocking step, and nothing here makes it one.
 func stepStepDrivenRunShed_ReturnsAfterOnePollInterval(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-step-reentrant"
-	// The pair must already exist on disk: InnerRun's ResolveStatus resolves the child worktree's
-	// own *lyxcwd.Location, which requires a real git worktree there, standing in for a
-	// Worktree-Create that already completed on an earlier step -- exactly as
-	// stepMidListResume_SkipsTheCompletedCreateRow's own fixture does.
+	// The pair must already exist on disk: InnerRun's ResolveStatus resolves the child worktree's own *lyxcwd.Location, which requires a real git worktree there, standing in for a Worktree-Create that already completed on an earlier step -- exactly as stepMidListResume_SkipsTheCompletedCreateRow's own fixture does.
 	hubforge.AddPair(t, h, slug)
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
@@ -655,8 +623,7 @@ func stepStepDrivenRunShed_ReturnsAfterOnePollInterval(t *testing.T, h *hubforge
 	}
 }
 
-// stepRunShedPausedChild_WaitsThenTearsDownOnceDone drives a read-status answering StatePaused, then running, then done,
-// asserting the run survives the paused poll with the pair intact and then reaches Worktree-Teardown, which removes the pair.
+// stepRunShedPausedChild_WaitsThenTearsDownOnceDone drives a read-status answering StatePaused, then running, then done, asserting the run survives the paused poll with the pair intact and then reaches Worktree-Teardown, which removes the pair.
 //
 // A halted child is a budget-exempt wait out of InnerRun.Call, never a hard error:
 // the pair keeps the watcher that lands and tears it down once the operator resumes the child.
@@ -710,14 +677,10 @@ func stepRunShedPausedChild_WaitsThenTearsDownOnceDone(t *testing.T, h *hubforge
 	}
 }
 
-// stepCreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree proves the create
-// row's own idempotency: a task worktree that already exists satisfies the row's post-condition, so
-// the row must report done and let the run advance rather than asking fabric to create it twice.
+// stepCreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree proves the create row's own idempotency: a task worktree that already exists satisfies the row's post-condition, so the row must report done and let the run advance rather than asking fabric to create it twice.
 //
-// The state it reconstructs is the one a process killed between Topology.Add succeeding and
-// shedengine persisting the transition leaves behind: the worktree on disk, the status still naming
-// the create row. Without the probe the row takes fabric's pre-existing-branch refusal, whose two
-// named remedies both refuse in exactly this state, leaving the run unresumable.
+// The state it reconstructs is the one a process killed between Topology.Add succeeding and shedengine persisting the transition leaves behind: the worktree on disk, the status still naming the create row.
+// Without the probe the row takes fabric's pre-existing-branch refusal, whose two named remedies both refuse in exactly this state, leaving the run unresumable.
 func stepCreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-create-idempotent"
 	seedBoardTask(t, h, slug, "loom")
@@ -749,10 +712,8 @@ func stepCreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree(t *testing.T, h *
 	}
 }
 
-// stepCreateRow_PairWithoutOriginRecordIsIncomplete pins the create row's
-// completeness check against a pair Add wired but never recorded the parent branch of -- a SIGKILL
-// between junction wiring and the origin record's write. Reporting done there seeds the child
-// with no parent param, which the child's own bootstrap refuses on every resume.
+// stepCreateRow_PairWithoutOriginRecordIsIncomplete pins the create row's completeness check against a pair Add wired but never recorded the parent branch of -- a SIGKILL between junction wiring and the origin record's write.
+// Reporting done there seeds the child with no parent param, which the child's own bootstrap refuses on every resume.
 func stepCreateRow_PairWithoutOriginRecordIsIncomplete(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-create-no-origin"
 	hubforge.AddPair(t, h, slug)
@@ -774,12 +735,8 @@ func stepCreateRow_PairWithoutOriginRecordIsIncomplete(t *testing.T, h *hubforge
 	}
 }
 
-// stepCreateRow_LeftoverBranchIsRewordedForPrime pins createRefusal's own wiring
-// into the CreateWorktree closure: a leftover code branch from an earlier torn-down pair (or a
-// rolled-back create) must reach the closure's caller worded for an operator standing in prime,
-// never fabric's own raw "lyx fabric checkout" advice, which would switch prime itself onto the
-// task's branch. Calls c.env.CreateWorktree directly, the production closure, rather than
-// createRefusal in isolation, so a future edit that drops the reword call fails here.
+// stepCreateRow_LeftoverBranchIsRewordedForPrime pins createRefusal's own wiring into the CreateWorktree closure: a leftover code branch from an earlier torn-down pair (or a rolled-back create) must reach the closure's caller worded for an operator standing in prime, never fabric's own raw "lyx fabric checkout" advice, which would switch prime itself onto the task's branch.
+// Calls c.env.CreateWorktree directly, the production closure, rather than createRefusal in isolation, so a future edit that drops the reword call fails here.
 func stepCreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-leftover-branch"
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", slug)
@@ -806,13 +763,8 @@ func stepCreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T, h *hubforge.Hu
 	}
 }
 
-// stepCreateRow_IncompletePairRefusesRatherThanSkippingAdd pins
-// taskWorktreeComplete's own fix: a code worktree a SIGKILL-interrupted Add left behind, with no
-// sibling and no junctions wired, must not be mistaken for a finished create. Reproduces the state a
-// process killed right after Add's own first step leaves -- the code worktree and branch exist,
-// nothing else does -- by driving the same git command Add's own createGitWorktree issues, rather
-// than stubbing anything: this proves taskWorktreeComplete's real filesystem check, not a fake of
-// it.
+// stepCreateRow_IncompletePairRefusesRatherThanSkippingAdd pins taskWorktreeComplete's own fix: a code worktree a SIGKILL-interrupted Add left behind, with no sibling and no junctions wired, must not be mistaken for a finished create.
+// Reproduces the state a process killed right after Add's own first step leaves -- the code worktree and branch exist, nothing else does -- by driving the same git command Add's own createGitWorktree issues, rather than stubbing anything: this proves taskWorktreeComplete's real filesystem check, not a fake of it.
 func stepCreateRow_IncompletePairRefusesRatherThanSkippingAdd(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-incomplete-pair"
 	target := h.PairWarpWorktree(slug)
@@ -909,9 +861,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	}
 }
 
-// stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated dirties a tracked file
-// in the hub's prime worktree, asserting the create row halts blocked before anything is created --
-// this refusal fires on every batten run and is invisible to the unit tests' fakes.
+// stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated dirties a tracked file in the hub's prime worktree, asserting the create row halts blocked before anything is created -- this refusal fires on every batten run and is invisible to the unit tests' fakes.
 func stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-dirty-prime"
 
@@ -946,10 +896,7 @@ func stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated(t *testing.T, h *hubfor
 	}
 }
 
-// stepMidListResume_SkipsTheCompletedCreateRow proves mid-list resume: it
-// creates the pair directly (standing in for a create row that already completed before a crash),
-// seeds a status file whose current producer is Run-Shed, and re-invokes the run verb -- asserting
-// CreateWorktree is never called again and the pair is torn down once the poll row answers Done.
+// stepMidListResume_SkipsTheCompletedCreateRow proves mid-list resume: it creates the pair directly (standing in for a create row that already completed before a crash), seeds a status file whose current producer is Run-Shed, and re-invokes the run verb -- asserting CreateWorktree is never called again and the pair is torn down once the poll row answers Done.
 func stepMidListResume_SkipsTheCompletedCreateRow(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-resume"
 	hubforge.AddPair(t, h, slug)
@@ -994,10 +941,8 @@ func stepMidListResume_SkipsTheCompletedCreateRow(t *testing.T, h *hubforge.Hub)
 	}
 }
 
-// stepNonPrimeRefusal covers all four verbs' non-prime refusal, driven through
-// RunCLIIn with an injected cwd pointing at a real task worktree -- the runtime check standing in
-// for the Bookend invariant's missing enforcing test. Mirrors stepRecordsPrimeRefusal's
-// own four-verb completeness below.
+// stepNonPrimeRefusal covers all four verbs' non-prime refusal, driven through RunCLIIn with an injected cwd pointing at a real task worktree -- the runtime check standing in for the Bookend invariant's missing enforcing test.
+// Mirrors stepRecordsPrimeRefusal's own four-verb completeness below.
 func stepNonPrimeRefusal(t *testing.T, h *hubforge.Hub) {
 	taskSlug := "batten-task-cwd"
 	hubforge.AddPair(t, h, taskSlug)
@@ -1023,11 +968,8 @@ func stepNonPrimeRefusal(t *testing.T, h *hubforge.Hub) {
 	}
 }
 
-// stepRecordsPrimeRefusal pins the other half of the Bookend guard: the records sibling
-// of the prime is a repository of its own whose prime is itself, so a name comparison alone admits
-// it, and both bookend rows would then drive fabric's topology against the records repository. Every
-// verb must refuse there before arming anything -- no seed written under the records prime, nothing
-// created -- and the refusal must say which checkout the operator is standing in.
+// stepRecordsPrimeRefusal pins the other half of the Bookend guard: the records sibling of the prime is a repository of its own whose prime is itself, so a name comparison alone admits it, and both bookend rows would then drive fabric's topology against the records repository.
+// Every verb must refuse there before arming anything -- no seed written under the records prime, nothing created -- and the refusal must say which checkout the operator is standing in.
 func stepRecordsPrimeRefusal(t *testing.T, h *hubforge.Hub) {
 	recordsPrimeCwd := h.PrimeWeft()
 

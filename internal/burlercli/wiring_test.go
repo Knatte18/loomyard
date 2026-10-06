@@ -90,8 +90,7 @@ func setStandaloneStateRoot(t *testing.T) {
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 }
 
-// stateDirFor derives the state directory for target under the environment t.Setenv has already
-// redirected.
+// stateDirFor derives the state directory for target under the environment t.Setenv has already redirected.
 func stateDirFor(t *testing.T, target string) string {
 	t.Helper()
 	stateDir, _, err := standalonestate.Derive(target)
@@ -102,13 +101,9 @@ func stateDirFor(t *testing.T, target string) string {
 }
 
 // TestWire_SelectsModeAndWiresItsFields covers wire's dispatch on the told mode.
-// Hub mode (loc non-nil) reports mode "hub", an empty stateDir and the hub stencils directory, and
-// leaves the reed bring-up seam nil: hub mode's reed session is not run's to boot.
-// Standalone mode (loc nil, which is what ResolveMode returns for both a plain downloaded repository
-// and a non-repository directory, so wire cannot tell them apart) reports mode "standalone", the
-// derived state directory and its stencils directory, and arms the in-process reed bring-up seam.
-// The standalone subtest sets the process environment, so the test is not t.Parallel; the hub
-// subtest touches no global state and runs in parallel.
+// Hub mode (loc non-nil) reports mode "hub", an empty stateDir and the hub stencils directory, and leaves the reed bring-up seam nil: hub mode's reed session is not run's to boot.
+// Standalone mode (loc nil, which is what ResolveMode returns for both a plain downloaded repository and a non-repository directory, so wire cannot tell them apart) reports mode "standalone", the derived state directory and its stencils directory, and arms the in-process reed bring-up seam.
+// The standalone subtest sets the process environment, so the test is not t.Parallel; the hub subtest touches no global state and runs in parallel.
 //
 //testtiming:keep pins the mode, stateDir, stencilsDir and reed-seam values per mode, which the stencils-dir and runner tests covering its blocks do not assert
 func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
@@ -186,11 +181,8 @@ func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
 	}
 }
 
-// TestWire_StencilsDirFlag covers --stencils-dir in both modes: an absolute value is honoured as
-// given, and a relative value resolves against cwd.
-// A relative value used to be stored verbatim, so the CLI process would read it against its working
-// directory while the pane burler spawns runs at the target (standalone) or the anchor (hub), and
-// one string named two different directories.
+// TestWire_StencilsDirFlag covers --stencils-dir in both modes: an absolute value is honoured as given, and a relative value resolves against cwd.
+// A relative value used to be stored verbatim, so the CLI process would read it against its working directory while the pane burler spawns runs at the target (standalone) or the anchor (hub), and one string named two different directories.
 // The told directory must exist on disk, since wiring stats it at the boundary.
 // The standalone subtests set the process environment and so are not t.Parallel.
 func TestWire_StencilsDirFlag(t *testing.T) {
@@ -360,10 +352,8 @@ func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *tes
 	}
 }
 
-// TestWireHub_LeavesDurableSinkDirUntouched guards against a later refactor quietly routing hub
-// mode through the standalone sink redirect. It sets a sentinel override before calling wireHub,
-// then asserts the sink still writes to that sentinel afterward -- a wireHub that had overwritten
-// the override would have put the trace file somewhere else.
+// TestWireHub_LeavesDurableSinkDirUntouched guards against a later refactor quietly routing hub mode through the standalone sink redirect.
+// It sets a sentinel override before calling wireHub, then asserts the sink still writes to that sentinel afterward -- a wireHub that had overwritten the override would have put the trace file somewhere else.
 //
 //testtiming:keep pins that wireHub leaves the durable sink override untouched, which the mode test covering its blocks never reads back
 func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
@@ -634,18 +624,12 @@ func TestRunCmd_PassesWatchTrueToReedUp(t *testing.T) {
 	}
 }
 
-// TestProductionFiles_NeverReferenceHubWatchdogMechanism proves standalone's production files never
-// reference the detached per-hub watchdog daemon's mechanism: standalone computes no hub lock path
-// (fabricengine.HubScratchDir), spawns no daemon (the "reed watchdog" verb), and never calls the
-// seam that owns the daemon's detached spawn (reedengine.SpawnWatchdog). All three belong to hub
-// mode alone, per this batch's own scope note.
+// TestProductionFiles_NeverReferenceHubWatchdogMechanism proves standalone's production files never reference the detached per-hub watchdog daemon's mechanism: standalone computes no hub lock path (fabricengine.HubScratchDir), spawns no daemon (the "reed watchdog" verb), and never calls the seam that owns the daemon's detached spawn (reedengine.SpawnWatchdog).
+// All three belong to hub mode alone, per this batch's own scope note.
 //
-// The scanned file set widened to include internal/standalonegeom's production files, reached by a
-// relative glob from this package's directory, when the spawn moved into internal/reedengine: that
-// package is also standalone's own engine, so the never-touches-the-hub-watchdog property is no
-// longer structurally obvious from this package's own files alone. This is the guard
-// _mill/discussion.md's watchdog-seam-lives-in-reedengine decision asks for in place of leaving the
-// boundary unpinned. This test spawns nothing and stays untagged.
+// The scanned file set widened to include internal/standalonegeom's production files, reached by a relative glob from this package's directory, when the spawn moved into internal/reedengine: that package is also standalone's own engine, so the never-touches-the-hub-watchdog property is no longer structurally obvious from this package's own files alone.
+// This is the guard _mill/discussion.md's watchdog-seam-lives-in-reedengine decision asks for in place of leaving the boundary unpinned.
+// This test spawns nothing and stays untagged.
 //
 //testtiming:keep internal/loomcli/cli_test.go names this test
 func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {

@@ -10,8 +10,8 @@ import (
 
 // shedfake.Shuttle serves here as a non-nil seam value and, as a nil *shedfake.Shuttle, a typed-nil interface value.
 
-// TestRequireHelpers pins the entry-construction guards: each refuses an invalid value with an error naming the entry and the field,
-// and accepts a valid one. A typed-nil concrete pointer stored in a seam interface is refused too, which a direct nil comparison misses.
+// TestRequireHelpers pins the entry-construction guards: each refuses an invalid value with an error naming the entry and the field, and accepts a valid one.
+// A typed-nil concrete pointer stored in a seam interface is refused too, which a direct nil comparison misses.
 //
 //testtiming:keep pins that each entry-construction guard refuses with an error naming the entry and field, including a typed-nil seam, which its covering tests do not
 func TestRequireHelpers(t *testing.T) {

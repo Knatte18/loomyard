@@ -15,11 +15,8 @@ import (
 )
 
 // TestResetHard covers ResetHard against one repository with two commits.
-// A well-formed but fabricated hex SHA — one that passes validSHA but names no commit in this
-// repo's history — surfaces as a genuine git failure, not ErrInvalidSHA; ResetHard then restores
-// the earlier commit's file state and moves CurrentSHA back to it.
-// The steps run serially in that order: the failed reset must leave the repository untouched for
-// the successful one.
+// A well-formed but fabricated hex SHA — one that passes validSHA but names no commit in this repo's history — surfaces as a genuine git failure, not ErrInvalidSHA; ResetHard then restores the earlier commit's file state and moves CurrentSHA back to it.
+// The steps run serially in that order: the failed reset must leave the repository untouched for the successful one.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestResetHard(t *testing.T) {
 	t.Parallel()

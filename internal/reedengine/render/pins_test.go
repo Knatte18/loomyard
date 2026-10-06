@@ -108,10 +108,7 @@ func TestFixedHeightPinsMatchesRulesPlacedHeights(t *testing.T) {
 			wantPins: []Pin{{PaneID: "%h", Height: 17}, {PaneID: "%1", Height: 1}},
 		},
 		{
-			// Mirrors TestRulesGolden's SelvagePresentClampedRowNoCellEverNonPositive row: the
-			// window is too short for the collapsed placements' natural CollapsedRows (2), and
-			// clampToFit's priority-1 pass reclaims each down to 1 — the pins must carry 1, never
-			// CollapsedRows.
+			// Mirrors TestRulesGolden's SelvagePresentClampedRowNoCellEverNonPositive row: the window is too short for the collapsed placements' natural CollapsedRows (2), and clampToFit's priority-1 pass reclaims each down to 1 — the pins must carry 1, never CollapsedRows.
 			name:     "TooShortWindowCollapsedPinsCarryTheReclaimedValueNotCollapsedRows",
 			strands:  belowParentChain(),
 			box:      Box{X: 0, Y: 0, W: 100, H: 8},

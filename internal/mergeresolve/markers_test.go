@@ -6,11 +6,7 @@ import (
 	"testing"
 )
 
-// TestScanUnresolved covers the conflict-marker scan: each of the three marker prefixes at the
-// start of a line is reported unresolved; a marker string mid-line passes, since the match is
-// line-anchored rather than a substring match; a path whose file no longer exists is resolved by
-// deletion; and a read error that is not a not-exist error (a directory read as a file) is a genuine
-// failure, distinct from deletion.
+// TestScanUnresolved covers the conflict-marker scan: each of the three marker prefixes at the start of a line is reported unresolved; a marker string mid-line passes, since the match is line-anchored rather than a substring match; a path whose file no longer exists is resolved by deletion; and a read error that is not a not-exist error (a directory read as a file) is a genuine failure, distinct from deletion.
 func TestScanUnresolved(t *testing.T) {
 	t.Parallel()
 

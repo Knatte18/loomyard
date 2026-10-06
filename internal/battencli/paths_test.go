@@ -31,19 +31,11 @@ func locationFixtures(t *testing.T) map[string]*lyxcwd.Location {
 	}
 }
 
-// TestPaths_ResolveUnderTheAnchorBySegment asserts, over a root-anchored and a subpath-anchored
-// Location, the path constructors' whole contract:
+// TestPaths_ResolveUnderTheAnchorBySegment asserts, over a root-anchored and a subpath-anchored Location, the path constructors' whole contract:
 //   - BattenDir and PrimeRunLock sit at their fixed spots under the ephemeral segment;
-//   - StatusFile lives under the fabric-synced _lyx segment while RunLock, StatusLock and
-//     PrimeRunLock stay under the never-tracked .lyx segment, per the Durable-vs-Ephemeral State
-//     Invariant;
-//   - the two per-slug locks sit under BattenDir, and StatusFile, RunLock and StatusLock are
-//     pairwise distinct -- RunLock differing from StatusLock is what shedengine.Shed's own
-//     validation rejects outright, and it must not first surface at runtime;
-//   - every path stays under the Location's own anchor and none contains a managed task worktree's
-//     own path -- this package's half of the Batten Bookend Invariant's mechanical proxy, since
-//     every seam resolves against the prime Location's anchored tree, never the managed slug's
-//     worktree, which does not exist at wiring time.
+//   - StatusFile lives under the fabric-synced _lyx segment while RunLock, StatusLock and PrimeRunLock stay under the never-tracked .lyx segment, per the Durable-vs-Ephemeral State Invariant;
+//   - the two per-slug locks sit under BattenDir, and StatusFile, RunLock and StatusLock are pairwise distinct -- RunLock differing from StatusLock is what shedengine.Shed's own validation rejects outright, and it must not first surface at runtime;
+//   - every path stays under the Location's own anchor and none contains a managed task worktree's own path -- this package's half of the Batten Bookend Invariant's mechanical proxy, since every seam resolves against the prime Location's anchored tree, never the managed slug's worktree, which does not exist at wiring time.
 //
 //testtiming:keep pins every path constructor's segment, distinctness and containment, which the integration steps only use as inputs
 func TestPaths_ResolveUnderTheAnchorBySegment(t *testing.T) {
@@ -80,8 +72,7 @@ func TestPaths_ResolveUnderTheAnchorBySegment(t *testing.T) {
 				}
 			}
 
-			// Only the two ephemeral locks live under BattenDir: StatusFile is durable, under the
-			// mirrored _lyx segment instead.
+			// Only the two ephemeral locks live under BattenDir: StatusFile is durable, under the mirrored _lyx segment instead.
 			for pathName, got := range map[string]string{"RunLock": runLock, "StatusLock": statusLock} {
 				if !strings.HasPrefix(got, dir+separator) {
 					t.Errorf("%s() = %q; want it under BattenDir %q", pathName, got, dir)

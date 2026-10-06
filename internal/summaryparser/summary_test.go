@@ -25,9 +25,7 @@ func writeSummaryFile(t *testing.T, path, content string) {
 	}
 }
 
-// TestParse asserts a well-formed summary.md parses into its Title and Body, with the heading line
-// excluded from Body and Body's leading newline preserved, and that every malformed or missing file
-// is rejected loud -- wrapping its own sentinel where the failure has one.
+// TestParse asserts a well-formed summary.md parses into its Title and Body, with the heading line excluded from Body and Body's leading newline preserved, and that every malformed or missing file is rejected loud -- wrapping its own sentinel where the failure has one.
 func TestParse(t *testing.T) {
 	t.Parallel()
 

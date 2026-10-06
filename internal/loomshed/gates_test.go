@@ -422,12 +422,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 	})
 }
 
-// TestHasBlockingFinding_AgainstTheGate exercises the same fail-closed severity table
-// planvalidate_test.go's TestHasBlockingFinding_UnrecognizedSeverityFailsClosed pins, asserted here
-// against the exact predicate NewPlanGate's own pass/fail split calls: an unrecognized or zero-value
-// Severity fails the gate closed rather than silently passing, because planglyph.Severity is an open
-// string type and neither shape can occur through a real resolve-backed findings set -- only a
-// hand-built Finding, or a future producer that forgets to stamp one, can carry either.
+// TestHasBlockingFinding_AgainstTheGate exercises the same fail-closed severity table planvalidate_test.go's TestHasBlockingFinding_UnrecognizedSeverityFailsClosed pins, asserted here against the exact predicate NewPlanGate's own pass/fail split calls: an unrecognized or zero-value Severity fails the gate closed rather than silently passing, because planglyph.Severity is an open string type and neither shape can occur through a real resolve-backed findings set -- only a hand-built Finding, or a future producer that forgets to stamp one, can carry either.
 //
 //testtiming:keep pins that an unrecognized or zero severity fails the plan gate closed, which TestNewPlanGate never asserts
 func TestHasBlockingFinding_AgainstTheGate(t *testing.T) {

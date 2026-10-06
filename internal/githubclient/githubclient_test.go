@@ -1,21 +1,9 @@
-// githubclient_test.go is the hermetic, table-driven test suite for the whole package: the token
-// resolution chain (token.go), the on-disk cache (cache.go/cache_windows.go), and the
-// authenticating RoundTripper (transport.go).
-// Every case redirects the cache to a t.TempDir() via t.Setenv and reaches the `gh auth token`
-// shell-out only through its injected seam, so the suite runs correctly on a machine with no `gh`
-// installed and no GitHub credentials, and never touches the operator's real credential file.
-// This file carries no build tag -- it is untagged Tier 1, spawning no process and needing no git
-// fixture, so `go test -race -count=1 ./internal/githubclient/...` runs every case here on any
-// platform.
-// The one genuinely Windows-only piece --
-// TestWriteCachedToken_CreatesFileWithRestrictivePermissions and its assertOwnerOnlyDACL helper,
-// which import golang.org/x/sys/windows to assert the cache file's security descriptor directly --
-// lives in githubclient_windows_test.go behind `//go:build windows`, mirroring this package's
-// cache.go/cache_windows.go/cache_other.go split.
-// No test here calls t.Parallel: each redirects the cache through t.Setenv, which edits the
-// process-global environment.
-// Both files share the helpers declared below (setCacheDir, seedCacheFile, withFakeGHAuthToken,
-// capturedRequest, newScriptedServer).
+// githubclient_test.go is the hermetic, table-driven test suite for the whole package: the token resolution chain (token.go), the on-disk cache (cache.go/cache_windows.go), and the authenticating RoundTripper (transport.go).
+// Every case redirects the cache to a t.TempDir() via t.Setenv and reaches the `gh auth token` shell-out only through its injected seam, so the suite runs correctly on a machine with no `gh` installed and no GitHub credentials, and never touches the operator's real credential file.
+// This file carries no build tag -- it is untagged Tier 1, spawning no process and needing no git fixture, so `go test -race -count=1 ./internal/githubclient/...` runs every case here on any platform.
+// The one genuinely Windows-only piece -- TestWriteCachedToken_CreatesFileWithRestrictivePermissions and its assertOwnerOnlyDACL helper, which import golang.org/x/sys/windows to assert the cache file's security descriptor directly -- lives in githubclient_windows_test.go behind `//go:build windows`, mirroring this package's cache.go/cache_windows.go/cache_other.go split.
+// No test here calls t.Parallel: each redirects the cache through t.Setenv, which edits the process-global environment.
+// Both files share the helpers declared below (setCacheDir, seedCacheFile, withFakeGHAuthToken, capturedRequest, newScriptedServer).
 
 package githubclient
 
@@ -122,10 +110,7 @@ func newScriptedServer(t *testing.T, statuses []int, captured *[]capturedRequest
 	return server
 }
 
-// TestResolveToken_Chain covers the full resolution order end to end: env vars always win over the
-// cache, GH_TOKEN before GITHUB_TOKEN, a fresh cache entry is used when both env vars are empty, a
-// stale one is not, and an unresolvable token surfaces as ErrTokenUnresolvable alongside an empty
-// token, without blocking or prompting.
+// TestResolveToken_Chain covers the full resolution order end to end: env vars always win over the cache, GH_TOKEN before GITHUB_TOKEN, a fresh cache entry is used when both env vars are empty, a stale one is not, and an unresolvable token surfaces as ErrTokenUnresolvable alongside an empty token, without blocking or prompting.
 func TestResolveToken_Chain(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -227,9 +212,7 @@ func TestResolveToken_Chain(t *testing.T) {
 	}
 }
 
-// TestCacheDirRedirection_HonoursOverride asserts the redirection itself works, rather than
-// assuming it: pointing the environment at an empty temp dir must resolve cacheDir under that temp
-// dir and report a cache miss there, never silently fall back to a real user path.
+// TestCacheDirRedirection_HonoursOverride asserts the redirection itself works, rather than assuming it: pointing the environment at an empty temp dir must resolve cacheDir under that temp dir and report a cache miss there, never silently fall back to a real user path.
 //
 //testtiming:keep pins that the cache redirection resolves under the temp dir rather than a real user path, which no other test asserts directly
 func TestCacheDirRedirection_HonoursOverride(t *testing.T) {
@@ -332,10 +315,8 @@ func TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution(t *testing.
 	}
 }
 
-// TestCache_ConcurrentWriters drives many goroutines through writeCachedToken and readCachedToken
-// at once.
-// The requirement is not that any particular write wins -- it is that the file is always either
-// absent or fully parseable, never left half-written by a torn concurrent write.
+// TestCache_ConcurrentWriters drives many goroutines through writeCachedToken and readCachedToken at once.
+// The requirement is not that any particular write wins -- it is that the file is always either absent or fully parseable, never left half-written by a torn concurrent write.
 //
 //testtiming:keep pins that concurrent writers never leave a torn cache file, which the sequential cache tests do not exercise
 func TestCache_ConcurrentWriters(t *testing.T) {
@@ -381,12 +362,7 @@ func TestCache_ConcurrentWriters(t *testing.T) {
 	}
 }
 
-// TestAuthRT_401Handling covers the transport's 401 contract: a 401 on a cache-sourced token
-// invalidates it, resolves a fresh one exactly once and replays with it -- never in a loop -- with
-// the request body rewound byte-identical (the req.GetBody rewind a drained replay would silently
-// skip); a second consecutive 401 goes back to the caller unchanged; and an environment-sourced
-// token is never replayed, since replaying it reproduces the identical value, so the 401 surfaces
-// as an error naming the rejected variable.
+// TestAuthRT_401Handling covers the transport's 401 contract: a 401 on a cache-sourced token invalidates it, resolves a fresh one exactly once and replays with it -- never in a loop -- with the request body rewound byte-identical (the req.GetBody rewind a drained replay would silently skip); a second consecutive 401 goes back to the caller unchanged; and an environment-sourced token is never replayed, since replaying it reproduces the identical value, so the 401 surfaces as an error naming the rejected variable.
 func TestAuthRT_401Handling(t *testing.T) {
 	tests := []struct {
 		name       string

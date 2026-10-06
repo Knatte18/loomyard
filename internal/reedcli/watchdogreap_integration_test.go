@@ -1,20 +1,10 @@
 //go:build tmux
 
-// watchdogreap_integration_test.go carries the orphan-reap tier's live assertions as one
-// TestWatchdogReap scenario: the end-to-end reap and healthy-sibling non-interference, the
-// never-entered orphan, the empty-shell degradation, the reap's process half, and loop liveness under a
-// reap in flight.
+// watchdogreap_integration_test.go carries the orphan-reap tier's live assertions as one TestWatchdogReap scenario: the end-to-end reap and healthy-sibling non-interference, the never-entered orphan, the empty-shell degradation, the reap's process half, and loop liveness under a reap in flight.
 //
-// It is a separate file from watchdog_integration_test.go, rather than more cases appended to it, so
-// the reap's own fixture and helpers stay together rather than growing that file's unrelated
-// discovery/idle-exit/re-entry fixture shape.
+// It is a separate file from watchdog_integration_test.go, rather than more cases appended to it, so the reap's own fixture and helpers stay together rather than growing that file's unrelated discovery/idle-exit/re-entry fixture shape.
 //
-// Every step drives runWatchdogLoop directly, in-process, against a hub built through hubforge (per
-// the hubforge Fabric-Fixture Invariant) with compressed timings from compressedReapTiming, and never
-// spawns a `lyx reed watchdog` process of any kind: PATTERN-spawn-observability
-// bars re-execing the test binary, which is exactly what a live daemon spawn would
-// do under `go test` (see watchdog_integration_test.go's file-level comment), and suppressWatchdogSpawn
-// exists to prevent it.
+// Every step drives runWatchdogLoop directly, in-process, against a hub built through hubforge (per the hubforge Fabric-Fixture Invariant) with compressed timings from compressedReapTiming, and never spawns a `lyx reed watchdog` process of any kind: PATTERN-spawn-observability bars re-execing the test binary, which is exactly what a live daemon spawn would do under `go test` (see watchdog_integration_test.go's file-level comment), and suppressWatchdogSpawn exists to prevent it.
 package reedcli
 
 import (
@@ -34,8 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
-// reapFixture is the tagged reap tier's shared shape: a hub built through hubforge, the booted
-// sessions of the prime worktree and one pair worktree (prime first), and the tmux binary they share.
+// reapFixture is the tagged reap tier's shared shape: a hub built through hubforge, the booted sessions of the prime worktree and one pair worktree (prime first), and the tmux binary they share.
 type reapFixture struct {
 	hub       *hubforge.Hub
 	engines   []*reedengine.Engine
@@ -43,9 +32,7 @@ type reapFixture struct {
 	tmuxPath  string
 }
 
-// newReapFixture adds one pair named pairName to hub h and boots its session, pairing it with the
-// already-booted prime engine. engines and worktrees are index-aligned, prime first, so a step can
-// orphan worktrees[1] and still assert against engines[0].
+// newReapFixture adds one pair named pairName to hub h and boots its session, pairing it with the already-booted prime engine. engines and worktrees are index-aligned, prime first, so a step can orphan worktrees[1] and still assert against engines[0].
 func newReapFixture(t *testing.T, h *hubforge.Hub, primeEngine *reedengine.Engine, pairName string) reapFixture {
 	t.Helper()
 
@@ -128,22 +115,15 @@ func startReapLoop(fx reapFixture, shellPath string, timing watchdogTiming) (con
 	return cancel, done
 }
 
-// TestWatchdogReap runs the reap claims against one hub whose prime worktree stays booted and healthy
-// throughout, each step adding its own pair worktree to orphan.
-// The steps run serially in a fixed order and do not rely on each other's results; the scenario calls
-// t.Parallel but no step does, because every step shares the one hub, its tmux server and the prime
-// session.
+// TestWatchdogReap runs the reap claims against one hub whose prime worktree stays booted and healthy throughout, each step adding its own pair worktree to orphan.
+// The steps run serially in a fixed order and do not rely on each other's results; the scenario calls t.Parallel but no step does, because every step shares the one hub, its tmux server and the prime session.
 func TestWatchdogReap(t *testing.T) {
 	t.Parallel()
 	h := hubforge.NewHub(t, ".")
 	socket := reedengine.ServerName(h.Path)
 	primeEng := watchdogIntegrationEngine(t, h.PrimeWorktree())
 
-	// EndToEndAndSiblingSurvives boots a pair session next to the prime session, orphans the pair,
-	// drives the loop with compressed timing, and asserts in one step that the orphan is fully reaped
-	// (session gone, pane processes confirmed exited) while the healthy sibling on the same hub socket
-	// is untouched — a broken exact-match kill target takes out the prefix-sharing sibling, and that
-	// must fail loudly in the same run that proves the reap works.
+	// EndToEndAndSiblingSurvives boots a pair session next to the prime session, orphans the pair, drives the loop with compressed timing, and asserts in one step that the orphan is fully reaped (session gone, pane processes confirmed exited) while the healthy sibling on the same hub socket is untouched — a broken exact-match kill target takes out the prefix-sharing sibling, and that must fail loudly in the same run that proves the reap works.
 	if !t.Run("EndToEndAndSiblingSurvives", func(t *testing.T) {
 		fx := newReapFixture(t, h, primeEng, "reap-e2e-sibling")
 
@@ -188,11 +168,8 @@ func TestWatchdogReap(t *testing.T) {
 		return
 	}
 
-	// NeverEnteredOrphanIsStillReaped covers the case enterSession can structurally never reach: the
-	// worktree directory is already gone before runWatchdogLoop's first cycle runs, so
-	// resolveWatchedSession's git spawn fails every cycle and the name is never in known. It must still
-	// be reaped, because the reap reads the live session-name list rather than the daemon's own known
-	// map.
+	// NeverEnteredOrphanIsStillReaped covers the case enterSession can structurally never reach: the worktree directory is already gone before runWatchdogLoop's first cycle runs, so resolveWatchedSession's git spawn fails every cycle and the name is never in known.
+	// It must still be reaped, because the reap reads the live session-name list rather than the daemon's own known map.
 	if !t.Run("NeverEnteredOrphanIsStillReaped", func(t *testing.T) {
 		fx := newReapFixture(t, h, primeEng, "reap-never-entered")
 
@@ -218,14 +195,8 @@ func TestWatchdogReap(t *testing.T) {
 	}
 
 	// EmptyShellStillReaps proves the discussion's degrade-never-refuse decision at the live tier:
-	// runWatchdogLoop is driven directly with an empty shellPath against a live hub socket and an
-	// orphaned worktree, and the session's pane ROOT pids (never their descendants — see this step's
-	// doc, and card 18's requirements) are confirmed exited. Asserting only the roots keeps this step
-	// asserting the guarantee an empty shell makes on every platform: descendantClosurePIDs' Windows
-	// body degrades to returning the roots unchanged when its probe cannot spawn, while its Linux body
-	// (this suite's own platform) reads no Engine field at all and would in fact walk descendants
-	// regardless of shellPath — so asserting descendants here would pass for a reason specific to
-	// Linux, not the cross-platform guarantee this step exists to pin.
+	// runWatchdogLoop is driven directly with an empty shellPath against a live hub socket and an orphaned worktree, and the session's pane ROOT pids (never their descendants — see this step's doc, and card 18's requirements) are confirmed exited.
+	// Asserting only the roots keeps this step asserting the guarantee an empty shell makes on every platform: descendantClosurePIDs' Windows body degrades to returning the roots unchanged when its probe cannot spawn, while its Linux body (this suite's own platform) reads no Engine field at all and would in fact walk descendants regardless of shellPath — so asserting descendants here would pass for a reason specific to Linux, not the cross-platform guarantee this step exists to pin.
 	if !t.Run("EmptyShellStillReaps", func(t *testing.T) {
 		fx := newReapFixture(t, h, primeEng, "reap-empty-shell")
 
@@ -257,13 +228,8 @@ func TestWatchdogReap(t *testing.T) {
 		return
 	}
 
-	// DescendantClosureConfirmedExited is the only step that exercises the descendant closure and the
-	// wait-then-force-kill sequence at all: it drives an end-to-end reap against a session whose pane
-	// grew a background descendant that never receives kill-session's own hangup, and asserts the
-	// descendant is confirmed exited (via proc.IsAlive, not merely signalled) after the reap returns.
-	// This is what proves the closure was computed before the kill: a closure computed after
-	// kill-session collapses to the pane roots alone and would leave this descendant alive forever,
-	// since nothing else in this step ever signals it directly.
+	// DescendantClosureConfirmedExited is the only step that exercises the descendant closure and the wait-then-force-kill sequence at all: it drives an end-to-end reap against a session whose pane grew a background descendant that never receives kill-session's own hangup, and asserts the descendant is confirmed exited (via proc.IsAlive, not merely signalled) after the reap returns.
+	// This is what proves the closure was computed before the kill: a closure computed after kill-session collapses to the pane roots alone and would leave this descendant alive forever, since nothing else in this step ever signals it directly.
 	if !t.Run("DescendantClosureConfirmedExited", func(t *testing.T) {
 		fx := newReapFixture(t, h, primeEng, "reap-descendant")
 
@@ -312,18 +278,9 @@ func TestWatchdogReap(t *testing.T) {
 	}
 
 	// LoopStaysLiveDuringReap is the regression guard for running the reap off-loop rather than inline.
-	// With a reap dispatched and still in flight, it asserts the discovery loop keeps ticking and enters
-	// a session that appears after the dispatch, that cancelling the daemon's context returns promptly
-	// rather than being tied to the reap's own graceful-plus-force budget, and that the reaped name
-	// leaves the in-flight set on a later tick: a session re-created under the exact same name is
-	// reaped again when orphaned a second time, which an implementation leaking the name in the
-	// in-flight set forever could never do (planReapCycle skips any name still marked in-flight,
-	// permanently).
+	// With a reap dispatched and still in flight, it asserts the discovery loop keeps ticking and enters a session that appears after the dispatch, that cancelling the daemon's context returns promptly rather than being tied to the reap's own graceful-plus-force budget, and that the reaped name leaves the in-flight set on a later tick: a session re-created under the exact same name is reaped again when orphaned a second time, which an implementation leaking the name in the in-flight set forever could never do (planReapCycle skips any name still marked in-flight, permanently).
 	//
-	// Both this step and DescendantClosureConfirmedExited run under the -race flag the batch verify
-	// carries: the in-flight set, the gone-counter map and the known map are all written only on the
-	// loop goroutine, with the reap goroutines' sole cross-goroutine act being a non-blocking channel
-	// send, so a correct implementation leaves nothing for the race detector to find here.
+	// Both this step and DescendantClosureConfirmedExited run under the -race flag the batch verify carries: the in-flight set, the gone-counter map and the known map are all written only on the loop goroutine, with the reap goroutines' sole cross-goroutine act being a non-blocking channel send, so a correct implementation leaves nothing for the race detector to find here.
 	t.Run("LoopStaysLiveDuringReap", func(t *testing.T) {
 		fx := newReapFixture(t, h, primeEng, "reap-inflight-a")
 
@@ -331,9 +288,7 @@ func TestWatchdogReap(t *testing.T) {
 		orphanSession := orphanEng.SessionName()
 		orphanWorktreeRoot := fx.worktrees[1]
 
-		// Renamed aside rather than removed outright (unlike the shared orphanWorktree helper): this
-		// step needs to restore the exact same worktree, with its git worktree admin data untouched, so
-		// it can be re-orphaned a second time under the identical session name later in this same step.
+		// Renamed aside rather than removed outright (unlike the shared orphanWorktree helper): this step needs to restore the exact same worktree, with its git worktree admin data untouched, so it can be re-orphaned a second time under the identical session name later in this same step.
 		restore := renameWorktreeAway(t, orphanWorktreeRoot)
 
 		timing := compressedReapTiming()

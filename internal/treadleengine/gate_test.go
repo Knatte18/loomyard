@@ -49,11 +49,8 @@ func TestConverged(t *testing.T) {
 	}
 }
 
-// TestExecGateCommand table-drives execGateCommand over a zero-exit command (success), a non-zero
-// exit (failure, not an error), a command that cannot run (an error) and a timed-out command (a
-// failing gate carrying a timeout note, not an infrastructure error).
-// "go version" reliably finishes well inside 30s but a 1-nanosecond timeout guarantees the deadline
-// fires before the process can even be scheduled, without a platform-specific long-running command.
+// TestExecGateCommand table-drives execGateCommand over a zero-exit command (success), a non-zero exit (failure, not an error), a command that cannot run (an error) and a timed-out command (a failing gate carrying a timeout note, not an infrastructure error).
+// "go version" reliably finishes well inside 30s but a 1-nanosecond timeout guarantees the deadline fires before the process can even be scheduled, without a platform-specific long-running command.
 func TestExecGateCommand(t *testing.T) {
 	t.Parallel()
 

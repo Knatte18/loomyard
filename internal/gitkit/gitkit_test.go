@@ -52,9 +52,7 @@ func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
 }
 
 // TestCopiedRepoScenario drives one CopyRepo fixture through the fixture and query helpers.
-// The steps run serially in one order and share the fixture's repository state: the query steps
-// start on the fixture's main branch, and the branches-and-ancestry step switches the checkout to
-// the side branch last.
+// The steps run serially in one order and share the fixture's repository state: the query steps start on the fixture's main branch, and the branches-and-ancestry step switches the checkout to the side branch last.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestCopiedRepoScenario(t *testing.T) {
 	t.Parallel()
@@ -66,8 +64,7 @@ func TestCopiedRepoScenario(t *testing.T) {
 		MustRun(t, repo, "git", "rev-parse", "HEAD")
 
 		// Origin points at the copied bare, not the template.
-		// Normalize to forward slashes: git returns forward-slash paths on Windows
-		// while filepath.Join uses backslashes; both are equivalent local paths.
+		// Normalize to forward slashes: git returns forward-slash paths on Windows while filepath.Join uses backslashes; both are equivalent local paths.
 		gotURL := filepath.ToSlash(Git(t, repo, "remote", "get-url", "origin"))
 		if gotURL != filepath.ToSlash(fixture.Bare) {
 			t.Errorf("origin URL = %q; want %q", gotURL, filepath.ToSlash(fixture.Bare))
@@ -76,8 +73,7 @@ func TestCopiedRepoScenario(t *testing.T) {
 		return
 	}
 
-	// Layer A: Copy* fixtures carry quiet git settings in their own .git/config, independent of
-	// the hermetic env.
+	// Layer A: Copy* fixtures carry quiet git settings in their own .git/config, independent of the hermetic env.
 	if !t.Run("template quiet config", func(t *testing.T) {
 		if got := Git(t, repo, "config", "--local", "core.fsmonitor"); got != "false" {
 			t.Errorf("--local core.fsmonitor = %q; want %q", got, "false")

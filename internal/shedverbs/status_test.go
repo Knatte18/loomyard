@@ -264,8 +264,7 @@ func TestStatusCmd_EnsureStatusLockDir_False(t *testing.T) {
 	}
 }
 
-// TestRenderStatusLine_LabelAndOptionalTails asserts the told label appears in the rendered line
-// and the optional last/wait tails are included only when non-empty.
+// TestRenderStatusLine_LabelAndOptionalTails asserts the told label appears in the rendered line and the optional last/wait tails are included only when non-empty.
 //
 //testtiming:keep pins the told label and the optional last and wait tails of the status line, which its covering test does not
 func TestRenderStatusLine_LabelAndOptionalTails(t *testing.T) {
@@ -293,8 +292,7 @@ func TestRenderStatusLine_LabelAndOptionalTails(t *testing.T) {
 	}
 }
 
-// TestUnavailableLine_DedupesAcrossPolls asserts the composed unavailable line is byte-identical
-// across polls for a given label -- the property PrintStatusLinesOnChange's dedupe relies on.
+// TestUnavailableLine_DedupesAcrossPolls asserts the composed unavailable line is byte-identical across polls for a given label -- the property PrintStatusLinesOnChange's dedupe relies on.
 //
 //testtiming:keep pins that the unavailable line is byte-stable across polls and starts with the told label, which its covering test does not
 func TestUnavailableLine_DedupesAcrossPolls(t *testing.T) {

@@ -273,9 +273,7 @@ type unrecognizedMergeError struct{}
 
 func (unrecognizedMergeError) Error() string { return "unrecognized merge failure" }
 
-// TestResolve_MergeInError_StuckWithReasonNoAbort asserts every error MergeIn returns -- a foreign
-// merge state, an unmergeable state, and one its disposition table does not name -- ends stuck with
-// the error surfaced, without aborting a merge the run does not own.
+// TestResolve_MergeInError_StuckWithReasonNoAbort asserts every error MergeIn returns -- a foreign merge state, an unmergeable state, and one its disposition table does not name -- ends stuck with the error surfaced, without aborting a merge the run does not own.
 func TestResolve_MergeInError_StuckWithReasonNoAbort(t *testing.T) {
 	t.Parallel()
 
@@ -361,9 +359,7 @@ func TestResolve_ShuttleOutcomes_MapToStuckNoConclude(t *testing.T) {
 	}
 }
 
-// TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure pins the placement guarantee: the Warn line
-// lands before abortAndStuck's own MergeAbort call, so a subsequent MergeAbort failure does not
-// erase the diagnostic.
+// TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure pins the placement guarantee: the Warn line lands before abortAndStuck's own MergeAbort call, so a subsequent MergeAbort failure does not erase the diagnostic.
 // Not parallel: logcapture.Capture replaces the process-global logger.
 func TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure(t *testing.T) {
 	paths := []string{"a.txt"}

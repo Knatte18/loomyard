@@ -31,11 +31,7 @@ func seedManifest(t *testing.T, dir string, names []string) {
 }
 
 // TestRenderToDiskManifestCleanup covers RenderToDisk's outputs and the manifest-based cleanup scenarios:
-// a pre-seeded orphan removed with a custom design prefix,
-// renamed outputs removed across consecutive renders,
-// body loss removing a design doc,
-// unrelated files left untouched,
-// and graceful degradation for missing/corrupt manifests.
+// a pre-seeded orphan removed with a custom design prefix, renamed outputs removed across consecutive renders, body loss removing a design doc, unrelated files left untouched, and graceful degradation for missing/corrupt manifests.
 func TestRenderToDiskManifestCleanup(t *testing.T) {
 	t.Run("SeededManifestRemovesOrphanAndWritesOutputs", func(t *testing.T) {
 		dir := t.TempDir()
@@ -44,8 +40,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 			{ID: 1, Slug: "b", Title: "B", Kind: boardengine.KindTask, Labels: []string{"enhancement"}}, // no body → no design-doc file
 		}
 
-		// A stale design doc from a previous render, pre-seeded into the manifest, so the one
-		// RenderToDisk call removes it: a first render with no prior manifest removes nothing.
+		// A stale design doc from a previous render, pre-seeded into the manifest, so the one RenderToDisk call removes it: a first render with no prior manifest removes nothing.
 		ghost := filepath.Join(dir, "prop-ghost.md")
 		if err := os.WriteFile(ghost, []byte("old"), 0o644); err != nil {
 			t.Fatal(err)
@@ -379,8 +374,7 @@ func TestRenderDesignDocGoldens(t *testing.T) {
 	}
 }
 
-// TestRenderCustomOutputs verifies that Render respects configurable Outputs fields, covering both
-// a custom Readme filename and a custom design prefix.
+// TestRenderCustomOutputs verifies that Render respects configurable Outputs fields, covering both a custom Readme filename and a custom design prefix.
 //
 // Folds: TestRenderConfigurableHomeFilename, TestRenderConfigurableProposalPrefix
 //

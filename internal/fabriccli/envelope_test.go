@@ -1,8 +1,5 @@
-// envelope_test.go covers okWithRecord/errWithRecord/errConflictsWithRecord's shape directly against an
-// io.Writer buffer: the fixed mutations/partial key pair on both the success and the failure path, the
-// never-null "mutations" array, and each helper's own reserved-key override set. It is a pure-data test
-// with no git spawn and no hub fixture, per the Test Tier Purity Shared Decision — the end-to-end
-// per-verb assertions that need a real hub live in the integration-tagged scenario files instead.
+// envelope_test.go covers okWithRecord/errWithRecord/errConflictsWithRecord's shape directly against an io.Writer buffer: the fixed mutations/partial key pair on both the success and the failure path, the never-null "mutations" array, and each helper's own reserved-key override set.
+// It is a pure-data test with no git spawn and no hub fixture, per the Test Tier Purity Shared Decision — the end-to-end per-verb assertions that need a real hub live in the integration-tagged scenario files instead.
 
 package fabriccli
 
@@ -24,11 +21,8 @@ func populatedMutations(hubRoot string) fabricengine.Mutations {
 	return rec.Snapshot()
 }
 
-// TestOkWithRecord_SuccessShape asserts the success envelope always carries a non-null "mutations"
-// array and "partial": false, alongside the caller's own fields unchanged — backward compatibility of
-// the success envelope is an explicit assertion, not an assumption.
-// A caller-supplied "ok", "mutations" or "partial" is overridden by the helper's own value, while
-// "error" is left alone: output.Ok never touches it, so okWithRecord does not reserve it either.
+// TestOkWithRecord_SuccessShape asserts the success envelope always carries a non-null "mutations" array and "partial": false, alongside the caller's own fields unchanged — backward compatibility of the success envelope is an explicit assertion, not an assumption.
+// A caller-supplied "ok", "mutations" or "partial" is overridden by the helper's own value, while "error" is left alone: output.Ok never touches it, so okWithRecord does not reserve it either.
 //
 //testtiming:keep pins the exact envelope shape (a "mutations" array that is never null, "partial" false) that its covering integration test only sees through a real hub
 func TestOkWithRecord_SuccessShape(t *testing.T) {
@@ -98,9 +92,7 @@ func TestOkWithRecord_SuccessShape(t *testing.T) {
 	}
 }
 
-// TestErrWithRecord_FailureShape covers the two record states the failure path's "partial" derivation
-// distinguishes: an empty record (partial false) and a non-empty one (partial true), both carrying a
-// non-null "mutations" array, "ok": false and the flattened error string.
+// TestErrWithRecord_FailureShape covers the two record states the failure path's "partial" derivation distinguishes: an empty record (partial false) and a non-empty one (partial true), both carrying a non-null "mutations" array, "ok": false and the flattened error string.
 //
 //testtiming:keep pins the exact failure-envelope shape (a "mutations" array that is never null, "partial" derived from the record, no "refusal" key) that its covering integration test only sees through a real hub
 func TestErrWithRecord_FailureShape(t *testing.T) {
@@ -145,11 +137,7 @@ func TestErrWithRecord_FailureShape(t *testing.T) {
 	}
 }
 
-// TestErrConflictsWithRecord_ConflictEnvelopeShape covers the dedicated conflict-envelope helper's
-// contract: "mutations" from the record and never null, "partial" the literal false even against a
-// non-empty record (the property the Shared Decision exists to pin — a nil engine error with a
-// non-empty record would compute true through errWithRecordFields, which this helper never routes
-// through), "conflicts" never null, the fixed error text naming the way forward, and return value 1.
+// TestErrConflictsWithRecord_ConflictEnvelopeShape covers the dedicated conflict-envelope helper's contract: "mutations" from the record and never null, "partial" the literal false even against a non-empty record (the property the Shared Decision exists to pin — a nil engine error with a non-empty record would compute true through errWithRecordFields, which this helper never routes through), "conflicts" never null, the fixed error text naming the way forward, and return value 1.
 //
 //testtiming:keep pins the conflict envelope's literal "partial": false and never-null "conflicts" array against a non-empty record, which its covering integration test only sees through a real hub
 func TestErrConflictsWithRecord_ConflictEnvelopeShape(t *testing.T) {

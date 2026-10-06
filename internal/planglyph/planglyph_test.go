@@ -117,11 +117,8 @@ func TestValidate_QuarryUnavailableReturnsPureFindingsAlongsideTheError(t *testi
 }
 
 // TestCanonicalizeHandles_ReportsWhetherItRewrote pins the signal resolvePass hangs its reload on.
-// resolvePass must re-read the plan exactly when canonicalization changed it on disk, and must
-// treat a failure of that re-read as an infrastructure error rather than silently falling back to
-// the stale in-memory copy — which would run the resolve-backed passes against bytes no longer on
-// disk and report a clean verdict over them. Both halves depend on this second return being
-// truthful.
+// resolvePass must re-read the plan exactly when canonicalization changed it on disk, and must treat a failure of that re-read as an infrastructure error rather than silently falling back to the stale in-memory copy — which would run the resolve-backed passes against bytes no longer on disk and report a clean verdict over them.
+// Both halves depend on this second return being truthful.
 //
 //testtiming:keep pins the rewrote return value, which TestCanonicalizeHandles_Rewrites ignores
 func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {

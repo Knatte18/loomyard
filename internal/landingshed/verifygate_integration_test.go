@@ -47,10 +47,7 @@ func runs(t *testing.T, counter string) int {
 	return strings.Count(string(data), "run")
 }
 
-// TestVerifyGate_RealVerifytreeScenario drives newVerifyGate's real verifytree functions through one scratch repo, a step at a time,
-// and pins the record-keyed behaviour the unit tests fake: a verify cut off before the record write runs again,
-// the log holds the command's output on a pass and a fail, a check over the tree already verified runs nothing,
-// a tree the record does not name is verified, and the clean-tree seam sees an untracked file.
+// TestVerifyGate_RealVerifytreeScenario drives newVerifyGate's real verifytree functions through one scratch repo, a step at a time, and pins the record-keyed behaviour the unit tests fake: a verify cut off before the record write runs again, the log holds the command's output on a pass and a fail, a check over the tree already verified runs nothing, a tree the record does not name is verified, and the clean-tree seam sees an untracked file.
 //
 // The steps run in order on one repo and one verified-tree record, so no step runs in parallel and each relies on the state the one before it left;
 // the top-level test calls t.Parallel because the repo is its own.

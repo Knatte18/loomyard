@@ -36,16 +36,11 @@ var expectedOutcomeByStatus = map[quarry.Status]statusOutcome{
 	quarry.StatusNotFound:  {createNotDone: true, deleteNotDone: false, renameNotDoneOld: false, renameNotDoneNew: true},
 }
 
-// TestStatusCompleteness_TableCoversQuarryStatuses is the whole reason this file exists: the table
-// key set and quarry.Statuses cover each other exactly, in both directions, as genuine set
-// membership tests. A length comparison would pass a same-size swap of one status for another, and
-// sizing a range loop off len(quarry.Statuses) would assert nothing at all — both are rejected by
-// design, per the statuses-is-read-only Shared Decision.
+// TestStatusCompleteness_TableCoversQuarryStatuses is the whole reason this file exists: the table key set and quarry.Statuses cover each other exactly, in both directions, as genuine set membership tests.
+// A length comparison would pass a same-size swap of one status for another, and sizing a range loop off len(quarry.Statuses) would assert nothing at all — both are rejected by design, per the statuses-is-read-only Shared Decision.
 //
-// This file deliberately does NOT also assert that every value in quarry.Statuses avoids
-// glyph-rejected in TestStatusCompleteness_MatchesDoneCheckVerdicts below: that would hold for a
-// hypothetical fifth status too, since Known() would admit it, so it cannot detect the drift this
-// file exists to catch. Do not add it.
+// This file deliberately does NOT also assert that every value in quarry.Statuses avoids glyph-rejected in TestStatusCompleteness_MatchesDoneCheckVerdicts below: that would hold for a hypothetical fifth status too, since Known() would admit it, so it cannot detect the drift this file exists to catch.
+// Do not add it.
 //
 //testtiming:keep a guard that fires when quarry.Statuses and the expectation table diverge, which no covering test asserts
 func TestStatusCompleteness_TableCoversQuarryStatuses(t *testing.T) {
@@ -90,10 +85,7 @@ func runDoneCheckVerdict(t *testing.T, checkID string, r quarry.ResolveResult) [
 	return findings
 }
 
-// TestStatusCompleteness_MatchesDoneCheckVerdicts drives doneCheckVerdicts through its own seam,
-// one checkID at a time so the two rename arms — which both emit a Finding whose Check field is
-// rename-not-done — are told apart by which arm produced the finding rather than by Check alone,
-// and compares the result against expectedOutcomeByStatus's row for status.
+// TestStatusCompleteness_MatchesDoneCheckVerdicts drives doneCheckVerdicts through its own seam, one checkID at a time so the two rename arms — which both emit a Finding whose Check field is rename-not-done — are told apart by which arm produced the finding rather than by Check alone, and compares the result against expectedOutcomeByStatus's row for status.
 //
 //testtiming:keep pins every quarry status against all four check arms from the guard table, where TestDoneChecks_Verdicts reaches found and not_found only
 func TestStatusCompleteness_MatchesDoneCheckVerdicts(t *testing.T) {
@@ -132,11 +124,7 @@ func TestStatusCompleteness_MatchesDoneCheckVerdicts(t *testing.T) {
 	}
 }
 
-// TestStatusCompleteness_UnreadableStatusesFailClosed pins the two unreadable shapes — the
-// zero-value status, quarry's pre-resolution rejection carrying Error and Reason, and a synthetic
-// out-of-vocabulary status string — to exactly one blocking glyph-rejected finding for every one of
-// the four checkID arms, with no create, delete or rename verdict, and confirms the two shapes
-// render the two different Detail strings unreadableStatusDetail produces for them.
+// TestStatusCompleteness_UnreadableStatusesFailClosed pins the two unreadable shapes — the zero-value status, quarry's pre-resolution rejection carrying Error and Reason, and a synthetic out-of-vocabulary status string — to exactly one blocking glyph-rejected finding for every one of the four checkID arms, with no create, delete or rename verdict, and confirms the two shapes render the two different Detail strings unreadableStatusDetail produces for them.
 //
 //testtiming:keep pins the two unreadable-status Detail strings on every check arm, which TestDoneChecks_RootFilenameCreateLanded and TestCreateFindings_UnreadableStatusFailsClosed do not assert
 func TestStatusCompleteness_UnreadableStatusesFailClosed(t *testing.T) {

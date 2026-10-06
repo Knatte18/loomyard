@@ -26,8 +26,7 @@ const tableScanMinFiles = 3
 // four-name contract is the simpler, equally authoritative source.
 var allGenericVerbs = []string{"run", "step", "status", "pause", "goto"}
 
-// TestRecipes_KeySet asserts recipes' key set is exactly {"batten", "loom"} and equals shedrun.RecipeNames(),
-// so the vocabulary internal/shedrun declares and the arming table internal/shedcli declares cannot silently drift apart.
+// TestRecipes_KeySet asserts recipes' key set is exactly {"batten", "loom"} and equals shedrun.RecipeNames(), so the vocabulary internal/shedrun declares and the arming table internal/shedcli declares cannot silently drift apart.
 //
 //testtiming:keep pins the table's key set against both literal and the shedrun vocabulary, which its covering test does not
 func TestRecipes_KeySet(t *testing.T) {
@@ -55,10 +54,8 @@ func TestRecipes_KeySet(t *testing.T) {
 	}
 }
 
-// TestRecipes_Entries pins each recipe entry: its Verbs are all five generic verbs,
-// its BootstrapVerb equals its own module's exported constant, and its seed-location rule is set only where the recipe's verbs run from prime alone.
-// The table also cannot degenerate to all-empty or all-non-empty bootstrap verbs, which every per-entry equality passes against
-// and which a bad merge or an over-eager "initialise the new field" edit produces.
+// TestRecipes_Entries pins each recipe entry: its Verbs are all five generic verbs, its BootstrapVerb equals its own module's exported constant, and its seed-location rule is set only where the recipe's verbs run from prime alone.
+// The table also cannot degenerate to all-empty or all-non-empty bootstrap verbs, which every per-entry equality passes against and which a bad merge or an over-eager "initialise the new field" edit produces.
 //
 //testtiming:keep pins each recipe entry's verbs, bootstrap verb and seed-location rule, which its covering test does not
 func TestRecipes_Entries(t *testing.T) {

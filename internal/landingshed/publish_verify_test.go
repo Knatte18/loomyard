@@ -1,5 +1,4 @@
-// publish_verify_test.go covers the clean-tree checks and the post-merge verify gate as Publish.Call wires them around the parent merge-in and before the push,
-// against fake verifytree seams and the package's fake resolver.
+// publish_verify_test.go covers the clean-tree checks and the post-merge verify gate as Publish.Call wires them around the parent merge-in and before the push, against fake verifytree seams and the package's fake resolver.
 // None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
 
 package landingshed
@@ -64,9 +63,7 @@ func failOnGitHubClient(t *testing.T) {
 	t.Cleanup(func() { NewGitHubClient = orig })
 }
 
-// TestPublishVerify_Proceeds pins that a passing verify, one the verified-tree record skips and one after a no-op merge-in
-// each let the push run, with the verify asked once at site Publish -- the producer asks after a no-op merge-in too,
-// leaving the skip decision to the record -- and the three clean-tree checks made.
+// TestPublishVerify_Proceeds pins that a passing verify, one the verified-tree record skips and one after a no-op merge-in each let the push run, with the verify asked once at site Publish -- the producer asks after a no-op merge-in too, leaving the skip decision to the record -- and the three clean-tree checks made.
 func TestPublishVerify_Proceeds(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -98,8 +95,7 @@ func TestPublishVerify_Proceeds(t *testing.T) {
 	}
 }
 
-// TestPublishVerify_HaltsOnVerifyResult pins that a failed verify, a verify that could not start and a verify that
-// reports a dirty tree each end Stuck with a reason naming the cause, before anything is pushed and before GitHub is reached.
+// TestPublishVerify_HaltsOnVerifyResult pins that a failed verify, a verify that could not start and a verify that reports a dirty tree each end Stuck with a reason naming the cause, before anything is pushed and before GitHub is reached.
 func TestPublishVerify_HaltsOnVerifyResult(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -208,8 +204,7 @@ func TestPublishVerify_EmptyCommand(t *testing.T) {
 	}
 }
 
-// TestPublishVerify_HardErrorsAreReturned pins that a failing clean-tree check, an unreadable verify command and a cancellation
-// are returned as errors rather than Stuck verdicts, with nothing pushed.
+// TestPublishVerify_HardErrorsAreReturned pins that a failing clean-tree check, an unreadable verify command and a cancellation are returned as errors rather than Stuck verdicts, with nothing pushed.
 func TestPublishVerify_HardErrorsAreReturned(t *testing.T) {
 	tests := []struct {
 		name  string

@@ -60,10 +60,7 @@ func minimalCardFile(number int, name, editPath string) string {
 		"**Intent:** placeholder card.\n"
 }
 
-// TestParsePlan_Overview covers the overview's frontmatter, framing and Card Index parsing: a
-// complete overview, ASCII single and double hyphen Card Index separators, and a missing
-// format:/approved: key -- not a ParsePlan failure, since format-unrecognized and plan-unapproved
-// are Validate's checks, not the parser's, so the plan simply parses with the zero value.
+// TestParsePlan_Overview covers the overview's frontmatter, framing and Card Index parsing: a complete overview, ASCII single and double hyphen Card Index separators, and a missing format:/approved: key -- not a ParsePlan failure, since format-unrecognized and plan-unapproved are Validate's checks, not the parser's, so the plan simply parses with the zero value.
 //
 //testtiming:keep pins the overview's frontmatter, framing and Card Index fields, which TestParsePlan_CardFields does not assert
 func TestParsePlan_Overview(t *testing.T) {
@@ -339,16 +336,8 @@ func TestParsePlan_CardHeading(t *testing.T) {
 	})
 }
 
-// TestParsePlan_CardFields covers how one card file's body parses into its Card, each row pinning
-// one field family:
-// the one-or-more type-label model and its per-label TargetGroups (two recognized labels on a card,
-// even the same label twice, is the supported shape; zero labels stays a defect card-type-missing
-// catches); a "**Uses:**" label present with no bullets (a non-nil zero-length slice, distinct from
-// an absent label); the ImpactSummary inline remainder plus trailing lines; the retired labels
-// routed to RetiredLabels while terminating the preceding Intent prose; the Rename and Create
-// grammars, where a malformed bullet reaches RenameRaw or CreateRaw rather than becoming a parse
-// error and the arrow form reaches its matcher with its backticks intact; a handle-shaped target
-// never picking up a root: prefix; and the optional Commit and Verify fields.
+// TestParsePlan_CardFields covers how one card file's body parses into its Card, each row pinning one field family:
+// the one-or-more type-label model and its per-label TargetGroups (two recognized labels on a card, even the same label twice, is the supported shape; zero labels stays a defect card-type-missing catches); a "**Uses:**" label present with no bullets (a non-nil zero-length slice, distinct from an absent label); the ImpactSummary inline remainder plus trailing lines; the retired labels routed to RetiredLabels while terminating the preceding Intent prose; the Rename and Create grammars, where a malformed bullet reaches RenameRaw or CreateRaw rather than becoming a parse error and the arrow form reaches its matcher with its backticks intact; a handle-shaped target never picking up a root: prefix; and the optional Commit and Verify fields.
 func TestParsePlan_CardFields(t *testing.T) {
 	t.Parallel()
 
@@ -497,9 +486,7 @@ Framing paragraph.
 			},
 		},
 		{
-			// The label line's own remainder lands in ImpactSummary and every following non-label
-			// line in ImpactSummaryTrailing -- captured rather than discarded so
-			// impact-summary-multiline has something to report.
+			// The label line's own remainder lands in ImpactSummary and every following non-label line in ImpactSummaryTrailing -- captured rather than discarded so impact-summary-multiline has something to report.
 			name: "ImpactSummary inline remainder plus trailing lines",
 			body: "# Card 1 — multiline impact\n\n**Edit:**\n- `a.go`\n" +
 				"**ImpactSummary:** first line.\nsecond line.\nthird line.\n**Intent:** placeholder.\n",
@@ -525,8 +512,7 @@ Framing paragraph.
 			},
 		},
 		{
-			// The case-sensitive match routes format-3's lowercase label to RetiredLabels rather
-			// than mistaking it for format-4's "**Verify:**" field.
+			// The case-sensitive match routes format-3's lowercase label to RetiredLabels rather than mistaking it for format-4's "**Verify:**" field.
 			name: "retired lowercase verify label terminates Intent",
 			body: "# Card 1 — half-migrated\n\n**Intent:** prose before verify.\n**verify:** go test ./...\n",
 			check: func(t *testing.T, card planparser.Card) {
@@ -562,9 +548,7 @@ Framing paragraph.
 			},
 		},
 		{
-			// parseRefField strips backticks before returning a payload, so routing the arrow form
-			// through it would never match the two-backticked-token shape: a declaration in
-			// Declarations, not CreateRaw, proves the backticks arrived intact.
+			// parseRefField strips backticks before returning a payload, so routing the arrow form through it would never match the two-backticked-token shape: a declaration in Declarations, not CreateRaw, proves the backticks arrived intact.
 			name: "Create grammar: declaration, plain ref and malformed arrow bullet",
 			body: "# Card 1 — create handles\n\n**Create:**\n" +
 				"- `plan:internal/foo#NewThing` -> `func NewThing() *Thing`\n" +
@@ -674,9 +658,7 @@ func TestParsePlan_InlineFieldValueFailsLoud(t *testing.T) {
 	}
 }
 
-// TestParsePlan_Card_SourcePath proves each parsed card's SourcePath is the bare worktree-relative
-// `_lyx/plan/NN-<slug>.md` token, never prefixed by the (t.TempDir()) absolute Plan.Dir the
-// fixture is parsed from.
+// TestParsePlan_Card_SourcePath proves each parsed card's SourcePath is the bare worktree-relative `_lyx/plan/NN-<slug>.md` token, never prefixed by the (t.TempDir()) absolute Plan.Dir the fixture is parsed from.
 //
 //testtiming:keep pins SourcePath as the bare worktree-relative token without the absolute plan directory, which TestParsePlan_CardFields does not assert
 func TestParsePlan_Card_SourcePath(t *testing.T) {
@@ -728,14 +710,9 @@ func goodPlanDir() string {
 	return filepath.Join("testdata", "goodplan")
 }
 
-// TestParsePlan_GoldenFixture round-trips testdata/goodplan exactly: the overview's frontmatter,
-// framing, and every field of every one of the seven cards must match the fixture's own
-// canonicalized content, including the root: internal/boardcli resolution (for a plain path) and
-// the // worktree-root escape, both followed by glyph canonicalization under the fixture's
-// language: go. It also pins this migration's sharpest possible regression: a glyph copied
-// verbatim from the fixture must survive canonicalization byte-identical even though the fixture's
-// root: is non-empty — a glyph is never root:-joined. Card 2 additionally round-trips a multi-label
-// card: an **Edit:** group followed by a **Create:** group.
+// TestParsePlan_GoldenFixture round-trips testdata/goodplan exactly: the overview's frontmatter, framing, and every field of every one of the seven cards must match the fixture's own canonicalized content, including the root: internal/boardcli resolution (for a plain path) and the // worktree-root escape, both followed by glyph canonicalization under the fixture's language: go.
+// It also pins this migration's sharpest possible regression: a glyph copied verbatim from the fixture must survive canonicalization byte-identical even though the fixture's root: is non-empty — a glyph is never root:-joined.
+// Card 2 additionally round-trips a multi-label card: an **Edit:** group followed by a **Create:** group.
 //
 //testtiming:keep pins the full field-by-field round-trip of the golden fixture, which TestValidate_CardNumbering does not assert
 func TestParsePlan_GoldenFixture(t *testing.T) {
@@ -967,9 +944,7 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 	}
 }
 
-// TestParsePlan_Language covers the language: frontmatter key's effect on Plan.Language and on
-// canonicalization: absent defaults to "go" (and canonicalizes), an explicit "go" behaves
-// identically, and "none" leaves every ref byte-identical with an empty SurfaceRefs.
+// TestParsePlan_Language covers the language: frontmatter key's effect on Plan.Language and on canonicalization: absent defaults to "go" (and canonicalizes), an explicit "go" behaves identically, and "none" leaves every ref byte-identical with an empty SurfaceRefs.
 //
 //testtiming:keep pins the language: key's effect on Plan.Language, canonicalization and SurfaceRefs, which its covering tests do not assert
 func TestParsePlan_Language(t *testing.T) {

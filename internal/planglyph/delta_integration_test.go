@@ -1,8 +1,6 @@
 //go:build integration
 
-// delta_integration_test.go covers Delta, and DetectDrift's gate one, against a real git fixture
-// repository, spawning git through (*quarry.Repo).DeltaGit — the reason this file carries the
-// integration build tag rather than running in the untagged tier.
+// delta_integration_test.go covers Delta, and DetectDrift's gate one, against a real git fixture repository, spawning git through (*quarry.Repo).DeltaGit — the reason this file carries the integration build tag rather than running in the untagged tier.
 
 package planglyph
 
@@ -68,24 +66,15 @@ func (f *deltaFixtureRepo) writeAndCommit(path, content, message string) string 
 	return f.git("rev-parse", "HEAD")
 }
 
-// TestRealGitDelta is one scenario over one real three-commit repository: the first commit is an
-// empty package, the second adds Old and Kept, and the third renames Old to New.
-// It covers Delta's revision echo, created symbols and bad-revision error, and it drives the
-// repository's real rename answer into DetectDrift's gate one from both sides.
+// TestRealGitDelta is one scenario over one real three-commit repository: the first commit is an empty package, the second adds Old and Kept, and the third renames Old to New.
+// It covers Delta's revision echo, created symbols and bad-revision error, and it drives the repository's real rename answer into DetectDrift's gate one from both sides.
 //
-// Gate one asks "is this rename some declared Rename card's own expected outcome?" by comparing
-// quarry's RenamedPair.To.ID against resolveKeyFor(pair.New) — the plan format requires a symbol
-// Rename's New side to be a plan: handle, while quarry reports the new symbol under its bare glyph,
-// so the two spellings must be brought together or every declared rename is misread as drift and
-// auto-"repaired": a plan-wide RewriteRefs plus an amendment recording work the plan had asked for.
-// Every hand-built delta in the untagged tests supplies both sides of that comparison itself, so
-// only a real quarry answer can show that quarry's own Symbol.ID spelling still matches.
+// Gate one asks "is this rename some declared Rename card's own expected outcome?" by comparing quarry's RenamedPair.To.ID against resolveKeyFor(pair.New) — the plan format requires a symbol Rename's New side to be a plan: handle, while quarry reports the new symbol under its bare glyph, so the two spellings must be brought together or every declared rename is misread as drift and auto-"repaired": a plan-wide RewriteRefs plus an amendment recording work the plan had asked for.
+// Every hand-built delta in the untagged tests supplies both sides of that comparison itself, so only a real quarry answer can show that quarry's own Symbol.ID spelling still matches.
 //
-// The rename step FAILS rather than skips when the answer carries no exact-tier pair, because a
-// silent skip would restore exactly that blind spot.
+// The rename step FAILS rather than skips when the answer carries no exact-tier pair, because a silent skip would restore exactly that blind spot.
 func TestRealGitDelta(t *testing.T) {
-	// The steps share one git repository, and the rename steps read the delta the "rename delta"
-	// step produced, so no step runs in parallel.
+	// The steps share one git repository, and the rename steps read the delta the "rename delta" step produced, so no step runs in parallel.
 	t.Parallel()
 
 	f := newDeltaFixtureRepo(t)
@@ -178,8 +167,7 @@ func TestRealGitDelta(t *testing.T) {
 	}
 
 	// The companion: the same real answer against a plan declaring NO Rename card must auto-repair.
-	// Together with the step above it pins gate one from both sides, so a change to quarry's
-	// Symbol.ID spelling or to resolveKeyFor breaks exactly one of the two.
+	// Together with the step above it pins gate one from both sides, so a change to quarry's Symbol.ID spelling or to resolveKeyFor breaks exactly one of the two.
 	t.Run("gate one repairs an undeclared rename", func(t *testing.T) {
 		dir, plan := writePlanFixture(t, map[int]string{
 			1: "**Edit:**\n- `sub#Kept`\n\n**Uses:**\n- `sub#Old`\n\n**Intent:** one\n",

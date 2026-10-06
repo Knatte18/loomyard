@@ -1,8 +1,6 @@
 //go:build integration
 
-// commitempty_integration_test.go covers Repo.CommitEmpty against a real git
-// repository, reusing gitrepo_test.go's fixture helpers (newRepo, headFilesOf,
-// requireCurrentSHA, runGit) rather than inventing a new harness.
+// commitempty_integration_test.go covers Repo.CommitEmpty against a real git repository, reusing gitrepo_test.go's fixture helpers (newRepo, headFilesOf, requireCurrentSHA, runGit) rather than inventing a new harness.
 
 package gitrepo_test
 
@@ -31,18 +29,14 @@ func treeSHA(t *testing.T, dir, rev string) string {
 }
 
 // TestCommitEmpty drives CommitEmpty through one repository from an unborn HEAD to a born one.
-// The steps run serially in one order and share the repository's state: the root-commit step relies
-// on the staged entry the refusal step removes from the index, and the born-HEAD steps rely on the
-// root commit and on a.txt committed by the step that opens them.
+// The steps run serially in one order and share the repository's state: the root-commit step relies on the staged entry the refusal step removes from the index, and the born-HEAD steps rely on the root commit and on a.txt committed by the step that opens them.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestCommitEmpty(t *testing.T) {
 	t.Parallel()
 
 	dir, repo := newRepo(t)
 
-	// The only exercise of the git ls-files --cached branch: on an unborn HEAD there is no HEAD
-	// tree for diff --cached to compare against, so this is the case that proves the pre-check was
-	// specified for both states, not only the born one.
+	// The only exercise of the git ls-files --cached branch: on an unborn HEAD there is no HEAD tree for diff --cached to compare against, so this is the case that proves the pre-check was specified for both states, not only the born one.
 	if !t.Run("unborn HEAD with a staged file returns ErrIndexNotEmpty", func(t *testing.T) {
 		writeFile(t, dir, "wip.txt", "half-staged WIP")
 		gitkit.MustRun(t, dir, "git", "add", "wip.txt")
@@ -62,8 +56,7 @@ func TestCommitEmpty(t *testing.T) {
 		return
 	}
 
-	// A specified contract, not incidental behaviour: fabricengine reaches this path whenever
-	// fabric has no commits yet.
+	// A specified contract, not incidental behaviour: fabricengine reaches this path whenever fabric has no commits yet.
 	// Relies on the previous step's staged wip.txt, which this step unstages to get a clean index.
 	if !t.Run("unborn HEAD with a clean index creates an empty root commit", func(t *testing.T) {
 		gitkit.MustRun(t, dir, "git", "rm", "-f", "--cached", "wip.txt")
@@ -88,9 +81,7 @@ func TestCommitEmpty(t *testing.T) {
 		return
 	}
 
-	// The case the empty-commits-take-over-the-correspondence-entry decision rests on: an empty
-	// commit's tree must be byte-identical to its parent's, never merely similar, or resolving a
-	// revert target to it would silently restore a different fabric tree.
+	// The case the empty-commits-take-over-the-correspondence-entry decision rests on: an empty commit's tree must be byte-identical to its parent's, never merely similar, or resolving a revert target to it would silently restore a different fabric tree.
 	if !t.Run("born HEAD with a clean index matches the parent tree", func(t *testing.T) {
 		gitkit.CommitFile(t, dir, "a.txt", "initial", "init")
 		parent := requireCurrentSHA(t, repo)
@@ -113,8 +104,7 @@ func TestCommitEmpty(t *testing.T) {
 		return
 	}
 
-	// An empty commit is never deduplicated into a no-op: CommitEmpty always commits when it
-	// commits at all, unlike StageAndCommit's no-op signal on unchanged content.
+	// An empty commit is never deduplicated into a no-op: CommitEmpty always commits when it commits at all, unlike StageAndCommit's no-op signal on unchanged content.
 	if !t.Run("two successive calls produce distinct shas", func(t *testing.T) {
 		first, err := repo.CommitEmpty("first empty commit")
 		if err != nil {

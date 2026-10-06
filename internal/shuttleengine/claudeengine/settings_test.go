@@ -1,7 +1,4 @@
-// settings_test.go covers buildSettings' JSON composition across the agent-deny/askuser-deny toggle
-// matrix and the interactive/autonomous split, the fork-mode conditional Agent hook and Bash guard,
-// asserts the events path is embedded in its POSIX form, checks the no-single-quote steer invariant,
-// and exercises Prepare end to end against a real temp directory.
+// settings_test.go covers buildSettings' JSON composition across the agent-deny/askuser-deny toggle matrix and the interactive/autonomous split, the fork-mode conditional Agent hook and Bash guard, asserts the events path is embedded in its POSIX form, checks the no-single-quote steer invariant, and exercises Prepare end to end against a real temp directory.
 
 package claudeengine
 
@@ -66,12 +63,8 @@ func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
 	}
 }
 
-// TestBuildSettings_StopHook pins the one Stop hook every document carries: a single command entry
-// with no tool matcher that appends the payload to the events path in its POSIX form, followed by a
-// newline guarantee.
-// A run directory path containing a literal apostrophe (an unusual but legal Windows path character,
-// e.g. a worktree named "operator's-box") must not break out of the hook's single-quoted shell
-// argument: the embedded quote is escaped via the standard sh idiom rather than passed through raw.
+// TestBuildSettings_StopHook pins the one Stop hook every document carries: a single command entry with no tool matcher that appends the payload to the events path in its POSIX form, followed by a newline guarantee.
+// A run directory path containing a literal apostrophe (an unusual but legal Windows path character, e.g. a worktree named "operator's-box") must not break out of the hook's single-quoted shell argument: the embedded quote is escaped via the standard sh idiom rather than passed through raw.
 //
 //testtiming:keep pins the Stop hook's exact command and its single-quote escaping, which its covering test does not assert
 func TestBuildSettings_StopHook(t *testing.T) {
@@ -222,8 +215,7 @@ func TestBuildSettings_NoForbiddenCharsInSteerText(t *testing.T) {
 	}
 }
 
-// matcherCommands returns the first command of every PreToolUse entry with the given matcher; an
-// entry with no hooks contributes an empty command.
+// matcherCommands returns the first command of every PreToolUse entry with the given matcher; an entry with no hooks contributes an empty command.
 func matcherCommands(doc map[string]any, matcher string) []string {
 	var commands []string
 	for _, e := range hooksFor(doc, "PreToolUse") {
@@ -252,14 +244,12 @@ const (
 	agentHookForkConditional
 )
 
-// TestBuildSettings_AgentAndBashHooks covers how cfg.ClaudeDenyAgentTool, forkSubagents and the
-// per-run Agent allowance decide the Agent and Bash PreToolUse entries.
+// TestBuildSettings_AgentAndBashHooks covers how cfg.ClaudeDenyAgentTool, forkSubagents and the per-run Agent allowance decide the Agent and Bash PreToolUse entries.
 // Fork mode on with the deny configured replaces the blanket Agent deny with the conditional grep hook;
 // fork mode off leaves the blanket deny;
 // the deny configured off, or the per-run allowance, emits no Agent entry and drops its notice sentence while the AskUserQuestion deny and its sentence stay.
 // The fork-loop-deadlock guard is the only Bash entry any document carries, so no run mode installs a Bash stdin rewrite:
-// a fork-mode run emits a PreToolUse(Bash) hook that greps the payload for a fork-context agent_id AND a `lyx webster` command
-// before denying (with steerWebsterForkDeny), and always exits 0 via the trailing `; true`.
+// a fork-mode run emits a PreToolUse(Bash) hook that greps the payload for a fork-context agent_id AND a `lyx webster` command before denying (with steerWebsterForkDeny), and always exits 0 via the trailing `; true`.
 // The guard is independent of ClaudeDenyAgentTool and of the allowance, and absent entirely when fork mode is off (no Master, so no fork could reach the loop).
 //
 //testtiming:keep pins the Agent and Bash PreToolUse entries for every deny, fork and allowance combination, which its covering test does not assert
@@ -328,8 +318,7 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 						t.Errorf("Bash guard command = %q; want it to contain %q", command, want)
 					}
 				}
-				// A non-matching grep exits non-zero; the trailing `; true` keeps the hook's own exit code 0 so a
-				// non-fork/non-webster call is allowed, never a spurious hook error.
+				// A non-matching grep exits non-zero; the trailing `; true` keeps the hook's own exit code 0 so a non-fork/non-webster call is allowed, never a spurious hook error.
 				if !strings.HasSuffix(command, "; true") {
 					t.Errorf("Bash guard command = %q; want it to end with `; true` so a non-deny path exits 0", command)
 				}

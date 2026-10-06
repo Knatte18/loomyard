@@ -1,6 +1,4 @@
-// update_test.go covers UpdateJSON's missing-file, existing-file and mutate-error dispositions,
-// plus its core concurrency property: many concurrent callers each appending one element under
-// UpdateJSON never lose or clobber each other's write.
+// update_test.go covers UpdateJSON's missing-file, existing-file and mutate-error dispositions, plus its core concurrency property: many concurrent callers each appending one element under UpdateJSON never lose or clobber each other's write.
 // Its corrupt-file disposition is covered by TestCorruptFile in state_test.go.
 
 package state_test
@@ -15,9 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// TestUpdateJSON_MutateSeesCurrentValue verifies that mutate sees the zero value with found=false
-// when the file does not exist yet and the decoded value with found=true when it does, and that
-// mutate's returned value is on disk afterwards, created or replacing.
+// TestUpdateJSON_MutateSeesCurrentValue verifies that mutate sees the zero value with found=false when the file does not exist yet and the decoded value with found=true when it does, and that mutate's returned value is on disk afterwards, created or replacing.
 //
 //testtiming:keep covering tests TestUpdateJSON_Concurrency and TestUpdateJSON_MutateError, which the report ties it to and which stay
 func TestUpdateJSON_MutateSeesCurrentValue(t *testing.T) {
@@ -146,11 +142,8 @@ func TestUpdateJSON_MutateError(t *testing.T) {
 	})
 }
 
-// TestUpdateJSON_Concurrency drives many goroutines through UpdateJSON at once, each appending one
-// distinct element to a shared []int, and verifies every element lands exactly once. The test is
-// driven entirely through UpdateJSON itself, rather than a separate read phase followed by an
-// update phase, because the latter needs an artificial barrier to fail deterministically pre-fix —
-// driving through the primitive avoids that entirely.
+// TestUpdateJSON_Concurrency drives many goroutines through UpdateJSON at once, each appending one distinct element to a shared []int, and verifies every element lands exactly once.
+// The test is driven entirely through UpdateJSON itself, rather than a separate read phase followed by an update phase, because the latter needs an artificial barrier to fail deterministically pre-fix — driving through the primitive avoids that entirely.
 //
 //testtiming:keep pins that concurrent appends never lose or clobber a write, which no covering test asserts
 func TestUpdateJSON_Concurrency(t *testing.T) {

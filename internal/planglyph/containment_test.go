@@ -9,13 +9,9 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// TestResolveContainment_Overlaps covers which target pairs the containment index flags: a member
-// and its own file on two cards overlap, the second part of a multipart member overlaps its file,
-// and the same card, an unrelated file and read-only references never do.
-// Containment is a WRITE hazard: a card that only READS a file and a card that only READS a symbol
-// living in it must produce no finding, and neither does one writer beside one reader.
-// Building the overlap index from Targets+Uses made every such pair a SeverityBlocking finding,
-// which refuses the whole run on a plan carrying nothing but ordinary read-only references.
+// TestResolveContainment_Overlaps covers which target pairs the containment index flags: a member and its own file on two cards overlap, the second part of a multipart member overlaps its file, and the same card, an unrelated file and read-only references never do.
+// Containment is a WRITE hazard: a card that only READS a file and a card that only READS a symbol living in it must produce no finding, and neither does one writer beside one reader.
+// Building the overlap index from Targets+Uses made every such pair a SeverityBlocking finding, which refuses the whole run on a plan carrying nothing but ordinary read-only references.
 func TestResolveContainment_Overlaps(t *testing.T) {
 	t.Parallel()
 
@@ -126,9 +122,7 @@ func TestResolveContainment_Overlaps(t *testing.T) {
 	}
 }
 
-// TestResolveContainment_MultipleOverlapsAreDeterministicallyOrdered proves the finding order is
-// stable across runs. resolveContainment walks a map, and a Go map range is randomised, so a plan
-// carrying several overlaps used to render its findings in a different order on every call.
+// TestResolveContainment_MultipleOverlapsAreDeterministicallyOrdered proves the finding order is stable across runs. resolveContainment walks a map, and a Go map range is randomised, so a plan carrying several overlaps used to render its findings in a different order on every call.
 //
 //testtiming:keep pins that the finding order is identical across repeated runs, which TestResolveContainment_Overlaps does not assert
 func TestResolveContainment_MultipleOverlapsAreDeterministicallyOrdered(t *testing.T) {

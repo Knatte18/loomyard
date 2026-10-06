@@ -81,9 +81,7 @@ type syncFixture struct {
 
 // TestSync_Scenario runs Sync's contract against one board repository and bare remote, in the order below.
 // It calls t.Parallel and no step does: the steps share the one repository, so they run serially.
-// The skip-push step runs first because it asserts the remote is still empty,
-// each later step relies on the repository the earlier steps left behind,
-// and the retire-legacy step runs last because it replaces the legacy files the earlier steps wrote.
+// The skip-push step runs first because it asserts the remote is still empty, each later step relies on the repository the earlier steps left behind, and the retire-legacy step runs last because it replaces the legacy files the earlier steps wrote.
 func TestSync_Scenario(t *testing.T) {
 	t.Parallel()
 	container := t.TempDir()
@@ -144,8 +142,7 @@ func stepSyncDirtyBoardCommitsAndPushes(t *testing.T, f *syncFixture) {
 	}
 }
 
-// stepSyncSeedsGitignoreWithLockAndManifestPatterns asserts Sync seeded .gitignore with lock and
-// manifest patterns.
+// stepSyncSeedsGitignoreWithLockAndManifestPatterns asserts Sync seeded .gitignore with lock and manifest patterns.
 func stepSyncSeedsGitignoreWithLockAndManifestPatterns(t *testing.T, f *syncFixture) {
 	got, err := os.ReadFile(filepath.Join(f.boardPath, ".gitignore"))
 	if err != nil {
@@ -158,8 +155,7 @@ func stepSyncSeedsGitignoreWithLockAndManifestPatterns(t *testing.T, f *syncFixt
 	}
 }
 
-// stepSyncConcurrentCallSerializesOnBoardPushLock asserts concurrent Sync calls serialize on
-// board.push.lock.
+// stepSyncConcurrentCallSerializesOnBoardPushLock asserts concurrent Sync calls serialize on board.push.lock.
 func stepSyncConcurrentCallSerializesOnBoardPushLock(t *testing.T, f *syncFixture) {
 	held, err := lock.AcquireWriteLock(filepath.Join(f.boardPath, "board.push.lock"))
 	if err != nil {

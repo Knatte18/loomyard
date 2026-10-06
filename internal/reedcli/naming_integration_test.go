@@ -81,11 +81,8 @@ func listRows(t *testing.T, worktree string) map[string]map[string]any {
 }
 
 // TestStrandNamingAndList runs the naming and listing claims against one hub with two task worktrees.
-// The steps run serially in a fixed order: the prime strand step adds the prime's worker strand, the
-// listing step reuses it and adds a task strand, and the task naming step kills the hub's tmux server
-// and resumes only its own worktree.
-// The scenario calls t.Parallel but no step does, because every step shares the one hub and its tmux
-// server.
+// The steps run serially in a fixed order: the prime strand step adds the prime's worker strand, the listing step reuses it and adds a task strand, and the task naming step kills the hub's tmux server and resumes only its own worktree.
+// The scenario calls t.Parallel but no step does, because every step shares the one hub and its tmux server.
 func TestStrandNamingAndList(t *testing.T) {
 	t.Parallel()
 	h := hubforge.NewHub(t, ".")
@@ -125,8 +122,7 @@ func TestStrandNamingAndList(t *testing.T) {
 		return
 	}
 
-	// HubWideDirectoryAndDrift relies on the previous step's prime strand: the listing from the prime
-	// shows it and the task strand added here.
+	// HubWideDirectoryAndDrift relies on the previous step's prime strand: the listing from the prime shows it and the task strand added here.
 	if !t.Run("HubWideDirectoryAndDrift", func(t *testing.T) {
 		runVerb(t, listTask, "add", "--role", "worker", "--cmd", "sleep 300")
 

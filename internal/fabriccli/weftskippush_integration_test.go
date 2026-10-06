@@ -31,9 +31,7 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 
 	if !t.Run("EnvMapToOption", func(t *testing.T) {
 		// The CLI edge maps WEFT_SKIP_PUSH to SyncOptions on the push verb.
-		// Fabric config is a repo-wide fact read from the board dir: fabriccli.CloneAndWire already
-		// materializes it with the plain registered template as part of building h, so nothing further
-		// needs seeding here.
+		// Fabric config is a repo-wide fact read from the board dir: fabriccli.CloneAndWire already materializes it with the plain registered template as part of building h, so nothing further needs seeding here.
 		if err := os.WriteFile(weftConfigFile, []byte("modified"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
@@ -50,11 +48,8 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 	}
 
 	t.Run("SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyAnotherPath", func(t *testing.T) {
-		// With the repo-wide fabric.yaml's pathspec naming only "_extra" (a single non-_lyx name),
-		// "lyx fabric sync" must still commit _lyx content, because the sync pathspec is built from
-		// fabricengine.PathspecNames — the routing set, which always contains "_lyx" structurally —
-		// never from a raw, unfiltered Config.Dirs() that would silently drop it. A miss here is
-		// silent, not loud.
+		// With the repo-wide fabric.yaml's pathspec naming only "_extra" (a single non-_lyx name), "lyx fabric sync" must still commit _lyx content, because the sync pathspec is built from fabricengine.PathspecNames — the routing set, which always contains "_lyx" structurally — never from a raw, unfiltered Config.Dirs() that would silently drop it.
+		// A miss here is silent, not loud.
 		hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\n")
 
 		if err := os.WriteFile(weftConfigFile, []byte("modified for sync regression"), 0o644); err != nil {

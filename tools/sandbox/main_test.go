@@ -1,6 +1,5 @@
 // main_test.go covers run's subcommand dispatch and decideClone's clone/reset decisions.
-// Every test here rewrites the package-level seams (devBinPath, lookPath, cloneRun, removeAll,
-// launchAgent, reedDown), so none calls t.Parallel.
+// Every test here rewrites the package-level seams (devBinPath, lookPath, cloneRun, removeAll, launchAgent, reedDown), so none calls t.Parallel.
 
 package main
 
@@ -30,9 +29,7 @@ func stubResolveLyxProd(t *testing.T, fakeLyxPath string) func() {
 	}
 }
 
-// TestDecideClone verifies decideClone's four outcomes: an absent Hub is cloned with the parent
-// directory and the resolved prod lyx; an existing Hub is left alone without reset; an existing Hub
-// is removed and then cloned with reset; and a cloneRun error is propagated unwrapped.
+// TestDecideClone verifies decideClone's four outcomes: an absent Hub is cloned with the parent directory and the resolved prod lyx; an existing Hub is left alone without reset; an existing Hub is removed and then cloned with reset; and a cloneRun error is propagated unwrapped.
 func TestDecideClone(t *testing.T) {
 	const fakeLyxPath = "/fake/prod/lyx"
 	tests := []struct {
@@ -117,10 +114,7 @@ func TestDecideClone(t *testing.T) {
 	}
 }
 
-// TestRun_BuildRouting verifies that a bare run and an explicit "build" token both route to the
-// clone path, that -reset passed after the build token removes an existing Hub before the clone, and
-// that a bare build over an existing Hub removes nothing and clones nothing -- reset must be
-// explicit.
+// TestRun_BuildRouting verifies that a bare run and an explicit "build" token both route to the clone path, that -reset passed after the build token removes an existing Hub before the clone, and that a bare build over an existing Hub removes nothing and clones nothing -- reset must be explicit.
 func TestRun_BuildRouting(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -178,10 +172,7 @@ func TestRun_BuildRouting(t *testing.T) {
 	}
 }
 
-// TestRun_SuiteSubcommands verifies, for every suite positional, that run routes it to the suite
-// path and invokes launchAgent with the repo directory and the suite's default instruction; that
-// -claude/-prompt flags following the positional are parsed and forwarded to launchAgent without a
-// PATH lookup for claude; and that an absent Hub repo is propagated as a non-zero exit code.
+// TestRun_SuiteSubcommands verifies, for every suite positional, that run routes it to the suite path and invokes launchAgent with the repo directory and the suite's default instruction; that -claude/-prompt flags following the positional are parsed and forwarded to launchAgent without a PATH lookup for claude; and that an absent Hub repo is propagated as a non-zero exit code.
 func TestRun_SuiteSubcommands(t *testing.T) {
 	tests := []struct {
 		token string
@@ -308,9 +299,7 @@ func TestRun_FetchReportRoutesToFetch(t *testing.T) {
 	}
 }
 
-// TestRun_RejectsBadInvocation verifies run returns a non-zero code when -parent is missing, when
-// the fetch subcommand lacks its required -loomyard flag, and for an unrecognised positional
-// argument.
+// TestRun_RejectsBadInvocation verifies run returns a non-zero code when -parent is missing, when the fetch subcommand lacks its required -loomyard flag, and for an unrecognised positional argument.
 func TestRun_RejectsBadInvocation(t *testing.T) {
 	tests := []struct {
 		name string

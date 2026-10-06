@@ -19,10 +19,7 @@ func TestReadJSONStrict(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// content is written to value.json under a real t.TempDir() parent, so a file miss is a
-		// clean os.IsNotExist and not a lock-acquire failure caused by an absent parent directory
-		// (flock.RLock fails immediately if the lock file's directory does not exist -- see
-		// TestReadJSONStrict_MissingFile_NoMkdirAll below).
+		// content is written to value.json under a real t.TempDir() parent, so a file miss is a clean os.IsNotExist and not a lock-acquire failure caused by an absent parent directory (flock.RLock fails immediately if the lock file's directory does not exist -- see TestReadJSONStrict_MissingFile_NoMkdirAll below).
 		// A nil content leaves the file absent.
 		content       []byte
 		wantOK        bool

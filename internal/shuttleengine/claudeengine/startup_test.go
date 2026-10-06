@@ -87,10 +87,7 @@ func TestStartup_Classification(t *testing.T) {
 			want:    shuttleengine.StartupReady,
 		},
 		{
-			// Startup reads its "shortcuts" needle directly rather than through ReadyFooterFixture,
-			// so this row is what ties the exported fixture to Startup's classification: a rewording
-			// of the needle would otherwise leave the fixture stale, noticed only by a live-substrate
-			// caller built from it.
+			// Startup reads its "shortcuts" needle directly rather than through ReadyFooterFixture, so this row is what ties the exported fixture to Startup's classification: a rewording of the needle would otherwise leave the fixture stale, noticed only by a live-substrate caller built from it.
 			name:    "ready_shortcuts_footer",
 			capture: ReadyFooterFixture,
 			want:    shuttleengine.StartupReady,
@@ -317,10 +314,9 @@ func TestTrustDismissSequence(t *testing.T) {
 			want:    nil,
 		},
 		{
-			// R6-1's shape: a healthy, ready pane whose agent transcript happens to render a gate
-			// phrase must get NO pane input at all. The defect was not that the wrong key was
-			// chosen — it was that any key was sent. TestStartup_Classification pins the same
-			// captures as Ready.
+			// R6-1's shape: a healthy, ready pane whose agent transcript happens to render a gate phrase must get NO pane input at all.
+			// The defect was not that the wrong key was chosen — it was that any key was sent.
+			// TestStartup_Classification pins the same captures as Ready.
 			name:    "live pane whose agent prose names the files in this folder presses nothing",
 			capture: "● I'll start by reading the files in this folder.\n\n❯\n⏵⏵ bypass permissions on (shift+tab to cycle)",
 			want:    nil,
