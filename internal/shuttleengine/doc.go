@@ -101,6 +101,8 @@
 // Then PromptLine goes out through the verified send path.
 // The run's events offset ends past every load turn end, the retry's included,
 // so Wait never reads one as the run asking.
+// run.json records that offset as `promptOffset` before the prompt goes out,
+// and every reader that replays the events file without Waiting on the Run starts there: Attach, and webster's recovery classification through its batch record.
 // A pane that dies meanwhile is a died startup.
 // An empty Skills list changes nothing.
 // Runner.LoadSkills and Runner.ClassifySkillLoad are the same capability's per-tick primitives for a caller reloading a live session: the first sends the load message for a list, the second classifies the turn end that followed.

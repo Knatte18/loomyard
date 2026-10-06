@@ -118,6 +118,26 @@ func TestTurnEnded(t *testing.T) {
 			t.Errorf("TurnEnded() error = %v; want it to wrap %v", err, wantErr)
 		}
 	})
+
+	t.Run("a skill-load turn end before the offset is not counted", func(t *testing.T) {
+		loadTurn := "load-turn-stop\n"
+		path := dir + "/offset-events.jsonl"
+		if err := os.WriteFile(path, []byte(loadTurn+"prompt-turn-working\n"), 0o644); err != nil {
+			t.Fatalf("write events file %s: %v", path, err)
+		}
+		engine := &shuttlefake.Engine{ParseEventsFn: func(data []byte) ([]shuttleengine.Event, error) {
+			if strings.Contains(string(data), "load-turn-stop") {
+				return []shuttleengine.Event{{Kind: shuttleengine.EventStop, Message: "skills loaded"}}, nil
+			}
+			return nil, nil
+		}}
+		if ended, err := TurnEndedAfter(path, 0, engine); err != nil || !ended {
+			t.Fatalf("TurnEndedAfter(offset 0) = %v, %v; want true, nil (the load turn's Stop is in range)", ended, err)
+		}
+		if ended, err := TurnEndedAfter(path, int64(len(loadTurn)), engine); err != nil || ended {
+			t.Errorf("TurnEndedAfter(past the load turn) = %v, %v; want false, nil", ended, err)
+		}
+	})
 }
 
 func TestRemoveStrandIfLive(t *testing.T) {
