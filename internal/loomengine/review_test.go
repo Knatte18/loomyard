@@ -43,25 +43,6 @@ func TestResolveReview(t *testing.T) {
 	}
 }
 
-// TestResolveReview_MalformedSpec verifies an ungrammatical review model-spec returns an error
-// naming the review role, rather than being silently carried into a review producer's spawn site.
-func TestResolveReview_MalformedSpec(t *testing.T) {
-	cfg := Config{Review: "opus[effort", ReviewTimeoutMin: 240}
-
-	reg, err := modelspec.LoadRegistry(t.TempDir())
-	if err != nil {
-		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
-	}
-
-	_, err = ResolveReview(cfg, reg)
-	if err == nil {
-		t.Fatal("ResolveReview(...) = _, nil; want non-nil error for malformed review spec")
-	}
-	if !strings.Contains(err.Error(), "review") {
-		t.Errorf("ResolveReview(...) error = %q; want it to name the review role", err.Error())
-	}
-}
-
 // TestResolveJudge verifies ResolveJudge resolves the template's judge value to the sonnet model with effort medium.
 func TestResolveJudge(t *testing.T) {
 	cfg := Config{Judge: "sonnet[medium]"}
@@ -83,29 +64,51 @@ func TestResolveJudge(t *testing.T) {
 	}
 }
 
-// TestResolveJudge_MalformedSpec verifies an ungrammatical judge model-spec returns an error naming the judge role.
-func TestResolveJudge_MalformedSpec(t *testing.T) {
-	cfg := Config{Judge: "sonnet[medium"}
-
-	reg, err := modelspec.LoadRegistry(t.TempDir())
-	if err != nil {
-		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+// TestResolveReviewAndJudge_MalformedSpec verifies an ungrammatical review or judge model-spec returns an error
+// naming its role, rather than being silently carried into a producer's spawn site.
+func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		role    string
+		resolve func(Config, modelspec.Registry) error
+		cfg     Config
+	}{
+		{
+			name: "review",
+			role: "review",
+			cfg:  Config{Review: "opus[effort", ReviewTimeoutMin: 240},
+			resolve: func(cfg Config, reg modelspec.Registry) error {
+				_, err := ResolveReview(cfg, reg)
+				return err
+			},
+		},
+		{
+			name: "judge",
+			role: "judge",
+			cfg:  Config{Judge: "sonnet[medium"},
+			resolve: func(cfg Config, reg modelspec.Registry) error {
+				_, err := ResolveJudge(cfg, reg)
+				return err
+			},
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reg, err := modelspec.LoadRegistry(t.TempDir())
+			if err != nil {
+				t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+			}
 
-	_, err = ResolveJudge(cfg, reg)
-	if err == nil {
-		t.Fatal("ResolveJudge(...) = _, nil; want non-nil error for malformed judge spec")
-	}
-	if !strings.Contains(err.Error(), "judge") {
-		t.Errorf("ResolveJudge(...) error = %q; want it to name the judge role", err.Error())
-	}
-}
-
-// TestLoomReviewsDirRel verifies LoomReviewsDirRel's exact relative value under the durable tree.
-func TestLoomReviewsDirRel(t *testing.T) {
-	want := filepath.Join(lyxdirs.LyxDirName, "reviews")
-	if got := LoomReviewsDirRel(); got != want {
-		t.Errorf("LoomReviewsDirRel() = %q; want %q", got, want)
+			err = tt.resolve(tt.cfg, reg)
+			if err == nil {
+				t.Fatalf("resolving the %s role = nil error; want non-nil error for a malformed spec", tt.role)
+			}
+			if !strings.Contains(err.Error(), tt.role) {
+				t.Errorf("resolving the %s role error = %q; want it to name the role", tt.role, err.Error())
+			}
+		})
 	}
 }
 
@@ -130,7 +133,7 @@ func TestLoomParentReviewAccessors(t *testing.T) {
 	}
 }
 
-// TestLoomReviewsDir verifies LoomReviewsDir's returned path is AnchorPath-anchored, sits under the durable _lyx tree rather than the ephemeral one, and equals the anchor joined with its Rel form.
+// TestLoomReviewsDir verifies LoomReviewsDir's returned path is AnchorPath-anchored, sits under the durable _lyx tree rather than the ephemeral one, and equals the anchor joined with its Rel form, whose exact value is pinned too.
 func TestLoomReviewsDir(t *testing.T) {
 	l := &lyxcwd.Location{
 		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
@@ -147,5 +150,8 @@ func TestLoomReviewsDir(t *testing.T) {
 
 	if got, rel := LoomReviewsDir(l), filepath.Join(l.AnchorPath(), LoomReviewsDirRel()); got != rel {
 		t.Errorf("LoomReviewsDir() = %q; want it to equal %q", got, rel)
+	}
+	if got := LoomReviewsDirRel(); got != filepath.Join(lyxdirs.LyxDirName, "reviews") {
+		t.Errorf("LoomReviewsDirRel() = %q; want %q", got, filepath.Join(lyxdirs.LyxDirName, "reviews"))
 	}
 }

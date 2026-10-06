@@ -25,56 +25,46 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
-// TestShippedRecipe_ApproveSeamWiredOnPlanBouncerOnly parses the real embedded recipes.LoomRecipe
-// and asserts the approval seam's shipped shape: approve_seam: plan on the Plan-Bouncer row and no
-// other row, and require_approved present on no row at all -- the key is no longer recognized by any
+// TestShippedRecipe_SeamsWiredOnPlanBouncerOnly parses the real embedded recipes.LoomRecipe
+// and asserts each seam key's shipped shape: approve_seam: plan and skip_seam: rework-exempt each sit on the Plan-Bouncer row and no
+// other row, and require_approved is present on no row at all -- the key is no longer recognized by any
 // registry entry now that both rows sharing the old PlanValidate engine are deleted, and a row
 // carrying it would fail construction outright rather than silently doing nothing.
-func TestShippedRecipe_ApproveSeamWiredOnPlanBouncerOnly(t *testing.T) {
+//
+//testtiming:keep pins which shipped rows carry approve_seam and skip_seam, which TestApproveSeam_FailsToBuild never reads off the shipped recipe
+func TestShippedRecipe_SeamsWiredOnPlanBouncerOnly(t *testing.T) {
+	t.Parallel()
 	r, err := shedbuild.Parse(recipes.LoomRecipe)
 	if err != nil {
 		t.Fatalf("shedbuild.Parse(recipes.LoomRecipe) error = %v; want nil", err)
 	}
 
 	for _, row := range r.Producers {
-		approveSeam, hasApproveSeam := row.Config["approve_seam"]
-		_, hasRequireApproved := row.Config["require_approved"]
-
-		if hasRequireApproved {
+		if _, hasRequireApproved := row.Config["require_approved"]; hasRequireApproved {
 			t.Errorf("row %q: carries an unexpected \"require_approved\" key; want it absent from every row -- the key is no longer recognized by any registry entry", row.Name)
 		}
-
-		switch row.Name {
-		case loomshed.NamePlanBouncer:
-			if !hasApproveSeam || approveSeam != "plan" {
-				t.Errorf("row %q: config[\"approve_seam\"] = %v (present=%v); want \"plan\"", row.Name, approveSeam, hasApproveSeam)
-			}
-		default:
-			if hasApproveSeam {
-				t.Errorf("row %q: carries an unexpected \"approve_seam\" key = %v; want it absent", row.Name, approveSeam)
-			}
-		}
-	}
-}
-
-// TestShippedRecipe_SkipSeamWiredOnPlanBouncerOnly asserts skip_seam: rework-exempt sits on the Plan-Bouncer row and no other row of the shipped recipe.
-func TestShippedRecipe_SkipSeamWiredOnPlanBouncerOnly(t *testing.T) {
-	r, err := shedbuild.Parse(recipes.LoomRecipe)
-	if err != nil {
-		t.Fatalf("shedbuild.Parse(recipes.LoomRecipe) error = %v; want nil", err)
 	}
 
-	for _, row := range r.Producers {
-		skipSeam, hasSkipSeam := row.Config["skip_seam"]
-		if row.Name == loomshed.NamePlanBouncer {
-			if !hasSkipSeam || skipSeam != "rework-exempt" {
-				t.Errorf("row %q: config[\"skip_seam\"] = %v (present=%v); want \"rework-exempt\"", row.Name, skipSeam, hasSkipSeam)
+	seams := []struct{ key, want string }{
+		{"approve_seam", "plan"},
+		{"skip_seam", "rework-exempt"},
+	}
+	for _, seam := range seams {
+		t.Run(seam.key, func(t *testing.T) {
+			t.Parallel()
+			for _, row := range r.Producers {
+				got, has := row.Config[seam.key]
+				if row.Name == loomshed.NamePlanBouncer {
+					if !has || got != seam.want {
+						t.Errorf("row %q: config[%q] = %v (present=%v); want %q", row.Name, seam.key, got, has, seam.want)
+					}
+					continue
+				}
+				if has {
+					t.Errorf("row %q: carries an unexpected %q key = %v; want it absent", row.Name, seam.key, got)
+				}
 			}
-			continue
-		}
-		if hasSkipSeam {
-			t.Errorf("row %q: carries an unexpected \"skip_seam\" key = %v; want it absent", row.Name, skipSeam)
-		}
+		})
 	}
 }
 
@@ -100,38 +90,38 @@ func approveSeamFixture(approveSeam string) string {
 		approveSeamLine
 }
 
-// TestApproveSeam_NilEnvClosureFailsToBuild parses a one-row recipe naming approve_seam: plan on a
-// Bouncer row and builds it against an Env whose ApprovePlan is nil, asserting Build fails: a
-// present approve_seam key is guarded by requireSeam on env.ApprovePlan exactly as commit_seam is
+// TestApproveSeam_FailsToBuild parses a one-row recipe naming approve_seam on a Bouncer row and builds it, asserting Build fails
+// for a nil Env.ApprovePlan under approve_seam: plan -- a present approve_seam key is guarded by requireSeam on env.ApprovePlan exactly as commit_seam is
 // guarded on env.CommitPlan/env.CommitDiscussion, so a document naming the key against a nil seam
-// must never silently build a Bouncer whose Approve closure is nil.
-func TestApproveSeam_NilEnvClosureFailsToBuild(t *testing.T) {
-	env, _ := testEnv(t)
-	env.ApprovePlan = nil
-
-	r, err := shedbuild.Parse([]byte(approveSeamFixture("plan")))
-	if err != nil {
-		t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
+// must never silently build a Bouncer whose Approve closure is nil --
+// and for a value bouncerEntry does not recognize: approve_seam names env.ApprovePlan and nothing else,
+// so any value other than "plan" is a build-time error, not a silently-ignored key.
+func TestApproveSeam_FailsToBuild(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		approveSeam string
+		nilClosure  bool
+	}{
+		{"nil Env.ApprovePlan", "plan", true},
+		{"unrecognized value", "discussion", false},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			env, _ := testEnv(t)
+			if tt.nilClosure {
+				env.ApprovePlan = nil
+			}
 
-	if _, err := shedbuild.Build(r, env); err == nil {
-		t.Fatalf("shedbuild.Build() error = nil; want non-nil for approve_seam: plan against a nil Env.ApprovePlan")
-	}
-}
+			r, err := shedbuild.Parse([]byte(approveSeamFixture(tt.approveSeam)))
+			if err != nil {
+				t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
+			}
 
-// TestApproveSeam_UnknownValueFailsToBuild parses a one-row recipe naming an approve_seam value
-// bouncerEntry does not recognize, asserting Build fails: approve_seam names env.ApprovePlan and
-// nothing else, so any value other than "plan" is a build-time error, not a silently-ignored
-// key.
-func TestApproveSeam_UnknownValueFailsToBuild(t *testing.T) {
-	env, _ := testEnv(t)
-
-	r, err := shedbuild.Parse([]byte(approveSeamFixture("discussion")))
-	if err != nil {
-		t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
-	}
-
-	if _, err := shedbuild.Build(r, env); err == nil {
-		t.Fatalf("shedbuild.Build() error = nil; want non-nil for an unrecognized approve_seam value")
+			if _, err := shedbuild.Build(r, env); err == nil {
+				t.Fatalf("shedbuild.Build() error = nil; want non-nil for approve_seam: %s", tt.approveSeam)
+			}
+		})
 	}
 }

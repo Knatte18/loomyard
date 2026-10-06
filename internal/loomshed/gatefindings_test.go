@@ -118,6 +118,7 @@ func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the refusal log line and its failures field for a half-finished run, which its covering tests never read
 func TestLoomPreflight_StuckSurfacesItsFailures(t *testing.T) {
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")
@@ -147,39 +148,36 @@ func TestLoomPreflight_StuckSurfacesItsFailures(t *testing.T) {
 	}
 }
 
-// TestBatchifier_StuckSurfacesTheBatcherError and its Webster twin close the last two rows in this
+// TestBatcherRows_StuckSurfacesTheBatcherError closes the last two rows in this
 // package that mapped a fault onto Stuck while discarding the reason. Both carry no OnStuck, so
 // their Stuck halts the run for a human, and batcher.Active conflates unknown-name, malformed YAML,
 // and I/O failure into one bare error with no sentinel -- so the error text is the only thing that
 // can tell an operator which of the three happened.
-func TestBatchifier_StuckSurfacesTheBatcherError(t *testing.T) {
-	anchorPath := t.TempDir()
-	writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
-
-	buf := logcapture.Capture(t)
-	producer := NewBatchifier("Batchifier", anchorPath)
-
-	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
-	got := buf.String()
-	for _, want := range []string{"Batchifier", "no-such-batcher"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("warning log = %q; want it to contain %q", got, want)
-		}
+//
+//testtiming:keep pins that each batcher-backed row logs its name and the batcher error text on a stuck verdict, which its covering tests never read
+func TestBatcherRows_StuckSurfacesTheBatcherError(t *testing.T) {
+	tests := []struct {
+		name string
+		new  func(anchorPath string) shedengine.ShedProducer
+	}{
+		{"Batchifier", func(anchorPath string) shedengine.ShedProducer { return NewBatchifier("Batchifier", anchorPath) }},
+		{"Webster", func(anchorPath string) shedengine.ShedProducer {
+			return NewWebsterProducer("Webster", anchorPath, nil, websterengine.RunDeps{}, func() error { return nil })
+		}},
 	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			anchorPath := t.TempDir()
+			writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
 
-func TestWebsterProducer_StuckSurfacesTheBatcherError(t *testing.T) {
-	anchorPath := t.TempDir()
-	writeBatcherConfig(t, anchorPath, `active: "no-such-batcher"`+"\n")
-
-	buf := logcapture.Capture(t)
-	producer := NewWebsterProducer("Webster", anchorPath, nil, websterengine.RunDeps{}, func() error { return nil })
-
-	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
-	got := buf.String()
-	for _, want := range []string{"Webster", "no-such-batcher"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("warning log = %q; want it to contain %q", got, want)
-		}
+			buf := logcapture.Capture(t)
+			shedfake.RequireOutcome(t, tt.new(anchorPath), shedengine.Stuck)
+			got := buf.String()
+			for _, want := range []string{tt.name, "no-such-batcher"} {
+				if !strings.Contains(got, want) {
+					t.Errorf("warning log = %q; want it to contain %q", got, want)
+				}
+			}
+		})
 	}
 }

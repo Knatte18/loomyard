@@ -428,6 +428,8 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 // Severity fails the gate closed rather than silently passing, because planglyph.Severity is an open
 // string type and neither shape can occur through a real resolve-backed findings set -- only a
 // hand-built Finding, or a future producer that forgets to stamp one, can carry either.
+//
+//testtiming:keep pins that an unrecognized or zero severity fails the plan gate closed, which TestNewPlanGate never asserts
 func TestHasBlockingFinding_AgainstTheGate(t *testing.T) {
 	for _, tt := range []struct {
 		name     string

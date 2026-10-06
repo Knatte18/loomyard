@@ -46,6 +46,8 @@ func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 // This is the assertion that keeps a
 // row which changes adapter from silently keeping the wrong policy, and the engine-name side is
 // what makes the Webster exception derivable rather than hand-maintained.
+//
+//testtiming:keep pins the Webster-handback and reinvoke-otherwise policy per row engine, which TestApproveSeam_FailsToBuild never asserts
 func TestInterruptPolicies_MatchEngineIdentity(t *testing.T) {
 	for rowName, engineName := range rowEngines() {
 		policy, ok := loomshed.InterruptPolicies[rowName]

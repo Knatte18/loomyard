@@ -427,7 +427,7 @@ func TestDirective_LazyRead(t *testing.T) {
 // TestDirective_MissingStencilErrors pins the fail-loud posture on a read failure: PATTERN active,
 // plus a stencilsDir that exists but carries none of the three pattern stencils, returns a non-nil
 // error naming the missing stencil, for every role. See
-// TestDiscussionSpec_MissingStencilsDirIsHardError in internal/loomengine/discussion_test.go for the
+// TestDiscussionSpec_Refuses in internal/loomengine/discussion_test.go for the
 // same shape's precedent.
 func TestDirective_MissingStencilErrors(t *testing.T) {
 	root := t.TempDir()

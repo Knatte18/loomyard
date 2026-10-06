@@ -67,437 +67,203 @@ func writeLoomConfigWithKeys(t *testing.T, baseDir string, values map[string]str
 	seedLoomConfig(t, baseDir, b.String())
 }
 
-// TestLoadConfig_WellFormed verifies the template's default values round-trip.
-func TestLoadConfig_WellFormed(t *testing.T) {
-	baseDir := t.TempDir()
-	seedLoomConfig(t, baseDir, ConfigTemplate())
-
-	cfg, err := LoadConfig(baseDir, "loom")
-	if err != nil {
-		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
-	}
-	if cfg.Discussion != "opus[medium]" {
-		t.Errorf("cfg.Discussion = %q; want %q", cfg.Discussion, "opus[medium]")
-	}
-	if cfg.DiscussionTimeoutMin != 480 {
-		t.Errorf("cfg.DiscussionTimeoutMin = %d; want %d", cfg.DiscussionTimeoutMin, 480)
-	}
-	if cfg.DiscussionInteractive != false {
-		t.Errorf("cfg.DiscussionInteractive = %v; want %v", cfg.DiscussionInteractive, false)
-	}
-	if cfg.Plan != "opus[medium]" {
-		t.Errorf("cfg.Plan = %q; want %q", cfg.Plan, "opus[medium]")
-	}
-	if cfg.PlanTimeoutMin != 120 {
-		t.Errorf("cfg.PlanTimeoutMin = %d; want %d", cfg.PlanTimeoutMin, 120)
-	}
-	if cfg.Review != "sonnet[medium]" {
-		t.Errorf("cfg.Review = %q; want %q", cfg.Review, "sonnet[medium]")
-	}
-	if cfg.Judge != "sonnet[medium]" {
-		t.Errorf("cfg.Judge = %q; want %q", cfg.Judge, "sonnet[medium]")
-	}
-	if cfg.ReviewTimeoutMin != 240 {
-		t.Errorf("cfg.ReviewTimeoutMin = %d; want %d", cfg.ReviewTimeoutMin, 240)
-	}
-	if cfg.Friction != "sonnet[medium]" {
-		t.Errorf("cfg.Friction = %q; want %q", cfg.Friction, "sonnet[medium]")
-	}
-	if cfg.FrictionTimeoutMin != 30 {
-		t.Errorf("cfg.FrictionTimeoutMin = %d; want %d", cfg.FrictionTimeoutMin, 30)
-	}
-	if cfg.Driver != "sonnet[medium]" {
-		t.Errorf("cfg.Driver = %q; want %q", cfg.Driver, "sonnet[medium]")
+// templateConfig is the Config the shipped template's own values load to.
+func templateConfig() Config {
+	return Config{
+		Discussion:               "opus[medium]",
+		DiscussionTimeoutMin:     480,
+		DiscussionInteractive:    false,
+		Plan:                     "opus[medium]",
+		PlanTimeoutMin:           120,
+		Review:                   "sonnet[medium]",
+		Judge:                    "sonnet[medium]",
+		ReviewTimeoutMin:         240,
+		Friction:                 "sonnet[medium]",
+		FrictionTimeoutMin:       30,
+		Driver:                   "sonnet[medium]",
+		ParentReviewWaitMin:      60,
+		ReviewCirclingCheckpoint: 3,
+		ReviewMaxBounces:         5,
 	}
 }
 
-// TestLoadConfig_RetiredSelfreportKeyIgnored verifies a loom.yaml that still carries the retired
-// selfreport key loads with a nil error and every other key unchanged.
-// The key is appended to the template text rather than set through writeLoomConfigWithKey, which
-// refuses a key the template no longer holds.
-func TestLoadConfig_RetiredSelfreportKeyIgnored(t *testing.T) {
-	cleanDir := t.TempDir()
-	seedLoomConfig(t, cleanDir, ConfigTemplate())
-	want, err := LoadConfig(cleanDir, "loom")
-	if err != nil {
-		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", cleanDir, err)
-	}
-
-	baseDir := t.TempDir()
-	seedLoomConfig(t, baseDir, ConfigTemplate()+"selfreport: false\n")
-	got, err := LoadConfig(baseDir, "loom")
-	if err != nil {
-		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error for a loom.yaml carrying the retired selfreport key", baseDir, err)
-	}
-	if got != want {
-		t.Errorf("LoadConfig() = %+v; want %+v, the template's own config", got, want)
-	}
-}
-
-// TestLoadConfig_DiscussionInteractiveTrue verifies a hand-edited loom.yaml with
-// discussion_interactive: true round-trips to Config.DiscussionInteractive == true, distinct from
-// the template's own false default.
-func TestLoadConfig_DiscussionInteractiveTrue(t *testing.T) {
-	baseDir := t.TempDir()
-	writeLoomConfigWithKey(t, baseDir, "discussion_interactive", "true")
-
-	cfg, err := LoadConfig(baseDir, "loom")
-	if err != nil {
-		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
-	}
-	if cfg.DiscussionInteractive != true {
-		t.Errorf("cfg.DiscussionInteractive = %v; want %v", cfg.DiscussionInteractive, true)
-	}
-}
-
-// TestLoadConfig_MalformedDiscussionSpec verifies a hand-edited loom.yaml with an ungrammatical
-// discussion model-spec fails loud at load time, naming the "discussion" key, rather than being
-// silently carried into the discussion producer's spawn site.
-func TestLoadConfig_MalformedDiscussionSpec(t *testing.T) {
-	baseDir := t.TempDir()
-	writeLoomConfigWithKey(t, baseDir, "discussion", `"opus[effort"`)
-
-	_, err := LoadConfig(baseDir, "loom")
-	if err == nil {
-		t.Fatal("LoadConfig() = _, nil; want non-nil error for malformed discussion spec")
-	}
-	if !strings.Contains(err.Error(), "discussion") {
-		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "discussion")
-	}
-}
-
-// TestLoadConfig_MalformedPlanSpec verifies a hand-edited loom.yaml with a well-formed discussion
-// spec but an ungrammatical plan model-spec fails loud at load time, naming the "plan" key, rather
-// than being silently carried into the plan producer's spawn site.
-func TestLoadConfig_MalformedPlanSpec(t *testing.T) {
-	baseDir := t.TempDir()
-	writeLoomConfigWithKey(t, baseDir, "plan", `"opus[effort"`)
-
-	_, err := LoadConfig(baseDir, "loom")
-	if err == nil {
-		t.Fatal("LoadConfig() = _, nil; want non-nil error for malformed plan spec")
-	}
-	if !strings.Contains(err.Error(), "plan") {
-		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "plan")
-	}
-}
-
-// TestLoadConfig_MalformedReviewSpec verifies a hand-edited loom.yaml with well-formed discussion
-// and plan specs but an ungrammatical review model-spec fails loud at load time, naming the
-// "review" key, rather than being silently carried into the review producers' spawn site.
-func TestLoadConfig_MalformedReviewSpec(t *testing.T) {
-	baseDir := t.TempDir()
-	writeLoomConfigWithKey(t, baseDir, "review", `"opus[effort"`)
-
-	_, err := LoadConfig(baseDir, "loom")
-	if err == nil {
-		t.Fatal("LoadConfig() = _, nil; want non-nil error for malformed review spec")
-	}
-	if !strings.Contains(err.Error(), "review") {
-		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "review")
-	}
-}
-
-// TestLoadConfig_MalformedJudgeSpec verifies an ungrammatical judge model-spec fails loud at load time, naming the "judge" key.
-func TestLoadConfig_MalformedJudgeSpec(t *testing.T) {
-	baseDir := t.TempDir()
-	writeLoomConfigWithKey(t, baseDir, "judge", `"sonnet[medium"`)
-
-	_, err := LoadConfig(baseDir, "loom")
-	if err == nil {
-		t.Fatal("LoadConfig() = _, nil; want non-nil error for malformed judge spec")
-	}
-	if !strings.Contains(err.Error(), "judge") {
-		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "judge")
-	}
-}
-
-// TestLoadConfig_EmptyFrictionLoadsCleanly verifies a present-but-empty friction value -- Tier 2
-// self-reporting turned off -- loads cleanly and yields the zero value for Config.Friction, unlike
-// the discussion/plan/review role keys, which are always required.
-func TestLoadConfig_EmptyFrictionLoadsCleanly(t *testing.T) {
-	baseDir := t.TempDir()
-	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
+// TestLoadConfig_Loads verifies each loom.yaml shape that must load, against the whole Config it yields:
+// the template's own values, a retired key ignored, explicit overrides, present-but-empty and null friction and driver values
+// (Tier 2 off, "defer to the provider default"), keys absent from an already-seeded file at their template defaults,
+// zero timeouts (shuttleengine.Spec treats zero as "defer to shuttle's run_timeout_min", so the negative guard must not sweep them up),
+// and a checkpoint above the budget (a run that never rules CIRCLING and reaches the budget escalation instead).
+func TestLoadConfig_Loads(t *testing.T) {
+	t.Parallel()
+	// legacyContents is a file seeded before the friction, driver, judge, parent-review and review-budget keys existed.
+	const legacyContents = `discussion: opus[effort=high]
 discussion_timeout_min: 480
 discussion_interactive: false
 plan: opus[effort=high]
 plan_timeout_min: 120
 review: opus[effort=high]
 review_timeout_min: 240
-friction: ""
-friction_timeout_min: 30
-driver: ""
-parent_review_wait_min: 60
-`)
-
-	cfg, err := LoadConfig(baseDir, "loom")
-	if err != nil {
-		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error for a present-but-empty friction value", baseDir, err)
+`
+	tests := []struct {
+		name     string
+		contents string
+		values   map[string]string
+		mutate   func(*Config)
+	}{
+		{name: "template defaults", mutate: func(*Config) {}},
+		{
+			name:     "retired selfreport key ignored",
+			contents: ConfigTemplate() + "selfreport: false\n",
+			mutate:   func(*Config) {},
+		},
+		{
+			name:   "discussion_interactive true",
+			values: map[string]string{"discussion_interactive": "true"},
+			mutate: func(c *Config) { c.DiscussionInteractive = true },
+		},
+		{
+			name:   "empty friction turns Tier 2 off",
+			values: map[string]string{"friction": `""`},
+			mutate: func(c *Config) { c.Friction = "" },
+		},
+		{
+			name:   "valid driver spec",
+			values: map[string]string{"driver": "opus[effort=high]"},
+			mutate: func(c *Config) { c.Driver = "opus[effort=high]" },
+		},
+		{
+			name:   "bare driver key is null",
+			values: map[string]string{"driver": ""},
+			mutate: func(c *Config) { c.Driver = "" },
+		},
+		{
+			name:   "empty driver string",
+			values: map[string]string{"driver": `""`},
+			mutate: func(c *Config) { c.Driver = "" },
+		},
+		{
+			name:   "explicit parent_review_wait_min",
+			values: map[string]string{"parent_review_wait_min": "5"},
+			mutate: func(c *Config) { c.ParentReviewWaitMin = 5 },
+		},
+		{
+			name:   "explicit review checkpoint and budget",
+			values: map[string]string{"review_circling_checkpoint": "2", "review_max_bounces": "7"},
+			mutate: func(c *Config) { c.ReviewCirclingCheckpoint, c.ReviewMaxBounces = 2, 7 },
+		},
+		{
+			name:   "checkpoint above budget",
+			values: map[string]string{"review_circling_checkpoint": "9", "review_max_bounces": "2"},
+			mutate: func(c *Config) { c.ReviewCirclingCheckpoint, c.ReviewMaxBounces = 9, 2 },
+		},
+		{
+			name:     "keys absent from a seeded file take template defaults",
+			contents: legacyContents,
+			mutate: func(c *Config) {
+				c.Discussion, c.Plan, c.Review = "opus[effort=high]", "opus[effort=high]", "opus[effort=high]"
+			},
+		},
+		{
+			name:   "zero discussion timeout",
+			values: map[string]string{"discussion_timeout_min": "0"},
+			mutate: func(c *Config) { c.DiscussionTimeoutMin = 0 },
+		},
+		{
+			name:   "zero plan timeout",
+			values: map[string]string{"plan_timeout_min": "0"},
+			mutate: func(c *Config) { c.PlanTimeoutMin = 0 },
+		},
+		{
+			name:   "zero review timeout",
+			values: map[string]string{"review_timeout_min": "0"},
+			mutate: func(c *Config) { c.ReviewTimeoutMin = 0 },
+		},
+		{
+			name:   "zero friction timeout",
+			values: map[string]string{"friction_timeout_min": "0"},
+			mutate: func(c *Config) { c.FrictionTimeoutMin = 0 },
+		},
 	}
-	if cfg.Friction != "" {
-		t.Errorf("cfg.Friction = %q; want \"\" (Tier 2 off)", cfg.Friction)
-	}
-}
 
-// TestLoadConfig_MalformedFrictionSpec verifies a hand-edited loom.yaml with well-formed
-// discussion/plan/review specs but an ungrammatical non-empty friction model-spec fails loud at
-// load time, naming the "friction" key.
-func TestLoadConfig_MalformedFrictionSpec(t *testing.T) {
-	baseDir := t.TempDir()
-	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
-discussion_timeout_min: 480
-discussion_interactive: false
-plan: opus[effort=high]
-plan_timeout_min: 120
-review: opus[effort=high]
-review_timeout_min: 240
-friction: "opus[effort"
-friction_timeout_min: 30
-driver: ""
-parent_review_wait_min: 60
-`)
-
-	_, err := LoadConfig(baseDir, "loom")
-	if err == nil {
-		t.Fatal("LoadConfig() = _, nil; want non-nil error for malformed friction spec")
-	}
-	if !strings.Contains(err.Error(), "friction") {
-		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "friction")
-	}
-}
-
-// TestLoadConfig_MissingFrictionKeys verifies a loom.yaml genuinely lacking the friction and friction_timeout_min keys loads them at their template defaults --
-// an already-seeded worktree picks up a key a deploy adds without a reconcile sweep.
-func TestLoadConfig_MissingFrictionKeys(t *testing.T) {
-	baseDir := t.TempDir()
-	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
-discussion_timeout_min: 480
-discussion_interactive: false
-plan: opus[effort=high]
-plan_timeout_min: 120
-review: opus[effort=high]
-review_timeout_min: 240
-`)
-
-	cfg, err := LoadConfig(baseDir, "loom")
-	if err != nil {
-		t.Fatalf("LoadConfig() error = %v; want nil for a loom.yaml missing the friction keys", err)
-	}
-	if cfg.Friction != "sonnet[medium]" {
-		t.Errorf("cfg.Friction = %q; want the template default %q", cfg.Friction, "sonnet[medium]")
-	}
-	if cfg.FrictionTimeoutMin != 30 {
-		t.Errorf("cfg.FrictionTimeoutMin = %d; want the template default %d", cfg.FrictionTimeoutMin, 30)
-	}
-}
-
-// TestLoadConfig_ValidDriverSpec verifies a hand-edited loom.yaml with a well-formed driver
-// model-spec loads cleanly and round-trips onto Config.Driver.
-func TestLoadConfig_ValidDriverSpec(t *testing.T) {
-	baseDir := t.TempDir()
-	writeLoomConfigWithKey(t, baseDir, "driver", "opus[effort=high]")
-
-	cfg, err := LoadConfig(baseDir, "loom")
-	if err != nil {
-		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
-	}
-	if cfg.Driver != "opus[effort=high]" {
-		t.Errorf("cfg.Driver = %q; want %q", cfg.Driver, "opus[effort=high]")
-	}
-}
-
-// TestLoadConfig_MalformedDriverSpec verifies a hand-edited loom.yaml with well-formed
-// discussion/plan/review/friction specs but an ungrammatical non-empty driver model-spec fails
-// loud at load time, naming the "driver" key, rather than being silently carried into the driver
-// session's spawn site.
-func TestLoadConfig_MalformedDriverSpec(t *testing.T) {
-	baseDir := t.TempDir()
-	writeLoomConfigWithKey(t, baseDir, "driver", `"opus[effort"`)
-
-	_, err := LoadConfig(baseDir, "loom")
-	if err == nil {
-		t.Fatal("LoadConfig() = _, nil; want non-nil error for malformed driver spec")
-	}
-	if !strings.Contains(err.Error(), "driver") {
-		t.Errorf("LoadConfig() error = %q; want it to name the %q key", err.Error(), "driver")
-	}
-}
-
-// TestLoadConfig_AbsentDriverLoadsCleanly verifies a driver key present with no value at all (YAML
-// null, the shape a bare "driver:" line takes) loads cleanly and yields the zero value for
-// Config.Driver -- "defer to the provider default" must not require an operator to type a literal
-// empty string.
-func TestLoadConfig_AbsentDriverLoadsCleanly(t *testing.T) {
-	baseDir := t.TempDir()
-	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
-discussion_timeout_min: 480
-discussion_interactive: false
-plan: opus[effort=high]
-plan_timeout_min: 120
-review: opus[effort=high]
-review_timeout_min: 240
-friction: opus[effort=high]
-friction_timeout_min: 30
-driver:
-parent_review_wait_min: 60
-`)
-
-	cfg, err := LoadConfig(baseDir, "loom")
-	if err != nil {
-		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error for a driver key with no value", baseDir, err)
-	}
-	if cfg.Driver != "" {
-		t.Errorf("cfg.Driver = %q; want \"\" (defer to the provider default)", cfg.Driver)
-	}
-}
-
-// TestLoadConfig_EmptyDriverLoadsCleanly verifies a present-but-explicitly-empty driver value loads
-// cleanly and yields the zero value for Config.Driver, exactly like friction's own empty case,
-// distinct from TestLoadConfig_AbsentDriverLoadsCleanly's bare-key shape.
-func TestLoadConfig_EmptyDriverLoadsCleanly(t *testing.T) {
-	baseDir := t.TempDir()
-	writeLoomConfigWithKey(t, baseDir, "driver", `""`)
-
-	cfg, err := LoadConfig(baseDir, "loom")
-	if err != nil {
-		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error for a present-but-empty driver value", baseDir, err)
-	}
-	if cfg.Driver != "" {
-		t.Errorf("cfg.Driver = %q; want \"\" (defer to the provider default)", cfg.Driver)
-	}
-}
-
-// TestLoadConfig_ParentReviewWaitMinDefault verifies the template's default of 60 minutes.
-func TestLoadConfig_ParentReviewWaitMinDefault(t *testing.T) {
-	baseDir := t.TempDir()
-	seedLoomConfig(t, baseDir, ConfigTemplate())
-
-	cfg, err := LoadConfig(baseDir, "loom")
-	if err != nil {
-		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
-	}
-	if cfg.ParentReviewWaitMin != 60 {
-		t.Errorf("cfg.ParentReviewWaitMin = %d; want %d", cfg.ParentReviewWaitMin, 60)
-	}
-}
-
-// TestLoadConfig_ParentReviewWaitMinExplicit verifies an explicit value round-trips.
-func TestLoadConfig_ParentReviewWaitMinExplicit(t *testing.T) {
-	baseDir := t.TempDir()
-	writeLoomConfigWithKey(t, baseDir, "parent_review_wait_min", "5")
-
-	cfg, err := LoadConfig(baseDir, "loom")
-	if err != nil {
-		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
-	}
-	if cfg.ParentReviewWaitMin != 5 {
-		t.Errorf("cfg.ParentReviewWaitMin = %d; want %d", cfg.ParentReviewWaitMin, 5)
-	}
-}
-
-// TestLoadConfig_RejectsParentReviewWaitBelowOne verifies 0 and negative values are refused with the way forward,
-// since the sibling timeouts' "0 defers to shuttle" carve-out does not apply to this key.
-func TestLoadConfig_RejectsParentReviewWaitBelowOne(t *testing.T) {
-	for _, value := range []string{"0", "-1"} {
-		t.Run(value, func(t *testing.T) {
-			dir := t.TempDir()
-			writeLoomConfigWithKey(t, dir, "parent_review_wait_min", value)
-
-			_, err := LoadConfig(dir, "loom")
-			if err == nil {
-				t.Fatalf("LoadConfig() error = nil; want a refusal for parent_review_wait_min %s", value)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir := t.TempDir()
+			switch {
+			case tt.contents != "":
+				seedLoomConfig(t, baseDir, tt.contents)
+			case tt.values != nil:
+				writeLoomConfigWithKeys(t, baseDir, tt.values)
+			default:
+				seedLoomConfig(t, baseDir, ConfigTemplate())
 			}
-			if !strings.Contains(err.Error(), "parent_review_wait_min") {
-				t.Errorf("LoadConfig() error = %q; want it to name the key", err.Error())
+
+			want := templateConfig()
+			tt.mutate(&want)
+
+			got, err := LoadConfig(baseDir, "loom")
+			if err != nil {
+				t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
 			}
-			if !strings.Contains(err.Error(), "attempts: 0") {
-				t.Errorf("LoadConfig() error = %q; want it to name the way forward %q", err.Error(), "attempts: 0")
+			if got != want {
+				t.Errorf("LoadConfig() = %+v; want %+v", got, want)
 			}
 		})
 	}
 }
 
-// TestLoadConfig_ReviewKeysDefaultWhenAbsent verifies a loom.yaml without the review checkpoint and budget keys loads their template defaults.
-func TestLoadConfig_ReviewKeysDefaultWhenAbsent(t *testing.T) {
-	baseDir := t.TempDir()
-	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
-discussion_timeout_min: 480
-discussion_interactive: false
-plan: opus[effort=high]
-plan_timeout_min: 120
-review: opus[effort=high]
-review_timeout_min: 240
-`)
+// TestLoadConfig_Refuses verifies each invalid loom.yaml is refused at load time, naming the offending key:
+// an ungrammatical model-spec (rather than being silently carried into a producer's spawn site),
+// a parent_review_wait_min or review key below one (the sibling timeouts' "0 defers to shuttle" carve-out does not apply to them) with the way forward,
+// and a negative timeout (which would otherwise surface only when the producer it governs first spawns).
+func TestLoadConfig_Refuses(t *testing.T) {
+	t.Parallel()
+	const positiveIntegerForward = "set it to a positive integer in loom.yaml"
+	tests := []struct {
+		name   string
+		key    string
+		value  string
+		wantIn []string
+	}{
+		{"malformed discussion spec", "discussion", `"opus[effort"`, nil},
+		{"malformed plan spec", "plan", `"opus[effort"`, nil},
+		{"malformed review spec", "review", `"opus[effort"`, nil},
+		{"malformed judge spec", "judge", `"sonnet[medium"`, nil},
+		{"malformed friction spec", "friction", `"opus[effort"`, nil},
+		{"malformed driver spec", "driver", `"opus[effort"`, nil},
+		{"zero parent_review_wait_min", "parent_review_wait_min", "0", []string{"attempts: 0"}},
+		{"negative parent_review_wait_min", "parent_review_wait_min", "-1", []string{"attempts: 0"}},
+		{"zero review_circling_checkpoint", "review_circling_checkpoint", "0", []string{positiveIntegerForward}},
+		{"negative review_circling_checkpoint", "review_circling_checkpoint", "-1", []string{positiveIntegerForward}},
+		{"zero review_max_bounces", "review_max_bounces", "0", []string{positiveIntegerForward}},
+		{"negative review_max_bounces", "review_max_bounces", "-1", []string{positiveIntegerForward}},
+		{"negative discussion timeout", "discussion_timeout_min", "-1", []string{"must not be negative"}},
+		{"negative plan timeout", "plan_timeout_min", "-1", []string{"must not be negative"}},
+		{"negative review timeout", "review_timeout_min", "-1", []string{"must not be negative"}},
+		{"negative friction timeout", "friction_timeout_min", "-1", []string{"must not be negative"}},
+	}
 
-	cfg, err := LoadConfig(baseDir, "loom")
-	if err != nil {
-		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
-	}
-	if cfg.ReviewCirclingCheckpoint != 3 {
-		t.Errorf("cfg.ReviewCirclingCheckpoint = %d; want %d", cfg.ReviewCirclingCheckpoint, 3)
-	}
-	if cfg.ReviewMaxBounces != 5 {
-		t.Errorf("cfg.ReviewMaxBounces = %d; want %d", cfg.ReviewMaxBounces, 5)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			writeLoomConfigWithKey(t, dir, tt.key, tt.value)
 
-// TestLoadConfig_ReviewKeysExplicit verifies explicit checkpoint and budget values load verbatim.
-func TestLoadConfig_ReviewKeysExplicit(t *testing.T) {
-	baseDir := t.TempDir()
-	writeLoomConfigWithKeys(t, baseDir, map[string]string{"review_circling_checkpoint": "2", "review_max_bounces": "7"})
-
-	cfg, err := LoadConfig(baseDir, "loom")
-	if err != nil {
-		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
-	}
-	if cfg.ReviewCirclingCheckpoint != 2 {
-		t.Errorf("cfg.ReviewCirclingCheckpoint = %d; want %d", cfg.ReviewCirclingCheckpoint, 2)
-	}
-	if cfg.ReviewMaxBounces != 7 {
-		t.Errorf("cfg.ReviewMaxBounces = %d; want %d", cfg.ReviewMaxBounces, 7)
-	}
-}
-
-// TestLoadConfig_RejectsReviewKeysBelowOne verifies 0 and negative values of either key are refused, naming that key.
-func TestLoadConfig_RejectsReviewKeysBelowOne(t *testing.T) {
-	for _, key := range []string{"review_circling_checkpoint", "review_max_bounces"} {
-		for _, value := range []string{"0", "-1"} {
-			t.Run(key+"="+value, func(t *testing.T) {
-				dir := t.TempDir()
-				writeLoomConfigWithKey(t, dir, key, value)
-
-				_, err := LoadConfig(dir, "loom")
-				if err == nil {
-					t.Fatalf("LoadConfig() error = nil; want a refusal for %s %s", key, value)
+			_, err := LoadConfig(dir, "loom")
+			if err == nil {
+				t.Fatalf("LoadConfig() error = nil; want a refusal for %s: %s", tt.key, tt.value)
+			}
+			for _, want := range append([]string{tt.key}, tt.wantIn...) {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
 				}
-				if !strings.Contains(err.Error(), key) {
-					t.Errorf("LoadConfig() error = %q; want it to name the key %q", err.Error(), key)
-				}
-				if !strings.Contains(err.Error(), "set it to a positive integer in loom.yaml") {
-					t.Errorf("LoadConfig() error = %q; want it to name the way forward", err.Error())
-				}
-			})
-		}
-	}
-}
-
-// TestLoadConfig_CheckpointAboveBudgetLoads verifies a checkpoint larger than the budget is accepted:
-// such a run never rules CIRCLING and reaches the budget escalation instead.
-func TestLoadConfig_CheckpointAboveBudgetLoads(t *testing.T) {
-	baseDir := t.TempDir()
-	writeLoomConfigWithKeys(t, baseDir, map[string]string{"review_circling_checkpoint": "9", "review_max_bounces": "2"})
-
-	cfg, err := LoadConfig(baseDir, "loom")
-	if err != nil {
-		t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error for a checkpoint above the budget", baseDir, err)
-	}
-	if cfg.ReviewCirclingCheckpoint != 9 || cfg.ReviewMaxBounces != 2 {
-		t.Errorf("cfg = checkpoint %d, budget %d; want 9 and 2", cfg.ReviewCirclingCheckpoint, cfg.ReviewMaxBounces)
+			}
+		})
 	}
 }
 
 // TestLoadConfig_NotInitialized verifies uninitialized baseDir yields recovery hint.
 func TestLoadConfig_NotInitialized(t *testing.T) {
+	t.Parallel()
 	baseDir := t.TempDir()
 
 	_, err := LoadConfig(baseDir, "loom")
@@ -518,7 +284,12 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 // location and shedrun.SelfRunID, exactly as it never collided with loomengine's own
 // now-deleted LoomStatusLock/LoomRunLock before the relocation -- this is what makes the
 // overview's loomDirName-survives-the-status-relocation decision checkable rather than asserted.
+//
+// LoomScratchDir names exactly the directory the driver log and the bootstrap lock share, so the
+// three never drift apart, and that directory is loom's own scratch tree under .lyx/loom/, distinct
+// from the run directory's .lyx/shed/<runID>/ mirror that shedrun.ScratchDir names.
 func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		anchorRel string
@@ -529,6 +300,7 @@ func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			l := &lyxcwd.Location{
 				HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 				WorktreeName: "repo",
@@ -554,34 +326,25 @@ func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 			if got := LoomBootstrapLock(l); got == shedrun.RunLock(l, shedrun.SelfRunID) {
 				t.Errorf("LoomBootstrapLock() = %q; must differ from shedrun.RunLock() = %q", got, shedrun.RunLock(l, shedrun.SelfRunID))
 			}
+
+			got := LoomScratchDir(l)
+			if want := filepath.Dir(LoomDriverLog(l)); got != want {
+				t.Errorf("LoomScratchDir() = %q; want %q (filepath.Dir(LoomDriverLog()))", got, want)
+			}
+			if want := filepath.Dir(LoomBootstrapLock(l)); got != want {
+				t.Errorf("LoomScratchDir() = %q; want %q (filepath.Dir(LoomBootstrapLock()))", got, want)
+			}
+			if got == shedrun.ScratchDir(l, shedrun.SelfRunID) {
+				t.Errorf("LoomScratchDir() = %q; must differ from shedrun.ScratchDir() = %q", got, shedrun.ScratchDir(l, shedrun.SelfRunID))
+			}
 		})
-	}
-}
-
-// TestLoomScratchDir_MirrorsDriverLogAndBootstrapLockParent verifies LoomScratchDir names exactly
-// the directory LoomDriverLog and LoomBootstrapLock already share, so the three never drift apart.
-// LoomRunLock dropped out of this pin when card 12 relocated it onto shedrun.ScratchDir, which is a
-// different directory from LoomScratchDir -- loom's own scratch tree under .lyx/loom/, not the run
-// directory's own .lyx/shed/<runID>/ mirror.
-func TestLoomScratchDir_MirrorsDriverLogAndBootstrapLockParent(t *testing.T) {
-	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
-		WorktreeName: "repo",
-	}
-
-	got := LoomScratchDir(l)
-
-	if want := filepath.Dir(LoomDriverLog(l)); got != want {
-		t.Errorf("LoomScratchDir() = %q; want %q (filepath.Dir(LoomDriverLog()))", got, want)
-	}
-	if want := filepath.Dir(LoomBootstrapLock(l)); got != want {
-		t.Errorf("LoomScratchDir() = %q; want %q (filepath.Dir(LoomBootstrapLock()))", got, want)
 	}
 }
 
 // TestLandingAndApprovalAccessors pins the landing directory, its commit-pathspec form and the
 // approval record path for a hand-built location.
 func TestLandingAndApprovalAccessors(t *testing.T) {
+	t.Parallel()
 	l := &lyxcwd.Location{
 		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
 		WorktreeName: "repo",
@@ -610,28 +373,15 @@ func TestLandingAndApprovalAccessors(t *testing.T) {
 	}
 }
 
-// TestLoomScratchDir_DiffersFromShedrunScratchDir proves LoomScratchDir and
-// shedrun.ScratchDir(l, shedrun.SelfRunID) are distinct directories for the same location, per the
-// overview's loomDirName-survives-the-status-relocation decision: the "loom" segment still backs a
-// real, distinct ephemeral tree of its own, it is simply no longer where the status file's locks
-// live.
-func TestLoomScratchDir_DiffersFromShedrunScratchDir(t *testing.T) {
-	l := &lyxcwd.Location{
-		HubPath:      filepath.Join("home", "user", "repo-LYXHUB"),
-		WorktreeName: "repo",
-	}
-
-	if got := LoomScratchDir(l); got == shedrun.ScratchDir(l, shedrun.SelfRunID) {
-		t.Errorf("LoomScratchDir() = %q; must differ from shedrun.ScratchDir() = %q", got, shedrun.ScratchDir(l, shedrun.SelfRunID))
-	}
-}
-
 // TestConfigTemplate_ContainsEveryConfigYAMLTag walks Config's fields via reflection and asserts
 // every yaml tag appears in the template text -- so a struct field added without a matching
 // template line is caught mechanically rather than relying on review to notice the gap.
 // The Config Strictness Invariant makes a struct field with no matching template key a silent hole
 // rather than a load error, which is exactly what this check guards against.
+//
+//testtiming:keep pins that every Config yaml tag has a template line, a reflection check no LoadConfig case makes
 func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {
+	t.Parallel()
 	text := ConfigTemplate()
 
 	typ := reflect.TypeOf(Config{})
@@ -656,54 +406,4 @@ func containsConfigKey(text, key string) bool {
 		}
 	}
 	return false
-}
-
-// TestLoadConfig_RejectsNegativeTimeouts pins the load-time guard on the four timeout knobs.
-// Without it a negative minute count flowed into a shuttleengine.Spec's Timeout and was caught only
-// when the producer it governs first spawned -- which is exactly the deferred failure LoadConfig's
-// own header says the model-spec checks beside it exist to prevent.
-func TestLoadConfig_RejectsNegativeTimeouts(t *testing.T) {
-	tests := []struct {
-		name string
-		key  string
-	}{
-		{"DiscussionTimeout", "discussion_timeout_min"},
-		{"PlanTimeout", "plan_timeout_min"},
-		{"ReviewTimeout", "review_timeout_min"},
-		{"FrictionTimeout", "friction_timeout_min"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			writeLoomConfigWithKey(t, dir, tt.key, "-1")
-
-			_, err := LoadConfig(dir, "loom")
-			if err == nil {
-				t.Fatalf("LoadConfig() error = nil; want a refusal for a negative %s", tt.key)
-			}
-			if !strings.Contains(err.Error(), tt.key) {
-				t.Errorf("LoadConfig() error = %q; want it to name the offending key %q", err.Error(), tt.key)
-			}
-			if !strings.Contains(err.Error(), "must not be negative") {
-				t.Errorf("LoadConfig() error = %q; want it to state the rule", err.Error())
-			}
-		})
-	}
-}
-
-// TestLoadConfig_AcceptsZeroTimeouts pins the deliberate carve-out: shuttleengine.Spec treats a zero
-// Timeout as "defer to shuttle's own run_timeout_min", so zero is a legitimate configuration and must
-// not be swept up by the negative guard.
-func TestLoadConfig_AcceptsZeroTimeouts(t *testing.T) {
-	for _, key := range []string{"discussion_timeout_min", "plan_timeout_min", "review_timeout_min", "friction_timeout_min"} {
-		t.Run(key, func(t *testing.T) {
-			dir := t.TempDir()
-			writeLoomConfigWithKey(t, dir, key, "0")
-
-			if _, err := LoadConfig(dir, "loom"); err != nil {
-				t.Errorf("LoadConfig() error = %v; want nil (zero defers to shuttle's run_timeout_min)", err)
-			}
-		})
-	}
 }

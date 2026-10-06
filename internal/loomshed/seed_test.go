@@ -11,10 +11,29 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
+//testtiming:keep pins the exact seeded status and product payload, which TestCancellation_RealProducersReturnErrorNotStuck never asserts
 func TestSeed_WritesExpectedStatus(t *testing.T) {
+	tests := []struct {
+		name string
+		// lockRel is the lock file's path under the test directory; a nested one has a parent directory that does not exist yet.
+		lockRel string
+	}{
+		{"existing lock parent directory", "status.json.lock"},
+		{"missing lock parent directory", filepath.Join("nested-lock-dir", "status.json.lock")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			checkSeedWritesExpectedStatus(t, tt.lockRel)
+		})
+	}
+}
+
+func checkSeedWritesExpectedStatus(t *testing.T, lockRel string) {
+	t.Helper()
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")
-	statusLockPath := filepath.Join(dir, "status.json.lock")
+	statusLockPath := filepath.Join(dir, lockRel)
 
 	if err := Seed(statusPath, statusLockPath, "my-slug", "my-parent"); err != nil {
 		t.Fatalf("Seed() error = %v; want nil", err)
@@ -58,6 +77,7 @@ func TestSeed_WritesExpectedStatus(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that a second Seed leaves the first file untouched and returns ErrSeedExists, which its covering tests do not assert
 func TestSeed_RefusesExistingFile(t *testing.T) {
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")
@@ -161,19 +181,5 @@ func TestSeed_OtherFailureDoesNotMatchErrSeedExists(t *testing.T) {
 	}
 	if errors.Is(err, ErrSeedExists) {
 		t.Errorf("Seed() error = %v; want it NOT to match ErrSeedExists", err)
-	}
-}
-
-func TestSeed_SucceedsWhenLockParentDirMissing(t *testing.T) {
-	dir := t.TempDir()
-	statusPath := filepath.Join(dir, "status.json")
-	// statusLockPath's parent directory (dir/nested-lock-dir) does not exist yet.
-	statusLockPath := filepath.Join(dir, "nested-lock-dir", "status.json.lock")
-
-	if err := Seed(statusPath, statusLockPath, "my-slug", "my-parent"); err != nil {
-		t.Fatalf("Seed() error = %v; want nil even when the lock file's parent directory is missing", err)
-	}
-	if _, err := os.Stat(statusPath); err != nil {
-		t.Errorf("status file was not written: %v", err)
 	}
 }
