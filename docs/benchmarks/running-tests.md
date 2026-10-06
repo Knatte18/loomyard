@@ -15,7 +15,7 @@ A test that is merely slow — a big table-driven case, a large in-memory fixtur
   Machine- enforced by `cmd/lyx/tierpurity_test.go` (`TestTierPurity_UntaggedTestsSpawnNothing`).
   Fast again: measured median ~29 s on Windows (Cortex XDR), ~1 s on Linux.
   This is what you run constantly and what must stay fast.
-- **Tier 2 — the opt-in integration loop** (`go test -tags integration ./...`): Tier 1 **plus** the gated tests that spawn one of the substrate categories above — real `git` (worktrees, commits, pushes, junctions), real filesystem junctions/symlinks, real `tmux` sessions, real cross-compilation, or real external-binary spawn.
+- **Tier 2 — the opt-in integration loop** (`go test -tags integration ./...`): Tier 1 **plus** the gated tests that spawn one of the substrate categories above — real `git` (worktrees, commits, pushes, junctions), real filesystem junctions/symlinks, real cross-compilation, or real external-binary spawn; a test that drives real `tmux` sessions belongs to Tier 3 instead.
   It is slow **by design** — it does far more work.
   Measured median ~128 s on Windows (Cortex XDR), ~5 s on Linux.
   Numbers across machines and operating systems: [test-suite-timing.md](test-suite-timing.md#all-environments).

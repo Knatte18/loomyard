@@ -62,18 +62,31 @@ import (
 
 // writeStubDriverScript writes a POSIX shell script standing in for the claude binary this file's
 // spawns launch: it ignores every argument the claude engine's own launch line appends, prints
-// claudeengine's own ready-marker fixture, then sleeps for a long, harmless duration. The marker
+// claudeengine's own ready-marker fixture, answers skill loads, then sleeps for a long, harmless duration. The marker
 // line is required under the readiness signal this file now drives: without it shuttle's own startup
 // step would never observe readiness, so every "loom start --no-attach" below would refuse at
 // startup_timeout_s instead of succeeding. The fixture text, and which of a provider's gates it is
 // or isn't, is claudeengine's own concern (see claudeengine.ReadyFooterFixture) -- this package only
-// needs a realistic stand-in, never the classification details behind it. The script never needs to
+// needs a realistic stand-in, never the classification details behind it.
+// The driver spec names skills, and shuttle types `/<skill>` for each before the prompt pointer, waiting on each until the turn ends or the pane reports the skill unknown.
+// The script answers each `/<skill>` line with the unknown-skill notice, so shuttle skips it at once instead of waiting out the skill-load timeout,
+// and it starts the sleep at the first other line, the pointer.
+// The script never needs to
 // exit on its own -- this file's own third case kills its pane directly (see the file-level doc
 // comment) -- so the sleep only needs to outlast the whole test, never to be observed finishing.
 func writeStubDriverScript(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "stub-claude.sh")
-	script := "#!/bin/sh\necho '" + claudeengine.ReadyFooterFixture + "'\nsleep 3600\n"
+	script := `#!/bin/sh
+echo '` + claudeengine.ReadyFooterFixture + `'
+while IFS= read -r line; do
+  case "$line" in
+    /*) echo "Unknown skill: ${line#/}" ;;
+    *) break ;;
+  esac
+done
+sleep 3600
+`
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("write stub driver script: %v", err)
 	}
