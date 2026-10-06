@@ -1,5 +1,8 @@
 // reconcile_test.go covers Read, Reconcile, and ForceRefresh against a bare t.TempDir(), with no
 // git and no hub fixture -- see fakeRegistry below for the Registry stand-in every test here uses.
+//
+// The tests that capture the logger's output swap process-global state, so they stay serial and run
+// before the parallel ones resume.
 
 package stencilstore
 
@@ -56,7 +59,43 @@ func readAll(t *testing.T, baseDir, name string) []byte {
 	return content
 }
 
-func TestReconcile_SeedsAbsentFile(t *testing.T) {
+// seedBoard runs a production Reconcile of registry into a fresh board directory and returns it.
+func seedBoard(t *testing.T, registry *fakeRegistry) string {
+	t.Helper()
+	baseDir := t.TempDir()
+	if _, err := Reconcile(baseDir, registry, ModeProduction, ""); err != nil {
+		t.Fatalf("seed Reconcile(...) returned error: %v", err)
+	}
+	return baseDir
+}
+
+// writeBoardCopy writes content as the board copy of name, creating its family directory.
+func writeBoardCopy(t *testing.T, baseDir, name string, content []byte) {
+	t.Helper()
+	path := Path(baseDir, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("os.MkdirAll failed: %v", err)
+	}
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatalf("os.WriteFile failed: %v", err)
+	}
+}
+
+// seedGitattributesForTest pre-creates baseDir/.gitattributes so a test's own Reconcile call can
+// assert on written without that call also seeding .gitattributes for the first time.
+func seedGitattributesForTest(t *testing.T, baseDir string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(baseDir, gitattributesName), []byte(gitattributesContent), 0o644); err != nil {
+		t.Fatalf("seedGitattributesForTest: os.WriteFile failed: %v", err)
+	}
+}
+
+// TestReconcile_SeedsAbsentFileAndGitattributesOnce covers the seeding run: an absent board copy is
+// written stamped with its own hash and reported in written, and .gitattributes is seeded then too,
+// but never rewritten once it exists and never listed by the registry.
+func TestReconcile_SeedsAbsentFileAndGitattributesOnce(t *testing.T) {
+	t.Parallel()
+
 	baseDir := t.TempDir()
 	registry := newFakeRegistry(map[string][]byte{"family-one": []byte("shipped body\n")})
 
@@ -73,134 +112,149 @@ func TestReconcile_SeedsAbsentFile(t *testing.T) {
 	if !slices.Contains(written, RelPath("family-one")) {
 		t.Errorf("Reconcile(...) written = %v; want it to include %q", written, RelPath("family-one"))
 	}
-}
-
-// seedGitattributesForTest pre-creates baseDir/.gitattributes so a test's own Reconcile call can
-// assert on written without that call also seeding .gitattributes for the first time.
-func seedGitattributesForTest(t *testing.T, baseDir string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(baseDir, gitattributesName), []byte(gitattributesContent), 0o644); err != nil {
-		t.Fatalf("seedGitattributesForTest: os.WriteFile failed: %v", err)
+	if !slices.Contains(written, gitattributesName) {
+		t.Errorf("Reconcile(...) written = %v; want it to include %q on the seeding run", written, gitattributesName)
 	}
-}
 
-func TestReconcile_UntouchedUnchangedDefaultLeftAlone(t *testing.T) {
-	baseDir := t.TempDir()
-	shipped := []byte("shipped body\n")
-	registry := newFakeRegistry(map[string][]byte{"family-one": shipped})
-
-	if _, err := Reconcile(baseDir, registry, ModeProduction, ""); err != nil {
-		t.Fatalf("seed Reconcile(...) returned error: %v", err)
-	}
-	before := readAll(t, baseDir, "family-one")
-
-	written, err := Reconcile(baseDir, registry, ModeProduction, "")
+	content, err := os.ReadFile(filepath.Join(baseDir, gitattributesName))
 	if err != nil {
-		t.Fatalf("second Reconcile(...) returned error: %v", err)
+		t.Fatalf("os.ReadFile(.gitattributes) failed: %v", err)
 	}
-	after := readAll(t, baseDir, "family-one")
-
-	if string(before) != string(after) {
-		t.Errorf("Reconcile(...) modified an untouched-unchanged file: before=%q after=%q", before, after)
-	}
-	if len(written) != 0 {
-		t.Errorf("Reconcile(...) written = %v; want empty", written)
-	}
-}
-
-func TestReconcile_UntouchedChangedDefault(t *testing.T) {
-	baseDir := t.TempDir()
-	original := []byte("original shipped body\n")
-	registry := newFakeRegistry(map[string][]byte{"family-one": original})
-	if _, err := Reconcile(baseDir, registry, ModeProduction, ""); err != nil {
-		t.Fatalf("seed Reconcile(...) returned error: %v", err)
+	if string(content) != gitattributesContent {
+		t.Errorf(".gitattributes content = %q; want %q", content, gitattributesContent)
 	}
 
-	updated := []byte("updated shipped body\n")
-	registry.defaults["family-one"] = updated
-
-	t.Run("ModeProduction_Overwrites", func(t *testing.T) {
-		written, err := Reconcile(baseDir, registry, ModeProduction, "")
-		if err != nil {
-			t.Fatalf("Reconcile(...) returned error: %v", err)
-		}
-		onDisk := readAll(t, baseDir, "family-one")
-		if BodyHash(onDisk) != BodyHash(updated) {
-			t.Errorf("ModeProduction did not refresh: BodyHash(onDisk) = %q; want %q", BodyHash(onDisk), BodyHash(updated))
-		}
-		if len(written) != 1 {
-			t.Errorf("Reconcile(...) written = %v; want one entry", written)
-		}
-	})
-}
-
-func TestReconcile_ModeDevDoesNotRefreshUntouched(t *testing.T) {
-	baseDir := t.TempDir()
-	original := []byte("original shipped body\n")
-	registry := newFakeRegistry(map[string][]byte{"family-one": original})
-	if _, err := Reconcile(baseDir, registry, ModeProduction, ""); err != nil {
-		t.Fatalf("seed Reconcile(...) returned error: %v", err)
-	}
-	before := readAll(t, baseDir, "family-one")
-
-	registry.defaults["family-one"] = []byte("updated shipped body\n")
-
-	written, err := Reconcile(baseDir, registry, ModeDev, "")
-	if err != nil {
-		t.Fatalf("Reconcile(ModeDev) returned error: %v", err)
-	}
-	after := readAll(t, baseDir, "family-one")
-
-	if string(before) != string(after) {
-		t.Errorf("ModeDev modified an untouched file on disk: before=%q after=%q", before, after)
-	}
-	if len(written) != 0 {
-		t.Errorf("Reconcile(ModeDev) written = %v; want empty", written)
-	}
-}
-
-func TestReconcile_ModeDevStillRestampsReconciledRow(t *testing.T) {
-	baseDir := t.TempDir()
-	shipped := []byte("dev default body\n")
-	registry := newFakeRegistry(map[string][]byte{"family-one": shipped})
-
-	// Seed a file whose body equals the dev default but whose stamp names an older hash.
-	staleHash := BodyHash([]byte("some other old default\n"))
-	path := Path(baseDir, "family-one")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("os.MkdirAll failed: %v", err)
-	}
-	if err := os.WriteFile(path, ApplyStamp(shipped, staleHash), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, gitattributesName), []byte("custom content\n"), 0o644); err != nil {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
-	seedGitattributesForTest(t, baseDir)
 
-	written, err := Reconcile(baseDir, registry, ModeDev, "")
+	written, err = Reconcile(baseDir, registry, ModeProduction, "")
 	if err != nil {
-		t.Fatalf("Reconcile(ModeDev) returned error: %v", err)
+		t.Fatalf("Reconcile(...) returned error: %v", err)
 	}
-	if len(written) != 1 {
-		t.Errorf("Reconcile(ModeDev) written = %v; want one restamp entry", written)
+	if slices.Contains(written, gitattributesName) {
+		t.Errorf("Reconcile(...) rewrote an existing .gitattributes")
+	}
+	content, err = os.ReadFile(filepath.Join(baseDir, gitattributesName))
+	if err != nil {
+		t.Fatalf("os.ReadFile(.gitattributes) failed: %v", err)
+	}
+	if string(content) != "custom content\n" {
+		t.Errorf(".gitattributes content = %q; want it left untouched", content)
 	}
 
-	onDisk := readAll(t, baseDir, "family-one")
-	stamp, ok := ParseStamp(onDisk)
-	if !ok || stamp != BodyHash(onDisk) {
-		t.Fatalf("restamped file's stamp = (%q, %v); want it to equal its own BodyHash", stamp, ok)
+	if slices.Contains(registry.Names(), gitattributesName) {
+		t.Errorf("registry.Names() = %v; want it to never include %q", registry.Names(), gitattributesName)
 	}
+}
 
-	if got := Classify(onDisk, true, shipped); got != StateUntouched {
-		t.Errorf("Classify(restamped file) = %v; want %v", got, StateUntouched)
+// TestReconcile_UntouchedBoardCopy covers a board copy still matching its own stamp across a second
+// reconcile: an unchanged default leaves every file alone, and a changed default refreshes it in
+// production mode but never in dev mode.
+func TestReconcile_UntouchedBoardCopy(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		mode          Mode
+		updated       string
+		wantRefreshed bool
+	}{
+		{name: "UnchangedDefaultLeftAlone", mode: ModeProduction},
+		{name: "ChangedDefaultRefreshedInProductionMode", mode: ModeProduction, updated: "updated shipped body\n", wantRefreshed: true},
+		{name: "ChangedDefaultNotRefreshedInDevMode", mode: ModeDev, updated: "updated shipped body\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			registry := newFakeRegistry(map[string][]byte{
+				"family-one": []byte("original shipped body\n"),
+				"family-two": []byte("body two\n"),
+			})
+			baseDir := seedBoard(t, registry)
+			beforeOne := readAll(t, baseDir, "family-one")
+			beforeTwo := readAll(t, baseDir, "family-two")
+			if tt.updated != "" {
+				registry.defaults["family-one"] = []byte(tt.updated)
+			}
+
+			written, err := Reconcile(baseDir, registry, tt.mode, "")
+			if err != nil {
+				t.Fatalf("Reconcile(...) returned error: %v", err)
+			}
+
+			wantWritten := 0
+			if tt.wantRefreshed {
+				wantWritten = 1
+			}
+			if len(written) != wantWritten {
+				t.Errorf("Reconcile(...) written = %v; want %d entries", written, wantWritten)
+			}
+			afterOne := readAll(t, baseDir, "family-one")
+			if tt.wantRefreshed {
+				if BodyHash(afterOne) != BodyHash([]byte(tt.updated)) {
+					t.Errorf("Reconcile(...) did not refresh: BodyHash(onDisk) = %q; want %q", BodyHash(afterOne), BodyHash([]byte(tt.updated)))
+				}
+			} else if string(afterOne) != string(beforeOne) {
+				t.Errorf("Reconcile(...) modified an untouched file: before=%q after=%q", beforeOne, afterOne)
+			}
+			if afterTwo := readAll(t, baseDir, "family-two"); string(afterTwo) != string(beforeTwo) {
+				t.Errorf("Reconcile(...) modified family-two: before=%q after=%q", beforeTwo, afterTwo)
+			}
+		})
+	}
+}
+
+// TestReconcile_RestampsRowWhoseBodyMatchesDefault covers a board copy whose body equals the shipped
+// default but whose stamp names an older hash (an edit later reverted): both modes restamp it, and
+// it classifies as untouched afterwards.
+func TestReconcile_RestampsRowWhoseBodyMatchesDefault(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name string
+		mode Mode
+	}{
+		{"ProductionMode", ModeProduction},
+		{"DevMode", ModeDev},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			baseDir := t.TempDir()
+			shipped := []byte("shipped body\n")
+			registry := newFakeRegistry(map[string][]byte{"family-one": shipped})
+			staleHash := BodyHash([]byte("some other old default\n"))
+			writeBoardCopy(t, baseDir, "family-one", ApplyStamp(shipped, staleHash))
+			seedGitattributesForTest(t, baseDir)
+
+			written, err := Reconcile(baseDir, registry, tt.mode, "")
+			if err != nil {
+				t.Fatalf("Reconcile(...) returned error: %v", err)
+			}
+			if len(written) != 1 {
+				t.Errorf("Reconcile(...) written = %v; want one restamp entry", written)
+			}
+
+			onDisk := readAll(t, baseDir, "family-one")
+			stamp, ok := ParseStamp(onDisk)
+			if !ok || stamp != BodyHash(onDisk) {
+				t.Fatalf("restamped file's stamp = (%q, %v); want it to equal its own BodyHash", stamp, ok)
+			}
+			if got := Classify(onDisk, true, shipped); got != StateUntouched {
+				t.Errorf("Classify(restamped file) = %v; want %v", got, StateUntouched)
+			}
+		})
 	}
 }
 
 func TestForceRefresh_PerformsRefreshRowFromDevSkippedFile(t *testing.T) {
-	baseDir := t.TempDir()
+	t.Parallel()
+
 	original := []byte("original shipped body\n")
 	registry := newFakeRegistry(map[string][]byte{"family-one": original})
-	if _, err := Reconcile(baseDir, registry, ModeProduction, ""); err != nil {
-		t.Fatalf("seed Reconcile(...) returned error: %v", err)
-	}
+	baseDir := seedBoard(t, registry)
 
 	updated := []byte("updated shipped body\n")
 	registry.defaults["family-one"] = updated
@@ -226,215 +280,91 @@ func TestForceRefresh_PerformsRefreshRowFromDevSkippedFile(t *testing.T) {
 	}
 }
 
-func TestReconcile_EditedFileNeverModified(t *testing.T) {
-	baseDir := t.TempDir()
+// TestReconcile_EditedBoardCopyIsNeverModified covers a board copy reconcile must leave alone even
+// under a newer default: a hand-edited body under its old stamp, and a body with no stamp at all.
+// Read returns the content as it is on disk.
+func TestReconcile_EditedBoardCopyIsNeverModified(t *testing.T) {
+	t.Parallel()
+
 	shipped := []byte("shipped body\n")
-	registry := newFakeRegistry(map[string][]byte{"family-one": shipped})
-	if _, err := Reconcile(baseDir, registry, ModeProduction, ""); err != nil {
-		t.Fatalf("seed Reconcile(...) returned error: %v", err)
+	tests := []struct {
+		name   string
+		onDisk []byte
+	}{
+		{"HandEditedBody", ApplyStamp([]byte("hand-edited body\n"), BodyHash(shipped))},
+		{"MissingStamp", []byte("body with no stamp at all\n")},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	edited := ApplyStamp([]byte("hand-edited body\n"), BodyHash(shipped))
-	if err := os.WriteFile(Path(baseDir, "family-one"), edited, 0o644); err != nil {
-		t.Fatalf("os.WriteFile failed: %v", err)
-	}
+			baseDir := t.TempDir()
+			registry := newFakeRegistry(map[string][]byte{"family-one": []byte("newer shipped body\n")})
+			writeBoardCopy(t, baseDir, "family-one", tt.onDisk)
+			seedGitattributesForTest(t, baseDir)
 
-	registry.defaults["family-one"] = []byte("newer shipped body\n")
-	written, err := Reconcile(baseDir, registry, ModeProduction, "")
-	if err != nil {
-		t.Fatalf("Reconcile(...) returned error: %v", err)
-	}
-	if len(written) != 0 {
-		t.Errorf("Reconcile(...) written = %v; want empty for an edited file", written)
-	}
+			written, err := Reconcile(baseDir, registry, ModeProduction, "")
+			if err != nil {
+				t.Fatalf("Reconcile(...) returned error: %v", err)
+			}
+			if len(written) != 0 {
+				t.Errorf("Reconcile(...) written = %v; want empty for an edited file", written)
+			}
+			if onDisk := readAll(t, baseDir, "family-one"); string(onDisk) != string(tt.onDisk) {
+				t.Errorf("Reconcile(...) modified an edited file: onDisk=%q want=%q", onDisk, tt.onDisk)
+			}
 
-	onDisk := readAll(t, baseDir, "family-one")
-	if string(onDisk) != string(edited) {
-		t.Errorf("Reconcile(...) modified an edited file: onDisk=%q want=%q", onDisk, edited)
-	}
-
-	read, err := Read(baseDir, "family-one")
-	if err != nil {
-		t.Fatalf("Read(...) returned error: %v", err)
-	}
-	if string(read) != string(edited) {
-		t.Errorf("Read(...) = %q; want the edited content %q", read, edited)
+			read, err := Read(baseDir, "family-one")
+			if err != nil {
+				t.Fatalf("Read(...) returned error: %v", err)
+			}
+			if string(read) != string(tt.onDisk) {
+				t.Errorf("Read(...) = %q; want the on-disk content %q", read, tt.onDisk)
+			}
+		})
 	}
 }
 
-func TestReconcile_MissingOrMalformedStampTreatedAsEdited(t *testing.T) {
-	baseDir := t.TempDir()
-	shipped := []byte("shipped body\n")
-	registry := newFakeRegistry(map[string][]byte{"family-one": shipped})
+// TestReconcile_SourceDirNeverFailsReconcile covers the port-back drift comparison never failing a
+// reconcile: an empty sourceDir skips it, and a worktree source that differs from the board copy
+// only warns.
+func TestReconcile_SourceDirNeverFailsReconcile(t *testing.T) {
+	t.Parallel()
 
-	unstamped := []byte("body with no stamp at all\n")
-	path := Path(baseDir, "family-one")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("os.MkdirAll failed: %v", err)
+	tests := []struct {
+		name        string
+		driftSource bool
+	}{
+		{"EmptySourceDirSkipsDriftComparison", false},
+		{"DriftingSourceDirStillSucceeds", true},
 	}
-	if err := os.WriteFile(path, unstamped, 0o644); err != nil {
-		t.Fatalf("os.WriteFile failed: %v", err)
-	}
-	seedGitattributesForTest(t, baseDir)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	written, err := Reconcile(baseDir, registry, ModeProduction, "")
-	if err != nil {
-		t.Fatalf("Reconcile(...) returned error: %v", err)
-	}
-	if len(written) != 0 {
-		t.Errorf("Reconcile(...) written = %v; want empty for an unstamped file", written)
-	}
-	onDisk := readAll(t, baseDir, "family-one")
-	if string(onDisk) != string(unstamped) {
-		t.Errorf("Reconcile(...) modified an unstamped file: onDisk=%q want=%q", onDisk, unstamped)
-	}
-}
+			registry := newFakeRegistry(map[string][]byte{"family-one": []byte("board body\n")})
+			baseDir := seedBoard(t, registry)
 
-func TestReconcile_RevertedFileRestampsAndReturnsToUntouched(t *testing.T) {
-	baseDir := t.TempDir()
-	shipped := []byte("shipped body\n")
-	registry := newFakeRegistry(map[string][]byte{"family-one": shipped})
-	if _, err := Reconcile(baseDir, registry, ModeProduction, ""); err != nil {
-		t.Fatalf("seed Reconcile(...) returned error: %v", err)
-	}
+			sourceDir := ""
+			if tt.driftSource {
+				sourceDir = t.TempDir()
+				sourcePath := filepath.Join(sourceDir, filepath.FromSlash(RelPath("family-one")))
+				if err := os.MkdirAll(filepath.Dir(sourcePath), 0o755); err != nil {
+					t.Fatalf("os.MkdirAll failed: %v", err)
+				}
+				if err := os.WriteFile(sourcePath, []byte("different worktree body\n"), 0o644); err != nil {
+					t.Fatalf("os.WriteFile failed: %v", err)
+				}
+			}
 
-	// Edit then revert to the exact default body, but leave the (now stale) stamp behind.
-	staleHash := BodyHash([]byte("an unrelated edit\n"))
-	reverted := ApplyStamp(shipped, staleHash)
-	if err := os.WriteFile(Path(baseDir, "family-one"), reverted, 0o644); err != nil {
-		t.Fatalf("os.WriteFile failed: %v", err)
-	}
-
-	written, err := Reconcile(baseDir, registry, ModeProduction, "")
-	if err != nil {
-		t.Fatalf("Reconcile(...) returned error: %v", err)
-	}
-	if len(written) != 1 {
-		t.Errorf("Reconcile(...) written = %v; want one restamp entry", written)
-	}
-
-	onDisk := readAll(t, baseDir, "family-one")
-	if got := Classify(onDisk, true, shipped); got != StateUntouched {
-		t.Errorf("Classify(reverted+restamped file) = %v; want %v", got, StateUntouched)
-	}
-}
-
-func TestReconcile_NoChangesWritesNothing(t *testing.T) {
-	baseDir := t.TempDir()
-	registry := newFakeRegistry(map[string][]byte{
-		"family-one": []byte("body one\n"),
-		"family-two": []byte("body two\n"),
-	})
-	if _, err := Reconcile(baseDir, registry, ModeProduction, ""); err != nil {
-		t.Fatalf("seed Reconcile(...) returned error: %v", err)
-	}
-	before := map[string][]byte{
-		"family-one": readAll(t, baseDir, "family-one"),
-		"family-two": readAll(t, baseDir, "family-two"),
-	}
-
-	written, err := Reconcile(baseDir, registry, ModeProduction, "")
-	if err != nil {
-		t.Fatalf("second Reconcile(...) returned error: %v", err)
-	}
-	if len(written) != 0 {
-		t.Errorf("Reconcile(...) written = %v; want empty", written)
-	}
-	for name, want := range before {
-		got := readAll(t, baseDir, name)
-		if string(got) != string(want) {
-			t.Errorf("Reconcile(...) modified %q: before=%q after=%q", name, want, got)
-		}
-	}
-}
-
-func TestReconcile_SeedsGitattributesOnce(t *testing.T) {
-	baseDir := t.TempDir()
-	registry := newFakeRegistry(map[string][]byte{"family-one": []byte("body\n")})
-
-	written, err := Reconcile(baseDir, registry, ModeProduction, "")
-	if err != nil {
-		t.Fatalf("Reconcile(...) returned error: %v", err)
-	}
-
-	found := false
-	for _, path := range written {
-		if path == gitattributesName {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("Reconcile(...) written = %v; want it to include %q on the seeding run", written, gitattributesName)
-	}
-
-	content, err := os.ReadFile(filepath.Join(baseDir, gitattributesName))
-	if err != nil {
-		t.Fatalf("os.ReadFile(.gitattributes) failed: %v", err)
-	}
-	if string(content) != gitattributesContent {
-		t.Errorf(".gitattributes content = %q; want %q", content, gitattributesContent)
-	}
-
-	if err := os.WriteFile(filepath.Join(baseDir, gitattributesName), []byte("custom content\n"), 0o644); err != nil {
-		t.Fatalf("os.WriteFile failed: %v", err)
-	}
-
-	written, err = Reconcile(baseDir, registry, ModeProduction, "")
-	if err != nil {
-		t.Fatalf("Reconcile(...) returned error: %v", err)
-	}
-	for _, path := range written {
-		if path == gitattributesName {
-			t.Errorf("Reconcile(...) rewrote an existing .gitattributes")
-		}
-	}
-	content, err = os.ReadFile(filepath.Join(baseDir, gitattributesName))
-	if err != nil {
-		t.Fatalf("os.ReadFile(.gitattributes) failed: %v", err)
-	}
-	if string(content) != "custom content\n" {
-		t.Errorf(".gitattributes content = %q; want it left untouched", content)
-	}
-
-	for _, name := range registry.Names() {
-		if name == gitattributesName {
-			t.Errorf("registry.Names() = %v; want it to never include %q", registry.Names(), gitattributesName)
-		}
-	}
-}
-
-func TestReconcile_EmptySourceDirSkipsDriftComparison(t *testing.T) {
-	baseDir := t.TempDir()
-	registry := newFakeRegistry(map[string][]byte{"family-one": []byte("body\n")})
-
-	if _, err := Reconcile(baseDir, registry, ModeProduction, ""); err != nil {
-		t.Fatalf("Reconcile(...) with empty sourceDir returned error: %v", err)
-	}
-}
-
-func TestReconcile_DriftingSourceDirStillSucceeds(t *testing.T) {
-	baseDir := t.TempDir()
-	sourceDir := t.TempDir()
-	registry := newFakeRegistry(map[string][]byte{"family-one": []byte("board body\n")})
-
-	if _, err := Reconcile(baseDir, registry, ModeProduction, ""); err != nil {
-		t.Fatalf("seed Reconcile(...) returned error: %v", err)
-	}
-
-	sourcePath := filepath.Join(sourceDir, filepath.FromSlash(RelPath("family-one")))
-	if err := os.MkdirAll(filepath.Dir(sourcePath), 0o755); err != nil {
-		t.Fatalf("os.MkdirAll failed: %v", err)
-	}
-	if err := os.WriteFile(sourcePath, []byte("different worktree body\n"), 0o644); err != nil {
-		t.Fatalf("os.WriteFile failed: %v", err)
-	}
-
-	written, err := Reconcile(baseDir, registry, ModeProduction, sourceDir)
-	if err != nil {
-		t.Fatalf("Reconcile(...) with a drifting sourceDir returned error: %v", err)
-	}
-	if len(written) != 0 {
-		t.Errorf("Reconcile(...) written = %v; want empty on a run where only .gitattributes was already seeded", written)
+			written, err := Reconcile(baseDir, registry, ModeProduction, sourceDir)
+			if err != nil {
+				t.Fatalf("Reconcile(...) with sourceDir %q returned error: %v", sourceDir, err)
+			}
+			if len(written) != 0 {
+				t.Errorf("Reconcile(...) written = %v; want empty on a run where only .gitattributes was already seeded", written)
+			}
+		})
 	}
 }
 
@@ -444,11 +374,8 @@ func TestReconcile_DriftingSourceDirStillSucceeds(t *testing.T) {
 // on every invocation, forever. A warning that does not name "lyx stencil sync" reads as benign
 // housekeeping while it is reporting that every producer will run on the older on-disk prompt.
 func TestReconcile_ModeDevRefusalNamesItsRemedy(t *testing.T) {
-	baseDir := t.TempDir()
 	registry := newFakeRegistry(map[string][]byte{"family-one": []byte("original shipped body\n")})
-	if _, err := Reconcile(baseDir, registry, ModeProduction, ""); err != nil {
-		t.Fatalf("seed Reconcile(...) returned error: %v", err)
-	}
+	baseDir := seedBoard(t, registry)
 	registry.defaults["family-one"] = []byte("updated shipped body\n")
 
 	var buf bytes.Buffer

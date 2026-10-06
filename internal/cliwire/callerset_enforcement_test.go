@@ -131,13 +131,28 @@ func callsDerive(astFile *ast.File, standalonestateAlias string) bool {
 	return found
 }
 
-// TestCallsDerive_CatchesFunctionValueIndirection is CW-1's own regression test (crucible round
-// sonnet-xhigh-r8): a package that captures standalonestate.Derive as a function value first,
-// rather than calling it directly, is exactly as much a second production caller as a direct-call
-// package is, and must be caught the same way. Direct unit test over callsDerive rather than a
-// planted whole-repo fixture, so the regression lives beside the function it protects.
-func TestCallsDerive_CatchesFunctionValueIndirection(t *testing.T) {
-	const src = `package fakecli
+// TestCallsDerive is a direct unit test over callsDerive rather than a planted whole-repo fixture,
+// so each regression lives beside the function it protects.
+// A package that captures standalonestate.Derive as a function value first, rather than calling it
+// directly, is exactly as much a second production caller as a direct-call package is, and must be
+// caught the same way (crucible round sonnet-xhigh-r8, CW-1).
+// The ordinary direct-call form the pre-fix walk already caught must still be caught after widening
+// the match to bare selector expressions.
+// The widened match must still discriminate on both the selected name and the receiver alias, so an
+// unrelated method named Derive is not a false positive.
+//
+//testtiming:keep a guard self-check: pins that the selector walk catches a direct call and a captured function value and spares an unrelated Derive, which the real-tree scan never exercises
+func TestCallsDerive(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		src  string
+		want bool
+	}{
+		{
+			name: "CatchesFunctionValueIndirection",
+			src: `package fakecli
 
 import "github.com/Knatte18/loomyard/internal/standalonestate"
 
@@ -146,46 +161,24 @@ var deriveFn = standalonestate.Derive
 func resolve(target string) (string, string, error) {
 	return deriveFn(target)
 }
-`
-	fset := token.NewFileSet()
-	astFile, err := parser.ParseFile(fset, "fakecli.go", src, 0)
-	if err != nil {
-		t.Fatalf("parse fixture source: %v", err)
-	}
-
-	if !callsDerive(astFile, "standalonestate") {
-		t.Error("callsDerive() = false; want true -- a var capturing standalonestate.Derive as a function value names Derive exactly as much as a direct call does")
-	}
-}
-
-// TestCallsDerive_DirectCallStillCaught is a plain-shape sanity check alongside the indirection
-// regression above: the ordinary direct-call form the pre-fix walk already caught must still be
-// caught after widening the match to bare selector expressions.
-func TestCallsDerive_DirectCallStillCaught(t *testing.T) {
-	const src = `package fakecli
+`,
+			want: true,
+		},
+		{
+			name: "DirectCallStillCaught",
+			src: `package fakecli
 
 import "github.com/Knatte18/loomyard/internal/standalonestate"
 
 func resolve(target string) (string, string, error) {
 	return standalonestate.Derive(target)
 }
-`
-	fset := token.NewFileSet()
-	astFile, err := parser.ParseFile(fset, "fakecli.go", src, 0)
-	if err != nil {
-		t.Fatalf("parse fixture source: %v", err)
-	}
-
-	if !callsDerive(astFile, "standalonestate") {
-		t.Error("callsDerive() = false; want true -- a direct standalonestate.Derive(...) call must still be caught")
-	}
-}
-
-// TestCallsDerive_UnrelatedSelectorNotCaught confirms the widened match still discriminates on
-// both the selected name and the receiver alias -- an unrelated method named Derive, or a Derive
-// selector off some other package, must not false-positive.
-func TestCallsDerive_UnrelatedSelectorNotCaught(t *testing.T) {
-	const src = `package fakecli
+`,
+			want: true,
+		},
+		{
+			name: "UnrelatedSelectorNotCaught",
+			src: `package fakecli
 
 import "fmt"
 
@@ -198,14 +191,23 @@ func resolve() string {
 	fmt.Sprintln(t.Derive())
 	return ""
 }
-`
-	fset := token.NewFileSet()
-	astFile, err := parser.ParseFile(fset, "fakecli.go", src, 0)
-	if err != nil {
-		t.Fatalf("parse fixture source: %v", err)
+`,
+			want: false,
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	if callsDerive(astFile, "standalonestate") {
-		t.Error("callsDerive() = true; want false -- an unrelated type's own Derive method is not standalonestate.Derive")
+			fset := token.NewFileSet()
+			astFile, err := parser.ParseFile(fset, "fakecli.go", tt.src, 0)
+			if err != nil {
+				t.Fatalf("parse fixture source: %v", err)
+			}
+
+			if got := callsDerive(astFile, "standalonestate"); got != tt.want {
+				t.Errorf("callsDerive() = %v; want %v", got, tt.want)
+			}
+		})
 	}
 }
