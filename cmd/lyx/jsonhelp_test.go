@@ -1,5 +1,5 @@
 // jsonhelp_test.go asserts the --json help schema at multiple levels of the lyx command tree.
-// Each test drives the run() seam with --json and validates that the captured output is valid JSON
+// Each row drives the run() seam with --json and validates that the captured output is valid JSON
 // matching the {name, short, commands, flags} schema.
 // It also confirms that hidden and meta flags are absent from the flags array.
 
@@ -63,122 +63,89 @@ func commandNames(cmds []helpJSONCmd) map[string]bool {
 	return names
 }
 
-// TestJSONHelp_RootSchema asserts that "lyx --json" produces valid JSON with the expected schema
-// fields and lists every module under commands.
-func TestJSONHelp_RootSchema(t *testing.T) {
-	var out bytes.Buffer
-	code := run([]string{"--json"}, &out)
-	if code != 0 {
-		t.Fatalf("run([--json]) = %d; want 0. output:\n%s", code, out.String())
+// TestJSONHelp_Schema asserts "--json" help exits 0 and produces valid JSON with the expected
+// schema fields at the root, a verb module, a module with one verb and a leaf verb.
+// run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
+func TestJSONHelp_Schema(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		// wantNameContains is a substring of the JSON name; empty asserts only a non-empty name.
+		wantNameContains string
+		wantCommands     []string
+		// wantNoCommands asserts a leaf: the commands array is empty.
+		wantNoCommands bool
+		wantFlags      []string
+		absentFlags    []string
+	}{
+		{
+			name:         "root lists every module",
+			args:         []string{"--json"},
+			wantCommands: []string{"board", "config", "ide", "reed", "selfreport"},
+			absentFlags:  []string{"--json", "--help"},
+		},
+		{
+			name:             "verb module names its subcommands and hides --board-path",
+			args:             []string{"board", "--json"},
+			wantNameContains: "board",
+			wantCommands:     []string{"upsert", "list", "remove", "sync"},
+			absentFlags:      []string{"--board-path"},
+		},
+		{
+			name:         "selfreport names its subcommand",
+			args:         []string{"selfreport", "--json"},
+			wantCommands: []string{"create"},
+		},
+		{
+			name:           "leaf verb lists its flags and no commands",
+			args:           []string{"selfreport", "create", "--help", "--json"},
+			wantNoCommands: true,
+			wantFlags:      []string{"--body", "--label"},
+			absentFlags:    []string{"--json", "--help"},
+		},
 	}
 
-	h := decodeHelpJSON(t, &out)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			code := run(tt.args, &out)
+			if code != 0 {
+				t.Fatalf("run(%v) = %d; want 0. output:\n%s", tt.args, code, out.String())
+			}
 
-	if h.Name == "" {
-		t.Error("root JSON: name is empty")
-	}
-	if h.Short == "" {
-		t.Error("root JSON: short is empty")
-	}
+			h := decodeHelpJSON(t, &out)
 
-	cmds := commandNames(h.Commands)
-	requiredModules := []string{
-		"board", "config", "ide", "reed", "selfreport",
-	}
-	for _, mod := range requiredModules {
-		if !cmds[mod] {
-			t.Errorf("root JSON commands missing module %q; commands: %v", mod, h.Commands)
-		}
-	}
+			if h.Short == "" {
+				t.Errorf("%v JSON: short is empty", tt.args)
+			}
+			if tt.wantNameContains == "" && h.Name == "" {
+				t.Errorf("%v JSON: name is empty", tt.args)
+			}
+			if !strings.Contains(h.Name, tt.wantNameContains) {
+				t.Errorf("%v JSON name %q does not contain %q", tt.args, h.Name, tt.wantNameContains)
+			}
 
-	flags := flagNames(h.Flags)
-	for _, meta := range []string{"--json", "--help"} {
-		if flags[meta] {
-			t.Errorf("root JSON flags must not include meta flag %q", meta)
-		}
-	}
-}
+			cmds := commandNames(h.Commands)
+			for _, want := range tt.wantCommands {
+				if !cmds[want] {
+					t.Errorf("%v JSON commands missing %q; commands: %v", tt.args, want, h.Commands)
+				}
+			}
+			if tt.wantNoCommands && len(h.Commands) != 0 {
+				t.Errorf("%v JSON commands: want empty, got %v", tt.args, h.Commands)
+			}
 
-// TestJSONHelp_VerbModuleSchema asserts "lyx board --json" produces valid JSON naming subcommands.
-func TestJSONHelp_VerbModuleSchema(t *testing.T) {
-	var out bytes.Buffer
-	code := run([]string{"board", "--json"}, &out)
-	if code != 0 {
-		t.Fatalf("run([board --json]) = %d; want 0. output:\n%s", code, out.String())
-	}
-
-	h := decodeHelpJSON(t, &out)
-
-	if !strings.Contains(h.Name, "board") {
-		t.Errorf("board JSON name %q does not contain 'board'", h.Name)
-	}
-	if h.Short == "" {
-		t.Error("board JSON: short is empty")
-	}
-
-	cmds := commandNames(h.Commands)
-	for _, sub := range []string{"upsert", "list", "remove", "sync"} {
-		if !cmds[sub] {
-			t.Errorf("board JSON commands missing %q; commands: %v", sub, h.Commands)
-		}
-	}
-
-	flags := flagNames(h.Flags)
-	if flags["--board-path"] {
-		t.Error("board JSON flags must not expose hidden --board-path")
-	}
-}
-
-// TestJSONHelp_SelfreportSchema asserts "lyx selfreport --json" produces valid JSON with
-// subcommands.
-func TestJSONHelp_SelfreportSchema(t *testing.T) {
-	var out bytes.Buffer
-	code := run([]string{"selfreport", "--json"}, &out)
-	if code != 0 {
-		t.Fatalf("run([selfreport --json]) = %d; want 0. output:\n%s", code, out.String())
-	}
-
-	h := decodeHelpJSON(t, &out)
-
-	if h.Short == "" {
-		t.Error("selfreport JSON: short is empty")
-	}
-
-	cmds := commandNames(h.Commands)
-	if !cmds["create"] {
-		t.Errorf("selfreport JSON commands missing 'create'; commands: %v", h.Commands)
-	}
-}
-
-// TestJSONHelp_SelfreportCreateLeaf asserts leaf "lyx selfreport create --help --json" produces
-// valid JSON.
-func TestJSONHelp_SelfreportCreateLeaf(t *testing.T) {
-	var out bytes.Buffer
-	code := run([]string{"selfreport", "create", "--help", "--json"}, &out)
-	if code != 0 {
-		t.Fatalf("run([selfreport create --help --json]) = %d; want 0. output:\n%s", code, out.String())
-	}
-
-	h := decodeHelpJSON(t, &out)
-
-	if h.Short == "" {
-		t.Error("selfreport create JSON: short is empty")
-	}
-
-	if len(h.Commands) != 0 {
-		t.Errorf("selfreport create JSON commands: want empty, got %v", h.Commands)
-	}
-
-	flags := flagNames(h.Flags)
-	for _, want := range []string{"--body", "--label"} {
-		if !flags[want] {
-			t.Errorf("selfreport create JSON flags missing %q; flags: %v", want, h.Flags)
-		}
-	}
-
-	for _, meta := range []string{"--json", "--help"} {
-		if flags[meta] {
-			t.Errorf("selfreport create JSON flags must not include meta flag %q", meta)
-		}
+			flags := flagNames(h.Flags)
+			for _, want := range tt.wantFlags {
+				if !flags[want] {
+					t.Errorf("%v JSON flags missing %q; flags: %v", tt.args, want, h.Flags)
+				}
+			}
+			for _, absent := range tt.absentFlags {
+				if flags[absent] {
+					t.Errorf("%v JSON flags must not include %q", tt.args, absent)
+				}
+			}
+		})
 	}
 }

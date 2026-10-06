@@ -28,6 +28,7 @@ func tmuxkitSpawnReference(content string) (string, bool) {
 	return "", false
 }
 
+//testtiming:keep pins the tmuxkit-spawn definition the TestTierPurity_UntaggedTestsSpawnNothing guard uses: every export but Main spawns, file-name mentions do not
 func TestTmuxkitSpawnReference(t *testing.T) {
 	// The sample references are assembled at run time so this file's own source carries none.
 	pkg := "tmux" + "kit."

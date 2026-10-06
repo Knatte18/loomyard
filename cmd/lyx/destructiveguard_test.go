@@ -240,6 +240,8 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 // See this file's header comment for this guard's blind spots: it pins the parameter and the
 // embed by declaration inspection only, never that an executor body actually appends, nor that
 // what it appends is correct.
+//
+//testtiming:keep internal/fabricengine/doc.go names this test as the Mutation Record Invariant's guard
 func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
 	moduleRoot := scankit.Root(t)
 

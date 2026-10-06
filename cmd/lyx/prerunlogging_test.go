@@ -42,6 +42,8 @@ import (
 // TestPersistentPreRunE_NoInfoOrWarnLoggingAheadOfSeedStencils parses cmd/lyx/main.go, locates root's
 // PersistentPreRunE function literal inside newRoot's composite literal, and fails if any statement
 // preceding its seedStencils(cmd) call contains a logger.Info or logger.Warn call.
+//
+//testtiming:keep pins that no Info or Warn log runs ahead of seedStencils in the root pre-run, a guard that fires on a source parse no other test reads
 func TestPersistentPreRunE_NoInfoOrWarnLoggingAheadOfSeedStencils(t *testing.T) {
 	mainGoPath := filepath.Join(scankit.Root(t), "cmd", "lyx", "main.go")
 

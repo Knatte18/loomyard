@@ -116,6 +116,8 @@ func firstCwdMutationToken(content string) (string, bool) {
 // firstCwdMutationToken, and the one real allowlisted file — which genuinely still contains a banned
 // token, read fresh from disk rather than assumed — is proven to stay silent through the allowlist
 // branch, not through an accidental absence of the token it exists to exempt.
+//
+//testtiming:keep proves the TestCwdMutation_MigratedFilesStayChdirFree guard fires on a planted violation and stays silent for its allowlisted file
 func TestCwdMutationGuard_NotVacuous(t *testing.T) {
 	planted := "func TestPlanted(t *testing.T) {\n\tt.Chdir(t.TempDir())\n}\n"
 	if tok, found := firstCwdMutationToken(planted); !found || tok != "t.Chdir(" {

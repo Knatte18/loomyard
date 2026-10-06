@@ -191,6 +191,8 @@ func findTopLevelDeclValue(file *ast.File, name string) (ast.Expr, bool) {
 
 // TestFindLongLiteralSleep_DetectsAllArgumentForms verifies detection against crafted code
 // snippets.
+//
+//testtiming:keep proves the sleep check of TestTierPurity_UntaggedTestsSpawnNothing fires on every argument form of a long literal sleep
 func TestFindLongLiteralSleep_DetectsAllArgumentForms(t *testing.T) {
 	tests := []struct {
 		name string

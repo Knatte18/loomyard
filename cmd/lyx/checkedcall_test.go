@@ -203,6 +203,8 @@ func checkedCallCountDiff(want, got map[string]int) string {
 // the three token guards this file's header comment contrasts against — would silently invert this
 // guard, so the contrast is asserted directly rather than left to be inferred from the header prose
 // alone.
+//
+//testtiming:keep proves the TestCheckedCallInvariant_RawSitesMarkedAndPinned guard's token spellings stay distinct from the three token guards it is contrasted with
 func TestCheckedCallInvariant_TokenSpellingsDoNotCollide(t *testing.T) {
 	if strings.Contains("r.runChecked(msg)", "r.run(") {
 		t.Error(`the "r.run(" token unexpectedly matches an r.runChecked( call — this would demand a //gitexec:raw marker at every migrated gitrepo call site`)

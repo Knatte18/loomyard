@@ -126,6 +126,8 @@ func lineHasBannedGitSpawn(line string) (token string, bad bool) {
 
 // TestBoardGuard_ShellOutDetection verifies firstBannedGitSpawn's detection against crafted
 // snippets.
+//
+//testtiming:keep proves the TestBoardGuard_NoRawGitImportOrShellOut guard fires on crafted offending snippets and stays quiet on compliant ones
 func TestBoardGuard_ShellOutDetection(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -69,6 +69,8 @@ func TestSpawnRole_NoInlineRoleLiteral(t *testing.T) {
 }
 
 // TestSpawnRole_FixtureFlagsInlineLiteral proves the scan flags a literal role and passes a constant one.
+//
+//testtiming:keep proves the TestSpawnRole_NoInlineRoleLiteral scan flags a literal role and passes a constant one
 func TestSpawnRole_FixtureFlagsInlineLiteral(t *testing.T) {
 	const src = `package fixture
 
