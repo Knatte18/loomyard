@@ -163,6 +163,8 @@ func seedValidPlanDir(t *testing.T, dir string) {
 // a clean plan, a missing plan, a finding keyed by card (never by batch), an informational-only finding that still reports success,
 // a blocking finding that carries its own severity, and a worktree root quarry cannot open, which names quarry rather than the plan.
 func TestValidateCmd_Envelopes(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name     string
 		seed     func(t *testing.T, c *websterCLI)
@@ -475,6 +477,8 @@ func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
 // recover-batch is short-lived and its context would be gone before a bound watcher observed anything, so it passes watch: false; run binds the watcher to the run's own context and passes watch: true.
 // Each row's fake returns an error so the call ends right after the reedUp check, never reaching the spawn.
 func TestBringUpDisposition_RecoverAndRun(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name      string
 		verb      func(*websterCLI) *cobra.Command
@@ -489,6 +493,8 @@ func TestBringUpDisposition_RecoverAndRun(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			c, _ := newTestCLI(t)
 			seedValidPlanDir(t, c.geom.PlanDir)
 			if tc.withRun {

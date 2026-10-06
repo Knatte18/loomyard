@@ -338,6 +338,8 @@ func TestCompact_RestartRetypesOnlyOnIdleWithNoBoundary(t *testing.T) {
 }
 
 func TestCompact_RestartWithBoundaryReadTypesNothing(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name      string
 		idle      bool

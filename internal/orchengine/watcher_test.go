@@ -1108,6 +1108,8 @@ func TestWatcher_ClearRendersRoleFileBeforeResume(t *testing.T) {
 }
 
 func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name    string
 		stencil string

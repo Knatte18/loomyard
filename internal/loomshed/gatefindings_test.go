@@ -153,6 +153,7 @@ func TestLoomPreflight_StuckSurfacesItsFailures(t *testing.T) {
 // their Stuck halts the run for a human, and batcher.Active conflates unknown-name, malformed YAML,
 // and I/O failure into one bare error with no sentinel -- so the error text is the only thing that
 // can tell an operator which of the three happened.
+// It does not call t.Parallel, because logcapture.Capture redirects the process-global logger output.
 //
 //testtiming:keep pins that each batcher-backed row logs its name and the batcher error text on a stuck verdict, which its covering tests never read
 func TestBatcherRows_StuckSurfacesTheBatcherError(t *testing.T) {

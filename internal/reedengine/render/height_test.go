@@ -17,6 +17,8 @@ func stackOf(n int) []Strand {
 }
 
 func TestStackHeights(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name          string
 		strands       int

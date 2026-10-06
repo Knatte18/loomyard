@@ -34,6 +34,8 @@ func existsOnly(paths ...string) func(string) bool {
 }
 
 func TestChooseStartPrompt(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name       string
 		flag       string

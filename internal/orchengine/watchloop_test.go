@@ -119,6 +119,8 @@ func TestRun_ReturnsWhenStrandGone(t *testing.T) {
 }
 
 func TestRun_NoticeQueueAtExit(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name          string
 		clearStrand   bool

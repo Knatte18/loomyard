@@ -30,6 +30,8 @@ func runStatusRel(loc *lyxcwd.Location, runID string) string {
 // The commit message pins batten's own prefix, which the shared core's tests cannot, since they
 // render whatever prefix they are given.
 func TestNewCommitStatusSeam(t *testing.T) {
+	t.Parallel()
+
 	type transition struct{ producer, state string }
 
 	tests := []struct {
