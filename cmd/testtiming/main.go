@@ -25,6 +25,9 @@
 // The static scan in spawnscan.go decides the last: a test is excluded as out of process when, directly or through a followed same-package or testkit call, it references the lyxbin kit, os.Executable, os.Args[0] or exec.Command("go", ...), or when it sits in a tmux-tier file.
 // A test in a file with no tier tag is always judged, and a tier-tagged test with a call the scan cannot resolve is excluded as an unclassifiable call.
 // The scan does not see a hook, alias or helper that a test installs so that git runs module code; reading each candidate before deleting it is the backstop.
+// A test the prune keeps carries `//testtiming:keep <reason>` on the line directly above its `func Test…` line.
+// The report lists it under "Kept" with the reason and leaves it out of the candidates table, while it stays in the covering pool and the removable computation.
+// A directive with an empty reason, or not directly above a top-level test, aborts the run before anything is measured or written.
 // It exits 1 after writing the report if any package reported an error.
 package main
 

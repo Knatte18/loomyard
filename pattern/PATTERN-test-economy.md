@@ -15,6 +15,7 @@ The general rules live in `scribe:testing` and `scribe:golang-testing`; this ent
 - `go run ./cmd/testtiming -redundancy` writes the per-test coverage report, `docs/benchmarks/test-redundancy.md`.
   A candidate in it is evidence, not a verdict: coverage blocks do not see assertions, so a candidate whose assertions differ from its covering tests is kept or folded.
   A prune finding names the covering test from the report, and only the removable set may be deleted together: deleting a candidate outside it can leave a block uncovered once its partner is gone.
+  A candidate that is kept carries `//testtiming:keep <reason>` directly above its `func Test…` line, and the reason names what it pins that its covering tests do not (an error message, an output shape, an ordering); the report lists it under "Kept".
   A test in the "no coverage" list is outside the report's judgment, not exempt from the rules above.
 - The "no coverage" list holds a test that is skipped, failed or covers nothing, a tier-tagged test with a call the static scan cannot resolve, and a test that may run this module's code in another process: it references `internal/testkit/lyxbin`, `os.Executable`, `os.Args[0]` or `exec.Command("go", ...)` directly or through a followed call, or it sits in a `tmux`-tier file.
   Spawning git, using `hubforge` or driving a tmux server through `tmuxkit` does not exclude a test, and an untagged test is always judged.

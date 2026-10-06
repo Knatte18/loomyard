@@ -49,6 +49,7 @@ type verdict struct {
 	candidate bool     // every block is covered by other tests of the package
 	removable bool     // dropped by the greedy pass, so deletable together with the other removable tests
 	covering  []string // candidates only: tests that together cover its blocks, most overlap first
+	keep      string   // non-empty: the reason of its //testtiming:keep directive, listed under "Kept"
 }
 
 // pkgReport is one package's section of the report.
@@ -225,7 +226,7 @@ func coveringTests(self int, runs []testRun, inPool func(int) bool) []string {
 	return names
 }
 
-// renderPackage renders one package's section: header line, candidates table, "no coverage" list.
+// renderPackage renders one package's section: header line, candidates table without the kept tests, "Kept" list, "no coverage" list.
 func renderPackage(r pkgReport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## %s\n\n", r.pkg)
@@ -235,10 +236,13 @@ func renderPackage(r pkgReport) string {
 	}
 	fmt.Fprintf(&b, "%d tests, wall %.2fs, serial %.2fs.\n\n", r.tests, r.wall, r.serial)
 
-	var candidates, uncovered []verdict
+	var candidates, kept, uncovered []verdict
 	for _, v := range r.verdicts {
-		if v.candidate {
+		if v.candidate && v.keep == "" {
 			candidates = append(candidates, v)
+		}
+		if v.keep != "" {
+			kept = append(kept, v)
 		}
 		if v.reason != "" {
 			uncovered = append(uncovered, v)
@@ -254,6 +258,13 @@ func renderPackage(r pkgReport) string {
 				removable = "yes"
 			}
 			fmt.Fprintf(&b, "| `%s` | %s | %s |\n", v.name, codeList(v.covering), removable)
+		}
+		b.WriteString("\n")
+	}
+	if len(kept) > 0 {
+		b.WriteString("Kept:\n\n")
+		for _, v := range kept {
+			fmt.Fprintf(&b, "- `%s`: %s\n", v.name, v.keep)
 		}
 		b.WriteString("\n")
 	}
@@ -309,6 +320,16 @@ func runRedundancy(tags, pkgPattern, outPath string) error {
 	if err != nil {
 		return err
 	}
+	keeps := map[string]map[string]string{}
+	for _, importPath := range targets {
+		dir, ok := layout.dirs[importPath]
+		if !ok {
+			continue
+		}
+		if keeps[importPath], err = scanKeeps(dir); err != nil {
+			return fmt.Errorf("keep directive: %w", err)
+		}
+	}
 	pkgs, err := runPackageTimings(tags, pkgPattern)
 	if err != nil {
 		return err
@@ -337,7 +358,7 @@ func runRedundancy(tags, pkgPattern, outPath string) error {
 		// A package whose own run failed is still measured.
 		// Each failing test is listed under "no coverage" as failed.
 		fmt.Fprintf(os.Stderr, "redundancy: %s (%d tests)\n", report.pkg, timing.tests)
-		report.verdicts, err = measurePackage(layout, tags, importPath, strings.Join(coverpkg, ","), tmp)
+		report.verdicts, err = measurePackage(layout, tags, importPath, strings.Join(coverpkg, ","), tmp, keeps[importPath])
 		if err != nil {
 			report.err = err.Error()
 		}
@@ -362,7 +383,8 @@ func runRedundancy(tags, pkgPattern, outPath string) error {
 }
 
 // measurePackage builds the package's coverage binary, runs each top-level test alone and classifies the runs.
-func measurePackage(layout moduleLayout, tags, importPath, coverpkg, tmp string) ([]verdict, error) {
+// A test named in keeps carries its keep reason on its verdict; the keep changes the report only, never the classification.
+func measurePackage(layout moduleLayout, tags, importPath, coverpkg, tmp string, keeps map[string]string) ([]verdict, error) {
 	dir := layout.dirs[importPath]
 	names, err := listTests(tags, importPath)
 	if err != nil {
@@ -396,7 +418,11 @@ func measurePackage(layout moduleLayout, tags, importPath, coverpkg, tmp string)
 		}
 		runs = append(runs, run)
 	}
-	return classify(runs), nil
+	verdicts := classify(runs)
+	for i := range verdicts {
+		verdicts[i].keep = keeps[verdicts[i].name]
+	}
+	return verdicts, nil
 }
 
 var testResultLine = regexp.MustCompile(`(?m)^--- (PASS|FAIL|SKIP): (\S+) \(([0-9.]+)s\)$`)

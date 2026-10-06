@@ -164,6 +164,26 @@ func TestRenderPackage(t *testing.T) {
 				"- `TestC`: skipped\n",
 		},
 		{
+			name: "kept tests are listed under Kept and a kept candidate stays in the covering pool",
+			in: pkgReport{
+				pkg: "internal/k", tests: 4, wall: 0.5, serial: 0.75,
+				verdicts: []verdict{
+					{name: "TestKeptCandidate", candidate: true, covering: []string{"TestBase"}, keep: "pins the error text"},
+					{name: "TestOther", candidate: true, removable: true, covering: []string{"TestKeptCandidate"}},
+					{name: "TestBase"},
+					{name: "TestKeptPlain", keep: "pins the ordering"},
+				},
+			},
+			want: "## internal/k\n\n" +
+				"4 tests, wall 0.50s, serial 0.75s.\n\n" +
+				"| Test | Covering tests | Removable |\n|---|---|---|\n" +
+				"| `TestOther` | `TestKeptCandidate` | yes |\n\n" +
+				"Kept:\n\n" +
+				"- `TestKeptCandidate`: pins the error text\n" +
+				"- `TestKeptPlain`: pins the ordering\n\n" +
+				"No test lacks coverage.\n",
+		},
+		{
 			name: "nothing to report",
 			in:   pkgReport{pkg: "internal/y", tests: 1, wall: 0.01, serial: 0.01, verdicts: []verdict{{name: "TestOnly"}}},
 			want: "## internal/y\n\n1 tests, wall 0.01s, serial 0.01s.\n\nNo candidates.\n\nNo test lacks coverage.\n",
