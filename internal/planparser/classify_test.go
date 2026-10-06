@@ -5,6 +5,9 @@ package planparser
 
 import "testing"
 
+// TestClassifyRef pins classifyRef and the exported IsHandleRef over every ref shape.
+//
+//testtiming:keep pins classifyRef's five-rule shape table and IsHandleRef's agreement with it, which its covering tests reach only after canonicalization
 func TestClassifyRef(t *testing.T) {
 	t.Parallel()
 
@@ -93,36 +96,9 @@ func TestClassifyRef(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("classifyRef(%q) = %v; want %v", tt.raw, got, tt.want)
 			}
+			if gotHandle := IsHandleRef(tt.raw); gotHandle != (tt.want == refKindHandle) {
+				t.Errorf("IsHandleRef(%q) = %v; want %v", tt.raw, gotHandle, tt.want == refKindHandle)
+			}
 		})
-	}
-}
-
-// TestClassifyRef_PathGlyphHandleShapes covers the same shape distinctions the retired
-// isPathRef/isGlyphRef/isHandleRef convenience wrappers once covered directly, one representative
-// case each, re-expressed against classifyRef (comparing to the expected refKind) and the exported
-// IsHandleRef, so a future refactor of classifyRef's return value cannot silently break one shape
-// while the table above still passes.
-func TestClassifyRef_PathGlyphHandleShapes(t *testing.T) {
-	t.Parallel()
-
-	if got := classifyRef("list.go"); got != refKindPath {
-		t.Errorf("classifyRef(%q) = %v; want refKindPath", "list.go", got)
-	}
-	if got := classifyRef("internal/boardcli#RowJSON"); got == refKindPath {
-		t.Errorf("classifyRef(%q) = refKindPath; want not refKindPath", "internal/boardcli#RowJSON")
-	}
-
-	if got := classifyRef("internal/boardcli#RowJSON"); got != refKindGlyph {
-		t.Errorf("classifyRef(%q) = %v; want refKindGlyph", "internal/boardcli#RowJSON", got)
-	}
-	if got := classifyRef("list.go"); got == refKindGlyph {
-		t.Errorf("classifyRef(%q) = refKindGlyph; want not refKindGlyph", "list.go")
-	}
-
-	if !IsHandleRef("plan:approve") {
-		t.Errorf("IsHandleRef(%q) = false; want true", "plan:approve")
-	}
-	if IsHandleRef("list.go") {
-		t.Errorf("IsHandleRef(%q) = true; want false", "list.go")
 	}
 }

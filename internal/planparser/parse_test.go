@@ -60,78 +60,104 @@ func minimalCardFile(number int, name, editPath string) string {
 		"**Intent:** placeholder card.\n"
 }
 
+// TestParsePlan_Overview covers the overview's frontmatter, framing and Card Index parsing: a
+// complete overview, ASCII single and double hyphen Card Index separators, and a missing
+// format:/approved: key -- not a ParsePlan failure, since format-unrecognized and plan-unapproved
+// are Validate's checks, not the parser's, so the plan simply parses with the zero value.
+//
+//testtiming:keep pins the overview's frontmatter, framing and Card Index fields, which TestParsePlan_CardFields does not assert
 func TestParsePlan_Overview(t *testing.T) {
 	t.Parallel()
 
-	dir := writePlanFiles(t, map[string]string{
-		"00-overview.md": minimalOverview,
-		"01-only.md":     minimalCardFile(1, "only", "a.go"),
-	})
-
-	plan, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
+	type wantCard struct {
+		number  int
+		slug    string
+		summary string
+	}
+	tests := []struct {
+		name         string
+		overview     string
+		cards        map[string]string
+		wantFormat   int
+		wantApproved bool
+		wantFraming  string
+		wantCards    []wantCard
+	}{
+		{
+			name:         "complete overview",
+			overview:     minimalOverview,
+			cards:        map[string]string{"01-only.md": minimalCardFile(1, "only", "a.go")},
+			wantFormat:   5,
+			wantApproved: true,
+			wantFraming:  "Framing paragraph.",
+			wantCards:    []wantCard{{1, "only", "the only card"}},
+		},
+		{
+			name: "ASCII dash separators",
+			overview: "---\nformat: 5\napproved: true\n---\n\n# Plan: ascii dash variant\n\nFraming paragraph.\n\n## Card Index\n\n" +
+				"1 - single-dash - intent using a single ASCII hyphen\n" +
+				"2 -- double-dash -- intent using a double ASCII hyphen\n",
+			cards: map[string]string{
+				"01-single-dash.md": minimalCardFile(1, "single-dash", "a.go"),
+				"02-double-dash.md": minimalCardFile(2, "double-dash", "b.go"),
+			},
+			wantFormat:   5,
+			wantApproved: true,
+			wantFraming:  "Framing paragraph.",
+			wantCards: []wantCard{
+				{1, "single-dash", "intent using a single ASCII hyphen"},
+				{2, "double-dash", "intent using a double ASCII hyphen"},
+			},
+		},
+		{
+			name:        "absent format and approved parse as zero values",
+			overview:    "---\n{}\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — the only card\n",
+			cards:       map[string]string{"01-only.md": minimalCardFile(1, "only", "a.go")},
+			wantFraming: "Framing.",
+			wantCards:   []wantCard{{1, "only", "the only card"}},
+		},
 	}
 
-	if plan.Dir != dir {
-		t.Errorf("plan.Dir = %q; want %q", plan.Dir, dir)
-	}
-	if plan.Format != 5 {
-		t.Errorf("plan.Format = %d; want 5", plan.Format)
-	}
-	if !plan.Approved {
-		t.Errorf("plan.Approved = false; want true")
-	}
-	if plan.Root != "" {
-		t.Errorf("plan.Root = %q; want empty (no root: key)", plan.Root)
-	}
-	wantFraming := "Framing paragraph."
-	if plan.Framing != wantFraming {
-		t.Errorf("plan.Framing = %q; want %q", plan.Framing, wantFraming)
-	}
-	if len(plan.Cards) != 1 {
-		t.Fatalf("len(plan.Cards) = %d; want 1", len(plan.Cards))
-	}
-	if plan.Cards[0].Number != 1 || plan.Cards[0].Slug != "only" || plan.Cards[0].Summary != "the only card" {
-		t.Errorf("plan.Cards[0] Number/Slug/Summary = %d/%q/%q; want 1/only/%q", plan.Cards[0].Number, plan.Cards[0].Slug, plan.Cards[0].Summary, "the only card")
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestParsePlan_Overview_ASCIIDashSeparators(t *testing.T) {
-	t.Parallel()
+			files := map[string]string{"00-overview.md": tt.overview}
+			for name, content := range tt.cards {
+				files[name] = content
+			}
+			dir := writePlanFiles(t, files)
 
-	const overview = `---
-format: 5
-approved: true
----
+			plan, err := planparser.ParsePlan(dir)
+			if err != nil {
+				t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
+			}
 
-# Plan: ascii dash variant
-
-Framing paragraph.
-
-## Card Index
-
-1 - single-dash - intent using a single ASCII hyphen
-2 -- double-dash -- intent using a double ASCII hyphen
-`
-	dir := writePlanFiles(t, map[string]string{
-		"00-overview.md":    overview,
-		"01-single-dash.md": minimalCardFile(1, "single-dash", "a.go"),
-		"02-double-dash.md": minimalCardFile(2, "double-dash", "b.go"),
-	})
-
-	plan, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
-	}
-	if len(plan.Cards) != 2 {
-		t.Fatalf("len(plan.Cards) = %d; want 2", len(plan.Cards))
-	}
-	if plan.Cards[0].Slug != "single-dash" {
-		t.Errorf("plan.Cards[0].Slug = %q; want %q", plan.Cards[0].Slug, "single-dash")
-	}
-	if plan.Cards[1].Slug != "double-dash" {
-		t.Errorf("plan.Cards[1].Slug = %q; want %q", plan.Cards[1].Slug, "double-dash")
+			if plan.Dir != dir {
+				t.Errorf("plan.Dir = %q; want %q", plan.Dir, dir)
+			}
+			if plan.Format != tt.wantFormat {
+				t.Errorf("plan.Format = %d; want %d", plan.Format, tt.wantFormat)
+			}
+			if plan.Approved != tt.wantApproved {
+				t.Errorf("plan.Approved = %v; want %v", plan.Approved, tt.wantApproved)
+			}
+			if plan.Root != "" {
+				t.Errorf("plan.Root = %q; want empty (no root: key)", plan.Root)
+			}
+			if plan.Framing != tt.wantFraming {
+				t.Errorf("plan.Framing = %q; want %q", plan.Framing, tt.wantFraming)
+			}
+			if len(plan.Cards) != len(tt.wantCards) {
+				t.Fatalf("len(plan.Cards) = %d; want %d", len(plan.Cards), len(tt.wantCards))
+			}
+			for i, want := range tt.wantCards {
+				got := plan.Cards[i]
+				if got.Number != want.number || got.Slug != want.slug || got.Summary != want.summary {
+					t.Errorf("plan.Cards[%d] Number/Slug/Summary = %d/%q/%q; want %d/%q/%q", i, got.Number, got.Slug, got.Summary, want.number, want.slug, want.summary)
+				}
+			}
+		})
 	}
 }
 
@@ -175,6 +201,11 @@ func TestParsePlan_Overview_Errors(t *testing.T) {
 			wantSubstr: `missing "## Card Index" heading`,
 		},
 		{
+			name:       "card file absent",
+			content:    minimalOverview,
+			wantSubstr: "card file not found",
+		},
+		{
 			name:       "unparseable card index line",
 			content:    "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\nnot a valid entry\n",
 			wantSubstr: "unparseable card index line",
@@ -206,42 +237,6 @@ func TestParsePlan_Overview_Errors(t *testing.T) {
 	}
 }
 
-func TestParsePlan_Overview_MissingFormatOrApprovedIsNotFailLoud(t *testing.T) {
-	t.Parallel()
-
-	// A missing format:/approved: key is not a ParsePlan failure —
-	// format-unrecognized/plan-unapproved are Validate's checks, not the parser's; a plan
-	// simply parses with the zero value.
-	dir := writePlanFiles(t, map[string]string{
-		"00-overview.md": "---\n{}\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — the only card\n",
-		"01-only.md":     minimalCardFile(1, "only", "a.go"),
-	})
-
-	plan, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
-	}
-	if plan.Format != 0 {
-		t.Errorf("plan.Format = %d; want 0 (absent)", plan.Format)
-	}
-	if plan.Approved {
-		t.Errorf("plan.Approved = true; want false (absent)")
-	}
-}
-
-func TestParsePlan_CardFile_NotFound(t *testing.T) {
-	t.Parallel()
-
-	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview})
-	_, err := planparser.ParsePlan(dir)
-	if err == nil {
-		t.Fatal("ParsePlan() error = nil; want card-file-not-found error")
-	}
-	if !strings.Contains(err.Error(), "card file not found") {
-		t.Errorf("ParsePlan() error = %q; want card-file-not-found substring", err.Error())
-	}
-}
-
 // mapReader returns a ParsePlanFrom reader over an in-memory file map, wrapping fs.ErrNotExist for absent names.
 func mapReader(files map[string]string) func(string) ([]byte, error) {
 	return func(name string) ([]byte, error) {
@@ -253,38 +248,43 @@ func mapReader(files map[string]string) func(string) ([]byte, error) {
 	}
 }
 
-func TestParsePlanFrom_MatchesParsePlan(t *testing.T) {
+//testtiming:keep pins ParsePlanFrom's equality with ParsePlan and its card-file-not-found error, which its covering tests do not assert
+func TestParsePlanFrom(t *testing.T) {
 	t.Parallel()
 
-	files := map[string]string{
-		"00-overview.md": minimalOverview,
-		"01-only.md":     minimalCardFile(1, "only", "a.go"),
-	}
-	dir := writePlanFiles(t, files)
+	t.Run("matches ParsePlan over the same files", func(t *testing.T) {
+		t.Parallel()
 
-	want, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
-	}
-	got, err := planparser.ParsePlanFrom(dir, mapReader(files))
-	if err != nil {
-		t.Fatalf("ParsePlanFrom() error = %v; want nil", err)
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("ParsePlanFrom() = %+v; want %+v", got, want)
-	}
-}
+		files := map[string]string{
+			"00-overview.md": minimalOverview,
+			"01-only.md":     minimalCardFile(1, "only", "a.go"),
+		}
+		dir := writePlanFiles(t, files)
 
-func TestParsePlanFrom_CardFileNotFound(t *testing.T) {
-	t.Parallel()
+		want, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
+		}
+		got, err := planparser.ParsePlanFrom(dir, mapReader(files))
+		if err != nil {
+			t.Fatalf("ParsePlanFrom() error = %v; want nil", err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("ParsePlanFrom() = %+v; want %+v", got, want)
+		}
+	})
 
-	_, err := planparser.ParsePlanFrom("plan", mapReader(map[string]string{"00-overview.md": minimalOverview}))
-	if err == nil {
-		t.Fatal("ParsePlanFrom() error = nil; want card-file-not-found error")
-	}
-	if !strings.Contains(err.Error(), "card file not found") {
-		t.Errorf("ParsePlanFrom() error = %q; want card-file-not-found substring", err.Error())
-	}
+	t.Run("absent card file", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := planparser.ParsePlanFrom("plan", mapReader(map[string]string{"00-overview.md": minimalOverview}))
+		if err == nil {
+			t.Fatal("ParsePlanFrom() error = nil; want card-file-not-found error")
+		}
+		if !strings.Contains(err.Error(), "card file not found") {
+			t.Errorf("ParsePlanFrom() error = %q; want card-file-not-found substring", err.Error())
+		}
+	})
 }
 
 func TestParsePlan_CardHeading(t *testing.T) {
@@ -339,367 +339,20 @@ func TestParsePlan_CardHeading(t *testing.T) {
 	})
 }
 
-// TestParsePlan_Card_TypeLabelCount covers TypeLabelCount/Type/HasType/TargetGroups bookkeeping.
-// Two recognized type labels on one card — even the same label twice — is the supported
-// one-or-more shape, not a defect; the zero-labels shape stays a defect card-type-missing catches.
-func TestParsePlan_Card_TypeLabelCount(t *testing.T) {
+// TestParsePlan_CardFields covers how one card file's body parses into its Card, each row pinning
+// one field family:
+// the one-or-more type-label model and its per-label TargetGroups (two recognized labels on a card,
+// even the same label twice, is the supported shape; zero labels stays a defect card-type-missing
+// catches); a "**Uses:**" label present with no bullets (a non-nil zero-length slice, distinct from
+// an absent label); the ImpactSummary inline remainder plus trailing lines; the retired labels
+// routed to RetiredLabels while terminating the preceding Intent prose; the Rename and Create
+// grammars, where a malformed bullet reaches RenameRaw or CreateRaw rather than becoming a parse
+// error and the arrow form reaches its matcher with its backticks intact; a handle-shaped target
+// never picking up a root: prefix; and the optional Commit and Verify fields.
+func TestParsePlan_CardFields(t *testing.T) {
 	t.Parallel()
 
-	t.Run("two type labels", func(t *testing.T) {
-		t.Parallel()
-
-		body := "# Card 1 — dual\n\n**Edit:**\n- `a.go`\n**Delete:**\n- `b.go`\n**Intent:** placeholder.\n"
-		dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
-		plan, err := planparser.ParsePlan(dir)
-		if err != nil {
-			t.Fatalf("ParsePlan() error = %v; want nil", err)
-		}
-		card := plan.Cards[0]
-
-		if card.TypeLabelCount != 2 {
-			t.Errorf("card.TypeLabelCount = %d; want 2", card.TypeLabelCount)
-		}
-		if !card.HasType {
-			t.Errorf("card.HasType = false; want true")
-		}
-		if card.Type != planparser.CardTypeEdit {
-			t.Errorf("card.Type = %q; want %q (the first type label seen)", card.Type, planparser.CardTypeEdit)
-		}
-		if len(card.TargetGroups) != 2 {
-			t.Fatalf("len(card.TargetGroups) = %d; want 2", len(card.TargetGroups))
-		}
-		if card.TargetGroups[0].Type != planparser.CardTypeEdit {
-			t.Errorf("card.TargetGroups[0].Type = %q; want %q", card.TargetGroups[0].Type, planparser.CardTypeEdit)
-		}
-		if card.TargetGroups[1].Type != planparser.CardTypeDelete {
-			t.Errorf("card.TargetGroups[1].Type = %q; want %q", card.TargetGroups[1].Type, planparser.CardTypeDelete)
-		}
-		// Canonicalized to their file self glyph form: both carry a file extension, so
-		// ParsePlan's canonicalizeCard rewrites them under the default language: go.
-		wantRefs0 := []string{"a.go#"}
-		if !slices.Equal(card.TargetGroups[0].Refs, wantRefs0) {
-			t.Errorf("card.TargetGroups[0].Refs = %v; want %v", card.TargetGroups[0].Refs, wantRefs0)
-		}
-		wantRefs1 := []string{"b.go#"}
-		if !slices.Equal(card.TargetGroups[1].Refs, wantRefs1) {
-			t.Errorf("card.TargetGroups[1].Refs = %v; want %v", card.TargetGroups[1].Refs, wantRefs1)
-		}
-		wantTargets := []string{"a.go#", "b.go#"}
-		if !slices.Equal(card.Targets, wantTargets) {
-			t.Errorf("card.Targets = %v; want %v (concatenation of both groups' Refs, body order)", card.Targets, wantTargets)
-		}
-	})
-
-	t.Run("no type label", func(t *testing.T) {
-		t.Parallel()
-
-		body := "# Card 1 — typeless\n\n**Intent:** placeholder.\n"
-		dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
-		plan, err := planparser.ParsePlan(dir)
-		if err != nil {
-			t.Fatalf("ParsePlan() error = %v; want nil", err)
-		}
-		card := plan.Cards[0]
-
-		if card.TypeLabelCount != 0 {
-			t.Errorf("card.TypeLabelCount = %d; want 0", card.TypeLabelCount)
-		}
-		if card.HasType {
-			t.Errorf("card.HasType = true; want false")
-		}
-		if card.Type != planparser.CardTypeUnknown {
-			t.Errorf("card.Type = %q; want %q", card.Type, planparser.CardTypeUnknown)
-		}
-		if len(card.TargetGroups) != 0 {
-			t.Errorf("len(card.TargetGroups) = %d; want 0", len(card.TargetGroups))
-		}
-	})
-
-	t.Run("single-label card produces exactly one group", func(t *testing.T) {
-		t.Parallel()
-
-		dir := writePlanFiles(t, map[string]string{
-			"00-overview.md": minimalOverview,
-			"01-only.md":     minimalCardFile(1, "only", "a.go"),
-		})
-		plan, err := planparser.ParsePlan(dir)
-		if err != nil {
-			t.Fatalf("ParsePlan() error = %v; want nil", err)
-		}
-		card := plan.Cards[0]
-
-		if len(card.TargetGroups) != 1 {
-			t.Fatalf("len(card.TargetGroups) = %d; want 1", len(card.TargetGroups))
-		}
-		if card.TargetGroups[0].Type != planparser.CardTypeEdit {
-			t.Errorf("card.TargetGroups[0].Type = %q; want %q", card.TargetGroups[0].Type, planparser.CardTypeEdit)
-		}
-	})
-
-	t.Run("repeated label produces two groups whose union equals one merged group's refs", func(t *testing.T) {
-		t.Parallel()
-
-		body := "# Card 1 — repeated label\n\n**Edit:**\n- `a.go`\n**Edit:**\n- `b.go`\n**Intent:** placeholder.\n"
-		dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
-		plan, err := planparser.ParsePlan(dir)
-		if err != nil {
-			t.Fatalf("ParsePlan() error = %v; want nil", err)
-		}
-		card := plan.Cards[0]
-
-		if len(card.TargetGroups) != 2 {
-			t.Fatalf("len(card.TargetGroups) = %d; want 2", len(card.TargetGroups))
-		}
-		var union []string
-		for _, g := range card.TargetGroups {
-			if g.Type != planparser.CardTypeEdit {
-				t.Errorf("group.Type = %q; want %q", g.Type, planparser.CardTypeEdit)
-			}
-			union = append(union, g.Refs...)
-		}
-		wantUnion := []string{"a.go#", "b.go#"}
-		if !slices.Equal(union, wantUnion) {
-			t.Errorf("union of both groups' Refs = %v; want %v (equal to one merged group's refs)", union, wantUnion)
-		}
-	})
-
-	t.Run("two Rename labels give each group its own Pairs", func(t *testing.T) {
-		t.Parallel()
-
-		body := "# Card 1 — two renames\n\n" +
-			"**Rename:**\n- `old1.Symbol` -> `new1.Symbol`\n" +
-			"**Rename:**\n- `old2.Symbol` -> `new2.Symbol`\n" +
-			"**Intent:** placeholder.\n"
-		dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
-		plan, err := planparser.ParsePlan(dir)
-		if err != nil {
-			t.Fatalf("ParsePlan() error = %v; want nil", err)
-		}
-		card := plan.Cards[0]
-
-		if len(card.TargetGroups) != 2 {
-			t.Fatalf("len(card.TargetGroups) = %d; want 2", len(card.TargetGroups))
-		}
-		wantPairs0 := []planparser.MovePair{{Old: "old1.Symbol", New: "new1.Symbol"}}
-		if !slices.Equal(card.TargetGroups[0].Pairs, wantPairs0) {
-			t.Errorf("card.TargetGroups[0].Pairs = %+v; want %+v", card.TargetGroups[0].Pairs, wantPairs0)
-		}
-		wantPairs1 := []planparser.MovePair{{Old: "old2.Symbol", New: "new2.Symbol"}}
-		if !slices.Equal(card.TargetGroups[1].Pairs, wantPairs1) {
-			t.Errorf("card.TargetGroups[1].Pairs = %+v; want %+v", card.TargetGroups[1].Pairs, wantPairs1)
-		}
-		wantCardPairs := append(append([]planparser.MovePair{}, wantPairs0...), wantPairs1...)
-		if !slices.Equal(card.Pairs, wantCardPairs) {
-			t.Errorf("card.Pairs = %+v; want %+v (concatenation of both groups' Pairs, body order)", card.Pairs, wantCardPairs)
-		}
-	})
-}
-
-// TestParsePlan_Card_UsesPresentNoBullets proves a "**Uses:**" label present with zero bullets
-// under it parses to a non-nil zero-length slice, distinguishing it from an absent label (nil,
-// HasUses false).
-func TestParsePlan_Card_UsesPresentNoBullets(t *testing.T) {
-	t.Parallel()
-
-	body := "# Card 1 — empty uses\n\n**Edit:**\n- `a.go`\n**Uses:**\n**Intent:** placeholder.\n"
-	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
-	plan, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan() error = %v; want nil", err)
-	}
-	card := plan.Cards[0]
-
-	if !card.HasUses {
-		t.Errorf("card.HasUses = false; want true")
-	}
-	if card.Uses == nil {
-		t.Errorf("card.Uses = nil; want a non-nil, zero-length slice")
-	}
-	if len(card.Uses) != 0 {
-		t.Errorf("card.Uses = %v; want empty", card.Uses)
-	}
-}
-
-// TestParsePlan_Card_ImpactSummaryMultiline covers "**ImpactSummary:**"'s inline-remainder-plus-
-// trailing-lines capture: the label line's own remainder lands in ImpactSummary, and every
-// following non-label line lands in ImpactSummaryTrailing — captured rather than discarded so
-// impact-summary-multiline has something to report.
-func TestParsePlan_Card_ImpactSummaryMultiline(t *testing.T) {
-	t.Parallel()
-
-	body := "# Card 1 — multiline impact\n\n**Edit:**\n- `a.go`\n" +
-		"**ImpactSummary:** first line.\nsecond line.\nthird line.\n**Intent:** placeholder.\n"
-	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
-	plan, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan() error = %v; want nil", err)
-	}
-	card := plan.Cards[0]
-
-	if card.ImpactSummary != "first line." {
-		t.Errorf("card.ImpactSummary = %q; want %q", card.ImpactSummary, "first line.")
-	}
-	wantTrailing := []string{"second line.", "third line."}
-	if !slices.Equal(card.ImpactSummaryTrailing, wantTrailing) {
-		t.Errorf("card.ImpactSummaryTrailing = %v; want %v", card.ImpactSummaryTrailing, wantTrailing)
-	}
-}
-
-// TestParsePlan_Card_RetiredLabel_Context covers a half-migrated card carrying the retired
-// "**Context:**" label: its literal text lands in RetiredLabels, and its presence terminates the
-// preceding "**Intent:**" prose collection rather than being swallowed into it.
-func TestParsePlan_Card_RetiredLabel_Context(t *testing.T) {
-	t.Parallel()
-
-	body := "# Card 1 — half-migrated\n\n**Intent:** prose before context.\n**Context:**\n- `a.go`\n"
-	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
-	plan, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan() error = %v; want nil", err)
-	}
-	card := plan.Cards[0]
-
-	if card.Intent != "prose before context." {
-		t.Errorf("card.Intent = %q; want %q (Context: must terminate collection, not be swallowed)", card.Intent, "prose before context.")
-	}
-	wantRetired := []string{"**Context:**"}
-	if !slices.Equal(card.RetiredLabels, wantRetired) {
-		t.Errorf("card.RetiredLabels = %v; want %v", card.RetiredLabels, wantRetired)
-	}
-}
-
-// TestParsePlan_Card_RetiredLabel_LowercaseVerify covers a half-migrated card carrying format-3's
-// lowercase "**verify:**" label: the case-sensitive match routes it to RetiredLabels rather than
-// falling through as unrecognized text or being mistaken for format-4's "**Verify:**" field, and
-// its presence terminates the preceding "**Intent:**" prose collection.
-func TestParsePlan_Card_RetiredLabel_LowercaseVerify(t *testing.T) {
-	t.Parallel()
-
-	body := "# Card 1 — half-migrated\n\n**Intent:** prose before verify.\n**verify:** go test ./...\n"
-	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
-	plan, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan() error = %v; want nil", err)
-	}
-	card := plan.Cards[0]
-
-	if card.Intent != "prose before verify." {
-		t.Errorf("card.Intent = %q; want %q (verify: must terminate collection, not be swallowed)", card.Intent, "prose before verify.")
-	}
-	wantRetired := []string{"**verify:**"}
-	if !slices.Equal(card.RetiredLabels, wantRetired) {
-		t.Errorf("card.RetiredLabels = %v; want %v", card.RetiredLabels, wantRetired)
-	}
-	if card.HasVerify {
-		t.Errorf("card.HasVerify = true; want false (lowercase verify: is not the format-4 Verify: field)")
-	}
-	if card.Verify != "" {
-		t.Errorf("card.Verify = %q; want empty", card.Verify)
-	}
-}
-
-// TestParsePlan_Card_RenameGrammar covers a Rename card's "**Rename:**" field: a well-formed
-// "`old` -> `new`" sub-bullet reaches Pairs, a malformed sub-bullet reaches RenameRaw rather than
-// becoming a parse error (lenient-card-parse decision), and both endpoints of every pair are
-// projected into Targets in pair order, Old before New.
-func TestParsePlan_Card_RenameGrammar(t *testing.T) {
-	t.Parallel()
-
-	body := "# Card 1 — rename\n\n**Rename:**\n- `old.Symbol` -> `new.Symbol`\n- this bullet has no arrow at all\n" +
-		"**Intent:** placeholder.\n"
-	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
-	plan, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan() error = %v; want nil", err)
-	}
-	card := plan.Cards[0]
-
-	wantPairs := []planparser.MovePair{{Old: "old.Symbol", New: "new.Symbol"}}
-	if !slices.Equal(card.Pairs, wantPairs) {
-		t.Errorf("card.Pairs = %+v; want %+v", card.Pairs, wantPairs)
-	}
-	wantRaw := []string{"this bullet has no arrow at all"}
-	if !slices.Equal(card.RenameRaw, wantRaw) {
-		t.Errorf("card.RenameRaw = %v; want %v", card.RenameRaw, wantRaw)
-	}
-	wantTargets := []string{"old.Symbol", "new.Symbol"}
-	if !slices.Equal(card.Targets, wantTargets) {
-		t.Errorf("card.Targets = %v; want %v (Old before New, pair order)", card.Targets, wantTargets)
-	}
-}
-
-// TestParsePlan_Card_CreateHandleGrammar covers the "**Create:**" field's two-field
-// `plan:<draft-handle>` -> `<declaration head>` arrow grammar: a well-formed declaration bullet
-// lands in both Declarations and Targets, a plain non-arrow ref still parses as today, and a
-// malformed arrow bullet lands in CreateRaw rather than being silently dropped.
-func TestParsePlan_Card_CreateHandleGrammar(t *testing.T) {
-	t.Parallel()
-
-	body := "# Card 1 — create handles\n\n**Create:**\n" +
-		"- `plan:internal/foo#NewThing` -> `func NewThing() *Thing`\n" +
-		"- `internal/bar.go`\n" +
-		"- this bullet has -> an arrow but no backticks\n" +
-		"**Intent:** placeholder.\n"
-	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
-	plan, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan() error = %v; want nil", err)
-	}
-	card := plan.Cards[0]
-
-	wantDecls := []planparser.CardDeclaration{{Handle: "plan:internal/foo#NewThing", Decl: "func NewThing() *Thing"}}
-	if !slices.Equal(card.Declarations, wantDecls) {
-		t.Errorf("card.Declarations = %+v; want %+v", card.Declarations, wantDecls)
-	}
-	wantTargets := []string{"plan:internal/foo#NewThing", "internal/bar.go#"}
-	if !slices.Equal(card.Targets, wantTargets) {
-		t.Errorf("card.Targets = %v; want %v", card.Targets, wantTargets)
-	}
-	wantRaw := []string{"this bullet has -> an arrow but no backticks"}
-	if !slices.Equal(card.CreateRaw, wantRaw) {
-		t.Errorf("card.CreateRaw = %v; want %v", card.CreateRaw, wantRaw)
-	}
-	if len(card.TargetGroups) != 1 {
-		t.Fatalf("len(card.TargetGroups) = %d; want 1", len(card.TargetGroups))
-	}
-	if !slices.Equal(card.TargetGroups[0].Declarations, wantDecls) {
-		t.Errorf("card.TargetGroups[0].Declarations = %+v; want %+v", card.TargetGroups[0].Declarations, wantDecls)
-	}
-}
-
-// TestParsePlan_Card_CreateHandleGrammar_BackticksReachMatcherUnstripped is the regression
-// parseCreateField's own field parser exists to prevent: parseRefField calls stripBackticks on
-// each payload before returning it, so routing the arrow form through it would arrive with the
-// outer backtick pair already removed and could never match moveLineRe's two-backticked-token
-// shape. This proves a bullet whose backticks are intact reaches the arrow matcher unstripped.
-func TestParsePlan_Card_CreateHandleGrammar_BackticksReachMatcherUnstripped(t *testing.T) {
-	t.Parallel()
-
-	body := "# Card 1 — create handle\n\n**Create:**\n" +
-		"- `plan:internal/foo#NewThing` -> `func NewThing() *Thing`\n" +
-		"**Intent:** placeholder.\n"
-	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
-	plan, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan() error = %v; want nil", err)
-	}
-	card := plan.Cards[0]
-
-	if len(card.Declarations) != 1 {
-		t.Fatalf("len(card.Declarations) = %d; want 1 (backticks must reach the arrow matcher intact)", len(card.Declarations))
-	}
-	if len(card.CreateRaw) != 0 {
-		t.Errorf("card.CreateRaw = %v; want empty", card.CreateRaw)
-	}
-}
-
-// TestParsePlan_Card_HandleSurvivesNormalizeCard proves a handle-shaped Create target passes
-// through normalizeCard byte-identical, even under a non-"." root:, because classifyRef already
-// classifies it refKindHandle and normalizeRefIfPath gates on gateNormalizePath (via lookup).
-func TestParsePlan_Card_HandleSurvivesNormalizeCard(t *testing.T) {
-	t.Parallel()
-
-	const overview = `---
+	const rootedOverview = `---
 format: 5
 approved: true
 root: internal/boardcli
@@ -713,18 +366,275 @@ Framing paragraph.
 
 1 — only — the only card
 `
-	body := "# Card 1 — create handle\n\n**Create:**\n" +
-		"- `plan:internal/foo#NewThing` -> `func NewThing() *Thing`\n" +
-		"**Intent:** placeholder.\n"
-	dir := writePlanFiles(t, map[string]string{"00-overview.md": overview, "01-only.md": body})
-	plan, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan() error = %v; want nil", err)
+	tests := []struct {
+		name string
+		// overview defaults to minimalOverview.
+		overview string
+		body     string
+		check    func(t *testing.T, card planparser.Card)
+	}{
+		{
+			name: "two type labels",
+			body: "# Card 1 — dual\n\n**Edit:**\n- `a.go`\n**Delete:**\n- `b.go`\n**Intent:** placeholder.\n",
+			check: func(t *testing.T, card planparser.Card) {
+				if card.TypeLabelCount != 2 {
+					t.Errorf("card.TypeLabelCount = %d; want 2", card.TypeLabelCount)
+				}
+				if !card.HasType {
+					t.Errorf("card.HasType = false; want true")
+				}
+				if card.Type != planparser.CardTypeEdit {
+					t.Errorf("card.Type = %q; want %q (the first type label seen)", card.Type, planparser.CardTypeEdit)
+				}
+				if len(card.TargetGroups) != 2 {
+					t.Fatalf("len(card.TargetGroups) = %d; want 2", len(card.TargetGroups))
+				}
+				if card.TargetGroups[0].Type != planparser.CardTypeEdit {
+					t.Errorf("card.TargetGroups[0].Type = %q; want %q", card.TargetGroups[0].Type, planparser.CardTypeEdit)
+				}
+				if card.TargetGroups[1].Type != planparser.CardTypeDelete {
+					t.Errorf("card.TargetGroups[1].Type = %q; want %q", card.TargetGroups[1].Type, planparser.CardTypeDelete)
+				}
+				// Canonicalized to their file self glyph form: both carry a file extension, so
+				// ParsePlan's canonicalizeCard rewrites them under the default language: go.
+				if want := []string{"a.go#"}; !slices.Equal(card.TargetGroups[0].Refs, want) {
+					t.Errorf("card.TargetGroups[0].Refs = %v; want %v", card.TargetGroups[0].Refs, want)
+				}
+				if want := []string{"b.go#"}; !slices.Equal(card.TargetGroups[1].Refs, want) {
+					t.Errorf("card.TargetGroups[1].Refs = %v; want %v", card.TargetGroups[1].Refs, want)
+				}
+				if want := []string{"a.go#", "b.go#"}; !slices.Equal(card.Targets, want) {
+					t.Errorf("card.Targets = %v; want %v (concatenation of both groups' Refs, body order)", card.Targets, want)
+				}
+			},
+		},
+		{
+			name: "no type label",
+			body: "# Card 1 — typeless\n\n**Intent:** placeholder.\n",
+			check: func(t *testing.T, card planparser.Card) {
+				if card.TypeLabelCount != 0 {
+					t.Errorf("card.TypeLabelCount = %d; want 0", card.TypeLabelCount)
+				}
+				if card.HasType {
+					t.Errorf("card.HasType = true; want false")
+				}
+				if card.Type != planparser.CardTypeUnknown {
+					t.Errorf("card.Type = %q; want %q", card.Type, planparser.CardTypeUnknown)
+				}
+				if len(card.TargetGroups) != 0 {
+					t.Errorf("len(card.TargetGroups) = %d; want 0", len(card.TargetGroups))
+				}
+			},
+		},
+		{
+			name: "single-label card produces exactly one group",
+			body: minimalCardFile(1, "only", "a.go"),
+			check: func(t *testing.T, card planparser.Card) {
+				if len(card.TargetGroups) != 1 {
+					t.Fatalf("len(card.TargetGroups) = %d; want 1", len(card.TargetGroups))
+				}
+				if card.TargetGroups[0].Type != planparser.CardTypeEdit {
+					t.Errorf("card.TargetGroups[0].Type = %q; want %q", card.TargetGroups[0].Type, planparser.CardTypeEdit)
+				}
+			},
+		},
+		{
+			name: "repeated label produces two groups whose union equals one merged group's refs",
+			body: "# Card 1 — repeated label\n\n**Edit:**\n- `a.go`\n**Edit:**\n- `b.go`\n**Intent:** placeholder.\n",
+			check: func(t *testing.T, card planparser.Card) {
+				if len(card.TargetGroups) != 2 {
+					t.Fatalf("len(card.TargetGroups) = %d; want 2", len(card.TargetGroups))
+				}
+				var union []string
+				for _, g := range card.TargetGroups {
+					if g.Type != planparser.CardTypeEdit {
+						t.Errorf("group.Type = %q; want %q", g.Type, planparser.CardTypeEdit)
+					}
+					union = append(union, g.Refs...)
+				}
+				if want := []string{"a.go#", "b.go#"}; !slices.Equal(union, want) {
+					t.Errorf("union of both groups' Refs = %v; want %v (equal to one merged group's refs)", union, want)
+				}
+			},
+		},
+		{
+			name: "two Rename labels give each group its own Pairs",
+			body: "# Card 1 — two renames\n\n" +
+				"**Rename:**\n- `old1.Symbol` -> `new1.Symbol`\n" +
+				"**Rename:**\n- `old2.Symbol` -> `new2.Symbol`\n" +
+				"**Intent:** placeholder.\n",
+			check: func(t *testing.T, card planparser.Card) {
+				if len(card.TargetGroups) != 2 {
+					t.Fatalf("len(card.TargetGroups) = %d; want 2", len(card.TargetGroups))
+				}
+				wantPairs0 := []planparser.MovePair{{Old: "old1.Symbol", New: "new1.Symbol"}}
+				if !slices.Equal(card.TargetGroups[0].Pairs, wantPairs0) {
+					t.Errorf("card.TargetGroups[0].Pairs = %+v; want %+v", card.TargetGroups[0].Pairs, wantPairs0)
+				}
+				wantPairs1 := []planparser.MovePair{{Old: "old2.Symbol", New: "new2.Symbol"}}
+				if !slices.Equal(card.TargetGroups[1].Pairs, wantPairs1) {
+					t.Errorf("card.TargetGroups[1].Pairs = %+v; want %+v", card.TargetGroups[1].Pairs, wantPairs1)
+				}
+				wantCardPairs := append(append([]planparser.MovePair{}, wantPairs0...), wantPairs1...)
+				if !slices.Equal(card.Pairs, wantCardPairs) {
+					t.Errorf("card.Pairs = %+v; want %+v (concatenation of both groups' Pairs, body order)", card.Pairs, wantCardPairs)
+				}
+			},
+		},
+		{
+			name: "Uses present with no bullets is a non-nil empty slice",
+			body: "# Card 1 — empty uses\n\n**Edit:**\n- `a.go`\n**Uses:**\n**Intent:** placeholder.\n",
+			check: func(t *testing.T, card planparser.Card) {
+				if !card.HasUses {
+					t.Errorf("card.HasUses = false; want true")
+				}
+				if card.Uses == nil {
+					t.Errorf("card.Uses = nil; want a non-nil, zero-length slice")
+				}
+				if len(card.Uses) != 0 {
+					t.Errorf("card.Uses = %v; want empty", card.Uses)
+				}
+			},
+		},
+		{
+			// The label line's own remainder lands in ImpactSummary and every following non-label
+			// line in ImpactSummaryTrailing -- captured rather than discarded so
+			// impact-summary-multiline has something to report.
+			name: "ImpactSummary inline remainder plus trailing lines",
+			body: "# Card 1 — multiline impact\n\n**Edit:**\n- `a.go`\n" +
+				"**ImpactSummary:** first line.\nsecond line.\nthird line.\n**Intent:** placeholder.\n",
+			check: func(t *testing.T, card planparser.Card) {
+				if card.ImpactSummary != "first line." {
+					t.Errorf("card.ImpactSummary = %q; want %q", card.ImpactSummary, "first line.")
+				}
+				if want := []string{"second line.", "third line."}; !slices.Equal(card.ImpactSummaryTrailing, want) {
+					t.Errorf("card.ImpactSummaryTrailing = %v; want %v", card.ImpactSummaryTrailing, want)
+				}
+			},
+		},
+		{
+			name: "retired Context label terminates Intent",
+			body: "# Card 1 — half-migrated\n\n**Intent:** prose before context.\n**Context:**\n- `a.go`\n",
+			check: func(t *testing.T, card planparser.Card) {
+				if card.Intent != "prose before context." {
+					t.Errorf("card.Intent = %q; want %q (Context: must terminate collection, not be swallowed)", card.Intent, "prose before context.")
+				}
+				if want := []string{"**Context:**"}; !slices.Equal(card.RetiredLabels, want) {
+					t.Errorf("card.RetiredLabels = %v; want %v", card.RetiredLabels, want)
+				}
+			},
+		},
+		{
+			// The case-sensitive match routes format-3's lowercase label to RetiredLabels rather
+			// than mistaking it for format-4's "**Verify:**" field.
+			name: "retired lowercase verify label terminates Intent",
+			body: "# Card 1 — half-migrated\n\n**Intent:** prose before verify.\n**verify:** go test ./...\n",
+			check: func(t *testing.T, card planparser.Card) {
+				if card.Intent != "prose before verify." {
+					t.Errorf("card.Intent = %q; want %q (verify: must terminate collection, not be swallowed)", card.Intent, "prose before verify.")
+				}
+				if want := []string{"**verify:**"}; !slices.Equal(card.RetiredLabels, want) {
+					t.Errorf("card.RetiredLabels = %v; want %v", card.RetiredLabels, want)
+				}
+				if card.HasVerify {
+					t.Errorf("card.HasVerify = true; want false (lowercase verify: is not the format-4 Verify: field)")
+				}
+				if card.Verify != "" {
+					t.Errorf("card.Verify = %q; want empty", card.Verify)
+				}
+			},
+		},
+		{
+			// Both endpoints of every pair are projected into Targets in pair order, Old before New.
+			name: "Rename grammar: well-formed pair and malformed bullet",
+			body: "# Card 1 — rename\n\n**Rename:**\n- `old.Symbol` -> `new.Symbol`\n- this bullet has no arrow at all\n" +
+				"**Intent:** placeholder.\n",
+			check: func(t *testing.T, card planparser.Card) {
+				if want := []planparser.MovePair{{Old: "old.Symbol", New: "new.Symbol"}}; !slices.Equal(card.Pairs, want) {
+					t.Errorf("card.Pairs = %+v; want %+v", card.Pairs, want)
+				}
+				if want := []string{"this bullet has no arrow at all"}; !slices.Equal(card.RenameRaw, want) {
+					t.Errorf("card.RenameRaw = %v; want %v", card.RenameRaw, want)
+				}
+				if want := []string{"old.Symbol", "new.Symbol"}; !slices.Equal(card.Targets, want) {
+					t.Errorf("card.Targets = %v; want %v (Old before New, pair order)", card.Targets, want)
+				}
+			},
+		},
+		{
+			// parseRefField strips backticks before returning a payload, so routing the arrow form
+			// through it would never match the two-backticked-token shape: a declaration in
+			// Declarations, not CreateRaw, proves the backticks arrived intact.
+			name: "Create grammar: declaration, plain ref and malformed arrow bullet",
+			body: "# Card 1 — create handles\n\n**Create:**\n" +
+				"- `plan:internal/foo#NewThing` -> `func NewThing() *Thing`\n" +
+				"- `internal/bar.go`\n" +
+				"- this bullet has -> an arrow but no backticks\n" +
+				"**Intent:** placeholder.\n",
+			check: func(t *testing.T, card planparser.Card) {
+				wantDecls := []planparser.CardDeclaration{{Handle: "plan:internal/foo#NewThing", Decl: "func NewThing() *Thing"}}
+				if !slices.Equal(card.Declarations, wantDecls) {
+					t.Errorf("card.Declarations = %+v; want %+v", card.Declarations, wantDecls)
+				}
+				if want := []string{"plan:internal/foo#NewThing", "internal/bar.go#"}; !slices.Equal(card.Targets, want) {
+					t.Errorf("card.Targets = %v; want %v", card.Targets, want)
+				}
+				if want := []string{"this bullet has -> an arrow but no backticks"}; !slices.Equal(card.CreateRaw, want) {
+					t.Errorf("card.CreateRaw = %v; want %v", card.CreateRaw, want)
+				}
+				if len(card.TargetGroups) != 1 {
+					t.Fatalf("len(card.TargetGroups) = %d; want 1", len(card.TargetGroups))
+				}
+				if !slices.Equal(card.TargetGroups[0].Declarations, wantDecls) {
+					t.Errorf("card.TargetGroups[0].Declarations = %+v; want %+v", card.TargetGroups[0].Declarations, wantDecls)
+				}
+			},
+		},
+		{
+			name:     "handle-shaped Create target never picks up a root: prefix",
+			overview: rootedOverview,
+			body: "# Card 1 — create handle\n\n**Create:**\n" +
+				"- `plan:internal/foo#NewThing` -> `func NewThing() *Thing`\n" +
+				"**Intent:** placeholder.\n",
+			check: func(t *testing.T, card planparser.Card) {
+				if want := "plan:internal/foo#NewThing"; card.Targets[0] != want {
+					t.Errorf("card.Targets[0] = %q; want %q (a handle must never pick up a root: prefix)", card.Targets[0], want)
+				}
+			},
+		},
+		{
+			name: "Commit and Verify fields",
+			body: "# Card 1 — flag\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n" +
+				"**Commit:** `1: add the --json flag`\n**Verify:** go build ./...\n",
+			check: func(t *testing.T, card planparser.Card) {
+				if card.Commit != "1: add the --json flag" {
+					t.Errorf("card.Commit = %q; want %q", card.Commit, "1: add the --json flag")
+				}
+				if !card.HasVerify {
+					t.Errorf("card.HasVerify = false; want true")
+				}
+				if card.Verify != "go build ./..." {
+					t.Errorf("card.Verify = %q; want %q", card.Verify, "go build ./...")
+				}
+			},
+		},
 	}
 
-	want := "plan:internal/foo#NewThing"
-	if got := plan.Cards[0].Targets[0]; got != want {
-		t.Errorf("plan.Cards[0].Targets[0] = %q; want %q (a handle must never pick up a root: prefix)", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			overview := tt.overview
+			if overview == "" {
+				overview = minimalOverview
+			}
+			dir := writePlanFiles(t, map[string]string{"00-overview.md": overview, "01-only.md": tt.body})
+			plan, err := planparser.ParsePlan(dir)
+			if err != nil {
+				t.Fatalf("ParsePlan() error = %v; want nil", err)
+			}
+			tt.check(t, plan.Cards[0])
+		})
 	}
 }
 
@@ -765,43 +675,14 @@ func TestParsePlan_InlineFieldValueFailsLoud(t *testing.T) {
 }
 
 // TestParsePlan_Card_SourcePath proves each parsed card's SourcePath is the bare worktree-relative
-// `_lyx/plan/NN-<slug>.md` token — never prefixed by the (t.TempDir()) absolute Plan.Dir the
-// fixture is parsed from — for both a single-card and a multi-card plan.
+// `_lyx/plan/NN-<slug>.md` token, never prefixed by the (t.TempDir()) absolute Plan.Dir the
+// fixture is parsed from.
+//
+//testtiming:keep pins SourcePath as the bare worktree-relative token without the absolute plan directory, which TestParsePlan_CardFields does not assert
 func TestParsePlan_Card_SourcePath(t *testing.T) {
 	t.Parallel()
 
-	t.Run("single-card plan", func(t *testing.T) {
-		t.Parallel()
-
-		dir := writePlanFiles(t, map[string]string{
-			"00-overview.md": minimalOverview,
-			"01-only.md":     minimalCardFile(1, "only", "a.go"),
-		})
-		plan, err := planparser.ParsePlan(dir)
-		if err != nil {
-			t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
-		}
-		if len(plan.Cards) != 1 {
-			t.Fatalf("len(plan.Cards) = %d; want 1", len(plan.Cards))
-		}
-
-		want := "_lyx/plan/01-only.md"
-		got := plan.Cards[0].SourcePath
-		if got != want {
-			t.Errorf("plan.Cards[0].SourcePath = %q; want %q", got, want)
-		}
-		if strings.Contains(got, dir) {
-			t.Errorf("plan.Cards[0].SourcePath = %q; leaks the absolute Plan.Dir %q", got, dir)
-		}
-		if strings.Contains(got, os.TempDir()) {
-			t.Errorf("plan.Cards[0].SourcePath = %q; leaks the t.TempDir() temp path", got)
-		}
-	})
-
-	t.Run("multi-card plan", func(t *testing.T) {
-		t.Parallel()
-
-		const overview = `---
+	const overview = `---
 format: 5
 approved: true
 ---
@@ -815,55 +696,29 @@ Framing paragraph.
 1 — first — the first card
 2 — second — the second card
 `
-		dir := writePlanFiles(t, map[string]string{
-			"00-overview.md": overview,
-			"01-first.md":    minimalCardFile(1, "first", "a.go"),
-			"02-second.md":   minimalCardFile(2, "second", "b.go"),
-		})
-		plan, err := planparser.ParsePlan(dir)
-		if err != nil {
-			t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
-		}
-		if len(plan.Cards) != 2 {
-			t.Fatalf("len(plan.Cards) = %d; want 2", len(plan.Cards))
-		}
-
-		if want := "_lyx/plan/01-first.md"; plan.Cards[0].SourcePath != want {
-			t.Errorf("plan.Cards[0].SourcePath = %q; want %q", plan.Cards[0].SourcePath, want)
-		}
-		if want := "_lyx/plan/02-second.md"; plan.Cards[1].SourcePath != want {
-			t.Errorf("plan.Cards[1].SourcePath = %q; want %q", plan.Cards[1].SourcePath, want)
-		}
-		for _, c := range plan.Cards {
-			if strings.Contains(c.SourcePath, dir) {
-				t.Errorf("card %d SourcePath = %q; leaks the absolute Plan.Dir %q", c.Number, c.SourcePath, dir)
-			}
-		}
+	dir := writePlanFiles(t, map[string]string{
+		"00-overview.md": overview,
+		"01-first.md":    minimalCardFile(1, "first", "a.go"),
+		"02-second.md":   minimalCardFile(2, "second", "b.go"),
 	})
-}
-
-// TestParsePlan_CardCommitAndVerify covers a card's optional "**Commit:**" and recapitalized
-// "**Verify:**" fields, and that HasVerify reports the label's presence.
-func TestParsePlan_CardCommitAndVerify(t *testing.T) {
-	t.Parallel()
-
-	body := "# Card 1 — flag\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n" +
-		"**Commit:** `1: add the --json flag`\n**Verify:** go build ./...\n"
-	dir := writePlanFiles(t, map[string]string{"00-overview.md": minimalOverview, "01-only.md": body})
 	plan, err := planparser.ParsePlan(dir)
 	if err != nil {
-		t.Fatalf("ParsePlan() error = %v; want nil", err)
+		t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
 	}
-	card := plan.Cards[0]
+	if len(plan.Cards) != 2 {
+		t.Fatalf("len(plan.Cards) = %d; want 2", len(plan.Cards))
+	}
 
-	if card.Commit != "1: add the --json flag" {
-		t.Errorf("card.Commit = %q; want %q", card.Commit, "1: add the --json flag")
+	if want := "_lyx/plan/01-first.md"; plan.Cards[0].SourcePath != want {
+		t.Errorf("plan.Cards[0].SourcePath = %q; want %q", plan.Cards[0].SourcePath, want)
 	}
-	if !card.HasVerify {
-		t.Errorf("card.HasVerify = false; want true")
+	if want := "_lyx/plan/02-second.md"; plan.Cards[1].SourcePath != want {
+		t.Errorf("plan.Cards[1].SourcePath = %q; want %q", plan.Cards[1].SourcePath, want)
 	}
-	if card.Verify != "go build ./..." {
-		t.Errorf("card.Verify = %q; want %q", card.Verify, "go build ./...")
+	for _, c := range plan.Cards {
+		if strings.Contains(c.SourcePath, dir) || strings.Contains(c.SourcePath, os.TempDir()) {
+			t.Errorf("card %d SourcePath = %q; leaks the absolute Plan.Dir %q", c.Number, c.SourcePath, dir)
+		}
 	}
 }
 
@@ -881,6 +736,8 @@ func goodPlanDir() string {
 // verbatim from the fixture must survive canonicalization byte-identical even though the fixture's
 // root: is non-empty — a glyph is never root:-joined. Card 2 additionally round-trips a multi-label
 // card: an **Edit:** group followed by a **Create:** group.
+//
+//testtiming:keep pins the full field-by-field round-trip of the golden fixture, which TestValidate_CardNumbering does not assert
 func TestParsePlan_GoldenFixture(t *testing.T) {
 	t.Parallel()
 
@@ -1113,66 +970,47 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 // TestParsePlan_Language covers the language: frontmatter key's effect on Plan.Language and on
 // canonicalization: absent defaults to "go" (and canonicalizes), an explicit "go" behaves
 // identically, and "none" leaves every ref byte-identical with an empty SurfaceRefs.
+//
+//testtiming:keep pins the language: key's effect on Plan.Language, canonicalization and SurfaceRefs, which its covering tests do not assert
 func TestParsePlan_Language(t *testing.T) {
 	t.Parallel()
 
-	overviewWith := func(languageLine string) string {
-		return "---\nformat: 5\napproved: true\n" + languageLine + "---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — the only card\n"
+	tests := []struct {
+		name         string
+		languageLine string
+		wantLanguage string
+		wantTarget   string
+		// wantNoSurface requires SurfaceRefs to be empty, as under language none.
+		wantNoSurface bool
+	}{
+		{name: "absent defaults to go and canonicalizes", languageLine: "", wantLanguage: "go", wantTarget: "a.go#"},
+		{name: "explicit go behaves identically to absent", languageLine: "language: go\n", wantLanguage: "go", wantTarget: "a.go#"},
+		{name: "none leaves every ref byte-identical", languageLine: "language: none\n", wantLanguage: "none", wantTarget: "a.go", wantNoSurface: true},
 	}
 
-	t.Run("absent defaults to go and canonicalizes", func(t *testing.T) {
-		t.Parallel()
-		dir := writePlanFiles(t, map[string]string{
-			"00-overview.md": overviewWith(""),
-			"01-only.md":     minimalCardFile(1, "only", "a.go"),
-		})
-		plan, err := planparser.ParsePlan(dir)
-		if err != nil {
-			t.Fatalf("ParsePlan() error = %v; want nil", err)
-		}
-		if plan.Language != "go" {
-			t.Errorf("plan.Language = %q; want %q", plan.Language, "go")
-		}
-		if want := "a.go#"; plan.Cards[0].Targets[0] != want {
-			t.Errorf("plan.Cards[0].Targets[0] = %q; want %q", plan.Cards[0].Targets[0], want)
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("explicit go behaves identically to absent", func(t *testing.T) {
-		t.Parallel()
-		dir := writePlanFiles(t, map[string]string{
-			"00-overview.md": overviewWith("language: go\n"),
-			"01-only.md":     minimalCardFile(1, "only", "a.go"),
+			dir := writePlanFiles(t, map[string]string{
+				"00-overview.md": "---\nformat: 5\napproved: true\n" + tt.languageLine + "---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — the only card\n",
+				"01-only.md":     minimalCardFile(1, "only", "a.go"),
+			})
+			plan, err := planparser.ParsePlan(dir)
+			if err != nil {
+				t.Fatalf("ParsePlan() error = %v; want nil", err)
+			}
+			if plan.Language != tt.wantLanguage {
+				t.Errorf("plan.Language = %q; want %q", plan.Language, tt.wantLanguage)
+			}
+			if plan.Cards[0].Targets[0] != tt.wantTarget {
+				t.Errorf("plan.Cards[0].Targets[0] = %q; want %q", plan.Cards[0].Targets[0], tt.wantTarget)
+			}
+			if tt.wantNoSurface && len(plan.SurfaceRefs) != 0 {
+				t.Errorf("len(plan.SurfaceRefs) = %d; want 0", len(plan.SurfaceRefs))
+			}
 		})
-		plan, err := planparser.ParsePlan(dir)
-		if err != nil {
-			t.Fatalf("ParsePlan() error = %v; want nil", err)
-		}
-		if want := "a.go#"; plan.Cards[0].Targets[0] != want {
-			t.Errorf("plan.Cards[0].Targets[0] = %q; want %q", plan.Cards[0].Targets[0], want)
-		}
-	})
-
-	t.Run("none leaves every ref byte-identical and SurfaceRefs empty", func(t *testing.T) {
-		t.Parallel()
-		dir := writePlanFiles(t, map[string]string{
-			"00-overview.md": overviewWith("language: none\n"),
-			"01-only.md":     minimalCardFile(1, "only", "a.go"),
-		})
-		plan, err := planparser.ParsePlan(dir)
-		if err != nil {
-			t.Fatalf("ParsePlan() error = %v; want nil", err)
-		}
-		if plan.Language != "none" {
-			t.Errorf("plan.Language = %q; want %q", plan.Language, "none")
-		}
-		if want := "a.go"; plan.Cards[0].Targets[0] != want {
-			t.Errorf("plan.Cards[0].Targets[0] = %q; want %q (byte-identical, no canonicalization)", plan.Cards[0].Targets[0], want)
-		}
-		if len(plan.SurfaceRefs) != 0 {
-			t.Errorf("len(plan.SurfaceRefs) = %d; want 0", len(plan.SurfaceRefs))
-		}
-	})
+	}
 }
 
 // TestParsePlan_FirstCard pins how the optional first_card overview key parses, including that a non-integer value reaches validation instead of failing the strict decode.

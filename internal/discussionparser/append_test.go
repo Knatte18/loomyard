@@ -34,73 +34,69 @@ func readFile(t *testing.T, path string) string {
 	return string(data)
 }
 
-func TestAppendDecision_LandsAtEndOfDecisionsSection(t *testing.T) {
-	before := "# Record\n\n## Goal\n\nbody.\n\n## Scope\n\nbody.\n\n## Decisions\n\n### First\n\nDecision: a.\n\n"
-	after := "## Constraints\n\nbody.\n\n## Auto-mode assumptions\n\nbody.\n\n## Open risks\n\nbody.\n\n## Acceptance criteria\n\nbody.\n"
-	decisionPath, supportPath := writeFixture(t, t.TempDir(), before+after, "log")
+// TestAppendDecision_AppendsAtEndOfDecisionsSection asserts the entry lands after the Decisions
+// section's last non-blank line, ignoring a heading inside a fence, and that the support log and the
+// rest of the record stay byte-identical.
+func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
+	t.Parallel()
 
-	findings, err := AppendDecision(decisionPath, supportPath, addedDecision())
-	if err != nil || len(findings) != 0 {
-		t.Fatalf("AppendDecision() = %v, %v; want no findings and nil error", findings, err)
-	}
+	middleBefore := "# Record\n\n## Goal\n\nbody.\n\n## Scope\n\nbody.\n\n## Decisions\n\n### First\n\nDecision: a.\n\n"
+	middleAfter := "## Constraints\n\nbody.\n\n## Auto-mode assumptions\n\nbody.\n\n## Open risks\n\nbody.\n\n## Acceptance criteria\n\nbody.\n"
 
-	// The entry follows the section's last non-blank line; the blank line before the next H2 stays.
-	want := strings.TrimSuffix(before, "\n") + wantEntry + "\n" + after
-	if got := readFile(t, decisionPath); got != want {
-		t.Errorf("record =\n%q\nwant\n%q", got, want)
-	}
-}
-
-func TestAppendDecision_DecisionsIsLastSection(t *testing.T) {
-	var b strings.Builder
+	var decisionsLast strings.Builder
 	for _, h := range requiredDiscussionSections {
 		if h == "## Decisions" {
 			continue
 		}
-		b.WriteString(h + "\n\nbody.\n\n")
+		decisionsLast.WriteString(h + "\n\nbody.\n\n")
 	}
-	b.WriteString("## Decisions\n\n### First\n\nDecision: a.\n")
-	prior := b.String()
-	decisionPath, supportPath := writeFixture(t, t.TempDir(), prior, "log")
+	decisionsLast.WriteString("## Decisions\n\n### First\n\nDecision: a.\n")
 
-	findings, err := AppendDecision(decisionPath, supportPath, addedDecision())
-	if err != nil || len(findings) != 0 {
-		t.Fatalf("AppendDecision() = %v, %v; want no findings and nil error", findings, err)
-	}
-	if got, want := readFile(t, decisionPath), prior+wantEntry; got != want {
-		t.Errorf("record tail =\n%q\nwant\n%q", got, want)
-	}
-}
-
-func TestAppendDecision_LastSectionWithoutTrailingNewline(t *testing.T) {
-	prior := strings.Replace(allSectionsContent(), "## Decisions\n\nbody text.\n\n", "", 1) +
-		"## Decisions\n\nlast line"
-	decisionPath, supportPath := writeFixture(t, t.TempDir(), prior, "log")
-
-	findings, err := AppendDecision(decisionPath, supportPath, addedDecision())
-	if err != nil || len(findings) != 0 {
-		t.Fatalf("AppendDecision() = %v, %v; want no findings and nil error", findings, err)
-	}
-	if got, want := readFile(t, decisionPath), prior+"\n"+wantEntry; got != want {
-		t.Errorf("record tail =\n%q\nwant\n%q", got, want)
-	}
-}
-
-func TestAppendDecision_HeadingInsideFenceIsIgnored(t *testing.T) {
-	prior := strings.Replace(allSectionsContent(), "## Decisions\n\nbody text.\n",
+	withoutDecisions := strings.Replace(allSectionsContent(), "## Decisions\n\nbody text.\n\n", "", 1)
+	unterminated := withoutDecisions + "## Decisions\n\nlast line"
+	fenced := strings.Replace(allSectionsContent(), "## Decisions\n\nbody text.\n",
 		"## Decisions\n\n```\n## Not a heading\n```\n", 1)
-	decisionPath, supportPath := writeFixture(t, t.TempDir(), prior, "log")
 
-	if _, err := AppendDecision(decisionPath, supportPath, addedDecision()); err != nil {
-		t.Fatalf("AppendDecision() error = %v", err)
+	tests := []struct {
+		name  string
+		prior string
+		want  string
+	}{
+		{
+			// The entry follows the section's last non-blank line; the blank line before the next H2 stays.
+			name:  "followed by further sections",
+			prior: middleBefore + middleAfter,
+			want:  strings.TrimSuffix(middleBefore, "\n") + wantEntry + "\n" + middleAfter,
+		},
+		{name: "decisions is the last section", prior: decisionsLast.String(), want: decisionsLast.String() + wantEntry},
+		{name: "last line has no trailing newline", prior: unterminated, want: unterminated + "\n" + wantEntry},
+		{
+			name:  "heading inside a fence is ignored",
+			prior: fenced,
+			want:  strings.Replace(fenced, "```\n\n## Constraints", "```\n"+wantEntry+"\n## Constraints", 1),
+		},
 	}
-	got := readFile(t, decisionPath)
-	if fence, entry := strings.Index(got, "## Not a heading"), strings.Index(got, "### Added after"); entry < fence {
-		t.Errorf("entry landed before the fenced block ends:\n%s", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			decisionPath, supportPath := writeFixture(t, t.TempDir(), tt.prior, "log")
+
+			findings, err := AppendDecision(decisionPath, supportPath, addedDecision())
+			if err != nil || len(findings) != 0 {
+				t.Fatalf("AppendDecision() = %v, %v; want no findings and nil error", findings, err)
+			}
+			if got := readFile(t, decisionPath); got != tt.want {
+				t.Errorf("record =\n%q\nwant\n%q", got, tt.want)
+			}
+			if got := readFile(t, supportPath); got != "log" {
+				t.Errorf("support log = %q; want it unchanged", got)
+			}
+		})
 	}
 }
 
 func TestAppendDecision_EmptyFieldWritesNothing(t *testing.T) {
+	t.Parallel()
 	for name, mutate := range map[string]func(*AddedDecision){
 		"by":        func(d *AddedDecision) { d.By = "  " },
 		"title":     func(d *AddedDecision) { d.Title = "" },
@@ -108,6 +104,7 @@ func TestAppendDecision_EmptyFieldWritesNothing(t *testing.T) {
 		"rationale": func(d *AddedDecision) { d.Rationale = "" },
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			decisionPath, supportPath := writeFixture(t, t.TempDir(), allSectionsContent(), "log")
 			d := addedDecision()
 			mutate(&d)
@@ -123,6 +120,7 @@ func TestAppendDecision_EmptyFieldWritesNothing(t *testing.T) {
 }
 
 func TestAppendDecision_MissingDecisionsHeadingWritesNothing(t *testing.T) {
+	t.Parallel()
 	prior := strings.Replace(allSectionsContent(), "## Decisions", "## Choices", 1)
 	decisionPath, supportPath := writeFixture(t, t.TempDir(), prior, "log")
 
@@ -135,6 +133,7 @@ func TestAppendDecision_MissingDecisionsHeadingWritesNothing(t *testing.T) {
 }
 
 func TestAppendDecision_MissingRecordIsNotExist(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	_, err := AppendDecision(filepath.Join(dir, "absent.md"), filepath.Join(dir, "log.md"), addedDecision())
 	if !errors.Is(err, os.ErrNotExist) {
@@ -143,6 +142,7 @@ func TestAppendDecision_MissingRecordIsNotExist(t *testing.T) {
 }
 
 func TestAppendDecision_FindingRestoresRecord(t *testing.T) {
+	t.Parallel()
 	prior := strings.Replace(allSectionsContent(), "## Goal", "## Aim", 1)
 	decisionPath, supportPath := writeFixture(t, t.TempDir(), prior, "log")
 
@@ -155,16 +155,5 @@ func TestAppendDecision_FindingRestoresRecord(t *testing.T) {
 	}
 	if got := readFile(t, decisionPath); got != prior {
 		t.Errorf("record not restored:\n%q", got)
-	}
-}
-
-func TestAppendDecision_SupportLogUntouched(t *testing.T) {
-	decisionPath, supportPath := writeFixture(t, t.TempDir(), allSectionsContent(), "log")
-
-	if _, err := AppendDecision(decisionPath, supportPath, addedDecision()); err != nil {
-		t.Fatalf("AppendDecision() error = %v", err)
-	}
-	if got := readFile(t, supportPath); got != "log" {
-		t.Errorf("support log = %q; want it unchanged", got)
 	}
 }

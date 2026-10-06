@@ -1,6 +1,6 @@
-// amendment_test.go covers AppendAmendment: a first append creating the file with its heading; a
-// second append leaving the first entry byte-identical and adding the second below it; every
-// field rendered; and a wrapped error convention matching this package's other write paths.
+// amendment_test.go covers AppendAmendment: a first append creating the file with its heading and
+// every field rendered; a second append leaving the first entry byte-identical and adding the
+// second below it; and a wrapped error convention matching this package's other write paths.
 
 package planparser_test
 
@@ -13,11 +13,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-func TestAppendAmendment_FirstAppendCreatesFileWithHeading(t *testing.T) {
+// TestAppendAmendment_AppendsEntries asserts a first append creates the file with its fixed heading
+// and every field, and a second append leaves the first entry byte-identical and adds the second
+// below it.
+func TestAppendAmendment_AppendsEntries(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	a := planparser.Amendment{
+	path := filepath.Join(dir, planparser.AmendmentsFileName)
+	first := planparser.Amendment{
 		Timestamp: "2026-09-06T10:00:00Z",
 		Card:      "1-only",
 		OldGlyph:  "plan:internal/foo#NewThing",
@@ -25,53 +29,37 @@ func TestAppendAmendment_FirstAppendCreatesFileWithHeading(t *testing.T) {
 		Tier:      "syntactic",
 		SHA:       "abc123",
 	}
-	if err := planparser.AppendAmendment(dir, a); err != nil {
-		t.Fatalf("AppendAmendment() error = %v; want nil", err)
-	}
-
-	data, err := os.ReadFile(filepath.Join(dir, planparser.AmendmentsFileName))
-	if err != nil {
-		t.Fatalf("read amendments file: %v", err)
-	}
-	got := string(data)
-
-	if !strings.HasPrefix(got, "# Amendments\n") {
-		t.Errorf("amendments file = %q; want it to start with the fixed heading", got)
-	}
-	for _, field := range []string{a.Timestamp, a.Card, a.OldGlyph, a.NewGlyph, a.Tier, a.SHA} {
-		if !strings.Contains(got, field) {
-			t.Errorf("amendments file = %q; want it to carry field %q", got, field)
-		}
-	}
-}
-
-func TestAppendAmendment_SecondAppendLeavesFirstEntryByteIdentical(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	first := planparser.Amendment{Timestamp: "t1", Card: "1-a", OldGlyph: "o1", NewGlyph: "n1", Tier: "syntactic", SHA: "sha1"}
 	second := planparser.Amendment{Timestamp: "t2", Card: "2-b", OldGlyph: "o2", NewGlyph: "n2", Tier: "resolve", SHA: "sha2"}
 
 	if err := planparser.AppendAmendment(dir, first); err != nil {
 		t.Fatalf("AppendAmendment() first call error = %v; want nil", err)
 	}
-	afterFirst, err := os.ReadFile(filepath.Join(dir, planparser.AmendmentsFileName))
+	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read after first append: %v", err)
+		t.Fatalf("read amendments file: %v", err)
+	}
+	afterFirst := string(data)
+	if !strings.HasPrefix(afterFirst, "# Amendments\n") {
+		t.Errorf("amendments file = %q; want it to start with the fixed heading", afterFirst)
+	}
+	for _, field := range []string{first.Timestamp, first.Card, first.OldGlyph, first.NewGlyph, first.Tier, first.SHA} {
+		if !strings.Contains(afterFirst, field) {
+			t.Errorf("amendments file = %q; want it to carry field %q", afterFirst, field)
+		}
 	}
 
 	if err := planparser.AppendAmendment(dir, second); err != nil {
 		t.Fatalf("AppendAmendment() second call error = %v; want nil", err)
 	}
-	afterSecond, err := os.ReadFile(filepath.Join(dir, planparser.AmendmentsFileName))
+	data, err = os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read after second append: %v", err)
 	}
-
-	if !strings.HasPrefix(string(afterSecond), string(afterFirst)) {
+	afterSecond := string(data)
+	if !strings.HasPrefix(afterSecond, afterFirst) {
 		t.Errorf("after second append = %q; want it to start with the first append's byte-identical content %q", afterSecond, afterFirst)
 	}
-	if !strings.Contains(string(afterSecond), "sha2") {
+	if !strings.Contains(afterSecond, "sha2") {
 		t.Errorf("after second append = %q; want the second entry appended below the first", afterSecond)
 	}
 }

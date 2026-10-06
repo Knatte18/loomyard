@@ -17,11 +17,12 @@ import (
 )
 
 // TestNewShed_FieldCompleteAssembly asserts NewShed returns a *shedengine.Shed whose Producers
-// length matches the parsed recipe's own row count, and whose StatusPath, LockPath,
-// StatusLockPath, MaxBounces, and CommitStatus fields are copied verbatim from the passed
-// ShedPaths -- the same five fields the two removed New bodies used to set by hand, proving the
-// hoist is field-complete rather than assumed.
+// length matches the parsed recipe's own row count, whose StatusPath, LockPath, StatusLockPath,
+// MaxBounces, CommitStatus, RunID and MissingStatusWayForward fields are copied verbatim from the
+// passed ShedPaths, and whose Transient classifier is wired.
 func TestNewShed_FieldCompleteAssembly(t *testing.T) {
+	t.Parallel()
+
 	const recipeYAML = `
 version: 1
 entry: row1
@@ -53,6 +54,9 @@ producers:
 		StatusLockPath: filepath.Join(dir, "status.json.lock"),
 		MaxBounces:     7,
 		CommitStatus:   commitStatus,
+		RunID:          "some-slug",
+
+		MissingStatusWayForward: "way forward: told clause",
 	}
 
 	shed, err := NewShed([]byte(recipeYAML), env, paths)
@@ -74,6 +78,21 @@ producers:
 	}
 	if shed.MaxBounces != paths.MaxBounces {
 		t.Errorf("shed.MaxBounces = %d; want %d", shed.MaxBounces, paths.MaxBounces)
+	}
+	if shed.RunID != paths.RunID || shed.MissingStatusWayForward != paths.MissingStatusWayForward {
+		t.Errorf("shed.RunID, MissingStatusWayForward = %q, %q; want the told values", shed.RunID, shed.MissingStatusWayForward)
+	}
+
+	// The assembled Shed classifies a never-ready agent start as agent-start and a plain error as
+	// not transient.
+	if shed.Transient == nil {
+		t.Fatal("shed.Transient = nil; want the shedtransient classifier")
+	}
+	if got := shed.Transient(fmt.Errorf("start: %w", shuttleengine.ErrNotStarted)); got != shedengine.TransientAgentStart {
+		t.Errorf("Transient(ErrNotStarted-wrapping) = %q; want %q", got, shedengine.TransientAgentStart)
+	}
+	if got := shed.Transient(errors.New("plain")); got != "" {
+		t.Errorf("Transient(plain error) = %q; want empty", got)
 	}
 
 	// A func value is comparable only against nil, never against another func value with ==, so
@@ -97,6 +116,8 @@ producers:
 // shipped envelopes (loomrecipe.New and battenrecipe.New each add exactly one prefix of their
 // own on top of NewShed's return value).
 func TestNewShed_EmptyProducersErrorsWithoutDoublePrefix(t *testing.T) {
+	t.Parallel()
+
 	const recipeYAML = `
 version: 1
 entry: start
@@ -117,50 +138,5 @@ producers: []
 	}
 	if strings.Contains(err.Error(), "shedbuild: shedbuild:") {
 		t.Errorf("NewShed(recipeYAML) error = %q; carries a double shedbuild: prefix, violating the single-prefix rule", err.Error())
-	}
-}
-
-// TestNewShed_TransientClassifier asserts the assembled Shed classifies a never-ready agent start as agent-start and a plain error as not transient.
-func TestNewShed_TransientClassifier(t *testing.T) {
-	const recipeYAML = `
-version: 1
-entry: row1
-terminals: [row1]
-producers:
-  - name: row1
-    engine: Stub
-`
-	shed, err := NewShed([]byte(recipeYAML), envkit.FullEnv(t), ShedPaths{})
-	if err != nil {
-		t.Fatalf("NewShed() = _, %v; want nil", err)
-	}
-	if shed.Transient == nil {
-		t.Fatal("shed.Transient = nil; want the shedtransient classifier")
-	}
-	if got := shed.Transient(fmt.Errorf("start: %w", shuttleengine.ErrNotStarted)); got != shedengine.TransientAgentStart {
-		t.Errorf("Transient(ErrNotStarted-wrapping) = %q; want %q", got, shedengine.TransientAgentStart)
-	}
-	if got := shed.Transient(errors.New("plain")); got != "" {
-		t.Errorf("Transient(plain error) = %q; want empty", got)
-	}
-}
-
-// TestNewShed_CopiesRunIDAndMissingStatusWayForward asserts the two told way-forward values reach the Shed.
-func TestNewShed_CopiesRunIDAndMissingStatusWayForward(t *testing.T) {
-	const recipeYAML = `
-version: 1
-entry: row1
-terminals: [row1]
-producers:
-  - name: row1
-    engine: Stub
-`
-	paths := ShedPaths{RunID: "some-slug", MissingStatusWayForward: "way forward: told clause"}
-	shed, err := NewShed([]byte(recipeYAML), envkit.FullEnv(t), paths)
-	if err != nil {
-		t.Fatalf("NewShed() = _, %v; want nil", err)
-	}
-	if shed.RunID != "some-slug" || shed.MissingStatusWayForward != "way forward: told clause" {
-		t.Errorf("shed.RunID, MissingStatusWayForward = %q, %q; want the told values", shed.RunID, shed.MissingStatusWayForward)
 	}
 }
