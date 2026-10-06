@@ -121,6 +121,8 @@ func TestVerbCases_CleanState(t *testing.T) {
 // restricts States to exactly ["clean"], and every ordinary verb leaves States empty (inheriting the
 // full ten-state matrix) — a case that got this backwards would either vanish from the cross product
 // entirely or explode it with cells that were never derived.
+//
+//testtiming:keep hostile-input and CloneHub{Reset} cases restricting States to clean and ordinary verbs inheriting the full matrix; coverage of its blocks by other tests does not show an assertion of this
 func TestVerbCases_StatesRestrictionIsWellFormed(t *testing.T) {
 	t.Parallel()
 

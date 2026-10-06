@@ -1,8 +1,6 @@
 // audit_test.go table-drives webster's own fork-audit policy over the full violation taxonomy
-// CheckFork/CheckParent enforce, the warning-only ForkWarnings case, the fabricengine.RefScanner
-// matcher (built from a fake lyxcwd.Location, never a hardcoded geometry token), and the
-// attribution pipeline (NewTranscripts, SettleRetry with a recording fake Sleeper, and
-// ClassifyAttribution's pinned check order).
+// CheckFork/CheckParent enforce, the fabricengine.RefScanner matcher (built from a fake
+// lyxcwd.Location, never a hardcoded geometry token), and SettleRetry with a recording fake Sleeper.
 // Every case here is a pure fact-in/verdict-out table, per the discussion's TDD-centre framing: no
 // git spawn, no real sleeping, no filesystem I/O.
 
@@ -11,7 +9,7 @@ package websterengine
 import (
 	"errors"
 	"path/filepath"
-	"strings"
+	"slices"
 	"testing"
 	"time"
 
@@ -115,14 +113,18 @@ func cleanForkReport(path string) shuttleengine.ForkReport {
 // TestCheckFork covers every violation CheckFork enforces plus the two cases the requirements pin
 // as explicitly ALLOWED for a fork (Write/Edit and repo git), which is the opposite of
 // burlerengine's read-only cluster-reviewer policy.
+//
+//testtiming:keep pins the violation class and path for every write-path and command shape a fork can produce, including the allowed ones; the covering record-batch table reaches a few shapes through whole calls
 func TestCheckFork(t *testing.T) {
 	layout := fakeLayout()
 	fabricRef := fabricengine.NewRefScanner(layout)
 	fabricWorktree := fabricengine.WeftWorktree(layout)
 
 	tests := []struct {
-		name        string
-		fork        shuttleengine.ForkReport
+		name string
+		fork shuttleengine.ForkReport
+		// workdir is the audit workdir a relative write path resolves against; empty means the anchor root.
+		workdir     string
 		wantClasses []AuditViolationClass
 		wantPath    string
 	}{
@@ -188,6 +190,17 @@ func TestCheckFork(t *testing.T) {
 				WritePaths: []string{"_lyx/webster/summary.md"},
 			},
 			wantClasses: []AuditViolationClass{ClassForkContractWrite},
+		},
+		{
+			// The workdir is a subdirectory of the anchor root here, so the relative path names a file
+			// that is no contract file: a resolution against the anchor root instead would flag it.
+			name: "a relative write resolves against the audit workdir, not the anchor root",
+			fork: shuttleengine.ForkReport{
+				TranscriptPath: "g2", ReportReturned: true,
+				WritePaths: []string{"_lyx/webster/outcome.yaml"},
+			},
+			workdir:     "/hub/master-builder/_worktrees/fork-w1",
+			wantClasses: nil,
 		},
 		{
 			name: "absolute fork write under the plan directory is a plan write",
@@ -283,7 +296,11 @@ func TestCheckFork(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CheckFork(tt.fork, outcomePath, summaryPath, "/hub/master-builder", planDirs, websterDirs, ownReport, fabricRef)
+			workdir := tt.workdir
+			if workdir == "" {
+				workdir = "/hub/master-builder"
+			}
+			got := CheckFork(tt.fork, outcomePath, summaryPath, workdir, planDirs, websterDirs, ownReport, fabricRef)
 			if len(got) != len(tt.wantClasses) {
 				t.Fatalf("CheckFork() = %v; want %d violation(s) of class %v", got, len(tt.wantClasses), tt.wantClasses)
 			}
@@ -319,8 +336,10 @@ func TestCheckParent(t *testing.T) {
 	const summaryPath = "/hub/master-builder/_lyx/webster/summary.md"
 
 	tests := []struct {
-		name        string
-		audit       shuttleengine.ForkAudit
+		name  string
+		audit shuttleengine.ForkAudit
+		// workdir is the audit workdir a relative write path resolves against; empty means the anchor root.
+		workdir     string
 		wantClasses []AuditViolationClass
 	}{
 		{
@@ -352,6 +371,16 @@ func TestCheckParent(t *testing.T) {
 				ParentWrites: []string{"_lyx/webster/outcome.yaml"},
 			},
 			wantClasses: nil,
+		},
+		{
+			// The workdir is a subdirectory of the anchor root here, so the relative contract-file
+			// spelling names another file: a resolution against the anchor root instead would allow it.
+			name: "a relative write resolves against the audit workdir, not the anchor root",
+			audit: shuttleengine.ForkAudit{
+				ParentWrites: []string{"_lyx/webster/outcome.yaml"},
+			},
+			workdir:     "/hub/master-builder/_worktrees/fork-w1",
+			wantClasses: []AuditViolationClass{ClassParentWrite},
 		},
 		{
 			name: "dot-prefixed relative write to summary.md is allowed",
@@ -399,7 +428,11 @@ func TestCheckParent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CheckParent(tt.audit, outcomePath, summaryPath, "/hub/master-builder", fabricRef)
+			workdir := tt.workdir
+			if workdir == "" {
+				workdir = "/hub/master-builder"
+			}
+			got := CheckParent(tt.audit, outcomePath, summaryPath, workdir, fabricRef)
 			if len(got) != len(tt.wantClasses) {
 				t.Fatalf("CheckParent() = %v; want %d violation(s) of class %v", got, len(tt.wantClasses), tt.wantClasses)
 			}
@@ -412,268 +445,93 @@ func TestCheckParent(t *testing.T) {
 	}
 }
 
-// TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot pins the audit-workdir decision
-// card 25 records: a hub-shaped fixture where the audit workdir equals the anchor-shaped directory
-// cannot distinguish "resolve a relative recorded write path against workdir" from "...against the
-// anchor root", since the two coincide there. This test forces workdir and an anchor-shaped
-// directory apart: the SAME relative write path must be flagged when joined against workdir (it
-// resolves to the contract file) and must NOT be flagged when joined against the anchor-shaped
-// directory instead (it resolves to a different, non-contract path) — the test that fails if the two
-// are ever swapped.
-func TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot(t *testing.T) {
-	const anchorRoot = "/hub/master-builder"
-	const workdir = "/hub/master-builder/_worktrees/fork-w1"
-	const outcomePath = workdir + "/_lyx/webster/outcome.yaml"
-	const summaryPath = workdir + "/_lyx/webster/summary.md"
-
-	fork := shuttleengine.ForkReport{
-		TranscriptPath: "f",
-		ReportReturned: true,
-		WritePaths:     []string{"_lyx/webster/outcome.yaml"},
-	}
-
-	got := CheckFork(fork, outcomePath, summaryPath, workdir, nil, nil, "", NeverMatches{})
-	if len(got) != 1 || got[0].Class != ClassForkContractWrite {
-		t.Fatalf("CheckFork() joined against workdir = %v; want exactly one %q violation", got, ClassForkContractWrite)
-	}
-
-	gotAnchor := CheckFork(fork, outcomePath, summaryPath, anchorRoot, nil, nil, "", NeverMatches{})
-	if len(gotAnchor) != 0 {
-		t.Errorf("CheckFork() joined against the anchor-shaped directory = %v; want none — workdir and the anchor root must not be interchangeable", gotAnchor)
-	}
-}
-
-// TestCheckParent_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot is
-// TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot's CheckParent mirror:
-// CheckParent's polarity is the opposite of CheckFork's (a parent write to a contract file is
-// ALLOWED, not a violation), so the pinning case is a relative write to a contract file: joined
-// against workdir it must resolve clean, and joined against the anchor-shaped directory instead it
-// must be wrongly flagged — the test that fails if the two are ever swapped.
-func TestCheckParent_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot(t *testing.T) {
-	const anchorRoot = "/hub/master-builder"
-	const workdir = "/hub/master-builder/_worktrees/fork-w1"
-	const outcomePath = workdir + "/_lyx/webster/outcome.yaml"
-	const summaryPath = workdir + "/_lyx/webster/summary.md"
-
-	audit := shuttleengine.ForkAudit{
-		ParentWrites: []string{"_lyx/webster/outcome.yaml"},
-	}
-
-	got := CheckParent(audit, outcomePath, summaryPath, workdir, NeverMatches{})
-	if len(got) != 0 {
-		t.Fatalf("CheckParent() for a relative contract-file write joined against workdir = %v; want none", got)
-	}
-
-	gotAnchor := CheckParent(audit, outcomePath, summaryPath, anchorRoot, NeverMatches{})
-	if len(gotAnchor) != 1 || gotAnchor[0].Class != ClassParentWrite {
-		t.Errorf("CheckParent() for the same relative contract-file write joined against the anchor-shaped directory instead = %v; want exactly one %q violation — the anchor-joined path no longer matches the contract file, proving workdir and the anchor root are not interchangeable", gotAnchor, ClassParentWrite)
-	}
-}
-
-// TestForkWarnings pins the one warning-only (never round-failing) class: a fork that never
-// returned a final report.
-func TestForkWarnings(t *testing.T) {
-	tests := []struct {
-		name string
-		fork shuttleengine.ForkReport
-		want []string
-	}{
-		{
-			name: "report returned yields no warning",
-			fork: cleanForkReport("a"),
-			want: nil,
-		},
-		{
-			name: "report not returned is a warning",
-			fork: shuttleengine.ForkReport{TranscriptPath: "b", ReportReturned: false},
-			want: []string{`fork "b" never returned a final report`},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ForkWarnings(tt.fork)
-			if len(got) != len(tt.want) {
-				t.Fatalf("ForkWarnings() = %v; want %v", got, tt.want)
-			}
-			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Errorf("ForkWarnings()[%d] = %q; want %q", i, got[i], tt.want[i])
-				}
-			}
-		})
-	}
-}
-
-// TestNewTranscripts pins the defensive re-filter: only ForkReport entries whose TranscriptPath is
-// absent from seen come back, in original order.
-func TestNewTranscripts(t *testing.T) {
-	audit := shuttleengine.ForkAudit{
-		Forks: []shuttleengine.ForkReport{
-			cleanForkReport("a"),
-			cleanForkReport("b"),
-			cleanForkReport("c"),
-		},
-	}
-
-	got := NewTranscripts(audit, []string{"a", "c"})
-	if len(got) != 1 || got[0].TranscriptPath != "b" {
-		t.Errorf("NewTranscripts() = %v; want exactly [b]", got)
-	}
-
-	// A nil/empty seen set reports every fork as new.
-	gotAll := NewTranscripts(audit, nil)
-	if len(gotAll) != 3 {
-		t.Errorf("NewTranscripts(nil seen) = %v; want all 3 forks", gotAll)
-	}
-}
-
-// recordingSleeper is a Sleeper that never actually blocks — it only records
-// each requested duration, so SettleRetry's retry loop runs a scripted
-// sequence of "attempts" at zero real wall-clock cost. onSleep, when set, is
-// invoked after Sleep records the call, letting a test mutate a shared fetch
-// script exactly between two SettleRetry attempts (mirroring
-// shuttleengine's scriptedClock pattern).
+// recordingSleeper is a Sleeper that never blocks: it only records each requested duration, so
+// SettleRetry's retry loop runs its scripted attempts at no wall-clock cost.
 type recordingSleeper struct {
-	slept   []time.Duration
-	onSleep func()
+	slept []time.Duration
 }
 
 func (s *recordingSleeper) Sleep(d time.Duration) {
 	s.slept = append(s.slept, d)
-	if s.onSleep != nil {
-		s.onSleep()
-	}
 }
 
-// TestSettleRetry_ReturnsEarlyOnLaterTick pins SettleRetry's core contract: a transcript that only
-// appears on the fetch AFTER the first Sleep call makes SettleRetry return immediately, without
-// waiting out the rest of the settle window and without any real sleeping.
-func TestSettleRetry_ReturnsEarlyOnLaterTick(t *testing.T) {
-	calls := 0
-	fetch := func() (shuttleengine.ForkAudit, error) {
-		calls++
-		if calls == 1 {
-			return shuttleengine.ForkAudit{}, nil
-		}
-		return shuttleengine.ForkAudit{
-			Forks: []shuttleengine.ForkReport{cleanForkReport("fork-2")},
-		}, nil
-	}
+// TestSettleRetry pins SettleRetry's contract: a transcript appearing after the first tick returns
+// at once without waiting out the window, a window with no new transcript ends after window/tick
+// sleeps with no error of its own, and a fetch error returns at once with no retry.
+//
+//testtiming:keep pins the exact fetch and sleep counts for an early hit and an exhausted window, and no retry after a fetch error; the record-batch tests only observe that a tick happened
+func TestSettleRetry(t *testing.T) {
+	t.Parallel()
+	fetchErr := errors.New("boom")
 
-	sleeper := &recordingSleeper{}
-	audit, newReports, err := SettleRetry(fetch, nil, DefaultSettleWindow, DefaultSettleTick, sleeper)
-	if err != nil {
-		t.Fatalf("SettleRetry() error = %v; want nil", err)
-	}
-	if len(newReports) != 1 || newReports[0].TranscriptPath != "fork-2" {
-		t.Errorf("SettleRetry() newReports = %v; want exactly [fork-2]", newReports)
-	}
-	if len(audit.Forks) != 1 {
-		t.Errorf("SettleRetry() audit.Forks = %v; want exactly the returned fork", audit.Forks)
-	}
-	if calls != 2 {
-		t.Errorf("fetch called %d time(s); want exactly 2 (one miss, one hit)", calls)
-	}
-	if len(sleeper.slept) != 1 || sleeper.slept[0] != DefaultSettleTick {
-		t.Errorf("sleeper.slept = %v; want exactly one sleep of %v", sleeper.slept, DefaultSettleTick)
-	}
-}
-
-// TestSettleRetry_WindowExhausted pins the other half of the contract: zero new transcripts across
-// every attempt returns with a nil error once window elapses — SettleRetry never manufactures the
-// hard error itself.
-func TestSettleRetry_WindowExhausted(t *testing.T) {
-	fetch := func() (shuttleengine.ForkAudit, error) {
-		return shuttleengine.ForkAudit{}, nil
-	}
-
-	sleeper := &recordingSleeper{}
-	window := 1 * time.Second
-	tick := 250 * time.Millisecond
-	_, newReports, err := SettleRetry(fetch, nil, window, tick, sleeper)
-	if err != nil {
-		t.Fatalf("SettleRetry() error = %v; want nil", err)
-	}
-	if len(newReports) != 0 {
-		t.Errorf("SettleRetry() newReports = %v; want empty", newReports)
-	}
-	wantSleeps := int(window / tick)
-	if len(sleeper.slept) != wantSleeps {
-		t.Errorf("sleeper.slept has %d entries; want %d (window/tick)", len(sleeper.slept), wantSleeps)
-	}
-}
-
-// TestSettleRetry_FetchErrorPropagates pins the fail-loud posture: a fetch error returns
-// immediately, with no retry — an audit read that itself failed has nothing safe to retry against.
-func TestSettleRetry_FetchErrorPropagates(t *testing.T) {
-	wantErr := errors.New("boom")
-	fetch := func() (shuttleengine.ForkAudit, error) {
-		return shuttleengine.ForkAudit{}, wantErr
-	}
-
-	sleeper := &recordingSleeper{}
-	_, _, err := SettleRetry(fetch, nil, DefaultSettleWindow, DefaultSettleTick, sleeper)
-	if !errors.Is(err, wantErr) {
-		t.Errorf("SettleRetry() error = %v; want %v", err, wantErr)
-	}
-	if len(sleeper.slept) != 0 {
-		t.Errorf("sleeper.slept = %v; want no sleeps after a fetch error", sleeper.slept)
-	}
-}
-
-// TestClassifyAttribution pins the pinned check order from discussion.md's fork-audit-policy
-// decision: zero new transcripts is always a hard error (regardless of report presence —
-// ClassifyAttribution takes no report argument at all, which is itself the enforcement), one new is
-// clean, and more than one is a warning, never hard.
-func TestClassifyAttribution(t *testing.T) {
 	tests := []struct {
-		name        string
-		newReports  []shuttleengine.ForkReport
-		wantWarning string
-		wantErr     error
+		name string
+		// script is the fetch result per call, the last one repeating once exhausted.
+		script       []shuttleengine.ForkAudit
+		fetchErr     error
+		window, tick time.Duration
+		wantNew      []string
+		wantCalls    int
+		wantSleeps   []time.Duration
 	}{
 		{
-			name:       "zero new after settle is a hard error",
-			newReports: nil,
-			wantErr:    ErrNoForkTranscripts,
+			name:       "a transcript on a later tick returns at once",
+			script:     []shuttleengine.ForkAudit{{}, {Forks: []shuttleengine.ForkReport{cleanForkReport("fork-2")}}},
+			window:     DefaultSettleWindow,
+			tick:       DefaultSettleTick,
+			wantNew:    []string{"fork-2"},
+			wantCalls:  2,
+			wantSleeps: []time.Duration{DefaultSettleTick},
 		},
 		{
-			name:       "exactly one new is clean",
-			newReports: []shuttleengine.ForkReport{cleanForkReport("a")},
+			name:       "an exhausted window returns no new transcript and no error",
+			script:     []shuttleengine.ForkAudit{{}},
+			window:     time.Second,
+			tick:       250 * time.Millisecond,
+			wantCalls:  5,
+			wantSleeps: []time.Duration{250 * time.Millisecond, 250 * time.Millisecond, 250 * time.Millisecond, 250 * time.Millisecond},
 		},
 		{
-			name:        "two new is a warning, never hard",
-			newReports:  []shuttleengine.ForkReport{cleanForkReport("a"), cleanForkReport("b")},
-			wantWarning: "2 new fork transcripts",
+			name:      "a fetch error returns at once with no retry",
+			fetchErr:  fetchErr,
+			window:    DefaultSettleWindow,
+			tick:      DefaultSettleTick,
+			wantCalls: 1,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			warning, err := ClassifyAttribution(tt.newReports)
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("ClassifyAttribution() error = %v; want %v", err, tt.wantErr)
+			t.Parallel()
+			calls := 0
+			fetch := func() (shuttleengine.ForkAudit, error) {
+				calls++
+				if tt.fetchErr != nil {
+					return shuttleengine.ForkAudit{}, tt.fetchErr
 				}
-				// A cross-machine resume of the report-landed crash window reproduces this error with no forgery, so its message keeps the diagnosis;
-				// RecordBatch adds the begin-batch way forward.
-				if !strings.Contains(err.Error(), "machine-local") {
-					t.Errorf("ClassifyAttribution() error %q does not name the machine-local transcript caveat", err)
-				}
-				return
+				return tt.script[min(calls, len(tt.script))-1], nil
 			}
-			if err != nil {
-				t.Fatalf("ClassifyAttribution() error = %v; want nil", err)
+
+			sleeper := &recordingSleeper{}
+			audit, newReports, err := SettleRetry(fetch, nil, tt.window, tt.tick, sleeper)
+			if !errors.Is(err, tt.fetchErr) {
+				t.Fatalf("SettleRetry() error = %v; want %v", err, tt.fetchErr)
 			}
-			if tt.wantWarning == "" {
-				if warning != "" {
-					t.Errorf("ClassifyAttribution() warning = %q; want empty", warning)
-				}
-				return
+			var gotNew []string
+			for _, r := range newReports {
+				gotNew = append(gotNew, r.TranscriptPath)
 			}
-			if !strings.Contains(warning, tt.wantWarning) {
-				t.Errorf("ClassifyAttribution() warning = %q; want substring %q", warning, tt.wantWarning)
+			if !slices.Equal(gotNew, tt.wantNew) {
+				t.Errorf("SettleRetry() newReports = %v; want %v", gotNew, tt.wantNew)
+			}
+			if len(tt.wantNew) > 0 && len(audit.Forks) != len(tt.wantNew) {
+				t.Errorf("SettleRetry() audit.Forks = %v; want exactly the returned forks", audit.Forks)
+			}
+			if calls != tt.wantCalls {
+				t.Errorf("fetch called %d time(s); want %d", calls, tt.wantCalls)
+			}
+			if !slices.Equal(sleeper.slept, tt.wantSleeps) {
+				t.Errorf("sleeper.slept = %v; want %v", sleeper.slept, tt.wantSleeps)
 			}
 		})
 	}

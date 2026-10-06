@@ -151,7 +151,7 @@ func TestStatus_Envelope(t *testing.T) {
 	}
 }
 
-func TestCycleAndDistill_RequestTheirOwnMode(t *testing.T) {
+func TestRefreshAndDistill_RequestTheirOwnMode(t *testing.T) {
 	t.Parallel()
 
 	verbs := []struct {
@@ -159,7 +159,7 @@ func TestCycleAndDistill_RequestTheirOwnMode(t *testing.T) {
 		verb func(*orchCLI) *cobra.Command
 		want string
 	}{
-		{"cycle clears", (*orchCLI).cycleCmd, orchengine.CycleClear},
+		{"refresh clears", (*orchCLI).refreshCmd, orchengine.CycleClear},
 		{"distill compacts", (*orchCLI).distillCmd, orchengine.CycleCompact},
 	}
 	for _, tc := range verbs {

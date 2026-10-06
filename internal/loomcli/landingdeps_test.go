@@ -19,6 +19,8 @@ import (
 // TestLandingDeps_EveryFieldPopulated asserts landingDeps populates every field of the
 // landingshed.Deps it returns, walking the struct by reflection so a sixteenth field added later is
 // caught automatically rather than silently passing an enumerated list of assertions.
+//
+//testtiming:keep drift guard walking every landingshed.Deps field by reflection so a field added later must be populated; the covering mark-done test populates only the fields it uses
 func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	t.Parallel()
 

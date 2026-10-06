@@ -29,6 +29,8 @@ import (
 // TestBootstrapStage_ConstantsAreDistinctAndZeroValued asserts the four stage constants are
 // distinct, that bootstrapStageNone is the zero value, and that every stage a caller can receive is
 // one of the five declared constants.
+//
+//testtiming:keep pins the bootstrap stage constants being distinct with bootstrapStageNone the zero value; no behavior test asserts the enumeration
 func TestBootstrapStage_ConstantsAreDistinctAndZeroValued(t *testing.T) {
 	if bootstrapStageNone != 0 {
 		t.Errorf("bootstrapStageNone = %d; want 0 (the zero value)", bootstrapStageNone)
@@ -86,28 +88,9 @@ func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testi
 	}
 }
 
-// TestLoomSeedFor_RecipeAndParentParam asserts loomSeedFor's returned shedrun.Seed carries
-// RecipeLoom, the given driver, and a single "parent" param matching the given parent -- the shape
-// seedAndCommitBootstrap's step 1b writes with shedrun.WriteSeed.
-func TestLoomSeedFor_RecipeAndParentParam(t *testing.T) {
-	seed := loomSeedFor("main", shedrun.DriverGo)
-
-	if seed.Recipe != shedrun.RecipeLoom {
-		t.Errorf("loomSeedFor(%q, %q).Recipe = %q; want %q", "main", shedrun.DriverGo, seed.Recipe, shedrun.RecipeLoom)
-	}
-	if seed.Driver != shedrun.DriverGo {
-		t.Errorf("loomSeedFor(%q, %q).Driver = %q; want %q", "main", shedrun.DriverGo, seed.Driver, shedrun.DriverGo)
-	}
-	want := map[string]string{"parent": "main"}
-	if !reflect.DeepEqual(seed.Params, want) {
-		t.Errorf("loomSeedFor(%q, %q).Params = %v; want %v", "main", shedrun.DriverGo, seed.Params, want)
-	}
-}
-
-// TestLoomSeedFor_WriteSeedIsIdempotent asserts writing loomSeedFor's shape twice, for the same
-// parent and driver, at the same location and run-id, is a no-op the second time -- the idempotency
-// seedAndCommitBootstrap's own comment relies on to make a crashed-and-resumed bootstrap safe to
-// re-run.
+// TestLoomSeedFor_WriteSeedIsIdempotent asserts loomSeedFor's shape carries RecipeLoom, the given driver and a single "parent" param.
+// It also asserts writing that shape twice, for the same parent and driver, at the same location and run-id, is a no-op the second time:
+// the idempotency seedAndCommitBootstrap's own comment relies on to make a crashed-and-resumed bootstrap safe to re-run.
 func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
@@ -129,8 +112,12 @@ func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 	if seed.Recipe != shedrun.RecipeLoom {
 		t.Errorf("ReadSeed(...).Recipe = %q; want %q", seed.Recipe, shedrun.RecipeLoom)
 	}
-	if seed.Params["parent"] != "main" {
-		t.Errorf("ReadSeed(...).Params[\"parent\"] = %q; want %q", seed.Params["parent"], "main")
+	if seed.Driver != shedrun.DriverGo {
+		t.Errorf("ReadSeed(...).Driver = %q; want %q", seed.Driver, shedrun.DriverGo)
+	}
+	// The seed carries a single "parent" param matching the given parent.
+	if want := map[string]string{"parent": "main"}; !reflect.DeepEqual(seed.Params, want) {
+		t.Errorf("ReadSeed(...).Params = %v; want %v", seed.Params, want)
 	}
 }
 
@@ -157,33 +144,12 @@ func TestResolveSeedDriver(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("resolveSeedDriver(%+v, %v) = %q; want %q", tt.existing, tt.found, got, tt.want)
 			}
+			// The signature takes only the existing seed and whether it was found -- no flag, no config --
+			// so a recorded driver survives this step's write: the seed built from the result carries it.
+			if seed := loomSeedFor("main", got); seed.Driver != tt.want {
+				t.Errorf("loomSeedFor(%q, %q).Driver = %q; want %q", "main", got, seed.Driver, tt.want)
+			}
 		})
-	}
-}
-
-// TestResolveSeedDriver_ReadsOnlyTheSeedNeverAFlagOrConfig pins the shape the card exists to
-// guarantee: resolveSeedDriver's signature takes only the existing seed and whether it was found --
-// no flag, no config -- so an llm-seeded worktree's driver survives this step's write regardless of
-// anything the invocation's own flags carry. This is the case that fails against the shipped version,
-// which hard-coded shedrun.DriverGo into loomSeedFor and never consulted the existing seed at all.
-//
-// The full disk round trip (WriteSeed an llm seed, ReadSeed it back) cannot be driven from this
-// suite: shedrun.ValidateDriver still refuses shedrun.DriverLLM until batch 5 lifts the gate (see the
-// overview's mechanism-ships-before-the-gate-is-lifted Shared Decision), so both WriteSeed and
-// ReadSeed refuse an llm seed on disk today by design. resolveSeedDriver is exercised directly
-// against an in-memory shedrun.Seed value instead, which is exactly what lets this decision be fully
-// tested while the llm arm stays unreachable in production.
-func TestResolveSeedDriver_ReadsOnlyTheSeedNeverAFlagOrConfig(t *testing.T) {
-	existing := shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverLLM, Params: map[string]string{"parent": "main"}}
-
-	got := resolveSeedDriver(existing, true)
-	if got != shedrun.DriverLLM {
-		t.Errorf("resolveSeedDriver(%+v, true) = %q; want %q -- an already-recorded llm driver must survive this step's write", existing, got, shedrun.DriverLLM)
-	}
-
-	seed := loomSeedFor("main", got)
-	if seed.Driver != shedrun.DriverLLM {
-		t.Errorf("loomSeedFor(%q, %q).Driver = %q; want %q", "main", got, seed.Driver, shedrun.DriverLLM)
 	}
 }
 

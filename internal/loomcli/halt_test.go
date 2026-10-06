@@ -124,28 +124,6 @@ func readNote(t *testing.T, path string) string {
 	return string(b)
 }
 
-func TestLoomAfterStep_Blocked_WritesHaltNoteAndReflects(t *testing.T) {
-	t.Parallel()
-
-	f := newHaltFixture(t)
-	res := shedengine.StepResult{
-		Producer: loomshed.NameWebster,
-		State:    shedengine.StateBlocked,
-		Reason:   "webster stuck on batch 3",
-		History:  make([]shedengine.HistoryEntry, 4),
-	}
-
-	if got := f.c.loomAfterStep(context.Background(), res, nil); got != frictionengine.StatusReflected {
-		t.Fatalf("loomAfterStep() = %q; want %q", got, frictionengine.StatusReflected)
-	}
-	if len(f.shuttle.Specs) != 1 {
-		t.Fatalf("reflection shuttle ran %d times; want 1", len(f.shuttle.Specs))
-	}
-	if !strings.Contains(f.shuttle.Specs[0].Prompt, "loom-halt.md") {
-		t.Errorf("reflection prompt does not name the halt note: %q", f.shuttle.Specs[0].Prompt)
-	}
-}
-
 func TestWriteHaltNote_NamesAnomalyProducerReasonAndHistory(t *testing.T) {
 	t.Parallel()
 
@@ -236,30 +214,19 @@ func TestWriteHaltNote_EmptyDirectoryWritesNothing(t *testing.T) {
 	}
 }
 
-func TestLoomAfterStep_ProducerError_FailedStatusReflects(t *testing.T) {
-	t.Parallel()
-
-	f := newHaltFixture(t)
-	f.seedStatus(t, loomshed.NameWebster, shedengine.StateFailed, "producer exploded")
-
-	got := f.c.loomAfterStep(context.Background(), shedengine.StepResult{}, errors.New("producer exploded"))
-	if got != frictionengine.StatusReflected {
-		t.Fatalf("loomAfterStep() = %q; want %q", got, frictionengine.StatusReflected)
-	}
-	if len(f.shuttle.Specs) != 1 {
-		t.Errorf("reflection shuttle ran %d times; want 1", len(f.shuttle.Specs))
-	}
-}
-
-func TestLoomAfterStep_BusyAndStaleFailed_WriteNothing(t *testing.T) {
+// TestLoomAfterStep_WritesNothing asserts a busy shed, a stale failed status carrying a different error, and an awaiting or paused hand-off each skip reflection: no halt note and no reflection spawn.
+func TestLoomAfterStep_WritesNothing(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
+		res  shedengine.StepResult
 		err  error
 	}{
-		{"Busy", fmt.Errorf("%w: lock", shedengine.ErrShedBusy)},
-		{"StaleFailedWithADifferentError", errors.New("a newer failure")},
+		{name: "Busy", err: fmt.Errorf("%w: lock", shedengine.ErrShedBusy)},
+		{name: "StaleFailedWithADifferentError", err: errors.New("a newer failure")},
+		{name: "Awaiting", res: shedengine.StepResult{State: shedengine.StateAwaiting, Reason: "hand-off"}},
+		{name: "Paused", res: shedengine.StepResult{State: shedengine.StatePaused, Reason: "hand-off"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -268,7 +235,7 @@ func TestLoomAfterStep_BusyAndStaleFailed_WriteNothing(t *testing.T) {
 			f := newHaltFixture(t)
 			f.seedStatus(t, loomshed.NameWebster, shedengine.StateFailed, "an older failure")
 
-			if got := f.c.loomAfterStep(context.Background(), shedengine.StepResult{}, tt.err); got != frictionengine.StatusSkipped {
+			if got := f.c.loomAfterStep(context.Background(), tt.res, tt.err); got != frictionengine.StatusSkipped {
 				t.Errorf("loomAfterStep() = %q; want %q", got, frictionengine.StatusSkipped)
 			}
 			f.requireNoNotesNoSpawn(t)
@@ -292,24 +259,6 @@ func TestLoomAfterStep_Done_ReportsTheRowStatus(t *testing.T) {
 		t.Errorf("loomAfterStep() with no row run = %q; want %q", got, frictionengine.StatusSkipped)
 	}
 	f.requireNoNotesNoSpawn(t)
-}
-
-func TestLoomAfterStep_AwaitingAndPaused_WriteNothing(t *testing.T) {
-	t.Parallel()
-
-	for _, st := range []shedengine.State{shedengine.StateAwaiting, shedengine.StatePaused} {
-		t.Run(string(st), func(t *testing.T) {
-			t.Parallel()
-
-			f := newHaltFixture(t)
-			res := shedengine.StepResult{State: st, Reason: "hand-off"}
-
-			if got := f.c.loomAfterStep(context.Background(), res, nil); got != frictionengine.StatusSkipped {
-				t.Errorf("loomAfterStep() = %q; want %q", got, frictionengine.StatusSkipped)
-			}
-			f.requireNoNotesNoSpawn(t)
-		})
-	}
 }
 
 func TestLoomAfterStep_UnwritableFrictionDirectory_StillReturnsAStatus(t *testing.T) {

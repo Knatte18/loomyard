@@ -90,33 +90,44 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 		want      []string
 		wantIn    []string
 		wantNotIn []string
+		// staleMark writes a park marker before the call, which a refusal must leave on disk.
 		staleMark bool
+		// parkedLive replaces the receiver with one whose live driver is parked, its park marker on disk.
+		parkedLive bool
 	}{
-		{"llm fabric-parked with conflicts", shedrun.DriverLLM, fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a.go", "b/c.go"}}, []string{"a.go", "b/c.go"}, fabricMsg, nil, false},
-		{"go arm fabric-parked", shedrun.DriverGo, fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a.go"}}, []string{"a.go"}, fabricMsg, nil, false},
-		{"parked with no conflicts left", shedrun.DriverLLM, fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked}, []string{}, fabricMsg, nil, false},
-		{"foreign", shedrun.DriverLLM, fabricengine.MidMergeState{Kind: fabricengine.MidMergeForeign, Conflicts: []string{"x"}}, []string{"x"}, []string{"git"}, []string{"merge-stage"}, false},
-		{"stale marker kept", shedrun.DriverLLM, fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a"}}, []string{"a"}, fabricMsg, nil, true},
+		{name: "llm fabric-parked with conflicts", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a.go", "b/c.go"}}, want: []string{"a.go", "b/c.go"}, wantIn: fabricMsg},
+		{name: "go arm fabric-parked", driver: shedrun.DriverGo, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg},
+		{name: "parked with no conflicts left", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked}, want: []string{}, wantIn: fabricMsg},
+		{name: "foreign", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeForeign, Conflicts: []string{"x"}}, want: []string{"x"}, wantIn: []string{"git"}, wantNotIn: []string{"merge-stage"}},
+		{name: "stale marker kept", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a"}}, want: []string{"a"}, wantIn: fabricMsg, staleMark: true},
+		{name: "parked live driver refused", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, parkedLive: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			starter := &fakeDriverStarter{}
 			sender := &fakeDriverSender{}
-			c, lockPath := newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})
-			c.driverSender = sender
-			c.frictionDir = t.TempDir()
-			writeTestRunState(t, c, shedengine.StateRunning)
-			fake := &fakeMidMerge{state: tc.state}
-			c.midMerge = fake.probe
-			marker := shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
-			if tc.staleMark {
-				if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(marker, nil, 0o644); err != nil {
-					t.Fatal(err)
+			var c *loomCLI
+			var lockPath string
+			marker := ""
+			if tc.parkedLive {
+				c, lockPath, marker = newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
+			} else {
+				c, lockPath = newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})
+				c.driverSender = sender
+				c.frictionDir = t.TempDir()
+				writeTestRunState(t, c, shedengine.StateRunning)
+				marker = shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
+				if tc.staleMark {
+					if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(marker, nil, 0o644); err != nil {
+						t.Fatal(err)
+					}
 				}
 			}
+			fake := &fakeMidMerge{state: tc.state}
+			c.midMerge = fake.probe
 
 			var out bytes.Buffer
 			bl := acquireTestBootstrapLock(t, lockPath)
@@ -143,7 +154,7 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 			if _, found := voucherOnDisk(t, c); found {
 				t.Error("a merge refusal wrote a handoff voucher")
 			}
-			if tc.staleMark && !markerExists(marker) {
+			if (tc.staleMark || tc.parkedLive) && !markerExists(marker) {
 				t.Error("park marker removed by a refusal")
 			}
 			assertBootstrapLockReleased(t, lockPath)
@@ -151,28 +162,7 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 	}
 }
 
-func TestRunDriverSpawnAndWait_MidMerge_ParkedLiveDriverRefused(t *testing.T) {
-	starter := &fakeDriverStarter{}
-	sender := &fakeDriverSender{}
-	c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
-	fake := &fakeMidMerge{state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a.go"}}}
-	c.midMerge = fake.probe
-
-	var out bytes.Buffer
-	bl := acquireTestBootstrapLock(t, lockPath)
-	ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bl, noopLockHeld)
-
-	if ok {
-		t.Fatal("runDriverSpawnAndWait() = true; want a refusal")
-	}
-	assertMergeRefusal(t, out.String(), []string{"a.go"})
-	assertNothingPutToWork(t, c, starter, sender)
-	if !markerExists(marker) {
-		t.Error("park marker removed by a refusal")
-	}
-	assertBootstrapLockReleased(t, lockPath)
-}
-
+//testtiming:keep pins a live working driver, running or halted at hand-back, never reaching the mid-merge probe; the covering test never counts probe calls
 func TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed(t *testing.T) {
 	t.Run("running", func(t *testing.T) {
 		c, lockPath, marker := newResumeBranchReceiver(t, &fakeDriverStarter{}, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, &fakeDriverSender{})
@@ -217,50 +207,41 @@ func TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed(t *testing.T)
 }
 
 func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
-	starter := &fakeDriverStarter{}
-	sender := &fakeDriverSender{}
-	c, lockPath := newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})
-	c.driverSender = sender
-	fake := &fakeMidMerge{err: errors.New("boom")}
-	c.midMerge = fake.probe
-
-	var out bytes.Buffer
-	bl := acquireTestBootstrapLock(t, lockPath)
-	ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bl, noopLockHeld)
-
-	if ok {
-		t.Fatal("runDriverSpawnAndWait() = true; want a refusal")
+	tests := []struct {
+		name  string
+		probe func(*lyxcwd.Location) (fabricengine.MidMergeState, error)
+		// wantIn is a substring of the error message, when the probe's failure is canned.
+		wantIn string
+	}{
+		{name: "probe error names the failure", probe: (&fakeMidMerge{err: errors.New("boom")}).probe, wantIn: "boom"},
+		{name: "real probe on a non-pair", probe: fabricengine.MidMerge},
 	}
-	env := decodeMidMergeEnvelope(t, out.String())
-	if env.OK || env.Kind == shedrun.StartMergeInProgressKind || !strings.Contains(env.Error, "boom") {
-		t.Errorf("envelope = %+v; want a plain error naming boom", env)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			starter := &fakeDriverStarter{}
+			sender := &fakeDriverSender{}
+			c, lockPath := newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})
+			c.driverSender = sender
+			c.midMerge = tt.probe
+
+			var out bytes.Buffer
+			bl := acquireTestBootstrapLock(t, lockPath)
+			ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bl, noopLockHeld)
+
+			if ok {
+				t.Fatal("runDriverSpawnAndWait() = true; want a refusal")
+			}
+			env := decodeMidMergeEnvelope(t, out.String())
+			if env.OK || env.Kind == shedrun.StartMergeInProgressKind || !strings.Contains(env.Error, tt.wantIn) {
+				t.Errorf("envelope = %+v; want a plain error containing %q", env, tt.wantIn)
+			}
+			assertNothingPutToWork(t, c, starter, sender)
+			assertBootstrapLockReleased(t, lockPath)
+		})
 	}
-	assertNothingPutToWork(t, c, starter, sender)
-	assertBootstrapLockReleased(t, lockPath)
 }
 
-func TestRunDriverSpawnAndWait_MidMerge_RealProbeOnNonPairRefuses(t *testing.T) {
-	starter := &fakeDriverStarter{}
-	sender := &fakeDriverSender{}
-	c, lockPath := newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})
-	c.driverSender = sender
-	c.midMerge = fabricengine.MidMerge
-
-	var out bytes.Buffer
-	bl := acquireTestBootstrapLock(t, lockPath)
-	ok := c.runDriverSpawnAndWait(context.Background(), &out, shedrun.DriverLLM, bl, noopLockHeld)
-
-	if ok {
-		t.Fatal("runDriverSpawnAndWait() = true; want a refusal")
-	}
-	env := decodeMidMergeEnvelope(t, out.String())
-	if env.OK || env.Kind == shedrun.StartMergeInProgressKind {
-		t.Errorf("envelope = %+v; want a plain probe error", env)
-	}
-	assertNothingPutToWork(t, c, starter, sender)
-	assertBootstrapLockReleased(t, lockPath)
-}
-
+//testtiming:keep pins the mid-merge probe running exactly once on a clean pair before the starter is reached; its covering test uses a probe that counts nothing
 func TestRunDriverSpawnAndWait_MidMerge_CleanPairProceeds(t *testing.T) {
 	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
 	c, lockPath := newTestSpawnAndWaitReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: noStrands})

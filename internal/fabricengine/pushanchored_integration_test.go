@@ -82,6 +82,8 @@ func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 // TestPushAnchored_PushesAndRecordsBranchPush covers the successful push path: a weft sibling
 // carrying a commit ahead of its bare remote pushes it, the bare remote advances to the local HEAD,
 // and the returned record contains exactly one KindBranchPushed entry.
+//
+//testtiming:keep a successful weft push advancing the bare remote and recording exactly one KindBranchPushed entry; coverage of its blocks by other tests does not show an assertion of this
 func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 	t.Parallel()
 
@@ -119,6 +121,8 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 // lacks, so this weft's next PushAnchored push is a genuine non-fast-forward rejection. The returned
 // error must satisfy errors.Is(err, gitrepo.ErrPushRejected) — the unwrapped-sentinel property
 // batch 7's closure depends on to warn-and-continue on exactly this condition.
+//
+//testtiming:keep a diverged weft remote returning gitrepo.ErrPushRejected unwrapped; coverage of its blocks by other tests does not show an assertion of this
 func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped(t *testing.T) {
 	t.Parallel()
 

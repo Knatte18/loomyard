@@ -4,7 +4,7 @@
 // It also records, without failing, the two questions only a live session answers: whether a background task's completion notification survives `/clear`, and whether the session's `SendMessage` address does.
 //
 // Like the loomcli smoke tests it drives the real built cmd/lyx binary as a subprocess, never RunCLI in-process, because `lyx orch start` spawns a detached `lyx orch watch` from os.Executable(), which must never be this test binary (Live-Substrate Spawn Observability Invariant).
-// The threshold is set far above anything the session can reach so the manual `lyx orch cycle` is the only trigger;
+// The threshold is set far above anything the session can reach so the manual `lyx orch refresh` is the only trigger;
 // the threshold-triggered path is covered by the watcher's unit cases.
 //
 // The test skips when tmux or a `claude` binary is unavailable, and needs a logged-in Claude Code install.
@@ -248,8 +248,8 @@ func TestSmokeOrch_OneFullCycle(t *testing.T) {
 	prePane, _ := reed.CapturePane(guid)
 
 	// (4)+(5) request one cycle and wait for it to settle.
-	if out, code := smokeRun(t, exe, prime, 30*time.Second, "orch", "cycle"); code != 0 {
-		t.Fatalf("orch cycle exited %d: %s", code, out)
+	if out, code := smokeRun(t, exe, prime, 30*time.Second, "orch", "refresh"); code != 0 {
+		t.Fatalf("orch refresh exited %d: %s", code, out)
 	}
 	var env map[string]any
 	waitFor(t, 600, "cycle_count 1 in phase idle", func() bool {

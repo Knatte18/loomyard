@@ -456,6 +456,14 @@
 // The gate runs no bisect, no baseline run and no detached checkout of the live worktree.
 // Run removes a stale report at entry.
 //
+// # The Git seam
+//
+// Every question the bracket verbs and the run-level checks put to a worktree's repository goes through the Git interface (git.go):
+// the head, dirtiness, a merge in progress, a commit's parents, the clean-parent-merge verdict, commit existence and ancestry, ignore rules, linked worktrees, blobs, and the delta of a commit range.
+// Geometry.Git carries it, and nil means the real repository, so no production caller sets it and the helpers in gitwrap.go stay the one place webster runs git.
+// A test that asserts on webster's own records, warnings and verdicts sets a fake and spawns nothing;
+// a test whose behavior is git itself (merge commits, ignore rules, blobs, the quarry delta, the verify gate) builds a real scratch repository under the `integration` tag.
+//
 // # No shared substrate or parser with any other batch-implementation loop
 //
 // websterengine imports no other batch-implementation module's plan
@@ -467,7 +475,7 @@
 // small set of webster-LOCAL mechanism helpers with no cross-module
 // import: its own plan-fingerprint hash (fingerprint.go), pause-flag
 // mechanics (pause.go), git-query helpers built on gitrepo
-// (gitwrap.go), archive-never-refuse primitives (archive.go), and
+// (gitwrap.go, reached through the Git seam below), archive-never-refuse primitives (archive.go), and
 // recovery-classification logic (classify.go). Each of these exists as its
 // own webster-scoped implementation rather than an imported one — this
 // package owns its whole mechanism end to end.

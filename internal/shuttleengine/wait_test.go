@@ -67,6 +67,8 @@ var _ clock = (*scriptedClock)(nil)
 
 // TestPollInterval_FloorsNonPositive pins the busy-spin guard: a configured poll_interval_ms of 0
 // or below must fall back to the template default rather than making Wait tick with a zero sleep.
+//
+//testtiming:keep pins the busy-spin guard: a non-positive poll_interval_ms falls back to the template default, which no Wait test measures
 func TestPollInterval_FloorsNonPositive(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -123,47 +125,232 @@ func TestRun_Wait_MechanismFailure_KeepsRunIdentity(t *testing.T) {
 	}
 }
 
-// TestRun_Wait_LogsTeardownThroughLogger pins the teardown half of the Live-Substrate Spawn
-// Observability invariant: Start already logs "run started" through internal/logger, so a finalize
-// that logs nothing would leave the durable Info+ trace file showing every shuttle run beginning
-// and none of them ending — and the bare log package finalize's cleanup failures used before never
-// reaches that sink at all.
-func TestRun_Wait_LogsTeardownThroughLogger(t *testing.T) {
+// cleanupExpectation says what a Wait that finalized must have done to the strand and run dir.
+type cleanupExpectation int
+
+const (
+	// cleanupUnchecked leaves the strand and run dir unasserted.
+	cleanupUnchecked cleanupExpectation = iota
+	// cleanupPerformed expects the strand removed (non-recursively) and the run dir gone.
+	cleanupPerformed
+	// cleanupSkipped expects the strand kept and the run dir kept for diagnosis.
+	cleanupSkipped
+)
+
+// TestRun_Wait_Classification drives Run.Wait over the pane, events and file states that decide an
+// outcome, and what each leaves behind. The file contract outranks every negative liveness answer:
+// an agent that wrote every output file finished its work, whatever reed still tracks — an
+// untracked strand, a dead pane, a cleared pane binding, a reed.Status that errors past its retry
+// cap, or an unparseable events file past its cap — and the same contract wins over a live ask.
+// The "died" and "mechanism failure" rows are R3-F1's and R4-F2's guards, which narrow the
+// not-live branch rather than remove it:
+//
+//   - Wait used to derive one boolean from reed's strand table and treat both negative answers
+//     alike, so a Status that succeeded with the run's guid simply ABSENT — reed's bookkeeping reset
+//     under a run whose agent is still working — classified OutcomeDied. Reproduced live twice:
+//     renaming the worktree under an in-flight run, and deleting .lyx/reed.json both returned
+//     outcome:"died" ~6 s later while the claude process kept working in its pane.
+//   - Reed clears every pane binding in a state file whose recorded pane generation is not the
+//     session incarnation now running, and its Status then reports the strand with an EMPTY PaneID,
+//     which its liveness lookup answers false for. Wait read that as a dead pane. The hidden row is
+//     the one case that must NOT change: an anchor:hidden strand is never given a pane, so its empty
+//     PaneID is normal rather than cleared.
+//
+// A mechanism failure must keep the run's identity: the agent may still be live, so the caller
+// needs the handles to reach it. Finalize also logs the teardown through internal/logger, so the
+// durable Info+ trace file shows every shuttle run ending as well as beginning.
+//
+//testtiming:keep pins the outcome, message and cleanup of every pane, events and file state Wait classifies, of which the AwaitOperator test reaches only a few
+func TestRun_Wait_Classification(t *testing.T) {
+	liveStrands := []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}
+	deadPane := []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}}
+	clearedBinding := []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "", Live: false}}}}
+	ready := []StartupState{StartupReady}
+
 	tests := []struct {
-		name     string
-		keepPane bool
-		want     string
+		name           string
+		cfg            Config
+		timeout        time.Duration
+		status         []reedengine.StatusResult
+		statusErr      error
+		startup        []StartupState
+		parseEventsErr error
+		// events is the events file's seed; empty leaves it uncreated.
+		events      string
+		output      bool
+		keepPane    bool
+		anchor      render.Anchor
+		wantOutcome Outcome
+		wantMessage string
+		// wantErr is the error Wait must wrap; wantErrIn a fragment it must name, wantIdentity that
+		// the Result still carries the run's identity.
+		wantErr      error
+		wantErrIn    string
+		wantIdentity bool
+		wantCleanup  cleanupExpectation
+		wantLogged   []string
 	}{
-		{"cleaned_up", false, "cleanedUp=true"},
-		{"kept_pane", true, "cleanedUp=false"},
+		{
+			name: "done cleans up", status: liveStrands, startup: ready, events: "STOP:done\n", output: true,
+			wantOutcome: OutcomeDone, wantCleanup: cleanupPerformed,
+			wantLogged: []string{"shuttle: run finished", "outcome=done", "strand-1", "cleanedUp=true"},
+		},
+		{
+			name: "done with KeepPane skips cleanup", status: liveStrands, startup: ready, events: "STOP:done\n", output: true, keepPane: true,
+			wantOutcome: OutcomeDone, wantCleanup: cleanupSkipped,
+			wantLogged: []string{"shuttle: run finished", "outcome=done", "strand-1", "cleanedUp=false"},
+		},
+		{
+			name: "asking carries the message and keeps the strand", status: liveStrands, startup: ready, events: "STOP:need operator input\n",
+			wantOutcome: OutcomeAsking, wantMessage: "need operator input", wantCleanup: cleanupSkipped,
+		},
+		{
+			// An EventAsk with no output files present classifies asking just like the turn-end case,
+			// proving the unchanged pollEventsTick branch also covers the live-ask signal ParseEvents emits.
+			name: "live ask classifies real-time asking", status: liveStrands, startup: ready, events: "ASK:which approach?\n",
+			wantOutcome: OutcomeAsking, wantMessage: "which approach?", wantCleanup: cleanupSkipped,
+		},
+		{
+			// An EventAsk never overrides an already-satisfied file contract.
+			name: "live ask with output files already present is done first", status: liveStrands, startup: ready, events: "ASK:which approach?\n", output: true,
+			wantOutcome: OutcomeDone,
+		},
+		{name: "dead pane is died and keeps the strand", status: deadPane, wantOutcome: OutcomeDied, wantCleanup: cleanupSkipped},
+		{
+			name:        "strand absent from reed's table is a mechanism failure, not died",
+			status:      []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "someone-elses-strand", Live: true}}}},
+			wantOutcome: "", wantErr: errStrandNotTracked, wantErrIn: "strand-1", wantIdentity: true, wantCleanup: cleanupSkipped,
+		},
+		{
+			// An agent that wrote every output file and was then untracked (its pane removed by a
+			// `lyx reed remove`, say) finished its work, and a caller must not be told to go
+			// diagnose a run that actually succeeded.
+			name: "untracked strand with output files is still done", status: []reedengine.StatusResult{{Strands: nil}}, output: true,
+			wantOutcome: OutcomeDone,
+		},
+		{
+			// The pane died but every output file already exists on disk: the agent must have
+			// written its result and then been killed (or exited) before its Stop hook ever appended
+			// a turn-end line, so a caller must not needlessly respawn already-completed work. A done
+			// outcome without KeepPane still runs the normal cleanup path.
+			name: "dead pane with output files is done", status: deadPane, output: true,
+			wantOutcome: OutcomeDone, wantCleanup: cleanupPerformed,
+		},
+		{
+			name: "cleared pane binding under an ordinary run is a mechanism failure", status: clearedBinding, anchor: render.AnchorBelowParent,
+			wantOutcome: "", wantErr: errStrandPaneBindingCleared, wantIdentity: true, wantCleanup: cleanupSkipped,
+		},
+		{
+			name: "hidden strand never had a pane and is still died", status: clearedBinding, anchor: render.AnchorHidden,
+			wantOutcome: OutcomeDied, wantCleanup: cleanupSkipped,
+		},
+		{
+			// The output files ARE the run's return value.
+			name: "cleared pane binding with output files is still done", status: clearedBinding, anchor: render.AnchorBelowParent, output: true,
+			wantOutcome: OutcomeDone,
+		},
+		{
+			// reed.Status errors on every call (the shape a crash-corrupted or truncated reed.json, or
+			// a torn-down session, produces), so the run reaches maxStatusRetries consecutive liveness
+			// failures — but every declared output file is on disk, so it finished. events.jsonl is
+			// never created, so the ONLY path to done is the mechanism-failure cap's own file-contract
+			// check.
+			name:      "status failure cap with output files is done",
+			statusErr: errors.New(`reed state file is unreadable: unmarshal state: unexpected end of JSON input`), output: true,
+			wantOutcome: OutcomeDone,
+		},
+		{
+			// ParseEvents fails on every call, so the run reaches maxEventsReadRetries consecutive
+			// parse failures — but every declared output file is on disk. LivenessEveryNPolls is high
+			// so the events cap, not a liveness tick, is what fires.
+			name: "events unreadable cap with output files is done", cfg: sparseProbeConfig, status: boundLivePane(), events: "garbage that never parses\n", output: true,
+			parseEventsErr: errors.New("parse events: malformed"), wantOutcome: OutcomeDone,
+		},
+		{
+			name: "timeout keeps the strand", cfg: Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 30}, timeout: time.Second,
+			status: liveStrands, startup: ready, wantOutcome: OutcomeTimeout, wantCleanup: cleanupSkipped,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			runDir := t.TempDir()
 			eventsPath := filepath.Join(runDir, "events.jsonl")
 			outputFile := filepath.Join(runDir, "out.md")
-			if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
-				t.Fatalf("seed output file: %v", err)
+			if tt.events != "" {
+				if err := os.WriteFile(eventsPath, []byte(tt.events), 0o644); err != nil {
+					t.Fatalf("seed events: %v", err)
+				}
 			}
-			if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
-				t.Fatalf("seed events: %v", err)
+			if tt.output {
+				touchOutputFile(t, outputFile)
+			}
+			cfg := tt.cfg
+			if cfg == (Config{}) {
+				cfg = fastConfig
+			}
+			timeout := tt.timeout
+			if timeout == 0 {
+				timeout = time.Minute
 			}
 
-			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-			fx := newFixture(t, reed, &fakeEngine{StartupScript: []StartupState{StartupReady}}, withConfig(fastConfig))
+			reed := &fakeReed{StatusQueue: tt.status, StatusErr: tt.statusErr}
+			engine := &fakeEngine{StartupScript: tt.startup, ParseEventsErr: tt.parseEventsErr}
+			fx := newFixture(t, reed, engine, withConfig(cfg))
 			fc := newFakeClock(time.Now())
-			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, KeepPane: tt.keepPane},
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: timeout, KeepPane: tt.keepPane, Display: render.Display{Anchor: tt.anchor}},
 				withRunDir(runDir),
 				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
-				withRunClock(fc, fc.Now().Add(time.Minute)))
+				withRunClock(fc, fc.Now().Add(timeout)))
 
 			buf := logcapture.CaptureVerbose(t)
-			if _, err := run.Wait(); err != nil {
+			result, err := run.Wait()
+			if tt.wantErr != nil {
+				if err == nil {
+					t.Fatalf("Wait() = (%+v, nil); want an error wrapping %v", result, tt.wantErr)
+				}
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("Wait() error = %v; want one wrapping %v", err, tt.wantErr)
+				}
+				if tt.wantErrIn != "" && !strings.Contains(err.Error(), tt.wantErrIn) {
+					t.Errorf("Wait() error = %v; want it to name %q so the operator can find the pane", err, tt.wantErrIn)
+				}
+			} else if err != nil {
 				t.Fatalf("Wait() error: %v", err)
 			}
+			if tt.wantIdentity && (result.StrandGUID != "strand-1" || result.SessionID != "session-1" || result.RunDir != runDir) {
+				t.Errorf("Wait() result = %+v; want the run's identity preserved (guid strand-1, session session-1, runDir %s)", result, runDir)
+			}
+			if result.Outcome != tt.wantOutcome {
+				t.Errorf("Outcome = %q; want %q", result.Outcome, tt.wantOutcome)
+			}
+			if tt.wantMessage != "" && result.LastAssistantMessage != tt.wantMessage {
+				t.Errorf("LastAssistantMessage = %q; want %q", result.LastAssistantMessage, tt.wantMessage)
+			}
 
+			switch tt.wantCleanup {
+			case cleanupPerformed:
+				foundRemove := false
+				for _, c := range reed.RemoveStrandCalls {
+					if c.GUID == "strand-1" && !c.Recursive {
+						foundRemove = true
+					}
+				}
+				if !foundRemove {
+					t.Errorf("RemoveStrand(strand-1, false) not recorded, calls = %+v", reed.RemoveStrandCalls)
+				}
+				if _, err := os.Stat(runDir); !os.IsNotExist(err) {
+					t.Errorf("run dir still exists after cleanup, stat err = %v", err)
+				}
+			case cleanupSkipped:
+				if len(reed.RemoveStrandCalls) != 0 {
+					t.Errorf("RemoveStrand calls = %+v; want none — this exit keeps the strand", reed.RemoveStrandCalls)
+				}
+				if _, err := os.Stat(runDir); err != nil {
+					t.Errorf("run dir removed: %v; want it kept for diagnosis", err)
+				}
+			}
 			logged := buf.String()
-			for _, want := range []string{"shuttle: run finished", `outcome=done`, "strand-1", tt.want} {
+			for _, want := range tt.wantLogged {
 				if !strings.Contains(logged, want) {
 					t.Errorf("teardown log = %q; want it to contain %q", logged, want)
 				}
@@ -172,117 +359,9 @@ func TestRun_Wait_LogsTeardownThroughLogger(t *testing.T) {
 	}
 }
 
-func TestRun_Wait_DoneHappyPath_CleansUp(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl")
-	outputFile := filepath.Join(runDir, "out.md")
-	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
-		t.Fatalf("seed output file: %v", err)
-	}
-	if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
-
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	fx := newFixture(t, reed, engine, withConfig(fastConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
-	}
-
-	foundRemove := false
-	for _, c := range reed.RemoveStrandCalls {
-		if c.GUID == "strand-1" && !c.Recursive {
-			foundRemove = true
-		}
-	}
-	if !foundRemove {
-		t.Errorf("RemoveStrand(strand-1, false) not recorded, calls = %+v", reed.RemoveStrandCalls)
-	}
-	if _, err := os.Stat(runDir); !os.IsNotExist(err) {
-		t.Errorf("run dir still exists after done cleanup, stat err = %v", err)
-	}
-}
-
-func TestRun_Wait_DoneWithKeepPane_SkipsCleanup(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl")
-	outputFile := filepath.Join(runDir, "out.md")
-	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
-		t.Fatalf("seed output file: %v", err)
-	}
-	if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
-
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	fx := newFixture(t, reed, engine, withConfig(fastConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, KeepPane: true},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
-	}
-	if len(reed.RemoveStrandCalls) != 0 {
-		t.Errorf("RemoveStrand calls = %+v, want none (KeepPane)", reed.RemoveStrandCalls)
-	}
-	if _, err := os.Stat(runDir); err != nil {
-		t.Errorf("run dir removed despite KeepPane: %v", err)
-	}
-}
-
-func TestRun_Wait_Asking_CarriesMessageKeepsStrand(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl")
-	outputFile := filepath.Join(runDir, "out.md") // never created
-
-	if err := os.WriteFile(eventsPath, []byte("STOP:need operator input\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
-
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	fx := newFixture(t, reed, engine, withConfig(fastConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeAsking {
-		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeAsking)
-	}
-	if result.LastAssistantMessage != "need operator input" {
-		t.Errorf("LastAssistantMessage = %q, want %q", result.LastAssistantMessage, "need operator input")
-	}
-	if len(reed.RemoveStrandCalls) != 0 {
-		t.Errorf("RemoveStrand calls = %+v, want none (asking keeps the strand)", reed.RemoveStrandCalls)
-	}
-	if _, err := os.Stat(runDir); err != nil {
-		t.Errorf("run dir removed for asking outcome: %v", err)
-	}
+// boundLivePane is a reed Status answer for strand-1 with a bound pane that is live.
+func boundLivePane() []reedengine.StatusResult {
+	return []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: true}}}}
 }
 
 // multiStepClock wraps a fakeClock and runs the next entry of steps, in order, once per Sleep call —
@@ -536,295 +615,90 @@ func TestRun_Wait_AwaitOperator_AskingNonTerminal(t *testing.T) {
 	})
 }
 
-// TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking verifies a live ask (an EventAsk with no output
-// files present) classifies OutcomeAsking carrying the question as the message, keeping the pane
-// and run dir just like the existing turn-end asking case — proving the unchanged pollEventsTick
-// branch also covers the live-ask signal ParseEvents now emits.
-func TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl")
-	outputFile := filepath.Join(runDir, "out.md") // never created
-
-	if err := os.WriteFile(eventsPath, []byte("ASK:which approach?\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
-
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	fx := newFixture(t, reed, engine, withConfig(fastConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeAsking {
-		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeAsking)
-	}
-	if result.LastAssistantMessage != "which approach?" {
-		t.Errorf("LastAssistantMessage = %q, want %q", result.LastAssistantMessage, "which approach?")
-	}
-	if len(reed.RemoveStrandCalls) != 0 {
-		t.Errorf("RemoveStrand calls = %+v, want none (asking keeps the strand)", reed.RemoveStrandCalls)
-	}
-	if _, err := os.Stat(runDir); err != nil {
-		t.Errorf("run dir removed for asking outcome: %v", err)
-	}
-}
-
-// TestRun_Wait_LiveAsk_DoneFirstStillWins verifies that when a live ask arrives but the output
-// files already exist, done-first classification still wins — an EventAsk never overrides an
-// already-satisfied file contract.
-func TestRun_Wait_LiveAsk_DoneFirstStillWins(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl")
-	outputFile := filepath.Join(runDir, "out.md")
-	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
-		t.Fatalf("seed output file: %v", err)
-	}
-	if err := os.WriteFile(eventsPath, []byte("ASK:which approach?\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
-
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	fx := newFixture(t, reed, engine, withConfig(fastConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Errorf("Outcome = %q, want %q (done-first over a live ask when output files exist)", result.Outcome, OutcomeDone)
-	}
-}
-
-func TestRun_Wait_Died_ViaStatusNotLive(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
-	outputFile := filepath.Join(runDir, "out.md")       // never created
-
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}}}
-	engine := &fakeEngine{}
-	fx := newFixture(t, reed, engine, withConfig(fastConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeDied {
-		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeDied)
-	}
-	if len(reed.RemoveStrandCalls) != 0 {
-		t.Errorf("RemoveStrand calls = %+v, want none (died keeps the strand)", reed.RemoveStrandCalls)
-	}
-}
-
-// TestRun_Wait_UntrackedStrand_IsMechanismFailureNotDied is R3-F1's regression guard.
+// TestRun_Wait_StartupWindow drives Wait over a live pane that never reaches StartupReady, with the
+// run deadline (10 minutes) an order of magnitude beyond the startup deadline (1 second), so a run
+// that only ever classifies OutcomeTimeout is the pre-fix behaviour and one that classifies
+// OutcomeDied or OutcomeDone inside a minute of virtual time proves the startup window bound the
+// path under test.
 //
-// Wait used to derive one boolean from reed's strand table and treat both negative answers alike, so
-// a Status that succeeded with the run's guid simply ABSENT — reed's bookkeeping reset under a run
-// whose agent is still working — classified OutcomeDied. Reproduced live twice: renaming the worktree
-// under an in-flight run, and deleting .lyx/reed.json (the remedy reed's own corrupt-state error
-// recommends) both returned ok:true/outcome:"died" ~6 s later while the claude process kept working
-// in its pane.
-// The first subtest is the defect; the second pins that a strand reed DOES track whose pane is not
-// alive still classifies OutcomeDied, so the fix narrows the branch rather than removing it.
-func TestRun_Wait_UntrackedStrand_IsMechanismFailureNotDied(t *testing.T) {
-	tests := []struct {
-		name        string
-		strands     []reedengine.StrandStatus
-		wantOutcome Outcome
-		wantErr     bool
-	}{
-		{
-			name:        "absent_from_table_is_a_mechanism_failure",
-			strands:     []reedengine.StrandStatus{{GUID: "someone-elses-strand", Live: true}},
-			wantOutcome: "",
-			wantErr:     true,
-		},
-		{
-			name:        "tracked_but_pane_not_live_is_still_died",
-			strands:     []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}},
-			wantOutcome: OutcomeDied,
-			wantErr:     false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runDir := t.TempDir()
-			eventsPath := filepath.Join(runDir, "events.jsonl") // never created
-			outputFile := filepath.Join(runDir, "out.md")       // never created
-
-			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: tt.strands}}}
-			fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
-			fc := newFakeClock(time.Now())
-			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-				withRunDir(runDir),
-				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
-				withRunClock(fc, fc.Now().Add(time.Minute)))
-
-			result, err := run.Wait()
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("Wait() = (%+v, nil); want the untracked-strand mechanism error", result)
-				}
-				if !errors.Is(err, errStrandNotTracked) {
-					t.Errorf("Wait() error = %v; want one wrapping errStrandNotTracked", err)
-				}
-				if !strings.Contains(err.Error(), "strand-1") {
-					t.Errorf("Wait() error = %v; want it to name the run's guid so the operator can find the pane", err)
-				}
-				// A mechanism failure must keep the run's identity (R1-F2) — the agent may still be
-				// live, so the caller needs the handles to reach it.
-				if result.StrandGUID != "strand-1" || result.SessionID != "session-1" || result.RunDir != runDir {
-					t.Errorf("Wait() result = %+v; want the run's identity preserved (guid strand-1, session session-1, runDir %s)", result, runDir)
-				}
-			} else if err != nil {
-				t.Fatalf("Wait() error: %v", err)
-			}
-			if result.Outcome != tt.wantOutcome {
-				t.Errorf("Outcome = %q; want %q", result.Outcome, tt.wantOutcome)
-			}
-			if len(reed.RemoveStrandCalls) != 0 {
-				t.Errorf("RemoveStrand calls = %+v; want none — neither exit cleans up", reed.RemoveStrandCalls)
-			}
-			if _, err := os.Stat(runDir); err != nil {
-				t.Errorf("run dir removed: %v; want it kept for diagnosis", err)
-			}
-		})
-	}
-}
-
-// TestRun_Wait_UntrackedStrand_OutputFilesStillWin pins that the file contract outranks reed's
-// bookkeeping: an agent that wrote every output file and was then untracked (its pane removed by a
-// `lyx reed remove`, say) finished its work, and a caller must not be told to go diagnose a run that
-// actually succeeded.
-func TestRun_Wait_UntrackedStrand_OutputFilesStillWin(t *testing.T) {
-	runDir := t.TempDir()
-	outputFile := filepath.Join(runDir, "out.md")
-	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
-		t.Fatalf("seed output file: %v", err)
-	}
-
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: nil}}}
-	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: filepath.Join(runDir, "events.jsonl")}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Errorf("Outcome = %q; want %q (the file contract is satisfied, whatever reed still tracks)", result.Outcome, OutcomeDone)
-	}
-}
-
-func TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone(t *testing.T) {
-	// The pane died (reed.Status reports not live) but every output file
-	// already exists on disk — the agent must have written its result and
-	// then been killed (or exited) before its Stop hook ever appended a
-	// turn-end line, so pollEventsTick had nothing to classify from. The
-	// file contract is still satisfied: this must report done, not died, so
-	// a caller does not needlessly respawn already-completed work.
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl") // never created: no Stop event fired
-	outputFile := filepath.Join(runDir, "out.md")
-	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
-		t.Fatalf("seed output file: %v", err)
-	}
-
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}}}
-	engine := &fakeEngine{}
-	fx := newFixture(t, reed, engine, withConfig(fastConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Errorf("Outcome = %q, want %q (file contract satisfied despite a dead pane and no Stop event)", result.Outcome, OutcomeDone)
-	}
-	// A "done" outcome without KeepPane still runs the normal cleanup path.
-	foundRemove := false
-	for _, c := range reed.RemoveStrandCalls {
-		if c.GUID == "strand-1" && !c.Recursive {
-			foundRemove = true
-		}
-	}
-	if !foundRemove {
-		t.Errorf("RemoveStrand(strand-1, false) not recorded, calls = %+v", reed.RemoveStrandCalls)
-	}
-}
-
-// TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath is R2-F9's regression guard.
+// R2-F9: the startup deadline used to be consulted from ONE arm of checkLivenessTick's switch,
+// StartupPending, so the two other ways a run can sit in the startup window — a trust prompt whose
+// dismissal never takes, and a pane that fails every capture — escaped it and ran on to the full run
+// deadline. A run whose persisted RunState.Started is false still runs the startup probe and
+// classifies OutcomeDied at the window's end, whatever an attach's own reed reads said of its pane's
+// liveness: the attached-but-never-actually-started shape a driver killed before its first liveness
+// tick, or a launch against a nonexistent binary, both leave behind.
 //
-// The startup deadline used to be consulted from ONE arm of checkLivenessTick's switch,
-// StartupPending, so the two other ways a run can sit in the startup window without ever reaching
-// StartupReady — a trust prompt whose dismissal never takes, and a pane that fails every capture —
-// escaped it entirely and ran on to the full run deadline instead. Both subtests below keep the run
-// deadline (10 minutes) an order of magnitude beyond the startup deadline (1 second), so a run that
-// only ever classifies OutcomeTimeout is exactly the pre-fix behaviour and a run that classifies
-// OutcomeDied proves the startup window bound the path under test.
-func TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath(t *testing.T) {
+// F1 (crucible round opus5-high-r4): the window expiring is a NEGATIVE answer, and a satisfied file
+// contract outranks every negative answer — but classifyStartupWindow used to return a bare
+// OutcomeDied on the clock alone. With every declared output file ALREADY WRITTEN and events.jsonl
+// never created, the file contract is the only evidence the run finished and the startup deadline
+// is the only thing that ever classifies it.
+//
+// A dismissed trust prompt is recorded: the engine must be handed the SAME capture Startup
+// classified, not an empty or stale one, because a provider whose gate is a selection list can only
+// tell which key confirms the ACCEPTING option by reading the caret out of that capture.
+//
+//testtiming:keep pins that the startup window, not the run deadline, classifies every not-ready path, and that a satisfied file contract outranks the expired window
+func TestRun_Wait_StartupWindow(t *testing.T) {
+	const gateCapture = "❯ No, exit\n  Yes, I trust this folder"
 	tests := []struct {
 		name string
 		// startupScript drains FIFO and its last entry then repeats forever, so a single-entry
 		// script pins the pane in that state for the whole run.
 		startupScript []StartupState
 		captureErr    error
+		captureQueue  []string
+		output        bool
+		wantOutcome   Outcome
+		// wantTrustDismissed asserts an Enter was sent and the engine saw gateCapture.
+		wantTrustDismissed bool
 	}{
-		{"trust_prompt_that_never_clears", []StartupState{StartupTrustPrompt}, nil},
-		{"pane_capture_fails_every_probe", nil, errors.New("capture pane: no such pane")},
-		{"still_booting", []StartupState{StartupPending}, nil},
+		{name: "trust prompt that never clears", startupScript: []StartupState{StartupTrustPrompt}, wantOutcome: OutcomeDied},
+		{name: "pane capture fails every probe", captureErr: errors.New("capture pane: no such pane"), wantOutcome: OutcomeDied},
+		{name: "still booting", startupScript: []StartupState{StartupPending}, wantOutcome: OutcomeDied},
+		{name: "trust prompt that never clears with output files", startupScript: []StartupState{StartupTrustPrompt}, output: true, wantOutcome: OutcomeDone},
+		{name: "pane capture fails every probe with output files", captureErr: errors.New("capture pane: no such pane"), output: true, wantOutcome: OutcomeDone},
+		{name: "still booting with output files", startupScript: []StartupState{StartupPending}, output: true, wantOutcome: OutcomeDone},
+		{
+			// The first probe sees the trust prompt (dismissed with Enter); every probe after that
+			// sees a still-booting pane, so the run never becomes ready and fast-fails once the
+			// startup deadline passes.
+			name:          "dismissed trust prompt is recorded before the window expires",
+			startupScript: []StartupState{StartupTrustPrompt, StartupPending}, captureQueue: []string{gateCapture},
+			wantOutcome: OutcomeDied, wantTrustDismissed: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			runDir := t.TempDir()
 			eventsPath := filepath.Join(runDir, "events.jsonl") // never created
-			outputFile := filepath.Join(runDir, "out.md")       // never created
+			outputFile := filepath.Join(runDir, "out.md")
+			if tt.output {
+				touchOutputFile(t, outputFile)
+			}
 
 			reed := &fakeReed{
-				StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
-				CaptureErr:  tt.captureErr,
+				StatusQueue:  []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+				CaptureErr:   tt.captureErr,
+				CaptureQueue: tt.captureQueue,
 			}
 			engine := &fakeEngine{StartupScript: tt.startupScript}
 			fx := newFixture(t, reed, engine, withConfig(shortStartupConfig))
 			fc := newFakeClock(time.Now())
+			// state.Started is the zero value (false): a persisted run.json whose provider never
+			// reached StartupReady.
 			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
 				withRunDir(runDir),
-				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Started: false}),
 				withRunClock(fc, fc.Now().Add(10*time.Minute)))
 
 			result, err := run.Wait()
 			if err != nil {
 				t.Fatalf("Wait() error: %v", err)
 			}
-			if result.Outcome != OutcomeDied {
-				t.Errorf("Outcome = %q; want %q — the 1s startup deadline must bind this path, not the 10m run deadline", result.Outcome, OutcomeDied)
+			if result.Outcome != tt.wantOutcome {
+				t.Errorf("Outcome = %q; want %q — the 1s startup window, not the 10m run deadline, must be what classified this", result.Outcome, tt.wantOutcome)
 			}
 			// A run that reached the RUN deadline instead would have burned the whole 10 minutes of
 			// virtual time; the startup deadline is 1s, so anything past a few seconds means the
@@ -832,130 +706,25 @@ func TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath(t *testing.T) {
 			if elapsed := fc.Now().Sub(run.deadline.Add(-10 * time.Minute)); elapsed > time.Minute {
 				t.Errorf("virtual time elapsed = %s; want well under a minute (the 1s startup window), not the 10m run window", elapsed)
 			}
-		})
-	}
-}
 
-// TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns pins Wait's seed after the
-// shuttle-blocking-start batch's move: `started := run.state.Started` alone, for a started run and
-// an attached one alike. A run whose persisted RunState.Started is false still runs the startup
-// probe and classifies OutcomeDied at the window's end, whatever an attach's own reed reads said of
-// its pane's liveness -- exactly the attached-but-never-actually-started shape a driver killed
-// before its first liveness tick, or a launch against a nonexistent binary, both leave behind.
-//
-// This is the regression guard for d0e5a0e7b's original coverage gap (crucible round
-// sonnet5-xhigh-r3, F1), carried forward onto the new seed: reverting to a seed that trusts
-// liveness alone (a bygone `run.attached` conjunct, or any other liveness-only shortcut) reproduces
-// exactly that gap, with the run deadline (10 minutes, virtual) binding instead of the 1-second
-// startup deadline, so this test's own elapsed-time assertion below fails loudly rather than merely
-// running slower, unlike the pre-existing smoke test this gap escaped (TestSmokeRunStandalone_
-// AdvancesMachineFromExistingSeed only asserts the final state, never the elapsed time or outcome
-// kind, so the old seed's mismeasurement made it slower, not failing).
-//
-// TestRun_Wait_StartedRun_SkipsStartupProbe pins the opposite half -- a persisted Started: true
-// skips the probe, whether the run got there through Start or through Attach.
-func TestRun_Wait_AttachedButNeverStarted_StartupProbeStillRuns(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
-	outputFile := filepath.Join(runDir, "out.md")       // never created
-
-	reed := &fakeReed{
-		StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
-	}
-	// StartupPending forever: the provider never reaches StartupReady, so a run that correctly
-	// re-runs the startup probe classifies OutcomeDied at the 1s startup deadline; a run that
-	// wrongly skips the probe (the pre-fix bug) falls through to the 10-minute run deadline instead.
-	engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
-	fx := newFixture(t, reed, engine, withConfig(shortStartupConfig))
-	fc := newFakeClock(time.Now())
-	// state.Started is the zero value (false): a persisted run.json whose provider never
-	// reached StartupReady, exactly what a driver killed pre-first-liveness-tick leaves behind.
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Started: false}),
-		withRunClock(fc, fc.Now().Add(10*time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeDied {
-		t.Errorf("Outcome = %q; want %q -- an attached-but-never-started run must still fail the startup probe, not wait out the full run timeout", result.Outcome, OutcomeDied)
-	}
-	// The startup deadline is 1s and the run deadline is 10 minutes (virtual clock): a run that
-	// wrongly skipped the probe burns the whole 10 minutes before OutcomeTimeout, so bounding the
-	// elapsed virtual time to well under a minute is what actually distinguishes "the probe reran"
-	// from "the probe was skipped and this merely got lucky on the outcome" -- the same shape
-	// TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath already uses for its own sibling cases.
-	if elapsed := fc.Now().Sub(run.deadline.Add(-10 * time.Minute)); elapsed > time.Minute {
-		t.Errorf("virtual time elapsed = %s; want well under a minute (the 1s startup window) -- an elapsed time near 10 minutes means the startup probe was skipped and the RUN deadline bound this instead, reopening d0e5a0e7b's bug", elapsed)
-	}
-}
-
-// TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied is F1's regression guard
-// (crucible round opus5-high-r4): the startup window expiring is a NEGATIVE answer, and
-// checkLivenessTick's own doc comment already promises that a satisfied file contract outranks
-// every negative answer — but classifyStartupWindow used to return a bare OutcomeDied on the clock
-// alone, while the not-tracked and not-live branches beside it both consulted the file contract
-// first.
-//
-// Each subtest pins a pane that is LIVE and never reaches StartupReady — the three ways a run sits
-// out its startup window, the same set TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath covers —
-// with every declared output file ALREADY WRITTEN and events.jsonl never created, so the file
-// contract is the only evidence the run finished and the startup deadline is the only thing that
-// ever classifies it. Reverting the fix (a bare `return OutcomeDied` in classifyStartupWindow)
-// makes every case here fail on the outcome, since the pre-fix code cannot reach OutcomeDone from
-// this path at all.
-//
-// Reproduced live before being written: driven through the real built binary against a real wired
-// hub, a provider that wrote both of Discussion-Write's output files and then stayed alive without
-// rendering a TUI was recorded as `state=failed`, `shuttle run outcome died`, with both files
-// present on disk.
-func TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied(t *testing.T) {
-	tests := []struct {
-		name string
-		// startupScript drains FIFO and its last entry then repeats forever, so a single-entry
-		// script pins the pane in that state for the whole run.
-		startupScript []StartupState
-		captureErr    error
-	}{
-		{"trust_prompt_that_never_clears", []StartupState{StartupTrustPrompt}, nil},
-		{"pane_capture_fails_every_probe", nil, errors.New("capture pane: no such pane")},
-		{"still_booting", []StartupState{StartupPending}, nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runDir := t.TempDir()
-			eventsPath := filepath.Join(runDir, "events.jsonl") // never created
-			outputFile := filepath.Join(runDir, "out.md")
-			// The whole point of the case: the agent's file contract IS satisfied, and nothing else
-			// says so — no events line was ever written for pollEventsTick to classify from.
-			touchOutputFile(t, outputFile)
-
-			reed := &fakeReed{
-				StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
-				CaptureErr:  tt.captureErr,
+			if !tt.wantTrustDismissed {
+				return
 			}
-			engine := &fakeEngine{StartupScript: tt.startupScript}
-			fx := newFixture(t, reed, engine, withConfig(shortStartupConfig))
-			fc := newFakeClock(time.Now())
-			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
-				withRunDir(runDir),
-				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-				withRunClock(fc, fc.Now().Add(10*time.Minute)))
-
-			result, err := run.Wait()
-			if err != nil {
-				t.Fatalf("Wait() error: %v", err)
+			foundEnter := false
+			for _, c := range reed.SendKeyCalls {
+				if c.GUID == "strand-1" && c.Key == "Enter" {
+					foundEnter = true
+				}
 			}
-			if result.Outcome != OutcomeDone {
-				t.Errorf("Outcome = %q; want %q — every declared output file exists, and a satisfied file contract outranks an expired startup window exactly as it outranks a dead pane", result.Outcome, OutcomeDone)
+			if !foundEnter {
+				t.Errorf("SendKey(strand-1, Enter) not recorded (trust dismiss), calls = %+v", reed.SendKeyCalls)
 			}
-			// The startup deadline is 1s and the run deadline 10 minutes, so this also pins WHICH
-			// deadline produced the answer: a run that somehow reached OutcomeDone off the run
-			// deadline instead would have burned the whole 10 minutes of virtual time first.
-			if elapsed := fc.Now().Sub(run.deadline.Add(-10 * time.Minute)); elapsed > time.Minute {
-				t.Errorf("virtual time elapsed = %s; want well under a minute (the 1s startup window)", elapsed)
+			captures := engine.TrustDismissCaptures()
+			if len(captures) == 0 {
+				t.Fatalf("TrustDismissSequence was never called; SendKey calls = %+v", reed.SendKeyCalls)
+			}
+			if captures[0] != gateCapture {
+				t.Errorf("TrustDismissSequence got capture %q; want the capture Startup classified, %q", captures[0], gateCapture)
 			}
 		})
 	}
@@ -974,6 +743,8 @@ func TestRun_Wait_StartupDeadline_SatisfiedFileContractWinsOverDied(t *testing.T
 // Reproduced live before being written: a provider that rendered the ready marker, wrote both of
 // Discussion-Write's output files, and then stayed alive without appending to events.jsonl was
 // recorded as `run.json` outcome "timeout" with started true, and the step as a shed failure.
+//
+//testtiming:keep pins that a satisfied file contract outranks the run deadline for a started run, with no startup probe run
 func TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
@@ -1010,6 +781,8 @@ func TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout(t *testing.T)
 // Start's own successful probe, so a later Wait over the same handle must never re-run the startup
 // probe at all -- neither engine.StartupCalls nor the CapturePane count in reed.CallLog may grow past
 // what Start itself already recorded.
+//
+//testtiming:keep pins that Wait over a started handle never re-runs the startup probe, with no new engine Startup call and no new capture
 func TestRun_Wait_StartedRun_SkipsStartupProbe(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
@@ -1057,171 +830,22 @@ func TestRun_Wait_StartedRun_SkipsStartupProbe(t *testing.T) {
 	}
 }
 
-// TestRun_Wait_StatusFailureCap_SatisfiedFileContractWins is crucible round fable5-high-r5's F1
-// regression guard: the reed-status-error cap is a THIRD place — beyond round opus5-high-r4's two
-// deadline paths — where Wait finalized a negative outcome without first consulting the file
-// contract checkLivenessTick's own doc comment governs ("a satisfied file contract wins over every
-// negative answer").
-//
-// reed.Status errors on every call (the shape a crash-corrupted or truncated reed.json, or a
-// torn-down session, produces), so the run reaches maxStatusRetries consecutive liveness failures
-// and would abandon itself with a mechanism error — but every declared output file is on disk, so
-// the run finished and must classify OutcomeDone instead of re-running completed work on the next
-// resume. events.jsonl is never created, so the ONLY path to done is the mechanism-failure cap's own
-// file-contract check: reverting finishedDespiteMechanismFailure makes this fail with the
-// consecutive-status-failure error. Reproduced live against the real built binary before being
-// written (truncating a live run's reed.json).
-func TestRun_Wait_StatusFailureCap_SatisfiedFileContractWins(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
-	outputFile := filepath.Join(runDir, "out.md")
-	touchOutputFile(t, outputFile)
-
-	reed := &fakeReed{StatusErr: errors.New(`reed state file is unreadable: unmarshal state: unexpected end of JSON input`)}
-	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v; want the satisfied file contract to classify done despite reed.Status erroring", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Errorf("Outcome = %q; want %q — every declared output file exists, so the run finished whatever reed's own bookkeeping did", result.Outcome, OutcomeDone)
-	}
-}
-
-// TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins is the events-file half of F1: the
-// events-unreadable cap is the fourth place Wait finalized a negative outcome without consulting the
-// file contract.
-//
-// ParseEvents fails on every call (a corrupted or garbage events.jsonl), so the run reaches
-// maxEventsReadRetries consecutive parse failures — but every declared output file is on disk, so it
-// finished and must classify OutcomeDone. LivenessEveryNPolls is high so the events cap, not a
-// liveness tick, is what fires; reverting finishedDespiteMechanismFailure makes this fail with the
-// events-file-unreadable error.
-func TestRun_Wait_EventsUnreadableCap_SatisfiedFileContractWins(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl")
-	if err := os.WriteFile(eventsPath, []byte("garbage that never parses\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
-	outputFile := filepath.Join(runDir, "out.md")
-	touchOutputFile(t, outputFile)
-
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: true}}}}}
-	engine := &fakeEngine{ParseEventsErr: errors.New("parse events: malformed")}
-	fx := newFixture(t, reed, engine, withConfig(sparseProbeConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v; want the satisfied file contract to classify done despite an unparseable events.jsonl", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Errorf("Outcome = %q; want %q — every declared output file exists, so the run finished whatever the events file holds", result.Outcome, OutcomeDone)
-	}
-}
-
-func TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
-	outputFile := filepath.Join(runDir, "out.md")       // never created
-
-	const gateCapture = "❯ No, exit\n  Yes, I trust this folder"
-
-	reed := &fakeReed{
-		StatusQueue:  []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
-		CaptureQueue: []string{gateCapture},
-	}
-	// First probe sees the trust prompt (dismissed with Enter); every probe
-	// after that sees a still-booting pane, so the run never becomes ready
-	// and eventually fast-fails once the startup deadline passes.
-	engine := &fakeEngine{StartupScript: []StartupState{StartupTrustPrompt, StartupPending}}
-	fx := newFixture(t, reed, engine, withConfig(shortStartupConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(10*time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeDied {
-		t.Errorf("Outcome = %q, want %q (startup deadline expiry)", result.Outcome, OutcomeDied)
-	}
-
-	foundEnter := false
-	for _, c := range reed.SendKeyCalls {
-		if c.GUID == "strand-1" && c.Key == "Enter" {
-			foundEnter = true
-		}
-	}
-	if !foundEnter {
-		t.Errorf("SendKey(strand-1, Enter) not recorded (trust dismiss), calls = %+v", reed.SendKeyCalls)
-	}
-
-	// The engine must be handed the SAME capture Startup classified, not an empty or stale one:
-	// a provider whose gate is a selection list can only tell which key confirms the ACCEPTING
-	// option by reading the caret out of that capture (crucible round opus-medium-r5, R5-2).
-	captures := engine.TrustDismissCaptures()
-	if len(captures) == 0 {
-		t.Fatalf("TrustDismissSequence was never called; SendKey calls = %+v", reed.SendKeyCalls)
-	}
-	if captures[0] != gateCapture {
-		t.Errorf("TrustDismissSequence got capture %q; want the capture Startup classified, %q", captures[0], gateCapture)
-	}
-}
-
-func TestRun_Wait_Timeout_KeepsStrand(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
-	outputFile := filepath.Join(runDir, "out.md")       // never created
-
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 30}))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Second},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Second)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeTimeout {
-		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeTimeout)
-	}
-	if len(reed.RemoveStrandCalls) != 0 {
-		t.Errorf("RemoveStrand calls = %+v, want none (timeout keeps the strand)", reed.RemoveStrandCalls)
-	}
-	if _, err := os.Stat(runDir); err != nil {
-		t.Errorf("run dir removed for timeout outcome: %v", err)
-	}
-}
-
-// TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone proves finalize's AuditForks wiring: a
-// fork-mode spec's done classification calls engine.AuditForks(sessionID, layout.AnchorPath()) and
-// attaches its result to Result.ForkAudit, while a non-fork spec's done classification never calls
-// AuditForks at all and leaves Result.ForkAudit nil.
-func TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone(t *testing.T) {
+// TestRun_Wait_ForkAudit proves finalize's AuditForks wiring: a fork-mode spec's done
+// classification calls engine.AuditForks(sessionID, the runner's paneCwd) and attaches its result to
+// Result.ForkAudit, while a non-fork spec's done classification never calls AuditForks at all and
+// leaves Result.ForkAudit nil. The audit gets the runner's paneCwd rather than its anchorPath; the
+// two are the same value in the hub shape, so a detached runner whose pane runs at the worktree
+// root while its anchor sits outside it (standalone geometry) is what tells them apart.
+func TestRun_Wait_ForkAudit(t *testing.T) {
 	tests := []struct {
 		name          string
 		forkSubagents bool
+		// detachPaneCwd points the runner's paneCwd away from its anchorPath.
+		detachPaneCwd bool
 	}{
-		{"fork_mode_on_attaches_audit", true},
-		{"fork_mode_off_no_audit_call", false},
+		{name: "fork mode on attaches the audit", forkSubagents: true},
+		{name: "fork mode off makes no audit call"},
+		{name: "the audit runs at paneCwd, not anchorPath", forkSubagents: true, detachPaneCwd: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1239,6 +863,9 @@ func TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone(t *testing.T) {
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
 			engine := &fakeEngine{StartupScript: []StartupState{StartupReady}, AuditForksResult: cannedAudit}
 			fx := newFixture(t, reed, engine, withConfig(fastConfig))
+			if tt.detachPaneCwd {
+				fx.Runner.paneCwd = t.TempDir()
+			}
 			fc := newFakeClock(time.Now())
 			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, ForkSubagents: tt.forkSubagents},
 				withRunDir(runDir),
@@ -1253,76 +880,29 @@ func TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone(t *testing.T) {
 				t.Fatalf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
 			}
 
-			if tt.forkSubagents {
-				if len(engine.AuditForksCalls) != 1 {
-					t.Fatalf("AuditForksCalls = %v; want exactly one call", engine.AuditForksCalls)
-				}
-				call := engine.AuditForksCalls[0]
-				if call.SessionID != "session-1" || call.Workdir != fx.Runner.anchorPath {
-					t.Errorf("AuditForks called with (%q, %q); want (%q, %q)", call.SessionID, call.Workdir, "session-1", fx.Runner.anchorPath)
-				}
-				if result.ForkAudit == nil || !reflect.DeepEqual(*result.ForkAudit, cannedAudit) {
-					t.Errorf("Result.ForkAudit = %+v; want it to carry the fake's canned audit %+v", result.ForkAudit, cannedAudit)
-				}
-			} else {
+			if !tt.forkSubagents {
 				if len(engine.AuditForksCalls) != 0 {
 					t.Errorf("AuditForksCalls = %v; want none for a non-fork spec", engine.AuditForksCalls)
 				}
 				if result.ForkAudit != nil {
 					t.Errorf("Result.ForkAudit = %+v; want nil for a non-fork spec", result.ForkAudit)
 				}
+				return
+			}
+			if len(engine.AuditForksCalls) != 1 {
+				t.Fatalf("AuditForksCalls = %v; want exactly one call", engine.AuditForksCalls)
+			}
+			call := engine.AuditForksCalls[0]
+			if call.SessionID != "session-1" || call.Workdir != fx.Runner.paneCwd {
+				t.Errorf("AuditForks called with (%q, %q); want (%q, %q)", call.SessionID, call.Workdir, "session-1", fx.Runner.paneCwd)
+			}
+			if tt.detachPaneCwd && call.Workdir == fx.Runner.anchorPath {
+				t.Errorf("AuditForks called with workdir %q == anchorPath; want it to differ, proving the audit moved off anchorPath", call.Workdir)
+			}
+			if result.ForkAudit == nil || !reflect.DeepEqual(*result.ForkAudit, cannedAudit) {
+				t.Errorf("Result.ForkAudit = %+v; want it to carry the fake's canned audit %+v", result.ForkAudit, cannedAudit)
 			}
 		})
-	}
-}
-
-// TestRun_Wait_ForkAudit_UsesPaneCwdNotAnchorPath pins that finalize hands AuditForks the runner's
-// paneCwd rather than its anchorPath, for the one shape where the two differ: a detached runner
-// whose pane runs at the worktree root while its anchor sits outside it (standalone geometry).
-// TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone above already covers the hub shape, where
-// paneCwd == anchorPath by construction and the two fields cannot be told apart by this assertion
-// alone; this test builds a runner whose paneCwd is assigned directly (NewDetachedRunner does not
-// exist until card 2) so the two paths are provably distinct.
-func TestRun_Wait_ForkAudit_UsesPaneCwdNotAnchorPath(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl")
-	outputFile := filepath.Join(runDir, "out.md")
-	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
-		t.Fatalf("seed output file: %v", err)
-	}
-	if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
-
-	cannedAudit := ForkAudit{SpawnCalls: 1, NamedSpawns: 0}
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}, AuditForksResult: cannedAudit}
-	fx := newFixture(t, reed, engine, withConfig(fastConfig))
-	// Detach paneCwd from anchorPath, exactly as NewDetachedRunner will for the standalone shape.
-	fx.Runner.paneCwd = t.TempDir()
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, ForkSubagents: true},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Fatalf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
-	}
-
-	if len(engine.AuditForksCalls) != 1 {
-		t.Fatalf("AuditForksCalls = %v; want exactly one call", engine.AuditForksCalls)
-	}
-	call := engine.AuditForksCalls[0]
-	if call.Workdir != fx.Runner.paneCwd {
-		t.Errorf("AuditForks called with workdir %q; want paneCwd %q", call.Workdir, fx.Runner.paneCwd)
-	}
-	if call.Workdir == fx.Runner.anchorPath {
-		t.Errorf("AuditForks called with workdir %q == anchorPath; want it to differ, proving the fix moved off anchorPath", call.Workdir)
 	}
 }
 
@@ -1383,238 +963,86 @@ func TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome(t *testing.T) {
 	}
 }
 
-func TestRun_Wait_MultiStopOffsetTracking(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl")
-	outputFile := filepath.Join(runDir, "out.md") // never created -> asking
-
-	fixture := "STOP:first\nSTOP:second\n"
-	if err := os.WriteFile(eventsPath, []byte(fixture), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
-
-	reed := &fakeReed{}
-	engine := &fakeEngine{}
-	fx := newFixture(t, reed, engine, withConfig(sparseProbeConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeAsking {
-		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeAsking)
-	}
-	if result.LastAssistantMessage != "second" {
-		t.Errorf("LastAssistantMessage = %q, want %q (the LAST of the two Stop events)", result.LastAssistantMessage, "second")
-	}
-	if run.offset != int64(len(fixture)) {
-		t.Errorf("offset = %d, want %d (both events consumed)", run.offset, len(fixture))
-	}
-}
-
-func TestRun_Wait_ParseEventsFailure_BytesReReadOnRetry(t *testing.T) {
-	// A ParseEvents error must NOT advance run.offset past the bytes it
-	// failed to parse: if it did, the batch's Stop event would be discarded
-	// unread once ParseEvents starts succeeding on the NEXT tick's (empty)
-	// read, and the run would never classify. This proves the fix: the
-	// same fixture is retried and DOES classify once the transient failure
-	// clears.
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl")
-	fixture := "STOP:hello\n"
-	if err := os.WriteFile(eventsPath, []byte(fixture), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
-	outputFile := filepath.Join(runDir, "out.md") // never created -> asking once classified
-
-	reed := &fakeReed{}
-	// Fail the first two ParseEvents calls; the third (retrying the SAME
-	// unconsumed bytes) succeeds. maxEventsReadRetries is 3, so this must
-	// stay under that budget to prove a retry recovers rather than erroring.
-	engine := &fakeEngine{ParseEventsFailCount: 2}
-	fx := newFixture(t, reed, engine, withConfig(sparseProbeConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v, want the retry to recover and classify", err)
-	}
-	if result.Outcome != OutcomeAsking {
-		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeAsking)
-	}
-	if result.LastAssistantMessage != "hello" {
-		t.Errorf("LastAssistantMessage = %q, want %q — the batch a failed parse left unconsumed must still be classified once parsing succeeds", result.LastAssistantMessage, "hello")
-	}
-	if run.offset != int64(len(fixture)) {
-		t.Errorf("offset = %d, want %d (bytes consumed only after a successful parse)", run.offset, len(fixture))
-	}
-}
-
-func TestRun_Wait_EventsOffsetResilience_PartialLine(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl")
-	if err := os.WriteFile(eventsPath, []byte("STOP:partial"), 0o644); err != nil { // no trailing newline yet
-		t.Fatalf("seed partial events: %v", err)
-	}
-	outputFile := filepath.Join(runDir, "out.md") // never created -> asking once classified
-
-	reed := &fakeReed{}
-	engine := &fakeEngine{}
-	fx := newFixture(t, reed, engine, withConfig(sparseProbeConfig))
-
-	fc := newFakeClock(time.Now())
-	sc := &scriptedClock{fakeClock: fc, onSleep: func() {
-		// Complete the partial line between tick 1 and tick 2 so the next
-		// read sees a full Stop event.
-		f, err := os.OpenFile(eventsPath, os.O_APPEND|os.O_WRONLY, 0o644)
-		if err != nil {
-			t.Fatalf("open events file to append: %v", err)
-		}
-		defer f.Close()
-		if _, err := f.WriteString("\n"); err != nil {
-			t.Fatalf("append newline: %v", err)
-		}
-	}}
-
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-		withRunClock(sc, sc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeAsking {
-		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeAsking)
-	}
-	if result.LastAssistantMessage != "partial" {
-		t.Errorf("LastAssistantMessage = %q, want %q", result.LastAssistantMessage, "partial")
-	}
-}
-
-// TestRun_Wait_ClearedPaneBinding_IsMechanismFailureNotDied is R4-F2's regression guard.
+// TestRun_Wait_EventsHandling drives Wait over an events file whose Stop events arrive in awkward
+// shapes, with the output file never created so a classified batch is asking: two Stops in one read
+// classify as the LAST of them with both consumed; a ParseEvents error must NOT advance run.offset
+// past the bytes it failed to parse, or the batch's Stop event would be discarded unread once
+// parsing starts succeeding on the NEXT tick's (empty) read, so the same bytes are retried and DO
+// classify once the transient failure clears (maxEventsReadRetries is 3, so two failures stay under
+// the budget); and a partial line, with no trailing newline yet, is not consumed until a later tick
+// sees it complete.
 //
-// Reed clears every pane binding in a state file whose recorded pane generation is not the session
-// incarnation now running, and its Status then reports the strand with an EMPTY PaneID — which its
-// liveness lookup answers false for, since no pane is bound to look up. Wait read that not-live
-// answer as a dead pane and returned ok:true/outcome:"died". Reproduced live in round 4: reed logged
-// the clear, shuttle answered "died" 4 s later, and the agent was still working in a pane tmux
-// reported alive — proven by restoring the stamp, after which the same strand reported live:true on
-// the same pane again.
-//
-// The hidden row is the one case that must NOT change: an anchor:hidden strand is never given a pane,
-// so its empty PaneID is normal rather than cleared. The genuinely-dead-pane case (a bound pane id
-// that is not alive) is pinned by TestRun_Wait_UntrackedStrand_IsMechanismFailureNotDied's second row.
-func TestRun_Wait_ClearedPaneBinding_IsMechanismFailureNotDied(t *testing.T) {
+//testtiming:keep pins the offset rules over the events file: the last of several Stops wins, a failed parse's bytes are re-read, and a partial line stays unconsumed
+func TestRun_Wait_EventsHandling(t *testing.T) {
 	tests := []struct {
-		name        string
-		anchor      render.Anchor
-		wantOutcome Outcome
-		wantErr     bool
+		name   string
+		events string
+		// parseFailCount is the number of leading ParseEvents calls that fail.
+		parseFailCount int
+		// completeLineOnFirstSleep appends the newline that completes a partial line between tick 1
+		// and tick 2.
+		completeLineOnFirstSleep bool
+		wantMessage              string
+		// wantOffset is the offset once the whole file is consumed.
+		wantOffset int64
 	}{
-		{
-			name:        "cleared_binding_under_an_ordinary_run_is_a_mechanism_failure",
-			anchor:      render.AnchorBelowParent,
-			wantOutcome: "",
-			wantErr:     true,
-		},
-		{
-			name:        "hidden_strand_never_had_a_pane_and_is_still_died",
-			anchor:      render.AnchorHidden,
-			wantOutcome: OutcomeDied,
-			wantErr:     false,
-		},
+		{name: "multiple stops classify as the last one", events: "STOP:first\nSTOP:second\n", wantMessage: "second", wantOffset: int64(len("STOP:first\nSTOP:second\n"))},
+		{name: "a failed parse leaves its bytes to be re-read on retry", events: "STOP:hello\n", parseFailCount: 2, wantMessage: "hello", wantOffset: int64(len("STOP:hello\n"))},
+		{name: "a partial line waits for its newline", events: "STOP:partial", completeLineOnFirstSleep: true, wantMessage: "partial", wantOffset: int64(len("STOP:partial\n"))},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			runDir := t.TempDir()
-			eventsPath := filepath.Join(runDir, "events.jsonl") // never created
-			outputFile := filepath.Join(runDir, "out.md")       // never created
+			eventsPath := filepath.Join(runDir, "events.jsonl")
+			if err := os.WriteFile(eventsPath, []byte(tt.events), 0o644); err != nil {
+				t.Fatalf("seed events: %v", err)
+			}
+			outputFile := filepath.Join(runDir, "out.md") // never created -> asking once classified
 
-			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{
-				Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "", Live: false}},
-			}}}
-			fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
+			engine := &fakeEngine{ParseEventsFailCount: tt.parseFailCount}
+			fx := newFixture(t, &fakeReed{}, engine, withConfig(sparseProbeConfig))
 			fc := newFakeClock(time.Now())
-			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, Display: render.Display{Anchor: tt.anchor}},
+			var clk clock = fc
+			if tt.completeLineOnFirstSleep {
+				clk = &scriptedClock{fakeClock: fc, onSleep: func() {
+					appendEventsLine(t, eventsPath, "")
+				}}
+			}
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
 				withRunDir(runDir),
-				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
-				withRunClock(fc, fc.Now().Add(time.Minute)))
+				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+				withRunClock(clk, clk.Now().Add(time.Minute)))
 
 			result, err := run.Wait()
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("Wait() = (%+v, nil); want the cleared-pane-binding mechanism error", result)
-				}
-				if !errors.Is(err, errStrandPaneBindingCleared) {
-					t.Errorf("Wait() error = %v; want one wrapping errStrandPaneBindingCleared", err)
-				}
-				if result.StrandGUID != "strand-1" || result.SessionID != "session-1" || result.RunDir != runDir {
-					t.Errorf("Wait() result = %+v; want the run's identity preserved (guid strand-1, session session-1, runDir %s)", result, runDir)
-				}
-			} else if err != nil {
+			if err != nil {
 				t.Fatalf("Wait() error: %v", err)
 			}
-			if result.Outcome != tt.wantOutcome {
-				t.Errorf("Outcome = %q; want %q", result.Outcome, tt.wantOutcome)
+			if result.Outcome != OutcomeAsking {
+				t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeAsking)
 			}
-			if len(reed.RemoveStrandCalls) != 0 {
-				t.Errorf("RemoveStrand calls = %+v; want none — neither exit cleans up", reed.RemoveStrandCalls)
+			if result.LastAssistantMessage != tt.wantMessage {
+				t.Errorf("LastAssistantMessage = %q, want %q", result.LastAssistantMessage, tt.wantMessage)
 			}
-			if _, err := os.Stat(runDir); err != nil {
-				t.Errorf("run dir removed: %v; want it kept for diagnosis", err)
+			if run.offset != tt.wantOffset {
+				t.Errorf("offset = %d, want %d (bytes consumed only after a successful parse of a complete line)", run.offset, tt.wantOffset)
 			}
 		})
 	}
 }
 
-// TestRun_Wait_ClearedPaneBinding_OutputFilesStillWin pins that the file contract outranks a cleared
-// binding exactly as it outranks the other two negative liveness answers: an agent that wrote every
-// output file finished its work, whether or not reed can still address its pane.
-func TestRun_Wait_ClearedPaneBinding_OutputFilesStillWin(t *testing.T) {
-	runDir := t.TempDir()
-	outputFile := filepath.Join(runDir, "out.md")
-	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
-		t.Fatalf("seed output file: %v", err)
-	}
-
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{
-		Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "", Live: false}},
-	}}}
-	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, Display: render.Display{Anchor: render.AnchorBelowParent}},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: filepath.Join(runDir, "events.jsonl")}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v; want the satisfied file contract to classify done", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Errorf("Outcome = %q; want %q — the output files ARE the run's return value", result.Outcome, OutcomeDone)
-	}
-}
-
 // TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome pins that finalize overwrites the
 // persisted RunState.Outcome with the matching classification string for every terminal outcome, not
-// only OutcomeDone — the fact on disk a later Attach (batch 2) relies on.
+// only OutcomeDone — the fact on disk a later Attach relies on. The done outcome with KeepPane also
+// pins that the write happens before the done-outcome cleanup: the run dir survives cleanup, so its
+// persisted run.json must hold "done" rather than a stale "running".
+//
+//testtiming:keep pins that finalize persists the matching Outcome in run.json for every terminal outcome, and does so before the done cleanup
 func TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome(t *testing.T) {
 	tests := []struct {
 		name        string
 		seedEvents  string
 		seedOutput  bool
+		keepPane    bool
 		statusQueue []reedengine.StatusResult
 		startup     []StartupState
 		timeout     time.Duration
@@ -1624,6 +1052,16 @@ func TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome(t *testing.T) 
 			name:        "done",
 			seedEvents:  "STOP:done\n",
 			seedOutput:  true,
+			statusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+			startup:     []StartupState{StartupReady},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+		},
+		{
+			name:        "done with KeepPane",
+			seedEvents:  "STOP:done\n",
+			seedOutput:  true,
+			keepPane:    true,
 			statusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
 			startup:     []StartupState{StartupReady},
 			timeout:     time.Minute,
@@ -1675,7 +1113,7 @@ func TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome(t *testing.T) 
 			}
 			fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: pollMS, LivenessEveryNPolls: 1, StartupTimeoutS: 30}))
 			fc := newFakeClock(time.Now())
-			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: tt.timeout},
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: tt.timeout, KeepPane: tt.keepPane},
 				withRunDir(runDir),
 				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, Outcome: runOutcomeRunning}),
 				withRunClock(fc, fc.Now().Add(tt.timeout)))
@@ -1691,9 +1129,9 @@ func TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome(t *testing.T) 
 				t.Errorf("run.state.Outcome = %q, want %q", run.state.Outcome, tt.wantOutcome)
 			}
 
-			// The done outcome cleans the run dir up entirely, so there is no run.json left to read —
-			// the in-memory run.state assertion above is the only observable proof for that case.
-			if tt.wantOutcome == OutcomeDone {
+			// The done outcome without KeepPane cleans the run dir up entirely, so there is no run.json
+			// left to read — the in-memory run.state assertion above is the only observable proof.
+			if tt.wantOutcome == OutcomeDone && !tt.keepPane {
 				return
 			}
 			rs, found, err := loadRunState(runDir)
@@ -1707,50 +1145,6 @@ func TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome(t *testing.T) 
 				t.Errorf("persisted RunState.Outcome = %q, want %q", rs.Outcome, tt.wantOutcome)
 			}
 		})
-	}
-}
-
-// TestRun_Wait_Finalize_OutcomeWritePrecedesCleanup pins that finalize's Outcome write happens before
-// the done-outcome cleanup, using KeepPane: true to observe it: the run dir survives cleanup either
-// way, so its persisted run.json must hold "done" rather than a stale "running" — proving the write
-// is not skipped or reordered after the block that would otherwise remove it.
-func TestRun_Wait_Finalize_OutcomeWritePrecedesCleanup(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, "events.jsonl")
-	outputFile := filepath.Join(runDir, "out.md")
-	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
-		t.Fatalf("seed output file: %v", err)
-	}
-	if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
-
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-	fx := newFixture(t, reed, engine, withConfig(fastConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, KeepPane: true},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath, Outcome: runOutcomeRunning}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Fatalf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
-	}
-
-	rs, found, err := loadRunState(runDir)
-	if err != nil {
-		t.Fatalf("loadRunState: %v", err)
-	}
-	if !found {
-		t.Fatal("loadRunState: run.json not found")
-	}
-	if rs.Outcome != string(OutcomeDone) {
-		t.Errorf("persisted RunState.Outcome = %q, want %q (not a stale %q)", rs.Outcome, OutcomeDone, runOutcomeRunning)
 	}
 }
 

@@ -14,46 +14,37 @@ import (
 )
 
 // TestOrigin_JSONRoundTrip asserts that Origin marshals and unmarshals through the parent_branch
-// wire key.
+// and parent_worktree wire keys, and that a record without the parent_worktree key decodes with it
+// empty.
+//
+//testtiming:keep Origin's parent_branch and parent_worktree wire keys round-tripping and a legacy record decoding with an empty ParentWorktree; coverage of its blocks by other tests does not show an assertion of this
 func TestOrigin_JSONRoundTrip(t *testing.T) {
-	want := Origin{ParentBranch: "main"}
+	tests := []struct {
+		name    string
+		want    Origin
+		wantKey string
+	}{
+		{"parent_branch", Origin{ParentBranch: "main"}, `"parent_branch":"main"`},
+		{"parent_worktree", Origin{ParentBranch: "main", ParentWorktree: "prime"}, `"parent_worktree":"prime"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := json.Marshal(tt.want)
+			if err != nil {
+				t.Fatalf("Marshal() error = %v", err)
+			}
+			if !strings.Contains(string(data), tt.wantKey) {
+				t.Errorf("Marshal() = %s; want it to contain %s", data, tt.wantKey)
+			}
 
-	data, err := json.Marshal(want)
-	if err != nil {
-		t.Fatalf("Marshal() error = %v", err)
-	}
-	if !strings.Contains(string(data), `"parent_branch":"main"`) {
-		t.Errorf("Marshal() = %s; want it to contain the parent_branch wire key", data)
-	}
-
-	var got Origin
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatalf("Unmarshal() error = %v", err)
-	}
-	if got != want {
-		t.Errorf("Unmarshal() = %+v; want %+v", got, want)
-	}
-}
-
-// TestOrigin_ParentWorktreeRoundTrip asserts that ParentWorktree marshals and unmarshals through the parent_worktree wire key,
-// and that a record without the key decodes with it empty.
-func TestOrigin_ParentWorktreeRoundTrip(t *testing.T) {
-	want := Origin{ParentBranch: "main", ParentWorktree: "prime"}
-
-	data, err := json.Marshal(want)
-	if err != nil {
-		t.Fatalf("Marshal() error = %v", err)
-	}
-	if !strings.Contains(string(data), `"parent_worktree":"prime"`) {
-		t.Errorf("Marshal() = %s; want it to contain the parent_worktree wire key", data)
-	}
-
-	var got Origin
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatalf("Unmarshal() error = %v", err)
-	}
-	if got != want {
-		t.Errorf("Unmarshal() = %+v; want %+v", got, want)
+			var got Origin
+			if err := json.Unmarshal(data, &got); err != nil {
+				t.Fatalf("Unmarshal() error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("Unmarshal() = %+v; want %+v", got, tt.want)
+			}
+		})
 	}
 
 	var legacy Origin
@@ -65,12 +56,17 @@ func TestOrigin_ParentWorktreeRoundTrip(t *testing.T) {
 	}
 }
 
-// TestOriginRecordPath_BothAnchors asserts that OriginRecordPath joins the anchor path with
-// OriginRecordRel at both AnchorRel == "." and a subpath anchor, proving the subpath case moves
-// the record down by the anchor.
-func TestOriginRecordPath_BothAnchors(t *testing.T) {
+// TestOriginRecordPaths asserts that OriginRecordPath joins the anchor path with OriginRecordRel and
+// OriginRecordPathFor joins WeftWorktreePath with AnchorRel and OriginRecordRel, at both
+// AnchorRel == "." and a subpath anchor — proving the subpath case moves the record down by the
+// anchor, with the anchor segment present in OriginRecordPathFor — and that both end in
+// OriginRecordRel(), the anchor-relative form both accessors are built from.
+//
+//testtiming:keep OriginRecordPath and OriginRecordPathFor joining the anchor and OriginRecordRel at a root and a subpath anchor, both ending in the shared suffix; coverage of its blocks by other tests does not show an assertion of this
+func TestOriginRecordPaths(t *testing.T) {
 	hub := filepath.Join("repos", "loomyard-LYXHUB")
 	const worktreeName = "loomyard"
+	const slug = "test-wt"
 
 	tests := []struct {
 		name      string
@@ -82,59 +78,28 @@ func TestOriginRecordPath_BothAnchors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			l := locationkit.Location(hub, worktreeName, tt.anchorRel)
+			rel := OriginRecordRel()
+
 			got := OriginRecordPath(l)
-			want := filepath.Join(l.AnchorPath(), OriginRecordRel())
+			want := filepath.Join(l.AnchorPath(), rel)
 			if got != want {
 				t.Errorf("OriginRecordPath() = %q; want %q", got, want)
 			}
-		})
-	}
-}
-
-// TestOriginRecordPathFor_BothAnchors asserts that OriginRecordPathFor joins WeftWorktreePath with
-// AnchorRel and OriginRecordRel at both AnchorRel == "." and a subpath anchor, asserting the anchor
-// segment is present in the subpath case.
-func TestOriginRecordPathFor_BothAnchors(t *testing.T) {
-	hub := filepath.Join("repos", "loomyard-LYXHUB")
-	const worktreeName = "loomyard"
-	const slug = "test-wt"
-
-	tests := []struct {
-		name      string
-		anchorRel string
-	}{
-		{"root", "."},
-		{"subpath", "backend"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			l := locationkit.Location(hub, worktreeName, tt.anchorRel)
-			got := OriginRecordPathFor(l, slug)
-			want := filepath.Join(WeftWorktreePath(l, slug), l.AnchorRel, OriginRecordRel())
-			if got != want {
-				t.Errorf("OriginRecordPathFor(%q) = %q; want %q", slug, got, want)
+			if !strings.HasSuffix(got, rel) {
+				t.Errorf("OriginRecordPath() = %q; want it to end in OriginRecordRel() = %q", got, rel)
 			}
-			if tt.anchorRel != "." && !strings.Contains(got, tt.anchorRel) {
-				t.Errorf("OriginRecordPathFor(%q) = %q; want it to contain anchor segment %q", slug, got, tt.anchorRel)
+
+			gotFor := OriginRecordPathFor(l, slug)
+			wantFor := filepath.Join(WeftWorktreePath(l, slug), l.AnchorRel, rel)
+			if gotFor != wantFor {
+				t.Errorf("OriginRecordPathFor(%q) = %q; want %q", slug, gotFor, wantFor)
+			}
+			if tt.anchorRel != "." && !strings.Contains(gotFor, tt.anchorRel) {
+				t.Errorf("OriginRecordPathFor(%q) = %q; want it to contain anchor segment %q", slug, gotFor, tt.anchorRel)
+			}
+			if !strings.HasSuffix(gotFor, rel) {
+				t.Errorf("OriginRecordPathFor(%q) = %q; want it to end in OriginRecordRel() = %q", slug, gotFor, rel)
 			}
 		})
-	}
-}
-
-// TestOriginRecordRel_IsTheSharedSuffix asserts that both OriginRecordPath and OriginRecordPathFor
-// end in OriginRecordRel(), the anchor-relative form both accessors are built from.
-func TestOriginRecordRel_IsTheSharedSuffix(t *testing.T) {
-	hub := filepath.Join("repos", "loomyard-LYXHUB")
-	const worktreeName = "loomyard"
-	const slug = "test-wt"
-	l := locationkit.Location(hub, worktreeName, ".")
-
-	rel := OriginRecordRel()
-
-	if got := OriginRecordPath(l); !strings.HasSuffix(got, rel) {
-		t.Errorf("OriginRecordPath() = %q; want it to end in OriginRecordRel() = %q", got, rel)
-	}
-	if got := OriginRecordPathFor(l, slug); !strings.HasSuffix(got, rel) {
-		t.Errorf("OriginRecordPathFor(%q) = %q; want it to end in OriginRecordRel() = %q", slug, got, rel)
 	}
 }

@@ -61,6 +61,8 @@ func TestOpenParent_HappyPath(t *testing.T) {
 
 // TestOpenParent_NoLivePairForBranch asserts OpenParent errors, naming the branch, when the branch
 // has no live worktree at all.
+//
+//testtiming:keep OpenParent naming the branch when it has no live worktree at all; coverage of its blocks by other tests does not show an assertion of this
 func TestOpenParent_NoLivePairForBranch(t *testing.T) {
 	t.Parallel()
 
@@ -109,6 +111,8 @@ func TestOpenParent_ParentSiblingMissing(t *testing.T) {
 // TestOpenParent_PrunableParentDirRemoved asserts that deleting a pair's directory without pruning
 // makes OpenParent report "no live pair" naming the branch — never an *fabricengine.ErrMissingPath —
 // since the prunable entry is skipped by matchParentBranch before it is ever opened.
+//
+//testtiming:keep a deleted but unpruned pair reporting "no live pair" naming the branch and never an *ErrMissingPath; coverage of its blocks by other tests does not show an assertion of this
 func TestOpenParent_PrunableParentDirRemoved(t *testing.T) {
 	t.Parallel()
 

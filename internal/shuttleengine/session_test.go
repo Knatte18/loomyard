@@ -35,45 +35,70 @@ func (e *cyclerEngine) CompactSessionSequence(focus string) []PaneInput {
 	return []PaneInput{{Text: "/compact " + focus, Submit: true}}
 }
 
-func TestRunner_ReadEvents_AdvancesPastCompleteLinesOnly(t *testing.T) {
-	fx := newFixture(t, &fakeReed{}, &fakeEngine{}, withStrand("strand-1"))
-	runner, eventsPath := fx.Runner, fx.EventsPath
-	full := "STOP:one\nSTOP:two\n"
-	if err := os.WriteFile(eventsPath, []byte(full+"STOP:par"), 0o644); err != nil {
-		t.Fatal(err)
+// TestRunner_ReadEvents covers ReadEvents' offset rules: it advances past complete lines only, so a
+// partial trailing line is left for the next read; an absent events file keeps the caller's offset;
+// and an unknown strand guid is an error.
+func TestRunner_ReadEvents(t *testing.T) {
+	const complete = "STOP:one\nSTOP:two\n"
+	tests := []struct {
+		name string
+		// events is the events file's seed; nil leaves it absent.
+		events      *string
+		guid        string
+		fromOffset  int64
+		wantMessage []string
+		wantOffset  int64
+		wantErr     bool
+	}{
+		{
+			name: "advances past complete lines only", events: ptrTo(complete + "STOP:par"), guid: "strand-1",
+			wantMessage: []string{"one", "two"}, wantOffset: int64(len(complete)),
+		},
+		{name: "an absent file keeps the offset", guid: "strand-1", fromOffset: 7, wantOffset: 7},
+		{name: "an unknown guid is an error", guid: "nope", wantErr: true},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newFixture(t, &fakeReed{}, &fakeEngine{}, withStrand("strand-1"))
+			runner, eventsPath := fx.Runner, fx.EventsPath
+			if tt.events != nil {
+				if err := os.WriteFile(eventsPath, []byte(*tt.events), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-	events, off, err := runner.ReadEvents("strand-1", 0)
-	if err != nil {
-		t.Fatalf("ReadEvents: %v", err)
-	}
-	if len(events) != 2 || events[0].Message != "one" || events[1].Message != "two" {
-		t.Errorf("events = %+v, want one and two", events)
-	}
-	if off != int64(len(full)) {
-		t.Errorf("offset = %d, want %d", off, len(full))
-	}
+			events, off, err := runner.ReadEvents(tt.guid, tt.fromOffset)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("ReadEvents(unknown guid) = nil error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ReadEvents: %v", err)
+			}
+			var got []string
+			for _, event := range events {
+				got = append(got, event.Message)
+			}
+			if !reflect.DeepEqual(got, tt.wantMessage) {
+				t.Errorf("events = %+v, want messages %v", events, tt.wantMessage)
+			}
+			if off != tt.wantOffset {
+				t.Errorf("offset = %d, want %d", off, tt.wantOffset)
+			}
 
-	events, off2, err := runner.ReadEvents("strand-1", off)
-	if err != nil || len(events) != 0 || off2 != off {
-		t.Errorf("re-read = %+v, %d, %v; want no events and offset %d", events, off2, err, off)
+			// A re-read from the returned offset finds nothing new and leaves the offset where it is.
+			again, off2, err := runner.ReadEvents(tt.guid, off)
+			if err != nil || len(again) != 0 || off2 != off {
+				t.Errorf("re-read = %+v, %d, %v; want no events and offset %d", again, off2, err, off)
+			}
+		})
 	}
 }
 
-func TestRunner_ReadEvents_AbsentFileKeepsOffset(t *testing.T) {
-	runner := newFixture(t, &fakeReed{}, &fakeEngine{}, withStrand("strand-1")).Runner
-	events, off, err := runner.ReadEvents("strand-1", 7)
-	if err != nil || len(events) != 0 || off != 7 {
-		t.Errorf("ReadEvents = %+v, %d, %v; want none, 7, nil", events, off, err)
-	}
-}
-
-func TestRunner_ReadEvents_UnknownGUID(t *testing.T) {
-	runner := newFixture(t, &fakeReed{}, &fakeEngine{}, withStrand("strand-1")).Runner
-	if _, _, err := runner.ReadEvents("nope", 0); err == nil {
-		t.Error("ReadEvents(unknown guid) = nil error")
-	}
-}
+// ptrTo returns a pointer to value, for table rows that distinguish an absent string from an empty one.
+func ptrTo[T any](value T) *T { return &value }
 
 func TestRunner_SessionMethods_ErrorOnPlainEngine(t *testing.T) {
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
@@ -180,7 +205,7 @@ func TestRunner_ClearSession_UnknownGUID(t *testing.T) {
 	}
 }
 
-func TestRunner_LoadSkillAndSkillUnknown_GuardStrands(t *testing.T) {
+func TestRunner_LoadSkills_GuardStrands(t *testing.T) {
 	t.Parallel()
 	refused := []struct {
 		name string
@@ -191,41 +216,41 @@ func TestRunner_LoadSkillAndSkillUnknown_GuardStrands(t *testing.T) {
 		{"dead strand", "strand-1", false},
 	}
 	for _, tc := range refused {
-		reed := &fakeReed{StatusQueue: liveStrandStatus(tc.live), CaptureQueue: []string{"NOSKILL ghost"}}
+		reed := &fakeReed{StatusQueue: liveStrandStatus(tc.live)}
 		runner := newFixture(t, reed, &skillFakeEngine{fakeEngine: &fakeEngine{}}, withStrand("strand-1")).Runner
-		if err := runner.LoadSkill(tc.guid, "a"); err == nil {
-			t.Errorf("%s: LoadSkill = nil error", tc.name)
-		}
-		if _, err := runner.SkillUnknown(tc.guid, "ghost"); err == nil {
-			t.Errorf("%s: SkillUnknown = nil error", tc.name)
+		if err := runner.LoadSkills(tc.guid, []string{"a", "b"}); err == nil {
+			t.Errorf("%s: LoadSkills = nil error", tc.name)
 		}
 		if len(reed.SendTextCalls) != 0 {
 			t.Errorf("%s: typed %+v; want nothing", tc.name, reed.SendTextCalls)
 		}
 	}
+}
 
-	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"NOSKILL ghost"}}
-	runner := newFixture(t, reed, &skillFakeEngine{fakeEngine: &fakeEngine{}}, withStrand("strand-1")).Runner
-	if err := runner.LoadSkill("strand-1", "a"); err != nil {
-		t.Fatalf("LoadSkill: %v", err)
+func TestRunner_LoadSkillsAndClassifySkillLoad_DriveTheEngine(t *testing.T) {
+	t.Parallel()
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ LOAD:a,b"}}
+	want := SkillLoadReport{Verified: true, Loaded: []string{"a"}, Missing: []string{"b"}}
+	engine := &skillFakeEngine{fakeEngine: &fakeEngine{}, Reports: []SkillLoadReport{want}}
+	runner := newFixture(t, reed, engine, withStrand("strand-1")).Runner
+	if err := runner.LoadSkills("strand-1", []string{"a", "b"}); err != nil {
+		t.Fatalf("LoadSkills: %v", err)
 	}
-	if len(reed.SendTextCalls) != 1 || reed.SendTextCalls[0].Text != "LOAD:a" || !reed.SendTextCalls[0].Submit {
-		t.Errorf("SendTextCalls = %+v; want the engine's load sequence", reed.SendTextCalls)
+	if len(reed.SendTextCalls) != 1 || reed.SendTextCalls[0].Text != "LOAD:a,b" || !reed.SendTextCalls[0].Submit {
+		t.Errorf("SendTextCalls = %+v; want the engine's one-turn load message", reed.SendTextCalls)
 	}
-	if unknown, err := runner.SkillUnknown("strand-1", "ghost"); err != nil || !unknown {
-		t.Errorf("SkillUnknown(ghost) = %v, %v; want true, nil", unknown, err)
-	}
-	if unknown, err := runner.SkillUnknown("strand-1", "other"); err != nil || unknown {
-		t.Errorf("SkillUnknown(other) = %v, %v; want false, nil", unknown, err)
+	got, err := runner.ClassifySkillLoad(Event{Kind: EventStop}, []string{"a", "b"})
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("ClassifySkillLoad = %+v, %v; want %+v, nil", got, err, want)
 	}
 }
 
-func TestRunner_LoadSkillAndSkillUnknown_ErrorOnPlainEngine(t *testing.T) {
+func TestRunner_LoadSkillsAndClassifySkillLoad_ErrorOnPlainEngine(t *testing.T) {
 	runner := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &fakeEngine{}, withStrand("strand-1")).Runner
-	if err := runner.LoadSkill("strand-1", "a"); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
-		t.Errorf("LoadSkill error = %v; want one naming SkillLoader", err)
+	if err := runner.LoadSkills("strand-1", []string{"a"}); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
+		t.Errorf("LoadSkills error = %v; want one naming SkillLoader", err)
 	}
-	if _, err := runner.SkillUnknown("strand-1", "a"); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
-		t.Errorf("SkillUnknown error = %v; want one naming SkillLoader", err)
+	if _, err := runner.ClassifySkillLoad(Event{Kind: EventStop}, []string{"a"}); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
+		t.Errorf("ClassifySkillLoad error = %v; want one naming SkillLoader", err)
 	}
 }

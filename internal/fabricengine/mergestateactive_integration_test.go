@@ -48,76 +48,55 @@ func driveConflictedSquashMerge(t *testing.T, dir string) {
 	_, _ = mergeCmd.CombinedOutput() // conflicted squash merge exits non-zero, intentionally ignored
 }
 
-// TestMergeStateActive_CleanWeft_ReportsFalse covers the baseline case: a freshly cloned pair's weft
-// sibling is not mid-merge.
-func TestMergeStateActive_CleanWeft_ReportsFalse(t *testing.T) {
-	t.Parallel()
-
-	h := hubforge.NewHub(t, ".")
-
-	active, err := fabricengine.MergeStateActive(h.Location)
-	if err != nil {
-		t.Fatalf("MergeStateActive() on clean weft error = %v", err)
-	}
-	if active {
-		t.Error("MergeStateActive() on clean weft = true; want false")
-	}
-}
-
-// TestMergeStateActive_WeftMergeHeadPresent_ReportsTrue covers the MERGE_HEAD-only shape: a live,
-// non-conflicting merge staged in the weft sibling.
-func TestMergeStateActive_WeftMergeHeadPresent_ReportsTrue(t *testing.T) {
-	t.Parallel()
-
-	h := hubforge.NewHub(t, ".")
-
-	driveMergeHeadOnlyNoConflicts(t, h.PrimeWeft())
-
-	active, err := fabricengine.MergeStateActive(h.Location)
-	if err != nil {
-		t.Fatalf("MergeStateActive() with live weft MERGE_HEAD error = %v", err)
-	}
-	if !active {
-		t.Error("MergeStateActive() with live weft MERGE_HEAD = false; want true")
-	}
-}
-
-// TestMergeStateActive_WeftConflictedSquashNoMergeHead_ReportsTrue covers the conflicted-index-only
-// shape a squash merge produces: no MERGE_HEAD is ever written for `git merge --squash`, so this
-// scenario is unreachable by the MERGE_HEAD probe alone, pinning that neither probe kind is
-// redundant.
-func TestMergeStateActive_WeftConflictedSquashNoMergeHead_ReportsTrue(t *testing.T) {
-	t.Parallel()
-
-	h := hubforge.NewHub(t, ".")
-
-	driveConflictedSquashMerge(t, h.PrimeWeft())
-
-	active, err := fabricengine.MergeStateActive(h.Location)
-	if err != nil {
-		t.Fatalf("MergeStateActive() with conflicted weft squash merge error = %v", err)
-	}
-	if !active {
-		t.Error("MergeStateActive() with conflicted weft squash merge (no MERGE_HEAD) = false; want true")
-	}
-}
-
-// TestMergeStateActive_WarpAloneMidMerge_WeftClean_ReportsFalse covers the pinning case for the
-// weft-only scope: a foreign conflicted merge running in the warp checkout alone must not make
-// MergeStateActive report true, since it probes only the weft's independent .git state.
-func TestMergeStateActive_WarpAloneMidMerge_WeftClean_ReportsFalse(t *testing.T) {
+// TestMergeStateActive builds one hubforge pair and drives it through the shapes MergeStateActive
+// distinguishes, in this order:
+// a freshly cloned pair's clean weft is not mid-merge (reports false);
+// a foreign conflicted merge running in the warp checkout alone, with the weft clean, must not make
+// it report true, since it probes only the weft's independent .git state;
+// a live, non-conflicting merge staged in the weft sibling (MERGE_HEAD only) reports true, and is
+// aborted so the weft is clean again;
+// and a conflicted `git merge --squash` in the weft, which never writes a MERGE_HEAD, reports true —
+// unreachable by the MERGE_HEAD probe alone, pinning that neither probe kind is redundant.
+// The steps run serially on one pair.
+// Each leaves the weft clean or conflicted exactly as the next step expects.
+func TestMergeStateActive(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.NewHub(t, ".")
 	f := fabricengine.NewFabricForTest(t, h.PrimeWorktree(), h.PrimeWeft())
 
-	driveConflictedMergeStart(t, h.PrimeWorktree(), fabricengine.WarpForTest(f))
+	requireMergeStateActive := func(t *testing.T, want bool, shape string) {
+		t.Helper()
+		active, err := fabricengine.MergeStateActive(h.Location)
+		if err != nil {
+			t.Fatalf("MergeStateActive() with %s error = %v", shape, err)
+		}
+		if active != want {
+			t.Errorf("MergeStateActive() with %s = %v; want %v", shape, active, want)
+		}
+	}
 
-	active, err := fabricengine.MergeStateActive(h.Location)
-	if err != nil {
-		t.Fatalf("MergeStateActive() with warp-alone mid-merge error = %v", err)
-	}
-	if active {
-		t.Error("MergeStateActive() with warp-alone mid-merge (weft clean) = true; want false — the probe is weft-only")
-	}
+	t.Run("clean weft reports false", func(t *testing.T) {
+		requireMergeStateActive(t, false, "a clean weft")
+	})
+
+	t.Run("warp-alone mid-merge with a clean weft reports false", func(t *testing.T) {
+		driveConflictedMergeStart(t, h.PrimeWorktree(), fabricengine.WarpForTest(f))
+
+		requireMergeStateActive(t, false, "a warp-alone mid-merge (weft clean; the probe is weft-only)")
+	})
+
+	t.Run("weft MERGE_HEAD present reports true", func(t *testing.T) {
+		driveMergeHeadOnlyNoConflicts(t, h.PrimeWeft())
+
+		requireMergeStateActive(t, true, "a live weft MERGE_HEAD")
+
+		gitkit.MustRun(t, h.PrimeWeft(), "git", "merge", "--abort")
+	})
+
+	t.Run("weft conflicted squash without MERGE_HEAD reports true", func(t *testing.T) {
+		driveConflictedSquashMerge(t, h.PrimeWeft())
+
+		requireMergeStateActive(t, true, "a conflicted weft squash merge (no MERGE_HEAD)")
+	})
 }

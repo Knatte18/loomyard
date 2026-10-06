@@ -80,36 +80,46 @@ func TestNewBouncer_ValidationRules(t *testing.T) {
 	}
 }
 
-func TestNewBouncer_EmptyModelEffortVersionAccepted(t *testing.T) {
-	cfg := newBouncerFixture(t, withBareConfig(), withRubricName("bouncer-template-rubric-empty-triple")).Config
-	cfg.Model = ""
-	cfg.Effort = ""
-	cfg.Version = ""
-
-	if _, err := NewBouncer(cfg); err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil for empty Model/Effort/Version", err)
+//testtiming:keep pins the config shapes NewBouncer accepts: an empty Model, Effort and Version, a nil clock that defaults, and an artifact path that does not exist yet
+func TestNewBouncer_AcceptedConfigs(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		mutate func(cfg *BouncerConfig)
+	}{
+		{
+			name: "empty Model, Effort and Version",
+			mutate: func(cfg *BouncerConfig) {
+				cfg.Model = ""
+				cfg.Effort = ""
+				cfg.Version = ""
+			},
+		},
+		{
+			name:   "a nil Now defaults to a non-nil clock",
+			mutate: func(cfg *BouncerConfig) { cfg.Now = nil },
+		},
+		{
+			name: "an artifact path that does not exist yet",
+			mutate: func(cfg *BouncerConfig) {
+				cfg.ArtifactPaths = []string{filepath.Join(cfg.RunDir, "not-yet-written.md")}
+			},
+		},
 	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := newBouncerFixture(t, withBareConfig(), withRubricName("bouncer-template-rubric-accepted")).Config
+			tt.mutate(&cfg)
 
-func TestNewBouncer_NilNowDefaultsToNonNilClock(t *testing.T) {
-	cfg := newBouncerFixture(t, withBareConfig(), withRubricName("bouncer-template-rubric-nil-now")).Config
-	cfg.Now = nil
-
-	b, err := NewBouncer(cfg)
-	if err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
-	}
-	if b.cfg.Now == nil {
-		t.Error("NewBouncer(...).cfg.Now = nil; want a non-nil clock")
-	}
-}
-
-func TestNewBouncer_ArtifactPathNeedNotExist(t *testing.T) {
-	cfg := newBouncerFixture(t, withBareConfig(), withRubricName("bouncer-template-rubric-nonexistent-artifact")).Config
-	cfg.ArtifactPaths = []string{filepath.Join(cfg.RunDir, "not-yet-written.md")}
-
-	if _, err := NewBouncer(cfg); err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil for a not-yet-existing artifact path", err)
+			b, err := NewBouncer(cfg)
+			if err != nil {
+				t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+			}
+			if b.cfg.Now == nil {
+				t.Error("NewBouncer(...).cfg.Now = nil; want a non-nil clock")
+			}
+		})
 	}
 }
 

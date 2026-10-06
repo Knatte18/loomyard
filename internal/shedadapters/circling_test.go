@@ -26,64 +26,90 @@ func layoutCirclingRun(t *testing.T, dir string, round int, verdict string) {
 	}
 }
 
+//testtiming:keep pins the decision file RecordCirclingDecision writes per decision, escalation record and cause, and its round and cause return values
 func TestRecordCirclingDecision_WritesPendingFile(t *testing.T) {
-	for _, d := range []CirclingDecision{CirclingAccept, CirclingContinue} {
-		dir := t.TempDir()
-		layoutCirclingRun(t, dir, 1, "CONTINUE")
-		layoutCirclingRun(t, dir, 2, "CIRCLING")
+	t.Parallel()
+	tests := []struct {
+		name      string
+		decision  CirclingDecision
+		layout    func(t *testing.T, dir string)
+		wantRound int
+		wantCause EscalationCause
+	}{
+		{
+			name:     "accept over a circling verdict",
+			decision: CirclingAccept,
+			layout: func(t *testing.T, dir string) {
+				layoutCirclingRun(t, dir, 1, "CONTINUE")
+				layoutCirclingRun(t, dir, 2, "CIRCLING")
+			},
+			wantRound: 2,
+			wantCause: EscalationCircling,
+		},
+		{
+			name:     "continue over a circling verdict",
+			decision: CirclingContinue,
+			layout: func(t *testing.T, dir string) {
+				layoutCirclingRun(t, dir, 1, "CONTINUE")
+				layoutCirclingRun(t, dir, 2, "CIRCLING")
+			},
+			wantRound: 2,
+			wantCause: EscalationCircling,
+		},
+		{
+			name:     "accept over a budget escalation on a continue verdict",
+			decision: CirclingAccept,
+			layout: func(t *testing.T, dir string) {
+				layoutCirclingRun(t, dir, 1, "CONTINUE")
+				writeEscalationRecord(t, dir, EscalationBudget)
+			},
+			wantRound: 1,
+			wantCause: EscalationBudget,
+		},
+		{
+			name:     "continue over a budget escalation on a continue verdict",
+			decision: CirclingContinue,
+			layout: func(t *testing.T, dir string) {
+				layoutCirclingRun(t, dir, 1, "CONTINUE")
+				writeEscalationRecord(t, dir, EscalationBudget)
+			},
+			wantRound: 1,
+			wantCause: EscalationBudget,
+		},
+		{
+			name:     "continue over a circling escalation record",
+			decision: CirclingContinue,
+			layout: func(t *testing.T, dir string) {
+				layoutCirclingRun(t, dir, 1, "CIRCLING")
+				writeEscalationRecord(t, dir, EscalationCircling)
+			},
+			wantRound: 1,
+			wantCause: EscalationCircling,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			tt.layout(t, dir)
 
-		round, cause, err := RecordCirclingDecision(dir, d)
-		if err != nil {
-			t.Fatalf("RecordCirclingDecision(%q) error = %v; want nil", d, err)
-		}
-		if round != 2 || cause != EscalationCircling {
-			t.Errorf("RecordCirclingDecision(%q) = (round %d, cause %q); want (2, circling)", d, round, cause)
-		}
-		got, gotCause, settled, exists, err := readCirclingDecision(dir, 2)
-		if err != nil || !exists || settled || got != d || gotCause != EscalationCircling {
-			t.Errorf("readCirclingDecision = (%q, %q, settled %v, exists %v, %v); want (%q, circling, false, true, nil)", got, gotCause, settled, exists, err, d)
-		}
+			round, cause, err := RecordCirclingDecision(dir, tt.decision)
+			if err != nil || round != tt.wantRound || cause != tt.wantCause {
+				t.Fatalf("RecordCirclingDecision(%q) = (%d, %q, %v); want (%d, %q, nil)", tt.decision, round, cause, err, tt.wantRound, tt.wantCause)
+			}
+			got, gotCause, settled, exists, err := readCirclingDecision(dir, tt.wantRound)
+			if err != nil || !exists || settled || got != tt.decision || gotCause != tt.wantCause {
+				t.Errorf("readCirclingDecision = (%q, %q, settled %v, exists %v, %v); want (%q, %q, false, true, nil)", got, gotCause, settled, exists, err, tt.decision, tt.wantCause)
+			}
+		})
 	}
 }
 
-func TestRecordCirclingDecision_BudgetEscalationOverContinueVerdict(t *testing.T) {
-	for _, d := range []CirclingDecision{CirclingAccept, CirclingContinue} {
-		dir := t.TempDir()
-		layoutCirclingRun(t, dir, 1, "CONTINUE")
-		if err := writeEscalation(dir, 1, EscalationBudget, "brief\n", "notice"); err != nil {
-			t.Fatalf("writeEscalation error = %v; want nil", err)
-		}
-
-		round, cause, err := RecordCirclingDecision(dir, d)
-		if err != nil || round != 1 || cause != EscalationBudget {
-			t.Fatalf("RecordCirclingDecision(%q) = (%d, %q, %v); want (1, budget, nil)", d, round, cause, err)
-		}
-		got, gotCause, _, exists, err := readCirclingDecision(dir, 1)
-		if err != nil || !exists || got != d || gotCause != EscalationBudget {
-			t.Errorf("readCirclingDecision = (%q, %q, exists %v, %v); want (%q, budget, true, nil)", got, gotCause, exists, err, d)
-		}
-	}
-}
-
-func TestRecordCirclingDecision_CircledEscalationRecord(t *testing.T) {
-	dir := t.TempDir()
-	layoutCirclingRun(t, dir, 1, "CIRCLING")
-	if err := writeEscalation(dir, 1, EscalationCircling, "brief\n", "notice"); err != nil {
+// writeEscalationRecord writes round 1's escalation record with the given cause.
+func writeEscalationRecord(t *testing.T, dir string, cause EscalationCause) {
+	t.Helper()
+	if err := writeEscalation(dir, 1, cause, "brief\n", "notice"); err != nil {
 		t.Fatalf("writeEscalation error = %v; want nil", err)
-	}
-	if _, cause, err := RecordCirclingDecision(dir, CirclingContinue); err != nil || cause != EscalationCircling {
-		t.Fatalf("RecordCirclingDecision = (%q, %v); want (circling, nil)", cause, err)
-	}
-}
-
-func TestReadCirclingDecision_LegacyFileReadsAsCircling(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(circlingDecisionPath(dir, 1), []byte("---\nround: 1\ndecision: accept\nsettled: false\n---\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile = %v; want nil", err)
-	}
-	got, cause, _, exists, err := readCirclingDecision(dir, 1)
-	if err != nil || !exists || got != CirclingAccept || cause != EscalationCircling {
-		t.Errorf("readCirclingDecision = (%q, %q, exists %v, %v); want (accept, circling, true, nil)", got, cause, exists, err)
 	}
 }
 
@@ -140,50 +166,47 @@ func TestRecordCirclingDecision_NotEscalatedWritesNothing(t *testing.T) {
 	}
 }
 
-func TestSettleCirclingAccept_SettlesPendingAccept(t *testing.T) {
-	dir := t.TempDir()
-	layoutCirclingRun(t, dir, 1, "CIRCLING")
-	if err := writeEscalation(dir, 1, EscalationBudget, "brief\n", "notice"); err != nil {
-		t.Fatalf("writeEscalation error = %v; want nil", err)
-	}
-	if _, _, err := RecordCirclingDecision(dir, CirclingAccept); err != nil {
-		t.Fatalf("RecordCirclingDecision error = %v; want nil", err)
-	}
-	if err := settleCirclingAccept(dir, 1); err != nil {
-		t.Fatalf("settleCirclingAccept error = %v; want nil", err)
-	}
-	got, cause, settled, exists, err := readCirclingDecision(dir, 1)
-	if err != nil || !exists || !settled || got != CirclingAccept || cause != EscalationBudget {
-		t.Errorf("readCirclingDecision = (%q, %q, settled %v, exists %v, %v); want (accept, budget, true, true, nil)", got, cause, settled, exists, err)
-	}
-}
-
-func TestReadCirclingDecision_AbsentFile(t *testing.T) {
-	_, _, _, exists, err := readCirclingDecision(t.TempDir(), 1)
-	if err != nil || exists {
-		t.Errorf("readCirclingDecision(absent) = (exists %v, %v); want (false, nil)", exists, err)
-	}
-}
-
-func TestReadCirclingDecision_MalformedIsAnError(t *testing.T) {
+func TestReadCirclingDecision(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
-		name    string
-		content string
+		name string
+		// content is the decision file's content; empty leaves the file absent.
+		content      string
+		wantExists   bool
+		wantErr      bool
+		wantDecision CirclingDecision
+		wantCause    EscalationCause
 	}{
-		{"round disagrees with filename", "---\nround: 2\ndecision: accept\nsettled: false\n---\n"},
-		{"unknown decision", "---\nround: 1\ndecision: maybe\nsettled: false\n---\n"},
-		{"unknown cause", "---\nround: 1\ndecision: accept\ncause: weather\nsettled: false\n---\n"},
-		{"settled continue", "---\nround: 1\ndecision: continue\nsettled: true\n---\n"},
-		{"no frontmatter", "accept\n"},
+		{name: "absent file"},
+		{
+			name:         "a legacy file without a cause reads as circling",
+			content:      "---\nround: 1\ndecision: accept\nsettled: false\n---\n",
+			wantExists:   true,
+			wantDecision: CirclingAccept,
+			wantCause:    EscalationCircling,
+		},
+		{name: "round disagrees with filename", content: "---\nround: 2\ndecision: accept\nsettled: false\n---\n", wantExists: true, wantErr: true},
+		{name: "unknown decision", content: "---\nround: 1\ndecision: maybe\nsettled: false\n---\n", wantExists: true, wantErr: true},
+		{name: "unknown cause", content: "---\nround: 1\ndecision: accept\ncause: weather\nsettled: false\n---\n", wantExists: true, wantErr: true},
+		{name: "settled continue", content: "---\nround: 1\ndecision: continue\nsettled: true\n---\n", wantExists: true, wantErr: true},
+		{name: "no frontmatter", content: "accept\n", wantExists: true, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
-			if err := os.WriteFile(circlingDecisionPath(dir, 1), []byte(tt.content), 0o644); err != nil {
-				t.Fatalf("WriteFile = %v; want nil", err)
+			if tt.content != "" {
+				if err := os.WriteFile(circlingDecisionPath(dir, 1), []byte(tt.content), 0o644); err != nil {
+					t.Fatalf("WriteFile = %v; want nil", err)
+				}
 			}
-			if _, _, _, exists, err := readCirclingDecision(dir, 1); err == nil || !exists {
-				t.Errorf("readCirclingDecision = (exists %v, %v); want a present-file error", exists, err)
+
+			got, cause, _, exists, err := readCirclingDecision(dir, 1)
+			if (err != nil) != tt.wantErr || exists != tt.wantExists {
+				t.Fatalf("readCirclingDecision = (exists %v, %v); want (exists %v, error %v)", exists, err, tt.wantExists, tt.wantErr)
+			}
+			if got != tt.wantDecision || cause != tt.wantCause {
+				t.Errorf("readCirclingDecision = (%q, %q); want (%q, %q)", got, cause, tt.wantDecision, tt.wantCause)
 			}
 		})
 	}

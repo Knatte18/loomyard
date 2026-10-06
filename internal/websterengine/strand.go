@@ -42,12 +42,25 @@ func StrandLive(reed shuttleengine.ReedOps, guid string) (bool, error) {
 // Missing events file reports (false, nil).
 // ParseEvents errors propagate.
 func TurnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
+	return TurnEndedAfter(eventsPath, 0, engine)
+}
+
+// TurnEndedAfter is TurnEnded over the events from byte offset on, so the skill-load turns shuttle ran before the prompt never count.
+// An offset past the file's end reads no events.
+func TurnEndedAfter(eventsPath string, offset int64, engine shuttleengine.Engine) (bool, error) {
 	data, err := os.ReadFile(eventsPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("websterengine: read events file %s: %w", eventsPath, err)
+	}
+	if offset > int64(len(data)) {
+		offset = int64(len(data))
+	}
+	data = data[offset:]
+	if len(data) == 0 {
+		return false, nil
 	}
 
 	events, err := engine.ParseEvents(data)

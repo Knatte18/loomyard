@@ -87,16 +87,26 @@
 // directory and the strand guid in a logged warning, since the operator's only escape from either is
 // out of band, via "lyx reed status".
 //
-// Skill loading: Spec.Skills names provider-neutral skills that shuttle loads, in order, into a fresh session before the prompt.
+// Skill loading: Spec.Skills names provider-neutral skills that shuttle loads into a fresh session, all in one turn, before the prompt.
 // It needs the optional SkillLoader capability, and a spec that names skills on an engine without it is refused before any run directory exists.
 // An engine that realizes skills leaves the prompt pointer off its launch line and returns it as Launch.PromptLine;
-// once the provider is ready, shuttle plays each skill's load sequence and polls until a turn end reaches the events file, the pane shows the skill unknown, or Spec.SkillLoadTimeout passes (zero means the engine's DefaultSkillLoadTimeout).
-// The last two skip the skill with a logged warning and never fail or hang the launch;
-// then PromptLine goes out through the verified send path.
-// The run's events offset starts past every skill-load turn end, so Wait never reads one as the run asking.
+// once the provider is ready, shuttle sends the engine's one load message for the whole list through the verified send path and polls until the first turn end reaches the events file or Spec.SkillLoadTimeout passes (zero means the engine's DefaultSkillLoadTimeout).
+// The engine classifies that turn end into a SkillLoadReport: each unknown skill is skipped at once with a logged warning,
+// and the missing ones are asked for once more in a second load turn naming only them,
+// whose still-missing skills are skipped with a logged warning.
+// A turn whose evidence the engine could not read is confirmed unverified with one logged warning and no retry,
+// and a turn that never ends skips its skills at the timeout with no retry.
+// So a launch runs at most two load turns, each bounded by the timeout,
+// and a skipped skill never fails or hangs it.
+// Then PromptLine goes out through the verified send path.
+// The run's events offset ends past every load turn end, the retry's included,
+// so Wait never reads one as the run asking.
+// run.json records that offset as `promptOffset` before the prompt goes out,
+// and every reader that replays the events file without Waiting on the Run starts there: Attach, and webster's recovery classification through its batch record.
 // A pane that dies meanwhile is a died startup.
 // An empty Skills list changes nothing.
-// Runner.LoadSkill and Runner.SkillUnknown are the same capability's per-tick primitives for a caller reloading a live session; neither carries provider command text.
+// Runner.LoadSkills and Runner.ClassifySkillLoad are the same capability's per-tick primitives for a caller reloading a live session: the first sends the load message for a list, the second classifies the turn end that followed.
+// Neither carries provider command text.
 //
 // A gated run's GateSpec entries answer passed, failed or pending (GateResult.Pending, PassOnCap or MayHold entries only).
 // A failing result flagged GateResult.Terminal finalizes the run at once with no re-prompt, and its findings text rides GateOutcome.Reason.

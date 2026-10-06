@@ -27,6 +27,8 @@ import (
 // TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn clones against an empty weft remote and
 // asserts the weft primary's suffixed branch is a real ref afterwards, and that Add — the verb the
 // documented Example runs — actually works on the resulting hub.
+//
+//testtiming:keep a clone against an empty weft remote leaving the suffixed primary branch a real ref so Add works; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn(t *testing.T) {
 	t.Parallel()
 
@@ -68,6 +70,8 @@ func TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn(t *testing.T) {
 // TestCloneHub_NonEmptyWeftRemoteBranchUnchanged is the counter-test: the ordinary clone path must
 // keep pairing the suffixed branch with the cloned HEAD rather than gaining an extra empty commit
 // from the unborn-branch repair.
+//
+//testtiming:keep the ordinary clone path pairing the suffixed branch with the cloned HEAD without an extra empty commit; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_NonEmptyWeftRemoteBranchUnchanged(t *testing.T) {
 	t.Parallel()
 

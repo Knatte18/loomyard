@@ -26,67 +26,55 @@ func guids(strands []Strand) []string {
 	return out
 }
 
-// TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact pins that header validation runs before any
-// tmux contact (validates validation ORDER, not just existence).
-func TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact(t *testing.T) {
-	e := newTestEngine(t)
-	e.cfg.DebugLog = "0"
-	e.cfg.Mouse = "off"
-	e.cfg.StatusLine.Template = "{{.bogus}}"
-
-	_, err := e.Up()
-	if err == nil {
-		t.Fatal("Up() with a bad header template = nil error, want the eager validation error")
+// TestUp_BootValidation pins the eager boot validation of Up: a bad status-line template or an invalid watchdog value
+// fails with an error naming it before any tmux round trip (validation ORDER, not just existence),
+// while "on" and "off" do not trip the watchdog check (the fixture's nonexistent tmux binary is expected to fail Up() past this point,
+// so the assertion is only that the error is NOT the watchdog validation error).
+func TestUp_BootValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(cfg *Config)
+		wantErr   string // the validation error Up must fail with before any tmux contact; empty when the value must pass the check
+		notErr    string // an error text Up must not fail with
+	}{
+		{
+			name:      "BadStatusLineTemplate",
+			configure: func(cfg *Config) { cfg.StatusLine.Template = "{{.bogus}}" },
+			wantErr:   "unfilled top-level marker",
+		},
+		{name: "InvalidWatchdog_Empty", configure: func(cfg *Config) { cfg.Watchdog = "" }, wantErr: "invalid watchdog value"},
+		{name: "InvalidWatchdog_1", configure: func(cfg *Config) { cfg.Watchdog = "1" }, wantErr: "invalid watchdog value"},
+		{name: "InvalidWatchdog_Yes", configure: func(cfg *Config) { cfg.Watchdog = "yes" }, wantErr: "invalid watchdog value"},
+		{name: "ValidWatchdog_On", configure: func(cfg *Config) { cfg.Watchdog = "on" }, notErr: "invalid watchdog value"},
+		{name: "ValidWatchdog_Off", configure: func(cfg *Config) { cfg.Watchdog = "off" }, notErr: "invalid watchdog value"},
 	}
-	if !strings.Contains(err.Error(), "unfilled top-level marker") {
-		t.Errorf("Up() error = %q, want the stencil unfilled-marker error — any other error (e.g. the nonexistent tmux binary's) means validation ran after tmux contact", err)
-	}
-}
-
-// TestUp_InvalidWatchdogFailsBeforeAnyTmuxContact pins the boot-path watchdog validation this batch
-// adds: an invalid Config.Watchdog fails ensureServerAndSessionLocked (and therefore Up) with an
-// error naming the offending value, before any tmux round trip — following
-// TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact's shape, the file's existing sibling validation
-// test for debug_log/mouse/header.
-func TestUp_InvalidWatchdogFailsBeforeAnyTmuxContact(t *testing.T) {
-	invalid := []string{"", "1", "yes"}
-	for _, watchdog := range invalid {
-		t.Run("Invalid_"+watchdog, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
 			e.cfg.DebugLog = "0"
 			e.cfg.Mouse = "off"
-			e.cfg.Watchdog = watchdog
-
-			fake := installFakeTmux(t, e)
+			tt.configure(&e.cfg)
+			var fake *fakeTmux
+			if tt.wantErr != "" {
+				fake = installFakeTmux(t, e)
+			}
 
 			_, err := e.Up()
-			if err == nil {
-				t.Fatal("Up() with an invalid watchdog value = nil error, want the eager validation error")
-			}
-			if !strings.Contains(err.Error(), "invalid watchdog value") {
-				t.Errorf("Up() error = %q, want it to name the invalid watchdog value", err)
-			}
-			if calls := fake.Calls(); len(calls) != 0 {
-				t.Errorf("Up() issued %d tmux calls before failing, want zero: %v", len(calls), calls)
-			}
-		})
-	}
-}
 
-// TestUp_ValidWatchdogValuesPassTheBootCheck pins the negative case: "on" and "off" do not trip the
-// watchdog validation (the fixture's nonexistent tmux binary is expected to fail Up() past this
-// point, so the assertion is only that the error is NOT the watchdog validation error).
-func TestUp_ValidWatchdogValuesPassTheBootCheck(t *testing.T) {
-	for _, watchdog := range []string{"on", "off"} {
-		t.Run(watchdog, func(t *testing.T) {
-			e := newTestEngine(t)
-			e.cfg.DebugLog = "0"
-			e.cfg.Mouse = "off"
-			e.cfg.Watchdog = watchdog
-
-			_, err := e.Up()
-			if err != nil && strings.Contains(err.Error(), "invalid watchdog value") {
-				t.Errorf("Up() error = %q, want the watchdog check to pass for %q", err, watchdog)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("Up() = nil error, want the eager validation error containing %q", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("Up() error = %q, want it to contain %q; any other error means validation ran after tmux contact", err, tt.wantErr)
+				}
+				if calls := fake.Calls(); len(calls) != 0 {
+					t.Errorf("Up() issued %d tmux calls before failing, want zero: %v", len(calls), calls)
+				}
+				return
+			}
+			if err != nil && strings.Contains(err.Error(), tt.notErr) {
+				t.Errorf("Up() error = %q, want the check to pass", err)
 			}
 		})
 	}
@@ -120,6 +108,7 @@ func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins the pane env dropping exactly LYX_STRAND_NAME and LYX_PARENT and keeping a longer key sharing the prefix; its covering tests run this code without asserting it
 func TestStripAgentNameEnv_DropsNameAndParentOnly(t *testing.T) {
 	env := []string{"LYX_STRAND_NAME=ly:task:driver", "LYX_PARENT=ly:orch", "LYX_PARENTAL=keep", "PATH=/bin"}
 

@@ -6,18 +6,15 @@ package loomcli
 
 import "testing"
 
-// TestBootstrapVerb_IsExactlyStart asserts BootstrapVerb is exactly "start".
-func TestBootstrapVerb_IsExactlyStart(t *testing.T) {
+// TestBootstrapVerb asserts BootstrapVerb is exactly "start" and equals the Use field of the cobra
+// command startCmd builds, so a rename of the verb cannot leave the constant behind.
+//
+//testtiming:keep pins BootstrapVerb being exactly start and equal to the Use of the command startCmd builds, so a rename cannot leave the constant behind; the covering test never reads the constant
+func TestBootstrapVerb(t *testing.T) {
 	if BootstrapVerb != "start" {
 		t.Errorf("BootstrapVerb = %q; want %q", BootstrapVerb, "start")
 	}
-}
-
-// TestBootstrapVerb_MatchesStartCmdUse asserts BootstrapVerb equals the Use field of the cobra
-// command startCmd builds, so a rename of the verb cannot leave the constant behind.
-func TestBootstrapVerb_MatchesStartCmdUse(t *testing.T) {
-	c := newLoomCLI()
-	cmd := c.startCmd()
+	cmd := newLoomCLI().startCmd()
 	if cmd.Use != BootstrapVerb {
 		t.Errorf("startCmd().Use = %q; want it to equal BootstrapVerb = %q", cmd.Use, BootstrapVerb)
 	}

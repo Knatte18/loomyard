@@ -23,8 +23,8 @@ func TestClassify(t *testing.T) {
 
 	skipped := passRun("Skipped", 0, "b1")
 	skipped.action = "skip"
-	spawning := passRun("Spawns", 1, "b1")
-	spawning.spawn = spawnVerdict{spawns: true}
+	spawning := passRun("OutOfProcess", 1, "b1")
+	spawning.spawn = spawnVerdict{outOfProcess: true}
 	unresolved := passRun("Unresolved", 1, "b1")
 	unresolved.spawn = spawnVerdict{unresolved: true}
 
@@ -64,14 +64,14 @@ func TestClassify(t *testing.T) {
 			},
 		},
 		{
-			name: "no blocks, skipped, spawning and unresolved tests are never candidates",
+			name: "no blocks, skipped, out-of-process and unresolved tests are never candidates",
 			runs: []testRun{
 				passRun("Empty", 1), skipped, spawning, unresolved, passRun("Base", 1, "b1", "b2"),
 			},
 			want: []verdict{
 				{name: "Empty", reason: reasonNoBlocks},
 				{name: "Skipped", reason: reasonSkipped},
-				{name: "Spawns", reason: reasonSpawns},
+				{name: "OutOfProcess", reason: reasonOutOfProcess},
 				{name: "Unresolved", reason: reasonUnresolved},
 				{name: "Base"},
 			},
@@ -83,6 +83,35 @@ func TestClassify(t *testing.T) {
 			got := classify(row.runs)
 			if !reflect.DeepEqual(got, row.want) {
 				t.Fatalf("classify = %+v\nwant     %+v", got, row.want)
+			}
+		})
+	}
+}
+
+func TestRunAloneArgs(t *testing.T) {
+	t.Parallel()
+
+	rows := []struct {
+		name string
+		test string
+		want []string
+	}{
+		{
+			name: "plain name",
+			test: "TestPlain",
+			want: []string{"-test.run=^TestPlain$", "-test.coverprofile=/tmp/cover.out", "-test.v=true"},
+		},
+		{
+			name: "regexp metacharacters are quoted",
+			test: "Test.Dot(a+b)",
+			want: []string{`-test.run=^Test\.Dot\(a\+b\)$`, "-test.coverprofile=/tmp/cover.out", "-test.v=true"},
+		},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			if got := runAloneArgs(row.test, "/tmp/cover.out"); !reflect.DeepEqual(got, row.want) {
+				t.Fatalf("runAloneArgs = %q, want %q", got, row.want)
 			}
 		})
 	}
@@ -133,6 +162,26 @@ func TestRenderPackage(t *testing.T) {
 				"| `TestA` | `TestB`, `TestD` | yes |\n\n" +
 				"No coverage:\n\n" +
 				"- `TestC`: skipped\n",
+		},
+		{
+			name: "kept tests are listed under Kept and a kept candidate stays in the covering pool",
+			in: pkgReport{
+				pkg: "internal/k", tests: 4, wall: 0.5, serial: 0.75,
+				verdicts: []verdict{
+					{name: "TestKeptCandidate", candidate: true, covering: []string{"TestBase"}, keep: "pins the error text"},
+					{name: "TestOther", candidate: true, removable: true, covering: []string{"TestKeptCandidate"}},
+					{name: "TestBase"},
+					{name: "TestKeptPlain", keep: "pins the ordering"},
+				},
+			},
+			want: "## internal/k\n\n" +
+				"4 tests, wall 0.50s, serial 0.75s.\n\n" +
+				"| Test | Covering tests | Removable |\n|---|---|---|\n" +
+				"| `TestOther` | `TestKeptCandidate` | yes |\n\n" +
+				"Kept:\n\n" +
+				"- `TestKeptCandidate`: pins the error text\n" +
+				"- `TestKeptPlain`: pins the ordering\n\n" +
+				"No test lacks coverage.\n",
 		},
 		{
 			name: "nothing to report",

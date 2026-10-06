@@ -19,6 +19,8 @@ import (
 // TestWarpLyxLinkMethods covers WarpLyxLink(l, slug) and WarpLyxLinkHere(l) with both AnchorRel "."
 // (root) and subpath cases, verifying AnchorRel-mirroring and junction pairing against the
 // weft-sibling worktree.
+//
+//testtiming:keep WarpLyxLink and WarpLyxLinkHere mirroring AnchorRel and pairing with the weft sibling; coverage of its blocks by other tests does not show an assertion of this
 func TestWarpLyxLinkMethods(t *testing.T) {
 	tests := []struct {
 		name                string
@@ -105,6 +107,8 @@ func TestWarpLyxLinkMethods(t *testing.T) {
 // now arrives structurally (structuralCommittedDirs) rather than from a config `pathspec` entry, but
 // WarpJunctions itself is unaware of that distinction.
 // The _extra row asserts against the generic join, not a pattern-specific accessor.
+//
+//testtiming:keep WarpJunctions returning one record per name in input order with the Link and Target composed from the worktree, weft sibling and anchor; coverage of its blocks by other tests does not show an assertion of this
 func TestWarpJunctions(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -217,6 +221,8 @@ func TestWarpJunctions(t *testing.T) {
 // and a nested RelPath,
 // and it must agree entry-for-entry with WarpJunctions(l, slug, names) when l's slug and current
 // worktree coincide — the precondition every health-check call site relies on.
+//
+//testtiming:keep the slug-free junction accessor returning the expected Name, Link and Target at a root and nested anchor and agreeing with WarpJunctions; coverage of its blocks by other tests does not show an assertion of this
 func TestWarpJunctionsHere(t *testing.T) {
 	t.Run("at root", func(t *testing.T) {
 		loc := &lyxcwd.Location{HubPath: "/h", WorktreeName: "feat", AnchorRel: "."}

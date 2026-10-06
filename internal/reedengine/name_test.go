@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+//testtiming:keep pins newGUID returning 32 lowercase hex characters, unique across calls; its covering tests run this code without asserting it
 func TestNewGUID_UniqueAndHex(t *testing.T) {
 	const n = 50
 	seen := make(map[string]bool, n)

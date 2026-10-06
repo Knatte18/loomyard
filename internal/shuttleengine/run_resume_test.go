@@ -21,6 +21,7 @@ func resumeSpec() Spec {
 	return Spec{Prompt: "x", OutputFiles: []string{"out.md"}, ResumeSessionID: "11111111-2222-3333-4444-555555555555"}
 }
 
+//testtiming:keep pins that the resume check runs against the runner's pane cwd and before Prepare, which the warning test does not observe
 func TestRunnerStart_Resume_ChecksSessionAgainstPaneCwdBeforePrepare(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := newResumeTestEngine()
@@ -97,6 +98,7 @@ func TestRunnerStart_Resume_EngineWithoutCapabilityRefuses(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins that a spec with no ResumeSessionID never calls the resume check and carries no resume warning
 func TestRunnerStart_NoResumeSessionID_NeverCallsCheck(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := newResumeTestEngine()

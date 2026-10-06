@@ -22,57 +22,35 @@ func writeReport(t *testing.T, dir string, round int) {
 	}
 }
 
-func TestResolveRound_EmptyRunDirReturnsZero(t *testing.T) {
-	dir := t.TempDir()
-
-	got, err := ResolveRound(dir, reportName)
-	if err != nil {
-		t.Fatalf("ResolveRound(%q, ...) = _, %v; want nil error", dir, err)
+//testtiming:keep pins the round scan: the highest present round, zero for an empty run dir, and that a gap stops the scan
+func TestResolveRound(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		present []int
+		want    int
+	}{
+		{"empty run dir returns zero", nil, 0},
+		{"only round one present", []int{1}, 1},
+		{"rounds one through three present", []int{1, 2, 3}, 3},
+		{"a gap stops the scan before later rounds", []int{1, 3}, 1},
 	}
-	if got != 0 {
-		t.Errorf("ResolveRound(%q, ...) = %d; want 0", dir, got)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			for _, round := range tt.present {
+				writeReport(t, dir, round)
+			}
 
-func TestResolveRound_OnlyRoundOnePresent(t *testing.T) {
-	dir := t.TempDir()
-	writeReport(t, dir, 1)
-
-	got, err := ResolveRound(dir, reportName)
-	if err != nil {
-		t.Fatalf("ResolveRound(%q, ...) = _, %v; want nil error", dir, err)
-	}
-	if got != 1 {
-		t.Errorf("ResolveRound(%q, ...) = %d; want 1", dir, got)
-	}
-}
-
-func TestResolveRound_RoundsOneThroughThreePresent(t *testing.T) {
-	dir := t.TempDir()
-	writeReport(t, dir, 1)
-	writeReport(t, dir, 2)
-	writeReport(t, dir, 3)
-
-	got, err := ResolveRound(dir, reportName)
-	if err != nil {
-		t.Fatalf("ResolveRound(%q, ...) = _, %v; want nil error", dir, err)
-	}
-	if got != 3 {
-		t.Errorf("ResolveRound(%q, ...) = %d; want 3", dir, got)
-	}
-}
-
-func TestResolveRound_GapStopsScanBeforeLaterRounds(t *testing.T) {
-	dir := t.TempDir()
-	writeReport(t, dir, 1)
-	writeReport(t, dir, 3)
-
-	got, err := ResolveRound(dir, reportName)
-	if err != nil {
-		t.Fatalf("ResolveRound(%q, ...) = _, %v; want nil error", dir, err)
-	}
-	if got != 1 {
-		t.Errorf("ResolveRound(%q, ...) = %d; want 1, not 3 -- round 2's absence must stop the scan", dir, got)
+			got, err := ResolveRound(dir, reportName)
+			if err != nil {
+				t.Fatalf("ResolveRound(%q, ...) = _, %v; want nil error", dir, err)
+			}
+			if got != tt.want {
+				t.Errorf("ResolveRound(%q, ...) = %d; want %d", dir, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -135,28 +113,7 @@ func TestResolveRound_NonNotExistStatErrorIsReturned(t *testing.T) {
 	}
 }
 
-// TestResolveRound_BothDerivedReadings pins the two readings a caller derives
-// from ResolveRound against a single disk state: with reports for rounds 1
-// and 2 on disk, the round to judge is ResolveRound's own return value, and
-// the round to write is that value plus one.
-func TestResolveRound_BothDerivedReadings(t *testing.T) {
-	dir := t.TempDir()
-	writeReport(t, dir, 1)
-	writeReport(t, dir, 2)
-
-	roundToJudge, err := ResolveRound(dir, reportName)
-	if err != nil {
-		t.Fatalf("ResolveRound(%q, ...) = _, %v; want nil error", dir, err)
-	}
-	if roundToJudge != 2 {
-		t.Errorf("round to judge = %d; want 2", roundToJudge)
-	}
-	roundToWrite := roundToJudge + 1
-	if roundToWrite != 3 {
-		t.Errorf("round to write = %d; want 3", roundToWrite)
-	}
-}
-
+//testtiming:keep pins the on-disk filename spellings the producers and stencils name, which no behavior test asserts byte for byte
 func TestRoundPathHelpers_PinExactFilenameSpellings(t *testing.T) {
 	tests := []struct {
 		name string

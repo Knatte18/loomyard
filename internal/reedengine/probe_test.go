@@ -28,6 +28,7 @@ func fakeFullCommandsOutput() string {
 	return b.String()
 }
 
+//testtiming:keep pins the capability probe's three outcomes with a fake run: healthy, a version below the pin and a missing required subcommand, the last two as *CapabilityError; its covering tests run this code without asserting it
 func TestProbeCapability(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -107,6 +108,8 @@ func TestProbeCapability(t *testing.T) {
 // TmuxCmd.run/output, so it fires if and only if the probe goes through TmuxCmd. newTestEngine's
 // cfg.Tmux deliberately names a path that does not exist, so the bypassing implementation cannot
 // pass this test by accident — it would exec that missing binary and fail.
+//
+//testtiming:keep pins the probe going through the socket-scoped TmuxCmd as exactly -V then list-commands, never the configured binary directly; its covering tests run this code without asserting it
 func TestProbeCapabilityLocked_GoesThroughTheSocketScopedTmuxCmd(t *testing.T) {
 	e := newTestEngine(t)
 

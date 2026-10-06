@@ -270,6 +270,8 @@ func TestCloneHub_ConflictLeavesNoHub(t *testing.T) {
 // TestCloneHub_UnboundWeftNamesTwoArgForm asserts that a one-argument clone against a weft with no
 // recorded binding fails naming both the unbound condition and the two-argument remedy, and creates
 // no hub.
+//
+//testtiming:keep a one-argument clone against an unbound weft failing with the unbound condition and the two-argument remedy named and no hub created; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_UnboundWeftNamesTwoArgForm(t *testing.T) {
 	t.Parallel()
 
@@ -503,6 +505,8 @@ func TestCloneHub_BackfillsBindingOnPreBindingHub(t *testing.T) {
 // ordinary source repo (no lyx markers) as the weft candidate and a real repo as the warp — the
 // pre-change argument order — with ForceBootstrap left false must be refused, must create no hub, and
 // must leave the rejected repo completely untouched.
+//
+//testtiming:keep the pre-change argument order being refused with no hub created and the rejected repo untouched; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
 	t.Parallel()
 

@@ -115,34 +115,3 @@ func TestClearSessionSequence(t *testing.T) {
 		t.Errorf("ClearSessionSequence = %#v; want %#v", got, want)
 	}
 }
-
-func TestSkillLoadSequence(t *testing.T) {
-	got := (&Claude{}).SkillLoadSequence("scribe:prose")
-	want := []shuttleengine.PaneInput{{Text: "/scribe:prose", Submit: true}}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("SkillLoadSequence = %#v; want %#v", got, want)
-	}
-}
-
-func TestSkillUnknown(t *testing.T) {
-	rule := "────────────────────────────────"
-	box := rule + "\n> \n" + rule + "\n"
-	tests := []struct {
-		name    string
-		capture string
-		want    bool
-	}{
-		{"unknown skill notice", "> /scribe:prose\n  Unknown skill: scribe:prose\n" + box, true},
-		{"unknown slash command notice", "> /scribe:prose\n  Unknown slash command: scribe:prose\n" + box, true},
-		{"notice naming another skill", "  Unknown skill: scribe:testing\n" + box, false},
-		{"idle box", box, false},
-		{"running turn", "  Unknown skill: scribe:prose\n  esc to interrupt\n" + box, false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := (&Claude{}).SkillUnknown(tc.capture, "scribe:prose"); got != tc.want {
-				t.Errorf("SkillUnknown = %v; want %v", got, tc.want)
-			}
-		})
-	}
-}

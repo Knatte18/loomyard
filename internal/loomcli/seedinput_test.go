@@ -166,6 +166,7 @@ func TestResolveLandingParent(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins seedSlug returning the worktree name unchanged and empty for an empty name; the covering test reaches it without asserting the result
 func TestSeedSlug(t *testing.T) {
 	tests := []struct {
 		name         string

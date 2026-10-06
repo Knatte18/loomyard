@@ -1,6 +1,6 @@
 //go:build integration
 
-// gitwrap_test.go exercises headSHA, dirty, reconcileReportHead and refuseMidMerge against real scratch git repositories built fresh under t.TempDir() for each test,
+// gitwrap_test.go exercises headSHA, dirty, otherWorktrees, reconcileReportHead and refuseMidMerge against real scratch git repositories built fresh under t.TempDir() for each test,
 // reusing the package's existing hermetic TestMain (testmain_test.go) so these git spawns never inherit the operator's global gitconfig.
 
 package websterengine
@@ -27,46 +27,72 @@ func gitwrapNewScratchRepo(t *testing.T) string {
 	return dir
 }
 
-func TestHeadSHA_ReturnsHEAD(t *testing.T) {
+// TestRepositoryProbes walks one scratch repository through the real-git probes: headSHA returns the
+// commit just made, dirty is false on a clean tree and true once an untracked file appears, and
+// otherWorktrees names, from either side, the one other worktree of the repository.
+//
+//testtiming:keep pins the real-git head, dirty and worktree-list probes' own return values, an untracked file counting as dirty, and both sides of a worktree pair; the covering verb tests observe them only through verb outcomes
+func TestRepositoryProbes(t *testing.T) {
 	t.Parallel()
 
 	dir := gitwrapNewScratchRepo(t)
 	want := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 
-	got, err := headSHA(dir)
-	if err != nil {
-		t.Fatalf("headSHA() error = %v; want nil", err)
-	}
-	if got != want {
-		t.Errorf("headSHA() = %q; want %q", got, want)
-	}
-}
+	t.Run("headSHA returns HEAD", func(t *testing.T) {
+		got, err := headSHA(dir)
+		if err != nil {
+			t.Fatalf("headSHA() error = %v; want nil", err)
+		}
+		if got != want {
+			t.Errorf("headSHA() = %q; want %q", got, want)
+		}
+	})
 
-func TestDirty_TrueAndFalse(t *testing.T) {
-	t.Parallel()
+	t.Run("dirty is false right after a commit", func(t *testing.T) {
+		isDirty, err := dirty(dir)
+		if err != nil {
+			t.Fatalf("dirty() error = %v; want nil", err)
+		}
+		if isDirty {
+			t.Errorf("dirty() = true right after a commit with no other changes; want false")
+		}
+	})
 
-	dir := gitwrapNewScratchRepo(t)
-	gitkit.CommitFile(t, dir, "a.txt", "one", "first")
+	t.Run("otherWorktrees names the other side", func(t *testing.T) {
+		added := filepath.Join(t.TempDir(), "added")
+		gitkit.Git(t, dir, "worktree", "add", added)
+		mainCanon, err := canonicalPath(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		addedCanon, err := canonicalPath(added)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, side := range []struct{ from, want string }{{dir, addedCanon}, {added, mainCanon}} {
+			got, err := otherWorktrees(side.from)
+			if err != nil {
+				t.Fatalf("otherWorktrees(%s): %v", side.from, err)
+			}
+			if len(got) != 1 || got[0] != side.want {
+				t.Errorf("otherWorktrees(%s) = %v; want [%s]", side.from, got, side.want)
+			}
+		}
+	})
 
-	clean, err := dirty(dir)
-	if err != nil {
-		t.Fatalf("dirty() error = %v; want nil", err)
-	}
-	if clean {
-		t.Errorf("dirty() = true right after a commit with no other changes; want false")
-	}
-
-	if err := os.WriteFile(filepath.Join(dir, "untracked.txt"), []byte("x"), 0o644); err != nil {
-		t.Fatalf("write untracked file: %v", err)
-	}
-
-	isDirty, err := dirty(dir)
-	if err != nil {
-		t.Fatalf("dirty() error = %v; want nil", err)
-	}
-	if !isDirty {
-		t.Errorf("dirty() = false with an untracked file present; want true")
-	}
+	// Runs last: the untracked file it writes leaves the tree dirty.
+	t.Run("dirty is true with an untracked file", func(t *testing.T) {
+		if err := os.WriteFile(filepath.Join(dir, "untracked.txt"), []byte("x"), 0o644); err != nil {
+			t.Fatalf("write untracked file: %v", err)
+		}
+		isDirty, err := dirty(dir)
+		if err != nil {
+			t.Fatalf("dirty() error = %v; want nil", err)
+		}
+		if !isDirty {
+			t.Errorf("dirty() = false with an untracked file present; want true")
+		}
+	})
 }
 
 // gitwrapParentBranch is the parent branch every reconcileReportHead test's run merges from.
@@ -98,7 +124,7 @@ func TestReconcileReportHead_EqualIsFastPath(t *testing.T) {
 	dir := gitwrapNewScratchRepo(t)
 	head := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 
-	warning, err := reconcileReportHead(dir, head, "batch report x", gitwrapParent)
+	warning, err := reconcileReportHead(realGit{}, dir, head, "batch report x", gitwrapParent)
 	if err != nil || warning != "" {
 		t.Fatalf("reconcileReportHead() = (%q, %v); want (\"\", nil)", warning, err)
 	}
@@ -110,7 +136,7 @@ func TestReconcileReportHead_MergesOnTopAccepted(t *testing.T) {
 	report := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 	merge1, _ := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
-	warning, err := reconcileReportHead(dir, report, "batch report x", gitwrapParent)
+	warning, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent)
 	if err != nil {
 		t.Fatalf("one merge: error = %v; want nil", err)
 	}
@@ -121,7 +147,7 @@ func TestReconcileReportHead_MergesOnTopAccepted(t *testing.T) {
 	}
 
 	merge2, _ := gitwrapMergeSide(t, dir, gitwrapParentBranch)
-	warning, err = reconcileReportHead(dir, report, "batch report x", gitwrapParent)
+	warning, err = reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent)
 	if err != nil {
 		t.Fatalf("two merges: error = %v; want nil", err)
 	}
@@ -138,7 +164,7 @@ func TestReconcileReportHead_ReportHeadIsMergeCommit(t *testing.T) {
 	report, _ := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 	merge2, _ := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
-	warning, err := reconcileReportHead(dir, report, "batch report x", gitwrapParent)
+	warning, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent)
 	if err != nil {
 		t.Fatalf("error = %v; want nil", err)
 	}
@@ -160,7 +186,7 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 		gitkit.Git(t, dir, "checkout", base)
 		gitkit.Git(t, dir, "merge", "--ff-only", "side")
 
-		if _, err := reconcileReportHead(dir, report, "batch report x", gitwrapParent); err == nil {
+		if _, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent); err == nil {
 			t.Fatal("error = nil; want refusal")
 		}
 	})
@@ -171,7 +197,7 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 		report := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 		head := gitkit.CommitFile(t, dir, "b.txt", "two", "second")
 
-		_, err := reconcileReportHead(dir, report, "batch report x", gitwrapParent)
+		_, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent)
 		if err == nil {
 			t.Fatal("error = nil; want refusal")
 		}
@@ -190,7 +216,7 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 		gitkit.CommitFile(t, dir, "b.txt", "two", "second")
 		head, _ := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
-		_, err := reconcileReportHead(dir, report, "batch report x", gitwrapParent)
+		_, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent)
 		if err == nil {
 			t.Fatal("error = nil; want refusal")
 		}
@@ -207,7 +233,7 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 		gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 		_, sideTip := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
-		if _, err := reconcileReportHead(dir, sideTip, "batch report x", gitwrapParent); err == nil {
+		if _, err := reconcileReportHead(realGit{}, dir, sideTip, "batch report x", gitwrapParent); err == nil {
 			t.Fatal("error = nil; want refusal")
 		}
 	})
@@ -219,7 +245,7 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 		gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
 		zero := strings.Repeat("0", 40)
-		if _, err := reconcileReportHead(dir, zero, "batch report x", gitwrapParent); err == nil {
+		if _, err := reconcileReportHead(realGit{}, dir, zero, "batch report x", gitwrapParent); err == nil {
 			t.Fatal("error = nil; want refusal")
 		}
 	})
@@ -342,7 +368,7 @@ func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 				t.Fatal("move left HEAD at the report head")
 			}
 
-			_, err := reconcileReportHead(dir, report, "batch report x", tc.parent)
+			_, err := reconcileReportHead(realGit{}, dir, report, "batch report x", tc.parent)
 			if err == nil {
 				t.Fatal("error = nil; want refusal")
 			}
@@ -364,7 +390,7 @@ func TestReconcileReportHead_ParentOnlyOnOrigin(t *testing.T) {
 	gitkit.Git(t, dir, "update-ref", "refs/remotes/origin/"+gitwrapParentBranch, sideTip)
 	gitkit.Git(t, dir, "branch", "-D", gitwrapParentBranch)
 
-	warning, err := reconcileReportHead(dir, report, "batch report x", gitwrapParent)
+	warning, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent)
 	if err != nil {
 		t.Fatalf("error = %v; want nil", err)
 	}
@@ -392,12 +418,12 @@ func TestRefuseMidMerge(t *testing.T) {
 	dir := gitwrapNewScratchRepo(t)
 	gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 
-	if err := refuseMidMerge(dir); err != nil {
+	if err := refuseMidMerge(realGit{}, dir); err != nil {
 		t.Fatalf("clean repo: error = %v; want nil", err)
 	}
 
 	gitwrapConflictingMerge(t, dir)
-	err := refuseMidMerge(dir)
+	err := refuseMidMerge(realGit{}, dir)
 	if err == nil {
 		t.Fatal("mid-merge: error = nil; want refusal")
 	}
@@ -408,7 +434,7 @@ func TestRefuseMidMerge(t *testing.T) {
 	}
 
 	gitkit.Git(t, dir, "merge", "--abort")
-	if err := refuseMidMerge(dir); err != nil {
+	if err := refuseMidMerge(realGit{}, dir); err != nil {
 		t.Fatalf("after abort: error = %v; want nil", err)
 	}
 }
@@ -423,39 +449,8 @@ func TestRefuseMidMerge_LinkedWorktree(t *testing.T) {
 	gitkit.Git(t, linked, "config", "user.email", "test@example.com")
 
 	gitwrapConflictingMerge(t, linked)
-	err := refuseMidMerge(linked)
+	err := refuseMidMerge(realGit{}, linked)
 	if err == nil || !strings.Contains(err.Error(), "merge in progress") {
 		t.Fatalf("linked worktree: error = %v; want merge-in-progress refusal", err)
-	}
-}
-
-func TestOtherWorktrees(t *testing.T) {
-	main := gitwrapNewScratchRepo(t)
-	gitkit.CommitFile(t, main, "a.txt", "x", "add a")
-	added := filepath.Join(t.TempDir(), "added")
-	gitkit.Git(t, main, "worktree", "add", added)
-
-	mainCanon, err := canonicalPath(main)
-	if err != nil {
-		t.Fatal(err)
-	}
-	addedCanon, err := canonicalPath(added)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := otherWorktrees(main)
-	if err != nil {
-		t.Fatalf("otherWorktrees(main): %v", err)
-	}
-	if len(got) != 1 || got[0] != addedCanon {
-		t.Errorf("otherWorktrees(main) = %v; want [%s]", got, addedCanon)
-	}
-	got, err = otherWorktrees(added)
-	if err != nil {
-		t.Fatalf("otherWorktrees(added): %v", err)
-	}
-	if len(got) != 1 || got[0] != mainCanon {
-		t.Errorf("otherWorktrees(added) = %v; want [%s]", got, mainCanon)
 	}
 }

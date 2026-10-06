@@ -31,6 +31,8 @@ func withInjectedExecutablePath(t *testing.T, fn func() (string, error)) {
 }
 
 // TestPaneBinPrelude_ComposesPrependThenExport drives paneBinPrelude directly, once per dialect.
+//
+//testtiming:keep pins the prelude's own shape per dialect: one line, the PATH prepend of the executable's directory before the LYX_BIN export of the full path, joined by "; "; its covering tests run this code without asserting it
 func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
 	dialects := []struct {
 		name string
@@ -84,239 +86,174 @@ func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
 	}
 }
 
-// TestComposePaneLaunchLine_PreludeThenCommand drives composePaneLaunchLine with a non-empty launch
-// command and an injected executable path.
-func TestComposePaneLaunchLine_PreludeThenCommand(t *testing.T) {
-	const exe = "/opt/lyx/bin/lyx"
-	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
-
-	const launchCmd = "claude --continue"
-	sh := shell.Posix()
-	got := composePaneLaunchLine(sh, launchCmd, "strand-guid", "", "")
-
-	if strings.Contains(got, "\n") {
-		t.Errorf("composePaneLaunchLine(...) = %q, want a single line with no newline", got)
-	}
-	if !strings.HasSuffix(got, launchCmd) {
-		t.Errorf("composePaneLaunchLine(...) = %q, want it to end with the unchanged launch command %q", got, launchCmd)
-	}
-
-	prelude := paneBinPrelude(sh, exe)
-	want := prelude + "; " + launchCmd
-	if got != want {
-		t.Errorf("composePaneLaunchLine(...) = %q, want %q", got, want)
-	}
-
-	prependIdx := strings.Index(got, "PATH")
-	exportIdx := strings.Index(got, lyxBinEnvKey)
-	cmdIdx := strings.Index(got, launchCmd)
-	if !(prependIdx < exportIdx && exportIdx < cmdIdx) {
-		t.Errorf("composePaneLaunchLine(...) = %q, want the PATH prepend, the %s export and the command in that order", got, lyxBinEnvKey)
-	}
-}
-
-// TestComposePaneLaunchLine_EmptyCmdEmitsThePreludeAlone drives the empty-command case: the shape a
-// strand added with no command produces (for example `lyx reed add` without `--cmd`).
-func TestComposePaneLaunchLine_EmptyCmdEmitsThePreludeAlone(t *testing.T) {
-	const exe = "/opt/lyx/bin/lyx"
-	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
-
-	sh := shell.Posix()
-	got := composePaneLaunchLine(sh, "", "strand-guid", "", "")
-	want := paneBinPrelude(sh, exe)
-	if got != want {
-		t.Errorf("composePaneLaunchLine(sh, \"\", ...) = %q, want %q (the prelude alone, no trailing separator, no empty trailing fragment)", got, want)
-	}
-	if strings.HasSuffix(got, "; ") {
-		t.Errorf("composePaneLaunchLine(sh, \"\", ...) = %q, want no trailing separator", got)
-	}
-}
-
-// TestComposePaneLaunchLine_ExecutableErrorWarnsAndPassesTheCommandThrough overrides executablePath
-// with a function returning an error, captures logs via logcapture, and asserts the launch
-// command passes through unchanged with a named warning logged.
-func TestComposePaneLaunchLine_ExecutableErrorWarnsAndPassesTheCommandThrough(t *testing.T) {
-	wantErr := errors.New("executable path unresolvable")
-	withInjectedExecutablePath(t, func() (string, error) { return "", wantErr })
-	buf := logcapture.CaptureVerbose(t)
-
-	const launchCmd = "claude --continue"
-	got := composePaneLaunchLine(shell.Posix(), launchCmd, "strand-guid-1", "", "")
-	if got != launchCmd {
-		t.Errorf("composePaneLaunchLine(...) = %q, want the launch command %q byte-for-byte unchanged", got, launchCmd)
-	}
-	if !strings.Contains(buf.String(), "strand-guid-1") {
-		t.Errorf("captured log output = %q, want it to name the strand %q", buf.String(), "strand-guid-1")
-	}
-
-	t.Run("empty command", func(t *testing.T) {
-		buf.Reset()
-		got := composePaneLaunchLine(shell.Posix(), "", "strand-guid-2", "", "")
-		if got != "" {
-			t.Errorf("composePaneLaunchLine(sh, \"\", ...) with an executable-path error = %q, want the empty string", got)
-		}
-	})
-}
-
-// TestComposePaneLaunchLine_UsesTheSameDialectAsTheLaunchCommand asserts that
-// composePaneLaunchLine(shell.ForGOOS(), ...) produces the dialect shell.ForGOOS() itself produces on
-// the running host, so the prelude and the ForGOOS()-built launch command can never diverge. It must
-// not branch on runtime.GOOS.
-func TestComposePaneLaunchLine_UsesTheSameDialectAsTheLaunchCommand(t *testing.T) {
-	const exe = "/opt/lyx/bin/lyx"
-	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
-
-	sh := shell.ForGOOS()
-	got := composePaneLaunchLine(sh, "claude --continue", "strand-guid", "", "")
-	want := sh.Chain(paneBinPrelude(sh, exe), "claude --continue")
-	if got != want {
-		t.Errorf("composePaneLaunchLine(shell.ForGOOS(), ...) = %q, want %q (built from the same shell.ForGOOS() dialect)", got, want)
-	}
-}
-
-// TestComposePaneLaunchLine_NameExports drives both dialects through the name and parent exports:
-// the name export is always present, the parent export only when a parent is told,
-// and the order is prelude, exports, then the command.
-func TestComposePaneLaunchLine_NameExports(t *testing.T) {
-	const exe = "/opt/lyx/bin/lyx"
-	withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
-
+// TestComposePaneLaunchLine drives composePaneLaunchLine in both dialects with an injected executable path:
+// the prelude, then the name export (always when a name is told), the parent export (only when a parent is told), then the command, all on one line;
+// an empty command emits the prelude alone with no trailing separator;
+// and a failed executable lookup drops only the prelude, passing the command and exports through with a warning naming the strand.
+//
+//testtiming:keep pins the composed pane launch line per dialect: prelude, name and parent exports then the command on one line, the prelude alone for an empty command, and only the prelude dropped with a warning naming the strand when the executable cannot be resolved; its covering tests run this code without asserting it
+func TestComposePaneLaunchLine(t *testing.T) {
 	const (
+		exe       = "/opt/lyx/bin/lyx"
 		launchCmd = "claude --continue"
 		name      = "tst:wt:driver"
 		parent    = "tst:wt:orch"
+		guid      = "strand-guid-1"
 	)
-	for _, sh := range launchScriptDialects() {
-		nameExport := sh.ExportEnv(agentname.StrandNameEnv, name)
-		parentExport := sh.ExportEnv(agentname.ParentEnv, parent)
-		prelude := paneBinPrelude(sh, exe)
+	noExecutable := errors.New("executable path unresolvable")
+	nameExport := func(sh shell.Shell) string { return sh.ExportEnv(agentname.StrandNameEnv, name) }
+	parentExport := func(sh shell.Shell) string { return sh.ExportEnv(agentname.ParentEnv, parent) }
 
-		withParent := composePaneLaunchLine(sh, launchCmd, "g", name, parent)
-		if want := sh.Chain(prelude, nameExport, parentExport, launchCmd); withParent != want {
-			t.Errorf("with parent = %q, want %q", withParent, want)
-		}
+	tests := []struct {
+		name       string
+		executable error
+		cmd        string
+		strand     string
+		parent     string
+		want       func(sh shell.Shell) string
+	}{
+		{
+			name: "PreludeThenCommand",
+			cmd:  launchCmd,
+			want: func(sh shell.Shell) string { return sh.Chain(paneBinPrelude(sh, exe), launchCmd) },
+		},
+		{
+			// The shape a strand added with no command produces (for example `lyx reed add` without `--cmd`).
+			name: "EmptyCmdEmitsThePreludeAlone",
+			want: func(sh shell.Shell) string { return paneBinPrelude(sh, exe) },
+		},
+		{
+			name:   "NameExportWithoutParent",
+			cmd:    launchCmd,
+			strand: name,
+			want:   func(sh shell.Shell) string { return sh.Chain(paneBinPrelude(sh, exe), nameExport(sh), launchCmd) },
+		},
+		{
+			name:   "NameAndParentExports",
+			cmd:    launchCmd,
+			strand: name,
+			parent: parent,
+			want: func(sh shell.Shell) string {
+				return sh.Chain(paneBinPrelude(sh, exe), nameExport(sh), parentExport(sh), launchCmd)
+			},
+		},
+		{
+			name:       "ExecutableErrorPassesTheCommandThrough",
+			executable: noExecutable,
+			cmd:        launchCmd,
+			want:       func(sh shell.Shell) string { return launchCmd },
+		},
+		{
+			name:       "ExecutableErrorWithEmptyCommandIsEmpty",
+			executable: noExecutable,
+			want:       func(sh shell.Shell) string { return "" },
+		},
+		{
+			name:       "ExportsSurviveAnExecutableError",
+			executable: noExecutable,
+			cmd:        launchCmd,
+			strand:     name,
+			parent:     parent,
+			want:       func(sh shell.Shell) string { return sh.Chain(nameExport(sh), parentExport(sh), launchCmd) },
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			withInjectedExecutablePath(t, func() (string, error) {
+				if tt.executable != nil {
+					return "", tt.executable
+				}
+				return exe, nil
+			})
+			for _, sh := range launchScriptDialects() {
+				buf := logcapture.CaptureVerbose(t)
 
-		noParent := composePaneLaunchLine(sh, launchCmd, "g", name, "")
-		if want := sh.Chain(prelude, nameExport, launchCmd); noParent != want {
-			t.Errorf("without parent = %q, want %q", noParent, want)
-		}
-		if strings.Contains(noParent, agentname.ParentEnv) {
-			t.Errorf("without parent = %q, want no %s export", noParent, agentname.ParentEnv)
-		}
+				got := composePaneLaunchLine(sh, tt.cmd, guid, tt.strand, tt.parent)
+
+				if want := tt.want(sh); got != want {
+					t.Errorf("composePaneLaunchLine(...) = %q, want %q", got, want)
+				}
+				if strings.Contains(got, "\n") {
+					t.Errorf("composePaneLaunchLine(...) = %q, want a single line with no newline", got)
+				}
+				if tt.cmd == "" && strings.HasSuffix(got, "; ") {
+					t.Errorf("composePaneLaunchLine(...) = %q, want no trailing separator", got)
+				}
+				if tt.executable != nil {
+					if strings.Contains(got, lyxBinEnvKey) {
+						t.Errorf("composePaneLaunchLine(...) = %q, want no %s prelude", got, lyxBinEnvKey)
+					}
+					if !strings.Contains(buf.String(), guid) {
+						t.Errorf("captured log output = %q, want it to name the strand %q", buf.String(), guid)
+					}
+				}
+			}
+		})
 	}
 }
 
-// TestComposePaneLaunchLine_ExportsSurviveAnExecutableError asserts a failed executable lookup drops only the prelude.
-func TestComposePaneLaunchLine_ExportsSurviveAnExecutableError(t *testing.T) {
-	withInjectedExecutablePath(t, func() (string, error) { return "", errors.New("no executable") })
-	logcapture.CaptureVerbose(t)
-
-	for _, sh := range launchScriptDialects() {
-		got := composePaneLaunchLine(sh, "claude", "g", "tst:driver", "tst:orch")
-		want := sh.Chain(sh.ExportEnv(agentname.StrandNameEnv, "tst:driver"), sh.ExportEnv(agentname.ParentEnv, "tst:orch"), "claude")
-		if got != want {
-			t.Errorf("composePaneLaunchLine = %q, want %q", got, want)
-		}
-		if strings.Contains(got, lyxBinEnvKey) {
-			t.Errorf("composePaneLaunchLine = %q, want no %s prelude", got, lyxBinEnvKey)
-		}
-	}
-}
-
-// TestComposePaneLaunchLine_DashLeadingLineStillRoundTripsThroughSendKeysLiteralArg asserts the
-// composed string is opaque to sendKeysLiteralArg's dash guard: nothing downstream may assume the
-// payload starts with the strand's own command.
-func TestComposePaneLaunchLine_DashLeadingLineStillRoundTripsThroughSendKeysLiteralArg(t *testing.T) {
-	// A synthetic dash-leading composed string, since neither dialect's real prelude begins with
-	// '-' -- the property under test is sendKeysLiteralArg's own guard, which must not assume
-	// anything about how the composed line was built.
-	const composed = "-join('a','b'); echo hi"
-	got := sendKeysLiteralArg(composed)
-	want := " " + composed
-	if got != want {
-		t.Errorf("sendKeysLiteralArg(%q) = %q, want %q (a single leading space, since tmux parses a '-'-leading literal argument as flags)", composed, got, want)
-	}
-}
-
-// launchScriptDialects lists both dialects for the stageLaunchScript cases.
+// launchScriptDialects lists both dialects for the composePaneLaunchLine and stageLaunchScript cases.
 func launchScriptDialects() []shell.Shell {
 	return []shell.Shell{shell.Posix(), shell.Pwsh()}
 }
 
-// TestStageLaunchScript_WritesLineAndReturnsSource checks payload and file content per dialect.
-func TestStageLaunchScript_WritesLineAndReturnsSource(t *testing.T) {
-	for _, sh := range launchScriptDialects() {
-		stateDir := t.TempDir()
-		path := filepath.Join(stateDir, "reed", "launch", "guid-1"+sh.ScriptExt())
-		got := stageLaunchScript(sh, stateDir, "guid-1", "echo hi")
-		if want := sh.Source(path); got != want {
-			t.Errorf("payload = %q, want %q", got, want)
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(data) != "echo hi\n" {
-			t.Errorf("content = %q", data)
-		}
+// TestStageLaunchScript pins per dialect that the payload is the dialect's source command for the script path,
+// the file holds the last staged line and a newline (an empty line still writes a newline-only script),
+// regenerating replaces the content without leftovers, and the script carries 0o644 on non-Windows hosts.
+func TestStageLaunchScript(t *testing.T) {
+	tests := []struct {
+		name  string
+		lines []string
+	}{
+		{"WritesLineAndReturnsSource", []string{"echo hi"}},
+		{"EmptyLineWritesANewlineOnlyScript", []string{""}},
+		{"RegenerateReplacesContent", []string{"one", "two"}},
 	}
-}
+	for _, tt := range tests {
+		for _, sh := range launchScriptDialects() {
+			t.Run(tt.name, func(t *testing.T) {
+				stateDir := t.TempDir()
+				path := launchScriptPath(sh, stateDir, "g")
 
-// TestStageLaunchScript_RegenerateReplacesContent checks a second call replaces without leftovers.
-func TestStageLaunchScript_RegenerateReplacesContent(t *testing.T) {
-	sh := shell.Posix()
-	stateDir := t.TempDir()
-	stageLaunchScript(sh, stateDir, "g", "one")
-	stageLaunchScript(sh, stateDir, "g", "two")
-	entries, err := os.ReadDir(launchScriptDir(stateDir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("launch dir holds %d entries, want 1", len(entries))
-	}
-	data, _ := os.ReadFile(launchScriptPath(sh, stateDir, "g"))
-	if string(data) != "two\n" {
-		t.Errorf("content = %q", data)
-	}
-}
+				var got string
+				for _, line := range tt.lines {
+					got = stageLaunchScript(sh, stateDir, "g", line)
+				}
 
-// TestStageLaunchScript_FileMode checks the script carries 0o644 on non-Windows hosts.
-func TestStageLaunchScript_FileMode(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("permission bits are not meaningful on Windows")
-	}
-	sh := shell.Posix()
-	stateDir := t.TempDir()
-	stageLaunchScript(sh, stateDir, "g", "x")
-	info, err := os.Stat(launchScriptPath(sh, stateDir, "g"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o644 {
-		t.Errorf("mode = %o, want 644", info.Mode().Perm())
-	}
-}
-
-// TestStageLaunchScript_EmptyLine checks an empty line still writes a newline-only script.
-func TestStageLaunchScript_EmptyLine(t *testing.T) {
-	sh := shell.Posix()
-	stateDir := t.TempDir()
-	got := stageLaunchScript(sh, stateDir, "g", "")
-	path := launchScriptPath(sh, stateDir, "g")
-	if got != sh.Source(path) {
-		t.Errorf("payload = %q", got)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(data) != "\n" {
-		t.Errorf("content = %q", data)
+				if want := sh.Source(path); got != want {
+					t.Errorf("payload = %q, want %q", got, want)
+				}
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if want := tt.lines[len(tt.lines)-1] + "\n"; string(data) != want {
+					t.Errorf("content = %q, want %q", data, want)
+				}
+				entries, err := os.ReadDir(launchScriptDir(stateDir))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(entries) != 1 {
+					t.Errorf("launch dir holds %d entries, want 1", len(entries))
+				}
+				if runtime.GOOS != "windows" {
+					info, err := os.Stat(path)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if info.Mode().Perm() != 0o644 {
+						t.Errorf("mode = %o, want 644", info.Mode().Perm())
+					}
+				}
+			})
+		}
 	}
 }
 
 // TestStageLaunchScript_WriteFailureDegrades checks an unwritable directory returns the line and warns.
+//
+//testtiming:keep pins an unwritable launch directory returning the composed line unchanged and logging the strand and script path; its covering tests run this code without asserting it
 func TestStageLaunchScript_WriteFailureDegrades(t *testing.T) {
 	sh := shell.Posix()
 	stateDir := t.TempDir()

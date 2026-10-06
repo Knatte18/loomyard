@@ -13,6 +13,7 @@ package websterengine_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -29,24 +30,11 @@ func scratchSibling(t *testing.T) (websterDir, scratchDir string) {
 	return filepath.Join(base, "_lyx", "webster"), filepath.Join(base, ".lyx", "webster")
 }
 
-// TestState_PreFixHeadRoundTrip pins that the verify gate's persisted pre-fix head survives a save/load.
-func TestState_PreFixHeadRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	websterDir, scratchDir := scratchSibling(t)
-	if err := websterengine.SaveState(websterDir, scratchDir, &websterengine.State{RunGUID: "run-1", PreFixHead: "cafef00d"}); err != nil {
-		t.Fatalf("SaveState error = %v; want nil", err)
-	}
-
-	got, err := websterengine.LoadState(websterDir, scratchDir)
-	if err != nil || got == nil {
-		t.Fatalf("LoadState() = %v, %v; want the saved state", got, err)
-	}
-	if got.PreFixHead != "cafef00d" {
-		t.Errorf("PreFixHead = %q after round-trip; want %q", got.PreFixHead, "cafef00d")
-	}
-}
-
+// TestState_RoundTrip pins that a populated State survives a save/load across the durable and
+// scratch dirs: the verify gate's pre-fix head, the per-card SHA trail, the persisted digest
+// (begin-batch(N+1) reads it back rather than re-distilling a report) and the audit ledger included.
+//
+//testtiming:keep pins every State and BatchState field surviving save and load, and the lock landing in the scratch dir only; the run-level test round-trips only the fields its run sets
 func TestState_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -58,16 +46,24 @@ func TestState_RoundTrip(t *testing.T) {
 		MasterStrand:    "master-strand-1",
 		MasterSessionID: "session-1",
 		AssertedModel:   "opus",
+		PreFixHead:      "cafef00d",
 		Batches: map[int]*websterengine.BatchState{
 			1: {
-				Slug:            "first",
-				StartSHA:        "deadbeef",
-				Kind:            "fork",
-				SpawnedAt:       "2026-07-11T12:00:00Z",
-				Terminal:        true,
-				Status:          "done",
+				Slug:      "first",
+				StartSHA:  "deadbeef",
+				Kind:      "fork",
+				SpawnedAt: "2026-07-11T12:00:00Z",
+				Terminal:  true,
+				Status:    "done",
+				Digest: &websterengine.Digest{
+					Batch:      "01-seam-extensions",
+					Status:     websterengine.DigestStatusDone,
+					HeadSHA:    "deadbeef",
+					Deviations: []string{"internal/extra.go"},
+				},
 				CardSHAs:        []string{"deadbeef"},
 				ForkTranscripts: []string{"subagents/abc.jsonl"},
+				AuditWarnings:   []websterengine.AuditWarning{{Identity: "i", Class: "c", Detail: "d"}},
 			},
 			2: {
 				Slug:          "second",
@@ -81,6 +77,8 @@ func TestState_RoundTrip(t *testing.T) {
 			},
 		},
 		SeenForkTranscripts: []string{"subagents/abc.jsonl"},
+		AuditDispositions:   map[string]string{"i": "warned"},
+		AuditWarnings:       []websterengine.AuditWarning{{Identity: "r", Class: "c", Detail: "d"}},
 	}
 
 	if err := websterengine.SaveState(websterDir, scratchDir, want); err != nil {
@@ -107,164 +105,19 @@ func TestState_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadState error = %v; want nil", err)
 	}
-	if got == nil {
-		t.Fatal("LoadState() = nil; want the saved state")
-	}
-
-	if got.RunGUID != want.RunGUID {
-		t.Errorf("RunGUID = %q; want %q", got.RunGUID, want.RunGUID)
-	}
-	if got.PlanFingerprint != want.PlanFingerprint {
-		t.Errorf("PlanFingerprint = %q; want %q", got.PlanFingerprint, want.PlanFingerprint)
-	}
-	if got.CurrentBatch != want.CurrentBatch {
-		t.Errorf("CurrentBatch = %d; want %d", got.CurrentBatch, want.CurrentBatch)
-	}
-	if got.MasterStrand != want.MasterStrand {
-		t.Errorf("MasterStrand = %q; want %q", got.MasterStrand, want.MasterStrand)
-	}
-	if got.MasterSessionID != want.MasterSessionID {
-		t.Errorf("MasterSessionID = %q; want %q", got.MasterSessionID, want.MasterSessionID)
-	}
-	if got.AssertedModel != want.AssertedModel {
-		t.Errorf("AssertedModel = %q; want %q", got.AssertedModel, want.AssertedModel)
-	}
-	if len(got.SeenForkTranscripts) != 1 || got.SeenForkTranscripts[0] != "subagents/abc.jsonl" {
-		t.Errorf("SeenForkTranscripts = %v; want %v", got.SeenForkTranscripts, want.SeenForkTranscripts)
-	}
-
-	gotBatch1, ok := got.Batches[1]
-	if !ok {
-		t.Fatal("Batches[1] missing after round-trip")
-	}
-	wantBatch1 := want.Batches[1]
-	if gotBatch1.Slug != wantBatch1.Slug ||
-		gotBatch1.StartSHA != wantBatch1.StartSHA ||
-		gotBatch1.Kind != wantBatch1.Kind ||
-		gotBatch1.SpawnedAt != wantBatch1.SpawnedAt ||
-		gotBatch1.Terminal != wantBatch1.Terminal ||
-		gotBatch1.Status != wantBatch1.Status ||
-		len(gotBatch1.CardSHAs) != 1 ||
-		gotBatch1.CardSHAs[0] != wantBatch1.CardSHAs[0] ||
-		len(gotBatch1.ForkTranscripts) != 1 ||
-		gotBatch1.ForkTranscripts[0] != wantBatch1.ForkTranscripts[0] {
-		t.Errorf("Batches[1] = %+v; want %+v", gotBatch1, wantBatch1)
-	}
-
-	gotBatch2, ok := got.Batches[2]
-	if !ok {
-		t.Fatal("Batches[2] missing after round-trip")
-	}
-	wantBatch2 := want.Batches[2]
-	if gotBatch2.Kind != wantBatch2.Kind ||
-		gotBatch2.StrandGUID != wantBatch2.StrandGUID ||
-		gotBatch2.ShuttleRunDir != wantBatch2.ShuttleRunDir ||
-		gotBatch2.EventsPath != wantBatch2.EventsPath {
-		t.Errorf("Batches[2] = %+v; want %+v", gotBatch2, wantBatch2)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("LoadState() = %+v; want %+v", got, want)
 	}
 }
 
-// TestState_DigestPersistsAcrossSaveLoad proves BatchState.Digest
-// survives a save/load round-trip intact, since begin-batch(N+1) depends on reading it
-// back rather than re-distilling a report.
-func TestState_DigestPersistsAcrossSaveLoad(t *testing.T) {
+// TestLoadState_UnusualFiles pins LoadState on a state.json that is absent (nil, nil), corrupt
+// (a wrapped error, never a guessed value) or written before the integration stage was retired
+// (the retired integrationFix field is ignored, the reserved -1 batch record stays an ordinary entry,
+// and the audit-ledger fields it predates decode as nil).
+func TestLoadState_UnusualFiles(t *testing.T) {
 	t.Parallel()
 
-	websterDir, scratchDir := scratchSibling(t)
-	digest := &websterengine.Digest{
-		Batch:      "01-seam-extensions",
-		Status:     websterengine.DigestStatusDone,
-		HeadSHA:    "deadbeef",
-		Deviations: []string{"internal/extra.go"},
-	}
-	want := &websterengine.State{
-		RunGUID: "run-1",
-		Batches: map[int]*websterengine.BatchState{
-			1: {
-				Slug:     "seam-extensions",
-				Terminal: true,
-				Status:   "done",
-				Digest:   digest,
-				CardSHAs: []string{"deadbeef"},
-			},
-		},
-	}
-
-	if err := websterengine.SaveState(websterDir, scratchDir, want); err != nil {
-		t.Fatalf("SaveState error = %v; want nil", err)
-	}
-
-	got, err := websterengine.LoadState(websterDir, scratchDir)
-	if err != nil {
-		t.Fatalf("LoadState error = %v; want nil", err)
-	}
-	if got == nil {
-		t.Fatal("LoadState() = nil; want the saved state")
-	}
-
-	gotBatch, ok := got.Batches[1]
-	if !ok {
-		t.Fatal("Batches[1] missing after round-trip")
-	}
-	if gotBatch.Digest == nil {
-		t.Fatal("Batches[1].Digest = nil after round-trip; want the persisted digest")
-	}
-	if gotBatch.Digest.Batch != digest.Batch ||
-		gotBatch.Digest.Status != digest.Status ||
-		gotBatch.Digest.HeadSHA != digest.HeadSHA ||
-		len(gotBatch.Digest.Deviations) != 1 ||
-		gotBatch.Digest.Deviations[0] != digest.Deviations[0] {
-		t.Errorf("Batches[1].Digest = %+v; want %+v", gotBatch.Digest, digest)
-	}
-	if len(gotBatch.CardSHAs) != 1 || gotBatch.CardSHAs[0] != "deadbeef" {
-		t.Errorf("Batches[1].CardSHAs = %v; want [deadbeef]", gotBatch.CardSHAs)
-	}
-}
-
-func TestState_AbsentFileReturnsNil(t *testing.T) {
-	t.Parallel()
-
-	websterDir, scratchDir := scratchSibling(t)
-
-	got, err := websterengine.LoadState(websterDir, scratchDir)
-	if err != nil {
-		t.Fatalf("LoadState(absent) error = %v; want nil", err)
-	}
-	if got != nil {
-		t.Errorf("LoadState(absent) = %+v; want nil", got)
-	}
-}
-
-func TestState_CorruptFileErrors(t *testing.T) {
-	t.Parallel()
-
-	websterDir, scratchDir := scratchSibling(t)
-	if err := os.MkdirAll(websterDir, 0o755); err != nil {
-		t.Fatalf("mkdir websterDir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(websterDir, "state.json"), []byte("not valid json{{{"), 0o644); err != nil {
-		t.Fatalf("write corrupt state.json: %v", err)
-	}
-
-	got, err := websterengine.LoadState(websterDir, scratchDir)
-	if err == nil {
-		t.Fatal("LoadState(corrupt) error = nil; want error")
-	}
-	if got != nil {
-		t.Errorf("LoadState(corrupt) = %+v; want nil on error", got)
-	}
-}
-
-// TestState_LegacyIntegrationRecordsStillLoad pins that a state.json written before the integration stage was retired loads:
-// the retired integrationFix field is ignored and the reserved -1 batch record is kept as an ordinary entry.
-func TestState_LegacyIntegrationRecordsStillLoad(t *testing.T) {
-	t.Parallel()
-
-	websterDir, scratchDir := scratchSibling(t)
-	if err := os.MkdirAll(websterDir, 0o755); err != nil {
-		t.Fatalf("mkdir websterDir: %v", err)
-	}
-	legacy := `{
+	const legacy = `{
   "runGuid": "g",
   "batches": {
     "1": {"slug": "alpha", "kind": "fork", "terminal": true, "status": "done"},
@@ -272,16 +125,59 @@ func TestState_LegacyIntegrationRecordsStillLoad(t *testing.T) {
   },
   "integrationFix": {"preFixHead": "abc", "strandGuid": "fix-strand", "spawnedAt": "2026-01-01T00:00:00Z", "result": "failed"}
 }`
-	if err := os.WriteFile(filepath.Join(websterDir, "state.json"), []byte(legacy), 0o644); err != nil {
-		t.Fatalf("write legacy state.json: %v", err)
+	tests := []struct {
+		name string
+		// content is the state.json body; absent leaves the file out.
+		content string
+		absent  bool
+		wantErr bool
+		// wantLegacyBatches asserts batches 1 and -1 loaded.
+		wantLegacyBatches bool
+	}{
+		{name: "absent file returns nil", absent: true},
+		{name: "corrupt file errors", content: "not valid json{{{", wantErr: true},
+		{name: "legacy integration records still load", content: legacy, wantLegacyBatches: true},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	got, err := websterengine.LoadState(websterDir, scratchDir)
-	if err != nil {
-		t.Fatalf("LoadState(legacy) error = %v; want nil", err)
-	}
-	if got == nil || got.Batches[1] == nil || got.Batches[-1] == nil {
-		t.Fatalf("LoadState(legacy) = %+v; want batches 1 and -1 loaded", got)
+			websterDir, scratchDir := scratchSibling(t)
+			if !tt.absent {
+				if err := os.MkdirAll(websterDir, 0o755); err != nil {
+					t.Fatalf("mkdir websterDir: %v", err)
+				}
+				if err := os.WriteFile(filepath.Join(websterDir, "state.json"), []byte(tt.content), 0o644); err != nil {
+					t.Fatalf("write state.json: %v", err)
+				}
+			}
+
+			got, err := websterengine.LoadState(websterDir, scratchDir)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("LoadState error = nil; want error")
+				}
+				if got != nil {
+					t.Errorf("LoadState = %+v; want nil on error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadState error = %v; want nil", err)
+			}
+			if !tt.wantLegacyBatches {
+				if got != nil {
+					t.Errorf("LoadState = %+v; want nil", got)
+				}
+				return
+			}
+			if got == nil || got.Batches[1] == nil || got.Batches[-1] == nil {
+				t.Fatalf("LoadState = %+v; want batches 1 and -1 loaded", got)
+			}
+			if got.AuditDispositions != nil || got.AuditWarnings != nil || got.Batches[1].AuditWarnings != nil {
+				t.Errorf("LoadState = %+v; want the audit-ledger fields nil", got)
+			}
+		})
 	}
 }
 
@@ -289,6 +185,8 @@ func TestState_LegacyIntegrationRecordsStillLoad(t *testing.T) {
 // cross-holder exclusive lock: while held, a second non-blocking acquire of the same lease file
 // fails, and after Release it succeeds — the property every verb's load-mutate-save section relies
 // on.
+//
+//testtiming:keep pins the lease's cross-holder exclusion and release directly; the covering run-level test only observes ErrRunBusy
 func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
 	scratchDir := t.TempDir()
 
@@ -319,6 +217,8 @@ func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
 // live run (and the probe releases what it briefly acquired, so a real run right after is never
 // blocked), while a held run.lock reads as a live run owning the state — the signal the bracket
 // verbs' zombie-Master warning keys off (round fable-r1's F17).
+//
+//testtiming:keep pins RunActive's not-active result releasing the probed lock and its active result while the lock is held; the plan-reset tests only observe the busy refusal
 func TestRunActive_ReflectsRunLockHeld(t *testing.T) {
 	scratchDir := t.TempDir()
 

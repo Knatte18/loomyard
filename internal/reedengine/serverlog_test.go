@@ -46,6 +46,7 @@ func TestDebugLogArgs(t *testing.T) {
 	}
 }
 
+//testtiming:keep pins which log files the prune plans to delete: none at or under the keep count, the oldest beyond it, and ties broken by name order; its covering tests run this code without asserting it
 func TestPlanLogPrune(t *testing.T) {
 	base := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
 

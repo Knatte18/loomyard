@@ -23,51 +23,70 @@ func fakeChangedPaths(byCommit map[string][]string) func(string) ([]string, erro
 	}
 }
 
-func TestCardHint_NamesCardsThatTouchedAFailingPackage(t *testing.T) {
-	failures := []VerifyFailure{
-		{ID: testModulePath + "/internal/a.TestX", Kind: FailureKindTest, Package: testModulePath + "/internal/a"},
-	}
-	shas := []string{"s1", "s2", "s3"}
-	labels := []string{"01-first", "02-second", "03-third"}
-	changed := fakeChangedPaths(map[string][]string{
-		"s1": {"internal/a/a.go"},
-		"s2": {"internal/b/b.go", "internal/a/sub/deep.go"},
-		"s3": {"internal/a/a_test.go"},
-	})
+// TestCardHint proves the hint names, in card order, every card whose commit touched a failing
+// package's own directory (a file in a subdirectory or another package is no touch), yields no hint
+// and spawns nothing for opaque or foreign-module failures, and propagates a changed-paths error.
+//
+//testtiming:keep pins which commits count as touching a failing package, the card order of the hint and the no-hint cases; the covering run-level verify-gate test checks one hint
+func TestCardHint(t *testing.T) {
+	t.Parallel()
 
-	got, err := cardHint(testModulePath, failures, shas, labels, changed)
-	if err != nil {
-		t.Fatalf("cardHint() error = %v", err)
+	tests := []struct {
+		name     string
+		failures []VerifyFailure
+		shas     []string
+		labels   []string
+		changed  func(string) ([]string, error)
+		want     []string
+		wantErr  bool
+	}{
+		{
+			name:     "names the cards that touched a failing package",
+			failures: []VerifyFailure{{ID: testModulePath + "/internal/a.TestX", Kind: FailureKindTest, Package: testModulePath + "/internal/a"}},
+			shas:     []string{"s1", "s2", "s3"},
+			labels:   []string{"01-first", "02-second", "03-third"},
+			changed: fakeChangedPaths(map[string][]string{
+				"s1": {"internal/a/a.go"},
+				"s2": {"internal/b/b.go", "internal/a/sub/deep.go"},
+				"s3": {"internal/a/a_test.go"},
+			}),
+			want: []string{"01-first", "03-third"},
+		},
+		{
+			// A nil changedPaths proves the hint spawns nothing when no directory maps.
+			name: "opaque and foreign packages yield no hint",
+			failures: []VerifyFailure{
+				{ID: opaqueFailureID, Kind: FailureKindOpaque},
+				{ID: "other.org/x.TestY", Kind: FailureKindTest, Package: "other.org/x"},
+			},
+			shas:   []string{"s1"},
+			labels: []string{"01-first"},
+		},
+		{
+			name:     "a changed-paths error propagates",
+			failures: []VerifyFailure{{ID: testModulePath + "/a", Kind: FailureKindPackage, Package: testModulePath + "/a"}},
+			shas:     []string{"s1"},
+			labels:   []string{"01-first"},
+			changed:  fakeChangedPaths(nil),
+			wantErr:  true,
+		},
 	}
-	want := []string{"01-first", "03-third"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("cardHint() = %v, want %v (a file only in a subdirectory or another package is not a touch)", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := cardHint(testModulePath, tt.failures, tt.shas, tt.labels, tt.changed)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("cardHint() error = %v; want error %v", err, tt.wantErr)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("cardHint() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
-func TestCardHint_OpaqueAndForeignPackagesYieldNoHint(t *testing.T) {
-	failures := []VerifyFailure{
-		{ID: opaqueFailureID, Kind: FailureKindOpaque},
-		{ID: "other.org/x.TestY", Kind: FailureKindTest, Package: "other.org/x"},
-	}
-	// A nil changedPaths proves the hint spawns nothing when no directory maps.
-	got, err := cardHint(testModulePath, failures, []string{"s1"}, []string{"01-first"}, nil)
-	if err != nil {
-		t.Fatalf("cardHint() error = %v", err)
-	}
-	if len(got) != 0 {
-		t.Errorf("cardHint() = %v, want no hint", got)
-	}
-}
-
-func TestCardHint_ChangedPathsErrorPropagates(t *testing.T) {
-	failures := []VerifyFailure{{ID: testModulePath + "/a", Kind: FailureKindPackage, Package: testModulePath + "/a"}}
-	_, err := cardHint(testModulePath, failures, []string{"s1"}, []string{"01-first"}, fakeChangedPaths(nil))
-	if err == nil {
-		t.Fatal("cardHint() error = nil, want the changedPaths error")
-	}
-}
-
+//testtiming:keep pins the fixed verify-gate.yaml name, a second write replacing the first and every report field surviving the YAML round trip; the run-level test reads back only the fields its failure sets
 func TestVerifyGateReport_RoundTrip(t *testing.T) {
 	reportsDir := t.TempDir()
 	path := VerifyGateReportPath(reportsDir)

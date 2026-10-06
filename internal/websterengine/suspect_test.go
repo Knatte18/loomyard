@@ -166,10 +166,9 @@ func TestCheckRecoveredSuspects_EmptyStartHoldsNothing(t *testing.T) {
 
 func TestRunEvidenceBases_PicksByAncestry(t *testing.T) {
 	fx, c0, _, c2 := reversedOrderFixture(t)
-	root := fx.geom.WorktreeRoot
 	fx.st.Batches[3] = &BatchState{Slug: "three"}
 
-	got, err := runEvidenceBases(root, fx.st)
+	got, err := runEvidenceBases(fx.geom, fx.st)
 	if err != nil {
 		t.Fatalf("runEvidenceBases() error = %v", err)
 	}
@@ -179,7 +178,7 @@ func TestRunEvidenceBases_PicksByAncestry(t *testing.T) {
 
 	missing := "0123456789abcdef0123456789abcdef01234567"
 	fx.st.Batches[1].Digest.HeadSHA = missing
-	got, err = runEvidenceBases(root, fx.st)
+	got, err = runEvidenceBases(fx.geom, fx.st)
 	if err != nil {
 		t.Fatalf("runEvidenceBases() error = %v", err)
 	}
@@ -187,7 +186,7 @@ func TestRunEvidenceBases_PicksByAncestry(t *testing.T) {
 		t.Errorf("runEvidenceBases() = %+v; want Last empty and Missing [%s]", got, missing)
 	}
 
-	got, err = runEvidenceBases(root, &State{})
+	got, err = runEvidenceBases(fx.geom, &State{})
 	if err != nil || !reflect.DeepEqual(got, evidenceBases{}) {
 		t.Errorf("runEvidenceBases(empty) = %+v, %v; want the zero value", got, err)
 	}

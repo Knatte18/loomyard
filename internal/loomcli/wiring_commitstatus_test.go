@@ -24,6 +24,8 @@ func selfStatusRel(location *lyxcwd.Location) string {
 
 // TestNewCommitStatusSeam_OrdinaryPath asserts that, with MergeActive false, Commit nil, and Push
 // nil, the seam calls Commit exactly once and Push exactly once, in that order, and returns nil.
+//
+//testtiming:keep pins the seam with no board-status writer calling commit then push once each, in that order; the board-status test always installs a writer
 func TestNewCommitStatusSeam_OrdinaryPath(t *testing.T) {
 	t.Parallel()
 
@@ -109,140 +111,120 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 	}
 }
 
-// TestWireLightweight_CommitStatusFilled asserts wireLightweight leaves c.shedPaths.CommitStatus
-// non-nil, even though every verb on this lightweight path is read-only and so never invokes it --
-// filling it anyway keeps the two ShedPaths literals structurally identical, per wiring.go's own
-// comment at that site.
-func TestWireLightweight_CommitStatusFilled(t *testing.T) {
-	t.Parallel()
-
-	location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	c.wireLightweight(location, location.AnchorPath())
-
-	if c.shedPaths.CommitStatus == nil {
-		t.Error("c.shedPaths.CommitStatus = nil; want a non-nil seam")
-	}
-}
-
-// TestWire_CommitStatusFilled asserts wire() leaves c.shedPaths.CommitStatus non-nil. It drives
-// wire() the way wiring_test.go's own hubLocation fixture already does, rather than building a
-// second fixture idiom.
-func TestWire_CommitStatusFilled(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "pair", ".")
-
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if c.shedPaths.CommitStatus == nil {
-		t.Error("c.shedPaths.CommitStatus = nil; want a non-nil seam")
-	}
-}
-
-// TestStatusCommitPathspec asserts the pathspec names the reviews directory only when it holds a file:
-// the empty segment directories recipe build creates would make the commit's pathspec match nothing and fail.
+// TestStatusCommitPathspec asserts the pathspec always names the run's status file, and names each of the reviews directory, the loom durable directory and the drive-reports directory only when it holds a file at any depth:
+// empty directories, segment directories and subdirectories would make the commit's pathspec match nothing and fail, and an archive sibling alone still counts.
+// A pending rejection holds the reviews root and the loom durable directory out though each holds a file, whether the highest rework round is unclassed or classed but uncommitted.
+//
+//testtiming:keep pins the status commit pathspec naming the status file always and the reviews, loom durable and drive-reports directories only once they hold a file, and a pending rejection holding the round out; the covering integration test commits one fixed layout
 func TestStatusCommitPathspec(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name        string
-		setup       func(t *testing.T, reviews string)
-		wantReviews bool
-	}{
-		{"absent", func(t *testing.T, reviews string) {}, false},
-		{"only empty segment directories", func(t *testing.T, reviews string) {
-			if err := os.MkdirAll(filepath.Join(reviews, "plan"), 0o755); err != nil {
-				t.Fatal(err)
-			}
-		}, false},
-		{"file in a segment directory", func(t *testing.T, reviews string) {
-			seg := filepath.Join(reviews, "plan")
-			if err := os.MkdirAll(seg, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(seg, "round-1-review.md"), []byte("x\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}, true},
-		{"regular file at the reviews path", func(t *testing.T, reviews string) {
-			if err := os.MkdirAll(filepath.Dir(reviews), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(reviews, []byte("x\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-			tt.setup(t, loomengine.LoomReviewsDir(location))
-			want := []string{selfStatusRel(location)}
-			if tt.wantReviews {
-				want = append(want, loomengine.LoomReviewsDirRel())
-			}
-			got := statusCommitPathspec(location, shedrun.SelfRunID)
-			if !reflect.DeepEqual(got, want) {
-				t.Errorf("statusCommitPathspec() = %v; want %v", got, want)
-			}
-		})
-	}
-}
-
-// TestStatusCommitPathspec_RunRecords asserts the loom durable directory and the drive-reports directory each appear exactly when they hold a file at any depth,
-// including only a timestamped archive sibling, and are omitted when absent, empty, or holding only empty subdirectories.
-func TestStatusCommitPathspec_RunRecords(t *testing.T) {
-	t.Parallel()
-
-	writeFile := func(t *testing.T, path string) {
+	writeFile := func(t *testing.T, path, content string) {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, []byte("x\n"), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
 	tests := []struct {
-		name      string
-		setup     func(t *testing.T, loc *lyxcwd.Location)
-		wantLoom  bool
-		wantDrive bool
+		name        string
+		setup       func(t *testing.T, loc *lyxcwd.Location)
+		wantReviews bool
+		wantLoom    bool
+		wantDrive   bool
 	}{
-		{"absent", func(t *testing.T, loc *lyxcwd.Location) {}, false, false},
-		{"empty directories", func(t *testing.T, loc *lyxcwd.Location) {
-			for _, d := range []string{loomengine.LoomDurableDir(loc), shedrun.DriveReportsDir(loc, shedrun.SelfRunID)} {
-				if err := os.MkdirAll(d, 0o755); err != nil {
+		{name: "nothing on disk", setup: func(t *testing.T, loc *lyxcwd.Location) {}},
+		{
+			name: "only empty segment directories",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				if err := os.MkdirAll(filepath.Join(loomengine.LoomReviewsDir(loc), "plan"), 0o755); err != nil {
 					t.Fatal(err)
 				}
-			}
-		}, false, false},
-		{"only empty subdirectories", func(t *testing.T, loc *lyxcwd.Location) {
-			for _, d := range []string{loomengine.LoomFrictionDir(loc), filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "sub")} {
-				if err := os.MkdirAll(d, 0o755); err != nil {
-					t.Fatal(err)
+			},
+		},
+		{
+			name: "file in a segment directory",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				writeFile(t, filepath.Join(loomengine.LoomReviewsDir(loc), "plan", "round-1-review.md"), "x\n")
+			},
+			wantReviews: true,
+		},
+		{
+			name: "regular file at the reviews path",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				writeFile(t, loomengine.LoomReviewsDir(loc), "x\n")
+			},
+		},
+		{
+			name: "empty directories",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				for _, d := range []string{loomengine.LoomDurableDir(loc), shedrun.DriveReportsDir(loc, shedrun.SelfRunID)} {
+					if err := os.MkdirAll(d, 0o755); err != nil {
+						t.Fatal(err)
+					}
 				}
-			}
-		}, false, false},
-		{"friction note", func(t *testing.T, loc *lyxcwd.Location) {
-			writeFile(t, filepath.Join(loomengine.LoomFrictionDir(loc), "note.md"))
-		}, true, false},
-		{"only an archive sibling", func(t *testing.T, loc *lyxcwd.Location) {
-			writeFile(t, filepath.Join(loomengine.LoomDurableDir(loc), "friction-20260101T000000", "note.md"))
-		}, true, false},
-		{"drive report", func(t *testing.T, loc *lyxcwd.Location) {
-			writeFile(t, filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "report.md"))
-		}, false, true},
-		{"both", func(t *testing.T, loc *lyxcwd.Location) {
-			writeFile(t, filepath.Join(loomengine.LoomFrictionDir(loc), "note.md"))
-			writeFile(t, filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "report.md"))
-		}, true, true},
+			},
+		},
+		{
+			name: "only empty subdirectories",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				for _, d := range []string{loomengine.LoomFrictionDir(loc), filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "sub")} {
+					if err := os.MkdirAll(d, 0o755); err != nil {
+						t.Fatal(err)
+					}
+				}
+			},
+		},
+		{
+			name: "friction note",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				writeFile(t, filepath.Join(loomengine.LoomFrictionDir(loc), "note.md"), "x\n")
+			},
+			wantLoom: true,
+		},
+		{
+			name: "only an archive sibling",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				writeFile(t, filepath.Join(loomengine.LoomDurableDir(loc), "friction-20260101T000000", "note.md"), "x\n")
+			},
+			wantLoom: true,
+		},
+		{
+			name: "drive report",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				writeFile(t, filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "report.md"), "x\n")
+			},
+			wantDrive: true,
+		},
+		{
+			name: "friction note and drive report",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				writeFile(t, filepath.Join(loomengine.LoomFrictionDir(loc), "note.md"), "x\n")
+				writeFile(t, filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "report.md"), "x\n")
+			},
+			wantLoom:  true,
+			wantDrive: true,
+		},
+		{
+			name:  "pending rejection, unclassed round",
+			setup: pendingRejectionSetup(writeFile, `{"first_card":3}`, true),
+			// The held directories are left out though each holds a file.
+			wantDrive: true,
+		},
+		{
+			name:      "pending rejection, classed but uncommitted round",
+			setup:     pendingRejectionSetup(writeFile, `{"first_card":3,"class":"exempt"}`, true),
+			wantDrive: true,
+		},
+		{
+			name:        "no pending rejection",
+			setup:       pendingRejectionSetup(writeFile, `{"first_card":3,"class":"exempt"}`, false),
+			wantReviews: true,
+			wantLoom:    true,
+			wantDrive:   true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -250,6 +232,9 @@ func TestStatusCommitPathspec_RunRecords(t *testing.T) {
 			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 			tt.setup(t, location)
 			want := []string{selfStatusRel(location)}
+			if tt.wantReviews {
+				want = append(want, loomengine.LoomReviewsDirRel())
+			}
 			if tt.wantLoom {
 				want = append(want, loomengine.LoomDurableDirRel())
 			}
@@ -264,49 +249,15 @@ func TestStatusCommitPathspec_RunRecords(t *testing.T) {
 	}
 }
 
-// TestStatusCommitPathspec_PendingRejectionHoldsTheRound asserts a pending rejection leaves the reviews root and the loom durable directory out though each holds a file, whether the highest round is unclassed or classed but uncommitted, and that without a rejection today's pathspec stays.
-func TestStatusCommitPathspec_PendingRejectionHoldsTheRound(t *testing.T) {
-	t.Parallel()
-
-	writeFile := func(t *testing.T, path, content string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
+// pendingRejectionSetup returns a setup that writes a rework round record, a review file and a drive report,
+// and a pending rejection when rejection is true.
+func pendingRejectionSetup(writeFile func(t *testing.T, path, content string), record string, rejection bool) func(t *testing.T, loc *lyxcwd.Location) {
+	return func(t *testing.T, loc *lyxcwd.Location) {
+		writeFile(t, filepath.Join(loomengine.LoomReworkDir(loc), "round-1", "record.json"), record)
+		writeFile(t, filepath.Join(loomengine.LoomReviewsDir(loc), "plan", "round-1-review.md"), "x\n")
+		writeFile(t, filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "report.md"), "x\n")
+		if rejection {
+			writeFile(t, loomengine.LoomRejectionPath(loc), "{}\n")
 		}
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	tests := []struct {
-		name        string
-		record      string
-		rejection   bool
-		wantHoldDir bool
-	}{
-		{"pending rejection, unclassed round", `{"first_card":3}`, true, true},
-		{"pending rejection, classed but uncommitted round", `{"first_card":3,"class":"exempt"}`, true, true},
-		{"no pending rejection", `{"first_card":3,"class":"exempt"}`, false, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-			writeFile(t, filepath.Join(loomengine.LoomReworkDir(location), "round-1", "record.json"), tt.record)
-			writeFile(t, filepath.Join(loomengine.LoomReviewsDir(location), "plan", "round-1-review.md"), "x\n")
-			writeFile(t, filepath.Join(shedrun.DriveReportsDir(location, shedrun.SelfRunID), "report.md"), "x\n")
-			if tt.rejection {
-				writeFile(t, loomengine.LoomRejectionPath(location), "{}\n")
-			}
-
-			want := []string{selfStatusRel(location)}
-			if !tt.wantHoldDir {
-				want = append(want, loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel())
-			}
-			want = append(want, shedrun.DriveReportsRel(location, shedrun.SelfRunID))
-			got := statusCommitPathspec(location, shedrun.SelfRunID)
-			if !reflect.DeepEqual(got, want) {
-				t.Errorf("statusCommitPathspec() = %v; want %v", got, want)
-			}
-		})
 	}
 }

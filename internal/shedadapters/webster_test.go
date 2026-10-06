@@ -40,19 +40,49 @@ func (f *fakeWebsterRunner) run(deps websterengine.RunDeps, opts websterengine.R
 
 // --- Outcome mapping table ---
 
+// TestWebsterProducer_OutcomeDone covers a completed run, which survives a cancellation that
+// arrives during the run. The run is never asked for a fresh start: RunOptions.Fresh is false as a
+// safety property, not a default.
+//
+//testtiming:keep pins that a done run returns the summary as pointer, is never asked for a fresh start, and survives a cancellation during the run
 func TestWebsterProducer_OutcomeDone(t *testing.T) {
-	dir := t.TempDir()
-	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
-	fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "done"}}
-	p := NewWebsterProducer("loom", fake.run, deps)
-
-	ptr := shedfake.RequireOutcome(t, p, shedengine.Done)
-	wantPath := summaryparser.Path(dir)
-	if ptr.Path != wantPath {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPath)
+	tests := []struct {
+		name            string
+		cancelDuringRun bool
+	}{
+		{"Plain", false},
+		{"SurvivesCancellationDuringRun", true},
 	}
-	if fake.calls != 1 {
-		t.Errorf("runner calls = %d; want 1", fake.calls)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "done"}}
+			if tt.cancelDuringRun {
+				fake.duringRun = cancel
+			}
+			p := NewWebsterProducer("loom", fake.run, deps)
+
+			outcome, ptr, err := p.Call(ctx)
+			if err != nil {
+				t.Fatalf("Call() error = %v; want nil (genuine success survives cancellation)", err)
+			}
+			if outcome != shedengine.Done {
+				t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
+			}
+			wantPath := summaryparser.Path(dir)
+			if ptr.Path != wantPath {
+				t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPath)
+			}
+			if fake.calls != 1 {
+				t.Errorf("runner calls = %d; want 1", fake.calls)
+			}
+			if fake.gotOptions.Fresh {
+				t.Error("Call() invoked the run seam with RunOptions.Fresh = true; want false (a safety property, not a default)")
+			}
+		})
 	}
 }
 
@@ -123,6 +153,10 @@ func TestWebsterProducer_MasterAskingError(t *testing.T) {
 			deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 			fake := &fakeWebsterRunner{err: tt.askingErr}
 			p := NewWebsterProducer("loom", fake.run, deps)
+			// The adapter must match with errors.Is against ErrMasterAsking, not a string match.
+			if !errors.Is(tt.askingErr, websterengine.ErrMasterAsking) {
+				t.Fatalf("test setup: MasterAskingError does not satisfy errors.Is(_, ErrMasterAsking)")
+			}
 
 			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 			if ptr.Path != "" {
@@ -172,40 +206,43 @@ func pendingAuditErr() error {
 	return fmt.Errorf("%w: 1 correctness finding(s): 1) parent-write: wrote internal/x.go; way forward: 1) lyx webster accept-audit; 2) re-step the loom row", websterengine.ErrPendingAuditFindings)
 }
 
-// TestNewWebsterProducer_ReentryStepNamesTheRow proves the adapter hands the run its row's re-entry step, and keeps one a caller set.
-func TestNewWebsterProducer_ReentryStepNamesTheRow(t *testing.T) {
-	fake := &fakeWebsterRunner{err: pendingAuditErr()}
-	p := NewWebsterProducer("loom", fake.run, websterengine.RunDeps{})
-	shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	if got := fake.gotDeps.ReentryStep; got != "re-step the loom row" {
-		t.Errorf("ReentryStep = %q; want the row's re-entry step", got)
-	}
-
-	fake = &fakeWebsterRunner{err: pendingAuditErr()}
-	p = NewWebsterProducer("loom", fake.run, websterengine.RunDeps{ReentryStep: "lyx webster run"})
-	shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	if got := fake.gotDeps.ReentryStep; got != "lyx webster run" {
-		t.Errorf("ReentryStep = %q; want the caller's step kept", got)
-	}
-}
-
+// TestWebsterProducer_PendingAuditFindingsIsStuck covers a pending-audit refusal: it is a Stuck
+// with the refusal's own text as reason and no path, and the adapter hands the run its row's
+// re-entry step while keeping one a caller set.
+//
+//testtiming:keep pins the pending-audit refusal's reason, which is the refusal's own text, and the re-entry step the run is handed
 func TestWebsterProducer_PendingAuditFindingsIsStuck(t *testing.T) {
-	dir := t.TempDir()
-	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
-	fake := &fakeWebsterRunner{err: pendingAuditErr()}
-	p := NewWebsterProducer("loom", fake.run, deps)
+	tests := []struct {
+		name            string
+		reentryStep     string
+		wantReentryStep string
+	}{
+		{"RowReentryStepIsHandedToTheRun", "", "re-step the loom row"},
+		{"CallersStepIsKept", "lyx webster run", "lyx webster run"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}, ReentryStep: tt.reentryStep}
+			fake := &fakeWebsterRunner{err: pendingAuditErr()}
+			p := NewWebsterProducer("loom", fake.run, deps)
 
-	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	if ptr.Path != "" {
-		t.Errorf("Call() path = %q; want empty", ptr.Path)
-	}
-	for _, want := range []string{"internal/x.go", "lyx webster accept-audit", "re-step the loom row"} {
-		if !strings.Contains(ptr.Reason, want) {
-			t.Errorf("Reason = %q; want it to contain %q", ptr.Reason, want)
-		}
-	}
-	if ptr.Reason != pendingAuditErr().Error() {
-		t.Errorf("Reason = %q; want the refusal's own text, with no step appended", ptr.Reason)
+			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
+			if ptr.Path != "" {
+				t.Errorf("Call() path = %q; want empty", ptr.Path)
+			}
+			for _, want := range []string{"internal/x.go", "lyx webster accept-audit", "re-step the loom row"} {
+				if !strings.Contains(ptr.Reason, want) {
+					t.Errorf("Reason = %q; want it to contain %q", ptr.Reason, want)
+				}
+			}
+			if ptr.Reason != pendingAuditErr().Error() {
+				t.Errorf("Reason = %q; want the refusal's own text, with no step appended", ptr.Reason)
+			}
+			if got := fake.gotDeps.ReentryStep; got != tt.wantReentryStep {
+				t.Errorf("ReentryStep = %q; want %q", got, tt.wantReentryStep)
+			}
+		})
 	}
 }
 
@@ -253,34 +290,6 @@ func TestWebsterProducer_PendingAuditFindingsBlocksRun(t *testing.T) {
 	}
 }
 
-func TestWebsterProducer_MasterAskingMatchedViaErrorsIs(t *testing.T) {
-	dir := t.TempDir()
-	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
-	// Wrapped with %w so the adapter must use errors.Is against ErrMasterAsking, not a string match.
-	wrapped := &websterengine.MasterAskingError{SessionID: "sess-1", RunDir: "/tmp/run", Message: "hmm"}
-	fake := &fakeWebsterRunner{err: wrapped}
-	p := NewWebsterProducer("loom", fake.run, deps)
-
-	shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	if !errors.Is(wrapped, websterengine.ErrMasterAsking) {
-		t.Fatalf("test setup: MasterAskingError does not satisfy errors.Is(_, ErrMasterAsking)")
-	}
-}
-
-// --- RunOptions.Fresh safety property ---
-
-func TestWebsterProducer_FreshIsAlwaysFalse(t *testing.T) {
-	dir := t.TempDir()
-	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
-	fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "done"}}
-	p := NewWebsterProducer("loom", fake.run, deps)
-
-	shedfake.CallOK(t, p)
-	if fake.gotOptions.Fresh {
-		t.Error("Call() invoked the run seam with RunOptions.Fresh = true; want false (a safety property, not a default)")
-	}
-}
-
 // --- Context rows ---
 
 func TestWebsterProducer_AlreadyCancelledContext(t *testing.T) {
@@ -301,29 +310,6 @@ func TestWebsterProducer_AlreadyCancelledContext(t *testing.T) {
 	}
 	if fake.calls != 0 {
 		t.Errorf("runner calls = %d; want 0 (seam never invoked)", fake.calls)
-	}
-}
-
-func TestWebsterProducer_CancelledDuringRun_OutcomeDoneStillSucceeds(t *testing.T) {
-	dir := t.TempDir()
-	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
-	ctx, cancel := context.WithCancel(context.Background())
-	fake := &fakeWebsterRunner{
-		result:    websterengine.RunResult{Outcome: "done"},
-		duringRun: cancel,
-	}
-	p := NewWebsterProducer("loom", fake.run, deps)
-
-	outcome, ptr, err := p.Call(ctx)
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil (genuine success survives cancellation)", err)
-	}
-	if outcome != shedengine.Done {
-		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
-	}
-	wantPath := summaryparser.Path(dir)
-	if ptr.Path != wantPath {
-		t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPath)
 	}
 }
 
