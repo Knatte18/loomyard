@@ -33,57 +33,91 @@ func existsOnly(paths ...string) func(string) bool {
 	}
 }
 
-func TestChooseStartPrompt_FlagWinsOverLastHandoff(t *testing.T) {
-	dir := seedStencils(t)
-	s := State{LastHandoff: "/h/last.md"}
-	got, src, err := ChooseStartPrompt(dir, testRolePath, "/h/flag.md", s, existsOnly("/h/flag.md", "/h/last.md"))
-	if err != nil {
-		t.Fatal(err)
+func TestChooseStartPrompt(t *testing.T) {
+	cases := []struct {
+		name       string
+		flag       string
+		state      State
+		existing   []string
+		wantErr    bool
+		wantSource string
+		wantIn     []string
+		wantNotIn  []string
+		// wantFresh asserts the prompt is exactly the start stencil's.
+		wantFresh bool
+	}{
+		{
+			name:       "flag wins over the last handoff",
+			flag:       "/h/flag.md",
+			state:      State{LastHandoff: "/h/last.md"},
+			existing:   []string{"/h/flag.md", "/h/last.md"},
+			wantSource: SourceFlag,
+			wantIn:     []string{"/h/flag.md", testRolePath},
+			wantNotIn:  []string{"/h/last.md"},
+		},
+		{
+			name:     "missing flag file errors",
+			flag:     "/h/gone.md",
+			state:    State{LastHandoff: "/h/last.md"},
+			existing: []string{"/h/last.md"},
+			wantErr:  true,
+		},
+		{
+			name:       "last handoff when present",
+			state:      State{LastHandoff: "/h/last.md"},
+			existing:   []string{"/h/last.md"},
+			wantSource: SourceLastHandoff,
+			wantIn:     []string{"/h/last.md", testRolePath},
+		},
+		{
+			name:       "last handoff gone falls to fresh",
+			state:      State{LastHandoff: "/h/last.md"},
+			wantSource: SourceFresh,
+		},
+		{
+			name:       "pending handoff is ignored",
+			state:      State{PendingHandoff: "/h/partial.md"},
+			existing:   []string{"/h/partial.md"},
+			wantSource: SourceFresh,
+			wantFresh:  true,
+		},
 	}
-	if src != SourceFlag || !strings.Contains(got, "/h/flag.md") || !strings.Contains(got, testRolePath) || strings.Contains(got, "/h/last.md") {
-		t.Errorf("source=%q prompt=%q", src, got)
-	}
-}
-
-func TestChooseStartPrompt_MissingFlagFileErrors(t *testing.T) {
-	_, _, err := ChooseStartPrompt(seedStencils(t), testRolePath, "/h/gone.md", State{LastHandoff: "/h/last.md"}, existsOnly("/h/last.md"))
-	if err == nil {
-		t.Fatal("want error for missing flag file")
-	}
-}
-
-func TestChooseStartPrompt_LastHandoffWhenPresent(t *testing.T) {
-	got, src, err := ChooseStartPrompt(seedStencils(t), testRolePath, "", State{LastHandoff: "/h/last.md"}, existsOnly("/h/last.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if src != SourceLastHandoff || !strings.Contains(got, "/h/last.md") || !strings.Contains(got, testRolePath) {
-		t.Errorf("source=%q prompt=%q", src, got)
-	}
-}
-
-func TestChooseStartPrompt_LastHandoffGoneFallsToFresh(t *testing.T) {
-	_, src, err := ChooseStartPrompt(seedStencils(t), testRolePath, "", State{LastHandoff: "/h/last.md"}, existsOnly())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if src != SourceFresh {
-		t.Errorf("source=%q, want fresh", src)
-	}
-}
-
-func TestChooseStartPrompt_PendingHandoffIgnored(t *testing.T) {
-	dir := seedStencils(t)
-	s := State{PendingHandoff: "/h/partial.md"}
-	got, src, err := ChooseStartPrompt(dir, testRolePath, "", s, existsOnly("/h/partial.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want, err := RenderStartPrompt(dir, testRolePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if src != SourceFresh || got != want {
-		t.Errorf("source=%q; pending handoff must fall through to the start stencil", src)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			dir := seedStencils(t)
+			got, src, err := ChooseStartPrompt(dir, testRolePath, c.flag, c.state, existsOnly(c.existing...))
+			if c.wantErr {
+				if err == nil {
+					t.Fatal("want an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if src != c.wantSource {
+				t.Errorf("source = %q, want %q", src, c.wantSource)
+			}
+			for _, want := range c.wantIn {
+				if !strings.Contains(got, want) {
+					t.Errorf("prompt %q missing %q", got, want)
+				}
+			}
+			for _, unwanted := range c.wantNotIn {
+				if strings.Contains(got, unwanted) {
+					t.Errorf("prompt %q must not contain %q", got, unwanted)
+				}
+			}
+			if c.wantFresh {
+				want, err := RenderStartPrompt(dir, testRolePath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got != want {
+					t.Errorf("prompt = %q, want the start stencil %q", got, want)
+				}
+			}
+		})
 	}
 }

@@ -337,30 +337,36 @@ func TestCompact_RestartRetypesOnlyOnIdleWithNoBoundary(t *testing.T) {
 	}
 }
 
-func TestCompact_RestartCompletesWithoutRetypingWhenBoundaryRead(t *testing.T) {
-	e := newCompactEnv(t)
-	e.reachCompacting()
-	e.landBoundary(e.state().PhaseEnteredAt.Add(time.Second), 150)
-
-	e.w = e.newWatcher()
-	e.tick()
-	e.assertCompactCalls(1)
-	if st := e.state(); st.Phase != PhaseResuming || st.CycleCount != 1 || st.LastContextTokens != 150 {
-		t.Errorf("state = %+v", st)
+func TestCompact_RestartWithBoundaryReadTypesNothing(t *testing.T) {
+	cases := []struct {
+		name      string
+		idle      bool
+		wantPhase Phase
+		// wantCycles is the cycle count the restarted tick must have recorded.
+		wantCycles int
+	}{
+		{"idle pane completes without retyping", true, PhaseResuming, 1},
+		{"busy pane keeps compacting", false, PhaseCompacting, 0},
 	}
-}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newCompactEnv(t)
+			e.reachCompacting()
+			e.landBoundary(e.state().PhaseEnteredAt.Add(time.Second), 150)
 
-func TestCompact_RestartWithBoundaryButBusyPaneTypesNothing(t *testing.T) {
-	e := newCompactEnv(t)
-	e.reachCompacting()
-	e.landBoundary(e.state().PhaseEnteredAt.Add(time.Second), 150)
-
-	e.w = e.newWatcher()
-	e.s.idle = false
-	e.tick()
-	e.assertCompactCalls(1)
-	if st := e.state(); st.Phase != PhaseCompacting {
-		t.Errorf("phase = %s, want compacting", st.Phase)
+			e.w = e.newWatcher()
+			e.s.idle = c.idle
+			e.tick()
+			e.assertCompactCalls(1)
+			st := e.state()
+			if st.Phase != c.wantPhase || st.CycleCount != c.wantCycles {
+				t.Errorf("state = %+v, want phase %s after %d cycles", st, c.wantPhase, c.wantCycles)
+			}
+			if c.idle && st.LastContextTokens != 150 {
+				t.Errorf("LastContextTokens = %d, want 150", st.LastContextTokens)
+			}
+		})
 	}
 }
 

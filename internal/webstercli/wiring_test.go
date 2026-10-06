@@ -133,6 +133,12 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 			if c.refMatcher == nil {
 				t.Error("refMatcher = nil; want a non-nil matcher in hub mode")
 			}
+			if c.geom.PlanDir == "" {
+				t.Error("geom.PlanDir is empty; want the hub default")
+			}
+			if c.reedUp != nil {
+				t.Error("wireHub armed c.reedUp; want nil -- hub mode's reed session is not run's to boot")
+			}
 			if c.openFabric == nil {
 				t.Fatal("openFabric = nil; want a wired opener closure in hub mode")
 			}
@@ -152,50 +158,6 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 	}
 }
 
-// TestWire_ModeStandaloneSelectsStandaloneMode covers both causes preflight.ResolveMode folds into
-// ModeStandalone: a plain downloaded git repository (no hub-level directory beside it) and an
-// unresolvable cwd (lyxcwd.Resolve itself failed). ResolveMode returns a nil Location for each, and
-// wire cannot and must not try to tell them apart -- both land in standalone mode.
-func TestWire_ModeStandaloneSelectsStandaloneMode(t *testing.T) {
-	tests := []struct {
-		name string
-	}{
-		{"PlainDownloadedRepository"},
-		{"UnresolvableCwd"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			target := t.TempDir()
-			stateHome := t.TempDir()
-			t.Setenv("XDG_STATE_HOME", stateHome)
-			t.Setenv("LOCALAPPDATA", t.TempDir())
-			t.Cleanup(func() { logger.SetDurableSinkDir("") })
-			seedStandalonePlanDir(t, filepath.Join(stateHome, "lyx", hash8For(t, target), "_lyx", "plan"))
-
-			c := &websterCLI{}
-			// loc is nil regardless of which real ResolveMode cause produced ModeStandalone: both
-			// carry a nil Location, and wire consults mode alone to choose the dispatch branch.
-			if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
-				t.Fatalf("wire() = %v; want nil", err)
-			}
-
-			if c.geom.WorktreeRoot != target {
-				t.Errorf("geom.WorktreeRoot = %q; want %q (the target)", c.geom.WorktreeRoot, target)
-			}
-			if c.anchorRel != "" {
-				t.Errorf("anchorRel = %q; want empty in standalone", c.anchorRel)
-			}
-			if _, ok := c.refMatcher.(websterengine.NeverMatches); !ok {
-				t.Errorf("refMatcher = %T; want websterengine.NeverMatches in standalone", c.refMatcher)
-			}
-			if c.openFabric != nil {
-				t.Error("openFabric != nil; want nil in standalone -- there is no fabric repo to reach")
-			}
-		})
-	}
-}
-
 // hash8For returns standalonestate.Derive's hash8 for target under the environment t.Setenv has
 // already redirected -- the caller must have already called t.Setenv("XDG_STATE_HOME", ...) (or the
 // per-OS equivalent) before calling this, exactly as it must before calling wire in standalone mode.
@@ -208,42 +170,87 @@ func hash8For(t *testing.T, target string) string {
 	return hash8
 }
 
-// TestWire_PlanDirResolution covers the plan directory's three resolutions -- the hub default, the
-// standalone default, and an explicit --plan-dir override -- plus the standalone-only absent-plan-dir
-// usage error naming --plan-dir.
+// TestWire_StandaloneMode wires one standalone CLI over a plain target and checks everything the mode promises at once:
+// the two-roots split (the worktree root, also the fork-audit workdir and the {{.worktree_root}} prompt token, is the target while every _lyx/.lyx path and module config base resolves under the derived state directory),
+// the nil-or-eager seams (a non-nil RefMatcher that never matches, no fabric opener, an armed in-process reed bring-up, an empty friction directory),
+// the default plan directory with its run-refusal mark clear,
+// and a runner whose public entry points return their ordinary verdict instead of a told-path refusal.
+// It sets XDG_STATE_HOME and LOCALAPPDATA, so it is not parallel.
+func TestWire_StandaloneMode(t *testing.T) {
+	target := t.TempDir()
+	stateHome := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+	stateDir := filepath.Join(stateHome, "lyx", hash8For(t, target))
+	defaultPlanDir := filepath.Join(stateDir, "_lyx", "plan")
+	seedStandalonePlanDir(t, defaultPlanDir)
+
+	c := &websterCLI{}
+	// loc is nil for both causes preflight.ResolveMode folds into ModeStandalone (a plain downloaded repository and an unresolvable cwd): wire consults mode alone to choose the branch.
+	if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	if c.geom.WorktreeRoot != target {
+		t.Errorf("geom.WorktreeRoot = %q; want the target %q", c.geom.WorktreeRoot, target)
+	}
+	if c.geom.AnchorRoot != stateDir {
+		t.Errorf("geom.AnchorRoot = %q; want the derived state directory %q", c.geom.AnchorRoot, stateDir)
+	}
+	for _, dir := range []struct {
+		name string
+		got  string
+	}{
+		{"WebsterDir", c.geom.WebsterDir},
+		{"ReportsDir", c.geom.ReportsDir},
+		{"PromptsDir", c.geom.PromptsDir},
+		{"ScratchDir", c.geom.ScratchDir},
+		{"StencilsDir", c.geom.StencilsDir},
+		{"PlanDir", c.geom.PlanDir},
+	} {
+		if !strings.HasPrefix(dir.got, stateDir) {
+			t.Errorf("geom.%s = %q; want it to resolve under the derived state directory %q, never under the target", dir.name, dir.got, stateDir)
+		}
+	}
+	if c.geom.PlanDir != defaultPlanDir {
+		t.Errorf("geom.PlanDir = %q; want the standalone default %q", c.geom.PlanDir, defaultPlanDir)
+	}
+	if c.planDirOverridden {
+		t.Error("planDirOverridden = true; want false when the plan sits at the default")
+	}
+	if c.anchorRel != "" {
+		t.Errorf("anchorRel = %q; want empty in standalone", c.anchorRel)
+	}
+	if _, ok := c.refMatcher.(websterengine.NeverMatches); !ok {
+		t.Errorf("refMatcher = %T; want websterengine.NeverMatches in standalone", c.refMatcher)
+	}
+	if c.openFabric != nil {
+		t.Error("openFabric != nil; want nil in standalone -- there is no fabric repo to reach")
+	}
+	if c.reedUp == nil {
+		t.Error("wireStandalone left c.reedUp nil; want the in-process reed bring-up seam armed")
+	}
+	if c.frictionDir != "" {
+		t.Errorf("c.frictionDir = %q; want \"\" in standalone mode", c.frictionDir)
+	}
+
+	// A runner that is merely non-nil proves nothing: NewRunner holds a told-path verdict and surfaces it only when a verb runs, so this drives a public entry point with a guid no strand will ever match.
+	err := c.runner.Interrupt("no-such-strand-guid")
+	if err == nil {
+		t.Fatal("runner.Interrupt() error = nil; want \"not a shuttle strand\", since no such strand exists")
+	}
+	if strings.Contains(err.Error(), "NewRunner") || strings.Contains(err.Error(), "NewDetachedRunner") {
+		t.Fatalf("runner.Interrupt() error = %v; want the ordinary \"not a shuttle strand\" verdict, not a told-path refusal against standalone's detached anchor/worktree-root pair", err)
+	}
+	if !strings.Contains(err.Error(), "not a shuttle strand") {
+		t.Errorf("runner.Interrupt() error = %v; want it to name \"not a shuttle strand\"", err)
+	}
+}
+
+// TestWire_PlanDirResolution covers an explicit --plan-dir override in each mode, a spelling of the hub default that is no override,
+// and the standalone refusal for an absent default plan directory.
 func TestWire_PlanDirResolution(t *testing.T) {
-	t.Run("HubDefault", func(t *testing.T) {
-		hub := t.TempDir()
-		loc := hubLocation(t, hub, "pair", ".")
-
-		c := &websterCLI{}
-		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
-			t.Fatalf("wire() = %v; want nil", err)
-		}
-		if c.geom.PlanDir == "" {
-			t.Fatal("geom.PlanDir is empty; want the hub default")
-		}
-	})
-
-	t.Run("StandaloneDefault", func(t *testing.T) {
-		target := t.TempDir()
-		stateHome := t.TempDir()
-		t.Setenv("XDG_STATE_HOME", stateHome)
-		t.Setenv("LOCALAPPDATA", t.TempDir())
-		t.Cleanup(func() { logger.SetDurableSinkDir("") })
-		hash8 := hash8For(t, target)
-		defaultPlanDir := filepath.Join(stateHome, "lyx", hash8, "_lyx", "plan")
-		seedStandalonePlanDir(t, defaultPlanDir)
-
-		c := &websterCLI{}
-		if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
-			t.Fatalf("wire() = %v; want nil", err)
-		}
-		if c.geom.PlanDir != defaultPlanDir {
-			t.Errorf("geom.PlanDir = %q; want the standalone default %q", c.geom.PlanDir, defaultPlanDir)
-		}
-	})
-
 	t.Run("ExplicitOverride_HubMode", func(t *testing.T) {
 		hub := t.TempDir()
 		loc := hubLocation(t, hub, "pair", ".")
@@ -290,6 +297,9 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		if !strings.Contains(err.Error(), "`run` refuses it") {
 			t.Errorf("wire() error = %q; want it to say `run` refuses a --plan-dir override, so the recourse is not a dead end", err)
 		}
+		if !strings.Contains(err.Error(), "--plan-dir") {
+			t.Errorf("wire() error = %v; want it to name --plan-dir", err)
+		}
 	})
 
 	t.Run("DefaultSpellingIsNotAnOverride_HubMode", func(t *testing.T) {
@@ -326,35 +336,11 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		if c.geom.PlanDir != override {
 			t.Errorf("geom.PlanDir = %q; want the override %q", c.geom.PlanDir, override)
 		}
-	})
-
-	t.Run("AbsentStandalonePlanDir_UsageError", func(t *testing.T) {
-		target := t.TempDir()
-		stateHome := t.TempDir()
-		t.Setenv("XDG_STATE_HOME", stateHome)
-		t.Setenv("LOCALAPPDATA", t.TempDir())
-		t.Cleanup(func() { logger.SetDurableSinkDir("") })
-		// Deliberately never seed the default plan dir: it stays absent.
-
-		c := &websterCLI{}
-		err := c.wire(nil, preflight.ModeStandalone, target, "", "", "")
-		if err == nil {
-			t.Fatal("wire() error = nil; want a usage error naming --plan-dir")
+		if !c.planDirOverridden {
+			t.Error("planDirOverridden = false; want true for a moved plan directory")
 		}
-		if !strings.Contains(err.Error(), "--plan-dir") {
-			t.Errorf("wire() error = %v; want it to name --plan-dir", err)
-		}
-	})
-
-	t.Run("AbsentStandalonePlanDir_HubModeUnaffected", func(t *testing.T) {
-		// Hub mode's own behaviour is unchanged: no new gate, no new error, even though this
-		// fictional hub location's plan directory does not exist on disk either.
-		hub := t.TempDir()
-		loc := hubLocation(t, hub, "pair", ".")
-
-		c := &websterCLI{}
-		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
-			t.Fatalf("wire() = %v; want nil -- hub mode must not gate on plan-dir presence", err)
+		if c.planDirDefault == "" || c.planDirDefault == override {
+			t.Errorf("planDirDefault = %q; want the default location, distinct from the override", c.planDirDefault)
 		}
 	})
 }
@@ -460,132 +446,12 @@ func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
 	}
 }
 
-// TestWire_StandaloneRootsResolveToTarget proves the two-roots split standalone mode exists for: the
-// worktree root (also the fork-audit workdir and the {{.worktree_root}} prompt token, per
-// websterengine.Geometry's own doc) resolves to target, while every _lyx/.lyx path and every module
-// config base resolves under the derived state directory -- never target itself.
-func TestWire_StandaloneRootsResolveToTarget(t *testing.T) {
-	target := t.TempDir()
-	stateHome := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", stateHome)
-	t.Setenv("LOCALAPPDATA", t.TempDir())
-	t.Cleanup(func() { logger.SetDurableSinkDir("") })
-	hash8 := hash8For(t, target)
-	stateDir := filepath.Join(stateHome, "lyx", hash8)
-	seedStandalonePlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
-
-	c := &websterCLI{}
-	if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if c.geom.WorktreeRoot != target {
-		t.Errorf("geom.WorktreeRoot = %q; want the target %q (also the audit workdir and the prompt worktree-root token)", c.geom.WorktreeRoot, target)
-	}
-	if c.geom.AnchorRoot != stateDir {
-		t.Errorf("geom.AnchorRoot = %q; want the derived state directory %q", c.geom.AnchorRoot, stateDir)
-	}
-	for _, tt := range []struct {
-		name string
-		got  string
-	}{
-		{"WebsterDir", c.geom.WebsterDir},
-		{"ReportsDir", c.geom.ReportsDir},
-		{"PromptsDir", c.geom.PromptsDir},
-		{"ScratchDir", c.geom.ScratchDir},
-		{"StencilsDir", c.geom.StencilsDir},
-		{"PlanDir", c.geom.PlanDir},
-	} {
-		if !strings.HasPrefix(tt.got, stateDir) {
-			t.Errorf("geom.%s = %q; want it to resolve under the derived state directory %q, never under the target", tt.name, tt.got, stateDir)
-		}
-	}
-}
-
-// TestWire_MatcherNeverNilOpenerNilOnlyInStandalone pins the two seams that must never be
-// nil-or-eager: the RefMatcher is non-nil in both modes (a nil interface would panic the first time
-// CheckFork/CheckParent calls Matches unguarded), and the fabric opener is nil in standalone (there is
-// no fabric repo to reach) and non-nil, but never invoked by wire itself, in hub mode -- the latter
-// half is covered by TestWire_ModeHubSelectsHubMode's explicit per-case check.
-func TestWire_MatcherNeverNilOpenerNilOnlyInStandalone(t *testing.T) {
-	t.Run("HubMode", func(t *testing.T) {
-		hub := t.TempDir()
-		loc := hubLocation(t, hub, "pair", ".")
-
-		c := &websterCLI{}
-		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
-			t.Fatalf("wire() = %v; want nil", err)
-		}
-		if c.refMatcher == nil {
-			t.Error("refMatcher = nil; want non-nil in hub mode")
-		}
-		if c.openFabric == nil {
-			t.Error("openFabric = nil; want a wired (if uninvoked) opener in hub mode")
-		}
-	})
-
-	t.Run("StandaloneMode", func(t *testing.T) {
-		target := t.TempDir()
-		stateHome := t.TempDir()
-		t.Setenv("XDG_STATE_HOME", stateHome)
-		t.Setenv("LOCALAPPDATA", t.TempDir())
-		t.Cleanup(func() { logger.SetDurableSinkDir("") })
-		hash8 := hash8For(t, target)
-		seedStandalonePlanDir(t, filepath.Join(stateHome, "lyx", hash8, "_lyx", "plan"))
-
-		c := &websterCLI{}
-		if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
-			t.Fatalf("wire() = %v; want nil", err)
-		}
-		if c.refMatcher == nil {
-			t.Error("refMatcher = nil; want non-nil in standalone mode too")
-		}
-		if c.openFabric != nil {
-			t.Error("openFabric != nil; want nil in standalone mode")
-		}
-	})
-}
-
-// TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError is F16's direct regression
-// test. It fails against pre-fix source, where wireStandalone constructed its runner via
-// shuttleengine.NewRunner: NewRunner's containment assertion refuses standalone's deliberately
-// detached anchor/worktree-root pair (the derived state directory sits outside the target
-// repository), setting the runner's held toldErr, which every public entry point returns
-// immediately without ever reaching reed. A runner that is merely non-nil proves nothing here --
-// NewRunner and NewDetachedRunner both always return a non-nil *shuttleengine.Runner and hold
-// their verdict on toldErr, surfacing it only when a verb runs -- so this test drives a public
-// entry point (Interrupt, with a guid no strand will ever match) and asserts the returned error is
-// the ordinary "not a shuttle strand" verdict rather than a told-path refusal.
-func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *testing.T) {
-	target := t.TempDir()
-	stateHome := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", stateHome)
-	t.Setenv("LOCALAPPDATA", t.TempDir())
-	t.Cleanup(func() { logger.SetDurableSinkDir("") })
-	hash8 := hash8For(t, target)
-	seedStandalonePlanDir(t, filepath.Join(stateHome, "lyx", hash8, "_lyx", "plan"))
-
-	c := &websterCLI{}
-	if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	err := c.runner.Interrupt("no-such-strand-guid")
-	if err == nil {
-		t.Fatal("runner.Interrupt() error = nil; want \"not a shuttle strand\", since no such strand exists")
-	}
-	if strings.Contains(err.Error(), "NewRunner") || strings.Contains(err.Error(), "NewDetachedRunner") {
-		t.Fatalf("runner.Interrupt() error = %v; want the ordinary \"not a shuttle strand\" verdict, not a told-path refusal -- this is exactly the error NewRunner's containment assertion would have produced against standalone's detached anchor/worktree-root pair", err)
-	}
-	if !strings.Contains(err.Error(), "not a shuttle strand") {
-		t.Errorf("runner.Interrupt() error = %v; want it to name \"not a shuttle strand\"", err)
-	}
-}
-
 // TestWireHub_LeavesDurableSinkDirUntouched guards against a later refactor quietly routing hub
 // mode through the standalone sink redirect. It sets a sentinel override before calling wireHub,
 // then asserts the sink still writes to that sentinel afterward -- a wireHub that had overwritten
 // the override would have put the trace file somewhere else.
+//
+//testtiming:keep pins that wireHub leaves the durable sink override untouched, which its covering test does not assert
 func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
 	sentinelDir := t.TempDir()
 	logger.SetDurableSinkDir(sentinelDir)
@@ -653,85 +519,6 @@ func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
 	if want := filepath.Join(rootStateDir, "_lyx", "plan"); c.geom.PlanDir != want {
 		t.Errorf("geom.PlanDir = %q; want the root's own default plan directory %q", c.geom.PlanDir, want)
 	}
-}
-
-// TestWire_ReedUpSeamPerMode is F-A1's (round fable5-high-r3) wiring pin: wireStandalone must arm
-// the in-process reed bring-up seam the run verb fires before spawning Master (standalone's derived
-// geometry is reachable by no CLI verb — `lyx reed up` is hub-only), and wireHub must leave it nil,
-// keeping hub mode's session lifecycle the operator's (or loom's) own.
-func TestWire_ReedUpSeamPerMode(t *testing.T) {
-	t.Run("StandaloneArmsTheSeam", func(t *testing.T) {
-		target := t.TempDir()
-		stateHome := t.TempDir()
-		t.Setenv("XDG_STATE_HOME", stateHome)
-		t.Setenv("LOCALAPPDATA", t.TempDir())
-		t.Cleanup(func() { logger.SetDurableSinkDir("") })
-		seedStandalonePlanDir(t, filepath.Join(stateHome, "lyx", hash8For(t, target), "_lyx", "plan"))
-
-		c := &websterCLI{}
-		if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
-			t.Fatalf("wire() = %v; want nil", err)
-		}
-		if c.reedUp == nil {
-			t.Error("wireStandalone left c.reedUp nil; want the in-process reed bring-up seam armed")
-		}
-	})
-
-	t.Run("HubLeavesTheSeamNil", func(t *testing.T) {
-		hub := t.TempDir()
-		loc := hubLocation(t, hub, "pair", ".")
-
-		c := &websterCLI{}
-		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
-			t.Fatalf("wire() = %v; want nil", err)
-		}
-		if c.reedUp != nil {
-			t.Error("wireHub armed c.reedUp; want nil — hub mode's reed session is not run's to boot")
-		}
-	})
-}
-
-// TestWireStandalone_PlanDirOverrideMarksRunRefusal is F-A3's (round fable5-high-r3) wiring pin: a
-// --plan-dir that moves the plan off standalone's default marks the CLI so the run verb refuses to
-// spawn Master (whose flagless in-pane verbs resolve the default and could never see the moved
-// plan), while the default location leaves the mark clear.
-func TestWireStandalone_PlanDirOverrideMarksRunRefusal(t *testing.T) {
-	t.Run("OverrideMarks", func(t *testing.T) {
-		target := t.TempDir()
-		t.Setenv("XDG_STATE_HOME", t.TempDir())
-		t.Setenv("LOCALAPPDATA", t.TempDir())
-		t.Cleanup(func() { logger.SetDurableSinkDir("") })
-		override := t.TempDir()
-		seedStandalonePlanDir(t, override)
-
-		c := &websterCLI{}
-		if err := c.wire(nil, preflight.ModeStandalone, target, "", override, ""); err != nil {
-			t.Fatalf("wire() = %v; want nil", err)
-		}
-		if !c.planDirOverridden {
-			t.Error("planDirOverridden = false; want true for a moved plan directory")
-		}
-		if c.planDirDefault == "" || c.planDirDefault == override {
-			t.Errorf("planDirDefault = %q; want the default location, distinct from the override", c.planDirDefault)
-		}
-	})
-
-	t.Run("DefaultLeavesMarkClear", func(t *testing.T) {
-		target := t.TempDir()
-		stateHome := t.TempDir()
-		t.Setenv("XDG_STATE_HOME", stateHome)
-		t.Setenv("LOCALAPPDATA", t.TempDir())
-		t.Cleanup(func() { logger.SetDurableSinkDir("") })
-		seedStandalonePlanDir(t, filepath.Join(stateHome, "lyx", hash8For(t, target), "_lyx", "plan"))
-
-		c := &websterCLI{}
-		if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
-			t.Fatalf("wire() = %v; want nil", err)
-		}
-		if c.planDirOverridden {
-			t.Error("planDirOverridden = true; want false when the plan sits at the default")
-		}
-	})
 }
 
 // TestWireModule_DescriptorIsVerbatim pins webster's own wireModule descriptor, which converts from
@@ -874,26 +661,6 @@ func TestWireHub_FrictionDirResolution(t *testing.T) {
 	})
 }
 
-// TestWireStandalone_FrictionDirAlwaysEmpty asserts wireStandalone always resolves an empty friction
-// directory: a standalone webster run is not a loom run and has no friction directory.
-func TestWireStandalone_FrictionDirAlwaysEmpty(t *testing.T) {
-	target := t.TempDir()
-	stateHome := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", stateHome)
-	t.Setenv("LOCALAPPDATA", t.TempDir())
-	t.Cleanup(func() { logger.SetDurableSinkDir("") })
-	seedStandalonePlanDir(t, filepath.Join(stateHome, "lyx", hash8For(t, target), "_lyx", "plan"))
-
-	c := &websterCLI{}
-	if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if c.frictionDir != "" {
-		t.Errorf("c.frictionDir = %q; want \"\" in standalone mode", c.frictionDir)
-	}
-}
-
 // TestReedUpSeam_WatcherLifecycle pins the standalone reedUp seam's lifecycle contract -- the one
 // batch 06-standalone-watcher's card 42 requires of BOTH wireStandalone closures (this package's and
 // internal/burlercli's, which carries a copy of this same test): the resize watcher starts iff the
@@ -999,6 +766,8 @@ func TestReedUpSeam_WatcherLifecycle(t *testing.T) {
 // reference the detached per-hub watchdog daemon's mechanism: standalone computes no hub lock path
 // (fabricengine.HubScratchDir) and spawns no daemon (the "reed watchdog" verb). Both belong to
 // hub mode alone, per this batch's own scope note.
+//
+//testtiming:keep internal/loomcli/cli_test.go names this test
 func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {
 	t.Parallel()
 

@@ -118,33 +118,38 @@ func TestRun_ReturnsWhenStrandGone(t *testing.T) {
 	}
 }
 
-func TestRun_DropsNoticeQueueWhenNoStrandRecorded(t *testing.T) {
-	e := newWatchEnv(t)
-	e.s.alive = false
-	e.queue("stale")
-	e.setState(func(st *State) { st.Strand = "" })
+func TestRun_NoticeQueueAtExit(t *testing.T) {
+	cases := []struct {
+		name          string
+		clearStrand   bool
+		wantNotices   int
+		wantDirAbsent bool
+	}{
+		{"dropped when no strand is recorded", true, 0, true},
+		{"kept when a strand is recorded", false, 1, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.s.alive = false
+			e.queue("notice")
+			if c.clearStrand {
+				e.setState(func(st *State) { st.Strand = "" })
+			}
 
-	if err := e.w.Run(context.Background(), noSleep); err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if got := e.noticeLines(); len(got) != 0 {
-		t.Errorf("queue = %v, want it dropped", got)
-	}
-	if _, err := os.Stat(e.paths.NoticesDir); !os.IsNotExist(err) {
-		t.Errorf("notices dir stat = %v, want absent", err)
-	}
-}
-
-func TestRun_KeepsNoticeQueueWhenStrandRecorded(t *testing.T) {
-	e := newWatchEnv(t)
-	e.s.alive = false
-	e.queue("kept")
-
-	if err := e.w.Run(context.Background(), noSleep); err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if got := e.noticeLines(); len(got) != 1 {
-		t.Errorf("queue = %v, want the notice kept", got)
+			if err := e.w.Run(context.Background(), noSleep); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if got := e.noticeLines(); len(got) != c.wantNotices {
+				t.Errorf("queue = %v, want %d notices", got, c.wantNotices)
+			}
+			if c.wantDirAbsent {
+				if _, err := os.Stat(e.paths.NoticesDir); !os.IsNotExist(err) {
+					t.Errorf("notices dir stat = %v, want absent", err)
+				}
+			}
+		})
 	}
 }
 

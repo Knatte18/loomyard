@@ -50,6 +50,7 @@ func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
 	}
 }
 
+//testtiming:keep its covering test TestRenderPointers_MultiLineOverrideFails reaches the same render paths but asserts only the multi-line refusal, not each stencil's one-line shape and named paths
 func TestRenderPointers_OneLineNamingTheirPaths(t *testing.T) {
 	dir := seedStencils(t)
 	cases := []struct {
@@ -61,6 +62,7 @@ func TestRenderPointers_OneLineNamingTheirPaths(t *testing.T) {
 		{"adopt", func() (string, error) { return RenderAdoptPrompt(dir, testRolePath) }, []string{testRolePath, "none is re-armed"}},
 		{"resume", func() (string, error) { return RenderResumePrompt(dir, testRolePath, "/tmp/h/one.md") }, []string{testRolePath, "/tmp/h/one.md"}},
 		{"reload", func() (string, error) { return RenderReloadPrompt(dir, testRolePath) }, []string{testRolePath}},
+		{"compact focus", func() (string, error) { return RenderCompactFocus(dir) }, nil},
 		{"handoff", func() (string, error) { return RenderHandoffInstruction(dir, "/tmp/h/one.md", testNoteTemplatePath) }, []string{"/tmp/h/one.md", testNoteTemplatePath}},
 		{"soft", func() (string, error) {
 			return RenderSoftHandoffInstruction(dir, "/tmp/h/one.md", testNoteTemplatePath)
@@ -85,16 +87,7 @@ func TestRenderPointers_OneLineNamingTheirPaths(t *testing.T) {
 	}
 }
 
-func TestRenderCompactFocus(t *testing.T) {
-	got, err := RenderCompactFocus(seedStencils(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got == "" || strings.ContainsAny(got, "\r\n") {
-		t.Errorf("compact focus must be one non-empty line: %q", got)
-	}
-}
-
+//testtiming:keep pins the refusal of a multi-line stencil override naming the stencil, a guard its covering tests do not reach
 func TestRenderPointers_MultiLineOverrideFails(t *testing.T) {
 	cases := []struct {
 		name   string

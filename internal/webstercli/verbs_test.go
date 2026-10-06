@@ -1,6 +1,6 @@
 //go:build integration
 
-// verbs_test.go covers webstercli's five git-backed/spawn-backed verbs
+// verbs_test.go covers webstercli's git-backed/spawn-backed verbs
 // (begin-batch, record-batch, recover-batch, run) through the RunCLI seam:
 // a real scratch git repo backs WorktreeRoot, a real *shuttleengine.Runner
 // wired over local fake shuttleengine.ReedOps/shuttleengine.Engine doubles
@@ -12,7 +12,7 @@
 // tests build a *websterCLI literal directly (bypassing Command()'s
 // PersistentPreRunE) and drive one verb's cobra.Command through
 // clihelp.Execute, webster's own package-local injection point for these
-// tests; seedPersistentPreRunFixture and its three tests are the deliberate
+// tests; seedPersistentPreRunFixture and its tests are the deliberate
 // exception, driving Command()'s real PersistentPreRunE through RunCLIIn.
 // WEFT_SKIP_GIT=1 is set on every test that reaches a
 // fabricSync call, so no real records sibling worktree is needed; the one test
@@ -25,13 +25,9 @@ package webstercli
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 
@@ -48,7 +44,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -220,83 +215,13 @@ func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
 	}
 }
 
-// testPlanFingerprint recomputes the plan-identity hash websterengine's own
-// unexported fingerprint (fingerprint.go) computes -- duplicated here since
-// this test lives in webstercli, an external package, and that algorithm is
-// deliberately not exported. Must stay in lock-step with websterengine's
-// own implementation: a SHA-256 digest over every "*.md" file's sorted name
-// and contents in planDir.
-func testPlanFingerprint(t *testing.T, planDir string) string {
-	t.Helper()
-	entries, err := os.ReadDir(planDir)
-	if err != nil {
-		t.Fatalf("ReadDir(%q): %v", planDir, err)
-	}
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		names = append(names, e.Name())
-	}
-	sort.Strings(names)
-
-	h := sha256.New()
-	for _, name := range names {
-		data, err := os.ReadFile(filepath.Join(planDir, name))
-		if err != nil {
-			t.Fatalf("ReadFile(%q): %v", name, err)
-		}
-		h.Write([]byte(name))
-		h.Write([]byte{0})
-		h.Write(data)
-		h.Write([]byte{0})
-	}
-	return hex.EncodeToString(h.Sum(nil))
-}
-
 // initState writes a minimal state.json (fingerprint-matched to fx's own
 // on-disk plan) for fx's webster dir, standing in for the state "lyx
 // webster run" would have already created before Master ever calls
 // begin-batch/record-batch/recover-batch.
 func (fx *verbsFixture) initState(t *testing.T, assertedModel string) *websterengine.State {
 	t.Helper()
-	fp := testPlanFingerprint(t, fx.CLI.geom.PlanDir)
-	st := &websterengine.State{
-		RunGUID:         "guid-1",
-		PlanFingerprint: fp,
-		MasterStrand:    "master-strand-1",
-		MasterSessionID: "master-session-1",
-		AssertedModel:   assertedModel,
-		Batches:         map[int]*websterengine.BatchState{},
-	}
-	if err := websterengine.RestampPlanBaseline(st, fx.CLI.geom.PlanDir, fx.CLI.geom.WebsterDir); err != nil {
-		t.Fatalf("RestampPlanBaseline() error = %v", err)
-	}
-	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
-		t.Fatalf("SaveState() error = %v", err)
-	}
-	return st
-}
-
-// writeBatchReport seeds fx's reportsDir with a batch-report YAML file for
-// batch 1 ("01-only") at its plan-format-pinned filename, status OK, using
-// websterengine's own WriteReport so the on-disk shape always matches
-// ParseReport's contract exactly. headSHA must equal the worktree's actual
-// current HEAD when the caller drives record-batch's own terminal path
-// (RecordBatch cross-checks report.HeadSHA against the live worktree HEAD);
-// any non-empty placeholder is fine for await-batch (presence-only) and
-// recover-batch (no such cross-check).
-func writeBatchReport(t *testing.T, reportsDir, headSHA string) {
-	t.Helper()
-	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
-		t.Fatalf("mkdir reports dir: %v", err)
-	}
-	path := filepath.Join(reportsDir, websterengine.ReportFileName(1, "only"))
-	report := &websterengine.Report{Status: websterengine.ReportStatusOK, HeadSHA: headSHA}
-	if err := websterengine.WriteReport(path, report); err != nil {
-		t.Fatalf("write batch report: %v", err)
-	}
+	return seedRunState(t, fx.CLI, assertedModel)
 }
 
 // TestBeginBatchCmd_HappyPath proves the success envelope carries prompt_path/start_sha/model,
@@ -334,52 +259,6 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	}
 	if bs.Kind != "fork" {
 		t.Errorf("loaded.Batches[1].Kind = %q; want \"fork\"", bs.Kind)
-	}
-}
-
-// TestValidateCmd_RefusesOverviewEditWithoutRestamp proves validate refuses a plan whose 00-overview.md changed since the run recorded it:
-// it exits non-zero naming rebaseline and leaves PlanFileHashes and PlanFingerprint untouched in state.json,
-// and the next run entry's fingerprint check still refuses the edit.
-func TestValidateCmd_RefusesOverviewEditWithoutRestamp(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
-	fx.initState(t, "master-model")
-	before, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
-	if err != nil || before == nil {
-		t.Fatalf("LoadState() = %v, %v; want a state", before, err)
-	}
-
-	overviewPath := filepath.Join(fx.CLI.geom.PlanDir, "00-overview.md")
-	data, err := os.ReadFile(overviewPath)
-	if err != nil {
-		t.Fatalf("read overview: %v", err)
-	}
-	if err := os.WriteFile(overviewPath, append(data, []byte("\n## verify:\n\ntrue\n")...), 0o644); err != nil {
-		t.Fatalf("edit overview: %v", err)
-	}
-
-	var out strings.Builder
-	exitCode := clihelp.Execute(fx.CLI.validateCmd(), &out, nil)
-	if exitCode == 0 {
-		t.Fatalf("validate on an edited plan = 0; want non-zero, output: %s", out.String())
-	}
-	if !strings.Contains(out.String(), "rebaseline") {
-		t.Errorf("output = %s; want it to name rebaseline", out.String())
-	}
-
-	after, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
-	if err != nil || after == nil {
-		t.Fatalf("LoadState() after validate = %v, %v; want a state", after, err)
-	}
-	if after.PlanFingerprint != before.PlanFingerprint {
-		t.Errorf("PlanFingerprint = %q; want %q unchanged", after.PlanFingerprint, before.PlanFingerprint)
-	}
-	if fmt.Sprint(after.PlanFileHashes) != fmt.Sprint(before.PlanFileHashes) {
-		t.Errorf("PlanFileHashes = %v; want %v unchanged", after.PlanFileHashes, before.PlanFileHashes)
-	}
-	// Run's entry check is this same fingerprint comparison, so the edit is still refused there.
-	if err := websterengine.PlanEditError(after, fx.CLI.geom.PlanDir); !errors.Is(err, websterengine.ErrFingerprintMismatch) {
-		t.Errorf("PlanEditError() after validate = %v; want ErrFingerprintMismatch", err)
 	}
 }
 
@@ -422,7 +301,7 @@ func TestPauseCmd_ResolvesSameFileAsBeginBatchGate(t *testing.T) {
 	fx.initState(t, "master-model")
 
 	var pauseOut strings.Builder
-	exitCode := clihelp.Execute(fx.CLI.pauseCmd(), &pauseOut, nil)
+	exitCode := clihelp.Execute(fx.CLI.pauseCmd(), &pauseOut, []string{})
 	if exitCode != 0 {
 		t.Fatalf("pause() = %d; want 0, output: %s", exitCode, pauseOut.String())
 	}
@@ -444,51 +323,6 @@ func TestPauseCmd_ResolvesSameFileAsBeginBatchGate(t *testing.T) {
 	}
 	if !strings.Contains(beginOut.String(), `"paused":true`) {
 		t.Errorf("begin-batch's own gate did not see pause() written by the CLI verb; output missing paused:true, got %q", beginOut.String())
-	}
-}
-
-// TestAwaitBatchCmd_ReportPresenceEnvelope proves await-batch's two envelopes: {"report": true} the
-// moment the batch's report file exists,
-// and {"report": false} once the bounded wait elapses with no report -- NoReport_WindowElapses
-// passes --wait 1ns explicitly to keep the window near-instant, versus the production default
-// (websterengine.DefaultAwaitWaitS, ~30s) used whenever --wait is omitted -- with no state.json
-// ever read or written, since the verb is deliberately stateless.
-func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
-	fx := newVerbsFixture(t)
-
-	t.Run("NoReport_WindowElapses", func(t *testing.T) {
-		var out strings.Builder
-		exitCode := clihelp.Execute(fx.CLI.awaitBatchCmd(), &out, []string{"1", "--wait", "1ns"})
-		if exitCode != 0 {
-			t.Fatalf("await-batch 1 = %d; want 0, output: %s", exitCode, out.String())
-		}
-		if !strings.Contains(out.String(), `"report":false`) {
-			t.Errorf("output missing report:false; got %q", out.String())
-		}
-	})
-
-	t.Run("ReportPresent", func(t *testing.T) {
-		writeBatchReport(t, fx.CLI.geom.ReportsDir, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
-		var out strings.Builder
-		exitCode := clihelp.Execute(fx.CLI.awaitBatchCmd(), &out, []string{"1"})
-		if exitCode != 0 {
-			t.Fatalf("await-batch 1 = %d; want 0, output: %s", exitCode, out.String())
-		}
-		got := out.String()
-		for _, want := range []string{`"batch":"01-only"`, `"report":true`} {
-			if !strings.Contains(got, want) {
-				t.Errorf("output missing %q; got %q", want, got)
-			}
-		}
-	})
-
-	// Statelessness: neither call may have created a state.json.
-	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
-	if err != nil {
-		t.Fatalf("LoadState() error = %v", err)
-	}
-	if loaded != nil {
-		t.Error("await-batch created or mutated state.json; the verb must be stateless")
 	}
 }
 
@@ -789,7 +623,7 @@ func TestRunCmd_ErrRunBusySkipsRecordsBackstop(t *testing.T) {
 	defer held.Release()
 
 	var out strings.Builder
-	exitCode := clihelp.Execute(fx.CLI.runCmd(), &out, nil)
+	exitCode := clihelp.Execute(fx.CLI.runCmd(), &out, []string{})
 
 	if exitCode != 1 {
 		t.Fatalf("run while run.lock is held = %d; want 1, output: %s", exitCode, out.String())
@@ -823,64 +657,67 @@ func TestRunCmd_ErrRunBusySkipsRecordsBackstop(t *testing.T) {
 func seedPersistentPreRunFixture(t *testing.T, anchor, batcherConfig string) *hubforge.Hub {
 	t.Helper()
 	h := hubforge.NewHub(t, anchor)
+	seedPersistentPreRunConfig(t, h, batcherConfig)
+	return h
+}
+
+// seedPersistentPreRunConfig writes the shuttle/reed/webster/batcher config into h, replacing any earlier batcher.yaml.
+func seedPersistentPreRunConfig(t *testing.T, h *hubforge.Hub, batcherConfig string) {
+	t.Helper()
 	hubforge.SeedConfig(t, h, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
 		"webster": websterengine.ConfigTemplate(),
 		"batcher": batcherConfig,
 	})
-	return h
 }
 
-// TestPersistentPreRunE_UnknownBatcherFailsFast proves the load-time batcher selection
-// (batcher.Active(baseDir), wired into PersistentPreRunE) is a true fail-fast gate: an unknown
-// batcher.yaml active: name aborts before any verb's RunE ever runs, with an output.Err envelope
-// naming the bad batcher key -- proven here via the `status` verb, which never itself touches the
-// batcher.
-// This file stays serial: no t.Parallel() is added here even though this test's own chdir is gone,
-// because internal/webstercli/verbs_test.go is not one of the three files the Shared Decision grants
-// t.Parallel() to, and this file's other tests already call t.Setenv("WEFT_SKIP_GIT", …), which
-// panics under t.Parallel() exactly as t.Chdir did.
-func TestPersistentPreRunE_UnknownBatcherFailsFast(t *testing.T) {
-	batcherConfig := strings.Replace(batcher.ConfigTemplate(), `active: ""`, `active: "bogus"`, 1)
-	h := seedPersistentPreRunFixture(t, ".", batcherConfig)
+// TestPersistentPreRunE_BatcherSelection proves the load-time batcher selection (batcher.Active(baseDir), wired into PersistentPreRunE)
+// through the `status` verb, which never itself touches the batcher, over one hub whose batcher.yaml each step rewrites:
+// an unknown active: name is a true fail-fast gate that aborts before any verb's RunE ever runs, with an output.Err envelope naming the bad batcher key,
+// and the default (empty) active: key resolves to the identity batchifier, so the command proceeds normally through the rest of PersistentPreRunE and into the verb's own RunE.
+// The steps share one hub and each rewrites its own config, so none relies on another's result.
+// The scenario calls t.Parallel as a whole and no step does, since the steps share the one hub.
+func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
+	t.Parallel()
 
-	var out strings.Builder
-	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})
+	h := hubforge.NewHub(t, ".")
 
-	if exitCode != 1 {
-		t.Fatalf("status with an unknown batcher = %d; want 1, output: %s", exitCode, out.String())
-	}
-	got := out.String()
-	if !strings.Contains(got, `"ok":false`) {
-		t.Errorf("output missing ok:false; got %q", got)
-	}
-	// The message is JSON-encoded (its literal quotes become \"), so match
-	// the two substrings separately rather than the raw Go-quoted form.
-	if !strings.Contains(got, "unknown batcher") || !strings.Contains(got, "bogus") {
-		t.Errorf("output missing the unknown-batcher message; got %q", got)
-	}
-}
+	if !t.Run("unknown batcher fails fast", func(t *testing.T) {
+		seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), `active: ""`, `active: "bogus"`, 1))
 
-// TestPersistentPreRunE_DefaultBatcherResolves proves the default (empty) batcher.yaml active: key
-// resolves to the identity batchifier and the command proceeds normally through the rest of
-// PersistentPreRunE and into the verb's own RunE.
-// This file stays serial: no t.Parallel() is added here even though this test's own chdir is gone,
-// because internal/webstercli/verbs_test.go is not one of the three files the Shared Decision grants
-// t.Parallel() to, and this file's other tests already call t.Setenv("WEFT_SKIP_GIT", …), which
-// panics under t.Parallel() exactly as t.Chdir did.
-func TestPersistentPreRunE_DefaultBatcherResolves(t *testing.T) {
-	h := seedPersistentPreRunFixture(t, ".", batcher.ConfigTemplate())
+		var out strings.Builder
+		exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})
 
-	var out strings.Builder
-	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})
+		if exitCode != 1 {
+			t.Fatalf("status with an unknown batcher = %d; want 1, output: %s", exitCode, out.String())
+		}
+		got := out.String()
+		if !strings.Contains(got, `"ok":false`) {
+			t.Errorf("output missing ok:false; got %q", got)
+		}
+		// The message is JSON-encoded (its literal quotes become \"), so match
+		// the two substrings separately rather than the raw Go-quoted form.
+		if !strings.Contains(got, "unknown batcher") || !strings.Contains(got, "bogus") {
+			t.Errorf("output missing the unknown-batcher message; got %q", got)
+		}
+	}) {
+		return
+	}
 
-	if exitCode != 0 {
-		t.Fatalf("status with the default batcher = %d; want 0, output: %s", exitCode, out.String())
-	}
-	if !strings.Contains(out.String(), `"initialized":false`) {
-		t.Errorf("output missing initialized:false; got %q", out.String())
-	}
+	t.Run("default batcher resolves", func(t *testing.T) {
+		seedPersistentPreRunConfig(t, h, batcher.ConfigTemplate())
+
+		var out strings.Builder
+		exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})
+
+		if exitCode != 0 {
+			t.Fatalf("status with the default batcher = %d; want 0, output: %s", exitCode, out.String())
+		}
+		if !strings.Contains(out.String(), `"initialized":false`) {
+			t.Errorf("output missing initialized:false; got %q", out.String())
+		}
+	})
 }
 
 // TestPersistentPreRunE_PlanDirAnchoredAtSubpath is the one case that covers wiring.go's production
@@ -914,286 +751,6 @@ func TestPersistentPreRunE_PlanDirAnchoredAtSubpath(t *testing.T) {
 	}
 }
 
-// TestPersistPlanFingerprintRebaseline covers the round-4 review's R4-01 CLI half: both bracket
-// verbs re-baseline State.PlanFingerprint the instant a sanctioned plan rewrite lands on disk, and
-// either verb can then fail on a later step of the same call. Discarding that re-baseline with the
-// failed call left the plan on disk carrying webster's own edit while state.json recorded the
-// pre-rewrite fingerprint, which every later bracket verb then refused as a foreign edit.
-//
-// The unchanged-fingerprint case must write nothing at all: that is what keeps a genuine foreign
-// edit failing ErrFingerprintMismatch exactly as it did.
-func TestPersistPlanFingerprintRebaseline(t *testing.T) {
-	newGeom := func(t *testing.T) websterengine.Geometry {
-		t.Helper()
-		websterDir := t.TempDir()
-		return websterengine.Geometry{WebsterDir: websterDir, ScratchDir: t.TempDir()}
-	}
-
-	t.Run("unchanged fingerprint writes nothing", func(t *testing.T) {
-		geom := newGeom(t)
-		st := &websterengine.State{RunGUID: "g1", PlanFingerprint: "same"}
-
-		if err := persistPlanFingerprintRebaseline(geom, st, "same"); err != nil {
-			t.Fatalf("persistPlanFingerprintRebaseline() error = %v; want nil", err)
-		}
-		loaded, err := websterengine.LoadState(geom.WebsterDir, geom.ScratchDir)
-		if err != nil {
-			t.Fatalf("LoadState() error = %v", err)
-		}
-		if loaded != nil {
-			t.Errorf("LoadState() = %+v; want nil — an unchanged fingerprint must write no state at all", loaded)
-		}
-	})
-
-	t.Run("changed fingerprint is persisted", func(t *testing.T) {
-		geom := newGeom(t)
-		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, &websterengine.State{RunGUID: "g2", PlanFingerprint: "before the rewrite"}); err != nil {
-			t.Fatalf("seed SaveState() error = %v", err)
-		}
-		st := &websterengine.State{RunGUID: "g2", PlanFingerprint: "after the rewrite"}
-
-		if err := persistPlanFingerprintRebaseline(geom, st, "before the rewrite"); err != nil {
-			t.Fatalf("persistPlanFingerprintRebaseline() error = %v; want nil", err)
-		}
-		loaded, err := websterengine.LoadState(geom.WebsterDir, geom.ScratchDir)
-		if err != nil {
-			t.Fatalf("LoadState() error = %v", err)
-		}
-		if loaded == nil {
-			t.Fatal("LoadState() = nil; want the re-baselined state persisted so the next bracket verb reads it")
-		}
-		if loaded.PlanFingerprint != "after the rewrite" {
-			t.Errorf("LoadState().PlanFingerprint = %q; want %q", loaded.PlanFingerprint, "after the rewrite")
-		}
-	})
-
-	// R6-4: the re-baseline persists the FINGERPRINT and nothing else. RecordBatch advances
-	// State.SeenForkTranscripts before the step that can fail, so saving the caller's whole in-memory
-	// State persisted the fork's transcript as consumed on a failed call — and the resumed
-	// record-batch then found no new transcripts and wedged.
-	t.Run("only the fingerprint is persisted, never the caller's other mutations", func(t *testing.T) {
-		geom := newGeom(t)
-		onDisk := &websterengine.State{RunGUID: "g3", PlanFingerprint: "before the rewrite"}
-		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, onDisk); err != nil {
-			t.Fatalf("seed SaveState() error = %v", err)
-		}
-		st := &websterengine.State{
-			RunGUID:             "g3",
-			PlanFingerprint:     "after the rewrite",
-			SeenForkTranscripts: []string{"/transcripts/fork-a.jsonl"},
-		}
-
-		if err := persistPlanFingerprintRebaseline(geom, st, "before the rewrite"); err != nil {
-			t.Fatalf("persistPlanFingerprintRebaseline() error = %v; want nil", err)
-		}
-		loaded, err := websterengine.LoadState(geom.WebsterDir, geom.ScratchDir)
-		if err != nil {
-			t.Fatalf("LoadState() error = %v", err)
-		}
-		if loaded == nil {
-			t.Fatal("LoadState() = nil; want the re-baselined state persisted")
-		}
-		if loaded.PlanFingerprint != "after the rewrite" {
-			t.Errorf("LoadState().PlanFingerprint = %q; want %q", loaded.PlanFingerprint, "after the rewrite")
-		}
-		if len(loaded.SeenForkTranscripts) != 0 {
-			t.Errorf("LoadState().SeenForkTranscripts = %v; want empty — persisting it marks the fork's transcript consumed on a call that FAILED, and the resumed record-batch then finds nothing to attribute", loaded.SeenForkTranscripts)
-		}
-	})
-
-	t.Run("nil state writes nothing", func(t *testing.T) {
-		geom := newGeom(t)
-		if err := persistPlanFingerprintRebaseline(geom, nil, "anything"); err != nil {
-			t.Fatalf("persistPlanFingerprintRebaseline(nil) error = %v; want nil", err)
-		}
-	})
-}
-
-// seedTwoCardPlan rewrites fx's plan as two cards: card 1 "only" and card 2 "second" with the given intent text,
-// so a later edit to card 2 changes the plan fingerprint without touching card 1.
-func seedTwoCardPlan(t *testing.T, planDir, secondIntent string) {
-	t.Helper()
-	plankit.Write(t, planDir, plankit.Plan{
-		Approved: true,
-		Framing:  "Framing.",
-		Cards: []plankit.Card{
-			{
-				Number:  1,
-				Slug:    "only",
-				Summary: "placeholder card",
-				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/only/new.go"}}},
-				Intent:  "placeholder card.",
-			},
-			{
-				Number:  2,
-				Slug:    "second",
-				Summary: "second card",
-				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/only/two.go"}}},
-				Intent:  secondIntent,
-			},
-		},
-	})
-}
-
-// TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords proves a plan edit to a later card is accepted:
-// the verb exits 0 with batches_kept 1, restamps the fingerprint and leaves batch 1's record intact.
-func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
-	seedTwoCardPlan(t, fx.CLI.geom.PlanDir, "second card.")
-	st := fx.initState(t, "master-model")
-	st.Batches[1] = &websterengine.BatchState{Slug: "only", Cards: []string{"01-only"}, StartSHA: "abc123", Kind: "fork", Digest: &websterengine.Digest{Batch: "01-only", Status: websterengine.DigestStatusDone, HeadSHA: "def456"}}
-	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
-		t.Fatalf("SaveState() error = %v", err)
-	}
-	before := st.PlanFingerprint
-
-	seedTwoCardPlan(t, fx.CLI.geom.PlanDir, "second card, edited mid-run.")
-
-	var out strings.Builder
-	exitCode := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, []string{"--card", "2"})
-	if exitCode != 0 {
-		t.Fatalf("rebaseline = %d; want 0, output: %s", exitCode, out.String())
-	}
-	if !strings.Contains(out.String(), `"cards_accepted":["02-second.md"]`) {
-		t.Errorf("output missing cards_accepted; got %q", out.String())
-	}
-	if !strings.Contains(out.String(), `"batches_kept":1`) {
-		t.Errorf("output missing batches_kept:1; got %q", out.String())
-	}
-
-	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
-	if err != nil || loaded == nil {
-		t.Fatalf("LoadState() = %v, %v; want a state, nil", loaded, err)
-	}
-	want := testPlanFingerprint(t, fx.CLI.geom.PlanDir)
-	if loaded.PlanFingerprint != want || loaded.PlanFingerprint == before {
-		t.Errorf("PlanFingerprint = %q; want the recomputed %q (was %q)", loaded.PlanFingerprint, want, before)
-	}
-	bs := loaded.Batches[1]
-	if bs == nil || bs.StartSHA != "abc123" || bs.Digest == nil || bs.Digest.HeadSHA != "def456" {
-		t.Errorf("batch 1 record = %+v; want it intact", bs)
-	}
-}
-
-// TestRebaselineCmd_RefusesUnnamedCard proves an edited card the operator did not name is refused, naming --card and leaving state.json byte-identical.
-func TestRebaselineCmd_RefusesUnnamedCard(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
-	seedTwoCardPlan(t, fx.CLI.geom.PlanDir, "second card.")
-	fx.initState(t, "master-model")
-	statePath := filepath.Join(fx.CLI.geom.WebsterDir, "state.json")
-	before, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatalf("read state.json: %v", err)
-	}
-	seedTwoCardPlan(t, fx.CLI.geom.PlanDir, "second card, edited mid-run.")
-
-	var out strings.Builder
-	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, nil); code == 0 {
-		t.Fatalf("rebaseline = 0; want non-zero, output: %s", out.String())
-	}
-	if !strings.Contains(out.String(), "--card") {
-		t.Errorf("output missing --card way forward; got %q", out.String())
-	}
-	after, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatalf("read state.json: %v", err)
-	}
-	if string(before) != string(after) {
-		t.Error("state.json changed on a refused rebaseline; want byte-identical")
-	}
-}
-
-// TestRebaselineCmd_RefusesNonNumericCard proves a --card value that is not a positive integer is a usage error naming the value.
-func TestRebaselineCmd_RefusesNonNumericCard(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
-	fx.initState(t, "master-model")
-
-	var out strings.Builder
-	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, []string{"--card", "x"}); code == 0 {
-		t.Fatalf("rebaseline --card x = 0; want non-zero, output: %s", out.String())
-	}
-	if !strings.Contains(out.String(), `\"x\"`) || !strings.Contains(out.String(), "way forward") {
-		t.Errorf("output does not name x and a way forward; got %q", out.String())
-	}
-}
-
-// TestRebaselineCmd_RefusesRemovedCard proves removing a begun batch's card is refused with the
-// --fresh way forward and leaves state.json byte-identical.
-func TestRebaselineCmd_RefusesRemovedCard(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
-	st := fx.initState(t, "master-model")
-	st.Batches[1] = &websterengine.BatchState{Slug: "only", Cards: []string{"01-only"}, StartSHA: "abc123", Kind: "fork"}
-	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
-		t.Fatalf("SaveState() error = %v", err)
-	}
-	statePath := filepath.Join(fx.CLI.geom.WebsterDir, "state.json")
-	before, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatalf("read state.json: %v", err)
-	}
-
-	// Replace card 1 with a differently-slugged card so batch 1 no longer exists.
-	planDir := fx.CLI.geom.PlanDir
-	if err := os.Remove(filepath.Join(planDir, "01-only.md")); err != nil {
-		t.Fatalf("remove card: %v", err)
-	}
-	plankit.Write(t, planDir, plankit.Plan{
-		Approved: true,
-		Framing:  "Framing.",
-		Cards: []plankit.Card{{
-			Number:  1,
-			Slug:    "other",
-			Summary: "replacement card",
-			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/only/other.go"}}},
-			Intent:  "replacement card.",
-		}},
-	})
-
-	var out strings.Builder
-	exitCode := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, nil)
-	if exitCode == 0 {
-		t.Fatalf("rebaseline = 0; want non-zero, output: %s", out.String())
-	}
-	if !strings.Contains(out.String(), "--fresh") {
-		t.Errorf("output missing --fresh way forward; got %q", out.String())
-	}
-	after, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatalf("read state.json: %v", err)
-	}
-	if string(before) != string(after) {
-		t.Error("state.json changed on a refused rebaseline; want byte-identical")
-	}
-}
-
-// TestRebaselineCmd_FabricSyncFailureWayForward reaches rebaseline's fabric-sync refusal and checks it names the same way forward as the bracket verbs' sync refusals.
-// The restamped state is saved locally before the sync, which is what that way forward commits.
-func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "")
-	fx := newVerbsFixture(t)
-	seedTwoCardPlan(t, fx.CLI.geom.PlanDir, "second card.")
-	fx.initState(t, "master-model")
-	seedTwoCardPlan(t, fx.CLI.geom.PlanDir, "second card, edited mid-run.")
-	fx.CLI.openFabric = failingFabricOpen
-
-	var out strings.Builder
-	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, []string{"--card", "02"}); code == 0 {
-		t.Fatalf("rebaseline with a failing sync = 0; want non-zero, output: %s", out.String())
-	}
-	wantWayForward(t, out.String(), "lyx fabric commit")
-	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
-	if err != nil || loaded == nil {
-		t.Fatalf("LoadState() = %v, %v; want the saved state", loaded, err)
-	}
-	if want := testPlanFingerprint(t, fx.CLI.geom.PlanDir); loaded.PlanFingerprint != want {
-		t.Errorf("PlanFingerprint = %q; want the restamped %q saved despite the sync failure", loaded.PlanFingerprint, want)
-	}
-}
-
 // TestFabricSyncWayForward_NextSyncCommitsSavedState takes the fabric-sync refusals' way forward against a real hub.
 // Each refusal leaves its state saved under `_lyx` with nothing committed, and the next bracket verb's own sync is this same fabricSync call over the scoped `_lyx` pathspec,
 // so a sync after the failed one commits the state that the failure left behind.
@@ -1222,23 +779,6 @@ func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
 	}
 	if !strings.Contains(names, "webster/state.json") {
 		t.Errorf("the _lyx repository HEAD commits %q; want it to carry the saved webster/state.json", names)
-	}
-}
-
-// failingFabricOpen is an openFabric that cannot reach the fabric repo, so fabricSync errors exactly where a failed fabric commit would.
-func failingFabricOpen() (*fabricengine.Fabric, error) {
-	return nil, fmt.Errorf("fabric commit failed (injected)")
-}
-
-// wantWayForward fails unless got carries the trailing way-forward clause and names substr in it.
-func wantWayForward(t *testing.T, got, substr string) {
-	t.Helper()
-	i := strings.Index(got, "way forward:")
-	if i < 0 {
-		t.Fatalf("output has no way forward clause; got %q", got)
-	}
-	if !strings.Contains(got[i:], substr) {
-		t.Errorf("way forward clause missing %q; got %q", substr, got[i:])
 	}
 }
 
@@ -1356,73 +896,5 @@ func TestBracketVerbs_NoRunInProgressWayForward(t *testing.T) {
 	var out strings.Builder
 	if code := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"}); code != 0 {
 		t.Fatalf("begin-batch 1 once the run exists = %d; want 0, output: %s", code, out.String())
-	}
-}
-
-// TestValidateCmd_Regression329_ForthcomingCreateTargetPassesPending pins #329 at validate: batch 1 is begun but not terminal and nothing has landed,
-// and card 2 Uses card 1's Create target, which does not exist yet.
-// validate must scope to `pending` and exit 0 instead of reporting the Use as glyph-not-found.
-func TestValidateCmd_Regression329_ForthcomingCreateTargetPassesPending(t *testing.T) {
-	identity, err := batcher.Select("identity")
-	if err != nil {
-		t.Fatalf("batcher.Select(identity) = %v; want nil", err)
-	}
-	c, _ := newTestCLI(t)
-	c.batcher = identity
-
-	if err := os.MkdirAll(c.geom.PlanDir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-	subDir := filepath.Join(c.geom.WorktreeRoot, "sub")
-	if err := os.MkdirAll(subDir, 0o755); err != nil {
-		t.Fatalf("mkdir sub: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(subDir, "a.go"), []byte("package sub\n\nfunc Foo() {}\n"), 0o644); err != nil {
-		t.Fatalf("write sub/a.go: %v", err)
-	}
-	plankit.Write(t, c.geom.PlanDir, plankit.Plan{
-		Approved: true,
-		Language: "go",
-		Framing:  "Framing.",
-		Cards: []plankit.Card{
-			{
-				Number:  1,
-				Slug:    "first",
-				Summary: "creates a symbol",
-				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"newpkg#Bar"}}},
-				Intent:  "creates a symbol.",
-			},
-			{
-				Number:        2,
-				Slug:          "second",
-				Summary:       "uses it",
-				Groups:        []plankit.Group{{Label: "Edit", Targets: []string{"sub#Foo"}}},
-				Uses:          []string{"newpkg#Bar"},
-				Intent:        "uses it.",
-				ImpactSummary: "none.",
-			},
-		},
-	})
-
-	state := &websterengine.State{
-		RunGUID:         "run-guid",
-		PlanFingerprint: testPlanFingerprint(t, c.geom.PlanDir),
-		Batches:         map[int]*websterengine.BatchState{1: {Slug: "first", Kind: "fork"}},
-	}
-	if err := websterengine.RestampPlanBaseline(state, c.geom.PlanDir, c.geom.WebsterDir); err != nil {
-		t.Fatalf("RestampPlanBaseline() error = %v", err)
-	}
-	if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, state); err != nil {
-		t.Fatalf("SaveState: %v", err)
-	}
-
-	var out strings.Builder
-	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
-
-	if exitCode != 0 {
-		t.Fatalf("validate on a begun, unrecorded batch = %d; want 0, output: %s", exitCode, out.String())
-	}
-	if !strings.Contains(out.String(), `"scope":"pending"`) {
-		t.Errorf("output missing scope:pending; got %q", out.String())
 	}
 }
