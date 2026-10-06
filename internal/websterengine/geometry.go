@@ -9,8 +9,8 @@
 
 package websterengine
 
-// Geometry is the set of paths webster is told, once, at construction, and never derives itself.
-// No method here validates or recomputes any field — populating every field with a usable absolute
+// Geometry is the set of paths webster is told, once, at construction, and never derives itself, plus the Git it reads them through.
+// No method here validates or recomputes any field — populating every path field with a usable absolute
 // path is entirely the caller's obligation.
 type Geometry struct {
 	// AnchorRoot is the base every _lyx/.lyx join and every module config read hangs off.
@@ -57,4 +57,8 @@ type Geometry struct {
 	// ParentName is the told parent agent name the master and recovery prompts render their parent directive from.
 	// Empty means no parent, which renders the no-parent variant.
 	ParentName string
+	// Git is the git surface every worktree read goes through, such as the head-SHA capture and the dirty check.
+	// Nil means the real repository on disk, which is what every constructor leaves; it derives no path.
+	// It is a field here because every function that reads git already receives the Geometry.
+	Git Git
 }

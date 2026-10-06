@@ -20,6 +20,11 @@ import (
 // It walks begin → fork commit → parent merge → record → next begin → next record and asserts each recorded value exactly.
 func TestParentMergeBetweenForkCommitAndRecordBatch(t *testing.T) {
 	fx := newBeginFixture(t)
+	// The ring is git itself, so the fixture's fakeGit gives way to a real repository.
+	fx.Worktree = newScratchRepo(t)
+	gitkit.CommitFile(t, fx.Worktree, "base.txt", "base", "base commit")
+	fx.Deps.Geom.Git = nil
+	fx.Deps.Geom.WorktreeRoot = fx.Worktree
 	deps := fx.Deps
 
 	// 1. begin-batch 1 records its StartSHA.

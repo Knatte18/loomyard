@@ -55,6 +55,8 @@ type failBatchInput struct {
 	Uncheckable    []string
 	NewTranscripts []string
 	Now            func() time.Time
+	// Git answers the suspect-blob probes; nil means the real repository.
+	Git Git
 }
 
 // failBatch archives the batch's report, records the batch terminal failed with its reasons,
@@ -62,7 +64,7 @@ type failBatchInput struct {
 // The returned error is only the archive's I/O failure;
 // the blob probes and the archive run first, so nothing in State has been mutated when one fails.
 func failBatch(in failBatchInput) (*BatchFailedError, error) {
-	blobs, err := suspectBlobs(in.WorktreeRoot, in.SuspectPaths)
+	blobs, err := suspectBlobs(orReal(in.Git), in.WorktreeRoot, in.SuspectPaths)
 	if err != nil {
 		return nil, err
 	}

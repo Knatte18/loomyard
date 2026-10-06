@@ -226,7 +226,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, fmt.Errorf("webster: resolve spawned recovery run: %w", err)
 	}
 
-	head, err := headSHA(deps.Geom.WorktreeRoot)
+	head, err := deps.Geom.git().HeadSHA(deps.Geom.WorktreeRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -409,7 +409,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 	// so the pass below is fed the same pair of SHAs on either path.
 	head := digest.HeadSHA
 	if head == "" {
-		head, err = headSHA(deps.Geom.WorktreeRoot)
+		head, err = deps.Geom.git().HeadSHA(deps.Geom.WorktreeRoot)
 		if err != nil {
 			return nil, err
 		}
@@ -431,6 +431,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 			Slug:         slug,
 			ReportsDir:   deps.Geom.ReportsDir,
 			WorktreeRoot: deps.Geom.WorktreeRoot,
+			Git:          deps.Geom.Git,
 			HeadSHA:      head,
 			Reasons:      suspectReasons,
 			SuspectPaths: paths,
@@ -555,7 +556,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 	}
 
 	// A merge in progress leaves the batch non-terminal and retryable, like RecordBatch.
-	if err := refuseMidMerge(deps.Geom.WorktreeRoot); err != nil {
+	if err := refuseMidMerge(deps.Geom.git(), deps.Geom.WorktreeRoot); err != nil {
 		return nil, err
 	}
 
@@ -563,7 +564,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 
 	// Cross-check report's head_sha against worktree's actual HEAD under RecordBatch's merge-only rule.
 	if digest.HeadSHA != "" {
-		moved, err := reconcileReportHead(deps.Geom.WorktreeRoot, digest.HeadSHA, fmt.Sprintf("recovery report for batch %02d-%s", number, slug), deps.ParentBranch)
+		moved, err := reconcileReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, digest.HeadSHA, fmt.Sprintf("recovery report for batch %02d-%s", number, slug), deps.ParentBranch)
 		if err != nil {
 			return nil, err
 		}

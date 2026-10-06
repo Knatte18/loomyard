@@ -1,7 +1,5 @@
-//go:build integration
-
-// runlevel_test.go exercises Run end to end (Tier 2 — see
-// docs/benchmarks/running-tests.md): a real scratch git repo backs
+// runlevel_test.go exercises Run end to end (Tier 1 — see
+// docs/benchmarks/running-tests.md): a temp directory over a fakeGit backs
 // WorktreeRoot and a real on-disk plan directory backs PlanDir (so
 // ParsePlan/Validate/the batchifier/fingerprint all run for real, against
 // the real identity batchifier — newRunFixture injects it into
@@ -14,12 +12,11 @@
 // files DURING the run Wait blocks on). FindRun's cross-process resolution
 // is satisfied by hand-seeding a run.json under the fixture's own shuttle
 // run-dir root, mirroring what a real *shuttleengine.Runner.Start would
-// have produced. This package's testmain_test.go already wires
-// gitkit.HermeticGitEnv() for the whole test binary — package-local (the
+// have produced. Its helpers are package-local (the
 // internal and external test packages deliberately do not share a
 // test-helper package, mirroring recoverbatch_test.go/recordbatch_test.go's
-// own precedent), except for the shared newScratchRepo/commitFile/
-// seedPlanDir/mustFingerprint helpers already defined in beginbatch_test.go.
+// own precedent), except for the shared seedPlanDir/mustFingerprint/writeWorktreeFile
+// helpers already defined in beginbatch_test.go and gitfake_test.go.
 
 package websterengine_test
 
@@ -38,7 +35,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -169,13 +165,14 @@ func seedShuttleRunState(t *testing.T, runDirRoot, strandGUID, sessionID string)
 	}
 }
 
-// runFixture is a fully-wired set of Run dependencies: a real scratch git
-// repo as WorktreeRoot, a real on-disk plan directory, a fake reed/engine,
+// runFixture is a fully-wired set of Run dependencies: a temp directory
+// holding base.txt as WorktreeRoot over a fakeGit at one commit, a real on-disk plan directory, a fake reed/engine,
 // and a fake Starter a test scripts per case.
 type runFixture struct {
 	Deps           websterengine.RunDeps
 	Reed           *shuttlefake.Reed
 	Starter        *runFakeStarter
+	Git            *fakeGit
 	Worktree       string
 	PlanDir        string
 	ShuttleRunRoot string
@@ -183,10 +180,19 @@ type runFixture struct {
 
 func newRunFixture(t *testing.T, numCards int) *runFixture {
 	t.Helper()
+	worktree := t.TempDir()
+	writeWorktreeFile(t, worktree, "base.txt", "base")
+	git := newFakeGit()
+	fx := newRunFixtureOver(t, numCards, worktree, git)
+	fx.Git = git
+	return fx
+}
+
+// newRunFixtureOver builds the fixture over worktree, answering git questions from git; a nil git means the real repository at worktree.
+func newRunFixtureOver(t *testing.T, numCards int, worktree string, git websterengine.Git) *runFixture {
+	t.Helper()
 
 	planDir := seedRunPlanDir(t, numCards)
-	worktree := newScratchRepo(t)
-	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
 
 	// Run never registers a strand itself, so a stray AddStrand fails loud.
 	reed := &shuttlefake.Reed{AddErr: errors.New("AddStrand is not used by Run's own path")}
@@ -234,6 +240,7 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 			PromptsDir:   t.TempDir(),
 			StencilsDir:  fabricengine.StencilsDir(hubPath),
 			PlanDir:      planDir,
+			Git:          git,
 		},
 		RefMatcher: websterengine.NeverMatches{},
 	}
@@ -394,7 +401,7 @@ func TestRun_ZeroBatchPlanRefusedLoud(t *testing.T) {
 // the pre-flight gate this batch moves onto planglyph.
 func TestRun_BlockingGlyphFindingRefusesRun(t *testing.T) {
 	fx := newRunFixture(t, 1)
-	gitkit.CommitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n", "add sub package")
+	writeWorktreeFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n")
 	addCardUses(t, fx.PlanDir, 1, "sub#Missing")
 
 	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
@@ -416,7 +423,7 @@ func TestRun_BlockingGlyphFindingRefusesRun(t *testing.T) {
 // Plan-Burler's own gate and the validate-plan/validate CLI verbs.
 func TestRun_InformationalFindingsDoNotRefuseRun(t *testing.T) {
 	fx := newRunFixture(t, 1)
-	gitkit.CommitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n", "add sub package")
+	writeWorktreeFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n")
 	addCardCreateTarget(t, fx.PlanDir, 1, "newpkg#Bar")
 
 	wantSessionID := "master-session-informational"
@@ -1084,7 +1091,7 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", SessionID: "master-session-violation",
-				Digest: &websterengine.Digest{Status: "done", HeadSHA: gitkit.RevParse(t, fx.Worktree, "HEAD")}},
+				Digest: &websterengine.Digest{Status: "done", HeadSHA: fx.Git.head}},
 		},
 	})
 	tracked := filepath.Join(fx.Worktree, "base.txt")
@@ -1096,6 +1103,7 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 			if err := os.WriteFile(tracked, []byte("hand-edited by master"), 0o644); err != nil {
 				t.Fatalf("edit tracked file: %v", err)
 			}
+			fx.Git.differing[tracked] = true
 		})
 	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", "master-session-violation")
 
@@ -1137,7 +1145,8 @@ func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
 	if _, _, err := websterengine.AcceptPendingAudit(nil, st, fx.Deps.Geom, nil); !errors.Is(err, websterengine.ErrAuditNotAcceptable) || !strings.Contains(err.Error(), tracked) {
 		t.Fatalf("AcceptPendingAudit() before the revert error = %v; want ErrAuditNotAcceptable naming %s", err, tracked)
 	}
-	gitkit.Git(t, fx.Worktree, "checkout", "--", "base.txt")
+	writeWorktreeFile(t, fx.Worktree, "base.txt", "base")
+	fx.Git.differing[tracked] = false
 	if _, _, err := websterengine.AcceptPendingAudit(nil, st, fx.Deps.Geom, nil); err != nil {
 		t.Fatalf("AcceptPendingAudit() after the revert error = %v; want nil", err)
 	}
@@ -1542,33 +1551,6 @@ func TestRun_PausedOutcomeLeavesPauseFlagIntact(t *testing.T) {
 	}
 }
 
-// verifyGateFixture wires fx for a run whose plan carries verify, with one card commit touching internal/batch1 under a go.mod module, and returns the card commit.
-// The worktree is clean afterwards, so the gate's own verify is the only thing that can fail.
-func verifyGateFixture(t *testing.T, fx *runFixture, verify string) string {
-	t.Helper()
-	appendIntegrationVerify(t, fx.PlanDir, verify)
-	gitkit.CommitFile(t, fx.Worktree, "go.mod", "module example.com/m\n", "go.mod")
-	sha := gitkit.CommitFile(t, fx.Worktree, "internal/batch1/a.go", "package batch1\n", "card 1")
-	seedMatchingState(t, fx, &websterengine.State{
-		Batches: map[int]*websterengine.BatchState{
-			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha}},
-		},
-	})
-	return sha
-}
-
-// verifyGateOf returns the verify entry Run handed StartMaster.
-func verifyGateOf(t *testing.T, fx *runFixture) shuttleengine.GateEntry {
-	t.Helper()
-	for _, e := range fx.Starter.gateCalls[0] {
-		if e.Name == "verify" {
-			return e
-		}
-	}
-	t.Fatalf("StartMaster's gate %+v has no verify entry", fx.Starter.gateCalls[0])
-	return shuttleengine.GateEntry{}
-}
-
 // writeDoneContract writes the two files Merriam's last action writes, outcome done.
 func writeDoneContract(t *testing.T, fx *runFixture) {
 	t.Helper()
@@ -1577,148 +1559,6 @@ func writeDoneContract(t *testing.T, fx *runFixture) {
 	}
 	if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Shipped\n\nAll good.\n"), 0o644); err != nil {
 		t.Fatalf("write summary.md: %v", err)
-	}
-}
-
-// TestRun_VerifyGateFailsThenPassesEndsDone proves a fake Merriam whose first done arrival fails verify and whose second passes ends done with one re-prompt,
-// and that the findings name the failing identity and the card whose commit touched its package.
-func TestRun_VerifyGateFailsThenPassesEndsDone(t *testing.T) {
-	fx := newRunFixture(t, 1)
-	okFile := filepath.Join(t.TempDir(), "ok")
-	sha := verifyGateFixture(t, fx, "[ -f "+okFile+" ] || { printf 'FAIL\\texample.com/m/internal/batch1\\t0.01s\\n'; exit 1; }")
-
-	var findings string
-	var reprompts int
-	fx.Starter.handle = &runFakeHandle{
-		strandGUID: "master-strand-gatepass",
-		result: shuttleengine.Result{
-			Outcome:   shuttleengine.OutcomeDone,
-			SessionID: "master-session-gatepass",
-			RunDir:    "/run/dir/gatepass",
-			ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}},
-		},
-		onWait: func() {
-			writeDoneContract(t, fx)
-			entry := verifyGateOf(t, fx)
-			first, err := entry.Gate()
-			if err != nil {
-				t.Fatalf("first gate evaluation error = %v; want nil", err)
-			}
-			if first.Passed {
-				t.Fatalf("first gate evaluation passed; want a verify failure")
-			}
-			reprompts++
-			findings = first.Findings
-			// Merriam's fixer makes its fix.
-			if err := os.WriteFile(okFile, nil, 0o644); err != nil {
-				t.Fatalf("write ok file: %v", err)
-			}
-			second, err := entry.Gate()
-			if err != nil || !second.Passed {
-				t.Fatalf("second gate evaluation = %+v, %v; want a pass", second, err)
-			}
-		},
-	}
-	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-gatepass", "master-session-gatepass")
-
-	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
-	if err != nil {
-		t.Fatalf("Run() error = %v; want nil", err)
-	}
-	if result.Outcome != "done" {
-		t.Errorf("Outcome = %q; want done", result.Outcome)
-	}
-	if reprompts != 1 {
-		t.Errorf("re-prompts = %d; want 1", reprompts)
-	}
-	if !strings.Contains(findings, "example.com/m/internal/batch1") {
-		t.Errorf("findings = %q; want the failing identity", findings)
-	}
-	if !strings.Contains(findings, "01-batch1") {
-		t.Errorf("findings = %q; want the card whose commit %s touched the failing package", findings, sha)
-	}
-	if _, err := os.Stat(websterengine.VerifyGateReportPath(fx.Deps.Geom.ReportsDir)); err != nil {
-		t.Errorf("verify-gate report: %v; want one written by the failed evaluation", err)
-	}
-}
-
-// TestRun_VerifyGateExhaustedEndsStuck proves a gate that never passes ends the run stuck with a reason naming the failing identities.
-func TestRun_VerifyGateExhaustedEndsStuck(t *testing.T) {
-	fx := newRunFixture(t, 1)
-	verifyGateFixture(t, fx, "printf 'FAIL\\texample.com/m/internal/batch1\\t0.01s\\n'; exit 1")
-
-	fx.Starter.handle = &runFakeHandle{
-		strandGUID: "master-strand-gatestuck",
-		result: shuttleengine.Result{
-			Outcome:   shuttleengine.OutcomeDone,
-			SessionID: "master-session-gatestuck",
-			RunDir:    "/run/dir/gatestuck",
-			ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}},
-			Gate:      &shuttleengine.GateOutcome{Passed: false, Attempts: 3},
-		},
-		onWait: func() {
-			writeDoneContract(t, fx)
-			if res, err := verifyGateOf(t, fx).Gate(); err != nil || res.Passed {
-				t.Fatalf("gate evaluation = %+v, %v; want a verify failure", res, err)
-			}
-		},
-	}
-	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-gatestuck", "master-session-gatestuck")
-
-	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
-	if err != nil {
-		t.Fatalf("Run() error = %v; want nil", err)
-	}
-	if result.Outcome != "stuck" {
-		t.Errorf("Outcome = %q; want stuck", result.Outcome)
-	}
-	if !strings.Contains(result.StuckReason, "example.com/m/internal/batch1") {
-		t.Errorf("StuckReason = %q; want the failing identity", result.StuckReason)
-	}
-}
-
-// TestRun_FlakyVerifyKeepsDoneWithWarning proves a verify failure that passes on rerun keeps the run done and surfaces the flaky warning and summary section.
-func TestRun_FlakyVerifyKeepsDoneWithWarning(t *testing.T) {
-	fx := newRunFixture(t, 1)
-	counter := filepath.Join(t.TempDir(), "runs")
-	// The first run records itself and fails.
-	// The rerun sees the record and passes.
-	verifyGateFixture(t, fx, "if [ -f "+counter+" ]; then exit 0; fi; : > "+counter+"; printf 'FAIL\\texample.com/m/internal/batch1\\t0.01s\\n'; exit 1")
-
-	fx.Starter.handle = &runFakeHandle{
-		strandGUID: "master-strand-flaky",
-		result: shuttleengine.Result{
-			Outcome:   shuttleengine.OutcomeDone,
-			SessionID: "master-session-flaky",
-			RunDir:    "/run/dir/flaky",
-			ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}},
-			Gate:      &shuttleengine.GateOutcome{Passed: true},
-		},
-		onWait: func() {
-			writeDoneContract(t, fx)
-			if res, err := verifyGateOf(t, fx).Gate(); err != nil || !res.Passed {
-				t.Fatalf("gate evaluation = %+v, %v; want a pass on rerun", res, err)
-			}
-		},
-	}
-	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-flaky", "master-session-flaky")
-
-	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
-	if err != nil {
-		t.Fatalf("Run() error = %v; want nil", err)
-	}
-	if result.Outcome != "done" {
-		t.Errorf("Outcome = %q; want done", result.Outcome)
-	}
-	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "flaky") {
-		t.Errorf("Warnings = %v; want exactly the flaky warning", result.Warnings)
-	}
-	summary, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
-	if err != nil {
-		t.Fatalf("read summary.md: %v", err)
-	}
-	if !strings.Contains(string(summary), "example.com/m/internal/batch1") {
-		t.Errorf("summary.md = %q; want the flaky identity in its triage section", summary)
 	}
 }
 
@@ -1880,7 +1720,7 @@ func TestRun_AcyclicPlanReportsNoCycles(t *testing.T) {
 func TestRun_ResumeWithCompletedCreateCardIsNotRefused(t *testing.T) {
 	fx := newRunFixture(t, 2)
 	// Batch 1's own Create target landed — exactly what a completed Create card leaves behind.
-	gitkit.CommitFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n", "card 1 landed")
+	writeWorktreeFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n")
 
 	seedMatchingState(t, fx, &websterengine.State{
 		RunGUID: "resume-run",
@@ -2064,7 +1904,7 @@ func TestRun_ZeroGateReachesStartMasterWithOnlyVerify(t *testing.T) {
 // and Run must pass the entry validation and reach the Master spawn with no create-already-exists refusal.
 func TestRun_Regression20260930_BegunUnrecordedBatchResumes(t *testing.T) {
 	fx := newRunFixture(t, 2)
-	gitkit.CommitFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n", "card 1 landed")
+	writeWorktreeFile(t, fx.Worktree, "internal/batch1/new.go", "package batch1\n\nfunc Landed() {}\n")
 
 	seedMatchingState(t, fx, &websterengine.State{
 		RunGUID: "resume-run",
@@ -2224,7 +2064,7 @@ func TestRun_WayForward_ZeroBatches(t *testing.T) {
 
 func TestRun_WayForward_ValidationRefusal(t *testing.T) {
 	fx := newRunFixture(t, 1)
-	gitkit.CommitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n", "add sub package")
+	writeWorktreeFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n")
 	cardPath := filepath.Join(fx.PlanDir, "01-batch1.md")
 	original, err := os.ReadFile(cardPath)
 	if err != nil {
@@ -2539,7 +2379,7 @@ func TestRun_FingerprintMismatchWayForwardNamesTheEditedCards(t *testing.T) {
 // seedFreshPendingState seeds a state with one recorded batch started at the fixture's first commit and one pending finding naming paths, and returns that start commit.
 func seedFreshPendingState(t *testing.T, fx *runFixture, paths ...string) string {
 	t.Helper()
-	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	start := fx.Git.head
 	seedMatchingState(t, fx, &websterengine.State{
 		RunGUID: "stale-run",
 		Batches: map[int]*websterengine.BatchState{
@@ -2555,7 +2395,8 @@ func TestRun_FreshRefusesWhileSuspectPathDiffers(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	tracked := filepath.Join(fx.Worktree, "base.txt")
 	start := seedFreshPendingState(t, fx, tracked)
-	gitkit.CommitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
+	fx.Git.commit()
+	fx.Git.differing[tracked] = true
 	marker := filepath.Join(fx.Deps.Geom.ReportsDir, "marker.yaml")
 	if err := os.WriteFile(marker, []byte("x"), 0o644); err != nil {
 		t.Fatalf("write marker: %v", err)
@@ -2612,8 +2453,8 @@ func TestRun_FreshDropsFindingsOnceReset(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	tracked := filepath.Join(fx.Worktree, "base.txt")
 	start := seedFreshPendingState(t, fx, tracked)
-	gitkit.CommitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
-	gitkit.Git(t, fx.Worktree, "reset", "--hard", start)
+	fx.Git.commit()
+	fx.Git.head = start
 
 	forks := []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true}}
 	fx.Starter.handle = auditDoneHandle(t, fx, session, 1, shuttleengine.ForkAudit{Forks: forks}, func() {
@@ -2677,7 +2518,7 @@ func TestRun_FreshDropsPathlessFinding(t *testing.T) {
 // seedUncheckableState seeds a state with one batch failed on an uncheckable finding, started at the fixture's first commit, and returns that start commit.
 func seedUncheckableState(t *testing.T, fx *runFixture) string {
 	t.Helper()
-	start := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	start := fx.Git.head
 	seedMatchingState(t, fx, &websterengine.State{
 		RunGUID: "stale-run",
 		Batches: map[int]*websterengine.BatchState{
@@ -2720,7 +2561,7 @@ func TestRun_FreshDropsUncheckableBatch(t *testing.T) {
 func TestRun_FreshRefusesUncheckableBatchPastStart(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	start := seedUncheckableState(t, fx)
-	gitkit.CommitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
+	fx.Git.commit()
 
 	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 	if !errors.Is(err, websterengine.ErrPendingAuditFindings) {
@@ -2738,10 +2579,10 @@ func TestRun_FreshRefusesUncheckableBatchPastStart(t *testing.T) {
 // it refuses naming git merge-base while HEAD is past one of them, and drops the findings once HEAD is an ancestor of every start.
 func TestRun_FreshDivergentStartsNeedHeadBeforeEvery(t *testing.T) {
 	fx := newRunFixture(t, 1)
-	root := gitkit.RevParse(t, fx.Worktree, "HEAD")
-	left := gitkit.CommitFile(t, fx.Worktree, "left.txt", "l", "left")
-	gitkit.Git(t, fx.Worktree, "reset", "--hard", root)
-	right := gitkit.CommitFile(t, fx.Worktree, "right.txt", "r", "right")
+	root := fx.Git.head
+	left := fx.Git.commit()
+	fx.Git.head = root
+	right := fx.Git.commit()
 	seedMatchingState(t, fx, &websterengine.State{
 		RunGUID: "stale-run",
 		Batches: map[int]*websterengine.BatchState{
@@ -2765,7 +2606,7 @@ func TestRun_FreshDivergentStartsNeedHeadBeforeEvery(t *testing.T) {
 		t.Errorf("state.json was archived: %v", statErr)
 	}
 
-	gitkit.Git(t, fx.Worktree, "reset", "--hard", root)
+	fx.Git.head = root
 	askingMaster(t, fx, "divergent")
 	_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 	requireReachedMaster(t, fx, err)
@@ -2800,8 +2641,7 @@ func TestRun_FreshRefusesCommitPastStart(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	tracked := filepath.Join(fx.Worktree, "base.txt")
 	start := seedFreshPendingState(t, fx, tracked)
-	gitkit.CommitFile(t, fx.Worktree, "base.txt", "hand-edited by master", "suspect write")
-	gitkit.Git(t, fx.Worktree, "checkout", start, "--", "base.txt")
+	fx.Git.commit()
 	marker := filepath.Join(fx.Deps.Geom.ReportsDir, "marker.yaml")
 	if err := os.WriteFile(marker, []byte("x"), 0o644); err != nil {
 		t.Fatalf("write marker: %v", err)

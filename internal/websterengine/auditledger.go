@@ -121,7 +121,7 @@ func AcceptPendingAudit(engine shuttleengine.Engine, st *State, geom Geometry, p
 			}
 		}
 	}
-	bases, err := runEvidenceBases(geom.WorktreeRoot, st)
+	bases, err := runEvidenceBases(geom, st)
 	if err != nil {
 		return nil, false, err
 	}
@@ -130,10 +130,10 @@ func AcceptPendingAudit(engine shuttleengine.Engine, st *State, geom Geometry, p
 	}
 	head := bases.Last
 	if head != "" {
-		if _, err := reconcileHead(geom.WorktreeRoot, head, "accept-audit: last batch head", parentBranch, acceptAuditHeadRefusal); err != nil {
+		if _, err := reconcileHead(geom.git(), geom.WorktreeRoot, head, "accept-audit: last batch head", parentBranch, acceptAuditHeadRefusal); err != nil {
 			return nil, false, fmt.Errorf("%w: %v", ErrAuditNotAcceptable, err)
 		}
-		if head, err = headSHA(geom.WorktreeRoot); err != nil {
+		if head, err = geom.git().HeadSHA(geom.WorktreeRoot); err != nil {
 			return nil, false, err
 		}
 	}

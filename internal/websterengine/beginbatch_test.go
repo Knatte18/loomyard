@@ -1,8 +1,6 @@
-//go:build integration
-
-// beginbatch_test.go exercises BeginBatch end to end (Tier 2 — see
-// docs/benchmarks/running-tests.md): a real scratch git repo backs
-// WorktreeRoot for the genuine HeadSHA capture, while the model-injection
+// beginbatch_test.go exercises BeginBatch end to end (Tier 1 — see
+// docs/benchmarks/running-tests.md): a temp directory backs
+// WorktreeRoot with a fakeGit answering the HeadSHA capture, while the model-injection
 // seam (Injector) and the provider seam (shuttleengine.Engine) are local
 // fakes, webster's own package-local injection and provider fixture pattern. The plan
 // itself is a minimal *planparser.Plan (Dir only — begin-batch never reads
@@ -31,7 +29,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -41,17 +38,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-func newScratchRepo(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-
-	gitkit.Git(t, dir, "init")
-	gitkit.Git(t, dir, "config", "user.name", "Test User")
-	gitkit.Git(t, dir, "config", "user.email", "test@example.com")
-
-	return dir
-}
 
 // seedPlanDir creates a t.TempDir() seeded with one throwaway markdown file,
 // so the fingerprint gate has something real to hash — BeginBatch's
@@ -134,8 +120,9 @@ func (f *beginFakeInjector) Inject(guid string, inputs []shuttleengine.PaneInput
 
 var _ websterengine.Injector = (*beginFakeInjector)(nil)
 
-// beginFixture is a fully-wired set of BeginBatch dependencies: a real
-// scratch git repo as WorktreeRoot, fresh webster/reports/prompts temp dirs,
+// beginFixture is a fully-wired set of BeginBatch dependencies: a temp
+// directory holding base.txt as WorktreeRoot over a fakeGit at one commit,
+// fresh webster/reports/prompts temp dirs,
 // two literal single-card execution batches backed by a seeded plan dir for
 // the fingerprint gate, and webster's two roles pre-resolved with distinct
 // model names.
@@ -143,6 +130,7 @@ type beginFixture struct {
 	Deps      websterengine.BeginDeps
 	Injector  *beginFakeInjector
 	Reed      *shuttlefake.Reed
+	Git       *fakeGit
 	Worktree  string
 	PlanDir   string
 	PromptDir string
@@ -163,8 +151,9 @@ func newBeginFixture(t *testing.T) *beginFixture {
 		beginCard(2, "list-tests"),
 	}
 
-	worktree := newScratchRepo(t)
-	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
+	worktree := t.TempDir()
+	writeWorktreeFile(t, worktree, "base.txt", "base")
+	git := newFakeGit()
 
 	roles := map[websterengine.Role]modelspec.Resolved{
 		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
@@ -203,10 +192,11 @@ func newBeginFixture(t *testing.T) *beginFixture {
 			StencilsDir:  fabricengine.StencilsDir(hubPath),
 			SpecsDir:     fabricengine.SpecsDir(hubPath),
 			PlanDir:      planDir,
+			Git:          git,
 		},
 	}
 
-	return &beginFixture{Deps: deps, Injector: injector, Reed: reed, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
+	return &beginFixture{Deps: deps, Injector: injector, Reed: reed, Git: git, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
 }
 
 // TestBeginBatch_PauseSentinel proves the pause gate fires before anything else — including before
@@ -470,14 +460,11 @@ func TestBeginBatch_StateUpdated(t *testing.T) {
 func TestBeginBatch_ReBeginKeepsStartSHA(t *testing.T) {
 	fx := newBeginFixture(t)
 	fx.Deps.State.AssertedModel = "master-model" // skip the injector
-	original := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	original := fx.Git.head
 	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
 		1: {Slug: "json-flag", Kind: "fork", StartSHA: original},
 	}
-	moved := gitkit.CommitFile(t, fx.Worktree, "fork.txt", "fork", "earlier fork commit")
-	if moved == original {
-		t.Fatal("worktree head did not move past the recorded StartSHA")
-	}
+	fx.Git.commit()
 
 	result, err := websterengine.BeginBatch(fx.Deps, 1)
 	if err != nil {
@@ -542,7 +529,7 @@ func TestBeginBatch_ReBeginEmptyStartSHARecordsHead(t *testing.T) {
 	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
 		1: {Slug: "json-flag", Kind: "fork"},
 	}
-	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	head := fx.Git.head
 
 	result, err := websterengine.BeginBatch(fx.Deps, 1)
 	if err != nil {
@@ -734,7 +721,7 @@ func TestBeginBatch_ReResolvesPlanAtDispatch(t *testing.T) {
 func TestBeginBatch_AlreadyBuiltCardsAreNotReResolved(t *testing.T) {
 	fx := newBeginFixture(t)
 	// A symbol that genuinely exists in the worktree, so card 1's Create target resolves found.
-	gitkit.CommitFile(t, fx.Deps.Geom.WorktreeRoot, "sub/a.go", "package sub\n\nfunc Built() {}\n", "batch 1's own work")
+	writeWorktreeFile(t, fx.Deps.Geom.WorktreeRoot, "sub/a.go", "package sub\n\nfunc Built() {}\n")
 
 	built := planparser.Card{
 		Number:         1,
@@ -873,7 +860,7 @@ func TestBeginBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
 // a batch begun but not yet recorded, whose own Create target has already landed, is re-begun (the master_asking resume path) and must neither be refused as create-already-exists nor lose the StartSHA its first begin recorded.
 func TestBeginBatch_Regression20260930_ReBeginOfBegunUnrecordedBatch(t *testing.T) {
 	fx := newBeginFixture(t)
-	gitkit.CommitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Built() {}\n", "batch 1's own work")
+	writeWorktreeFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Built() {}\n")
 
 	built := planparser.Card{
 		Number:         1,
@@ -928,8 +915,8 @@ func TestBeginBatch_Regression329_ReBeginKeepsForthcomingCreateTarget(t *testing
 		}
 		return c
 	}
-	gitkit.CommitFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Existing() {}\n", "existing symbol")
-	gitkit.CommitFile(t, fx.Worktree, "sub/b.go", "package sub\n\nfunc Other() {}\n", "second existing symbol")
+	writeWorktreeFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Existing() {}\n")
+	writeWorktreeFile(t, fx.Worktree, "sub/b.go", "package sub\n\nfunc Other() {}\n")
 
 	creator := card(1, "json-flag", planparser.CardTypeCreate, "sub/new.go#", nil)
 	user := card(2, "list-tests", planparser.CardTypeEdit, "sub#Existing", []string{"sub/new.go#"})
