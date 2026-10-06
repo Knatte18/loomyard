@@ -914,8 +914,8 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 	tests := []struct {
 		name      string
 		loads     map[string]shuttleengine.SkillLoadReport
-		timeout   bool     // the skills turn never ends and passes its timeout
-		endTurns  []string // turn ends read before the pointer's
+		timeout   bool     // the last load turn typed never ends and passes its timeout
+		endTurns  []string // turn ends read before the timeout and the pointer's
 		wantSkill []string // the skills calls after the clear
 		wantSkips int      // the skill skipped warnings
 		wantLogs  []string // fragments the log must hold
@@ -959,6 +959,15 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 			wantSkips: len(reloadSkills),
 			wantLogs:  []string{"cause=timeout"},
 		},
+		{
+			name:      "silent retry turn skips only the retry skills with no second retry",
+			loads:     map[string]shuttleengine.SkillLoadReport{"t1": verified(nil, []string{"ly:board"})},
+			endTurns:  []string{"t1"},
+			timeout:   true,
+			wantSkill: []string{reloadSkillsCall, "skills:ly:board"},
+			wantSkips: 1,
+			wantLogs:  []string{"skill=ly:board", "cause=timeout"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -968,12 +977,12 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 			e.s.skillLoads = tt.loads
 			e.reachClearing()
 			e.tick() // skills typed
-			if tt.timeout {
-				e.clock.advance(101 * time.Second)
-				e.tick() // the skills are skipped, the pointer typed on the same tick
-			}
 			for _, turn := range tt.endTurns {
 				e.endTurn(turn)
+			}
+			if tt.timeout {
+				e.clock.advance(101 * time.Second)
+				e.tick() // the silent turn's skills are skipped, the pointer typed on the same tick
 			}
 			if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPointer || len(st.ReloadRetry) != 0 {
 				t.Fatalf("state = %+v, want the pointer step with nothing left to retry", st)
