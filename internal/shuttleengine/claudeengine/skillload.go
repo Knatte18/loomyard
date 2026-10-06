@@ -1,6 +1,7 @@
 // skillload.go implements Claude's one-turn skill load: one typed message asks the model to load a list of skills through the Skill tool,
 // and the transcript a Stop payload names says which loads happened.
-// The check reads the transcript backward through readBackward and degrades to an unverified report on every failure and never errors, since the transcript format is a Claude Code internal.
+// The check reads the transcript backward through readBackward and degrades to an unverified report on every failure and never errors,
+// since the transcript format is a Claude Code internal.
 // All message text and transcript shape knowledge stays in this file, per the Shuttle Provider-Seam Invariant.
 package claudeengine
 
@@ -111,7 +112,8 @@ func (e loadEntry) resultSucceeded() bool {
 	return json.Unmarshal(e.ToolUseResult, &result) == nil && result.Success
 }
 
-// classifyWindow classifies the load of skills in the complete lines of data, which end at the transcript end.
+// classifyWindow classifies the load of skills in the complete lines of data,
+// which end at the transcript end.
 // It reports found false when the window holds no load message or no skill listing yet,
 // so the caller widens the window.
 func classifyWindow(data []byte, message string, skills []string) (shuttleengine.SkillLoadReport, bool) {
