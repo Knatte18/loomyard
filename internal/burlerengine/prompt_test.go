@@ -177,10 +177,23 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_FillsAllMarkers proves a minimal valid profile composes cleanly through stencil
-// (no unfilled-marker error) and that the combined rendered prompt actually carries the profile's
-// content — both output paths and the verbatim rubric text.
-func TestComposePrompt_FillsAllMarkers(t *testing.T) {
+// TestComposePrompt_MinimalProfile proves a minimal valid profile composes cleanly through stencil
+// (no unfilled-marker error) and one render satisfies every part of composePrompt's contract:
+// the combined prompt carries the profile's content (both output paths and the verbatim rubric text),
+// a Target.Paths directory entry is annotated as one while a file entry is not, a non-empty
+// orchestrator comes back with exactly three instructionFile entries whose Path values equal the
+// three path parameters in order (the contract Engine.Run relies on to write each rendered file to
+// the path the orchestrator names), and the orchestrator carries no downstream instruction body.
+// The five tokens the orchestrator must not carry are disjoint from its retained two-jobs framing
+// (including the job-B one-liner "even if the verdict was APPROVED — non-blocking polish still gets
+// fixed"): each appears only inside a downstream instruction file's body, so a regression that
+// inlines one back trips the guard on the first offending token without colliding with the
+// orchestrator's legitimate bare-word "verdict"/"findings" usage.
+//
+//testtiming:keep pins the profile content, the directory annotation, the three instruction file paths and the orchestrator's exclusion of downstream bodies, which the cluster-rules test covering its blocks does not assert
+func TestComposePrompt_MinimalProfile(t *testing.T) {
+	t.Parallel()
+
 	p := newComposableProfile(t)
 	stencilsDir := newTestStencilsDir(t)
 
@@ -193,6 +206,35 @@ func TestComposePrompt_FillsAllMarkers(t *testing.T) {
 	requireContains(t, got, p.ReviewPath)
 	requireContains(t, got, p.FixerReportPath)
 	requireContains(t, got, p.Rubric)
+
+	dirLine := findLineContaining(got, "targetdir")
+	if dirLine == "" {
+		t.Fatalf("composePrompt() output missing a line for the target directory entry")
+	}
+	requireContains(t, dirLine, "a directory")
+	fileLine := findLineContaining(got, "target.txt")
+	if fileLine == "" {
+		t.Fatalf("composePrompt() output missing a line for the target file entry")
+	}
+	requireNotContains(t, fileLine, "a directory")
+
+	if orchestrator == "" {
+		t.Errorf("composePrompt() orchestrator = \"\"; want non-empty")
+	}
+	if len(files) != 3 {
+		t.Fatalf("composePrompt() files = %d entries; want 3", len(files))
+	}
+	for i, want := range []string{testInst1Path, testInst2Path, testInst3Path} {
+		if files[i].Path != want {
+			t.Errorf("files[%d].Path = %q; want %q", i, files[i].Path, want)
+		}
+	}
+
+	requireNotContains(t, orchestrator, "not whether it gets fixed")
+	requireNotContains(t, orchestrator, "verdict:")
+	requireNotContains(t, orchestrator, "findings:")
+	requireNotContains(t, orchestrator, "SINGLE message")
+	requireNotContains(t, orchestrator, "subagent_type")
 }
 
 // TestComposePrompt_ParentDirective proves the orchestrator carries the parent variant naming the parent when one is told, the no-parent variant when none is, and no instruction file carries either.
@@ -318,31 +360,6 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_DirectoryAnnotation proves a Target.Paths entry that is a directory is
-// annotated as one, while a file entry is not.
-func TestComposePrompt_DirectoryAnnotation(t *testing.T) {
-	p := newComposableProfile(t)
-	stencilsDir := newTestStencilsDir(t)
-
-	orchestrator, files, err := composePrompt(stencilsDir, "", &p, "", "", testInst1Path, testInst2Path, testInst3Path)
-	if err != nil {
-		t.Fatalf("composePrompt() = %v; want nil error", err)
-	}
-	got := combinedPrompt(orchestrator, files)
-
-	dirLine := findLineContaining(got, "targetdir")
-	if dirLine == "" {
-		t.Fatalf("composePrompt() output missing a line for the target directory entry")
-	}
-	requireContains(t, dirLine, "a directory")
-
-	fileLine := findLineContaining(got, "target.txt")
-	if fileLine == "" {
-		t.Fatalf("composePrompt() output missing a line for the target file entry")
-	}
-	requireNotContains(t, fileLine, "a directory")
-}
-
 // TestComposePrompt_ClusterRules proves the cluster-rules block switches on p.ClusterFan: empty
 // renders the explicit single-reviewer prose with none of the fork machinery language, while a
 // resolved fan renders every lens name plus both load-bearing fork-discipline ban phrases (no Agent
@@ -372,7 +389,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 			{Name: "security", Text: "pay extra attention to security"},
 		}
 
-		orchestrator, files, err := composePrompt(stencilsDir, "", &p, "", "", testInst1Path, testInst2Path, testInst3Path)
+		orchestrator, files, err := composePrompt(stencilsDir, "", &p, "pattern directive placeholder", "", testInst1Path, testInst2Path, testInst3Path)
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -381,69 +398,45 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 		requireContains(t, got, "security")
 		requireContains(t, got, "never call the Agent tool")
 		requireContains(t, got, "never run any git command")
-	})
-}
 
-// TestComposePrompt_ReturnsThreeInstructionFiles proves the happy path returns a non-empty
-// orchestrator and exactly three instructionFile entries whose Path values equal the three path
-// parameters, in order — the contract Engine.Run relies on to write each rendered file to the path
-// it names in the orchestrator.
-func TestComposePrompt_ReturnsThreeInstructionFiles(t *testing.T) {
-	p := newComposableProfile(t)
-	stencilsDir := newTestStencilsDir(t)
-
-	orchestrator, files, err := composePrompt(stencilsDir, "", &p, "", "", testInst1Path, testInst2Path, testInst3Path)
-	if err != nil {
-		t.Fatalf("composePrompt() = %v; want nil error", err)
-	}
-
-	if orchestrator == "" {
-		t.Errorf("composePrompt() orchestrator = \"\"; want non-empty")
-	}
-	if len(files) != 3 {
-		t.Fatalf("composePrompt() files = %d entries; want 3", len(files))
-	}
-	wantPaths := []string{testInst1Path, testInst2Path, testInst3Path}
-	for i, want := range wantPaths {
-		if files[i].Path != want {
-			t.Errorf("files[%d].Path = %q; want %q", i, files[i].Path, want)
+		// The cluster round's load-bearing fork-discipline statements: this content is composed
+		// dynamically by clusterRulesBlock into instruction 2, not baked into
+		// burler-step-2-review.md itself, so an edit that silently waters any of them down fails
+		// here rather than only in human review.
+		instruction1, instruction2, instruction3 := files[0].Content, files[1].Content, files[2].Content
+		for _, statement := range []string{
+			"SINGLE message",
+			"subagent_type",
+			"never pass a `name`",
+			"READ-ONLY",
+			"never run any git command",
+			"never call the Agent tool",
+			"HOLISTIC",
+			"before job B touches anything",
+			"origin:",
+			"Rejected",
+		} {
+			requireContains(t, instruction2, statement)
 		}
-	}
-}
 
-// TestComposePrompt_BlockHelpersLandInIntendedAsset proves each block helper's rendered content
-// lands in its intended instruction file and nowhere else: fix_scope_rules content is instruction
-// 3's alone, cluster_rules content is instruction 2's alone, and pattern_directive/target content
-// is instruction 1's alone.
-// This is the per-asset counterpart to the marker-value composition tests above, which only prove
-// presence in the combined text.
-func TestComposePrompt_BlockHelpersLandInIntendedAsset(t *testing.T) {
-	p := newComposableProfile(t)
-	stencilsDir := newTestStencilsDir(t)
-	p.ClusterFan = "standard"
-	p.clusterLenses = []Lens{{Name: "style", Text: "pay extra attention to style"}}
+		// Each block helper's rendered content lands in its intended instruction file and nowhere
+		// else: fix_scope_rules is instruction 3's alone, cluster_rules (the lens names) is
+		// instruction 2's alone, and pattern_directive/target is instruction 1's alone.
+		requireContains(t, instruction3, "Write surface")
+		requireNotContains(t, orchestrator, "Write surface")
+		requireNotContains(t, instruction1, "Write surface")
+		requireNotContains(t, instruction2, "Write surface")
 
-	orchestrator, files, err := composePrompt(stencilsDir, "", &p, "pattern directive placeholder", "", testInst1Path, testInst2Path, testInst3Path)
-	if err != nil {
-		t.Fatalf("composePrompt() = %v; want nil error", err)
-	}
-	instruction1, instruction2, instruction3 := files[0].Content, files[1].Content, files[2].Content
+		requireNotContains(t, orchestrator, "style")
+		requireNotContains(t, instruction1, "style")
+		requireNotContains(t, instruction3, "style")
 
-	requireContains(t, instruction3, "Write surface")
-	requireNotContains(t, orchestrator, "Write surface")
-	requireNotContains(t, instruction1, "Write surface")
-	requireNotContains(t, instruction2, "Write surface")
-
-	requireContains(t, instruction2, "style")
-	requireNotContains(t, orchestrator, "style")
-	requireNotContains(t, instruction1, "style")
-	requireNotContains(t, instruction3, "style")
-
-	requireContains(t, instruction1, "pattern directive placeholder")
-	requireContains(t, instruction1, p.Target.Paths[0])
-	requireNotContains(t, orchestrator, "pattern directive placeholder")
-	requireNotContains(t, instruction2, "pattern directive placeholder")
-	requireNotContains(t, instruction3, "pattern directive placeholder")
+		requireContains(t, instruction1, "pattern directive placeholder")
+		requireContains(t, instruction1, p.Target.Paths[0])
+		requireNotContains(t, orchestrator, "pattern directive placeholder")
+		requireNotContains(t, instruction2, "pattern directive placeholder")
+		requireNotContains(t, instruction3, "pattern directive placeholder")
+	})
 }
 
 // TestComposePrompt_FrictionDirective proves the friction_directive marker composes the same way

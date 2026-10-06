@@ -140,28 +140,6 @@ func TestGate_NotifyBetweenClosuresCarriedByFirstCallOfSecond(t *testing.T) {
 	wantHold(t, mustEval(t, gate))
 }
 
-func TestGate_FailedDeliveryDoesNotStopResends(t *testing.T) {
-	s, c := newStore(t)
-	gate, _ := newGates(t, s, "hub:orch")
-	wantCarry(t, mustEval(t, gate))
-	if err := s.RecordDelivered("no such agent"); err != nil {
-		t.Fatal(err)
-	}
-	c.t = c.t.Add(time.Minute)
-	wantCarry(t, mustEval(t, gate))
-}
-
-func TestGate_DeliveredStopsResends(t *testing.T) {
-	s, c := newStore(t)
-	gate, _ := newGates(t, s, "hub:orch")
-	wantCarry(t, mustEval(t, gate))
-	if err := s.RecordDelivered(""); err != nil {
-		t.Fatal(err)
-	}
-	c.t = c.t.Add(10 * time.Minute)
-	wantHold(t, mustEval(t, gate))
-}
-
 func TestGate_ExpiryFromOriginalOpenedAtAfterRestart(t *testing.T) {
 	s, c := newStore(t)
 	gate, _ := newGates(t, s, "hub:orch")
@@ -225,18 +203,6 @@ func TestGate_CapAndThrottleAcrossRestart(t *testing.T) {
 	wantCarry(t, mustEval(t, restarted))
 	c.t = c.t.Add(time.Minute)
 	wantHold(t, mustEval(t, restarted))
-}
-
-func TestGate_Approve(t *testing.T) {
-	s, _ := newStore(t)
-	gate, _ := newGates(t, s, "hub:orch")
-	wantCarry(t, mustEval(t, gate))
-	if err := s.RecordVerdict(VerdictApprove, ""); err != nil {
-		t.Fatal(err)
-	}
-	if !mustEval(t, gate).Passed {
-		t.Fatal("approve must pass")
-	}
 }
 
 // rejectRound records a reject on the latest round.
@@ -332,19 +298,6 @@ func TestGate_CountSurvivesFreshGates(t *testing.T) {
 	rejectRound(t, s)
 	fresh, _ := newGates(t, s, "hub:orch")
 	wantTerminal(t, mustEval(t, fresh))
-}
-
-func TestGate_SupersedingApprovePasses(t *testing.T) {
-	s, _ := newStore(t)
-	gate, _ := newGates(t, s, "hub:orch")
-	rejectRounds(t, s, gate, testCap)
-	wantTerminal(t, mustEval(t, gate))
-	if err := s.SupersedeCapReject(); err != nil {
-		t.Fatal(err)
-	}
-	if !mustEval(t, gate).Passed {
-		t.Fatal("a superseding approve must pass")
-	}
 }
 
 func TestGate_ResumeAtCapRejectFailsWithoutOpening(t *testing.T) {
@@ -453,30 +406,6 @@ func TestFinal_RejectAtCapNamesWayOut(t *testing.T) {
 	}
 }
 
-func TestFinal_SupersedingApprovePasses(t *testing.T) {
-	s, _ := newStore(t)
-	gate, final := newGates(t, s, "hub:orch")
-	rejectRounds(t, s, gate, testCap)
-	if err := s.SupersedeCapReject(); err != nil {
-		t.Fatal(err)
-	}
-	if !mustEval(t, final).Passed {
-		t.Fatal("a superseding approve must pass")
-	}
-}
-
-func TestFinal_ApprovePasses(t *testing.T) {
-	s, _ := newStore(t)
-	gate, final := newGates(t, s, "hub:orch")
-	wantCarry(t, mustEval(t, gate))
-	if err := s.RecordVerdict(VerdictApprove, ""); err != nil {
-		t.Fatal(err)
-	}
-	if !mustEval(t, final).Passed {
-		t.Fatal("final must pass an approve")
-	}
-}
-
 // newPassAtCapGates builds gates with the given cap whose rewrite after the cap's reject passes.
 func newPassAtCapGates(t *testing.T, s Store, rejectCap int) (gate, final shuttleengine.Gate) {
 	t.Helper()
@@ -499,18 +428,6 @@ func wantFindingsFailure(t *testing.T, s Store, res shuttleengine.GateResult) {
 	t.Helper()
 	if res.Passed || res.Pending || res.Terminal || !strings.Contains(res.Findings, latest(t, s).ReviewPath()) {
 		t.Fatalf("want a non-terminal failure naming the review, got %+v", res)
-	}
-}
-
-func TestGate_PassAtCap_ApprovePasses(t *testing.T) {
-	s, _ := newStore(t)
-	gate, _ := newPassAtCapGates(t, s, 1)
-	wantCarry(t, mustEval(t, gate))
-	if err := s.RecordVerdict(VerdictApprove, ""); err != nil {
-		t.Fatal(err)
-	}
-	if !mustEval(t, gate).Passed {
-		t.Fatal("approve must pass")
 	}
 }
 
@@ -670,5 +587,112 @@ func TestGate_HeldGateKeepsWaitingNotifyUntilLive(t *testing.T) {
 	wantCarry(t, mustEval(t, gate))
 	if got := latest(t, s).Delivery.WaitingNotifys; got != 0 {
 		t.Fatalf("waiting notifies = %d, want 0 once carried", got)
+	}
+}
+
+// TestGate_ResendAfterDelivery covers the delivery record's effect on the throttled re-prompt: a
+// failed delivery does not stop resends, and a recorded delivery does.
+func TestGate_ResendAfterDelivery(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		failedReason string
+		advance      time.Duration
+		wantResend   bool
+	}{
+		{name: "failed delivery does not stop resends", failedReason: "no such agent", advance: time.Minute, wantResend: true},
+		{name: "delivered stops resends", failedReason: "", advance: 10 * time.Minute, wantResend: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s, c := newStore(t)
+			gate, _ := newGates(t, s, "hub:orch")
+			wantCarry(t, mustEval(t, gate))
+			if err := s.RecordDelivered(tt.failedReason); err != nil {
+				t.Fatal(err)
+			}
+			c.t = c.t.Add(tt.advance)
+			if tt.wantResend {
+				wantCarry(t, mustEval(t, gate))
+			} else {
+				wantHold(t, mustEval(t, gate))
+			}
+		})
+	}
+}
+
+// TestApprovePasses covers an approve verdict on the opened round: the gate passes, the final passes,
+// and a gate built with PassAtCap passes.
+func TestApprovePasses(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		newGates func(t *testing.T, s Store) (gate, final shuttleengine.Gate)
+		useFinal bool
+	}{
+		{name: "gate", newGates: func(t *testing.T, s Store) (shuttleengine.Gate, shuttleengine.Gate) {
+			return newGates(t, s, "hub:orch")
+		}},
+		{name: "final", newGates: func(t *testing.T, s Store) (shuttleengine.Gate, shuttleengine.Gate) {
+			return newGates(t, s, "hub:orch")
+		}, useFinal: true},
+		{name: "gate with pass-at-cap", newGates: func(t *testing.T, s Store) (shuttleengine.Gate, shuttleengine.Gate) {
+			return newPassAtCapGates(t, s, 1)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s, _ := newStore(t)
+			gate, final := tt.newGates(t, s)
+			wantCarry(t, mustEval(t, gate))
+			if err := s.RecordVerdict(VerdictApprove, ""); err != nil {
+				t.Fatal(err)
+			}
+			closure := gate
+			if tt.useFinal {
+				closure = final
+			}
+			if !mustEval(t, closure).Passed {
+				t.Fatal("approve must pass")
+			}
+		})
+	}
+}
+
+// TestSupersedingApprovePasses covers a superseding approve recorded over the cap's reject: both the
+// gate, which first fails terminal at the cap, and the final pass.
+func TestSupersedingApprovePasses(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		useFinal bool
+	}{
+		{name: "gate"},
+		{name: "final", useFinal: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s, _ := newStore(t)
+			gate, final := newGates(t, s, "hub:orch")
+			rejectRounds(t, s, gate, testCap)
+			closure := gate
+			if tt.useFinal {
+				closure = final
+			} else {
+				wantTerminal(t, mustEval(t, gate))
+			}
+			if err := s.SupersedeCapReject(); err != nil {
+				t.Fatal(err)
+			}
+			if !mustEval(t, closure).Passed {
+				t.Fatal("a superseding approve must pass")
+			}
+		})
 	}
 }

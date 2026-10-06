@@ -18,38 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// TestJudgeCirclingTemplate_StatesLoadBearingRules asserts the template's load-bearing phrases are
-// present.
-func TestJudgeCirclingTemplate_StatesLoadBearingRules(t *testing.T) {
-	text := string(stencils.TreadleTemplateJudgeCircling)
-
-	requireContains(t, text, "PROGRESSING")
-	requireContains(t, text, "CIRCLING")
-	requireContains(t, text, "UNCERTAIN")
-	requireContains(t, text, "clear, citable evidence")
-	requireContains(t, text, "when in doubt")
-	requireContains(t, text, "## Themes")
-	requireContains(t, text, "EXACTLY TWO")
-	requireQuotedRationaleRule(t, text)
-	requireHandoffMaintenanceRules(t, text)
-}
-
-// TestJudgeMilestoneTemplate_StatesLoadBearingRules is the milestone continuation gate's analogue
-// of the circling-check test above.
-func TestJudgeMilestoneTemplate_StatesLoadBearingRules(t *testing.T) {
-	text := string(stencils.TreadleTemplateJudgeMilestone)
-
-	requireContains(t, text, "CONTINUE")
-	requireContains(t, text, "STOP")
-	requireContains(t, text, "UNCERTAIN")
-	requireContains(t, text, "clear evidence of a stall or circularity")
-	requireContains(t, text, "when in doubt")
-	requireContains(t, text, "## Themes")
-	requireContains(t, text, "EXACTLY TWO")
-	requireQuotedRationaleRule(t, text)
-	requireHandoffMaintenanceRules(t, text)
-}
-
 // requireHandoffMaintenanceRules asserts a judge template (circling or
 // milestone) carries its three BLOCKING handoff-maintenance rules in prose:
 // (a) the lossless carry-forward rule for the ledger, (b) the covers_rounds
@@ -72,32 +40,6 @@ func requireHandoffMaintenanceRules(t *testing.T, text string) {
 	// (d) exactly two output files, same call.
 	requireContains(t, text, "Write EXACTLY TWO files this call")
 	requireContains(t, text, "{{.handoff_path}}")
-}
-
-// TestTriageTemplate_StatesLoadBearingRules is the asking-triage template's analogue: its
-// vocabulary, the one-line-restate-the-blocker rule, and the single-output-file instruction.
-func TestTriageTemplate_StatesLoadBearingRules(t *testing.T) {
-	text := string(stencils.TreadleTemplateTriage)
-
-	requireContains(t, text, "RETRY")
-	requireContains(t, text, "GIVE_UP")
-	requireContains(t, text, "restate")
-	requireContains(t, text, "EXACTLY ONE")
-	requireQuotedRationaleRule(t, text)
-}
-
-// TestTargetingTemplate_StatesLoadBearingRules is the pre-round targeting judge template's analogue
-// of the other templates' load-bearing-statement pins: the read-the-handoff instruction, the
-// exactly-one-output-file rule, and the free-form (no frontmatter) output rule — unlike every other
-// template in this package, targeting produces no verdict and so has no rationale-quoting rule to
-// pin.
-func TestTargetingTemplate_StatesLoadBearingRules(t *testing.T) {
-	text := string(stencils.TreadleTemplateTargeting)
-
-	requireContains(t, text, "Read the previous handoff at")
-	requireContains(t, text, "EXACTLY ONE")
-	requireContains(t, text, "free-form prose")
-	requireContains(t, text, "NO `---`-delimited YAML frontmatter")
 }
 
 // requireQuotedRationaleRule asserts a template both SHOWS a double-quoted
@@ -170,99 +112,105 @@ func targetingMarkerValues() map[string]string {
 	}
 }
 
-// TestJudgeCirclingTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when every required
-// marker is supplied,
-// and fails — naming the marker — when any single one is absent.
-func TestJudgeCirclingTemplate_FillsWithAllMarkers(t *testing.T) {
-	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.Fill(stencils.TreadleTemplateJudgeCircling, judgeCirclingMarkerValues()); err != nil {
-			t.Fatalf("stencil.Fill() = %v; want nil", err)
-		}
-	})
+// TestShippedTemplates table-drives the four shipped judge, triage and targeting templates through
+// the two properties each must hold.
+// States load-bearing rules: the template carries its load-bearing phrases, so an edit that silently
+// weakens one fails here rather than only in human review. The judge templates (circling and
+// milestone) and the triage template also carry the quoted-rationale rule, and the judge templates
+// the handoff-maintenance rules; targeting produces no verdict, so it has no rationale-quoting rule
+// to pin.
+// Fills with all markers: stencil.Fill succeeds when every required marker is supplied and fails,
+// naming the marker, when any single one is absent.
+func TestShippedTemplates(t *testing.T) {
+	t.Parallel()
 
-	for _, marker := range []string{"round", "prior_reviews", "verdict_path", "previous_handoff", "handoff_path", "parent_directive"} {
-		t.Run("missing "+marker, func(t *testing.T) {
-			values := judgeCirclingMarkerValues()
-			delete(values, marker)
-			_, err := stencil.Fill(stencils.TreadleTemplateJudgeCircling, values)
-			if err == nil {
-				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
-			}
-			if !strings.Contains(err.Error(), marker) {
-				t.Errorf("stencil.Fill() error = %q; want it to name marker %q", err.Error(), marker)
-			}
-		})
+	tests := []struct {
+		name            string
+		template        []byte
+		phrases         []string
+		quotedRationale bool
+		handoffRules    bool
+		values          func() map[string]string
+		requiredMarkers []string
+	}{
+		{
+			name:     "judge circling",
+			template: stencils.TreadleTemplateJudgeCircling,
+			phrases: []string{
+				"PROGRESSING", "CIRCLING", "UNCERTAIN", "clear, citable evidence", "when in doubt", "## Themes", "EXACTLY TWO",
+			},
+			quotedRationale: true,
+			handoffRules:    true,
+			values:          judgeCirclingMarkerValues,
+			requiredMarkers: []string{"round", "prior_reviews", "verdict_path", "previous_handoff", "handoff_path", "parent_directive"},
+		},
+		{
+			name:     "judge milestone",
+			template: stencils.TreadleTemplateJudgeMilestone,
+			phrases: []string{
+				"CONTINUE", "STOP", "UNCERTAIN", "clear evidence of a stall or circularity", "when in doubt", "## Themes", "EXACTLY TWO",
+			},
+			quotedRationale: true,
+			handoffRules:    true,
+			values:          judgeMilestoneMarkerValues,
+			requiredMarkers: []string{"round", "hard_cap", "prior_reviews", "verdict_path", "previous_handoff", "handoff_path", "parent_directive"},
+		},
+		{
+			// The asking-triage template's vocabulary, the one-line-restate-the-blocker rule and
+			// the single-output-file instruction.
+			name:            "triage",
+			template:        stencils.TreadleTemplateTriage,
+			phrases:         []string{"RETRY", "GIVE_UP", "restate", "EXACTLY ONE"},
+			quotedRationale: true,
+			values:          triageMarkerValues,
+			requiredMarkers: []string{"round", "question", "verdict_path", "parent_directive"},
+		},
+		{
+			// The pre-round targeting template's read-the-handoff instruction, exactly-one-output-file
+			// rule and free-form (no frontmatter) output rule.
+			name:            "targeting",
+			template:        stencils.TreadleTemplateTargeting,
+			phrases:         []string{"Read the previous handoff at", "EXACTLY ONE", "free-form prose", "NO `---`-delimited YAML frontmatter"},
+			values:          targetingMarkerValues,
+			requiredMarkers: []string{"round", "previous_handoff", "seed_path", "parent_directive"},
+		},
 	}
-}
 
-// TestJudgeMilestoneTemplate_FillsWithAllMarkers is the milestone template's analogue of the
-// circling-check fill test above.
-func TestJudgeMilestoneTemplate_FillsWithAllMarkers(t *testing.T) {
-	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.Fill(stencils.TreadleTemplateJudgeMilestone, judgeMilestoneMarkerValues()); err != nil {
-			t.Fatalf("stencil.Fill() = %v; want nil", err)
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	for _, marker := range []string{"round", "hard_cap", "prior_reviews", "verdict_path", "previous_handoff", "handoff_path", "parent_directive"} {
-		t.Run("missing "+marker, func(t *testing.T) {
-			values := judgeMilestoneMarkerValues()
-			delete(values, marker)
-			_, err := stencil.Fill(stencils.TreadleTemplateJudgeMilestone, values)
-			if err == nil {
-				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
-			}
-			if !strings.Contains(err.Error(), marker) {
-				t.Errorf("stencil.Fill() error = %q; want it to name marker %q", err.Error(), marker)
-			}
-		})
-	}
-}
+			t.Run("states load-bearing rules", func(t *testing.T) {
+				t.Parallel()
+				text := string(tt.template)
+				for _, phrase := range tt.phrases {
+					requireContains(t, text, phrase)
+				}
+				if tt.quotedRationale {
+					requireQuotedRationaleRule(t, text)
+				}
+				if tt.handoffRules {
+					requireHandoffMaintenanceRules(t, text)
+				}
+			})
 
-// TestTriageTemplate_FillsWithAllMarkers is the triage template's analogue of the two judge fill
-// tests above.
-func TestTriageTemplate_FillsWithAllMarkers(t *testing.T) {
-	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.Fill(stencils.TreadleTemplateTriage, triageMarkerValues()); err != nil {
-			t.Fatalf("stencil.Fill() = %v; want nil", err)
-		}
-	})
-
-	for _, marker := range []string{"round", "question", "verdict_path", "parent_directive"} {
-		t.Run("missing "+marker, func(t *testing.T) {
-			values := triageMarkerValues()
-			delete(values, marker)
-			_, err := stencil.Fill(stencils.TreadleTemplateTriage, values)
-			if err == nil {
-				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
-			}
-			if !strings.Contains(err.Error(), marker) {
-				t.Errorf("stencil.Fill() error = %q; want it to name marker %q", err.Error(), marker)
-			}
-		})
-	}
-}
-
-// TestTargetingTemplate_FillsWithAllMarkers is the pre-round targeting template's analogue of the
-// three fill tests above.
-func TestTargetingTemplate_FillsWithAllMarkers(t *testing.T) {
-	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.Fill(stencils.TreadleTemplateTargeting, targetingMarkerValues()); err != nil {
-			t.Fatalf("stencil.Fill() = %v; want nil", err)
-		}
-	})
-
-	for _, marker := range []string{"round", "previous_handoff", "seed_path", "parent_directive"} {
-		t.Run("missing "+marker, func(t *testing.T) {
-			values := targetingMarkerValues()
-			delete(values, marker)
-			_, err := stencil.Fill(stencils.TreadleTemplateTargeting, values)
-			if err == nil {
-				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
-			}
-			if !strings.Contains(err.Error(), marker) {
-				t.Errorf("stencil.Fill() error = %q; want it to name marker %q", err.Error(), marker)
-			}
+			t.Run("fills with all markers", func(t *testing.T) {
+				t.Parallel()
+				if _, err := stencil.Fill(tt.template, tt.values()); err != nil {
+					t.Fatalf("stencil.Fill() = %v; want nil", err)
+				}
+				for _, marker := range tt.requiredMarkers {
+					values := tt.values()
+					delete(values, marker)
+					_, err := stencil.Fill(tt.template, values)
+					if err == nil {
+						t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
+					}
+					if !strings.Contains(err.Error(), marker) {
+						t.Errorf("stencil.Fill() error = %q; want it to name marker %q", err.Error(), marker)
+					}
+				}
+			})
 		})
 	}
 }

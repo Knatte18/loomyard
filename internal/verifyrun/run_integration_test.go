@@ -32,48 +32,70 @@ func runCapture(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-func TestRun_PassingCommandCapturesBothStreams(t *testing.T) {
-	var out bytes.Buffer
-	code, err := Run(context.Background(), "echo to-stdout && echo to-stderr 1>&2", t.TempDir(), &out)
-	if err != nil || code != 0 {
-		t.Fatalf("Run = (%d, %v); want (0, nil)", code, err)
-	}
-	if !strings.Contains(out.String(), "to-stdout") || !strings.Contains(out.String(), "to-stderr") {
-		t.Errorf("out = %q; want both stdout and stderr", out.String())
-	}
-}
+// TestRun table-drives Run over a command that exits: one that passes captures both of its streams,
+// a non-zero exit is reported as its code with no error, whether the output goes to a buffer or is
+// discarded, and the command runs in the told working directory.
+func TestRun(t *testing.T) {
+	t.Parallel()
 
-func TestRun_NonZeroExit(t *testing.T) {
-	t.Run("Buffer", func(t *testing.T) {
-		var out bytes.Buffer
-		code, err := Run(context.Background(), "exit 3", t.TempDir(), &out)
-		if err != nil || code != 3 {
-			t.Fatalf("Run = (%d, %v); want (3, nil)", code, err)
-		}
-	})
-	t.Run("Discard", func(t *testing.T) {
-		code, err := Run(context.Background(), "exit 3", t.TempDir(), io.Discard)
-		if err != nil || code != 3 {
-			t.Fatalf("Run = (%d, %v); want (3, nil)", code, err)
-		}
-	})
-}
-
-func TestRun_WorkingDirectory(t *testing.T) {
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	cmd := "pwd"
+	workingDirectory := "pwd"
 	if runtime.GOOS == "windows" {
-		cmd = "cd"
+		workingDirectory = "cd"
 	}
-	var out bytes.Buffer
-	if code, err := Run(context.Background(), cmd, dir, &out); err != nil || code != 0 {
-		t.Fatalf("Run = (%d, %v); want (0, nil)", code, err)
+
+	tests := []struct {
+		name    string
+		command string
+		// discard sends the output to io.Discard instead of a buffer.
+		discard    bool
+		wantCode   int
+		wantOutput []string
+		// wantOutputIsDir expects the whole trimmed output to be the working directory instead.
+		wantOutputIsDir bool
+	}{
+		{
+			name:       "passing command captures both streams",
+			command:    "echo to-stdout && echo to-stderr 1>&2",
+			wantOutput: []string{"to-stdout", "to-stderr"},
+		},
+		{name: "non-zero exit into a buffer", command: "exit 3", wantCode: 3},
+		{name: "non-zero exit with output discarded", command: "exit 3", discard: true, wantCode: 3},
+		{
+			name:            "runs in the told working directory",
+			command:         workingDirectory,
+			wantOutputIsDir: true,
+		},
 	}
-	if got := strings.TrimSpace(out.String()); !strings.EqualFold(got, dir) {
-		t.Errorf("working directory = %q; want %q", got, dir)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			var sink io.Writer = &out
+			if tt.discard {
+				sink = io.Discard
+			}
+
+			code, err := Run(context.Background(), tt.command, dir, sink)
+
+			if err != nil || code != tt.wantCode {
+				t.Fatalf("Run = (%d, %v); want (%d, nil)", code, err, tt.wantCode)
+			}
+			for _, want := range tt.wantOutput {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("out = %q; want it to contain %q", out.String(), want)
+				}
+			}
+			if tt.wantOutputIsDir {
+				if got := strings.TrimSpace(out.String()); !strings.EqualFold(got, dir) {
+					t.Errorf("working directory = %q; want %q", got, dir)
+				}
+			}
+		})
 	}
 }
 

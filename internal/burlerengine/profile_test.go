@@ -75,42 +75,99 @@ func writeFixtureFile(t *testing.T, root, name, content string) {
 	}
 }
 
+// TestProfile_Validate table-drives validate over the happy paths and every fail-loud rule.
+// The two path-resolution rows also assert, through check, that every path field is rewritten in
+// place to a cleaned absolute path: relative entries are joined onto worktreeRoot per entry, and an
+// already-absolute entry outside worktreeRoot survives unchanged apart from filepath.Clean.
 func TestProfile_Validate(t *testing.T) {
+	t.Parallel()
+
+	// outsideTarget is an existing absolute path in a directory of its own, outside every
+	// subtest's worktree root; subtests only read it.
+	elsewhere := t.TempDir()
+	writeFixtureFile(t, elsewhere, "outside.txt", "outside content")
+	outsideTarget := filepath.Join(elsewhere, "outside.txt")
+
 	tests := []struct {
 		name      string
-		mutate    func(root string, p *Profile)
+		mutate    func(t *testing.T, root string, p *Profile)
 		wantErr   bool
 		errSubstr string
+		check     func(t *testing.T, root string, got Profile)
 	}{
 		{
 			name:    "valid profile",
-			mutate:  func(root string, p *Profile) {},
+			mutate:  func(t *testing.T, root string, p *Profile) {},
 			wantErr: false,
 		},
 		{
+			// A relative Fasit entry beside an already-absolute one proves both branches of
+			// resolvePath run inside a single field.
+			name: "every path field resolves in place",
+			mutate: func(t *testing.T, root string, p *Profile) {
+				p.Fasit.Paths = []string{"fasit.txt", filepath.Join(root, "fasit.txt")}
+				writeFixtureFile(t, root, "focus.md", "focus")
+				p.FocusDirective = "focus.md"
+			},
+			check: func(t *testing.T, root string, got Profile) {
+				if want := []string{filepath.Join(root, "target.txt")}; diffStrings(got.Target.Paths, want) {
+					t.Errorf("Target.Paths = %v; want %v", got.Target.Paths, want)
+				}
+				if want := []string{filepath.Join(root, "fasit.txt"), filepath.Join(root, "fasit.txt")}; diffStrings(got.Fasit.Paths, want) {
+					t.Errorf("Fasit.Paths = %v; want %v", got.Fasit.Paths, want)
+				}
+				if want := []string{filepath.Join(root, "prior-review.md")}; diffStrings(got.PriorReviews, want) {
+					t.Errorf("PriorReviews = %v; want %v", got.PriorReviews, want)
+				}
+				if want := []string{filepath.Join(root, "prior-fixer.md")}; diffStrings(got.PriorFixerReports, want) {
+					t.Errorf("PriorFixerReports = %v; want %v", got.PriorFixerReports, want)
+				}
+				if want := filepath.Join(root, "focus.md"); got.FocusDirective != want {
+					t.Errorf("FocusDirective = %q; want %q", got.FocusDirective, want)
+				}
+				if want := filepath.Join(root, "review.md"); got.ReviewPath != want {
+					t.Errorf("ReviewPath = %q; want %q", got.ReviewPath, want)
+				}
+				if want := filepath.Join(root, "fixer-report.md"); got.FixerReportPath != want {
+					t.Errorf("FixerReportPath = %q; want %q", got.FixerReportPath, want)
+				}
+			},
+		},
+		{
+			name: "absolute target path outside the worktree is kept",
+			mutate: func(t *testing.T, root string, p *Profile) {
+				p.Target.Paths = []string{outsideTarget}
+			},
+			check: func(t *testing.T, root string, got Profile) {
+				if want := []string{outsideTarget}; diffStrings(got.Target.Paths, want) {
+					t.Errorf("Target.Paths = %v; want %v", got.Target.Paths, want)
+				}
+			},
+		},
+		{
 			name: "target directory entry is valid",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.Target.Paths = []string{"targetdir"}
 			},
 			wantErr: false,
 		},
 		{
 			name: "target instructions only",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.Target = FileSet{Instructions: "review the diff against main"}
 			},
 			wantErr: false,
 		},
 		{
 			name: "fasit instructions only",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.Fasit = FileSet{Instructions: "judge against the discussion"}
 			},
 			wantErr: false,
 		},
 		{
 			name: "target empty",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.Target = FileSet{}
 			},
 			wantErr:   true,
@@ -118,7 +175,7 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "target instructions whitespace only",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.Target = FileSet{Instructions: "   "}
 			},
 			wantErr:   true,
@@ -126,7 +183,7 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "fasit empty",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.Fasit = FileSet{}
 			},
 			wantErr:   true,
@@ -134,7 +191,7 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "target path missing",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.Target.Paths = []string{"does-not-exist.txt"}
 			},
 			wantErr:   true,
@@ -142,7 +199,7 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "fasit path missing",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.Fasit.Paths = []string{"does-not-exist.txt"}
 			},
 			wantErr:   true,
@@ -150,7 +207,7 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "prior review path missing",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.PriorReviews = []string{"does-not-exist.md"}
 			},
 			wantErr:   true,
@@ -158,7 +215,7 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "prior fixer report path missing",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.PriorFixerReports = []string{"does-not-exist.md"}
 			},
 			wantErr:   true,
@@ -166,7 +223,7 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "rubric empty",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.Rubric = ""
 			},
 			wantErr:   true,
@@ -174,7 +231,7 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "rubric whitespace only",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.Rubric = "   \n\t "
 			},
 			wantErr:   true,
@@ -182,7 +239,7 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "fixscope empty",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.FixScope = ""
 			},
 			wantErr:   true,
@@ -190,7 +247,7 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "fixscope invalid",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.FixScope = "markdown"
 			},
 			wantErr:   true,
@@ -202,21 +259,21 @@ func TestProfile_Validate(t *testing.T) {
 			// fan — so it must not error even against a cfg with zero fans
 			// configured at all.
 			name: "clusterfan empty skips resolution",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.ClusterFan = ""
 			},
 			wantErr: false,
 		},
 		{
 			name: "clusterfan happy path",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.ClusterFan = "standard"
 			},
 			wantErr: false,
 		},
 		{
 			name: "clusterfan unknown fan",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.ClusterFan = "missing"
 			},
 			wantErr:   true,
@@ -224,7 +281,7 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "clusterfan unknown lens",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.ClusterFan = "badlens"
 			},
 			wantErr:   true,
@@ -232,7 +289,7 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "clusterfan over cap",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.ClusterFan = "huge"
 			},
 			wantErr:   true,
@@ -240,7 +297,7 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "focusdirective nonexistent",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.FocusDirective = "no-such-focus.md"
 			},
 			wantErr:   true,
@@ -248,14 +305,14 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "focusdirective existing",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				writeFixtureFile(t, root, "focus.md", "focus")
 				p.FocusDirective = "focus.md"
 			},
 		},
 		{
 			name: "reviewpath empty",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.ReviewPath = ""
 			},
 			wantErr:   true,
@@ -263,7 +320,7 @@ func TestProfile_Validate(t *testing.T) {
 		},
 		{
 			name: "fixerreportpath empty",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.FixerReportPath = ""
 			},
 			wantErr:   true,
@@ -275,7 +332,7 @@ func TestProfile_Validate(t *testing.T) {
 			// one write, silently collapsing the two-artifact contract into
 			// one file (proven live).
 			name: "reviewpath and fixerreportpath identical (literal)",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.FixerReportPath = p.ReviewPath
 			},
 			wantErr:   true,
@@ -288,7 +345,7 @@ func TestProfile_Validate(t *testing.T) {
 			// the same file as a relative ReviewPath is just as degenerate
 			// and must be caught the same way.
 			name: "reviewpath and fixerreportpath identical (post-resolution)",
-			mutate: func(root string, p *Profile) {
+			mutate: func(t *testing.T, root string, p *Profile) {
 				p.ReviewPath = "review.md"
 				p.FixerReportPath = filepath.Join(root, "review.md")
 			},
@@ -300,8 +357,9 @@ func TestProfile_Validate(t *testing.T) {
 	cfg := testClusterFanConfig()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			root, p := newValidProfileFixture(t)
-			tt.mutate(root, &p)
+			tt.mutate(t, root, &p)
 
 			err := p.validate(root, cfg)
 
@@ -328,123 +386,23 @@ func TestProfile_Validate(t *testing.T) {
 			if err != nil {
 				t.Fatalf("validate() = %v; want nil", err)
 			}
+			if tt.check != nil {
+				tt.check(t, root, p)
+			}
 		})
-	}
-}
-
-// TestProfile_Validate_ResolvesPathsInPlace asserts the happy path documented on validate: every
-// path field is rewritten in place to a cleaned absolute path, already-absolute entries are kept
-// verbatim, and relative entries are joined onto worktreeRoot.
-func TestProfile_Validate_ResolvesPathsInPlace(t *testing.T) {
-	root, p := newValidProfileFixture(t)
-
-	// Mix a relative Fasit entry with an already-absolute one to prove
-	// both branches of resolvePath run inside a single field.
-	absoluteFasit := filepath.Join(root, "fasit.txt")
-	p.Fasit.Paths = []string{"fasit.txt", absoluteFasit}
-	writeFixtureFile(t, root, "focus.md", "focus")
-	p.FocusDirective = "focus.md"
-
-	if err := p.validate(root, Config{}); err != nil {
-		t.Fatalf("validate() = %v; want nil", err)
-	}
-
-	wantTarget := []string{filepath.Join(root, "target.txt")}
-	if diffStrings(p.Target.Paths, wantTarget) {
-		t.Errorf("Target.Paths = %v; want %v", p.Target.Paths, wantTarget)
-	}
-
-	wantFasit := []string{filepath.Join(root, "fasit.txt"), filepath.Clean(absoluteFasit)}
-	if diffStrings(p.Fasit.Paths, wantFasit) {
-		t.Errorf("Fasit.Paths = %v; want %v", p.Fasit.Paths, wantFasit)
-	}
-
-	wantPriorReviews := []string{filepath.Join(root, "prior-review.md")}
-	if diffStrings(p.PriorReviews, wantPriorReviews) {
-		t.Errorf("PriorReviews = %v; want %v", p.PriorReviews, wantPriorReviews)
-	}
-
-	wantPriorFixers := []string{filepath.Join(root, "prior-fixer.md")}
-	if diffStrings(p.PriorFixerReports, wantPriorFixers) {
-		t.Errorf("PriorFixerReports = %v; want %v", p.PriorFixerReports, wantPriorFixers)
-	}
-
-	wantFocus := filepath.Join(root, "focus.md")
-	if p.FocusDirective != wantFocus {
-		t.Errorf("FocusDirective = %q; want %q", p.FocusDirective, wantFocus)
-	}
-
-	wantReviewPath := filepath.Join(root, "review.md")
-	if p.ReviewPath != wantReviewPath {
-		t.Errorf("ReviewPath = %q; want %q", p.ReviewPath, wantReviewPath)
-	}
-
-	wantFixerReportPath := filepath.Join(root, "fixer-report.md")
-	if p.FixerReportPath != wantFixerReportPath {
-		t.Errorf("FixerReportPath = %q; want %q", p.FixerReportPath, wantFixerReportPath)
-	}
-}
-
-// TestProfile_Validate_AbsolutePathsKeptVerbatim asserts that an already-absolute Target.Paths
-// entry outside worktreeRoot survives validate unchanged (only filepath.Clean-ed), proving
-// relative-vs-absolute handling is per-entry, not per-field.
-func TestProfile_Validate_AbsolutePathsKeptVerbatim(t *testing.T) {
-	root, p := newValidProfileFixture(t)
-
-	elsewhere := t.TempDir()
-	writeFixtureFile(t, elsewhere, "outside.txt", "outside content")
-	absoluteTarget := filepath.Join(elsewhere, "outside.txt")
-	p.Target.Paths = []string{absoluteTarget}
-
-	if err := p.validate(root, Config{}); err != nil {
-		t.Fatalf("validate() = %v; want nil", err)
-	}
-
-	want := filepath.Clean(absoluteTarget)
-	if len(p.Target.Paths) != 1 || p.Target.Paths[0] != want {
-		t.Errorf("Target.Paths = %v; want [%q]", p.Target.Paths, want)
-	}
-}
-
-// TestProfile_Validate_ClusterFanPopulatesLensesInOrder asserts the ClusterFan happy path: validate
-// populates p.clusterLenses with the resolved fan's lenses in fan order,
-// and an empty ClusterFan leaves clusterLenses nil — clustering is never on unless a profile names
-// a fan.
-func TestProfile_Validate_ClusterFanPopulatesLensesInOrder(t *testing.T) {
-	cfg := testClusterFanConfig()
-
-	root, p := newValidProfileFixture(t)
-	p.ClusterFan = "standard"
-	if err := p.validate(root, cfg); err != nil {
-		t.Fatalf("validate() = %v; want nil", err)
-	}
-	want := []Lens{
-		{Name: "style", Text: "style prose"},
-		{Name: "security", Text: "security prose"},
-	}
-	if len(p.clusterLenses) != len(want) {
-		t.Fatalf("clusterLenses = %+v; want %+v", p.clusterLenses, want)
-	}
-	for i := range want {
-		if p.clusterLenses[i] != want[i] {
-			t.Errorf("clusterLenses[%d] = %+v; want %+v", i, p.clusterLenses[i], want[i])
-		}
-	}
-
-	root2, p2 := newValidProfileFixture(t)
-	if err := p2.validate(root2, cfg); err != nil {
-		t.Fatalf("validate() = %v; want nil", err)
-	}
-	if p2.clusterLenses != nil {
-		t.Errorf("clusterLenses = %+v; want nil for an empty ClusterFan", p2.clusterLenses)
 	}
 }
 
 // TestProfileValidate_ClusterExclude table-drives Profile.ClusterExclude
 // through validate: the no-exclusion happy path, a single-name drop, an
 // absent-name no-op, a duplicate-name no-op, an exclude-everything no-op,
-// and the ClusterExclude-without-ClusterFan error.
+// the ClusterExclude-without-ClusterFan error, and an empty ClusterFan leaving the lenses nil --
+// clustering is never on unless a profile names a fan.
+//
+//testtiming:keep pins the exclusion semantics, the resolved lens order and text and the ClusterExclude-without-ClusterFan error, which the Validate table covering its blocks does not assert
 func TestProfileValidate_ClusterExclude(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name          string
 		clusterFan    string
@@ -490,11 +448,17 @@ func TestProfileValidate_ClusterExclude(t *testing.T) {
 			wantErr:       true,
 			errSubstr:     "ClusterExclude",
 		},
+		{
+			name:       "empty clusterfan leaves the lenses nil",
+			clusterFan: "",
+			wantNames:  nil,
+		},
 	}
 
 	cfg := testClusterFanConfig()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			root, p := newValidProfileFixture(t)
 			p.ClusterFan = tt.clusterFan
 			p.ClusterExclude = tt.excludeLenses
@@ -520,9 +484,15 @@ func TestProfileValidate_ClusterExclude(t *testing.T) {
 			if err != nil {
 				t.Fatalf("validate() = %v; want nil", err)
 			}
+			if tt.clusterFan == "" && p.clusterLenses != nil {
+				t.Errorf("clusterLenses = %+v; want nil for an empty ClusterFan", p.clusterLenses)
+			}
 			gotNames := make([]string, len(p.clusterLenses))
 			for i, lens := range p.clusterLenses {
 				gotNames[i] = lens.Name
+				if want := cfg.Lenses[lens.Name]; lens.Text != want {
+					t.Errorf("clusterLenses[%d].Text = %q; want the configured text %q", i, lens.Text, want)
+				}
 			}
 			if diffStrings(gotNames, tt.wantNames) {
 				t.Errorf("clusterLenses names = %v; want %v", gotNames, tt.wantNames)

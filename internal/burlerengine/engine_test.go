@@ -323,48 +323,138 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 	})
 }
 
-// TestEngine_Run_NonDoneOutcomes proves every non-done shuttleengine outcome carries through to
-// Result.Outcome with an empty Verdict and a nil error,
-// and that LastAssistantMessage and the kept shuttle RunDir are carried for a non-done outcome —
-// the RunDir passthrough is what lets a caller point at the kept shuttle run dir for a died/timeout
-// round.
-func TestEngine_Run_NonDoneOutcomes(t *testing.T) {
+// TestEngine_Run_ShuttleOutcomes table-drives Run over every shuttle outcome and the review-file
+// parse path.
+// A non-done outcome (asking, died, timeout, and a died run that never started) carries through to
+// Result.Outcome with an empty Verdict and a nil error.
+// A done outcome parses its review file into VerdictBlocking with its findings or VerdictApproved
+// with none, and fails loud -- never defaulting a verdict -- on a review file that was never written
+// (a fake-shuttle-only scenario; the real shuttle's file-contract polling makes it impossible in
+// production) or whose frontmatter is malformed; a hard shuttle error is wrapped, not swallowed.
+// Whatever the outcome, the shuttle's identities, last assistant message, kept RunDir and NotStarted
+// flag pass through to the Result unchanged: the RunDir passthrough is what lets a caller point at
+// the kept shuttle run dir for a died or timed-out round.
+func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
+	t.Parallel()
+
+	scripted := func(outcome shuttleengine.Outcome, message string, notStarted bool) shuttleengine.Result {
+		return shuttleengine.Result{
+			Outcome:              outcome,
+			LastAssistantMessage: message,
+			SessionID:            "sess-1",
+			StrandGUID:           "guid-1",
+			RunDir:               "/kept/run/dir",
+			NotStarted:           notStarted,
+		}
+	}
+
 	tests := []struct {
-		name    string
-		outcome shuttleengine.Outcome
-		message string
+		name           string
+		shuttle        *fakeShuttle
+		wantErr        bool
+		errSubstr      string
+		wantVerdict    Verdict
+		wantFindingIDs []string
 	}{
-		{name: "asking", outcome: shuttleengine.OutcomeAsking, message: "which color did you mean?"},
-		{name: "died", outcome: shuttleengine.OutcomeDied},
-		{name: "timeout", outcome: shuttleengine.OutcomeTimeout},
+		{
+			name:    "asking",
+			shuttle: &fakeShuttle{result: scripted(shuttleengine.OutcomeAsking, "which color did you mean?", false)},
+		},
+		{
+			name:    "died",
+			shuttle: &fakeShuttle{result: scripted(shuttleengine.OutcomeDied, "", false)},
+		},
+		{
+			name:    "timeout",
+			shuttle: &fakeShuttle{result: scripted(shuttleengine.OutcomeTimeout, "", false)},
+		},
+		{
+			name:    "died before starting",
+			shuttle: &fakeShuttle{result: scripted(shuttleengine.OutcomeDied, "", true)},
+		},
+		{
+			name: "done with a BLOCKING review",
+			shuttle: &fakeShuttle{
+				reviewContent: blockingReview,
+				fixerContent:  "fixed the mismatch",
+				result:        scripted(shuttleengine.OutcomeDone, "", false),
+			},
+			wantVerdict:    VerdictBlocking,
+			wantFindingIDs: []string{"F1"},
+		},
+		{
+			name: "done with an APPROVED review",
+			shuttle: &fakeShuttle{
+				reviewContent: approvedReview,
+				fixerContent:  "nothing fixed",
+				result:        scripted(shuttleengine.OutcomeDone, "", false),
+			},
+			wantVerdict: VerdictApproved,
+		},
+		{
+			// fixerContent set but reviewContent left empty: the fake never writes OutputFiles[0].
+			name: "done with a missing review file",
+			shuttle: &fakeShuttle{
+				fixerContent: "nothing fixed",
+				result:       scripted(shuttleengine.OutcomeDone, "", false),
+			},
+			wantErr: true,
+		},
+		{
+			name: "done with a malformed review file",
+			shuttle: &fakeShuttle{
+				reviewContent: malformedReview,
+				fixerContent:  "nothing fixed",
+				result:        scripted(shuttleengine.OutcomeDone, "", false),
+			},
+			wantErr:   true,
+			errSubstr: "frontmatter",
+		},
+		{
+			name:      "hard shuttle error",
+			shuttle:   &fakeShuttle{err: errors.New("reed: add strand failed")},
+			wantErr:   true,
+			errSubstr: "reed: add strand failed",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			root, p := newEngineTestProfile(t)
-			shuttle := &fakeShuttle{
-				result: shuttleengine.Result{
-					Outcome:              tt.outcome,
-					LastAssistantMessage: tt.message,
-					SessionID:            "sess-1",
-					StrandGUID:           "guid-1",
-					RunDir:               "/kept/run/dir",
-				},
-			}
-			e := newEngineForTest(t, root, shuttle)
+			e := newEngineForTest(t, root, tt.shuttle)
 
 			got, err := e.Run(p, RunOpts{})
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Run() error = nil; want an error")
+				}
+				if !strings.Contains(err.Error(), tt.errSubstr) {
+					t.Errorf("Run() error = %q; want it to carry %q", err.Error(), tt.errSubstr)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("Run() = %v; want nil error", err)
 			}
-			if got.Outcome != tt.outcome {
-				t.Errorf("Result.Outcome = %q; want %q", got.Outcome, tt.outcome)
+
+			want := tt.shuttle.result
+			if got.Outcome != want.Outcome {
+				t.Errorf("Result.Outcome = %q; want %q", got.Outcome, want.Outcome)
 			}
-			if got.Verdict != "" {
-				t.Errorf("Result.Verdict = %q; want empty", got.Verdict)
+			if got.Verdict != tt.wantVerdict {
+				t.Errorf("Result.Verdict = %q; want %q", got.Verdict, tt.wantVerdict)
 			}
-			if got.LastAssistantMessage != tt.message {
-				t.Errorf("Result.LastAssistantMessage = %q; want %q", got.LastAssistantMessage, tt.message)
+			var gotFindingIDs []string
+			for _, finding := range got.Findings {
+				gotFindingIDs = append(gotFindingIDs, finding.ID)
+			}
+			if !slices.Equal(gotFindingIDs, tt.wantFindingIDs) {
+				t.Errorf("Result.Findings ids = %v; want %v", gotFindingIDs, tt.wantFindingIDs)
+			}
+			if got.LastAssistantMessage != want.LastAssistantMessage {
+				t.Errorf("Result.LastAssistantMessage = %q; want %q", got.LastAssistantMessage, want.LastAssistantMessage)
 			}
 			if got.SessionID != "sess-1" || got.StrandGUID != "guid-1" {
 				t.Errorf("Result identities = (%q, %q); want (\"sess-1\", \"guid-1\")", got.SessionID, got.StrandGUID)
@@ -372,126 +462,103 @@ func TestEngine_Run_NonDoneOutcomes(t *testing.T) {
 			if got.RunDir != "/kept/run/dir" {
 				t.Errorf("Result.RunDir = %q; want %q", got.RunDir, "/kept/run/dir")
 			}
+			if got.NotStarted != want.NotStarted {
+				t.Errorf("Result.NotStarted = %v; want %v", got.NotStarted, want.NotStarted)
+			}
 		})
 	}
 }
 
-// TestEngine_Run_NotStartedPassthrough proves a shuttle result reporting NotStarted surfaces on the round's Result.
-func TestEngine_Run_NotStartedPassthrough(t *testing.T) {
-	root, p := newEngineTestProfile(t)
-	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, NotStarted: true}}
-	e := newEngineForTest(t, root, shuttle)
+// TestEngine_Run_GateOutcomes table-drives Run over a round's gate list.
+// A round carrying the zero GateSpec behaves exactly as an ungated round, with Result.Gate nil.
+// A round whose gate fails returns a Result with Gate populated and Passed false, Verdict and
+// Findings left empty, Outcome still OutcomeDone and a nil error -- with the review file never read:
+// no review file is left on disk, so a "missing review file" error would mean the gate-failure
+// short-circuit did not fire before the parse step.
+// Engine.Run wraps every gate entry's closure in repairReportBeforeGate before handing it to
+// RunGated, so the failing entry's closure the shuttle received is the wrapped one the round
+// actually ran; re-invoking it (the told closure is pure) recovers the findings text the failing
+// attempt produced, which must name this round's own review path and fixer-report path.
+// The caller's gate list is left as it was.
+func TestEngine_Run_GateOutcomes(t *testing.T) {
+	t.Parallel()
 
-	got, err := e.Run(p, RunOpts{})
-	if err != nil {
-		t.Fatalf("Run() = %v; want nil error", err)
+	failing := func(name, findings string) shuttleengine.GateEntry {
+		return shuttleengine.GateEntry{Name: name, Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
+			return shuttleengine.GateResult{Passed: false, Findings: findings}, nil
+		}}
 	}
-	if !got.NotStarted {
-		t.Errorf("Result.NotStarted = false; want true")
-	}
-}
+	passing := shuttleengine.GateEntry{Name: "first", Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
+		return shuttleengine.GateResult{Passed: true}, nil
+	}}
 
-// TestEngine_Run_DoneBlockingVerdict proves a done run whose review file carries a valid BLOCKING
-// verdict parses into VerdictBlocking with its findings,
-// and that the shuttle RunDir passes through even on a done outcome.
-func TestEngine_Run_DoneBlockingVerdict(t *testing.T) {
-	root, p := newEngineTestProfile(t)
-	shuttle := &fakeShuttle{
-		reviewContent: blockingReview,
-		fixerContent:  "fixed the mismatch",
-		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, RunDir: "/kept/run/dir"},
+	tests := []struct {
+		name string
+		gate shuttleengine.GateSpec
+		// failingIndex is the position of the entry that fails, -1 when the list is empty.
+		failingIndex int
+	}{
+		{name: "zero gate spec", gate: nil, failingIndex: -1},
+		{name: "single failing entry", gate: shuttleengine.GateSpec{failing("", "the widget is the wrong color")}, failingIndex: 0},
+		{name: "failing second entry", gate: shuttleengine.GateSpec{passing, failing("second", "the housing is the wrong color")}, failingIndex: 1},
 	}
-	e := newEngineForTest(t, root, shuttle)
 
-	got, err := e.Run(p, RunOpts{})
-	if err != nil {
-		t.Fatalf("Run() = %v; want nil error", err)
-	}
-	if got.Verdict != VerdictBlocking {
-		t.Errorf("Result.Verdict = %q; want %q", got.Verdict, VerdictBlocking)
-	}
-	if len(got.Findings) != 1 || got.Findings[0].ID != "F1" {
-		t.Errorf("Result.Findings = %+v; want one finding with id F1", got.Findings)
-	}
-	if got.RunDir != "/kept/run/dir" {
-		t.Errorf("Result.RunDir = %q; want %q", got.RunDir, "/kept/run/dir")
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root, p := newEngineTestProfile(t)
+			shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+			if tt.failingIndex < 0 {
+				shuttle.reviewContent = approvedReview
+				shuttle.fixerContent = "nothing fixed"
+			}
+			e := newEngineForTest(t, root, shuttle)
+			var namesBefore []string
+			for _, entry := range tt.gate {
+				namesBefore = append(namesBefore, entry.Name)
+			}
 
-// TestEngine_Run_DoneApprovedVerdict proves a done run whose review file carries a valid APPROVED
-// verdict parses into VerdictApproved.
-func TestEngine_Run_DoneApprovedVerdict(t *testing.T) {
-	root, p := newEngineTestProfile(t)
-	shuttle := &fakeShuttle{
-		reviewContent: approvedReview,
-		fixerContent:  "nothing fixed",
-		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-	}
-	e := newEngineForTest(t, root, shuttle)
+			got, err := e.Run(p, RunOpts{Gate: tt.gate})
+			if err != nil {
+				t.Fatalf("Run() = %v; want nil error", err)
+			}
+			var namesAfter []string
+			for _, entry := range tt.gate {
+				namesAfter = append(namesAfter, entry.Name)
+			}
+			if !slices.Equal(namesBefore, namesAfter) {
+				t.Fatalf("gate entry names = %v; want the caller's list left as it was, %v", namesAfter, namesBefore)
+			}
 
-	got, err := e.Run(p, RunOpts{})
-	if err != nil {
-		t.Fatalf("Run() = %v; want nil error", err)
-	}
-	if got.Verdict != VerdictApproved {
-		t.Errorf("Result.Verdict = %q; want %q", got.Verdict, VerdictApproved)
-	}
-	if len(got.Findings) != 0 {
-		t.Errorf("Result.Findings = %+v; want none", got.Findings)
-	}
-}
+			if tt.failingIndex < 0 {
+				if got.Gate != nil {
+					t.Errorf("Result.Gate = %+v; want nil for the zero GateSpec", got.Gate)
+				}
+				return
+			}
+			if got.Gate == nil || got.Gate.Passed {
+				t.Fatalf("Result.Gate = %+v; want populated with Passed false", got.Gate)
+			}
+			if got.Verdict != "" {
+				t.Errorf("Result.Verdict = %q; want empty", got.Verdict)
+			}
+			if len(got.Findings) != 0 {
+				t.Errorf("Result.Findings = %+v; want none", got.Findings)
+			}
+			if got.Outcome != shuttleengine.OutcomeDone {
+				t.Errorf("Result.Outcome = %q; want %q", got.Outcome, shuttleengine.OutcomeDone)
+			}
 
-// TestEngine_Run_DoneMissingReviewFile proves a done outcome whose review file was never actually
-// written (a fake-shuttle-only scenario; the real shuttle Spec.validate + file-contract polling
-// makes this impossible in production) fails loud with an error rather than defaulting a verdict.
-func TestEngine_Run_DoneMissingReviewFile(t *testing.T) {
-	root, p := newEngineTestProfile(t)
-	shuttle := &fakeShuttle{
-		// fixerContent set but reviewContent left empty: the fake never
-		// writes OutputFiles[0].
-		fixerContent: "nothing fixed",
-		result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-	}
-	e := newEngineForTest(t, root, shuttle)
-
-	_, err := e.Run(p, RunOpts{})
-	if err == nil {
-		t.Fatalf("Run() error = nil; want an error for a missing review file")
-	}
-}
-
-// TestEngine_Run_DoneMalformedReviewFile proves a done outcome whose review file fails ParseReview
-// returns an error that carries the parse failure.
-func TestEngine_Run_DoneMalformedReviewFile(t *testing.T) {
-	root, p := newEngineTestProfile(t)
-	shuttle := &fakeShuttle{
-		reviewContent: malformedReview,
-		fixerContent:  "nothing fixed",
-		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-	}
-	e := newEngineForTest(t, root, shuttle)
-
-	_, err := e.Run(p, RunOpts{})
-	if err == nil {
-		t.Fatalf("Run() error = nil; want an error for a malformed review file")
-	}
-	if !strings.Contains(err.Error(), "frontmatter") {
-		t.Errorf("Run() error = %q; want it to carry the underlying parse failure", err.Error())
-	}
-}
-
-// TestEngine_Run_ShuttleError proves a hard shuttle failure is wrapped rather than swallowed.
-func TestEngine_Run_ShuttleError(t *testing.T) {
-	root, p := newEngineTestProfile(t)
-	shuttle := &fakeShuttle{err: errors.New("reed: add strand failed")}
-	e := newEngineForTest(t, root, shuttle)
-
-	_, err := e.Run(p, RunOpts{})
-	if err == nil {
-		t.Fatalf("Run() error = nil; want a wrapped shuttle error")
-	}
-	if !strings.Contains(err.Error(), "reed: add strand failed") {
-		t.Errorf("Run() error = %q; want it to carry the underlying shuttle error", err.Error())
+			gateResult, gerr := shuttle.gateSpec[tt.failingIndex].Gate()
+			if gerr != nil {
+				t.Fatalf("shuttle.gateSpec[%d].Gate() = %v; want nil error", tt.failingIndex, gerr)
+			}
+			for _, want := range []string{filepath.Join(root, "review.md"), filepath.Join(root, "fixer-report.md")} {
+				if !strings.Contains(gateResult.Findings, want) {
+					t.Errorf("gate findings = %q; want them to name %q", gateResult.Findings, want)
+				}
+			}
+		})
 	}
 }
 
@@ -635,147 +702,6 @@ func TestEngine_Run_PatternDirectiveReachesInstruction1(t *testing.T) {
 				t.Errorf("instruction-1-explore.md contains the PATTERN overview = %v; want %v", gotPinned, tt.wantPinned)
 			}
 		})
-	}
-}
-
-// TestEngine_Run_GateFailure proves a round whose gate fails returns a Result with Gate populated
-// and Passed false, Verdict and Findings left empty, Outcome still OutcomeDone, and a nil error —
-// with the review file never read (asserted by leaving no parseable review file on disk and still
-// expecting no error).
-func TestEngine_Run_GateFailure(t *testing.T) {
-	root, p := newEngineTestProfile(t)
-	// No reviewContent/fixerContent: the fake never writes either output file. A gate-failed round
-	// must never read the review file, so this must not surface as a "missing review file" error —
-	// if it does, the gate-failure short-circuit did not fire before the parse step.
-	shuttle := &fakeShuttle{
-		result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-	}
-	e := newEngineForTest(t, root, shuttle)
-
-	opts := RunOpts{Gate: shuttleengine.GateSpec{{
-		Attempts: 3,
-		Gate: func() (shuttleengine.GateResult, error) {
-			return shuttleengine.GateResult{Passed: false, Findings: "the widget is the wrong color"}, nil
-		},
-	}}}
-
-	got, err := e.Run(p, opts)
-	if err != nil {
-		t.Fatalf("Run() = %v; want nil error", err)
-	}
-	if got.Gate == nil || got.Gate.Passed {
-		t.Fatalf("Result.Gate = %+v; want populated with Passed false", got.Gate)
-	}
-	if got.Verdict != "" {
-		t.Errorf("Result.Verdict = %q; want empty", got.Verdict)
-	}
-	if len(got.Findings) != 0 {
-		t.Errorf("Result.Findings = %+v; want none", got.Findings)
-	}
-	if got.Outcome != shuttleengine.OutcomeDone {
-		t.Errorf("Result.Outcome = %q; want %q", got.Outcome, shuttleengine.OutcomeDone)
-	}
-}
-
-// TestEngine_Run_ZeroGateSpec proves a round carrying the zero GateSpec behaves exactly as today,
-// with Result.Gate nil — the guard for the Webster segment's ungated round.
-func TestEngine_Run_ZeroGateSpec(t *testing.T) {
-	root, p := newEngineTestProfile(t)
-	shuttle := &fakeShuttle{
-		reviewContent: approvedReview,
-		fixerContent:  "nothing fixed",
-		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-	}
-	e := newEngineForTest(t, root, shuttle)
-
-	got, err := e.Run(p, RunOpts{})
-	if err != nil {
-		t.Fatalf("Run() = %v; want nil error", err)
-	}
-	if got.Gate != nil {
-		t.Errorf("Result.Gate = %+v; want nil for the zero GateSpec", got.Gate)
-	}
-}
-
-// TestEngine_Run_GateFailureFindingsNameRoundPaths proves a round whose gate fails receives findings
-// text that names both this round's own review path and its own fixer-report path — the per-round
-// repairReportBeforeGate wrapper's whole subject.
-func TestEngine_Run_GateFailureFindingsNameRoundPaths(t *testing.T) {
-	root, p := newEngineTestProfile(t)
-	shuttle := &fakeShuttle{
-		result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-	}
-	e := newEngineForTest(t, root, shuttle)
-
-	opts := RunOpts{Gate: shuttleengine.GateSpec{{
-		Attempts: 3,
-		Gate: func() (shuttleengine.GateResult, error) {
-			return shuttleengine.GateResult{Passed: false, Findings: "the widget is the wrong color"}, nil
-		},
-	}}}
-
-	got, err := e.Run(p, opts)
-	if err != nil {
-		t.Fatalf("Run() = %v; want nil error", err)
-	}
-	if got.Gate == nil || got.Gate.Passed {
-		t.Fatalf("Result.Gate = %+v; want populated with Passed false", got.Gate)
-	}
-
-	// Engine.Run wraps each opts.Gate entry's closure in repairReportBeforeGate before handing it to RunGated, so shuttle.gateSpec[0].Gate is the WRAPPED closure the round actually ran — re-invoking it here (the told closure is pure) recovers the findings text the round's failing attempt produced.
-	gateResult, gerr := shuttle.gateSpec[0].Gate()
-	if gerr != nil {
-		t.Fatalf("shuttle.gateSpec[0].Gate() = %v; want nil error", gerr)
-	}
-	gotFindings := gateResult.Findings
-
-	wantReviewPath := filepath.Join(root, "review.md")
-	wantFixerPath := filepath.Join(root, "fixer-report.md")
-	if !strings.Contains(gotFindings, wantReviewPath) {
-		t.Errorf("gate findings = %q; want it to name the review path %q", gotFindings, wantReviewPath)
-	}
-	if !strings.Contains(gotFindings, wantFixerPath) {
-		t.Errorf("gate findings = %q; want it to name the fixer-report path %q", gotFindings, wantFixerPath)
-	}
-}
-
-// TestEngine_Run_SecondGateEntryFindingsNameRoundPaths proves every entry of a gate list is wrapped, not only the first:
-// a failing second entry's findings carry the same repair instruction.
-func TestEngine_Run_SecondGateEntryFindingsNameRoundPaths(t *testing.T) {
-	root, p := newEngineTestProfile(t)
-	shuttle := &fakeShuttle{
-		result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-	}
-	e := newEngineForTest(t, root, shuttle)
-
-	opts := RunOpts{Gate: shuttleengine.GateSpec{
-		{Name: "first", Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
-			return shuttleengine.GateResult{Passed: true}, nil
-		}},
-		{Name: "second", Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
-			return shuttleengine.GateResult{Passed: false, Findings: "the housing is the wrong color"}, nil
-		}},
-	}}
-
-	got, err := e.Run(p, opts)
-	if err != nil {
-		t.Fatalf("Run() = %v; want nil error", err)
-	}
-	if got.Gate == nil || got.Gate.Passed {
-		t.Fatalf("Result.Gate = %+v; want populated with Passed false", got.Gate)
-	}
-	if len(opts.Gate) != 2 || opts.Gate[1].Name != "second" {
-		t.Fatalf("opts.Gate = %+v; want the caller's list left as it was", opts.Gate)
-	}
-
-	gateResult, gerr := shuttle.gateSpec[1].Gate()
-	if gerr != nil {
-		t.Fatalf("shuttle.gateSpec[1].Gate() = %v; want nil error", gerr)
-	}
-	for _, want := range []string{filepath.Join(root, "review.md"), filepath.Join(root, "fixer-report.md")} {
-		if !strings.Contains(gateResult.Findings, want) {
-			t.Errorf("second entry's findings = %q; want them to name %q", gateResult.Findings, want)
-		}
 	}
 }
 

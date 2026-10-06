@@ -96,18 +96,106 @@ func assertCheckSet(t *testing.T, got preflight.Report, want ...preflight.CheckI
 	}
 }
 
-// TestCheckResolved_HealthyPair is the anchor case: a fully healthy paired code+fabric worktree
-// reports OK.
-func TestCheckResolved_HealthyPair(t *testing.T) {
+// TestHealthyHub is a scenario over one healthy paired code+fabric worktree, run as named steps in
+// one order: CheckResolved reports it OK, both predicates hold at the worktree, only HubPresent holds
+// at the board, ResolveMode selects hub mode at the anchor, and a subpath-anchored hub is validated
+// on its merits rather than short-circuited.
+// The steps share one fixture hub, so the test is parallel as a whole and no step is.
+// The last step relies on being last: it writes the anchor marker, so every step after it would see a
+// subpath-anchored hub.
+func TestHealthyHub(t *testing.T) {
 	t.Parallel()
 
 	h, _ := setupFixture(t)
 
-	report, err := preflight.CheckResolved(h.Location)
-	if err != nil {
-		t.Fatalf("CheckResolved: %v", err)
+	if !t.Run("CheckResolved reports the pair OK", func(t *testing.T) {
+		report, err := preflight.CheckResolved(h.Location)
+		if err != nil {
+			t.Fatalf("CheckResolved: %v", err)
+		}
+		assertCheckSet(t, report)
+	}) {
+		return
 	}
-	assertCheckSet(t, report)
+
+	// Wired is an exported predicate whose true branch would otherwise be exercised only indirectly,
+	// through the fabricengine.Ready call inside CheckResolved.
+	if !t.Run("both predicates hold at the worktree", func(t *testing.T) {
+		cwd := h.PrimeWorktree()
+
+		loc, ok := preflight.Wired(cwd)
+		if !ok || loc == nil {
+			t.Errorf("Wired(%s) = (%v, %v); want (non-nil, true)", cwd, loc, ok)
+		}
+
+		loc, ok = preflight.HubPresent(cwd)
+		if !ok || loc == nil {
+			t.Errorf("HubPresent(%s) = (%v, %v); want (non-nil, true)", cwd, loc, ok)
+		}
+	}) {
+		return
+	}
+
+	// Pins why both predicates ship: with cwd at <hub>/_board, HubPresent returns true (the
+	// hub-level lyx directory exists there) but Wired returns false (fabricengine.Ready probes the
+	// paired sibling of the current worktree, not the hub, and _board has none).
+	if !t.Run("only HubPresent holds at the board", func(t *testing.T) {
+		board := h.BoardDir()
+
+		if _, ok := preflight.Wired(board); ok {
+			t.Errorf("Wired(%s) = true; want false", board)
+		}
+
+		loc, ok := preflight.HubPresent(board)
+		if !ok || loc == nil {
+			t.Errorf("HubPresent(%s) = (%v, %v); want (non-nil, true)", board, loc, ok)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("ResolveMode selects hub mode at the anchor", func(t *testing.T) {
+		cwd := h.PrimeWorktree()
+
+		loc, mode, err := preflight.ResolveMode(cwd)
+		if err != nil {
+			t.Fatalf("ResolveMode(%s) error = %v; want nil", cwd, err)
+		}
+		if mode != preflight.ModeHub {
+			t.Errorf("ResolveMode(%s) mode = %v; want ModeHub", cwd, mode)
+		}
+		if loc == nil {
+			t.Errorf("ResolveMode(%s) Location = nil; want non-nil", cwd)
+		}
+	}) {
+		return
+	}
+
+	t.Run("a subpath-anchored hub is not rejected", func(t *testing.T) {
+		sub := filepath.Join(h.PrimeWorktree(), "sub")
+		if err := os.Mkdir(sub, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", sub, err)
+		}
+
+		anchorPath := filepath.Join(fabricengine.BoardDir(h.Location.HubPath), lyxcwd.AnchorFileName)
+		if err := os.WriteFile(anchorPath, []byte("sub"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", anchorPath, err)
+		}
+
+		report, loc, err := preflight.Check(sub)
+		if err != nil {
+			t.Fatalf("Check: %v", err)
+		}
+		if loc == nil {
+			t.Fatalf("Check() *lyxcwd.Location = nil; want non-nil")
+		}
+		for _, failure := range report.Failures {
+			if failure.Check == preflight.CheckGeometry {
+				t.Errorf("Check() on a subpath-anchored hub reported %q: %s; want the anchor treated as legal geometry",
+					failure.Check, failure.Reason)
+			}
+		}
+	})
 }
 
 // TestCheck_NotAGitRepo asserts that Check() invoked outside any git repository reports a single
@@ -127,190 +215,173 @@ func TestCheck_NotAGitRepo(t *testing.T) {
 	assertCheckSet(t, report, preflight.CheckGeometry)
 }
 
-// TestCheckResolved_PrimeNameFailure asserts that a fabricengine.PrimeName failure short-circuits
-// with only a geometry failure and no other check recorded.
-func TestCheckResolved_PrimeNameFailure(t *testing.T) {
-	t.Parallel()
-
-	h, _ := setupFixture(t)
-
-	// Break `git worktree list --porcelain` at the anchor path without breaking
-	// `git rev-parse --show-toplevel`, so this exercises PrimeName's own failure
-	// path rather than lyxcwd.Resolve's -- CheckResolved(l) starts directly from
-	// an already-resolved Location and never re-resolves.
-	dotGit := filepath.Join(h.Location.WorktreePath(), ".git")
-	if err := os.RemoveAll(dotGit); err != nil {
-		t.Fatalf("remove %s: %v", dotGit, err)
+// writeUntracked writes an untracked file into dir, dirtying that worktree.
+func writeUntracked(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "untracked.txt"), []byte("new"), 0o644); err != nil {
+		t.Fatalf("write untracked file in %s: %v", dir, err)
 	}
-
-	report, err := preflight.CheckResolved(h.Location)
-	if err != nil {
-		t.Fatalf("CheckResolved: %v", err)
-	}
-	assertCheckSet(t, report, preflight.CheckGeometry)
 }
 
-// TestCheckResolved_Dirty covers all three ways cleanliness can observe a dirty repo (a
-// tracked-and-modified file, a staged file, and an untracked-only file) across both sides of the
-// pair: the code side and the paired side.
-func TestCheckResolved_Dirty(t *testing.T) {
+// replaceJunction removes the junction at codeLink and puts replace in its place.
+func replaceJunction(t *testing.T, codeLink string, replace func()) {
+	t.Helper()
+	if err := fslink.Remove(codeLink); err != nil {
+		t.Fatalf("remove junction %s: %v", codeLink, err)
+	}
+	replace()
+}
+
+// TestCheckResolved_Failures table-drives CheckResolved over a healthy hub corrupted one way per row,
+// each row building its own hub, asserting the exact CheckID set the corruption classifies as.
+//
+// A fabricengine.PrimeName failure short-circuits with only a geometry failure and no other check
+// recorded.
+// All three ways cleanliness can observe a dirty repo (an untracked-only file, a tracked-and-modified
+// file and a staged file) classify as worktree-clean, across both sides of the pair.
+// A removed paired-sibling worktree reports fabric-ready, and a branch mismatch classifies as
+// fabric-sync, not junction.
+// All three of Healthy's junction-drift shapes -- missing, not-a-link and points-elsewhere --
+// classify as junction via Healthy's typed Cause rather than a substring match, each against BOTH
+// junctions (_lyx and a second, non-_lyx one) so the classification is proven for the second
+// junction too.
+// A repo-wide fabric.yaml that fails to load classifies as junction as well (the
+// CauseConfigLoadFailed/CheckJunction equivalence pinned by healthy-typed-reason), not as a distinct
+// CheckID of its own.
+// Independently tripped checks (a dirty code side and a branch-diverged pair) are both collected into
+// one Report rather than the first short-circuiting the rest.
+func TestCheckResolved_Failures(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name  string
-		dirty func(t *testing.T, h *hubforge.Hub)
-	}{
+	type row struct {
+		name    string
+		corrupt func(t *testing.T, h *hubforge.Hub, slug string)
+		want    []preflight.CheckID
+	}
+
+	rows := []row{
 		{
-			name: "CodeSide",
-			dirty: func(t *testing.T, h *hubforge.Hub) {
-				untracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
-				if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
-					t.Fatalf("write untracked code file: %v", err)
+			// Break `git worktree list --porcelain` at the anchor path without breaking
+			// `git rev-parse --show-toplevel`, so this exercises PrimeName's own failure path rather
+			// than lyxcwd.Resolve's -- CheckResolved(l) starts directly from an already-resolved
+			// Location and never re-resolves.
+			name: "PrimeNameFailure",
+			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) {
+				dotGit := filepath.Join(h.Location.WorktreePath(), ".git")
+				if err := os.RemoveAll(dotGit); err != nil {
+					t.Fatalf("remove %s: %v", dotGit, err)
 				}
 			},
+			want: []preflight.CheckID{preflight.CheckGeometry},
 		},
 		{
-			name: "PairedSide",
-			dirty: func(t *testing.T, h *hubforge.Hub) {
-				untracked := filepath.Join(h.PrimeWeft(), "untracked.txt")
-				if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
-					t.Fatalf("write untracked paired-side file: %v", err)
-				}
-			},
+			name:    "DirtyCodeSide",
+			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) { writeUntracked(t, h.PrimeWorktree()) },
+			want:    []preflight.CheckID{preflight.CheckWorktreeClean},
 		},
 		{
-			name: "CodeSideTrackedModified",
-			dirty: func(t *testing.T, h *hubforge.Hub) {
+			name:    "DirtyPairedSide",
+			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) { writeUntracked(t, h.PrimeWeft()) },
+			want:    []preflight.CheckID{preflight.CheckWorktreeClean},
+		},
+		{
+			name: "DirtyCodeSideTrackedModified",
+			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) {
 				readme := filepath.Join(h.PrimeWorktree(), "README")
 				if err := os.WriteFile(readme, []byte("modified"), 0o644); err != nil {
 					t.Fatalf("modify README: %v", err)
 				}
 			},
+			want: []preflight.CheckID{preflight.CheckWorktreeClean},
 		},
 		{
-			name: "CodeSideStaged",
-			dirty: func(t *testing.T, h *hubforge.Hub) {
+			name: "DirtyCodeSideStaged",
+			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) {
 				readme := filepath.Join(h.PrimeWorktree(), "README")
 				if err := os.WriteFile(readme, []byte("staged"), 0o644); err != nil {
 					t.Fatalf("modify README: %v", err)
 				}
 				gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "README")
 			},
+			want: []preflight.CheckID{preflight.CheckWorktreeClean},
 		},
 		{
-			name: "BothSides",
-			dirty: func(t *testing.T, h *hubforge.Hub) {
-				codeUntracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
-				if err := os.WriteFile(codeUntracked, []byte("new"), 0o644); err != nil {
-					t.Fatalf("write untracked code file: %v", err)
-				}
-				pairedUntracked := filepath.Join(h.PrimeWeft(), "untracked.txt")
-				if err := os.WriteFile(pairedUntracked, []byte("new"), 0o644); err != nil {
-					t.Fatalf("write untracked paired-side file: %v", err)
+			name: "DirtyBothSides",
+			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) {
+				writeUntracked(t, h.PrimeWorktree())
+				writeUntracked(t, h.PrimeWeft())
+			},
+			want: []preflight.CheckID{preflight.CheckWorktreeClean},
+		},
+		{
+			name: "FabricNotReady",
+			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) {
+				if err := os.RemoveAll(h.PrimeWeft()); err != nil {
+					t.Fatalf("remove paired-sibling worktree: %v", err)
 				}
 			},
+			want: []preflight.CheckID{preflight.CheckFabricReady},
+		},
+		{
+			name: "BranchMismatch",
+			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) {
+				gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-b", "code-only")
+			},
+			want: []preflight.CheckID{preflight.CheckFabricSync},
+		},
+		{
+			name: "ConfigLoadFailed",
+			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) {
+				configPath := configengine.ConfigFile(fabricengine.BoardDir(h.Location.HubPath), "fabric")
+				if err := os.WriteFile(configPath, []byte("not: [valid: yaml"), 0o644); err != nil {
+					t.Fatalf("corrupt repo-wide fabric config: %v", err)
+				}
+			},
+			want: []preflight.CheckID{preflight.CheckJunction},
+		},
+		{
+			name: "DirtyAndBranchDiverged",
+			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) {
+				writeUntracked(t, h.PrimeWorktree())
+				gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-b", "code-only")
+			},
+			want: []preflight.CheckID{preflight.CheckWorktreeClean, preflight.CheckFabricSync},
 		},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			h, _ := setupFixture(t)
-			tt.dirty(t, h)
-
-			report, err := preflight.CheckResolved(h.Location)
-			if err != nil {
-				t.Fatalf("CheckResolved: %v", err)
-			}
-			assertCheckSet(t, report, preflight.CheckWorktreeClean)
-		})
-	}
-}
-
-// TestCheckResolved_FabricNotReady asserts that a removed paired-sibling worktree reports
-// fabric-ready.
-func TestCheckResolved_FabricNotReady(t *testing.T) {
-	t.Parallel()
-
-	h, _ := setupFixture(t)
-
-	if err := os.RemoveAll(h.PrimeWeft()); err != nil {
-		t.Fatalf("remove paired-sibling worktree: %v", err)
-	}
-
-	report, err := preflight.CheckResolved(h.Location)
-	if err != nil {
-		t.Fatalf("CheckResolved: %v", err)
-	}
-	assertCheckSet(t, report, preflight.CheckFabricReady)
-}
-
-// TestCheckResolved_BranchMismatch asserts that a branch mismatch classifies as CheckFabricSync,
-// not CheckJunction.
-func TestCheckResolved_BranchMismatch(t *testing.T) {
-	t.Parallel()
-
-	h, _ := setupFixture(t)
-
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-b", "code-only")
-
-	report, err := preflight.CheckResolved(h.Location)
-	if err != nil {
-		t.Fatalf("CheckResolved: %v", err)
-	}
-	assertCheckSet(t, report, preflight.CheckFabricSync)
-}
-
-// TestCheckResolved_BrokenJunction asserts that all three of Healthy's junction-drift shapes —
-// missing, not-a-link, and points-elsewhere — classify as junction, via Healthy's typed Cause
-// rather than a substring match.
-// Each drift shape is exercised against BOTH junctions (_lyx and a second, non-_lyx junction) so the
-// classification is proven to hold for the second, non-_lyx junction too — not just the one Healthy's
-// underlying loop was originally written and tested against.
-func TestCheckResolved_BrokenJunction(t *testing.T) {
-	t.Parallel()
 
 	shapes := []struct {
 		name    string
 		corrupt func(t *testing.T, codeLink string)
 	}{
 		{
-			name: "Missing",
-			corrupt: func(t *testing.T, codeLink string) {
-				if err := fslink.Remove(codeLink); err != nil {
-					t.Fatalf("remove junction %s: %v", codeLink, err)
-				}
-			},
+			name:    "Missing",
+			corrupt: func(t *testing.T, codeLink string) { replaceJunction(t, codeLink, func() {}) },
 		},
 		{
 			name: "NotALink",
 			corrupt: func(t *testing.T, codeLink string) {
-				if err := fslink.Remove(codeLink); err != nil {
-					t.Fatalf("remove junction %s: %v", codeLink, err)
-				}
-				if err := os.Mkdir(codeLink, 0o755); err != nil {
-					t.Fatalf("mkdir real dir in junction's place %s: %v", codeLink, err)
-				}
+				replaceJunction(t, codeLink, func() {
+					if err := os.Mkdir(codeLink, 0o755); err != nil {
+						t.Fatalf("mkdir real dir in junction's place %s: %v", codeLink, err)
+					}
+				})
 			},
 		},
 		{
 			name: "PointsElsewhere",
 			corrupt: func(t *testing.T, codeLink string) {
-				if err := fslink.Remove(codeLink); err != nil {
-					t.Fatalf("remove junction %s: %v", codeLink, err)
-				}
-				wrongTarget := filepath.Join(filepath.Dir(codeLink), "not-the-fabric-junction-dir")
-				if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
-					t.Fatalf("mkdir wrong target %s: %v", wrongTarget, err)
-				}
-				if err := fslink.CreateDirLink(codeLink, wrongTarget); err != nil {
-					t.Fatalf("CreateDirLink(%s, %s): %v", codeLink, wrongTarget, err)
-				}
+				replaceJunction(t, codeLink, func() {
+					wrongTarget := filepath.Join(filepath.Dir(codeLink), "not-the-fabric-junction-dir")
+					if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
+						t.Fatalf("mkdir wrong target %s: %v", wrongTarget, err)
+					}
+					if err := fslink.CreateDirLink(codeLink, wrongTarget); err != nil {
+						t.Fatalf("CreateDirLink(%s, %s): %v", codeLink, wrongTarget, err)
+					}
+				})
 			},
 		},
 	}
-
 	junctions := []struct {
 		name    string
 		linkFor func(h *hubforge.Hub, slug string) string
@@ -326,45 +397,32 @@ func TestCheckResolved_BrokenJunction(t *testing.T) {
 			},
 		},
 	}
-
 	for _, j := range junctions {
-		for _, tt := range shapes {
-			t.Run(j.name+"_"+tt.name, func(t *testing.T) {
-				t.Parallel()
-
-				h, slug := setupFixture(t)
-				codeLink := j.linkFor(h, slug)
-				tt.corrupt(t, codeLink)
-
-				report, err := preflight.CheckResolved(h.Location)
-				if err != nil {
-					t.Fatalf("CheckResolved: %v", err)
-				}
-				assertCheckSet(t, report, preflight.CheckJunction)
+		for _, shape := range shapes {
+			rows = append(rows, row{
+				name: "BrokenJunction_" + j.name + "_" + shape.name,
+				corrupt: func(t *testing.T, h *hubforge.Hub, slug string) {
+					shape.corrupt(t, j.linkFor(h, slug))
+				},
+				want: []preflight.CheckID{preflight.CheckJunction},
 			})
 		}
 	}
-}
 
-// TestCheckResolved_ConfigLoadFailed asserts the CauseConfigLoadFailed/CheckJunction equivalence
-// pinned by healthy-typed-reason: a repo-wide fabric.yaml that fails to load classifies as
-// CheckJunction (not a distinct CheckID of its own), same as the three junction-drift shapes
-// TestCheckResolved_BrokenJunction covers.
-func TestCheckResolved_ConfigLoadFailed(t *testing.T) {
-	t.Parallel()
+	for _, tt := range rows {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	h, _ := setupFixture(t)
+			h, slug := setupFixture(t)
+			tt.corrupt(t, h, slug)
 
-	configPath := configengine.ConfigFile(fabricengine.BoardDir(h.Location.HubPath), "fabric")
-	if err := os.WriteFile(configPath, []byte("not: [valid: yaml"), 0o644); err != nil {
-		t.Fatalf("corrupt repo-wide fabric config: %v", err)
+			report, err := preflight.CheckResolved(h.Location)
+			if err != nil {
+				t.Fatalf("CheckResolved: %v", err)
+			}
+			assertCheckSet(t, report, tt.want...)
+		})
 	}
-
-	report, err := preflight.CheckResolved(h.Location)
-	if err != nil {
-		t.Fatalf("CheckResolved: %v", err)
-	}
-	assertCheckSet(t, report, preflight.CheckJunction)
 }
 
 // TestCheckResolved_MissingOptionalJunctionIsAJunctionFault covers a worktree whose optional
@@ -430,103 +488,10 @@ func TestCheckResolved_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
 	assertCheckSet(t, report)
 }
 
-// TestCheck_SubpathAnchoredHubIsNotRejected asserts that a legitimately subpath-anchored repo is
-// validated on its merits rather than short-circuited.
-func TestCheck_SubpathAnchoredHubIsNotRejected(t *testing.T) {
-	t.Parallel()
-
-	h, _ := setupFixture(t)
-
-	sub := filepath.Join(h.PrimeWorktree(), "sub")
-	if err := os.Mkdir(sub, 0o755); err != nil {
-		t.Fatalf("mkdir %s: %v", sub, err)
-	}
-
-	anchorPath := filepath.Join(fabricengine.BoardDir(h.Location.HubPath), lyxcwd.AnchorFileName)
-	if err := os.WriteFile(anchorPath, []byte("sub"), 0o644); err != nil {
-		t.Fatalf("write %s: %v", anchorPath, err)
-	}
-
-	report, loc, err := preflight.Check(sub)
-	if err != nil {
-		t.Fatalf("Check: %v", err)
-	}
-	if loc == nil {
-		t.Fatalf("Check() *lyxcwd.Location = nil; want non-nil")
-	}
-	for _, failure := range report.Failures {
-		if failure.Check == preflight.CheckGeometry {
-			t.Errorf("Check() on a subpath-anchored hub reported %q: %s; want the anchor treated as legal geometry",
-				failure.Check, failure.Reason)
-		}
-	}
-}
-
-// TestCheckResolved_MultipleSimultaneousFailures asserts that independently tripped checks (a dirty
-// code side and a branch-diverged pair) are both collected into one Report rather than the first
-// short-circuiting the rest.
-func TestCheckResolved_MultipleSimultaneousFailures(t *testing.T) {
-	t.Parallel()
-
-	h, _ := setupFixture(t)
-
-	untracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
-	if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
-		t.Fatalf("write untracked file: %v", err)
-	}
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-b", "code-only")
-
-	report, err := preflight.CheckResolved(h.Location)
-	if err != nil {
-		t.Fatalf("CheckResolved: %v", err)
-	}
-	assertCheckSet(t, report, preflight.CheckWorktreeClean, preflight.CheckFabricSync)
-}
-
-// TestPredicates_HealthyPair asserts both predicates' positive path against the ordinary healthy
-// pair the fixture builds.
-// Wired is a newly exported predicate with no consumer in this task -- T7 and T8 are its first
-// callers -- so without this row its true branch ships exercised only indirectly, through the
-// fabricengine.Ready call inside CheckResolved.
-func TestPredicates_HealthyPair(t *testing.T) {
-	t.Parallel()
-
-	h, _ := setupFixture(t)
-	cwd := h.PrimeWorktree()
-
-	loc, ok := preflight.Wired(cwd)
-	if !ok || loc == nil {
-		t.Errorf("Wired(%s) = (%v, %v); want (non-nil, true)", cwd, loc, ok)
-	}
-
-	loc, ok = preflight.HubPresent(cwd)
-	if !ok || loc == nil {
-		t.Errorf("HubPresent(%s) = (%v, %v); want (non-nil, true)", cwd, loc, ok)
-	}
-}
-
-// TestPredicates_AtBoard pins why both predicates ship: with cwd at <hub>/_board, HubPresent returns
-// true (the hub-level lyx directory exists there) but Wired returns false (fabricengine.Ready
-// probes the paired sibling of the current worktree, not the hub, and _board has none).
-func TestPredicates_AtBoard(t *testing.T) {
-	t.Parallel()
-
-	h, _ := setupFixture(t)
-	board := h.BoardDir()
-
-	if _, ok := preflight.Wired(board); ok {
-		t.Errorf("Wired(%s) = true; want false", board)
-	}
-
-	loc, ok := preflight.HubPresent(board)
-	if !ok || loc == nil {
-		t.Errorf("HubPresent(%s) = (%v, %v); want (non-nil, true)", board, loc, ok)
-	}
-}
-
-// TestResolveMode pins ResolveMode's full seven-row hub/standalone/refuse table. Rows three and
-// five are the pair the design's r4 review exposed: both arrive as lyxcwd.ErrCwdOutsideAnchor from
-// lyxcwd.Resolve and must diverge -- see each row's own comment below.
+// TestResolveMode pins ResolveMode's standalone and refuse rows (its hub row is a step of
+// TestHealthyHub). PlainRepoSubdirectory and RefuseWiredWorktreeSubdirectory are the pair the
+// design's r4 review exposed: both arrive as lyxcwd.ErrCwdOutsideAnchor from lyxcwd.Resolve and must
+// diverge -- see each row's own comment below.
 func TestResolveMode(t *testing.T) {
 	t.Parallel()
 
@@ -588,24 +553,6 @@ func TestResolveMode(t *testing.T) {
 		}
 		if loc != nil {
 			t.Errorf("ResolveMode(%s) Location = %+v; want nil", sub, loc)
-		}
-	})
-
-	t.Run("WiredHubWorktreeAtAnchor", func(t *testing.T) {
-		t.Parallel()
-
-		h, _ := setupFixture(t)
-		cwd := h.PrimeWorktree()
-
-		loc, mode, err := preflight.ResolveMode(cwd)
-		if err != nil {
-			t.Fatalf("ResolveMode(%s) error = %v; want nil", cwd, err)
-		}
-		if mode != preflight.ModeHub {
-			t.Errorf("ResolveMode(%s) mode = %v; want ModeHub", cwd, mode)
-		}
-		if loc == nil {
-			t.Errorf("ResolveMode(%s) Location = nil; want non-nil", cwd)
 		}
 	})
 

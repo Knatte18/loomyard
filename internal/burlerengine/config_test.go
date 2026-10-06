@@ -43,48 +43,63 @@ func loadSeededConfig(t *testing.T) Config {
 	return cfg
 }
 
-func TestLoadConfig_AbsentFileYieldsZeroConfig(t *testing.T) {
-	baseDir := t.TempDir()
+// TestLoadConfig covers LoadConfig's three non-template outcomes: an absent file and a
+// comments-only file both yield the zero Config, and an unknown top-level field is rejected with a
+// burler:-prefixed decode error.
+func TestLoadConfig(t *testing.T) {
+	t.Parallel()
 
-	cfg, err := LoadConfig(baseDir)
-	if err != nil {
-		t.Fatalf("LoadConfig(absent) returned unexpected error: %v", err)
+	tests := []struct {
+		name     string
+		contents string
+		write    bool
+		wantErr  bool
+	}{
+		{name: "absent file yields zero config"},
+		{name: "empty file yields zero config", contents: "# comments only, no entries\n", write: true},
+		{name: "unknown top-level field is rejected", contents: "weight: 5\n", write: true, wantErr: true},
 	}
-	if len(cfg.Lenses) != 0 || len(cfg.Fans) != 0 {
-		t.Errorf("LoadConfig(absent) = %+v; want zero Config", cfg)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir := t.TempDir()
+			if tt.write {
+				writeBurlerYAML(t, baseDir, tt.contents)
+			}
+
+			cfg, err := LoadConfig(baseDir)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("LoadConfig() returned nil error; want a decode error")
+				}
+				if !strings.HasPrefix(err.Error(), "burler: ") {
+					t.Errorf("LoadConfig() error = %q; want prefix \"burler: \"", err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadConfig() returned unexpected error: %v", err)
+			}
+			if len(cfg.Lenses) != 0 || len(cfg.Fans) != 0 {
+				t.Errorf("LoadConfig() = %+v; want zero Config", cfg)
+			}
+		})
 	}
 }
 
-func TestLoadConfig_EmptyFileYieldsZeroConfig(t *testing.T) {
-	baseDir := t.TempDir()
-	writeBurlerYAML(t, baseDir, "# comments only, no entries\n")
+// TestConfigTemplate_DecodesAndIsSelfConsistent proves the embedded seed template is itself valid
+// burler.yaml content -- it decodes cleanly through LoadConfig's own strict decode path, the same
+// one every real hub's seeded file goes through -- and that its internal cross-references and
+// lengths hold: both seeded fans exist, every fan entry names a defined lens, and no lens carries
+// hard-exclusion phrasing.
+// The spike (docs/research/session-fork-spike.md, Q2) found "ignore everything else" lenses
+// measurably suppressed cross-category coverage, so every lens is emphasis-only by design.
+//
+//testtiming:keep pins the seeded lens and fan counts, the defined-lens cross-references and the no-"ignore " phrasing, which the ResolveFan test covering its blocks does not assert
+func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
+	t.Parallel()
 
-	cfg, err := LoadConfig(baseDir)
-	if err != nil {
-		t.Fatalf("LoadConfig(comments-only) returned unexpected error: %v", err)
-	}
-	if len(cfg.Lenses) != 0 || len(cfg.Fans) != 0 {
-		t.Errorf("LoadConfig(comments-only) = %+v; want zero Config", cfg)
-	}
-}
-
-func TestLoadConfig_RejectsUnknownTopLevelField(t *testing.T) {
-	baseDir := t.TempDir()
-	writeBurlerYAML(t, baseDir, "weight: 5\n")
-
-	_, err := LoadConfig(baseDir)
-	if err == nil {
-		t.Fatal("LoadConfig(unknown field) returned nil error; want a decode error")
-	}
-	if !strings.HasPrefix(err.Error(), "burler: ") {
-		t.Errorf("LoadConfig(unknown field) error = %q; want prefix \"burler: \"", err.Error())
-	}
-}
-
-// TestConfigTemplate_DecodesThroughLoadConfig proves the embedded seed template is itself valid
-// burler.yaml content — it must decode cleanly through LoadConfig's own strict decode path, the
-// same one every real hub's seeded file goes through.
-func TestConfigTemplate_DecodesThroughLoadConfig(t *testing.T) {
 	cfg := loadSeededConfig(t)
 
 	const wantLenses = 9
@@ -95,21 +110,6 @@ func TestConfigTemplate_DecodesThroughLoadConfig(t *testing.T) {
 	if len(cfg.Fans) != wantFans {
 		t.Errorf("seeded template has %d fans; want %d", len(cfg.Fans), wantFans)
 	}
-	for _, name := range []string{"standard", "full"} {
-		if _, ok := cfg.Fans[name]; !ok {
-			t.Errorf("seeded template is missing fan %q", name)
-		}
-	}
-}
-
-// TestConfigTemplate_SelfConsistency asserts the seeded template's internal cross-references and
-// lengths hold,
-// and that no lens carries hard-exclusion phrasing — the spike
-// (docs/research/session-fork-spike.md, Q2) found "ignore everything else" lenses measurably
-// suppressed cross-category coverage, so every lens is emphasis-only by design.
-func TestConfigTemplate_SelfConsistency(t *testing.T) {
-	cfg := loadSeededConfig(t)
-
 	for fanName, entries := range cfg.Fans {
 		for _, lensName := range entries {
 			if _, ok := cfg.Lenses[lensName]; !ok {
@@ -117,12 +117,14 @@ func TestConfigTemplate_SelfConsistency(t *testing.T) {
 			}
 		}
 	}
-
-	if got := len(cfg.Fans["standard"]); got != 5 {
-		t.Errorf("fan \"standard\" has %d entries; want 5", got)
-	}
-	if got := len(cfg.Fans["full"]); got != 8 {
-		t.Errorf("fan \"full\" has %d entries; want 8", got)
+	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8} {
+		entries, ok := cfg.Fans[fanName]
+		if !ok {
+			t.Errorf("seeded template is missing fan %q", fanName)
+		}
+		if len(entries) != wantEntries {
+			t.Errorf("fan %q has %d entries; want %d", fanName, len(entries), wantEntries)
+		}
 	}
 
 	for name, text := range cfg.Lenses {

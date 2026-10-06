@@ -7,7 +7,6 @@
 package preflightshed
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -15,7 +14,13 @@ import (
 
 // TestFormatFailures covers the rendering the Stuck log line carries: every determined failure, each
 // as "check: reason", so no violation is silently dropped from the one account a human gets.
+// A Failure whose Check is a CheckID this package does not itself declare is carried through
+// verbatim rather than mapped, so a check added elsewhere still reaches the operator.
+//
+//testtiming:keep pins the exact "check: reason" rendering and its separators, which the broken-precondition test covering its blocks only reaches through one failure
 func TestFormatFailures(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		report preflight.Report
@@ -41,25 +46,21 @@ func TestFormatFailures(t *testing.T) {
 			}},
 			want: "geometry: no main worktree; worktree-clean: records side has 2 dirty paths",
 		},
+		{
+			name: "UnrecognisedCheckIDIsCarriedVerbatim",
+			report: preflight.Report{Failures: []preflight.Failure{
+				{Check: preflight.CheckID("some-future-check"), Reason: "whatever it found"},
+			}},
+			want: "some-future-check: whatever it found",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := formatFailures(tt.report); got != tt.want {
 				t.Errorf("formatFailures(%+v) = %q; want %q", tt.report, got, tt.want)
 			}
 		})
-	}
-}
-
-// TestFormatFailures_NamesEveryCheckID guards the rendering against a Failure whose Check is a
-// CheckID this package does not itself declare: the value is carried through verbatim rather than
-// mapped, so a check added elsewhere still reaches the operator.
-func TestFormatFailures_NamesEveryCheckID(t *testing.T) {
-	got := formatFailures(preflight.Report{Failures: []preflight.Failure{
-		{Check: preflight.CheckID("some-future-check"), Reason: "whatever it found"},
-	}})
-	if !strings.Contains(got, "some-future-check") {
-		t.Errorf("formatFailures() = %q; want it to carry an unrecognised check ID verbatim", got)
 	}
 }

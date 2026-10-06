@@ -63,71 +63,70 @@ func setupPreflightWrapperFixture(t *testing.T) *hubforge.Hub {
 	return h
 }
 
-// TestPreflight_AllPreconditionsPass asserts that a fixture whose preconditions all pass yields
-// shedengine.Done.
-func TestPreflight_AllPreconditionsPass(t *testing.T) {
+// TestPreflight_Scenario is a scenario over one fixture hub, run as named steps in one order:
+// preconditions that all pass yield shedengine.Done, a call on an already-cancelled context returns
+// an error with no verdict, and a deliberately broken precondition -- an untracked file left in the
+// prime worktree, failing the worktree cleanliness check -- yields shedengine.Stuck with its way
+// forward, after which clearing the dirt lets the same row proceed.
+// The steps share one hub, so the test is parallel as a whole and no step is.
+// The last step relies on being last: it dirties the worktree the earlier steps need clean.
+//
+// The cancelled step is Tier 2, not Tier 1, because preflight.Check reaches lyxcwd.Resolve's git
+// spawn unconditionally, so every path that calls Check at all is Tier 2 regardless of what it
+// returns -- the producer holds no injectable seam between entryErr and the Check call that would
+// let it run without a real fixture.
+func TestPreflight_Scenario(t *testing.T) {
 	t.Parallel()
 
 	h := setupPreflightWrapperFixture(t)
-
 	p := NewPreflight("Preflight", h.PrimeWorktree())
-	shedfake.RequireOutcome(t, p, shedengine.Done)
-}
 
-// TestPreflight_BrokenPreconditionMapsToStuck asserts that a fixture with a deliberately broken
-// precondition -- an untracked file left in the prime worktree, failing the worktree cleanliness
-// check -- yields shedengine.Stuck.
-func TestPreflight_BrokenPreconditionMapsToStuck(t *testing.T) {
-	t.Parallel()
-
-	h := setupPreflightWrapperFixture(t)
-
-	untracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
-	if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
-		t.Fatalf("write untracked file: %v", err)
+	if !t.Run("all preconditions pass", func(t *testing.T) {
+		shedfake.RequireOutcome(t, p, shedengine.Done)
+	}) {
+		return
 	}
 
-	p := NewPreflight("Preflight", h.PrimeWorktree())
-	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	report, _, cerr := preflight.Check(h.PrimeWorktree())
-	if cerr != nil {
-		t.Fatalf("preflight.Check error = %v; want nil", cerr)
-	}
-	if want := "preconditions not met: " + formatFailures(report) + wayForward(report); ptr.Reason != want {
-		t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
-	}
-	if !strings.Contains(ptr.Reason, "way forward: commit or stash the code changes with git") {
-		t.Errorf("Call() Reason = %q; want the worktree-clean way forward", ptr.Reason)
+	if !t.Run("cancelled context returns an error, not a verdict", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		outcome, _, err := p.Call(ctx)
+		if err == nil {
+			t.Fatalf("Call(cancelled) error = nil; want non-nil error")
+		}
+		if outcome == shedengine.Done || outcome == shedengine.Stuck {
+			t.Errorf("Call(cancelled) outcome = %q; want no verdict alongside a cancellation error", outcome)
+		}
+	}) {
+		return
 	}
 
-	// Taking the way forward (clearing the dirt) lets the same row proceed.
-	if err := os.Remove(untracked); err != nil {
-		t.Fatalf("remove untracked file: %v", err)
-	}
-	outcome, _, err := p.Call(context.Background())
-	if err != nil || outcome != shedengine.Done {
-		t.Errorf("re-step Call() = (%q, %v); want Done once the worktree is clean", outcome, err)
-	}
-}
+	t.Run("broken precondition maps to Stuck and the way forward clears it", func(t *testing.T) {
+		untracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
+		if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
+			t.Fatalf("write untracked file: %v", err)
+		}
 
-// TestPreflight_CancelledDuringRunReturnsError is Tier 2, not Tier 1, because preflight.Check
-// reaches lyxcwd.Resolve's git spawn unconditionally, so every path that calls Check at all is
-// Tier 2 regardless of what it returns -- the producer holds no injectable seam between entryErr
-// and the Check call that would let this case run without a real fixture.
-func TestPreflight_CancelledDuringRunReturnsError(t *testing.T) {
-	t.Parallel()
+		ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
+		report, _, cerr := preflight.Check(h.PrimeWorktree())
+		if cerr != nil {
+			t.Fatalf("preflight.Check error = %v; want nil", cerr)
+		}
+		if want := "preconditions not met: " + formatFailures(report) + wayForward(report); ptr.Reason != want {
+			t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
+		}
+		if !strings.Contains(ptr.Reason, "way forward: commit or stash the code changes with git") {
+			t.Errorf("Call() Reason = %q; want the worktree-clean way forward", ptr.Reason)
+		}
 
-	h := setupPreflightWrapperFixture(t)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	p := NewPreflight("Preflight", h.PrimeWorktree())
-	outcome, _, err := p.Call(ctx)
-	if err == nil {
-		t.Fatalf("Call(cancelled) error = nil; want non-nil error")
-	}
-	if outcome == shedengine.Done || outcome == shedengine.Stuck {
-		t.Errorf("Call(cancelled) outcome = %q; want no verdict alongside a cancellation error", outcome)
-	}
+		// Taking the way forward (clearing the dirt) lets the same row proceed.
+		if err := os.Remove(untracked); err != nil {
+			t.Fatalf("remove untracked file: %v", err)
+		}
+		outcome, _, err := p.Call(context.Background())
+		if err != nil || outcome != shedengine.Done {
+			t.Errorf("re-step Call() = (%q, %v); want Done once the worktree is clean", outcome, err)
+		}
+	})
 }
