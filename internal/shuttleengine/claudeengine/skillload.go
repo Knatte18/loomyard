@@ -1,4 +1,5 @@
-// skillload.go implements Claude's one-turn skill load: one typed message asks the model to load a list of skills through the Skill tool, and the transcript a Stop payload names says which loads happened.
+// skillload.go implements Claude's one-turn skill load: one typed message asks the model to load a list of skills through the Skill tool,
+// and the transcript a Stop payload names says which loads happened.
 // The check reads the transcript backward through readBackward and degrades to an unverified report on every failure and never errors, since the transcript format is a Claude Code internal.
 // All message text and transcript shape knowledge stays in this file, per the Shuttle Provider-Seam Invariant.
 package claudeengine
@@ -21,7 +22,8 @@ func (c *Claude) SkillLoadMessage(skills []string) string {
 }
 
 // ClassifySkillLoad classifies the load of skills asked by SkillLoadMessage from the transcript turnEnd's transcript_path names.
-// The latest main-chain user entry equal to the load message starts the turn, and only main-chain entries after it count.
+// The latest main-chain user entry equal to the load message starts the turn,
+// and only main-chain entries after it count.
 // A skill is loaded when its Skill call is answered by a successful result, unknown when that result is an error or the latest skill listing does not name it, and missing otherwise.
 // The report is unverified for a missing transcript_path, an unreadable file, a transcript with no matching load message, or one with no skill listing.
 func (c *Claude) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) shuttleengine.SkillLoadReport {
@@ -110,7 +112,8 @@ func (e loadEntry) resultSucceeded() bool {
 }
 
 // classifyWindow classifies the load of skills in the complete lines of data, which end at the transcript end.
-// It reports found false when the window holds no load message or no skill listing yet, so the caller widens the window.
+// It reports found false when the window holds no load message or no skill listing yet,
+// so the caller widens the window.
 func classifyWindow(data []byte, message string, skills []string) (shuttleengine.SkillLoadReport, bool) {
 	var entries []loadEntry
 	for _, line := range bytes.Split(data, []byte{'\n'}) {
