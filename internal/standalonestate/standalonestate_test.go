@@ -1,5 +1,7 @@
 // standalonestate_test.go drives both platform rows of derive through its unexported seam, so
 // runtime.GOOS being a compile-time constant never leaves one row unexercised in CI.
+// A test that changes the working directory with t.Chdir cannot run in parallel; the one such test
+// names that process-global state, and every other test here runs in parallel.
 
 package standalonestate
 
@@ -9,131 +11,25 @@ import (
 	"testing"
 )
 
-// TestDerive_WindowsRow pins that the Windows branch consults localAppData for stateDir, leaving
-// the exact separator to path/filepath rather than a literal backslash string.
-func TestDerive_WindowsRow(t *testing.T) {
-	stateDir, hash8, err := derive("windows", "/localappdata", "", "", "/abs/target")
-	if err != nil {
-		t.Fatalf("derive() error = %v; want nil", err)
-	}
-	want := filepath.Join("/localappdata", "lyx", hash8)
-	if stateDir != want {
-		t.Errorf("derive() stateDir = %q; want %q", stateDir, want)
-	}
-}
-
-// TestDerive_NonWindowsRow_XDGStateHomeSet pins that the non-Windows branch consults
-// xdgStateHome for stateDir and never consults localAppData.
-func TestDerive_NonWindowsRow_XDGStateHomeSet(t *testing.T) {
-	stateDir, hash8, err := derive("linux", "/should-be-ignored", "/xdgstate", "", "/abs/target")
-	if err != nil {
-		t.Fatalf("derive() error = %v; want nil", err)
-	}
-	want := filepath.Join("/xdgstate", "lyx", hash8)
-	if stateDir != want {
-		t.Errorf("derive() stateDir = %q; want %q", stateDir, want)
-	}
-}
-
-// TestDerive_NonWindowsRow_XDGStateHomeUnset pins the fallback to home/.local/state/lyx/hash8
-// when xdgStateHome is empty.
-func TestDerive_NonWindowsRow_XDGStateHomeUnset(t *testing.T) {
-	stateDir, hash8, err := derive("linux", "", "", "/home/user", "/abs/target")
-	if err != nil {
-		t.Fatalf("derive() error = %v; want nil", err)
-	}
-	want := filepath.Join("/home/user", ".local", "state", "lyx", hash8)
-	if stateDir != want {
-		t.Errorf("derive() stateDir = %q; want %q", stateDir, want)
-	}
-}
-
-// TestDerive_WindowsRow_MissingLocalAppData pins that an empty localAppData on the Windows
-// branch is an error.
-func TestDerive_WindowsRow_MissingLocalAppData(t *testing.T) {
-	_, _, err := derive("windows", "", "", "/home/user", "/abs/target")
-	if err == nil {
-		t.Error("derive() error = nil; want non-nil for empty localAppData on windows")
-	}
-}
-
-// TestDerive_NonWindowsRow_MissingStateHome pins that an empty xdgStateHome and an empty home
-// together are an error on the non-Windows branch.
-func TestDerive_NonWindowsRow_MissingStateHome(t *testing.T) {
-	_, _, err := derive("linux", "/localappdata", "", "", "/abs/target")
-	if err == nil {
-		t.Error("derive() error = nil; want non-nil for empty xdgStateHome and empty home")
-	}
-}
-
-// TestDerive_CaseFold pins that two spellings of one path differing only in case hash identically
-// under goos == "windows" and differently under goos == "linux".
-func TestDerive_CaseFold(t *testing.T) {
-	_, lowerWin, err := derive("windows", "/localappdata", "", "", "/abs/Target")
-	if err != nil {
-		t.Fatalf("derive() error = %v; want nil", err)
-	}
-	_, upperWin, err := derive("windows", "/localappdata", "", "", "/abs/TARGET")
-	if err != nil {
-		t.Fatalf("derive() error = %v; want nil", err)
-	}
-	if lowerWin != upperWin {
-		t.Errorf("derive() hash8 windows = %q, %q; want equal (case-folded)", lowerWin, upperWin)
-	}
-
-	_, lowerLinux, err := derive("linux", "", "", "/home/user", "/abs/Target")
-	if err != nil {
-		t.Fatalf("derive() error = %v; want nil", err)
-	}
-	_, upperLinux, err := derive("linux", "", "", "/home/user", "/abs/TARGET")
-	if err != nil {
-		t.Fatalf("derive() error = %v; want nil", err)
-	}
-	if lowerLinux == upperLinux {
-		t.Errorf("derive() hash8 linux = %q, %q; want different (case-sensitive)", lowerLinux, upperLinux)
-	}
-}
-
-// TestDerive_RelativeTargetRejected pins that a relative target is rejected under both goos
-// values, and that the outcome does not vary with the test process' working directory -- the
-// function must never consult it.
-func TestDerive_RelativeTargetRejected(t *testing.T) {
-	for _, goos := range []string{"windows", "linux"} {
-		t.Run(goos, func(t *testing.T) {
-			_, _, err := derive(goos, "/localappdata", "/xdgstate", "/home/user", "relative/target")
-			if err == nil {
-				t.Errorf("derive(%q) error = nil; want non-nil for relative target", goos)
-			}
-
-			originalWD, wdErr := os.Getwd()
-			if wdErr != nil {
-				t.Fatalf("os.Getwd() error = %v", wdErr)
-			}
-			t.Chdir(t.TempDir())
-			_, _, errAfterChdir := derive(goos, "/localappdata", "/xdgstate", "/home/user", "relative/target")
-			t.Chdir(originalWD)
-			if (errAfterChdir == nil) != (err == nil) {
-				t.Errorf("derive(%q) outcome changed with cwd: before=%v, after=%v", goos, err, errAfterChdir)
-			}
-		})
-	}
-}
-
-// TestDerive_RelativeEnvironmentBase is the regression guard for the R4 review's R4-08: derive
-// validated target for absoluteness but never the environment-supplied base it joined onto, so a
-// relative XDG_STATE_HOME (or LOCALAPPDATA, or home) produced a RELATIVE stateDir -- which the
-// standalone CLIs then resolved against the process working directory, i.e. the operator's own
-// repository, writing lyx state and trace logs inside the very checkout standalonegeom.LogsDir
-// exists to keep them out of. Reproduced live as
-// `XDG_STATE_HOME=.relstate lyx burler run` creating <repo>/.relstate/lyx/<hash8>/.
+// TestDerive_StateDir pins which base each platform row of derive joins "lyx" and hash8 onto, and
+// which environments it refuses.
+// The Windows branch consults localAppData, the leaf separator being left to path/filepath rather
+// than a literal backslash string; the non-Windows branch consults xdgStateHome, then home, and
+// never consults localAppData.
 //
+// It is also the regression guard for the R4 review's R4-08: derive validated target for
+// absoluteness but never the environment-supplied base it joined onto, so a relative XDG_STATE_HOME
+// (or LOCALAPPDATA, or home) produced a RELATIVE stateDir -- which the standalone CLIs then resolved
+// against the process working directory, i.e. the operator's own repository, writing lyx state and
+// trace logs inside the very checkout standalonegeom.LogsDir exists to keep them out of.
+// Reproduced live as `XDG_STATE_HOME=.relstate lyx burler run` creating <repo>/.relstate/lyx/<hash8>/.
 // The three bases answer a relative value differently because their specifications do: a relative
 // XDG_STATE_HOME is ignored per the XDG Base Directory specification, while a relative LOCALAPPDATA
 // or home has no fallback left and is refused.
-//
-// Every row asserts the outcome is either an error or an ABSOLUTE stateDir, which is the property
-// that actually matters; wantStateDir pins where the surviving rows land.
-func TestDerive_RelativeEnvironmentBase(t *testing.T) {
+// Every surviving row asserts an ABSOLUTE stateDir, which is the property that actually matters.
+func TestDerive_StateDir(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name         string
 		goos         string
@@ -143,6 +39,39 @@ func TestDerive_RelativeEnvironmentBase(t *testing.T) {
 		wantErr      bool
 		wantStateDir func(hash8 string) string
 	}{
+		{
+			name:         "windows consults localAppData",
+			goos:         "windows",
+			localAppData: "/localappdata",
+			wantStateDir: func(hash8 string) string { return filepath.Join("/localappdata", "lyx", hash8) },
+		},
+		{
+			name:         "non-windows consults xdgStateHome and never localAppData",
+			goos:         "linux",
+			localAppData: "/should-be-ignored",
+			xdgStateHome: "/xdgstate",
+			wantStateDir: func(hash8 string) string { return filepath.Join("/xdgstate", "lyx", hash8) },
+		},
+		{
+			name: "non-windows falls back to home/.local/state when xdgStateHome is empty",
+			goos: "linux",
+			home: "/home/user",
+			wantStateDir: func(hash8 string) string {
+				return filepath.Join("/home/user", ".local", "state", "lyx", hash8)
+			},
+		},
+		{
+			name:    "windows with an empty localAppData is an error",
+			goos:    "windows",
+			home:    "/home/user",
+			wantErr: true,
+		},
+		{
+			name:         "non-windows with an empty xdgStateHome and an empty home is an error",
+			goos:         "linux",
+			localAppData: "/localappdata",
+			wantErr:      true,
+		},
 		{
 			name:         "relative XDG_STATE_HOME ignored in favour of home",
 			goos:         "linux",
@@ -165,15 +94,13 @@ func TestDerive_RelativeEnvironmentBase(t *testing.T) {
 			name:         "relative XDG_STATE_HOME with no home left to fall back on",
 			goos:         "linux",
 			xdgStateHome: ".relstate",
-			home:         "",
 			wantErr:      true,
 		},
 		{
-			name:         "relative home refused",
-			goos:         "linux",
-			xdgStateHome: "",
-			home:         "relative/home",
-			wantErr:      true,
+			name:    "relative home refused",
+			goos:    "linux",
+			home:    "relative/home",
+			wantErr: true,
 		},
 		{
 			name:         "relative LOCALAPPDATA refused",
@@ -187,14 +114,14 @@ func TestDerive_RelativeEnvironmentBase(t *testing.T) {
 			goos:         "linux",
 			xdgStateHome: "/xdgstate",
 			home:         "/home/user",
-			wantStateDir: func(hash8 string) string {
-				return filepath.Join("/xdgstate", "lyx", hash8)
-			},
+			wantStateDir: func(hash8 string) string { return filepath.Join("/xdgstate", "lyx", hash8) },
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
 			stateDir, hash8, err := derive(c.goos, c.localAppData, c.xdgStateHome, c.home, "/abs/target")
 			if c.wantErr {
 				if err == nil {
@@ -215,62 +142,104 @@ func TestDerive_RelativeEnvironmentBase(t *testing.T) {
 	}
 }
 
-// TestDerive_RelativeEnvironmentBaseIsCwdIndependent pins the outcome of a relative environment base
-// as independent of the test process' working directory, the same way
-// TestDerive_RelativeTargetRejected does for a relative target: the whole point of R4-08's fix is
-// that no cwd anywhere can turn a relative base into a path lyx writes to.
-func TestDerive_RelativeEnvironmentBaseIsCwdIndependent(t *testing.T) {
-	before, _, err := derive("linux", "", ".relstate", "/home/user", "/abs/target")
-	if err != nil {
-		t.Fatalf("derive() error = %v; want nil", err)
-	}
+// TestDerive_Hash8 pins the identity half of derive: hash8 is eight lowercase hex digits, stable
+// across calls, taken over exactly what Normalize returns, and case-folded under windows only.
+//
+//testtiming:keep pins hash8's shape, stability, Normalize input and per-platform case folding, which the state-directory table covering its blocks never reads
+func TestDerive_Hash8(t *testing.T) {
+	t.Parallel()
 
-	originalWD, wdErr := os.Getwd()
-	if wdErr != nil {
-		t.Fatalf("os.Getwd() error = %v", wdErr)
-	}
-	t.Chdir(t.TempDir())
-	after, _, err := derive("linux", "", ".relstate", "/home/user", "/abs/target")
-	t.Chdir(originalWD)
-	if err != nil {
-		t.Fatalf("derive() after chdir error = %v; want nil", err)
-	}
-	if before != after {
-		t.Errorf("derive() stateDir changed with cwd: before=%q, after=%q", before, after)
-	}
-}
+	t.Run("shape is eight lowercase hex digits", func(t *testing.T) {
+		t.Parallel()
 
-// TestNormalize_LeavesARelativeTargetUnresolved pins the one branch of Normalize that exists purely
-// to protect the Standalonestate Leaf Invariant: filepath.EvalSymlinks resolves a relative path
-// against the process working directory, and this package never consults one, so a relative target
-// is cleaned and handed back rather than resolved.
-// The outcome is asserted from two different working directories, exactly as
-// TestDerive_RelativeTargetRejected does, because "never consults the cwd" is only demonstrated by
-// the answer not moving when the cwd does.
-func TestNormalize_LeavesARelativeTargetUnresolved(t *testing.T) {
-	const relative = "relative/./target"
+		_, hash8, err := derive("linux", "", "", "/home/user", "/abs/target")
+		if err != nil {
+			t.Fatalf("derive() error = %v; want nil", err)
+		}
+		if len(hash8) != 8 {
+			t.Fatalf("derive() hash8 = %q; want length 8, got %d", hash8, len(hash8))
+		}
+		for _, r := range hash8 {
+			isLowerHex := (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')
+			if !isLowerHex {
+				t.Errorf("derive() hash8 = %q; contains non-lowercase-hex character %q", hash8, r)
+			}
+		}
+	})
 
-	before := Normalize(relative)
-	if want := filepath.Clean(relative); before != want {
-		t.Errorf("Normalize(%q) = %q; want %q (cleaned, not resolved)", relative, before, want)
-	}
+	t.Run("stable across repeated calls", func(t *testing.T) {
+		t.Parallel()
 
-	originalWD, wdErr := os.Getwd()
-	if wdErr != nil {
-		t.Fatalf("os.Getwd() error = %v", wdErr)
-	}
-	t.Chdir(t.TempDir())
-	after := Normalize(relative)
-	t.Chdir(originalWD)
-	if before != after {
-		t.Errorf("Normalize(%q) changed with cwd: before=%q, after=%q", relative, before, after)
-	}
+		_, first, err := derive("linux", "", "", "/home/user", "/abs/target")
+		if err != nil {
+			t.Fatalf("derive() error = %v; want nil", err)
+		}
+		_, second, err := derive("linux", "", "", "/home/user", "/abs/target")
+		if err != nil {
+			t.Fatalf("derive() error = %v; want nil", err)
+		}
+		if first != second {
+			t.Errorf("derive() hash8 not stable: %q != %q", first, second)
+		}
+	})
+
+	// This is the property R4-24's fix rests on: a caller that spells the target through Normalize
+	// to build a session name is spelling it the way derive spelled it for the socket key and state
+	// directory, so the two halves of a standalone identity can never disagree.
+	t.Run("hash input is exactly what Normalize returns", func(t *testing.T) {
+		t.Parallel()
+
+		target := filepath.Join(string(filepath.Separator), "abs", "..", "abs", "target")
+		_, rawHash8, err := derive("linux", "", "", "/home/user", target)
+		if err != nil {
+			t.Fatalf("derive(%q) error = %v; want nil", target, err)
+		}
+		_, normalizedHash8, err := derive("linux", "", "", "/home/user", Normalize(target))
+		if err != nil {
+			t.Fatalf("derive(Normalize(%q)) error = %v; want nil", target, err)
+		}
+		if rawHash8 != normalizedHash8 {
+			t.Errorf("derive() hash8 raw = %q, pre-normalized = %q; want equal", rawHash8, normalizedHash8)
+		}
+	})
+
+	t.Run("case folds under windows and stays case-sensitive under linux", func(t *testing.T) {
+		t.Parallel()
+
+		_, lowerWin, err := derive("windows", "/localappdata", "", "", "/abs/Target")
+		if err != nil {
+			t.Fatalf("derive() error = %v; want nil", err)
+		}
+		_, upperWin, err := derive("windows", "/localappdata", "", "", "/abs/TARGET")
+		if err != nil {
+			t.Fatalf("derive() error = %v; want nil", err)
+		}
+		if lowerWin != upperWin {
+			t.Errorf("derive() hash8 windows = %q, %q; want equal (case-folded)", lowerWin, upperWin)
+		}
+
+		_, lowerLinux, err := derive("linux", "", "", "/home/user", "/abs/Target")
+		if err != nil {
+			t.Fatalf("derive() error = %v; want nil", err)
+		}
+		_, upperLinux, err := derive("linux", "", "", "/home/user", "/abs/TARGET")
+		if err != nil {
+			t.Fatalf("derive() error = %v; want nil", err)
+		}
+		if lowerLinux == upperLinux {
+			t.Errorf("derive() hash8 linux = %q, %q; want different (case-sensitive)", lowerLinux, upperLinux)
+		}
+	})
 }
 
 // TestNormalize_AbsentTargetFallsBackToClean pins that a target that does not exist on disk yet
 // normalizes to its cleaned self rather than failing: an unborn directory still needs a stable
 // identity, and this is the branch every hermetic test of the geometry builders relies on.
+//
+//testtiming:keep pins that Normalize cleans a target absent from disk instead of failing, which the state-directory table covering its blocks never reads
 func TestNormalize_AbsentTargetFallsBackToClean(t *testing.T) {
+	t.Parallel()
+
 	absent := filepath.Join(t.TempDir(), "never", "..", "never", "created")
 
 	if got, want := Normalize(absent), filepath.Clean(absent); got != want {
@@ -278,70 +247,106 @@ func TestNormalize_AbsentTargetFallsBackToClean(t *testing.T) {
 	}
 }
 
-// TestDerive_UsesNormalizeForItsHashInput pins that Derive's hash is taken over exactly what
-// Normalize returns, which is the property R4-24's fix rests on: a caller that spells the target
-// through Normalize to build a session name is spelling it the way Derive spelled it for the socket
-// key and state directory, so the two halves of a standalone identity can never disagree.
-func TestDerive_UsesNormalizeForItsHashInput(t *testing.T) {
-	target := filepath.Join(string(filepath.Separator), "abs", "..", "abs", "target")
+// TestRelativeInputs_NeverConsultTheWorkingDirectory pins that a relative input's outcome does not
+// vary with the test process' working directory, because "never consults the cwd" is only
+// demonstrated by the answer not moving when the cwd does.
+// A relative target is rejected under both goos values; a relative environment base is ignored
+// rather than resolved; and Normalize cleans a relative target instead of resolving it, the one
+// branch of Normalize that exists purely to protect the Standalonestate Leaf Invariant
+// (filepath.EvalSymlinks resolves a relative path against the process working directory).
+// It changes the working directory with t.Chdir, which is process-global state, so neither it nor
+// its subtests run in parallel.
+func TestRelativeInputs_NeverConsultTheWorkingDirectory(t *testing.T) {
+	const relative = "relative/./target"
 
-	_, rawHash8, err := derive("linux", "", "", "/home/user", target)
-	if err != nil {
-		t.Fatalf("derive(%q) error = %v; want nil", target, err)
+	cases := []struct {
+		name    string
+		eval    func() (string, error)
+		wantErr bool
+		want    string
+	}{
+		{
+			name: "relative target rejected under windows",
+			eval: func() (string, error) {
+				stateDir, _, err := derive("windows", "/localappdata", "/xdgstate", "/home/user", "relative/target")
+				return stateDir, err
+			},
+			wantErr: true,
+		},
+		{
+			name: "relative target rejected under linux",
+			eval: func() (string, error) {
+				stateDir, _, err := derive("linux", "/localappdata", "/xdgstate", "/home/user", "relative/target")
+				return stateDir, err
+			},
+			wantErr: true,
+		},
+		{
+			name: "relative environment base ignored",
+			eval: func() (string, error) {
+				stateDir, _, err := derive("linux", "", ".relstate", "/home/user", "/abs/target")
+				return stateDir, err
+			},
+		},
+		{
+			name: "relative target cleaned by Normalize, not resolved",
+			eval: func() (string, error) { return Normalize(relative), nil },
+			want: filepath.Clean(relative),
+		},
 	}
-	_, normalizedHash8, err := derive("linux", "", "", "/home/user", Normalize(target))
-	if err != nil {
-		t.Fatalf("derive(Normalize(%q)) error = %v; want nil", target, err)
-	}
-	if rawHash8 != normalizedHash8 {
-		t.Errorf("derive() hash8 raw = %q, pre-normalized = %q; want equal", rawHash8, normalizedHash8)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			before, beforeErr := c.eval()
+			if (beforeErr != nil) != c.wantErr {
+				t.Fatalf("outcome error = %v; want error %v", beforeErr, c.wantErr)
+			}
+			if c.want != "" && before != c.want {
+				t.Errorf("outcome = %q; want %q", before, c.want)
+			}
+
+			t.Chdir(t.TempDir())
+			after, afterErr := c.eval()
+			if (afterErr != nil) != (beforeErr != nil) || after != before {
+				t.Errorf("outcome changed with cwd: before=(%q, %v), after=(%q, %v)", before, beforeErr, after, afterErr)
+			}
+		})
 	}
 }
 
-// TestDerive_Hash8Shape pins that hash8 is exactly 8 characters, every one a lowercase hex digit.
-func TestDerive_Hash8Shape(t *testing.T) {
-	_, hash8, err := derive("linux", "", "", "/home/user", "/abs/target")
+// TestDerive_SymlinkNormalization pins that derive creates nothing on disk -- no directory, no file
+// -- and that a symlink and its real target produce the same hash8, skipping the symlink half when
+// os.Symlink fails with a permission error so a Windows host without Developer Mode does not fail
+// the suite.
+func TestDerive_SymlinkNormalization(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	realDir := filepath.Join(base, "real")
+	if err := os.Mkdir(realDir, 0o755); err != nil {
+		t.Fatalf("os.Mkdir(%q) error = %v", realDir, err)
+	}
+
+	realStateDir, realHash8, err := derive("linux", "", "", base, realDir)
 	if err != nil {
-		t.Fatalf("derive() error = %v; want nil", err)
+		t.Fatalf("derive(realDir) error = %v; want nil", err)
 	}
-	if len(hash8) != 8 {
-		t.Fatalf("derive() hash8 = %q; want length 8, got %d", hash8, len(hash8))
+	if _, statErr := os.Stat(realStateDir); !os.IsNotExist(statErr) {
+		t.Errorf("derive() stateDir %q exists on disk or stat failed unexpectedly: %v", realStateDir, statErr)
 	}
-	for _, r := range hash8 {
-		isLowerHex := (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')
-		if !isLowerHex {
-			t.Errorf("derive() hash8 = %q; contains non-lowercase-hex character %q", hash8, r)
+
+	linkPath := filepath.Join(base, "link")
+	if err := os.Symlink(realDir, linkPath); err != nil {
+		if os.IsPermission(err) {
+			t.Skip("os.Symlink not permitted on this host; skipping")
 		}
+		t.Fatalf("os.Symlink(%q, %q) error = %v", realDir, linkPath, err)
 	}
-}
 
-// TestDerive_Stability pins that the same input yields the same hash8 across repeated calls,
-// the property the whole resumability story rests on.
-func TestDerive_Stability(t *testing.T) {
-	_, first, err := derive("linux", "", "", "/home/user", "/abs/target")
+	_, linkHash8, err := derive("linux", "", "", base, linkPath)
 	if err != nil {
-		t.Fatalf("derive() error = %v; want nil", err)
+		t.Fatalf("derive(linkPath) error = %v; want nil", err)
 	}
-	_, second, err := derive("linux", "", "", "/home/user", "/abs/target")
-	if err != nil {
-		t.Fatalf("derive() error = %v; want nil", err)
-	}
-	if first != second {
-		t.Errorf("derive() hash8 not stable: %q != %q", first, second)
-	}
-}
-
-// TestDerive_CreatesNothingOnDisk pins that derive creates nothing on disk -- no directory, no
-// file -- by pointing it at a path under t.TempDir() and asserting the returned stateDir does
-// not exist afterward.
-func TestDerive_CreatesNothingOnDisk(t *testing.T) {
-	target := t.TempDir()
-	home := t.TempDir()
-	stateDir, _, err := derive("linux", "", "", home, target)
-	if err != nil {
-		t.Fatalf("derive() error = %v; want nil", err)
-	}
-	if _, statErr := os.Stat(stateDir); !os.IsNotExist(statErr) {
-		t.Errorf("derive() stateDir %q exists on disk or stat failed unexpectedly: %v", stateDir, statErr)
+	if realHash8 != linkHash8 {
+		t.Errorf("derive() hash8 real = %q, symlink = %q; want equal", realHash8, linkHash8)
 	}
 }

@@ -12,7 +12,11 @@ import (
 // TestBuildLocation_RepoNameSuffixTrimming covers hubSuffix trimming in buildLocation across three
 // hub container basenames: the current suffix, the retired suffix, and no suffix at all. It calls
 // buildLocation directly with applyGate set to false, so it spawns no git and touches no disk.
+//
+//testtiming:keep pins that only the current hub suffix is trimmed from RepoName and the retired one is not, which the resolution scenario covering its blocks never reads
 func TestBuildLocation_RepoNameSuffixTrimming(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		hubBasename  string
@@ -39,6 +43,8 @@ func TestBuildLocation_RepoNameSuffixTrimming(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			hubPath := filepath.Join("home", "user", tt.hubBasename)
 			workTreeRoot := filepath.Join(hubPath, "worktree")
 			cwd := workTreeRoot

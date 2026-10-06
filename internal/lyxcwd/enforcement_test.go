@@ -56,7 +56,11 @@ func stripGoComments(data []byte) []byte {
 // TestStripGoComments locks in the comment-stripping guard: banned tokens that appear only in
 // comments must be removed, while identical tokens in real code (including string literals) must
 // survive untouched.
+//
+//testtiming:keep pins that the comment stripper removes a banned token only from comments, which the enforcement scans covering its blocks never assert on literal source
 func TestStripGoComments(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		src     string
@@ -80,6 +84,8 @@ func TestStripGoComments(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := strings.Contains(string(stripGoComments([]byte(tt.src))), "os.Getwd")
 			if got != tt.present {
 				t.Errorf("after stripGoComments, os.Getwd present = %v, want %v\nsrc:\n%s", got, tt.present, tt.src)

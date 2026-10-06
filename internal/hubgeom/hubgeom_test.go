@@ -17,16 +17,28 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
+// TestReedGeometry pins every ReedGeometry field against a fixture whose hub, worktree root and
+// anchor path are distinct directories.
+// The prime is told no slug and a task worktree its own name as the slug.
+//
+//testtiming:keep pins the field-by-field geometry of a prime and of an anchored task worktree, which the integration tests covering its blocks only see through a real hub
 func TestReedGeometry(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		anchorRel string
+		isPrime   bool
+		wantSlug  string
 	}{
-		{"subpath-anchored fixture", filepath.Join("sub", "dir")},
-		{"unanchored fixture", "."},
+		{"subpath-anchored fixture", filepath.Join("sub", "dir"), false, "some-worktree"},
+		{"unanchored fixture", ".", false, "some-worktree"},
+		{"prime fixture", ".", true, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			root := t.TempDir()
 			hub := filepath.Join(root, "some-hub-LYXHUB")
 			worktreeName := "some-worktree"
@@ -40,7 +52,11 @@ func TestReedGeometry(t *testing.T) {
 				AnchorRel:    tt.anchorRel,
 			}
 
-			got := reedGeometry(l, false)
+			got := reedGeometry(l, tt.isPrime)
+
+			if got.NameSlug != tt.wantSlug {
+				t.Errorf("ReedGeometry(l).NameSlug = %q; want %q", got.NameSlug, tt.wantSlug)
+			}
 
 			if want := reedengine.ServerName(hub); got.SocketKey != want {
 				t.Errorf("ReedGeometry(l).SocketKey = %q; want %q (ServerName(hub))", got.SocketKey, want)
@@ -80,53 +96,52 @@ func TestReedGeometry(t *testing.T) {
 	}
 }
 
+// TestBurlerGeometry pins BurlerGeometry's roots against a subpath-anchored fixture, whose hub,
+// worktree root and anchor path are three distinct directories.
+//
+//testtiming:keep pins that WorktreeRoot is the anchor path while RepoRoot stays the worktree path, which the origin-record test covering its blocks never reads
 func TestBurlerGeometry(t *testing.T) {
-	tests := []struct {
-		name string
-	}{
-		{"subpath-anchored fixture"},
+	t.Parallel()
+
+	root := t.TempDir()
+	hub := filepath.Join(root, "some-hub-LYXHUB")
+	worktreeName := "some-worktree"
+	worktreeRoot := filepath.Join(hub, worktreeName)
+	anchorRel := filepath.Join("sub", "dir")
+	anchorPath := filepath.Join(worktreeRoot, anchorRel)
+
+	l := &lyxcwd.Location{
+		RepoName:     "distinct-repo-name",
+		HubPath:      hub,
+		WorktreeName: worktreeName,
+		AnchorRel:    anchorRel,
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			root := t.TempDir()
-			hub := filepath.Join(root, "some-hub-LYXHUB")
-			worktreeName := "some-worktree"
-			worktreeRoot := filepath.Join(hub, worktreeName)
-			anchorRel := filepath.Join("sub", "dir")
-			anchorPath := filepath.Join(worktreeRoot, anchorRel)
 
-			l := &lyxcwd.Location{
-				RepoName:     "distinct-repo-name",
-				HubPath:      hub,
-				WorktreeName: worktreeName,
-				AnchorRel:    anchorRel,
-			}
+	var got burlerengine.Geometry = BurlerGeometry(l)
 
-			var got burlerengine.Geometry = BurlerGeometry(l)
-
-			if got.WorktreeRoot != anchorPath {
-				t.Errorf("BurlerGeometry(l).WorktreeRoot = %q; want %q (anchorPath)", got.WorktreeRoot, anchorPath)
-			}
-			if got.AnchorPath != anchorPath {
-				t.Errorf("BurlerGeometry(l).AnchorPath = %q; want %q", got.AnchorPath, anchorPath)
-			}
-			if got.RepoRoot != worktreeRoot {
-				t.Errorf("BurlerGeometry(l).RepoRoot = %q; want %q (l.WorktreePath(), not the anchor path)", got.RepoRoot, worktreeRoot)
-			}
-			if got.WorktreeRoot == worktreeRoot {
-				// The subpath-anchored fixture must catch a later
-				// "simplification" that repoints BurlerGeometry's
-				// WorktreeRoot fill at l.WorktreePath(): the two only
-				// coincide when AnchorRel is ".", which this row
-				// deliberately is not.
-				t.Errorf("BurlerGeometry(l).WorktreeRoot = %q; want != WorktreeRoot %q", got.WorktreeRoot, worktreeRoot)
-			}
-		})
+	if got.WorktreeRoot != anchorPath {
+		t.Errorf("BurlerGeometry(l).WorktreeRoot = %q; want %q (anchorPath)", got.WorktreeRoot, anchorPath)
+	}
+	if got.AnchorPath != anchorPath {
+		t.Errorf("BurlerGeometry(l).AnchorPath = %q; want %q", got.AnchorPath, anchorPath)
+	}
+	if got.RepoRoot != worktreeRoot {
+		t.Errorf("BurlerGeometry(l).RepoRoot = %q; want %q (l.WorktreePath(), not the anchor path)", got.RepoRoot, worktreeRoot)
+	}
+	if got.WorktreeRoot == worktreeRoot {
+		// The subpath-anchored fixture must catch a later "simplification" that repoints
+		// BurlerGeometry's WorktreeRoot fill at l.WorktreePath(): the two only coincide when
+		// AnchorRel is ".", which this fixture deliberately is not.
+		t.Errorf("BurlerGeometry(l).WorktreeRoot = %q; want != WorktreeRoot %q", got.WorktreeRoot, worktreeRoot)
 	}
 }
 
 // TestBurlerGeometry_ParentNameFromOriginRecord pins ParentName to what the worktree's origin record names, and to empty when the record names no parent worktree.
+//
+//testtiming:keep pins ParentName from a hand-written origin record, which the roots test covering its blocks never builds
 func TestBurlerGeometry_ParentNameFromOriginRecord(t *testing.T) {
+	t.Parallel()
+
 	l := hubWithOrigin(t, `{"parent_branch":"main","parent_worktree":"gone-task"}`)
 	if got, want := BurlerGeometry(l).ParentName, "tst:gone-task:orch"; got != want {
 		t.Errorf("BurlerGeometry(l).ParentName = %q; want %q", got, want)
@@ -142,6 +157,8 @@ func TestBurlerGeometry_ParentNameFromOriginRecord(t *testing.T) {
 // A directory, or a gitdir file pointing straight at a git directory, is the main worktree.
 // A gitdir file pointing into worktrees/ is a linked one, and anything else is an error.
 func TestIsPrimeWorktree(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		setup     func(t *testing.T, root string)
@@ -164,6 +181,8 @@ func TestIsPrimeWorktree(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			root := t.TempDir()
 			tt.setup(t, root)
 
@@ -175,18 +194,6 @@ func TestIsPrimeWorktree(t *testing.T) {
 				t.Errorf("isPrimeWorktree() = %v; want %v", prime, tt.wantPrime)
 			}
 		})
-	}
-}
-
-// TestReedGeometry_PrimeAndTaskSlug asserts the prime is told no slug and a task worktree its own name as the slug.
-func TestReedGeometry_PrimeAndTaskSlug(t *testing.T) {
-	l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "some-task", AnchorRel: "."}
-
-	if got := reedGeometry(l, true).NameSlug; got != "" {
-		t.Errorf("reedGeometry(prime).NameSlug = %q; want empty", got)
-	}
-	if got := reedGeometry(l, false).NameSlug; got != "some-task" {
-		t.Errorf("reedGeometry(task).NameSlug = %q; want %q", got, "some-task")
 	}
 }
 

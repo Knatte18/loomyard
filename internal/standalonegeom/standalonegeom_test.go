@@ -5,7 +5,7 @@
 // Every target below is a fictional absolute path that does not exist, so ReedGeometry's one
 // filesystem read (standalonestate.Normalize, see doc.go) resolves each of them to itself and these
 // cases stay deterministic with no fixture; the symlink behaviour that read exists for is pinned
-// separately in reedgeom_symlink_integration_test.go, which needs a real filesystem.
+// separately in reedgeom_symlink_test.go, which needs a real filesystem.
 
 package standalonegeom
 
@@ -20,25 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-func TestReedGeometry_NameShortnameIsDerivedFromHash8(t *testing.T) {
-	t.Parallel()
-
-	target := filepath.Join(string(filepath.Separator), "home", "operator", "src", "some-repo")
-	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
-
-	got := ReedGeometry(target, stateDir, "abcd1234")
-
-	if want := agentname.StandaloneShortname("abcd1234"); got.NameShortname != want {
-		t.Errorf("ReedGeometry().NameShortname = %q; want %q", got.NameShortname, want)
-	}
-	if err := agentname.ValidateShortname(got.NameShortname); err != nil {
-		t.Errorf("ReedGeometry().NameShortname %q fails ValidateShortname: %v", got.NameShortname, err)
-	}
-	if got.NameSlug != "" || got.ParentName != "" {
-		t.Errorf("ReedGeometry() NameSlug/ParentName = %q/%q; want both empty", got.NameSlug, got.ParentName)
-	}
-}
 
 func TestBurlerGeometry(t *testing.T) {
 	t.Parallel()
@@ -66,54 +47,46 @@ func TestBurlerGeometry(t *testing.T) {
 	}
 }
 
-func TestStencilsDir(t *testing.T) {
+// TestStandaloneDirs pins each told-stateDir directory builder to its own subdirectory of stateDir,
+// and that no two of them converge: StencilsDir and SpecsDir are separate directories under the
+// durable lyx directory, and LogsDir is a third under the ephemeral one, deliberately a different
+// directory from the "logs" directory ReedGeometry's LogsDir field names for a different producer.
+func TestStandaloneDirs(t *testing.T) {
 	t.Parallel()
 
 	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
 
-	got := StencilsDir(stateDir)
+	cases := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"StencilsDir", StencilsDir(stateDir), filepath.Join(stateDir, lyxdirs.LyxDirName, "stencils")},
+		{"SpecsDir", SpecsDir(stateDir), filepath.Join(stateDir, lyxdirs.LyxDirName, "specs")},
+		{"LogsDir", LogsDir(stateDir), filepath.Join(stateDir, lyxdirs.DotLyxDirName, "logs")},
+	}
+	seen := map[string]string{}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 
-	if want := filepath.Join(stateDir, lyxdirs.LyxDirName, "stencils"); got != want {
-		t.Errorf("StencilsDir(%q) = %q; want %q", stateDir, got, want)
+			if c.got != c.want {
+				t.Errorf("%s(%q) = %q; want %q", c.name, stateDir, c.got, c.want)
+			}
+		})
+		if other, ok := seen[c.got]; ok {
+			t.Errorf("%s(%q) = %q; want != %s's result", c.name, stateDir, c.got, other)
+		}
+		seen[c.got] = c.name
+	}
+
+	reedLogsDir := ReedGeometry(filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name"), stateDir, "abcd1234").LogsDir
+	if reedLogsDir == LogsDir(stateDir) {
+		t.Errorf("LogsDir(%q) = %q; want != ReedGeometry(...).LogsDir %q", stateDir, LogsDir(stateDir), reedLogsDir)
 	}
 }
 
-func TestSpecsDir(t *testing.T) {
-	t.Parallel()
-
-	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
-
-	got := SpecsDir(stateDir)
-
-	if want := filepath.Join(stateDir, lyxdirs.LyxDirName, "specs"); got != want {
-		t.Errorf("SpecsDir(%q) = %q; want %q", stateDir, got, want)
-	}
-	// Pins that the two standalone directories never converge.
-	if got == StencilsDir(stateDir) {
-		t.Errorf("SpecsDir(%q) = %q; want != StencilsDir(%q) %q", stateDir, got, stateDir, StencilsDir(stateDir))
-	}
-}
-
-func TestLogsDir(t *testing.T) {
-	t.Parallel()
-
-	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
-
-	got := LogsDir(stateDir)
-
-	if want := filepath.Join(stateDir, lyxdirs.DotLyxDirName, "logs"); got != want {
-		t.Errorf("LogsDir(%q) = %q; want %q", stateDir, got, want)
-	}
-
-	// LogsDir and ReedGeometry's LogsDir field are deliberately different directories for
-	// different producers -- pin the non-convergence the doc comment records.
-	target := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
-	hash8 := "abcd1234"
-	if reedLogsDir := ReedGeometry(target, stateDir, hash8).LogsDir; got == reedLogsDir {
-		t.Errorf("LogsDir(%q) = %q; want != ReedGeometry(...).LogsDir %q", stateDir, got, reedLogsDir)
-	}
-}
-
+//testtiming:keep pins every ReedGeometry field at once, including the two-root split and the identity fields, which the session-name table covering its blocks never reads
 func TestReedGeometry(t *testing.T) {
 	t.Parallel()
 
@@ -124,6 +97,16 @@ func TestReedGeometry(t *testing.T) {
 	hash8 := "abcd1234"
 
 	got := ReedGeometry(target, stateDir, hash8)
+
+	if want := agentname.StandaloneShortname(hash8); got.NameShortname != want {
+		t.Errorf("ReedGeometry().NameShortname = %q; want %q", got.NameShortname, want)
+	}
+	if err := agentname.ValidateShortname(got.NameShortname); err != nil {
+		t.Errorf("ReedGeometry().NameShortname %q fails ValidateShortname: %v", got.NameShortname, err)
+	}
+	if got.NameSlug != "" || got.ParentName != "" {
+		t.Errorf("ReedGeometry() NameSlug/ParentName = %q/%q; want both empty", got.NameSlug, got.ParentName)
+	}
 
 	if want := "lyx-" + hash8; got.SocketKey != want {
 		t.Errorf("ReedGeometry().SocketKey = %q; want %q", got.SocketKey, want)
@@ -218,36 +201,6 @@ func TestReedGeometry_SessionNameSanitizesTheReadableHalf(t *testing.T) {
 			}
 			if got.WorktreeName != got.RepoName {
 				t.Errorf("ReedGeometry(%q).WorktreeName = %q; want == RepoName %q", target, got.WorktreeName, got.RepoName)
-			}
-		})
-	}
-}
-
-// TestReedGeometry_WorktreeNameMatchesRepoNameForSymlinkedTarget pins the standalone-specific claim
-// in reedgeom.go's doc comment: {{.worktree}} and {{.repo}} must render the same string byte for
-// byte for BOTH a symlinked and a real spelling of one target, since both tokens are taken from the
-// raw filepath.Base(target) rather than a normalized spelling that would resolve a symlinked
-// spelling to a different basename than the real one.
-func TestReedGeometry_WorktreeNameMatchesRepoNameForSymlinkedTarget(t *testing.T) {
-	t.Parallel()
-
-	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
-	hash8 := "abcd1234"
-
-	targets := []string{
-		filepath.Join(string(filepath.Separator), "home", "operator", "src", "real-repo-name"),
-		filepath.Join(string(filepath.Separator), "home", "operator", "links", "symlinked-repo-name"),
-	}
-	for _, target := range targets {
-		t.Run(target, func(t *testing.T) {
-			t.Parallel()
-
-			got := ReedGeometry(target, stateDir, hash8)
-			if got.WorktreeName != got.RepoName {
-				t.Errorf("ReedGeometry(%q).WorktreeName = %q; want == RepoName %q", target, got.WorktreeName, got.RepoName)
-			}
-			if want := filepath.Base(target); got.WorktreeName != want {
-				t.Errorf("ReedGeometry(%q).WorktreeName = %q; want %q (raw basename)", target, got.WorktreeName, want)
 			}
 		})
 	}

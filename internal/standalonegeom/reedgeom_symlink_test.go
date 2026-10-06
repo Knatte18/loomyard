@@ -1,12 +1,7 @@
-//go:build integration
-
-// reedgeom_symlink_integration_test.go pins ReedGeometry's session name against a real filesystem: a
+// reedgeom_symlink_test.go pins ReedGeometry's session name against a real filesystem: a
 // symlinked and a real spelling of one target directory must produce ONE session name, because they
 // already produce one hash8, one socket key, and one state directory.
-// It needs a real filesystem to create a symlink, so it is tagged integration to keep tier 1 clean,
-// exactly as internal/standalonestate's symlink_integration_test.go is, even though a symlink is a
-// filesystem operation rather than a git spawn.
-// This package spawns no git and builds no hubforge/gitkit fixture, so it needs no TestMain.
+// It needs a real filesystem to create a symlink, but spawns nothing, so it stays untagged.
 
 package standalonegeom
 
@@ -27,7 +22,11 @@ import (
 //
 // hash8 is derived through the real Derive for both spellings and asserted equal first, since the
 // session-name assertion below means nothing if the identity halves already disagree.
+//
+//testtiming:keep pins that a symlinked and a real spelling of one target share one session name on a real filesystem, which the tmux naming test covering its blocks never builds
 func TestReedGeometry_SessionNameAgreesAcrossSymlinkedSpellings(t *testing.T) {
+	t.Parallel()
+
 	base := t.TempDir()
 	realDir := filepath.Join(base, "distinctive-repo-name")
 	if err := os.Mkdir(realDir, 0o755); err != nil {
