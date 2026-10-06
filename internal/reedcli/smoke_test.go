@@ -716,14 +716,6 @@ func materializeSibling(t *testing.T, h *hubforge.Hub, name string) string {
 	return sibling
 }
 
-// mustChdir changes the process working directory or fails the test.
-func mustChdir(t *testing.T, dir string) {
-	t.Helper()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir %s: %v", dir, err)
-	}
-}
-
 // sessionAlive reports whether the named session currently exists on the socket.
 func sessionAlive(tmuxPath, socket, session string) bool {
 	return exec.Command(tmuxPath, "-L", socket, "has-session", "-t", session).Run() == nil
@@ -778,14 +770,8 @@ func paneRootPID(t *testing.T, tmuxPath, socket, session, paneID string) int {
 	return 0
 }
 
-// paneIDForStrand runs status and returns the tracked strand's live pane id.
-func paneIDForStrand(t *testing.T, guid string) string {
-	t.Helper()
-	return paneIDForStrandIn(t, "", guid)
-}
-
-// paneIDForStrandIn is paneIDForStrand driven through the RunCLIIn seam; see addStrandIn for what
-// the cwd argument means.
+// paneIDForStrandIn runs status through the RunCLIIn seam and returns the tracked strand's live
+// pane id; see addStrandIn for what the cwd argument means.
 func paneIDForStrandIn(t *testing.T, cwd, guid string) string {
 	t.Helper()
 	var out bytes.Buffer

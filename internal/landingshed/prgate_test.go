@@ -73,22 +73,6 @@ func writeRejectionAt(t *testing.T, path string, number int, head string) {
 	}
 }
 
-func wantVerdict(t *testing.T, f *prGateFixture, want shedengine.Outcome, reasonHas ...string) {
-	t.Helper()
-	outcome, ptr, err := f.call(t)
-	if err != nil {
-		t.Fatalf("Call() error = %v; want nil", err)
-	}
-	if outcome != want {
-		t.Fatalf("Call() outcome = %q (%s); want %q", outcome, ptr.Reason, want)
-	}
-	for _, s := range reasonHas {
-		if !strings.Contains(ptr.Reason, s) {
-			t.Errorf("reason %q does not contain %q", ptr.Reason, s)
-		}
-	}
-}
-
 func TestNewPRGate_Refusals(t *testing.T) {
 	ok := func() Deps {
 		d := newTestDeps(t)
