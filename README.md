@@ -71,7 +71,7 @@ what calls it is a choice of driver.
 - **`lyx orch`** — hosts the hub orchestrator: one long-lived Claude session that dispatches and supervises runs.
   A detached watcher reads its context usage after each turn;
   past a threshold, while idle, it has the session write a note, then clears it and resumes it from that note, or compacts it in place, so the orchestrator outlives any single context window.
-  `lyx orch cycle` requests the clear cycle and `lyx orch distill` the compact cycle; both write the note first.
+  `lyx orch refresh` requests the clear cycle and `lyx orch distill` the compact cycle; both write the note first.
 
 The split is the same principle again: the engine decides *what* runs next, and the LLM layers above it only decide how to recover when a step fails.
 

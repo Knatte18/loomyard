@@ -151,7 +151,7 @@ func TestStatus_UnknownTokensAreNull(t *testing.T) {
 	}
 }
 
-func TestCycleAndDistill_RequestTheirOwnMode(t *testing.T) {
+func TestRefreshAndDistill_RequestTheirOwnMode(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -159,7 +159,7 @@ func TestCycleAndDistill_RequestTheirOwnMode(t *testing.T) {
 		verb func(*orchCLI) *cobra.Command
 		want string
 	}{
-		{"cycle clears", (*orchCLI).cycleCmd, orchengine.CycleClear},
+		{"refresh clears", (*orchCLI).refreshCmd, orchengine.CycleClear},
 		{"distill compacts", (*orchCLI).distillCmd, orchengine.CycleCompact},
 	}
 	for _, tc := range tests {
@@ -199,10 +199,10 @@ func TestCycleAndDistill_RequestTheirOwnMode(t *testing.T) {
 	}
 }
 
-func TestCycleAndDistill_NoWatcherLeavesNoMarker(t *testing.T) {
+func TestRefreshAndDistill_NoWatcherLeavesNoMarker(t *testing.T) {
 	t.Parallel()
 
-	for name, verb := range map[string]func(*orchCLI) *cobra.Command{"cycle": (*orchCLI).cycleCmd, "distill": (*orchCLI).distillCmd} {
+	for name, verb := range map[string]func(*orchCLI) *cobra.Command{"refresh": (*orchCLI).refreshCmd, "distill": (*orchCLI).distillCmd} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
