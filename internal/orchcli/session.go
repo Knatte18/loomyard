@@ -57,7 +57,8 @@ func (s runnerSession) ClearSession(guid string) error {
 	return s.runner.ClearSession(guid)
 }
 
-// LoadSkills delegates to Runner.LoadSkills, which types the one-turn load message into the pane through tmux.
+// LoadSkills delegates to Runner.LoadSkills,
+// which types the one-turn load message into the pane through tmux.
 func (s runnerSession) LoadSkills(guid string, skills []string) error {
 	logger.Debug("orch: load skills", "strandGUID", guid, "skills", skills)
 	return s.runner.LoadSkills(guid, skills)
