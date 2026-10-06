@@ -3,10 +3,7 @@
 // *lyxcwd.Location for that same stat-only contract to hold.
 // The missing-path contract (warp checked first, *ErrMissingPath naming the absent side) is
 // restated here through Open(l), the constructor the contract now belongs to, using a hand-built
-// Location rather than a real git fixture — the fast Tier-1 home for this contract.
-// open_integration_test.go pins the identical contract end-to-end against a real hub built by the
-// hubforge package (TestOpen_MissingWarpWorktree / TestOpen_MissingSiblingWorktree); that is the
-// Tier-2 home, not a duplicate of these — these prove the pure stat-check logic without a git spawn.
+// Location rather than a real git fixture.
 //
 // TestNew_HappyPath below is this package's only remaining NewPairedFromPathsForTest consumer: an
 // untagged unit test of the newPaired constructor itself, spawning no git and having nothing to do
@@ -71,6 +68,27 @@ func TestOpen_MissingWeftPath(t *testing.T) {
 	}
 	if missingPath.Path != fabricengine.WeftWorktree(l) {
 		t.Errorf("Open() error path = %q; want %q", missingPath.Path, fabricengine.WeftWorktree(l))
+	}
+}
+
+// TestOpen_HappyPath asserts that Open returns a non-nil handle when both the warp worktree and the
+// weft sibling exist.
+func TestOpen_HappyPath(t *testing.T) {
+	t.Parallel()
+
+	l := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "warp", AnchorRel: "."}
+	for _, dir := range []string{l.WorktreePath(), fabricengine.WeftWorktree(l)} {
+		if err := os.Mkdir(dir, 0755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+
+	f, err := fabricengine.Open(l)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	if f == nil {
+		t.Fatal("Open() = nil; want non-nil handle")
 	}
 }
 
