@@ -69,8 +69,8 @@ func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
 		{name: "session_id_quote", spec: shuttleengine.Spec{ResumeSessionID: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4'"}, wantErrContains: ""},
 		{name: "session_id_no_hyphens", spec: shuttleengine.Spec{ResumeSessionID: "0a1b2c3d4e5f4a6b8c7d9e0f1a2b3c4d"}, wantErrContains: ""},
 		{name: "ttl_default_empty", cfg: shuttleengine.Config{}, wantErrContains: "claude_prompt_cache_ttl", wantTTLAdvice: true},
-		{name: "ttl_default_wrong_case", cfg: ttlConfig(t, "1H", nil), wantErrContains: `"1H"`, wantTTLAdvice: true},
-		{name: "ttl_default_bare_number", cfg: ttlConfig(t, "5", nil), wantErrContains: `"5"`, wantTTLAdvice: true},
+		{name: "ttl_default_wrong_case", cfg: ttlConfig(t, "1H", nil), wantErrContains: `claude_prompt_cache_ttl "1H"`, wantTTLAdvice: true},
+		{name: "ttl_default_bare_number", cfg: ttlConfig(t, "5", nil), wantErrContains: `claude_prompt_cache_ttl "5"`, wantTTLAdvice: true},
 		{name: "ttl_map_value_null", cfg: ttlConfig(t, "", map[string]string{"orch": ""}), wantErrContains: "claude_prompt_cache_ttl_roles[orch]", wantTTLAdvice: true},
 		{name: "ttl_map_entry_of_another_role", spec: shuttleengine.Spec{Role: "driver"}, cfg: ttlConfig(t, "", map[string]string{"driver": "1h", "orch": "2h"}), wantErrContains: "claude_prompt_cache_ttl_roles[orch]", wantTTLAdvice: true},
 	}
