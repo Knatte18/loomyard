@@ -215,6 +215,7 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | Webster-Burler verify gate exhausted | the Webster-Burler round's verify gate still fails after its recipe `attempts` | correctness halt | the round's Burler returns to its own recovery per the recipe; fix the failing tests on the task branch, check them with `lyx webster verify`, then re-step the row |
 | Publish or Finalize: dirty tree | the task worktree has uncommitted changes before or after the parent merge-in, or when the verify was about to run | correctness halt | commit or remove the named paths on the task branch, then resume (re-step the row); nothing is pushed or landed |
 | merge conflict session: untracked file | the conflict session left an untracked file, which a merge commit never carries | correctness halt | the merge is aborted and the step stops Stuck naming the files; remove them or commit them as their own change on the task branch, then re-step the row |
+| producer re-run: superseded strand not removed | a producer row re-run finds a live strand of an earlier run of the same outputs and reed cannot remove it | transient | run "lyx reed remove <guid>", then re-step the row |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
 | raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed, lock or records file fails | transient | re-run the refused verb; nothing is mutated |
 

@@ -86,6 +86,12 @@
 // run has ended: an absent or unreadable reed state file, and a Status() failure. Both name the run
 // directory and the strand guid in a logged warning, since the operator's only escape from either is
 // out of band, via "lyx reed status".
+// A not-found answer is the caller's cue to start a fresh run, so Attach and AttachGated first remove, with a logged warning, the live strand of every earlier run of the same output-file set that the probe judged respawn-eligible:
+// re-running a producer supersedes the halted session.
+// The removal is bounded to exactly that set, so another producer's strand, a same-role strand with other outputs and a run the probe would attach to are never touched,
+// and a probe that attaches or refuses removes nothing.
+// A strand that cannot be removed comes back as an error naming `lyx reed remove <guid>`, never as a not-found answer.
+// Runner.AttachIfLive is the same probe with the removal off, for a caller that waits on a live run and starts nothing after a not-found answer.
 //
 // Skill loading: Spec.Skills names provider-neutral skills that shuttle loads into a fresh session, all in one turn, before the prompt.
 // It needs the optional SkillLoader capability, and a spec that names skills on an engine without it is refused before any run directory exists.

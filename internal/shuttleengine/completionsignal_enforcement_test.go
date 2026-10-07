@@ -109,6 +109,11 @@ var negativeVerdictMarkers = map[string]bool{
 //     Attach's whole body into AttachGated wholesale and added no return of its own. The five are
 //     still the three reed-state gates (each consulting soleFinishedCandidate first) plus the two
 //     multiplicity refusals, which are refusals to CHOOSE rather than verdicts on any run.
+//     The body now lives in attach, shared by Attach, AttachGated and AttachIfLive, so the same five
+//     sit under that name.
+//   - removeSupersededStrands [Errorf] x1 — a failed removal of a respawn-eligible candidate's strand,
+//     reached only past the zero-attachable answer; it is a refusal to start a run beside a live
+//     strand, not a verdict on whether any run finished.
 //   - normalizeAttachSpec [Errorf] x1, collectAttachCandidates [Errorf] x1, readEventsFrom [Errorf] x3
 //     — argument validation, a scan-root read failure, and events-file I/O. None classifies a run as
 //     unfinished; all are listed because an AST scan that hand-excluded them would need a second,
@@ -131,7 +136,8 @@ var negativeVerdictMarkers = map[string]bool{
 //     single finalization site: every caller reaches it only past one of awaitStartup's own three
 //     guarded checks above, never directly.
 var auditedNegativeVerdictReturns = map[string]int{
-	"AttachGated [Errorf]":                            5,
+	"attach [Errorf]":                                 5,
+	"removeSupersededStrands [Errorf]":                1,
 	"abandonStartup [Errorf]":                         1,
 	"awaitStartup [Errorf]":                           3,
 	"awaitStartup [OutcomeDied]":                      2,
