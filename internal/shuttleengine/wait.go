@@ -619,10 +619,15 @@ func (run *Run) pollEventsTick() (Outcome, string, error) {
 	return OutcomeAsking, last.Message, nil
 }
 
-// recordWaiting keeps a waiting turn end's outstanding list and stamps each shell id not seen before with now.
+// recordWaiting keeps a waiting turn end's outstanding list, logs what it waits on once, and stamps each shell id not seen before with now.
 func (run *Run) recordWaiting(ev Event) {
 	run.waitingTasks = ev.Outstanding
 	run.waitingMessage = ev.Message
+	tasks := make([]string, 0, len(ev.Outstanding))
+	for _, task := range ev.Outstanding {
+		tasks = append(tasks, fmt.Sprintf("kind=%s id=%s label=%q signal=%s", task.Kind, task.ID, task.Label, task.Signal))
+	}
+	logger.Info("shuttle: turn end waiting on background work", "strandGUID", run.state.StrandGUID, "outstanding", strings.Join(tasks, "; "))
 	now := run.clock.Now()
 	for _, task := range ev.Outstanding {
 		if task.Kind != BackgroundShell {

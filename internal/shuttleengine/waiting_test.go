@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // waitingEngine is a fakeEngine whose ParseEvents also maps a "WAIT:<message>" line to an
@@ -47,11 +49,12 @@ func TestPollEventsTick_Waiting(t *testing.T) {
 		touchOutput  bool
 		wantFirst    Outcome
 		checkOffset  bool
+		checkTrace   bool
 		stopAfter    string
 		wantSecond   Outcome
 		wantSecondIn string
 	}{
-		{name: "waiting is still running", wantFirst: "", checkOffset: true},
+		{name: "waiting is still running", wantFirst: "", checkOffset: true, checkTrace: true},
 		{
 			name: "a stop after waiting classifies asking", wantFirst: "", checkOffset: true,
 			stopAfter: "STOP:what now?", wantSecond: OutcomeAsking, wantSecondIn: "what now?",
@@ -64,7 +67,12 @@ func TestPollEventsTick_Waiting(t *testing.T) {
 			if tt.touchOutput {
 				touchOutputFile(t, outputFile)
 			}
-			fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{}, withConfig(gateConfig))
+			buf := logcapture.CaptureVerbose(t)
+			outstanding := []BackgroundTask{
+				{Kind: BackgroundFork, ID: "agent-1", Label: "review the diff", Signal: SignalPayload},
+				{Kind: BackgroundShell, ID: "shell-1", Label: "sleep 600", Signal: SignalTranscript},
+			}
+			fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{outstanding: outstanding}, withConfig(gateConfig))
 			fc := newFakeClock(time.Now())
 			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
 				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1"}),
@@ -81,6 +89,26 @@ func TestPollEventsTick_Waiting(t *testing.T) {
 			if tt.checkOffset {
 				if want := int64(len(waitLine)); run.offset != want {
 					t.Errorf("offset = %d, want %d (advanced past the parsed bytes)", run.offset, want)
+				}
+			}
+			if tt.checkTrace {
+				// Idle ticks re-check expiry and log nothing more.
+				for range 2 {
+					if _, _, err := run.pollEventsTick(); err != nil {
+						t.Fatalf("idle tick error: %v", err)
+					}
+				}
+				if got := strings.Count(buf.String(), "turn end waiting on background work"); got != 1 {
+					t.Errorf("waiting trace lines = %d, want 1 in %q", got, buf.String())
+				}
+				for _, want := range []string{
+					"strand-1",
+					"kind=fork id=agent-1", "review the diff", "signal=payload",
+					"kind=shell id=shell-1", "sleep 600", "signal=transcript",
+				} {
+					if !strings.Contains(buf.String(), want) {
+						t.Errorf("trace missing %q in %q", want, buf.String())
+					}
 				}
 			}
 			if tt.stopAfter == "" {
