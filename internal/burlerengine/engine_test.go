@@ -998,6 +998,17 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			noVerdict:   true,
 		},
 		{
+			name: "a reviewer that timed out stops both halves, since shuttle keeps a timed-out strand live",
+			shuttle: &fakeShuttle{
+				review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}},
+				fix:    halfScript{result: done, waitForMarker: true},
+			},
+			wantOutcome: shuttleengine.OutcomeTimeout,
+			wantRemoved: []string{fixRole + "-guid", reviewRole + "-guid"},
+			wantStarted: []string{reviewRole, fixRole},
+			noVerdict:   true,
+		},
+		{
 			name: "an unparseable review stops the fixer and reports the strict parse error",
 			shuttle: &fakeShuttle{
 				review: halfScript{result: done, writes: malformedReview},
@@ -1008,13 +1019,13 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			wantStarted: []string{reviewRole, fixRole},
 		},
 		{
-			name: "a fixer that timed out while the reviewer runs stops the reviewer and reports the fixer's outcome",
+			name: "a fixer that timed out while the reviewer runs stops both halves and reports the fixer's outcome",
 			shuttle: &fakeShuttle{
 				review: halfScript{result: done, writes: approvedReview, hold: make(chan struct{})},
 				fix:    halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}},
 			},
 			wantOutcome: shuttleengine.OutcomeTimeout,
-			wantRemoved: []string{reviewRole + "-guid"},
+			wantRemoved: []string{reviewRole + "-guid", fixRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 			noVerdict:   true,
 			check: func(t *testing.T, got Result) {

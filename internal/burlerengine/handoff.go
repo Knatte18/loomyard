@@ -122,6 +122,7 @@ func (e *Engine) stopHalf(handle Handle) error {
 // Otherwise the round completes with the fixer's run:
 // a failing fixer gate gives the fixer's Gate with Verdict and Findings empty,
 // and a done fixer is accepted only when the review file still holds the bytes reviewReady parsed.
+// A half that timed out is stopped as well, since shuttle keeps a timed-out run's strand live.
 // join returns only after both goroutines have returned, so no half is left live and no marker write outlives the attempt;
 // the one exception is a half it failed to stop, which it reports as ErrHalfNotStopped without waiting for.
 func (e *Engine) join(p *Profile, opts RunOpts, review, fix Handle) (Result, error) {
@@ -172,7 +173,17 @@ func (e *Engine) join(p *Profile, opts RunOpts, review, fix Handle) (Result, err
 		}
 	}
 
-	logger.Info("burler: round halves joined", "round", opts.Round, "reviewOutcome", reviewEnd.result.Outcome, "fixOutcome", fixEnd.result.Outcome)
+	// Shuttle keeps a timed-out run's strand, so a half that timed out is stopped too, or a retry would run beside it.
+	for _, half := range []struct {
+		handle Handle
+		result shuttleengine.Result
+	}{{review, reviewEnd.result}, {fix, fixEnd.result}} {
+		if stopErr == nil && half.result.Outcome == shuttleengine.OutcomeTimeout {
+			stopErr = e.stopHalf(half.handle)
+		}
+	}
+
+	logger.Info("burler: round halves joined","round", opts.Round, "reviewOutcome", reviewEnd.result.Outcome, "fixOutcome", fixEnd.result.Outcome)
 
 	result := Result{
 		ReviewPath:      p.ReviewPath,
