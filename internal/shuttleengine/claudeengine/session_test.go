@@ -67,6 +67,34 @@ func TestIdleSession(t *testing.T) {
 	}
 }
 
+func TestInputBoxText(t *testing.T) {
+	rule := "────────────────────────────────"
+	tests := []struct {
+		name     string
+		capture  string
+		wantText string
+		wantOK   bool
+	}{
+		{"empty box", readPaneFixture(t, "pane-idle-empty.txt"), "", true},
+		{"draft in box", readPaneFixture(t, "pane-idle-draft.txt"), "please also run the linter", true},
+		{"wrapped two-line draft", rule + "\n❯ first half of the draft\n  second half of the draft\n" + rule + "\n  ? for shortcuts\n", "first half of the draft second half of the draft", true},
+		{"collapsed paste placeholder", rule + "\n❯ [Pasted text #1 +42 lines]\n" + rule + "\n  ? for shortcuts\n", "[Pasted text #1 +42 lines]", true},
+		{"turn running over an empty box", readPaneFixture(t, "pane-turn-running.txt"), "", true},
+		{"boxed side bars", "╭" + rule + "╮\n│ ❯ hello     │\n╰" + rule + "╯\n", "hello", true},
+		{"permission prompt has no box", readPaneFixture(t, "pane-permission-prompt.txt"), "", false},
+		{"no input box", "● some transcript\n", "", false},
+	}
+	c := &Claude{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			text, ok := c.InputBoxText(tt.capture)
+			if text != tt.wantText || ok != tt.wantOK {
+				t.Errorf("InputBoxText = (%q, %v); want (%q, %v)", text, ok, tt.wantText, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestPaneTooShort(t *testing.T) {
 	tests := []struct {
 		name    string

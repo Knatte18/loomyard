@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	_ shuttleengine.SessionCycler = (*Claude)(nil)
-	_ shuttleengine.SkillLoader   = (*Claude)(nil)
+	_ shuttleengine.SessionCycler  = (*Claude)(nil)
+	_ shuttleengine.SkillLoader    = (*Claude)(nil)
+	_ shuttleengine.InputBoxReader = (*Claude)(nil)
 )
 
 // runningTurnNeedle is Claude's running-turn hint in normalizeCapture form.
@@ -52,6 +53,48 @@ func (c *Claude) IdleSession(capture string) bool {
 	if strings.Contains(normalizeCapture(capture), runningTurnNeedle) {
 		return false
 	}
+	interior, ok := inputBoxInterior(capture)
+	if !ok {
+		return false
+	}
+	for _, line := range interior {
+		if !isBlankBoxInterior(line) {
+			return false
+		}
+	}
+	return true
+}
+
+// InputBoxText returns the text the input box holds in capture: the interior lines with the caret, side bars and surrounding whitespace removed, non-blank lines joined by a single space.
+// ok is false when capture shows no input box.
+// The box is located exactly as IdleSession locates it, so a running turn over an empty box answers ok true with empty text.
+func (c *Claude) InputBoxText(capture string) (text string, ok bool) {
+	interior, ok := inputBoxInterior(capture)
+	if !ok {
+		return "", false
+	}
+	var parts []string
+	for _, line := range interior {
+		line = strings.NewReplacer(gateCaretMarker, "", "│", "").Replace(line)
+		if line = strings.TrimSpace(line); line != "" {
+			parts = append(parts, line)
+		}
+	}
+	return strings.Join(parts, " "), true
+}
+
+// submitRedrawSettle is long enough for Claude Code to redraw the input box after an Enter.
+const submitRedrawSettle = 300 * time.Millisecond
+
+// SubmitSettle returns how long after an Enter the input box needs to be redrawn before it is read.
+func (c *Claude) SubmitSettle() time.Duration {
+	return submitRedrawSettle
+}
+
+// inputBoxInterior returns the lines between the input box's rules in capture.
+// The box is located from the last line carrying gateCaretMarker, walking up and down to the first horizontal-rule line on each side.
+// ok is false when there is no caret line or no rule on either side of it.
+func inputBoxInterior(capture string) (interior []string, ok bool) {
 	lines := strings.Split(capture, "\n")
 	caret := -1
 	for i, line := range lines {
@@ -60,7 +103,7 @@ func (c *Claude) IdleSession(capture string) bool {
 		}
 	}
 	if caret == -1 {
-		return false
+		return nil, false
 	}
 	top := -1
 	for i := caret - 1; i >= 0; i-- {
@@ -77,14 +120,9 @@ func (c *Claude) IdleSession(capture string) bool {
 		}
 	}
 	if top == -1 || bottom == -1 {
-		return false
+		return nil, false
 	}
-	for _, line := range lines[top+1 : bottom] {
-		if !isBlankBoxInterior(line) {
-			return false
-		}
-	}
-	return true
+	return lines[top+1 : bottom], true
 }
 
 // isTopBoxRule reports whether line is the input box's top rule: a plain rule per isBoxRule, or a labelled one.
