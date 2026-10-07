@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeLines(t *testing.T, path string, lines ...string) {
@@ -51,7 +52,7 @@ func TestCountRun(t *testing.T) {
 	)
 	writeLines(t, filepath.Join(dir, "c.jsonl"), assistant("m4", "haiku", 1, 0))
 
-	run, err := CountRun(projects, worktree, "my-task")
+	run, err := CountRun(dir, "my-task")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,16 +79,49 @@ func TestCountRun(t *testing.T) {
 	if err := (Report{Runs: []RunTally{run}}).WriteMarkdown(&buf); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"## my-task", "## All runs", "| webster+sub | 1 | 4 | 0 | 5 | 1 | 0.0M | 47.9% |", "opus: 1"} {
+	for _, want := range []string{"## my-task", "## All runs", "| my-task | 4 | 0.0M | 100.0% |", "| webster+sub | 1 | 4 | 0 | 5 | 1 | 0.0M | 47.9% |", "opus: 1"} {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("report lacks %q:\n%s", want, buf.String())
 		}
+	}
+	if strings.Index(buf.String(), "## All runs") > strings.Index(buf.String(), "## my-task") {
+		t.Errorf("overview is not first:\n%s", buf.String())
 	}
 }
 
 func TestCountRunWithoutSessions(t *testing.T) {
 	t.Parallel()
-	if _, err := CountRun(t.TempDir(), "/hub/none", "none"); err == nil {
+	if _, err := CountRun(projectDir(t.TempDir(), "/hub/none"), "none"); err == nil {
 		t.Fatal("CountRun found sessions in an empty projects directory")
+	}
+}
+
+func TestRecentRuns(t *testing.T) {
+	t.Parallel()
+	projects := t.TempDir()
+	touch := func(worktree string, age time.Duration) {
+		path := filepath.Join(projectDir(projects, worktree), "s.jsonl")
+		writeLines(t, path, assistant("m", "sonnet", 1, 0))
+		when := time.Now().Add(-age)
+		if err := os.Chtimes(path, when, when); err != nil {
+			t.Fatal(err)
+		}
+	}
+	touch("/hub/old", 3*time.Hour)
+	touch("/hub/new", time.Hour)
+	touch("/hub/mid", 2*time.Hour)
+	touch("/hub/prime", 0)
+	touch("/hub/x-weft", 0)
+	touch("/other/newest", 0)
+	if err := os.MkdirAll(projectDir(projects, "/hub/empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := recentRuns(projects, "/hub", "prime", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, ",") != "new,mid" {
+		t.Errorf("recentRuns = %v, want [new mid]", got)
 	}
 }

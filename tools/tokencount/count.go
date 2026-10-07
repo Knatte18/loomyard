@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Usage is a token tally: one message's usage, or a sum over many.
@@ -77,9 +78,49 @@ func roleOf(title string) string {
 	return trailingNumber.ReplaceAllString(title[strings.LastIndex(title, ":")+1:], "")
 }
 
-// CountRun tallies every session Claude Code recorded for the worktree.
-func CountRun(projects, worktree, slug string) (RunTally, error) {
-	dir := projectDir(projects, worktree)
+// recentRuns names the task runs of the hub whose sessions changed most recently, newest
+// first, at most last of them: every project directory of a worktree under the hub except
+// the prime's own and the weft's.
+func recentRuns(projects, hub, prime string, last int) ([]string, error) {
+	prefix := filepath.Base(projectDir(projects, hub)) + "-"
+	entries, err := os.ReadDir(projects)
+	if err != nil {
+		return nil, err
+	}
+	type candidate struct {
+		slug    string
+		touched time.Time
+	}
+	var found []candidate
+	for _, e := range entries {
+		slug, ok := strings.CutPrefix(e.Name(), prefix)
+		if !e.IsDir() || !ok || slug == "" || slug == prime || strings.HasSuffix(slug, "-weft") {
+			continue
+		}
+		sessions, err := filepath.Glob(filepath.Join(projects, e.Name(), "*.jsonl"))
+		if err != nil {
+			return nil, err
+		}
+		var touched time.Time
+		for _, s := range sessions {
+			if info, err := os.Stat(s); err == nil && info.ModTime().After(touched) {
+				touched = info.ModTime()
+			}
+		}
+		if !touched.IsZero() {
+			found = append(found, candidate{slug, touched})
+		}
+	}
+	sort.Slice(found, func(i, j int) bool { return found[i].touched.After(found[j].touched) })
+	slugs := []string{}
+	for i := 0; i < len(found) && i < last; i++ {
+		slugs = append(slugs, found[i].slug)
+	}
+	return slugs, nil
+}
+
+// CountRun tallies every session Claude Code recorded in the project directory dir.
+func CountRun(dir, slug string) (RunTally, error) {
 	sessions, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
 	if err != nil {
 		return RunTally{}, err
@@ -172,15 +213,18 @@ type Report struct {
 	Runs []RunTally
 }
 
-// WriteMarkdown writes one table per run, then one table summing each role over all runs.
+// WriteMarkdown writes the overview first: each run's share of the whole, then each role
+// summed over all runs.
+// One table per run follows.
 func (r Report) WriteMarkdown(w io.Writer) error {
 	total := map[string]*RoleTally{}
 	duplicates := 0
-	for _, run := range r.Runs {
-		fmt.Fprintf(w, "## %s\n\n", run.Slug)
-		writeTable(w, run.Roles)
+	runWeights := make([]float64, len(r.Runs))
+	grand := 0.0
+	for i, run := range r.Runs {
 		duplicates += run.Duplicates
 		for role, t := range run.Roles {
+			runWeights[i] += t.Usage.Weight()
 			sum := total[role]
 			if sum == nil {
 				sum = &RoleTally{Role: role, Models: map[string]int{}}
@@ -192,15 +236,37 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 				sum.Models[model] += n
 			}
 		}
+		grand += runWeights[i]
 	}
+
 	fmt.Fprintf(w, "## All runs\n\n")
-	writeTable(w, total)
-	grand := 0.0
-	for _, t := range total {
-		grand += t.Usage.Weight()
+	fmt.Fprintln(w, "| run | sessions | weight | share |")
+	fmt.Fprintln(w, "|---|---|---|---|")
+	order := make([]int, len(r.Runs))
+	for i := range order {
+		order[i] = i
 	}
-	_, err := fmt.Fprintf(w, "Total weight %.1fM; %d repeated transcript lines skipped.\n", grand/1e6, duplicates)
-	return err
+	sort.SliceStable(order, func(a, b int) bool { return runWeights[order[a]] > runWeights[order[b]] })
+	for _, i := range order {
+		sessions := 0
+		for _, t := range r.Runs[i].Roles {
+			sessions += t.Sessions
+		}
+		share := 0.0
+		if grand > 0 {
+			share = 100 * runWeights[i] / grand
+		}
+		fmt.Fprintf(w, "| %s | %d | %.1fM | %.1f%% |\n", r.Runs[i].Slug, sessions, runWeights[i]/1e6, share)
+	}
+	fmt.Fprintln(w)
+	writeTable(w, total)
+	fmt.Fprintf(w, "Total weight %.1fM; %d repeated transcript lines skipped.\n\n", grand/1e6, duplicates)
+
+	for _, run := range r.Runs {
+		fmt.Fprintf(w, "## %s\n\n", run.Slug)
+		writeTable(w, run.Roles)
+	}
+	return nil
 }
 
 func writeTable(w io.Writer, roles map[string]*RoleTally) {

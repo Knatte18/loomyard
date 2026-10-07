@@ -1,6 +1,9 @@
 // Command tokencount reads Claude Code's session transcripts for a set of task runs and
-// writes a markdown report of their token use per run and per role.
+// writes a markdown report of their token use per run and per role, the overview of all
+// runs first.
 //
+//	go run ./tools/tokencount
+//	go run ./tools/tokencount -last 10
 //	go run ./tools/tokencount bugfix-sessions bugfix-webster
 //	go run ./tools/tokencount -hub ~/Code/loomyard-LYXHUB -out .scratch/tokens.md test-suite-prune-core
 //
@@ -11,6 +14,8 @@
 //
 // Each argument is a task slug, read as the worktree <hub>/<slug>; -hub defaults to the
 // parent of the current directory, which is the hub when run from its prime.
+// With no slugs it counts the -last runs whose sessions changed most recently, leaving out
+// the prime (the current directory) and the weft.
 // Claude Code keeps a worktree's sessions in ~/.claude/projects/<encoded path>/, one
 // <session>.jsonl per session, and a session's sub-agents (the Webster master's forks)
 // in <session>/subagents/*.jsonl.
@@ -51,18 +56,15 @@ func run(args []string, stdout io.Writer) error {
 	hub := fs.String("hub", "", "hub directory holding the task worktrees (default: parent of the current directory)")
 	projects := fs.String("projects", "", "Claude Code projects directory (default: ~/.claude/projects)")
 	out := fs.String("out", "", "write the report to this file instead of stdout")
+	last := fs.Int("last", 6, "with no slugs named, count this many of the most recently active runs")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	slugs := fs.Args()
-	if len(slugs) == 0 {
-		return fmt.Errorf("name at least one task slug")
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
 	}
 	if *hub == "" {
-		wd, err := os.Getwd()
-		if err != nil {
-			return err
-		}
 		*hub = filepath.Dir(wd)
 	}
 	if *projects == "" {
@@ -72,10 +74,20 @@ func run(args []string, stdout io.Writer) error {
 		}
 		*projects = filepath.Join(home, ".claude", "projects")
 	}
+	slugs := fs.Args()
+	if len(slugs) == 0 {
+		slugs, err = recentRuns(*projects, *hub, filepath.Base(wd), *last)
+		if err != nil {
+			return err
+		}
+		if len(slugs) == 0 {
+			return fmt.Errorf("no task runs of %s under %s", *hub, *projects)
+		}
+	}
 
 	report := Report{}
 	for _, slug := range slugs {
-		r, err := CountRun(*projects, filepath.Join(*hub, slug), slug)
+		r, err := CountRun(projectDir(*projects, filepath.Join(*hub, slug)), slug)
 		if err != nil {
 			return err
 		}
