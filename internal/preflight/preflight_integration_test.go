@@ -440,7 +440,7 @@ func TestCheckResolved_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
 	}
 	var found bool
 	for _, pair := range result.Pairs {
-		if pair.WarpWorktree != filepath.ToSlash(h.Location.WorktreePath()) {
+		if pair.CodeWorktree != filepath.ToSlash(h.Location.WorktreePath()) {
 			continue
 		}
 		found = true

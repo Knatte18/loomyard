@@ -122,8 +122,8 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 	if found != 1 {
 		t.Fatalf("PushAnchored() record = %+v; want exactly one KindBranchPushed entry, got %d", entries, found)
 	}
-	if !strings.HasPrefix(pushed.Detail, "side=weft repo=") || !strings.Contains(pushed.Detail, " remote=") {
-		t.Errorf("KindBranchPushed Detail = %q; want prefix %q and a %q part", pushed.Detail, "side=weft repo=", " remote=")
+	if !strings.HasPrefix(pushed.Detail, "side=records repo=") || !strings.Contains(pushed.Detail, " remote=") {
+		t.Errorf("KindBranchPushed Detail = %q; want prefix %q and a %q part", pushed.Detail, "side=records repo=", " remote=")
 	}
 }
 
@@ -268,10 +268,10 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != weftSHA {
 		t.Errorf("weft bare = %q; want local HEAD %q", got, weftSHA)
 	}
-	if got := countBranchPushed(res, "side=warp repo="); got != 1 {
+	if got := countBranchPushed(res, "side=code repo="); got != 1 {
 		t.Errorf("PushPairAnchored() record = %+v; want exactly one warp KindBranchPushed entry, got %d", res.Mutated().Entries(), got)
 	}
-	if got := countBranchPushed(res, "side=weft repo="); got != 1 {
+	if got := countBranchPushed(res, "side=records repo="); got != 1 {
 		t.Errorf("PushPairAnchored() record = %+v; want exactly one weft KindBranchPushed entry, got %d", res.Mutated().Entries(), got)
 	}
 
@@ -364,10 +364,10 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	if !errors.Is(err, gitrepo.ErrPushRejected) || !fabricengine.IsPushRejected(err) {
 		t.Errorf("PushPairAnchored() error = %v; want it to satisfy errors.Is(err, gitrepo.ErrPushRejected) and IsPushRejected", err)
 	}
-	if want := "push warp side at " + p.warpPath; !strings.Contains(err.Error(), want) {
+	if want := "push code side at " + p.warpPath; !strings.Contains(err.Error(), want) {
 		t.Errorf("PushPairAnchored() error = %q; want it to contain %q", err, want)
 	}
-	if strings.Contains(err.Error(), "push weft side") {
+	if strings.Contains(err.Error(), "push records side") {
 		t.Errorf("PushPairAnchored() error = %q; want the records side absent from it", err)
 	}
 	if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != remoteSHA {
@@ -392,7 +392,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	if !errors.Is(err, gitrepo.ErrPushRejected) {
 		t.Errorf("PushPairAnchored() error = %v; want it to satisfy errors.Is(err, gitrepo.ErrPushRejected) through the code side", err)
 	}
-	for _, want := range []string{"push warp side at " + p.warpPath, "push weft side at " + p.weftPath} {
+	for _, want := range []string{"push code side at " + p.warpPath, "push records side at " + p.weftPath} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("PushPairAnchored() error = %q; want it to contain %q", err, want)
 		}
@@ -496,7 +496,7 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 			if !errors.Is(err, fabricengine.ErrPushLockBusy) {
 				t.Fatalf("bounded push under a held lock error = %v; want it to satisfy errors.Is(err, ErrPushLockBusy)", err)
 			}
-			for _, side := range []string{"push warp side", "push weft side"} {
+			for _, side := range []string{"push code side", "push records side"} {
 				if strings.Contains(err.Error(), side) {
 					t.Errorf("bounded push error = %q; want it to name neither side, found %q", err, side)
 				}

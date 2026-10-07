@@ -118,10 +118,10 @@ const (
 
 // ReconcilePairResult describes the outcome for one warp↔weft pair.
 type ReconcilePairResult struct {
-	// WarpWorktree is the absolute path to the warp worktree.
-	WarpWorktree string `json:"warp_worktree"`
-	// WeftWorktree is the absolute path to the expected weft sibling.
-	WeftWorktree string `json:"weft_worktree"`
+	// CodeWorktree is the absolute path to the warp worktree.
+	CodeWorktree string `json:"code_worktree"`
+	// RecordsWorktree is the absolute path to the expected weft sibling.
+	RecordsWorktree string `json:"records_worktree"`
 	// Action is the corrective action taken (or reported).
 	Action ReconcileAction `json:"action"`
 	// Detail provides human-readable context for the action.
@@ -180,8 +180,8 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 		weftPath := RecordsWorktreePath(l, slug)
 
 		pr := ReconcilePairResult{
-			WarpWorktree: filepath.ToSlash(warpPath),
-			WeftWorktree: filepath.ToSlash(weftPath),
+			CodeWorktree:    filepath.ToSlash(warpPath),
+			RecordsWorktree: filepath.ToSlash(weftPath),
 		}
 
 		// The worktree list was read before this loop began, so a concurrent remove/prune can delete a

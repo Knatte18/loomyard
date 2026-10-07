@@ -29,8 +29,8 @@ type CheckoutResult struct {
 	// Branch is the warp branch the warp worktree now points to (the weft
 	// worktree points to RecordsBranchName(Branch)).
 	Branch string `json:"branch"`
-	// WeftWorktree is the filesystem path to the weft sibling worktree.
-	WeftWorktree string `json:"weft_worktree"`
+	// RecordsWorktree is the filesystem path to the weft sibling worktree.
+	RecordsWorktree string `json:"records_worktree"`
 }
 
 // Checkout switches the warp worktree to branch and its weft sibling to RecordsBranchName(branch) in
@@ -128,8 +128,8 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 	}
 
 	return CheckoutResult{
-		Branch:       branch,
-		WeftWorktree: weftWorktree,
+		Branch:          branch,
+		RecordsWorktree: weftWorktree,
 	}, nil
 }
 
@@ -177,7 +177,7 @@ func (t *Topology) switchOrForkWeft(rec *Mutations, l *lyxcwd.Location, branch s
 		return false, fmt.Errorf("fork weft branch %q from %q failed: %w", weftBranch, parentWeftBranch, err)
 	}
 	rec.Append(KindWorktreeSwitched, weftWorktree, weftBranch)
-	rec.AppendRef(KindBranchCreated, weftBranch, refDetail("weft", weftWorktree, ""))
+	rec.AppendRef(KindBranchCreated, weftBranch, refDetail("records", weftWorktree, ""))
 
 	return true, nil
 }

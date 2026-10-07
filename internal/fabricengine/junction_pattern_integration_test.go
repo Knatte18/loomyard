@@ -580,7 +580,7 @@ func TestReconcile_RepairsOptionalJunctionOnlyDrift(t *testing.T) {
 	weftPath := fabricengine.RecordsWorktreePath(l, slug)
 	var found bool
 	for _, pair := range result.Pairs {
-		if pair.WeftWorktree != filepath.ToSlash(weftPath) {
+		if pair.RecordsWorktree != filepath.ToSlash(weftPath) {
 			continue
 		}
 		found = true
@@ -647,7 +647,7 @@ func TestStatus_ReportsOptionalJunctionUnhealthy(t *testing.T) {
 	warpPath := fabricengine.WorktreePath(l, slug)
 	var found bool
 	for _, pair := range result.Pairs {
-		if pair.WarpWorktree != filepath.ToSlash(warpPath) {
+		if pair.CodeWorktree != filepath.ToSlash(warpPath) {
 			continue
 		}
 		found = true

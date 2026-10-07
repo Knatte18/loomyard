@@ -60,8 +60,8 @@ func TestRemove_RemoteDeletesSquashLandedTaskBranchOnOrigin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v", slug, err)
 	}
-	if !res.RemoteWarpBranchDeleted || res.RemoteWarpBranchKeptReason != "" {
-		t.Errorf("RemoteWarpBranchDeleted = %v, kept reason = %q; want deleted", res.RemoteWarpBranchDeleted, res.RemoteWarpBranchKeptReason)
+	if !res.RemoteCodeBranchDeleted || res.RemoteCodeBranchKeptReason != "" {
+		t.Errorf("RemoteCodeBranchDeleted = %v, kept reason = %q; want deleted", res.RemoteCodeBranchDeleted, res.RemoteCodeBranchKeptReason)
 	}
 	if originHasBranch(t, h.CodeBare, slug) {
 		t.Errorf("task branch %q still on origin", slug)
@@ -85,18 +85,18 @@ func TestRemove_RemoteKeepsUnlandedTaskBranchOnOrigin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v; a kept branch is not a failure", slug, err)
 	}
-	if res.RemoteWarpBranchDeleted {
-		t.Errorf("RemoteWarpBranchDeleted = true; want the unlanded branch kept")
+	if res.RemoteCodeBranchDeleted {
+		t.Errorf("RemoteCodeBranchDeleted = true; want the unlanded branch kept")
 	}
-	if !strings.Contains(res.RemoteWarpBranchKeptReason, "commit(s)") {
-		t.Errorf("RemoteWarpBranchKeptReason = %q; want it to name the unlanded commits", res.RemoteWarpBranchKeptReason)
+	if !strings.Contains(res.RemoteCodeBranchKeptReason, "commit(s)") {
+		t.Errorf("RemoteCodeBranchKeptReason = %q; want it to name the unlanded commits", res.RemoteCodeBranchKeptReason)
 	}
 	if !originHasBranch(t, h.CodeBare, slug) {
 		t.Errorf("task branch %q was deleted on origin despite unlanded work", slug)
 	}
 	// The local step counts the pushed origin copy as holding the work, so it deletes the local branch; the origin copy is then the only one left, which is why the remote gate excludes copies of the branch itself.
-	if !res.WarpBranchDeleted {
-		t.Errorf("WarpBranchDeleted = false (kept reason %q); the pushed local branch is deleted by the local step", res.WarpBranchKeptReason)
+	if !res.CodeBranchDeleted {
+		t.Errorf("CodeBranchDeleted = false (kept reason %q); the pushed local branch is deleted by the local step", res.CodeBranchKeptReason)
 	}
 }
 
@@ -111,8 +111,8 @@ func TestRemove_WithoutRemoteLeavesTaskBranchOnOrigin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v", slug, err)
 	}
-	if res.RemoteWarpBranchDeleted || res.RemoteWarpBranchKeptReason != "" {
-		t.Errorf("RemoteWarpBranchDeleted = %v, kept reason = %q; want neither without remote", res.RemoteWarpBranchDeleted, res.RemoteWarpBranchKeptReason)
+	if res.RemoteCodeBranchDeleted || res.RemoteCodeBranchKeptReason != "" {
+		t.Errorf("RemoteCodeBranchDeleted = %v, kept reason = %q; want neither without remote", res.RemoteCodeBranchDeleted, res.RemoteCodeBranchKeptReason)
 	}
 	if !originHasBranch(t, h.CodeBare, slug) {
 		t.Errorf("task branch %q was deleted on origin without remote", slug)

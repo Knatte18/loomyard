@@ -117,7 +117,7 @@ func PushAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) 
 	if err := pushRebaseFreeRetryingOnce(repo); err != nil {
 		return PushResult{}, err
 	}
-	recordPushIfAdvanced(rec, repo, "weft", target, hadUnpushed, hadUnpushedErr)
+	recordPushIfAdvanced(rec, repo, "records", target, hadUnpushed, hadUnpushedErr)
 
 	return PushResult{}, nil
 }
@@ -182,9 +182,9 @@ func PushPairAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Durati
 	if isPrime {
 		codePushSkipped = unpushedCodeBranchNote(warpPath)
 	} else {
-		warpErr = pushSide("warp", warpPath)
+		warpErr = pushSide("code", warpPath)
 	}
-	weftErr := pushSide("weft", weftPath)
+	weftErr := pushSide("records", weftPath)
 	return PushResult{CodePushSkipped: codePushSkipped}, errors.Join(warpErr, weftErr)
 }
 

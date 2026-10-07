@@ -45,8 +45,8 @@ func TestRemove_PushedWarpBranchIsDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v", slug, err)
 	}
-	if !res.WarpBranchDeleted || res.WarpBranchKeptReason != "" {
-		t.Errorf("WarpBranchDeleted = %v, kept reason = %q; want deleted", res.WarpBranchDeleted, res.WarpBranchKeptReason)
+	if !res.CodeBranchDeleted || res.CodeBranchKeptReason != "" {
+		t.Errorf("CodeBranchDeleted = %v, kept reason = %q; want deleted", res.CodeBranchDeleted, res.CodeBranchKeptReason)
 	}
 	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
 		t.Errorf("warp branch %q still exists after Remove", slug)
@@ -73,8 +73,8 @@ func TestRemove_SquashLandedWarpBranchIsDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v", slug, err)
 	}
-	if !res.WarpBranchDeleted || res.WarpBranchKeptReason != "" {
-		t.Errorf("WarpBranchDeleted = %v, kept reason = %q; want deleted", res.WarpBranchDeleted, res.WarpBranchKeptReason)
+	if !res.CodeBranchDeleted || res.CodeBranchKeptReason != "" {
+		t.Errorf("CodeBranchDeleted = %v, kept reason = %q; want deleted", res.CodeBranchDeleted, res.CodeBranchKeptReason)
 	}
 	if gitkit.BranchExists(t, prime, slug) {
 		t.Errorf("warp branch %q still exists after Remove", slug)
@@ -105,11 +105,11 @@ func TestRemove_UnlandedWarpBranchIsKept(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Remove(%q, force=%v) error = %v; a kept branch is not a failure", slug, force, err)
 			}
-			if res.WarpBranchDeleted {
-				t.Errorf("WarpBranchDeleted = true; want the unlanded branch kept")
+			if res.CodeBranchDeleted {
+				t.Errorf("CodeBranchDeleted = true; want the unlanded branch kept")
 			}
-			if res.WarpBranchKeptReason == "" {
-				t.Errorf("WarpBranchKeptReason is empty; want the gate's reason")
+			if res.CodeBranchKeptReason == "" {
+				t.Errorf("CodeBranchKeptReason is empty; want the gate's reason")
 			}
 			if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
 				t.Errorf("warp branch %q was deleted despite unlanded work", slug)
@@ -163,8 +163,8 @@ func TestRemove_AddSucceedsAfterWarpBranchDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove(%q) error = %v", slug, err)
 	}
-	if !res.WarpBranchDeleted {
-		t.Fatalf("WarpBranchDeleted = false (kept reason %q); a workless branch should be deleted", res.WarpBranchKeptReason)
+	if !res.CodeBranchDeleted {
+		t.Fatalf("CodeBranchDeleted = false (kept reason %q); a workless branch should be deleted", res.CodeBranchKeptReason)
 	}
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("second Add(%q) after a deleting Remove: %v", slug, err)

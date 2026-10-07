@@ -147,10 +147,10 @@ func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushRe
 		}
 
 		if warpRepo != nil {
-			recordPushIfAdvanced(rec, warpRepo, "warp", warpPath, warpHadUnpushed, warpUnpushedErr)
+			recordPushIfAdvanced(rec, warpRepo, "code", warpPath, warpHadUnpushed, warpUnpushedErr)
 		}
 		if weftRepo != nil {
-			recordPushIfAdvanced(rec, weftRepo, "weft", weftPath, weftHadUnpushed, weftUnpushedErr)
+			recordPushIfAdvanced(rec, weftRepo, "records", weftPath, weftHadUnpushed, weftUnpushedErr)
 		}
 
 		return afterWarp != beforeWarp || afterWeft != beforeWeft, nil

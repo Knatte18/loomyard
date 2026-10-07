@@ -37,7 +37,7 @@ func createWeftWorktreeDroppingRuns(rec *Mutations, l *lyxcwd.Location, slug, br
 		return false, fmt.Errorf("create weft worktree %q for branch %q failed: %w", weftPath, branch, err)
 	}
 	rec.Append(KindWorktreeCreated, weftPath, "")
-	rec.AppendRef(KindBranchCreated, branch, refDetail("weft", weftRepoRoot, ""))
+	rec.AppendRef(KindBranchCreated, branch, refDetail("records", weftRepoRoot, ""))
 
 	root := ScopedPathspec(l.AnchorRel, []string{shedrun.RunsRootRel()})[0]
 	root = filepath.ToSlash(root)

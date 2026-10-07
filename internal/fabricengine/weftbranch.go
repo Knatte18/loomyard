@@ -54,6 +54,6 @@ func resolveWeftBranch(rec *Mutations, l *lyxcwd.Location, weftBranch string, co
 	if _, err := gitexec.Run([]string{"branch", "--track", weftBranch, trackingRef}, weftRepoRoot); err != nil {
 		return false, false, fmt.Errorf("create weft branch %q tracking %q: %w", weftBranch, trackingRef, err)
 	}
-	rec.AppendRef(KindBranchCreated, weftBranch, refDetail("weft", weftRepoRoot, originRemoteName))
+	rec.AppendRef(KindBranchCreated, weftBranch, refDetail("records", weftRepoRoot, originRemoteName))
 	return true, true, nil
 }

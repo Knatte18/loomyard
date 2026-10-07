@@ -34,10 +34,10 @@ type PollutionEntry struct {
 
 // PairStatus describes the relationship between one warp worktree and its paired weft sibling.
 type PairStatus struct {
-	// WarpWorktree is the absolute path to the warp worktree.
-	WarpWorktree string `json:"warp_worktree"`
-	// WeftWorktree is the absolute path to the expected weft sibling worktree.
-	WeftWorktree string `json:"weft_worktree"`
+	// CodeWorktree is the absolute path to the warp worktree.
+	CodeWorktree string `json:"code_worktree"`
+	// RecordsWorktree is the absolute path to the expected weft sibling worktree.
+	RecordsWorktree string `json:"records_worktree"`
 	// WarpBranch is the current branch of the warp worktree (empty if undetermined).
 	WarpBranch string `json:"warp_branch"`
 	// WeftBranch is the current branch of the weft worktree (empty if missing or undetermined).
@@ -81,8 +81,8 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 		weftPath := RecordsWorktreePath(l, filepath.Base(warpPath))
 
 		pair := PairStatus{
-			WarpWorktree: filepath.ToSlash(warpPath),
-			WeftWorktree: filepath.ToSlash(weftPath),
+			CodeWorktree:    filepath.ToSlash(warpPath),
+			RecordsWorktree: filepath.ToSlash(weftPath),
 		}
 
 		warpBranch, warpBranchErr := readBranch(warpPath)

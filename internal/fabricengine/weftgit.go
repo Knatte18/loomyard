@@ -323,7 +323,7 @@ func (f *Fabric) PushWeft(opts SyncOptions) (res PushResult, err error) {
 	if err := f.weft.PushCoalesced(); err != nil {
 		return PushResult{}, err
 	}
-	recordPushIfAdvanced(rec, f.weft, "weft", f.weftPath, hadUnpushed, hadUnpushedErr)
+	recordPushIfAdvanced(rec, f.weft, "records", f.weftPath, hadUnpushed, hadUnpushedErr)
 
 	return PushResult{}, nil
 }

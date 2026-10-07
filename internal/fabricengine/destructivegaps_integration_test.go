@@ -659,7 +659,7 @@ func TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch(t *testing.T) {
 
 	var found bool
 	for _, pair := range result.Pairs {
-		if filepath.Base(filepath.FromSlash(pair.WarpWorktree)) != slug {
+		if filepath.Base(filepath.FromSlash(pair.CodeWorktree)) != slug {
 			continue
 		}
 		found = true

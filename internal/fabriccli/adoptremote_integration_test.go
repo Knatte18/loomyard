@@ -95,7 +95,7 @@ func reconcilePair(t *testing.T, h *hubforge.Hub, slug string) (int, map[string]
 	pairs, _ := env.Raw["pairs"].([]any)
 	for _, raw := range pairs {
 		pair, _ := raw.(map[string]any)
-		if warpPath, _ := pair["warp_worktree"].(string); filepath.Base(warpPath) == slug {
+		if warpPath, _ := pair["code_worktree"].(string); filepath.Base(warpPath) == slug {
 			return code, pair
 		}
 	}

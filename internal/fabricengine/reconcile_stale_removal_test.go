@@ -45,7 +45,7 @@ func findReconcilePair(t *testing.T, pairs []fabricengine.ReconcilePairResult, w
 	t.Helper()
 	want := filepath.ToSlash(weftPath)
 	for i := range pairs {
-		if pairs[i].WeftWorktree == want {
+		if pairs[i].RecordsWorktree == want {
 			return &pairs[i]
 		}
 	}

@@ -118,7 +118,7 @@ func TestHubContainment_ReconcileWiresNoBoardJunction(t *testing.T) {
 
 	boardPattern := fabricengine.ExcludePatternForTest(l.AnchorRel, fabricengine.BoardDirName)
 	for _, pair := range result.Pairs {
-		warpPath := filepath.FromSlash(pair.WarpWorktree)
+		warpPath := filepath.FromSlash(pair.CodeWorktree)
 		boardLink := filepath.Join(warpPath, l.AnchorRel, fabricengine.BoardDirName)
 		if _, statErr := os.Lstat(boardLink); !os.IsNotExist(statErr) {
 			t.Errorf("board link %s exists after Reconcile; want absent (stat err: %v)", boardLink, statErr)

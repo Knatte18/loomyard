@@ -88,17 +88,17 @@ type RemoveResult struct {
 	// with remote, a weft repo with no origin remote configured;
 	// without remote, a sibling branch left only on origin, which is kept.
 	RemoteSkippedReason string `json:"remote_skipped_reason,omitempty"`
-	// WarpBranchDeleted reports whether the pair's local warp branch was deleted after the teardown.
-	WarpBranchDeleted bool `json:"warp_branch_deleted"`
-	// WarpBranchKeptReason is non-empty when the warp branch was left in place, naming why: the
+	// CodeBranchDeleted reports whether the pair's local warp branch was deleted after the teardown.
+	CodeBranchDeleted bool `json:"code_branch_deleted"`
+	// CodeBranchKeptReason is non-empty when the warp branch was left in place, naming why: the
 	// destructive gate's refusal, or a failure to delete it. A kept branch is not a failure of Remove.
-	WarpBranchKeptReason string `json:"warp_branch_kept_reason,omitempty"`
-	// RemoteWarpBranchDeleted reports whether the pair's task branch was observably removed from the warp repo's origin.
+	CodeBranchKeptReason string `json:"code_branch_kept_reason,omitempty"`
+	// RemoteCodeBranchDeleted reports whether the pair's task branch was observably removed from the warp repo's origin.
 	// It is true only with remote, when the branch's work was landed.
-	RemoteWarpBranchDeleted bool `json:"remote_warp_branch_deleted"`
-	// RemoteWarpBranchKeptReason is non-empty when remote was set and the task branch on origin was left in place, naming why: the gate's refusal or a failure to look it up or delete it.
+	RemoteCodeBranchDeleted bool `json:"remote_code_branch_deleted"`
+	// RemoteCodeBranchKeptReason is non-empty when remote was set and the task branch on origin was left in place, naming why: the gate's refusal or a failure to look it up or delete it.
 	// A kept branch is not a failure of Remove.
-	RemoteWarpBranchKeptReason string `json:"remote_warp_branch_kept_reason,omitempty"`
+	RemoteCodeBranchKeptReason string `json:"remote_code_branch_kept_reason,omitempty"`
 	// ArchiveTag names the archive/<slug>/<tip> tag pushed to the weft origin before the teardown;
 	// empty when none was pushed.
 	ArchiveTag string `json:"archive_tag,omitempty"`
@@ -127,10 +127,10 @@ type RemoveResult struct {
 // repo's origin remote; a remote deletion failure never makes Remove return a non-nil error.
 // Once both worktrees are removed, Remove deletes the local warp branch (BranchPrefix + slug) through
 // the destructive gate, which refuses unless the branch's work is on another ref or landed on the
-// parent recorded in the pair's origin record; a refusal fills WarpBranchKeptReason and Remove still
+// parent recorded in the pair's origin record; a refusal fills CodeBranchKeptReason and Remove still
 // succeeds. force never answers that check.
 // With remote, Remove then deletes the task branch on the warp repository's origin, through the same gate and a lease on the observed remote tip, when the tip's work is landed;
-// a refusal, a lost lease or a failed push fills RemoteWarpBranchKeptReason and Remove still succeeds.
+// a refusal, a lost lease or a failed push fills RemoteCodeBranchKeptReason and Remove still succeeds.
 // The recorded parent is read before any teardown, since the record lives in the weft worktree the
 // teardown deletes.
 // A pair whose task worktree is already gone is finished rather than refused: Remove performs whatever teardown remains, in the same order and through the same gates, and reports it in Steps with Finished set.
@@ -258,11 +258,11 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		RemoteBranchDeleted:  teardown.remoteBranchDeleted,
 		RemoteBranchError:    teardown.remoteBranchError,
 		RemoteSkippedReason:  teardown.remoteSkippedReason,
-		WarpBranchDeleted:    warpDeleted,
-		WarpBranchKeptReason: warpKeptReason,
+		CodeBranchDeleted:    warpDeleted,
+		CodeBranchKeptReason: warpKeptReason,
 
-		RemoteWarpBranchDeleted:    remoteWarpDeleted,
-		RemoteWarpBranchKeptReason: remoteWarpKeptReason,
+		RemoteCodeBranchDeleted:    remoteWarpDeleted,
+		RemoteCodeBranchKeptReason: remoteWarpKeptReason,
 		ArchiveTag:                 archiveTag,
 		ArchiveSkippedReason:       archiveSkippedReason,
 		Steps:                      steps,

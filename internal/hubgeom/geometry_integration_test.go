@@ -201,7 +201,7 @@ func reconcilePairFor(t *testing.T, h *hubforge.Hub, slug string) fabricengine.R
 		t.Fatalf("decode reconcile envelope: %v\noutput: %s", err, out.String())
 	}
 	for _, pair := range envelope.Pairs {
-		if filepath.Base(pair.WarpWorktree) == slug {
+		if filepath.Base(pair.CodeWorktree) == slug {
 			return pair
 		}
 	}

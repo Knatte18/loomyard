@@ -67,7 +67,7 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 	// emitted forward-slashed, so normalize the expectation the same way.
 	var found bool
 	for _, pair := range result.Pairs {
-		if pair.WeftWorktree != filepath.ToSlash(weftPath) {
+		if pair.RecordsWorktree != filepath.ToSlash(weftPath) {
 			continue
 		}
 		found = true
@@ -152,7 +152,7 @@ func seedRepoWideFabricConfig(t testing.TB, hub string) {
 func findPruneEntryByWeftPath(t *testing.T, entries []fabricengine.PruneEntry, weftPath string) *fabricengine.PruneEntry {
 	t.Helper()
 	for i := range entries {
-		if filepath.Clean(entries[i].WeftWorktree) == filepath.Clean(weftPath) {
+		if filepath.Clean(entries[i].RecordsWorktree) == filepath.Clean(weftPath) {
 			return &entries[i]
 		}
 	}
@@ -164,7 +164,7 @@ func findPruneEntryByWeftPath(t *testing.T, entries []fabricengine.PruneEntry, w
 func countPruneEntriesForWeft(entries []fabricengine.PruneEntry, weftPath string) int {
 	n := 0
 	for i := range entries {
-		if filepath.Clean(entries[i].WeftWorktree) == filepath.Clean(weftPath) {
+		if filepath.Clean(entries[i].RecordsWorktree) == filepath.Clean(weftPath) {
 			n++
 		}
 	}
@@ -688,7 +688,7 @@ func TestReconcile_RestoresDeletedPortalAndLaunchers(t *testing.T) {
 
 	var repaired *fabricengine.ReconcilePairResult
 	for i := range result.Pairs {
-		if filepath.Base(result.Pairs[i].WarpWorktree) == slug {
+		if filepath.Base(result.Pairs[i].CodeWorktree) == slug {
 			repaired = &result.Pairs[i]
 		}
 	}

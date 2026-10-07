@@ -130,7 +130,7 @@ func createWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch, startP
 		return fmt.Errorf("create weft worktree %q for branch %q failed: %w", weftPath, branch, err)
 	}
 	rec.Append(KindWorktreeCreated, weftPath, "")
-	rec.AppendRef(KindBranchCreated, branch, refDetail("weft", weftRepoRoot, ""))
+	rec.AppendRef(KindBranchCreated, branch, refDetail("records", weftRepoRoot, ""))
 	if _, err := ensureWeftLockDirAt(weftPath); err != nil {
 		return fmt.Errorf("create weft lock dir in %q: %w", weftPath, err)
 	}
@@ -148,7 +148,7 @@ func pushWeftBranch(rec *Mutations, l *lyxcwd.Location, slug, branch string, opt
 	if err := push.pushBranchWithRetry(weftPath, branch); err != nil {
 		return fmt.Errorf("push weft branch %q failed: %w", branch, err)
 	}
-	rec.AppendRef(KindBranchPushed, branch, refDetail("weft", weftPath, "origin"))
+	rec.AppendRef(KindBranchPushed, branch, refDetail("records", weftPath, "origin"))
 
 	return nil
 }

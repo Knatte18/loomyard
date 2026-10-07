@@ -323,7 +323,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `status` is the unified both-sides uncommitted-change view (`Fabric.Status`);
   `diff` reports the side-labelled changes since a given code SHA (`Fabric.Diff`).
   `pull` is now unified across code and records, not records-only: it fast-forwards the records first, then fetches and inspects the code, detecting a rebased/force-pushed code remote via ancestry and safely re-anchoring the records' correspondence to it when it is safe to do so.
-  `remove` also deletes the pair's local task branch once both worktrees are gone, when its work is pushed or landed on the recorded parent, and keeps the branch with a reason in the result otherwise, reporting both as `warp_branch_deleted` and `warp_branch_kept_reason` on the envelope;
+  `remove` also deletes the pair's local task branch once both worktrees are gone, when its work is pushed or landed on the recorded parent, and keeps the branch with a reason in the result otherwise, reporting both as `code_branch_deleted` and `code_branch_kept_reason` on the envelope;
   `--force` never overrides that check.
   ✅ Implemented; see the `internal/fabricengine` package documentation for rationale.
 - **ide** — one-shot VS Code launcher with interactive menu.

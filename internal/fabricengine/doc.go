@@ -490,7 +490,9 @@
 // Just before the archive, `Remove` commits the sibling worktree's uncommitted changes under the scoped record pathspec, so the tag holds them; only changes outside that pathspec refuse without `force`.
 // `Topology.RemoveRefusal` is the read-only probe of every refusal `Remove` raises before its first mutation.
 // A pair already half removed is finished rather than refused: `Remove` does whatever teardown remains, reports its `Steps` and any `StrayPath`, and returns `ErrPairNotFound` when nothing is left.
-// With `remote`, `Remove` also deletes the landed task branch on origin, leased to the observed tip and gated on the branch being landed; a refusal or lost lease is reported in `RemoteWarpBranchKeptReason` and does not fail the removal.
+// With `remote`, `Remove` also deletes the landed task branch on origin, leased to the observed tip and gated on the branch being landed; a refusal or lost lease is reported in `RemoteCodeBranchKeptReason` and does not fail the removal.
+// The result names the code branch's fate in `CodeBranchDeleted` and `CodeBranchKeptReason` (JSON `code_branch_deleted`, `code_branch_kept_reason`, `remote_code_branch_deleted`, `remote_code_branch_kept_reason`).
+// `PairStatus`, `PruneEntry` and `ReconcilePairResult` carry the pair's paths as `CodeWorktree` and `RecordsWorktree` (JSON `code_worktree`, `records_worktree`).
 //
 // `Cleanup` sweeps local leftovers.
 // `CleanupRemoteWarp` is the separate origin sweep: it classifies leftover task branches on origin against the open-PR heads its caller supplies and, with apply, deletes the landed ones; a nil open-PR set refuses every deletion.
@@ -608,6 +610,7 @@
 // `partial` exist to stop a consumer from doing by accident.
 //
 // The vocabulary is `Kind` (mutation.go's closed, string-backed enum — `path_removed`, `worktree_removed`, `link_removed`, `branch_deleted`, `remote_branch_deleted`, `remote_branch_updated`, `worktree_reset`, `dir_created`, `worktree_created`, `branch_created`, `branch_pushed`, `commit_created`, `link_created`, `file_written`, `push_spawned`, `worktree_switched`, `repo_advanced`, `merge_staged`, `merge_resolved_staged`, `merge_committed`), a flat `Mutation` entry (kind, target, optional detail), and `Mutations`, the ordered accumulator a verb call threads through everything it performs.
+// A `branch_created` or `branch_pushed` entry's detail starts `side=code` or `side=records`.
 //
 // The accumulate-as-you-mutate rule is simple and has no exception: append an entry immediately
 // after a primitive observably changed state, never before, and never for a no-op or a refusal.

@@ -196,7 +196,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 	// The `-b warpBranch` argument to the worktree add above means this same call created a branch,
 	// not merely a worktree; a branch is a ref, so it records via AppendRef rather than Append.
-	rec.AppendRef(KindBranchCreated, warpBranch, refDetail("warp", l.WorktreePath(), warpRemote))
+	rec.AppendRef(KindBranchCreated, warpBranch, refDetail("code", l.WorktreePath(), warpRemote))
 	warpPush.tok = branchTok
 
 	// Install the post-checkout hook now that the warp worktree exists.
@@ -325,7 +325,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 		return AddResult{}, fmt.Errorf("push branch %q failed: %w", warpBranch, err)
 	}
-	rec.AppendRef(KindBranchPushed, warpBranch, refDetail("warp", l.WorktreePath(), "origin"))
+	rec.AppendRef(KindBranchPushed, warpBranch, refDetail("code", l.WorktreePath(), "origin"))
 
 	// (12) Replace an archived leftover of the weft branch on origin, then push the weft branch.
 	// The lease pins the deletion to the tip the pre-flight proved archived, so a branch that moved since is refused.

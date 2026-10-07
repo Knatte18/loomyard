@@ -39,10 +39,10 @@ import (
 
 // PruneEntry describes one stale or orphaned pair that Prune has identified.
 type PruneEntry struct {
-	// WarpWorktree is the absolute path to the (missing or absent) warp worktree.
-	WarpWorktree string `json:"warp_worktree"`
-	// WeftWorktree is the absolute path to the weft worktree sibling.
-	WeftWorktree string `json:"weft_worktree"`
+	// CodeWorktree is the absolute path to the (missing or absent) warp worktree.
+	CodeWorktree string `json:"code_worktree"`
+	// RecordsWorktree is the absolute path to the weft worktree sibling.
+	RecordsWorktree string `json:"records_worktree"`
 	// Reason describes why this pair was flagged for pruning.
 	Reason string `json:"reason"`
 	// Removed reports whether the weft worktree was actually deleted.
@@ -113,9 +113,9 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult
 
 		if warpMissing {
 			pe := PruneEntry{
-				WarpWorktree: filepath.ToSlash(warpPath),
-				WeftWorktree: filepath.ToSlash(weftPath),
-				Reason:       "warp worktree directory missing",
+				CodeWorktree:    filepath.ToSlash(warpPath),
+				RecordsWorktree: filepath.ToSlash(weftPath),
+				Reason:          "warp worktree directory missing",
 			}
 
 			applyStalePairOwnership(l, weftPath, &pe)
@@ -156,9 +156,9 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult
 		warpPath := filepath.Join(l.HubPath, warpSlug)
 
 		pe := PruneEntry{
-			WarpWorktree: filepath.ToSlash(warpPath),
-			WeftWorktree: filepath.ToSlash(weftPath),
-			Reason:       "weft worktree has no warp sibling",
+			CodeWorktree:    filepath.ToSlash(warpPath),
+			RecordsWorktree: filepath.ToSlash(weftPath),
+			Reason:          "weft worktree has no warp sibling",
 		}
 
 		applyStalePairOwnership(l, weftPath, &pe)
