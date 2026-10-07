@@ -136,11 +136,15 @@ func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttl
 //
 // The second step lands a second task into the same parent once, then calls Finalize again on the same pair, and asserts the second call is Done with no second landing commit.
 // A fresh Finalize over a parent that already carries the task's squashed diff behaves the same way.
-// Both Finalize calls of that step report the task's committed loom config change through the notice seam, and the parent's own copy of the file is left byte-identical.
+// Both Finalize calls of that step report the task's committed loom config change through the notice seam,
+// and the parent's own copy of the file is left byte-identical.
 //
 // The third step lands a fresh task with squash off and asserts the same notice and the same untouched parent config.
 //
-// The steps share one hub and one parent pair, and the later ones rely on the first having landed into that parent, so no step runs in parallel and the top-level test calls t.Parallel because the hub is its own.
+// The steps share one hub and one parent pair,
+// and the later ones rely on the first having landed into that parent,
+// so no step runs in parallel;
+// the top-level test calls t.Parallel because the hub is its own.
 func TestFinalize_OverRealHub(t *testing.T) {
 	t.Parallel()
 

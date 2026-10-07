@@ -115,7 +115,8 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 }
 
 // TestAddRollback_LiveWeftFromOrigin forces Add to fail after it took a live pair's weft branch from origin, and asserts the rollback leaves origin untouched:
-// a local branch Add created from origin is deleted, and a pre-existing local branch Add fast-forwarded stays at origin's tip, not rewound.
+// a local branch Add created from origin is deleted,
+// and a pre-existing local branch Add fast-forwarded stays at origin's tip, not rewound.
 func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 	t.Parallel()
 

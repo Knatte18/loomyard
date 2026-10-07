@@ -322,7 +322,9 @@ func TestAddRollback_AdoptedPathPreservesOriginRecordCommit(t *testing.T) {
 }
 
 // TestAdd_AdoptedWeftKeepsItsOriginRecord adopts a live pair's weft branch, which already carries the origin record, from a worktree on another branch:
-// the record keeps its recorded parent, no record commit lands on the branch, and the new weft worktree still gets its .weft lock directory.
+// the record keeps its recorded parent,
+// no record commit lands on the branch,
+// and the new weft worktree still gets its .weft lock directory.
 func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
 	t.Parallel()
 

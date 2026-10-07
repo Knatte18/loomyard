@@ -1,7 +1,9 @@
 //go:build integration
 
-// landingdeps_integration_test.go drives landingDeps' config-change seams over a real hub: ConfigChanges reads a pair's committed config files through real branches, and Notify queues into the prime's orch notice directory.
-// This package's own testmain_test.go arms the hermetic git test environment for the whole binary, so this file adds no TestMain.
+// landingdeps_integration_test.go drives landingDeps' config-change seams over a real hub: ConfigChanges reads a pair's committed config files through real branches,
+// and Notify queues into the prime's orch notice directory.
+// This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
+// so this file adds no TestMain.
 
 package loomcli
 
@@ -23,7 +25,9 @@ import (
 )
 
 // TestLandingDeps_ConfigNoticeSeamsOverRealHub asserts ConfigChanges reports a per-worktree module's changed config file and never a hub-wide module's, and that Notify queues one notice in the prime's notice directory only once an orch strand is recorded.
-// The steps share one hub and one prime orch state, and the queueing step relies on the no-strand step having queued nothing, so none runs in parallel.
+// The steps share one hub and one prime orch state,
+// and the queueing step relies on the no-strand step having queued nothing,
+// so none runs in parallel.
 func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 	t.Parallel()
 

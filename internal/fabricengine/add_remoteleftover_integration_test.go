@@ -1,6 +1,7 @@
 //go:build integration
 
-// add_remoteleftover_integration_test.go covers Add's pre-flight probes of both origins: a live pair's branches on origin are adopted, and a leftover remote branch from a removed pair is refused with an *ErrRemoteLeftover before Add's first mutation, or, when provably replaceable, does not block the add.
+// add_remoteleftover_integration_test.go covers Add's pre-flight probes of both origins: a live pair's branches on origin are adopted,
+// and a leftover remote branch from a removed pair is refused with an *ErrRemoteLeftover before Add's first mutation, or, when provably replaceable, does not block the add.
 //
 // Every hub here is built through hubforge.NewHub with an empty branch_prefix, so a slug's warp branch is the bare slug and its weft branch is <slug>-weft.
 // pushCommitToOrigin plants the leftover's divergence from a throwaway clone of the fixture's bare.
@@ -85,7 +86,8 @@ func removedPair(t *testing.T, slug string) *hubforge.Hub {
 	return h
 }
 
-// TestAdd_OriginOnlyWeftAdopted covers a weft branch on origin that has moved past its archive tag, with no local weft branch: the pair is live, so Add adopts it.
+// TestAdd_OriginOnlyWeftAdopted covers a weft branch on origin that has moved past its archive tag, with no local weft branch: the pair is live,
+// so Add adopts it.
 func TestAdd_OriginOnlyWeftAdopted(t *testing.T) {
 	t.Parallel()
 
@@ -278,7 +280,8 @@ func TestAdd_WarpFastForwardableLeftoverProceeds(t *testing.T) {
 	}
 }
 
-// TestAdd_SkipPushSkipsLeftoverProbes covers the origin-only-weft setup re-added under SkipPush: origin is not consulted, so both branches fork.
+// TestAdd_SkipPushSkipsLeftoverProbes covers the origin-only-weft setup re-added under SkipPush: origin is not consulted,
+// so both branches fork.
 // Origin's warp branch stays unchanged only because step 11's ungated push re-pushes the same prime HEAD the first Add pushed.
 func TestAdd_SkipPushSkipsLeftoverProbes(t *testing.T) {
 	t.Parallel()

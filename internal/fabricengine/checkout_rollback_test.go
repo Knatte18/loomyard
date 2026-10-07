@@ -137,7 +137,9 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 }
 
 // TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin covers the rollback of a checkout whose weft branch existed only on origin:
-// the local branch Checkout created tracking it is deleted, origin's copy is untouched, and both sides return to their original branches.
+// the local branch Checkout created tracking it is deleted,
+// origin's copy is untouched,
+// and both sides return to their original branches.
 // The failure is injected after the adoption, either at junction wiring or at the weft switch itself.
 func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 	t.Parallel()

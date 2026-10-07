@@ -1,7 +1,8 @@
 //go:build integration
 
 // adoptremote_integration_test.go drives the fabric CLI verbs that take a pair's weft branch from origin when it exists only there, and `add`'s adoption of a live pair's branches, against one real hub as an ordered scenario.
-// Origin-only branches are pushed into the hub's bare from a scratch clone, and an unreachable origin is simulated by pointing the weft repo's origin URL at a missing path.
+// Origin-only branches are pushed into the hub's bare from a scratch clone,
+// and an unreachable origin is simulated by pointing the weft repo's origin URL at a missing path.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
 package fabriccli_test
@@ -20,7 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
-// originMarkerFile is the file an origin-only weft branch carries, so a test can tell the branch adopted from origin from one forked locally.
+// originMarkerFile is the file an origin-only weft branch carries,
+// so a test can tell the branch adopted from origin from one forked locally.
 const originMarkerFile = "origin-marker.txt"
 
 // pushOriginOnlyWeftBranch pushes weftBranch to the hub's weft bare from a scratch clone, carrying originMarkerFile, and returns its tip.
@@ -67,7 +69,8 @@ func requireOnOriginalBranches(t *testing.T, h *hubforge.Hub, slug string) {
 const weftLockDirName = ".weft"
 
 // addRawWarpWorktree creates a warp worktree for slug outside lyx, on a new branch slug, at the pair's warp path.
-// It removes the worktree and branch again at cleanup when removeAtCleanup is set, so a pair left unrepairable does not fail later reconciles.
+// It removes the worktree and branch again at cleanup when removeAtCleanup is set,
+// so a pair left unrepairable does not fail later reconciles.
 func addRawWarpWorktree(t *testing.T, h *hubforge.Hub, slug string, removeAtCleanup bool) {
 	t.Helper()
 
@@ -299,7 +302,9 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			}
 		}},
 		{"AddAdoptsLivePairFromOrigin", func(t *testing.T) {
-			// Origin holds a live pair's warp and weft branches, with commits the hub's HEAD lacks and a run record, and the hub has neither locally: add builds the pair on both origin tips and pushes only fast-forwards.
+			// Origin holds a live pair's warp and weft branches, with commits the hub's HEAD lacks and a run record,
+			// and the hub has neither locally:
+			// add builds the pair on both origin tips and pushes only fast-forwards.
 			const slug = "add-live"
 			weftBranch := fabricengine.WeftBranchName(slug)
 			runRecord := filepath.Join(h.Location.AnchorRel, shedrun.RunsRootRel(), "run-1", "note.txt")
@@ -366,7 +371,8 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			}
 		}},
 		{"ReconcileForksDormantWeftWithoutOriginRemote", func(t *testing.T) {
-			// A weft repo with no origin remote keeps reconcile's dormant fork for a raw warp worktree, and the dormant weft carries its lock directory.
+			// A weft repo with no origin remote keeps reconcile's dormant fork for a raw warp worktree,
+			// and the dormant weft carries its lock directory.
 			const slug = "rc-noorigin"
 			addRawWarpWorktree(t, h, slug, false)
 
