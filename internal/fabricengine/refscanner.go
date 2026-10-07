@@ -7,6 +7,7 @@ package fabricengine
 import (
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
@@ -192,6 +193,7 @@ var substitutionMarkers = []string{"$(", "`", "<(", ">("}
 // It is false for any output redirection (`>`, `>>`, `>|`, `&>`, a numbered descriptor redirection, `<>`), for command or process substitution, for backgrounding, and for any other command, `sort`, `tee`, `find`, an interpreter, `lyx`, `git` and `go` included.
 // A separator or redirection character inside a quoted span is text.
 // A substitution is found with only single-quoted spans blanked, because a shell runs one inside double quotes.
+// A command whose first word is quoted is never read-only, since the quoted word is not a name the list can match.
 func IsReadOnlyCommand(cmd string) bool {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
@@ -204,7 +206,7 @@ func IsReadOnlyCommand(cmd string) bool {
 		}
 	}
 	unquoted := blankQuoted(cmd)
-	if strings.Contains(unquoted, ">") {
+	if strings.Contains(unquoted, ">") || commandWordQuoted(cmd, unquoted) {
 		return false
 	}
 	unquoted = strings.NewReplacer("&&", ";", "\n", ";", "|", ";").Replace(unquoted)
@@ -218,4 +220,24 @@ func IsReadOnlyCommand(cmd string) bool {
 		}
 	}
 	return true
+}
+
+// commandWordQuoted reports whether any command of cmd opens with a quoted word.
+// blanked is cmd with its quoted spans blanked, which shows such a word as spaces and so would pass the next word off as the command.
+func commandWordQuoted(cmd, blanked string) bool {
+	original, hidden := []rune(cmd), []rune(blanked)
+	atCommandStart := true
+	for i, r := range hidden {
+		switch {
+		case r == ';' || r == '|' || r == '&' || r == '\n':
+			atCommandStart = true
+		case unicode.IsSpace(original[i]):
+		case atCommandStart:
+			if r == ' ' {
+				return true
+			}
+			atCommandStart = false
+		}
+	}
+	return false
 }

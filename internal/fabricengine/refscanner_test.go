@@ -150,6 +150,9 @@ func TestIsReadOnlyCommand(t *testing.T) {
 		{"git", "git status", false},
 		{"go", "go test ./...", false},
 		{"reader after a non-reader", "ls a && git push", false},
+		{"single-quoted non-reader before a reader name", "'tee' cat", false},
+		{"double-quoted non-reader after a separator", `ls a && "rm" cat x`, false},
+		{"quoted non-reader after a pipe", "cat a | 'tee' cat", false},
 		{"empty command", "  ", false},
 	}
 
