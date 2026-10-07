@@ -39,6 +39,7 @@ var testWeights = batcher.Weights{
 	PackageContext:   7,
 }
 
+// editCard returns the card numbered number that edits targets and uses uses.
 func editCard(number int, targets []string, uses ...string) planparser.Card {
 	return planparser.Card{
 		Number:       number,
@@ -47,6 +48,8 @@ func editCard(number int, targets []string, uses ...string) planparser.Card {
 	}
 }
 
+// TestSegmentCost asserts the hand-computed cost of one-card segments over a fake size source.
+// It also asserts that merging cards prices a shared read set once, so identical read sets cost less merged than apart and a large added file costs more.
 func TestSegmentCost(t *testing.T) {
 	t.Parallel()
 
@@ -151,6 +154,8 @@ func TestSegmentCost(t *testing.T) {
 	})
 }
 
+// TestDiskSizes asserts DiskSizes counts the lines of present files and reports absent ones as missing.
+// It also asserts DiskSizes lists only the *_test.go files directly in a directory, with an absent directory listing none.
 func TestDiskSizes(t *testing.T) {
 	t.Parallel()
 
