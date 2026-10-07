@@ -95,10 +95,10 @@ func (w *Watcher) recordExit(reason string) error {
 }
 
 // recordStoppingOnCancel persists WatcherStopping as soon as ctx is cancelled, so the record lands before the in-flight tick finishes and before the lock is released.
-// It returns once ctx is cancelled or done is closed, whichever comes first.
-func (w *Watcher) recordStoppingOnCancel(ctx context.Context, done <-chan struct{}) {
+// It returns once ctx is cancelled or runReturned is closed, whichever comes first.
+func (w *Watcher) recordStoppingOnCancel(ctx context.Context, runReturned <-chan struct{}) {
 	select {
-	case <-done:
+	case <-runReturned:
 		return
 	case <-ctx.Done():
 	}
@@ -143,15 +143,15 @@ func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
 	}
 
 	// The goroutine ends before the lock is released, so its record can never land after a successor watcher cleared it.
-	done := make(chan struct{})
-	stopped := make(chan struct{})
+	runReturned := make(chan struct{})
+	recorderExited := make(chan struct{})
 	go func() {
-		defer close(stopped)
-		w.recordStoppingOnCancel(ctx, done)
+		defer close(recorderExited)
+		w.recordStoppingOnCancel(ctx, runReturned)
 	}()
 	defer func() {
-		close(done)
-		<-stopped
+		close(runReturned)
+		<-recorderExited
 	}()
 
 	failures := 0
