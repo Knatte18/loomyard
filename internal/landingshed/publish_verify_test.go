@@ -133,8 +133,8 @@ func TestPublishVerify_HaltsOnVerifyResult(t *testing.T) {
 	}
 }
 
-// TestPublishVerify_PublishVerifyCommand pins that a configured `publish_verify` runs after the plan's verify at site Publish with the plan's command as the base command,
-// and that its failure ends Stuck naming the key, the exit code and the log, before anything is pushed or GitHub is reached.
+// TestPublishVerify_PublishVerifyCommand pins that a configured `publish_verify` runs after the plan's verify at site Publish with the plan's command as the base command.
+// Its failure ends Stuck naming the key, the exit code and the log, before anything is pushed or GitHub is reached.
 func TestPublishVerify_PublishVerifyCommand(t *testing.T) {
 	const planCommand, publishCommand = "go test ./...", "go test -tags tmux ./..."
 	tests := []struct {
