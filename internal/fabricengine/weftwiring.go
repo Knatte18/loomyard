@@ -131,6 +131,9 @@ func createWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch, startP
 	}
 	rec.Append(KindWorktreeCreated, weftPath, "")
 	rec.AppendRef(KindBranchCreated, branch, refDetail("weft", weftRepoRoot, ""))
+	if _, err := ensureWeftLockDirAt(weftPath); err != nil {
+		return fmt.Errorf("create weft lock dir in %q: %w", weftPath, err)
+	}
 	return nil
 }
 

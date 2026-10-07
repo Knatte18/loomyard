@@ -7,13 +7,18 @@ package loomcli
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -94,6 +99,25 @@ func landingDeps(
 			done := "done"
 			return board.SetStatus(seedSlug(l.WorktreeName), &done)
 		},
+		// ConfigChanges reads the task's changes to its per-worktree config files since its fork point.
+		// A hub-wide module's file is never read: its worktree copy is not the one in force.
+		ConfigChanges: func() (fabricengine.ConfigChanges, error) {
+			return fabricengine.ReadConfigChanges(l, taskBranch, parentBranch, perWorktreeConfigRels())
+		},
+		// Notify queues one orch notice for the hub's prime, resolved at call time.
+		// A prime with no orch strand recorded is not an error: QueueNotice logs the notice instead.
+		Notify: func(line string) error {
+			primeName, err := fabricengine.PrimeName(l)
+			if err != nil {
+				return err
+			}
+			prime, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(l, primeName))
+			if err != nil {
+				return err
+			}
+			_, err = orchengine.QueueNotice(orchcli.PrimePaths(prime), line, time.Now())
+			return err
+		},
 		// VerifyCommand reads the plan's verify command each time it is called, never at construction:
 		// landingDeps runs at bootstrap, before the plan exists on a fresh run,
 		// so a value captured here would be empty and the gate would silently skip.
@@ -111,6 +135,17 @@ func landingDeps(
 		Registry:  registry,
 		Config:    cfg,
 	}
+}
+
+// perWorktreeConfigRels returns the anchor-relative config file of every module that is not hub-wide.
+func perWorktreeConfigRels() []string {
+	var rels []string
+	for _, m := range configreg.Modules() {
+		if !m.HubWide {
+			rels = append(rels, configengine.ConfigFileRel(m.Name))
+		}
+	}
+	return rels
 }
 
 // openHubBoard opens the hub's board the way boardcli does, but with Path pointed at the hub's board rather than a per-worktree link (Hub Containment),

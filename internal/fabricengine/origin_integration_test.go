@@ -321,6 +321,56 @@ func TestAddRollback_AdoptedPathPreservesOriginRecordCommit(t *testing.T) {
 	}
 }
 
+// TestAdd_AdoptedWeftKeepsItsOriginRecord adopts a live pair's weft branch, which already carries the origin record, from a worktree on another branch:
+// the record keeps its recorded parent,
+// no record commit lands on the branch,
+// and the new weft worktree still gets its .weft lock directory.
+func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	const slug = "moved-pair"
+	weftBranch := fabricengine.WeftBranchName(slug)
+
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+	recordedTip := gitkit.RevParse(t, mustWeftRepoRoot(t, l), "refs/remotes/origin/"+weftBranch)
+	if _, err := h.Topology.Remove(l, slug, false, false); err != nil {
+		t.Fatalf("setup Remove(%q): %v", slug, err)
+	}
+	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", weftBranch, recordedTip)
+	gitkit.MustRun(t, l.WorktreePath(), "git", "checkout", "-b", "another-parent")
+
+	res, err := h.Topology.Add(l, slug, fabricengine.AddOptions{})
+	if err != nil {
+		t.Fatalf("Add(%q): %v", slug, err)
+	}
+
+	pairLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(pair warp worktree): %v", err)
+	}
+	origin, ok, err := fabricengine.ReadOrigin(pairLayout)
+	if err != nil || !ok {
+		t.Fatalf("ReadOrigin() = (ok %v, err %v); want the adopted branch's own record", ok, err)
+	}
+	if origin.ParentBranch != "main" {
+		t.Errorf("ReadOrigin().ParentBranch = %q; want the recorded %q, not the acting worktree's branch", origin.ParentBranch, "main")
+	}
+	if got := gitkit.RevParse(t, fabricengine.WeftWorktreePath(l, slug), "HEAD"); got != recordedTip {
+		t.Errorf("adopted weft HEAD = %s; want the recorded tip %s (no record commit)", got, recordedTip)
+	}
+	if _, err := os.Stat(filepath.Join(fabricengine.WeftWorktreePath(l, slug), ".weft")); err != nil {
+		t.Errorf("adopted weft worktree lacks its .weft lock directory: %v", err)
+	}
+	recordPath := fabricengine.OriginRecordPathFor(l, slug)
+	for _, m := range res.Mutations.Entries() {
+		if (m.Kind == fabricengine.KindFileWritten && strings.Contains(recordPath, m.Target)) || m.Kind == fabricengine.KindCommitCreated {
+			t.Errorf("record carries %s at %s; want the origin record neither rewritten nor committed", m.Kind, m.Target)
+		}
+	}
+}
+
 // TestAdd_OriginRecordMutationEntries asserts the successful AddResult's mutation snapshot contains
 // exactly one KindFileWritten entry for the record and exactly one KindCommitCreated entry for the
 // record's commit, whose target is the new pair's weft worktree and whose detail is the sha the

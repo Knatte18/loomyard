@@ -377,6 +377,96 @@ func TestFinalize_StuckReasons(t *testing.T) {
 	}
 }
 
+// TestFinalize_ConfigChangeNotice pins the one notice Finalize queues about the task's config changes: at Done only, one line carrying what the operator needs to re-apply them, a read error reported instead of stopping, and neither a failing nor an absent Notify changing the verdict.
+func TestFinalize_ConfigChangeNotice(t *testing.T) {
+	changed := fabricengine.ConfigChanges{Files: []string{"loom.yaml", "shuttle.yaml"}, Base: "base111", Tip: "tip222"}
+	tests := []struct {
+		name        string
+		changes     fabricengine.ConfigChanges
+		readErr     error
+		notifyErr   error
+		noNotify    bool
+		mergeErr    error
+		wantOutcome shedengine.Outcome
+		// wantInNotice is empty when no notice may be queued.
+		wantInNotice []string
+	}{
+		{
+			name:         "changed files queue one notice naming the branch, files, SHAs and the re-apply instruction",
+			changes:      changed,
+			wantOutcome:  shedengine.Done,
+			wantInNotice: []string{"loom:", `"task-branch"`, "loom.yaml", "shuttle.yaml", "base111", "tip222", "does not carry them", "re-apply"},
+		},
+		{
+			name:        "an empty diff queues none",
+			wantOutcome: shedengine.Done,
+		},
+		{
+			name:         "a read error still reaches Done and queues a notice carrying the error text on one line",
+			readErr:      errors.New("compare branches:\nno merge-base"),
+			wantOutcome:  shedengine.Done,
+			wantInNotice: []string{"loom:", "could not be read", "compare branches: no merge-base", "by hand"},
+		},
+		{
+			name:         "a Notify error leaves the verdict Done",
+			changes:      changed,
+			notifyErr:    errors.New("queue unavailable"),
+			wantOutcome:  shedengine.Done,
+			wantInNotice: []string{"loom.yaml"},
+		},
+		{
+			name:        "a failed parent-side merge is Stuck and queues none",
+			changes:     changed,
+			mergeErr:    errors.New("some unrecognized failure"),
+			wantOutcome: shedengine.Stuck,
+		},
+		{
+			name:        "a nil Notify still reaches Done",
+			changes:     changed,
+			noNotify:    true,
+			wantOutcome: shedengine.Done,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var notices []string
+			deps := newTestDeps(t)
+			deps.ConfigChanges = func() (fabricengine.ConfigChanges, error) { return tt.changes, tt.readErr }
+			if !tt.noNotify {
+				deps.Notify = func(line string) error {
+					notices = append(notices, line)
+					return tt.notifyErr
+				}
+			}
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}, err: tt.mergeErr}}}
+			fz := &Finalize{
+				deps:         deps,
+				resolver:     &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}},
+				parentOpener: func() (parentMerger, error) { return merger, nil },
+			}
+
+			shedfake.RequireOutcome(t, fz, tt.wantOutcome)
+			if len(tt.wantInNotice) == 0 || tt.noNotify {
+				if len(notices) != 0 {
+					t.Fatalf("notices = %q; want none", notices)
+				}
+				return
+			}
+			if len(notices) != 1 {
+				t.Fatalf("notices = %q; want exactly one", notices)
+			}
+			for _, want := range tt.wantInNotice {
+				if !strings.Contains(notices[0], want) {
+					t.Errorf("notice %q does not carry %q", notices[0], want)
+				}
+			}
+			if strings.ContainsAny(notices[0], "\r\n") {
+				t.Errorf("notice %q spans more than one line", notices[0])
+			}
+		})
+	}
+}
+
 func TestFinalize_CancellationAtEntry_SurfacesAsError(t *testing.T) {
 	deps := newTestDeps(t)
 	res := &recordingResolver{}
