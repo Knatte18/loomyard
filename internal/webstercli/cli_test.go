@@ -378,8 +378,9 @@ func seedGlyphPlanDir(t *testing.T, planDir, worktreeRoot, createTarget string) 
 // Creates a symbol that already exists on disk (worktreeRoot/sub/a.go's Foo) and whose SECOND card
 // Creates a brand-new unit. The first card is therefore a blocking create-already-exists finding
 // under the whole-plan check set and nothing at all once it counts as completed; the second card is
-// informational in both scopes. That asymmetry is what lets one plan tell validate's two scopes
-// apart.
+// informational in both scopes. A third card Deletes a member that is not on disk: a blocking
+// glyph-not-found under the whole-plan check set, the informational delete-target-gone once a
+// batch is begun. That asymmetry is what lets one plan tell validate's two scopes apart.
 func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
 	t.Helper()
 
@@ -399,6 +400,13 @@ func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
 				Slug:    "second",
 				Summary: "the card still pending",
 				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"newpkg#Bar"}}},
+			},
+			{
+				Number:        3,
+				Slug:          "third",
+				Summary:       "the pending card whose Delete target is already gone",
+				Groups:        []plankit.Group{{Label: "Delete", Targets: []string{"sub#Gone"}}},
+				ImpactSummary: "Removes sub#Gone.",
 			},
 		},
 	})
@@ -443,6 +451,9 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 		if !strings.Contains(got, "create-already-exists") {
 			t.Errorf("output missing the blocking create-already-exists finding for card 1; got %q", got)
 		}
+		if !strings.Contains(got, `"check":"glyph-not-found"`) {
+			t.Errorf("output missing the blocking glyph-not-found finding for card 3's missing Delete target; got %q", got)
+		}
 	})
 
 	for _, tc := range []struct {
@@ -482,6 +493,9 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 			}
 			if strings.Contains(got, "create-already-exists") {
 				t.Errorf("output still carries card 1's create-already-exists finding after batch 1 was begun; got %q", got)
+			}
+			if !strings.Contains(got, `"check":"delete-target-gone"`) || strings.Contains(got, `"check":"glyph-not-found"`) {
+				t.Errorf("output must carry card 3's missing Delete target as delete-target-gone and not as glyph-not-found; got %q", got)
 			}
 		})
 	}

@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -243,6 +244,47 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	}
 	if bs.Kind != "fork" {
 		t.Errorf("loaded.Batches[1].Kind = %q; want \"fork\"", bs.Kind)
+	}
+}
+
+// TestBeginBatchCmd_DeleteTargetAlreadyGone proves begin-batch dispatches a card whose Delete target an earlier recorded batch already removed, and names the target as already deleted in the envelope's advisories.
+func TestBeginBatchCmd_DeleteTargetAlreadyGone(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	const target = "internal/gone/x.txt"
+	gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, target, "x", "add the target")
+	// The fixture's own single-card plan is replaced, so its card file goes too.
+	if err := os.Remove(filepath.Join(fx.CLI.geom.PlanDir, "01-only.md")); err != nil {
+		t.Fatalf("remove the fixture's card file: %v", err)
+	}
+	plankit.Write(t, fx.CLI.geom.PlanDir, plankit.Plan{
+		Approved: true,
+		Framing:  "Framing.",
+		Cards: []plankit.Card{
+			{Number: 1, Slug: "first", Summary: "removes the target", Groups: []plankit.Group{{Label: "Delete", Targets: []string{target}}}, Intent: "remove it.", ImpactSummary: "Removes the target."},
+			{Number: 2, Slug: "second", Summary: "also lists the target", Groups: []plankit.Group{{Label: "Delete", Targets: []string{target}}}, Intent: "remove it too.", ImpactSummary: "Removes the target."},
+		},
+	})
+	st := fx.initState(t, "master-model")
+	if err := os.Remove(filepath.Join(fx.CLI.geom.WorktreeRoot, target)); err != nil {
+		t.Fatalf("remove the target batch 1 deleted: %v", err)
+	}
+	st.Batches[1] = &websterengine.BatchState{Slug: "first", Kind: "fork", Terminal: true, Status: "done"}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+
+	var out strings.Builder
+	exitCode := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"2"})
+
+	if exitCode != 0 {
+		t.Fatalf("begin-batch 2 = %d; want 0 -- a Delete target batch 1 already removed must not refuse the dispatch, output: %s", exitCode, out.String())
+	}
+	got := out.String()
+	for _, want := range []string{`"batch":"02-second"`, `"advisories"`, "delete-target-gone", target, "already deleted"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q; got %q", want, got)
+		}
 	}
 }
 

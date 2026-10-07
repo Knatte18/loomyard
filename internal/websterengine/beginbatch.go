@@ -300,6 +300,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// so on a first begin this batch is still validated, while a re-begin of a batch whose earlier fork already landed its work is not refused for it.
 	// The forthcoming half keeps the Create targets of begun, unrecorded batches out of the status check,
 	// so a re-begun batch whose fork landed nothing does not refuse the later cards that Use them (#329).
+	// Once any batch is begun, a pending card's Delete target that is already gone arrives in the advisories below as delete-target-gone, not as a blocking finding.
 	begun, forthcoming := DispatchScope(deps.Batches, deps.State)
 	resolveFindings, resolveErr := planglyph.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, begun, forthcoming)
 	// ValidateDispatch's resolve pass canonicalizes handles, which rewrites the plan on disk, and it

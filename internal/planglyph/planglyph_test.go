@@ -6,6 +6,8 @@ package planglyph
 import (
 	"errors"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -368,5 +370,90 @@ func TestResolvePass_ForthcomingCardIsNotResolved(t *testing.T) {
 
 	if got := forthcomingFindings(t, card1, card2, true); hasCheck(got, "create-already-exists") {
 		t.Errorf("forthcoming card: findings = %+v; want no create-already-exists", got)
+	}
+}
+
+// TestValidateDispatch_DeleteTargetGone asserts a pending card's already-absent Delete target is the informational delete-target-gone only once a card is completed, and that a Uses or Edit of the same target keeps its blocking finding.
+func TestValidateDispatch_DeleteTargetGone(t *testing.T) {
+	t.Parallel()
+
+	const done = "**Edit:**\n- `sub#Foo`\n\n**Intent:** already landed\n"
+	deleteGone := func(ref string) string {
+		return "**Delete:**\n- `" + ref + "`\n\n**Intent:** remove it\n"
+	}
+
+	cases := []struct {
+		name      string
+		cards     map[int]string
+		completed int
+		want      []string
+	}{
+		{
+			name:      "an absent member glyph is already deleted",
+			cards:     map[int]string{1: done, 2: deleteGone("sub#Gone")},
+			completed: 1,
+			want:      []string{"delete-target-gone|2-card2|informational|sub#Gone"},
+		},
+		{
+			name:      "an absent file path is already deleted",
+			cards:     map[int]string{1: done, 2: deleteGone("sub/gone.go")},
+			completed: 1,
+			want:      []string{"delete-target-gone|2-card2|informational|sub/gone.go#"},
+		},
+		{
+			name: "a Uses of the same target in another card keeps its blocking finding",
+			cards: map[int]string{
+				1: done,
+				2: deleteGone("sub#Gone"),
+				3: "**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `sub#Gone`\n\n**Intent:** read it\n",
+			},
+			completed: 1,
+			want: []string{
+				"delete-target-gone|2-card2|informational|sub#Gone",
+				"glyph-not-found|3-card3|blocking|sub#Gone",
+			},
+		},
+		{
+			name: "an Edit of the same target in the deleting card keeps its blocking finding",
+			cards: map[int]string{
+				1: done,
+				2: "**Edit:**\n- `sub#Gone`\n\n**Delete:**\n- `sub#Gone`\n\n**Intent:** both\n",
+			},
+			completed: 1,
+			want:      []string{"glyph-not-found|2-card2|blocking|sub#Gone"},
+		},
+		{
+			name:      "no completed card keeps the blocking finding",
+			cards:     map[int]string{1: done, 2: deleteGone("sub#Gone")},
+			completed: 0,
+			want:      []string{"glyph-not-found|2-card2|blocking|sub#Gone"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := writeFixtureRepo(t, map[string]string{"sub/a.go": resolveFixture})
+			_, plan := writePlanFixture(t, tc.cards)
+
+			got, err := ValidateDispatch(plan, root, plan.Cards[:tc.completed], nil)
+			if err != nil {
+				t.Fatalf("ValidateDispatch(...) returned error: %v", err)
+			}
+
+			var gotKeys []string
+			for _, f := range got {
+				switch f.Check {
+				case "delete-target-gone", "glyph-not-found", "path-missing":
+					gotKeys = append(gotKeys, f.Check+"|"+f.Card+"|"+string(f.Severity)+"|"+f.Ref)
+				}
+			}
+			sort.Strings(gotKeys)
+			sort.Strings(tc.want)
+			if !slices.Equal(gotKeys, tc.want) {
+				t.Errorf("ValidateDispatch(...) findings = %v; want %v (all findings: %+v)", gotKeys, tc.want, got)
+			}
+		})
 	}
 }

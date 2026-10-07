@@ -44,10 +44,12 @@ const RecognizedFormat = 5
 
 // ValidationError is one finding from Validate: which check tripped, which card it concerns, and a
 // human-readable detail.
+// Ref is the raw plan ref the finding reports, set by the checks that report one ref per finding and empty otherwise.
 type ValidationError struct {
 	Check  string
 	Card   string
 	Detail string
+	Ref    string
 }
 
 // Error implements the error interface, formatted as "check[/card]: detail".
@@ -1187,6 +1189,7 @@ func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
 				"card %d path %q does not exist on disk and is not a Create target or Rename destination of any card",
 				c.Number, raw,
 			),
+			Ref: raw,
 		})
 	}
 
