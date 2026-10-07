@@ -258,8 +258,8 @@ func TestEngine_AttemptInputPopulation(t *testing.T) {
 	}
 }
 
-// TestEngine_RetrySemantics proves the seam's retry policy: a second consecutive non-done attempt
-// is a name-prefixed hard error (never STUCK),
+// TestEngine_RetrySemantics proves the seam's retry policy:
+// a second consecutive non-done attempt is a name-prefixed hard error (never STUCK),
 // and a died or timed-out first attempt is retried once.
 func TestEngine_RetrySemantics(t *testing.T) {
 	t.Run("second consecutive died is a name-prefixed hard error", func(t *testing.T) {
