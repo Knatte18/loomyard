@@ -39,6 +39,8 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	gitkit.Git(t, dir, "add", ".")
 	gitkit.Git(t, dir, "commit", "-m", planCommitSubjectPrefix+"alpha")
 
+	// A real run's base tree carries no plan, so the base commit drops it as the in-memory base does.
+	gitkit.Git(t, dir, "rm", "-r", "-q", "_lyx/plan")
 	write("internal/a/a.go", lines(100))
 	gitkit.Git(t, dir, "add", ".")
 	gitkit.Git(t, dir, "commit", "-m", "base")
