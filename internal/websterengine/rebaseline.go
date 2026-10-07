@@ -77,7 +77,7 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 	offset := 0
 	for _, pb := range st.Partition[:keptCount] {
 		end := min(offset+len(pb.Cards), len(plan.Cards))
-		batch := batcher.Batch{Cards: plan.Cards[offset:end], Profile: pb.Profile, Estimate: pb.Estimate}
+		batch := batcher.Batch{Cards: plan.Cards[offset:end], Profile: pb.Profile, Estimate: pb.Estimate, Breakdown: pb.Breakdown}
 		if now := batchCardIDs(batch); !slices.Equal(now, pb.Cards) {
 			nowText := "no longer in the plan"
 			if len(now) > 0 {

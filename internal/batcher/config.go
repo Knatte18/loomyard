@@ -23,6 +23,7 @@ type config struct {
 
 // profile is one named entry under batcher.yaml's profiles: key.
 // The cost parameters are pointers so a missing key is told apart from a zero.
+// AloneAbove is the retired cost parameter, read only so a profile still carrying it is refused rather than silently ignored.
 type profile struct {
 	Batchifier string             `yaml:"batchifier"`
 	AloneAbove *float64           `yaml:"alone_above"`
@@ -41,7 +42,7 @@ func ConfigOpenMaps() []string {
 // a configured profile named identity wins over that default.
 // An absent <baseDir>/_lyx/ directory or an absent batcher.yaml both resolve the embedded
 // ConfigTemplate() instead of erroring;
-// a config file that exists but is invalid still errors, and so does an active: naming no profile, a profile of an unknown batchifier kind, or a cost profile with a missing or invalid parameter, each naming batcher.yaml.
+// a config file that exists but is invalid still errors, and so does an active: naming no profile, a profile of an unknown batchifier kind, or a cost profile with a missing or invalid parameter or the retired alone_above, each naming batcher.yaml.
 // baseDir must already be resolved by the caller — Active never resolves cwd itself (see
 // PATTERN-cwd-resolution).
 func Active(baseDir string) (Batcher, error) {

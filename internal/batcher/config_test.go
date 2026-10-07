@@ -113,16 +113,23 @@ func TestActive(t *testing.T) {
 			wantErrWith: []string{"batcher.yaml", "cautious", "budget"},
 		},
 		{
-			name: "nonPositiveThresholdErrors",
+			name: "nonPositiveBudgetErrors",
 			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", strings.Replace(cautious, "alone_above: 1200000", "alone_above: 0", 1))
+				seedConfig(t, baseDir, "batcher", strings.Replace(cautious, "budget: 450000", "budget: 0", 1))
+			},
+			wantErrWith: []string{"batcher.yaml", "cautious", "budget"},
+		},
+		{
+			name: "retiredAloneAboveErrors",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", strings.Replace(cautious, "    budget: ", "    alone_above: 1200000\n    budget: ", 1))
 			},
 			wantErrWith: []string{"batcher.yaml", "cautious", "alone_above"},
 		},
 		{
 			name: "maxCardsBelowTwoErrors",
 			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", strings.Replace(cautious, "max_cards: 3", "max_cards: 1", 1))
+				seedConfig(t, baseDir, "batcher", strings.Replace(cautious, "max_cards: 6", "max_cards: 1", 1))
 			},
 			wantErrWith: []string{"batcher.yaml", "cautious", "max_cards"},
 		},
@@ -165,11 +172,13 @@ func TestProfileWeights(t *testing.T) {
     weights:
       startup_context: 10
       fork_messages: 2
+      message_context: 8
       target_messages: 3
       test_file_messages: 4
       uses_messages: 5
       context_per_line: 0.5
       package_context: 7
+      write_per_card_line: 9
 `
 	tests := []struct {
 		name        string
@@ -183,8 +192,8 @@ func TestProfileWeights(t *testing.T) {
 			config:  valid,
 			profile: "cautious",
 			want: batcher.Weights{
-				StartupContext: 10, ForkMessages: 2, TargetMessages: 3, TestFileMessages: 4,
-				UsesMessages: 5, ContextPerLine: 0.5, PackageContext: 7,
+				StartupContext: 10, ForkMessages: 2, MessageContext: 8, TargetMessages: 3, TestFileMessages: 4,
+				UsesMessages: 5, ContextPerLine: 0.5, PackageContext: 7, WritePerCardLine: 9,
 			},
 		},
 		{

@@ -82,7 +82,7 @@ func planWith(targets map[int]string) map[string]string {
 // lines is content of n lines.
 func lines(n int) string { return strings.Repeat("x\n", n) }
 
-// seedProfile writes a batcher.yaml whose "fit" profile prices one card as target_messages x (startup_context + the lines of its file), with every other coefficient 0.
+// seedProfile writes a batcher.yaml whose "fit" profile estimates one card's peak as startup_context + the lines of its file, with every other coefficient 0.
 func seedProfile(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(configengine.ConfigDir(dir), 0o755); err != nil {
@@ -93,6 +93,8 @@ func seedProfile(t *testing.T, dir string) {
     weights:
       startup_context: 10
       fork_messages: 0
+      message_context: 0
+      write_per_card_line: 0
       target_messages: 1
       test_file_messages: 0
       uses_messages: 0
@@ -104,8 +106,9 @@ func seedProfile(t *testing.T, dir string) {
 	}
 }
 
-func fork(started time.Time, input int, cards ...string) ForkTally {
-	return ForkTally{Cards: cards, Started: started, Usage: Usage{Input: input}}
+// fork returns a fork that ran cards and whose largest message held peak tokens of context.
+func fork(started time.Time, peak int, cards ...string) ForkTally {
+	return ForkTally{Cards: cards, Started: started, Usage: Usage{Input: peak}, PeakContext: peak}
 }
 
 func TestCalibrate(t *testing.T) {
@@ -148,7 +151,7 @@ func TestCalibrate(t *testing.T) {
 		{Slug: "alpha", BaseSHA: "basea", Forks: []ForkTally{
 			fork(firstFork, 220, "01-c1"),
 			fork(firstFork.Add(time.Minute), 40, "02-c2"),
-			fork(firstFork.Add(2*time.Minute), 50, "02-c2"),
+			fork(firstFork.Add(2*time.Minute), 90, "02-c2"),
 			fork(firstFork.Add(3*time.Minute), 999, "03-c3", "04-c4"),
 		}},
 		{Slug: "beta", BaseSHA: "baseb", Forks: []ForkTally{fork(firstFork, 50, "01-c1")}},
@@ -166,6 +169,7 @@ func TestCalibrate(t *testing.T) {
 
 	wantRows := []CalibrationRow{
 		{Run: "alpha", Card: "01-c1", Estimate: 110, Measured: 220, Ratio: 2},
+		// Two one-card forks ran card 02, with peaks 40 and 90; the larger measures it.
 		{Run: "alpha", Card: "02-c2", Estimate: 60, Measured: 90, Ratio: 1.5},
 		{Run: "beta", Card: "01-c1", Estimate: 50, Measured: 50, Ratio: 1},
 	}

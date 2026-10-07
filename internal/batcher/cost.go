@@ -1,4 +1,4 @@
-// cost.go implements costBatcher, the cost-model Batcher: it splits the card sequence into the contiguous batches with the lowest estimated cost under hard limits, by an exact dynamic program.
+// cost.go implements costBatcher, the cost-model Batcher: it splits the card sequence into the fewest contiguous batches whose estimated peak context fits the budget, by an exact dynamic program.
 
 package batcher
 
@@ -10,10 +10,7 @@ import (
 
 // CostParams are the hard limits and weights of a cost-model batchifier.
 type CostParams struct {
-	// AloneAbove is the one-card cost above which a card never shares a fork.
-	AloneAbove float64
-
-	// Budget is the cost above which a segment of two or more cards is not formed.
+	// Budget is the PeakContext above which a segment of two or more cards is not formed.
 	Budget float64
 
 	// MaxCards is the most cards one batch holds.
@@ -23,14 +20,14 @@ type CostParams struct {
 	Weights Weights
 }
 
-// costBatcher implements Batcher by minimising the summed SegmentCost of contiguous segments.
+// costBatcher implements Batcher by minimising the number of contiguous segments that fit the budget.
 type costBatcher struct {
 	name   string
 	params CostParams
 }
 
 // NewCost returns a cost-model Batcher whose Name is name.
-// A card whose own cost exceeds AloneAbove or Budget runs alone, so no input leaves the split infeasible.
+// A card whose own PeakContext exceeds Budget runs alone, so no input leaves the split infeasible.
 func NewCost(name string, p CostParams) Batcher {
 	return costBatcher{name: name, params: p}
 }
@@ -40,56 +37,59 @@ func (b costBatcher) Name() string {
 	return b.name
 }
 
-// Batch splits cards into contiguous batches of minimum total estimated cost, in card order.
+// split is the best split found of a prefix of the cards: its batch count and its largest batch's PeakContext.
+type split struct {
+	batches int
+	largest float64
+}
+
+// better reports whether s beats o: fewer batches, then a smaller largest batch.
+func (s split) better(o split) bool {
+	return s.batches < o.batches || (s.batches == o.batches && s.largest < o.largest)
+}
+
+// Batch splits cards into the fewest contiguous batches, in card order.
 // A one-card segment is always feasible;
-// a longer segment needs every member's own cost at most AloneAbove, at most MaxCards cards and a SegmentCost within Budget.
-// A tie between splits goes to the one with more batches.
-// Each returned Batch carries the profile name and its SegmentCost as Estimate.
+// a longer segment needs at most MaxCards cards and a PeakContext within Budget.
+// Among splits with the fewest batches it takes the one whose largest batch has the smallest PeakContext, so batches come out balanced;
+// a remaining tie goes to the split whose last batch is shortest.
+// Each returned Batch carries the profile name, its PeakContext as Estimate and the components behind it as Breakdown.
 func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes SizeSource) ([]Batch, error) {
-	own := make([]float64, len(cards))
-	for i := range cards {
-		cost, err := SegmentCost(plan, cards[i:i+1], sizes, b.params.Weights)
+	loads := make([]cardLoad, len(cards))
+	for i, card := range cards {
+		load, err := loadCard(plan, card, sizes, b.params.Weights)
 		if err != nil {
-			return nil, fmt.Errorf("cost batcher %q: %w", b.name, err)
+			return nil, fmt.Errorf("cost batcher %q: estimate card %d: %w", b.name, card.Number, err)
 		}
-		own[i] = cost
+		loads[i] = load
 	}
 
-	// best[i] is the minimum total cost of splitting cards[:i];
-	// count[i] the batches of that split;
-	// start[i] the first card of its last segment.
-	best := make([]float64, len(cards)+1)
-	count := make([]int, len(cards)+1)
+	// best[i] is the best split of cards[:i];
+	// start[i] the first card of its last segment and peaks[i] that segment's PeakContext.
+	best := make([]split, len(cards)+1)
 	start := make([]int, len(cards)+1)
-	segmentCosts := make([]float64, len(cards)+1)
+	peaks := make([]float64, len(cards)+1)
 	for end := 1; end <= len(cards); end++ {
+		found := false
+		var peak peakAccumulator
+		peak.start(b.params.Weights)
 		for begin := end - 1; begin >= 0; begin-- {
-			cost := own[end-1]
-			if end-begin > 1 {
-				// Each longer segment still holds the member or card count that rules this one out.
-				if end-begin > b.params.MaxCards || own[begin] > b.params.AloneAbove || own[end-1] > b.params.AloneAbove {
-					break
-				}
-				var err error
-				cost, err = SegmentCost(plan, cards[begin:end], sizes, b.params.Weights)
-				if err != nil {
-					return nil, fmt.Errorf("cost batcher %q: %w", b.name, err)
-				}
-				if cost > b.params.Budget {
-					continue
-				}
+			peak.add(loads[begin], b.params.Weights)
+			if end-begin > 1 && (end-begin > b.params.MaxCards || peak.value > b.params.Budget) {
+				// The peak only grows as the segment reaches back, so no longer segment ending here fits either.
+				break
 			}
-			total := best[begin] + cost
-			batches := count[begin] + 1
-			if count[end] == 0 || total < best[end] || (total == best[end] && batches > count[end]) {
-				best[end], count[end], start[end], segmentCosts[end] = total, batches, begin, cost
+			candidate := split{batches: best[begin].batches + 1, largest: max(best[begin].largest, peak.value)}
+			if !found || candidate.better(best[end]) {
+				best[end], start[end], peaks[end], found = candidate, begin, peak.value, true
 			}
 		}
 	}
 
-	batches := make([]Batch, count[len(cards)])
+	batches := make([]Batch, best[len(cards)].batches)
 	for end, i := len(cards), len(batches)-1; end > 0; i-- {
-		batches[i] = Batch{Cards: cards[start[end]:end], Profile: b.name, Estimate: segmentCosts[end]}
+		breakdown := breakdownOf(cards[start[end]:end], loads[start[end]:end], b.params.Weights)
+		batches[i] = Batch{Cards: cards[start[end]:end], Profile: b.name, Estimate: peaks[end], Breakdown: &breakdown}
 		end = start[end]
 	}
 	return batches, nil

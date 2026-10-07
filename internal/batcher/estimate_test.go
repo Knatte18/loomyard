@@ -1,4 +1,4 @@
-// estimate_test.go verifies SegmentCost against a fake size source and hand-built cards, and DiskSizes against a temporary worktree tree.
+// estimate_test.go verifies PeakContext against a fake size source and hand-built cards, and DiskSizes against a temporary worktree tree.
 // Tier-1 (pure logic, no git, no spawn).
 
 package batcher_test
@@ -28,15 +28,17 @@ func (f fakeSizes) TestFiles(dir string) ([]string, error) {
 	return f.testFiles[dir], nil
 }
 
-// testWeights are distinct round coefficients, so a hand-computed cost pins each one entering once.
+// testWeights are distinct round coefficients, so a hand-computed peak pins each one entering once.
 var testWeights = batcher.Weights{
 	StartupContext:   10,
 	ForkMessages:     2,
+	MessageContext:   1,
 	TargetMessages:   3,
 	TestFileMessages: 4,
 	UsesMessages:     5,
 	ContextPerLine:   0.5,
 	PackageContext:   7,
+	WritePerCardLine: 2,
 }
 
 // editCard returns the card numbered number that edits targets and uses uses.
@@ -48,9 +50,9 @@ func editCard(number int, targets []string, uses ...string) planparser.Card {
 	}
 }
 
-// TestSegmentCost asserts the hand-computed cost of one-card segments over a fake size source.
-// It also asserts that merging cards prices a shared read set once, so identical read sets cost less merged than apart and a large added file costs more.
-func TestSegmentCost(t *testing.T) {
+// TestPeakContext asserts the hand-computed peak of one-card segments over a fake size source,
+// and that merging cards counts a shared read-set entry once and never lowers the peak.
+func TestPeakContext(t *testing.T) {
 	t.Parallel()
 
 	plan := &planparser.Plan{Language: "go"}
@@ -61,11 +63,17 @@ func TestSegmentCost(t *testing.T) {
 			"internal/b/b.go":   50,
 			"internal/s/s.go":   10,
 			"internal/big/b.go": 1000,
+			"_lyx/plan/01-x.md": 40,
 		},
 		testFiles: map[string][]string{
 			"internal/a": {"internal/a/a_test.go", "internal/a/b_test.go"},
 		},
 	}
+	// Every peak below starts from the startup context 10 plus 2 fork messages at 1 each.
+	const startup = 12
+
+	withText := editCard(1, []string{"internal/s/s.go"})
+	withText.SourcePath = "_lyx/plan/01-x.md"
 
 	tests := []struct {
 		name  string
@@ -73,20 +81,20 @@ func TestSegmentCost(t *testing.T) {
 		want  float64
 	}{
 		{
-			// fork 2*10, messages 3 + 2 test files*4 + 5, read set a.go 50, b.go 25, package 7, tests 7.
+			// messages 3 + 2 test files*4 + 5; read set a.go 50, b.go 25, package 7, tests 7.
 			name:  "one card with a use and tests",
 			cards: []planparser.Card{editCard(1, []string{"internal/a/a.go"}, "internal/b/b.go")},
-			want:  20 + 16*(10+50+25+7+7),
+			want:  startup + 16 + 50 + 25 + 7 + 7,
 		},
 		{
 			name:  "test files count once per distinct directory",
 			cards: []planparser.Card{editCard(1, []string{"internal/a/a.go", "internal/a/b.go"})},
-			want:  20 + (2*3+2*4)*(10+50+25+7+7),
+			want:  startup + (2*3 + 2*4) + 50 + 25 + 7 + 7,
 		},
 		{
 			name:  "a nonexistent target weighs nothing but counts its messages",
 			cards: []planparser.Card{editCard(1, []string{"internal/new/n.go"})},
-			want:  20 + 3*(10+7+7),
+			want:  startup + 3 + 7 + 7,
 		},
 		{
 			name: "a rename counts once and is sized by its old side",
@@ -98,58 +106,53 @@ func TestSegmentCost(t *testing.T) {
 					Pairs: []planparser.MovePair{{Old: "internal/b/b.go#", New: "internal/new/n.go#"}},
 				}},
 			}},
-			want: 20 + 3*(10+25+7+7),
+			want: startup + 3 + 25 + 7 + 7,
+		},
+		{
+			// The card's 40 lines are read at 0.5 each and written back at 2 each.
+			name:  "a card's own text is read and drives its write allowance",
+			cards: []planparser.Card{withText},
+			want:  startup + 3 + 5 + 7 + 7 + 20 + 80,
+		},
+		{
+			name: "a read-set entry two cards share is counted once",
+			cards: []planparser.Card{
+				editCard(1, []string{"internal/s/s.go"}),
+				editCard(2, []string{"internal/s/s.go"}),
+			},
+			want: startup + 3 + 3 + 5 + 7 + 7,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := batcher.SegmentCost(plan, tt.cards, sizes, testWeights)
+			got, err := batcher.PeakContext(plan, tt.cards, sizes, testWeights)
 			if err != nil {
-				t.Fatalf("SegmentCost: %v", err)
+				t.Fatalf("PeakContext: %v", err)
 			}
 			if got != tt.want {
-				t.Errorf("SegmentCost = %v; want %v", got, tt.want)
+				t.Errorf("PeakContext = %v; want %v", got, tt.want)
 			}
 		})
 	}
 
-	apart := func(t *testing.T, cards ...planparser.Card) float64 {
-		t.Helper()
-		var total float64
-		for _, card := range cards {
-			cost, err := batcher.SegmentCost(plan, []planparser.Card{card}, sizes, testWeights)
+	t.Run("adding a card never lowers the peak", func(t *testing.T) {
+		t.Parallel()
+		cards := []planparser.Card{
+			editCard(1, []string{"internal/big/b.go"}),
+			editCard(2, []string{"internal/s/s.go"}),
+			withText,
+		}
+		previous := 0.0
+		for n := 1; n <= len(cards); n++ {
+			peak, err := batcher.PeakContext(plan, cards[:n], sizes, testWeights)
 			if err != nil {
-				t.Fatalf("SegmentCost: %v", err)
+				t.Fatalf("PeakContext: %v", err)
 			}
-			total += cost
-		}
-		return total
-	}
-	merged := func(t *testing.T, cards ...planparser.Card) float64 {
-		t.Helper()
-		cost, err := batcher.SegmentCost(plan, cards, sizes, testWeights)
-		if err != nil {
-			t.Fatalf("SegmentCost: %v", err)
-		}
-		return cost
-	}
-
-	t.Run("identical read sets cost less merged than apart", func(t *testing.T) {
-		t.Parallel()
-		first := editCard(1, []string{"internal/a/a.go"})
-		second := editCard(2, []string{"internal/a/a.go"})
-		if m, a := merged(t, first, second), apart(t, first, second); m >= a {
-			t.Errorf("merged = %v; want less than apart = %v", m, a)
-		}
-	})
-
-	t.Run("a card adding a large file costs more merged than apart", func(t *testing.T) {
-		t.Parallel()
-		small := editCard(1, []string{"internal/s/s.go"})
-		large := editCard(2, []string{"internal/big/b.go"})
-		if m, a := merged(t, small, large), apart(t, small, large); m <= a {
-			t.Errorf("merged = %v; want more than apart = %v", m, a)
+			if peak < previous {
+				t.Errorf("peak of %d cards = %v; want at least %v", n, peak, previous)
+			}
+			previous = peak
 		}
 	})
 }
