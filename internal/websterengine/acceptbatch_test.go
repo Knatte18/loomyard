@@ -13,15 +13,26 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // fabricEntry is an Uncheckable entry as record-batch writes it for a pathless fabric reference.
 const fabricEntry = "fabric-reference: ran a fabric-referencing command (\"go run ./tools/tokencount -history ../x-records\")"
 
-// readOnlyEntry builds an Uncheckable entry for a pathless fabric reference whose recorded command is cmd.
+// everyCommandMatches is a RefMatcher that flags every command, so the audit records whatever command it is handed.
+type everyCommandMatches struct{}
+
+func (everyCommandMatches) Matches(string) bool { return true }
+
+// readOnlyEntry builds the Uncheckable entry record-batch writes for a pathless fabric reference whose recorded command is cmd, from the audit's own finding text.
 func readOnlyEntry(cmd string) string {
-	return "fabric-reference: ran a fabric-referencing command (" + strconv.Quote(cmd) + ") that can rewrite run state"
+	audit := shuttleengine.ForkAudit{ParentBashCommands: []string{cmd}}
+	violations := websterengine.CheckParent(audit, "/w/outcome.yaml", "/w/summary.md", "/w", everyCommandMatches{})
+	if len(violations) != 1 {
+		panic("CheckParent over one flagged command returned " + strconv.Itoa(len(violations)) + " violations; want 1")
+	}
+	return string(violations[0].Class) + ": " + violations[0].Detail
 }
 
 // acceptBatchFixture returns a state whose batch 8 failed on fabricEntry with no commit, and a geometry over g, whose head is the batch's start.
