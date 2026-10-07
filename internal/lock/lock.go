@@ -53,15 +53,12 @@ func AcquireWriteLockWithin(lockPath string, wait time.Duration) (*FileLock, boo
 	defer cancel()
 
 	fl := flock.New(lockPath)
-	locked, err := fl.TryLockContext(ctx, boundedWaitRetryDelay)
+	_, err := fl.TryLockContext(ctx, boundedWaitRetryDelay)
 	if errors.Is(err, context.DeadlineExceeded) {
 		return nil, false, nil
 	}
 	if err != nil {
 		return nil, false, fmt.Errorf("acquire write lock within %s: %w", wait, err)
-	}
-	if !locked {
-		return nil, false, nil
 	}
 	return &FileLock{fl}, true, nil
 }
