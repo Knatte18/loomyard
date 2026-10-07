@@ -47,6 +47,8 @@ const singleLLMEngineLabel = "shuttle"
 type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 	Attach(shuttleengine.Spec) (shuttleengine.Result, bool, error)
+	// AttachIfLive is Attach's probe without the removal of superseded strands, for a caller that waits on a live run and starts nothing after a not-found answer.
+	AttachIfLive(shuttleengine.Spec) (shuttleengine.Result, bool, error)
 	// RunGated is Run, gated: the run's declared output artifacts are additionally validated by the gate's entries (if any) before the round's report is trusted.
 	RunGated(shuttleengine.Spec, shuttleengine.GateSpec) (shuttleengine.Result, error)
 	// AttachGated is Attach, gated: an attached run's declared output artifacts are gated exactly as

@@ -274,4 +274,15 @@
 // silently terminate a caller's round loop on a malformed round).
 // asking/died/timeout are normal loop events a caller branches on via
 // Result.Outcome, with an empty Verdict.
+//
+// # The review-parse gate
+//
+// Every round's gate spec ends with the review entry (ReviewGateEntry), after the caller's own entries.
+// While the round's own review file does not parse,
+// the entry re-prompts the reviewer in its own session with the parse error, its quoting hint and the file to rewrite.
+// It re-prompts at most reviewGateAttempts times and then lets the run through,
+// so a file still invalid after the budget fails at the strict parse after the gate.
+// The gate (through CheckReviewFile) and that parse both reach ParseReview.
+// `lyx burler validate-review <review-file>` is the gate's self-check verb:
+// it runs CheckReviewFile read-only and needs no hub, mode or git repository.
 package burlerengine

@@ -187,7 +187,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 		return err
 	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
-	claudeEngine := claudeengine.New()
+	claudeEngine := claudeengine.NewFromConfig(shuttleCfg)
 	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	c.setRunner(runner, claudeEngine, reedEngine)
@@ -276,7 +276,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	}
 
 	reedEngine := reedengine.New(reedCfg, reedGeom)
-	claudeEngine := claudeengine.New()
+	claudeEngine := claudeengine.NewFromConfig(shuttleCfg)
 	runner := shuttleengine.NewDetachedRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
 
 	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —

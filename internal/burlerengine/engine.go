@@ -104,7 +104,10 @@ type Result struct {
 // build the shuttle Spec (Interactive/Parent/Display/ KeepPane stay zero-valued — rounds are
 // autonomous by default, per the run-tuning-off-profile decision) with Prompt set to the thin
 // orchestrator only;
-// run it through the Shuttle seam via RunGated, wrapping every entry's closure in opts.Gate in repairReportBeforeGate so a failing gate's findings also instruct the agent to rewrite this round's own review and fixer-report files;
+// run it through the Shuttle seam via RunGated, wrapping every entry's closure in opts.Gate in repairReportBeforeGate so a failing gate's findings also instruct the agent to rewrite this round's own review and fixer-report files,
+// and appending after them the review-parse entry (ReviewGateEntry), unwrapped, which re-prompts the reviewer in its own session while the review file does not parse;
+// that entry re-prompts at most reviewGateAttempts times and then lets the run through,
+// so a file still invalid after the budget fails at the strict parse below;
 // populate Result (including its 1:1 Gate passthrough) from the shuttle Result;
 // when the run reached done with a non-nil, failing Result.Gate, return immediately with Verdict and
 // Findings left empty — the round's review file was written before the gate ran, so a gate that
@@ -185,14 +188,13 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 
 	// A fresh copy, so the caller's slice is never mutated;
 	// off entries are wrapped too, since they never run and the wrap is harmless there.
-	var gateSpec shuttleengine.GateSpec
-	if len(opts.Gate) > 0 {
-		gateSpec = make(shuttleengine.GateSpec, len(opts.Gate))
-		for i, entry := range opts.Gate {
-			entry.Gate = repairReportBeforeGate(entry.Gate, p.ReviewPath, p.FixerReportPath)
-			gateSpec[i] = entry
-		}
+	// The review-parse entry goes last and unwrapped: its findings already name the review file.
+	gateSpec := make(shuttleengine.GateSpec, 0, len(opts.Gate)+1)
+	for _, entry := range opts.Gate {
+		entry.Gate = repairReportBeforeGate(entry.Gate, p.ReviewPath, p.FixerReportPath)
+		gateSpec = append(gateSpec, entry)
 	}
+	gateSpec = append(gateSpec, ReviewGateEntry(p.ReviewPath))
 
 	shuttleResult, err := e.shuttle.RunGated(spec, gateSpec)
 	if err != nil {
