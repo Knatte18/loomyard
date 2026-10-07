@@ -1,19 +1,15 @@
 // background.go lists the background tasks a Stop payload describes as still outstanding, so
 // ParseEvents can surface a non-empty list as EventWaiting instead of EventStop.
 // The Stop payload's background_tasks key is authoritative:
-// when it carries a list, even an empty one, its entries whose status is "running" are the whole
-// outstanding list (type "subagent" is a fork, any other type, such as a shell, is a shell) and the
-// transcript is not read.
-// A payload that omits a running task, lists it under another status, or changes an entry's shape
-// under the same key counts as no outstanding work, and the transcript does not correct it.
-// Only when the key is absent or its value is not a list does the transcript at transcript_path
-// decide: a background launch that no later completion notification names by the task id the
-// launch's tool result returned is outstanding (Agent and Task launches are forks, Bash and Monitor
-// launches are shells).
-// A completion notification is a <task-notification> user message, a queue-operation line whose
-// content names the task id, or a queued_command attachment whose prompt names it.
-// An unreadable or missing transcript counts as nothing outstanding: it must
-// never keep a run waiting on a fault.
+// when it carries a list, even an empty one, its entries whose status is "running" are the whole outstanding list, and the transcript is not read.
+// A payload entry of type "subagent" is a fork, any other type, such as a shell, is a shell.
+// A payload that omits a running task, lists it under another status, or changes an entry's shape under the same key counts as no outstanding work, and the transcript does not correct it.
+// Only when the key is absent or its value is not a list does the transcript at transcript_path decide:
+// a background launch that no later completion notification names by the task id the launch's tool result returned is outstanding.
+// Agent and Task launches are forks, Bash and Monitor launches are shells.
+// A completion notification is a <task-notification> user message, a queue-operation line whose content names the task id, or a queued_command attachment whose prompt names it.
+// An unreadable or missing transcript counts as nothing outstanding:
+// it must never keep a run waiting on a fault.
 // All Claude payload-shape knowledge stays in this package, per the provider-seam containment decision.
 package claudeengine
 
@@ -71,9 +67,9 @@ func outstandingBackgroundTasks(fields map[string]any) []shuttleengine.Backgroun
 	return transcriptHasUnmatchedLaunch(data)
 }
 
-// payloadTask converts one running background_tasks[] entry: type "subagent" is a fork labelled by
-// its description when present, any other type is a shell labelled by its command, else its
-// description, else its id.
+// payloadTask converts one running background_tasks[] entry.
+// Type "subagent" is a fork labelled by its description when present.
+// Any other type is a shell labelled by its command, else its description, else its id.
 func payloadTask(entry map[string]any) shuttleengine.BackgroundTask {
 	id, _ := entry["id"].(string)
 	if typ, _ := entry["type"].(string); typ == "subagent" {
@@ -101,8 +97,7 @@ type transcriptLaunch struct {
 
 // transcriptHasUnmatchedLaunch scans transcript JSONL for background launches whose returned task
 // id is never named by a later completion notification, and returns them as tasks.
-// A notification is a task-notification user message, a queue-operation line whose content names
-// the id, or a queued_command attachment whose prompt names it.
+// A notification is a task-notification user message, a queue-operation line whose content names the id, or a queued_command attachment whose prompt names it.
 // A launch whose result carries no recoverable id cannot be matched and is not counted.
 func transcriptHasUnmatchedLaunch(data []byte) []shuttleengine.BackgroundTask {
 	lines := strings.Split(string(data), "\n")
@@ -190,10 +185,8 @@ func transcriptHasUnmatchedLaunch(data []byte) []shuttleengine.BackgroundTask {
 	return unmatched
 }
 
-// notificationText returns the text of a transcript line that reports a background task's
-// completion, and whether the line is one.
-// The shapes are a task-notification user message, a queue-operation line (its content) and a
-// queued_command attachment (its prompt).
+// notificationText returns the text of a transcript line that reports a background task's completion, and whether the line is one.
+// The shapes are a task-notification user message, a queue-operation line (its content) and a queued_command attachment (its prompt).
 func notificationText(entry map[string]any, line string) (string, bool) {
 	switch entry["type"] {
 	case "user":

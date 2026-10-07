@@ -1,6 +1,6 @@
-// attach_asking_test.go covers how Attach treats a run that halted at a turn end: a legacy record an
-// older binary left at outcome asking is attached when its strand is live, and a held run, whose
-// record stays running, is attached without a second notice for a turn end the parent already saw.
+// attach_asking_test.go covers how Attach treats a run that halted at a turn end:
+// a legacy record an older binary left at outcome asking is attached when its strand is live,
+// and a held run, whose record stays running, is attached without a second notice for a turn end the parent already saw.
 
 package shuttleengine
 
@@ -53,8 +53,8 @@ func TestDispositionCandidate_AskingReentry(t *testing.T) {
 	}
 }
 
-// TestAttach_LegacyAskingAndHeldRuns drives Attach over a run.json with a recording notifier and asserts
-// the run's final outcome and which held turn ends reach the parent.
+// TestAttach_LegacyAskingAndHeldRuns drives Attach over a run.json with a recording notifier.
+// It asserts the run's final outcome and which held turn ends reach the parent.
 func TestAttach_LegacyAskingAndHeldRuns(t *testing.T) {
 	t.Parallel()
 	const strandName = "lyx:slug:driver"

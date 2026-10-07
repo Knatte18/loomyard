@@ -91,12 +91,11 @@ func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 	}
 }
 
-// TestSmokeGuardrailQuestionHoldsRunUntilAnswered proves the AskUserQuestion PreToolUse deny's steer
-// (claudeengine's steerAskUserQuestionDeny reason) leaves an autonomous run held: an agent told to ask
-// the operator a question before writing anything states it and ends its turn, Wait does not return,
+// TestSmokeGuardrailQuestionHoldsRunUntilAnswered proves the AskUserQuestion PreToolUse deny's steer (claudeengine's steerAskUserQuestionDeny reason) leaves an autonomous run held:
+// an agent told to ask the operator a question before writing anything states it and ends its turn, Wait does not return,
 // and the parent's notifier is called exactly once for that held turn end.
-// The test then answers through Run.Send with a text ending in MessageTail, and the run finishes done
-// with the output file written — the same live state the sandbox suite's S2 hold scenario depends on.
+// The test then answers through Run.Send with a text ending in MessageTail, and the run finishes done with the output file written —
+// the same live state the sandbox suite's S2 hold scenario depends on.
 func TestSmokeGuardrailQuestionHoldsRunUntilAnswered(t *testing.T) {
 	llmkit.Claude(t, "LYX_REED_CLAUDE")
 

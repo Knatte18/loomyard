@@ -106,11 +106,9 @@ type RunState struct {
 	// default a pre-this-change binary's run.json also decodes to, so an old record costs one extra
 	// probe rather than silently skipping one it never earned.
 	Started bool `json:"started"`
-	// AskingOffset is the events-file byte offset an older binary's finalize had consumed when it
-	// classified an ask, nil for every record this binary writes.
-	// It is read for legacy records only and never written: Attach compares it against the events
-	// file's current size, and growth past it means the strand kept working after the ask, so the run
-	// is attachable rather than respawn-eligible.
+	// AskingOffset is the events-file byte offset an older binary's finalize had consumed when it classified an ask, nil for every record this binary writes.
+	// It is read for legacy records only and never written.
+	// Attach replays such a record from this offset and counts the ask before it as already notified.
 	AskingOffset *int64 `json:"askingOffset,omitempty"`
 	// StrandName is the reed name of the run's strand, which a hold notice gives its parent to answer by.
 	// Empty for a record that predates the field, where the notice names the strand guid instead.

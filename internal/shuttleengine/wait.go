@@ -243,8 +243,8 @@ func (run *Run) Wait() (Result, error) {
 		} else {
 			eventsFailures = 0
 			if held != nil {
-				// A turn end without every output file never ends the run: log it so the durable trace
-				// records each one, and keep polling the same agent.
+				// A turn end without every output file never ends the run.
+				// Log it so the durable trace records each one, and keep polling the same agent.
 				logger.Info("shuttle: turn end held, output files missing", "strandGUID", run.state.StrandGUID, "offset", held.offset, "outstanding", len(held.tasks), "lastAssistantMessage", held.message)
 				run.notifyHeld(held)
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
@@ -551,11 +551,10 @@ func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
 // re-classifies them on the next tick, rather than silently discarding a
 // batch that may contain the run's only qualifying event (the Engine seam
 // permits an erroring parser; the retry counter Wait maintains implies this
-// re-read guarantee). It classifies the batch by its LAST event (a batch containing more than one
-// event — e.g. an interrupted turn immediately followed by a resumed one —
-// is classified by its most recent one, and every consumed byte still
-// counts once parsing succeeds, so none of the earlier events in the same
-// batch is ever reprocessed).
+// re-read guarantee).
+// It classifies the batch by its LAST event:
+// a batch containing more than one event, e.g. an interrupted turn immediately followed by a resumed one, is classified by its most recent one,
+// and every consumed byte still counts once parsing succeeds, so none of the earlier events in the same batch is ever reprocessed.
 // When every output file exists the run is done whatever the last event's Kind was.
 // Otherwise the turn end is held, whatever its Kind: an EventStop and an EventAsk with output files missing
 // return a held turn end carrying the event's message and the offset just past its line, and Wait keeps polling the same agent.
@@ -623,8 +622,8 @@ type heldTurnEnd struct {
 	offset int64
 }
 
-// offsetPastEvent returns the events-file offset just past the line ev was parsed from, given the
-// batch's data, its start offset and the offset past the whole batch.
+// offsetPastEvent returns the events-file offset just past the line ev was parsed from.
+// It takes the batch's data, its start offset and the offset past the whole batch.
 // An event whose Raw line is not found in the batch resolves to the batch's end.
 func offsetPastEvent(data []byte, startOffset, batchEnd int64, ev Event) int64 {
 	at := bytes.LastIndex(data, ev.Raw)

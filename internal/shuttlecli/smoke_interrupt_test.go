@@ -21,11 +21,8 @@
 // ever catches it — this is retried (see maxMidTurnAttempts) rather than
 // treated as a hard failure. Second, and more fundamentally: the provider's
 // Stop hook fires on ANY turn end, including one ended by Interrupt itself.
-// Wait holds that Stop, since the output file is not yet written, and keeps
-// polling the same agent, so the redirect turn Send starts is the one that
-// finishes the run. The test asserts that the redirect actually reaches the
-// still-live pane and the agent rewrites the output file — proven by polling
-// the file directly — and that Wait then returns done.
+// Wait holds that Stop, since the output file is not yet written, and keeps polling the same agent, so the redirect turn Send starts is the one that finishes the run.
+// The test asserts that the redirect actually reaches the still-live pane and the agent rewrites the output file — proven by polling the file directly — and that Wait then returns done.
 //
 // Determinism notes (round fable-r6): the provider TUI renders NO streamed
 // response text while a turn is in progress — the whole response flushes to
@@ -230,9 +227,9 @@ func pollFileContentEquals(path, want string, deadline time.Time) (last string, 
 // retries with a fresh run if real claude self-ends the turn before a mid-turn window is observed
 // (see startMidTurnCountingRun), then calls run.Interrupt() followed by run.Send() with a one-line
 // replacement instruction.
-// It asserts that the output file eventually carries the REDIRECTED content, proven by polling the
-// file directly, and that Wait then drains with the done outcome: the interrupted turn's own Stop is
-// a hold, so only the redirect turn's completion ends the run.
+// It asserts that the output file eventually carries the REDIRECTED content, proven by polling the file directly.
+// It asserts too that Wait then drains with the done outcome:
+// the interrupted turn's own Stop is a hold, so only the redirect turn's completion ends the run.
 func TestSmokeInterruptSendContinues(t *testing.T) {
 	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
@@ -285,10 +282,9 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 		t.Fatalf("output file content = %q after 3m; want %q (the interrupt+send sequence must have redirected the run)", last, "REDIRECTED")
 	}
 
-	// Drain Wait so the goroutine and reed/run-dir state settle before
-	// teardown. The interrupted turn's Stop is a hold, so only the redirect
-	// turn's completion ends the run: any error or outcome but OutcomeDone
-	// indicates a genuine mechanism failure.
+	// Drain Wait so the goroutine and reed/run-dir state settle before teardown.
+	// The interrupted turn's Stop is a hold, so only the redirect turn's completion ends the run:
+	// any error or outcome but OutcomeDone indicates a genuine mechanism failure.
 	select {
 	case res := <-waitCh:
 		t.Logf("run.Wait outcome=%s err=%v", res.result.Outcome, res.err)

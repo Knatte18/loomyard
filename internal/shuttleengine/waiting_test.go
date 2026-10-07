@@ -201,10 +201,9 @@ func shellWaitFixture(t *testing.T, outputFile string, tasks []BackgroundTask, s
 
 var oneShell = []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999"}}
 
-// TestPollEventsTick_ShellExpiry covers a waiting turn end whose outstanding list is one background
-// shell: the turn keeps waiting until the bound, and at the bound it ends done when the output files
-// exist and is a held turn end naming the expired shell, with the waiting message and the offset past
-// the waiting line, when they do not.
+// TestPollEventsTick_ShellExpiry covers a waiting turn end whose outstanding list is one background shell:
+// the turn keeps waiting until the bound, and at the bound it ends done when the output files exist.
+// When they do not, it is a held turn end naming the expired shell, with the waiting message and the offset past the waiting line.
 //
 //testtiming:keep pins the background-shell wait bound: still waiting until the bound, then done with output files or held, naming the shell, without them
 func TestPollEventsTick_ShellExpiry(t *testing.T) {

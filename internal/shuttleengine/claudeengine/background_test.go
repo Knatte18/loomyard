@@ -79,8 +79,8 @@ func TestParseEvents_StopWithCompletedTasksAndCleanTranscriptIsStop(t *testing.T
 	}
 }
 
-// queueOperationNotification and queuedCommandNotification are the trimmed shapes Claude Code
-// writes when a task notification is absorbed mid-turn instead of arriving as a user message.
+// queueOperationNotification and queuedCommandNotification are the trimmed shapes Claude Code writes
+// when a task notification is absorbed mid-turn instead of arriving as a user message.
 const queueOperationNotification = `{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<task-id>mon12345</task-id>\n<status>completed</status>\n</task-notification>"}
 `
 

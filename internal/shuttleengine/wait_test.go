@@ -391,8 +391,8 @@ var _ Clock = (*multiStepClock)(nil)
 
 // TestRun_Wait_HeldTurnEnd drives Run.Wait over turn ends that leave the output files missing:
 // each is held and polling continues, so the run ends only through done, died or timeout.
-// A later Stop with every output file finalizes done, also through a gate; a held run finalizes died
-// on a dead pane, done when its outputs appear as the pane dies, and timeout at its unchanged deadline.
+// A later Stop with every output file finalizes done, also through a gate.
+// A held run finalizes died on a dead pane, done when its outputs appear as the pane dies, and timeout at its unchanged deadline.
 func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 	t.Parallel()
 	passingGate := GateSpec{{Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}

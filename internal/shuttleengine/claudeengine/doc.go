@@ -33,8 +33,8 @@
 // a fork for an Agent or Task subagent, a shell for a backgrounded Bash or a Monitor.
 // The Stop payload's background_tasks list is authoritative when present, even empty:
 // its running entries are the whole list and the transcript is not read.
-// The transcript fallback runs only when the key is absent or not a list, and lists the background launches
-// that no later completion notification names:
+// The transcript fallback runs only when the key is absent or not a list.
+// It lists the background launches that no later completion notification names:
 // a task-notification user message, a queue-operation line or a queued_command attachment.
 // A payload that omits a running task, lists it under another status or changes an entry's shape counts as no outstanding work.
 // Each task carries the signal that reported it.

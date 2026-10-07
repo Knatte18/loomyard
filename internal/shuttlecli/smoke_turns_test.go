@@ -227,8 +227,8 @@ func TestSmokeTurnsLongBackgroundShell(t *testing.T) {
 	w.finishDone()
 }
 
-// TestSmokeTurnsShellFinishesMidTurn pins the issue 411 shape: a background shell that finishes while the turn still runs
-// leaves the turn end with nothing outstanding, so it reads done on the tick that reads it.
+// TestSmokeTurnsShellFinishesMidTurn pins the issue 411 shape:
+// a background shell that finishes while the turn still runs leaves the turn end with nothing outstanding, so it reads done on the tick that reads it.
 func TestSmokeTurnsShellFinishesMidTurn(t *testing.T) {
 	hub := newTurnHub(t)
 	output := filepath.Join(hub.prime, "turns-shell-mid-turn.txt")

@@ -280,9 +280,8 @@ func (r *Runner) reconstructAndWait(candidate attachCandidate, normalized Spec, 
 		state:  state,
 		// offset starts at the prompt offset, deliberately replaying every event of the run's own turns: seeding at EOF would
 		// mean a terminal Stop that landed while the driver was down is never observed, converting a
-		// completed step into an OutcomeTimeout failure — and a replayed backlog ending in an ask is
-		// read as a held turn end. The one exception is a candidate that recorded an
-		// asking offset (startOffset above): the parent already saw that ask.
+		// completed step into an OutcomeTimeout failure — and a replayed backlog ending in an ask is read as a held turn end.
+		// The one exception is a candidate that recorded an asking offset (startOffset above): the parent already saw that ask.
 		offset: startOffset,
 		clock:  r.clock,
 		// deadline is a fresh now+Timeout computed at attach time, never CreatedAt+Timeout: a run
@@ -517,8 +516,8 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 // all already exist is a leftover from a run that already finished, respawn-eligible at any directory
 // age; otherwise a candidate whose persisted Outcome already reads a terminal value is respawn-eligible
 // at any age too, for the same reason dispositionCandidate's own tracked-and-live branch already treats
-// a terminal Outcome as respawn-eligible whatever reed says of the pane: an untracked timeout
-// (or legacy asking) record written by finalize may still have a live pane behind it (finalize cleans up only on
+// a terminal Outcome as respawn-eligible whatever reed says of the pane: an untracked timeout/asking
+// record written by finalize may still have a live pane behind it (finalize cleans up only on
 // OutcomeDone), and respawning beside it adds no hazard class the tracked-live branch does not already
 // accept; otherwise a candidate old enough to rule out a concurrently-starting run (sweepOrphans' own
 // minAge guard) is respawn-eligible; a younger one with an empty (legacy) or unrecognised Outcome keeps
@@ -536,14 +535,12 @@ func leftoverThenAgeVerdict(c attachCandidate, spec Spec, minAge time.Duration, 
 	return verdictError
 }
 
-// legacyAskingOutcome is the RunState.Outcome an older binary's finalize wrote for a run that halted
-// at a turn end; nothing writes it now, and Attach reads it only to attach a record whose strand is live.
+// legacyAskingOutcome is the RunState.Outcome an older binary's finalize wrote for a run that halted at a turn end.
+// Nothing writes it now, and Attach reads it only to attach a record whose strand is live.
 const legacyAskingOutcome = "asking"
 
-// isTerminalOutcome reports whether outcome is one of the values finalize ever wrote to
-// RunState.Outcome: done, died, timeout, or the legacy asking. It is false for the empty string (a legacy
-// pre-Outcome-field record, or a run.json Start has not yet finalized), for runOutcomeRunning, and for
-// any value this package does not recognize.
+// isTerminalOutcome reports whether outcome is one of the values finalize ever wrote to RunState.Outcome: done, died, timeout, or the legacy asking.
+// It is false for the empty string (a legacy pre-Outcome-field record, or a run.json Start has not yet finalized), for runOutcomeRunning, and for any value this package does not recognize.
 func isTerminalOutcome(outcome string) bool {
 	switch outcome {
 	case string(OutcomeDone), legacyAskingOutcome, string(OutcomeDied), string(OutcomeTimeout):

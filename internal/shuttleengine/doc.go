@@ -66,7 +66,8 @@
 // lists at most five outstanding tasks by kind and label (the id when the label is empty) and counts the rest, or names none,
 // and ends with the start of the agent's last message.
 // Every agent-written part is delimited, has its control and delimiter characters replaced by spaces and is cut to 200 runes, so the line is bounded and has no newline.
-// There is one notice per held turn end: RunState.NotifiedOffset, the events-file offset past the last notified one, is persisted before the notifier is called
+// There is one notice per held turn end.
+// RunState.NotifiedOffset, the events-file offset past the last notified one, is persisted before the notifier is called,
 // and a held turn end at or below it is never notified again, including when an Attach replays it.
 // A batch of several new events is classified by its last event, so only its last held turn end is notified.
 // It stays provider-invariant, per the Shuttle Provider-Seam Invariant.

@@ -186,10 +186,8 @@ func validateToldPaths(anchorPath, worktreeRoot string) error {
 	return nil
 }
 
-// Result is a completed run's terminal report: how it was classified, the identities a caller needs
-// to act on it further (SessionID for a resume, StrandGUID for interrupt/send/diagnosis), the
-// agent's last message (empty: Wait holds a turn end without output instead of ending on it), and the run directory (already removed for a
-// cleaned-up OutcomeDone, still present otherwise).
+// Result is a completed run's terminal report: how it was classified, the identities a caller needs to act on it further (SessionID for a resume, StrandGUID for interrupt/send/diagnosis), the agent's last message, and the run directory (already removed for a cleaned-up OutcomeDone, still present otherwise).
+// The last message is empty, since Wait holds a turn end without output instead of ending on it.
 type Result struct {
 	Outcome              Outcome
 	SessionID            string

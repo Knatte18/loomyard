@@ -94,8 +94,8 @@ func TestPlanWrite_Call(t *testing.T) {
 		}
 	})
 
-	// StuckWithEmptyPointerLeavesCommitUninvokedAndReturnsInnerVerbatim is the shape of a Stuck that
-	// names no output file: a run that wrote nothing has nothing to commit.
+	// StuckWithEmptyPointerLeavesCommitUninvokedAndReturnsInnerVerbatim is the shape of a Stuck that names no output file:
+	// a run that wrote nothing has nothing to commit.
 	t.Run("StuckWithEmptyPointerLeavesCommitUninvokedAndReturnsInnerVerbatim", func(t *testing.T) {
 		inner := &planInnerProducer{outcome: shedengine.Stuck}
 		commit := &planCommitRecorder{}
