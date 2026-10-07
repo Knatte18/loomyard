@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // seedPresentReedState writes a minimal, valid ReedState via the real SaveState/decoder path,
@@ -173,7 +174,7 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 		wantFound      bool
 	}{
 		{"terminal_done", "done", true, false},
-		{"terminal_asking", "asking", true, false},
+		{"legacy_asking_attaches", "asking", true, true},
 		{"terminal_died", "died", true, false},
 		{"terminal_timeout", "timeout", true, false},
 		{"running_attaches", runOutcomeRunning, true, true},
@@ -307,7 +308,7 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 // whatever the other candidates say, and two ordinary leftovers (both non-terminal-classified,
 // tracked-live-idle records) must respawn rather than error.
 func TestAttach_Multiplicity(t *testing.T) {
-	t.Run("TwoAskingLeftovers_RespawnsNotError", func(t *testing.T) {
+	t.Run("TwoTimeoutLeftovers_RespawnsNotError", func(t *testing.T) {
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{
 			Strands: []reedengine.StrandStatus{
 				{GUID: "strand-1", PaneID: "%1", Live: true},
@@ -319,8 +320,8 @@ func TestAttach_Multiplicity(t *testing.T) {
 		seedPresentReedState(t, dotLyxDir)
 
 		outputFile := filepath.Join(runRoot, "out.md")
-		seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{outputFile}, outcome: "asking", includeOutcome: true})
-		seedAttachRun(t, runRoot, "run-2", seedAttachRunOpts{strandGUID: "strand-2", outputFiles: []string{outputFile}, outcome: "asking", includeOutcome: true})
+		seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{outputFile}, outcome: "timeout", includeOutcome: true})
+		seedAttachRun(t, runRoot, "run-2", seedAttachRunOpts{strandGUID: "strand-2", outputFiles: []string{outputFile}, outcome: "timeout", includeOutcome: true})
 
 		result, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute})
 		if err != nil {
@@ -900,12 +901,11 @@ func TestAttach_OutputFileMatching_ResolvedAbsoluteSet(t *testing.T) {
 	}
 }
 
-// TestAttach_OffsetStartsAtZero covers attach-reconstructs-the-run-explicitly's replay decision: a
-// pre-existing events.jsonl whose last event is a completion classifies OutcomeDone on the first
-// tick after attach (the missed-terminal-Stop case), and the same backlog with output files absent
-// classifies OutcomeAsking.
+// TestAttach_OffsetStartsAtZero covers attach-reconstructs-the-run-explicitly's replay decision:
+// a pre-existing events.jsonl whose last event is a completion classifies OutcomeDone on the first tick after attach (the missed-terminal-Stop case),
+// and the same backlog with output files absent is a held turn end that keeps the run polling to its deadline.
 //
-//testtiming:keep pins that the whole pre-existing events backlog is replayed on attach and its last event wins, for a completion and for an ask
+//testtiming:keep pins that the whole pre-existing events backlog is replayed on attach and its last event wins, for a completion and for a held Stop
 func TestAttach_OffsetStartsAtZero(t *testing.T) {
 	t.Run("BacklogEndsInCompletion_ClassifiesDone", func(t *testing.T) {
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
@@ -930,10 +930,10 @@ func TestAttach_OffsetStartsAtZero(t *testing.T) {
 		}
 	})
 
-	t.Run("BacklogEndsInAsk_ClassifiesAsking", func(t *testing.T) {
+	t.Run("BacklogEndsInStop_IsHeldToTheDeadline", func(t *testing.T) {
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
 		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-		fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir())
+		fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir(), withClock(newFakeClock(time.Now())))
 		runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 		seedPresentReedState(t, dotLyxDir)
 
@@ -943,12 +943,16 @@ func TestAttach_OffsetStartsAtZero(t *testing.T) {
 			t.Fatalf("seed events: %v", err)
 		}
 
-		result, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute})
+		buf := logcapture.CaptureVerbose(t)
+		result, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: heldTestTimeout})
 		if err != nil {
 			t.Fatalf("Attach() error = %v; want nil", err)
 		}
-		if !found || result.Outcome != OutcomeAsking {
-			t.Fatalf("found=%v Outcome=%q; want found=true, Outcome=%q — terminal without AwaitOperator, dropped with polling continuing under it", found, result.Outcome, OutcomeAsking)
+		if !found || result.Outcome != OutcomeTimeout {
+			t.Fatalf("found=%v Outcome=%q; want found=true, Outcome=%q — the replayed Stop is held, so the run ends only at its deadline", found, result.Outcome, OutcomeTimeout)
+		}
+		if !strings.Contains(buf.String(), "need operator input") {
+			t.Errorf("hold log = %q, want the replayed Stop's message", buf.String())
 		}
 	})
 }

@@ -402,12 +402,13 @@
 // Master's spawn declares one awaited shell prefix, `masterAwaitedShellPrefix` (the backgrounded recovery verb of the failure ladder);
 // recovery_timeout_min already bounds that verb, so shuttle's turn-end wait treats it like a fork.
 // Every other background shell is waited out after `background_shell_wait_min`, and the labels come back on shuttle's `Result.ExpiredShells`.
-// lyx does not stop such a shell: the wait only stops waiting and counts Master's turn end.
-// What ends it follows the run's outcome.
+// lyx does not stop such a shell: the wait only stops waiting on it at a turn end.
+// That turn end finishes the run when Master's output files exist, and otherwise holds the run for the parent until they exist, Master dies or the run times out.
+// What ends the shell follows the run's final outcome.
 // When Master's turn ends shuttle-done (a webster done, Master's own stuck or paused, the verify gate's demotion, or a mapping error after that end), shuttle removes Master's strand as the run finishes, and the session and the shell end with it.
-// When the run returns an asking, died or timeout error, Master's strand stays alive until the next `lyx webster run` reclaims it at entry.
+// When the run returns a died or timeout error, Master's strand stays alive until the next `lyx webster run` reclaims it at entry.
 // Run writes one best-effort `webster-background-shell` friction note once the outcome is known, on every outcome.
-// For each label the note states the bound, that the turn end was counted, that lyx did not stop the shell, what ends it and the run's outcome after that turn end.
+// For each label the note states the bound, that the wait stopped waiting on the shell at a turn end, that lyx did not stop the shell, what ends it and the run's final outcome.
 // Each label is also a `RunResult.Warnings` entry with the same wording on every outcome that returns a `RunResult` (done, stuck and paused), after the verify-gate demotion, so the warning and the note cannot drift;
 // an error outcome returns no `RunResult`, so the note alone carries it.
 // summary.md's "Background shells waited out" section (AppendBackgroundShells) stays done-only.

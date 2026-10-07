@@ -261,7 +261,7 @@ func TestSmokeBurlerClusterRogueFork(t *testing.T) {
 
 	result, err := engine.Run(profile, burlerengine.RunOpts{Timeout: clusterSmokeTimeout})
 
-	// A non-done outcome (asking/died/timeout) means the round never even
+	// A non-done outcome (died/timeout) means the round never even
 	// reached the audit — most likely a slow/serialized host tripping the
 	// explicit timeout above, per this file's clusterSmokeTimeout doc
 	// comment. Fail loud with the outcome so this is never confused with

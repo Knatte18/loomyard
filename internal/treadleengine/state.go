@@ -57,7 +57,6 @@ type roundRecord struct {
 	// lack handoff coverage, which judgeReadSet's fallback already handles.
 	HandoffPath string `json:"handoffPath,omitempty"`
 	GatePath    string `json:"gatePath,omitempty"`
-	TriagePath  string `json:"triagePath,omitempty"`
 	// SeedPath is the path of this round's pre-round targeting seed file
 	// (see run.go), set only when Profile.PreRoundTargeting was on AND that
 	// round's targeting call succeeded — additive per the
@@ -183,7 +182,7 @@ func saveState(runDir, scratchDir string, s runState) error {
 // retry attempt (run.go's runRound).
 func moveStaleArtifacts(name string, runDir string, round, attempt int) error {
 	paths := artifactPaths(runDir, round, attempt)
-	for _, p := range []string{paths.Review, paths.FixerReport, paths.Judge, paths.Handoff, paths.Gate, paths.Triage, paths.Seed} {
+	for _, p := range []string{paths.Review, paths.FixerReport, paths.Judge, paths.Handoff, paths.Gate, paths.Seed} {
 		if err := moveStaleIfExists(name, p); err != nil {
 			return err
 		}

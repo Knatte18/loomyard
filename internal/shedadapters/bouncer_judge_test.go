@@ -556,7 +556,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 	}
 
 	// A non-completion outcome that wrote nothing is one the harvest cannot rescue.
-	for _, oc := range []shuttleengine.Outcome{shuttleengine.OutcomeAsking, shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout} {
+	for _, oc := range []shuttleengine.Outcome{shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout} {
 		tests = append(tests, struct {
 			name         string
 			buildBouncer func(t *testing.T) (*Bouncer, BouncerConfig)
@@ -587,7 +587,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 //testtiming:keep pins that the harvest is keyed on judged(N): a written verdict settles the round whatever the run reported, and a non-completion with nothing written degrades
 func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 	t.Run("NonCompletionOutcome_CONTINUE", func(t *testing.T) {
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
+		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}
 		shuttle.DuringRun = func() {
 			outputs := shuttle.GotSpec.OutputFiles
 			_ = os.WriteFile(outputs[0], []byte(bouncerVerdictContent("CONTINUE")), 0o644)
@@ -626,7 +626,7 @@ func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 	})
 
 	t.Run("Contrast_NothingWrittenDegrades", func(t *testing.T) {
-		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
+		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}
 		b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 		layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 

@@ -31,7 +31,7 @@ func identityFields(result shuttleengine.Result) map[string]any {
 }
 
 // runCmd builds the `run` subcommand, validating flags and blocking on runner.Run
-// until a terminal outcome is reached. All outcomes (done/asking/died/timeout) report
+// until a terminal outcome is reached. All outcomes (done/died/timeout) report
 // success; only mechanism failures (flag errors, read errors, engine errors) report errors.
 func (c *shuttleCLI) runCmd() *cobra.Command {
 	var (
@@ -54,12 +54,12 @@ func (c *shuttleCLI) runCmd() *cobra.Command {
 		Use:   "run",
 		Short: "run one agent turn and block until it reaches a classified outcome",
 		Long: `run starts one shuttle agent, blocks until it reaches a classified
-outcome (done/asking/died/timeout), and prints that outcome as a single JSON
+outcome (done/died/timeout), and prints that outcome as a single JSON
 envelope. A run's output files ARE its return value: "done" means every
---output-file entry now exists, "asking" means the agent ended its turn
-WITHOUT writing them — usually because it is asking or is blocked, but the
-message is never inspected, so lastAssistantMessage carries whatever it last
-said rather than a guaranteed question.
+--output-file entry now exists.
+A turn end without them holds the run: it keeps waiting until the outputs
+exist, the pane dies or the deadline passes, and an interactive run is
+answered in its pane.
 
 An --output-file entry may be absolute or relative — a
 relative path resolves against the WORKTREE ROOT, not the shell's cwd — and

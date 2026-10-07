@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
-	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -117,16 +116,7 @@ func landingDeps(
 		// Notify queues one orch notice for the hub's prime, resolved at call time.
 		// A prime with no orch strand recorded is not an error: QueueNotice logs the notice instead.
 		Notify: func(line string) error {
-			primeName, err := fabricengine.PrimeName(l)
-			if err != nil {
-				return err
-			}
-			prime, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(l, primeName))
-			if err != nil {
-				return err
-			}
-			_, err = orchengine.QueueNotice(orchcli.PrimePaths(prime), line, time.Now())
-			return err
+			return orchcli.NotifyPrime(l, line)
 		},
 		// VerifyCommand reads the plan's verify command each time it is called, never at construction:
 		// landingDeps runs at bootstrap, before the plan exists on a fresh run,

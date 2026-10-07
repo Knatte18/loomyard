@@ -218,30 +218,3 @@ func TestPlanWriteEntry_GateConfig(t *testing.T) {
 		}
 	})
 }
-
-// TestPlanWriteEntry_CallAsking asserts an OutcomeAsking shuttle result maps to shedengine.Stuck
-// and leaves the commit closure uninvoked -- the outcome mapping the decorator must preserve
-// untouched. env.AnchorPath from newTestEnv is a real directory that contains no plan directory,
-// so the decorator's rotation is a legitimate absent-directory no-op here.
-func TestPlanWriteEntry_CallAsking(t *testing.T) {
-	env := newTestEnv(t)
-
-	commitCalls := 0
-	env.CommitPlan = func() error {
-		commitCalls++
-		return nil
-	}
-
-	producer, err := planWriteEntry("Row", Config{}, env)
-	if err != nil {
-		t.Fatalf("planWriteEntry() error = %v; want nil", err)
-	}
-
-	fake := env.Shuttle.(*shedfake.Shuttle)
-	fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}
-
-	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
-	if commitCalls != 0 {
-		t.Errorf("commit closure invoked %d times; want 0 for an Asking outcome", commitCalls)
-	}
-}

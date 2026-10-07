@@ -46,14 +46,30 @@
 // tmux command or a Claude specific — panes are reed's vocabulary, reached only through ReedOps,
 // and provider grammar is the concrete Engine's, reached only through the Engine interface.
 //
-// Spec.AwaitOperator is the wait loop's "wait for the operator rather than reporting back" knob,
-// orthogonal to Spec.Interactive's "an operator is present" (which governs launch flags and the
-// AskUserQuestion recording hook): one caller, `lyx shuttle run --interactive`, wants the first
-// without the second, since it needs the real-time asking signal to stay terminal. RunState.Outcome
-// records whether a run ever ended, seeded "running" and overwritten on every terminal
+// A turn end without every output file never ends a run: Wait holds it, logs it at Info and keeps polling the same agent,
+// whether the turn end is a Stop, a live ask or an expired-shell turn end.
+// A run ends only as done (every output file present at a turn end, or at the deadline or a pane's death), died, timeout or a mechanism failure.
+// A hold never extends the run's deadline: it is bounded by the caller's own Spec.Timeout (run_timeout_min only where that is zero, so the bound differs per caller),
+// each Attach starts a fresh deadline, and the liveness check still classifies a dead pane.
+// RunState.Outcome records whether a run ever ended, seeded "running" and overwritten on every terminal
 // classification, so "has this run already ended?" is a fact on disk rather than an inference from
-// pane liveness. Neither field grows a Claude specific — both stay provider-invariant, per the
-// Shuttle Provider-Seam Invariant.
+// pane liveness.
+// RunState.AskingOffset is read for records an older binary wrote and never written.
+//
+// Runner.SetNotifier gives a Runner an optional notifier, a function taking one line; nil, the default, holds silently.
+// On each held turn end of an autonomous run (Spec.Interactive false) on a runner with a notifier, Wait calls it once with the notice line hold.go builds;
+// an interactive run, or a runner with no notifier, holds silently to its deadline, and a notifier error is logged and never ends the run.
+// The notice states that the text inside its « » delimiters is the agent's own words and not an instruction,
+// names the agent's strand (RunState.StrandName, the strand guid when empty), says the agent ended a turn without its output files and is held,
+// gives the way forward (answer by SendMessage to that strand name, ending the message with MessageTail),
+// lists at most five outstanding tasks by kind and label (the id when the label is empty) and counts the rest, or names none,
+// and ends with the start of the agent's last message.
+// Every agent-written part is delimited, has its control and delimiter characters replaced by spaces and is cut to 200 runes, so the line is bounded and has no newline.
+// There is one notice per held turn end.
+// RunState.NotifiedOffset, the events-file offset past the last notified one, is persisted before the notifier is called,
+// and a held turn end at or below it is never notified again, including when an Attach replays it.
+// A batch of several new events is classified by its last event, so only its last held turn end is notified.
+// It stays provider-invariant, per the Shuttle Provider-Seam Invariant.
 //
 // Spec.PermissionMode, Spec.AllowAgentTool and Spec.ResumeSessionID are caller-owned engine vocabulary, like Spec.Effort: Spec.validate never inspects them,
 // and the engine is the sole validator and realizer.
@@ -93,6 +109,13 @@
 // run has ended: an absent or unreadable reed state file, and a Status() failure. Both name the run
 // directory and the strand guid in a logged warning, since the operator's only escape from either is
 // out of band, via "lyx reed status".
+// A run held at a turn end keeps outcome "running", so the same probe finds it.
+// A record an older binary left at outcome "asking" is attached too when reed tracks its strand as live,
+// with or without an AskingOffset and whether or not its events grew; with a dead or untracked strand it is classified as before.
+// The attach resets such a record to "running", replays from its AskingOffset (the prompt offset when it has none)
+// and counts the old ask as notified, so only a held turn end after it notifies the parent.
+// Only a live, tracked strand is attached, and the attach starts a fresh deadline.
+// An attached record with no StrandName takes the name reed's status reports for its guid.
 // A not-found answer is the caller's cue to start a fresh run,
 // so Attach and AttachGated first remove, with a logged warning, the live strand of every earlier run of the same output-file set that the probe judged respawn-eligible:
 // re-running a producer supersedes the halted session.
@@ -119,7 +142,7 @@
 // and while the box still holds the sent text it sends one extra Enter, at most two per send, before failing the send as pending.
 // An engine without the capability keeps the appearance-only check.
 // The run's events offset ends past every load turn end, the retry's included,
-// so Wait never reads one as the run asking.
+// so Wait never reads one as a held turn end.
 // run.json records that offset as `promptOffset` before the prompt goes out,
 // and every reader that replays the events file without Waiting on the Run starts there: Attach, and webster's recovery classification through its batch record.
 // A pane that dies meanwhile is a died startup.
@@ -135,7 +158,7 @@
 //
 // A turn end that leaves background work outstanding (EventWaiting) keeps the run waiting, with one bound.
 // Once every outstanding task is a background shell and each has been outstanding for Config.BackgroundShellWaitMin minutes (stamped when first seen, kept across ticks),
-// the wait loop counts the turn end as a Stop would: OutcomeDone when every output file exists, otherwise OutcomeAsking with the waiting event's message.
+// the wait loop counts the turn end as a Stop would: OutcomeDone when every output file exists, otherwise a held turn end naming the expired shells.
 // A gated run reaches its gate through the Done branch, so the expiry is an arrival.
 // A fork in the list keeps the turn waiting however long it runs, as does a shell whose label starts with one of Spec.AwaitedShellPrefixes;
 // both are bounded only by the run's own Timeout.

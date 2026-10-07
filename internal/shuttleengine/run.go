@@ -47,7 +47,24 @@ type Runner struct {
 	// each constructing its own realClock{} inline — the only way a test can control an ATTACHED
 	// run's reconstructed deadline, since Attach returns a Result rather than a *Run for a test to
 	// patch run.clock on afterwards.
-	clock clock
+	clock Clock
+	// notifier receives the notice line of each held turn end of an autonomous run; nil, the default, holds silently.
+	notifier func(line string) error
+}
+
+// SetNotifier sets the function Wait calls once with a notice line for each held turn end of an autonomous run.
+// A nil notify, the default, holds silently.
+// A notify error is logged and never ends the run.
+func (r *Runner) SetNotifier(notify func(line string) error) {
+	r.notifier = notify
+}
+
+// SetClock sets the time source of the runs this Runner starts or attaches, the time seam for a caller that replays a run.
+// The clock's Now sets every deadline and its Sleep paces every poll, so a replaying clock skips real sleeping.
+// A run takes the clock when Start or Attach builds it, so a later call never changes a run in flight;
+// the constructors default to the real clock.
+func (r *Runner) SetClock(c Clock) {
+	r.clock = c
 }
 
 // NewRunner returns a Runner ready to start runs against reed and engine, scoped to anchorPath and
@@ -169,10 +186,8 @@ func validateToldPaths(anchorPath, worktreeRoot string) error {
 	return nil
 }
 
-// Result is a completed run's terminal report: how it was classified, the identities a caller needs
-// to act on it further (SessionID for a resume, StrandGUID for interrupt/send/diagnosis), the
-// agent's last message (set only for OutcomeAsking), and the run directory (already removed for a
-// cleaned-up OutcomeDone, still present otherwise).
+// Result is a completed run's terminal report: how it was classified, the identities a caller needs to act on it further (SessionID for a resume, StrandGUID for interrupt/send/diagnosis), the agent's last message, and the run directory (already removed for a cleaned-up OutcomeDone, still present otherwise).
+// The last message is empty, since Wait holds a turn end without output instead of ending on it.
 type Result struct {
 	Outcome              Outcome
 	SessionID            string
@@ -216,7 +231,7 @@ type Run struct {
 	// deadline is the wall-clock time after which a run is classified OutcomeTimeout.
 	deadline time.Time
 	// clock is the time seam for tests.
-	clock clock
+	clock Clock
 	// lastStartupCapture is the last successful pane capture the startup step (checkLivenessTick,
 	// called from awaitStartup or Wait) took, empty until the first successful CapturePane. On a
 	// not-ready teardown (abandonStartup) it is saved to startupCaptureFileName inside the run
@@ -225,8 +240,10 @@ type Run struct {
 
 	// waitingTasks is the outstanding list of the latest EventWaiting, cleared by any later non-waiting event and by an expiry.
 	waitingTasks []BackgroundTask
-	// waitingMessage is that EventWaiting's message, which an expiry classified as asking carries.
+	// waitingMessage is that EventWaiting's message, which an expiry's held turn end carries.
 	waitingMessage string
+	// waitingOffset is the events-file offset just past that EventWaiting's line, which an expiry's held turn end carries.
+	waitingOffset int64
 	// shellFirstSeen records when each shell id was first seen outstanding.
 	shellFirstSeen map[string]time.Time
 	// expiredShells holds the shell ids already waited out in this run, so a later turn end listing one again does not restart its wait.
@@ -266,8 +283,6 @@ type Run struct {
 	// It is false for a fresh run and for one AttachGated reconstructs, and becomes true at the first gated Done arrival;
 	// every gate send and every pending re-evaluation happens only while it is true.
 	gateAtBoundary bool
-	// gateLastDone is the last gated Done arrival's message, the one a later pass finalizes with.
-	gateLastDone string
 
 	// resumeWarning is the non-empty warning SessionResumer.CheckResume returned when it could not confirm the session was resumable, empty otherwise.
 	resumeWarning string
@@ -410,6 +425,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	state := RunState{
 		RunID:        runID,
 		StrandGUID:   strand.GUID,
+		StrandName:   strand.Name,
 		SessionID:    launch.SessionID,
 		Interactive:  spec.Interactive,
 		OutputFiles:  spec.OutputFiles,
@@ -468,7 +484,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 // and an unreadable turn is confirmed unverified.
 // None of these fails or hangs the launch.
 // The run's events offset ends past every load turn end, the retry's included,
-// so Wait never reads one as the run asking.
+// so Wait never reads one as a held turn end of the run's own.
 // A pane that dies meanwhile is a died startup.
 func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 	guid := run.state.StrandGUID

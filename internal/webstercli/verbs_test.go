@@ -905,7 +905,7 @@ func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
 		"`background_shell_wait_min` (15 minutes)",
 		"lyx did not stop the shell",
 		"the next `lyx webster run` reclaims it at entry",
-		"the run's outcome after that turn end: error (",
+		"the run's final outcome: error (",
 	} {
 		if !strings.Contains(string(note), want) {
 			t.Errorf("friction note = %q; want it to contain %q", note, want)

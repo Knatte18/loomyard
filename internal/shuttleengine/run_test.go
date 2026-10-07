@@ -476,7 +476,7 @@ func TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger(t *testing.T) {
 // whole run over a housekeeping error, and the sweep must be skipped for this Start entirely.
 //
 // A LoadState ERROR must not degrade to "sweep with an empty live set": that would delete every
-// old-enough run dir, including a kept asking/died/timeout dir reed still genuinely tracks, over an
+// old-enough run dir, including a kept died/timeout dir reed still genuinely tracks, over an
 // unrelated I/O problem. An ABSENT reed.json used to fall through to the same empty live-guid set
 // (R3-F2), so every run dir past the age guard was deleted — including one whose agent is still
 // working. That state is not exotic: it is exactly what reed's own corrupt-state error recommends
@@ -515,7 +515,7 @@ func TestRunner_Start_SweepSkipsEntirelyWithoutReedState(t *testing.T) {
 				}
 			}
 
-			// An old, kept run dir (as an asking/died/timeout outcome would leave behind) whose
+			// An old, kept run dir (as a died/timeout outcome would leave behind) whose
 			// strand is not in a live set that reed.json cannot supply.
 			shuttleRoot := runDirRoot(cfg, anchorPath)
 			keptDir := seedRun(t, shuttleRoot, "kept-run", "some-other-strand")

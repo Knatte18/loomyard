@@ -1,7 +1,7 @@
 // engine.go defines the RoundRunner-agnostic seams every caller wires through: the gate-command
 // execution seam (CommandRunner), Options, and the Engine type and its constructor.
 // Engine drives a caller-supplied RoundRunner for every round's attempt(s) and its own Shuttle seam
-// (judge.go) for the two ephemeral judge/triage calls;
+// (judge.go) for the ephemeral judge calls;
 // it never routes a round through Shuttle itself.
 // Engine is fabric-blind and geometry-blind: it never imports fabricengine, never imports lyxcwd
 // directly, and never constructs a _lyx path itself — it operates on a caller-supplied absolute
@@ -42,7 +42,7 @@ type Options struct {
 	// posture as ScratchDir and GateDir — the caller
 	// resolves it from its own geometry and hands it in.
 	StencilsDir string
-	// ParentName is the told name of the session the spawned judge, triage and
+	// ParentName is the told name of the session the spawned judge and
 	// targeting roles escalate to, rendered into their prompts by
 	// parentdirective.Directive. Empty renders the no-parent variant.
 	ParentName string

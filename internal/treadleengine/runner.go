@@ -2,7 +2,7 @@
 // and the plain value types that cross it: AttemptInput (everything Engine assembles for one
 // attempt) and AttemptResult (the shuttle-style outcome the runner reports back).
 // The seam is deliberately attempt-level, not round-level: Engine (engine.go, run.go) owns the
-// two-attempt retry policy, asking-triage, stale-artifact move-aside, round/attempt token naming,
+// two-attempt retry policy, stale-artifact move-aside, round/attempt token naming,
 // and prior-round hydration assembly, so a RoundRunner implementation only ever adapts "spawn one
 // attempt, report its result" onto its own domain.
 
@@ -56,7 +56,7 @@ type AttemptResult struct {
 
 // RoundRunner is the seam Engine drives once per attempt: RunAttempt runs one attempt of one round
 // and reports its result or a hard error.
-// Engine owns retry policy, triage, and stale-artifact move-aside;
+// Engine owns retry policy and stale-artifact move-aside;
 // a RoundRunner implementation only adapts "spawn one attempt, report its result."
 type RoundRunner interface {
 	RunAttempt(AttemptInput) (AttemptResult, error)

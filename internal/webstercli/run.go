@@ -5,7 +5,7 @@
 // the losing call touched nothing, so syncing would commit the winner's in-flight partial state
 // under a misleading label;
 // every other exit -- success OR error, including ErrFingerprintMismatch and the distinct
-// MasterAsking/MasterDied/MasterTimeout errors -- runs the backstop fabric commit before its
+// MasterDied/MasterTimeout errors -- runs the backstop fabric commit before its
 // envelope, since completed batches' artifacts must not strand uncommitted.
 package webstercli
 
@@ -60,7 +60,7 @@ any leftover pause flag once those refusal gates pass, archives any stale
 outcome.yaml/summary.md,
 spawns a fresh Master session via shuttle (fork-authorized, never resumed),
 and blocks until Master writes its own outcome.yaml and summary.md
-(done/stuck) or the shuttle spawn itself ends asking/died/timed-out. Every
+(done/stuck) or the shuttle spawn itself ends died/timed-out. Every
 exit except a "run is already in progress" refusal (another
 "lyx webster run" already owns the run -- this call touched nothing) runs
 a backstop fabric commit before printing its envelope, so a run that ends in

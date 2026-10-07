@@ -75,7 +75,7 @@ func TestWriteTriageFrictionNote(t *testing.T) {
 	})
 }
 
-// TestBackgroundShellNoteAndWarning asserts the friction note and the warning for an expired shell state, per outcome, the shell, the bound, the counted turn end, that lyx did not stop the shell, what ends it and the outcome, in the same words.
+// TestBackgroundShellNoteAndWarning asserts the friction note and the warning for an expired shell state, per outcome, the shell, the bound, that the wait stopped waiting on it at a turn end, that lyx did not stop the shell, what ends it and the final outcome, in the same words.
 func TestBackgroundShellNoteAndWarning(t *testing.T) {
 	const removal = "shuttle removes Master's strand when the run finishes"
 	const reclaim = "the next `lyx webster run` reclaims it at entry"
@@ -85,11 +85,11 @@ func TestBackgroundShellNoteAndWarning(t *testing.T) {
 		wantEnds string
 		wantTail string
 	}{
-		{"done", finishedShellOutcome(RunResult{Outcome: outcomeDone}), removal, "the run's outcome after that turn end: done"},
-		{"stuck with a reason", finishedShellOutcome(RunResult{Outcome: outcomeStuck, StuckReason: "batch 2 red"}), removal, "the run's outcome after that turn end: stuck (batch 2 red)"},
-		{"paused", finishedShellOutcome(RunResult{Outcome: outcomePaused}), removal, "the run's outcome after that turn end: paused"},
-		{"mapping error after a shuttle-done end", errorShellOutcome(errors.New("summary.md malformed"), false), removal, "the run's outcome after that turn end: error (summary.md malformed)"},
-		{"asking, died or timeout error", errorShellOutcome(errors.New("master died"), true), reclaim, "the run's outcome after that turn end: error (master died)"},
+		{"done", finishedShellOutcome(RunResult{Outcome: outcomeDone}), removal, "the run's final outcome: done"},
+		{"stuck with a reason", finishedShellOutcome(RunResult{Outcome: outcomeStuck, StuckReason: "batch 2 red"}), removal, "the run's final outcome: stuck (batch 2 red)"},
+		{"paused", finishedShellOutcome(RunResult{Outcome: outcomePaused}), removal, "the run's final outcome: paused"},
+		{"mapping error after a shuttle-done end", errorShellOutcome(errors.New("summary.md malformed"), false), removal, "the run's final outcome: error (summary.md malformed)"},
+		{"died or timeout error", errorShellOutcome(errors.New("master died"), true), reclaim, "the run's final outcome: error (master died)"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -110,7 +110,7 @@ func TestBackgroundShellNoteAndWarning(t *testing.T) {
 			for _, want := range []string{
 				"`sleep 9999`",
 				"`background_shell_wait_min` (15 minutes)",
-				"counted Master's turn end",
+				"stopped waiting on the shell at a turn end, which finished the run when Master's output files existed and otherwise held it for the parent",
 				"lyx did not stop the shell",
 				tc.wantEnds,
 				tc.wantTail,

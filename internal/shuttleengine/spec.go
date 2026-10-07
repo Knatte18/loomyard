@@ -28,7 +28,7 @@ type Spec struct {
 	// run's output file IS its return value. Entries must NOT already
 	// exist when the run starts (validate rejects a pre-existing entry):
 	// a stale file would satisfy the contract on the very first turn end,
-	// silently classifying an asking or unfinished run as done. Entries
+	// silently classifying an unfinished run as done. Entries
 	// may be absolute or relative to the worktree root; validate resolves
 	// relative entries and rewrites this slice in place with the resolved
 	// absolute paths.
@@ -87,20 +87,6 @@ type Spec struct {
 	// shuttle config's claude_deny_agent_tool / claude_deny_ask_user_question
 	// keys).
 	Interactive bool
-	// AwaitOperator governs the wait loop only: when true, Run.Wait treats an
-	// OutcomeAsking classification as non-terminal and keeps polling, so the
-	// run still terminates on OutcomeDone, OutcomeDied, a liveness mechanism
-	// failure, or OutcomeTimeout. It is a second field rather than a widening
-	// of Interactive because internal/shuttleengine/claudeengine/settings.go
-	// installs a PreToolUse(AskUserQuestion) hook in every interactive run
-	// precisely so an ask classifies as a real-time asking signal, and
-	// `lyx shuttle run --interactive` depends on that signal staying
-	// terminal — widening Interactive would suppress it for that caller too.
-	// Accepted failure mode: an interactive run whose agent is genuinely
-	// wedged now hangs until its Timeout rather than reporting Stuck
-	// promptly, which is the correct trade for a mode whose premise is that
-	// a human is watching the pane.
-	AwaitOperator bool
 	// Role is the role segment of the strand's name; it may be empty.
 	// Round is not part of the name; it names the run's directory.
 	Role  string
@@ -153,13 +139,12 @@ type Spec struct {
 // entry is resolved to an absolute path — already-absolute entries are kept
 // verbatim, relative entries are joined onto worktreeRoot and
 // filepath.Clean-ed — and the resolved paths are written back into
-// s.OutputFiles so every later reader sees only absolute paths. A resolved
-// entry that already exists on disk is rejected: outcome classification
-// tests bare existence, so a stale file would classify the run done on its
-// very first turn end — a misconfigured spec must fail loudly here, never
-// become silent success (proven live: an asking run against a pre-existing
-// output file returned "done" with the question discarded). A negative
-// Timeout is rejected (see the Timeout field's doc comment: it would launch
+// s.OutputFiles so every later reader sees only absolute paths.
+// A resolved entry that already exists on disk is rejected:
+// outcome classification tests bare existence, so a stale file would classify the run done on its very first turn end —
+// a misconfigured spec must fail loudly here, never become silent success
+// (proven live: a run that stopped to ask a question, against a pre-existing output file, returned "done" with the question discarded).
+// A negative Timeout is rejected (see the Timeout field's doc comment: it would launch
 // a run whose deadline is already in the past, leaving stray live state
 // behind an instant OutcomeTimeout); a zero Timeout is replaced with
 // cfg.RunTimeoutMin minutes, and an empty Display.Anchor defaults to
@@ -187,7 +172,7 @@ func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 
 	// Reject entries that already exist: "done" is bare file existence, so
 	// a stale artifact would satisfy the contract before the agent writes
-	// anything, silently swallowing an asking outcome as success.
+	// anything, silently swallowing an unfinished run as success.
 	for _, f := range s.OutputFiles {
 		if _, err := os.Stat(f); err == nil {
 			return fmt.Errorf("shuttle: spec.OutputFiles entry %q already exists — a pre-existing file would satisfy the file contract immediately; remove it or name a fresh path", f)

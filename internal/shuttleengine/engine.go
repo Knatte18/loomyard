@@ -15,14 +15,6 @@ type Outcome string
 const (
 	// OutcomeDone: agent wrote every OutputFiles entry and file contract is satisfied.
 	OutcomeDone Outcome = "done"
-	// OutcomeAsking: agent ended a turn (or opened a live AskUserQuestion call) without every
-	// OutputFiles entry existing.
-	// The classification tests the FILE CONTRACT only — Wait never inspects the message — so this is
-	// "the agent stopped without finishing", of which a question is the common case rather than the
-	// definition: a blocked agent and a mid-task status report classify identically.
-	// Result.LastAssistantMessage therefore carries whatever the agent last said, not a guaranteed
-	// question.
-	OutcomeAsking Outcome = "asking"
 	// OutcomeDied: a strand reed STILL TRACKS has a pane that is not alive (or the provider never
 	// became ready inside the startup window) before output files were written.
 	// Pane death is the only observable process failure;
@@ -104,10 +96,19 @@ const (
 // BackgroundTask is one piece of background work a waiting turn end left outstanding, in a
 // provider-neutral shape.
 type BackgroundTask struct {
-	Kind  BackgroundKind // Fork or shell.
-	ID    string         // Provider's id for the task.
-	Label string         // The shell's command or the Monitor's description; empty for a fork.
+	Kind   BackgroundKind // Fork or shell.
+	ID     string         // Provider's id for the task.
+	Label  string         // The shell's command or the Monitor's description, or the fork's description; empty when the provider reports none.
+	Signal string         // Which signal reported the task: SignalPayload or SignalTranscript.
 }
+
+// Signals that can report an outstanding background task.
+const (
+	// SignalPayload is the Stop payload's own task list.
+	SignalPayload = "payload"
+	// SignalTranscript is the transcript fallback, read when the payload carries no list.
+	SignalTranscript = "transcript"
+)
 
 // StartupState classifies a pane's captured content during startup, between launch and provider
 // ready.

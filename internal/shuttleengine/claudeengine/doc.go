@@ -31,8 +31,13 @@
 // A Stop line whose turn ended with background work still running becomes EventWaiting, and its
 // Event.Outstanding lists that work as provider-neutral shuttleengine.BackgroundTask values:
 // a fork for an Agent or Task subagent, a shell for a backgrounded Bash or a Monitor.
-// The list merges the running background_tasks[] entries of the Stop payload with the transcript's
-// background launches that no later task notification names, deduplicated by task id.
+// The Stop payload's background_tasks list is authoritative when present, even empty:
+// its running entries are the whole list and the transcript is not read.
+// The transcript fallback runs only when the key is absent or not a list.
+// It lists the background launches that no later completion notification names:
+// a task-notification user message, a queue-operation line or a queued_command attachment.
+// A payload that omits a running task, lists it under another status or changes an entry's shape counts as no outstanding work.
+// Each task carries the signal that reported it.
 //
 // Every Bash command an agent runs gets `/dev/null` as its default stdin through Claude Code's `CLAUDE_ENV_FILE`:
 // Prepare writes `bash-env.sh` beside settings.json with the content `exec </dev/null`, and both the launch and the resume line lead with `CLAUDE_ENV_FILE` naming its absolute path,
@@ -62,4 +67,12 @@
 // The engine also announces each standing tool deny to the session through --append-system-prompt, on both the launch and the resume line.
 // The notice is built from the same inputs as the PreToolUse hooks, so the two cannot drift.
 // The webster fork guard is not announced.
+//
+// A replay corpus of real turn ends lives under testdata/corpus, one directory per case:
+// transcript.jsonl holds the source transcript's lines the parsers read, trimmed to the fields they read;
+// events.jsonl is the run's events file, or one rebuilt from the transcript's turn ends when the run directory is gone;
+// and case.yaml names the source run, the date, the Claude Code version, what went wrong, whether the events are rebuilt, whether the run is gated, the skills Start loads,
+// and the reading each turn end must get: done, held, or waiting with its outstanding tasks.
+// corpus_test.go replays every case directory through ParseEvents and shuttle's wait loop under an injected clock, so a new case joins without a code change.
+// A failing llm-tier live scenario keeps its events file and transcript in a directory it prints, so promoting it to a case is a copy, a trim and a case.yaml.
 package claudeengine

@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -78,21 +77,6 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 
 	result, err := p.run(p.deps, websterengine.RunOptions{Fresh: false})
 	if err != nil {
-		var askingErr *websterengine.MasterAskingError
-		if errors.Is(err, websterengine.ErrMasterAsking) {
-			reason := "webster master is asking a question"
-			if errors.As(err, &askingErr) {
-				reason = masterAskingReason(askingErr)
-				logger.Warn("shedadapters: webster master is asking a question", "producer", p.name, "engine", websterEngineLabel, "message", askingErr.Message, "sessionID", askingErr.SessionID, "runDir", askingErr.RunDir)
-			} else {
-				logger.Warn("shedadapters: webster master is asking a question", "producer", p.name, "engine", websterEngineLabel)
-			}
-			if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
-				return "", shedengine.OutputPointer{}, cerr
-			}
-			return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
-		}
-
 		if errors.Is(err, websterengine.ErrPendingAuditFindings) {
 			// A correctness halt only the operator can clear: the run blocks with the entry refusal's own text, whose way forward already ends in this row's re-entry step.
 			if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
@@ -133,21 +117,4 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): unrecognized webster outcome %q", p.name, websterEngineLabel, result.Outcome)
 	}
-}
-
-// masterAskingReason is the fixed one-line Stuck reason for an asking Master: it names the session
-// and the run dir when each is known and never carries the Master's own message.
-func masterAskingReason(e *websterengine.MasterAskingError) string {
-	var known []string
-	if e.SessionID != "" {
-		known = append(known, "session "+e.SessionID)
-	}
-	if e.RunDir != "" {
-		known = append(known, "run dir "+e.RunDir)
-	}
-	reason := "webster master is asking a question"
-	if len(known) > 0 {
-		reason += "; " + strings.Join(known, ", ")
-	}
-	return reason
 }

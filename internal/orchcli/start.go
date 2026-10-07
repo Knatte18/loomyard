@@ -71,7 +71,6 @@ func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 		PermissionMode: c.cfg.PermissionMode,
 		AllowAgentTool: true,
 		ForkSubagents:  true,
-		AwaitOperator:  true,
 		Role:           orchStrandName,
 		NameOverride:   orchStrandName,
 		Display:        render.Display{Focus: true},

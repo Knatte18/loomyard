@@ -61,9 +61,8 @@ func TestDiscussionWrite_Call(t *testing.T) {
 		}
 	})
 
-	// StuckWithEmptyPointerLeavesCommitUninvoked is the asking row's shape:
-	// shuttleengine.OutcomeAsking keeps returning Stuck with an empty pointer, and an asking run has
-	// not satisfied its file contract, so there is nothing to commit.
+	// StuckWithEmptyPointerLeavesCommitUninvoked is the shape of a Stuck that names no output file:
+	// a run that wrote nothing has nothing to commit.
 	t.Run("StuckWithEmptyPointerLeavesCommitUninvoked", func(t *testing.T) {
 		inner := &fakeInnerProducer{outcome: shedengine.Stuck}
 		commit := &commitRecorder{}
@@ -197,7 +196,7 @@ func TestDiscussionWrite_NilCommitSeamIsANamedError(t *testing.T) {
 	}
 }
 
-// TestDiscussionWrite_PassesStuckReasonThrough pins that the decorator returns the wrapped producer's Reason unchanged, both for the asking shape (empty Path, nothing committed) and the gate-failed shape (non-empty Path, committed).
+// TestDiscussionWrite_PassesStuckReasonThrough pins that the decorator returns the wrapped producer's Reason unchanged, both for the empty-Path shape (nothing committed) and the gate-failed shape (non-empty Path, committed).
 //
 //testtiming:keep pins that the wrapped producer's Reason reaches the caller unchanged in both stuck shapes, which TestDiscussionWrite_Call never asserts
 func TestDiscussionWrite_PassesStuckReasonThrough(t *testing.T) {
@@ -205,7 +204,7 @@ func TestDiscussionWrite_PassesStuckReasonThrough(t *testing.T) {
 		name string
 		path string
 	}{
-		{"EmptyPathAskingShape", ""},
+		{"EmptyPathShape", ""},
 		{"NonEmptyPathGateFailedShape", "decision-record.md"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

@@ -272,7 +272,7 @@
 // (invalid profile, shuttle start/run failure, or — deliberately loud — a
 // verdict parse failure on a done run, since a defaulted verdict could
 // silently terminate a caller's round loop on a malformed round).
-// asking/died/timeout are normal loop events a caller branches on via
+// died/timeout are normal loop events a caller branches on via
 // Result.Outcome, with an empty Verdict.
 //
 // # The review-parse gate

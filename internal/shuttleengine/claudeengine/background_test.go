@@ -79,13 +79,44 @@ func TestParseEvents_StopWithCompletedTasksAndCleanTranscriptIsStop(t *testing.T
 	}
 }
 
-func TestParseEvents_UnmatchedMonitorLaunchIsWaiting(t *testing.T) {
-	path := writeBgTranscript(t, monitorLaunchTranscript)
-	for name, tasks := range map[string]any{"absent": nil, "empty": []any{}} {
-		t.Run(name, func(t *testing.T) {
-			ev := parseOneKind(t, stopLine(t, path, tasks))
-			if ev.Kind != shuttleengine.EventWaiting {
-				t.Fatalf("kind = %v, want EventWaiting", ev.Kind)
+// queueOperationNotification and queuedCommandNotification are the trimmed shapes Claude Code writes
+// when a task notification is absorbed mid-turn instead of arriving as a user message.
+const queueOperationNotification = `{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<task-id>mon12345</task-id>\n<status>completed</status>\n</task-notification>"}
+`
+
+const queuedCommandNotification = `{"attachment":{"type":"queued_command","prompt":"<task-notification>\n<task-id>mon12345</task-id>\n<status>completed</status>\n</task-notification>"}}
+`
+
+func TestParseEvents_BackgroundTasksKeyIsAuthoritativeOverTranscript(t *testing.T) {
+	unmatched := writeBgTranscript(t, monitorLaunchTranscript)
+	absorbedByQueueOperation := writeBgTranscript(t, monitorLaunchTranscript+queueOperationNotification)
+	absorbedByAttachment := writeBgTranscript(t, monitorLaunchTranscript+queuedCommandNotification)
+	notificationBeforeResult := writeBgTranscript(t, queueOperationNotification+monitorLaunchTranscript)
+	running := []any{map[string]any{"id": "mon12345", "type": "monitor", "status": "running", "command": "tail -f x"}}
+	completed := []any{map[string]any{"id": "mon12345", "type": "monitor", "status": "completed"}}
+
+	tests := []struct {
+		name       string
+		transcript string
+		tasks      any
+		want       shuttleengine.EventKind
+	}{
+		{"absent key reads an unmatched launch", unmatched, nil, shuttleengine.EventWaiting},
+		{"non-list value reads an unmatched launch", unmatched, "none", shuttleengine.EventWaiting},
+		{"queue-operation absorbs the launch", absorbedByQueueOperation, nil, shuttleengine.EventStop},
+		{"queued_command attachment absorbs the launch", absorbedByAttachment, nil, shuttleengine.EventStop},
+		{"notification before the tool result absorbs nothing", notificationBeforeResult, nil, shuttleengine.EventWaiting},
+		{"non-list value falls back to the transcript", absorbedByQueueOperation, "none", shuttleengine.EventStop},
+		{"empty list wins over an unmatched launch", unmatched, []any{}, shuttleengine.EventStop},
+		{"empty list over an absorbed launch", absorbedByQueueOperation, []any{}, shuttleengine.EventStop},
+		{"non-running entry wins over an unmatched launch", unmatched, completed, shuttleengine.EventStop},
+		{"running entry waits over an absorbed launch", absorbedByQueueOperation, running, shuttleengine.EventWaiting},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ev := parseOneKind(t, stopLine(t, tc.transcript, tc.tasks))
+			if ev.Kind != tc.want {
+				t.Fatalf("kind = %v, want %v", ev.Kind, tc.want)
 			}
 		})
 	}
@@ -111,7 +142,7 @@ func TestTranscriptHasUnmatchedLaunch_BashAndAgentLaunches(t *testing.T) {
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_b","content":"Command running in background with ID: bqx98765"}]}}
 `
 	got := transcriptHasUnmatchedLaunch([]byte(bash))
-	wantBash := shuttleengine.BackgroundTask{Kind: shuttleengine.BackgroundShell, ID: "bqx98765", Label: "sleep 99"}
+	wantBash := shuttleengine.BackgroundTask{Kind: shuttleengine.BackgroundShell, ID: "bqx98765", Label: "sleep 99", Signal: shuttleengine.SignalTranscript}
 	if len(got) != 1 || got[0] != wantBash {
 		t.Errorf("backgrounded Bash with no notification = %+v, want [%+v]", got, wantBash)
 	}
@@ -129,7 +160,7 @@ func TestTranscriptHasUnmatchedLaunch_BashAndAgentLaunches(t *testing.T) {
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_a","content":"async launched"}]},"toolUseResult":{"agentId":"agent7654321"}}
 `
 	got = transcriptHasUnmatchedLaunch([]byte(agent))
-	wantAgent := shuttleengine.BackgroundTask{Kind: shuttleengine.BackgroundFork, ID: "agent7654321"}
+	wantAgent := shuttleengine.BackgroundTask{Kind: shuttleengine.BackgroundFork, ID: "agent7654321", Signal: shuttleengine.SignalTranscript}
 	if len(got) != 1 || got[0] != wantAgent {
 		t.Errorf("async Agent launch with no notification = %+v, want [%+v]", got, wantAgent)
 	}
@@ -138,7 +169,22 @@ func TestTranscriptHasUnmatchedLaunch_BashAndAgentLaunches(t *testing.T) {
 func TestParseEvents_RunningShellEntryYieldsShellTask(t *testing.T) {
 	tasks := []any{map[string]any{"id": "bsh12345", "type": "shell", "status": "running", "command": "sleep 600"}}
 	ev := parseOneKind(t, stopLine(t, "", tasks))
-	want := []shuttleengine.BackgroundTask{{Kind: shuttleengine.BackgroundShell, ID: "bsh12345", Label: "sleep 600"}}
+	want := []shuttleengine.BackgroundTask{{Kind: shuttleengine.BackgroundShell, ID: "bsh12345", Label: "sleep 600", Signal: shuttleengine.SignalPayload}}
+	if ev.Kind != shuttleengine.EventWaiting || !reflect.DeepEqual(ev.Outstanding, want) {
+		t.Errorf("kind = %v, Outstanding = %+v, want EventWaiting with %+v", ev.Kind, ev.Outstanding, want)
+	}
+}
+
+func TestParseEvents_RunningForkEntryCarriesDescriptionAsLabel(t *testing.T) {
+	tasks := []any{
+		map[string]any{"id": "a1", "type": "subagent", "status": "running", "description": "review the diff"},
+		map[string]any{"id": "a2", "type": "subagent", "status": "running"},
+	}
+	ev := parseOneKind(t, stopLine(t, "", tasks))
+	want := []shuttleengine.BackgroundTask{
+		{Kind: shuttleengine.BackgroundFork, ID: "a1", Label: "review the diff", Signal: shuttleengine.SignalPayload},
+		{Kind: shuttleengine.BackgroundFork, ID: "a2", Signal: shuttleengine.SignalPayload},
+	}
 	if ev.Kind != shuttleengine.EventWaiting || !reflect.DeepEqual(ev.Outstanding, want) {
 		t.Errorf("kind = %v, Outstanding = %+v, want EventWaiting with %+v", ev.Kind, ev.Outstanding, want)
 	}
@@ -160,30 +206,24 @@ func TestParseEvents_TranscriptOnlyBashYieldsShellTask(t *testing.T) {
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_b","content":"Command running in background with ID: bqx98765"}]}}
 `
 	ev := parseOneKind(t, stopLine(t, writeBgTranscript(t, bash), nil))
-	want := []shuttleengine.BackgroundTask{{Kind: shuttleengine.BackgroundShell, ID: "bqx98765", Label: "sleep 99"}}
+	want := []shuttleengine.BackgroundTask{{Kind: shuttleengine.BackgroundShell, ID: "bqx98765", Label: "sleep 99", Signal: shuttleengine.SignalTranscript}}
 	if ev.Kind != shuttleengine.EventWaiting || !reflect.DeepEqual(ev.Outstanding, want) {
 		t.Errorf("kind = %v, Outstanding = %+v, want %+v", ev.Kind, ev.Outstanding, want)
 	}
 }
 
-func TestParseEvents_PayloadEntryAndLaunchSharingIDYieldOneTask(t *testing.T) {
-	path := writeBgTranscript(t, monitorLaunchTranscript)
-	tasks := []any{map[string]any{"id": "mon12345", "type": "monitor", "status": "running", "command": "tail -f x"}}
-	ev := parseOneKind(t, stopLine(t, path, tasks))
-	want := []shuttleengine.BackgroundTask{{Kind: shuttleengine.BackgroundShell, ID: "mon12345", Label: "tail -f x"}}
-	if !reflect.DeepEqual(ev.Outstanding, want) {
-		t.Errorf("Outstanding = %+v, want %+v", ev.Outstanding, want)
-	}
-}
-
-func TestParseEvents_RunningShellAndUnmatchedForkLaunchBothListed(t *testing.T) {
+func TestParseEvents_PayloadListIsTheWholeOutstandingListAndTranscriptIsUnread(t *testing.T) {
 	agent := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_a","name":"Agent","input":{"run_in_background":true}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_a","content":"async launched"}]},"toolUseResult":{"agentId":"agent7654321"}}
 `
-	tasks := []any{map[string]any{"id": "bsh12345", "type": "shell", "status": "running", "command": "sleep 600"}}
+	tasks := []any{
+		map[string]any{"id": "bsh12345", "type": "shell", "status": "running", "command": "sleep 600"},
+		map[string]any{"id": "bsh12345", "type": "shell", "status": "running", "command": "sleep 600"},
+	}
 	ev := parseOneKind(t, stopLine(t, writeBgTranscript(t, agent), tasks))
-	if len(ev.Outstanding) != 2 || ev.Outstanding[0].Kind != shuttleengine.BackgroundShell || ev.Outstanding[1].Kind != shuttleengine.BackgroundFork {
-		t.Errorf("Outstanding = %+v", ev.Outstanding)
+	want := []shuttleengine.BackgroundTask{{Kind: shuttleengine.BackgroundShell, ID: "bsh12345", Label: "sleep 600", Signal: shuttleengine.SignalPayload}}
+	if !reflect.DeepEqual(ev.Outstanding, want) {
+		t.Errorf("Outstanding = %+v, want %+v", ev.Outstanding, want)
 	}
 }
 

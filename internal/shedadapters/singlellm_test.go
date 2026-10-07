@@ -93,49 +93,6 @@ func TestSingleLLMProducer_OutcomeDone(t *testing.T) {
 	}
 }
 
-func TestSingleLLMProducer_OutcomeAsking(t *testing.T) {
-	dir := t.TempDir()
-	spec := shuttleengine.Spec{Prompt: "ask", OutputFiles: []string{filepath.Join(dir, "out.md")}}
-	tests := []struct {
-		name       string
-		result     shuttleengine.Result
-		gated      bool
-		wantReason string
-	}{
-		{"WithSessionID", shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?", SessionID: "sess-9", RunDir: "/tmp/run"}, false, "agent is asking a question; session sess-9"},
-		{"EmptySessionIDNamesRunDir", shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?", RunDir: "/tmp/run"}, false, "agent is asking a question; run dir /tmp/run"},
-		{"NeitherIsBareText", shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"}, false, "agent is asking a question"},
-		// The gate is never consulted for a non-done outcome.
-		{"GatedProducerNeverConsultsTheGate", shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"}, true, "agent is asking a question"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			shuttle := &shedfake.Shuttle{Result: tt.result}
-			var p *SingleLLMProducer
-			if tt.gated {
-				gate := shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
-					t.Fatal("gate closure invoked for a non-done outcome")
-					return shuttleengine.GateResult{}, nil
-				}}}
-				p = NewSingleLLMProducerGated("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil, gate)
-			} else {
-				p = NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
-			}
-
-			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-			if ptr.Path != "" || ptr.GateAttempts != nil {
-				t.Errorf("Call() pointer = %+v; want empty Path and no GateAttempts", ptr)
-			}
-			if ptr.Reason != tt.wantReason {
-				t.Errorf("Call() Reason = %q; want %q", ptr.Reason, tt.wantReason)
-			}
-			if strings.Contains(ptr.Reason, "what next?") {
-				t.Errorf("Call() Reason %q contains the agent's message", ptr.Reason)
-			}
-		})
-	}
-}
-
 func TestSingleLLMProducer_OutcomeDiedAndTimeout(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -369,32 +326,6 @@ func TestSingleLLMProducer_NilNowStillArchives(t *testing.T) {
 	}
 }
 
-func TestSingleLLMProducer_CancelledDuringRun_OutcomeAskingYieldsContextError(t *testing.T) {
-	dir := t.TempDir()
-	spec := shuttleengine.Spec{Prompt: "run", OutputFiles: []string{filepath.Join(dir, "out.md")}}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	shuttle := &shedfake.Shuttle{
-		Result:    shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking},
-		DuringRun: cancel,
-	}
-	p := NewSingleLLMProducer("loom", specSource(spec, nil), shuttle, fixedClock(time.Now()), nil)
-
-	outcome, ptr, err := p.Call(ctx)
-	if err == nil {
-		t.Fatal("Call() error = nil; want non-nil context error")
-	}
-	if !errors.Is(err, context.Canceled) {
-		t.Errorf("Call() error = %v; want errors.Is(err, context.Canceled)", err)
-	}
-	if outcome == shedengine.Stuck {
-		t.Errorf("Call() outcome = %q; want the cancellation error, not %q", outcome, shedengine.Stuck)
-	}
-	if ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() pointer = %+v; want empty", ptr)
-	}
-}
-
 // TestSingleLLMProducer_AttachedRun covers a live agent the probe found: its outcome maps as the
 // spawned run's does, the producer never respawns, and the output file the live agent is still
 // writing is left untouched -- asserted by its content, not merely by the absence of an archive
@@ -415,12 +346,6 @@ func TestSingleLLMProducer_AttachedRun(t *testing.T) {
 		wantErr string
 	}{
 		{name: "Done", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, wantOutcome: shedengine.Done},
-		{
-			name:        "Asking",
-			result:      shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"},
-			wantOutcome: shedengine.Stuck,
-			wantReason:  "agent is asking a question",
-		},
 		{name: "Died", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, wantErr: string(shuttleengine.OutcomeDied)},
 		{name: "Timeout", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}, wantErr: string(shuttleengine.OutcomeTimeout)},
 		// The probe reaches AttachGated with the producer's own GateSpec, so a resumed run is gated
@@ -679,9 +604,6 @@ func TestSingleLLMProducer_Gate_FailedGateReachesStuckWithArtifactPointer(t *tes
 	}
 	if want := "gate did not pass after 0 attempts; findings: "; ptr.Reason != want {
 		t.Errorf("Call() Reason = %q; want %q (attempt count and findings path)", ptr.Reason, want)
-	}
-	if strings.HasPrefix(ptr.Reason, "agent is asking") {
-		t.Errorf("Call() Reason %q is the asking reason; want the gate-failed one", ptr.Reason)
 	}
 }
 

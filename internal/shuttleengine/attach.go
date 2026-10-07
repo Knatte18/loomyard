@@ -13,6 +13,9 @@
 // so Attach and AttachGated first remove the live strand of every respawn-eligible candidate of the same output-file set:
 // re-running a producer supersedes the session it halted.
 // AttachIfLive is the same probe with that removal off, for a caller that starts nothing after a not-found answer.
+// A record an older binary left at outcome "asking" is attached like a running one when reed tracks its strand as live,
+// whether or not it carries an AskingOffset: that agent is still there, and respawning would run a second one beside it.
+// Only a live, tracked strand is attached, and the attach starts a fresh deadline.
 
 package shuttleengine
 
@@ -166,7 +169,13 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (Result
 		return Result{}, false, nil
 	}
 
-	return r.reconstructAndWait(attachable[0], normalized, gate)
+	chosen := attachable[0]
+	if chosen.state.StrandName == "" {
+		if strand, tracked := strandStatusByGUID(status.Strands, chosen.state.StrandGUID); tracked {
+			chosen.state.StrandName = strand.Name
+		}
+	}
+	return r.reconstructAndWait(chosen, normalized, gate)
 }
 
 // removeSupersededStrands removes the strand of each candidate that reed tracks as live,
@@ -244,15 +253,20 @@ func soleFinishedCandidate(candidates []attachCandidate, spec Spec) (attachCandi
 // is — the gate travels with AttachGated's own caller-told GateSpec, never with anything read off the
 // persisted candidate.
 func (r *Runner) reconstructAndWait(candidate attachCandidate, normalized Spec, gate GateSpec) (Result, bool, error) {
-	// A live asking candidate that kept working is reconstructed at its recorded offset, so the old
-	// asking Stop is not re-classified, and with its outcome reset to running so the run's own
-	// finalize records the new verdict. Every other candidate replays from its prompt offset, past the skill-load turns.
+	// A legacy asking candidate is reset to running so the run's own finalize records its verdict.
+	// With a recorded AskingOffset it replays from there and counts that old ask as notified:
+	// the parent already saw that run halt, so the ask is neither read nor notified again.
+	// Without one it replays from the prompt offset like every other candidate, past the skill-load turns,
+	// so its last turn end is read as a held turn end and notified once.
 	state := candidate.state
 	startOffset := state.PromptOffset
-	if state.Outcome == string(OutcomeAsking) && state.AskingOffset != nil {
-		startOffset = *state.AskingOffset
+	if state.Outcome == legacyAskingOutcome {
 		state.Outcome = runOutcomeRunning
-		state.AskingOffset = nil
+		if state.AskingOffset != nil {
+			startOffset = *state.AskingOffset
+			state.NotifiedOffset = *state.AskingOffset
+			state.AskingOffset = nil
+		}
 	}
 
 	run := &Run{
@@ -264,11 +278,10 @@ func (r *Runner) reconstructAndWait(candidate attachCandidate, normalized Spec, 
 		// StrandGUID, and SessionID.
 		runDir: candidate.runDir,
 		state:  state,
-		// offset starts at the prompt offset, deliberately replaying every event of the run's own turns: seeding at EOF would
-		// mean a terminal Stop that landed while the driver was down is never observed, converting a
-		// completed step into an OutcomeTimeout failure — and a replayed backlog ending in an ask is
-		// correct in both AwaitOperator modes. The one exception is a candidate that recorded an
-		// asking offset (startOffset above): its old ask is already answered.
+		// offset starts at the prompt offset, deliberately replaying every event of the run's own turns:
+		// seeding at EOF would mean a terminal Stop that landed while the driver was down is never observed, converting a completed step into an OutcomeTimeout failure —
+		// and a replayed backlog ending in an ask is read as a held turn end.
+		// The one exception is a candidate that recorded an asking offset (startOffset above): the parent already saw that ask.
 		offset: startOffset,
 		clock:  r.clock,
 		// deadline is a fresh now+Timeout computed at attach time, never CreatedAt+Timeout: a run
@@ -337,9 +350,6 @@ type attachCandidate struct {
 	runDir   string
 	dirMtime time.Time
 	state    RunState
-	// eventsSize is the current byte size of state.EventsPath at scan time, 0 when the file is absent
-	// or unreadable. dispositionCandidate compares it with state.AskingOffset.
-	eventsSize int64
 }
 
 // collectAttachCandidates scans <root>/*/run.json for records whose OutputFiles set-match
@@ -379,13 +389,7 @@ func collectAttachCandidates(root string, outputFiles []string) ([]attachCandida
 		if !outputFilesSetEqual(rs.OutputFiles, outputFiles) {
 			continue
 		}
-		var eventsSize int64
-		if rs.EventsPath != "" {
-			if fi, err := os.Stat(rs.EventsPath); err == nil {
-				eventsSize = fi.Size()
-			}
-		}
-		candidates = append(candidates, attachCandidate{runDir: runDir, dirMtime: info.ModTime(), state: rs, eventsSize: eventsSize})
+		candidates = append(candidates, attachCandidate{runDir: runDir, dirMtime: info.ModTime(), state: rs})
 	}
 	return candidates, nil
 }
@@ -465,14 +469,10 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 	strand, tracked := strandStatusByGUID(strands, c.state.StrandGUID)
 
 	if tracked && strand.Live {
-		if c.state.Outcome == runOutcomeRunning {
-			return verdictAttachable
-		}
-		// An asking run whose strand kept working: its events file grew past the offset finalize
-		// recorded, so the ask was answered (or was a background wait) and the agent is mid-turn.
-		// No recorded offset (an older binary's record) or no growth keeps the respawn verdict.
+		// A legacy asking record is an older binary's halted run whose agent is still there,
+		// so a live strand attaches it whether or not it carries an AskingOffset and whether or not its events grew.
 		// This sits below the file-contract-first check above, which still runs first.
-		if c.state.Outcome == string(OutcomeAsking) && c.state.AskingOffset != nil && c.eventsSize > *c.state.AskingOffset {
+		if c.state.Outcome == runOutcomeRunning || c.state.Outcome == legacyAskingOutcome {
 			return verdictAttachable
 		}
 		// A terminal value, the empty string (a legacy record), or an unrecognized one all mean the
@@ -535,13 +535,15 @@ func leftoverThenAgeVerdict(c attachCandidate, spec Spec, minAge time.Duration, 
 	return verdictError
 }
 
-// isTerminalOutcome reports whether outcome is one of the four values finalize ever writes to
-// RunState.Outcome: done, asking, died, or timeout. It is false for the empty string (a legacy
-// pre-Outcome-field record, or a run.json Start has not yet finalized), for runOutcomeRunning, and for
-// any value this package does not recognize.
+// legacyAskingOutcome is the RunState.Outcome an older binary's finalize wrote for a run that halted at a turn end.
+// Nothing writes it now, and Attach reads it only to attach a record whose strand is live.
+const legacyAskingOutcome = "asking"
+
+// isTerminalOutcome reports whether outcome is one of the values finalize ever wrote to RunState.Outcome: done, died, timeout, or the legacy asking.
+// It is false for the empty string (a legacy pre-Outcome-field record, or a run.json Start has not yet finalized), for runOutcomeRunning, and for any value this package does not recognize.
 func isTerminalOutcome(outcome string) bool {
 	switch outcome {
-	case string(OutcomeDone), string(OutcomeAsking), string(OutcomeDied), string(OutcomeTimeout):
+	case string(OutcomeDone), legacyAskingOutcome, string(OutcomeDied), string(OutcomeTimeout):
 		return true
 	default:
 		return false

@@ -1,20 +1,15 @@
-// template_test.go pins the four shipped-default judge/triage/targeting prompt templates'
+// template_test.go pins the three shipped-default judge/targeting prompt templates'
 // load-bearing statements as substring assertions,
 // and separately proves each template actually fills through stencil with its required markers —
-// mirroring burlerengine's TestTemplate_StatesRoundDiscipline / TestTemplate_FillsWithAllMarkers
-// style. It also proves runTriage composes its prompt from an on-disk edit rather than the shipped
-// default, per the runtime-read-not-embed Shared Decision.
+// mirroring burlerengine's TestTemplate_StatesRoundDiscipline / TestTemplate_FillsWithAllMarkers style.
 
 package treadleengine
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
@@ -63,10 +58,8 @@ func requireContains(t *testing.T, text, needle string) {
 	}
 }
 
-// judgeCirclingMarkerValues, judgeMilestoneMarkerValues, and
-// triageMarkerValues return a values map with every one of the
-// corresponding template's required top-level markers set to a non-empty
-// placeholder, so tests can delete one key at a time to prove stencil.Fill's
+// judgeCirclingMarkerValues and judgeMilestoneMarkerValues return a values map with every one of the corresponding template's required top-level markers set to a non-empty placeholder,
+// so tests can delete one key at a time to prove stencil.Fill's
 // per-marker error.
 func judgeCirclingMarkerValues() map[string]string {
 	return map[string]string{
@@ -91,18 +84,9 @@ func judgeMilestoneMarkerValues() map[string]string {
 	}
 }
 
-func triageMarkerValues() map[string]string {
-	return map[string]string{
-		"round":            "2",
-		"question":         "should I proceed without the fasit file?",
-		"verdict_path":     "/run/round-2-triage.md",
-		"parent_directive": "the parent directive",
-	}
-}
-
 // targetingMarkerValues returns a values map with every one of the
 // targeting template's required top-level markers set to a non-empty
-// placeholder, mirroring the three judge/triage marker-value helpers above.
+// placeholder, mirroring the two judge marker-value helpers above.
 func targetingMarkerValues() map[string]string {
 	return map[string]string{
 		"round":            "3",
@@ -112,9 +96,9 @@ func targetingMarkerValues() map[string]string {
 	}
 }
 
-// TestShippedTemplates table-drives the four shipped judge, triage and targeting templates through the two properties each must hold.
+// TestShippedTemplates table-drives the three shipped judge and targeting templates through the two properties each must hold.
 // States load-bearing rules: the template carries its load-bearing phrases, so an edit that silently weakens one fails here rather than only in human review.
-// The judge templates (circling and milestone) and the triage template also carry the quoted-rationale rule, and the judge templates the handoff-maintenance rules; targeting produces no verdict, so it has no rationale-quoting rule to pin.
+// The judge templates (circling and milestone) also carry the quoted-rationale rule and the handoff-maintenance rules; targeting produces no verdict, so it has no rationale-quoting rule to pin.
 // Fills with all markers: stencil.Fill succeeds when every required marker is supplied and fails, naming the marker, when any single one is absent.
 func TestShippedTemplates(t *testing.T) {
 	t.Parallel()
@@ -149,15 +133,6 @@ func TestShippedTemplates(t *testing.T) {
 			handoffRules:    true,
 			values:          judgeMilestoneMarkerValues,
 			requiredMarkers: []string{"round", "hard_cap", "prior_reviews", "verdict_path", "previous_handoff", "handoff_path", "parent_directive"},
-		},
-		{
-			// The asking-triage template's vocabulary, the one-line-restate-the-blocker rule and the single-output-file instruction.
-			name:            "triage",
-			template:        stencils.TreadleTemplateTriage,
-			phrases:         []string{"RETRY", "GIVE_UP", "restate", "EXACTLY ONE"},
-			quotedRationale: true,
-			values:          triageMarkerValues,
-			requiredMarkers: []string{"round", "question", "verdict_path", "parent_directive"},
 		},
 		{
 			// The pre-round targeting template's read-the-handoff instruction, exactly-one-output-file rule and free-form (no frontmatter) output rule.
@@ -205,41 +180,5 @@ func TestShippedTemplates(t *testing.T) {
 				}
 			})
 		})
-	}
-}
-
-// TestRunTriage_ReadsFromDiskAtCallTime proves runTriage composes its prompt from the on-disk
-// triage stencil at call time, not the embedded shipped default — the runtime-read-not-embed Shared
-// Decision's whole point. It overwrites the seeded stencils directory's triage file with a modified
-// body (markers intact) and asserts the shuttle spec's Prompt carries the on-disk sentinel text.
-func TestRunTriage_ReadsFromDiskAtCallTime(t *testing.T) {
-	dir := newTestStencilsDir(t)
-	sentinel := "SENTINEL-ON-DISK-EDIT-NOT-THE-SHIPPED-DEFAULT"
-	modified := strings.Replace(string(stencils.TreadleTemplateTriage), "# Treadle asking-triage", "# Treadle asking-triage — "+sentinel, 1)
-	triagePath := filepath.Join(dir, "treadle", "treadle-template-triage.md")
-	if err := os.WriteFile(triagePath, []byte(modified), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want nil", triagePath, err)
-	}
-
-	verdictContent := `---
-verdict: RETRY
-rationale: "fine"
----
-`
-	sh := &fakeJudgeShuttle{
-		verdictContent: verdictContent,
-		result:         shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-	}
-
-	runTriage(dir, "", sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "haiku", "low")
-
-	if !sh.called {
-		t.Fatal("runTriage() never called the shuttle")
-	}
-	if !strings.Contains(sh.spec.Prompt, sentinel) {
-		t.Error("runTriage() prompt does not contain the on-disk edit; it composed from the embedded shipped default instead")
-	}
-	if strings.Contains(string(stencils.TreadleTemplateTriage), sentinel) {
-		t.Fatal("the embedded shipped default unexpectedly already contains the sentinel; the test setup is broken")
 	}
 }

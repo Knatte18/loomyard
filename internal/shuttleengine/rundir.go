@@ -82,13 +82,13 @@ type RunState struct {
 	CreatedAt    string   `json:"createdAt"`
 	// Outcome has three writable states. Start writes the sentinel
 	// runOutcomeRunning ("running") when it first persists this record.
-	// Run.finalize overwrites it with the classification string
-	// (done/asking/died/timeout) for EVERY terminal outcome, not only
-	// OutcomeDone. Any other value, INCLUDING THE EMPTY STRING, means the
+	// Run.finalize overwrites it with the classification string (done/died/timeout) for EVERY terminal outcome, not only OutcomeDone.
+	// The legacy value "asking" is one only an older binary wrote.
+	// Any other value, INCLUDING THE EMPTY STRING, means the
 	// record was written by a binary that did not know about this field and
 	// is therefore never attachable — a plain "" decodes from every run.json
 	// a pre-change binary wrote, so treating empty as attachable would let an
-	// in-flight worktree upgraded mid-Asking attach to an idle pane and wait
+	// in-flight worktree upgraded mid-run attach to an idle pane and wait
 	// out a freshly restarted run_timeout_min.
 	Outcome string `json:"outcome"`
 	// Started is false when Start first persists this record, and is flipped true and re-persisted
@@ -105,11 +105,17 @@ type RunState struct {
 	// default a pre-this-change binary's run.json also decodes to, so an old record costs one extra
 	// probe rather than silently skipping one it never earned.
 	Started bool `json:"started"`
-	// AskingOffset is the events-file byte offset Run.finalize had consumed when it classified
-	// OutcomeAsking, nil for every other outcome and for a record written by a binary that predates
-	// the field. Attach compares it against the events file's current size: growth past it means the
-	// strand kept working after the ask, so the run is attachable rather than respawn-eligible.
+	// AskingOffset is the events-file byte offset an older binary's finalize had consumed when it classified an ask, nil for every record this binary writes.
+	// It is read for legacy records only and never written.
+	// Attach replays such a record from this offset and counts the ask before it as already notified.
 	AskingOffset *int64 `json:"askingOffset,omitempty"`
+	// StrandName is the reed name of the run's strand, which a hold notice gives its parent to answer by.
+	// Empty for a record that predates the field, where the notice names the strand guid instead.
+	StrandName string `json:"strandName,omitempty"`
+	// NotifiedOffset is the events-file byte offset just past the last held turn end whose notice Wait sent, zero for none.
+	// Wait persists it before calling the notifier and never notifies a held turn end at or below it,
+	// so a crash between the write and the call loses that one notice and never repeats it.
+	NotifiedOffset int64 `json:"notifiedOffset,omitempty"`
 	// PromptOffset is the events-file byte offset past the skill-load turns Start ran before sending the prompt,
 	// zero when Start loaded no skills or for a record that predates the field.
 	// Every reader that replays the events file from its start begins here instead, so a load turn's end is never read as the run's own.

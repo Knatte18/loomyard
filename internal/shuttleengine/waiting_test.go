@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // waitingEngine is a fakeEngine whose ParseEvents also maps a "WAIT:<message>" line to an
@@ -37,9 +39,10 @@ func (e *waitingEngine) ParseEvents(data []byte) ([]Event, error) {
 
 // TestPollEventsTick_Waiting drives pollEventsTick over an events file holding one waiting turn end
 // ("WAIT:background work"): with no output files it is still running and the offset advances past
-// the parsed bytes, a Stop after it classifies asking, and with the output files present it is done.
+// the parsed bytes, a Stop after it is a held turn end carrying its message and the offset past its line,
+// and with the output files present it is done.
 //
-//testtiming:keep pins that a waiting turn end is still running and advances the offset, becomes asking on a later Stop, and is done when the output files exist
+//testtiming:keep pins that a waiting turn end is still running and advances the offset, becomes a held turn end on a later Stop, and is done when the output files exist
 func TestPollEventsTick_Waiting(t *testing.T) {
 	const waitLine = "WAIT:background work\n"
 	tests := []struct {
@@ -47,14 +50,14 @@ func TestPollEventsTick_Waiting(t *testing.T) {
 		touchOutput  bool
 		wantFirst    Outcome
 		checkOffset  bool
+		checkTrace   bool
 		stopAfter    string
-		wantSecond   Outcome
 		wantSecondIn string
 	}{
-		{name: "waiting is still running", wantFirst: "", checkOffset: true},
+		{name: "waiting is still running", wantFirst: "", checkOffset: true, checkTrace: true},
 		{
-			name: "a stop after waiting classifies asking", wantFirst: "", checkOffset: true,
-			stopAfter: "STOP:what now?", wantSecond: OutcomeAsking, wantSecondIn: "what now?",
+			name: "a stop after waiting is held", wantFirst: "", checkOffset: true,
+			stopAfter: "STOP:what now?", wantSecondIn: "what now?",
 		},
 		{name: "waiting with output files is done", touchOutput: true, wantFirst: OutcomeDone},
 	}
@@ -64,16 +67,24 @@ func TestPollEventsTick_Waiting(t *testing.T) {
 			if tt.touchOutput {
 				touchOutputFile(t, outputFile)
 			}
-			fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{}, withConfig(gateConfig))
+			buf := logcapture.CaptureVerbose(t)
+			outstanding := []BackgroundTask{
+				{Kind: BackgroundFork, ID: "agent-1", Label: "review the diff", Signal: SignalPayload},
+				{Kind: BackgroundShell, ID: "shell-1", Label: "sleep 600", Signal: SignalTranscript},
+			}
+			fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{outstanding: outstanding}, withConfig(gateConfig))
 			fc := newFakeClock(time.Now())
 			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
 				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1"}),
 				withRunEvents(waitLine),
 				withRunClock(fc, fc.Now().Add(time.Hour)))
 
-			outcome, _, err := run.pollEventsTick()
+			outcome, held, err := run.pollEventsTick()
 			if err != nil {
 				t.Fatalf("pollEventsTick error: %v", err)
+			}
+			if held != nil {
+				t.Errorf("first tick held = %+v, want nil: a waiting turn end is not a held one", held)
 			}
 			if outcome != tt.wantFirst {
 				t.Errorf("outcome = %q, want %q", outcome, tt.wantFirst)
@@ -83,17 +94,38 @@ func TestPollEventsTick_Waiting(t *testing.T) {
 					t.Errorf("offset = %d, want %d (advanced past the parsed bytes)", run.offset, want)
 				}
 			}
+			if tt.checkTrace {
+				// Idle ticks re-check expiry and log nothing more.
+				for range 2 {
+					if _, _, err := run.pollEventsTick(); err != nil {
+						t.Fatalf("idle tick error: %v", err)
+					}
+				}
+				if got := strings.Count(buf.String(), "turn end waiting on background work"); got != 1 {
+					t.Errorf("waiting trace lines = %d, want 1 in %q", got, buf.String())
+				}
+				for _, want := range []string{
+					"strand-1",
+					"kind=fork id=agent-1", "review the diff", "signal=payload",
+					"kind=shell id=shell-1", "sleep 600", "signal=transcript",
+				} {
+					if !strings.Contains(buf.String(), want) {
+						t.Errorf("trace missing %q in %q", want, buf.String())
+					}
+				}
+			}
 			if tt.stopAfter == "" {
 				return
 			}
 
 			appendEventsLine(t, run.state.EventsPath, tt.stopAfter)
-			outcome, message, err := run.pollEventsTick()
+			outcome, held, err = run.pollEventsTick()
 			if err != nil {
 				t.Fatalf("second tick error: %v", err)
 			}
-			if outcome != tt.wantSecond || message != tt.wantSecondIn {
-				t.Errorf("second tick = (%q, %q), want (%q, %q)", outcome, message, tt.wantSecond, tt.wantSecondIn)
+			wantOffset := int64(len(waitLine) + len(tt.stopAfter) + 1)
+			if outcome != "" || held == nil || held.message != tt.wantSecondIn || held.offset != wantOffset || len(held.tasks) != 0 {
+				t.Errorf("second tick = (%q, %+v), want a held turn end with message %q, no tasks and offset %d", outcome, held, tt.wantSecondIn, wantOffset)
 			}
 		})
 	}
@@ -169,11 +201,11 @@ func shellWaitFixture(t *testing.T, outputFile string, tasks []BackgroundTask, s
 
 var oneShell = []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999"}}
 
-// TestPollEventsTick_ShellExpiry covers a waiting turn end whose outstanding list is one background
-// shell: the turn keeps waiting until the bound, and at the bound it ends done when the output files
-// exist and asking, with the waiting message, when they do not.
+// TestPollEventsTick_ShellExpiry covers a waiting turn end whose outstanding list is one background shell:
+// the turn keeps waiting until the bound, and at the bound it ends done when the output files exist.
+// When they do not, it is a held turn end naming the expired shell, with the waiting message and the offset past the waiting line.
 //
-//testtiming:keep pins the background-shell wait bound: still waiting until the bound, then done with output files or asking with the waiting message without them
+//testtiming:keep pins the background-shell wait bound: still waiting until the bound, then done with output files or held, naming the shell, without them
 func TestPollEventsTick_ShellExpiry(t *testing.T) {
 	tests := []struct {
 		name string
@@ -181,10 +213,10 @@ func TestPollEventsTick_ShellExpiry(t *testing.T) {
 		gated       bool
 		touchOutput bool
 		wantOutcome Outcome
-		wantMessage string
+		wantHeld    bool
 	}{
 		{name: "expires after the bound", gated: true, touchOutput: true, wantOutcome: OutcomeDone},
-		{name: "expiry with missing output is asking", wantOutcome: OutcomeAsking, wantMessage: "background work"},
+		{name: "expiry with missing output is held", wantHeld: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -197,17 +229,23 @@ func TestPollEventsTick_ShellExpiry(t *testing.T) {
 				run.gate = GateSpec{{Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}
 			}
 
-			if outcome, _, err := run.pollEventsTick(); err != nil || outcome != "" {
+			if outcome, held, err := run.pollEventsTick(); err != nil || outcome != "" || held != nil {
 				t.Fatalf("first tick = (%q, %v), want still waiting", outcome, err)
 			}
 			fc.Sleep(10*time.Minute - time.Second)
-			if outcome, _, err := run.pollEventsTick(); err != nil || outcome != "" {
+			if outcome, held, err := run.pollEventsTick(); err != nil || outcome != "" || held != nil {
 				t.Fatalf("tick just before the bound = (%q, %v), want still waiting", outcome, err)
 			}
 			fc.Sleep(time.Second)
-			outcome, message, err := run.pollEventsTick()
-			if err != nil || outcome != tt.wantOutcome || message != tt.wantMessage {
-				t.Errorf("tick at the bound = (%q, %q, %v), want (%q, %q, nil)", outcome, message, err, tt.wantOutcome, tt.wantMessage)
+			outcome, held, err := run.pollEventsTick()
+			if err != nil || outcome != tt.wantOutcome || (held != nil) != tt.wantHeld {
+				t.Fatalf("tick at the bound = (%q, %+v, %v), want outcome %q and held=%v", outcome, held, err, tt.wantOutcome, tt.wantHeld)
+			}
+			if tt.wantHeld {
+				wantOffset := int64(len("WAIT:background work\n"))
+				if held.message != "background work" || held.offset != wantOffset || !reflect.DeepEqual(held.tasks, oneShell) {
+					t.Errorf("held = %+v, want message %q, tasks %+v and offset %d", held, "background work", oneShell, wantOffset)
+				}
 			}
 		})
 	}
@@ -220,7 +258,7 @@ func TestPollEventsTick_ForkOutstandingKeepsWaitingPastBound(t *testing.T) {
 
 	run.pollEventsTick()
 	fc.Sleep(time.Hour)
-	if outcome, _, err := run.pollEventsTick(); err != nil || outcome != "" {
+	if outcome, held, err := run.pollEventsTick(); err != nil || outcome != "" || held != nil {
 		t.Errorf("tick past the bound with a fork outstanding = (%q, %v), want still waiting", outcome, err)
 	}
 }
@@ -232,25 +270,25 @@ func TestPollEventsTick_AwaitedShellKeepsWaitingPastBound(t *testing.T) {
 
 	run.pollEventsTick()
 	fc.Sleep(time.Hour)
-	if outcome, _, err := run.pollEventsTick(); err != nil || outcome != "" {
+	if outcome, held, err := run.pollEventsTick(); err != nil || outcome != "" || held != nil {
 		t.Errorf("tick past the bound with an awaited shell = (%q, %v), want still waiting", outcome, err)
 	}
 }
 
-func TestPollEventsTick_LaterTurnEndListingExpiredShellEndsWithoutNewWait(t *testing.T) {
+func TestPollEventsTick_LaterTurnEndListingExpiredShellHoldsWithoutNewWait(t *testing.T) {
 	outputFile := filepath.Join(t.TempDir(), "out.md")
 	run, fc := shellWaitFixture(t, outputFile, oneShell, Spec{})
 
 	run.pollEventsTick()
 	fc.Sleep(10 * time.Minute)
-	if outcome, _, _ := run.pollEventsTick(); outcome != OutcomeAsking {
-		t.Fatalf("expiry outcome = %q, want %q", outcome, OutcomeAsking)
+	if _, held, _ := run.pollEventsTick(); held == nil {
+		t.Fatal("expiry did not report a held turn end")
 	}
 
 	appendEventsLine(t, run.state.EventsPath, "WAIT:still there")
-	outcome, message, err := run.pollEventsTick()
-	if err != nil || outcome != OutcomeAsking || message != "still there" {
-		t.Errorf("later turn end = (%q, %q, %v), want asking at once with its message", outcome, message, err)
+	outcome, held, err := run.pollEventsTick()
+	if err != nil || outcome != "" || held == nil || held.message != "still there" {
+		t.Errorf("later turn end = (%q, %+v, %v), want a held turn end at once with its message", outcome, held, err)
 	}
 }
 

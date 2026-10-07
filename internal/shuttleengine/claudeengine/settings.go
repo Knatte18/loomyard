@@ -1,13 +1,10 @@
-// settings.go composes the Claude Code settings.json document Prepare writes for each run: a Stop
-// hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents
-// reads),
-// and the PreToolUse guardrails that keep a run's work visible in its own pane — denying the
-// in-process Agent tool (or, in a fork-mode run, letting fork subagents through it while still
-// denying every other subagent type; a run with Spec.AllowAgentTool set installs no Agent deny at all),
-// refusing `lyx webster` verbs from inside a fork in a fork-mode run (the fork-context deadlock
-// guard), denying AskUserQuestion in autonomous runs (where there is no operator present to answer
-// it), and recording — never denying — a live AskUserQuestion call in interactive runs so the run
-// loop can classify it as a real-time asking signal instead of waiting for the timeout.
+// settings.go composes the Claude Code settings.json document Prepare writes for each run:
+// a Stop hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents reads),
+// and the PreToolUse guardrails that keep a run's work visible in its own pane —
+// denying the in-process Agent tool (or, in a fork-mode run, letting fork subagents through it while still denying every other subagent type; a run with Spec.AllowAgentTool set installs no Agent deny at all),
+// refusing `lyx webster` verbs from inside a fork in a fork-mode run (the fork-context deadlock guard),
+// denying AskUserQuestion in autonomous runs (where there is no operator present to answer it),
+// and recording — never denying — a live AskUserQuestion call in interactive runs so the run loop holds it like any turn end without output.
 // The Bash tool's default stdin is set by the env file Prepare writes (see command.go), not by a hook.
 // buildDenyNotice, built beside those hooks so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
 // Every document also sets `promptSuggestionEnabled` to false: a capture carries no styling,
@@ -30,7 +27,7 @@ const steerAgentDeny = "do the work in this session; nested agents are not avail
 const steerAgentNonForkDeny = "only fork subagents may be spawned here; other agents are unavailable — do the work in this session or in your forks"
 
 // steerAskUserQuestionDeny denies AskUserQuestion in autonomous runs, where no operator is present to answer.
-const steerAskUserQuestionDeny = "you cannot open an interactive dialog here. If you are blocked or need operator input, state the question as your final message and end your turn WITHOUT writing the result file."
+const steerAskUserQuestionDeny = "you cannot open an interactive dialog here. If you are blocked or need operator input, state the question as your final message and end your turn WITHOUT writing the result file. The run then waits for the answer, which arrives as your next turn."
 
 // steerWebsterForkDeny guards against fork-context deadlock: a fork inherits Master's await-batch loop and polling it would livelock the run.
 // It refuses `lyx webster` commands inside forks (detected by top-level agent_id in the payload). Must contain no single/double quote or backslash (checked at init).
@@ -44,7 +41,7 @@ const noticeAgentDeny = "The Agent tool is unavailable in this session: do all e
 const noticeAgentForkDeny = "The Agent tool accepts only fork subagents and refuses every other subagent type; a fork does its own work and never spawns further subagents."
 
 // noticeAskUserQuestionDeny announces the AskUserQuestion deny in an autonomous run.
-const noticeAskUserQuestionDeny = "AskUserQuestion is unavailable: when blocked or needing operator input, state the question as your final message and end your turn without writing the result file."
+const noticeAskUserQuestionDeny = "AskUserQuestion is unavailable: when blocked or needing operator input, state the question as your final message and end your turn without writing the result file; the run then waits for the answer, which arrives as your next turn."
 
 // hookCommand is one Claude Code hook invocation, run under git-bash on Windows.
 type hookCommand struct {
