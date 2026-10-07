@@ -47,6 +47,11 @@ func TestFindGuardTests(t *testing.T) {
 			want: []string{"TestA"},
 		},
 		{
+			name:    "a file that does not parse fails naming the file",
+			file:    "package p\n\nfunc TestA(t *testing.T) {\n",
+			wantErr: "impactset: parse dir/p/p_test.go",
+		},
+		{
 			name:    "a marker with another comment line between it and the func fails with its line",
 			file:    "package p\n\n//lyx:guard\n// a stray line\nfunc TestA(t *testing.T) {}\n",
 			wantErr: "p_test.go:3",
