@@ -190,8 +190,8 @@ func AcceptPendingAudit(engine shuttleengine.Engine, st *State, geom Geometry, p
 
 // AcceptBatchFabricReference clears the Uncheckable entries of failed batch n when every one is a pathless fabric-reference finding and the batch provably changed nothing,
 // so `lyx webster recover-batch n` can proceed instead of refusing toward the `--fresh` route.
-// The evidence rule: the batch's recorded start commit is set, its digest's head equals that start (the batch made no commit),
-// the worktree's HEAD is that start, and the worktree is clean.
+// The evidence rule: the batch's recorded start commit is set, the worktree's HEAD is that start, and the worktree is clean.
+// A batch that did commit qualifies once its commits are discarded with `git reset --keep <start>`.
 // A fabric reference stays correctness everywhere else: this clears it only on that evidence and only by the explicit `accept-audit --batch` call,
 // and each cleared entry is recorded on the batch as an AuditWarning, so a recovery carries it and summary.md names it.
 // What the evidence cannot cover, the fabric repo's own state, the caller vouches for by running the verb.
@@ -206,8 +206,8 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int) (accepted []str
 	if !allPathlessFabricReference(bs.Uncheckable) {
 		return nil, fmt.Errorf("%w: batch %02d carries an uncheckable finding that is not a pathless fabric reference: %s; %s", ErrAuditNotAcceptable, n, strings.Join(bs.Uncheckable, ", "), resetToStartSteps(stepRunFresh))
 	}
-	if bs.StartSHA == "" || bs.Digest == nil || bs.Digest.HeadSHA != bs.StartSHA {
-		return nil, fmt.Errorf("%w: batch %02d made a commit or recorded no start commit, so its tree cannot be shown unchanged; %s", ErrAuditNotAcceptable, n, resetToStartSteps(stepRunFresh))
+	if bs.StartSHA == "" {
+		return nil, fmt.Errorf("%w: batch %02d recorded no start commit, so its tree cannot be shown unchanged; %s", ErrAuditNotAcceptable, n, resetToStartSteps(stepRunFresh))
 	}
 	head, err := geom.git().HeadSHA(geom.WorktreeRoot)
 	if err != nil {
@@ -232,7 +232,7 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int) (accepted []str
 	for i, entry := range bs.Uncheckable {
 		id := fmt.Sprintf("accepted:batch-%02d:%d", n, i+1)
 		markDisposition(st, id, dispositionWarned)
-		bs.AuditWarnings = append(bs.AuditWarnings, AuditWarning{Identity: id, Class: string(ClassFabricReference), Detail: "accepted by accept-audit --batch, the batch made no commit and left a clean tree: " + strings.TrimPrefix(entry, fabricReferencePrefix)})
+		bs.AuditWarnings = append(bs.AuditWarnings, AuditWarning{Identity: id, Class: string(ClassFabricReference), Detail: "accepted by accept-audit --batch, HEAD was the batch's start commit and the tree clean: " + strings.TrimPrefix(entry, fabricReferencePrefix)})
 	}
 	accepted = bs.Uncheckable
 	bs.Uncheckable = nil

@@ -1,4 +1,4 @@
-// acceptbatch_test.go covers AcceptBatchFabricReference: it clears a failed batch's pathless fabric-reference findings only on the no-commit, clean-tree evidence,
+// acceptbatch_test.go covers AcceptBatchFabricReference: it clears a failed batch's pathless fabric-reference findings only on the HEAD-at-start, clean-tree evidence,
 // records each as a batch audit warning, and refuses every other case without mutating the state.
 // fakeGit only — Test Tier Purity Invariant.
 
@@ -66,6 +66,23 @@ func TestAcceptBatchFabricReference_ClearsOnNoCommitCleanTree(t *testing.T) {
 	}
 }
 
+func TestAcceptBatchFabricReference_ClearsAfterCommitsDiscarded(t *testing.T) {
+	t.Parallel()
+	st, geom, g := acceptBatchFixture(t)
+	start := g.head
+	// The batch committed, then the operator ran `git reset --keep <start>`.
+	st.Batches[8].Digest.HeadSHA = g.commit()
+	g.head = start
+
+	accepted, err := websterengine.AcceptBatchFabricReference(st, geom, 8)
+	if err != nil {
+		t.Fatalf("AcceptBatchFabricReference() error = %v; want nil once HEAD is back at the start on a clean tree", err)
+	}
+	if !slices.Equal(accepted, []string{fabricEntry}) {
+		t.Errorf("accepted = %v; want [%s]", accepted, fabricEntry)
+	}
+}
+
 func TestAcceptBatchFabricReference_Refusals(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -80,9 +97,7 @@ func TestAcceptBatchFabricReference_Refusals(t *testing.T) {
 		{name: "other uncheckable entry", batch: 8, mutate: func(st *websterengine.State, _ *fakeGit) {
 			st.Batches[8].Uncheckable = append(st.Batches[8].Uncheckable, ".lyx/webster/pause")
 		}, want: "not a pathless fabric reference"},
-		{name: "batch made a commit", batch: 8, mutate: func(st *websterengine.State, g *fakeGit) {
-			st.Batches[8].Digest.HeadSHA = g.commit()
-		}, want: "made a commit"},
+		{name: "no start commit", batch: 8, mutate: func(st *websterengine.State, _ *fakeGit) { st.Batches[8].StartSHA = "" }, want: "recorded no start commit"},
 		{name: "HEAD moved past the start", batch: 8, mutate: func(_ *websterengine.State, g *fakeGit) { g.commit() }, want: "git reset --keep"},
 		{name: "dirty worktree", batch: 8, mutate: func(_ *websterengine.State, g *fakeGit) { g.dirtyPaths = []string{"_lyx/", "internal/x/x.go"} }, want: "untracked changes: internal/x/x.go;"},
 	}
