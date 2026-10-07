@@ -76,19 +76,10 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 
 		result := envelope.RequireOK(t, output)
 
-		// sync hands the detached child both sides,
-		// so the record holds one push_spawned entry per side.
-		spawnedTargets := map[string]bool{}
-		mutations, _ := result.Raw["mutations"].([]any)
-		for _, raw := range mutations {
-			entry, _ := raw.(map[string]any)
-			if entry["kind"] == string(fabricengine.KindPushSpawned) {
-				target, _ := entry["target"].(string)
-				spawnedTargets[target] = true
-			}
-		}
-		if len(spawnedTargets) != 2 {
-			t.Errorf("push_spawned targets = %v; want one entry per side (warp and weft)\noutput: %s", spawnedTargets, output)
+		// In the prime sync hands the detached child the records side alone,
+		// so the record holds a single push_spawned entry.
+		if got := pushSpawnedTargets(result); len(got) != 1 {
+			t.Errorf("push_spawned targets = %v; want exactly the records side\noutput: %s", got, output)
 		}
 
 		tracked := strings.TrimSpace(gitOutputCLI(t, h.PrimeWeft(), "log", "-1", "--name-only", "--pretty=format:"))
@@ -96,4 +87,42 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 			t.Errorf("HEAD commit on %s does not touch %s; want the sync-built pathspec to still cover _lyx even though the repo-wide config names only _extra\nfiles: %s", h.PrimeWeft(), lyxdirs.LyxDirName, tracked)
 		}
 	})
+
+	t.Run("SyncInATaskPairSpawnsBothSides", func(t *testing.T) {
+		// In a task pair sync hands the detached child both sides, one push_spawned entry each.
+		const slug = "sync-both-sides-pair"
+		if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
+			t.Fatalf("RunCLI(add) = %d; want 0\noutput: %s", code, output)
+		}
+		pairLyx := filepath.Join(h.PairWeftSibling(slug), lyxdirs.LyxDirName)
+		if err := os.MkdirAll(pairLyx, 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(pairLyx, "placeholder"), []byte("modified in the pair"), 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+
+		code, output := runFabric(t, h.PairWarpWorktree(slug), "sync")
+		if code != 0 {
+			t.Fatalf("RunCLI(sync) = %d; want 0\noutput: %s", code, output)
+		}
+
+		if got := pushSpawnedTargets(envelope.RequireOK(t, output)); len(got) != 2 {
+			t.Errorf("push_spawned targets = %v; want one entry per side (code and records)\noutput: %s", got, output)
+		}
+	})
+}
+
+// pushSpawnedTargets returns the targets of the push_spawned entries in an envelope's mutation record.
+func pushSpawnedTargets(result envelope.Envelope) map[string]bool {
+	targets := map[string]bool{}
+	mutations, _ := result.Raw["mutations"].([]any)
+	for _, raw := range mutations {
+		entry, _ := raw.(map[string]any)
+		if entry["kind"] == string(fabricengine.KindPushSpawned) {
+			target, _ := entry["target"].(string)
+			targets[target] = true
+		}
+	}
+	return targets
 }

@@ -397,6 +397,49 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 			t.Errorf("PushPairAnchored() error = %q; want it to contain %q", err, want)
 		}
 	}
+
+	// The prime pushes the records side only and reports its unpushed code branch.
+	t.Run("PrimePushesRecordsSideOnly", func(t *testing.T) {
+		h := hubforge.NewHub(t, ".")
+		codeBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
+		recordsBranch := gitkit.CurrentBranch(t, h.PrimeWeft())
+		codeBefore := fabricengine.BareBranchSHAForTest(t, h.WarpBare, codeBranch)
+		gitkit.CommitFile(t, h.PrimeWorktree(), "code-file.txt", "code change", "code change")
+		recordsSHA := gitkit.CommitFile(t, h.PrimeWeft(), "records-file.txt", "records change", "records change")
+
+		res, err := fabricengine.PushPairAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
+
+		if err != nil {
+			t.Fatalf("PushPairAnchored() in the prime error = %v; want nil", err)
+		}
+		if got := fabricengine.BareBranchSHAForTest(t, h.WarpBare, codeBranch); got != codeBefore {
+			t.Errorf("code bare = %q; want it unchanged at %q", got, codeBefore)
+		}
+		if got := fabricengine.BareBranchSHAForTest(t, h.WeftBare, recordsBranch); got != recordsSHA {
+			t.Errorf("records bare = %q; want local HEAD %q", got, recordsSHA)
+		}
+		if !strings.Contains(res.CodePushSkipped, codeBranch) {
+			t.Errorf("CodePushSkipped = %q; want it to name branch %q", res.CodePushSkipped, codeBranch)
+		}
+	})
+
+	// A prime that cannot be resolved fails the call with nothing pushed.
+	t.Run("UnresolvablePrimePushesNothing", func(t *testing.T) {
+		h := hubforge.NewHub(t, ".")
+		recordsBranch := gitkit.CurrentBranch(t, h.PrimeWeft())
+		gitkit.CommitFile(t, h.PrimeWeft(), "records-file.txt", "records change", "records change")
+		unresolvable := *h.Location
+		unresolvable.AnchorRel = "absent/subdir"
+
+		_, err := fabricengine.PushPairAnchored(&unresolvable, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
+
+		if err == nil || !strings.Contains(err.Error(), "resolve main worktree") {
+			t.Fatalf("PushPairAnchored() error = %v; want one carrying %q", err, "resolve main worktree")
+		}
+		if gitkit.BranchExists(t, h.WeftBare, recordsBranch) {
+			t.Errorf("records bare holds %q; want nothing pushed", recordsBranch)
+		}
+	})
 }
 
 // TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks covers the push lock both entries take:

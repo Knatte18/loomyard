@@ -270,8 +270,12 @@ func (f *Fabric) commitWeft(pathspec []string, message string, opts SyncOptions,
 // spelling ("all three push entry points — PushWeft, PushWarpAt, and CoalescePushBothAt") had
 // already gone stale twice by the time anyone read it, first for PushWarpRebaseFreeAt and then for
 // PushAnchored, because a list of call sites is maintenance a doc comment cannot win.
+//
+// CodePushSkipped is non-empty only when the push ran in the hub's prime and left the code side's unpushed commits alone:
+// it names the branch and says it was left for the operator to push.
 type PushResult struct {
 	MutationRecord
+	CodePushSkipped string `json:"code_push_skipped,omitempty"`
 }
 
 // recordPushIfAdvanced records KindBranchPushed for repo's current branch when hasUnpushedBefore and

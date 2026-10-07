@@ -179,7 +179,7 @@
 // and the combined write lock (see below) has already been released, it fires an unconditional,
 // detached, fire-and-forget push of both repos via `SpawnDetachedPush` whenever anything landed on
 // either side (`WarpCommitted || WeftCommitted`) — the async-push-both-sides-via-detached-child
-// Shared Decision — and `opts.SkipGit`/`opts.SkipPush` interact with this two-step call in ways
+// Shared Decision, with the code side's path left empty in the hub's prime, so the child pushes the records side only — and `opts.SkipGit`/`opts.SkipPush` interact with this two-step call in ways
 // that narrow their general contract, worth stating plainly rather than leaving a caller to infer
 // them from behavior. `opts.SkipGit` is **weft-scoped** for `Fabric.Commit` specifically: it gates
 // only whether the weft-side commit is attempted at all;
@@ -585,7 +585,7 @@
 // way in.
 // `PushAnchored` and `PushPairAnchored` are the synchronous, rebase-free counterparts to `CommitAnchoredPaths`:
 // the first pushes the records side only;
-// the second pushes the code side and then the records side;
+// the second pushes the code side and then the records side, except in the hub's prime, where it pushes the records side only and reports a code branch with unpushed commits in `PushResult.CodePushSkipped`;
 // and both run under the weft-side absorbing push lock that `CoalescePushBothAt` also holds.
 // `lockWait` bounds only the wait for that lock:
 // `StatusPushLockWait` is the bound the per-transition status pushes pass;

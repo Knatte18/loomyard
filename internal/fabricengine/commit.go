@@ -71,7 +71,8 @@ var spawnDetachedPushFn = SpawnDetachedPush
 
 // Commit classifies files into warp and weft paths against the repo-wide routing set (never a raw,
 // unfiltered pathspec), commits each side under one combined write lock (acquired whenever anything
-// lands, even warp-only), and fires async both-sides push after releasing the lock.
+// lands, even warp-only), and fires an async push after releasing the lock.
+// That push covers both sides, or the records side only in the hub's prime, whose code branch is the operator's to push.
 // A fully degenerate no-op takes no lock and spawns no push.
 //
 // Before taking any lock or committing anything, Commit hard-errors if classification's
@@ -145,6 +146,12 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	}
 	routingNames := pathspecNames(cfg)
 
+	// Resolved before any lock, like the refusals above: a failure here lands no commit and spawns no push.
+	isPrime, err := IsPrimeWorktree(l)
+	if err != nil {
+		return CommitResult{}, err
+	}
+
 	warpFiles, weftFiles, neverCommittedFiles := classifyPaths(l.AnchorRel, routingNames, structuralNeverCommittedDirs, files)
 	if len(neverCommittedFiles) > 0 {
 		return CommitResult{}, fmt.Errorf("fabricengine: refusing to commit %q: paths under %s are never committed", neverCommittedFiles[0], lyxdirs.DotLyxDirName)
@@ -167,7 +174,11 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	}
 
 	if result.WarpCommitted || result.WeftCommitted {
-		_ = spawnDetachedPushFn(f.warpPath, f.weftPath)
+		codePath := f.warpPath
+		if isPrime {
+			codePath = ""
+		}
+		_ = spawnDetachedPushFn(codePath, f.weftPath)
 	}
 
 	if partialErr != nil {

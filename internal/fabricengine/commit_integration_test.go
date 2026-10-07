@@ -240,26 +240,79 @@ func TestCommit_MessageHandling(t *testing.T) {
 	}
 }
 
-// TestCommit_InvokesPushRecorder asserts a successful two-sided Fabric.Commit invokes
-// spawnDetachedPushFn exactly once with (warpPath, weftPath).
+// TestCommit_InvokesPushRecorder asserts a successful two-sided Fabric.Commit invokes spawnDetachedPushFn exactly once:
+// with both paths in a task pair, with an empty code-side path in the prime, and not at all, nor landing a commit, when the prime cannot be resolved.
 func TestCommit_InvokesPushRecorder(t *testing.T) {
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
-	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
-	recorder := fabricengine.SwapPushRecorderForTest(t)
+	t.Run("PrimePushesRecordsSideOnly", func(t *testing.T) {
+		// The plain fixture is a single repo, so its warp worktree is the prime.
+		f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
+		recorder := fabricengine.SwapPushRecorderForTest(t)
 
-	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
-	fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
+		fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
+		fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-	if _, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, fabricengine.SyncOptions{}); err != nil {
-		t.Fatalf("Commit() error = %v", err)
-	}
+		if _, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, fabricengine.SyncOptions{}); err != nil {
+			t.Fatalf("Commit() error = %v", err)
+		}
 
-	if len(recorder.Calls()) != 1 {
-		t.Fatalf("push recorder invocation count = %d; want 1 (calls: %+v)", len(recorder.Calls()), recorder.Calls())
-	}
-	if (recorder.Calls())[0].WarpPath != warpPath || (recorder.Calls())[0].WeftPath != weftPath {
-		t.Errorf("push recorder called with (%q, %q); want (%q, %q)", (recorder.Calls())[0].WarpPath, (recorder.Calls())[0].WeftPath, warpPath, weftPath)
-	}
+		calls := recorder.Calls()
+		if len(calls) != 1 {
+			t.Fatalf("push recorder invocation count = %d; want 1 (calls: %+v)", len(calls), calls)
+		}
+		if calls[0].WarpPath != "" || calls[0].WeftPath != weftPath {
+			t.Errorf("push recorder called with (%q, %q); want (%q, %q)", calls[0].WarpPath, calls[0].WeftPath, "", weftPath)
+		}
+	})
+
+	t.Run("TaskPairPushesBothSides", func(t *testing.T) {
+		h := hubforge.NewHub(t, ".")
+		hubforge.AddPairWith(t, h, "recorder-pair", fabricengine.AddOptions{})
+		pairLocation, err := lyxcwd.ResolveWorktree(h.PairWarpWorktree("recorder-pair"))
+		if err != nil {
+			t.Fatalf("ResolveWorktree: %v", err)
+		}
+		f, err := fabricengine.Open(pairLocation)
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		recorder := fabricengine.SwapPushRecorderForTest(t)
+
+		fabricengine.WriteWarpFileForTest(t, h.PairWarpWorktree("recorder-pair"), "pair-file.txt", "warp change")
+
+		if _, err := f.Commit([]string{"pair-file.txt"}, "pair commit", nil, fabricengine.SyncOptions{}); err != nil {
+			t.Fatalf("Commit() error = %v", err)
+		}
+
+		calls := recorder.Calls()
+		if len(calls) != 1 {
+			t.Fatalf("push recorder invocation count = %d; want 1 (calls: %+v)", len(calls), calls)
+		}
+		if calls[0].WarpPath != h.PairWarpWorktree("recorder-pair") || calls[0].WeftPath != h.PairWeftSibling("recorder-pair") {
+			t.Errorf("push recorder called with (%q, %q); want (%q, %q)", calls[0].WarpPath, calls[0].WeftPath, h.PairWarpWorktree("recorder-pair"), h.PairWeftSibling("recorder-pair"))
+		}
+	})
+
+	t.Run("UnresolvablePrimeFailsBeforeCommitting", func(t *testing.T) {
+		f, warpPath, _ := fabricengine.NewCommitFixtureForTest(t)
+		recorder := fabricengine.SwapPushRecorderForTest(t)
+		// An anchor naming a subdirectory absent from the worktree makes `git worktree list` fail in the anchor path.
+		writeFabricAnchor(t, warpPath, "absent/subdir")
+		headBefore := gitkit.RevParse(t, warpPath, "HEAD")
+		fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
+
+		result, err := f.Commit([]string{"README"}, "unresolvable prime", nil, fabricengine.SyncOptions{})
+
+		if err == nil || !strings.Contains(err.Error(), "resolve main worktree") {
+			t.Fatalf("Commit() error = %v; want one carrying %q", err, "resolve main worktree")
+		}
+		if result.Committed() || gitkit.RevParse(t, warpPath, "HEAD") != headBefore {
+			t.Errorf("Commit() landed a commit despite the error: %+v", result)
+		}
+		if len(recorder.Calls()) != 0 {
+			t.Errorf("push recorder invoked %d times; want none", len(recorder.Calls()))
+		}
+	})
 }
 
 // TestCommit_NoOp_DoesNotInvokePushRecorder asserts a Fabric.Commit call that lands nothing on
@@ -432,6 +485,10 @@ func TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath(t *testing.T) {
 
 	const anchor = "wts/some-task"
 	writeFabricAnchor(t, warpPath, anchor)
+	// Resolving the prime runs git in the anchor directory, which must exist in the code worktree.
+	if err := os.MkdirAll(filepath.Join(warpPath, filepath.FromSlash(anchor)), 0o755); err != nil {
+		t.Fatalf("mkdir anchor in code worktree: %v", err)
+	}
 
 	nestedDir := filepath.Join(weftPath, filepath.FromSlash(anchor), "_lyx")
 	if err := os.MkdirAll(nestedDir, 0o755); err != nil {

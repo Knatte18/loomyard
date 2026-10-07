@@ -95,6 +95,10 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
 		gitkit.Git(t, dir, "config", "user.name", "Test User")
 		gitkit.Git(t, dir, "config", "user.email", "test@example.com")
 	}
+	// Resolving the prime runs git in the anchor directory, which must exist in the code worktree.
+	if err := os.MkdirAll(filepath.Join(code, relPath), 0o755); err != nil {
+		t.Fatalf("mkdir anchor in code worktree: %v", err)
+	}
 	gitkit.CommitFile(t, code, "base.txt", "base", "code base commit")
 	gitkit.CommitFile(t, records, "base.txt", "base", "records base commit")
 

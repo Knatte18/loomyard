@@ -1,5 +1,6 @@
 // pushanchored.go holds PushAnchored and PushPairAnchored, the fabric-vocabulary-neutral synchronous pushes beside CommitAnchoredPaths' commit.
-// They are the entry points that let a caller outside the Fabric Vocabulary Invariant's owner set commit and push into the weft sibling, and push the warp worktree with it, without ever naming a weft path.
+// They are the entry points that let a caller outside the Fabric Vocabulary Invariant's owner set commit and push into the weft sibling, and push the code worktree with it, without ever naming a weft path.
+// In the hub's prime PushPairAnchored pushes the records side only and reports a code branch it left unpushed as PushResult.CodePushSkipped.
 
 package fabricengine
 
@@ -122,7 +123,9 @@ func PushAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) 
 }
 
 // PushPairAnchored pushes the unpushed commits of l's code worktree and of its paired records sibling, rebase-free, under the weft-side absorbing push lock.
-// The code side is pushed first.
+// When l is the hub's prime it pushes the records side only, since the prime's code branch is the operator's parent branch:
+// a code branch with unpushed commits is reported in PushResult.CodePushSkipped, naming the branch and saying it was left for the operator to push.
+// Otherwise the code side is pushed first.
 // The records side is attempted even when the code side failed.
 // A side whose HEAD is unborn is skipped.
 // Each side retries a rejection once, after a fetch, when the remote tip is already contained in local HEAD.
@@ -135,6 +138,7 @@ func PushAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) 
 //
 // Every side that observably advanced is recorded in the returned PushResult.
 // Returns (PushResult{}, nil) immediately, with no lock taken, when opts.SkipGit or opts.SkipPush is true.
+// A failure to resolve whether l is the prime returns that error before the lock is taken and nothing is pushed.
 func PushPairAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) (res PushResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -143,6 +147,10 @@ func PushPairAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Durati
 		return PushResult{}, nil
 	}
 
+	isPrime, err := IsPrimeWorktree(l)
+	if err != nil {
+		return PushResult{}, err
+	}
 	warpPath := l.WorktreePath()
 	weftPath := WeftWorktree(l)
 
@@ -169,7 +177,31 @@ func PushPairAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Durati
 		return nil
 	}
 
-	warpErr := pushSide("warp", warpPath)
+	var warpErr error
+	var codePushSkipped string
+	if isPrime {
+		codePushSkipped = unpushedCodeBranchNote(warpPath)
+	} else {
+		warpErr = pushSide("warp", warpPath)
+	}
 	weftErr := pushSide("weft", weftPath)
-	return PushResult{}, errors.Join(warpErr, weftErr)
+	return PushResult{CodePushSkipped: codePushSkipped}, errors.Join(warpErr, weftErr)
+}
+
+// unpushedCodeBranchNote returns the CodePushSkipped text for the code worktree at path, or "" when its branch has nothing unpushed or the state cannot be read.
+func unpushedCodeBranchNote(path string) string {
+	head, err := headOrEmpty(path)
+	if err != nil || head == "" {
+		return ""
+	}
+	repo := gitrepo.New(path)
+	unpushed, err := repo.HasUnpushed()
+	if err != nil || !unpushed {
+		return ""
+	}
+	branch, err := repo.CurrentBranch()
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("branch %s has unpushed commits; the prime's code side is left for the operator to push", branch)
 }
