@@ -72,8 +72,12 @@ func TestResumeParkedDriver(t *testing.T) {
 		sender    *fakeDriverSender
 		wantTexts int
 		wantWaits int
+		// retry is the calling verb; empty means `lyx loom start`.
+		retry string
 		// wantErr holds substrings of the refusal; empty means the resume succeeds.
 		wantErr []string
+		// wantNotErr holds substrings the refusal must not contain.
+		wantNotErr []string
 	}{
 		{name: "sends one line and removes the marker", sender: &fakeDriverSender{}, wantTexts: 1},
 		{name: "waits through a not-ready pane", sender: &fakeDriverSender{errs: []error{notReady(), notReady()}}, wantTexts: 3, wantWaits: 2},
@@ -84,13 +88,26 @@ func TestResumeParkedDriver(t *testing.T) {
 			wantWaits: driverResumeSendAttempts - 1,
 			wantErr:   []string{"lyx loom start", fmt.Sprint(driverResumeSendAttempts)},
 		},
+		{
+			name:       "a resume-called failure names resume as the retry, never start",
+			sender:     &fakeDriverSender{repeatErr: notReady()},
+			retry:      retryResume,
+			wantTexts:  driverResumeSendAttempts,
+			wantWaits:  driverResumeSendAttempts - 1,
+			wantErr:    []string{`"lyx loom resume"`, `"lyx loom status"`},
+			wantNotErr: []string{"lyx loom start"},
+		},
 		{name: "another error is never retried", sender: &fakeDriverSender{repeatErr: errors.New("text never appeared")}, wantTexts: 1, wantErr: []string{"text never appeared"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c, waits, marker := newResumeTestReceiver(t, tt.sender)
 
-			err := c.resumeParkedDriver("g-drv")
+			retry := tt.retry
+			if retry == "" {
+				retry = retryStart
+			}
+			reportPath, err := c.resumeParkedDriver("g-drv", retry)
 
 			if len(tt.sender.texts) != tt.wantTexts {
 				t.Fatalf("SendDriver calls = %d; want %d", len(tt.sender.texts), tt.wantTexts)
@@ -107,6 +124,11 @@ func TestResumeParkedDriver(t *testing.T) {
 						t.Errorf("error %q lacks %q", err, want)
 					}
 				}
+				for _, unwanted := range tt.wantNotErr {
+					if strings.Contains(err.Error(), unwanted) {
+						t.Errorf("error %q names %q", err, unwanted)
+					}
+				}
 				if !markerExists(marker) {
 					t.Error("park marker was removed despite the failed resume")
 				}
@@ -116,6 +138,9 @@ func TestResumeParkedDriver(t *testing.T) {
 				t.Fatalf("resumeParkedDriver() error = %v; want nil", err)
 			}
 			text := tt.sender.texts[len(tt.sender.texts)-1]
+			if reportPath == "" || !strings.Contains(text, reportPath) {
+				t.Errorf("returned report path %q is not the one the resume text %q names", reportPath, text)
+			}
 			if strings.ContainsAny(text, "\r\n") {
 				t.Errorf("resume text %q is not a single line", text)
 			}

@@ -1,4 +1,4 @@
-// driverresume.go implements the resume branch of `lyx loom start`: typing the one resume line into a parked loom driver's pane instead of spawning a fresh driver.
+// driverresume.go implements the resume branch both `lyx loom start` and `lyx loom resume` take: typing the one resume line into a parked loom driver's pane instead of spawning a fresh driver.
 
 package loomcli
 
@@ -26,12 +26,13 @@ const (
 // Only a not-ready pane (shuttleengine.ErrPaneNotReady) is waited on and retried.
 // Any other Send error ends the loop at once: Send already replays its own keystrokes internally,
 // and a "never appeared" verification failure can follow a delivery the pane hid, so re-sending could type the line into the driver twice.
-// A failure leaves the marker in place, so the retry is a second `lyx loom start`.
-func (c *loomCLI) resumeParkedDriver(guid string) error {
+// A failure leaves the marker in place, and its message names retry, the calling verb, as the way to try again.
+// It returns the path of the stop report the driver is asked to write.
+func (c *loomCLI) resumeParkedDriver(guid, retry string) (string, error) {
 	runID := shedrun.ResolveRunID(c.location, c.runID)
 	reportPath := driverReportPath(c.location, runID, time.Now, newDriverReportRand())
 	if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
-		return err
+		return "", err
 	}
 	line := driverResumeLine(runID, reportPath)
 
@@ -50,12 +51,12 @@ func (c *loomCLI) resumeParkedDriver(guid string) error {
 	}
 	if sendErr != nil {
 		logger.Warn("loom: could not resume the parked driver", "guid", guid, "attempts", attempts, "err", sendErr)
-		return fmt.Errorf("loom: could not deliver the resume line to the driver after %d attempt(s): %w; the driver may have resumed on its own (a re-step it starts itself removes the park marker), so check the run's status with \"lyx loom status\", and run \"lyx loom start\" again if it is still halted", attempts, sendErr)
+		return "", fmt.Errorf("loom: could not deliver the resume line to the driver after %d attempt(s): %w; the driver may have resumed on its own (a re-step it starts itself removes the park marker), so check the run's status with \"lyx loom status\", and run \"%s\" again if it is still halted", attempts, sendErr, retry)
 	}
 
 	if err := os.Remove(shedrun.ParkMarker(c.location, runID)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+		return "", err
 	}
 	logger.Info("loom: resumed the parked driver", "guid", guid, "report", reportPath)
-	return nil
+	return reportPath, nil
 }
