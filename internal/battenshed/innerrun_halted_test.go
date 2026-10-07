@@ -181,6 +181,7 @@ func TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode(t *testing.T) {
 		strands      []ChildDriverStrand
 		reviveErr    error
 		marker       string
+		warned       string
 		wantRevives  int
 		wantWarns    int
 		wantStart    bool
@@ -189,6 +190,7 @@ func TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode(t *testing.T) {
 		{name: "DeadStrandRevivedOnce", strands: []ChildDriverStrand{ChildDriverDead, ChildDriverLive}, wantRevives: 1, wantMarkerAs: strconv.Itoa(os.Getpid()) + " ok"},
 		{name: "FailedReviveWarnsOnceAndNamesStart", strands: []ChildDriverStrand{ChildDriverDead}, reviveErr: errors.New("tmux gone"), wantRevives: 1, wantWarns: 1, wantStart: true, wantMarkerAs: strconv.Itoa(os.Getpid()) + " failed"},
 		{name: "ReviveLeavingTheStrandDeadWarnsOnceAndNamesStart", strands: []ChildDriverStrand{ChildDriverDead}, wantRevives: 1, wantWarns: 1, wantStart: true, wantMarkerAs: strconv.Itoa(os.Getpid()) + " failed"},
+		{name: "AReHaltAtANewHistoryLengthRevivesAgain", strands: []ChildDriverStrand{ChildDriverDead, ChildDriverLive}, marker: strconv.Itoa(os.Getpid()) + " ok\n", warned: "1\n", wantRevives: 1, wantMarkerAs: strconv.Itoa(os.Getpid()) + " ok"},
 		{name: "AnEarlierProcessMarkerRevivesAgain", strands: []ChildDriverStrand{ChildDriverDead, ChildDriverLive}, marker: strconv.Itoa(os.Getpid()+1) + " failed\n", wantRevives: 1, wantMarkerAs: strconv.Itoa(os.Getpid()) + " ok"},
 		{name: "RetiringStrandIsLeftToStart", strands: []ChildDriverStrand{ChildDriverRetiring}},
 		{name: "LiveStrandNeedsNothing", strands: []ChildDriverStrand{ChildDriverLive}},
@@ -203,6 +205,11 @@ func TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode(t *testing.T) {
 			scratchDir := t.TempDir()
 			if tt.marker != "" {
 				if err := os.WriteFile(revivedFile(scratchDir, "innerrun"), []byte(tt.marker), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.warned != "" {
+				if err := os.WriteFile(haltWarnedFile(scratchDir, "innerrun"), []byte(tt.warned), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}

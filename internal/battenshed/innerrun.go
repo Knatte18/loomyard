@@ -428,6 +428,10 @@ func (p *innerRunProducer) callHalted(ctx context.Context, status shedengine.Sta
 		if err := os.WriteFile(markerPath, []byte(strconv.Itoa(historyLen)+"\n"), 0o644); err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: write halt-warned marker: %w", p.name, err)
 		}
+		// A new halt episode is a new chance to revive, however the episode was told apart from the last one.
+		if err := os.Remove(revivedFile(p.scratchDir, p.name)); err != nil && !os.IsNotExist(err) {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: clear revived marker: %w", p.name, err)
+		}
 	}
 	revival := p.reviveDeadDriver(ctx)
 	return p.exemptWait(ctx, haltedWaitReason(status, revival.startFallback))
