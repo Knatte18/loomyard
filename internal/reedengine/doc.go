@@ -138,8 +138,8 @@
 // A role already held in the worktree is numbered `-N`, and an explicit name that is held refuses.
 // A role-less add takes the default role `strand`, and an empty told shortname refuses before anything boots, naming `lyx fabric shortname <shortname>`.
 // The name is a birth attribute and the only lookup key: it is stored in the strand record and every by-name lookup resolves through it, matching the full name, its role segment, or a legacy exact name.
-// An add can also name a strand whose live presence skips it (AddStrandUnless), matched by the same rule as an explicit name;
-// a dead or hidden match does not count, and a skipped add changes nothing.
+// An add can also name a strand whose presence in this worktree's state skips it (AddStrandUnless), matched by the same rule as an explicit name;
+// a live, dormant or hidden match all skip, and a skipped add launches, revives, removes and changes nothing.
 // The retired `strand_name` config key is ignored on load.
 //
 // The name is mirrored outward, never read back as truth.

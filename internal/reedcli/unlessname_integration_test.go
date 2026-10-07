@@ -1,6 +1,6 @@
 //go:build tmux
 
-// unlessname_integration_test.go drives `lyx reed add --unless-name` on a real hub and tmux server, proving a live matching strand makes the add a no-op that disturbs neither the strand list nor the pane geometry, and that no live match leaves the add as today.
+// unlessname_integration_test.go drives `lyx reed add --unless-name` on a real hub and tmux server, proving a matching strand, live or dormant, makes the add a no-op that disturbs neither the strand list nor the pane geometry, and that no matching strand leaves the add as today.
 
 package reedcli
 
@@ -57,7 +57,7 @@ func unlessPanes(t *testing.T, tmux, socket, session string) string {
 	return string(out)
 }
 
-// TestUnlessName runs the --unless-name claims against one hub whose prime worktree accumulates strands across the steps: no orch adds as today, a live orch makes the add a no-op, and a dead orch pane lets the add proceed.
+// TestUnlessName runs the --unless-name claims against one hub whose prime worktree accumulates strands across the steps: no orch adds as today, a live orch makes the add a no-op, and so does a dormant orch whose pane is gone.
 // The steps run serially in a fixed order and each later step relies on the earlier step's session; the scenario calls t.Parallel but no step does, because every step shares the one hub, session and strand table.
 func TestUnlessName(t *testing.T) {
 	t.Parallel()
@@ -89,14 +89,14 @@ func TestUnlessName(t *testing.T) {
 		return
 	}
 
-	// The orch strand stays behind for the dead-orch step, whose session the claude strand of the first step keeps alive once the orch pane is gone.
-	var orchName string
+	// The orch strand stays behind for the dormant-orch step, whose session the claude strand of the first step keeps alive once the orch pane is gone.
+	var orchName, orchGUID string
 	if !t.Run("LiveOrchSkipsAndDisturbsNothing", func(t *testing.T) {
 		code, orch := unlessRun(t, worktree, "add", "--name", "orch", "--cmd", coldAddLaunchCmd())
 		if code != 0 {
 			t.Fatalf("add orch = %d, envelope: %v", code, orch)
 		}
-		orchGUID, _ := orch["guid"].(string)
+		orchGUID, _ = orch["guid"].(string)
 		orchName, _ = orch["name"].(string)
 
 		guidsBefore, session, _ := unlessStatus(t, worktree, orchName)
@@ -125,8 +125,8 @@ func TestUnlessName(t *testing.T) {
 		return
 	}
 
-	t.Run("DeadOrchPaneAdds", func(t *testing.T) {
-		_, _, orchPane := unlessStatus(t, worktree, orchName)
+	t.Run("DormantOrchSkips", func(t *testing.T) {
+		guidsBefore, _, orchPane := unlessStatus(t, worktree, orchName)
 		if orchPane == "" {
 			t.Fatalf("no pane id for %q in status", orchName)
 		}
@@ -134,15 +134,20 @@ func TestUnlessName(t *testing.T) {
 			t.Fatalf("tmux kill-pane: %v", err)
 		}
 
-		code, env := unlessRun(t, worktree, "add", "--unless-name", "orch", "--if-absent", "--name", "claude-dead", "--cmd", coldAddLaunchCmd())
+		code, env := unlessRun(t, worktree, "add", "--unless-name", "orch", "--if-absent", "--name", "claude-dormant", "--cmd", coldAddLaunchCmd())
 		if code != 0 {
-			t.Fatalf("add --unless-name orch with a dead orch = %d, envelope: %v", code, env)
+			t.Fatalf("add --unless-name orch with a dormant orch = %d, envelope: %v", code, env)
 		}
-		if skipped, _ := env["skipped"].(bool); skipped {
-			t.Fatalf("envelope = %v, want the add to proceed past a dead orch pane", env)
+		if skipped, _ := env["skipped"].(bool); !skipped {
+			t.Fatalf("envelope = %v, want skipped: true over a dormant orch", env)
 		}
-		if name, _ := env["name"].(string); name != hubforge.TestShortname+":claude-dead" {
-			t.Errorf("name = %q, want the claude-dead strand", name)
+		unless, _ := env["unless"].(map[string]any)
+		if guid, _ := unless["guid"].(string); guid != orchGUID {
+			t.Errorf("unless.guid = %q, want the dormant orch strand's %q", guid, orchGUID)
+		}
+		guidsAfter, _, _ := unlessStatus(t, worktree, orchName)
+		if strings.Join(guidsAfter, ",") != strings.Join(guidsBefore, ",") {
+			t.Errorf("strand list after skip = %v, want unchanged %v", guidsAfter, guidsBefore)
 		}
 	})
 }

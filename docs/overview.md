@@ -329,7 +329,7 @@ User-facing modules each get one `lyx <module>` namespace:
   The file is lyx-owned and regenerated on each prime spawn, overwriting any edit made in it;
   a task slug still opens its bare folder.
   The generated `folderOpen` task is now the sequenced reed launch chain (`reed up` → `reed add --if-absent --unless-name orch` → `reed attach`) rather than a bare `claude`, with both binary paths (`lyx`, `claude`) stamped absolute at generation time.
-  The add row's `--unless-name orch` keeps a folder-open on a prime whose orch strand is live from stacking `claude` below it.
+  The add row's `--unless-name orch` keeps a folder-open on a prime whose state holds an orch strand, live, dormant or hidden, from stacking `claude` below it.
   `lyx ide spawn` regenerates `tasks.json` on every spawn, overwriting an untracked one, and keeps `settings.json` when present.
   It keeps `.vscode/` out of git through the repository's shared `info/exclude` at the anchor subpath rather than `.gitignore`, and leaves a tracked `tasks.json` alone with a warning.
   The driven-pair variant batten uses writes an attach-only `tasks.json` (no `reed up`, no `reed add claude`) under the same rules. ✅ Implemented.
