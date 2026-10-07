@@ -5,7 +5,6 @@ package claudeengine
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -60,14 +59,14 @@ func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
 		// wantTTLAdvice asserts the error names the accepted TTL values and the file to fix.
 		wantTTLAdvice bool
 	}{
-		{name: "bad_effort", spec: shuttleengine.Spec{Effort: "bogus"}, wantErrContains: "bogus"},
-		{name: "dashed_model_with_version", spec: shuttleengine.Spec{Model: "claude-sonnet-4-5", Version: "4.5"}, wantErrContains: ""},
-		{name: "permission_prompt_on_autonomous", spec: shuttleengine.Spec{PermissionMode: "prompt"}, wantErrContains: ""},
-		{name: "permission_unknown_value", spec: shuttleengine.Spec{PermissionMode: "yolo", Interactive: true}, wantErrContains: ""},
-		{name: "session_id_too_short", spec: shuttleengine.Spec{ResumeSessionID: "0a1b2c3d-4e5f-4a6b-8c7d"}, wantErrContains: ""},
-		{name: "session_id_uppercase", spec: shuttleengine.Spec{ResumeSessionID: "0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D"}, wantErrContains: ""},
-		{name: "session_id_quote", spec: shuttleengine.Spec{ResumeSessionID: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4'"}, wantErrContains: ""},
-		{name: "session_id_no_hyphens", spec: shuttleengine.Spec{ResumeSessionID: "0a1b2c3d4e5f4a6b8c7d9e0f1a2b3c4d"}, wantErrContains: ""},
+		{name: "bad_effort", spec: shuttleengine.Spec{Effort: "bogus"}, cfg: templateConfig(t), wantErrContains: "bogus"},
+		{name: "dashed_model_with_version", spec: shuttleengine.Spec{Model: "claude-sonnet-4-5", Version: "4.5"}, cfg: templateConfig(t), wantErrContains: ""},
+		{name: "permission_prompt_on_autonomous", spec: shuttleengine.Spec{PermissionMode: "prompt"}, cfg: templateConfig(t), wantErrContains: ""},
+		{name: "permission_unknown_value", spec: shuttleengine.Spec{PermissionMode: "yolo", Interactive: true}, cfg: templateConfig(t), wantErrContains: ""},
+		{name: "session_id_too_short", spec: shuttleengine.Spec{ResumeSessionID: "0a1b2c3d-4e5f-4a6b-8c7d"}, cfg: templateConfig(t), wantErrContains: ""},
+		{name: "session_id_uppercase", spec: shuttleengine.Spec{ResumeSessionID: "0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D"}, cfg: templateConfig(t), wantErrContains: ""},
+		{name: "session_id_quote", spec: shuttleengine.Spec{ResumeSessionID: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4'"}, cfg: templateConfig(t), wantErrContains: ""},
+		{name: "session_id_no_hyphens", spec: shuttleengine.Spec{ResumeSessionID: "0a1b2c3d4e5f4a6b8c7d9e0f1a2b3c4d"}, cfg: templateConfig(t), wantErrContains: ""},
 		{name: "ttl_default_empty", cfg: shuttleengine.Config{}, wantErrContains: "claude_prompt_cache_ttl", wantTTLAdvice: true},
 		{name: "ttl_default_wrong_case", cfg: ttlConfig(t, "1H", nil), wantErrContains: `claude_prompt_cache_ttl "1H"`, wantTTLAdvice: true},
 		{name: "ttl_default_bare_number", cfg: ttlConfig(t, "5", nil), wantErrContains: `claude_prompt_cache_ttl "5"`, wantTTLAdvice: true},
@@ -80,11 +79,7 @@ func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
 
 			runDir := t.TempDir()
 			tt.spec.Prompt = "do the thing"
-			cfg := tt.cfg
-			if reflect.DeepEqual(cfg, shuttleengine.Config{}) && !tt.wantTTLAdvice {
-				cfg = templateConfig(t)
-			}
-			_, err := New().Prepare(runDir, tt.spec, cfg)
+			_, err := New().Prepare(runDir, tt.spec, tt.cfg)
 			if err == nil {
 				t.Fatalf("Prepare(%+v) = nil error; want a validation rejection", tt.spec)
 			}
