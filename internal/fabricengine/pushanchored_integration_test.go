@@ -294,7 +294,8 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	}
 
 	// A rejection whose fetch then fails is not retried:
-	// the code side pushes to its real bare but fetches from a missing path, and a remote that declines once would accept a retry.
+	// the code side pushes to its real bare but fetches from a missing path,
+	// and a remote that declines once would accept a retry.
 	warpBareBeforeFetchFailure := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch)
 	if err := os.Remove(filepath.Join(p.hub.WarpBare, "declined-once")); err != nil {
 		t.Fatalf("reset decline-once marker: %v", err)
@@ -334,7 +335,8 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		t.Fatalf("remove always-declining hook: %v", err)
 	}
 
-	// An unborn code side is skipped, and the records side still pushes.
+	// An unborn code side is skipped,
+	// and the records side still pushes.
 	gitkit.MustRun(t, p.warpPath, "git", "checkout", "-q", "--orphan", "unborn")
 	weftSHA = gitkit.CommitFile(t, p.weftPath, "weft-file.txt", "weft change unborn", "weft change unborn")
 	if _, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded); err != nil {
@@ -378,7 +380,9 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		t.Errorf("local HEADs moved: warp %q -> %q, weft %q -> %q; want both unchanged (no rebase, merge or force)", warpHead, head(p.warpPath), weftHead, head(p.weftPath))
 	}
 
-	// Both sides failing: the records origin is gone, the code side is still diverged.
+	// Both sides failing:
+	// the records origin is gone,
+	// and the code side is still diverged.
 	gitkit.MustRun(t, p.weftPath, "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing"))
 	gitkit.CommitFile(t, p.weftPath, "weft-file.txt", "weft change 4", "weft change 4")
 	_, err = fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
