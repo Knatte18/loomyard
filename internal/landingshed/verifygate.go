@@ -32,7 +32,9 @@ func newVerifyGate(deps Deps) verifyGate {
 		command: deps.VerifyCommand,
 		paths:   verifytree.NewPaths(deps.WorktreeRoot, deps.VerifyDir),
 		dirty:   verifytree.DirtyPaths,
-		verify:  verifytree.Verify,
+		verify: func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error) {
+			return verifytree.Verify(ctx, p, site, command, verifytree.Timeout)
+		},
 	}
 }
 

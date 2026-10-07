@@ -41,7 +41,7 @@ func NewVerifyGate(anchorPath, worktreeRoot, verifyDir, siteLabel string) shuttl
 			return shuttleengine.GateResult{Passed: true}, nil
 		}
 
-		res, err := verifytree.Verify(context.Background(), paths, verifytree.Site{Label: siteLabel, Attempt: attempt}, plan.Verify)
+		res, err := verifytree.Verify(context.Background(), paths, verifytree.Site{Label: siteLabel, Attempt: attempt}, plan.Verify, verifytree.Timeout)
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: %w", err)
 		}
