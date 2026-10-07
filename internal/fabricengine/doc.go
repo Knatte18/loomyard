@@ -43,6 +43,12 @@
 // the full flow and the `*PartialPullError` warp-side-failure contract, whose `WeftPulled` field now
 // faithfully reports whether the weft arm completed rather than asserting it always did.
 //
+// `Fabric.RemoteOnlyCommits` (remoteonly.go) is the read of how far the warp origin's branch of the checkout's own name has run ahead of warp HEAD:
+// it returns that remote tip and the commits on it HEAD lacks, newest first.
+// An empty tip means the remote has no such branch or the repository has no origin remote, and a tip with no commits means the remote is at or behind HEAD.
+// A failed fetch returns the error, so each caller decides whether it refuses or degrades.
+// It mutates no ref other than the remote-tracking refs the fetch refreshes.
+//
 // fabric enforces one uniform branch-naming scheme, with no exceptions: a warp branch `<branch>` is
 // always paired with weft branch `<branch>-weft`, including the primary worktree (warp `main` ↔
 // weft `main-weft`).
