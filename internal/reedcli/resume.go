@@ -1,6 +1,6 @@
 // resume.go implements the `resume` reed verb: the only replayer, recreating not-live, non-hidden
-// strands after a server restart or a single pane's death, and leaving already-live strands
-// untouched.
+// strands after a server restart or a single pane's death, dropping a not-live strand whose
+// done-when paths all exist, and leaving already-live strands untouched.
 
 package reedcli
 
@@ -19,7 +19,9 @@ func (c *reedCLI) resumeCmd() *cobra.Command {
 is not currently live, it recreates the pane and runs the strand's stored
 resumeCmd (or cmd, when resumeCmd is empty). Anchor:hidden strands are
 skipped — they are pending first surface, not dead. Already-live strands are
-left untouched (no double send-keys).
+left untouched (no double send-keys). A not-live strand whose done-when paths
+all exist is finished: it is dropped from state instead of relaunched, and
+counted in the envelope's dropped.
 
 Example:
   lyx reed resume`,
@@ -42,6 +44,7 @@ Example:
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
 				"session": result.Session,
 				"resumed": result.Resumed,
+				"dropped": result.Dropped,
 			}))
 			return nil
 		},

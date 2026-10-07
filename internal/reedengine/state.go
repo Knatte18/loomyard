@@ -33,6 +33,9 @@ type Strand struct {
 	// Retiring records that a caller of `reed remove --detach` asked for this strand's removal.
 	// It grants nothing by itself: a caller that finds it set only completes the request.
 	Retiring bool `json:"retiring,omitempty"`
+	// DoneWhen lists paths whose joint existence means the strand's work finished; its spawner sets it at add time.
+	// Reed only stats them: Resume drops a non-live strand whose list is non-empty and fully present, instead of relaunching it.
+	DoneWhen []string `json:"doneWhen,omitempty"`
 }
 
 // ReedState is the persisted record for one hub's tmux server: the socket name, the session,

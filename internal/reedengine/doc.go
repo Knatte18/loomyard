@@ -142,6 +142,10 @@
 // a live, dormant or hidden match all skip, and a skipped add launches, revives, removes and changes nothing.
 // The retired `strand_name` config key is ignored on load.
 //
+// A strand may carry a done-when list (Strand.DoneWhen, set by its spawner through AddSpec.DoneWhen), the one place reed learns a strand finished.
+// Reed only stats the paths: Resume drops from state, instead of relaunching, a non-live strand whose list is non-empty and whose every path exists, and reports the count on ResumeResult.Dropped.
+// A live strand, a strand with no list and a strand with a path missing are untouched or relaunched as before.
+//
 // The name is mirrored outward, never read back as truth.
 // launchStrandLocked exports it to the strand's process as LYX_STRAND_NAME, with LYX_PARENT when a parent is told, ahead of the launch command.
 // It also sets the pane title to the full name after `set-option -p allow-set-title off`, so the program in the pane cannot overwrite it.

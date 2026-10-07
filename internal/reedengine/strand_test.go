@@ -16,6 +16,7 @@ package reedengine
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -512,14 +513,14 @@ func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
 				t.Fatalf("AddStrand(--if-absent): %v", err)
 			}
 
-			if got != tt.persisted {
+			if !reflect.DeepEqual(got, tt.persisted) {
 				t.Errorf("AddStrand(--if-absent) = %+v, want unchanged persisted strand %+v", got, tt.persisted)
 			}
 			loaded, err := LoadState(e.stateDir())
 			if err != nil {
 				t.Fatalf("LoadState: %v", err)
 			}
-			if len(loaded.Strands) != 1 || loaded.Strands[0] != tt.persisted {
+			if len(loaded.Strands) != 1 || !reflect.DeepEqual(loaded.Strands[0], tt.persisted) {
 				t.Errorf("persisted state after no-op = %+v, want unchanged single strand %+v", loaded.Strands, tt.persisted)
 			}
 		})
@@ -581,7 +582,7 @@ func TestAddStrandUnless_NamedStrandSkips(t *testing.T) {
 			if err != nil {
 				t.Fatalf("AddStrandUnless: %v", err)
 			}
-			if !skipped || got != tt.orch {
+			if !skipped || !reflect.DeepEqual(got, tt.orch) {
 				t.Errorf("AddStrandUnless = (%+v, %v), want (%+v, true)", got, skipped, tt.orch)
 			}
 			for _, c := range fake.Sequence() {

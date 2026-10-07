@@ -213,7 +213,7 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 			SessionID: "session-1",
 			Display:   render.Display{Anchor: render.AnchorBelowParent},
 		}
-		if got != want {
+		if !reflect.DeepEqual(got, want) {
 			t.Errorf("AddStrand spec = %+v, want %+v", got, want)
 		}
 

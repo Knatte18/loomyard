@@ -42,6 +42,8 @@ type AddSpec struct {
 	// validateIfAbsent), and either no-ops on a matched strand, relaunches a matched-but-dead one,
 	// or falls through to an ordinary add when nothing matches.
 	IfAbsent bool
+	// DoneWhen is copied verbatim onto the new strand's DoneWhen.
+	DoneWhen []string
 }
 
 // Removed reports every strand RemoveStrand deleted: the target plus its whole cascaded descendant
@@ -337,6 +339,7 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 		ResumeCmd: spec.ResumeCmd,
 		SessionID: spec.SessionID,
 		Display:   spec.Display,
+		DoneWhen:  spec.DoneWhen,
 	})
 	strand := &st.Strands[len(st.Strands)-1]
 
