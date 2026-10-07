@@ -52,6 +52,108 @@ func (e *ReportArchivedError) Unwrap() []error { return []error{ErrReportArchive
 // webster's own sentinel, per the webster-owns-its-own-domain-types decision.
 var ErrCardNotDone = errors.New("webster: record-batch's done-checks reported a blocking finding")
 
+// cardNotDoneError is the error the post-batch done-checks return: it unwraps to ErrCardNotDone and its message carries the findings' text.
+// deleteNotDone is set when a finding is a Delete target that still resolves.
+type cardNotDoneError struct {
+	reasons       []string
+	deleteNotDone bool
+}
+
+func (e *cardNotDoneError) Error() string {
+	return fmt.Sprintf("%s: %s", ErrCardNotDone, strings.Join(e.reasons, "; "))
+}
+
+func (e *cardNotDoneError) Unwrap() error { return ErrCardNotDone }
+
+// unbegunCards returns the cards of every batch with no record in st, in batches' own order.
+func unbegunCards(batches []batcher.Batch, st *State) []planparser.Card {
+	var cards []planparser.Card
+	for _, b := range batches {
+		number, _ := batchIdentity(b)
+		if bs, ok := st.Batches[number]; ok && bs != nil {
+			continue
+		}
+		cards = append(cards, b.Cards...)
+	}
+	return cards
+}
+
+// deleteReferencedWayForward is the way forward for a batch whose Delete target an unbegun later card still references.
+// Recovery cannot change the plan, so the way forward edits it; a record recovery would refuse as uncheckable restarts the run instead.
+func deleteReferencedWayForward(number int, uncheckable bool) string {
+	if uncheckable {
+		return freshRestartSteps
+	}
+	return fmt.Sprintf("move the delete to a card after the one that still references it, run `lyx webster rebaseline --card NN` naming each card you edited, then `lyx webster recover-batch %02d`", number)
+}
+
+// laterDeleteReferenceReasons returns one reason per reference an unbegun card still has to a symbol the cards in own delete.
+// An infrastructure error is wrapped in planglyph.ErrQuarryUnavailable.
+func laterDeleteReferenceReasons(plan *planparser.Plan, batches []batcher.Batch, st *State, own []planparser.Card, worktreeRoot string) ([]string, error) {
+	findings, err := planglyph.LaterDeleteReferences(plan, own, unbegunCards(batches, st), worktreeRoot)
+	if err != nil {
+		return nil, err
+	}
+	reasons := make([]string, 0, len(findings))
+	for _, f := range findings {
+		reasons = append(reasons, f.Error())
+	}
+	return reasons, nil
+}
+
+// cardNotDoneInputs carries everything failCardNotDone needs to fail a batch on its post-batch findings.
+// Verb names the calling verb, which a transient error tells the operator to re-run.
+type cardNotDoneInputs struct {
+	Plan    *planparser.Plan
+	Batches []batcher.Batch
+	State   *State
+	Batch   *BatchState
+	Cards   []planparser.Card
+	Number  int
+	Slug    string
+	Geom    Geometry
+	HeadSHA string
+	Verb    string
+}
+
+// failCardNotDone takes the batch terminal-failed on cause, an ErrCardNotDone-wrapped error from the post-batch pass.
+// When a finding is a Delete target that still resolves and an unbegun later card still references it, the reasons also name that reference,
+// and the way forward is the plan edit rather than recover-batch, which would only repeat the same failure.
+func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, error) {
+	var reasons []string
+	var deleteNotDone bool
+	var notDone *cardNotDoneError
+	if errors.As(cause, &notDone) {
+		reasons = notDone.reasons
+		deleteNotDone = notDone.deleteNotDone
+	} else {
+		reasons = strings.Split(strings.TrimPrefix(cause.Error(), ErrCardNotDone.Error()+": "), "; ")
+	}
+
+	var wayForward string
+	if deleteNotDone {
+		referenced, err := laterDeleteReferenceReasons(in.Plan, in.Batches, in.State, in.Cards, in.Geom.WorktreeRoot)
+		if err != nil {
+			return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster %s %d`", err, in.Verb, in.Number)
+		}
+		if len(referenced) > 0 {
+			reasons = append(append([]string(nil), reasons...), referenced...)
+			wayForward = deleteReferencedWayForward(in.Number, len(in.Batch.Uncheckable) > 0)
+		}
+	}
+	return failBatch(failBatchInput{
+		State:      in.State,
+		Batch:      in.Batch,
+		Number:     in.Number,
+		Slug:       in.Slug,
+		ReportsDir: in.Geom.ReportsDir,
+		HeadSHA:    in.HeadSHA,
+		Reasons:    reasons,
+		WayForward: wayForward,
+		Now:        time.Now,
+	})
+}
+
 // RecordDeps carries every seam RecordBatch needs, so a test can fake each one independently:
 // Batches is the batchifier-derived execution batches (see RunDeps.Batcher) `run` computed
 // once at entry;
@@ -353,17 +455,18 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 			return nil, err
 		}
 		// The findings concern this batch's own cards, so it fails on its merits.
-		reasons := strings.Split(strings.TrimPrefix(err.Error(), ErrCardNotDone.Error()+": "), "; ")
-		bfe, ferr := failBatch(failBatchInput{
-			State:      deps.State,
-			Batch:      bs,
-			Number:     number,
-			Slug:       slug,
-			ReportsDir: deps.Geom.ReportsDir,
-			HeadSHA:    report.HeadSHA,
-			Reasons:    reasons,
-			Now:        time.Now,
-		})
+		bfe, ferr := failCardNotDone(cardNotDoneInputs{
+			Plan:    deps.Plan,
+			Batches: deps.Batches,
+			State:   deps.State,
+			Batch:   bs,
+			Cards:   batch.Cards,
+			Number:  number,
+			Slug:    slug,
+			Geom:    deps.Geom,
+			HeadSHA: report.HeadSHA,
+			Verb:    "record-batch",
+		}, err)
 		if ferr != nil {
 			return nil, ferr
 		}
@@ -569,12 +672,15 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	if err != nil {
 		return nil, err
 	}
-	var doneChecks []string
+	notDone := &cardNotDoneError{}
 	for _, f := range doneFindings {
-		doneChecks = append(doneChecks, f.Error())
+		notDone.reasons = append(notDone.reasons, f.Error())
+		if f.Check == "delete-not-done" {
+			notDone.deleteNotDone = true
+		}
 	}
-	if len(doneChecks) > 0 {
-		return nil, fmt.Errorf("%w: %s", ErrCardNotDone, strings.Join(doneChecks, "; "))
+	if len(notDone.reasons) > 0 {
+		return nil, notDone
 	}
 
 	// The batch's single delta call: BindHandles, ScopeGuard and DetectDrift all consume this one quarry.GitDeltaAnswer rather than each spawning their own.

@@ -1234,6 +1234,92 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	}
 }
 
+// deleteReferencedBatches returns two batches, card 1 (json-flag) that deletes internal/foo#Gone and the unbegun card 2 (later) that edits internal/foo/user.go,
+// and writes both files into worktree: impl.go still declares Gone, and user.go calls it on line 4 when referenced is true.
+func deleteReferencedBatches(t *testing.T, worktree string, referenced bool) []batcher.Batch {
+	t.Helper()
+	writeWorktreeFile(t, worktree, "internal/foo/impl.go", "package foo\n\nfunc Gone() {}\n")
+	user := "package foo\n\nfunc user() {}\n"
+	if referenced {
+		user = "package foo\n\nfunc user() {\n\tGone()\n}\n"
+	}
+	writeWorktreeFile(t, worktree, "internal/foo/user.go", user)
+	deleting := planparser.Card{
+		Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "delete Gone",
+		TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeDelete, Refs: []string{"internal/foo#Gone"}}},
+	}
+	later := planparser.Card{
+		Number: 2, Slug: "later", Title: "later", Intent: "edit the user",
+		TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeEdit, Refs: []string{"internal/foo/user.go"}}},
+	}
+	return []batcher.Batch{{Cards: []planparser.Card{deleting}}, {Cards: []planparser.Card{later}}}
+}
+
+// TestRecordBatch_DeleteNotDoneNamesLaterCard proves a delete-not-done failure caused by an unbegun later card still referencing the target
+// names that card and the reference and moves the way forward to the plan edit, or to the --fresh steps when the record also lists uncheckable entries;
+// a delete-not-done with no later reference keeps recover-batch.
+func TestRecordBatch_DeleteNotDoneNamesLaterCard(t *testing.T) {
+	tests := []struct {
+		name        string
+		referenced  bool
+		uncheckable []string
+		wantIn      []string
+		wantNotIn   []string
+	}{
+		{
+			name:       "a later card still references the target",
+			referenced: true,
+			wantIn:     []string{"delete-not-done", "2-later", "internal/foo/user.go:4", "way forward: move the delete to a card after", "lyx webster rebaseline --card NN", "lyx webster recover-batch 01"},
+			wantNotIn:  []string{"reset --to start"},
+		},
+		{
+			name:        "an uncheckable record names the fresh restart",
+			referenced:  true,
+			uncheckable: []string{"fabric-reference: Bash command references the fabric"},
+			wantIn:      []string{"2-later", "internal/foo/user.go:4", "way forward: 1) lyx webster reset --to start; 2) lyx webster run --fresh"},
+			wantNotIn:   []string{"rebaseline"},
+		},
+		{
+			name:      "no later reference keeps recover-batch",
+			wantIn:    []string{"delete-not-done", "way forward: lyx webster recover-batch 01"},
+			wantNotIn: []string{"2-later", "rebaseline"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+				{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+			})
+			writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+			fx.Deps.Batches = deleteReferencedBatches(t, fx.Worktree, tt.referenced)
+			fx.Deps.Plan.Cards = []planparser.Card{fx.Deps.Batches[0].Cards[0], fx.Deps.Batches[1].Cards[0]}
+			fx.Deps.State.Batches[1].Uncheckable = tt.uncheckable
+
+			result, err := websterengine.RecordBatch(fx.Deps, 1)
+			if !errors.Is(err, websterengine.ErrBatchFailed) {
+				t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrBatchFailed)", err)
+			}
+			if result == nil || !result.Failed {
+				t.Fatalf("RecordBatch() result = %+v; want Failed", result)
+			}
+			for _, want := range tt.wantIn {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q lacks %q", err, want)
+				}
+			}
+			for _, bad := range tt.wantNotIn {
+				if strings.Contains(err.Error(), bad) {
+					t.Errorf("error %q contains %q", err, bad)
+				}
+			}
+			if bs := fx.Deps.State.Batches[1]; !bs.Terminal || bs.Status != websterengine.DigestStatusFailed {
+				t.Errorf("BatchState = terminal %v status %q; want terminal failed", bs.Terminal, bs.Status)
+			}
+		})
+	}
+}
+
 // writeRecordPlanDir writes a minimal, valid on-disk plan directory holding one card whose body is
 // cardBody, returning the directory and its freshly parsed *planparser.Plan — the record-batch
 // wiring test's own plan-fixture builder, package-local to this file since planglyph's own

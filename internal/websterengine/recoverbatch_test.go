@@ -833,6 +833,36 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 		{name: "a failed batch on a fabric reference with a failing verify spawns with the failure digest", setup: fabricSetup, check: fabricCheck},
 		{name: "a failed batch on a done-check finding spawns with the failure digest", setup: doneCheckSetup, check: doneCheckCheck},
 		{
+			name: "a delete an unbegun later card still references is refused before spawning toward the plan edit",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.Batches = deleteReferencedBatches(t, fx.Worktree, true)
+				fx.Deps.State.Batches[1] = failedRecord("delete-not-done/1-json-flag[blocking]: Delete target \"internal/foo#Gone\" still resolves found")
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if !errors.Is(err, websterengine.ErrRecoveryDeleteReferenced) {
+					t.Fatalf("RecoverSpawnOrAttach() error = %v; want ErrRecoveryDeleteReferenced", err)
+				}
+				if spawned || fx.Engine.PrepareCalls != 0 || fx.Engine.LastPrompt != "" {
+					t.Errorf("spawned = %v, prepareCalls = %d, prompt %q; want no strand started", spawned, fx.Engine.PrepareCalls, fx.Engine.LastPrompt)
+				}
+				for _, want := range []string{"batch 01", "2-later", "internal/foo/user.go:4", "way forward: move the delete to a card after", "lyx webster rebaseline --card NN", "lyx webster recover-batch 01"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q lacks %q", err, want)
+					}
+				}
+			},
+		},
+		{
+			name: "the same failed batch spawns once the later card no longer references the delete",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.Batches = deleteReferencedBatches(t, fx.Worktree, false)
+				fx.Deps.State.Batches[1] = failedRecord("delete-not-done/1-json-flag[blocking]: Delete target \"internal/foo#Gone\" still resolves found")
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+			},
+		},
+		{
 			name: "a failed batch on a fabric reference recovery cannot check is refused toward run --fresh",
 			setup: func(fx *recoverFixture) {
 				fabricRefusalSetup(fx)

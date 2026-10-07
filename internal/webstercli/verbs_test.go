@@ -555,6 +555,67 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 	}
 }
 
+// TestRecordBatchCmd_DeleteReferencedByLaterCard proves a batch whose Delete target an unbegun later card still references fails record-batch with batch_failed naming that card and the plan edit,
+// and that recover-batch over it then refuses before spawning with the same flag and way forward.
+func TestRecordBatchCmd_DeleteReferencedByLaterCard(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	root := fx.CLI.geom.WorktreeRoot
+	// The fixture's own single-card plan is replaced, so its card file goes too.
+	if err := os.Remove(filepath.Join(fx.CLI.geom.PlanDir, "01-only.md")); err != nil {
+		t.Fatalf("remove the fixture's card file: %v", err)
+	}
+	plankit.Write(t, fx.CLI.geom.PlanDir, plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Framing:  "Framing.",
+		Cards: []plankit.Card{
+			{Number: 1, Slug: "first", Summary: "deletes Gone", Groups: []plankit.Group{{Label: "Delete", Targets: []string{"sub#Gone"}}}, Intent: "delete it.", ImpactSummary: "Removes sub#Gone."},
+			{Number: 2, Slug: "second", Summary: "edits the user of Gone", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"sub/user.go"}}}, Intent: "edit it.", ImpactSummary: "Edits the user."},
+		},
+	})
+	st := fx.initState(t)
+	startSHA := gitkit.CommitFile(t, root, "sub/a.go", "package sub\n\nfunc Gone() {}\n", "01.1: add the target")
+	headSHA := gitkit.CommitFile(t, root, "sub/user.go", "package sub\n\nfunc user() {\n\tGone()\n}\n", "01.2: add the user")
+	st.Batches[1] = &websterengine.BatchState{Slug: "first", StartSHA: startSHA, Kind: "fork"}
+	st.CurrentBatch = 1
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	fx.Engine.Audit = shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/fork1.jsonl", ReportReturned: true}}}
+	if err := os.MkdirAll(fx.CLI.geom.ReportsDir, 0o755); err != nil {
+		t.Fatalf("mkdir reports dir: %v", err)
+	}
+	report := &websterengine.Report{Status: websterengine.ReportStatusOK, HeadSHA: headSHA}
+	if err := websterengine.WriteReport(filepath.Join(fx.CLI.geom.ReportsDir, websterengine.ReportFileName(1, "first")), report); err != nil {
+		t.Fatalf("write batch report: %v", err)
+	}
+	wantInOutput := []string{`"batch_failed":true`, "2-second", "sub/user.go:4", "way forward: move the delete to a card after", "lyx webster rebaseline --card NN"}
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.recordBatchCmd(), &out, []string{"1"}); code == 0 {
+		t.Fatalf("record-batch 1 = 0; want non-zero, output: %s", out.String())
+	}
+	for _, want := range wantInOutput {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("record-batch output missing %q; got %q", want, out.String())
+		}
+	}
+
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code == 0 {
+		t.Fatalf("recover-batch 1 = 0; want non-zero, output: %s", out.String())
+	}
+	for _, want := range wantInOutput {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("recover-batch output missing %q; got %q", want, out.String())
+		}
+	}
+	if fx.Engine.PrepareCalls != 0 {
+		t.Errorf("Engine.PrepareCalls = %d; want no recovery strand started", fx.Engine.PrepareCalls)
+	}
+}
+
 // TestRecordBatchCmd_ReportArchivedEnvelope proves a report with no begin record is archived, the call exits non-zero with report_archived, and the report is gone from its live path.
 func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")

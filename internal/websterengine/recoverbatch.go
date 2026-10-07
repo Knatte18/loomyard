@@ -41,6 +41,9 @@ import (
 // ErrRecoveryNeedsFresh is the sentinel RecoverSpawnOrAttach's refusal of an uncheckable failed batch unwraps to.
 var ErrRecoveryNeedsFresh = errors.New("webster: recovery cannot check the batch's findings")
 
+// ErrRecoveryDeleteReferenced is the sentinel RecoverSpawnOrAttach's refusal of a batch whose Delete target an unbegun later card still references unwraps to.
+var ErrRecoveryDeleteReferenced = errors.New("webster: recovery cannot clear a delete a later card still references")
+
 // recoveryNeedsFreshError carries the refusal text verbatim and unwraps to ErrRecoveryNeedsFresh.
 type recoveryNeedsFreshError struct{ msg string }
 
@@ -290,6 +293,11 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 //     an operator can remove it by hand.
 //  3. A not-ready start no longer leaks (shuttle tears the strand down) unless that teardown's own
 //     strand removal fails, which the returned error then states.
+//
+// Before spawning, it refuses with ErrRecoveryDeleteReferenced while an unbegun later card's Edit code still references a symbol the batch's own cards delete,
+// since a recovery cannot change the plan and would fail the same done-check again.
+// The bound: it refuses only while that check fires for the batch's own cards against the current plan and tree;
+// moving the delete and rebaselining clears it.
 func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *BatchState, spawned bool, err error) {
 	batch, err := findBatch(deps.Batches, batchNumber)
 	if err != nil {
@@ -329,6 +337,14 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 		if len(contracts.Uncleared) > 0 {
 			return nil, false, fmt.Errorf("webster: batch %02d failed on contract file(s) a fork wrote last: %s", batchNumber, contractDeleteClause(contracts.Uncleared, fmt.Sprintf("lyx webster recover-batch %d", batchNumber)))
 		}
+	}
+
+	referenced, err := laterDeleteReferenceReasons(deps.Plan, deps.Batches, deps.State, batch.Cards, deps.Geom.WorktreeRoot)
+	if err != nil {
+		return nil, false, fmt.Errorf("%w; way forward: transient, re-run `lyx webster recover-batch %d`", err, batchNumber)
+	}
+	if len(referenced) > 0 {
+		return nil, false, fmt.Errorf("%w: batch %02d: %s; way forward: %s", ErrRecoveryDeleteReferenced, batchNumber, strings.Join(referenced, "; "), deleteReferencedWayForward(batchNumber, prior != nil && len(prior.Uncheckable) > 0))
 	}
 
 	prevDigest := predecessorDigestLine(deps.Batches, deps.State, batchNumber)
@@ -467,17 +483,18 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		if !errors.Is(err, ErrCardNotDone) {
 			return warnings, err
 		}
-		reasons := strings.Split(strings.TrimPrefix(err.Error(), ErrCardNotDone.Error()+": "), "; ")
-		bfe, ferr := failBatch(failBatchInput{
-			State:      st,
-			Batch:      bs,
-			Number:     number,
-			Slug:       slug,
-			ReportsDir: deps.Geom.ReportsDir,
-			HeadSHA:    head,
-			Reasons:    reasons,
-			Now:        time.Now,
-		})
+		bfe, ferr := failCardNotDone(cardNotDoneInputs{
+			Plan:    deps.Plan,
+			Batches: deps.Batches,
+			State:   st,
+			Batch:   bs,
+			Cards:   batch.Cards,
+			Number:  number,
+			Slug:    slug,
+			Geom:    deps.Geom,
+			HeadSHA: head,
+			Verb:    "recover-batch",
+		}, err)
 		if ferr != nil {
 			return warnings, ferr
 		}
