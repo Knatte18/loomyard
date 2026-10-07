@@ -17,6 +17,8 @@ import (
 // TestWaitMarkSegmentExpandsOnARealTmux sets a mark through SetWaitMark and expands the pinned status-left against the marked pane.
 // An unmarked session expands to the identity text alone.
 func TestWaitMarkSegmentExpandsOnARealTmux(t *testing.T) {
+	t.Parallel()
+
 	e := newColdScratchEngine(t)
 
 	strand, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}})

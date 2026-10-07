@@ -529,6 +529,8 @@ func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
 
 // TestAddStrandUnless_NamedStrandSkips pins that a named strand skips the add whether it is live, dormant (its pane gone) or hidden, and that a skip saves, launches and moves nothing.
 func TestAddStrandUnless_NamedStrandSkips(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		before []Strand
@@ -541,6 +543,8 @@ func TestAddStrandUnless_NamedStrandSkips(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			e := newTestEngine(t)
 			fake := installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
 
@@ -581,6 +585,8 @@ func TestAddStrandUnless_NamedStrandSkips(t *testing.T) {
 
 //testtiming:keep pins the add going ahead when no strand carries the named name, with the new strand named from the told geometry and persisted after the existing ones; its covering tests run this code without asserting it
 func TestAddStrandUnless_NoNamedStrandAdds(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		persisted []Strand
@@ -590,6 +596,8 @@ func TestAddStrandUnless_NoNamedStrandAdds(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			e := newTestEngine(t)
 			installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
 			if err := SaveState(e.stateDir(), &ReedState{Strands: tt.persisted}); err != nil {
