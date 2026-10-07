@@ -9,6 +9,7 @@ package websterengine
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -185,6 +186,89 @@ func AcceptPendingAudit(engine shuttleengine.Engine, st *State, geom Geometry, p
 		parts = append(parts, fmt.Sprintf("%s; %s", strings.Join(what, "; "), resetToStartSteps(stepRunFresh)))
 	}
 	return nil, false, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, strings.Join(parts, "; "))
+}
+
+// AcceptBatchFabricReference clears the Uncheckable entries of failed batch n when every one is a pathless fabric-reference finding and the batch provably changed nothing,
+// so `lyx webster recover-batch n` can proceed instead of refusing toward the `--fresh` route.
+// The evidence rule: the batch's recorded start commit is set, its digest's head equals that start (the batch made no commit),
+// the worktree's HEAD is that start, and the worktree is clean.
+// A fabric reference stays correctness everywhere else: this clears it only on that evidence and only by the explicit `accept-audit --batch` call,
+// and each cleared entry is recorded on the batch as an AuditWarning, so a recovery carries it and summary.md names it.
+// What the evidence cannot cover, the fabric repo's own state, the caller vouches for by running the verb.
+// Any other entry, a batch that is not terminal failed, or missing evidence refuses with ErrAuditNotAcceptable, mutating nothing.
+// It never saves;
+// the caller holds the state-mutation lease and saves.
+func AcceptBatchFabricReference(st *State, geom Geometry, n int) (accepted []string, err error) {
+	bs := st.Batches[n]
+	if bs == nil || !bs.Terminal || bs.Status != DigestStatusFailed || len(bs.Uncheckable) == 0 {
+		return nil, fmt.Errorf("%w: batch %02d is not a failed batch with uncheckable findings; accept-audit --batch accepts only those", ErrAuditNotAcceptable, n)
+	}
+	if !allPathlessFabricReference(bs.Uncheckable) {
+		return nil, fmt.Errorf("%w: batch %02d carries an uncheckable finding that is not a pathless fabric reference: %s; %s", ErrAuditNotAcceptable, n, strings.Join(bs.Uncheckable, ", "), resetToStartSteps(stepRunFresh))
+	}
+	if bs.StartSHA == "" || bs.Digest == nil || bs.Digest.HeadSHA != bs.StartSHA {
+		return nil, fmt.Errorf("%w: batch %02d made a commit or recorded no start commit, so its tree cannot be shown unchanged; %s", ErrAuditNotAcceptable, n, resetToStartSteps(stepRunFresh))
+	}
+	head, err := geom.git().HeadSHA(geom.WorktreeRoot)
+	if err != nil {
+		return nil, err
+	}
+	if head != bs.StartSHA {
+		return nil, fmt.Errorf("%w: HEAD %s is not batch %02d's start commit %s; way forward: git reset --keep %s, then re-run \"lyx webster accept-audit --batch %d\"", ErrAuditNotAcceptable, head, n, bs.StartSHA, bs.StartSHA, n)
+	}
+	dirtyPaths, err := geom.git().DirtyPaths(geom.WorktreeRoot)
+	if err != nil {
+		return nil, err
+	}
+	var dirty []string
+	for _, p := range dirtyPaths {
+		if !runOwnPath(geom, p) {
+			dirty = append(dirty, p)
+		}
+	}
+	if len(dirty) > 0 {
+		return nil, fmt.Errorf("%w: the worktree has uncommitted or untracked changes: %s; way forward: restore or remove them with git, then re-run \"lyx webster accept-audit --batch %d\"", ErrAuditNotAcceptable, strings.Join(dirty, ", "), n)
+	}
+	for i, entry := range bs.Uncheckable {
+		id := fmt.Sprintf("accepted:batch-%02d:%d", n, i+1)
+		markDisposition(st, id, dispositionWarned)
+		bs.AuditWarnings = append(bs.AuditWarnings, AuditWarning{Identity: id, Class: string(ClassFabricReference), Detail: "accepted by accept-audit --batch, the batch made no commit and left a clean tree: " + strings.TrimPrefix(entry, fabricReferencePrefix)})
+	}
+	accepted = bs.Uncheckable
+	bs.Uncheckable = nil
+	return accepted, nil
+}
+
+// runOwnPath reports whether rel, a worktree-relative path git status names, is the run's own state rather than the task's content:
+// webster's run directory, the plan directory or the scratch directory, a path under one, or a directory holding one (git collapses an untracked directory).
+// In a standalone run those live inside the worktree, so they show as changes there; in a hub they live on the fabric side and never appear.
+func runOwnPath(geom Geometry, rel string) bool {
+	p := filepath.Join(geom.WorktreeRoot, filepath.FromSlash(strings.TrimSuffix(rel, "/")))
+	for _, dir := range []string{geom.WebsterDir, geom.PlanDir, geom.ScratchDir} {
+		if dir == "" {
+			continue
+		}
+		if pathWithin(dir, p) || pathWithin(p, dir) {
+			return true
+		}
+	}
+	return false
+}
+
+// fabricReferencePrefix opens an Uncheckable entry recorded for a pathless fabric-reference finding ("<class>: <detail>").
+const fabricReferencePrefix = string(ClassFabricReference) + ": "
+
+// allPathlessFabricReference reports whether entries is non-empty and every entry is a pathless fabric-reference finding.
+func allPathlessFabricReference(entries []string) bool {
+	if len(entries) == 0 {
+		return false
+	}
+	for _, e := range entries {
+		if !strings.HasPrefix(e, fabricReferencePrefix) {
+			return false
+		}
+	}
+	return true
 }
 
 // auditWarningText renders w as its envelope line.

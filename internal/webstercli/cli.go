@@ -222,6 +222,7 @@ Verbs:
   lyx webster recover-batch 3 --wait 8m      escalate batch 3 to a cold recovery strand
   lyx webster rebaseline --card NN   accept a mid-run edit of the named cards
   lyx webster accept-audit                   accept the pending run-exit audit findings once their paths are checked
+  lyx webster accept-audit --batch 8         accept failed batch 8's pathless fabric references when it made no commit
   lyx webster restore-plan                   restore every plan file that differs from the plan the run recorded
   lyx webster reset --to start|pre-fix       move the task branch back to the run's start commit or the verify gate's pre-fix head
   lyx webster verify                         run the plan's verify command over the worktree, as the verify gates do
