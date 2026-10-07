@@ -12,6 +12,7 @@
 // a verify that dirties the tree is a non-hermetic test and halts rather than ships.
 //
 // After the merge-in, the told verify command runs through internal/verifytree before the push, unless its verified-tree record already names the tree and the command.
+// A verify that does not finish within the verify timeout is killed and halts the run Stuck with the log path.
 // The record is keyed on the tree, so the verify runs after a resolved conflict, after new parent commits and after a crash between a merge and its verify, and a no-op merge onto a verified tree skips it.
 // A failure is Stuck with the merge commit kept for the operator to fix forward,
 // and a missing command logs a warning and proceeds.

@@ -103,6 +103,9 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 	case verifytree.StatusDirty:
 		return dirtyReason("when the verify was about to run", result.Dirty), nil
 	case verifytree.StatusFailed:
+		if result.TimedOut {
+			return fmt.Sprintf("verify did not finish within %s after merging parent branch %q; output: %s; fix the hanging test on the task branch, then resume", verifytree.Timeout, parentBranch, g.paths.Log), nil
+		}
 		if result.ExitCode < 0 {
 			return fmt.Sprintf("verify could not start after merging parent branch %q: %s; output: %s", parentBranch, result.Detail, g.paths.Log), nil
 		}

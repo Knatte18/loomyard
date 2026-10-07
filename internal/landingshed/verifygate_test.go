@@ -119,6 +119,14 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 			wantReasonHas: []string{"could not start", "exec: sh not found", `"main"`},
 		},
 		{
+			name: "timed out", command: "true", site: "Publish",
+			result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true, Detail: "the verify command did not finish within 1h0m0s and was killed"},
+			wantReasonExact: func(logPath string) string {
+				return `verify did not finish within 1h0m0s after merging parent branch "main"; output: ` + logPath +
+					`; fix the hanging test on the task branch, then resume`
+			},
+		},
+		{
 			name: "dirty result names the paths", command: "true", site: "Publish",
 			result:        verifytree.Result{Status: verifytree.StatusDirty, Dirty: []string{"a.txt", "b.txt"}},
 			wantReasonHas: []string{"a.txt", "b.txt"},

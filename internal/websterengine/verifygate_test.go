@@ -159,6 +159,57 @@ func TestVerifyGate_FlakyFailurePassesOnRerunWithNote(t *testing.T) {
 	}
 }
 
+// TestVerifyGate_TimedOutVerifyFailsAtOnceWithoutRerun pins that a verify that outlived its timeout fails the gate at once, on the first run or on the rerun, with a report naming the timeout, the log path and the log tail.
+func TestVerifyGate_TimedOutVerifyFailsAtOnceWithoutRerun(t *testing.T) {
+	t.Parallel()
+
+	timedOut := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true}
+	tests := []struct {
+		name          string
+		results       []verifytree.Result
+		logs          []string
+		wantVerifyRun int
+	}{
+		{name: "first run times out", results: []verifytree.Result{timedOut}, logs: []string{"hung in TestSlow\n"}, wantVerifyRun: 1},
+		{name: "rerun times out", results: []verifytree.Result{failedResult(), timedOut}, logs: []string{failingPackageLog, "hung in TestSlow\n"}, wantVerifyRun: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			reports := t.TempDir()
+			f := &gateFake{
+				outcome: outcomeDone,
+				command: "go test ./...",
+				head:    "head0",
+				results: tt.results,
+				logs:    tt.logs,
+			}
+			gate := newVerifyGate(reports, 3, &VerifyGateNotes{}, f.seams())
+
+			res, err := gate()
+			if err != nil || res.Passed || res.Terminal {
+				t.Fatalf("gate() = %+v, %v; want a plain failure", res, err)
+			}
+			if f.verifyCalls != tt.wantVerifyRun {
+				t.Errorf("verify ran %d time(s); want %d", f.verifyCalls, tt.wantVerifyRun)
+			}
+			report, err := readVerifyGateReport(VerifyGateReportPath(reports))
+			if err != nil {
+				t.Fatalf("readVerifyGateReport() error = %v", err)
+			}
+			if report.TimedOut != verifytree.Timeout.String() || report.LogPath != "/verify/verify.log" || !strings.Contains(report.LogTail, "hung in TestSlow") || len(report.Failures) != 0 {
+				t.Errorf("report = %+v; want the timeout, the log path and the log tail, with no failures", report)
+			}
+			for _, want := range []string{"did not finish within 1h0m0s and was killed", "/verify/verify.log", "hung in TestSlow"} {
+				if !strings.Contains(res.Findings, want) {
+					t.Errorf("findings = %q; want %q in it", res.Findings, want)
+				}
+			}
+		})
+	}
+}
+
 //testtiming:keep pins the failure report's attempt, cap, failures, card hint, fix commits and log path, and the findings naming them; the run-level verify-gate test observes only the failure
 func TestVerifyGate_FailedEvaluationWritesReport(t *testing.T) {
 	reports := t.TempDir()

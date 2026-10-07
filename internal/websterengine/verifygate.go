@@ -251,6 +251,15 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 		return parseVerifyFailures(output, false), nil
 	}
 
+	// failTimedOut fails the gate for a verify that outlived its timeout: a hang is not flakiness, so it is never rerun.
+	failTimedOut := func() (shuttleengine.GateResult, error) {
+		output, err := s.readLog()
+		if err != nil {
+			return shuttleengine.GateResult{}, fmt.Errorf("websterengine: read verify log %s: %w", s.logPath, err)
+		}
+		return fail(VerifyGateReport{TimedOut: verifytree.Timeout.String(), LogPath: s.logPath, LogTail: logTail(output)})
+	}
+
 	return func() (shuttleengine.GateResult, error) {
 		attempt++
 
@@ -303,6 +312,9 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 		case verifytree.StatusDirty:
 			return fail(VerifyGateReport{Dirty: res.Dirty})
 		}
+		if res.TimedOut {
+			return failTimedOut()
+		}
 
 		first, err := failures()
 		if err != nil {
@@ -319,6 +331,9 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 			return pass()
 		case verifytree.StatusDirty:
 			return fail(VerifyGateReport{Dirty: res.Dirty})
+		}
+		if res.TimedOut {
+			return failTimedOut()
 		}
 		surviving, err := failures()
 		if err != nil {

@@ -382,6 +382,7 @@
 // Otherwise verifytree.Verify runs the command under the site label `webster gate`, and a pass records the tree.
 // A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
 // A failure that survives the rerun returns findings.
+// A run that outlives the verify timeout is never rerun, since a hang is not flakiness: it fails the gate at once, and the report names the timeout, the log path and the log tail.
 // The first failed evaluation of any kind records HEAD as the pre-fix head, so every commit a fixer makes afterwards is checked at the next arrival.
 // The same moment persists it as state.json's `PreFixHead`, overwriting a value an earlier shuttle run left, so a later verb can reset to it;
 // a passing evaluation clears it, and `run --fresh` archives state.json with it.
