@@ -39,6 +39,7 @@ func TestRefScanner_Matches(t *testing.T) {
 		{"lyx fabric invocation", "lyx fabric sync", true},
 		{"lyx weft invocation", "lyx weft sync", true},
 		{"lyx warp invocation", "lyx warp checkout feature", true},
+		{"lyx.exe weft invocation", "lyx.exe weft push", true},
 		{"clean command does not match", "git commit -am wip", false},
 		{"invocation after a separator", "cd /hub/master-builder && lyx fabric sync", true},
 		{"invocation in a pipeline", "echo y | lyx fabric remove x", true},

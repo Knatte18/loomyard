@@ -25,9 +25,7 @@ func fakeLayout() *lyxcwd.Location {
 
 // TestRefScannerMatches matrixes fabricengine.NewRefScanner against every Bash command shape
 // CheckFork/CheckParent must classify: `lyx fabric` invocations (the live spelling the Fabric Git
-// Invariant bans), the retired pre-cutover per-side spellings, a command referencing the fabric
-// worktree path directly (e.g. `git -C <fabric-worktree> add`), and a set of fabric-free commands that
-// must never match.
+// Invariant bans), a command referencing the fabric worktree path directly (e.g. `git -C <fabric-worktree> add`), and a set of fabric-free commands that must never match.
 // The `lyx fabric` rows are the regression guard: the fabric cutover deleted the per-side verbs
 // and renamed every fabric-touching verb under `lyx fabric`, so a matcher that knows only the old
 // spellings bans nothing an agent can actually run today.
@@ -49,10 +47,7 @@ func TestRefScannerMatches(t *testing.T) {
 		{"lyx fabric push", "lyx fabric push", true},
 		{"lyx fabric checkout", "lyx fabric checkout feature", true},
 		{"lyx fabric with leading prose", "cd /hub/pair && lyx fabric sync", true},
-		{"lyx weft sync", "lyx weft sync", true},
-		{"lyx warp checkout", "lyx warp checkout feature", true},
 		{"lyx.exe fabric sync", "lyx.exe fabric sync", true},
-		{"lyx.exe weft push", "lyx.exe weft push", true},
 		{"absolute lyx.exe fabric push", `C:\bin\lyx.exe fabric push`, true},
 		{"git -C fabric-worktree add", "git -C " + fabricWorktree + " add -A", true},
 		{"cd into fabric worktree", "cd " + fabricWorktree + " && git status", true},
@@ -153,14 +148,6 @@ func TestCheckFork(t *testing.T) {
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "d-fabric", ReportReturned: true,
 				BashCommands: []string{"lyx fabric sync"},
-			},
-			wantClasses: []AuditViolationClass{ClassFabricReference},
-		},
-		{
-			name: "the retired per-side sync spelling is a hard error",
-			fork: shuttleengine.ForkReport{
-				TranscriptPath: "d", ReportReturned: true,
-				BashCommands: []string{"lyx weft sync"},
 			},
 			wantClasses: []AuditViolationClass{ClassFabricReference},
 		},

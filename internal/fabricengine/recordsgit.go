@@ -48,10 +48,16 @@ func (f *Fabric) ensureWeftLockDir() (string, error) {
 	return ensureWeftLockDirAt(f.weftPath)
 }
 
+// RecordsLockDirPath returns the lock directory path inside the records worktree at recordsWorktreePath.
+// It only builds the path; ensureWeftLockDirAt is what creates the directory.
+func RecordsLockDirPath(recordsWorktreePath string) string {
+	return filepath.Join(recordsWorktreePath, weftLockDirName)
+}
+
 // ensureWeftLockDirAt is the no-Fabric form of ensureWeftLockDir for callers
 // without a Fabric instance.
 func ensureWeftLockDirAt(weftPath string) (string, error) {
-	dir := filepath.Join(weftPath, weftLockDirName)
+	dir := RecordsLockDirPath(weftPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("fabricengine: mkdir weft lock dir: %w", err)
 	}
