@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -21,6 +22,9 @@ import (
 var fakeWebsterRun shedadapters.WebsterRunner = func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 	return websterengine.RunResult{}, nil
 }
+
+// placeholderIndex is a non-nil planindex.Index for constructor checks: it panics if a method is called, which no test here does.
+type placeholderIndex struct{ planindex.Index }
 
 // newTestEnv builds an Env whose every path field is an absolute path derived from a single t.TempDir(), one subdirectory per field: a directory field (Cwd, WorktreeRoot, StencilsDir, SpecsDir, RunRoot, AnchorPath, ScratchDir) is created with os.MkdirAll, while a file field (StatusPath, StatusLockPath, DecisionRecordPath, SupportLogPath, PrimeLock.Path) is left as a joined path nobody creates.
 // It fills Shuttle and Burler with shedfake's fakes and WebsterRun with this file's fake, fills WebsterDeps with shedfake.WebsterSeams, fills DiscussionSpec with a closure returning a shuttleengine.Spec over one absolute output path under the same temp root, fills CommitDiscussion with a closure returning nil, fills PlanSpec with a closure returning a shuttleengine.Spec over one absolute output path under the same temp root, fills CommitPlan with a closure returning nil, leaves Landing zero, and leaves Now nil.
@@ -63,6 +67,7 @@ func newTestEnv(t *testing.T) Env {
 		CommitWebster:      func() error { return nil },
 		ReflectFriction:    func() string { return "skipped" },
 		WebsterDeps:        shedfake.WebsterSeams(),
+		PlanIndex:          placeholderIndex{},
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
 				Prompt:      "test discussion prompt",

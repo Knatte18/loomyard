@@ -28,6 +28,16 @@ func TestScanKeeps(t *testing.T) {
 			want:    map[string]string{"TestB": "pins the ordering"},
 		},
 		{
+			name:    "directive above a guard marker",
+			content: "package p\n\n//testtiming:keep pins the ordering\n//lyx:guard\nfunc TestB2(t *testing.T) {}\n",
+			want:    map[string]string{"TestB2": "pins the ordering"},
+		},
+		{
+			name:    "guard marker above a directive",
+			content: "package p\n\n//lyx:guard\n//testtiming:keep pins the ordering\nfunc TestB3(t *testing.T) {}\n",
+			want:    map[string]string{"TestB3": "pins the ordering"},
+		},
+		{
 			name:    "no directive",
 			content: "package p\n\nfunc TestC(t *testing.T) {}\n",
 			want:    map[string]string{},

@@ -118,6 +118,8 @@ const spawnObservabilityMinScannedFiles = 200
 // TestSpawnObservability_ProductionSpawnsAreLogged walks every non-test .go file under internal/ and
 // cmd/ and fails if any of them, other than a spawnObservabilityAllowedSpawners entry, contains a real
 // exec.Command/exec.CommandContext call and does not import internal/logger.
+//
+//lyx:guard
 func TestSpawnObservability_ProductionSpawnsAreLogged(t *testing.T) {
 	allow := scankit.NewAllowlist(spawnObservabilityAllowedSpawners)
 	var failures []string

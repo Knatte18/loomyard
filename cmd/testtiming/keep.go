@@ -8,12 +8,17 @@ import (
 	"strings"
 )
 
-const keepDirective = "//testtiming:keep"
+const (
+	keepDirective = "//testtiming:keep"
+
+	// lyxDirectivePrefix opens a `//lyx:` directive line, which may stack between a keep and its func line.
+	lyxDirectivePrefix = "//lyx:"
+)
 
 var topLevelTestDecl = regexp.MustCompile(`^func (Test\w*)\(`)
 
 // scanKeeps returns the tests of the package directory marked with a `//testtiming:keep <reason>` line, by name with their reasons.
-// The directive sits on the line directly above the test's `func Test…` line.
+// The directive sits on the line directly above the test's `func Test…` line, or above only `//lyx:` directive lines that precede it.
 // A directive with an empty reason, or one not directly above a top-level test declaration, is an error naming the file and line.
 func scanKeeps(dir string) (map[string]string, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "*_test.go"))
@@ -33,9 +38,13 @@ func scanKeeps(dir string) (map[string]string, error) {
 				continue
 			}
 			where := fmt.Sprintf("%s:%d", file, i+1)
+			next := i + 1
+			for next < len(lines) && strings.HasPrefix(lines[next], lyxDirectivePrefix) {
+				next++
+			}
 			var test []string
-			if i+1 < len(lines) {
-				test = topLevelTestDecl.FindStringSubmatch(lines[i+1])
+			if next < len(lines) {
+				test = topLevelTestDecl.FindStringSubmatch(lines[next])
 			}
 			if test == nil {
 				return nil, fmt.Errorf("%s: %s is not directly above a top-level test function", where, keepDirective)

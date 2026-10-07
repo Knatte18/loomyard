@@ -40,6 +40,8 @@ const ghLookPathLiteral = `LookPath("gh")`
 // A bare "gh" substring is unusable as a banned token -- it matches "through", "right", "highlight"
 // and hundreds of other words repo-wide -- so, following tools/sandbox/pathresolve_guard_test.go's
 // precedent, both banned forms carry the quoted binary name so no English word can match.
+//
+//lyx:guard
 func TestGHGuard_NoShellOutOutsideGithubclient(t *testing.T) {
 	allow := scankit.NewAllowlist(ghGuardAllowlist)
 	var failures []string

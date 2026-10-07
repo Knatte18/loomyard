@@ -5,3 +5,4 @@ conflict_timeout_min: 60  # minutes the conflict-resolution session's shuttle ru
 describe: sonnet[medium]  # model-spec for the Describe row's session, which writes the change description that becomes the PR title and body and the landing commit message (see contracts/specs/llm-model-spec.md)
 describe_timeout_min: 30  # minutes the Describe session's shuttle run is allowed to run
 co_authored_by: Claude <noreply@anthropic.com>  # value of the landing commit's single Co-Authored-By trailer; a run involves several models, so the default names Claude generically
+publish_verify: ""  # shell command Publish runs in the task worktree after the plan's verify passes, such as a test tier the plan's verify leaves out; empty runs nothing; Finalize never runs it

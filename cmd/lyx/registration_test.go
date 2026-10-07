@@ -51,6 +51,8 @@ func isCommandFunc(fd *ast.FuncDecl) bool {
 }
 
 // TestRegistration_AllModulesRegistered asserts every Command() package is registered in newRoot().
+//
+//lyx:guard
 func TestRegistration_AllModulesRegistered(t *testing.T) {
 	repoRoot := scankit.Root(t)
 

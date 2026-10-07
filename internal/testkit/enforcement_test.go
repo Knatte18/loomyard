@@ -37,6 +37,7 @@ func isCLIImport(p string) bool {
 	return ok && !strings.Contains(rest, "/") && strings.HasSuffix(rest, "cli")
 }
 
+//lyx:guard
 func TestEnforcement_TestkitInvariant(t *testing.T) {
 	var importerFailures, cliFailures, spawnFailures []string
 
@@ -75,6 +76,7 @@ func TestEnforcement_TestkitInvariant(t *testing.T) {
 	}
 }
 
+//lyx:guard
 func TestEnforcement_ScankitStdlibOnly(t *testing.T) {
 	scankit.AssertImportAllowlist(t, "internal/testkit/scankit")
 }

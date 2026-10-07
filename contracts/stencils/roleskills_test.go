@@ -48,6 +48,7 @@ func skillLoadViolations(body string) []string {
 // TestStencils_NoSkillLoadInstructions fails for every registered stencil whose agent-facing body tells an agent to load a skill or names the Skill tool.
 //
 //testtiming:keep pins PATTERN-role-skills-typed's ban on a stencil telling an agent to load a skill or naming the Skill tool, a guard that fires which no other test asserts
+//lyx:guard
 func TestStencils_NoSkillLoadInstructions(t *testing.T) {
 	t.Parallel()
 

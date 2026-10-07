@@ -83,6 +83,8 @@ type pkgHermeticStatus struct {
 // Tier 1's offline guarantee), this guard scans every *_test.go file regardless of build
 // constraint: the git-spawning set is almost exactly the integration-tagged set, so skipping tagged
 // files the way tierpurity does would make this guard vacuous.
+//
+//lyx:guard
 func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 	var fileEntries, dirEntries []scankit.Entry
 	for _, e := range allowedNonHermetic {

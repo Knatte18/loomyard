@@ -16,13 +16,16 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planindex"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/Knatte18/quarry/quarry"
 )
 
 // fakeGit answers every websterengine.Git question from fields a test sets.
 // Its history is the commits registered through commit and merge; a SHA never registered does not exist.
-// The zero values answer as a clean, single-worktree repository with no ignored path and an empty delta.
+// The zero values answer as a clean, single-worktree repository with no ignored path.
 type fakeGit struct {
 	// head is the SHA HeadSHA returns.
 	head string
@@ -47,18 +50,62 @@ type fakeGit struct {
 	commitBlobs map[string]string
 	// treeBlobPaths maps "<commit>:<blob>" to the paths TreePathsWithBlob returns.
 	treeBlobPaths map[string][]string
+	// registered counts the SHAs minted so far.
+	registered int
+}
+
+// fakeIndex is the real planindex.Index except Delta, which answers from fields a test sets and records the commit range of every call.
+// The zero values answer an empty delta.
+type fakeIndex struct {
+	planindex.Index
 	// delta and deltaErr are what Delta returns.
 	delta    quarry.GitDeltaAnswer
 	deltaErr error
 	// deltaRanges records the commit range of every Delta call, in order.
 	deltaRanges []deltaRange
-	// registered counts the SHAs minted so far.
-	registered int
 }
 
 // deltaRange is the commit range of one Delta call.
 type deltaRange struct {
 	from, to string
+}
+
+var _ planindex.Index = (*fakeIndex)(nil)
+
+// newFakeIndex returns a fakeIndex over the real index.
+func newFakeIndex() *fakeIndex {
+	return &fakeIndex{Index: planglyph.NewIndex()}
+}
+
+func (i *fakeIndex) Delta(_, fromSHA, toSHA string) (planindex.Delta, error) {
+	i.deltaRanges = append(i.deltaRanges, deltaRange{from: fromSHA, to: toSHA})
+	return fakeDelta{answer: i.delta}, i.deltaErr
+}
+
+// indexOver returns the index a fixture over git runs on: a fakeIndex, returned twice so the caller can steer it, when git is a fake, and the real index, with a nil fakeIndex, when git is nil and the repository on disk answers.
+func indexOver(git websterengine.Git) (*fakeIndex, planindex.Index) {
+	if git == nil {
+		return nil, planglyph.NewIndex()
+	}
+	fake := newFakeIndex()
+	return fake, fake
+}
+
+// fakeDelta is a fixed quarry answer behind planindex.Delta, consumed by the real checks.
+type fakeDelta struct {
+	answer quarry.GitDeltaAnswer
+}
+
+func (d fakeDelta) BindHandles(plan *planparser.Plan, planDir string, cards []planparser.Card) ([]planindex.Finding, error) {
+	return planglyph.BindHandles(plan, planDir, d.answer, cards)
+}
+
+func (d fakeDelta) ScopeGuard(cards []planparser.Card) []planindex.Finding {
+	return planglyph.ScopeGuard(cards, d.answer)
+}
+
+func (d fakeDelta) DetectDrift(fullPlan *planparser.Plan, completed []planparser.Card, planDir, worktreeRoot, sha, now string) ([]planindex.Finding, error) {
+	return planglyph.DetectDrift(fullPlan, planglyph.PendingPlan(fullPlan, completed), planDir, worktreeRoot, d.answer, sha, now)
 }
 
 var _ websterengine.Git = (*fakeGit)(nil)
@@ -183,11 +230,6 @@ func (g *fakeGit) TreePathsWithBlob(_, commit, blob string) ([]string, error) {
 	paths := slices.Clone(g.treeBlobPaths[commit+":"+blob])
 	sort.Strings(paths)
 	return paths, nil
-}
-
-func (g *fakeGit) Delta(_, fromSHA, toSHA string) (quarry.GitDeltaAnswer, error) {
-	g.deltaRanges = append(g.deltaRanges, deltaRange{from: fromSHA, to: toSHA})
-	return g.delta, g.deltaErr
 }
 
 // writeWorktreeFile writes content at the slash-separated path rel under root, creating its directories.

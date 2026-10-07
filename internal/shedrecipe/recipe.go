@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/parentreview"
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -168,6 +169,9 @@ type Env struct {
 	// Rework is a whole-struct passthrough to loomshed.NewPRRework, following Env.Landing's own precedent:
 	// the producer has behaviour of its own -- the generation archive, the round record and the rejection removal -- that per-seam fakes must be able to substitute individually.
 	Rework loomshed.PRReworkDeps
+	// PlanIndex is the code index the "plan" and "rework-plan" gates resolve plan refs against.
+	// It arrives as an interface so this package, and the recipe packages built on it, link no tree-sitter grammar.
+	PlanIndex planindex.Index
 
 	// Slug is the run-wide task slug, read by all three batten entries (WorktreeCreate, InnerRun, WorktreeTeardown) for producer identity and stuck-reason text,
 	// and by the Bouncer entry for the `lyx loom circling` verbs its CIRCLING Awaiting Reason names.

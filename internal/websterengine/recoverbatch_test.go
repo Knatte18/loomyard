@@ -70,6 +70,8 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git) *recoverFixture {
 	t.Helper()
 
+	_, index := indexOver(git)
+
 	plan := &planparser.Plan{}
 	batches := []batcher.Batch{
 		{Cards: []planparser.Card{{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}}},
@@ -122,6 +124,7 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 			// nothing is ever written into it.
 			PlanDir: planDir,
 			Git:     git,
+			Index:   index,
 		},
 	}
 

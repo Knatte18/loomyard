@@ -65,6 +65,8 @@ var cwdMutationAllowlist = []scankit.Entry{
 // TestCwdMutation_MigratedFilesStayChdirFree walks the module tree and fails if any file on
 // cwdMutationSubjectFiles (other than a cwdMutationAllowlist entry) contains t.Chdir( or os.Chdir( as
 // a raw substring.
+//
+//lyx:guard
 func TestCwdMutation_MigratedFilesStayChdirFree(t *testing.T) {
 	subjects := scankit.NewAllowlist(cwdMutationSubjectFiles)
 	allow := scankit.NewAllowlist(cwdMutationAllowlist)
@@ -114,6 +116,7 @@ func firstCwdMutationToken(content string) (string, bool) {
 // TestCwdMutationGuard_NotVacuous proves this guard's matcher actually fires, mirroring how tierpurity_test.go carries its own banned tokens as test data: a planted violation string trips firstCwdMutationToken, and the one real allowlisted file — which genuinely still contains a banned token, read fresh from disk rather than assumed — is proven to stay silent through the allowlist branch, not through an accidental absence of the token it exists to exempt.
 //
 //testtiming:keep proves the TestCwdMutation_MigratedFilesStayChdirFree guard fires on a planted violation and stays silent for its allowlisted file
+//lyx:guard
 func TestCwdMutationGuard_NotVacuous(t *testing.T) {
 	planted := "func TestPlanted(t *testing.T) {\n\tt.Chdir(t.TempDir())\n}\n"
 	if tok, found := firstCwdMutationToken(planted); !found || tok != "t.Chdir(" {

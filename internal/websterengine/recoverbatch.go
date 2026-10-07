@@ -342,7 +342,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 		}
 	}
 
-	referenced, err := laterDeleteReferenceReasons(deps.Plan, deps.Batches, deps.State, batch.Cards, deps.Geom.WorktreeRoot)
+	referenced, err := laterDeleteReferenceReasons(deps.Plan, deps.Batches, deps.State, batch.Cards, deps.Geom)
 	if err != nil {
 		return nil, false, fmt.Errorf("%w; way forward: transient, re-run `lyx webster recover-batch %d`", err, batchNumber)
 	}

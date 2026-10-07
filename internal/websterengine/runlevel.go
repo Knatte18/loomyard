@@ -27,7 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -200,14 +200,10 @@ type RunResult struct {
 	Warnings []string
 }
 
-// hasBlockingFinding reports whether findings carries at least one planglyph.SeverityBlocking
-// entry, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding and
-// internal/loomcli/validate.go's own planFindingsHaveBlocking: severity, not finding count, decides
-// the verdict on every side of this parity, and Run's own pre-flight gate is the real gate the
-// other three mirror.
-func hasBlockingFinding(findings []planglyph.Finding) bool {
+// hasBlockingFinding reports whether findings carries at least one planindex.SeverityBlocking entry, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding and internal/loomcli/validate.go's own planFindingsHaveBlocking: severity, not finding count, decides the verdict on every side of this parity, and Run's own pre-flight gate is the real gate the other three mirror.
+func hasBlockingFinding(findings []planindex.Finding) bool {
 	for _, f := range findings {
-		if f.Severity == planglyph.SeverityBlocking {
+		if f.Severity == planindex.SeverityBlocking {
 			return true
 		}
 	}
@@ -553,7 +549,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// The scope here is DispatchScope, not completedCards: a batch begun but not recorded may already have landed its work, or not yet,
 	// and its forthcoming Create targets stay out of the status check.
 	begun, forthcoming := DispatchScope(batches, st)
-	findings, err := planglyph.ValidateDispatch(plan, deps.Geom.WorktreeRoot, begun, forthcoming)
+	index, err := deps.Geom.index()
+	if err != nil {
+		return RunResult{}, err
+	}
+	findings, err := index.ValidateDispatch(plan, deps.Geom.WorktreeRoot, begun, forthcoming)
 	// The resolve pass canonicalizes handles, rewriting the plan on disk before it reports either a
 	// finding or an error, so the staleness re-baseline runs HERE — ahead of both refusals below —
 	// and is persisted immediately. Restamping only past the refusals left state.json describing the
@@ -573,7 +573,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		err = fmt.Errorf("%w; additionally, persisting the plan-fingerprint re-baseline this run had already earned failed: %v", err, rebaseErr)
 	}
 	if err != nil {
-		if errors.Is(err, planglyph.ErrQuarryUnavailable) {
+		if errors.Is(err, planindex.ErrQuarryUnavailable) {
 			// Its own returned error, named for quarry rather than the plan — a gate that could not
 			// read the code has not found a plan defect to refuse the run over, matching
 			// internal/loomshed/planvalidate.go's producer-side disposition.

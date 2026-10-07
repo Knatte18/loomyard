@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -237,9 +238,10 @@ type (
 	reedOps        struct{ shuttleengine.ReedOps }
 	shuttleEngine  struct{ shuttleengine.Engine }
 	refMatcherSeam struct{ websterengine.RefMatcher }
+	indexSeam      struct{ planindex.Index }
 )
 
-// WebsterSeams returns a RunDeps whose Starter, Reed, Engine and RefMatcher are placeholders.
+// WebsterSeams returns a RunDeps whose Starter, Reed, Engine and RefMatcher, and the Index of its Geom, are placeholders.
 // Each embeds its interface in an empty struct, so it is non-nil for a constructor check and panics if any method is called.
 func WebsterSeams() websterengine.RunDeps {
 	return websterengine.RunDeps{
@@ -247,6 +249,7 @@ func WebsterSeams() websterengine.RunDeps {
 		Reed:       reedOps{},
 		Engine:     shuttleEngine{},
 		RefMatcher: refMatcherSeam{},
+		Geom:       websterengine.Geometry{Index: indexSeam{}},
 	}
 }
 

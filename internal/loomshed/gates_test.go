@@ -25,6 +25,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -182,7 +183,7 @@ func TestNewPlanGate(t *testing.T) {
 		worktreeRoot := t.TempDir()
 		seedPlanFormatFixture(t, anchorPath, false)
 
-		gate := NewPlanGate(anchorPath, worktreeRoot)
+		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex())
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
@@ -198,7 +199,7 @@ func TestNewPlanGate(t *testing.T) {
 		seedFormatInvalidPlanFixture(t, anchorPath)
 
 		buf := logcapture.Capture(t)
-		gate := NewPlanGate(anchorPath, worktreeRoot)
+		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex())
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
@@ -225,7 +226,7 @@ func TestNewPlanGate(t *testing.T) {
 		// so the gate must return an error rather than reporting GateResult{Passed: false}.
 		worktreeRoot := filepath.Join(t.TempDir(), "does-not-exist")
 
-		gate := NewPlanGate(anchorPath, worktreeRoot)
+		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex())
 		result, err := gate()
 		if err == nil {
 			t.Fatalf("gate() error = nil; want a non-nil error for a quarry-unavailable worktreeRoot")
@@ -246,7 +247,7 @@ func TestNewPlanGate(t *testing.T) {
 		seedGlyphPlanFixture(t, anchorPath, true, "newpkg#Bar", "")
 
 		buf := logcapture.Capture(t)
-		gate := NewPlanGate(anchorPath, worktreeRoot)
+		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex())
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
@@ -268,7 +269,7 @@ func TestNewPlanGate(t *testing.T) {
 		// blocking finding is enough to fail the gate.
 		seedGlyphPlanFixture(t, anchorPath, true, "newpkg#Bar", "sub#Missing")
 
-		gate := NewPlanGate(anchorPath, worktreeRoot)
+		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex())
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
@@ -314,7 +315,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 		// fmt.Errorf, never a *fs.PathError.
 		writeOverviewOnlyPlanDir(t, anchorPath, "---\nformat: [not, valid\n---\n\n## Card Index\n\n1 — c — c\n")
 
-		gate := NewPlanGate(anchorPath, worktreeRoot)
+		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex())
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil (a malformed overview is findings, not a returned error)", err)
@@ -337,7 +338,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 		}
 		writeOverviewOnlyPlanDir(t, anchorPath, overview)
 
-		gate := NewPlanGate(anchorPath, worktreeRoot)
+		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex())
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil (an unparseable card index line is findings, not a returned error)", err)
@@ -357,7 +358,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 		// fmt.Errorf, never wrapping the underlying *fs.PathError with %w -- so it is findings, the same
 		// disposition discussionparser.Validate already gives a missing file.
 
-		gate := NewPlanGate(anchorPath, worktreeRoot)
+		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex())
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil (an absent overview is findings, not a returned error)", err)
@@ -383,7 +384,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 			t.Fatalf("mkdir overview path: %v", err)
 		}
 
-		gate := NewPlanGate(anchorPath, worktreeRoot)
+		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex())
 		result, err := gate()
 		if err == nil {
 			t.Fatalf("gate() error = nil; want a non-nil error for an unreadable overview file")
@@ -407,7 +408,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 			t.Fatalf("mkdir card file path: %v", err)
 		}
 
-		gate := NewPlanGate(anchorPath, worktreeRoot)
+		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex())
 		result, err := gate()
 		if err == nil {
 			t.Fatalf("gate() error = nil; want a non-nil error for an unreadable card file")
@@ -422,22 +423,22 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 	})
 }
 
-// TestHasBlockingFinding_AgainstTheGate exercises the same fail-closed severity table planvalidate_test.go's TestHasBlockingFinding_UnrecognizedSeverityFailsClosed pins, asserted here against the exact predicate NewPlanGate's own pass/fail split calls: an unrecognized or zero-value Severity fails the gate closed rather than silently passing, because planglyph.Severity is an open string type and neither shape can occur through a real resolve-backed findings set -- only a hand-built Finding, or a future producer that forgets to stamp one, can carry either.
+// TestHasBlockingFinding_AgainstTheGate exercises the same fail-closed severity table planvalidate_test.go's TestHasBlockingFinding_UnrecognizedSeverityFailsClosed pins, asserted here against the exact predicate NewPlanGate's own pass/fail split calls: an unrecognized or zero-value Severity fails the gate closed rather than silently passing, because planindex.Severity is an open string type and neither shape can occur through a real resolve-backed findings set -- only a hand-built Finding, or a future producer that forgets to stamp one, can carry either.
 //
 //testtiming:keep pins that an unrecognized or zero severity fails the plan gate closed, which TestNewPlanGate never asserts
 func TestHasBlockingFinding_AgainstTheGate(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
-		severity planglyph.Severity
+		severity planindex.Severity
 		want     bool
 	}{
-		{"blocking blocks the gate", planglyph.SeverityBlocking, true},
-		{"informational passes the gate", planglyph.SeverityInformational, false},
-		{"the zero value blocks the gate", planglyph.Severity(""), true},
-		{"an unrecognized severity blocks the gate", planglyph.Severity("advisory"), true},
+		{"blocking blocks the gate", planindex.SeverityBlocking, true},
+		{"informational passes the gate", planindex.SeverityInformational, false},
+		{"the zero value blocks the gate", planindex.Severity(""), true},
+		{"an unrecognized severity blocks the gate", planindex.Severity("advisory"), true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			got := hasBlockingFinding([]planglyph.Finding{{Check: "some-check", Severity: tt.severity}})
+			got := hasBlockingFinding([]planindex.Finding{{Check: "some-check", Severity: tt.severity}})
 			if got != tt.want {
 				t.Errorf("hasBlockingFinding(severity %q) = %v; want %v", tt.severity, got, tt.want)
 			}
@@ -495,7 +496,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 		worktreeRoot := plankit.Repo(t, builtRepo)
 		committed := seedReworkGlyphPlan(t, anchorPath, 2, "newpkg#Bar", "")
 
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, committedReader(committed))()
+		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(), committedReader(committed))()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -509,7 +510,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 		worktreeRoot := plankit.Repo(t, builtRepo)
 		committed := seedReworkGlyphPlan(t, anchorPath, 1, "newpkg#Bar", "")
 
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, committedReader(committed))()
+		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(), committedReader(committed))()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -523,7 +524,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 		worktreeRoot := plankit.Repo(t, builtRepo)
 		committed := seedReworkGlyphPlan(t, anchorPath, 2, "newpkg#Bar", "sub#Missing")
 
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, committedReader(committed))()
+		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(), committedReader(committed))()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -537,7 +538,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 		worktreeRoot := plankit.Repo(t, builtRepo)
 		committed := seedReworkGlyphPlan(t, anchorPath, 2, "sub#Foo", "")
 
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, committedReader(committed))()
+		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(), committedReader(committed))()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -551,7 +552,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 		worktreeRoot := plankit.Repo(t, builtRepo)
 		seedReworkGlyphPlan(t, anchorPath, 2, "newpkg#Bar", "")
 
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, committedReader(nil))()
+		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(), committedReader(nil))()
 		if err == nil {
 			t.Fatalf("gate() = %+v, nil; want an error when HEAD carries no plan", result)
 		}

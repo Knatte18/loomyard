@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -141,7 +142,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 		reed:       reed,
 		anchorRel:  layout.AnchorRel,
 		shuttleCfg: shuttleCfg,
-		geom:       hubgeom.WebsterGeometry(layout),
+		geom:       hubGeometryWithIndex(layout),
 		refMatcher: fabricengine.NewRefScanner(layout),
 		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) },
 		cfg: websterengine.Config{
@@ -1195,4 +1196,11 @@ func TestBracketVerbs_NoRunInProgressWayForward(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"}); code != 0 {
 		t.Fatalf("begin-batch 1 once the run exists = %d; want 0, output: %s", code, out.String())
 	}
+}
+
+// hubGeometryWithIndex returns the hub geometry of layout with the real code index the CLI layer wires.
+func hubGeometryWithIndex(layout *lyxcwd.Location) websterengine.Geometry {
+	geom := hubgeom.WebsterGeometry(layout)
+	geom.Index = planglyph.NewIndex()
+	return geom
 }

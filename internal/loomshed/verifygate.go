@@ -1,4 +1,4 @@
-// verifygate.go implements NewVerifyGate, the must-pass gate that holds a Burler round's handoff until the plan's verify command passes on the committed tree.
+// verifygate.go implements NewVerifyGate, the must-pass gate that holds a Burler round's handoff until the comment lint and the round's impacted-set command pass on the committed tree.
 
 package loomshed
 
@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/commentlint"
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -18,14 +20,20 @@ import (
 // verifyLogTailBytes bounds how much of the verify log a failing verdict quotes.
 const verifyLogTailBytes = 4096
 
-// NewVerifyGate returns a must-pass shuttleengine.Gate that, at each arrival, parses the plan under anchorPath for its `## verify:` command and runs verifytree.Verify over worktreeRoot, keeping its record, marker and log in verifyDir.
+// NewVerifyGate returns a must-pass shuttleengine.Gate that, at each arrival, parses the plan under anchorPath for its `## verify:` command, lints the comments the round added, and runs the round's command through verifytree.Verify over worktreeRoot, keeping its record, marker and log in verifyDir.
 // siteLabel names the call site in the running marker, and the closure's own count of its calls is the attempt.
+//
+// The base of the round is the commit of the plan verify command's latest recorded pass.
+// With a usable base the comment lint runs from it to HEAD before any test, and the round command is the impacted-set command impactset derives.
+// With no usable base the lint passes and the round command is the plan's own verify command, as it is wherever impactset names a fallback.
+// The pass of the round command keeps the plan verify command's record entry, so the next round still diffs from it.
 //
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
 // `StatusFailed` fails with the exit code, the log path and the log's tail.
+// A comment lint finding, or a test file the guard scan rejects such as a misplaced `//lyx:guard` marker, fails with its file and line and the way forward.
 // A plan with no `## verify:` section passes with a logged warning.
-// A plan read error or a cancelled verify is a returned error, since neither is a defect the writer can fix.
+// A plan read error, a failure to read git or a package directory, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
 func NewVerifyGate(anchorPath, worktreeRoot, verifyDir, siteLabel string) shuttleengine.Gate {
 	attempt := 0
 	paths := verifytree.NewPaths(worktreeRoot, verifyDir)
@@ -41,7 +49,36 @@ func NewVerifyGate(anchorPath, worktreeRoot, verifyDir, siteLabel string) shuttl
 			return shuttleengine.GateResult{Passed: true}, nil
 		}
 
-		res, err := verifytree.Verify(context.Background(), paths, verifytree.Site{Label: siteLabel, Attempt: attempt}, plan.Verify, verifytree.Timeout)
+		base := ""
+		if pass, ok := verifytree.LatestPass(paths, plan.Verify); ok {
+			base = pass.Commit
+		}
+		derivation, err := impactset.Derive(worktreeRoot, base)
+		if impactset.IsGuardScanError(err) {
+			logger.Warn("loomshed: verify gate found a test file the guard scan rejects", "gate", siteLabel, "attempt", attempt, "err", err)
+			return shuttleengine.GateResult{Passed: false, Findings: guardScanFindings(err)}, nil
+		}
+		if err != nil {
+			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: derive the round command: %w", err)
+		}
+		if derivation.Base != "" {
+			commentFindings, err := commentlint.Lint(worktreeRoot, derivation.Base)
+			if err != nil {
+				return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: lint the comments: %w", err)
+			}
+			if len(commentFindings) > 0 {
+				logger.Warn("loomshed: verify gate found fixed-column comment wraps", "gate", siteLabel, "attempt", attempt, "count", len(commentFindings))
+				return shuttleengine.GateResult{Passed: false, Findings: commentLintFindings(commentFindings)}, nil
+			}
+		}
+		command := derivation.Command
+		if command == "" {
+			command = plan.Verify
+			logger.Info("loomshed: verify gate runs the plan's verify command", "gate", siteLabel, "attempt", attempt, "reason", derivation.Fallback)
+		}
+
+		site := verifytree.Site{Label: siteLabel, Attempt: attempt, BaseCommand: plan.Verify}
+		res, err := verifytree.Verify(context.Background(), paths, site, command, verifytree.Timeout)
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: %w", err)
 		}
@@ -58,6 +95,21 @@ func NewVerifyGate(anchorPath, worktreeRoot, verifyDir, siteLabel string) shuttl
 			return shuttleengine.GateResult{Passed: false, Findings: findings}, nil
 		}
 	}
+}
+
+// guardScanFindings renders a guard scan rejection with the file and line it names and the way to fix it.
+func guardScanFindings(err error) string {
+	return fmt.Sprintf("A test file blocks the guard scan, so no test ran: %v.\n\nPut `//lyx:guard` on the line directly above its top-level `func Test…` line (only `//testtiming:keep` lines may sit between), keep it out of `tmux` and `llm` test files, and make every test file parse.\n", err)
+}
+
+// commentLintFindings renders the comment lint's findings as one line each, file and line first.
+func commentLintFindings(findings []commentlint.Finding) string {
+	var b strings.Builder
+	b.WriteString("The round added fixed-column-wrapped comment lines, so no test ran. Break each comment at sentence boundaries, one sentence per line:\n\n")
+	for _, f := range findings {
+		fmt.Fprintf(&b, "%s:%d: %s\n", f.File, f.Line, f.Text)
+	}
+	return b.String()
 }
 
 // verifyFailureFindings renders a StatusFailed result as the exit code or the timeout, the log path and the log's tail.

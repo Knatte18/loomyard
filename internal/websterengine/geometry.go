@@ -9,6 +9,15 @@
 
 package websterengine
 
+import (
+	"errors"
+
+	"github.com/Knatte18/loomyard/internal/planindex"
+)
+
+// errNoIndex is returned by a call that needs the code index when Geometry.Index was never wired.
+var errNoIndex = errors.New("webster: the geometry carries no code index; the CLI layer must set Geometry.Index")
+
 // Geometry is the set of paths webster is told, once, at construction, and never derives itself, plus the Git it reads them through.
 // No method here validates or recomputes any field — populating every path field with a usable absolute
 // path is entirely the caller's obligation.
@@ -62,4 +71,16 @@ type Geometry struct {
 	// It derives no path.
 	// It is a field here because every function that reads git already receives the Geometry.
 	Git Git
+	// Index is the code index the plan gates and the batch delta checks call.
+	// The CLI layer sets it; hubgeom and standalonegeom leave it empty because they sit below cliwire and must not link the index.
+	// A call that reaches a nil Index returns an error naming the missing wiring.
+	Index planindex.Index
+}
+
+// index returns the geometry's code index, or errNoIndex when none was wired.
+func (g Geometry) index() (planindex.Index, error) {
+	if g.Index == nil {
+		return nil, errNoIndex
+	}
+	return g.Index, nil
 }

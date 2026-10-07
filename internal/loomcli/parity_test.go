@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -191,6 +192,7 @@ func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *lo
 	}
 
 	return &loomCLI{env: shedrecipe.Env{
+		PlanIndex:    planglyph.NewIndex(),
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
 	}}
@@ -225,6 +227,7 @@ func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, 
 	})
 
 	return &loomCLI{env: shedrecipe.Env{
+		PlanIndex:    planglyph.NewIndex(),
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
 	}}
@@ -297,7 +300,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 			// rather than folded into the pv == cv comparison every other fixture uses.
 			name: "NoPlanDirectory",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
-				return &loomCLI{env: shedrecipe.Env{AnchorPath: anchorPath, WorktreeRoot: worktreeRoot}}
+				return &loomCLI{env: shedrecipe.Env{AnchorPath: anchorPath, WorktreeRoot: worktreeRoot, PlanIndex: planglyph.NewIndex()}}
 			},
 			wantGate: verdictStuck,
 			wantCLI:  verdictError,
@@ -352,7 +355,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 			worktreeRoot := t.TempDir()
 			c := tc.build(t, anchorPath, worktreeRoot)
 
-			gate := loomshed.NewPlanGate(c.env.AnchorPath, c.env.WorktreeRoot)
+			gate := loomshed.NewPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, planglyph.NewIndex())
 			result, err := gate()
 			pv := producerVerdict(result, err)
 
@@ -518,6 +521,7 @@ func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumb
 		}
 	}
 	return &loomCLI{env: shedrecipe.Env{
+		PlanIndex:    planglyph.NewIndex(),
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
 		Rework: loomshed.PRReworkDeps{ReadCommitted: func(rel string) ([]byte, bool, error) {
@@ -549,7 +553,7 @@ func TestGateParity_ReworkPlanGate(t *testing.T) {
 			plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 			c := reworkParityFixture(t, anchorPath, worktreeRoot, tt.cardNumber, tt.uses, tt.committed)
 
-			result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.Rework.ReadCommitted)()
+			result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, planglyph.NewIndex(), c.env.Rework.ReadCommitted)()
 			pv := producerVerdict(result, err)
 
 			var out bytes.Buffer

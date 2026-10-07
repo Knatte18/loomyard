@@ -118,24 +118,55 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
+	return g.verdict(result, "verify", producer, parentBranch)
+}
 
+// checkPublishVerify runs publishCommand, landing config's `publish_verify`, for producer after the plan's verify passed.
+// An empty publishCommand runs nothing and logs nothing.
+// The plan's verify command is the site's BaseCommand, so the pass keeps the plan-verify entry of the record.
+//
+// It returns a non-empty Stuck reason naming `publish_verify` when the command fails or the tree is dirty.
+// It returns a non-nil error for an infrastructure fault or a cancellation, and ("", nil) when the producer may proceed.
+func (g verifyGate) checkPublishVerify(ctx context.Context, producer, parentBranch, publishCommand string) (string, error) {
+	if publishCommand == "" {
+		return "", nil
+	}
+
+	planCommand := ""
+	if g.command != nil {
+		var err error
+		if planCommand, err = g.command(); err != nil {
+			return "", fmt.Errorf("landingshed: %s: read verify command: %w", producer, err)
+		}
+	}
+
+	result, err := g.verify(ctx, g.paths, verifytree.Site{Label: producer, BaseCommand: planCommand}, publishCommand)
+	if err != nil {
+		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
+	}
+	return g.verdict(result, "publish_verify", producer, parentBranch)
+}
+
+// verdict maps a verify result to the producer's decision, naming the command's config source as what.
+// It returns a non-empty Stuck reason for a dirty tree or a failed command, an error for an unknown status, and ("", nil) when the producer may proceed.
+func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBranch string) (string, error) {
 	switch result.Status {
 	case verifytree.StatusPassed:
-		logger.Info("landingshed: post-merge verify passed", "producer", producer, "parentBranch", parentBranch)
+		logger.Info("landingshed: post-merge "+what+" passed", "producer", producer, "parentBranch", parentBranch)
 	case verifytree.StatusSkipped:
-		logger.Info("landingshed: post-merge verify skipped because the tree is already verified", "producer", producer, "parentBranch", parentBranch, "tree", result.Tree)
+		logger.Info("landingshed: post-merge "+what+" skipped because the tree is already verified", "producer", producer, "parentBranch", parentBranch, "tree", result.Tree)
 	case verifytree.StatusDirty:
-		return dirtyReason("when the verify was about to run", result.Dirty), nil
+		return dirtyReason("when the "+what+" was about to run", result.Dirty), nil
 	case verifytree.StatusFailed:
 		if result.TimedOut {
 			return fmt.Sprintf("verify did not finish within %s after merging parent branch %q; output: %s; fix the hanging test on the task branch, then resume", verifytree.Timeout, parentBranch, g.paths.Log), nil
 		}
 		if result.ExitCode < 0 {
-			return fmt.Sprintf("verify could not start after merging parent branch %q: %s; output: %s", parentBranch, result.Detail, g.paths.Log), nil
+			return fmt.Sprintf("%s could not start after merging parent branch %q: %s; output: %s", what, parentBranch, result.Detail, g.paths.Log), nil
 		}
-		return fmt.Sprintf("verify failed after merging parent branch %q (exit code %d); output: %s; fix forward on the task branch, then resume", parentBranch, result.ExitCode, g.paths.Log), nil
+		return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s; fix forward on the task branch, then resume", what, parentBranch, result.ExitCode, g.paths.Log), nil
 	default:
-		return "", fmt.Errorf("landingshed: %s: unknown verify status %q", producer, result.Status)
+		return "", fmt.Errorf("landingshed: %s: unknown %s status %q", producer, what, result.Status)
 	}
 	return "", nil
 }

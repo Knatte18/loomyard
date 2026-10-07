@@ -79,6 +79,8 @@ func glyphChokepointViolation(data []byte) (line int, reason string) {
 // TestGlyphConversionChokepoint_NoLocalConversion walks every non-test *.go file under internal/
 // and cmd/ and fails on the first file carrying a
 // chokepoint violation.
+//
+//lyx:guard
 func TestGlyphConversionChokepoint_NoLocalConversion(t *testing.T) {
 	var failures []string
 

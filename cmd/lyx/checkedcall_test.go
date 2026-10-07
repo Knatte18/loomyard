@@ -106,6 +106,8 @@ const checkedCallMinScannedFiles = 200
 // adjacent //gitexec:raw marker, on the same line or the line immediately above, and (2) the
 // resulting per-package raw-site count matches checkedCallPinnedRawSites exactly, treating an unlisted
 // package as pinned zero.
+//
+//lyx:guard
 func TestCheckedCallInvariant_RawSitesMarkedAndPinned(t *testing.T) {
 	var markerFailures []string
 	pkgRawCounts := map[string]int{}

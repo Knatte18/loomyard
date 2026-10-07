@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -153,6 +154,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	}
 
 	geom := hubgeom.WebsterGeometry(loc)
+	geom.Index = planglyph.NewIndex()
 	if stencilsDir != "" {
 		// The same boundary stat standalone's prologue applies, through the same descriptor method,
 		// so the two modes can never drift on what a told stencils directory must be: a typo'd
@@ -242,6 +244,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	}
 
 	geom := standalonegeom.WebsterGeometry(res.Target, res.StateDir)
+	geom.Index = planglyph.NewIndex()
 	reedGeom := standalonegeom.ReedGeometry(res.Target, res.StateDir, res.Hash8)
 	geom.StencilsDir = res.StencilsDir
 	geom.PlanDir = res.PlanDir

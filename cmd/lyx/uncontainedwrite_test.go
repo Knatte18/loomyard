@@ -95,6 +95,8 @@ const uncontainedWriteMinScannedFiles = 30
 // uncontainedWriteBannedTokens — a raw filesystem-write primitive that must instead route through an
 // os.Root rooted at the hub (the write-side containment chokepoint) or be an allowlisted, reasoned
 // exemption. It is the write-side twin of TestNoDestructiveBypass_FabricengineProductionSource.
+//
+//lyx:guard
 func TestNoUncontainedWrite_FabricengineProductionSource(t *testing.T) {
 	allow := scankit.NewAllowlist(uncontainedWriteAllowlist)
 

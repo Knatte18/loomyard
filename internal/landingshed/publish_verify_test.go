@@ -6,6 +6,7 @@ package landingshed
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -127,6 +128,62 @@ func TestPublishVerify_HaltsOnVerifyResult(t *testing.T) {
 			}
 			if fx.gate.fake.dirtyCalls != 2 {
 				t.Errorf("clean-tree checks = %d; want 2, the check after the verify never running", fx.gate.fake.dirtyCalls)
+			}
+		})
+	}
+}
+
+// TestPublishVerify_PublishVerifyCommand pins that a configured `publish_verify` runs after the plan's verify at site Publish with the plan's command as the base command.
+// Its failure ends Stuck naming the key, the exit code and the log, before anything is pushed or GitHub is reached.
+func TestPublishVerify_PublishVerifyCommand(t *testing.T) {
+	const planCommand, publishCommand = "go test ./...", "go test -tags tmux ./..."
+	tests := []struct {
+		name       string
+		result     verifytree.Result
+		wantStuck  bool
+		wantChecks int
+	}{
+		{"pass", verifytree.Result{Status: verifytree.StatusPassed}, false, 3},
+		{"failure", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 4}, true, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newPublishVerifyFixture(t, planCommand, false)
+			fx.p.deps.Config.PublishVerify = publishCommand
+			fx.gate.fake.resultByCommand = map[string]verifytree.Result{publishCommand: tt.result}
+			if tt.wantStuck {
+				failOnGitHubClient(t)
+			}
+
+			outcome, reason, err := fx.call(t)
+			if err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			if got, want := fx.gate.fake.commands, []string{planCommand, publishCommand}; !slices.Equal(got, want) {
+				t.Errorf("verified commands = %q; want %q", got, want)
+			}
+			if got, want := fx.gate.fake.sites[1], (verifytree.Site{Label: "Publish", BaseCommand: planCommand}); got != want {
+				t.Errorf("publish_verify site = %+v; want %+v", got, want)
+			}
+			if fx.gate.fake.dirtyCalls != tt.wantChecks {
+				t.Errorf("clean-tree checks = %d; want %d", fx.gate.fake.dirtyCalls, tt.wantChecks)
+			}
+			if !tt.wantStuck {
+				if outcome != shedengine.Done || !fx.pushed {
+					t.Errorf("Call() = %q, pushed = %v; want Done and a push", outcome, fx.pushed)
+				}
+				return
+			}
+			if outcome != shedengine.Stuck {
+				t.Fatalf("Call() = %q; want Stuck", outcome)
+			}
+			for _, want := range []string{"publish_verify", "exit code 4", fx.gate.paths.Log} {
+				if !strings.Contains(reason, want) {
+					t.Errorf("reason %q lacks %q", reason, want)
+				}
+			}
+			if fx.pushed {
+				t.Error("push ran after a failed publish_verify")
 			}
 		})
 	}

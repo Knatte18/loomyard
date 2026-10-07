@@ -275,6 +275,11 @@ and halt Stuck on failure before anything is pushed or landed.
 Both also halt Stuck on a dirty tree, so only committed content is ever verified, pushed or landed.
 The section must cover what a parent merge can break.
 
+The section runs, in this order, `go build ./...`, `go vet` under each of `-tags integration`, `-tags tmux` and `-tags llm`, the untagged tier (`go test`), then the `integration` tier (`go test -tags integration`).
+The `tmux` tier is run at Publish by landing config's `publish_verify` where the repo sets it, never by the plan.
+Webster's gate, Publish and Finalize run the section itself, and Publish then runs `publish_verify` after it.
+The Webster-Burler round gate instead runs a derived impacted-set command between rounds.
+
 The three tiers match this repo's own test-tier discipline — `internal/planparser`'s existing `Verify` fields are the V1 precedent this generalizes, not three tiers invented for this format:
 
 - **Tier 1 (per card, automatic, no author action).**
@@ -289,7 +294,7 @@ The three tiers match this repo's own test-tier discipline — `internal/planpar
 - **Tier 3 (rare, explicit only, never automatic).**
   Tests that drive a real LLM, gated by the `llm` build tag — expensive in both wall-clock and tokens.
   Never swept into an automatic per-card or per-plan gate under any circumstance; a plan's `## verify:` compiles them (`go vet -tags llm`) and never runs them.
-  The `tmux` tag is a separate, token-free tier that a plan's `## verify:` may run; which gate runs it by default is left to the board note `test-tiers`.
+  The `tmux` tag is a separate, token-free tier that a plan's `## verify:` compiles (`go vet -tags tmux`) and never runs; Publish runs it through landing config's `publish_verify`.
   A card that genuinely needs one is exactly what the optional `Verify:` field is for: an explicit, author-named exception, never something inferred.
 
 The optional per-card `Verify:` field exists for what tier 1's automatic gate cannot catch on its own — a specific CLI smoke test, a targeted tier 2 scenario, or, rarely, a tier 3 case.

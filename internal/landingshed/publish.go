@@ -155,11 +155,16 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	// the verified-tree record decides whether this tree was already verified.
 	// The tree must be clean after the merge-in, so the verify runs on committed content,
 	// and clean after the verify, since a verify that dirties the tree is a non-hermetic test and halts rather than ships.
+	// The repo's publish_verify, when set, runs after the plan's verify and before that last check.
 	reason, err = p.gate.clean(publishName, "after the merge-in")
 	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
 		return outcome, out, err
 	}
 	reason, err = p.gate.check(ctx, publishName, p.deps.ParentBranch)
+	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
+		return outcome, out, err
+	}
+	reason, err = p.gate.checkPublishVerify(ctx, publishName, p.deps.ParentBranch, p.deps.Config.PublishVerify)
 	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
 		return outcome, out, err
 	}

@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
@@ -96,7 +97,7 @@ func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
 	}
 
 	buf := logcapture.Capture(t)
-	gate := NewPlanGate(anchorPath, anchorPath)
+	gate := NewPlanGate(anchorPath, anchorPath, planglyph.NewIndex())
 
 	result, err := gate()
 	if err != nil {

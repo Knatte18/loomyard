@@ -256,3 +256,98 @@ The `-tags tmux` run's five slowest top-level tests (run 4):
 | `TestSmokeDotFillFloorIsCleanOnASettledAttach` | `internal/reedcli` | 24.82 s |
 | `TestSmokeDotFillResizeTreatment` | `internal/reedcli` | 22.97 s |
 | `TestSmokeDotFillResizeControl` | `internal/reedcli` | 22.68 s |
+
+## test-tiers: after the round-gate and link cuts
+
+The after-state of the `test-tiers` task: the round gate narrowed, `websterengine` and `loomshed` off the code index, and the guards and budget in place.
+This section is a measurement report: it records one run and is not meant to stay true.
+
+### After state (2026-10-07)
+
+```yaml
+machine: AMD Ryzen AI 7 445 w/ Radeon 840M, 12 threads
+os: Linux 7.0.0-31-generic (Ubuntu), bare metal
+go: go1.26.0 linux/amd64
+revision: 53d33c500
+load_average_before: 2.89 8.93 9.81
+load_average_after: 4.45 9.27 10.62
+tier_1_top_level_tests: 2829
+integration_top_level_tests: 3508
+tmux_top_level_tests: 2894
+tier_1_wall: 6.67 s
+integration_wall: 34.46 s
+tmux_wall: 101.52 s
+```
+
+Same method as `test-suite-measure`: `go build ./...` first, then four runs each of `go run ./cmd/testtiming`, `-tags integration` and `-tags tmux`, the first of each discarded as cold, and the median wall time of the other three.
+Tier 1 runs were 6.44, 6.67 and 6.68 s.
+Integration runs were 45.94, 34.46 and 30.35 s.
+Tmux runs were 101.61, 98.57 and 101.52 s.
+Test counts sum the `TESTS` column of the final run of each tier and cover top-level tests only.
+The tiers are separate tag sets and do not nest, so each tier's count includes the untagged tests it recompiles with.
+The load average before was taken right after `go build ./...`, while other sessions' load was still decaying from the previous minutes.
+
+The `tmux` tier passed in all four runs, `TestSmokeDotFill`'s `CrossClientControl` subtest included.
+
+The integration run's twenty slowest top-level tests (run 4):
+
+| Test | Package | Elapsed |
+|---|---|---|
+| `TestBattenIntegration_Rows` | `internal/battencli` | 12.82 s |
+| `TestRunCLI_MergeScenario` | `internal/fabriccli` | 5.86 s |
+| `TestRunCLI_AdoptRemoteWeftScenario` | `internal/fabriccli` | 4.73 s |
+| `TestLoomFailedReedUpRefuses` | `internal/loomcli` | 4.51 s |
+| `TestLoomPreBootstrapPair` | `internal/loomcli` | 4.27 s |
+| `TestCrossCompileLinux` | `cmd/lyx` | 3.78 s |
+| `TestLoomStatusAndPauseOnNeverBootstrappedPair` | `internal/loomcli` | 3.73 s |
+| `TestResetCmd` | `internal/webstercli` | 3.60 s |
+| `TestRunCLI_CleanupRemoveScenario` | `internal/fabriccli` | 3.54 s |
+| `TestExitSweep_ConfiguredCountKeepsNewestSeededTraces` | `cmd/lyx` | 3.30 s |
+| `TestRootHookWritesTraceFileOnNonZeroExit` | `cmd/lyx` | 3.24 s |
+| `TestBuild_ProducesExecutableBinary` | `internal/testkit/lyxbin` | 3.04 s |
+| `TestExitSweep_InvalidConfigWarnsAndKeepsExitCode` | `cmd/lyx` | 2.99 s |
+| `TestFinalize_OverRealHub` | `internal/landingshed` | 2.86 s |
+| `TestSpawnScenario` | `internal/ideengine` | 2.73 s |
+| `TestRunCLI_HubMutationScenario` | `internal/fabriccli` | 2.56 s |
+| `TestEnforcement_FabricVocabulary` | `internal/lyxcwd` | 2.43 s |
+| `TestVerbCases_CleanState` | `internal/fabricengine` | 2.32 s |
+| `TestSync` | `internal/boardengine/boardtest` | 2.16 s |
+| `TestConcurrentReadsDuringUpserts` | `internal/boardengine/boardtest` | 2.14 s |
+
+The `-tags tmux` run's five slowest top-level tests (run 4):
+
+| Test | Package | Elapsed |
+|---|---|---|
+| `TestSmokeRepaintCandidateMeasurement` | `internal/reedcli` | 17.48 s |
+| `TestSmokeStatusStrandAcrossDriverSeeds` | `internal/loomcli` | 16.85 s |
+| `TestSmokeDotFill` | `internal/reedcli` | 16.67 s |
+| `TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps` | `internal/loomcli` | 15.83 s |
+| `TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning` | `internal/loomcli` | 14.50 s |
+
+### Tree-sitter links
+
+Test binaries linking `github.com/tree-sitter/go-tree-sitter`, counted by `go list -test -deps -tags integration,tmux,llm ./...`:
+
+| State | Test binaries |
+|---|---|
+| Before (this plan's measurement on the before tree) | 44 |
+| After | 8 |
+
+The eight after-state binaries are the CLI packages that call the index (`cmd/lyx`, `loomcli`, `shedcli`, `webstercli`, `quarrycli`), `planglyph`, and the test binaries of `websterengine` and `loomshed`, whose tests drive the real index.
+
+Forced-relink `go test -c` per package, three runs each after one warm build, relinking through a changed `-ldflags` value:
+
+| Package | Links tree-sitter | Relink runs |
+|---|---|---|
+| `internal/websterengine` | yes | 1.09, 1.10, 1.14 s |
+| `internal/loomshed` | yes | 1.03, 1.03, 1.01 s |
+| `internal/shedrecipe` | no | 0.60, 0.63, 0.64 s |
+| `internal/configreg` | no | 0.47, 0.46, 0.44 s |
+| `internal/fabricengine` | no | 0.46, 0.45, 0.47 s |
+| `internal/hubgeom` | no | 0.42, 0.41, 0.41 s |
+| `internal/verifytree` | no | 0.23, 0.22, 0.26 s |
+
+On the before tree the same relink took about 1.3–1.4 s for a binary linking tree-sitter through `websterengine` (`configreg`, `hubgeom`) against 0.45–0.85 s for comparable binaries that do not (`verifytree`, `fabricengine`), and 3.0 s for `websterengine` itself.
+Both seams now link it only where the tests drive the real index, and `configreg` and `hubgeom` fall to the cgo-free range.
+The suite's top-level test count and the integration tier's wall time, before (`test-suite-measure`'s before-state: 5593 tests, 57.05 s) and after (3508 tests, 34.46 s), go into the PR description.
+The counts do not compare one to one: the retag moved tmux-starting files out of the integration tier and the prune tasks removed redundant tests between the two states.

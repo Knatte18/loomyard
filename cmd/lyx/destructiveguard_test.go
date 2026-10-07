@@ -179,6 +179,8 @@ var destructiveGuardReadOnlyResultTypes = []struct {
 }
 
 // TestNoDestructiveBypass_FabricengineProductionSource walks internal/fabricengine's non-test .go files and fails if any of them (other than a destructiveGuardAllowlist entry) contains one of destructiveGuardBannedTokens — the construction/call tokens a destructive primitive reached outside the gate would carry.
+//
+//lyx:guard
 func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 	allow := scankit.NewAllowlist(destructiveGuardAllowlist)
 
@@ -224,6 +226,7 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 // See this file's header comment for this guard's blind spots: it pins the parameter and the embed by declaration inspection only, never that an executor body actually appends, nor that what it appends is correct.
 //
 //testtiming:keep internal/fabricengine/doc.go names this test as the Mutation Record Invariant's guard
+//lyx:guard
 func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
 	moduleRoot := scankit.Root(t)
 

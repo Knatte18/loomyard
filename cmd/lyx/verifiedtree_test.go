@@ -50,6 +50,8 @@ func callsAny(data []byte, token string) bool {
 }
 
 // TestVerifiedTree_PlanVerifySitesCallVerify fails when a plan-verify site does not call or hold verifytree.Verify.
+//
+//lyx:guard
 func TestVerifiedTree_PlanVerifySitesCallVerify(t *testing.T) {
 	seen := map[string]bool{}
 	scankit.Walk(t, scankit.Options{Roots: []string{"internal"}}, func(f *scankit.File) {
@@ -71,6 +73,8 @@ func TestVerifiedTree_PlanVerifySitesCallVerify(t *testing.T) {
 }
 
 // TestVerifiedTree_NoOtherVerifyRunCaller fails when a production file outside internal/verifytree calls verifyrun.Run.
+//
+//lyx:guard
 func TestVerifiedTree_NoOtherVerifyRunCaller(t *testing.T) {
 	allowedSeen := map[string]bool{}
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd"}}, func(f *scankit.File) {
@@ -92,6 +96,8 @@ func TestVerifiedTree_NoOtherVerifyRunCaller(t *testing.T) {
 }
 
 // TestVerifiedTree_NoRetiredMarker fails when a production file names the retired verify-pending marker.
+//
+//lyx:guard
 func TestVerifiedTree_NoRetiredMarker(t *testing.T) {
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd"}}, func(f *scankit.File) {
 		if callsAny(f.Data, retiredMarkerName) {

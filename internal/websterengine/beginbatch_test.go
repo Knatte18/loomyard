@@ -116,6 +116,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	worktree := t.TempDir()
 	writeWorktreeFile(t, worktree, "base.txt", "base")
 	git := newFakeGit()
+	index := newFakeIndex()
 
 	promptsDir := t.TempDir()
 	reed := &shuttlefake.Reed{}
@@ -142,13 +143,14 @@ func newBeginFixture(t *testing.T) *beginFixture {
 			SpecsDir:     fabricengine.SpecsDir(hubPath),
 			PlanDir:      planDir,
 			Git:          git,
+			Index:        index,
 		},
 	}
 
 	return &beginFixture{Deps: deps, Reed: reed, Git: git, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
 }
 
-// TestBeginBatch_Refusals proves each entry refusal names its way forward: a pause, a plan edited after run init, and a report already on disk for a terminal record (left untouched) or for a begun non-terminal record (left for record-batch), each message naming the record it saw.
+// TestBeginBatch_Refusals proves each entry refusal names its way forward: a pause, a plan edited after run init, and a report already on disk for a terminal record (left untouched) or for a begun non-terminal record (left for record-batch), each message naming the record it saw, and a geometry with no code index, whose message names the missing wiring.
 func TestBeginBatch_Refusals(t *testing.T) {
 	t.Parallel()
 
@@ -219,6 +221,13 @@ func TestBeginBatch_Refusals(t *testing.T) {
 					t.Errorf("stat(report) = %v; want it left for record-batch", statErr)
 				}
 			},
+		},
+		{
+			name: "a geometry with no code index names the missing wiring",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Deps.Geom.Index = nil
+			},
+			wantText: []string{"Geometry.Index"},
 		},
 	}
 	for _, tt := range tests {
@@ -318,7 +327,7 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 				}
 			},
 			number: 1,
-			want:   []string{"`go build ./... && go test ./... && go test -tags integration ./internal/alpha`"},
+			want:   []string{"`go build ./... && go test ./... && go test -tags integration ./internal/alpha && lyx loom lint-comments`"},
 		},
 	}
 	for _, tt := range tests {
