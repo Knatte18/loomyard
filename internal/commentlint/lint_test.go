@@ -70,6 +70,7 @@ func TestFindNewWrappedBreaks(t *testing.T) {
 		{"an indented code paragraph is never flagged", "", source("// a wrapped", "// line", "//\tcode"), nil},
 		{"a list item paragraph is never flagged", "", source("// a wrapped", "// line", "// - item"), nil},
 		{"a heading paragraph is never flagged", "", source("// a wrapped", "// line", "// # Heading"), nil},
+		{"a wrapped paragraph beside an indented code paragraph is flagged", "", source("//\tcode", "//", "// a wrapped", "// line."), []int{5}},
 		{"a wrapped paragraph beside a heading paragraph is flagged", "", source("// # Heading", "//", "// a wrapped", "// line."), []int{5}},
 		{"a wrapped paragraph beside a list paragraph is flagged", "", source("// - item", "//", "// a wrapped", "// line."), []int{5}},
 		{"an end-of-line comment is no block", "", "package p\n\nvar x = 1 // wrapped\n// line.\n", nil},
