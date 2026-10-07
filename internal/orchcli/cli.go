@@ -132,7 +132,7 @@ Every verb runs from the hub's prime worktree only.`,
 			c.location = location
 			c.cfg = orchCfg
 			c.shuttleCfg = shuttleCfg
-			c.runner = shuttleengine.NewRunner(reed, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+			c.runner = shuttleengine.NewRunner(reed, claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 			c.strands = newReedStrandOps(reed)
 			c.paths = orchPaths(location)
 			c.stencilsDir = fabricengine.StencilsDir(location.HubPath)

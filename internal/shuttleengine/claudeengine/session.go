@@ -129,17 +129,25 @@ func isBlankBoxInterior(line string) bool {
 // ClearSessionSequence returns /clear typed and submitted, with no leading Escape.
 // The caller has just proved the input box empty, so there is nothing to clear,
 // and an Escape landing right after another Escape opens Claude's rewind menu instead.
+// The text and the Enter are two paced steps, so the Enter lands outside the typing burst.
 func (c *Claude) ClearSessionSequence() []shuttleengine.PaneInput {
-	return []shuttleengine.PaneInput{{Text: "/clear", Submit: true}}
+	return []shuttleengine.PaneInput{
+		{Text: "/clear", SettleMS: c.submitSettleMS},
+		{Key: "Enter"},
+	}
 }
 
-// CompactSessionSequence returns /compact typed and submitted, followed by focus when it is non-empty, with no leading Escape for the same reason as ClearSessionSequence.
+// CompactSessionSequence returns /compact typed and submitted, followed by focus when it is non-empty, with no leading Escape because the caller has just proved the input box empty.
+// The text and the Enter are two paced steps, so the Enter lands outside the typing burst.
 func (c *Claude) CompactSessionSequence(focus string) []shuttleengine.PaneInput {
 	text := "/compact"
 	if focus != "" {
 		text += " " + focus
 	}
-	return []shuttleengine.PaneInput{{Text: text, Submit: true}}
+	return []shuttleengine.PaneInput{
+		{Text: text, SettleMS: c.submitSettleMS},
+		{Key: "Enter"},
+	}
 }
 
 // defaultSkillLoadTimeout bounds one load turn of the whole skill list: a load turn is one short model turn.

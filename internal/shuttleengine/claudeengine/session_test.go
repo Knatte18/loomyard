@@ -95,12 +95,12 @@ func TestCompactSessionSequence(t *testing.T) {
 		focus string
 		want  []shuttleengine.PaneInput
 	}{
-		{"focus", "the open plan", []shuttleengine.PaneInput{{Text: "/compact the open plan", Submit: true}}},
-		{"empty", "", []shuttleengine.PaneInput{{Text: "/compact", Submit: true}}},
+		{"focus", "the open plan", []shuttleengine.PaneInput{{Text: "/compact the open plan", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}},
+		{"empty", "", []shuttleengine.PaneInput{{Text: "/compact", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := (&Claude{}).CompactSessionSequence(tc.focus)
+			got := New().CompactSessionSequence(tc.focus)
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("CompactSessionSequence(%q) = %#v; want %#v", tc.focus, got, tc.want)
 			}
@@ -109,8 +109,8 @@ func TestCompactSessionSequence(t *testing.T) {
 }
 
 func TestClearSessionSequence(t *testing.T) {
-	got := (&Claude{}).ClearSessionSequence()
-	want := []shuttleengine.PaneInput{{Text: "/clear", Submit: true}}
+	got := New().ClearSessionSequence()
+	want := []shuttleengine.PaneInput{{Text: "/clear", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ClearSessionSequence = %#v; want %#v", got, want)
 	}
