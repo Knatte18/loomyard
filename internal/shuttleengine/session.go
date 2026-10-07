@@ -15,7 +15,7 @@ import (
 func (r *Runner) sessionCycler() (SessionCycler, error) {
 	cycler, ok := r.engine.(SessionCycler)
 	if !ok {
-		return nil, fmt.Errorf("shuttle: the engine does not implement the SessionCycler capability (ContextTokens, CompactedSince, IdleSession, ClearSessionSequence, CompactSessionSequence), so it cannot cycle a session")
+		return nil, fmt.Errorf("shuttle: the engine does not implement the SessionCycler capability (ContextTokens, CompactedSince, IdleSession, ClearSessionSequence, CompactSessionSequence, ReloadPluginsSequence), so it cannot cycle a session")
 	}
 	return cycler, nil
 }
@@ -155,6 +155,25 @@ func (r *Runner) ClearSession(guid string) error {
 		return err
 	}
 	return playInputs(r.reed, guid, cycler.ClearSessionSequence())
+}
+
+// ReloadPlugins plays the provider's reload-plugins key choreography into the live pane of the run identified by guid.
+// Like ClearSession it skips requireReadyAgentPane, since the caller has already probed idleness itself.
+func (r *Runner) ReloadPlugins(guid string) error {
+	if r.toldErr != nil {
+		return r.toldErr
+	}
+	cycler, err := r.sessionCycler()
+	if err != nil {
+		return err
+	}
+	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
+		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	if err := requireLiveStrand(r.reed, guid); err != nil {
+		return err
+	}
+	return playInputs(r.reed, guid, cycler.ReloadPluginsSequence())
 }
 
 // CompactSession plays the provider's compact-session key choreography, keeping what focus names, into the live pane of the run identified by guid.

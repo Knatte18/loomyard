@@ -136,6 +136,14 @@ func TestCompactSessionSequence(t *testing.T) {
 	}
 }
 
+func TestReloadPluginsSequence(t *testing.T) {
+	got := New().ReloadPluginsSequence()
+	want := []shuttleengine.PaneInput{{Text: "/reload-plugins", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ReloadPluginsSequence = %#v; want %#v", got, want)
+	}
+}
+
 func TestClearSessionSequence(t *testing.T) {
 	got := New().ClearSessionSequence()
 	want := []shuttleengine.PaneInput{{Text: "/clear", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}

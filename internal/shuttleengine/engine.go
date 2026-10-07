@@ -263,4 +263,6 @@ type SessionCycler interface {
 	// An empty focus compacts with no instruction.
 	// The caller guarantees focus is a single line.
 	CompactSessionSequence(focus string) []PaneInput
+	// ReloadPluginsSequence returns the key choreography that makes the live session re-read its installed plugins and skills without starting a turn.
+	ReloadPluginsSequence() []PaneInput
 }

@@ -188,6 +188,16 @@ func (c *Claude) CompactSessionSequence(focus string) []shuttleengine.PaneInput 
 	}
 }
 
+// ReloadPluginsSequence returns /reload-plugins typed and submitted, with no leading Escape for the same reason as ClearSessionSequence.
+// The command rebuilds the skill list the Skill tool reads and ends no turn.
+// The text and the Enter are two paced steps, so the Enter lands outside the typing burst.
+func (c *Claude) ReloadPluginsSequence() []shuttleengine.PaneInput {
+	return []shuttleengine.PaneInput{
+		{Text: "/reload-plugins", SettleMS: c.submitSettleMS},
+		{Key: "Enter"},
+	}
+}
+
 // defaultSkillLoadTimeout bounds one load turn of the whole skill list: a load turn is one short model turn.
 const defaultSkillLoadTimeout = 2 * time.Minute
 

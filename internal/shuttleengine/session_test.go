@@ -30,6 +30,9 @@ func (e *cyclerEngine) IdleSession(capture string) bool {
 }
 func (e *cyclerEngine) PaneTooShort(string) bool          { return e.tooShort }
 func (e *cyclerEngine) ClearSessionSequence() []PaneInput { return e.clear }
+func (e *cyclerEngine) ReloadPluginsSequence() []PaneInput {
+	return []PaneInput{{Text: "/reload-plugins", Submit: true}}
+}
 func (e *cyclerEngine) CompactSessionSequence(focus string) []PaneInput {
 	e.foci = append(e.foci, focus)
 	return []PaneInput{{Text: "/compact " + focus, Submit: true}}
@@ -120,6 +123,10 @@ func TestRunner_SessionMethods_ErrorOnPlainEngine(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "CompactSessionSequence") {
 		t.Errorf("CompactSession on a plain engine = %v, want an error naming the capability", err)
 	}
+	err = runner.ReloadPlugins("strand-1")
+	if err == nil || !strings.Contains(err.Error(), "ReloadPluginsSequence") {
+		t.Errorf("ReloadPlugins on a plain engine = %v, want an error naming the capability", err)
+	}
 	if len(reed.CallLog) != 0 {
 		t.Errorf("reed touched despite missing capability: %v", reed.CallLog)
 	}
@@ -160,6 +167,28 @@ func TestRunner_ClearSession_PlaysScriptedSequence(t *testing.T) {
 	want := []string{"Status", "SendKey:Escape", "SendText:/clear"}
 	if !reflect.DeepEqual(reed.CallLog, want) {
 		t.Errorf("CallLog = %v, want %v", reed.CallLog, want)
+	}
+}
+
+func TestRunner_ReloadPlugins_PlaysSequenceOnALiveShuttleStrand(t *testing.T) {
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
+	runner := newFixture(t, reed, &cyclerEngine{}, withStrand("strand-1")).Runner
+
+	if err := runner.ReloadPlugins("strand-1"); err != nil {
+		t.Fatalf("ReloadPlugins: %v", err)
+	}
+	want := []string{"Status", "SendText:/reload-plugins"}
+	if !reflect.DeepEqual(reed.CallLog, want) {
+		t.Errorf("CallLog = %v, want %v", reed.CallLog, want)
+	}
+
+	refusedReed := &fakeReed{StatusQueue: liveStrandStatus(true)}
+	refused := newFixture(t, refusedReed, &cyclerEngine{}, withStrand("strand-1")).Runner
+	if err := refused.ReloadPlugins("nope"); err == nil {
+		t.Error("ReloadPlugins(unknown guid) = nil error")
+	}
+	if len(refusedReed.CallLog) != 0 {
+		t.Errorf("reed touched: %v", refusedReed.CallLog)
 	}
 }
 
