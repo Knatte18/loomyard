@@ -84,6 +84,11 @@ func (f *Shuttle) Attach(spec shuttleengine.Spec) (shuttleengine.Result, bool, e
 	return f.AttachResult, f.AttachFound, f.AttachErr
 }
 
+// AttachIfLive answers as Attach does and records no removal.
+func (f *Shuttle) AttachIfLive(spec shuttleengine.Spec) (shuttleengine.Result, bool, error) {
+	return f.Attach(spec)
+}
+
 // RunGated records gate, delegates to Run, then evaluates the gate once.
 // The gate is consulted only when it is non-empty and the delegated outcome is OutcomeDone: a closure's error is returned, otherwise a GateOutcome is stamped onto the Result.
 // No re-prompt loop is simulated.

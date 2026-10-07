@@ -59,6 +59,10 @@ func (s *scriptedShuttle) Attach(shuttleengine.Spec) (shuttleengine.Result, bool
 	panic("scriptedShuttle: the producer must attach gated")
 }
 
+func (s *scriptedShuttle) AttachIfLive(shuttleengine.Spec) (shuttleengine.Result, bool, error) {
+	panic("scriptedShuttle: the producer must attach gated")
+}
+
 func (s *scriptedShuttle) AttachGated(shuttleengine.Spec, shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
 	return shuttleengine.Result{}, false, nil
 }

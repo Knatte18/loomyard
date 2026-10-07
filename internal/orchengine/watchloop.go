@@ -45,6 +45,27 @@ func WatcherLive(p Paths) (bool, error) {
 	return false, nil
 }
 
+// WaitWatcherGone probes the watch lock and, while the state records the watcher stopping and the lock is still held, sleeps interval and probes again, up to bound.
+// It answers whether a watcher still holds the lock at the end.
+// With no stopping record it probes once and returns,
+// so a healthy live watcher costs no wait.
+func WaitWatcherGone(p Paths, bound, interval time.Duration, sleep func(time.Duration)) (live bool, err error) {
+	for waited := time.Duration(0); ; waited += interval {
+		live, err = WatcherLive(p)
+		if err != nil || !live {
+			return live, err
+		}
+		st, err := LoadState(p)
+		if err != nil {
+			return true, err
+		}
+		if !st.WatcherStopping || waited >= bound {
+			return true, nil
+		}
+		sleep(interval)
+	}
+}
+
 // acquireWatchLock takes the watch lock, retrying a bounded number of times.
 func acquireWatchLock(p Paths, sleep func(time.Duration)) (*lock.FileLock, error) {
 	for attempt := 0; attempt < watchLockAttempts; attempt++ {
@@ -63,12 +84,33 @@ func acquireWatchLock(p Paths, sleep func(time.Duration)) (*lock.FileLock, error
 }
 
 // recordExit persists reason as the watcher's exit reason under the state lock, touching no other field.
-// An empty reason marks a watcher as running.
+// An empty reason marks a watcher as running and clears the stopping record with it.
 func (w *Watcher) recordExit(reason string) error {
 	return updateState(w.paths, func(st State) State {
 		st.WatcherExit = reason
+		if reason == "" {
+			st.WatcherStopping = false
+		}
 		return st
 	})
+}
+
+// recordStoppingOnCancel persists WatcherStopping as soon as ctx is cancelled,
+// so the record lands before the in-flight tick finishes and before the lock is released.
+// It returns once ctx is cancelled or runReturned is closed, whichever comes first.
+func (w *Watcher) recordStoppingOnCancel(ctx context.Context, runReturned <-chan struct{}) {
+	select {
+	case <-runReturned:
+		return
+	case <-ctx.Done():
+	}
+	err := updateState(w.paths, func(st State) State {
+		st.WatcherStopping = true
+		return st
+	})
+	if err != nil {
+		logger.Warn("orch: record watcher stopping failed", "error", err)
+	}
 }
 
 // dropQueueWithoutStrand drops the notice queue when the orch state records no strand, since nothing queued then has a session to reach.
@@ -101,6 +143,19 @@ func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
 	if err := w.dropQueueWithoutStrand(); err != nil {
 		return err
 	}
+
+	// The goroutine ends before the lock is released,
+	// so its record can never land after a successor watcher cleared it.
+	runReturned := make(chan struct{})
+	recorderExited := make(chan struct{})
+	go func() {
+		defer close(recorderExited)
+		w.recordStoppingOnCancel(ctx, runReturned)
+	}()
+	defer func() {
+		close(runReturned)
+		<-recorderExited
+	}()
 
 	failures := 0
 	for {

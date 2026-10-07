@@ -28,7 +28,7 @@ exactly how an earlier reproduction attempt lost the finding.
    `jq --arg p "<abs worktree path>" '.projects | has($p)' ~/.claude.json` must print `false`.
    If it prints `true`, pick a new timestamp — the run would pass silently and prove nothing.
 4. In that worktree, run `lyx shed seed self --recipe loom --driver llm --param parent=<recorded parent branch>`,
-   then `lyx loom start --no-attach`.
+   then `lyx loom start`.
    `lyx loom start` reads and writes only the `self` run (`shedrun.SelfRunID`, via
    `seedAndCommitBootstrap` and `resolveRunID`).
    `WriteSeed` refuses a seed whose params disagree with `loomSeedFor`'s `{"parent": <parent>}`,

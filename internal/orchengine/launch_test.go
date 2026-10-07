@@ -10,7 +10,7 @@ func TestDecideStart(t *testing.T) {
 		strand, watcher bool
 		want            StartAction
 	}{
-		{true, true, StartAttachOnly},
+		{true, true, StartAlreadyRunning},
 		{true, false, StartSpawnWatcher},
 		{false, true, StartRelaunch},
 		{false, false, StartRelaunch},

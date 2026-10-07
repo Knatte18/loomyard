@@ -36,6 +36,9 @@ type haltFixture struct {
 	c           *loomCLI
 	shuttle     *shedfake.Shuttle
 	frictionDir string
+	// commitStatus is the shed's CommitStatus seam in stepOver;
+	// nil leaves it unset.
+	commitStatus func(producer, state string) error
 }
 
 func newHaltFixture(t *testing.T) *haltFixture {
@@ -271,7 +274,7 @@ func TestLoomAfterStep_UnwritableFrictionDirectory_StillReturnsAStatus(t *testin
 	}
 	f.c.frictionDir = filepath.Join(blocker, "friction")
 
-	res := shedengine.StepResult{Producer: loomshed.NameWebster, State: shedengine.StateBlocked, Reason: "stuck"}
+	res := shedengine.StepResult{Producer: loomshed.NameWebster, State: shedengine.StateBlocked, Reason: shedengine.ReasonBounceBudgetExhausted}
 	if got := f.c.loomAfterStep(context.Background(), res, nil); got == "" {
 		t.Error("loomAfterStep() = \"\"; want a status")
 	}
@@ -284,13 +287,30 @@ func TestLoomPostRun_HaltNotes(t *testing.T) {
 		t.Parallel()
 
 		f := newHaltFixture(t)
-		res := shedengine.Result{Outcome: shedengine.RunBlocked, HaltedProducer: loomshed.NameWebster, Reason: "stuck", History: make([]shedengine.HistoryEntry, 2)}
+		res := shedengine.Result{Outcome: shedengine.RunBlocked, HaltedProducer: loomshed.NameWebster, Reason: shedengine.ReasonBounceBudgetExhausted + ": Plan-Write", History: make([]shedengine.HistoryEntry, 2)}
 
 		if got := f.c.loomPostRun(context.Background(), res, nil)["friction"]; got != frictionengine.StatusReflected {
 			t.Fatalf("friction = %v; want %q", got, frictionengine.StatusReflected)
 		}
 		if len(f.shuttle.Specs) != 1 {
 			t.Errorf("reflection shuttle ran %d times; want 1", len(f.shuttle.Specs))
+		}
+	})
+
+	t.Run("EscalationSkipsReflectionButWritesTheNote", func(t *testing.T) {
+		t.Parallel()
+
+		f := newHaltFixture(t)
+		res := shedengine.Result{Outcome: shedengine.RunBlocked, HaltedProducer: loomshed.NameWebster, Reason: "stuck", History: make([]shedengine.HistoryEntry, 2)}
+
+		if got := f.c.loomPostRun(context.Background(), res, nil)["friction"]; got != frictionengine.StatusSkipped {
+			t.Fatalf("friction = %v; want %q", got, frictionengine.StatusSkipped)
+		}
+		if len(f.shuttle.Specs) != 0 {
+			t.Errorf("reflection shuttle ran %d times; want 0", len(f.shuttle.Specs))
+		}
+		if note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md")); !strings.Contains(note, "anomaly: "+string(loomengine.AnomalyEscalation)) {
+			t.Errorf("loom-halt.md = %q; want it to carry the escalation anomaly", note)
 		}
 	})
 
@@ -360,6 +380,7 @@ func (f *haltFixture) stepOver(t *testing.T, preStep func(context.Context) (stri
 			StatusPath:     f.c.shedPaths.StatusPath,
 			LockPath:       f.c.shedPaths.LockPath,
 			StatusLockPath: f.c.shedPaths.StatusLockPath,
+			CommitStatus:   f.commitStatus,
 		}, nil
 	}
 	f.c.spec = &spec
@@ -381,7 +402,8 @@ func (f *haltFixture) stepOver(t *testing.T, preStep func(context.Context) (stri
 	return envelope, code
 }
 
-func TestStep_BlockedHaltReflectsOverRefusalAndHaltNotes(t *testing.T) {
+// TestStep_EscalationHaltSkipsReflectionAndKeepsBothNotes drives step with a producer that returns Stuck on a row with no OnStuck, the escalation arm.
+func TestStep_EscalationHaltSkipsReflectionAndKeepsBothNotes(t *testing.T) {
 	t.Parallel()
 
 	f := newHaltFixture(t)
@@ -403,17 +425,17 @@ func TestStep_BlockedHaltReflectsOverRefusalAndHaltNotes(t *testing.T) {
 	if envelope["state"] != string(shedengine.StateBlocked) {
 		t.Fatalf("envelope state = %v; want %q; envelope = %v", envelope["state"], shedengine.StateBlocked, envelope)
 	}
-	if envelope["friction"] != frictionengine.StatusReflected {
-		t.Errorf("envelope friction = %v; want %q", envelope["friction"], frictionengine.StatusReflected)
+	if envelope["friction"] != frictionengine.StatusSkipped {
+		t.Errorf("envelope friction = %v; want %q", envelope["friction"], frictionengine.StatusSkipped)
 	}
-	if len(f.shuttle.Specs) != 1 {
-		t.Fatalf("reflection shuttle ran %d times; want 1", len(f.shuttle.Specs))
+	if len(f.shuttle.Specs) != 0 {
+		t.Errorf("reflection shuttle ran %d times; want 0", len(f.shuttle.Specs))
 	}
-	prompt := f.shuttle.Specs[0].Prompt
-	for _, want := range []string{"webster-refusal-begin-batch.md", "loom-halt.md"} {
-		if !strings.Contains(prompt, want) {
-			t.Errorf("reflection prompt does not name %q: %q", want, prompt)
-		}
+	if note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md")); !strings.Contains(note, "anomaly: "+string(loomengine.AnomalyEscalation)) {
+		t.Errorf("loom-halt.md = %q; want it to carry the escalation anomaly", note)
+	}
+	if _, err := os.Stat(filepath.Join(f.frictionDir, "webster-refusal-begin-batch.md")); err != nil {
+		t.Errorf("webster refusal note = %v; want it on disk", err)
 	}
 }
 
@@ -434,7 +456,10 @@ func TestStep_ProducerErrorReflectsOnTheErrorEnvelope(t *testing.T) {
 		t.Errorf("envelope friction = %v; want %q", envelope["friction"], frictionengine.StatusReflected)
 	}
 	if len(f.shuttle.Specs) != 1 {
-		t.Errorf("reflection shuttle ran %d times; want 1", len(f.shuttle.Specs))
+		t.Fatalf("reflection shuttle ran %d times; want 1", len(f.shuttle.Specs))
+	}
+	if prompt := f.shuttle.Specs[0].Prompt; !strings.Contains(prompt, "loom-halt.md") {
+		t.Errorf("reflection prompt does not name %q: %q", "loom-halt.md", prompt)
 	}
 }
 
@@ -465,37 +490,89 @@ func (f *haltFixture) handoffSteps(t *testing.T, beforeSecond func()) {
 func TestStep_CrashResumeNoteFollowsTheHandoffVoucher(t *testing.T) {
 	t.Parallel()
 
+	removeVoucher := func(t *testing.T, f *haltFixture) {
+		if err := os.Remove(loomengine.LoomHandoffVoucher(f.c.location)); err != nil {
+			t.Fatalf("Remove(handoff voucher) = %v; want nil", err)
+		}
+	}
+	// longHistory removes the voucher and appends seven entries to the persisted history,
+	// so the observed history holds more than five.
+	longHistory := func(t *testing.T, f *haltFixture) {
+		removeVoucher(t, f)
+		p := f.c.shedPaths
+		err := state.UpdateJSON[shedengine.Status](p.StatusPath, p.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+			for i := 0; i < 7; i++ {
+				cur.History = append(cur.History, shedengine.HistoryEntry{Producer: fmt.Sprintf("Extra-%d", i), Outcome: shedengine.Done, At: "2026-01-01T00:00:00Z"})
+			}
+			return cur, nil
+		})
+		if err != nil {
+			t.Fatalf("UpdateJSON(append history) = %v; want nil", err)
+		}
+	}
+	// differentVoucher replaces the voucher with one recording another history length and state.
+	differentVoucher := func(t *testing.T, f *haltFixture) {
+		recordHandoffVoucher(loomengine.LoomHandoffVoucher(f.c.location), loomengine.LoomHandoffVoucherLock(f.c.location), 9, shedengine.StateBlocked)
+	}
+
 	tests := []struct {
-		name          string
-		removeVoucher bool
-		wantNote      bool
+		name string
+		// beforeSecond runs between the two steps.
+		beforeSecond func(t *testing.T, f *haltFixture)
+		// failCommit makes the first step's status commit fail after Row-A's done transition is on disk,
+		// so that step returns an error having completed.
+		failCommit bool
+		// wantInNote is the set of substrings the crash-resume note carries;
+		// nil means no note is written.
+		wantInNote []string
 	}{
-		{"MarkerKept", false, false},
-		{"MarkerRemoved", true, true},
+		{name: "MarkerKept"},
+		{name: "StepErrorAfterPersistKeepsMarker", failCommit: true},
+		{
+			name:         "MarkerRemoved",
+			beforeSecond: removeVoucher,
+			wantInNote:   []string{"history_entries: 1", "run_lock_held: false", "voucher: none"},
+		},
+		{
+			name:         "DifferentVoucherNamesBothReadings",
+			beforeSecond: differentVoucher,
+			wantInNote:   []string{"history_entries: 1", "state: running", "voucher_history_entries: 9", "voucher_state: blocked"},
+		},
+		{
+			name:         "LongHistoryListsEveryEntry",
+			beforeSecond: longHistory,
+			wantInNote:   []string{"history_entries: 8", "- Row-A / done / ", "- Extra-0 / done / ", "- Extra-1 / done / ", "- Extra-2 / done / ", "- Extra-3 / done / ", "- Extra-4 / done / ", "- Extra-5 / done / ", "- Extra-6 / done / "},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			f := newHaltFixture(t)
-			f.handoffSteps(t, func() {
-				if !tt.removeVoucher {
-					return
+			if tt.failCommit {
+				f.commitStatus = func(producer, st string) error {
+					if producer == "Row-B" && st == string(shedengine.StateRunning) {
+						return errors.New("index locked by a concurrent git write")
+					}
+					return nil
 				}
-				if err := os.Remove(loomengine.LoomHandoffVoucher(f.c.location)); err != nil {
-					t.Fatalf("Remove(handoff voucher) = %v; want nil", err)
+			}
+			f.handoffSteps(t, func() {
+				if tt.beforeSecond != nil {
+					tt.beforeSecond(t, f)
 				}
 			})
 
 			notePath := filepath.Join(f.frictionDir, "loom-crash-resume.md")
-			if !tt.wantNote {
+			if tt.wantInNote == nil {
 				if _, err := os.Stat(notePath); !os.IsNotExist(err) {
 					t.Errorf("crash-resume note %q = %v; want none written", notePath, err)
 				}
 				return
 			}
 			got := readNote(t, notePath)
-			for _, want := range []string{"slug: pair", "parent: main", "state: running", "current_producer: Row-B", "history_entries: 1", "verb: step", "trace_file:", "- Row-A / " + string(shedengine.Done) + " / "} {
+			common := []string{"slug: pair", "parent: main", "current_producer: Row-B", "verb: step", "trace_file:"}
+			for _, want := range append(common, tt.wantInNote...) {
 				if !strings.Contains(got, want) {
 					t.Errorf("crash-resume note %q does not contain %q", got, want)
 				}

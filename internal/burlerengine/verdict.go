@@ -1,5 +1,6 @@
 // verdict.go defines the review-file contract — Verdict, Severity, Finding — and ParseReview, the
 // strict parser that turns a round's raw review-file bytes into those types.
+// It also holds the review-parse gate (CheckReviewFile, ReviewGate, ReviewGateEntry) that lets a round's own reviewer repair an unparseable file.
 // The review file is YAML frontmatter over unconstrained prose;
 // ParseReview enforces every pinned rule fail-loud so a malformed round can never look approved.
 
@@ -7,10 +8,13 @@ package burlerengine
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // Verdict is the round-level judgment recorded in a review file's frontmatter.
@@ -133,6 +137,43 @@ func ParseReview(content []byte) (Verdict, []Finding, error) {
 	}
 
 	return verdict, parsed.Findings, nil
+}
+
+// reviewGateAttempts is the re-prompt budget of the review-parse gate entry,
+// the same budget the recipe's artifact gates use.
+const reviewGateAttempts = 3
+
+// CheckReviewFile reads the review file at path and returns the error ParseReview raises for it, or nil when it parses.
+// A read failure is returned wrapped with the path.
+func CheckReviewFile(path string) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("burler: read review file %q: %w", path, err)
+	}
+	_, _, err = ParseReview(content)
+	return err
+}
+
+// ReviewGate returns a gate that passes when the review file at reviewPath parses.
+// A review file that is missing or does not parse is a failed result, never a gate error:
+// its findings carry the parse error verbatim, with any quoting hint, and a closing line naming the file to rewrite.
+func ReviewGate(reviewPath string) shuttleengine.Gate {
+	return func() (shuttleengine.GateResult, error) {
+		err := CheckReviewFile(reviewPath)
+		if err == nil {
+			return shuttleengine.GateResult{Passed: true}, nil
+		}
+		return shuttleengine.GateResult{
+			Findings: fmt.Sprintf("%s\n\nRewrite the review file (%s) so it parses.", err.Error(), reviewPath),
+		}, nil
+	}
+}
+
+// ReviewGateEntry returns the gate entry that re-prompts a round's reviewer to repair an unparseable review file at reviewPath.
+// It lets the run through once its re-prompt budget is spent,
+// so the strict parse after the gate still fails the round.
+func ReviewGateEntry(reviewPath string) shuttleengine.GateEntry {
+	return shuttleengine.GateEntry{Name: "review", Gate: ReviewGate(reviewPath), Attempts: reviewGateAttempts, PassOnCap: true}
 }
 
 // malformedQuotedSummary matches a `summary:` line whose value opens with a

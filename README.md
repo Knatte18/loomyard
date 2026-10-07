@@ -169,7 +169,7 @@ Commands print a JSON envelope: `{"ok":true, ...}` or `{"ok":false,"error":"..."
 go build ./cmd/lyx                                              # build the binary
 lyx fabric clone --shortname <shortname> <records-url> <code-url>  # create a hub: both repos, wiring, config, board
 lyx fabric add <slug>                                           # a task worktree pair
-cd <hub>/<slug> && lyx start                                    # bootstrap the task and hand the terminal to its driver
+cd <hub>/<slug> && lyx start                                    # bootstrap the task; "lyx reed attach" shows its session
 ```
 
 `./update-plugins.sh` (`update-plugins.cmd` on Windows) is the only route to production: from a clean tree pushed to `origin/main`, it installs the plugins, builds `lyx` into the Go bin dir, and moves the `prod` branch to that commit.

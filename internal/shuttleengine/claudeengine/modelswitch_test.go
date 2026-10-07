@@ -33,7 +33,8 @@ func TestModelSwitchSequence_ShapeAndVerbatimModel(t *testing.T) {
 			got := c.ModelSwitchSequence(tt.model)
 
 			want := []shuttleengine.PaneInput{
-				{Text: "/model " + tt.model, Submit: true},
+				{Text: "/model " + tt.model, SettleMS: defaultSubmitSettleMS},
+				{Key: "Enter"},
 			}
 			if len(got) != len(want) {
 				t.Fatalf("ModelSwitchSequence(%q) = %d steps; want %d", tt.model, len(got), len(want))

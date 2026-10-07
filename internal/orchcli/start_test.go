@@ -1,4 +1,4 @@
-// start_test.go drives the start verb's RunE with --no-attach over a fake strandOps, session starter and watcher spawn, asserting the recorded calls and the saved state without a spawn.
+// start_test.go drives the start verb's RunE over a fake strandOps, session starter and watcher spawn, asserting the recorded calls and the saved state without a spawn.
 
 package orchcli
 
@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -39,6 +40,10 @@ type startHarness struct {
 	strands *fakeStrands
 	starter *fakeStarter
 	spawns  int
+	// sleeps counts the waits start asked for;
+	// onSleep, when set, runs on each.
+	sleeps  int
+	onSleep func()
 }
 
 func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHarness {
@@ -55,14 +60,20 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	c.starter = h.starter
 	c.reedUp = func() error { return nil }
 	c.spawnWatcher = func() error { h.spawns++; return nil }
+	c.sleep = func(time.Duration) {
+		h.sleeps++
+		if h.onSleep != nil {
+			h.onSleep()
+		}
+	}
 	return h
 }
 
-// run executes start with --no-attach plus args and decodes the envelope.
+// run executes start with args and decodes the envelope.
 func (h *startHarness) run(t *testing.T, args ...string) (int, map[string]any) {
 	t.Helper()
 	var out bytes.Buffer
-	code := clihelp.Execute(h.cli.startCmd(), &out, append([]string{"--no-attach"}, args...))
+	code := clihelp.Execute(h.cli.startCmd(), &out, args)
 	var env map[string]any
 	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
 		t.Fatalf("output %q is not one JSON object: %v", out.String(), err)
@@ -102,7 +113,7 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if st := h.state(t); st.Strand != "new-guid" || st.Phase != orchengine.PhaseIdle {
 		t.Errorf("state = %+v; want strand new-guid in idle", st)
 	}
-	if env["action"] != actionRelaunched || env["strand"] != "new-guid" || env["prompt_source"] != orchengine.SourceFresh || env["attached"] != false {
+	if env["action"] != actionRelaunched || env["strand"] != "new-guid" || env["prompt_source"] != orchengine.SourceFresh {
 		t.Errorf("envelope = %v", env)
 	}
 
@@ -133,19 +144,31 @@ func TestStart_LiveStrand(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name       string
-		watcher    bool
-		wantAction string
-		wantSpawns int
+		name string
+		// watcher holds watch.lock;
+		// stopping records the watcher stopping;
+		// releases frees the lock on the first sleep.
+		watcher, stopping, releases bool
+		wantAction                  string
+		wantSpawns                  int
+		wantSleeps                  int
+		wantStopping                bool
 	}{
-		{"with a watcher does nothing", true, actionAttachOnly, 0},
-		{"without a watcher spawns the watcher only", false, actionSpawnedWatcher, 1},
+		{name: "with a watcher does nothing", watcher: true, wantAction: actionAlreadyRunning},
+		{name: "without a watcher spawns the watcher only", wantAction: actionSpawnedWatcher, wantSpawns: 1},
+		{name: "a stopping watcher that exits is replaced", watcher: true, stopping: true, releases: true, wantAction: actionSpawnedWatcher, wantSpawns: 1, wantSleeps: 1},
+		{name: "a stopping watcher that never exits is reported live", watcher: true, stopping: true, wantAction: actionAlreadyRunning, wantSleeps: 3, wantStopping: true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
 			h := newStartHarness(t, reedengine.StrandStatus{GUID: "g1", Name: "orch", Live: true})
+			if c.stopping {
+				if err := orchengine.SaveState(h.cli.paths, orchengine.State{Phase: orchengine.PhaseIdle, Strand: "g1", WatcherStopping: true}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if c.watcher {
 				if err := os.MkdirAll(h.cli.paths.Dir, 0o755); err != nil {
 					t.Fatal(err)
@@ -154,7 +177,17 @@ func TestStart_LiveStrand(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer l.Release()
+				released := false
+				release := func() {
+					if !released {
+						released = true
+						l.Release()
+					}
+				}
+				defer release()
+				if c.releases {
+					h.onSleep = release
+				}
 			}
 
 			code, env := h.run(t)
@@ -164,12 +197,35 @@ func TestStart_LiveStrand(t *testing.T) {
 			if len(h.starter.specs) != 0 || h.spawns != c.wantSpawns {
 				t.Errorf("starts = %d, spawns = %d; want 0 and %d", len(h.starter.specs), h.spawns, c.wantSpawns)
 			}
-			if !c.watcher {
+			if h.sleeps != c.wantSleeps {
+				t.Errorf("sleeps = %d; want %d", h.sleeps, c.wantSleeps)
+			}
+			if c.wantStopping {
+				if env["watcher_stopping"] != true || env["hint"] != stoppingWatcherHint {
+					t.Errorf("envelope = %v; want watcher_stopping true and the hint", env)
+				}
+			} else if _, has := env["watcher_stopping"]; has {
+				t.Errorf("envelope = %v; want no watcher_stopping", env)
+			}
+			if !c.watcher || c.releases {
 				if st := h.state(t); st.Strand != "g1" {
 					t.Errorf("state strand = %q; want the adopted g1", st.Strand)
 				}
 			}
 		})
+	}
+}
+
+// TestStart_NeverAttaches is not parallel: it sets the process-global TMUX with t.Setenv.
+func TestStart_NeverAttaches(t *testing.T) {
+	t.Setenv("TMUX", "/tmp/tmux-1000/default,1234,0")
+
+	for _, args := range [][]string{nil, {"--no-attach"}} {
+		h := newStartHarness(t)
+		code, env := h.run(t, args...)
+		if code != 0 || env["ok"] != true || env["action"] != actionRelaunched || env["strand"] != "new-guid" {
+			t.Errorf("start %v with TMUX set: exit = %d; env = %v; want exit 0 and the success envelope", args, code, env)
+		}
 	}
 }
 

@@ -236,16 +236,16 @@ func verbUsesLightweightWiring(name string) bool {
 var loomVerbTexts = shedverbs.VerbTexts{
 	Run: shedverbs.VerbText{
 		Use:   "run [run-id]",
-		Short: "run loom's phase machine in the foreground, with no status strand and no terminal handover",
+		Short: "run loom's phase machine in the foreground, with no status strand and no detached driver",
 		Long: `run runs loom's phase machine in the foreground: no status strand and
-no terminal handover. It is the escape hatch for debugging and CI.
+no detached driver. It is the escape hatch for debugging and CI.
 
 run is NOT tmux-free. Every LLM row underneath it -- Discussion-Write,
 Plan-Write, Describe, and all three review segments -- spawns its agent through
 shuttle into a reed pane, so a live tmux session is required. run
 ensures that session itself, exactly as "lyx loom start" does, rather than
 failing several producers deep once a row first tries to add a strand.
-What run does not do is add the status strand or hand the terminal over.
+What run does not do is add the status strand or spawn a detached driver.
 
 run never seeds a status file and never commits anything -- only
 "lyx loom start" seeds, because only it owns the commit-before-precondition
@@ -264,8 +264,7 @@ Example:
 seeding the status file when absent and committing it into the fabric --
 and then drives exactly one producer through shedengine.Shed's own Step.
 
-step spawns no detached driver, hands the terminal to nothing, and loops
-over nothing: it is the single-producer primitive an external supervisor
+step spawns no detached driver and loops over nothing: it is the single-producer primitive an external supervisor
 drives, one invocation at a time. The printed envelope is short: its
 "continue" field says whether to step again, and it names "trace_file" (the
 durable trace this invocation wrote) and "envelope_path" (the full

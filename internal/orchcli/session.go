@@ -57,6 +57,12 @@ func (s runnerSession) ClearSession(guid string) error {
 	return s.runner.ClearSession(guid)
 }
 
+// ReloadPlugins delegates to Runner.ReloadPlugins, which types into the pane through tmux.
+func (s runnerSession) ReloadPlugins(guid string) error {
+	logger.Debug("orch: reload plugins", "strandGUID", guid)
+	return s.runner.ReloadPlugins(guid)
+}
+
 // LoadSkills delegates to Runner.LoadSkills,
 // which types the one-turn load message into the pane through tmux.
 func (s runnerSession) LoadSkills(guid string, skills []string) error {
@@ -70,7 +76,7 @@ func (s runnerSession) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []s
 }
 
 // CompactedSince delegates to Runner.CompactedSince.
-func (s runnerSession) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (time.Time, bool, error) {
+func (s runnerSession) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error) {
 	return s.runner.CompactedSince(turnEnd, since)
 }
 

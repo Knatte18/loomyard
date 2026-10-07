@@ -8,6 +8,7 @@ package webstercli
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -55,6 +57,7 @@ func newResetFixture(t *testing.T, h *hubforge.Hub, slug string) *resetFixture {
 	}}
 	c := &websterCLI{
 		engine:     engine,
+		reed:       &shuttlefake.Reed{},
 		anchorRel:  loc.AnchorRel,
 		geom:       hubgeom.WebsterGeometry(loc),
 		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(loc) },
@@ -87,6 +90,22 @@ func startedAt(sha string) *websterengine.State {
 	return &websterengine.State{
 		MasterSessionID: "master-session",
 		Batches:         map[int]*websterengine.BatchState{1: {Slug: "only", StartSHA: sha}},
+	}
+}
+
+// withRecoveryStrands records, beside a fork batch, one recovery batch per strand guid,
+// and seeds the fixture's reed with each strand's liveness.
+func (fx *resetFixture) withRecoveryStrands(st *websterengine.State, liveness map[string]bool) {
+	reed := fx.cli.reed.(*shuttlefake.Reed)
+	number := 2
+	for _, guid := range []string{"strand-live", "strand-dead"} {
+		live, ok := liveness[guid]
+		if !ok {
+			continue
+		}
+		st.Batches[number] = &websterengine.BatchState{Slug: guid, Kind: "recovery", StrandGUID: guid, StartSHA: fx.base}
+		reed.Strands = append(reed.Strands, reedengine.StrandStatus{GUID: guid, Live: live})
+		number++
 	}
 }
 
@@ -179,12 +198,16 @@ func TestResetCmd(t *testing.T) {
 		fx := newResetFixture(t, h, "rst-prefix")
 		st := startedAt(fx.base)
 		st.PreFixHead = fx.base
+		fx.withRecoveryStrands(st, map[string]bool{"strand-live": true})
 		fx.saveState(t, st)
 		gitkit.CommitFile(t, fx.checkout, "rejected-fix.txt", "fix", "rejected fixer commit")
 
 		code, envelope := fx.reset(t, "--to", "pre-fix")
 		if code != 0 || envelope["ok"] != true || envelope["target"] != "pre-fix" {
 			t.Fatalf("reset --to pre-fix = %d, %v; want ok at pre-fix", code, envelope)
+		}
+		if removed := fx.cli.reed.(*shuttlefake.Reed).RemovedGUIDs; len(removed) != 0 {
+			t.Errorf("reset --to pre-fix removed strands %v; want none", removed)
 		}
 		if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != fx.base {
 			t.Errorf("HEAD = %s; want the pre-fix head %s", got, fx.base)
@@ -221,6 +244,45 @@ func TestResetCmd(t *testing.T) {
 		}
 		if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != fx.base {
 			t.Errorf("HEAD = %s; want %s", got, fx.base)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("start removes exactly the live recovery strands", func(t *testing.T) {
+		fx := newResetFixture(t, h, "rst-recovery")
+		st := startedAt(fx.base)
+		fx.withRecoveryStrands(st, map[string]bool{"strand-live": true, "strand-dead": false})
+		fx.saveState(t, st)
+
+		code, envelope := fx.reset(t, "--to", "start")
+		if code != 0 || envelope["ok"] != true {
+			t.Fatalf("reset --to start = %d, %v; want ok", code, envelope)
+		}
+		if removed := fx.cli.reed.(*shuttlefake.Reed).RemovedGUIDs; len(removed) != 1 || removed[0] != "strand-live" {
+			t.Errorf("RemovedGUIDs = %v; want exactly [strand-live]", removed)
+		}
+		if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != fx.base {
+			t.Errorf("HEAD = %s; want %s", got, fx.base)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("start refuses when a recovery strand cannot be removed and changes nothing", func(t *testing.T) {
+		fx := newResetFixture(t, h, "rst-recovery-fail")
+		st := startedAt(fx.base)
+		st.PreFixHead = fx.base
+		fx.withRecoveryStrands(st, map[string]bool{"strand-live": true})
+		fx.saveState(t, st)
+		fx.cli.reed.(*shuttlefake.Reed).RemoveErr = errors.New("reed is down")
+
+		fx.wantRefusal(t, []string{"--to", "start"},
+			"could not remove recovery strand strand-live", "reed is down",
+			"run `lyx reed remove strand-live`", "re-run `lyx webster reset --to start`")
+		loaded, err := websterengine.LoadState(fx.cli.geom.WebsterDir, fx.cli.geom.ScratchDir)
+		if err != nil || loaded == nil || loaded.PreFixHead != fx.base {
+			t.Errorf("state after the refusal = %+v, %v; want it unsaved with PreFixHead %s", loaded, err, fx.base)
 		}
 	}) {
 		return

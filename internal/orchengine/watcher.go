@@ -43,14 +43,16 @@ type Session interface {
 	Send(guid, text string) error
 	// ClearSession types the provider's clear command into the session.
 	ClearSession(guid string) error
+	// ReloadPlugins types the provider's plugin reload command into the session.
+	ReloadPlugins(guid string) error
 	// CompactSession types the provider's compact command into the session, with focus as its single-line instruction.
 	CompactSession(guid, focus string) error
 	// LoadSkills types the provider's one-turn load message for skills into the session.
 	LoadSkills(guid string, skills []string) error
 	// ClassifySkillLoad classifies the load turn of skills that turnEnd ended.
 	ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error)
-	// CompactedSince returns the time of the newest compaction boundary after since in the transcript turnEnd names.
-	CompactedSince(turnEnd shuttleengine.Event, since time.Time) (time.Time, bool, error)
+	// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it.
+	CompactedSince(turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error)
 }
 
 // Clock supplies the current time, settable in tests.
@@ -64,10 +66,13 @@ type Watcher struct {
 	cfg         Config
 	paths       Paths
 	stencilsDir string
-	skills      []string // Skills the reload sequence's skills step loads in one turn, before the pointer.
+	skills      []string // Skills the reload sequence's skills step loads in one turn after a clear, before the pointer.
 	clock       Clock
 
-	// compactedAt is the time of an auto-compaction boundary read at a turn end and not yet reloaded from; zero when none.
+	// compactedAt is the time of an auto-compaction boundary a turn end read confirmed fresh and not yet reloaded from;
+	// zero when none.
+	// A tick that reads a turn end replaces it from its own evaluation,
+	// and binding to another strand clears it.
 	// It is memory only: a restarted watcher finds the boundary again at its next turn end, since the baseline has not moved.
 	compactedAt time.Time
 
@@ -104,7 +109,7 @@ type phaseEvents struct {
 }
 
 // NewWatcher builds a watcher over session.
-// skills is the orch skill list the reload sequence types after a clear, a compaction and an auto-compaction.
+// skills is the orch skill list the reload sequence types after a clear.
 func NewWatcher(session Session, cfg Config, paths Paths, stencilsDir string, skills []string, clock Clock) *Watcher {
 	return &Watcher{session: session, cfg: cfg, paths: paths, stencilsDir: stencilsDir, skills: skills, clock: clock}
 }
@@ -186,17 +191,23 @@ func (w *Watcher) tick() (done bool, err error) {
 	}
 	var compactedAt time.Time
 	if lastTurnEnd != nil {
-		at, found, err := w.session.CompactedSince(*lastTurnEnd, st.CompactionBaseline)
+		boundary, found, err := w.session.CompactedSince(*lastTurnEnd, st.CompactionBaseline)
 		if err != nil {
 			return false, err
 		}
 		if found {
-			compactedAt = at
+			switch {
+			case boundary.TurnEndsAfter > 1:
+				logger.Info("orch: stale compaction boundary passed without a reload", "strandGUID", st.Strand, "boundaryAt", boundary.At, "turnEndsAfter", boundary.TurnEndsAfter)
+				st.CompactionBaseline = boundary.At
+			case boundary.TurnEndsAfter == 1 && boundary.ReadTurnEndAfter:
+				compactedAt = boundary.At
+			}
 		}
 	}
 	// No error point remains before the events are committed to memory.
 	w.cursor = next
-	if !compactedAt.IsZero() {
+	if lastTurnEnd != nil {
 		w.compactedAt = compactedAt
 	}
 	for i := range events {
@@ -252,6 +263,7 @@ func (w *Watcher) tick() (done bool, err error) {
 func (w *Watcher) initCursor(st State) (State, error) {
 	w.started, w.strand = true, st.Strand
 	w.newest, w.seen, w.replaying = nil, phaseEvents{}, false
+	w.compactedAt = time.Time{}
 	switch {
 	case st.Phase == PhaseIdle:
 		w.cursor = st.LastInjectionOffset
@@ -273,7 +285,7 @@ func (w *Watcher) toIdle(st State, abortReason string) error {
 	st.Phase = PhaseIdle
 	st.PhaseInjected = false
 	st.PendingHandoff, st.PendingResume = "", ""
-	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry = ReloadStepSkills, time.Time{}, nil
+	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry, st.ReloadSkipsSkills = ReloadStepSkills, time.Time{}, nil, false
 	st.Stuck = ""
 	st.LastInjectionOffset = w.cursor
 	if abortReason != "" {
@@ -605,10 +617,10 @@ func (w *Watcher) tickClearing(st State, now time.Time) error {
 	if st.PhaseInjected {
 		st.CycleCount++
 	}
-	return w.startReload(st, now)
+	return w.startReload(st, now, false)
 }
 
-// startAutoReload reloads the skills and the role after an auto-compaction read at a turn end, once the idle probe passes.
+// startAutoReload reloads the plugins and the role after an auto-compaction read at a turn end, once the idle probe passes.
 // The baseline moves to the boundary when the phase is entered, so no boundary reloads twice.
 func (w *Watcher) startAutoReload(st State, now time.Time) error {
 	probe, err := w.probeIdle(&st)
@@ -628,13 +640,14 @@ func (w *Watcher) startAutoReload(st State, now time.Time) error {
 	st.CompactionBaseline = w.compactedAt
 	st.PendingResume = pointer
 	w.compactedAt = time.Time{}
-	return w.startReload(st, now)
+	return w.startReload(st, now, true)
 }
 
-// startReload enters the resuming phase at its first step and types it.
+// startReload enters the resuming phase at its plugins step and types it.
+// skipsSkills is true for a reload after a compaction, which keeps the session's skills, and false after `/clear`, which loses them.
 // The caller must have seen the session idle on this tick and set st.PendingResume to the pointer line.
-func (w *Watcher) startReload(st State, now time.Time) error {
-	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry = ReloadStepSkills, time.Time{}, nil
+func (w *Watcher) startReload(st State, now time.Time, skipsSkills bool) error {
+	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry, st.ReloadSkipsSkills = ReloadStepPlugins, time.Time{}, nil, skipsSkills
 	st, err := w.enter(st, PhaseResuming, now)
 	if err != nil {
 		return err
@@ -643,11 +656,15 @@ func (w *Watcher) startReload(st State, now time.Time) error {
 	return w.typeReloadStep(st, now)
 }
 
-// reloadStep returns the step st is in, normalised: an empty skill list has no skills step, a retry step with nothing to retry has no retry,
-// and any value that is neither is the pointer step.
+// reloadStep returns the step st is in, normalised:
+// a reload that skips the skills has no skills step, an empty skill list has none either,
+// a retry step with nothing to retry has no retry,
+// and any value that is none of these is the pointer step.
 func (w *Watcher) reloadStep(st State) int {
 	switch {
-	case st.ReloadStep == ReloadStepSkills && len(w.skills) > 0:
+	case st.ReloadStep == ReloadStepPlugins:
+		return ReloadStepPlugins
+	case st.ReloadStep == ReloadStepSkills && len(w.skills) > 0 && !st.ReloadSkipsSkills:
 		return ReloadStepSkills
 	case st.ReloadStep == ReloadStepRetry && len(st.ReloadRetry) > 0:
 		return ReloadStepRetry
@@ -655,9 +672,11 @@ func (w *Watcher) reloadStep(st State) int {
 	return ReloadStepPointer
 }
 
-// typeReloadStep types the current step, the skills load, the retry load or the pointer: the caller must have seen the session idle on this tick.
+// typeReloadStep types the current step, the plugins reload, the skills load, the retry load or the pointer: the caller must have seen the session idle on this tick.
 // The first typing persists the step's time and events offset first, so a turn end read before it never confirms the step.
 // A re-typing after a restart keeps both, so the step's timeout never restarts.
+// The plugins step ends no turn,
+// so it persists the move to the next step itself and types nothing else on this tick.
 func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 	if st.ReloadTypedAt.IsZero() {
 		st.ReloadTypedAt = now
@@ -670,6 +689,19 @@ func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 	}
 	var err error
 	switch w.reloadStep(st) {
+	case ReloadStepPlugins:
+		if err := w.session.ReloadPlugins(st.Strand); err != nil {
+			return err
+		}
+		next := ReloadStepSkills
+		if st.ReloadSkipsSkills {
+			next = ReloadStepPointer
+		}
+		st.ReloadStep, st.ReloadTypedAt = next, time.Time{}
+		st.PhaseEventsOffset = w.cursor
+		st.PhaseInjected = false
+		w.seen = phaseEvents{}
+		return w.save(st)
 	case ReloadStepSkills:
 		err = w.session.LoadSkills(st.Strand, w.skills)
 	case ReloadStepRetry:
@@ -725,7 +757,8 @@ func (w *Watcher) settleSkillTurn(st State, now time.Time, step int, skills []st
 	return w.advanceReload(st, now, ReloadStepPointer, nil)
 }
 
-// tickResuming walks the reload sequence: the skills step, the retry step when skills were left missing, then the pointer.
+// tickResuming walks the reload sequence: the plugins step, the skills step after `/clear`, the retry step when skills were left missing, then the pointer.
+// The plugins step has no confirmation and no timeout: it is typed again until the move off it is persisted.
 // A skills or retry step is confirmed by a turn end read after it was typed, and settled from that turn.
 // Past its timeout, from its first typing, every skill it loads is skipped with no retry.
 // The pointer step ends the phase at its first turn end and times out the same way.
@@ -734,6 +767,9 @@ func (w *Watcher) tickResuming(st State, now time.Time) error {
 	typed := !st.ReloadTypedAt.IsZero()
 	timedOut := typed && now.Sub(st.ReloadTypedAt) >= w.cfg.HandoffTimeout()
 	step := w.reloadStep(st)
+	if step == ReloadStepPlugins {
+		return w.typeReloadStepWhenIdle(st, now)
+	}
 	if step != ReloadStepPointer {
 		skills := w.skills
 		if step == ReloadStepRetry {
@@ -771,6 +807,11 @@ func (w *Watcher) tickResuming(st State, now time.Time) error {
 			return nil
 		}
 	}
+	return w.typeReloadStepWhenIdle(st, now)
+}
+
+// typeReloadStepWhenIdle types the current step when the idle probe passes on this tick, and types nothing otherwise.
+func (w *Watcher) typeReloadStepWhenIdle(st State, now time.Time) error {
 	probe, err := w.probeIdle(&st)
 	if err != nil {
 		return err
@@ -811,7 +852,7 @@ func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
 		return w.toIdle(st, fmt.Sprintf("resume stencil %s failed to render: %v", resumeStencilName, err))
 	}
 	st.PendingResume = resume
-	return w.startReload(st, now)
+	return w.startReload(st, now, true)
 }
 
 // tickCompacting re-reads the context through State.ReadingTurnEnd every tick, since a compaction ends without a turn end.

@@ -356,18 +356,34 @@ func TestTrustDismissSequence(t *testing.T) {
 }
 
 func TestComposeSend(t *testing.T) {
-	c := New()
-	got := c.ComposeSend("hello")
-	want := []shuttleengine.PaneInput{
-		{Key: "Escape", SettleMS: composeSendSettleMS},
-		{Text: "hello", Submit: true},
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		engine *Claude
+		settle int
+	}{
+		{"default settle", New(), defaultSubmitSettleMS},
+		{"configured settle", NewFromConfig(shuttleengine.Config{SubmitSettleMS: 120}), 120},
 	}
-	if len(got) != len(want) {
-		t.Fatalf("ComposeSend(%q) = %+v; want %+v", "hello", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("ComposeSend(%q)[%d] = %+v; want %+v", "hello", i, got[i], want[i])
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := tt.engine.ComposeSend("hello")
+			want := []shuttleengine.PaneInput{
+				{Key: "Escape", SettleMS: composeSendSettleMS},
+				{Text: "hello", SettleMS: tt.settle},
+				{Key: "Enter"},
+			}
+			if len(got) != len(want) {
+				t.Fatalf("ComposeSend(%q) = %+v; want %+v", "hello", got, want)
+			}
+			for i := range want {
+				if got[i] != want[i] {
+					t.Errorf("ComposeSend(%q)[%d] = %+v; want %+v", "hello", i, got[i], want[i])
+				}
+			}
+		})
 	}
 }

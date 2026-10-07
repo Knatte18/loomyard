@@ -472,6 +472,13 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 				fx.Git.merging = true
 				return secondCall{head: head, refusal: []string{"merge --continue", "merge --abort"}}
 			},
+			// A refusing call returns no result,
+			// so the check reads only the reed double.
+			check: func(t *testing.T, fx *recoverFixture, a attempt) {
+				if !slices.Contains(fx.Reed.RemovedGUIDs, a.strandGUID) {
+					t.Errorf("RemoveStrand calls = %v; want the recovery strand %q removed although the call refused", fx.Reed.RemovedGUIDs, a.strandGUID)
+				}
+			},
 		},
 		{
 			// recover-batch follows record-batch's merge-only head rule: a --no-ff parent merge
@@ -504,8 +511,8 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			// RecoveryTimeoutMin is measured from the recorded SpawnedAt ACROSS re-entrant calls:
 			// virtual time advanced past the timeout between two calls classifies dead/timeout on the
 			// second call though neither call's own wait budget crosses it, and the dead
-			// classification keeps BOTH the strand and the run directory (diagnosis material).
-			name:   "the recovery timeout is measured across calls and a dead strand is kept",
+			// classification removes the strand but keeps the run directory (diagnosis material).
+			name:   "the recovery timeout is measured across calls and a dead strand is removed with its run dir kept",
 			config: func(fx *recoverFixture) { fx.Deps.Config.RecoveryTimeoutMin = 1 },
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
 				// Two minutes pass between the two separate CLI invocations, with no report ever landing.
@@ -525,8 +532,8 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 				if a.second.ElapsedS < 120 {
 					t.Errorf("second call ElapsedS = %d; want >= 120 (measured since the original spawn)", a.second.ElapsedS)
 				}
-				if slices.Contains(fx.Reed.RemovedGUIDs, a.strandGUID) {
-					t.Errorf("RemoveStrand calls = %v; want the dead-classified strand %q kept", fx.Reed.RemovedGUIDs, a.strandGUID)
+				if !slices.Contains(fx.Reed.RemovedGUIDs, a.strandGUID) {
+					t.Errorf("RemoveStrand calls = %v; want the dead-classified strand %q removed", fx.Reed.RemovedGUIDs, a.strandGUID)
 				}
 				if _, statErr := os.Stat(a.runDir); statErr != nil {
 					t.Errorf("stat(%s) = %v; want the dead-classified run dir kept", a.runDir, statErr)
@@ -612,6 +619,9 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 				// a corrected report or an operator to resolve.
 				if bs := fx.Deps.State.Batches[1]; bs.Terminal {
 					t.Errorf("BatchState.Terminal = true; want false after a refusal")
+				}
+				if tc.check != nil {
+					tc.check(t, fx, a)
 				}
 				return
 			}

@@ -130,8 +130,8 @@ func LoomDriverLog(l *lyxcwd.Location) string {
 // It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
 // status file per the Durable-vs-Ephemeral State Invariant.
 // It is a third lock distinct from both LoomStatusLock's per-persist status lock and LoomRunLock's
-// whole-run lock, and it is released before the terminal handover because that handover blocks for
-// the operator's entire session.
+// whole-run lock,
+// and it is released before the success envelope is printed.
 func LoomBootstrapLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName, "bootstrap.lock")
 }

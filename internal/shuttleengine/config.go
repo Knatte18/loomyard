@@ -27,6 +27,8 @@ type Config struct {
 
 	BackgroundShellWaitMin int `yaml:"background_shell_wait_min"` // Minutes a turn end waits on an outstanding background shell; LoadConfig refuses non-positive.
 
+	SubmitSettleMS int `yaml:"submit_settle_ms"` // Pause between typed text and its submitting Enter; LoadConfig refuses negative.
+
 	Claude                    string `yaml:"claude"`
 	ClaudeDenyAgentTool       bool   `yaml:"claude_deny_agent_tool"`
 	ClaudeDenyAskUserQuestion bool   `yaml:"claude_deny_ask_user_question"`
@@ -49,6 +51,10 @@ func LoadConfig(baseDir, module string) (Config, error) {
 
 	if cfg.BackgroundShellWaitMin <= 0 {
 		return Config{}, fmt.Errorf("shuttle config: background_shell_wait_min must be positive, got %d", cfg.BackgroundShellWaitMin)
+	}
+
+	if cfg.SubmitSettleMS < 0 {
+		return Config{}, fmt.Errorf("shuttle config: submit_settle_ms must not be negative, got %d", cfg.SubmitSettleMS)
 	}
 
 	return cfg, nil

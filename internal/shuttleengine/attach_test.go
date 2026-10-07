@@ -214,6 +214,94 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 	}
 }
 
+// TestAttach_RemovesSupersededStrands covers the removal on Attach's not-found answer:
+// only the live strand of a respawn-eligible candidate of the same output-file set is removed,
+// an attach or a failed removal never answers not found,
+// and AttachIfLive removes nothing.
+func TestAttach_RemovesSupersededStrands(t *testing.T) {
+	t.Parallel()
+
+	live := func(guid string) reedengine.StrandStatus {
+		return reedengine.StrandStatus{GUID: guid, PaneID: "%" + guid, Live: true}
+	}
+	tests := []struct {
+		name          string
+		outcome       string
+		strands       []reedengine.StrandStatus
+		otherOutputs  bool
+		removeErr     error
+		ifLiveOnly    bool
+		wantRemoved   []string
+		wantFound     bool
+		wantErrSubstr string
+	}{
+		{name: "terminal_candidate_on_a_live_strand_is_removed", outcome: "done", strands: []reedengine.StrandStatus{live("strand-1")}, wantRemoved: []string{"strand-1"}},
+		{name: "dead_pane_candidate_removes_nothing", outcome: "died", strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: false}}},
+		{name: "untracked_candidate_removes_nothing", outcome: "timeout"},
+		{name: "other_output_set_strand_survives", outcome: "done", strands: []reedengine.StrandStatus{live("strand-1"), live("strand-other")}, otherOutputs: true, wantRemoved: []string{"strand-1"}},
+		{name: "attachable_candidate_is_attached_not_removed", outcome: runOutcomeRunning, strands: []reedengine.StrandStatus{live("strand-1")}, wantFound: true},
+		{name: "removal_failure_is_an_error_not_a_not_found", outcome: "done", strands: []reedengine.StrandStatus{live("strand-1")}, removeErr: errors.New("reed down"), wantRemoved: []string{"strand-1"}, wantErrSubstr: `could not remove the superseded strand strand-1`},
+		{name: "attach_if_live_removes_nothing", outcome: "done", strands: []reedengine.StrandStatus{live("strand-1")}, ifLiveOnly: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: tt.strands}}, RemoveStrandErr: tt.removeErr}
+			fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
+			seedPresentReedState(t, dotLyxDir)
+
+			outputFile := filepath.Join(runRoot, "out.md")
+			runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{
+				strandGUID: "strand-1", sessionID: "session-1",
+				outputFiles: []string{outputFile}, outcome: tt.outcome, includeOutcome: true,
+			})
+			if tt.otherOutputs {
+				seedAttachRun(t, runRoot, "run-other", seedAttachRunOpts{
+					strandGUID: "strand-other", outputFiles: []string{filepath.Join(runRoot, "other.md")},
+					outcome: "done", includeOutcome: true,
+				})
+			}
+			// Seeded for the attachable row, which reaches Wait and must classify OutcomeDone on its first tick.
+			touchOutputFile(t, outputFile)
+			if err := os.WriteFile(filepath.Join(runDir, eventsFileName), []byte("STOP:done\n"), 0o644); err != nil {
+				t.Fatalf("seed events: %v", err)
+			}
+
+			// KeepPane so the attachable row's own harvest does not remove its strand, which would read as a superseded-strand removal.
+			spec := Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, KeepPane: true}
+			attach := runner.Attach
+			if tt.ifLiveOnly {
+				attach = runner.AttachIfLive
+			}
+			_, found, err := attach(spec)
+
+			if tt.wantErrSubstr == "" && err != nil {
+				t.Fatalf("Attach() error = %v; want nil", err)
+			}
+			if tt.wantErrSubstr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErrSubstr) || !strings.Contains(err.Error(), `lyx reed remove strand-1`) {
+					t.Fatalf("Attach() error = %v; want it to contain %q and the way forward `lyx reed remove strand-1`", err, tt.wantErrSubstr)
+				}
+			}
+			if found != tt.wantFound {
+				t.Errorf("found = %v; want %v", found, tt.wantFound)
+			}
+			var removed []string
+			for _, call := range reed.RemoveStrandCalls {
+				removed = append(removed, call.GUID)
+				if call.Recursive {
+					t.Errorf("RemoveStrand(%s) was recursive; want a non-cascading removal", call.GUID)
+				}
+			}
+			if strings.Join(removed, ",") != strings.Join(tt.wantRemoved, ",") {
+				t.Errorf("removed strands = %v; want %v", removed, tt.wantRemoved)
+			}
+		})
+	}
+}
+
 // TestAttach_Multiplicity covers candidate-evaluation-order and one-live-match-or-none: the
 // multiplicity rule applies only to the surviving ATTACHABLE set, an error verdict dominates
 // whatever the other candidates say, and two ordinary leftovers (both non-terminal-classified,

@@ -479,6 +479,7 @@ func (c *loomCLI) loomPreStepUnmarked(ctx context.Context) (string, error) {
 // aftermath is byte-identical to a mid-run driver death, and this voucher is the one thing letting
 // the next run's entry observation tell the two apart, so its call site can move neither above the
 // Step call nor below the envelope.
+// A step that returns an error vouches too, from loomAfterStep, for what it left on disk.
 func (c *loomCLI) loomPostStep(res shedengine.StepResult) {
 	recordHandoffVoucher(loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location), len(res.History), res.State)
 }

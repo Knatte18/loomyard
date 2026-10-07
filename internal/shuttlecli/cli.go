@@ -97,7 +97,7 @@ provider specifics.`,
 				return nil
 			}
 			reedEngine := reedengine.New(reedCfg, reedGeom)
-			c.runner = shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+			c.runner = shuttleengine.NewRunner(reedEngine, claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 			return nil
 		},
 	}

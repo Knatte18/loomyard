@@ -48,6 +48,8 @@ func stampedSiblingCount(t *testing.T, dir, base string) int {
 // --- BurlerProducer ---
 
 func TestBurlerProducer_AttachesToLiveRoundInsteadOfRespawning(t *testing.T) {
+	t.Parallel()
+
 	runDir := t.TempDir()
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 	attach := &shedfake.Shuttle{
@@ -56,8 +58,11 @@ func TestBurlerProducer_AttachesToLiveRoundInsteadOfRespawning(t *testing.T) {
 	}
 	p := newBurlerProducer(t, runDir, runner, withAttach(attach), withBurlerClock(fixedClock(time.Now())))
 
-	// The live agent's own in-progress review, already on disk. It must still be there afterwards.
-	writeRoundFile(t, roundReviewPath(runDir, 1))
+	// The live agent's own in-progress review, already on disk and parseable, since the attach probe's gate spec ends with the review-parse entry.
+	// It must still be there afterwards.
+	if err := os.WriteFile(roundReviewPath(runDir, 1), []byte("---\nverdict: APPROVED\n---\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(review) = %v; want nil", err)
+	}
 
 	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 	if want := roundReviewPath(runDir, 1); ptr.Path != want {

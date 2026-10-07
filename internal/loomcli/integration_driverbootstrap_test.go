@@ -19,9 +19,10 @@
 //
 // This drives the llm arm's own launch machinery (startLLMDriverArm) directly over a *loomCLI wired through wire() -- the same production wiring "loom start" itself uses -- rather than through the full cobra RunE:
 // "loom start" on a go-driven run also spawns the status strand's own watcher pane via os.Executable(), which under go test resolves to this very test binary and would recursively re-run the whole suite inside that pane, exactly the hazard the Live-Substrate Spawn Observability invariant's "never re-exec os.Executable() under go test" clause and this package's own smoke suite (see its header) both exist to avoid.
-// wire() itself spawns no process and resolves no cwd, so it carries none of that
-// hazard, and startLLMDriverArm never reaches the terminal-handover code at all -- suppressed by
-// construction, not by a flag.
+// wire() itself spawns no process and resolves no cwd,
+// so it carries none of that hazard,
+// and startLLMDriverArm never reaches the verb's success-envelope tail at all:
+// that is suppressed by construction, not by a flag.
 package loomcli
 
 import (
@@ -115,7 +116,8 @@ func waitForDriveReport(t *testing.T, dir string, timeout time.Duration) string 
 
 // TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver drives one end-to-end llm driver launch over a fixture hub built through hubforge, seeded with the llm driver, and asserts three things: the launch call returns once the stub's ready marker lands and well before its settle delay elapses, proving shuttle's own blocking Start returns past the provider's startup gates rather than waiting on the whole driver session to finish; the started run's persisted state file exists under the run directory the handle reports; and the drive report the stubbed driver writes and exits lands under the run's durable drive-reports directory, never its ephemeral scratch one.
 func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.T) {
-	const stubSettleDelay = 2 * time.Second
+	// Long enough that Start's own paced, confirmed typing of the skill message and the pointer (a submit settle and a redraw settle per send) finishes well inside it.
+	const stubSettleDelay = 5 * time.Second
 	stubPath := integrationWriteStubDriverScript(t, stubSettleDelay)
 
 	h := hubforge.NewHub(t, ".")

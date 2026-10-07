@@ -132,11 +132,9 @@ func CheckSeed(statusPath, statusLockPath, expectedProducer string, toleratedPro
 // ReadJSONStrict read at the top of its loop and errors on it BEFORE any producer — the
 // Loom-Preflight row that calls CheckSeed included — is ever looked up, so CheckSeed-as-producer
 // never even runs on a decode failure (see CheckSeed's own doc comment on that step-1 pre-emption).
-// Either way this function answers ownership alone. Escalating a decode failure here stopped the
-// bootstrap before it ever spawned a driver or reached the tmux handover, for a condition the
-// driver's own run loop already surfaces in its own log — reproduced live via a poisoned status
-// file that made both "lyx loom start" and "lyx loom run" refuse on the envelope instead of letting
-// the spawned driver's own step-1 gate report the decode failure.
+// Either way this function answers ownership alone.
+// Escalating a decode failure here stopped the bootstrap before it ever spawned a driver or reached its success envelope, for a condition the driver's own run loop already surfaces in its own log —
+// reproduced live via a poisoned status file that made both "lyx loom start" and "lyx loom run" refuse on the envelope instead of letting the spawned driver's own step-1 gate report the decode failure.
 // A genuine read or lock failure — anything that is not a decode failure — is still returned as its
 // own error, never converted into a verdict: CheckSeed draws this exact same line (see its own
 // rerr-handling), and this function draws it the same way for the same reason.

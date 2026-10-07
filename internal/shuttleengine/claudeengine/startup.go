@@ -340,21 +340,25 @@ func (c *Claude) TrustDismissSequence(capture string) []shuttleengine.PaneInput 
 const composeSendSettleMS = 300
 
 // ComposeSend returns the key choreography that submits text as claude's next turn.
-// Escape is sent first to clear leaked auto-suggest, with a settle pause before text is typed and
-// submitted.
+// Escape is sent first to clear leaked auto-suggest, with a settle pause before text is typed.
+// The text and the Enter are two paced steps,
+// so the Enter lands outside the typing burst.
 func (c *Claude) ComposeSend(text string) []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{
 		{Key: "Escape", SettleMS: composeSendSettleMS},
-		{Text: text, Submit: true},
+		{Text: text, SettleMS: c.submitSettleMS},
+		{Key: "Enter"},
 	}
 }
 
 // ModelSwitchSequence returns the key choreography that switches a live claude session's model: the
 // `/model <name>` slash command.
-// Unlike ComposeSend, it sends NO leading Escape (injected mid-tool-call, Escape there interrupts
-// the tool and aborts the turn).
+// It sends NO leading Escape (injected mid-tool-call, Escape there interrupts the tool and aborts the turn).
+// The text and the Enter are two paced steps,
+// so the Enter lands outside the typing burst.
 func (c *Claude) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{
-		{Text: "/model " + model, Submit: true},
+		{Text: "/model " + model, SettleMS: c.submitSettleMS},
+		{Key: "Enter"},
 	}
 }

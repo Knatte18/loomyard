@@ -9,6 +9,7 @@ A mechanical gate's **closure** and its CLI self-check verb call the same packag
 - PR-Rework's gate and `validate-plan --rework`: `loomshed.ValidateReworkPlan`, which checks the whole new plan plus the told `first_card`.
 - Describe's gate and `validate-description`: `summaryparser.ValidateDescription`.
 - The webster `verify` gate (`websterengine.NewVerifyGate`) and Webster-Burler's `verify` gate (`loomshed.NewVerifyGate`) and `lyx webster verify`: `verifytree.Verify`.
+- Every burler round's `review` gate and `lyx burler validate-review`: `burlerengine.CheckReviewFile`, over `ParseReview`.
 
 ## Rules
 

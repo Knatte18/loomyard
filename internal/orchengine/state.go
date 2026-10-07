@@ -77,6 +77,9 @@ type State struct {
 	LastAbortReason string `json:"last_abort_reason"` // Why the last cycle aborted.
 	Stuck           string `json:"stuck"`             // Why the current phase is overdue and waiting on the session; empty while on time.
 	WatcherExit     string `json:"watcher_exit"`      // Why the last watcher exited; empty while one runs.
+	// WatcherStopping is set by a watcher that has received SIGINT or SIGTERM and not yet released watch.lock,
+	// so `start` waits for it instead of reading it as live.
+	WatcherStopping bool `json:"watcher_stopping"`
 
 	CycleTrigger string    `json:"cycle_trigger"` // Trigger that started the current or last cycle: TriggerSoft, TriggerHard or TriggerRequested.
 	LastDeferral time.Time `json:"last_deferral"` // When the last DEFER turn end was read; zero when none.
@@ -87,17 +90,21 @@ type State struct {
 	// CompactionBaseline is the time of the newest compaction boundary already handled, or the launch time of the session;
 	// only a boundary after it triggers a reload.
 	CompactionBaseline time.Time `json:"compaction_baseline"`
-	// ReloadStep is the resuming phase's current step: ReloadStepSkills, ReloadStepRetry, or any other value for the pointer step.
+	// ReloadStep is the resuming phase's current step: ReloadStepPlugins, ReloadStepSkills, ReloadStepRetry, or any other value for the pointer step.
 	ReloadStep int `json:"reload_step"`
 	// ReloadTypedAt is when the current step was first typed; zero while it has not been.
 	ReloadTypedAt time.Time `json:"reload_typed_at"`
 	// ReloadRetry is the skills the retry step still loads; empty outside it.
 	ReloadRetry []string `json:"reload_retry"`
+	// ReloadSkipsSkills is true for a reload entered after a compaction, which has no skills step;
+	// false after `/clear`.
+	ReloadSkipsSkills bool `json:"reload_skips_skills"`
 }
 
 // The resuming phase's steps, persisted in State.ReloadStep.
 // Any other persisted value, including a per-skill index written before the one-turn load, is read as the pointer step.
 const (
+	ReloadStepPlugins = -2
 	ReloadStepSkills  = 0
 	ReloadStepRetry   = -1
 	ReloadStepPointer = 1
@@ -132,10 +139,15 @@ var errStrandReplaced = errors.New("orch: state was bound to another strand sinc
 // saveStateForStrand writes s only while the persisted record still names s.Strand, checked and written under one lock.
 // It returns errStrandReplaced without writing when the record names another strand,
 // so a watcher can never overwrite the binding a concurrent `start` just recorded.
+// The persisted WatcherStopping is kept, since only the signal goroutine and a new run set or clear it,
+// and a tick's save is made from a state loaded before the signal.
 func saveStateForStrand(p Paths, s State) error {
 	err := state.UpdateJSON(p.StatePath, p.StateLockPath, func(cur State, found bool) (State, error) {
 		if found && cur.Strand != s.Strand {
 			return cur, errStrandReplaced
+		}
+		if found {
+			s.WatcherStopping = cur.WatcherStopping
 		}
 		return s, nil
 	})
@@ -219,7 +231,7 @@ func NewHandoffPath(p Paths, now time.Time) string {
 // LastHandoff, CycleCount, CycleTrigger and LastDeferral survive.
 func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {
 	s.CompactionBaseline = launchedAt
-	s.ReloadStep, s.ReloadTypedAt, s.ReloadRetry = ReloadStepSkills, time.Time{}, nil
+	s.ReloadStep, s.ReloadTypedAt, s.ReloadRetry, s.ReloadSkipsSkills = ReloadStepSkills, time.Time{}, nil, false
 	s.LastContextTokens, s.LastContextKnown = 0, false
 	s.ReadingTurnEnd = nil
 	if s.Phase != "" && s.Phase != PhaseIdle {

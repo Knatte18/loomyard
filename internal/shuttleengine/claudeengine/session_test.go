@@ -67,6 +67,38 @@ func TestIdleSession(t *testing.T) {
 	}
 }
 
+func TestInputBoxText(t *testing.T) {
+	t.Parallel()
+
+	rule := "────────────────────────────────"
+	tests := []struct {
+		name     string
+		capture  string
+		wantText string
+		wantOK   bool
+	}{
+		{"empty box", readPaneFixture(t, "pane-idle-empty.txt"), "", true},
+		{"draft in box", readPaneFixture(t, "pane-idle-draft.txt"), "please also run the linter", true},
+		{"wrapped two-line draft", rule + "\n❯ first half of the draft\n  second half of the draft\n" + rule + "\n  ? for shortcuts\n", "first half of the draft second half of the draft", true},
+		{"collapsed paste placeholder", rule + "\n❯ [Pasted text #1 +42 lines]\n" + rule + "\n  ? for shortcuts\n", "[Pasted text #1 +42 lines]", true},
+		{"turn running over an empty box", readPaneFixture(t, "pane-turn-running.txt"), "", true},
+		{"boxed side bars", "╭" + rule + "╮\n│ ❯ hello     │\n╰" + rule + "╯\n", "hello", true},
+		{"permission prompt has no box", readPaneFixture(t, "pane-permission-prompt.txt"), "", false},
+		{"no input box", "● some transcript\n", "", false},
+	}
+	c := &Claude{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			text, ok := c.InputBoxText(tt.capture)
+			if text != tt.wantText || ok != tt.wantOK {
+				t.Errorf("InputBoxText = (%q, %v); want (%q, %v)", text, ok, tt.wantText, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestPaneTooShort(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -90,17 +122,21 @@ func TestPaneTooShort(t *testing.T) {
 }
 
 func TestCompactSessionSequence(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name  string
 		focus string
 		want  []shuttleengine.PaneInput
 	}{
-		{"focus", "the open plan", []shuttleengine.PaneInput{{Text: "/compact the open plan", Submit: true}}},
-		{"empty", "", []shuttleengine.PaneInput{{Text: "/compact", Submit: true}}},
+		{"focus", "the open plan", []shuttleengine.PaneInput{{Text: "/compact the open plan", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}},
+		{"empty", "", []shuttleengine.PaneInput{{Text: "/compact", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := (&Claude{}).CompactSessionSequence(tc.focus)
+			t.Parallel()
+
+			got := New().CompactSessionSequence(tc.focus)
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("CompactSessionSequence(%q) = %#v; want %#v", tc.focus, got, tc.want)
 			}
@@ -108,9 +144,21 @@ func TestCompactSessionSequence(t *testing.T) {
 	}
 }
 
+func TestReloadPluginsSequence(t *testing.T) {
+	t.Parallel()
+
+	got := New().ReloadPluginsSequence()
+	want := []shuttleengine.PaneInput{{Text: "/reload-plugins", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ReloadPluginsSequence = %#v; want %#v", got, want)
+	}
+}
+
 func TestClearSessionSequence(t *testing.T) {
-	got := (&Claude{}).ClearSessionSequence()
-	want := []shuttleengine.PaneInput{{Text: "/clear", Submit: true}}
+	t.Parallel()
+
+	got := New().ClearSessionSequence()
+	want := []shuttleengine.PaneInput{{Text: "/clear", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ClearSessionSequence = %#v; want %#v", got, want)
 	}

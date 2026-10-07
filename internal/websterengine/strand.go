@@ -14,6 +14,7 @@ package websterengine
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -95,6 +96,44 @@ type OrchestratorHandle interface {
 // two-phase (start, then wait) so strand identity is learned and persisted before blocking.
 type OrchestratorStarter interface {
 	StartOrchestrator(shuttleengine.Spec) (OrchestratorHandle, error)
+}
+
+// RecoveryStrandRemoveError is RemoveRecoveryStrands's failure: the strand it could not remove and why.
+type RecoveryStrandRemoveError struct {
+	GUID string
+	Err  error
+}
+
+func (e *RecoveryStrandRemoveError) Error() string {
+	return fmt.Sprintf("could not remove recovery strand %s: %v", e.GUID, e.Err)
+}
+
+func (e *RecoveryStrandRemoveError) Unwrap() error { return e.Err }
+
+// RemoveRecoveryStrands removes every live recovery strand the state records, in batch-number order.
+// Only a batch of Kind "recovery" with a StrandGUID names one;
+// implementer forks and the Master have no recorded strand.
+// The first failure returns a *RecoveryStrandRemoveError naming the strand guid.
+// A nil state removes nothing.
+func RemoveRecoveryStrands(reed shuttleengine.ReedOps, st *State) error {
+	if st == nil {
+		return nil
+	}
+	numbers := make([]int, 0, len(st.Batches))
+	for number := range st.Batches {
+		numbers = append(numbers, number)
+	}
+	sort.Ints(numbers)
+	for _, number := range numbers {
+		bs := st.Batches[number]
+		if bs == nil || bs.Kind != "recovery" || bs.StrandGUID == "" {
+			continue
+		}
+		if err := removeStrandIfLive(reed, bs.StrandGUID); err != nil {
+			return &RecoveryStrandRemoveError{GUID: bs.StrandGUID, Err: err}
+		}
+	}
+	return nil
 }
 
 // removeStrandIfLive removes guid's reed strand when reed still reports it

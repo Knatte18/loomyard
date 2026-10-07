@@ -3,6 +3,7 @@
 With Tier 2 on, a loom halt, a loom crash-resume and every webster refusal leave a Go-authored friction note, and no note is archived or deleted before a reflection has covered it.
 
 - A loom halt (`blocked` or `failed`, under `run` or `step`) and every `lyx webster` refusal but `validate`'s write one friction note, through `friction.NotePath`, from `loomcli` and webster code respectively.
+  An escalation halt writes its note but spawns no reflection, and the next reflection covers the note.
   A `run` or `step` entry that detects a crash-resume writes a `loom-crash-resume` note the same way.
 - A webster refusal cobra raises before the verb's `RunE` (flag parsing, argument count, the persistent pre-run) fires before the friction directory is resolved and is not noted.
 - A note-write failure never changes the verb's exit or envelope.

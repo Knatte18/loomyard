@@ -3,6 +3,7 @@ package claudeengine
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -134,6 +135,8 @@ const timedTranscript = `{"type":"assistant","isSidechain":false,"timestamp":"20
 `
 
 func TestCompactedSince_FindsNewestMainChainBoundaryAfterSince(t *testing.T) {
+	t.Parallel()
+
 	hour := func(h int) time.Time { return time.Date(2026, 3, 4, h, 0, 0, 0, time.UTC) }
 	data := []byte(timedTranscript)
 	cases := []struct {
@@ -149,9 +152,9 @@ func TestCompactedSince_FindsNewestMainChainBoundaryAfterSince(t *testing.T) {
 	}
 	for _, tc := range cases {
 		for _, chunk := range []int{1, 64, 4096} {
-			got, found := compactedSince(bytes.NewReader(data), int64(len(data)), chunk, tc.since)
-			if found != tc.wantFound || !got.Equal(tc.want) {
-				t.Errorf("%s chunk %d: got %v, %v; want %v, %v", tc.name, chunk, got, found, tc.want, tc.wantFound)
+			got, found := compactedSince(bytes.NewReader(data), int64(len(data)), chunk, tc.since, "")
+			if found != tc.wantFound || !got.At.Equal(tc.want) {
+				t.Errorf("%s chunk %d: got %v, %v; want %v, %v", tc.name, chunk, got.At, found, tc.want, tc.wantFound)
 			}
 		}
 	}
@@ -160,7 +163,7 @@ func TestCompactedSince_FindsNewestMainChainBoundaryAfterSince(t *testing.T) {
 func TestCompactedSince_NoBoundaryInTranscript(t *testing.T) {
 	c := &Claude{}
 	got, found := c.CompactedSince(stopEventFor(t, fixturePath(t, "usage-main-chain.jsonl")), time.Time{})
-	if found || !got.IsZero() {
+	if found || got != (shuttleengine.CompactionBoundary{}) {
 		t.Errorf("got %v, %v; want not found", got, found)
 	}
 }
@@ -172,7 +175,7 @@ func TestCompactedSince_ReadsTheTranscriptNamedByTheTurnEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, found := c.CompactedSince(stopEventFor(t, path), time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC))
-	if want := time.Date(2026, 3, 4, 4, 0, 0, 0, time.UTC); !found || !got.Equal(want) {
+	if want := time.Date(2026, 3, 4, 4, 0, 0, 0, time.UTC); !found || !got.At.Equal(want) {
 		t.Errorf("got %v, %v; want %v, true", got, found, want)
 	}
 }
@@ -188,8 +191,56 @@ func TestCompactedSince_DegradesToNotFound(t *testing.T) {
 		"malformed":       stopEventFor(t, fixturePath(t, "usage-malformed.jsonl")),
 	}
 	for name, ev := range cases {
-		if got, found := c.CompactedSince(ev, time.Time{}); found || !got.IsZero() {
+		if got, found := c.CompactedSince(ev, time.Time{}); found || got != (shuttleengine.CompactionBoundary{}) {
 			t.Errorf("%s: got %v, %v; want not found", name, got, found)
 		}
 	}
 }
+
+// TestCompactedSince_CountsTurnEndsAfterTheBoundary covers the turn-end count and the match of the read turn end against the transcript's newest one.
+func TestCompactedSince_CountsTurnEndsAfterTheBoundary(t *testing.T) {
+	t.Parallel()
+
+	const boundary = `{"type":"system","subtype":"compact_boundary","isSidechain":false,"timestamp":"2026-03-04T01:00:00Z","compactMetadata":{"postTokens":10}}` + "\n"
+	turnEnd := func(hour int, stopReason, text string) string {
+		return fmt.Sprintf(`{"type":"assistant","isSidechain":false,"timestamp":"2026-03-04T%02d:00:00Z","message":{"stop_reason":%s,"content":[{"type":"text","text":%q}]}}`+"\n", hour, stopReason, text)
+	}
+	sidechainTurnEnd := `{"type":"assistant","isSidechain":true,"timestamp":"2026-03-04T05:00:00Z","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"side"}]}}` + "\n"
+	beforeBoundary := turnEnd(0, `"end_turn"`, "old")
+	cases := []struct {
+		name        string
+		transcript  string
+		stopMessage *string
+		wantCount   int
+		wantRead    bool
+	}{
+		{"no turn end after the boundary", beforeBoundary + boundary, ptr("done"), 0, false},
+		{"one turn end matching the payload", beforeBoundary + boundary + turnEnd(2, `"end_turn"`, "done"), ptr("done"), 1, true},
+		{"one turn end differing from the payload", beforeBoundary + boundary + turnEnd(2, `"end_turn"`, "done"), ptr("other"), 1, false},
+		{"one turn end, payload without a message", beforeBoundary + boundary + turnEnd(2, `"end_turn"`, "done"), nil, 1, false},
+		{"one turn end matching up to surrounding whitespace", beforeBoundary + boundary + turnEnd(2, `"end_turn"`, "\n done \n"), ptr("  done"), 1, true},
+		{"two turn ends, the payload names the newest", boundary + turnEnd(2, `"end_turn"`, "first") + turnEnd(3, `"end_turn"`, "second"), ptr("second"), 2, true},
+		{"two turn ends, the payload names the older", boundary + turnEnd(2, `"end_turn"`, "first") + turnEnd(3, `"end_turn"`, "second"), ptr("first"), 2, false},
+		{"a sidechain turn end and a tool_use stop are not counted", boundary + turnEnd(2, `"tool_use"`, "calling") + sidechainTurnEnd + turnEnd(3, `null`, "streaming"), ptr("calling"), 0, false},
+	}
+	for _, tc := range cases {
+		path := filepath.Join(t.TempDir(), "transcript.jsonl")
+		if err := os.WriteFile(path, []byte(tc.transcript), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fields := map[string]any{"hook_event_name": "Stop", "transcript_path": path}
+		if tc.stopMessage != nil {
+			fields["last_assistant_message"] = *tc.stopMessage
+		}
+		raw, err := json.Marshal(fields)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, found := (&Claude{}).CompactedSince(shuttleengine.Event{Kind: shuttleengine.EventStop, Raw: raw}, time.Date(2026, 3, 4, 0, 30, 0, 0, time.UTC))
+		if !found || got.TurnEndsAfter != tc.wantCount || got.ReadTurnEndAfter != tc.wantRead {
+			t.Errorf("%s: got %+v, %v; want count %d, read %v", tc.name, got, found, tc.wantCount, tc.wantRead)
+		}
+	}
+}
+
+func ptr(s string) *string { return &s }

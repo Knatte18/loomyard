@@ -435,7 +435,7 @@ func (b *Bouncer) awaitLiveJudge(round int) (bool, error) {
 		Round:       strconv.Itoa(round),
 	}
 
-	result, attached, err := b.cfg.Shuttle.Attach(spec)
+	result, attached, err := b.cfg.Shuttle.AttachIfLive(spec)
 	if err != nil {
 		return false, err
 	}
@@ -461,7 +461,7 @@ func (b *Bouncer) awaitLiveSeed() (bool, error) {
 		Round:       "1",
 	}
 
-	result, attached, err := b.cfg.Shuttle.Attach(spec)
+	result, attached, err := b.cfg.Shuttle.AttachIfLive(spec)
 	if err != nil {
 		return false, err
 	}

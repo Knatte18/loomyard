@@ -6,6 +6,7 @@ package burlercli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -322,5 +323,98 @@ func TestRunVerb_RelativeProfileResolvesAgainstSeamCwd(t *testing.T) {
 	}
 	if strings.Contains(got, "read --profile") {
 		t.Errorf("RunCLIIn() output contains \"read --profile\"; want decodeProfile's own error, not an os.ReadFile failure -- the relative --profile must have resolved successfully. output: %q", got)
+	}
+}
+
+// TestValidateReviewVerb_AgreesWithTheReviewGate runs validate-review and burlerengine.ReviewGate over the same review files, from a temp directory outside any git repository, and asserts the verb's exit code and envelope, that the gate passes exactly when the verb succeeds, and that the gate's findings contain the verb's error text.
+// It is the only test of the verb's ok and error behavior.
+func TestValidateReviewVerb_AgreesWithTheReviewGate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		content string
+		missing bool
+		wantErr string
+	}{
+		{
+			name:    "valid",
+			content: "---\nverdict: APPROVED\n---\n\nNothing to report.\n",
+		},
+		{
+			name:    "invalid yaml",
+			content: "---\nverdict: [APPROVED\n---\n",
+			wantErr: "not valid YAML",
+		},
+		{
+			name:    "malformed quoted summary",
+			content: "---\nverdict: BLOCKING\nfindings:\n  - id: b-1\n    severity: LOW\n    class: design\n    location: file.go:1\n    summary: \"capital\" is misspelled as \"captial\"\n---\n",
+			wantErr: "must be ONE double-quoted string covering the whole value",
+		},
+		{
+			name:    "missing delimiter",
+			content: "verdict: APPROVED\n",
+			wantErr: "must open with a \"---\"",
+		},
+		{
+			name:    "missing file",
+			missing: true,
+			wantErr: "read review file",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cwd := t.TempDir()
+			const reviewName = "review.md"
+			reviewPath := filepath.Join(cwd, reviewName)
+			if !tt.missing {
+				if err := os.WriteFile(reviewPath, []byte(tt.content), 0o644); err != nil {
+					t.Fatalf("WriteFile() error = %v", err)
+				}
+			}
+
+			var out bytes.Buffer
+			code := RunCLIIn(cwd, &out, []string{"validate-review", reviewName})
+
+			var envelope map[string]any
+			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+				t.Fatalf("envelope %q is not JSON: %v", out.String(), err)
+			}
+
+			gateResult, err := burlerengine.ReviewGate(reviewPath)()
+			if err != nil {
+				t.Fatalf("ReviewGate() error = %v; a review file that fails to parse is a failed result", err)
+			}
+
+			if tt.wantErr == "" {
+				if code != 0 || envelope["ok"] != true || envelope["review_file"] != reviewPath {
+					t.Errorf("validate-review = exit %d, envelope %v; want exit 0, ok true, review_file %q", code, envelope, reviewPath)
+				}
+				if !gateResult.Passed {
+					t.Errorf("ReviewGate passed = false; want true to agree with the verb. findings: %s", gateResult.Findings)
+				}
+				return
+			}
+
+			if code != 1 || envelope["ok"] != false {
+				t.Fatalf("validate-review = exit %d, envelope %v; want exit 1, ok false", code, envelope)
+			}
+			message, _ := envelope["error"].(string)
+			if !strings.Contains(message, tt.wantErr) {
+				t.Errorf("validate-review error = %q; want it to contain %q", message, tt.wantErr)
+			}
+			if wantMessage := burlerengine.CheckReviewFile(reviewPath).Error(); message != wantMessage {
+				t.Errorf("validate-review error = %q; want CheckReviewFile's %q", message, wantMessage)
+			}
+			if gateResult.Passed {
+				t.Errorf("ReviewGate passed = true; want false to agree with the verb")
+			}
+			if !strings.Contains(gateResult.Findings, message) {
+				t.Errorf("ReviewGate findings = %q; want them to contain the verb's error %q", gateResult.Findings, message)
+			}
+		})
 	}
 }
