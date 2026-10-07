@@ -25,7 +25,7 @@ var (
 	headingPattern     = regexp.MustCompile(`^#(\s|$)`)
 	listItemPattern    = regexp.MustCompile(`^([-*]\s|[0-9]{1,3}[.)]\s)`)
 	sentenceEndPattern = regexp.MustCompile("[.!?:][)\"'`]*$")
-	conjunctions       = map[string]bool{"and": true, "but": true, "or": true, "nor": true}
+	conjunctions       = map[string]bool{"and": true, "but": true, "or": true, "nor": true, "yet": true, "so": true}
 )
 
 // Lint returns the new fixed-column-wrapped breaks in the `//` comment blocks of the `.go` files that differ in worktree.
@@ -60,7 +60,7 @@ type commentLine struct {
 func (l commentLine) raw() string { return strings.TrimPrefix(l.literal, "//") }
 
 // commentBlocks returns the runs of consecutive `//` comment lines in src that each start their line.
-// An end-of-line comment belongs to no block and ends the run before it.
+// An end-of-line comment belongs to no block and ends the run before it; so does a directive line, which belongs to no block either.
 func commentBlocks(src string) [][]commentLine {
 	fset := token.NewFileSet()
 	file := fset.AddFile("", fset.Base(), len(src))
@@ -85,7 +85,7 @@ func commentBlocks(src string) [][]commentLine {
 		}
 		literal = strings.TrimRight(literal, "\r\n")
 		line := file.Position(pos).Line
-		if !startsLine(src, file.Offset(pos)) {
+		if !startsLine(src, file.Offset(pos)) || directivePattern.MatchString(strings.TrimSpace(strings.TrimPrefix(literal, "//"))) {
 			flush()
 			continue
 		}
@@ -104,13 +104,10 @@ func startsLine(src string, offset int) bool {
 	return strings.TrimSpace(src[lineStart:offset]) == ""
 }
 
-// isProseBlock reports whether the block holds only prose lines: no directive, indented code, list item or heading.
+// isProseBlock reports whether the block holds only prose lines: no indented code, list item or heading.
 func isProseBlock(block []commentLine) bool {
 	for _, line := range block {
 		raw := line.raw()
-		if directivePattern.MatchString(strings.TrimSpace(raw)) {
-			return false
-		}
 		if strings.HasPrefix(raw, "\t") || strings.HasPrefix(line.content, " ") || strings.HasPrefix(line.content, "\t") {
 			return false
 		}
