@@ -174,6 +174,66 @@ func TestRun_CancelledContextRecordsSignal(t *testing.T) {
 	}
 }
 
+func TestRun_RecordsStoppingBeforeTheInFlightTickFinishes(t *testing.T) {
+	e := newWatchEnv(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	inTick := make(chan struct{})
+	finishTick := make(chan struct{})
+	blocked := false
+	e.s.onAlive = func() {
+		if blocked {
+			return
+		}
+		blocked = true
+		close(inTick)
+		<-finishTick
+	}
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- e.w.Run(ctx, noSleep) }()
+	<-inTick
+	cancel()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		st, err := LoadState(e.paths)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.WatcherStopping {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("WatcherStopping not recorded while the tick was blocked")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if live, err := WatcherLive(e.paths); err != nil || !live {
+		t.Errorf("WatcherLive while the tick is blocked = %v, %v; want the lock still held", live, err)
+	}
+
+	close(finishTick)
+	if err := <-runDone; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if st, _ := LoadState(e.paths); !st.WatcherStopping {
+		t.Error("WatcherStopping cleared by the exiting watcher; want it kept until the next Run")
+	}
+
+	stoppingAtNextRun := true
+	e.s.onAlive = func() {
+		st, _ := LoadState(e.paths)
+		stoppingAtNextRun = st.WatcherStopping
+	}
+	e.s.alive = false
+	if err := e.w.Run(context.Background(), noSleep); err != nil {
+		t.Fatalf("second Run: %v", err)
+	}
+	if stoppingAtNextRun {
+		t.Error("a new Run did not clear WatcherStopping at start")
+	}
+}
+
 func TestRun_StopsAtErrorCap(t *testing.T) {
 	e := newWatchEnv(t)
 	fs := &flakySession{fakeSession: e.s, errs: make([]bool, 0)}

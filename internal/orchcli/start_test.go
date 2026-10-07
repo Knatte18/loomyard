@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -39,6 +40,9 @@ type startHarness struct {
 	strands *fakeStrands
 	starter *fakeStarter
 	spawns  int
+	// sleeps counts the waits start asked for; onSleep, when set, runs on each.
+	sleeps  int
+	onSleep func()
 }
 
 func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHarness {
@@ -55,6 +59,12 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	c.starter = h.starter
 	c.reedUp = func() error { return nil }
 	c.spawnWatcher = func() error { h.spawns++; return nil }
+	c.sleep = func(time.Duration) {
+		h.sleeps++
+		if h.onSleep != nil {
+			h.onSleep()
+		}
+	}
 	return h
 }
 
@@ -133,19 +143,29 @@ func TestStart_LiveStrand(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name       string
-		watcher    bool
-		wantAction string
-		wantSpawns int
+		name string
+		// watcher holds watch.lock; stopping records the watcher stopping; releases frees the lock on the first sleep.
+		watcher, stopping, releases bool
+		wantAction                  string
+		wantSpawns                  int
+		wantSleeps                  int
+		wantStopping                bool
 	}{
-		{"with a watcher does nothing", true, actionAlreadyRunning, 0},
-		{"without a watcher spawns the watcher only", false, actionSpawnedWatcher, 1},
+		{name: "with a watcher does nothing", watcher: true, wantAction: actionAlreadyRunning},
+		{name: "without a watcher spawns the watcher only", wantAction: actionSpawnedWatcher, wantSpawns: 1},
+		{name: "a stopping watcher that exits is replaced", watcher: true, stopping: true, releases: true, wantAction: actionSpawnedWatcher, wantSpawns: 1, wantSleeps: 1},
+		{name: "a stopping watcher that never exits is reported live", watcher: true, stopping: true, wantAction: actionAlreadyRunning, wantSleeps: 3, wantStopping: true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
 			h := newStartHarness(t, reedengine.StrandStatus{GUID: "g1", Name: "orch", Live: true})
+			if c.stopping {
+				if err := orchengine.SaveState(h.cli.paths, orchengine.State{Phase: orchengine.PhaseIdle, Strand: "g1", WatcherStopping: true}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if c.watcher {
 				if err := os.MkdirAll(h.cli.paths.Dir, 0o755); err != nil {
 					t.Fatal(err)
@@ -154,7 +174,17 @@ func TestStart_LiveStrand(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer l.Release()
+				released := false
+				release := func() {
+					if !released {
+						released = true
+						l.Release()
+					}
+				}
+				defer release()
+				if c.releases {
+					h.onSleep = release
+				}
 			}
 
 			code, env := h.run(t)
@@ -164,7 +194,17 @@ func TestStart_LiveStrand(t *testing.T) {
 			if len(h.starter.specs) != 0 || h.spawns != c.wantSpawns {
 				t.Errorf("starts = %d, spawns = %d; want 0 and %d", len(h.starter.specs), h.spawns, c.wantSpawns)
 			}
-			if !c.watcher {
+			if h.sleeps != c.wantSleeps {
+				t.Errorf("sleeps = %d; want %d", h.sleeps, c.wantSleeps)
+			}
+			if c.wantStopping {
+				if env["watcher_stopping"] != true || env["hint"] != stoppingWatcherHint {
+					t.Errorf("envelope = %v; want watcher_stopping true and the hint", env)
+				}
+			} else if _, has := env["watcher_stopping"]; has {
+				t.Errorf("envelope = %v; want no watcher_stopping", env)
+			}
+			if !c.watcher || c.releases {
 				if st := h.state(t); st.Strand != "g1" {
 					t.Errorf("state strand = %q; want the adopted g1", st.Strand)
 				}

@@ -35,6 +35,9 @@ const (
 	actionRelaunched     = "relaunched"
 )
 
+// stoppingWatcherHint is the envelope hint when the watcher is still stopping after start's wait.
+const stoppingWatcherHint = `the watcher is stopping; run "lyx orch start" again once it has exited`
+
 // sessionStarter starts the orchestrator's shuttle run and returns its strand guid and the resume check's warning, empty when there is none.
 type sessionStarter interface {
 	StartSession(spec shuttleengine.Spec) (guid, warning string, err error)
@@ -126,6 +129,9 @@ from the last completed handoff, else starts from the start stencil.
 With --adopt <session-id> the fresh launch instead resumes that existing Claude
 session, recorded under the prime's own directory, as the orchestrator strand;
 --adopt and --handoff are exclusive, and --adopt is refused while the strand is live.
+A watcher that has received SIGINT or SIGTERM and not yet exited is waited for, up to
+three watcher poll intervals, so a kill followed by start spawns a fresh watcher; past
+that bound start reports the watcher live with "watcher_stopping": true.
 start never attaches or switches a tmux client; run "lyx reed attach" to watch the
 session.`,
 		Args: cobra.NoArgs,
@@ -190,7 +196,8 @@ session.`,
 			}
 			strandLive := hasStrand && strand.Live
 
-			watcherLive, err := orchengine.WatcherLive(c.paths)
+			pollInterval := c.cfg.PollInterval()
+			watcherLive, err := orchengine.WaitWatcherGone(c.paths, 3*pollInterval, pollInterval, c.sleep)
 			if err != nil {
 				return fail(err)
 			}
@@ -264,7 +271,12 @@ session.`,
 
 			releaseLock()
 
-			clihelp.SetExit(ctx, output.Ok(out, startFields(envAction, guid, promptSource, "", warning)))
+			fields := startFields(envAction, guid, promptSource, "", warning)
+			if watcherLive && st.WatcherStopping {
+				fields["watcher_stopping"] = true
+				fields["hint"] = stoppingWatcherHint
+			}
+			clihelp.SetExit(ctx, output.Ok(out, fields))
 			return nil
 		},
 	}

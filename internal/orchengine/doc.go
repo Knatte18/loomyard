@@ -71,6 +71,10 @@
 // Watcher.Run polls at the configured interval, calling Tick once per poll.
 // It holds watch.lock for its whole life, so at most one watcher runs per prime;
 // a second one exits with ErrWatcherRunning.
+// On SIGINT or SIGTERM it records State.WatcherStopping before its in-flight tick finishes and before it releases the lock, and the next Run clears the record.
+// `start` waits for a stopping watcher through WaitWatcherGone, at most three poll intervals, instead of reading the dying watcher as live;
+// past the bound it reports the watcher live with `watcher_stopping: true` and a hint to run `start` again.
+// A healthy live watcher records no stopping, so `start` never waits for it.
 // The consecutive tick-error count is capped, and the watcher exits with its reason recorded in State.WatcherExit once the cap is reached.
 // Every provider and reed interaction goes through the Session seam, so the state machine runs against a fake in unit tests.
 //

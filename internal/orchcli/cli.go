@@ -6,6 +6,7 @@ package orchcli
 import (
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -64,6 +65,7 @@ type orchCLI struct {
 	reedUp       func() error
 	starter      sessionStarter
 	spawnWatcher func() error
+	sleep        func(time.Duration)
 }
 
 // Command returns the cobra command tree for the orch module.
@@ -138,6 +140,7 @@ Every verb runs from the hub's prime worktree only.`,
 			c.reedUp = func() error { _, err := reed.Up(); return err }
 			c.starter = runnerSessionStarter{runner: c.runner}
 			c.spawnWatcher = c.spawnWatcherProcess
+			c.sleep = time.Sleep
 			return nil
 		},
 	}

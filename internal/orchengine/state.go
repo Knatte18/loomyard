@@ -77,6 +77,8 @@ type State struct {
 	LastAbortReason string `json:"last_abort_reason"` // Why the last cycle aborted.
 	Stuck           string `json:"stuck"`             // Why the current phase is overdue and waiting on the session; empty while on time.
 	WatcherExit     string `json:"watcher_exit"`      // Why the last watcher exited; empty while one runs.
+	// WatcherStopping is set by a watcher that has received SIGINT or SIGTERM and not yet released watch.lock, so `start` waits for it instead of reading it as live.
+	WatcherStopping bool `json:"watcher_stopping"`
 
 	CycleTrigger string    `json:"cycle_trigger"` // Trigger that started the current or last cycle: TriggerSoft, TriggerHard or TriggerRequested.
 	LastDeferral time.Time `json:"last_deferral"` // When the last DEFER turn end was read; zero when none.
