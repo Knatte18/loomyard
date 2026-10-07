@@ -496,8 +496,9 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 }
 
 // awaitTerminal drives one bounded long-poll wait for bs's recovery strand,
-// assembling ClassifyInputs and releasing substrate with status-specific rules
-// on terminal (done removes strand+rundir, stuck removes strand, dead keeps both).
+// assembling ClassifyInputs and releasing substrate on terminal.
+// Every terminal digest removes the recovery strand if still live, even when the call then refuses;
+// only a done digest also removes the run dir.
 // Cleanup failures are warnings, not fatal errors.
 func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait time.Duration, clk Clock) (*RecoverResult, error) {
 	number, slug := batchIdentity(batch)
@@ -556,12 +557,17 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 		return &RecoverResult{Running: true, ElapsedS: elapsedS}, nil
 	}
 
+	var warnings []string
+
+	// The strand is removed before the refusals below, so a terminal digest that then refuses leaves no live strand.
+	if err := removeStrandIfLive(deps.Reed, bs.StrandGUID); err != nil {
+		warnings = append(warnings, fmt.Sprintf("recover-batch: remove strand %s: %v", bs.StrandGUID, err))
+	}
+
 	// A merge in progress leaves the batch non-terminal and retryable, like RecordBatch.
 	if err := refuseMidMerge(deps.Geom.git(), deps.Geom.WorktreeRoot); err != nil {
 		return nil, err
 	}
-
-	var warnings []string
 
 	// Cross-check report's head_sha against worktree's actual HEAD under RecordBatch's merge-only rule.
 	if digest.HeadSHA != "" {
@@ -574,29 +580,11 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 		}
 	}
 
-	removeStrand := func() {
-		if err := removeStrandIfLive(deps.Reed, bs.StrandGUID); err != nil {
-			warnings = append(warnings, fmt.Sprintf("recover-batch: remove strand %s: %v", bs.StrandGUID, err))
-		}
-	}
-	removeRunDir := func() {
-		if bs.ShuttleRunDir == "" {
-			return
-		}
+	// Only a done digest drops the run dir; stuck and dead keep it for diagnosis.
+	if digest.Status == DigestStatusDone && bs.ShuttleRunDir != "" {
 		if err := os.RemoveAll(bs.ShuttleRunDir); err != nil {
 			warnings = append(warnings, fmt.Sprintf("recover-batch: remove run dir %s: %v", bs.ShuttleRunDir, err))
 		}
-	}
-
-	switch digest.Status {
-	case DigestStatusDone:
-		removeStrand()
-		removeRunDir()
-	case DigestStatusStuck:
-		// Remove strand but keep run dir for diagnosis.
-		removeStrand()
-	case DigestStatusDead:
-		// Keep both: dead-classified strand may still be working.
 	}
 
 	return &RecoverResult{Digest: &digest, ElapsedS: elapsedS, Warnings: warnings}, nil
