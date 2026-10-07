@@ -254,7 +254,7 @@ github.com/Knatte18/loomyard/
 ├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, push warns) that `loomcli` and `battencli` wrap
 ├── internal/landingshed/         landing's three general ShedProducers, Publish, PR-Gate and Finalize, shared by reference across producer lists
 ├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call
-├── internal/frictionengine/      the aggregation-and-reflection step loom's terminal Friction-Reflect row runs and loom runs after a `blocked` or `failed` halt, under `run` and `step`; it is re-entrant across a killed driving process
+├── internal/frictionengine/      the aggregation-and-reflection step loom's terminal Friction-Reflect row runs and loom runs after a `blocked` or `failed` halt, under `run` and `step`, except that an escalation halt writes its note and runs no reflection; it is re-entrant across a killed driving process
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
 ├── internal/standalonegeom/      the told-mode geometry teller that builds each engine's geometry struct from told absolute path strings
 ├── internal/cliwire/             the shared standalone/hub wiring resolver for the standalone-capable CLIs, the layer that runs after `preflight.ResolveMode` has chosen a mode

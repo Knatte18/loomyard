@@ -271,7 +271,7 @@ func TestLoomAfterStep_UnwritableFrictionDirectory_StillReturnsAStatus(t *testin
 	}
 	f.c.frictionDir = filepath.Join(blocker, "friction")
 
-	res := shedengine.StepResult{Producer: loomshed.NameWebster, State: shedengine.StateBlocked, Reason: "stuck"}
+	res := shedengine.StepResult{Producer: loomshed.NameWebster, State: shedengine.StateBlocked, Reason: shedengine.ReasonBounceBudgetExhausted}
 	if got := f.c.loomAfterStep(context.Background(), res, nil); got == "" {
 		t.Error("loomAfterStep() = \"\"; want a status")
 	}
@@ -284,13 +284,30 @@ func TestLoomPostRun_HaltNotes(t *testing.T) {
 		t.Parallel()
 
 		f := newHaltFixture(t)
-		res := shedengine.Result{Outcome: shedengine.RunBlocked, HaltedProducer: loomshed.NameWebster, Reason: "stuck", History: make([]shedengine.HistoryEntry, 2)}
+		res := shedengine.Result{Outcome: shedengine.RunBlocked, HaltedProducer: loomshed.NameWebster, Reason: shedengine.ReasonBounceBudgetExhausted + ": Plan-Write", History: make([]shedengine.HistoryEntry, 2)}
 
 		if got := f.c.loomPostRun(context.Background(), res, nil)["friction"]; got != frictionengine.StatusReflected {
 			t.Fatalf("friction = %v; want %q", got, frictionengine.StatusReflected)
 		}
 		if len(f.shuttle.Specs) != 1 {
 			t.Errorf("reflection shuttle ran %d times; want 1", len(f.shuttle.Specs))
+		}
+	})
+
+	t.Run("EscalationSkipsReflectionButWritesTheNote", func(t *testing.T) {
+		t.Parallel()
+
+		f := newHaltFixture(t)
+		res := shedengine.Result{Outcome: shedengine.RunBlocked, HaltedProducer: loomshed.NameWebster, Reason: "stuck", History: make([]shedengine.HistoryEntry, 2)}
+
+		if got := f.c.loomPostRun(context.Background(), res, nil)["friction"]; got != frictionengine.StatusSkipped {
+			t.Fatalf("friction = %v; want %q", got, frictionengine.StatusSkipped)
+		}
+		if len(f.shuttle.Specs) != 0 {
+			t.Errorf("reflection shuttle ran %d times; want 0", len(f.shuttle.Specs))
+		}
+		if note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md")); !strings.Contains(note, "anomaly: "+string(loomengine.AnomalyEscalation)) {
+			t.Errorf("loom-halt.md = %q; want it to carry the escalation anomaly", note)
 		}
 	})
 
@@ -381,7 +398,8 @@ func (f *haltFixture) stepOver(t *testing.T, preStep func(context.Context) (stri
 	return envelope, code
 }
 
-func TestStep_BlockedHaltReflectsOverRefusalAndHaltNotes(t *testing.T) {
+// TestStep_EscalationHaltSkipsReflectionAndKeepsBothNotes drives step with a producer that returns Stuck on a row with no OnStuck, the escalation arm.
+func TestStep_EscalationHaltSkipsReflectionAndKeepsBothNotes(t *testing.T) {
 	t.Parallel()
 
 	f := newHaltFixture(t)
@@ -403,17 +421,17 @@ func TestStep_BlockedHaltReflectsOverRefusalAndHaltNotes(t *testing.T) {
 	if envelope["state"] != string(shedengine.StateBlocked) {
 		t.Fatalf("envelope state = %v; want %q; envelope = %v", envelope["state"], shedengine.StateBlocked, envelope)
 	}
-	if envelope["friction"] != frictionengine.StatusReflected {
-		t.Errorf("envelope friction = %v; want %q", envelope["friction"], frictionengine.StatusReflected)
+	if envelope["friction"] != frictionengine.StatusSkipped {
+		t.Errorf("envelope friction = %v; want %q", envelope["friction"], frictionengine.StatusSkipped)
 	}
-	if len(f.shuttle.Specs) != 1 {
-		t.Fatalf("reflection shuttle ran %d times; want 1", len(f.shuttle.Specs))
+	if len(f.shuttle.Specs) != 0 {
+		t.Errorf("reflection shuttle ran %d times; want 0", len(f.shuttle.Specs))
 	}
-	prompt := f.shuttle.Specs[0].Prompt
-	for _, want := range []string{"webster-refusal-begin-batch.md", "loom-halt.md"} {
-		if !strings.Contains(prompt, want) {
-			t.Errorf("reflection prompt does not name %q: %q", want, prompt)
-		}
+	if note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md")); !strings.Contains(note, "anomaly: "+string(loomengine.AnomalyEscalation)) {
+		t.Errorf("loom-halt.md = %q; want it to carry the escalation anomaly", note)
+	}
+	if _, err := os.Stat(filepath.Join(f.frictionDir, "webster-refusal-begin-batch.md")); err != nil {
+		t.Errorf("webster refusal note = %v; want it on disk", err)
 	}
 }
 
@@ -434,7 +452,10 @@ func TestStep_ProducerErrorReflectsOnTheErrorEnvelope(t *testing.T) {
 		t.Errorf("envelope friction = %v; want %q", envelope["friction"], frictionengine.StatusReflected)
 	}
 	if len(f.shuttle.Specs) != 1 {
-		t.Errorf("reflection shuttle ran %d times; want 1", len(f.shuttle.Specs))
+		t.Fatalf("reflection shuttle ran %d times; want 1", len(f.shuttle.Specs))
+	}
+	if prompt := f.shuttle.Specs[0].Prompt; !strings.Contains(prompt, "loom-halt.md") {
+		t.Errorf("reflection prompt does not name %q: %q", "loom-halt.md", prompt)
 	}
 }
 

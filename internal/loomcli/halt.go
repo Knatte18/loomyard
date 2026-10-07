@@ -1,6 +1,7 @@
 // halt.go holds loom's halt friction: the Go-authored note a `blocked` or `failed` halt leaves, and the two hooks that write it and reflect, loomAfterStep under step and loomPostRun under run.
 //
 // A halt has one path: the halt note, then the reflection, which files only the lyx problems behind the halt.
+// An escalation halt writes its note and skips the reflection.
 
 package loomcli
 
@@ -74,12 +75,18 @@ func writeHaltNote(frictionDir string, n haltNote) error {
 // reflectHalt writes n as a halt note and runs the non-waiting reflection, returning the envelope's "friction" status.
 // A note write failure only logs.
 // A held reflection lock skips the reflection, as reflectFriction(false) does.
+// An `escalation-to-human` halt writes its note and skips the reflection: the producer's own session holds the open question, so a second session reflecting on it finds only a process signal.
+// Only that kind skips, and the skipped reflection is the only thing lost: the note stays on disk unarchived until a later reflection covers it.
 func (c *loomCLI) reflectHalt(n haltNote) string {
 	if c.frictionDir == "" {
 		return frictionengine.StatusSkipped
 	}
 	if err := writeHaltNote(c.frictionDir, n); err != nil {
 		logger.Warn("loom: could not write the halt note", "dir", c.frictionDir, "error", err)
+	}
+	if kind, ok := loomengine.ClassifyHalt(n.State, n.Reason); ok && kind == loomengine.AnomalyEscalation {
+		logger.Info("loom: reflection skipped for an escalation halt", "producer", n.Producer)
+		return frictionengine.StatusSkipped
 	}
 	return c.reflectFriction(false)
 }
