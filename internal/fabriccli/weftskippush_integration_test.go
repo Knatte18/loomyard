@@ -76,7 +76,8 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 
 		result := envelope.RequireOK(t, output)
 
-		// sync hands the detached child both sides, so the record holds one push_spawned entry per side.
+		// sync hands the detached child both sides,
+		// so the record holds one push_spawned entry per side.
 		spawnedTargets := map[string]bool{}
 		mutations, _ := result.Raw["mutations"].([]any)
 		for _, raw := range mutations {

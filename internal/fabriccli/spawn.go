@@ -1,5 +1,6 @@
 // spawn.go — the "lyx fabric sync" verb's async-push call site.
-// spawnPush delegates to fabricengine.SpawnDetachedPush with both worktree paths, so the detached child pushes the warp side and the weft side.
+// spawnPush delegates to fabricengine.SpawnDetachedPush with both worktree paths,
+// so the detached child pushes the warp side and the weft side.
 // The detach/process-group mechanics themselves live in the engine helper — see internal/fabricengine/spawn.go.
 
 package fabriccli

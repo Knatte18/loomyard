@@ -62,7 +62,8 @@ func acquirePushLock(weftPath string, lockWait time.Duration) (*lock.FileLock, e
 // pushRebaseFreeRetryingOnce pushes repo rebase-free.
 // On a rejection it fetches, and pushes once more only when the fetched remote tip is already contained in local HEAD, which makes the rejection a stale remote-tracking ref rather than a divergence.
 // Any other outcome returns the push's own error, a rejection as the bare gitrepo.ErrPushRejected.
-// It never rebases, merges or forces, and a remote holding commits the local branch lacks is left alone.
+// It never rebases, merges or forces.
+// A remote holding commits the local branch lacks is left alone.
 func pushRebaseFreeRetryingOnce(repo *gitrepo.Repo) error {
 	err := repo.PushRebaseFree()
 	if !errors.Is(err, gitrepo.ErrPushRejected) {
@@ -78,15 +79,20 @@ func pushRebaseFreeRetryingOnce(repo *gitrepo.Repo) error {
 }
 
 // PushAnchored pushes unpushed commits in l's weft sibling worktree rebase-free.
-// It resolves its target the same way CommitAnchoredPaths does, from l alone via WeftWorktree(l), so a caller outside the Fabric Vocabulary Invariant's owner set never learns the weft exists.
+// It resolves its target the same way CommitAnchoredPaths does, from l alone via WeftWorktree(l),
+// so a caller outside the Fabric Vocabulary Invariant's owner set never learns the weft exists.
 // It pushes the records side only.
 //
-// The push runs under the weft-side absorbing push lock, so it never races a detached push child or another pushing verb.
+// The push runs under the weft-side absorbing push lock,
+// so it never races a detached push child or another pushing verb.
 // Contending with that child is the point, since a lock-free status push racing it can leave a stale remote-tracking ref behind and be rejected without any real divergence.
 // lockWait bounds only the wait for the lock:
-// a positive value gives up with an error wrapping ErrPushLockBusy and pushes nothing, LockWaitUnbounded blocks, and a holder lasts as long as git does.
+// a positive value gives up with an error wrapping ErrPushLockBusy and pushes nothing;
+// LockWaitUnbounded blocks;
+// and a holder lasts as long as git does.
 // A rejection is retried once after a fetch when the remote tip is already contained in local HEAD;
-// a rejection that stays still surfaces gitrepo.ErrPushRejected UNWRAPPED, so a caller can discriminate it from every other push failure with errors.Is.
+// a rejection that stays still surfaces gitrepo.ErrPushRejected UNWRAPPED,
+// so a caller can discriminate it from every other push failure with errors.Is.
 // The underlying primitive is gitrepo.PushRebaseFree, never gitrepo.PushCoalesced, whose rejected-push path runs `git pull --rebase` and would rewrite this side's SHAs under a running weft.
 //
 // Returns (PushResult{}, nil) immediately, with no lock taken and nothing recorded, when opts.SkipGit or opts.SkipPush is true.
@@ -116,13 +122,16 @@ func PushAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) 
 }
 
 // PushPairAnchored pushes the unpushed commits of l's code worktree and of its paired records sibling, rebase-free, under the weft-side absorbing push lock.
-// The code side is pushed first, and the records side is attempted even when the code side failed.
+// The code side is pushed first.
+// The records side is attempted even when the code side failed.
 // A side whose HEAD is unborn is skipped.
 // Each side retries a rejection once, after a fetch, when the remote tip is already contained in local HEAD.
-// A failing side's error is wrapped as `fabricengine: push <side> side at <path>: %w` with the side named warp or weft, so errors.Is(err, gitrepo.ErrPushRejected) holds for a rejected side;
+// A failing side's error is wrapped as `fabricengine: push <side> side at <path>: %w` with the side named warp or weft,
+// so errors.Is(err, gitrepo.ErrPushRejected) holds for a rejected side;
 // both failing returns the errors.Join of the two.
 // lockWait bounds only the wait for the lock:
-// a positive value gives up with an error wrapping ErrPushLockBusy and neither side pushed, and LockWaitUnbounded blocks.
+// a positive value gives up with an error wrapping ErrPushLockBusy and neither side pushed;
+// LockWaitUnbounded blocks.
 //
 // Every side that observably advanced is recorded in the returned PushResult.
 // Returns (PushResult{}, nil) immediately, with no lock taken, when opts.SkipGit or opts.SkipPush is true.

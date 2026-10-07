@@ -40,7 +40,8 @@ func Message(prefix, producer, state string) string {
 //  2. commit-hard-errors: a Commit failure returns an error from the seam and therefore halts the run -- a git fault on the run's own bookkeeping is infrastructure breakage.
 //     The one exception is a failure the re-probe explains as a merge that went live after the first probe, which takes the skip disposition instead.
 //  3. push-warns: a Push failure logs a warning and returns nil -- an offline laptop must not kill an autonomous run, and the next transition's push catches the branch up.
-//     EVERY push error warns here, gitrepo.ErrPushRejected, a push lock that stayed busy and otherwise alike; the sentinel is not discriminated.
+//     EVERY push error warns here, gitrepo.ErrPushRejected, a push lock that stayed busy and otherwise alike;
+//     the sentinel is not discriminated.
 //     The warning carries the push's own error.
 //     A rejection means another machine advanced the branch, which is a human decision rather than something a background persist may rewrite history over, and an unreachable remote is the offline case the disposition exists for, so the two land in the same place.
 func New(deps Deps, commitPrefix, logPrefix string, afterCommit func(producer, state string)) func(producer, state string) error {

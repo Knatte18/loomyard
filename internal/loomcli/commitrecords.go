@@ -45,7 +45,9 @@ func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 	return output.Ok(out, map[string]any{"committed": true})
 }
 
-// pushFailureWayForward returns the way forward for a failed push: a rejection, alone or beside another failure, needs a merge or a remote-rule fix, and any other failure, a lock expiry included, is transient.
+// pushFailureWayForward returns the way forward for a failed push:
+// a rejection, alone or beside another failure, needs a merge or a remote-rule fix;
+// any other failure, a lock expiry included, is transient.
 func pushFailureWayForward(err error) string {
 	if fabricengine.IsPushRejected(err) {
 		return "merge the remote branch into the local branch in the worktree the error names, or clear what a remote rule objects to, then run lyx fabric push or re-run lyx loom commit-records"

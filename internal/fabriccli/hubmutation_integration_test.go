@@ -286,7 +286,10 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 		}},
 		{"PushReportsADivergedWarpSideAndStillPushesWeft", func(t *testing.T) {
-			// With the prime's code branch diverged on its bare by a second clone, the warp side is rejected beyond the one retry: push exits 1 with an error naming the warp side and its worktree, the weft side is still pushed, and nothing local is rewritten.
+			// With the prime's code branch diverged on its bare by a second clone, the warp side is rejected beyond the one retry:
+			// push exits 1 with an error naming the warp side and its worktree;
+			// the weft side is still pushed;
+			// and nothing local is rewritten.
 			// Placed with the damaging steps, before the one that breaks the shared weft remote, because the warp bare stays diverged for the rest of the scenario.
 			warpBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
 			other := filepath.Join(t.TempDir(), "other-clone")

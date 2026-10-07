@@ -424,7 +424,10 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		}
 	})
 
-	// The task branch diverged on its remote by a second clone: the verb reports the rejection naming the task worktree, the records still reach their remote, and the local task branch is left as it was.
+	// The task branch diverged on its remote by a second clone:
+	// the verb reports the rejection naming the task worktree;
+	// the records still reach their remote;
+	// and the local task branch is left as it was.
 	t.Run("diverged task branch is reported and the records still push", func(t *testing.T) {
 		taskWorktree := location.WorktreePath()
 		branch := gitkit.CurrentBranch(t, taskWorktree)

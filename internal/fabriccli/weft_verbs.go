@@ -315,7 +315,8 @@ Related commands:
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
-			// The push happens in a detached child process after this one returns, so its outcome is unobservable here:
+			// The push happens in a detached child process after this one returns,
+			// so its outcome is unobservable here:
 			// record one KindPushSpawned entry per side handed to the child, never branch_pushed, which would assert an outcome this process did not observe.
 			rec.Append(fabricengine.KindPushSpawned, warpWorktree, "detached")
 			rec.Append(fabricengine.KindPushSpawned, weftWorktree, "detached")
