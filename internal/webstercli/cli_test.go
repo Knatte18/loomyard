@@ -427,10 +427,7 @@ func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
 // With no run recorded, card 1's already-existing Create target is a blocking create-already-exists and the verb must still refuse -- that is the pre-flight answer the verb exists for.
 // With state.json recording batch 1 begun, terminal or not, that same finding is the plan working as designed and must vanish, leaving only card 2's informational finding and exit 0.
 func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
-	identity, err := batcher.Select("identity")
-	if err != nil {
-		t.Fatalf("batcher.Select(identity) = %v; want nil", err)
-	}
+	identity := batcher.Identity()
 
 	t.Run("NoRunRecordedGetsWholePlanAnswer", func(t *testing.T) {
 		c, _ := newTestCLI(t)
@@ -500,16 +497,51 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 	}
 }
 
+// TestValidateCmd_RefusesBackwardPlanWithNoRun asserts validate with no run recorded refuses a plan whose first card uses a later card's target, as the first init would, naming the batch order and its way forward.
+func TestValidateCmd_RefusesBackwardPlanWithNoRun(t *testing.T) {
+	c, _ := newTestCLI(t)
+	c.batcher = batcher.Identity()
+	plankit.Write(t, c.geom.PlanDir, plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Framing:  "Framing.",
+		Cards: []plankit.Card{
+			{
+				Number:  1,
+				Slug:    "first",
+				Summary: "the card that uses a later card's target",
+				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/first/new.go"}}},
+				Uses:    []string{"internal/second/new.go"},
+			},
+			{
+				Number:  2,
+				Slug:    "second",
+				Summary: "the card that creates the target",
+				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/second/new.go"}}},
+			},
+		},
+	})
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.validateCmd(), &out, []string{})
+
+	if exitCode != 1 {
+		t.Fatalf("validate of a backward plan with no run recorded = %d; want 1, output: %s", exitCode, out.String())
+	}
+	for _, want := range []string{"batch order: dependency on a later batch", "lyx webster rebaseline --card NN", "lyx webster run --fresh"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q; got %q", want, out.String())
+		}
+	}
+}
+
 // TestValidateCmd_RebaselinesStalePlanFingerprint is WS-1's own regression test (crucible round sonnet-xhigh-r8): validate's own resolve pass can rewrite the plan on disk (handle canonicalization) exactly as begin-batch's own ValidateDispatch call can, but before this fix it never restamped state.json's PlanFingerprint afterward the way every bracket verb already does — so a run's crash/resume guard silently desynced from a plan validate itself had just rewritten, and the next begin-batch/record-batch/run refused the (validate's own sanctioned) edit as a foreign one, forcing --fresh and discarding the run's progress.
 //
 // This drives the observable end state directly rather than depending on quarry's own handle grammar to construct a genuine mid-call rewrite: state.json is seeded with a fingerprint that does NOT match the real on-disk plan (standing in for "the plan changed since state.json was last written, by validate's own rewrite or otherwise"), and the assertion is that validate corrects it to the plan's actual current fingerprint — the same unconditional re-baseline begin-batch performs after every ValidateDispatch call, regardless of whether that specific call happened to rewrite anything.
 //
 //testtiming:keep pins that validate restamps a stale plan fingerprint and leaves the run's other state fields untouched, which its covering tests do not assert
 func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
-	identity, err := batcher.Select("identity")
-	if err != nil {
-		t.Fatalf("batcher.Select(identity) = %v; want nil", err)
-	}
+	identity := batcher.Identity()
 
 	c, _ := newTestCLI(t)
 	c.batcher = identity
@@ -581,10 +613,7 @@ func TestBringUpDisposition_RecoverAndRun(t *testing.T) {
 			c, _ := newTestCLI(t)
 			seedValidPlanDir(t, c.geom.PlanDir)
 			if tc.withRun {
-				identity, err := batcher.Select("identity")
-				if err != nil {
-					t.Fatalf("batcher.Select(identity) = %v; want nil", err)
-				}
+				identity := batcher.Identity()
 				c.batcher = identity
 				if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, &websterengine.State{
 					RunGUID: "run-guid",
@@ -779,10 +808,7 @@ func testPlanFingerprint(t *testing.T, planDir string) string {
 // newRunTestCLI returns newTestCLI's CLI with the identity batcher selected -- what PersistentPreRunE would have resolved by default -- and the one-card plan seeded.
 func newRunTestCLI(t *testing.T) *websterCLI {
 	t.Helper()
-	identity, err := batcher.Select("")
-	if err != nil {
-		t.Fatalf("batcher.Select(\"\") error = %v", err)
-	}
+	identity := batcher.Identity()
 	c, _ := newTestCLI(t)
 	c.batcher = identity
 	seedValidPlanDir(t, c.geom.PlanDir)
@@ -1057,10 +1083,7 @@ func TestValidateCmd_RefusesOverviewEditWithoutRestamp(t *testing.T) {
 func TestValidateCmd_Regression329_ForthcomingCreateTargetPassesPending(t *testing.T) {
 	t.Parallel()
 
-	identity, err := batcher.Select("identity")
-	if err != nil {
-		t.Fatalf("batcher.Select(identity) = %v; want nil", err)
-	}
+	identity := batcher.Identity()
 	c, _ := newTestCLI(t)
 	c.batcher = identity
 

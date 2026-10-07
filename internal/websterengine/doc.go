@@ -34,26 +34,22 @@
 // which happens to coincide with card number today; a future grouping
 // batchifier changes that coincidence, not this package's contract.
 //
-// # Execution order is derived, not declared
+// # Batches run in the batchifier's order, asserted not derived
 //
-// sequence.go's SequenceBatches derives edges from Targets/Uses ref matching across the plan's
-// cards — a Uses entry naming another card's Targets entry orders the producer before the
-// consumer, and two cards writing the same Targets entry settle by declared card number — then
-// condenses every strongly-connected component it finds and returns a deterministic topological
-// order plus the cycles it condensed. A cycle is reported, never fatal: SequenceBatches keeps
-// every cycle's member batches together, in declared order, and hands the caller both the
-// reordered slice and the []Cycle it condensed. An already dependency-correct plan sequences to
-// exactly its declared order, so this is a strict superset of the old declared-order behavior, not
-// a divergent one. Sequencing is unconditional — there is no config key and no opt-in — which is
-// why every batch-computation site must sequence: Run plus each of the four internal/webstercli
-// bracket verbs (begin-batch, await-batch, record-batch, recover-batch) call SequenceBatches over
-// the batchifier's own output before doing anything else with the result, so all five agree on one
-// order by construction. The previous-digest lookup in beginbatch.go/recoverbatch.go
-// (predecessorDigestLine) depends on that ordering: it reads whichever batch actually sits
-// immediately before the target batch in the sequenced slice, not the batch one number lower.
-// internal/batcher still owns grouping (which cards land in the same batch, per the Batcher
-// Registry+Config Invariant); this package owns only the sequencing of the batches a batchifier
-// already returned — SequenceBatches reorders, never regroups.
+// internal/batcher owns both grouping and order: a batchifier returns its batches in plan card order, and webster runs them in that order, never reordering them.
+// sequence.go's CheckBatchOrder only asserts it: it derives edges from Targets/Uses ref matching across the plan's cards — a Uses entry naming another card's Targets entry puts the producer before the consumer, and two cards writing the same Targets entry settle by declared card number — and refuses, wrapping ErrBatchOrder, when any edge runs from a batch to an earlier one.
+// A cycle between batches always holds such an edge, so the same rule refuses it.
+// Plan-Gate's uses-later-target refusal already holds, so the assertion fires only on a plan that bypassed or predates that gate.
+// The previous-digest lookup in beginbatch.go/recoverbatch.go (predecessorDigestLine) depends on the order: it reads whichever batch sits immediately before the target batch in the execution order, not the batch one number lower.
+//
+// # The partition is recorded once per run
+//
+// The first init of a run (no state.json, or the --fresh re-init) forms the partition with the active batchifier, refuses it on CheckBatchOrder's error before saving anything, and records it in State.Partition: each batch's card ids, profile and estimate.
+// Every other verb reads that record through partition.go's ExecutionBatches, which maps the recorded ids onto the plan's cards and re-asserts the order, so a size the batchifier weighed changing under the run's own commits never regroups cards mid-run.
+// A recorded id the plan lacks, or a plan card in no recorded batch, is refused with ErrPartitionMismatch.
+// A state written before the field existed records no partition and runs on the identity batchifier whatever profile is active, so an in-flight run keeps the grouping it started under.
+// Batches run in the recorded order.
+// Only a first init or a rebaseline replaces the record.
 //
 // # Fork-return contract: OK/FAILED, a head SHA, an informational deviation list
 //
@@ -166,6 +162,10 @@
 //
 // A foreign edit an operator means to keep has its own way forward:
 // `lyx webster rebaseline --card NN` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record, provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
+// With a recorded partition, Rebaseline keeps every batch up to the last begun one as recorded, profile and estimate included, and refuses a plan whose first cards are not exactly those batches' recorded cards.
+// It batches every plan card after the kept prefix with the then-active batchifier, asserts the order over kept batches and tail together, and only then replaces State.Partition;
+// cards added, removed or reordered after the last begun batch are accepted and regrouped.
+// A state without a partition regroups with the identity batchifier and records none.
 // The operator names every card the edit changed with --card: State.PlanFileHashes records a hash of every plan file, and a changed card file whose number is not named is refused.
 // A named card of a batch that is terminal failed, dead or stuck is accepted even though that batch was begun:
 // Rebaseline restamps that card's CardHashes entry and keeps the rest of the batch record, so a one-card fix needs no reset and no fresh run.

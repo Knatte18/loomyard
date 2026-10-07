@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -264,6 +265,11 @@ Example (standalone, outside any lyx hub):
 	c.addVerbs(parent)
 
 	return parent
+}
+
+// executionBatches returns the batches every verb runs for plan and the loaded state, sizing cards from the task worktree.
+func (c *websterCLI) executionBatches(plan *planparser.Plan, st *websterengine.State) ([]batcher.Batch, error) {
+	return websterengine.ExecutionBatches(plan, st, c.batcher, batcher.DiskSizes(c.geom.WorktreeRoot))
 }
 
 // addVerbs registers every webster verb under parent.

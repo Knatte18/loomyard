@@ -1,19 +1,24 @@
 //go:build integration
 
-// blobread_integration_test.go covers the history reads — FileAtRevision, PathRevisions, CommitsNotIn and IsAncestor's real-git reachability — against one real git repository with three commits built under t.TempDir(), reusing gitrepo_test.go's newRepo, writeFile, and commitAll fixture helpers.
+// blobread_integration_test.go covers the history reads — FileAtRevision, FilesInDirAtRevision, PathRevisions, CommitsWithSubject, CommitsNotIn and IsAncestor's real-git reachability — against one real git repository with three commits built under t.TempDir(), reusing gitrepo_test.go's newRepo, writeFile, and commitAll fixture helpers.
 // IsAncestor's argument-validation guard lives in the untagged ancestry_test.go, because a //go:build constraint applies per file, not per function.
 
 package gitrepo_test
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
-// TestHistoryReads drives the history reads over one repository: commit A writes a.txt as "version one", commit B rewrites it as "version two" and commit C adds an unrelated file.
+// TestHistoryReads drives the history reads over one repository: commit A writes a.txt as "version one", commit B rewrites it as "version two" and commit C adds an unrelated file and a directory holding two files and a subdirectory;
+// a second branch and a tag then point at commit C.
 // Every step only reads, so the steps run serially in one order over the shared repository and depend on nothing an earlier step does.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestHistoryReads(t *testing.T) {
@@ -27,8 +32,16 @@ func TestHistoryReads(t *testing.T) {
 	commitAll(t, dir, "commit B")
 	shaB := requireCurrentSHA(t, repo)
 	writeFile(t, dir, "other.txt", "unrelated")
+	if err := os.MkdirAll(filepath.Join(dir, "pkg", "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir pkg/sub: %v", err)
+	}
+	writeFile(t, dir, "pkg/b.go", "package pkg")
+	writeFile(t, dir, "pkg/a_test.go", "package pkg")
+	writeFile(t, dir, "pkg/sub/c.go", "package sub")
 	commitAll(t, dir, "commit C")
 	shaC := requireCurrentSHA(t, repo)
+	gitkit.Git(t, dir, "branch", "side", shaC)
+	gitkit.Git(t, dir, "tag", "v1", shaC)
 
 	steps := []struct {
 		name string
@@ -125,6 +138,48 @@ func TestHistoryReads(t *testing.T) {
 			}
 			if len(limited) != 1 || limited[0] != shaB {
 				t.Errorf("PathRevisions(a.txt, 1) = %v; want [%s]", limited, shaB)
+			}
+		}},
+		// FilesInDirAtRevision lists only the regular files directly in the directory, sorted;
+		// an absent directory is empty and a malformed revision is ErrInvalidSHA.
+		{"FilesInDirAtRevision lists the files directly in a directory", func(t *testing.T) {
+			got, err := repo.FilesInDirAtRevision(shaC, "pkg")
+			if err != nil {
+				t.Fatalf("FilesInDirAtRevision(C, pkg) error = %v; want nil", err)
+			}
+			if want := []string{"a_test.go", "b.go"}; !reflect.DeepEqual(got, want) {
+				t.Errorf("FilesInDirAtRevision(C, pkg) = %v; want %v", got, want)
+			}
+
+			got, err = repo.FilesInDirAtRevision(shaB, "pkg")
+			if err != nil {
+				t.Fatalf("FilesInDirAtRevision(B, pkg) error = %v; want nil (absent directory)", err)
+			}
+			if len(got) != 0 {
+				t.Errorf("FilesInDirAtRevision(B, pkg) = %v; want empty (pkg is absent at B)", got)
+			}
+
+			if _, err := repo.FilesInDirAtRevision("not-a-sha!!", "pkg"); !errors.Is(err, gitrepo.ErrInvalidSHA) {
+				t.Errorf("FilesInDirAtRevision(invalid SHA, pkg) error = %v; want ErrInvalidSHA", err)
+			}
+		}},
+		// A commit reached by two branches and a tag is found once;
+		// an absent subject finds nothing.
+		{"CommitsWithSubject finds a commit once however many refs reach it", func(t *testing.T) {
+			got, err := repo.CommitsWithSubject("commit C")
+			if err != nil {
+				t.Fatalf("CommitsWithSubject(commit C) error = %v; want nil", err)
+			}
+			if len(got) != 1 || got[0].SHA != shaC || got[0].Committed.IsZero() {
+				t.Errorf("CommitsWithSubject(commit C) = %v; want one commit %s with a committer time", got, shaC)
+			}
+
+			got, err = repo.CommitsWithSubject("no such subject")
+			if err != nil {
+				t.Fatalf("CommitsWithSubject(absent) error = %v; want nil", err)
+			}
+			if len(got) != 0 {
+				t.Errorf("CommitsWithSubject(absent) = %v; want none", got)
 			}
 		}},
 		{"PathRevisions returns an empty slice for a path with no history", func(t *testing.T) {

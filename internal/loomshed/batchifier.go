@@ -27,7 +27,7 @@ const batchifierReasonPrefix = "active batchifier did not resolve: "
 
 // batchifierWayForward closes that reason;
 // the fault sits in batcher.yaml, so the operator fixes it there.
-const batchifierWayForward = "; way forward: fix batcher.yaml's active: key, then re-step"
+const batchifierWayForward = "; way forward: fix batcher.yaml (its active: key or the profile it names), then re-step"
 
 // NewBatchifier returns a batchifier identified as name, gating batcher.Active(anchorPath). The
 // return type is shedengine.ShedProducer, the seam interface, so the internal/shedrecipe registry

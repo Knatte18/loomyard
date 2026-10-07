@@ -50,7 +50,7 @@ type Module struct {
 // Keep new entries in sort order.
 func Modules() []Module {
 	return []Module{
-		{Name: "batcher", Template: batcher.ConfigTemplate},
+		{Name: "batcher", Template: batcher.ConfigTemplate, OpenMaps: batcher.ConfigOpenMaps()},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true},
 		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true},

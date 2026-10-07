@@ -34,7 +34,7 @@ type evidenceBases struct {
 }
 
 // runEvidenceBases picks st's start commit and last batch head by git ancestry, the integration key excluded.
-// SequenceBatches can run a lower-numbered batch after a higher one, so batch numbers say nothing about order.
+// A batch number names a batch and does not date it, so the pick follows ancestry.
 // A pick is "" when nothing is recorded, no candidate qualifies, or any recorded commit of its kind is missing from the repository:
 // a missing commit blanks the pick rather than being skipped, since the pick among the rest would name an older commit.
 // A state recording no SHA returns the zero value without running git.

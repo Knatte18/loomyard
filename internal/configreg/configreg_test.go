@@ -85,6 +85,7 @@ func TestLookup(t *testing.T) {
 		wantFound    bool
 		wantOpenMaps []string
 	}{
+		{"batcher", true, []string{"profiles"}},
 		{"board", true, []string{"types", "labels"}},
 		{"bogus", false, nil},
 	}

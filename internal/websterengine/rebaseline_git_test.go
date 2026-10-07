@@ -68,7 +68,7 @@ func TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(planDir, "02-pending.md"), []byte("# Card 2 — pending\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** reworded.\n"), 0o644); err != nil {
 		t.Fatalf("edit card 2: %v", err)
 	}
-	deps := websterengine.RebaselineDeps{Plan: plan, Batches: fx.Deps.Batches, State: st, Geom: fx.Deps.Geom, Cards: []int{2}}
+	deps := websterengine.RebaselineDeps{Plan: plan, Active: batcher.Identity(), State: st, Geom: fx.Deps.Geom, Cards: []int{2}}
 	if _, err := websterengine.Rebaseline(deps); err != nil {
 		t.Fatalf("Rebaseline() naming card 2 error = %v; want nil", err)
 	}

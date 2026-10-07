@@ -91,10 +91,16 @@ func findingsEnvelope(out io.Writer, msg string, findings []planglyph.Finding, s
 // Approval is deliberately not re-checked on that branch, and nothing is lost by it:
 // a run cannot have begun a batch without having passed Run's own entry-time approval refusal first.
 //
+// With no state it computes the fresh partition first and refuses its batch-order error, as the first init would.
 // A nil batcher with a state on disk is a wiring bug rather than a state, and it is reported as one:
 // reading it as "no begun cards" would silently hand back the whole-plan answer this function exists to avoid.
 func (c *websterCLI) scopedValidate(plan *planparser.Plan, st *websterengine.State) ([]planglyph.Finding, string, error) {
 	if st == nil {
+		if c.batcher != nil {
+			if _, err := c.executionBatches(plan, nil); err != nil {
+				return nil, "", err
+			}
+		}
 		findings, err := planglyph.Validate(plan, c.geom.WorktreeRoot)
 		return findings, scopeWholePlan, err
 	}
@@ -102,9 +108,10 @@ func (c *websterCLI) scopedValidate(plan *planparser.Plan, st *websterengine.Sta
 		return nil, "", websterengine.ErrNilBatcher
 	}
 
-	// Every batch-computation site sequences, so all of them agree on one order by construction
-	// rather than by comment.
-	batches, _ := websterengine.SequenceBatches(c.batcher.Batch(plan.Cards))
+	batches, err := c.executionBatches(plan, st)
+	if err != nil {
+		return nil, "", err
+	}
 	begun, forthcoming := websterengine.DispatchScope(batches, st)
 	if len(begun) == 0 {
 		findings, err := planglyph.Validate(plan, c.geom.WorktreeRoot)
