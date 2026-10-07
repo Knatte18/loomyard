@@ -161,9 +161,9 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		}
 	}
 
-	// Step 1c: read the task's per-worktree config changes before any parent-side mutation, so the
-	// diff is taken against the parent as the task forked from it; the notice it yields is queued
-	// only at Done.
+	// Step 1c: read the task's per-worktree config changes before any parent-side mutation,
+	// so the diff is taken against the parent as the task forked from it;
+	// the notice it yields is queued only at Done.
 	notice := fz.configChangeNotice()
 
 	// Step 2: catch the task worktree up with the parent branch.
@@ -216,8 +216,8 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 }
 
 // configChangeNotice composes the one-line notice about the task's per-worktree config changes,
-// or "" when there is nothing to report or no seam is wired. Finalize never carries those files to
-// the parent, so the notice tells the orchestrator to re-apply each change meant for the parent.
+// or "" when there is nothing to report or no seam is wired.
+// Finalize never carries those files to the parent, so the notice tells the orchestrator to re-apply each change meant for the parent.
 // A read failure is logged and reported in the notice instead of stopping the landing.
 func (fz *Finalize) configChangeNotice() string {
 	if fz.deps.ConfigChanges == nil {
@@ -258,8 +258,8 @@ func (fz *Finalize) markTaskDone() {
 // Any other failed push is Stuck: the merge has already landed locally, so a human pushes (or reconciles a diverged remote) by hand.
 // Deps.PushSkipped suppresses the push, exactly as it does for the task branch.
 //
-// On its Done return only, a non-empty notice is queued through Deps.Notify; a failure there is a
-// logged warning and never changes the verdict.
+// On its Done return only, a non-empty notice is queued through Deps.Notify;
+// a failure there is a logged warning and never changes the verdict.
 //
 // After a successful push into a parent that requires a pull request, the task's pull request is
 // closed best-effort (closePullRequest): the landing has already happened and is irreversible.

@@ -2,11 +2,10 @@
 //
 // Reconcile walks all warp worktrees (never the branch namespace directly) and applies the minimal
 // corrective action needed to restore a valid paired topology: it recreates a missing weft worktree
-// when the branch still exists locally or on origin, re-points a broken junction, adopts a raw
-// (non-lyx) warp worktree by creating the weft side dormant, and reports (but does not touch) a warp
-// worktree on an unmanaged branch.
-// An origin weft branch is adopted before a dormant one is forked, for a raw or an unmanaged warp
-// worktree alike.
+// when the branch still exists locally or on origin, re-points a broken junction,
+// adopts a raw (non-lyx) warp worktree by creating the weft side dormant,
+// and reports (but does not touch) a warp worktree on an unmanaged branch.
+// An origin weft branch is adopted before a dormant one is forked, for a raw or an unmanaged warp worktree alike.
 // Wherever a warp branch name needs a weft counterpart, fabric derives it via
 // WeftBranchName(warpBranch).
 //
@@ -38,8 +37,7 @@ import (
 type ReconcileAction string
 
 const (
-	// ReconcileActionWeftRecreated means a missing weft worktree was recreated from a branch that
-	// existed locally or on origin.
+	// ReconcileActionWeftRecreated means a missing weft worktree was recreated from a branch that existed locally or on origin.
 	ReconcileActionWeftRecreated ReconcileAction = "weft_recreated"
 
 	// ReconcileActionJunctionRepointed means at least one broken or dangling warp junction was
@@ -523,8 +521,8 @@ func (t *Topology) reconcileMissingWeft(
 	return ReconcileActionUnmanagedReported
 }
 
-// deleteAdoptedWeftBranch deletes a local weft branch the resolver just created from origin, after
-// the worktree adopt for it failed, so a surviving local weft branch stays an honest proof of a live pair.
+// deleteAdoptedWeftBranch deletes a local weft branch the resolver just created from origin, after the worktree adopt for it failed,
+// so a surviving local weft branch stays an honest proof of a live pair.
 // It never touches origin.
 // A refused or failed deletion is a logged warning: the adopt error already on the pair stays.
 func (t *Topology) deleteAdoptedWeftBranch(rec *Mutations, warpLayout *lyxcwd.Location, weftRepoRoot, weftBranch string) {
