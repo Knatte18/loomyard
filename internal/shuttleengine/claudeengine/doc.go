@@ -31,8 +31,13 @@
 // A Stop line whose turn ended with background work still running becomes EventWaiting, and its
 // Event.Outstanding lists that work as provider-neutral shuttleengine.BackgroundTask values:
 // a fork for an Agent or Task subagent, a shell for a backgrounded Bash or a Monitor.
-// The list merges the running background_tasks[] entries of the Stop payload with the transcript's
-// background launches that no later task notification names, deduplicated by task id.
+// The Stop payload's background_tasks list is authoritative when present, even empty:
+// its running entries are the whole list and the transcript is not read.
+// The transcript fallback runs only when the key is absent or not a list, and lists the background launches
+// that no later completion notification names:
+// a task-notification user message, a queue-operation line or a queued_command attachment.
+// A payload that omits a running task, lists it under another status or changes an entry's shape counts as no outstanding work.
+// Each task carries the signal that reported it.
 //
 // Every Bash command an agent runs gets `/dev/null` as its default stdin through Claude Code's `CLAUDE_ENV_FILE`:
 // Prepare writes `bash-env.sh` beside settings.json with the content `exec </dev/null`, and both the launch and the resume line lead with `CLAUDE_ENV_FILE` naming its absolute path,

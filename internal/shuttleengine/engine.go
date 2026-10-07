@@ -104,10 +104,19 @@ const (
 // BackgroundTask is one piece of background work a waiting turn end left outstanding, in a
 // provider-neutral shape.
 type BackgroundTask struct {
-	Kind  BackgroundKind // Fork or shell.
-	ID    string         // Provider's id for the task.
-	Label string         // The shell's command or the Monitor's description; empty for a fork.
+	Kind   BackgroundKind // Fork or shell.
+	ID     string         // Provider's id for the task.
+	Label  string         // The shell's command or the Monitor's description, or the fork's description; empty when the provider reports none.
+	Signal string         // Which signal reported the task: SignalPayload or SignalTranscript.
 }
+
+// Signals that can report an outstanding background task.
+const (
+	// SignalPayload is the Stop payload's own task list.
+	SignalPayload = "payload"
+	// SignalTranscript is the transcript fallback, read when the payload carries no list.
+	SignalTranscript = "transcript"
+)
 
 // StartupState classifies a pane's captured content during startup, between launch and provider
 // ready.
