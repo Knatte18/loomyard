@@ -527,47 +527,24 @@ func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
 	}
 }
 
-//testtiming:keep pins which strand counts as the named one: the match chosen among others by index whatever its liveness, pane or anchor, and none for an absent strand or another name; its covering tests run this code without asserting it
-func TestStrandNamed(t *testing.T) {
-	const orch = "tc:tslug:orch"
-	visible := render.Display{Anchor: render.AnchorBelowParent}
-	tests := []struct {
-		name    string
-		strands []Strand
-		want    int
-	}{
-		{"LiveVisibleMatches", []Strand{{Name: "tc:tslug:other", PaneID: "%0", Display: visible}, {Name: orch, PaneID: "%1", Display: visible}}, 1},
-		{"DormantWithoutPaneMatches", []Strand{{Name: orch, Display: visible}}, 0},
-		{"DeadPaneMatches", []Strand{{Name: orch, PaneID: "%9", Display: visible}}, 0},
-		{"HiddenMatches", []Strand{{Name: orch, Display: render.Display{Anchor: render.AnchorHidden}}}, 0},
-		{"Absent", nil, -1},
-		{"OtherName", []Strand{{Name: "tc:tslug:claude", PaneID: "%1", Display: visible}}, -1},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := strandNamed(tt.strands, orch); got != tt.want {
-				t.Errorf("strandNamed() = %d, want %d", got, tt.want)
-			}
-		})
-	}
-}
-
 // TestAddStrandUnless_NamedStrandSkips pins that a named strand skips the add whether it is live, dormant (its pane gone) or hidden, and that a skip saves, launches and moves nothing.
 func TestAddStrandUnless_NamedStrandSkips(t *testing.T) {
 	tests := []struct {
-		name string
-		orch Strand
+		name   string
+		before []Strand
+		orch   Strand
 	}{
-		{"Live", Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}},
-		{"DormantPaneGone", Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%9", Display: render.Display{Anchor: render.AnchorBelowParent}}},
-		{"Hidden", Strand{GUID: "orch-guid", Name: "tc:tslug:orch", Display: render.Display{Anchor: render.AnchorHidden}}},
+		{"Live", nil, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}},
+		{"AfterAnotherStrand", []Strand{{GUID: "other-guid", Name: "tc:tslug:other", Display: render.Display{Anchor: render.AnchorBelowParent}}}, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}},
+		{"DormantPaneGone", nil, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%9", Display: render.Display{Anchor: render.AnchorBelowParent}}},
+		{"Hidden", nil, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", Display: render.Display{Anchor: render.AnchorHidden}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
 			fake := installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
 
-			if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{tt.orch}}); err != nil {
+			if err := SaveState(e.stateDir(), &ReedState{Strands: append(slices.Clone(tt.before), tt.orch)}); err != nil {
 				t.Fatalf("SaveState: %v", err)
 			}
 			// The seeded state carries no socket, session or pane-generation stamp, and every load stamps them in memory,
