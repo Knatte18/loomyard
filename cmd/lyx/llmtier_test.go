@@ -166,6 +166,8 @@ func llmTierFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowlis
 }
 
 // TestLLMTier_OnlyLLMFilesReachAnLLM fails for a test file that imports llmkit without being confined to the `llm` tag, for a test file outside the kit that looks up an LLM binary, and for a kit file using `os/exec` beyond LookPath.
+//
+//lyx:guard
 func TestLLMTier_OnlyLLMFilesReachAnLLM(t *testing.T) {
 	allow := scankit.NewAllowlist(allowedLLMTierScanData)
 	failures, scanned := llmTierFailures(t, scankit.Options{}, allow)

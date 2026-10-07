@@ -522,6 +522,7 @@ func branchOf(text, start string) (string, bool) {
 	return start + branch, true
 }
 
+//lyx:guard
 func TestStencilClaims(t *testing.T) {
 	for _, row := range wordingClaims {
 		t.Run(row.file, func(t *testing.T) {

@@ -35,6 +35,17 @@ Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a produ
 - `time.Sleep(...)` of one second or more in an untagged file is flagged unless allowlisted.
 - Enforced by `cmd/lyx/tierpurity_test.go`.
 
+## Repository-scanning tests carry `//lyx:guard`
+
+- A test that reads repository files outside its own package directory carries `//lyx:guard` on the line directly above its `func Test…` line, the way `//testtiming:keep` sits above a kept test.
+- The round gate runs every marked test by name whatever the impacted set, because a guard's result depends on files no import edge names.
+- A test carrying both markers stacks them as contiguous directive lines directly above the `func Test…` line, in either order.
+  `//lyx:guard` counts as directly above when only `//testtiming:keep` lines separate it from the func line, and `//testtiming:keep` counts as directly above when only `//lyx:` lines separate it; two stacked keeps stay an error.
+- A test that reads only its own package directory is left unmarked, since the impacted set selects it whenever that package changes.
+- No marked test sits in a `tmux` or `llm` file.
+- Whether a scanning test carries the marker is review discipline, not a test.
+- Bound: an unmarked scanning test is not run by the round gate, so a violation passes that round and is caught by the full plan verify at Publish or Finalize, never on `main`.
+
 ## Time is injectable
 
 - A production interval, timeout or clock that a test would otherwise wait out is a struct field or a parameter, never a package-level `var`, so tests keep `t.Parallel`.

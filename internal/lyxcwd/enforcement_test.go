@@ -107,6 +107,8 @@ var enforcementAllowlist = []scankit.Entry{
 // TestEnforcement walks the repo source tree and verifies that no source file outside
 // internal/lyxcwd and cmd/lyx contains the raw cwd/root primitives os.Getwd or git rev-parse
 // --show-toplevel.
+//
+//lyx:guard
 func TestEnforcement(t *testing.T) {
 	t.Run("tree-scan", func(t *testing.T) {
 		// Predicate: returns true if the bytes contain a banned token.
@@ -192,6 +194,8 @@ func TestEnforcement(t *testing.T) {
 // such as "_boardroom" or "-weft-bare".
 // Test files (*_test.go) are excluded because test geometry is a review rule, not a
 // machine-enforced invariant.
+//
+//lyx:guard
 func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// geometryToken reports whether s is exactly one of the policed geometry path
 	// tokens. Only a token's registered owner directory (below) may use it in
@@ -864,6 +868,8 @@ func importsWeftname(f *ast.File) bool {
 // The import rule fails any file outside {fabricengine, fabriccli, gitkit, hubforge} that imports internal/weftname,
 // except weftnameTestImporter, which tests weftname.SiblingPath.
 // The walk is plain, not a //go:embed parse, so a future non-embedded template is policed rather than silently skipped.
+//
+//lyx:guard
 func TestEnforcement_FabricVocabulary(t *testing.T) {
 	parseWithComments := func(t *testing.T, src string) *ast.File {
 		t.Helper()

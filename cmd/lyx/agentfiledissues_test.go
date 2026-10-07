@@ -23,6 +23,8 @@ const createIssueCall = "selfreportengine.CreateIssue"
 
 // TestAgentFiledIssues_NoCreateIssueOutsideSelfreport walks every non-test *.go file under the module root
 // and fails if a file outside the allowlisted selfreport directories contains selfreportengine.CreateIssue.
+//
+//lyx:guard
 func TestAgentFiledIssues_NoCreateIssueOutsideSelfreport(t *testing.T) {
 	allow := scankit.NewAllowlist(agentFiledIssuesAllowlist)
 	var failures []string
