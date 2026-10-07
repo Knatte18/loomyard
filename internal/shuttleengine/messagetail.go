@@ -1,5 +1,4 @@
-// messagetail.go declares the fixed tail every operator or agent message sent through
-// `lyx shuttle send` ends with, and the function that appends it.
+// messagetail.go declares the fixed tail every operator or agent message sent through `lyx shuttle send` ends with, and the function that appends it.
 
 package shuttleengine
 

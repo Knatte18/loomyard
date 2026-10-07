@@ -299,9 +299,8 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 	}
 }
 
-// newSmokeRunner builds a shuttleengine.Runner against the hub the test is chdir'd into, the same way
-// shuttlecli.Command()'s PersistentPreRunE does, and returns it with the engine, reed engine and config
-// it was built from. Tests that need the *Run handle Start returns use it instead of RunCLI.
+// newSmokeRunner builds a shuttleengine.Runner against the hub the test is chdir'd into, the same way shuttlecli.Command()'s PersistentPreRunE does, and returns it with the engine, reed engine and config it was built from.
+// Tests that need the *Run handle Start returns use it instead of RunCLI.
 func newSmokeRunner(t *testing.T) (*shuttleengine.Runner, shuttleengine.Engine, *reedengine.Engine, shuttleengine.Config) {
 	t.Helper()
 

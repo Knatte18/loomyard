@@ -48,8 +48,7 @@
 //
 // A turn end without every output file never ends a run: Wait holds it, logs it at Info and keeps polling the same agent,
 // whether the turn end is a Stop, a live ask or an expired-shell turn end.
-// A run ends only as done (every output file present at a turn end, or at the deadline or a pane's death),
-// died, timeout or a mechanism failure.
+// A run ends only as done (every output file present at a turn end, or at the deadline or a pane's death), died, timeout or a mechanism failure.
 // A hold never extends the run's deadline: it is bounded by the caller's own Spec.Timeout (run_timeout_min only where that is zero, so the bound differs per caller),
 // each Attach starts a fresh deadline, and the liveness check still classifies a dead pane.
 // RunState.Outcome records whether a run ever ended, seeded "running" and overwritten on every terminal

@@ -6,8 +6,7 @@
 // denying every other subagent type; a run with Spec.AllowAgentTool set installs no Agent deny at all),
 // refusing `lyx webster` verbs from inside a fork in a fork-mode run (the fork-context deadlock
 // guard), denying AskUserQuestion in autonomous runs (where there is no operator present to answer
-// it), and recording — never denying — a live AskUserQuestion call in interactive runs so the run
-// loop holds it like any turn end without output.
+// it), and recording — never denying — a live AskUserQuestion call in interactive runs so the run loop holds it like any turn end without output.
 // The Bash tool's default stdin is set by the env file Prepare writes (see command.go), not by a hook.
 // buildDenyNotice, built beside those hooks so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
 // Every document also sets `promptSuggestionEnabled` to false: a capture carries no styling,

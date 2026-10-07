@@ -554,8 +554,8 @@ func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
 // a batch containing more than one event, e.g. an interrupted turn immediately followed by a resumed one, is classified by its most recent one,
 // and every consumed byte still counts once parsing succeeds, so none of the earlier events in the same batch is ever reprocessed.
 // When every output file exists the run is done whatever the last event's Kind was.
-// Otherwise the turn end is held, whatever its Kind: an EventStop and an EventAsk with output files missing
-// return a held turn end carrying the event's message and the offset just past its line, and Wait keeps polling the same agent.
+// Otherwise the turn end is held, whatever its Kind:
+// an EventStop and an EventAsk with output files missing return a held turn end carrying the event's message and the offset just past its line, and Wait keeps polling the same agent.
 // Kind only selects Message's source, inside ParseEvents, not this branch.
 // An EventWaiting is the one Kind that is not held at once: the session is waiting on its own background work,
 // so the tick returns what expiredTurnEnd answers, which is nothing while the work is outstanding.
