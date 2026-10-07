@@ -49,8 +49,8 @@ type Session interface {
 	LoadSkills(guid string, skills []string) error
 	// ClassifySkillLoad classifies the load turn of skills that turnEnd ended.
 	ClassifySkillLoad(turnEnd shuttleengine.Event, skills []string) (shuttleengine.SkillLoadReport, error)
-	// CompactedSince returns the time of the newest compaction boundary after since in the transcript turnEnd names.
-	CompactedSince(turnEnd shuttleengine.Event, since time.Time) (time.Time, bool, error)
+	// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it.
+	CompactedSince(turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error)
 }
 
 // Clock supplies the current time, settable in tests.
@@ -67,7 +67,8 @@ type Watcher struct {
 	skills      []string // Skills the reload sequence's skills step loads in one turn, before the pointer.
 	clock       Clock
 
-	// compactedAt is the time of an auto-compaction boundary read at a turn end and not yet reloaded from; zero when none.
+	// compactedAt is the time of an auto-compaction boundary a turn end read confirmed fresh and not yet reloaded from; zero when none.
+	// A tick that reads a turn end replaces it from its own evaluation, and binding to another strand clears it.
 	// It is memory only: a restarted watcher finds the boundary again at its next turn end, since the baseline has not moved.
 	compactedAt time.Time
 
@@ -186,17 +187,23 @@ func (w *Watcher) tick() (done bool, err error) {
 	}
 	var compactedAt time.Time
 	if lastTurnEnd != nil {
-		at, found, err := w.session.CompactedSince(*lastTurnEnd, st.CompactionBaseline)
+		boundary, found, err := w.session.CompactedSince(*lastTurnEnd, st.CompactionBaseline)
 		if err != nil {
 			return false, err
 		}
 		if found {
-			compactedAt = at
+			switch {
+			case boundary.TurnEndsAfter > 1:
+				logger.Info("orch: stale compaction boundary passed without a reload", "strandGUID", st.Strand, "boundaryAt", boundary.At, "turnEndsAfter", boundary.TurnEndsAfter)
+				st.CompactionBaseline = boundary.At
+			case boundary.TurnEndsAfter == 1 && boundary.ReadTurnEndAfter:
+				compactedAt = boundary.At
+			}
 		}
 	}
 	// No error point remains before the events are committed to memory.
 	w.cursor = next
-	if !compactedAt.IsZero() {
+	if lastTurnEnd != nil {
 		w.compactedAt = compactedAt
 	}
 	for i := range events {
@@ -252,6 +259,7 @@ func (w *Watcher) tick() (done bool, err error) {
 func (w *Watcher) initCursor(st State) (State, error) {
 	w.started, w.strand = true, st.Strand
 	w.newest, w.seen, w.replaying = nil, phaseEvents{}, false
+	w.compactedAt = time.Time{}
 	switch {
 	case st.Phase == PhaseIdle:
 		w.cursor = st.LastInjectionOffset

@@ -36,8 +36,8 @@ type fakeSession struct {
 	onSend     func()
 	onAlive    func()
 
-	skillLoads  map[string]shuttleengine.SkillLoadReport // Turn-end message to the report ClassifySkillLoad answers, else a report with every skill loaded.
-	autoCompact map[string]time.Time                     // Turn-end message to a main-chain compaction boundary CompactedSince finds through it.
+	skillLoads  map[string]shuttleengine.SkillLoadReport    // Turn-end message to the report ClassifySkillLoad answers, else a report with every skill loaded.
+	autoCompact map[string]shuttleengine.CompactionBoundary // Turn-end message to a main-chain compaction boundary CompactedSince finds through it.
 }
 
 func (f *fakeSession) LoadSkills(_ string, skills []string) error {
@@ -52,9 +52,9 @@ func (f *fakeSession) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []st
 	return shuttleengine.SkillLoadReport{Verified: true, Loaded: skills}, nil
 }
 
-func (f *fakeSession) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (time.Time, bool, error) {
-	at, ok := f.autoCompact[turnEnd.Message]
-	return at, ok && at.After(since), nil
+func (f *fakeSession) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool, error) {
+	b, ok := f.autoCompact[turnEnd.Message]
+	return b, ok && b.At.After(since), nil
 }
 
 func (f *fakeSession) StrandAlive(string) (bool, error) {
@@ -1128,7 +1128,7 @@ func TestWatcher_AutoCompactionReloadsSkillsRoleAndPointer(t *testing.T) {
 	e := newWatchEnv(t)
 	e.withSkills()
 	boundary := e.clock.now.Add(time.Second)
-	e.s.autoCompact = map[string]time.Time{"a": boundary}
+	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(boundary)}
 	e.s.usage["a"] = 100
 	e.endTurn("a")
 	if st := e.state(); st.Phase != PhaseResuming || !st.CompactionBaseline.Equal(boundary) {
@@ -1161,7 +1161,7 @@ func TestWatcher_AutoCompactionBoundaryAtOrBeforeBaselineTriggersNothing(t *test
 	e.withSkills()
 	e.setState(func(st *State) { st.CompactionBaseline = e.clock.now })
 	e.w = e.newWatcher()
-	e.s.autoCompact = map[string]time.Time{"a": e.clock.now}
+	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(e.clock.now)}
 	e.s.usage["a"] = 100
 	e.endTurn("a")
 	e.tick()
@@ -1174,7 +1174,7 @@ func TestWatcher_AutoCompactionBoundaryAtOrBeforeBaselineTriggersNothing(t *test
 func TestWatcher_AutoCompactionWaitsForIdleProbe(t *testing.T) {
 	e := newWatchEnv(t)
 	e.withSkills()
-	e.s.autoCompact = map[string]time.Time{"a": e.clock.now.Add(time.Second)}
+	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(e.clock.now.Add(time.Second))}
 	e.s.usage["a"] = 100
 	e.s.idle = false
 	e.endTurn("a")
@@ -1186,6 +1186,91 @@ func TestWatcher_AutoCompactionWaitsForIdleProbe(t *testing.T) {
 	e.tick()
 	if e.s.count("skills:") != 1 {
 		t.Fatalf("calls = %v", e.s.calls)
+	}
+}
+
+// freshBoundary is a compaction boundary with exactly one turn end after it, the one being read.
+func freshBoundary(at time.Time) shuttleengine.CompactionBoundary {
+	return shuttleengine.CompactionBoundary{At: at, TurnEndsAfter: 1, ReadTurnEndAfter: true}
+}
+
+func TestWatcher_AutoCompactionReloadsOnlyAFreshBoundary(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		run  func(t *testing.T, e *watchEnv, boundary time.Time)
+	}{
+		{"stale boundary on an old cursor moves the baseline and types nothing", func(t *testing.T, e *watchEnv, boundary time.Time) {
+			e.s.events = []shuttleengine.Event{stop("a"), stop("b")}
+			e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"b": {At: boundary, TurnEndsAfter: 2, ReadTurnEndAfter: true}}
+			e.w = e.newWatcher()
+			e.tick()
+			e.assertNoCalls()
+			if st := e.state(); st.Phase != PhaseIdle || !st.CompactionBaseline.Equal(boundary) {
+				t.Fatalf("state = %+v, want idle with the baseline at the boundary", st)
+			}
+		}},
+		{"unread later turn end waits, then the tick that reads it reloads", func(t *testing.T, e *watchEnv, boundary time.Time) {
+			e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{
+				"a": {At: boundary, TurnEndsAfter: 1},
+				"b": freshBoundary(boundary),
+			}
+			e.endTurn("a")
+			e.assertNoCalls()
+			if st := e.state(); !st.CompactionBaseline.IsZero() {
+				t.Fatalf("baseline = %v, want it left where it was", st.CompactionBaseline)
+			}
+			e.endTurn("b")
+			if e.s.count("skills:") != 1 {
+				t.Fatalf("calls = %v, want the reload", e.s.calls)
+			}
+		}},
+		{"no later turn end types nothing and keeps the baseline", func(t *testing.T, e *watchEnv, boundary time.Time) {
+			e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": {At: boundary}}
+			e.endTurn("a")
+			e.assertNoCalls()
+			if st := e.state(); !st.CompactionBaseline.IsZero() {
+				t.Fatalf("baseline = %v, want it left where it was", st.CompactionBaseline)
+			}
+		}},
+		{"held boundary found stale by the next turn end types nothing and holds nothing", func(t *testing.T, e *watchEnv, boundary time.Time) {
+			e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{
+				"a": freshBoundary(boundary),
+				"b": {At: boundary, TurnEndsAfter: 2, ReadTurnEndAfter: true},
+			}
+			e.s.idle = false
+			e.endTurn("a")
+			e.assertNoCalls()
+			e.s.idle = true
+			e.endTurn("b")
+			e.tick()
+			e.assertNoCalls()
+			if st := e.state(); !st.CompactionBaseline.Equal(boundary) {
+				t.Fatalf("baseline = %v, want the boundary", st.CompactionBaseline)
+			}
+		}},
+		{"boundary held for the old strand never reloads the new one", func(t *testing.T, e *watchEnv, boundary time.Time) {
+			e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(boundary)}
+			e.s.idle = false
+			e.endTurn("a")
+			e.setState(func(st *State) {
+				st.Strand = "s2"
+				st.LastInjectionOffset = int64(len(e.s.events))
+			})
+			e.s.idle = true
+			e.tick()
+			e.assertNoCalls()
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.withSkills()
+			e.s.usage["a"], e.s.usage["b"] = 100, 100
+			c.run(t, e, e.clock.now.Add(time.Second))
+		})
 	}
 }
 
