@@ -74,3 +74,12 @@ Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a produ
 - The `integration`-tier guard runs `go list -test -deps` under every tag and fails, naming one import chain, when a test binary outside the list links `github.com/tree-sitter/go-tree-sitter`.
 - It also fails when a listed package's test binary no longer links it, so the list tracks the tree.
 - The chain search and the comparison are in `cmd/lyx/treesitterlink_test.go`.
+
+## Test budget
+
+- Each package has a budget: the most top-level `func Test…` functions its `_test.go` files may hold, counted under every build tag.
+- The budgets live in `cmd/lyx/testdata/test-budget.yaml`, one row per package directory, pinned at the `test-tiers` after-state.
+- `cmd/lyx/testbudget_test.go` fails, naming the package, its count and its budget, when a package exceeds its row or has tests and no row.
+  A count below the budget passes, and so does a row whose package has no tests left.
+- A raise is a one-line edit in the same commit as the tests that need it, so the guard forces a visible, reviewed decision and blocks nothing else.
+- Wall time is not pinned, and the count is not compared with `cmd/testtiming`'s `TESTS` column.
