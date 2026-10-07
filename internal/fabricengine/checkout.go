@@ -134,7 +134,8 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 }
 
 // switchOrForkWeft switches the weft worktree to the weft branch matching the warp target: the local branch, else the branch on origin adopted as a local tracking branch, else a fork of the current weft branch.
-// It reports whether this call created the local branch (adopted from origin or forked), so rollback can delete it;
+// It reports whether this call created the local branch (adopted from origin or forked),
+// so rollback can delete it;
 // created stays true alongside an error when the weft switch fails after the branch was adopted from origin.
 // rec is Checkout's own recorder;
 // it records KindWorktreeSwitched at the weft worktree root with the branch switched to as Detail on every path, and additionally records KindBranchCreated for a created branch: from the resolver when adopted from origin, here when forked, since `switch -c` creates it.
