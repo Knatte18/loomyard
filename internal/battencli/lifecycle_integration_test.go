@@ -735,7 +735,7 @@ func stepCreateRow_PairWithoutOriginRecordIsIncomplete(t *testing.T, h *hubforge
 	}
 }
 
-// stepCreateRow_LeftoverBranchIsRewordedForPrime pins createRefusal's own wiring into the CreateWorktree closure: a leftover code branch from an earlier torn-down pair (or a rolled-back create) must reach the closure's caller worded for an operator standing in prime, never fabric's own raw "lyx fabric checkout" advice, which would switch prime itself onto the task's branch.
+// stepCreateRow_LeftoverBranchIsRewordedForPrime pins createRefusal's own wiring into the CreateWorktree closure: a leftover code branch from an earlier torn-down pair must reach the closure's caller worded for an operator standing in prime, never fabric's own raw "lyx fabric checkout" advice, which would switch prime itself onto the task's branch.
 // Calls c.env.CreateWorktree directly, the production closure, rather than createRefusal in isolation, so a future edit that drops the reword call fails here.
 func stepCreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-leftover-branch"

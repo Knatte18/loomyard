@@ -94,9 +94,7 @@ func TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree(t *testing.T) {
 	hubforge.SeedFabricConfig(t, h, escapeFabricConfigYAML("../gap1-rollback-escape"))
 
 	l := h.Location
-	// A configured branch prefix is what makes the warp branch this Add creates recognisable to the
-	// gate's ownedManagedBranch check, mirroring add_rollback_adopt_test.go's fixtures — the branch
-	// side of rollback is not what this test is about.
+	// The branch prefix is incidental: the branch side of rollback is not what this test is about.
 	const branchPrefix = "task/"
 	topology := fabricengine.NewTopology(fabricengine.Config{BranchPrefix: branchPrefix})
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
@@ -625,38 +623,6 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 			t.Errorf("branch %q still exists after an accepted deletion", orphan)
 		}
 	})
-}
-
-// TestBranchOwnership_RefusalHoldsAtOtherDeletionSites drives the branch-ownership kind through a
-// deletion site other than Cleanup — Add's own rollback, the cheapest of the other three since it
-// already has integration cover (add_rollback_adopt_test.go) — and asserts the branch the gate
-// refuses there survives the rollback. This is the entire reason the ownership logic moved into the
-// shared gate rather than staying local to Cleanup: the same refusal must hold everywhere a branch
-// is deleted, not just at the one site it was first noticed missing from.
-func TestBranchOwnership_RefusalHoldsAtOtherDeletionSites(t *testing.T) {
-	t.Parallel()
-
-	const slug = "branch-ownership-rollback-refused"
-	h := hubforge.NewHub(t, ".")
-	l := h.Location
-
-	// No BranchPrefix, and the slug itself carries no "-weft" suffix: the gate's ownedManagedBranch
-	// has no scheme to recognise this warp branch by, so rollbackAdd's own attempt to delete it must
-	// be refused exactly as Cleanup's would be for an equivalently-unmanaged name.
-	topology := h.Topology
-
-	// Break the warp origin remote so Add's final push fails after the warp branch and worktree
-	// already exist — the same post-creation-failure injection
-	// TestAddRollback_UnwiresJunctionsOnPostWiringFailure uses — triggering rollbackAdd.
-	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
-
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
-		t.Fatalf("Add should have failed (broken origin remote)")
-	}
-
-	if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
-		t.Fatalf("warp branch %q — which the gate must refuse to delete, since it carries neither the -weft suffix nor a configured prefix — did not survive Add's rollback", slug)
-	}
 }
 
 // TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch is R2's regression for a misleading verdict under

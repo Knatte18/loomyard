@@ -154,30 +154,43 @@ func probeLiveLocalWeft(weftRoot, slug, weftBranch, originTip string) (weftLefto
 	return weftLeftover{}, &ErrRemoteLeftover{Slug: slug, Branch: weftBranch, RemoteTip: originTip, kind: leftoverDivergedAdoptedWeft}
 }
 
-// probeWarpLeftover inspects the warp origin for warpBranch, run in the warp worktree, and returns the origin tip Add adopts, or "" when it forks from HEAD.
+// warpOriginState is what Add's pre-flight learned about the warp branch on origin.
+type warpOriginState int
+
+const (
+	// warpOriginNotProbed means no probe ran (SkipGit or SkipPush), so nothing is known about origin.
+	warpOriginNotProbed warpOriginState = iota
+	// warpOriginAbsent means origin has no such branch, so any branch there later is this Add's own push.
+	warpOriginAbsent
+	// warpOriginPresent means origin already holds the branch: adopted, or a leftover at or behind HEAD.
+	warpOriginPresent
+)
+
+// probeWarpLeftover inspects the warp origin for warpBranch, run in the warp worktree.
+// It returns the origin tip Add adopts, or "" when it forks from HEAD, together with whether origin held the branch at all.
 // For a live pair a present origin branch is adopted whatever its relation to HEAD.
 // For a pair that is not live it returns "" when the branch is absent or its tip equals or is an ancestor of the HEAD the new branch forks from, and refuses otherwise.
 // It never fetches.
-func probeWarpLeftover(l *lyxcwd.Location, slug, warpBranch string, live bool) (adoptTip string, err error) {
+func probeWarpLeftover(l *lyxcwd.Location, slug, warpBranch string, live bool) (adoptTip string, origin warpOriginState, err error) {
 	dir := l.WorktreePath()
 	tip, err := remoteHeadTip(dir, warpBranch)
 	if err != nil {
-		return "", err
+		return "", warpOriginNotProbed, err
 	}
 	if tip == "" {
-		return "", nil
+		return "", warpOriginAbsent, nil
 	}
 	if live {
-		return tip, nil
+		return tip, warpOriginPresent, nil
 	}
 	ok, err := isAncestorOrEqual(dir, tip, "HEAD")
 	if err != nil {
-		return "", err
+		return "", warpOriginNotProbed, err
 	}
 	if ok {
-		return "", nil
+		return "", warpOriginPresent, nil
 	}
-	return "", &ErrRemoteLeftover{Slug: slug, Branch: warpBranch, RemoteTip: tip, kind: leftoverDivergedWarp}
+	return "", warpOriginNotProbed, &ErrRemoteLeftover{Slug: slug, Branch: warpBranch, RemoteTip: tip, kind: leftoverDivergedWarp}
 }
 
 // remoteHeadTip returns the SHA of branch on originRemoteName as seen from dir, or "" when it is absent.

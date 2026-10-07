@@ -408,9 +408,7 @@ func assertExists(tb testing.TB, path string) {
 // addCase builds Topology.Add's VerbCase.
 //
 // Arrange breaks the warp origin remote (`git remote set-url origin <nonexistent>`) so the push at the
-// end of Add fails after the branch and worktree already exist, triggering rollbackAdd — the same
-// injection TestBranchOwnership_RefusalHoldsAtOtherDeletionSites already uses, a proven trigger rather
-// than a guess.
+// end of Add fails after the branch and worktree already exist, triggering rollbackAdd.
 // Without it, Add never reaches the gate at all: rollbackAdd fires only at post-creation sites
 // (add.go:139-204), and none of the ten states induces one on its own.
 //
@@ -484,14 +482,8 @@ func addCase() VerbCase {
 				// Every other state's own pre-flight (or absence of one) lets Add proceed through
 				// creation and wiring; the broken-remote arrangement then fails the push
 				// unconditionally, and rollbackAdd reverts every step it can.
-				// The warp branch is the one artifact rollback cannot revert: rollbackAdd's own
-				// branch-delete step (add.go:287-308) gates on ownedManagedBranch, whose
-				// resolveManagedBranch (destroy.go:471-499) requires either a non-empty
-				// BranchPrefix or a "-weft" suffix — this hub's Topology carries an empty
-				// BranchPrefix (fabricengine.Config{}), so a bare warp branch name never matches
-				// and the gate refuses the rollback's own cleanup silently (`_ = t.rollbackAdd`).
-				// This is genuine, verified behaviour of the production code this harness must not
-				// alter, not an assumption.
+				// The warp branch is reverted too.
+				// rollbackAdd deletes the branch this Add created whatever the BranchPrefix, and under SkipPush leaves origin alone.
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "push branch",
@@ -501,8 +493,8 @@ func addCase() VerbCase {
 						assertGone(tb, h.PairWeftSibling(f.Slug))
 						assertGone(tb, h.PairPortalLink(f.Slug))
 						assertGone(tb, h.PairLauncherDir(f.Slug))
-						if !gitkit.BranchExists(tb, h.PrimeWorktree(), f.Slug) {
-							tb.Errorf("Add's rollback unexpectedly deleted branch %q despite the empty-BranchPrefix ownership gap", f.Slug)
+						if gitkit.BranchExists(tb, h.PrimeWorktree(), f.Slug) {
+							tb.Errorf("Add's rollback left branch %q behind", f.Slug)
 						}
 						if got := mustGitRemoteURL(tb, h.PrimeWorktree()); got != f.BrokenOriginURL {
 							tb.Errorf("Add's Arrange origin URL = %q; want %q", got, f.BrokenOriginURL)

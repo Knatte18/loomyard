@@ -179,6 +179,14 @@ type createdToken struct {
 	worktree bool
 }
 
+// createdBranchToken is the unforgeable proof that the `git worktree add -b <branch>` createGitWorktree ran created branch, locally, in this call.
+// createGitWorktree is its only producer.
+// Like createdToken, its unexported-ness does not stop a same-package composite literal,
+// so the property is enforced by the bypass guard banning the token `createdBranchToken{` outside this file.
+type createdBranchToken struct {
+	branch string
+}
+
 // pathRequest is the gate's request shape for every destructive primitive whose target is a
 // filesystem path: os.RemoveAll/os.Remove, git worktree remove, ResetHard, and link removal/re-point.
 // Every field is required — a zero-value ownership or dirtiness is refused by the pipeline rather
@@ -386,6 +394,7 @@ const (
 	branchOwnershipManaged
 	branchOwnershipPairWarp
 	branchOwnershipPairWeft
+	branchOwnershipCreatedBranch
 )
 
 // branchOwnership declares which of the closed set of ownership kinds a branchRequest's branch must
@@ -398,6 +407,16 @@ type branchOwnership struct {
 	// parentBranch serves ownedPairWarpBranch only.
 	warpBranch   string
 	parentBranch string
+	// createdBranch serves ownedCreatedBranch only: the one branch name its proof covers.
+	createdBranch string
+}
+
+// ownedCreatedBranch declares branch as owned when it is exactly the branch tok proves this call created.
+// It consults no naming scheme, so a bare-slug warp branch under the default empty branch_prefix is as deletable as a prefixed one.
+// l serves the checked-out dirtiness probe.
+// An empty proof matches nothing.
+func ownedCreatedBranch(l *lyxcwd.Location, tok createdBranchToken) branchOwnership {
+	return branchOwnership{kind: branchOwnershipCreatedBranch, location: l, createdBranch: tok.branch}
 }
 
 // ownedPairWarpBranch declares branch as owned when it is exactly warpBranch — the pair's own
@@ -489,6 +508,7 @@ const (
 	branchDirtinessUnlandedWork
 	branchDirtinessArchivedOnRemote
 	branchDirtinessUnlandedRemoteTip
+	branchDirtinessPushedByThisCall
 )
 
 // branchDirtiness declares which dirtiness probe the pipeline runs against a branchRequest's branch.
@@ -507,6 +527,13 @@ type branchDirtiness struct {
 // and an empty archiveTag is refused as covered by no archive tag.
 func dirtyArchivedOnRemote(archiveTag string) branchDirtiness {
 	return branchDirtiness{kind: branchDirtinessArchivedOnRemote, archiveTag: archiveTag}
+}
+
+// dirtyPushedByThisCall declares that the remote branch is one this same call pushed, so deleting it loses no work.
+// It answers a remote question only: checkRemoteBranchRequest accepts it and requires a non-empty leaseSHA, the commit this call pushed,
+// and checkBranchDirtiness refuses it for a local delete.
+func dirtyPushedByThisCall() branchDirtiness {
+	return branchDirtiness{kind: branchDirtinessPushedByThisCall}
 }
 
 // dirtyUnlandedWork declares that the pipeline's dirtiness step refuses a branch whose work would be
@@ -716,6 +743,11 @@ func resolveBranchOwnership(own branchOwnership, branch string) (ok bool, reason
 		return resolvePairWarpBranch(own.warpBranch, own.parentBranch, branch)
 	case branchOwnershipPairWeft:
 		return resolvePairWeftBranch(own.location, own.warpBranch, branch)
+	case branchOwnershipCreatedBranch:
+		if own.createdBranch == "" || branch != own.createdBranch {
+			return false, fmt.Sprintf("%s is not the branch this call created (%q)", branch, own.createdBranch)
+		}
+		return true, ""
 	default:
 		return false, "no ownership kind declared"
 	}
@@ -936,6 +968,9 @@ func checkBranchDirtiness(req branchRequest) error {
 	if req.dirtiness.kind == branchDirtinessUnlandedRemoteTip {
 		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "unlanded-remote-tip dirtiness answers a remote question; a local branch delete has no remote tip to probe"}
 	}
+	if req.dirtiness.kind == branchDirtinessPushedByThisCall {
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "pushed-by-this-call dirtiness answers a remote question; a local branch delete has no pushed commit to lease"}
+	}
 	if req.dirtiness.kind == branchDirtinessUnlandedWork {
 		return checkUnlandedWork(req)
 	}
@@ -1070,6 +1105,13 @@ func checkRemoteBranchRequest(req remoteBranchRequest) error {
 		}
 		if req.leaseSHA == "" {
 			return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "no lease SHA: the archive-coverage proof holds only for the tip it was computed against"}
+		}
+		return nil
+	}
+
+	if req.dirtiness.kind == branchDirtinessPushedByThisCall {
+		if req.leaseSHA == "" {
+			return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "no lease SHA: the push this call made holds only for the commit it pushed"}
 		}
 		return nil
 	}
@@ -1365,7 +1407,8 @@ func createExclusiveDir(rec *Mutations, path string) (createdToken, error) {
 }
 
 // createGitWorktree adds a git worktree at target through containedWorktreeAdd and, on success,
-// returns the createdToken proving the gate itself added it there.
+// returns the createdToken proving the gate itself added it there,
+// and the createdBranchToken proving the `-b` of buildArgs created createdBranch.
 //
 // buildArgs returns the full `git worktree add` argument slice given the path git should write the
 // worktree to; the caller supplies it so this one minter serves the warp-side add's `-b <branch>`
@@ -1377,12 +1420,12 @@ func createExclusiveDir(rec *Mutations, path string) (createdToken, error) {
 // unforgeable outside this file, and errors.As(err, &gitErr) for how a call site recovers the exit
 // code and stderr it needs.
 // It appends KindWorktreeCreated to rec only on the success path that mints the token.
-func createGitWorktree(rec *Mutations, repoDir, container, target string, buildArgs func(worktreePath string) []string) (createdToken, error) {
+func createGitWorktree(rec *Mutations, repoDir, container, target, createdBranch string, buildArgs func(worktreePath string) []string) (createdToken, createdBranchToken, error) {
 	if err := containedWorktreeAdd(repoDir, container, target, buildArgs); err != nil {
-		return createdToken{}, err
+		return createdToken{}, createdBranchToken{}, err
 	}
 	rec.Append(KindWorktreeCreated, target, "")
-	return createdToken{path: filepath.Clean(target), worktree: true}, nil
+	return createdToken{path: filepath.Clean(target), worktree: true}, createdBranchToken{branch: createdBranch}, nil
 }
 
 // containedWorktreeAdd runs `git worktree add` in a way that never REPORTS a worktree placed inside

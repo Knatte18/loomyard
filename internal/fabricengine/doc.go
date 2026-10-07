@@ -511,7 +511,8 @@
 // and a remote weft tip equal to, or an ancestor of, an `archive/<slug>/*` tag's target on origin is replaceable.
 // The warp side of such a pair is refused unless the remote warp tip is an ancestor of `HEAD`.
 // A replaceable weft leftover is deleted at step 12, immediately before the weft push, through the destructive gate with a lease on the probed tip, so a branch that moved since the probe is refused and `Add` rolls back.
-// A rollback deletes only the local branches this `Add` created, a weft branch taken from origin included, and never restores the deleted remote branch: its content is reachable from the archive tag.
+// A rollback deletes the local branches this `Add` created, a weft branch taken from origin included, and never restores the deleted remote weft branch: its content is reachable from the archive tag.
+// It also deletes the warp branch this `Add` pushed from origin, but only when the pre-flight probe found it absent there, step 11's push was attempted, and origin still holds it at the commit that push carried; a branch origin already had is never touched.
 // A fast-forward `Add` made to a pre-existing local weft branch is not rewound.
 // `Add`'s two branch pushes retry a push the server refuses with a bare `(failed)` on the pushed ref, in 4 attempts in total with exponential backoff;
 // every other push failure returns on the first attempt.
@@ -917,7 +918,7 @@
 // TYPE is part of its contract here: a containment check that refuses correctly but is not the type the
 // best-effort wrapper propagates is, from the operator's side, indistinguishable from no check at all.
 //
-// **Why the two token-carrying ownership kinds exist, and the honest limit of what backs them.**
+// **Why the token-carrying ownership kinds exist, and the honest limit of what backs them.**
 // `ownedFreshlyCreatedPath`/`ownedFreshlyCreatedWorktree` let a rollback site prove "the gate
 // itself created this, moments ago, in this same call" — the fabric-hub bootstrap teardown and
 // `Add`'s worktree rollback both need exactly that, and nothing weaker would do: a rollback site
@@ -929,6 +930,8 @@
 // The property that a site cannot declare this kind for a path the gate did not create therefore
 // rests on the bypass guard's `createdToken{` ban, not on Go's type system;
 // a reader who believes the type system alone enforces it will eventually write one.
+// `createdBranchToken`, which `createGitWorktree` also mints for the branch its `-b` created and `ownedCreatedBranch` takes, is backed the same way, by the `createdBranchToken{` ban.
+// That kind lets `rollbackAdd` delete the warp branch this `Add` created whatever the branch prefix, locally and, under a lease, on origin.
 //
 // # The correspondence index's write path
 //

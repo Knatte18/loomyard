@@ -64,7 +64,7 @@ var destructiveGuardScanPackages = []string{
 
 // destructiveGuardBannedTokens are the raw substrings a non-test .go file in
 // destructiveGuardScanPackages may not contain, unless the file is on destructiveGuardAllowlist.
-// This is the discussion's final seven tokens plus "createdToken{" (added per the overview's decision that the token's unforgeability is guard-enforced rather than type-enforced) plus ".DeleteRemoteBranch(" (added alongside the remote-branch-deletion primitive, so a file other than destroy.go cannot reach it) plus ".UpdateRemoteBranchLeased(" (the same for the remote-branch-moving force push).
+// This is the discussion's final seven tokens plus "createdToken{" and "createdBranchToken{" (added per the overview's decision that the token's unforgeability is guard-enforced rather than type-enforced) plus ".DeleteRemoteBranch(" (added alongside the remote-branch-deletion primitive, so a file other than destroy.go cannot reach it) plus ".UpdateRemoteBranchLeased(" (the same for the remote-branch-moving force push).
 var destructiveGuardBannedTokens = []string{
 	"RemoveAll(",
 	"os.Remove(",
@@ -74,6 +74,7 @@ var destructiveGuardBannedTokens = []string{
 	"weft.ResetHard(",
 	"fslink.Remove(",
 	"createdToken{",
+	"createdBranchToken{",
 	".DeleteRemoteBranch(",
 	".UpdateRemoteBranchLeased(",
 }
