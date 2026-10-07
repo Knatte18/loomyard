@@ -27,7 +27,7 @@ internal/configsync: 5
 internal/discussionparser: 12
 internal/envsource: 3
 internal/fabriccli: 20
-internal/fabricengine: 622
+internal/fabricengine: 624
 internal/friction: 6
 internal/frictionengine: 15
 internal/fslink: 5
@@ -61,7 +61,7 @@ internal/parentdirective: 4
 internal/parentreview: 53
 internal/pattern: 7
 internal/planglyph: 76
-internal/planparser: 80
+internal/planparser: 81
 internal/preflight: 7
 internal/preflightshed: 5
 internal/proc: 12
@@ -82,8 +82,8 @@ internal/shedtransient: 2
 internal/shedverbs: 65
 internal/shell: 11
 internal/shuttlecli: 19
-internal/shuttleengine: 141
-internal/shuttleengine/claudeengine: 89
+internal/shuttleengine: 142
+internal/shuttleengine/claudeengine: 90
 internal/standalonegeom: 7
 internal/standalonestate: 6
 internal/state: 8
@@ -111,7 +111,7 @@ internal/verifyrun: 4
 internal/verifytree: 5
 internal/vscode: 9
 internal/webstercli: 81
-internal/websterengine: 183
+internal/websterengine: 184
 internal/weftname: 1
 internal/yamlengine: 12
 tools/codestats: 9
@@ -120,5 +120,5 @@ tools/godocreflow: 6
 tools/internal/devbin: 1
 tools/mdreflow: 3
 tools/sandbox: 28
-tools/tokencount: 7
+tools/tokencount: 10
 tools/wordswap: 3

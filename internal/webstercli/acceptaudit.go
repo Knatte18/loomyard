@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
@@ -41,12 +42,13 @@ its class, detail and paths.
 
 With --batch NN it instead accepts failed batch NN's uncheckable findings,
 which otherwise make recover-batch refuse toward reset and run --fresh.
-It accepts only pathless fabric-reference findings, and only when HEAD is the
-batch's start commit and the worktree is clean, for example after
-git reset --keep <start> discarded the batch's commits; anything else
-refuses, changing nothing. Each accepted finding is recorded on
-the batch as an audit warning, and the envelope's next names
-lyx webster recover-batch NN.
+It accepts only pathless fabric-reference findings, and only when the worktree
+is clean and either HEAD is the batch's start commit, or the start is an
+ancestor of HEAD, so the batch's commits are kept, and every finding's command
+is read-only: built only from cat, head, tail, ls, wc, grep, jq and cut, with
+no redirection, substitution or backgrounding. Anything else refuses, changing
+nothing. Each accepted finding is recorded on the batch as an audit warning,
+and the envelope's next names lyx webster recover-batch NN.
 
 Example:
   lyx webster accept-audit
@@ -126,7 +128,7 @@ Example:
 // acceptBatch runs `accept-audit --batch n` under the lease the caller holds: accept, save, release, then fabric-sync.
 func (c *websterCLI) acceptBatch(cmd *cobra.Command, st *websterengine.State, n int, release func() error, held *bool) {
 	out := cmd.OutOrStdout()
-	accepted, err := websterengine.AcceptBatchFabricReference(st, c.geom, n)
+	accepted, err := websterengine.AcceptBatchFabricReference(st, c.geom, n, fabricengine.IsReadOnlyCommand)
 	if err != nil {
 		clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 		return

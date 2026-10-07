@@ -58,10 +58,13 @@ type RebaselineResult struct {
 // a plan whose first cards are not exactly the kept batches' recorded cards wraps ErrRebaselineCardSetChanged.
 // A state without a partition is grouped by the identity batchifier and records none.
 // Either way the result is asserted with CheckBatchOrder.
+// The tail is batched told how many batches precede it, the number kept, so its first batch is priced at the position after them.
+// That count is derived in Go from the recorded partition, never typed by an agent, and is told as if Merriam were never resumed, so after a resume the estimate is conservative;
+// work Merriam does between batches that the model does not know makes it too low, and nothing re-checks it at run time.
 func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 	st, plan := deps.State, deps.Plan
 	if len(st.Partition) == 0 {
-		batches, err := formBatches(plan, batcher.Identity(), deps.Sizes)
+		batches, err := formBatches(plan, batcher.Identity(), deps.Sizes, 0)
 		return batches, false, err
 	}
 
@@ -93,7 +96,7 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 	}
 
 	if tail := plan.Cards[offset:]; len(tail) > 0 {
-		tailBatches, err := batchCards(plan, tail, deps.Active, deps.Sizes)
+		tailBatches, err := batchCards(plan, tail, deps.Active, deps.Sizes, len(batches))
 		if err != nil {
 			return nil, false, err
 		}

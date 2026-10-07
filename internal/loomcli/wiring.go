@@ -267,7 +267,7 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
 	c.env.Rework.ReadCommitted = committedAnchoredReader(location)
-	c.env.PlanIndex = planglyph.NewIndex()
+	c.env.PlanIndex = planglyph.NewIndex(fabricengine.NewReferenceRule())
 }
 
 // committedAnchoredReader returns the seam that reads an anchor-relative file as committed at HEAD for location, with found false when HEAD has no such file.
@@ -431,7 +431,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(location, line) })
 
 	websterGeom := hubgeom.WebsterGeometry(location)
-	websterGeom.Index = planglyph.NewIndex()
+	websterGeom.Index = planglyph.NewIndex(fabricengine.NewReferenceRule())
 
 	// frictionDir is the single resolved value every told-friction consumer below reads: non-empty
 	// only when loom.yaml's friction key is set, per the "Tier 2 off is an empty path string, never a

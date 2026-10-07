@@ -23,7 +23,7 @@ func TestEnvFile_DefaultStdinIsDevNull(t *testing.T) {
 	t.Parallel()
 
 	runDir := t.TempDir()
-	if _, err := New().Prepare(runDir, shuttleengine.Spec{Prompt: "p"}, shuttleengine.Config{}); err != nil {
+	if _, err := New().Prepare(runDir, shuttleengine.Spec{Prompt: "p"}, templateConfig(t)); err != nil {
 		t.Fatalf("Prepare() error: %v", err)
 	}
 	envFile, err := os.ReadFile(filepath.Join(runDir, envFileName))

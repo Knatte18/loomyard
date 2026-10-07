@@ -124,6 +124,10 @@ func TestLoadState_UnusualFiles(t *testing.T) {
   },
   "integrationFix": {"preFixHead": "abc", "strandGuid": "fix-strand", "spawnedAt": "2026-01-01T00:00:00Z", "result": "failed"}
 }`
+	const retiredStartup = `{
+  "runGuid": "g",
+  "partition": [{"cards": ["01-alpha"], "profile": "cautious", "estimate": 70000, "breakdown": {"weights": {"startup_context": 60000, "fork_messages": 4}, "startup": 61200, "read_union": 0, "cards": []}}]
+}`
 	tests := []struct {
 		name string
 		// content is the state.json body; absent leaves the file out.
@@ -132,10 +136,13 @@ func TestLoadState_UnusualFiles(t *testing.T) {
 		wantErr bool
 		// wantLegacyBatches asserts batches 1 and -1 loaded.
 		wantLegacyBatches bool
+		// wantRetiredStartup asserts the partition's breakdown decoded its retired startup_context weight.
+		wantRetiredStartup bool
 	}{
 		{name: "absent file returns nil", absent: true},
 		{name: "corrupt file errors", content: "not valid json{{{", wantErr: true},
 		{name: "legacy integration records still load", content: legacy, wantLegacyBatches: true},
+		{name: "a breakdown recorded with the retired startup_context weight still loads", content: retiredStartup, wantRetiredStartup: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -163,6 +170,12 @@ func TestLoadState_UnusualFiles(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("LoadState error = %v; want nil", err)
+			}
+			if tt.wantRetiredStartup {
+				if got == nil || len(got.Partition) != 1 || got.Partition[0].Breakdown == nil || got.Partition[0].Breakdown.Weights.RetiredStartupContext != 60000 {
+					t.Errorf("LoadState = %+v; want the partition breakdown's retired startup_context weight 60000 decoded", got)
+				}
+				return
 			}
 			if !tt.wantLegacyBatches {
 				if got != nil {

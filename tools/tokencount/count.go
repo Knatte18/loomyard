@@ -52,9 +52,14 @@ type ForkTally struct {
 	Cards []string
 	// Messages counts the assistant messages tallied for the fork.
 	Messages int
+	// StartContext is the input + cache write + cache read of the first counted message, the context Merriam held when it spawned the fork;
+	// 0 when no message was counted.
+	StartContext int
 	// PeakContext is the largest input + cache write + cache read of any counted message.
 	PeakContext int
 	Usage       Usage
+	// Session is the file name of the webster-role session transcript the fork's transcript sits under.
+	Session string
 	// Started is the timestamp of the transcript's first line that carries one.
 	Started time.Time
 }
@@ -339,7 +344,7 @@ func CountRun(dir, slug string) (RunTally, error) {
 		for _, sub := range subs {
 			var fork *ForkTally
 			if role == websterMasterRole {
-				fork = &ForkTally{Slug: slug, File: filepath.Base(sub)}
+				fork = &ForkTally{Slug: slug, File: filepath.Base(sub), Session: filepath.Base(session)}
 			}
 			if err := run.countFile(sub, role+"+sub", seen, fork); err != nil {
 				return RunTally{}, err
@@ -394,7 +399,11 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *Fo
 			fork.Messages++
 			fork.Usage.add(*l.Message.Usage)
 			u := l.Message.Usage
-			fork.PeakContext = max(fork.PeakContext, u.Input+u.CacheCreate+u.CacheRead)
+			context := u.Input + u.CacheCreate + u.CacheRead
+			if fork.Messages == 1 {
+				fork.StartContext = context
+			}
+			fork.PeakContext = max(fork.PeakContext, context)
 		}
 	})
 }
@@ -472,15 +481,15 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	}
 
 	fmt.Fprintf(w, "## Webster forks\n\n")
-	fmt.Fprintln(w, "| run | cards | messages | peak context | weight |")
-	fmt.Fprintln(w, "|---|---|---|---|---|")
+	fmt.Fprintln(w, "| run | cards | start context | messages | peak context | weight |")
+	fmt.Fprintln(w, "|---|---|---|---|---|---|")
 	for _, run := range r.Runs {
 		for _, f := range run.Forks {
 			cards := "unattributed"
 			if len(f.Cards) > 0 {
 				cards = strings.Join(f.Cards, ", ")
 			}
-			fmt.Fprintf(w, "| %s | %s | %d | %d | %.1fM |\n", f.Slug, cards, f.Messages, f.PeakContext, f.Usage.Weight()/1e6)
+			fmt.Fprintf(w, "| %s | %s | %d | %d | %d | %.1fM |\n", f.Slug, cards, f.StartContext, f.Messages, f.PeakContext, f.Usage.Weight()/1e6)
 		}
 	}
 	fmt.Fprintln(w)

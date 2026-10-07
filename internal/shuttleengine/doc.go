@@ -37,6 +37,7 @@
 // The pure, hermetic half derives nothing and spawns nothing: the config module (shuttle.yaml), the
 // run Spec and its validation, the run directory / run.json state and its age-guarded orphan sweep,
 // and the Windows-to-POSIX path helper the engine layer needs for hook commands.
+// shuttle.yaml carries the provider's prompt-cache TTL default and per-role map, which shuttleengine passes through to the engine uninterpreted.
 // The run-loop half — Runner/Run in run.go, Wait in wait.go, and Attach in attach.go — drives a
 // LIVE agent through the ReedOps seam: it registers and removes strands, polls a real pane's capture
 // through the engine's Startup classifier, plays key choreography into that pane for

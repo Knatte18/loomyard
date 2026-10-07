@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/quarry"
 )
@@ -118,7 +119,7 @@ func TestRealGitDelta(t *testing.T) {
 	}
 
 	if !t.Run("Index.Delta on an unreadable range is quarry unavailable with a usable empty delta", func(t *testing.T) {
-		got, err := NewIndex().Delta(f.root, "does-not-exist-rev", empty)
+		got, err := NewIndex(fabricengine.NewReferenceRule()).Delta(f.root, "does-not-exist-rev", empty)
 		if !errors.Is(err, ErrQuarryUnavailable) {
 			t.Fatalf("Index.Delta error = %v; want errors.Is(err, ErrQuarryUnavailable)", err)
 		}
