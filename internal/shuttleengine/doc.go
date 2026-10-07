@@ -102,6 +102,13 @@
 // run has ended: an absent or unreadable reed state file, and a Status() failure. Both name the run
 // directory and the strand guid in a logged warning, since the operator's only escape from either is
 // out of band, via "lyx reed status".
+// A run held at a turn end keeps outcome "running", so the same probe finds it.
+// A record an older binary left at outcome "asking" is attached too when reed tracks its strand as live,
+// with or without an AskingOffset and whether or not its events grew; with a dead or untracked strand it is classified as before.
+// The attach resets such a record to "running", replays from its AskingOffset (the prompt offset when it has none)
+// and counts the old ask as notified, so only a held turn end after it notifies the parent.
+// Only a live, tracked strand is attached, and the attach starts a fresh deadline.
+// An attached record with no StrandName takes the name reed's status reports for its guid.
 // A not-found answer is the caller's cue to start a fresh run,
 // so Attach and AttachGated first remove, with a logged warning, the live strand of every earlier run of the same output-file set that the probe judged respawn-eligible:
 // re-running a producer supersedes the halted session.

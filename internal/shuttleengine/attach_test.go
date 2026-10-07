@@ -174,7 +174,7 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 		wantFound      bool
 	}{
 		{"terminal_done", "done", true, false},
-		{"terminal_asking", "asking", true, false},
+		{"legacy_asking_attaches", "asking", true, true},
 		{"terminal_died", "died", true, false},
 		{"terminal_timeout", "timeout", true, false},
 		{"running_attaches", runOutcomeRunning, true, true},
@@ -308,7 +308,7 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 // whatever the other candidates say, and two ordinary leftovers (both non-terminal-classified,
 // tracked-live-idle records) must respawn rather than error.
 func TestAttach_Multiplicity(t *testing.T) {
-	t.Run("TwoAskingLeftovers_RespawnsNotError", func(t *testing.T) {
+	t.Run("TwoTimeoutLeftovers_RespawnsNotError", func(t *testing.T) {
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{
 			Strands: []reedengine.StrandStatus{
 				{GUID: "strand-1", PaneID: "%1", Live: true},
@@ -320,8 +320,8 @@ func TestAttach_Multiplicity(t *testing.T) {
 		seedPresentReedState(t, dotLyxDir)
 
 		outputFile := filepath.Join(runRoot, "out.md")
-		seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{outputFile}, outcome: "asking", includeOutcome: true})
-		seedAttachRun(t, runRoot, "run-2", seedAttachRunOpts{strandGUID: "strand-2", outputFiles: []string{outputFile}, outcome: "asking", includeOutcome: true})
+		seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", outputFiles: []string{outputFile}, outcome: "timeout", includeOutcome: true})
+		seedAttachRun(t, runRoot, "run-2", seedAttachRunOpts{strandGUID: "strand-2", outputFiles: []string{outputFile}, outcome: "timeout", includeOutcome: true})
 
 		result, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute})
 		if err != nil {
