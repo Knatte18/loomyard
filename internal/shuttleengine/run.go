@@ -233,6 +233,8 @@ type Run struct {
 	expiredShells map[string]bool
 	// expiredLabels is the labels of expiredShells in expiry order, reported as Result.ExpiredShells.
 	expiredLabels []string
+	// wait is the wait marker and pane mark this run has on show, display only.
+	wait waitState
 
 	// gate is the GateSpec this run was told, empty for an ungated run — the same zero value Run/Attach's own RunGated(spec, GateSpec{})/AttachGated(spec, GateSpec{}) delegation passes, so an ungated run behaves byte-for-byte as it did before the gate existed.
 	gate GateSpec

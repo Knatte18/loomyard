@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -543,6 +545,67 @@ func TestAttach_GateThreading(t *testing.T) {
 			}
 			if gateCalls != 1 {
 				t.Errorf("gate closure invoked %d times; want 1", gateCalls)
+			}
+		})
+	}
+}
+
+// TestGate_WaitMarkAroundEntry pins that a gate entry is marked on screen and on disk while its closure runs and unmarked on every path out,
+// and that a failing SetWaitMark changes neither the verdict nor the error the closure produced.
+func TestGate_WaitMarkAroundEntry(t *testing.T) {
+	tests := []struct {
+		name       string
+		result     GateResult
+		closureErr error
+		markErr    error
+		wantPassed bool
+		wantErr    bool
+	}{
+		{name: "passing entry", result: GateResult{Passed: true}, wantPassed: true},
+		{name: "failing entry", result: GateResult{Findings: "no"}},
+		{name: "pending entry", result: GateResult{Pending: true}},
+		{name: "erroring entry", closureErr: errors.New("boom"), wantErr: true},
+		{name: "a failing SetWaitMark leaves a passing verdict", result: GateResult{Passed: true}, markErr: errors.New("no tmux"), wantPassed: true},
+		{name: "a failing SetWaitMark leaves a failing verdict", result: GateResult{Findings: "no"}, markErr: errors.New("no tmux")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			markerPath := filepath.Join(runDir, waitMarkerFileName)
+			reed := &fakeReed{WaitMarkErr: tt.markErr}
+			var markerSeen WaitMarker
+			gate := func() (GateResult, error) {
+				data, err := os.ReadFile(markerPath)
+				if err != nil {
+					t.Errorf("wait marker unreadable while the closure runs: %v", err)
+				}
+				if err := yaml.Unmarshal(data, &markerSeen); err != nil {
+					t.Errorf("wait marker undecodable: %v", err)
+				}
+				if got := reed.WaitMarkCalls; len(got) != 1 || got[0].Label != "gate review" {
+					t.Errorf("mark calls while the closure runs = %+v; want one set of %q", got, "gate review")
+				}
+				return tt.result, tt.closureErr
+			}
+			run := newFixture(t, reed, &fakeEngine{}).newRun(Spec{}, withRunDir(runDir),
+				withRunGate(GateSpec{{Name: "review", Gate: gate, Attempts: 3, MayHold: true}}))
+
+			outcome, err := run.evaluateGate(false)
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("evaluateGate error = %v; want error %v", err, tt.wantErr)
+			}
+			if err == nil && outcome.Passed != tt.wantPassed {
+				t.Errorf("Passed = %v; want %v", outcome.Passed, tt.wantPassed)
+			}
+			if markerSeen.Kind != "gate review" || markerSeen.PID != os.Getpid() {
+				t.Errorf("marker seen = %+v; want kind %q and this process's pid", markerSeen, "gate review")
+			}
+			if _, statErr := os.Stat(markerPath); !os.IsNotExist(statErr) {
+				t.Errorf("wait marker survives the closure: %v", statErr)
+			}
+			if got := reed.WaitMarkCalls; len(got) != 2 || got[1].Label != "" {
+				t.Errorf("mark calls = %+v; want a set then a clear", got)
 			}
 		})
 	}

@@ -50,7 +50,14 @@ type fakeReed struct {
 
 	SendKeyCalls []struct{ GUID, Key string }
 	SendKeyErr   error
+
+	// WaitMarkCalls records every SetWaitMark call, kept out of CallLog so the tests that pin the exact call sequence stay as they are.
+	WaitMarkCalls []waitMarkCall
+	WaitMarkErr   error
 }
+
+// waitMarkCall is one recorded SetWaitMark call; an empty Label is a clear.
+type waitMarkCall struct{ GUID, Label string }
 
 func (m *fakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
 	m.mu.Lock()
@@ -112,6 +119,13 @@ func (m *fakeReed) SendKey(guid, key string) error {
 	m.CallLog = append(m.CallLog, "SendKey:"+key)
 	m.SendKeyCalls = append(m.SendKeyCalls, struct{ GUID, Key string }{guid, key})
 	return m.SendKeyErr
+}
+
+func (m *fakeReed) SetWaitMark(guid, label string, _ time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.WaitMarkCalls = append(m.WaitMarkCalls, waitMarkCall{guid, label})
+	return m.WaitMarkErr
 }
 
 func (m *fakeReed) CapturePane(guid string) (string, error) {

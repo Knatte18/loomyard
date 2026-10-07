@@ -140,6 +140,13 @@
 // A shell once waited out stays expired for the rest of the run, so a later turn end listing it again ends at once.
 // Result.ExpiredShells names the waited-out shells' labels in expiry order, and each expiry is logged as a warning.
 //
+// Wait shows its two Go-side waits, a gate entry's closure (`gate <entry name>`) and the background-shell wait above (`background shells`), in two places:
+// a WaitMarker file, `wait.yaml` in the run's own directory, carrying the label, the start time and the pid of the process running Wait,
+// and a pane mark that ReedOps.SetWaitMark puts on the run's strand.
+// ReadWaitMarker returns the first marker with a live pid among a run-directory root's runs, which is how `lyx loom status` reads it.
+// Both exist only for display and status: no shuttle decision reads either, and a failure to write, remove, set or clear one is logged and changes no verdict, error return, re-prompt or gate outcome.
+// Wait clears the pane mark and removes the marker file on entry, so a mark a crashed step left behind is gone at the next touch, and again on every return.
+//
 // Start/StartGated/Run/RunGated run the startup probe (readiness plus dismissal of any one-time
 // startup gate, through the Engine seam's startup classification and trust-dismiss sequence) before
 // issuing a handle, so no caller outside this package probes readiness or plays gate keys.
