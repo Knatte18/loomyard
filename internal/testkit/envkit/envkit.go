@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -188,10 +189,12 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			DriverStrand: func(context.Context) (battenshed.ChildDriverStrand, error) {
 				return battenshed.ChildDriverNone, nil
 			},
-			ChildRunLockHeld: func() (bool, error) { return false, nil },
-			ReviveStrands:    func(context.Context) error { return nil },
-			PauseRequested:   func() (bool, error) { return false, nil },
-			MarkWatched:      func(context.Context) (bool, error) { return false, nil },
+			ChildRunLockHeld:   func() (bool, error) { return false, nil },
+			ReviveStrands:      func(context.Context) error { return nil },
+			PauseRequested:     func() (bool, error) { return false, nil },
+			MarkWatched:        func(context.Context) (bool, error) { return false, nil },
+			OrchStrandRecorded: func() (bool, error) { return true, nil },
+			StopReport:         func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
 		},
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },

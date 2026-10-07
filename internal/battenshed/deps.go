@@ -140,10 +140,20 @@ type InnerRunDeps struct {
 	// Call invokes it at most once per run, after a spawn that returned success; its error is only warned about and never changes the row's outcome.
 	// A nil OpenIDE resolves to a no-op returning nil in NewInnerRun, the same way a nil Sleep and Now resolve.
 	OpenIDE func(ctx context.Context) error
-	// Notify hands one run notice line to whoever tells the orch, queued behind a seam so this package never imports the orch.
-	// Call invokes it at most once per condition per episode (see notice.go); its error is only warned about and never changes the row's outcome.
+	// Notify hands one run notice line to whoever tells the orch, queued behind a seam so this package never imports the orch, and reports whether the line was queued.
+	// A notice is recorded as sent only when it was queued.
+	// The wait invokes it once per condition per episode (see notice.go) and retries an error or an unqueued line at most once per notice probe and at most three times; its failure is only warned about and never changes the row's outcome.
 	// A nil Notify resolves to a no-op in NewInnerRun, the same way a nil OpenIDE resolves, and then no notice step runs at all.
-	Notify func(ctx context.Context, line string) error
+	Notify func(ctx context.Context, line string) (queued bool, err error)
+	// OrchStrandRecorded reports whether the orch the notices go to has a strand recorded to receive them.
+	// With none, the notice step does not call Notify, warns once per episode and asks again once per notice probe.
+	// A nil OrchStrandRecorded resolves to reporting one recorded in NewInnerRun.
+	OrchStrandRecorded func() (bool, error)
+	// StopReport returns the path of the stop report the child's driver parked on, and the time the park marker holding it was written.
+	// It reports found == false when the driver has not parked.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil StopReport resolves to reporting none in NewInnerRun.
+	StopReport func() (path string, at time.Time, found bool, err error)
 	// NoticeQuiet is how long a running child's status file may stay unchanged, with its driver strand alive, before the row sends a quiet notice.
 	// Zero disables the quiet notice.
 	NoticeQuiet time.Duration

@@ -225,6 +225,7 @@ func TestBattenIntegration_Rows(t *testing.T) {
 		{"SeedChild_IgnoresPrimesCommittedBattenRecords", stepSeedChild_IgnoresPrimesCommittedBattenRecords},
 		{"RealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug", stepRealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug},
 		{"MarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent", stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent},
+		{"StopReport_ReadsTheParkMarkersContentAndTime", stepStopReport_ReadsTheParkMarkersContentAndTime},
 		{"DirtyPrime_CreateRowBlocksBeforeAnythingCreated", stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated},
 	}
 	for _, step := range steps {
@@ -1195,5 +1196,37 @@ func stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent(t *t
 		} else if !os.IsNotExist(readErr) {
 			t.Errorf("%s: marker read = %q, %v; want it absent", step.name, raw, readErr)
 		}
+	}
+}
+
+// stepStopReport_ReadsTheParkMarkersContentAndTime drives the stop-report seam over a real pair: it reports none while the driver has not parked, and the path and time of the park marker once it has.
+func stepStopReport_ReadsTheParkMarkersContentAndTime(t *testing.T, h *hubforge.Hub) {
+	slug := "batten-stop-report"
+	hubforge.AddPair(t, h, slug)
+	c := wireForHub(t, h, slug, nil)
+
+	if path, _, found, err := c.env.InnerRun.StopReport(); err != nil || found {
+		t.Fatalf("StopReport() = %q, found=%v, %v before the driver parked; want none", path, found, err)
+	}
+
+	childLocation, err := taskWorktreeLocation(h.Location, slug)
+	if err != nil {
+		t.Fatalf("resolve child location: %v", err)
+	}
+	marker := shedrun.ParkMarker(childLocation, shedrun.SelfRunID)
+	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(marker, []byte("/wt/_lyx/drive-reports/drive-1.md\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	parkedAt := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	if err := os.Chtimes(marker, parkedAt, parkedAt); err != nil {
+		t.Fatal(err)
+	}
+
+	path, at, found, err := c.env.InnerRun.StopReport()
+	if err != nil || !found || path != "/wt/_lyx/drive-reports/drive-1.md" || !at.Equal(parkedAt) {
+		t.Errorf("StopReport() = %q, %s, found=%v, %v; want the marker's path and file time", path, at, found, err)
 	}
 }

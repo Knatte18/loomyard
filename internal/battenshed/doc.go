@@ -13,8 +13,19 @@
 // by name.
 //
 // The InnerRun row notices a child that left running, a driver strand found dead while the child runs, and a running child whose status file stays unchanged for the quiet window (notice_quiet_min) with its driver alive, and it notifies through the injected Notify seam (notice.go).
-// A notice is one line, sent once per episode; an episode ends when the child returns to running or the status file changes, and a marker under the row's scratch directory keeps a batten restart from notifying an episode already notified.
-// Control flow is unchanged: a notice is informational, a Notify error is only warned about, and the outcomes, bounce budget, halts and waits are the same with or without it.
+// A notice is one line, sent once per episode, from inside the wait.
+// A state-changed and a driver-dead episode ends when the child's state changes, and the state's since is the status file's modification time at the first sight of the child in it:
+// a rewrite of the file in the same state does not move it, and only a batten start reads it from the file.
+// A marker under the row's scratch directory records the notices sent, and only those queued, so a batten restart sends the notices not yet sent and never one already sent.
+// Every notice carries `since` and `history`, and a notice for a parked stop (blocked, paused, failed, awaiting) carries the driver's stop report, or `report none yet`.
+// A parked stop's notice waits for the driver's stop report, for the driver strand to end, or for three minutes after `since`, whichever comes first, and an older report never qualifies.
+// An awaiting child whose status carries a parent notice, while this batten holds the watched marker, is left to its driver's relay:
+// its notice goes when the driver strand has ended, or three minutes passed with no report, or ten minutes passed since the report with no decision record.
+// A done child's notice goes on the first check that sees it, and the Done return makes one last attempt of a notice still pending.
+// Delivery: the Notify seam reports whether the line was queued; with no orch strand recorded it is not called, one Warn is logged per episode and the strand is asked about again once per notice_probe_s;
+// a Notify error or an unqueued line is retried at most once per notice_probe_s and at most three times, then dropped with a Warn.
+// Control flow is unchanged: a notice is informational, a delivery failure is only warned about, and the outcomes, halts and waits are the same with or without it.
+// Bound: the report wait delays a notice by at most three minutes, and the relay wait by at most ten minutes after the report; neither loses it, and there is one notice per episode.
 // A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window; an operator attaches to the child's session to tell the cases apart.
 //
 // The InnerRun row waits on its child inside its call rather than returning once per poll.

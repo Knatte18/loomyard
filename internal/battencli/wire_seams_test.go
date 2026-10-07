@@ -106,8 +106,8 @@ func TestWire_NotifyQueuesOnThePrimesOrch(t *testing.T) {
 		t.Fatalf("SaveState: %v", err)
 	}
 
-	if err := c.env.InnerRun.Notify(context.Background(), "batten a-slug: child left running"); err != nil {
-		t.Fatalf("Notify() error = %v; want nil", err)
+	if queued, err := c.env.InnerRun.Notify(context.Background(), "batten a-slug: child left running"); err != nil || !queued {
+		t.Fatalf("Notify() = %v, %v; want the notice queued", queued, err)
 	}
 
 	wantDir := filepath.Join(location.AnchorPath(), ".lyx", "orch", "notices")
@@ -129,8 +129,8 @@ func TestWire_NotifyWritesNothingWithoutAnOrchStrand(t *testing.T) {
 	c, location := wiredPrime(t)
 	paths := orchcli.PrimePaths(location)
 
-	if err := c.env.InnerRun.Notify(context.Background(), "batten a-slug: child left running"); err != nil {
-		t.Fatalf("Notify() error = %v; want nil", err)
+	if queued, err := c.env.InnerRun.Notify(context.Background(), "batten a-slug: child left running"); err != nil || queued {
+		t.Fatalf("Notify() = %v, %v; want the notice reported not queued, without an error", queued, err)
 	}
 
 	if _, err := os.Stat(paths.NoticesDir); !os.IsNotExist(err) {
@@ -188,8 +188,8 @@ func TestWire_PauseRequestedReadsBattensOwnStatus(t *testing.T) {
 	}
 }
 
-// TestWire_MarkWatchedRefusesAnAbsentTaskWorktree asserts the watched-marker seam returns an error, rather than reporting not held, when the task worktree it would keep the marker in is absent.
-func TestWire_MarkWatchedRefusesAnAbsentTaskWorktree(t *testing.T) {
+// TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree asserts the watched-marker seams and the stop-report seam return an error, rather than reporting not held or not found, when the task worktree their files live in is absent.
+func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	t.Parallel()
 
 	c, _ := wiredPrime(t)
@@ -199,5 +199,26 @@ func TestWire_MarkWatchedRefusesAnAbsentTaskWorktree(t *testing.T) {
 		if err == nil || held || !strings.Contains(err.Error(), "a-slug") {
 			t.Errorf("%s MarkWatched() = %v, %v; want not held and the absent-worktree refusal naming the slug", name, held, err)
 		}
+	}
+	if _, _, found, err := c.env.InnerRun.StopReport(); err == nil || found || !strings.Contains(err.Error(), "a-slug") {
+		t.Errorf("StopReport() found=%v, error=%v; want the absent-worktree refusal naming the slug", found, err)
+	}
+}
+
+// TestWire_OrchStrandRecordedReadsThePrimesOrchState asserts the seam reports whether the prime orch's state records a strand, the fact a notice needs a destination for.
+func TestWire_OrchStrandRecordedReadsThePrimesOrchState(t *testing.T) {
+	t.Parallel()
+
+	c, location := wiredPrime(t)
+	if recorded, err := c.env.InnerRun.OrchStrandRecorded(); err != nil || recorded {
+		t.Fatalf("OrchStrandRecorded() = %v, %v with no orch state; want false", recorded, err)
+	}
+
+	paths := orchcli.PrimePaths(location)
+	if err := orchengine.SaveState(paths, orchengine.State{Strand: "orch-strand", Phase: orchengine.PhaseIdle}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+	if recorded, err := c.env.InnerRun.OrchStrandRecorded(); err != nil || !recorded {
+		t.Errorf("OrchStrandRecorded() = %v, %v with a strand recorded; want true", recorded, err)
 	}
 }

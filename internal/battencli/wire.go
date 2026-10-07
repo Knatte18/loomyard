@@ -379,11 +379,38 @@ func noticesReachDriversParent(prime, taskLocation *lyxcwd.Location) (bool, erro
 	if parent.Worktree != prime.WorktreeName {
 		return false, nil
 	}
+	return orchStrandRecorded(prime)
+}
+
+// orchStrandRecorded reports whether the prime's orch state records a strand to receive notices.
+func orchStrandRecorded(prime *lyxcwd.Location) (bool, error) {
 	orch, err := orchengine.LoadState(orchcli.PrimePaths(prime))
 	if err != nil {
 		return false, err
 	}
 	return orch.Strand != "", nil
+}
+
+// readStopReport reads the driver park marker of the task worktree's run, whose content is the path of the stop report the driver parked on, and the time the marker was written.
+// An absent marker reports found == false, and an absent task worktree is an error.
+func readStopReport(prime *lyxcwd.Location, slug string) (path string, at time.Time, found bool, err error) {
+	taskLocation, err := taskWorktreeLocation(prime, slug)
+	if err != nil {
+		return "", time.Time{}, false, err
+	}
+	marker := shedrun.ParkMarker(taskLocation, shedrun.SelfRunID)
+	info, err := os.Stat(marker)
+	if os.IsNotExist(err) {
+		return "", time.Time{}, false, nil
+	}
+	if err != nil {
+		return "", time.Time{}, false, err
+	}
+	raw, err := os.ReadFile(marker)
+	if err != nil {
+		return "", time.Time{}, false, err
+	}
+	return strings.TrimSpace(string(raw)), info.ModTime(), true, nil
 }
 
 // markBattenWatched writes the batten-watched marker of the task worktree's run, holding this process's pid, while noticesReachDriversParent holds, and removes it otherwise.
@@ -515,11 +542,14 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 		},
 		InnerRun: battenshed.InnerRunDeps{
-			// Notify queues the notice on the prime's orch, the parent of a batten run started from the prime; a notice the orch has no strand to receive is logged by QueueNotice.
-			Notify: func(ctx context.Context, line string) error {
-				_, err := orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())
-				return err
+			// Notify queues the notice on the prime's orch, the parent of a batten run started from the prime, and reports QueueNotice's own answer: whether the notice was queued.
+			Notify: func(ctx context.Context, line string) (bool, error) {
+				return orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())
 			},
+			// OrchStrandRecorded reads the prime orch's state, the same fact the watched marker is kept on.
+			OrchStrandRecorded: func() (bool, error) { return orchStrandRecorded(location) },
+			// StopReport reads the driver's park marker in the task worktree: the stop report path it holds and the time it was written.
+			StopReport:  func() (string, time.Time, bool, error) { return readStopReport(location, slug) },
 			MarkWatched: markWatched,
 			// PauseRequested reads batten's own status file, the one `lyx batten pause` writes, so the in-call wait notices a pause within one check.
 			PauseRequested: func() (bool, error) {
