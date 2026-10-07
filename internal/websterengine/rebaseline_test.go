@@ -590,12 +590,10 @@ func beginThenLeaveHandleDraft(t *testing.T) *beginFixture {
 	return fx
 }
 
-// TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330 pins what #330 still guards once batches run in recorded order.
-// begin-batch's handle canonicalization rewrites a begun card only when that card Uses a handle a later card declares, a backward dependency, so the plan that provokes the rewrite is one the order assertion refuses.
-// The first half asserts begin-batch moves the begun card's recorded hash to the rewritten bytes;
-// the second asserts Rebaseline refuses on the batch order and never as a card-set or hash change of the rewritten card.
-// The accept of a named, edited unbegun card is pinned by the "an edited unbegun card that is named is accepted" row of TestRebaseline_EditedPlan, which holds no backward edge.
-func TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330(t *testing.T) {
+// TestBeginBatch_RewrittenBegunCardMovesRecordedHash_Regression330 pins the begin-batch half of #330:
+// when begin-batch's handle canonicalization rewrites a begun card, the card's recorded hash moves to the rewritten bytes, so the card never reads as a foreign edit.
+// The rewrite happens only when a begun card Uses a handle a later card declares, a backward dependency that Rebaseline refuses on the batch order, so the accept after a moved hash is pinned by the record-batch variant in rebaseline_git_test.go.
+func TestBeginBatch_RewrittenBegunCardMovesRecordedHash_Regression330(t *testing.T) {
 	fx := beginThenLeaveHandleDraft(t)
 	st := fx.Deps.State
 	card1 := filepath.Join(fx.PlanDir, "01-json-flag.md")
@@ -613,17 +611,6 @@ func TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330(t *testing.T) 
 	}
 	if got := st.Batches[1].CardHashes["01-json-flag"]; got == draftHash || got != fileSHA(t, card1) {
 		t.Fatalf("batch 1 CardHashes = %q; want it moved to the rewritten card's hash %q", got, fileSHA(t, card1))
-	}
-
-	if err := os.WriteFile(filepath.Join(fx.PlanDir, "03-third.md"), []byte("# Card 3 — third\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** reworded.\n"), 0o644); err != nil {
-		t.Fatalf("edit card 3: %v", err)
-	}
-	// The mid-run Uses edge runs backward (begun card 1 uses card 2's target), so Rebaseline refuses on the batch order, and never on a card-set or hash change of the rewritten begun card.
-	deps := rebaselineFixtureDeps(fx)
-	deps.Cards = []int{3}
-	_, err = websterengine.Rebaseline(deps)
-	if !errors.Is(err, websterengine.ErrBatchOrder) || errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
-		t.Fatalf("Rebaseline() naming card 3 error = %v; want ErrBatchOrder and no card-set refusal", err)
 	}
 }
 
