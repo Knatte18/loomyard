@@ -26,17 +26,23 @@ octopus merge-base of the starts when none is the oldest.
 --to pre-fix is the HEAD the verify gate started its fixes from.
 It refuses, changing nothing, while a run holds the run lock, during a merge, off
 the task branch, with no recorded target, when the target commit is missing or
-is not an ancestor of HEAD, and while a tracked path the run did not write
-itself is dirty.
+is not an ancestor of HEAD, while a tracked path the run did not write
+itself is dirty, when the remote task branch holds commits the checkout lacks
+(the refusal lists them and names the git merge --strategy ours step for the run's
+own abandoned commits), and when the remote cannot be read or updated.
 It discards commits above the target on the task branch and uncommitted changes
-to tracked paths the run wrote; it leaves untracked files, the records side and every
+to tracked paths the run wrote, and moves the remote task branch back to the
+target so a later push is not rejected; it leaves untracked files, the records side and every
 other branch alone, takes no raw SHA and has no force flag.
+WEFT_SKIP_PUSH=1 leaves the remote task branch alone.
 It clears the persisted pre-fix head and changes no other webster state; run
 "lyx webster run --fresh" or "lyx webster run" afterwards, as the refusal that
 sent you here says.
 In standalone mode it refuses and names the git reset --keep command to run.
 On success the envelope carries target, sha, mutations (the worktree_reset
-entry) and partial (always false).
+entry, and a remote_branch_updated entry when the remote moved) and partial
+(false). When the checkout rewrite fails after the remote moved, the error
+envelope carries mutations and partial true; re-running the reset converges.
 
 Example:
   lyx webster reset --to start`,
@@ -102,7 +108,14 @@ Example:
 				return fail(fmt.Sprintf("webster: reset --to %s refused: the parent branch is unknown (%v); way forward: run `lyx fabric reconcile` to repair the pair, then re-run `lyx webster reset --to %s`", target, err, target))
 			}
 			rec := fabricengine.NewMutations("")
-			if err := fab.ResetPairWarp(rec, plan.SHA, parent, plan.OwnPaths); err != nil {
+			if err := fab.ResetPairWarp(rec, plan.SHA, parent, plan.OwnPaths, fabricengine.EnvSyncOptions()); err != nil {
+				if remoteBranchMoved(rec) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, fmt.Sprintf("webster: reset --to %s moved the remote task branch but not the checkout: %v", target, err), map[string]any{
+						"mutations": rec.Entries(),
+						"partial":   true,
+					}))
+					return nil
+				}
 				return fail(fmt.Sprintf("webster: reset --to %s refused: %v", target, err))
 			}
 
@@ -128,6 +141,16 @@ Example:
 	}
 	cmd.Flags().StringVar(&to, "to", "", "the recorded commit to reset to: start or pre-fix (required)")
 	return cmd
+}
+
+// remoteBranchMoved reports whether rec holds the entry of a remote task branch update, the state in which a failed reset is no longer a pre-flight refusal.
+func remoteBranchMoved(rec *fabricengine.Mutations) bool {
+	for _, entry := range rec.Entries() {
+		if entry.Kind == fabricengine.KindRemoteBranchUpdated {
+			return true
+		}
+	}
+	return false
 }
 
 // standaloneBranch is the branch probe PlanReset gets in standalone mode, where no fabric handle names the task branch.

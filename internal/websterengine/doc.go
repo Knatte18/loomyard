@@ -444,12 +444,16 @@
 // resets the pair's code checkout through fabricengine's pair-checkout reset with the plan's SHA, the parent branch from the origin record and the own paths,
 // clears State.PreFixHead, saves, and fabric-syncs state.json.
 // It changes no other webster state; `run --fresh` or a plain `run` does the rest, as the way-forward texts order them.
-// The bound: it can discard only commits above a run-recorded commit on the task's own branch and uncommitted tracked changes to paths the run itself wrote.
+// The reset also moves the task branch on the remote to the same commit, so a later push is not rejected as diverged; `WEFT_SKIP_PUSH=1` skips that half.
+// The bound: it can discard only commits above a run-recorded commit on the task's own branch, on the checkout and on the remote, and uncommitted tracked changes to paths the run itself wrote.
+// The remote update is made only when every commit it drops is reachable from the task worktree's HEAD and under a lease on the remote tip it read;
+// a remote-only commit becomes reachable only through the `git merge --strategy ours` the operator runs after reading the commits the refusal lists.
 // It cannot move another branch, take a raw SHA, touch the parent branch, the records side or untracked files, and it has no `--force`.
-// Fabric's own refusal (ownership, dirtiness) is surfaced as the verb's error with fabric's reason.
+// Fabric's own refusal (ownership, dirtiness, remote divergence, an unreachable remote) is surfaced as the verb's error with fabric's reason.
 // In standalone mode the verb plans, then refuses naming `git reset --keep <sha>`, since standalone has no pair for the fabric gate to guard.
-// The envelope carries `target`, `sha`, `mutations` (the `worktree_reset` entry) and `partial`, always false.
-// A refusal before the reset is a bare error envelope.
+// The envelope carries `target`, `sha`, `mutations` (the `worktree_reset` entry, and `remote_branch_updated` when the remote moved) and `partial`, false on success.
+// A refusal before the remote update is a bare error envelope.
+// A checkout rewrite that fails after the remote moved is an error envelope carrying `mutations` and `partial: true`, and re-running the reset converges.
 // Each refusal has a row in contracts/specs/refusal-spec.md.
 //
 // # The verify-gate report and findings

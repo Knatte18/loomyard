@@ -22,7 +22,7 @@ import (
 type Kind string
 
 // The fixed set of mutation kinds fabric records.
-// Eight are auto-recorded by the destruction gate (destroy.go); the remaining twelve are hand-recorded at their success sites, since no chokepoint covers them.
+// The kinds the destruction gate performs are auto-recorded by its executors (destroy.go); the rest are hand-recorded at their success sites, since no chokepoint covers them.
 const (
 	// KindPathRemoved records removePath's deletion of a single path or a directory tree.
 	KindPathRemoved Kind = "path_removed"
@@ -38,6 +38,10 @@ const (
 	// deletion is recoverable (the remote copy is gone for good once pushed away) — a consumer
 	// switching on kind must be able to tell the two apart.
 	KindRemoteBranchDeleted Kind = "remote_branch_deleted"
+	// KindRemoteBranchUpdated records updateRemoteBranch's leased push that moved a task branch on the remote, recorded only after the push observably succeeded.
+	// Its Target is the remote ref (`<remote>/<branch>`) and its Detail is the commit the branch was moved to.
+	// It is distinct from KindRemoteBranchDeleted because the ref survives and only its tip moved.
+	KindRemoteBranchUpdated Kind = "remote_branch_updated"
 	// KindWorktreeReset records resetHardTo's `reset --hard`.
 	KindWorktreeReset Kind = "worktree_reset"
 	// KindDirCreated records createExclusiveDir's directory mint.
