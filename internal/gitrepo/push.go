@@ -220,3 +220,20 @@ func (r *Repo) HasUnpushed() (bool, error) {
 	}
 	return false, err
 }
+
+// HasUnpulled reports whether the upstream, as last fetched, holds commits HEAD lacks.
+// It reads the remote-tracking ref without fetching, so a caller wanting the remote's current state fetches first.
+// No upstream configured is treated as unpulled (true), the conservative answer for a caller deciding whether a rejection is safe to retry.
+// A spawn failure returns (false, err);
+// a non-zero git exit, recovered via errors.As(err, &gitErr), folds into (true, nil).
+func (r *Repo) HasUnpulled() (bool, error) {
+	stdout, err := r.runChecked("rev-list", "--count", "HEAD..@{u}")
+	if err == nil {
+		return strings.TrimSpace(stdout) != "0", nil
+	}
+	var gitErr *gitexec.GitError
+	if errors.As(err, &gitErr) {
+		return true, nil
+	}
+	return false, err
+}
