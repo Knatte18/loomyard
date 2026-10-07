@@ -40,6 +40,7 @@ var manifestObservableKind = map[fabricengine.Kind]bool{
 	fabricengine.KindBranchCreated:       false,
 	fabricengine.KindBranchDeleted:       false,
 	fabricengine.KindRemoteBranchDeleted: false,
+	fabricengine.KindRemoteBranchUpdated: false,
 	fabricengine.KindBranchPushed:        false,
 	fabricengine.KindCommitCreated:       false,
 	fabricengine.KindWorktreeReset:       false,

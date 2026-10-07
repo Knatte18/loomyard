@@ -64,9 +64,12 @@ func newTestDeps(t *testing.T) Deps {
 		TaskBranch:      "task-branch",
 		ParentBranch:    "main",
 		DescriptionPath: summaryPath,
-		StencilsDir:     t.TempDir(),
-		ScratchDir:      filepath.Join(t.TempDir(), "scratch"),
-		OriginURL:       "https://github.com/acme/proj.git",
+		RemoteOnlyCommits: func() (string, []string, error) {
+			return "", nil, errors.New("no remote read in this test")
+		},
+		StencilsDir: t.TempDir(),
+		ScratchDir:  filepath.Join(t.TempDir(), "scratch"),
+		OriginURL:   "https://github.com/acme/proj.git",
 		Config: Config{
 			RequirePRToBase:    []string{"main"},
 			Squash:             true,
@@ -186,6 +189,7 @@ func TestNewPublish_Refusals(t *testing.T) {
 	}{
 		{"nil OpenFabric", func(d *Deps) { d.PushBranch = noPush }, "Deps.OpenFabric"},
 		{"nil PushBranch", func(d *Deps) { d.OpenFabric = nilFabric }, "Deps.PushBranch"},
+		{"nil RemoteOnlyCommits", func(d *Deps) { d.OpenFabric, d.PushBranch, d.RemoteOnlyCommits = nilFabric, noPush, nil }, "Deps.RemoteOnlyCommits"},
 		{"empty DescriptionPath", func(d *Deps) { d.OpenFabric, d.PushBranch, d.DescriptionPath = nilFabric, noPush, "" }, "Deps.DescriptionPath"},
 		// OpenFabric returns a typed-nil *fabricengine.Fabric: mergeresolve.New checks its Fabric field for a nil interface, which a typed-nil pointer does not satisfy, so this case reaches the Shuttle check without ever invoking a method on the fabric handle.
 		{"nil Shuttle", func(d *Deps) { d.OpenFabric, d.PushBranch, d.Shuttle = nilFabric, noPush, nil }, "Shuttle"},
@@ -235,11 +239,13 @@ func TestPublish_NoPullRequestRequired_DoneWithoutMergeIn(t *testing.T) {
 func TestPublish_StuckBeforePullRequest(t *testing.T) {
 	resolved := mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}
 	tests := []struct {
-		name               string
-		mutate             func(*Deps)
-		pushErr            error
-		resolved           mergeresolve.Result
-		wantInReason       string
+		name         string
+		mutate       func(*Deps)
+		pushErr      error
+		resolved     mergeresolve.Result
+		wantInReason string
+		// wantReason, when set, is the whole reason and replaces the substring check.
+		wantReason         string
 		wantResolverCalled bool
 		wantPushCalled     bool
 	}{
@@ -259,15 +265,51 @@ func TestPublish_StuckBeforePullRequest(t *testing.T) {
 			name:               "push failure",
 			pushErr:            errors.New("boom"),
 			resolved:           resolved,
-			wantInReason:       "push failed: boom",
+			wantReason:         "push failed: boom",
 			wantResolverCalled: true,
 			wantPushCalled:     true,
 		},
 		{
-			name:               "push rejected has its own reason",
-			pushErr:            gitrepo.ErrPushRejected,
+			name:    "push rejected has its own reason naming the remote tip, the count and the resume",
+			pushErr: gitrepo.ErrPushRejected,
+			mutate: func(d *Deps) {
+				d.RemoteOnlyCommits = func() (string, []string, error) { return "abc123", []string{"c2", "c1"}, nil }
+			},
 			resolved:           resolved,
-			wantInReason:       "push rejected by the remote",
+			wantReason:         "push rejected by the remote after the merge-in against parent branch \"main\"; the remote task branch is at abc123 and holds 2 commit(s) the local branch lacks; way forward: run `git merge origin/task-branch` in the task worktree, then resume the run with `lyx loom start`",
+			wantResolverCalled: true,
+			wantPushCalled:     true,
+		},
+		{
+			name:    "push rejected with no remote-only commit names a remote rule and no merge",
+			pushErr: gitrepo.ErrPushRejected,
+			mutate: func(d *Deps) {
+				d.RemoteOnlyCommits = func() (string, []string, error) { return "abc123", nil, nil }
+			},
+			resolved:           resolved,
+			wantReason:         "push rejected by the remote after the merge-in against parent branch \"main\"; the remote task branch holds no commit the local branch lacks, so a merge adds nothing and the remote rejected the push for its own rule, such as a hook; way forward: clear what the remote's rule objects to, then resume the run with `lyx loom start`",
+			wantResolverCalled: true,
+			wantPushCalled:     true,
+		},
+		{
+			name:    "push rejected with no remote task branch names a remote rule and no merge",
+			pushErr: gitrepo.ErrPushRejected,
+			mutate: func(d *Deps) {
+				d.RemoteOnlyCommits = func() (string, []string, error) { return "", nil, nil }
+			},
+			resolved:           resolved,
+			wantReason:         "push rejected by the remote after the merge-in against parent branch \"main\"; the remote has no task branch, so a merge adds nothing and the remote rejected the push for its own rule, such as a hook; way forward: clear what the remote's rule objects to, then resume the run with `lyx loom start`",
+			wantResolverCalled: true,
+			wantPushCalled:     true,
+		},
+		{
+			name:    "push rejected with a failed remote read keeps the rejection and the way forward",
+			pushErr: gitrepo.ErrPushRejected,
+			mutate: func(d *Deps) {
+				d.RemoteOnlyCommits = func() (string, []string, error) { return "", nil, errors.New("fetch failed") }
+			},
+			resolved:           resolved,
+			wantReason:         "push rejected by the remote after the merge-in against parent branch \"main\"; the remote tip could not be read: fetch failed; way forward: run `git merge origin/task-branch` in the task worktree, then resume the run with `lyx loom start`",
 			wantResolverCalled: true,
 			wantPushCalled:     true,
 		},
@@ -308,7 +350,11 @@ func TestPublish_StuckBeforePullRequest(t *testing.T) {
 			p := &Publish{deps: deps, resolver: res}
 
 			got := runAndGetReason(t, p)
-			if !strings.Contains(got, tt.wantInReason) {
+			if tt.wantReason != "" {
+				if got != tt.wantReason {
+					t.Errorf("reason = %q; want %q", got, tt.wantReason)
+				}
+			} else if !strings.Contains(got, tt.wantInReason) {
 				t.Errorf("reason = %q; want it to carry %q", got, tt.wantInReason)
 			}
 			if res.called != tt.wantResolverCalled {

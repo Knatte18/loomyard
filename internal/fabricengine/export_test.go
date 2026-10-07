@@ -168,6 +168,33 @@ func DeleteArchivedWeftBranchForTest(l *lyxcwd.Location, repoDir, warpBranch, br
 	return rec.Snapshot(), err
 }
 
+// UpdateRemoteBranchWithLeaseForTest drives updateRemoteBranch over f's pair warp checkout with a caller-chosen lease SHA and a fresh recorder, returning the recorder's snapshot.
+// It serves package fabricengine_test tests that need a lease stale against the origin, since ResetPairWarp leaves no window between its fetch and its update.
+func UpdateRemoteBranchWithLeaseForTest(f *Fabric, sha, parentBranch, leaseSHA string) (Mutations, error) {
+	branch, err := f.warp.CurrentBranch()
+	if err != nil {
+		return Mutations{}, err
+	}
+	rec := NewMutations("")
+	err = updateRemoteBranch(rec, remoteBranchUpdateRequest{
+		pathReq: pathRequest{
+			what:      "test update remote task branch",
+			container: filepath.Dir(f.warpPath),
+			target:    f.warpPath,
+			ownership: ownedPairWarpCheckout(f.warpPath, f.weftPath, parentBranch),
+			dirtiness: dirtyTrackedExcept(nil),
+			force:     false,
+		},
+		repo:         f.warp,
+		remote:       originRemoteName,
+		branch:       branch,
+		parentBranch: parentBranch,
+		sha:          sha,
+		leaseSHA:     leaseSHA,
+	})
+	return rec.Snapshot(), err
+}
+
 // --- weft-fixture migration shim (fabricengine in-package weft batch) ---
 //
 // The functions and types below serve the nine package fabricengine_test files this batch relocates

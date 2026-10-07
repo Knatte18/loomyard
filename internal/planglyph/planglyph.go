@@ -76,6 +76,13 @@ func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 // every completed card's file as orphaned, card-numbering would see gaps, and path-missing's
 // satisfied-by-another-card union would lose the Create and Rename destinations completed cards
 // contribute to still-pending ones.
+//
+// Once completed is non-empty, a Delete target of a pending card that is already gone is reported as the informational delete-target-gone finding instead of the blocking path-missing or glyph-not-found one:
+// the wanted end state is already the tree's state.
+// The same target under the card's own Edit, Uses or Rename old side keeps its blocking finding.
+// The downgrade does not check why the target is gone: it lets through a target removed by a card that edited the wrong file, or one only a mid-run plan edit added.
+// The plan gate and `lyx webster validate` saw every target exist before the run started,
+// so only a target the run removed or a mid-run edit added reaches it, and the advisory names the target and the card.
 func ValidateDispatch(plan *planparser.Plan, worktreeRoot string, completed, forthcoming []planparser.Card) ([]Finding, error) {
 	done := cardIDSet(completed)
 
@@ -89,7 +96,67 @@ func ValidateDispatch(plan *planparser.Plan, worktreeRoot string, completed, for
 
 	resolveFindings, err := resolvePass(plan, worktreeRoot, done, cardIDSet(forthcoming))
 	findings = append(findings, resolveFindings...)
+	if len(done) > 0 {
+		findings = downgradeGoneDeleteTargets(pendingCardsByID(plan, done), findings)
+	}
 	return findings, err
+}
+
+// downgradeGoneDeleteTargets replaces, in findings, every blocking path-missing or glyph-not-found finding whose ref is a Delete target of its pending card, and not that card's Edit, Move, Prosa, Uses or Rename old side too, with one informational delete-target-gone finding per card and ref, at the position of the first replaced finding.
+func downgradeGoneDeleteTargets(pending *planparser.Plan, findings []Finding) []Finding {
+	type cardRef struct{ card, ref string }
+	deleteOnly := make(map[cardRef]bool)
+	for _, c := range pending.Cards {
+		otherwise := make(map[string]bool)
+		for _, u := range c.Uses {
+			otherwise[u] = true
+		}
+		for _, g := range c.TargetGroups {
+			switch g.Type {
+			case planparser.CardTypeDelete:
+			case planparser.CardTypeRename:
+				for _, p := range g.Pairs {
+					otherwise[p.Old] = true
+				}
+			default:
+				for _, ref := range g.Refs {
+					otherwise[ref] = true
+				}
+			}
+		}
+		for _, g := range c.TargetGroups {
+			if g.Type != planparser.CardTypeDelete {
+				continue
+			}
+			for _, ref := range g.Refs {
+				if !otherwise[ref] {
+					deleteOnly[cardRef{c.ID(), ref}] = true
+				}
+			}
+		}
+	}
+
+	reported := make(map[cardRef]bool)
+	kept := make([]Finding, 0, len(findings))
+	for _, f := range findings {
+		key := cardRef{f.Card, f.Ref}
+		if (f.Check != "path-missing" && f.Check != "glyph-not-found") || f.Ref == "" || !deleteOnly[key] {
+			kept = append(kept, f)
+			continue
+		}
+		if reported[key] {
+			continue
+		}
+		reported[key] = true
+		kept = append(kept, Finding{
+			Check:    "delete-target-gone",
+			Card:     f.Card,
+			Detail:   fmt.Sprintf("Delete target %q of card %s is already deleted", f.Ref, f.Card),
+			Severity: SeverityInformational,
+			Ref:      f.Ref,
+		})
+	}
+	return kept
 }
 
 // cardIDSet indexes cards by their own ID.
@@ -282,7 +349,10 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 	findings = append(findings, createFindings(current, createIndex)...)
 	findings = append(findings, resolveContainment(current, results)...)
 
-	return findings, nil
+	deleteOrderFindings, err := LaterDeleteReferences(plan, current.Cards, current.Cards, worktreeRoot)
+	findings = append(findings, deleteOrderFindings...)
+
+	return findings, err
 }
 
 // renameNewTargetSet returns the set of every Rename pair's New-side ref across plan, matching the

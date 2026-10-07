@@ -129,5 +129,16 @@ func TestFailBatch(t *testing.T) {
 		if !errors.Is(bfe, ErrBatchFailed) {
 			t.Fatal("errors.Is(err, ErrBatchFailed) = false")
 		}
+
+		in, _ = failBatchFixture(t, true)
+		in.WayForward = "edit the plan"
+		bfe, err = failBatch(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		msg = bfe.Error()
+		if !strings.HasSuffix(msg, "; way forward: edit the plan") || strings.Contains(msg, "recover-batch") {
+			t.Errorf("error %q; want the alternative way forward replacing the recover-batch default", msg)
+		}
 	})
 }

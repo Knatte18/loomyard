@@ -23,17 +23,10 @@
 // exit is a failure at both sites too, but the package's test-enforced
 // no-`fatal:`-leak surface forbids folding git's stderr into their
 // messages, which is what run's raw form lets them keep working around.
-// Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push,
-// PushCoalesced, ResetHard, IsAncestor, and
-// HasUnpushed (measured and reverted from a go-git ancestry walk; see
-// HasUnpushed's own godoc in push.go for the reversal criterion) — sits on
-// runChecked. See PATTERN-gitrepo-client-boundary for the
-// enforced, exhaustive version of this split and the review obligation any
-// new CLI call inside this package carries. gitexec itself stays a
-// zero-dependency leaf regardless of which side of the boundary a gitrepo
-// method is on — it has roughly seventy non-test call sites across
-// gitrepo, fabricengine, fabriccli, lyxcwd, and websterengine, and gitrepo
-// remains one of its many consumers, not merged into it.
+// Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push, PushCoalesced, ResetHard, IsAncestor, CommitsNotIn, UpdateRemoteBranchLeased, and HasUnpushed (measured and reverted from a go-git ancestry walk; see HasUnpushed's own godoc in push.go for the reversal criterion) — sits on runChecked.
+// See PATTERN-gitrepo-client-boundary for the enforced, exhaustive version of this split and the review obligation any new CLI call inside this package carries.
+// gitexec itself stays a zero-dependency leaf regardless of which side of the boundary a gitrepo method is on — it has roughly seventy non-test call sites across gitrepo, fabricengine, fabriccli, lyxcwd, and websterengine,
+// and gitrepo remains one of its many consumers, not merged into it.
 //
 // Some outcome classification still matches git's own untranslated
 // (C/English locale) message text — but less of it than before this
@@ -65,6 +58,10 @@
 //     an ancestor of ref" via `git merge-base --is-ancestor`, mapping git's
 //     tri-state exit code directly rather than folding any non-zero exit
 //     into failure.
+//     CommitsNotIn is its listing sibling:
+//     the commits reachable from a tip and not from a base, newest first, via `git rev-list`.
+//   - UpdateRemoteBranchLeased moves a remote branch to a SHA, backwards included, only while the remote branch still sits at the SHA the caller read;
+//     a moved branch is ErrLeaseRejected, distinct from any other push failure.
 //   - ResetHard is the SHA-validated hard-reset surface (see below).
 //   - CurrentBranch reads the branch HEAD points to, and errors on a detached HEAD.
 //

@@ -45,6 +45,8 @@
 //     tier's own fail-closed arm, for a member target whose answer is outside quarry's four-value
 //     vocabulary: dropping such a target from the containment index instead would silently exempt it
 //     from the overlap check.
+//   - delete-before-reference (blocking) — LaterDeleteReferences (deleteorder.go), a card that deletes a symbol whose reference a later card's Edit code still holds, so the delete must move after that card.
+//   - delete-target-gone (informational) — downgradeGoneDeleteTargets (planglyph.go), a Delete target of a pending card that is already absent, reported by ValidateDispatch alone once a batch is begun instead of the blocking path-missing or glyph-not-found finding for it.
 //   - handle-name-failed, handle-canonical-collision (both blocking) — CanonicalizeHandles
 //     (handle.go), a declaration that fails to parse or two draft handles that canonicalize to the
 //     same glyph.

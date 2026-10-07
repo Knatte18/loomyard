@@ -1,17 +1,7 @@
-// beginbatch_test.go exercises BeginBatch end to end (Tier 1 — see
-// docs/benchmarks/running-tests.md): a temp directory backs
-// WorktreeRoot with a fakeGit answering the HeadSHA capture, while the model-injection
-// seam (Injector) and the provider seam (shuttleengine.Engine) are local
-// fakes, webster's own package-local injection and provider fixture pattern. The plan
-// itself is a minimal *planparser.Plan (Dir only — begin-batch never reads
-// Plan.Cards, only deps.Batches, the already-derived execution batches),
-// backed by a t.TempDir() seeded with a throwaway markdown file so the
-// fingerprint gate has something real to hash. There is no chain/restart
-// path and no oversized role under the flat card-list model: this file's
-// own mustFingerprint helper duplicates fingerprint.go's pure hashing
-// algorithm rather than importing anything, since this file deliberately
-// stays in the external websterengine_test package (fingerprint itself is
-// package-private).
+// beginbatch_test.go exercises BeginBatch end to end (Tier 1 — see docs/benchmarks/running-tests.md): a temp directory backs WorktreeRoot with a fakeGit answering the HeadSHA capture, while the reed query seam is a shuttlefake.Reed.
+// The plan itself is a minimal *planparser.Plan (Dir only — begin-batch never reads Plan.Cards, only deps.Batches, the already-derived execution batches), backed by a t.TempDir() seeded with a throwaway markdown file so the fingerprint gate has something real to hash.
+// There is no chain/restart path and no oversized role under the flat card-list model:
+// this file's own mustFingerprint helper duplicates fingerprint.go's pure hashing algorithm rather than importing anything, since this file deliberately stays in the external websterengine_test package (fingerprint itself is package-private).
 
 package websterengine_test
 
@@ -29,11 +19,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -100,35 +88,9 @@ func beginCard(number int, slug string) batcher.Batch {
 	return batcher.Batch{Cards: []planparser.Card{{Number: number, Slug: slug, Title: slug, Intent: "placeholder card " + slug}}}
 }
 
-// beginFakeInjector is a hermetic websterengine.Injector double: it records
-// every (guid, inputs) call so a test can assert exactly how many times, and
-// with what model-switch sequence, BeginBatch injected into Master's pane.
-type beginFakeInjector struct {
-	calls []injectCall
-	err   error
-}
-
-type injectCall struct {
-	GUID   string
-	Inputs []shuttleengine.PaneInput
-}
-
-func (f *beginFakeInjector) Inject(guid string, inputs []shuttleengine.PaneInput) error {
-	f.calls = append(f.calls, injectCall{GUID: guid, Inputs: inputs})
-	return f.err
-}
-
-var _ websterengine.Injector = (*beginFakeInjector)(nil)
-
-// beginFixture is a fully-wired set of BeginBatch dependencies: a temp
-// directory holding base.txt as WorktreeRoot over a fakeGit at one commit,
-// fresh webster/reports/prompts temp dirs,
-// two literal single-card execution batches backed by a seeded plan dir for
-// the fingerprint gate, and webster's two roles pre-resolved with distinct
-// model names.
+// beginFixture is a fully-wired set of BeginBatch dependencies: a temp directory holding base.txt as WorktreeRoot over a fakeGit at one commit, fresh webster/reports/prompts temp dirs, two literal single-card execution batches backed by a seeded plan dir for the fingerprint gate.
 type beginFixture struct {
 	Deps      websterengine.BeginDeps
-	Injector  *beginFakeInjector
 	Reed      *shuttlefake.Reed
 	Git       *fakeGit
 	Worktree  string
@@ -155,12 +117,6 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	writeWorktreeFile(t, worktree, "base.txt", "base")
 	git := newFakeGit()
 
-	roles := map[websterengine.Role]modelspec.Resolved{
-		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
-		websterengine.RoleRecovery: {Engine: "claude", Model: "recovery-model", Params: map[string]string{}},
-	}
-
-	injector := &beginFakeInjector{}
 	promptsDir := t.TempDir()
 	reed := &shuttlefake.Reed{}
 
@@ -173,15 +129,8 @@ func newBeginFixture(t *testing.T) *beginFixture {
 		Plan:    plan,
 		Batches: batches,
 		State:   &websterengine.State{PlanFingerprint: fp, MasterStrand: "master-strand-1"},
-		Roles:   roles,
 		Config:  websterengine.Config{SelfFixCap: 2},
-		// ModelSwitchSequence answers a marker input naming the model,
-		// so a test can read the target model back out of the Injector's recorded inputs.
-		Engine: &shuttlefake.Engine{ModelSwitchSequenceFn: func(model string) []shuttleengine.PaneInput {
-			return []shuttleengine.PaneInput{{Text: "/model " + model, Submit: true}}
-		}},
-		Injector: injector,
-		Reed:     reed,
+		Reed:    reed,
 		Geom: websterengine.Geometry{
 			AnchorRoot:   worktree,
 			WorktreeRoot: worktree,
@@ -196,12 +145,10 @@ func newBeginFixture(t *testing.T) *beginFixture {
 		},
 	}
 
-	return &beginFixture{Deps: deps, Injector: injector, Reed: reed, Git: git, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
+	return &beginFixture{Deps: deps, Reed: reed, Git: git, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
 }
 
-// TestBeginBatch_Refusals proves each entry refusal fires before the Injector is ever reached and
-// names its way forward: a pause, a plan edited after run init, a missing role resolution, a report
-// already on disk for a terminal record (left untouched) and one with no record (left for record-batch).
+// TestBeginBatch_Refusals proves each entry refusal names its way forward: a pause, a plan edited after run init, and a report already on disk for a terminal record (left untouched) or for a begun non-terminal record (left for record-batch), each message naming the record it saw.
 func TestBeginBatch_Refusals(t *testing.T) {
 	t.Parallel()
 
@@ -242,11 +189,6 @@ func TestBeginBatch_Refusals(t *testing.T) {
 			wantText: []string{"--fresh"},
 		},
 		{
-			name:     "a missing role resolution names the role",
-			prepare:  func(t *testing.T, fx *beginFixture) { delete(fx.Deps.Roles, websterengine.RoleMaster) },
-			wantText: []string{string(websterengine.RoleMaster)},
-		},
-		{
 			name: "a report over a terminal record names recover-batch and leaves the record untouched",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				seedReport(t, fx)
@@ -254,7 +196,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 					1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "done"},
 				}
 			},
-			wantText:    []string{"recover-batch"},
+			wantText:    []string{"recover-batch", "terminal with status done"},
 			wantNotText: []string{"--restart-chain"},
 			check: func(t *testing.T, fx *beginFixture) {
 				if bs := fx.Deps.State.Batches[1]; !bs.Terminal || bs.Status != "done" {
@@ -263,9 +205,14 @@ func TestBeginBatch_Refusals(t *testing.T) {
 			},
 		},
 		{
-			name:     "a report with no record names record-batch and stays for it",
-			prepare:  func(t *testing.T, fx *beginFixture) { seedReport(t, fx) },
-			wantText: []string{"`lyx webster record-batch 1`"},
+			name: "a report over a begun non-terminal record names record-batch and stays for it",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				seedReport(t, fx)
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+					1: {Slug: "json-flag", Kind: "fork"},
+				}
+			},
+			wantText: []string{"`lyx webster record-batch 1`", "begun and not terminal"},
 			check: func(t *testing.T, fx *beginFixture) {
 				reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
 				if _, statErr := os.Stat(reportPath); statErr != nil {
@@ -298,90 +245,11 @@ func TestBeginBatch_Refusals(t *testing.T) {
 					t.Errorf("BeginBatch() error = %q; want no %q", err, notWant)
 				}
 			}
-			if len(fx.Injector.calls) != 0 {
-				t.Errorf("Injector was reached (%d calls) on a refusal; want zero", len(fx.Injector.calls))
-			}
 			if tt.check != nil {
 				tt.check(t, fx)
 			}
 		})
 	}
-}
-
-// TestBeginBatch_ModelAssertion proves the idempotent model-assertion rule: a begin-batch call
-// injects exactly once when AssertedModel still names a different model, updating AssertedModel
-// afterward, while a repeat call once AssertedModel already names the target model injects zero
-// times.
-// There is no oversized escalation under the flat card-list model — every batch targets the same
-// RoleMaster model.
-func TestBeginBatch_ModelAssertion(t *testing.T) {
-	t.Run("first call injects and updates AssertedModel", func(t *testing.T) {
-		fx := newBeginFixture(t)
-		fx.Deps.State.AssertedModel = "some-other-model"
-
-		result, err := websterengine.BeginBatch(fx.Deps, 1)
-		if err != nil {
-			t.Fatalf("BeginBatch() error = %v; want nil", err)
-		}
-		if len(fx.Injector.calls) != 1 {
-			t.Fatalf("Injector.calls = %d; want exactly 1", len(fx.Injector.calls))
-		}
-		call := fx.Injector.calls[0]
-		if call.GUID != "master-strand-1" {
-			t.Errorf("Inject guid = %q; want %q", call.GUID, "master-strand-1")
-		}
-		if len(call.Inputs) != 1 || !strings.Contains(call.Inputs[0].Text, "master-model") {
-			t.Errorf("Inject inputs = %v; want the master-model switch sequence", call.Inputs)
-		}
-		if fx.Deps.State.AssertedModel != "master-model" {
-			t.Errorf("State.AssertedModel = %q; want %q", fx.Deps.State.AssertedModel, "master-model")
-		}
-		if result.AssertedModel != "master-model" {
-			t.Errorf("BeginResult.AssertedModel = %q; want %q", result.AssertedModel, "master-model")
-		}
-	})
-
-	t.Run("same-model batch injects zero times (idempotence)", func(t *testing.T) {
-		fx := newBeginFixture(t)
-		fx.Deps.State.AssertedModel = "master-model"
-
-		if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
-			t.Fatalf("BeginBatch() error = %v; want nil", err)
-		}
-		if len(fx.Injector.calls) != 0 {
-			t.Errorf("Injector.calls = %d; want zero (AssertedModel already matched the target)", len(fx.Injector.calls))
-		}
-		if fx.Deps.State.AssertedModel != "master-model" {
-			t.Errorf("State.AssertedModel = %q; want unchanged %q", fx.Deps.State.AssertedModel, "master-model")
-		}
-	})
-
-	t.Run("prompt write failure fires no injection and leaves AssertedModel unchanged", func(t *testing.T) {
-		// The assertion is deliberately the LAST fallible act of BeginBatch:
-		// an earlier failure must never leave the pane switched while the
-		// caller's error path discards the unsaved AssertedModel mutation —
-		// that divergence would silently skip a needed re-assertion later.
-		fx := newBeginFixture(t)
-		fx.Deps.State.AssertedModel = "some-other-model"
-		// A regular file at the PromptsDir path makes MkdirAll — and thus the
-		// prompt write — fail before the injection site is ever reached.
-		blockedDir := filepath.Join(t.TempDir(), "prompts")
-		if err := os.WriteFile(blockedDir, []byte("not a dir"), 0o644); err != nil {
-			t.Fatalf("seed blocking file: %v", err)
-		}
-		fx.Deps.Geom.PromptsDir = blockedDir
-
-		_, err := websterengine.BeginBatch(fx.Deps, 1)
-		if err == nil {
-			t.Fatal("BeginBatch() error = nil; want a prompt-write failure")
-		}
-		if len(fx.Injector.calls) != 0 {
-			t.Errorf("Injector.calls = %d; want zero — a failed begin-batch must not have switched the pane", len(fx.Injector.calls))
-		}
-		if fx.Deps.State.AssertedModel != "some-other-model" {
-			t.Errorf("State.AssertedModel = %q; want unchanged %q", fx.Deps.State.AssertedModel, "some-other-model")
-		}
-	})
 }
 
 // TestBeginBatch_PromptFile proves the fork prompt is written under PromptsDir with {{.prev_digest}}
@@ -500,7 +368,9 @@ func TestBeginBatch_Record(t *testing.T) {
 		prepare func(t *testing.T, fx *beginFixture)
 		// wantStart returns the StartSHA the record and result must carry.
 		wantStart func(fx *beginFixture) string
-		check     func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState)
+		// wantArchived is whether the result must name an archived report under the reports dir.
+		wantArchived bool
+		check        func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState)
 	}{
 		{
 			name: "a first begin records a fresh fork batch and creates the reports dir",
@@ -567,13 +437,33 @@ func TestBeginBatch_Record(t *testing.T) {
 			},
 			wantStart: func(*beginFixture) string { return recordedStart },
 		},
+		{
+			name: "a report with no begin-batch record is archived and the begin proceeds",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
+				if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
+					t.Fatalf("seed report: %v", err)
+				}
+			},
+			wantStart: func(fx *beginFixture) string { return fx.Git.head },
+			check: func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState) {
+				reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
+				if _, err := os.Stat(reportPath); !os.IsNotExist(err) {
+					t.Errorf("stat(report) = %v; want the report renamed away", err)
+				}
+				archived, err := filepath.Glob(filepath.Join(fx.Deps.Geom.ReportsDir, "01-json-flag-*.yaml"))
+				if err != nil || len(archived) != 1 {
+					t.Fatalf("archived reports = %v, %v; want exactly one archive under the reports dir", archived, err)
+				}
+			},
+			wantArchived: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			fx := newBeginFixture(t)
-			fx.Deps.State.AssertedModel = "master-model" // skip the injector
 			if tt.prior != nil {
 				fx.Deps.State.Batches = map[int]*websterengine.BatchState{1: tt.prior}
 			}
@@ -595,6 +485,12 @@ func TestBeginBatch_Record(t *testing.T) {
 			if want := []string{"01-json-flag"}; !slices.Equal(bs.Cards, want) {
 				t.Errorf("Batches[1].Cards = %v; want %v", bs.Cards, want)
 			}
+			if gotArchived := result.ArchivedReport != ""; gotArchived != tt.wantArchived {
+				t.Errorf("ArchivedReport = %q; want non-empty = %v", result.ArchivedReport, tt.wantArchived)
+			}
+			if tt.wantArchived && filepath.Dir(result.ArchivedReport) != fx.Deps.Geom.ReportsDir {
+				t.Errorf("ArchivedReport = %q; want a path under %q", result.ArchivedReport, fx.Deps.Geom.ReportsDir)
+			}
 			if tt.check != nil {
 				tt.check(t, fx, bs)
 			}
@@ -609,7 +505,6 @@ func TestBeginBatch_Record(t *testing.T) {
 // the repo.
 func TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite(t *testing.T) {
 	fx := newBeginFixture(t)
-	fx.Deps.State.AssertedModel = "master-model" // skip the injector
 	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
 		1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", StrandGUID: "dead-but-live-recovery"},
 	}
@@ -913,22 +808,5 @@ func TestBeginBatch_WayForward_UnknownBatch(t *testing.T) {
 
 	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
 		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
-	}
-}
-
-// TestBeginBatch_WayForward_ModelSwitchFailureIsTransient proves a failed model-switch injection names the begin-batch re-run,
-// and that the re-run succeeds once the injection does.
-func TestBeginBatch_WayForward_ModelSwitchFailureIsTransient(t *testing.T) {
-	fx := newBeginFixture(t)
-	fx.Injector.err = errors.New("pane did not take the keys")
-
-	_, err := websterengine.BeginBatch(fx.Deps, 1)
-	if err == nil || !strings.Contains(err.Error(), "way forward: transient, re-run `lyx webster begin-batch 1`") {
-		t.Fatalf("BeginBatch(1) error = %v; want the transient re-run way forward", err)
-	}
-
-	fx.Injector.err = nil
-	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
-		t.Fatalf("BeginBatch(1) after the retry error = %v; want nil", err)
 	}
 }

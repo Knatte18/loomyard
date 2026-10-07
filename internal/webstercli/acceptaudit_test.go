@@ -20,7 +20,7 @@ import (
 func (fx *verbsFixture) seedPendingFinding(t *testing.T) {
 	t.Helper()
 	fx.CLI.geom.WorktreeRoot = fx.Worktree
-	st := fx.initState(t, "master-model")
+	st := fx.initState(t)
 	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", Kind: "fork", Terminal: true, Status: "done", Digest: &websterengine.Digest{Status: "done", HeadSHA: head}}
 	st.PendingAuditFindings = []websterengine.PendingAuditFinding{{ID: "sess/parent-write-1", Class: "parent-write", Detail: "wrote outside the contract", Paths: []string{"base.txt"}}}

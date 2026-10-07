@@ -62,21 +62,22 @@ func nilFabricOpener() (*fabricengine.Fabric, error) {
 // LandingDeps returns a `landingshed.Deps` with every field the Publish and Finalize constructors require, filled with told values derived from dir.
 func LandingDeps(dir string) landingshed.Deps {
 	return landingshed.Deps{
-		WorktreeRoot:     dir,
-		TaskBranch:       "task-branch",
-		ParentBranch:     "fixture-parent",
-		DescriptionPath:  summaryparser.Path(dir),
-		StencilsDir:      dir,
-		ParentName:       "fixture-parent-session",
-		ScratchDir:       filepath.Join(dir, "landing-scratch"),
-		OriginURL:        "https://example.invalid/fixture/fixture.git",
-		PushBranch:       func() error { return nil },
-		OpenFabric:       nilFabricOpener,
-		OpenParentFabric: nilFabricOpener,
-		Shuttle:          &shedfake.MergeShuttle{},
-		ApprovalPath:     filepath.Join(dir, "approval.json"),
-		RejectionPath:    filepath.Join(dir, "rejection.json"),
-		TaskHead:         func() (string, error) { return "head", nil },
+		WorktreeRoot:      dir,
+		TaskBranch:        "task-branch",
+		ParentBranch:      "fixture-parent",
+		DescriptionPath:   summaryparser.Path(dir),
+		StencilsDir:       dir,
+		ParentName:        "fixture-parent-session",
+		ScratchDir:        filepath.Join(dir, "landing-scratch"),
+		OriginURL:         "https://example.invalid/fixture/fixture.git",
+		PushBranch:        func() error { return nil },
+		RemoteOnlyCommits: func() (string, []string, error) { return "", nil, nil },
+		OpenFabric:        nilFabricOpener,
+		OpenParentFabric:  nilFabricOpener,
+		Shuttle:           &shedfake.MergeShuttle{},
+		ApprovalPath:      filepath.Join(dir, "approval.json"),
+		RejectionPath:     filepath.Join(dir, "rejection.json"),
+		TaskHead:          func() (string, error) { return "head", nil },
 	}
 }
 

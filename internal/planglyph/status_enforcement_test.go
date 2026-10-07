@@ -89,6 +89,7 @@ var allowedStatusConsumers = []scankit.Entry{
 	{Key: "internal/planglyph/resolve.go:unreadableStatusDetail", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/create.go:createFindings", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/donecheck.go:doneCheckVerdicts", Why: "fail-closed status reader"},
+	{Key: "internal/planglyph/deleteorder.go:answerSymbols", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/handle.go:renameDeclSource", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/containment.go:resolveContainment", Why: "fail-closed status reader"},
 	{

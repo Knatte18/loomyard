@@ -92,17 +92,10 @@
 //
 // # Validation lives in validate.go
 //
-// This package's parse step is lenient at the card level: a malformed bullet or an
-// absent field is recorded into the model (via the HasX bits, RenameRaw, or a nil
-// slice) rather than failing the parse, so Validate can enumerate every defect in one
-// pass instead of stopping at the first one. ParsePlan fails loud only on
-// document-structure errors — a missing or undecodable overview file, an unparseable
-// Card Index line, a missing card file, an unparseable card heading, or an inline
-// value where a field admits only a bullet list. The plan format's 28 validation
-// checks (card type presence, card-custom-not-alone, path malformation, the bare
-// package-qualified symbol, directory-target and glyph-malformed hard rules, the
-// Rename pair grammar, the plan: handle consistency checks, on-disk existence,
-// and so on) are implemented by Validate in validate.go, not by ParsePlan itself.
+// This package's parse step is lenient at the card level: a malformed bullet or an absent field is recorded into the model (via the HasX bits, RenameRaw, or a nil slice) rather than failing the parse,
+// so Validate can enumerate every defect in one pass instead of stopping at the first one.
+// ParsePlan fails loud only on document-structure errors — a missing or undecodable overview file, an unparseable Card Index line, a missing card file, an unparseable card heading, or an inline value where a field admits only a bullet list.
+// The plan format's validation checks (card type presence, card-custom-not-alone, path malformation, the bare package-qualified symbol, directory-target and glyph-malformed hard rules, the Rename pair grammar, the plan: handle consistency checks, on-disk existence, and so on) are implemented by Validate in validate.go, not by ParsePlan itself.
 //
 // # The language: key and the glyph alphabet
 //

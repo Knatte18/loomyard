@@ -146,6 +146,67 @@ func onlyCreatePlan(language, target string) plankit.Plan {
 	}
 }
 
+// twoCardUsesPlan returns a two-card plan in which the "consumer" card Uses the file the "producer" card Creates;
+// consumerNumber and producerNumber place the two cards, so the plan is in executable order only when the producer's number is lower.
+func twoCardUsesPlan(consumerNumber, producerNumber int) plankit.Plan {
+	cards := []plankit.Card{
+		{
+			Number:  consumerNumber,
+			Slug:    "consumer",
+			Summary: "reads the producer's file",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/consumer/new.go"}}},
+			Uses:    []string{"internal/producer/new.go"},
+			Intent:  "placeholder card.",
+		},
+		{
+			Number:  producerNumber,
+			Slug:    "producer",
+			Summary: "creates the file",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/producer/new.go"}}},
+			Intent:  "placeholder card.",
+		},
+	}
+	if consumerNumber > producerNumber {
+		cards[0], cards[1] = cards[1], cards[0]
+	}
+	return plankit.Plan{Approved: true, Framing: "Framing.", Cards: cards}
+}
+
+// deleteOrderFiles is the source tree deleteOrderPlan resolves against: sub/b.go's Bar still calls the Foo that sub/a.go declares.
+var deleteOrderFiles = map[string]string{
+	"sub/a.go": "package sub\n\nfunc Foo() {}\n",
+	"sub/b.go": "package sub\n\nfunc Bar() { Foo() }\n",
+}
+
+// deleteOrderPlan returns a two-card plan in which the "deleter" card Deletes sub#Foo and the "editor" card Edits sub#Bar, whose code still calls Foo;
+// deleterNumber and editorNumber place the two cards, so the plan is in executable order only when the editor's number is lower.
+func deleteOrderPlan(deleterNumber, editorNumber int) plankit.Plan {
+	cards := []plankit.Card{
+		{
+			Number:  deleterNumber,
+			Slug:    "deleter",
+			Summary: "deletes Foo",
+			Groups:  []plankit.Group{{Label: "Delete", Targets: []string{"sub#Foo"}}},
+			Intent:  "placeholder card.",
+
+			ImpactSummary: "none.",
+		},
+		{
+			Number:  editorNumber,
+			Slug:    "editor",
+			Summary: "edits Bar",
+			Groups:  []plankit.Group{{Label: "Edit", Targets: []string{"sub#Bar"}}},
+			Intent:  "placeholder card.",
+
+			ImpactSummary: "none.",
+		},
+	}
+	if deleterNumber > editorNumber {
+		cards[0], cards[1] = cards[1], cards[0]
+	}
+	return plankit.Plan{Approved: true, Framing: "Framing.", Cards: cards}
+}
+
 // seedValidPlanDir writes a valid plan with one card into dir.
 func seedValidPlanDir(t *testing.T, dir string) {
 	t.Helper()
@@ -204,6 +265,36 @@ func TestValidateCmd_Envelopes(t *testing.T) {
 			},
 			wantExit: 1,
 			wantIn:   []string{`"ok":false`, `"check":"glyph-not-found"`, `"severity":"blocking"`},
+		},
+		{
+			name:     "a Uses naming a later card's target is refused under the consumer card",
+			seed:     func(t *testing.T, c *websterCLI) { plankit.Write(t, c.geom.PlanDir, twoCardUsesPlan(1, 2)) },
+			wantExit: 1,
+			wantIn:   []string{`"ok":false`, `"check":"uses-later-target"`, `"card":"1-consumer"`, "card 2 targets"},
+		},
+		{
+			name:     "the same Uses after the card that produces its target passes",
+			seed:     func(t *testing.T, c *websterCLI) { plankit.Write(t, c.geom.PlanDir, twoCardUsesPlan(2, 1)) },
+			wantExit: 0,
+			wantIn:   []string{`"valid":true`, `"cards":2`},
+		},
+		{
+			name: "a delete before a later card's Edit that still references it is refused under the deleting card",
+			seed: func(t *testing.T, c *websterCLI) {
+				plankit.Write(t, c.geom.PlanDir, deleteOrderPlan(1, 2))
+				c.geom.WorktreeRoot = plankit.Repo(t, deleteOrderFiles)
+			},
+			wantExit: 1,
+			wantIn:   []string{`"ok":false`, `"check":"delete-before-reference"`, `"card":"1-deleter"`, "sub/b.go:3"},
+		},
+		{
+			name: "the same delete after the card that edits the reference passes",
+			seed: func(t *testing.T, c *websterCLI) {
+				plankit.Write(t, c.geom.PlanDir, deleteOrderPlan(2, 1))
+				c.geom.WorktreeRoot = plankit.Repo(t, deleteOrderFiles)
+			},
+			wantExit: 0,
+			wantIn:   []string{`"valid":true`, `"cards":2`},
 		},
 		{
 			name: "unopenable worktree root names quarry",
@@ -283,12 +374,12 @@ func seedGlyphPlanDir(t *testing.T, planDir, worktreeRoot, createTarget string) 
 	}
 }
 
-// seedTwoCardGlyphPlanDir writes a two-card, language: go plan into planDir whose FIRST card
-// Creates a symbol that already exists on disk (worktreeRoot/sub/a.go's Foo) and whose SECOND card
-// Creates a brand-new unit. The first card is therefore a blocking create-already-exists finding
-// under the whole-plan check set and nothing at all once it counts as completed; the second card is
-// informational in both scopes. That asymmetry is what lets one plan tell validate's two scopes
-// apart.
+// seedTwoCardGlyphPlanDir writes a two-card, language: go plan into planDir whose FIRST card Creates a symbol that already exists on disk (worktreeRoot/sub/a.go's Foo) and whose SECOND card Creates a brand-new unit.
+// The first card is therefore a blocking create-already-exists finding under the whole-plan check set and nothing at all once it counts as completed;
+// the second card is informational in both scopes.
+// A third card Deletes a member that is not on disk:
+// a blocking glyph-not-found under the whole-plan check set, the informational delete-target-gone once a batch is begun.
+// That asymmetry is what lets one plan tell validate's two scopes apart.
 func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
 	t.Helper()
 
@@ -308,6 +399,13 @@ func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
 				Slug:    "second",
 				Summary: "the card still pending",
 				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"newpkg#Bar"}}},
+			},
+			{
+				Number:        3,
+				Slug:          "third",
+				Summary:       "the pending card whose Delete target is already gone",
+				Groups:        []plankit.Group{{Label: "Delete", Targets: []string{"sub#Gone"}}},
+				ImpactSummary: "Removes sub#Gone.",
 			},
 		},
 	})
@@ -352,6 +450,9 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 		if !strings.Contains(got, "create-already-exists") {
 			t.Errorf("output missing the blocking create-already-exists finding for card 1; got %q", got)
 		}
+		if !strings.Contains(got, `"check":"glyph-not-found"`) {
+			t.Errorf("output missing the blocking glyph-not-found finding for card 3's missing Delete target; got %q", got)
+		}
 	})
 
 	for _, tc := range []struct {
@@ -391,6 +492,9 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 			}
 			if strings.Contains(got, "create-already-exists") {
 				t.Errorf("output still carries card 1's create-already-exists finding after batch 1 was begun; got %q", got)
+			}
+			if !strings.Contains(got, `"check":"delete-target-gone"`) || strings.Contains(got, `"check":"glyph-not-found"`) {
+				t.Errorf("output must carry card 3's missing Delete target as delete-target-gone and not as glyph-not-found; got %q", got)
 			}
 		})
 	}
@@ -686,14 +790,13 @@ func newRunTestCLI(t *testing.T) *websterCLI {
 }
 
 // seedRunState writes a minimal state.json, fingerprint-matched to c's on-disk plan, standing in for the state the run verb would have already created before Master ever calls a bracket verb.
-func seedRunState(t *testing.T, c *websterCLI, assertedModel string) *websterengine.State {
+func seedRunState(t *testing.T, c *websterCLI) *websterengine.State {
 	t.Helper()
 	st := &websterengine.State{
 		RunGUID:         "guid-1",
 		PlanFingerprint: testPlanFingerprint(t, c.geom.PlanDir),
 		MasterStrand:    "master-strand-1",
 		MasterSessionID: "master-session-1",
-		AssertedModel:   assertedModel,
 		Batches:         map[int]*websterengine.BatchState{},
 	}
 	if err := websterengine.RestampPlanBaseline(st, c.geom.PlanDir, c.geom.WebsterDir); err != nil {
@@ -912,7 +1015,7 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 func TestValidateCmd_RefusesOverviewEditWithoutRestamp(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	c := newRunTestCLI(t)
-	before := seedRunState(t, c, "master-model")
+	before := seedRunState(t, c)
 
 	overviewPath := filepath.Join(c.geom.PlanDir, "00-overview.md")
 	data, err := os.ReadFile(overviewPath)
@@ -1025,7 +1128,7 @@ func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	c := newRunTestCLI(t)
 	seedTwoCardPlan(t, c.geom.PlanDir, "second card.")
-	st := seedRunState(t, c, "master-model")
+	st := seedRunState(t, c)
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", Cards: []string{"01-only"}, StartSHA: "abc123", Kind: "fork", Digest: &websterengine.Digest{Batch: "01-only", Status: websterengine.DigestStatusDone, HeadSHA: "def456"}}
 	if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
@@ -1060,8 +1163,7 @@ func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
 	}
 }
 
-// TestRebaselineCmd_Refusals proves each refused rebaseline exits non-zero with its way forward and leaves state.json byte-identical:
-// an edited card the operator did not name (naming --card), a --card value that is not a positive integer (a usage error naming the value), and a removed card whose batch was begun (naming --fresh).
+// TestRebaselineCmd_Refusals proves each refused rebaseline exits non-zero with its way forward and leaves state.json byte-identical: an edited card the operator did not name (naming --card), a --card value that is not a positive integer (a usage error naming the value), a removed card whose batch was begun (naming --fresh), and a named card of a done batch (naming that its work has landed, and --fresh).
 // It sets WEFT_SKIP_GIT, so it is not parallel.
 func TestRebaselineCmd_Refusals(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
@@ -1117,13 +1219,32 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 			},
 			wantIn: []string{"--fresh"},
 		},
+		{
+			name: "named card of a done batch",
+			arrange: func(t *testing.T, c *websterCLI) []string {
+				st, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
+				if err != nil || st == nil {
+					t.Fatalf("LoadState() = %v, %v; want a state", st, err)
+				}
+				st.Batches[1] = &websterengine.BatchState{
+					Slug: "only", Cards: []string{"01-only"}, StartSHA: "abc123", Kind: "fork",
+					Terminal: true, Status: websterengine.DigestStatusDone,
+					CardHashes: map[string]string{"01-only": "stale-hash"},
+				}
+				if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
+					t.Fatalf("SaveState() error = %v", err)
+				}
+				return []string{"--card", "1"}
+			},
+			wantIn: []string{"01-only changed since it was begun", "batch is done", "--fresh"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newRunTestCLI(t)
 			// The state is recorded against the two-card plan so the "edited card" row has an unnamed edit to refuse.
 			seedTwoCardPlan(t, c.geom.PlanDir, "second card.")
-			seedRunState(t, c, "master-model")
+			seedRunState(t, c)
 			statePath := filepath.Join(c.geom.WebsterDir, "state.json")
 			args := tc.arrange(t, c)
 			before, err := os.ReadFile(statePath)
@@ -1158,7 +1279,7 @@ func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	c := newRunTestCLI(t)
 	seedTwoCardPlan(t, c.geom.PlanDir, "second card.")
-	seedRunState(t, c, "master-model")
+	seedRunState(t, c)
 	seedTwoCardPlan(t, c.geom.PlanDir, "second card, edited mid-run.")
 	c.openFabric = failingFabricOpen
 
@@ -1181,7 +1302,7 @@ func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
 func TestRestorePlanCmd_RestoresEditedCard(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	c := newRunTestCLI(t)
-	seedRunState(t, c, "master-model")
+	seedRunState(t, c)
 	cardPath := filepath.Join(c.geom.PlanDir, "01-only.md")
 	recorded, err := os.ReadFile(cardPath)
 	if err != nil {

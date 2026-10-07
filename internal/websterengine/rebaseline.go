@@ -18,6 +18,17 @@ import (
 // ErrRebaselineCardSetChanged is the sentinel Rebaseline returns when the edited plan no longer holds a begun batch's recorded card set, which no restamp can make safe.
 var ErrRebaselineCardSetChanged = errors.New("webster: the edited plan changes the cards of a batch this run already begun")
 
+// editableTerminalStatus reports whether a batch with this terminal status accepts a named card edit.
+func editableTerminalStatus(status string) bool {
+	return status == DigestStatusFailed || status == DigestStatusDead || status == DigestStatusStuck
+}
+
+// cardNumberInt returns the number of a NN-<slug> card id, or 0 when the id has none.
+func cardNumberInt(id string) int {
+	n, _ := strconv.Atoi(cardNumberOf(id))
+	return n
+}
+
 // RebaselineDeps is what Rebaseline reads: the edited on-disk plan, the batches sequenced from it,
 // and the run state whose fingerprint it restamps.
 type RebaselineDeps struct {
@@ -43,11 +54,14 @@ type RebaselineResult struct {
 }
 
 // Rebaseline accepts the on-disk plan as the run's plan without discarding any batch record.
-// It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number,
-// or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only).
+// It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number, or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only), except that a card named in deps.Cards is accepted when its batch is terminal failed, dead or stuck.
 // It also refuses when 00-overview.md changed, or a changed card file's number is not in deps.Cards, unless the state predates State.PlanFileHashes.
 // The start commit a refusal names is picked by git ancestry.
-// Otherwise it restamps State.PlanFingerprint and State.PlanFileHashes and leaves every other field untouched.
+// The bound on the accepted card edit: only cards named with --card, only in batches terminal failed, dead or stuck, never a failed batch whose record lists Uncheckable entries, never a change to a batch's card-ID set, never 00-overview.md.
+// A dead batch's strand, kept alive when classified dead, may still work on the old card;
+// the restamp stops no strand, and the next recover-batch stops it before it spawns and archives a late report from it.
+// Otherwise it restamps State.PlanFingerprint, State.PlanFileHashes and the CardHashes entry of each accepted card, and leaves every other field untouched.
+// A refusal leaves the state unchanged.
 // It never saves;
 // the caller holds the state-mutation lease and saves, as for the bracket verbs.
 func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
@@ -98,7 +112,8 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	}
 	sort.Ints(numbers)
 
-	var changed []string
+	var changed, unfinished []string
+	restamps := make(map[int]map[string]string)
 	for _, n := range numbers {
 		bs := deps.State.Batches[n]
 		recorded := bs.Cards
@@ -115,8 +130,24 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 				return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster rebaseline`", err)
 			}
 			for _, id := range recorded {
-				if want, hashed := bs.CardHashes[id]; hashed && got[id] != want {
-					changed = append(changed, fmt.Sprintf("batch %d card %s changed since it was begun", n, id))
+				want, hashed := bs.CardHashes[id]
+				if !hashed || got[id] == want {
+					continue
+				}
+				switch {
+				case !bs.Terminal:
+					unfinished = append(unfinished, fmt.Sprintf("batch %d card %s changed since it was begun, and the batch is unfinished so a fork may still be working on it; run `lyx webster record-batch %d` or `lyx webster recover-batch %d` first, then re-run the rebaseline", n, id, n, n))
+				case !editableTerminalStatus(bs.Status):
+					changed = append(changed, fmt.Sprintf("batch %d card %s changed since it was begun, and the batch is %s so its work has landed and --card cannot accept the edit", n, id, bs.Status))
+				case len(bs.Uncheckable) > 0:
+					changed = append(changed, fmt.Sprintf("batch %d card %s changed since it was begun, and the batch failed on findings recovery cannot check so --card cannot accept the edit", n, id))
+				case !slices.Contains(deps.Cards, cardNumberInt(id)):
+					changed = append(changed, fmt.Sprintf("batch %d card %s changed since it was begun and is not named with --card", n, id))
+				default:
+					if restamps[n] == nil {
+						restamps[n] = make(map[string]string)
+					}
+					restamps[n][id] = got[id]
 				}
 			}
 			continue
@@ -128,7 +159,16 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		changed = append(changed, fmt.Sprintf("batch %d recorded [%s], plan now %s", n, strings.Join(recorded, ", "), nowText))
 	}
 	if len(changed) > 0 {
-		return nil, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or %s", ErrRebaselineCardSetChanged, strings.Join(changed, "; "), freshRestartSteps)
+		reasons := append(changed, unfinished...)
+		return nil, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or %s", ErrRebaselineCardSetChanged, strings.Join(reasons, "; "), freshRestartSteps)
+	}
+	if len(unfinished) > 0 {
+		return nil, fmt.Errorf("%w: %s", ErrRebaselineCardSetChanged, strings.Join(unfinished, "; "))
+	}
+	for n, hashes := range restamps {
+		for id, hash := range hashes {
+			deps.State.Batches[n].CardHashes[id] = hash
+		}
 	}
 
 	previous := deps.State.PlanFingerprint

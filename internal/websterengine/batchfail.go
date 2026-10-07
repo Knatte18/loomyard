@@ -22,6 +22,9 @@ type BatchFailedError struct {
 	Reasons        []string
 	SuspectPaths   []string
 	ArchivedReport string
+	// WayForward replaces the default way forward, a recover-batch call, for a failure that call cannot clear.
+	// It carries no "way forward: " prefix.
+	WayForward string
 }
 
 // Error names the reasons, the suspect paths and the archived report, and ends with the way forward.
@@ -34,7 +37,11 @@ func (e *BatchFailedError) Error() string {
 	if e.ArchivedReport != "" {
 		fmt.Fprintf(&b, "; report archived to %s", e.ArchivedReport)
 	}
-	fmt.Fprintf(&b, "; way forward: lyx webster recover-batch %02d", e.Number)
+	if e.WayForward != "" {
+		fmt.Fprintf(&b, "; way forward: %s", e.WayForward)
+	} else {
+		fmt.Fprintf(&b, "; way forward: lyx webster recover-batch %02d", e.Number)
+	}
 	return b.String()
 }
 
@@ -54,7 +61,9 @@ type failBatchInput struct {
 	SuspectPaths   []string
 	Uncheckable    []string
 	NewTranscripts []string
-	Now            func() time.Time
+	// WayForward is the BatchFailedError's alternative way forward, empty for the default.
+	WayForward string
+	Now        func() time.Time
 	// Git answers the suspect-blob probes.
 	// Nil means the real repository.
 	Git Git
@@ -121,5 +130,6 @@ func failBatch(in failBatchInput) (*BatchFailedError, error) {
 		Reasons:        in.Reasons,
 		SuspectPaths:   in.SuspectPaths,
 		ArchivedReport: archived,
+		WayForward:     in.WayForward,
 	}, nil
 }

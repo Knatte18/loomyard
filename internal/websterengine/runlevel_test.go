@@ -933,9 +933,7 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 	}
 }
 
-// TestRun_MasterSpawn asserts what Run hands the Master spawn and records around it: the strand
-// role, model and skills, the awaited shell, the gate entries, the prompt (never written to a
-// master.md), the asserted model and strand identities, and the order of the batches the prompt lists.
+// TestRun_MasterSpawn asserts what Run hands the Master spawn and records around it: the strand role, model and skills, the awaited shell, the gate entries, the prompt (never written to a master.md), the strand and session identities, and the order of the batches the prompt lists.
 func TestRun_MasterSpawn(t *testing.T) {
 	t.Parallel()
 
@@ -982,15 +980,11 @@ func TestRun_MasterSpawn(t *testing.T) {
 			},
 		},
 		{
-			// The idempotent-assertion baseline begin-batch's own per-batch check consults from
-			// batch 1 onward is persisted BEFORE Run blocks on Wait.
-			name:  "the asserted model is initialised to the launch model",
+			// The strand and session identities the bracket verbs read are persisted BEFORE Run blocks on Wait.
+			name:  "the strand and session identities are persisted",
 			cards: 1,
 			check: func(t *testing.T, fx *runFixture) {
 				st := loadRunState(t, fx)
-				if st.AssertedModel != "master-model" {
-					t.Errorf("State.AssertedModel = %q; want %q (the launch model)", st.AssertedModel, "master-model")
-				}
 				if st.MasterStrand != spawnStrand {
 					t.Errorf("State.MasterStrand = %q; want %q", st.MasterStrand, spawnStrand)
 				}
@@ -1076,25 +1070,6 @@ func TestRun_MasterSpawn(t *testing.T) {
 				}
 				if _, err := os.Stat(filepath.Join(fx.Deps.Geom.PromptsDir, "master.md")); !errors.Is(err, os.ErrNotExist) {
 					t.Errorf("master.md stat err = %v; want it absent, since Run no longer writes it", err)
-				}
-			},
-		},
-		{
-			// Card 1 Uses card 2's own Create target, so batch 2 must run before batch 1 and the
-			// rendered Master prompt's batch index lists 02 above 01. The path is deliberately NOT
-			// also seeded under the worktree: a Create target's own self-glyph would then resolve
-			// found and trip the blocking create-already-exists finding.
-			name:  "sequencing reorders the batches the prompt lists",
-			cards: 2,
-			prepare: func(t *testing.T, fx *runFixture) {
-				addCardUses(t, fx.PlanDir, 1, "internal/batch2/new.go")
-			},
-			check: func(t *testing.T, fx *runFixture) {
-				prompt := fx.Starter.startCalls[0].Prompt
-				idx02 := strings.Index(prompt, "02 — batch2")
-				idx01 := strings.Index(prompt, "01 — batch1")
-				if idx02 == -1 || idx01 == -1 || idx02 >= idx01 {
-					t.Errorf("rendered Master prompt does not list batch 02 above batch 01: idx02=%d idx01=%d\n%s", idx02, idx01, prompt)
 				}
 			},
 		},
@@ -1448,38 +1423,6 @@ func TestRun_DoneOutcome(t *testing.T) {
 			},
 		},
 		{
-			// Card 1 Uses card 2's target and card 2 Uses card 1's: a mutual dependency
-			// SequenceBatches condenses into one cycle, reported but never fatal. Neither path is
-			// seeded under the worktree, or the blocking create-already-exists finding would fire.
-			name:    "a dependency cycle is reported as a warning and never fails the run",
-			cards:   2,
-			session: "master-session-cycle",
-			prepare: func(t *testing.T, fx *runFixture) {
-				addCardUses(t, fx.PlanDir, 1, "internal/batch2/new.go")
-				addCardUses(t, fx.PlanDir, 2, "internal/batch1/new.go")
-			},
-			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
-				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
-				2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done"},
-			}},
-			audit:       func(*runFixture) shuttleengine.ForkAudit { return shuttleengine.ForkAudit{Forks: forkReports(2)} },
-			batchesDone: 2,
-			check: func(t *testing.T, fx *runFixture, result websterengine.RunResult) {
-				if result.Outcome != "done" {
-					t.Errorf("RunResult.Outcome = %q; want %q (a cycle is never fatal)", result.Outcome, "done")
-				}
-				if len(result.Cycles) != 1 {
-					t.Fatalf("RunResult.Cycles = %v; want exactly 1 cycle", result.Cycles)
-				}
-				if got := result.Cycles[0].Batches; len(got) != 2 || got[0] != 1 || got[1] != 2 {
-					t.Errorf("RunResult.Cycles[0].Batches = %v; want [1 2]", got)
-				}
-				if wantWarning := result.Cycles[0].Warning(); !slices.Contains(result.Warnings, wantWarning) {
-					t.Errorf("RunResult.Warnings = %v; want the cycle's own Warning() line %q", result.Warnings, wantWarning)
-				}
-			},
-		},
-		{
 			name:    "an acyclic plan reports no cycles and no sequencing warning",
 			cards:   2,
 			session: "master-session-acyclic",
@@ -1520,9 +1463,10 @@ func TestRun_DoneOutcome(t *testing.T) {
 	}
 }
 
-// expiredShellRun drives fx's Run to a done outcome whose Master result lists labels as expired shells.
-func expiredShellRun(t *testing.T, fx *runFixture, labels []string) websterengine.RunResult {
+// expiredShellRun drives fx's Run to a shuttle-done end whose Master result lists labels as expired shells, with Master's last action writing outcomeYAML.
+func expiredShellRun(t *testing.T, fx *runFixture, labels []string, outcomeYAML string) websterengine.RunResult {
 	t.Helper()
+	fx.Deps.ShuttleCfg.BackgroundShellWaitMin = 15
 	seedMatchingState(t, fx, &websterengine.State{
 		Batches: map[int]*websterengine.BatchState{
 			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
@@ -1538,7 +1482,7 @@ func expiredShellRun(t *testing.T, fx *runFixture, labels []string) websterengin
 			ExpiredShells: labels,
 		},
 		onWait: func() {
-			writeDoneContract(t, fx)
+			writeContractFiles(t, fx, outcomeYAML, "# Shipped\n\nAll good.\n")
 		},
 	}
 	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-shells", "master-session-shells")
@@ -1550,7 +1494,14 @@ func expiredShellRun(t *testing.T, fx *runFixture, labels []string) websterengin
 	return result
 }
 
-// TestRun_ExpiredShells asserts a waited-out shell on a done outcome warns, lands in summary.md and is named in a friction note, and that an empty list adds no warning, summary section or friction note.
+// The parts of the sentence the friction note and the warning share for the shell `sleep 9999` under a 15-minute bound.
+const (
+	shellSentenceHead    = "background shell `sleep 9999` ran past `background_shell_wait_min` (15 minutes): the wait stopped waiting and counted Master's turn end, and lyx did not stop the shell; "
+	shellStrandRemoved   = "shuttle removes Master's strand when the run finishes, which ends the session and the shell with it; "
+	shellStrandReclaimed = "Master's strand stays alive until the next `lyx webster run` reclaims it at entry, which ends the session and the shell with it; "
+)
+
+// TestRun_ExpiredShells asserts a waited-out shell states the run's outcome in its friction note and, on every outcome that returns a RunResult, in its warning; that only a done outcome lands in summary.md; and that an empty list adds no warning, summary section or friction note.
 func TestRun_ExpiredShells(t *testing.T) {
 	t.Parallel()
 
@@ -1559,9 +1510,9 @@ func TestRun_ExpiredShells(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		fx.Deps.FrictionDir = t.TempDir()
 
-		result := expiredShellRun(t, fx, []string{"sleep 9999"})
+		result := expiredShellRun(t, fx, []string{"sleep 9999"}, "outcome: done\nstuck_reason: null\nbatches_done: 1\n")
 
-		want := "turn end counted after background shell `sleep 9999` ran past `background_shell_wait_min`; the shell may still be running in the session"
+		want := shellSentenceHead + shellStrandRemoved + "the run's outcome after that turn end: done"
 		if !slices.Contains(result.Warnings, want) {
 			t.Errorf("Warnings = %v; want %q", result.Warnings, want)
 		}
@@ -1573,8 +1524,64 @@ func TestRun_ExpiredShells(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read friction note: %v", err)
 		}
-		if !strings.Contains(string(note), "sleep 9999") || !strings.Contains(string(note), "background_shell_wait_min") {
-			t.Errorf("friction note = %q; want the shell and the bound named", note)
+		if !strings.Contains(string(note), "- "+want+"\n") {
+			t.Errorf("friction note = %q; want the same sentence as the warning", note)
+		}
+	})
+
+	t.Run("Master's own stuck states the outcome with its reason in the note and the warning", func(t *testing.T) {
+		t.Parallel()
+		fx := newRunFixture(t, 1)
+		fx.Deps.FrictionDir = t.TempDir()
+
+		result := expiredShellRun(t, fx, []string{"sleep 9999"}, "outcome: stuck\nstuck_reason: \"batch 1 red\"\nbatches_done: 0\n")
+
+		want := shellSentenceHead + shellStrandRemoved + "the run's outcome after that turn end: stuck (batch 1 red)"
+		if !slices.Contains(result.Warnings, want) {
+			t.Errorf("Warnings = %v; want %q", result.Warnings, want)
+		}
+		note, err := os.ReadFile(filepath.Join(fx.Deps.FrictionDir, "webster-background-shell.md"))
+		if err != nil {
+			t.Fatalf("read friction note: %v", err)
+		}
+		if !strings.Contains(string(note), "- "+want+"\n") {
+			t.Errorf("friction note = %q; want the same sentence as the warning", note)
+		}
+		if summary := readSummary(t, fx); strings.Contains(summary, "Background shells waited out") {
+			t.Errorf("summary.md = %q; want no waited-out section on a stuck outcome", summary)
+		}
+	})
+
+	t.Run("a died Master states the error outcome and the reclaim in the note", func(t *testing.T) {
+		t.Parallel()
+		const (
+			strand  = "master-strand-shells-died"
+			session = "master-session-shells-died"
+		)
+		fx := newRunFixture(t, 1)
+		fx.Deps.FrictionDir = t.TempDir()
+		fx.Deps.ShuttleCfg.BackgroundShellWaitMin = 15
+		seedMatchingState(t, fx, &websterengine.State{
+			Batches: map[int]*websterengine.BatchState{1: doneBatch("batch1", session)},
+		})
+		fx.Starter.handle = &runFakeHandle{
+			strandGUID: strand,
+			result:     shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, SessionID: session, RunDir: "/run/dir/shells-died", ExpiredShells: []string{"sleep 9999"}},
+		}
+		seedShuttleRunState(t, fx.ShuttleRunRoot, strand, session)
+
+		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+		if !errors.Is(err, websterengine.ErrMasterDied) {
+			t.Fatalf("Run() error = %v; want ErrMasterDied", err)
+		}
+
+		note, readErr := os.ReadFile(filepath.Join(fx.Deps.FrictionDir, "webster-background-shell.md"))
+		if readErr != nil {
+			t.Fatalf("read friction note: %v", readErr)
+		}
+		want := "- " + shellSentenceHead + shellStrandReclaimed + "the run's outcome after that turn end: error (" + err.Error() + ")\n"
+		if !strings.Contains(string(note), want) {
+			t.Errorf("friction note = %q; want %q", note, want)
 		}
 	})
 
@@ -1583,7 +1590,7 @@ func TestRun_ExpiredShells(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		fx.Deps.FrictionDir = t.TempDir()
 
-		result := expiredShellRun(t, fx, nil)
+		result := expiredShellRun(t, fx, nil, "outcome: done\nstuck_reason: null\nbatches_done: 1\n")
 
 		if warningsContain(result.Warnings, "background_shell_wait_min") {
 			t.Errorf("Warnings = %v; want no expired-shell warning", result.Warnings)

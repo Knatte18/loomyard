@@ -3,6 +3,7 @@
 // reset_test.go covers the reset verb through its cobra.Command over one hubforge hub, each step on its own task pair.
 // Each success path checks the branch, the files and the mutation record; each refusal checks its way forward and that nothing moved.
 // WEFT_SKIP_GIT=1 is set for the whole scenario, so the closing fabric sync commits nothing and needs no records sibling beyond the pair's own.
+// The reset's remote update ignores SkipGit, so the remote-branch steps run it under that setting.
 
 package webstercli
 
@@ -11,6 +12,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -156,6 +158,7 @@ func TestResetCmd(t *testing.T) {
 	if !t.Run("start resets head and own dirt and keeps untracked", func(t *testing.T) {
 		fx := newResetFixture(t, h, "rst-start")
 		fx.saveState(t, startedAt(fx.base))
+		// The pair's task branch was never pushed, so the remote update is skipped and the record holds only worktree_reset.
 		if err := os.WriteFile(filepath.Join(fx.checkout, "own.txt"), []byte("dirty"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -189,6 +192,62 @@ func TestResetCmd(t *testing.T) {
 		}
 		if _, err := os.Stat(untracked); err != nil {
 			t.Errorf("untracked file removed by the reset: %v", err)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("start moves the remote task branch after the pair's commits were pushed", func(t *testing.T) {
+		fx := newResetFixture(t, h, "rst-remote")
+		fx.saveState(t, startedAt(fx.base))
+		gitkit.Git(t, fx.checkout, "push", "origin", "HEAD")
+
+		code, envelope := fx.reset(t, "--to", "start")
+		if code != 0 || envelope["ok"] != true {
+			t.Fatalf("reset --to start = %d, %v; want ok", code, envelope)
+		}
+		if got := fx.remoteTip(t); got != fx.base {
+			t.Errorf("remote task branch = %q; want the start commit %s", got, fx.base)
+		}
+		if got := mutationKinds(envelope["mutations"]); !slices.Equal(got, []string{string(fabricengine.KindRemoteBranchUpdated), string(fabricengine.KindWorktreeReset)}) {
+			t.Errorf("mutation kinds = %v; want remote_branch_updated then worktree_reset", got)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("a checkout rewrite failing after the remote moved is a partial envelope and a re-run converges", func(t *testing.T) {
+		fx := newResetFixture(t, h, "rst-partial")
+		fx.saveState(t, startedAt(fx.base))
+		gitkit.Git(t, fx.checkout, "push", "origin", "HEAD")
+		lock := gitkit.Git(t, fx.checkout, "rev-parse", "--path-format=absolute", "--git-path", "index.lock")
+		if err := os.WriteFile(lock, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		code, envelope := fx.reset(t, "--to", "start")
+		msg, _ := envelope["error"].(string)
+		if code == 0 || envelope["ok"] != false || envelope["partial"] != true {
+			t.Fatalf("reset --to start = %d, %v; want an error envelope with partial true", code, envelope)
+		}
+		if strings.HasPrefix(msg, "webster: reset --to start refused") || !strings.Contains(msg, "already updated") || !strings.Contains(msg, "re-run this reset") {
+			t.Errorf("error = %q; want the remote-already-moved message, not a refusal", msg)
+		}
+		if got := mutationKinds(envelope["mutations"]); !slices.Equal(got, []string{string(fabricengine.KindRemoteBranchUpdated)}) {
+			t.Errorf("mutation kinds = %v; want only remote_branch_updated", got)
+		}
+		if got := fx.remoteTip(t); got != fx.base {
+			t.Errorf("remote task branch = %q; want the start commit %s", got, fx.base)
+		}
+
+		if err := os.Remove(lock); err != nil {
+			t.Fatal(err)
+		}
+		if code, envelope := fx.reset(t, "--to", "start"); code != 0 || envelope["ok"] != true || envelope["partial"] != false {
+			t.Fatalf("re-run = %d, %v; want ok", code, envelope)
+		}
+		if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != fx.base {
+			t.Errorf("HEAD = %s; want %s", got, fx.base)
 		}
 	}) {
 		return
@@ -403,6 +462,17 @@ func TestResetCmd(t *testing.T) {
 			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"later.txt", "git checkout -- <path>", "re-run `lyx webster reset --to start`"}}},
 		},
 		{
+			name: "remote-only commit names the ours merge",
+			arrange: func(t *testing.T, fx *resetFixture) {
+				fx.saveState(t, startedAt(fx.base))
+				head := gitkit.RevParse(t, fx.checkout, "HEAD")
+				gitkit.CommitFile(t, fx.checkout, "remoteonly.txt", "x", "remote-only commit")
+				gitkit.Git(t, fx.checkout, "push", "origin", "HEAD")
+				gitkit.Git(t, fx.checkout, "reset", "--hard", head)
+			},
+			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"reset --to start refused", "remote-only commit", "git merge --strategy ours origin/"}}},
+		},
+		{
 			name: "standalone names git reset keep",
 			arrange: func(t *testing.T, fx *resetFixture) {
 				fx.saveState(t, startedAt(fx.base))
@@ -427,6 +497,28 @@ func TestResetCmd(t *testing.T) {
 			return
 		}
 	}
+}
+
+// remoteTip returns the SHA of the pair's task branch on the origin, or "" when it is absent.
+func (fx *resetFixture) remoteTip(t *testing.T) string {
+	t.Helper()
+	fields := strings.Fields(gitkit.Git(t, fx.checkout, "ls-remote", "origin", "refs/heads/"+fx.branch))
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
+// mutationKinds returns the kind of each entry of a decoded envelope's mutations.
+func mutationKinds(mutations any) []string {
+	var kinds []string
+	entries, _ := mutations.([]any)
+	for _, e := range entries {
+		entry, _ := e.(map[string]any)
+		kind, _ := entry["kind"].(string)
+		kinds = append(kinds, kind)
+	}
+	return kinds
 }
 
 // refusalAttempt is one reset invocation and the parts its refusal must carry.

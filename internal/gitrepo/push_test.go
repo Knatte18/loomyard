@@ -293,6 +293,87 @@ func TestPush(t *testing.T) {
 	}
 }
 
+// TestUpdateRemoteBranchLeased drives UpdateRemoteBranchLeased against one bare remote whose main holds two commits pushed from one clone.
+// A leased update naming the remote's current tip moves the branch backwards to the first commit.
+// A lease naming the stale second commit then fails with ErrLeaseRejected and leaves the remote branch where it was.
+// An invalid SHA returns ErrInvalidSHA before any git spawn, which the not-a-repository clone path would otherwise surface as a different error.
+// A pre-receive hook that exits non-zero rejects a correctly leased update with an error that is not ErrLeaseRejected, so a moved remote and a refusing one stay distinguishable.
+// The steps run serially in that order and share the remote; the hook step is last because the hook stays installed.
+// The top-level test calls t.Parallel; no step does, because the steps share the fixture.
+func TestUpdateRemoteBranchLeased(t *testing.T) {
+	t.Parallel()
+
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+	clonePath, repo := newRepoWithRemote(t, container, "clone", bareRemote)
+
+	writeFile(t, clonePath, "a.txt", "one")
+	commitAll(t, clonePath, "commit one")
+	firstSHA := requireCurrentSHA(t, repo)
+	if err := repo.Push(); err != nil {
+		t.Fatalf("Push() (first commit) error = %v; want nil", err)
+	}
+	writeFile(t, clonePath, "a.txt", "two")
+	commitAll(t, clonePath, "commit two")
+	secondSHA := requireCurrentSHA(t, repo)
+	if err := repo.Push(); err != nil {
+		t.Fatalf("Push() (second commit) error = %v; want nil", err)
+	}
+
+	steps := []struct {
+		name string
+		run  func(t *testing.T)
+	}{
+		{"a lease at the remote's tip moves the branch backwards", func(t *testing.T) {
+			if err := repo.UpdateRemoteBranchLeased("origin", "main", firstSHA, secondSHA); err != nil {
+				t.Fatalf("UpdateRemoteBranchLeased(main, %s, lease %s) error = %v; want nil", firstSHA, secondSHA, err)
+			}
+			if got := remoteBranchSHA(t, bareRemote, "main"); got != firstSHA {
+				t.Errorf("bare remote main = %q; want %q", got, firstSHA)
+			}
+		}},
+		{"a stale lease returns ErrLeaseRejected and leaves the branch", func(t *testing.T) {
+			err := repo.UpdateRemoteBranchLeased("origin", "main", secondSHA, secondSHA)
+			if !errors.Is(err, gitrepo.ErrLeaseRejected) {
+				t.Fatalf("UpdateRemoteBranchLeased() with a stale lease error = %v; want errors.Is(err, ErrLeaseRejected)", err)
+			}
+			if got := remoteBranchSHA(t, bareRemote, "main"); got != firstSHA {
+				t.Errorf("bare remote main after a rejected lease = %q; want unchanged %q", got, firstSHA)
+			}
+		}},
+		{"an invalid SHA returns ErrInvalidSHA", func(t *testing.T) {
+			for _, args := range [][2]string{{"not-a-sha", firstSHA}, {firstSHA, "not-a-sha"}} {
+				err := repo.UpdateRemoteBranchLeased("origin", "main", args[0], args[1])
+				if !errors.Is(err, gitrepo.ErrInvalidSHA) {
+					t.Errorf("UpdateRemoteBranchLeased(%q, lease %q) error = %v; want ErrInvalidSHA", args[0], args[1], err)
+				}
+			}
+		}},
+		{"a hook rejection is not a lease loss", func(t *testing.T) {
+			hook := filepath.Join(bareRemote, "hooks", "pre-receive")
+			if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+				t.Fatalf("write pre-receive hook: %v", err)
+			}
+
+			err := repo.UpdateRemoteBranchLeased("origin", "main", secondSHA, firstSHA)
+			if err == nil {
+				t.Fatal("UpdateRemoteBranchLeased() against a rejecting hook error = nil; want an error")
+			}
+			if errors.Is(err, gitrepo.ErrLeaseRejected) {
+				t.Errorf("UpdateRemoteBranchLeased() hook rejection error = %v; want it not to satisfy ErrLeaseRejected", err)
+			}
+			if got := remoteBranchSHA(t, bareRemote, "main"); got != firstSHA {
+				t.Errorf("bare remote main after a hook rejection = %q; want unchanged %q", got, firstSHA)
+			}
+		}},
+	}
+	for _, step := range steps {
+		if !t.Run(step.name, step.run) {
+			return
+		}
+	}
+}
+
 // TestPush_NoRemoteConfigured_SurfacesGitError covers a repo with zero remotes configured at all (not merely no upstream tracking branch — no "origin" either).
 // Push and PushCoalesced must not swallow this into a synthetic message: the wrapped error must still carry git's own stderr, matching Push's documented "any other push failure returns an error including git's stderr" contract.
 // PushCoalesced reaches the same path because HasUnpushed treats the missing upstream as "unpushed" regardless of the missing remote, so it proceeds to the same pushWithRebaseRetry and the lock machinery must not mask the error.
