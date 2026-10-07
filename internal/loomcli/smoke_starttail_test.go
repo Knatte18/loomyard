@@ -34,13 +34,13 @@ func reedAttachedClients(t *testing.T, tmuxPath string, eng *reedengine.Engine) 
 	return strings.Fields(string(out))
 }
 
-// TestSmokeStart_AttachTailAddsNoOperatorStrand pins that `lyx loom start` exits 0 with an ok envelope and attaches no client, with or without --no-attach and with or without $TMUX naming reed's own server,
+// TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand pins that `lyx loom start` exits 0 with an ok envelope and attaches no client, with or without --no-attach and with or without $TMUX naming reed's own server,
 // and that it leaves no strand named "loom-operator" and no status strand:
 // the fixture is unseeded, so resolveSeedDriver seeds it llm,
 // and an llm-driven start carries no status strand.
 // The literal is spelled inline as a guard against the removed operator strand coming back: Selvage is the operator's terminal, not a strand.
 // The smoke run has no TTY, so a start that still attached would exit non-zero.
-func TestSmokeStart_AttachTailAddsNoOperatorStrand(t *testing.T) {
+func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	exe := sharedLyxBinary(t)
 
