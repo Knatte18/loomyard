@@ -98,7 +98,7 @@
 // pass instead of stopping at the first one. ParsePlan fails loud only on
 // document-structure errors — a missing or undecodable overview file, an unparseable
 // Card Index line, a missing card file, an unparseable card heading, or an inline
-// value where a field admits only a bullet list. The plan format's 28 validation
+// value where a field admits only a bullet list. The plan format's validation
 // checks (card type presence, card-custom-not-alone, path malformation, the bare
 // package-qualified symbol, directory-target and glyph-malformed hard rules, the
 // Rename pair grammar, the plan: handle consistency checks, on-disk existence,

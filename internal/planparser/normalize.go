@@ -141,7 +141,7 @@ func hasFileExtension(raw string) bool {
 // fires on a ref that CONTAINS a "/" (validate.go), so exempting the slash-free case from the
 // extension requirement costs that check nothing while removing the one ref class the classifier
 // admits and every glyph-backed layer downstream then chokes on: left as the bare token "LICENSE",
-// such a ref validates 100% clean through all twenty-eight pure checks and is then handed verbatim
+// such a ref validates 100% clean through every pure check and is then handed verbatim
 // to quarry, which rejects it BEFORE resolution ("a glyph needs a \"#\"") — so
 // internal/planglyph's DoneChecks read the rejection as "not resolved" and reported a permanent,
 // unrecoverable create-not-done against a card that had in fact created the file, while

@@ -1079,25 +1079,6 @@ func TestRun_MasterSpawn(t *testing.T) {
 				}
 			},
 		},
-		{
-			// Card 1 Uses card 2's own Create target, so batch 2 must run before batch 1 and the
-			// rendered Master prompt's batch index lists 02 above 01. The path is deliberately NOT
-			// also seeded under the worktree: a Create target's own self-glyph would then resolve
-			// found and trip the blocking create-already-exists finding.
-			name:  "sequencing reorders the batches the prompt lists",
-			cards: 2,
-			prepare: func(t *testing.T, fx *runFixture) {
-				addCardUses(t, fx.PlanDir, 1, "internal/batch2/new.go")
-			},
-			check: func(t *testing.T, fx *runFixture) {
-				prompt := fx.Starter.startCalls[0].Prompt
-				idx02 := strings.Index(prompt, "02 — batch2")
-				idx01 := strings.Index(prompt, "01 — batch1")
-				if idx02 == -1 || idx01 == -1 || idx02 >= idx01 {
-					t.Errorf("rendered Master prompt does not list batch 02 above batch 01: idx02=%d idx01=%d\n%s", idx02, idx01, prompt)
-				}
-			},
-		},
 	}
 
 	for _, tc := range cases {
@@ -1444,38 +1425,6 @@ func TestRun_DoneOutcome(t *testing.T) {
 				}
 				if _, err := os.Stat(filepath.Join(fx.Deps.Geom.PromptsDir, "integration.md")); err == nil {
 					t.Errorf("integration.md exists; Run renders no integration prompt")
-				}
-			},
-		},
-		{
-			// Card 1 Uses card 2's target and card 2 Uses card 1's: a mutual dependency
-			// SequenceBatches condenses into one cycle, reported but never fatal. Neither path is
-			// seeded under the worktree, or the blocking create-already-exists finding would fire.
-			name:    "a dependency cycle is reported as a warning and never fails the run",
-			cards:   2,
-			session: "master-session-cycle",
-			prepare: func(t *testing.T, fx *runFixture) {
-				addCardUses(t, fx.PlanDir, 1, "internal/batch2/new.go")
-				addCardUses(t, fx.PlanDir, 2, "internal/batch1/new.go")
-			},
-			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
-				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
-				2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done"},
-			}},
-			audit:       func(*runFixture) shuttleengine.ForkAudit { return shuttleengine.ForkAudit{Forks: forkReports(2)} },
-			batchesDone: 2,
-			check: func(t *testing.T, fx *runFixture, result websterengine.RunResult) {
-				if result.Outcome != "done" {
-					t.Errorf("RunResult.Outcome = %q; want %q (a cycle is never fatal)", result.Outcome, "done")
-				}
-				if len(result.Cycles) != 1 {
-					t.Fatalf("RunResult.Cycles = %v; want exactly 1 cycle", result.Cycles)
-				}
-				if got := result.Cycles[0].Batches; len(got) != 2 || got[0] != 1 || got[1] != 2 {
-					t.Errorf("RunResult.Cycles[0].Batches = %v; want [1 2]", got)
-				}
-				if wantWarning := result.Cycles[0].Warning(); !slices.Contains(result.Warnings, wantWarning) {
-					t.Errorf("RunResult.Warnings = %v; want the cycle's own Warning() line %q", result.Warnings, wantWarning)
 				}
 			},
 		},

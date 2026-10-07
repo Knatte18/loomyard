@@ -146,6 +146,32 @@ func onlyCreatePlan(language, target string) plankit.Plan {
 	}
 }
 
+// twoCardUsesPlan returns a two-card plan in which the "consumer" card Uses the file the "producer" card Creates;
+// consumerNumber and producerNumber place the two cards, so the plan is in executable order only when the producer's number is lower.
+func twoCardUsesPlan(consumerNumber, producerNumber int) plankit.Plan {
+	cards := []plankit.Card{
+		{
+			Number:  consumerNumber,
+			Slug:    "consumer",
+			Summary: "reads the producer's file",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/consumer/new.go"}}},
+			Uses:    []string{"internal/producer/new.go"},
+			Intent:  "placeholder card.",
+		},
+		{
+			Number:  producerNumber,
+			Slug:    "producer",
+			Summary: "creates the file",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/producer/new.go"}}},
+			Intent:  "placeholder card.",
+		},
+	}
+	if consumerNumber > producerNumber {
+		cards[0], cards[1] = cards[1], cards[0]
+	}
+	return plankit.Plan{Approved: true, Framing: "Framing.", Cards: cards}
+}
+
 // seedValidPlanDir writes a valid plan with one card into dir.
 func seedValidPlanDir(t *testing.T, dir string) {
 	t.Helper()
@@ -204,6 +230,18 @@ func TestValidateCmd_Envelopes(t *testing.T) {
 			},
 			wantExit: 1,
 			wantIn:   []string{`"ok":false`, `"check":"glyph-not-found"`, `"severity":"blocking"`},
+		},
+		{
+			name:     "a Uses naming a later card's target is refused under the consumer card",
+			seed:     func(t *testing.T, c *websterCLI) { plankit.Write(t, c.geom.PlanDir, twoCardUsesPlan(1, 2)) },
+			wantExit: 1,
+			wantIn:   []string{`"ok":false`, `"check":"uses-later-target"`, `"card":"1-consumer"`, "card 2 targets"},
+		},
+		{
+			name:     "the same Uses after the card that produces its target passes",
+			seed:     func(t *testing.T, c *websterCLI) { plankit.Write(t, c.geom.PlanDir, twoCardUsesPlan(2, 1)) },
+			wantExit: 0,
+			wantIn:   []string{`"valid":true`, `"cards":2`},
 		},
 		{
 			name: "unopenable worktree root names quarry",

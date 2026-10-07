@@ -335,18 +335,24 @@ func fileSHA(t *testing.T, path string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// handlePlan is a three-card plan whose card 2 declares a draft handle that card 1 Uses, so canonicalizing card 2's handle rewrites card 1 as well.
-func handlePlan(draft bool) plankit.Plan {
+// handlePlan is a three-card plan whose card 2 declares a handle; with cardOneUsesHandle, card 1 Uses it in the given spelling,
+// so canonicalizing card 2's draft handle rewrites card 1 as well.
+// Card 1 comes first in a plan that passes the format checks, so the Uses edge is added only after batch 1 was begun, as a mid-run plan edit.
+func handlePlan(draft, cardOneUsesHandle bool) plankit.Plan {
 	spelling := "Baz"
 	if draft {
 		spelling = "Bazz"
+	}
+	var cardOneUses []string
+	if cardOneUsesHandle {
+		cardOneUses = []string{"plan:internal/foo#" + spelling}
 	}
 	base := []plankit.Group{{Label: "Prosa", Targets: []string{"base.txt"}}}
 	return plankit.Plan{
 		Approved: true,
 		Language: "go",
 		Cards: []plankit.Card{
-			{Number: 1, Slug: "json-flag", Summary: "uses a handle card 2 declares", Groups: base, Uses: []string{"plan:internal/foo#" + spelling}, Intent: "placeholder card."},
+			{Number: 1, Slug: "json-flag", Summary: "uses a handle card 2 declares", Groups: base, Uses: cardOneUses, Intent: "placeholder card."},
 			{
 				Number:  2,
 				Slug:    "list-tests",
@@ -354,7 +360,7 @@ func handlePlan(draft bool) plankit.Plan {
 				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"plan:internal/foo#" + spelling + "` -> `func Baz()"}}},
 				Intent:  "declare the handle.",
 			},
-			{Number: 3, Slug: "third", Summary: "an unbegun card", Groups: base, Intent: "placeholder card."},
+			{Number: 3, Slug: "third", Summary: "an unbegun card that keeps the handle referenced", Groups: base, Uses: []string{"plan:internal/foo#" + spelling}, Intent: "placeholder card."},
 		},
 	}
 }
@@ -365,7 +371,7 @@ func beginThenLeaveHandleDraft(t *testing.T) *beginFixture {
 	t.Helper()
 	fx := newBeginFixture(t)
 	writePlan := func(p plankit.Plan) { plankit.Write(t, fx.PlanDir, p) }
-	writePlan(handlePlan(false))
+	writePlan(handlePlan(false, false))
 	plan, err := planparser.ParsePlan(fx.PlanDir)
 	if err != nil {
 		t.Fatalf("ParsePlan: %v", err)
@@ -375,7 +381,7 @@ func beginThenLeaveHandleDraft(t *testing.T) *beginFixture {
 	fx.Deps.State.PlanFingerprint = mustFingerprint(t, fx.PlanDir)
 	beginAndFinishBatchOne(t, fx)
 
-	writePlan(handlePlan(true))
+	writePlan(handlePlan(true, true))
 	if fx.Deps.Plan, err = planparser.ParsePlan(fx.PlanDir); err != nil {
 		t.Fatalf("ParsePlan: %v", err)
 	}
