@@ -204,11 +204,7 @@ type RunResult struct {
 	Cycles []Cycle
 }
 
-// hasBlockingFinding reports whether findings carries at least one planindex.SeverityBlocking
-// entry, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding and
-// internal/loomcli/validate.go's own planFindingsHaveBlocking: severity, not finding count, decides
-// the verdict on every side of this parity, and Run's own pre-flight gate is the real gate the
-// other three mirror.
+// hasBlockingFinding reports whether findings carries at least one planindex.SeverityBlocking entry, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding and internal/loomcli/validate.go's own planFindingsHaveBlocking: severity, not finding count, decides the verdict on every side of this parity, and Run's own pre-flight gate is the real gate the other three mirror.
 func hasBlockingFinding(findings []planindex.Finding) bool {
 	for _, f := range findings {
 		if f.Severity == planindex.SeverityBlocking {

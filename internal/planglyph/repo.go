@@ -1,6 +1,5 @@
 // repo.go is planglyph's one call site for quarry.Open and every quarry.Repo query method (TOC,
-// Glyphs, Resolve, Expand) — the package's entry points into quarry.Repo — and aliases the finding
-// types planindex declares.
+// Glyphs, Resolve, Expand) — the package's entry points into quarry.Repo — and aliases the finding types planindex declares.
 //
 // Beside openRepo and resolveTargets, this file exports four query wrappers — TOC, Glyphs,
 // Resolve and Expand — each taking worktreeRoot plus that verb's own argument, opening the
@@ -17,8 +16,7 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// ErrQuarryUnavailable is planindex's error of the same name: quarry failing to answer at all,
-// distinct from any per-target verdict, matched with errors.Is under either name.
+// ErrQuarryUnavailable is planindex's error of the same name: quarry failing to answer at all, distinct from any per-target verdict, matched with errors.Is under either name.
 var ErrQuarryUnavailable = planindex.ErrQuarryUnavailable
 
 // Severity is planindex's closed vocabulary a Finding's own Severity is drawn from.

@@ -71,11 +71,7 @@ func cardNumberOf(name string) string {
 	return num
 }
 
-// ErrPlanDrifted is the sentinel BeginBatch returns when the dispatch-boundary re-resolution
-// (planindex.Index.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards
-// excluded) reports a non-empty blocking
-// findings set — webster's own sentinel, per the webster-owns-its-own-domain-types decision, so a
-// caller distinguishes this refusal from ErrPaused and ErrFingerprintMismatch via errors.Is.
+// ErrPlanDrifted is the sentinel BeginBatch returns when the dispatch-boundary re-resolution (planindex.Index.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards excluded) reports a non-empty blocking findings set — webster's own sentinel, per the webster-owns-its-own-domain-types decision, so a caller distinguishes this refusal from ErrPaused and ErrFingerprintMismatch via errors.Is.
 // Dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
 var ErrPlanDrifted = errors.New("webster: plan re-resolution at begin-batch reported a blocking finding")
 
@@ -112,10 +108,7 @@ type BeginResult struct {
 	// or — on a re-begin over a record that already carries one — that earlier value,
 	// so it stays the HEAD from before the batch's first fork.
 	StartSHA string
-	// Advisories is every informational finding the dispatch-boundary re-resolution
-	// (planindex.Index.ValidateDispatch) reported, rendered via Finding.Error, so an operator sees them
-	// without the run stopping — a non-empty blocking findings set never reaches this far, since it
-	// returns ErrPlanDrifted instead.
+	// Advisories is every informational finding the dispatch-boundary re-resolution (planindex.Index.ValidateDispatch) reported, rendered via Finding.Error, so an operator sees them without the run stopping — a non-empty blocking findings set never reaches this far, since it returns ErrPlanDrifted instead.
 	Advisories []string
 	// ArchivedReport is the path a report left with no begin-batch record was archived to, empty when there was none.
 	ArchivedReport string

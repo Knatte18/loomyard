@@ -9,20 +9,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// ErrQuarryUnavailable marks quarry failing to answer at all — a non-nil error from quarry.Open or
-// (*quarry.Repo).Resolve, and a quarry.Name answer whose length does not match the declarations it
-// was given, which is the same class of failure seen through a batched boundary: a
-// category distinct from any per-target verdict, so a caller distinguishes it with errors.Is
-// rather than by string matching. quarry's own contract draws exactly this line — the failure
-// envelope's own presence marks that quarry could not answer at all, never that the answer is
-// negative — and conflating the two would let a transport failure read as a clean not_found,
-// which is, under the Create inversion, a pass: a quarry outage would
-// silently mark every Create card done.
+// ErrQuarryUnavailable marks quarry failing to answer at all — a non-nil error from quarry.Open or (*quarry.Repo).Resolve, and a quarry.Name answer whose length does not match the declarations it was given, which is the same class of failure seen through a batched boundary: a category distinct from any per-target verdict, so a caller distinguishes it with errors.Is rather than by string matching.
+// quarry's own contract draws exactly this line — the failure envelope's own presence marks that quarry could not answer at all, never that the answer is negative — and conflating the two would let a transport failure read as a clean not_found, which is, under the Create inversion, a pass: a quarry outage would silently mark every Create card done.
 //
-// Rejected, and worth stating so it is not reintroduced: degrading to format-only validation with
-// a warning is the exact failure mode where a plan looks validated and was not; and making the
-// error informational everywhere makes the outage invisible at precisely the boundaries whose
-// whole job is to be mechanical.
+// Rejected, and worth stating so it is not reintroduced: degrading to format-only validation with a warning is the exact failure mode where a plan looks validated and was not; and making the error informational everywhere makes the outage invisible at precisely the boundaries whose whole job is to be mechanical.
 var ErrQuarryUnavailable = errors.New("planglyph: quarry could not answer")
 
 // Severity is the closed vocabulary a Finding's own Severity is drawn from.
@@ -35,9 +25,7 @@ const (
 	SeverityInformational Severity = "informational"
 )
 
-// Finding is the plan gates' own finding type: the same Check, Card and Detail fields
-// planparser.ValidationError carries, plus a Severity every converted planparser finding is
-// stamped with.
+// Finding is the plan gates' own finding type: the same Check, Card and Detail fields planparser.ValidationError carries, plus a Severity every converted planparser finding is stamped with.
 // Ref is the raw plan ref a per-ref finding reports, empty for a finding that is not about one ref.
 type Finding struct {
 	Check    string
@@ -47,10 +35,7 @@ type Finding struct {
 	Ref      string
 }
 
-// Error implements the error interface, formatted as "check[/card]: detail", exactly as
-// planparser.ValidationError.Error does, plus its own Severity — so a caller rendering a mixed
-// []Finding set can distinguish an informational create-new-unit from a blocking
-// glyph-not-found in the one string that record exists.
+// Error implements the error interface, formatted as "check[/card]: detail", exactly as planparser.ValidationError.Error does, plus its own Severity — so a caller rendering a mixed []Finding set can distinguish an informational create-new-unit from a blocking glyph-not-found in the one string that record exists.
 func (f Finding) Error() string {
 	if f.Card == "" {
 		return fmt.Sprintf("%s[%s]: %s", f.Check, f.Severity, f.Detail)
