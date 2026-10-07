@@ -352,7 +352,7 @@
 // are fabric-committed per batch, so nothing already recorded is ever lost.
 // One crash window needs a distinct resume move: a crash landing between a
 // fork's report and record-batch leaves the re-driven batch with a report
-// already on disk, which begin-batch refuses to overwrite — the resumed
+// already on disk, which begin-batch refuses to overwrite when state.json records the batch — the resumed
 // Master consumes it with record-batch instead (its fork audit keys on the
 // bracket-opening session recorded in the batch state, never the current
 // Master session, so the crashed session's fork transcript — still on
@@ -365,6 +365,8 @@
 // a different machine sees the report with no transcript behind it, which
 // record-batch treats exactly as it treats a forged report:
 // it archives the report and returns a *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
+// A report with no begin-batch record is archived by begin-batch itself, which proceeds and returns the archive path as BeginResult.ArchivedReport;
+// only a batch with no record is archived this way, and a recorded batch's report is never archived by begin-batch.
 //
 // # The verify-gate fixer fork
 //

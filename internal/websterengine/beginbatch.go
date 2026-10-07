@@ -125,6 +125,8 @@ type BeginResult struct {
 	// without the run stopping — a non-empty blocking findings set never reaches this far, since it
 	// returns ErrPlanDrifted instead.
 	Advisories []string
+	// ArchivedReport is the path a report left with no begin-batch record was archived to, empty when there was none.
+	ArchivedReport string
 }
 
 // completedCards returns every card belonging to a batch that has already reached a terminal
@@ -330,7 +332,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.Geom.ReportsDir, err)
 	}
 
-	// webster's own pre-existing-report refusal, applied to the fork path: a
+	// webster's own pre-existing-report guard, applied to the fork path: a
 	// batch whose report already landed is finished work — silently
 	// overwriting its BatchState (and letting a fresh fork overwrite the
 	// report) must never happen by accident. A no_report re-fork never
@@ -340,9 +342,26 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// disk — that report is consumed by record-batch (the audit keys on
 	// the bracket-opening session, see RecordBatch), so the refusal
 	// message names that recourse alongside the stuck-batch one.
+	// Bound: only a batch with no record in state.json has its report archived and the
+	// begin proceeds, since such a report cannot be attributed to any begun batch and
+	// record-batch would only archive it and send the caller back here;
+	// a recorded batch's report is never archived by begin-batch.
 	existingReport := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
+	var archivedReport string
 	if _, statErr := os.Stat(existingReport); statErr == nil {
-		return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s — begin-batch never overwrites finished work; a report left behind by a crashed session is consumed by `lyx webster record-batch %d` (or `lyx webster recover-batch %d` for a recovery batch), and a stuck batch escalates via `lyx webster recover-batch %d` (which archives the report)", number, slug, existingReport, number, number, number)
+		recorded := deps.State.Batches[number]
+		if recorded == nil {
+			archivedReport, err = archiveStaleReport(deps.Geom.ReportsDir, number, slug, time.Now)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			seen := "begun and not terminal"
+			if recorded.Terminal {
+				seen = "terminal with status " + recorded.Status
+			}
+			return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s and state.json records the batch as %s — begin-batch never overwrites finished work; a report left behind by a crashed session is consumed by `lyx webster record-batch %d` (or `lyx webster recover-batch %d` for a recovery batch), and a stuck batch escalates via `lyx webster recover-batch %d` (which archives the report)", number, slug, existingReport, seen, number, number, number)
+		}
 	} else if !os.IsNotExist(statErr) {
 		return nil, fmt.Errorf("webster: stat batch report %s: %w", existingReport, statErr)
 	}
@@ -433,9 +452,10 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	deps.State.CurrentBatch = number
 
 	return &BeginResult{
-		BatchName:  batchName,
-		PromptPath: promptPath,
-		StartSHA:   startSHA,
-		Advisories: advisories,
+		BatchName:      batchName,
+		PromptPath:     promptPath,
+		StartSHA:       startSHA,
+		Advisories:     advisories,
+		ArchivedReport: archivedReport,
 	}, nil
 }

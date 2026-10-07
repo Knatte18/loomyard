@@ -248,6 +248,68 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	}
 }
 
+// TestBeginBatchCmd_ReportOnDisk proves begin-batch archives a report that has no begin-batch record
+// and names the archive as archived_report, while a report over a recorded batch is refused with the record's state named.
+func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
+	tests := []struct {
+		name         string
+		record       *websterengine.BatchState
+		wantExit     int
+		wantText     []string
+		wantArchived bool
+	}{
+		{name: "no begin-batch record is archived", wantExit: 0, wantText: []string{`"archived_report"`, `"batch":"01-only"`}, wantArchived: true},
+		{
+			name:     "a begun non-terminal record is refused",
+			record:   &websterengine.BatchState{Slug: "only", Kind: "fork"},
+			wantExit: 1,
+			wantText: []string{"begun and not terminal", "record-batch 1"},
+		},
+		{
+			name:     "a terminal record is refused",
+			record:   &websterengine.BatchState{Slug: "only", Kind: "fork", Terminal: true, Status: "done"},
+			wantExit: 1,
+			wantText: []string{"terminal with status done", "recover-batch 1"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("WEFT_SKIP_GIT", "1")
+			fx := newVerbsFixture(t)
+			st := fx.initState(t)
+			if tt.record != nil {
+				st.Batches[1] = tt.record
+				if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+					t.Fatalf("SaveState() error = %v", err)
+				}
+			}
+			if err := os.MkdirAll(fx.CLI.geom.ReportsDir, 0o755); err != nil {
+				t.Fatalf("mkdir reports dir: %v", err)
+			}
+			reportPath := filepath.Join(fx.CLI.geom.ReportsDir, websterengine.ReportFileName(1, "only"))
+			if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
+				t.Fatalf("seed report: %v", err)
+			}
+
+			var out strings.Builder
+			exitCode := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"})
+
+			if exitCode != tt.wantExit {
+				t.Fatalf("begin-batch 1 = %d; want %d, output: %s", exitCode, tt.wantExit, out.String())
+			}
+			for _, want := range tt.wantText {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("output missing %q; got %q", want, out.String())
+				}
+			}
+			_, statErr := os.Stat(reportPath)
+			if tt.wantArchived != os.IsNotExist(statErr) {
+				t.Errorf("stat(report) = %v; want the report moved away = %v", statErr, tt.wantArchived)
+			}
+		})
+	}
+}
+
 // TestBeginBatchCmd_DeleteTargetAlreadyGone proves begin-batch dispatches a card whose Delete target an earlier recorded batch already removed, and names the target as already deleted in the envelope's advisories.
 func TestBeginBatchCmd_DeleteTargetAlreadyGone(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")

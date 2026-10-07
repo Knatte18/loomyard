@@ -162,8 +162,8 @@ func newBeginFixture(t *testing.T) *beginFixture {
 }
 
 // TestBeginBatch_Refusals proves each entry refusal names its way forward: a pause, a plan edited
-// after run init, a report already on disk for a terminal record (left untouched) and one with no
-// record (left for record-batch).
+// after run init, and a report already on disk for a terminal record (left untouched) or for a begun
+// non-terminal record (left for record-batch), each message naming the record it saw.
 func TestBeginBatch_Refusals(t *testing.T) {
 	t.Parallel()
 
@@ -211,7 +211,7 @@ func TestBeginBatch_Refusals(t *testing.T) {
 					1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "done"},
 				}
 			},
-			wantText:    []string{"recover-batch"},
+			wantText:    []string{"recover-batch", "terminal with status done"},
 			wantNotText: []string{"--restart-chain"},
 			check: func(t *testing.T, fx *beginFixture) {
 				if bs := fx.Deps.State.Batches[1]; !bs.Terminal || bs.Status != "done" {
@@ -220,9 +220,14 @@ func TestBeginBatch_Refusals(t *testing.T) {
 			},
 		},
 		{
-			name:     "a report with no record names record-batch and stays for it",
-			prepare:  func(t *testing.T, fx *beginFixture) { seedReport(t, fx) },
-			wantText: []string{"`lyx webster record-batch 1`"},
+			name: "a report over a begun non-terminal record names record-batch and stays for it",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				seedReport(t, fx)
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+					1: {Slug: "json-flag", Kind: "fork"},
+				}
+			},
+			wantText: []string{"`lyx webster record-batch 1`", "begun and not terminal"},
 			check: func(t *testing.T, fx *beginFixture) {
 				reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
 				if _, statErr := os.Stat(reportPath); statErr != nil {
@@ -378,7 +383,9 @@ func TestBeginBatch_Record(t *testing.T) {
 		prepare func(t *testing.T, fx *beginFixture)
 		// wantStart returns the StartSHA the record and result must carry.
 		wantStart func(fx *beginFixture) string
-		check     func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState)
+		// wantArchived is whether the result must name an archived report under the reports dir.
+		wantArchived bool
+		check        func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState)
 	}{
 		{
 			name: "a first begin records a fresh fork batch and creates the reports dir",
@@ -445,6 +452,27 @@ func TestBeginBatch_Record(t *testing.T) {
 			},
 			wantStart: func(*beginFixture) string { return recordedStart },
 		},
+		{
+			name: "a report with no begin-batch record is archived and the begin proceeds",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
+				if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
+					t.Fatalf("seed report: %v", err)
+				}
+			},
+			wantStart: func(fx *beginFixture) string { return fx.Git.head },
+			check: func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState) {
+				reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
+				if _, err := os.Stat(reportPath); !os.IsNotExist(err) {
+					t.Errorf("stat(report) = %v; want the report renamed away", err)
+				}
+				archived, err := filepath.Glob(filepath.Join(fx.Deps.Geom.ReportsDir, "01-json-flag-*.yaml"))
+				if err != nil || len(archived) != 1 {
+					t.Fatalf("archived reports = %v, %v; want exactly one archive under the reports dir", archived, err)
+				}
+			},
+			wantArchived: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -471,6 +499,12 @@ func TestBeginBatch_Record(t *testing.T) {
 			}
 			if want := []string{"01-json-flag"}; !slices.Equal(bs.Cards, want) {
 				t.Errorf("Batches[1].Cards = %v; want %v", bs.Cards, want)
+			}
+			if gotArchived := result.ArchivedReport != ""; gotArchived != tt.wantArchived {
+				t.Errorf("ArchivedReport = %q; want non-empty = %v", result.ArchivedReport, tt.wantArchived)
+			}
+			if tt.wantArchived && filepath.Dir(result.ArchivedReport) != fx.Deps.Geom.ReportsDir {
+				t.Errorf("ArchivedReport = %q; want a path under %q", result.ArchivedReport, fx.Deps.Geom.ReportsDir)
 			}
 			if tt.check != nil {
 				tt.check(t, fx, bs)
