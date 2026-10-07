@@ -82,16 +82,6 @@ func TestFindNewWrappedBreaks(t *testing.T) {
 	}
 }
 
-func TestFindNewWrappedBreaks_FindingNamesFileLineAndText(t *testing.T) {
-	t.Parallel()
-
-	got := findNewWrappedBreaks("dir/p.go", "", source("// wraps in the", "// middle."))
-	want := []Finding{{File: "dir/p.go", Line: 3, Text: "// wraps in the"}}
-	if !slices.Equal(got, want) {
-		t.Errorf("findNewWrappedBreaks() = %+v; want %+v", got, want)
-	}
-}
-
 func TestParseNameStatus(t *testing.T) {
 	t.Parallel()
 

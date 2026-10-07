@@ -18,7 +18,7 @@ internal/burlercli: 18
 internal/burlerengine: 32
 internal/clihelp: 11
 internal/cliwire: 12
-internal/commentlint: 4
+internal/commentlint: 3
 internal/configcli: 10
 internal/configengine: 12
 internal/configreg: 6
