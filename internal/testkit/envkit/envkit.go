@@ -191,6 +191,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			ChildRunLockHeld: func() (bool, error) { return false, nil },
 			ReviveStrands:    func(context.Context) error { return nil },
 			PauseRequested:   func() (bool, error) { return false, nil },
+			MarkWatched:      func(context.Context) (bool, error) { return false, nil },
 		},
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },
@@ -208,6 +209,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			WriteSeed:     func(context.Context, string, string) error { return nil },
 			CommitSeed:    func(context.Context) error { return nil },
 			PushSeed:      func(context.Context) error { return nil },
+			MarkWatched:   func(context.Context) (bool, error) { return false, nil },
 		},
 	}
 }

@@ -19,12 +19,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -366,6 +368,54 @@ func childSeedFor(recipe, driver string, params map[string]string) shedrun.Seed 
 	return shedrun.Seed{Recipe: recipe, Driver: driver, Params: params}
 }
 
+// noticesReachDriversParent reports whether this batten's notices have a destination that is also the task worktree driver's parent:
+// the pair's parent worktree is the prime batten runs in, and the prime's orch state records a strand.
+// A pair created from another worktree, or with no resolvable parent, has a different parent to message.
+func noticesReachDriversParent(prime, taskLocation *lyxcwd.Location) (bool, error) {
+	parent, err := hubgeom.ResolveParent(taskLocation)
+	if err != nil {
+		return false, err
+	}
+	if parent.Worktree != prime.WorktreeName {
+		return false, nil
+	}
+	orch, err := orchengine.LoadState(orchcli.PrimePaths(prime))
+	if err != nil {
+		return false, err
+	}
+	return orch.Strand != "", nil
+}
+
+// markBattenWatched writes the batten-watched marker of the task worktree's run, holding this process's pid, while noticesReachDriversParent holds, and removes it otherwise.
+// The write is atomic, so the driver's render never reads a torn pid, and an absent marker is fine to remove.
+// An absent task worktree is an error.
+// It reports whether the marker is held.
+func markBattenWatched(prime *lyxcwd.Location, slug string) (bool, error) {
+	taskLocation, err := taskWorktreeLocation(prime, slug)
+	if err != nil {
+		return false, err
+	}
+	marker := shedrun.BattenWatchedMarker(taskLocation, shedrun.SelfRunID)
+	watched, err := noticesReachDriversParent(prime, taskLocation)
+	if err != nil {
+		return false, err
+	}
+	if !watched {
+		if err := os.Remove(marker); err != nil && !os.IsNotExist(err) {
+			return false, err
+		}
+		return false, nil
+	}
+	content := []byte(strconv.Itoa(os.Getpid()) + "\n")
+	if existing, err := os.ReadFile(marker); err == nil && bytes.Equal(existing, content) {
+		return true, nil
+	}
+	if err := fsx.AtomicWriteBytes(marker, content); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // wire builds and stores the shedrecipe.Env and shedbuild.ShedPaths the run and status verbs
 // need, over the resolved prime location and slug.
 func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
@@ -393,6 +443,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			return fl.Release, true, nil
 		},
 	}
+
+	// One closure keeps the marker for both rows that ask: Seed-Child once the seed is committed, and Run-Shed through the whole watch.
+	markWatched := func(ctx context.Context) (bool, error) { return markBattenWatched(location, slug) }
 
 	env := shedrecipe.Env{
 		Slug:       slug,
@@ -467,6 +520,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				_, err := orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())
 				return err
 			},
+			MarkWatched: markWatched,
 			// PauseRequested reads batten's own status file, the one `lyx batten pause` writes, so the in-call wait notices a pause within one check.
 			PauseRequested: func() (bool, error) {
 				status, found, err := state.ReadJSONStrict[shedengine.Status](StatusFile(location, slug), StatusLock(location, slug))
@@ -717,6 +771,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), childLocation, []string{shedrun.SeedRel(childLocation, shedrun.SelfRunID)}, fmt.Sprintf("batten: seed child %s", slug), fabricengine.EnvSyncOptions())
 				return err
 			},
+			MarkWatched: markWatched,
 			// PushSeed pushes the child's own fabric pair, the same location CommitSeed just
 			// committed onto.
 			PushSeed: func(ctx context.Context) error {

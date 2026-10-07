@@ -141,7 +141,10 @@ type innerRunProducer struct {
 	pollInterval time.Duration
 	// noticeProbe is deps.NoticeProbe: how rarely the wait does anything costing a process or a multiplexer round trip.
 	noticeProbe time.Duration
-	scratchDir  string
+	// watched is the last answer of deps.MarkWatched, whether this batten holds the batten-watched marker, and watchedAnswer how it was reached.
+	watched       bool
+	watchedAnswer watchedAnswer
+	scratchDir    string
 	// driverExitGrace bounds how long a done child's live driver strand is waited for.
 	driverExitGrace time.Duration
 	// notices is true when the caller wired a Notify, before a nil one resolves to a no-op.
@@ -161,9 +164,13 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 // A nil deps.Notify resolves to a no-op and switches the notice step off.
 // A nil deps.DriverStrand resolves to reporting no driver strand, a nil deps.ChildRunLockHeld to reporting no held lock and a nil deps.ReviveStrands to a revive that fails as not wired.
 // A nil deps.PauseRequested resolves to never paused.
+// A nil deps.MarkWatched resolves to reporting not held.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
 	if deps.PauseRequested == nil {
 		deps.PauseRequested = func() (bool, error) { return false, nil }
+	}
+	if deps.MarkWatched == nil {
+		deps.MarkWatched = func(context.Context) (bool, error) { return false, nil }
 	}
 	if deps.Sleep == nil {
 		deps.Sleep = waitOrCancel
@@ -271,6 +278,8 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 		}
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: resolve status path: %w", p.name, err)
 	}
+
+	p.refreshWatched(ctx)
 
 	// The baseline is stat'ed before the read that defines the state this Call begins with, so a write landing between the two is seen by the first check.
 	baseline := statusModTime(statusPath)
@@ -514,13 +523,14 @@ func (p *innerRunProducer) wait(ctx context.Context, w *childWait, step armStep)
 	}
 }
 
-// check is one check of the wait: the child's status file, the notice step on the probe checks, the arm's step, and last batten's own pause flag.
+// check is one check of the wait: the child's status file, the watched-marker refresh and the notice step on the probe checks, the arm's step, and last batten's own pause flag.
 // It returns nil to keep waiting.
 func (p *innerRunProducer) check(ctx context.Context, w *childWait, step armStep, now time.Time) *waitEnd {
 	if end := p.checkChild(ctx, w); end != nil {
 		return end
 	}
 	if w.probeDue {
+		p.refreshWatched(ctx)
 		p.noticeStep(ctx, w.statusPath, w.status)
 	}
 	if end := step(ctx, w); end != nil {
@@ -879,4 +889,37 @@ func recordSpawnConfirmed(producer, slug, scratchDir, path string) {
 	if err := os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o644); err != nil {
 		logger.Warn("battenshed: write spawn confirmation failed", "producer", producer, "slug", slug, "path", path, "error", err)
 	}
+}
+
+// watchedAnswer is how the producer last got the answer to whether it holds the batten-watched marker.
+type watchedAnswer int
+
+const (
+	// watchedUnknown is the state before the seam was first asked.
+	watchedUnknown watchedAnswer = iota
+	// watchedHeld means the seam reported the marker held.
+	watchedHeld
+	// watchedNotHeld means the seam reported the marker not held.
+	watchedNotHeld
+	// watchedFailed means the seam returned an error, which reads as not held.
+	watchedFailed
+)
+
+// refreshWatched asks deps.MarkWatched whether this batten holds the batten-watched marker and records the answer.
+// An error reads as not held and is warned about once per change of answer, since the marker only decides who messages the parent and never the row's outcome.
+func (p *innerRunProducer) refreshWatched(ctx context.Context) {
+	held, err := p.deps.MarkWatched(ctx)
+	answer := watchedNotHeld
+	switch {
+	case err != nil:
+		answer = watchedFailed
+		held = false
+		if p.watchedAnswer != watchedFailed {
+			logger.Warn("battenshed: could not write or remove the batten-watched marker; reading it as not held", "producer", p.name, "slug", p.slug, "error", err)
+		}
+	case held:
+		answer = watchedHeld
+	}
+	p.watched = held
+	p.watchedAnswer = answer
 }

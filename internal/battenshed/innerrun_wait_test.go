@@ -179,3 +179,65 @@ func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 		}
 	})
 }
+
+// TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker asserts the wait keeps the batten-watched marker's answer: asked at the start of a Call and at most once per notice probe after that, an error read as not held with one Warn per change of answer, and a nil seam read as not held.
+func TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker(t *testing.T) {
+	build := func(t *testing.T, probe time.Duration, markWatched func(context.Context) (bool, error), pauseAt int) (*fakeClock, *innerRunProducer) {
+		t.Helper()
+		clock := &fakeClock{}
+		_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
+		scratchDir := t.TempDir()
+		if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), pidMarker(os.Getpid()), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		deps.NoticeProbe = probe
+		deps.MarkWatched = markWatched
+		clock.pauseAtSleep = pauseAt
+		return clock, NewInnerRun("innerrun", "myslug", deps, 10*time.Second, scratchDir, testGrace).(*innerRunProducer)
+	}
+
+	t.Run("AsksAtTheStartAndOncePerNoticeProbe", func(t *testing.T) {
+		asks := 0
+		_, p := build(t, 30*time.Second, func(context.Context) (bool, error) { asks++; return true, nil }, 7)
+		if _, _, err := p.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v", err)
+		}
+		if asks != 3 || !p.watched {
+			t.Errorf("asked %d times and recorded held=%v over seven 10s checks; want 3 asks (the start, 30s, 60s) and held", asks, p.watched)
+		}
+	})
+
+	t.Run("AnErrorReadsAsNotHeldWithOneWarnPerChangeOfAnswer", func(t *testing.T) {
+		var buf bytes.Buffer
+		logger.SetOutput(&buf)
+		t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+		asks := 0
+		_, p := build(t, 0, func(context.Context) (bool, error) {
+			asks++
+			if asks == 4 {
+				return true, nil
+			}
+			return false, errors.New("task worktree gone")
+		}, 3)
+		if _, _, err := p.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v", err)
+		}
+		if got := strings.Count(buf.String(), "could not write or remove the batten-watched marker"); got != 1 {
+			t.Errorf("warnings over three failed asks = %d; want 1\nlog: %s", got, buf.String())
+		}
+		if !p.watched {
+			t.Error("recorded held = false after the fourth ask answered held; want true")
+		}
+	})
+
+	t.Run("ANilSeamReadsAsNotHeld", func(t *testing.T) {
+		_, p := build(t, 0, nil, 2)
+		if _, _, err := p.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v", err)
+		}
+		if p.watched {
+			t.Error("recorded held = true with no seam; want false")
+		}
+	})
+}

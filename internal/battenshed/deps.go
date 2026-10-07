@@ -167,6 +167,12 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil ReviveStrands resolves to a function returning an error that says no revive is wired, in NewInnerRun.
 	ReviveStrands func(ctx context.Context) error
+	// MarkWatched writes or removes the batten-watched marker of the task worktree's run and reports whether this batten now holds it.
+	// The marker is held while this batten's notices have a destination that is also the child driver's parent, so the driver can leave the run's stops to batten.
+	// Call invokes it at its start and once per notice probe inside the wait, keeps the last answer for the awaiting notice rule, and reads an error as not held with one Warn per change of answer.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil MarkWatched resolves to a function reporting not held in NewInnerRun.
+	MarkWatched func(ctx context.Context) (held bool, err error)
 }
 
 // ChildDriverStrand is the state of a child's driver strand in its reed state.
@@ -210,6 +216,10 @@ type SeedChildDeps struct {
 	// changes SeedChild's verdict: an offline machine must not halt a run, and the next push on
 	// this pair catches the branch up.
 	PushSeed func(ctx context.Context) error
+	// MarkWatched writes or removes the batten-watched marker of the task worktree's run and reports whether this batten now holds it.
+	// SeedChild invokes it once the seed is written and committed, so the child's first driver launch already renders the watched rule; an error is only warned about and never changes SeedChild's verdict, like the push.
+	// A nil MarkWatched resolves to a function reporting not held in NewSeedChild.
+	MarkWatched func(ctx context.Context) (held bool, err error)
 }
 
 // TeardownDeps carries the two closures NewWorktreeTeardown calls in sequence: Shutdown strictly

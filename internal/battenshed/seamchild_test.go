@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -307,5 +308,44 @@ func TestSeedChild_CancelledContext(t *testing.T) {
 	}
 	if outcome == shedengine.Stuck {
 		t.Error("Call() outcome = Stuck; want a cancelled context to never surface as Stuck")
+	}
+}
+
+// TestSeedChild_MarksWatchedOnceTheSeedIsCommitted asserts the batten-watched marker is asked for after the commit, that a failing marker never changes the verdict, and that a failed commit never reaches it.
+func TestSeedChild_MarksWatchedOnceTheSeedIsCommitted(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		commitErr  error
+		markErr    error
+		wantOutput shedengine.Outcome
+		wantOrder  []string
+	}{
+		{name: "AfterTheCommit", wantOutput: shedengine.Done, wantOrder: []string{"commit", "mark"}},
+		{name: "AFailingMarkerStillReturnsDone", markErr: errors.New("task worktree gone"), wantOutput: shedengine.Done, wantOrder: []string{"commit", "mark"}},
+		{name: "AFailedCommitNeverReachesIt", commitErr: errors.New("commit failed"), wantOutput: shedengine.Stuck, wantOrder: []string{"commit"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, deps := newSeedChildDeps("batten", nil, "claude", nil, nil, tt.commitErr, nil)
+			var order []string
+			commit := deps.CommitSeed
+			deps.CommitSeed = func(ctx context.Context) error {
+				order = append(order, "commit")
+				return commit(ctx)
+			}
+			deps.MarkWatched = func(context.Context) (bool, error) {
+				order = append(order, "mark")
+				return false, tt.markErr
+			}
+
+			shedfake.RequireOutcome(t, NewSeedChild("seedchild", "myslug", deps, t.TempDir()), tt.wantOutput)
+			if !slices.Equal(order, tt.wantOrder) {
+				t.Errorf("call order = %v; want %v", order, tt.wantOrder)
+			}
+		})
 	}
 }

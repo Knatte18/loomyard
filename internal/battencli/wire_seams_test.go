@@ -187,3 +187,17 @@ func TestWire_PauseRequestedReadsBattensOwnStatus(t *testing.T) {
 		})
 	}
 }
+
+// TestWire_MarkWatchedRefusesAnAbsentTaskWorktree asserts the watched-marker seam returns an error, rather than reporting not held, when the task worktree it would keep the marker in is absent.
+func TestWire_MarkWatchedRefusesAnAbsentTaskWorktree(t *testing.T) {
+	t.Parallel()
+
+	c, _ := wiredPrime(t)
+
+	for name, mark := range map[string]func(context.Context) (bool, error){"RunShed": c.env.InnerRun.MarkWatched, "SeedChild": c.env.SeedChild.MarkWatched} {
+		held, err := mark(context.Background())
+		if err == nil || held || !strings.Contains(err.Error(), "a-slug") {
+			t.Errorf("%s MarkWatched() = %v, %v; want not held and the absent-worktree refusal naming the slug", name, held, err)
+		}
+	}
+}

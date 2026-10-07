@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -41,6 +42,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -221,6 +224,7 @@ func TestBattenIntegration_Rows(t *testing.T) {
 		{"AwaitingRejectionResumesTheChildOnce", stepAwaitingRejectionResumesTheChildOnce},
 		{"SeedChild_IgnoresPrimesCommittedBattenRecords", stepSeedChild_IgnoresPrimesCommittedBattenRecords},
 		{"RealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug", stepRealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug},
+		{"MarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent", stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent},
 		{"DirtyPrime_CreateRowBlocksBeforeAnythingCreated", stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated},
 	}
 	for _, step := range steps {
@@ -1128,5 +1132,68 @@ func stepAttachDirNamesTheTaskWorktree(t *testing.T, h *hubforge.Hub) {
 	}
 	if got != taskLocation.AnchorPath() {
 		t.Errorf("AttachDir() = %q; want %q", got, taskLocation.AnchorPath())
+	}
+}
+
+// stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent drives the watched-marker seam over a real pair:
+// the marker holds batten's pid for a pair created from the prime while the prime's orch state records a strand,
+// and is removed when the strand is gone and when the pair's origin names another worktree.
+func stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent(t *testing.T, h *hubforge.Hub) {
+	slug := "batten-watched"
+	hubforge.AddPair(t, h, slug)
+	c := wireForHub(t, h, slug, nil)
+
+	childLocation, err := taskWorktreeLocation(h.Location, slug)
+	if err != nil {
+		t.Fatalf("resolve child location: %v", err)
+	}
+	marker := shedrun.BattenWatchedMarker(childLocation, shedrun.SelfRunID)
+	orchPaths := orchcli.PrimePaths(h.Location)
+	origin, found, err := fabricengine.ReadOriginFor(h.Location, slug)
+	if err != nil || !found {
+		t.Fatalf("read origin = %+v, found=%v, %v", origin, found, err)
+	}
+	setOrigin := func(parentWorktree string) {
+		t.Helper()
+		changed := origin
+		changed.ParentWorktree = parentWorktree
+		if err := fabricengine.WriteOrigin(fabricengine.NewMutations(""), h.Location, slug, changed); err != nil {
+			t.Fatalf("write origin: %v", err)
+		}
+	}
+	setStrand := func(strand string) {
+		t.Helper()
+		if err := orchengine.SaveState(orchPaths, orchengine.State{Strand: strand, Phase: orchengine.PhaseIdle}); err != nil {
+			t.Fatalf("save orch state: %v", err)
+		}
+	}
+
+	steps := []struct {
+		name      string
+		strand    string
+		parent    string
+		wantHeld  bool
+		wantPidIn bool
+	}{
+		{name: "StrandRecordedAndPairFromThePrime", strand: "orch-strand", parent: origin.ParentWorktree, wantHeld: true, wantPidIn: true},
+		{name: "PairFromAnotherWorktreeRemovesIt", strand: "orch-strand", parent: "another-worktree"},
+		{name: "StrandRecordedAgainWritesItAgain", strand: "orch-strand", parent: origin.ParentWorktree, wantHeld: true, wantPidIn: true},
+		{name: "NoStrandRecordedRemovesIt", strand: "", parent: origin.ParentWorktree},
+	}
+	for _, step := range steps {
+		setStrand(step.strand)
+		setOrigin(step.parent)
+		held, err := c.env.InnerRun.MarkWatched(context.Background())
+		if err != nil || held != step.wantHeld {
+			t.Fatalf("%s: MarkWatched() = %v, %v; want held=%v", step.name, held, err, step.wantHeld)
+		}
+		raw, readErr := os.ReadFile(marker)
+		if step.wantPidIn {
+			if want := strconv.Itoa(os.Getpid()) + "\n"; readErr != nil || string(raw) != want {
+				t.Errorf("%s: marker = %q, %v; want batten's pid %q", step.name, raw, readErr, want)
+			}
+		} else if !os.IsNotExist(readErr) {
+			t.Errorf("%s: marker read = %q, %v; want it absent", step.name, raw, readErr)
+		}
 	}
 }

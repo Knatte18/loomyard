@@ -28,6 +28,15 @@
 // Bound: a running child is waited on without a time limit, bounded by "lyx batten pause" (honoured within one check), cancellation and the notices;
 // a running child whose driver is dead and whose status file does not change returns nothing from the wait, the driver-dead notice being the only signal.
 //
+// Seed-Child and the InnerRun row also keep the batten-watched marker of the task worktree's run (MarkWatched), which holds this batten's pid while its notices have a destination that is also the child driver's parent.
+// Seed-Child asks once the seed is committed, so the child's first driver launch already renders the watched rule;
+// InnerRun asks at the start of every Call and once per notice_probe_s inside the wait.
+// A failure is a Warn, reads as not held, and never changes a verdict.
+// Bound: only the driver's "run stopped" message is removed, and only where a live batten with a notice destination replaces it at render time.
+// A driver launched unwatched and adopted later keeps its own rule, a duplicate and never a loss.
+// A driver launched watched keeps the silent rule whatever happens to batten afterwards,
+// so a batten that dies after the render, or an orch strand that disappears after it, leaves the run's stops unannounced until a batten runs again, which then sends the notices not yet sent.
+//
 // A running child whose spawn this batten process has not confirmed is spawned again,
 // so a restarted batten brings a driverless child back up:
 // the confirmation marker holds the pid of the process that wrote it,
