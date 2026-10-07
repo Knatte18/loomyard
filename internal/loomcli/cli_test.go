@@ -64,12 +64,14 @@ func TestStartAliasCommand_StaysOneCommandWithSubtreeVerb(t *testing.T) {
 	if alias.Use != subtreeVerb.Use {
 		t.Errorf("StartAliasCommand().Use = %q; want it to equal the subtree verb's own Use %q", alias.Use, subtreeVerb.Use)
 	}
-	if alias.Flags().Lookup("no-attach") == nil {
-		t.Error("StartAliasCommand() is missing the --no-attach flag the subtree's start verb exposes")
+	if noAttach := alias.Flags().Lookup("no-attach"); noAttach == nil {
+		t.Error("StartAliasCommand() is missing the --no-attach flag the subtree's start verb accepts")
+	} else if !noAttach.Hidden {
+		t.Error("StartAliasCommand()'s --no-attach flag is not hidden")
 	}
 
-	// The start verb registered under the loom parent command, not just its bare-root alias, exposes
-	// --no-attach: it is the flag's primary home.
+	// The start verb registered under the loom parent command, not just its bare-root alias, accepts
+	// --no-attach, hidden: it is the flag's primary home.
 	var registered *cobra.Command
 	for _, sub := range Command().Commands() {
 		if sub.Name() == "start" {
@@ -79,8 +81,10 @@ func TestStartAliasCommand_StaysOneCommandWithSubtreeVerb(t *testing.T) {
 	if registered == nil {
 		t.Fatal(`"start" verb is not registered under the loom parent command`)
 	}
-	if registered.Flags().Lookup("no-attach") == nil {
+	if noAttach := registered.Flags().Lookup("no-attach"); noAttach == nil {
 		t.Error(`"loom start" is missing the --no-attach flag`)
+	} else if !noAttach.Hidden {
+		t.Error(`"loom start"'s --no-attach flag is not hidden`)
 	}
 }
 

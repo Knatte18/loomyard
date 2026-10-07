@@ -243,7 +243,7 @@ This scenario is deliberately read-only: `promote` and `sync` both mutate the op
 
 **Covers:** loom
 
-**Fixture note:** This scenario hand-writes `_lyx/shed/<slug>/seed.json` and `_lyx/shed/<slug>/status.json` (`<slug>` being the sandbox worktree's own directory name) as a fixture rather than reaching a seeded state through any shipped verb, because no shipped verb seeds one without going through `lyx loom start`'s tmux bootstrap handover, and `lyx loom pause` on an absent seed is specified to refuse by naming the run as unseeded.
+**Fixture note:** This scenario hand-writes `_lyx/shed/<slug>/seed.json` and `_lyx/shed/<slug>/status.json` (`<slug>` being the sandbox worktree's own directory name) as a fixture rather than reaching a seeded state through any shipped verb, because no shipped verb seeds one without going through `lyx loom start`'s tmux bootstrap, and `lyx loom pause` on an absent seed is specified to refuse by naming the run as unseeded.
 A status file with no seed beside it is now the inconsistency `internal/loomcli`'s own seed-presence refusal exists to catch, so write the seed first: `{"recipe": "loom", "driver": "go"}`.
 Write the status fixture with a realistic `current_producer`/`state`/`activity`/`history` shell and a `product` carrying a `slug` and `parent` of your choosing, following the shape in `contracts/specs/loom-status-spec.md`'s worked example.
 

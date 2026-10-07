@@ -133,7 +133,7 @@ func CheckSeed(statusPath, statusLockPath, expectedProducer string, toleratedPro
 // Loom-Preflight row that calls CheckSeed included — is ever looked up, so CheckSeed-as-producer
 // never even runs on a decode failure (see CheckSeed's own doc comment on that step-1 pre-emption).
 // Either way this function answers ownership alone. Escalating a decode failure here stopped the
-// bootstrap before it ever spawned a driver or reached the tmux handover, for a condition the
+// bootstrap before it ever spawned a driver or reached its success envelope, for a condition the
 // driver's own run loop already surfaces in its own log — reproduced live via a poisoned status
 // file that made both "lyx loom start" and "lyx loom run" refuse on the envelope instead of letting
 // the spawned driver's own step-1 gate report the decode failure.

@@ -1,7 +1,6 @@
 // start.go implements the `start` loom verb: the session bootstrap.
-// It resolves the recorded parent branch, seeds the status file when absent, commits that seed into the fabric, ensures the reed substrate and picks the session's status strand by the recorded driver (kept on a go-driven run, removed on an llm-driven one), spawns the detached driver when none is already alive, waits for the handshake that confirms the driver took the run lock, and finally hands the operator's terminal to a tmux attach.
-// Every fallible step runs pre-flight, on the envelope; only the terminal handover at the very end
-// takes the CLI/Cobra Invariant's narrow interactive-handoff exception.
+// It resolves the recorded parent branch, seeds the status file when absent, commits that seed into the fabric, ensures the reed substrate and picks the session's status strand by the recorded driver (kept on a go-driven run, removed on an llm-driven one), spawns the detached driver when none is already alive, waits for the handshake that confirms the driver took the run lock, and finally prints the success envelope.
+// The verb never attaches or switches a tmux client; every step runs on the envelope.
 
 package loomcli
 
@@ -25,7 +24,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 // bootstrapHandshakePollInterval and bootstrapHandshakeAttempts bound the handshake's wait for the
@@ -366,8 +364,8 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		}
 		if result == awaitRunLockChildDied {
 			// Not a failure: the driver ran to completion and exited before the handshake's
-			// first poll, which is what every fast-halting run does. The tmux handover below
-			// still happens, because the status strand in that session is where the halt is
+			// first poll, which is what every fast-halting run does. The bootstrap
+			// still reports success, because the status strand in that session is where the halt is
 			// legible. See dispositionForHandshake for the full argument.
 			logger.Info("loom: driver exited before the handshake observed the run lock; its outcome is recorded in the driver log", "pid", childPID, "log", driverLogPath)
 		}
@@ -378,16 +376,12 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 			// carries zero evidence which handshake path the bootstrap took — including in
 			// the narrow case where the child is not doing post-run bookkeeping but is
 			// genuinely wedged before its first persist (crucible round 2, R2-F3).
-			logger.Info("loom: driver is alive with the machine already halted; proceeding to the handover while it finishes post-run bookkeeping", "pid", childPID, "log", driverLogPath)
+			logger.Info("loom: driver is alive with the machine already halted; proceeding to the success envelope while it finishes post-run bookkeeping", "pid", childPID, "log", driverLogPath)
 		}
 	}
 
 	return true
 }
-
-// attachHint is the "hint" the success envelope carries when the caller sits inside a tmux server the
-// bootstrap must not nest into.
-const attachHint = `run "lyx reed attach" from outside tmux to reach the task's session`
 
 // startCmd builds the `start` subcommand: the session bootstrap.
 func (c *loomCLI) startCmd() *cobra.Command {
@@ -396,7 +390,7 @@ func (c *loomCLI) startCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "bootstrap this worktree's loom task and hand the terminal to the driver session",
+		Short: "bootstrap this worktree's loom task and launch its driver session",
 		Long: `start is the session bootstrap. It performs four steps in order:
 
   1. resolve the recorded parent branch, seed the status file when it is
@@ -404,12 +398,12 @@ func (c *loomCLI) startCmd() *cobra.Command {
   2. ensure the worktree's tmux session is up; on a go-driven run ensure its
      status strand exists, and on an llm-driven run remove any status strand
      the session still holds; then spawn the per-hub watchdog daemon,
-     best-effort -- --no-attach still performs this spawn
+     best-effort
   3. read this run's seed and, unless a driver is already alive, spawn the
      driver its recorded choice selects -- the detached Go runner, or a
      Claude strand running the loom driver in this worktree's own reed session --
-     a second invocation while a driver is running ensures substrate and
-     attaches rather than spawning a second one; which driver runs is the
+     a second invocation while a driver is running ensures substrate
+     rather than spawning a second one; which driver runs is the
      seed's recorded choice, never a flag on this command; a live loom
      driver that parked at a hand-back is resumed by typing one line into its
      pane, and start refuses after a bounded wait when that pane is not
@@ -426,12 +420,7 @@ func (c *loomCLI) startCmd() *cobra.Command {
      loom driver strand that reed marked retiring (some caller of
      "reed remove --detach" already asked to remove it) is never adopted:
      start removes it and spawns a fresh driver in its place
-  4. hand the terminal over, by where the command runs: attach to the
-     session when $TMUX is unset; when $TMUX names reed's own tmux server,
-     print the success envelope if this terminal is already in the task's
-     session, or switch-client onto it if not; when $TMUX names another tmux
-     server, never nest -- print the envelope with "attached": false and a
-     "hint" naming the command to attach from outside tmux
+  4. print the success envelope
 
 The detached Go driver's own stdout/stderr go to the log the ephemeral-tree
 driver-log accessor names, never to this command's own output -- a loom driver
@@ -452,10 +441,10 @@ failed, since psmux on Windows may not export it. A worktree whose
 .vscode/tasks.json predates this convention is upgraded by deleting that
 file and re-running "lyx ide spawn".
 
---no-attach is for unattended callers (scripts, agents): it wins over every
-handover above. It performs steps 1 through 3 and returns once the driver's
-readiness signal confirms it is up, instead of running step 4; for a parked
-loom driver it returns once the delivery of the resume line is verified.
+start never attaches to the session or switches a tmux client, with or without
+$TMUX; "lyx reed attach" is the way to watch the session.
+It returns once the driver's readiness signal confirms the driver is up; for a
+parked loom driver it returns once the delivery of the resume line is verified.
 That readiness signal is the run lock being taken for the Go driver; for a
 loom driver, it is the driver's provider TUI coming up ready, with any
 one-time startup gate its provider requires dismissed along the way (shuttle's
@@ -464,18 +453,13 @@ readiness refusal removes the driver strand, so the next start spawns a
 fresh one; the signal is checked only for a driver this invocation spawns,
 and the two cases that can still leave an unready loom driver strand live --
 shuttle could not get a liveness answer from reed at all, or its teardown
-could not remove the strand -- are attached to, or returned over with
---no-attach, by a later start without re-checking readiness. The documented
-meaning is the same on both paths:
-perform every bootstrap step, confirm the driver is up by that path's own
-signal, and return without the terminal handover, printing a success
-envelope ("attached": false, plus the run's driver, slug, run id and status file)
-in place of the handover.
+could not remove the strand -- are returned over by a later start without
+re-checking readiness. The success envelope carries the run's driver, slug,
+run id and status file.
 
 Example:
   lyx loom start
-  lyx loom start --parent main
-  lyx loom start --no-attach`,
+  lyx loom start --parent main`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -536,10 +520,9 @@ Example:
 			// Still part of step 4, not a step of its own: this call reports nothing on the
 			// envelope, so it earns no "// Step N:" marker, and giving it one would leave a reader
 			// wondering why the numbering appears to skip something. Three placement facts matter
-			// here. First, it sits outside this RunE's own handover decision below -- the daemon is
-			// per-hub and reconciles a session that exists on every invocation, --no-attach
-			// included, where the detached driver still spawns agent strands that need
-			// reconciling.
+			// here. First, the daemon is per-hub and reconciles a session
+			// that exists on every invocation, where the detached driver still spawns agent
+			// strands that need reconciling.
 			// Second, it sits after the strand branch, outside it, so both arms reach it,
 			// and `step` does not spawn the watchdog.
 			// Third, it stays inside the region where the bootstrap lock is still held, deliberately: the
@@ -571,101 +554,20 @@ Example:
 				return nil
 			}
 
-			// Step 7: this tail is the CLI/Cobra Invariant's interactive-handoff exception. Steps
-			// 1 through 6 are pre-flight precisely so every fallible thing has already been
-			// reported before stdio is handed away here.
+			// Step 7: release the bootstrap lock and report the success envelope.
+			// The verb never attaches or switches a tmux client; attaching is `lyx reed attach`.
 			_ = bootstrapLock.Release()
 
-			// The handover follows from where this command runs: $TMUX says whether the caller is
-			// inside a tmux server, reed says whether that server is its own, and only then is the
-			// caller's pane asked for its session. A failed session read leaves currentSession empty,
-			// which decideHandover answers with a hint rather than a nested attach.
-			tmuxEnv := os.Getenv("TMUX")
-			taskSession := c.reed.SessionName()
-			reedOwns := tmuxEnv != "" && c.reed.OwnsTmuxEnv(tmuxEnv)
-			currentSession := ""
-			if reedOwns {
-				sess, err := c.reed.ClientSession(os.Getenv("TMUX_PANE"))
-				if err != nil {
-					logger.Warn("loom: could not read the client's tmux session, returning a hint instead of switching", "err", err)
-				} else {
-					currentSession = sess
-				}
-			}
-
-			decision := decideHandover(noAttachFlag, tmuxEnv, reedOwns, currentSession, taskSession)
 			runID := shedrun.ResolveRunID(c.location, c.runID)
-			switch decision {
-			case handoverEnvelope:
-				// A handover that skips the JSON-exempt tail below reports its success on the
-				// envelope like every other verb: a silent exit 0 is indistinguishable from a
-				// driver that never came up without a follow-up status.
-				output.Ok(out, noAttachFields(driver, slug, runID, c.shedPaths.StatusPath, ""))
-				return nil
-			case handoverHint:
-				output.Ok(out, noAttachFields(driver, slug, runID, c.shedPaths.StatusPath, attachHint))
-				return nil
-			case handoverSwitch:
-				argv := c.reed.SwitchClientArgv()
-				switchCmd := exec.Command(c.reed.TmuxPath(), argv...)
-				switchCmd.Stdin = os.Stdin
-				switchCmd.Stdout = os.Stdout
-				switchCmd.Stderr = os.Stderr
-				logger.Info("loomcli: spawning tmux switch-client", "tmux", c.reed.TmuxPath(), "session", taskSession)
-				if err := switchCmd.Run(); err != nil {
-					exitCode := 1
-					var exitErr *exec.ExitError
-					if errors.As(err, &exitErr) {
-						exitCode = exitErr.ExitCode()
-					}
-					logger.Info("loomcli: tmux switch-client exited", "tmux", c.reed.TmuxPath(), "exitCode", exitCode)
-					clihelp.SetExit(ctx, exitCode)
-				} else {
-					logger.Info("loomcli: tmux switch-client exited", "tmux", c.reed.TmuxPath(), "exitCode", 0)
-				}
-				return nil
-			}
-
-			if _, err := c.reed.Status(); err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
-			}
-
-			// Read the operator's own terminal size against stdout, exactly as
-			// internal/reedcli's own attach verb does. On error (piped output, no
-			// controlling terminal) this does not report on the envelope and does not
-			// abort: AttachArgv answers a non-positive cols/rows with the bare argv,
-			// exactly today's behaviour, so nothing regresses on a non-TTY. This adds
-			// no new fallible step that reports on the envelope, so step 7 keeps its
-			// interactive-handoff exception unchanged.
-			cols, rows, err := term.GetSize(int(os.Stdout.Fd()))
-			if err != nil {
-				logger.Warn("loom: no terminal size available, attaching without a chained layout", "err", err)
-				cols, rows = 0, 0
-			}
-
-			attach := exec.Command(c.reed.TmuxPath(), c.reed.AttachArgv(cols, rows)...)
-			attach.Stdin = os.Stdin
-			attach.Stdout = os.Stdout
-			attach.Stderr = os.Stderr
-			logger.Info("loomcli: spawning tmux attach", "tmux", c.reed.TmuxPath(), "cols", cols, "rows", rows)
-			if err := attach.Run(); err != nil {
-				exitCode := 1
-				var exitErr *exec.ExitError
-				if errors.As(err, &exitErr) {
-					exitCode = exitErr.ExitCode()
-				}
-				logger.Info("loomcli: tmux attach exited", "tmux", c.reed.TmuxPath(), "exitCode", exitCode)
-				clihelp.SetExit(ctx, exitCode)
-			} else {
-				logger.Info("loomcli: tmux attach exited", "tmux", c.reed.TmuxPath(), "exitCode", 0)
-			}
+			output.Ok(out, startEnvelopeFields(driver, slug, runID, c.shedPaths.StatusPath))
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
-	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "for unattended callers: return once a driver this invocation spawns is confirmed up (the Go driver has taken the run lock; a loom driver's provider TUI is ready, with any one-time startup gate dismissed), instead of handing the terminal to the session; a parked loom driver is resumed by one typed line and this returns once that line's delivery is verified")
+	// noAttachFlag is read by nothing: the verb never attaches, and the flag stays accepted for existing callers.
+	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "accepted and ignored; kept for existing callers")
+	_ = cmd.Flags().MarkHidden("no-attach")
 
 	return cmd
 }

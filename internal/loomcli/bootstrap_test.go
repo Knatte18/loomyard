@@ -133,29 +133,17 @@ func TestResolveDriverStrandAction(t *testing.T) {
 	}
 }
 
-// TestStartVerb_NoAttachFlag_DefaultsFalse pins the regression this flag most plausibly causes: a
-// silently flipped default. It reads the built command tree's own flag lookup -- rather than the
-// package variable a stray reassignment elsewhere in the package could leave stale -- so the
-// assertion covers registration and default together, then ties that default to the branch it
-// controls by feeding it straight into decideHandover.
-//
-// An invocation that never passes --no-attach must take today's attach path unchanged, and nothing
-// else in this package would catch a default silently flipped to true.
-//
-//testtiming:keep pins --no-attach registered on the start command with a false default that decideHandover turns into the attach path; its covering tests never read the flag's default
-func TestStartVerb_NoAttachFlag_DefaultsFalse(t *testing.T) {
-	c := &loomCLI{}
-	flag := c.startCmd().Flags().Lookup("no-attach")
-	if flag == nil {
-		t.Fatal(`"start" command is missing the --no-attach flag`)
+// TestStartEnvelopeFields_PinsSuccessEnvelope pins the exact key set `lyx loom start` prints on success:
+// the driver, slug, run id and status file, with no key describing an attach.
+func TestStartEnvelopeFields_PinsSuccessEnvelope(t *testing.T) {
+	want := map[string]any{
+		"driver":      "go",
+		"slug":        "slug",
+		"run_id":      "slug",
+		"status_file": "/s/status.json",
 	}
-	if flag.DefValue != "false" {
-		t.Errorf(`"--no-attach" default = %q; want "false"`, flag.DefValue)
-	}
-
-	defaultNoAttach := flag.Value.String() == "true"
-	if got := decideHandover(defaultNoAttach, "", false, "", ""); got != handoverAttach {
-		t.Errorf("decideHandover(%v, unset $TMUX) over the registered default = %v; want handoverAttach -- an invocation with no flag must still attach", defaultNoAttach, got)
+	if diff := cmp.Diff(want, startEnvelopeFields("go", "slug", "slug", "/s/status.json")); diff != "" {
+		t.Errorf("startEnvelopeFields mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -195,7 +183,7 @@ func TestAwaitRunLock(t *testing.T) {
 		// reflection agent, against a handshake budget of thirty seconds. Before the halted seam existed,
 		// that combination (lock free, child alive, machine finished) fell through to awaitRunLockDeadline,
 		// which dispositionForHandshake refuses: a healthy run was reported as "driver did not take the run
-		// lock" and the bootstrap skipped its own terminal handover.
+		// lock" and the bootstrap refused.
 		// A driver whose machine finished but whose process is still doing post-run bookkeeping is not a wedged spawn, and the halt is observable on the first poll.
 		{name: "halted while the child is still alive", aliveTrueCalls: -1, halted: true, deadline: 10, want: awaitRunLockHalted},
 		// The seam order: a child that is already gone reports child-died even when halted would also
@@ -321,8 +309,7 @@ func containsSubstring(s, substr string) bool {
 // The ChildDied row is the original regression guard: the verb used to test
 // `result != awaitRunLockReady`, which collapsed a driver that ran and finished into the same
 // refusal as a wedged spawn, reported "driver did not take the run lock" for a run that had taken it
-// and released it, and skipped the tmux handover entirely -- so the status strand showing the actual
-// halt was the one place the operator was not put.
+// and released it, and withheld the success envelope.
 // The Halted row guards the same failure arriving through Tier 2's door: a driver whose machine has
 // finished but whose process is still running the friction reflection agent is alive with the lock
 // free, which used to land on the refusal below.

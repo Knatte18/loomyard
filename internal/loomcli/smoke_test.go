@@ -585,7 +585,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 	// the bootstrap refuse. dispositionForHandshake maps awaitRunLockChildDied onto proceed, and
 	// deliberately so: a child already gone before the handshake's first poll is a driver that RAN AND
 	// FINISHED, and refusing there would tell an operator the bootstrap broke when in fact their task
-	// halted, while skipping the tmux handover that is the one place the halt is legible. Only
+	// halted, while withholding the success envelope. Only
 	// awaitRunLockDeadline -- a child still alive after the whole attempt budget, never having taken the
 	// lock -- is a genuine refusal, and a dying driver cannot produce that.
 	//
@@ -598,7 +598,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 	// observed free again. The bootstrap's own steps 1-4 use only the lenient read paths (ReadOrigin,
 	// Seed, CommitWeftPaths) that tolerate the poisoned field, so only the spawned CHILD's strict read
 	// gate ever sees the failure.
-	t.Run("died driver proceeds to the handover and logs why", func(t *testing.T) {
+	t.Run("died driver proceeds to the success envelope and logs why", func(t *testing.T) {
 		killDriversAndClearLog(t)
 		poisonStatusFile(t, loc)
 
@@ -607,12 +607,9 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 			t.Fatalf("rigged bootstrap: %v; output: %s", err, stdout)
 		}
 
-		// Proceeded to step 7 rather than refusing. In this test process there is no controlling
-		// terminal, so the handover itself cannot succeed and tmux says so on stderr -- which is exactly
-		// the evidence that the handover was REACHED. A refusal would have written a JSON envelope
-		// instead and never got here.
-		if !strings.Contains(stdout, "not a terminal") {
-			t.Errorf("rigged bootstrap output = %q; want it to show the tmux handover being reached, not a refusal before it", stdout)
+		// Proceeded to step 7 rather than refusing: the success envelope is the evidence.
+		if !strings.Contains(stdout, `"ok":true`) {
+			t.Errorf("rigged bootstrap output = %q; want the ok envelope, not a refusal before it", stdout)
 		}
 		if strings.Contains(stdout, `"ok":false`) {
 			t.Errorf("rigged bootstrap emitted a refusal envelope: %s -- a driver that died is a run that finished, not a broken bootstrap", stdout)
@@ -635,13 +632,13 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 			t.Fatalf("probe bootstrap lock: %v", err)
 		}
 		if !free {
-			t.Errorf("bootstrap lock still held after the handover; want it released")
+			t.Errorf("bootstrap lock still held after the bootstrap; want it released")
 		} else {
 			_ = fl.Release()
 		}
 	})
 
-	// `lyx loom start` against a MALFORMED-JSON status file proceeds to the tmux handover exactly as
+	// `lyx loom start` against a MALFORMED-JSON status file proceeds to the success envelope exactly as
 	// the unknown-field shape does, rather than refusing on the envelope at the Seed step. This is a
 	// regression guard for a crucible finding, and the composed CLI-verb half its unit tests
 	// (loomshed.TestSeed_RefusesUndecodableFileAsExists, state.TestCorruptFile) cannot see: only the
@@ -654,7 +651,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 	// After it, Seed maps the decode failure to ErrSeedExists, the bootstrap tolerates it, and the
 	// spawned driver's own Shed.Run step-1 read gate diagnoses the decode failure in the driver log,
 	// exactly as the died-driver step pins for the unknown-field shape.
-	t.Run("malformed status proceeds to the handover and logs why", func(t *testing.T) {
+	t.Run("malformed status proceeds to the success envelope and logs why", func(t *testing.T) {
 		killDriversAndClearLog(t)
 		poisonStatusFileMalformed(t, loc)
 
@@ -663,11 +660,9 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 			t.Fatalf("malformed-status bootstrap: %v; output: %s", err, stdout)
 		}
 
-		// Proceeded to step 7 rather than refusing at step 2's Seed: no controlling terminal here, so the
-		// handover itself cannot succeed and tmux says so on stderr — which is the evidence it was
-		// REACHED. A Seed refusal would have written a JSON envelope and never got here.
-		if !strings.Contains(stdout, "not a terminal") {
-			t.Errorf("malformed-status bootstrap output = %q; want the tmux handover reached, not a Seed refusal before it", stdout)
+		// Proceeded to step 7 rather than refusing at step 2's Seed: the success envelope is the evidence.
+		if !strings.Contains(stdout, `"ok":true`) {
+			t.Errorf("malformed-status bootstrap output = %q; want the ok envelope, not a Seed refusal before it", stdout)
 		}
 		if strings.Contains(stdout, `"ok":false`) {
 			t.Errorf("malformed-status bootstrap emitted a refusal envelope: %s -- a malformed status file must defer to the driver's own read gate, not refuse at the Seed step", stdout)
