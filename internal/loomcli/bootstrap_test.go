@@ -590,6 +590,8 @@ var driverFieldReadCarveOuts = []scankit.Entry{
 // bootstrap package, and the functions named in driverFieldReadCarveOuts. Adding a reader anywhere else
 // fails this test and forces a human to confirm the new site really belongs to a recipe's bootstrap
 // verb rather than a producer, a generic verb, or an engine gating behaviour on the recorded value.
+//
+//lyx:guard
 func TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField(t *testing.T) {
 	found, scanned := scanRepoForDriverFieldReads(t)
 	scankit.RequireFloor(t, scanned, driverScanMinFiles, "driver-field-read scan")

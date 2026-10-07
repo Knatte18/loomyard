@@ -68,6 +68,8 @@ var bannedWiringDeclarations = map[string]bool{
 // The match is on the AST, never on raw text, so a doc comment naming a function cannot trip it.
 // _test.go files are skipped: the invariant is about production wiring, and a test helper is not a
 // second copy of it.
+//
+//lyx:guard
 func TestBannedDeclarations_CliPackagesCallIntoCliwire(t *testing.T) {
 	var failures []string
 

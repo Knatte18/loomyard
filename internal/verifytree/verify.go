@@ -48,6 +48,18 @@ type Site struct {
 	Label string
 	// Attempt is 0 where no attempt counter applies.
 	Attempt int
+	// BaseCommand names the command whose record entry survives the pruning a pass performs; empty names none.
+	BaseCommand string
+}
+
+// Pass is one recorded pass of a command.
+type Pass struct {
+	// Tree is the tree SHA the command passed on.
+	Tree string
+	// Commit is the commit SHA of HEAD at that pass.
+	Commit string
+	// VerifiedAt is the time of the pass.
+	VerifiedAt time.Time
 }
 
 // Paths names the worktree Verify checks and the files it keeps in the verify directory.
@@ -74,11 +86,51 @@ type Result struct {
 	Detail string
 }
 
-// record is the verified-tree record Verify writes after a pass.
+// record is the verified-tree record Verify writes after a pass: one entry per command.
 type record struct {
-	Tree       string    `yaml:"tree"`
+	Entries []entry `yaml:"entries"`
+}
+
+// entry is the pass of one command.
+type entry struct {
 	Command    string    `yaml:"command"`
+	Tree       string    `yaml:"tree"`
+	Commit     string    `yaml:"commit"`
 	VerifiedAt time.Time `yaml:"verified_at"`
+}
+
+// withPass returns the record after command passed on pass: its own entry is replaced, and every entry of another command naming a different tree is dropped, except the entry of baseCommand.
+func (r record) withPass(command, baseCommand string, pass Pass) record {
+	next := record{Entries: []entry{{Command: command, Tree: pass.Tree, Commit: pass.Commit, VerifiedAt: pass.VerifiedAt}}}
+	for _, e := range r.Entries {
+		if e.Command == command {
+			continue
+		}
+		if e.Tree == pass.Tree || e.Command == baseCommand {
+			next.Entries = append(next.Entries, e)
+		}
+	}
+	return next
+}
+
+// find returns the entry of command.
+func (r record) find(command string) (entry, bool) {
+	for _, e := range r.Entries {
+		if e.Command == command {
+			return e, true
+		}
+	}
+	return entry{}, false
+}
+
+// LatestPass returns the recorded pass of command, false when the record holds none.
+// A record in an older format, or a malformed one, reads as none.
+func LatestPass(p Paths, command string) (Pass, bool) {
+	e, ok := readRecord(p.Record).find(command)
+	if !ok {
+		return Pass{}, false
+	}
+	return Pass{Tree: e.Tree, Commit: e.Commit, VerifiedAt: e.VerifiedAt}, true
 }
 
 // Dir returns the verify directory under anchorRoot.
@@ -127,9 +179,10 @@ func parsePorcelainZ(out string) []string {
 
 // Verify runs command in p.Worktree unless the tree is dirty or already verified.
 // A dirty tree returns StatusDirty and runs nothing.
-// A record naming HEAD's tree and the same command returns StatusSkipped.
+// A record entry of the same command naming HEAD's tree returns StatusSkipped.
 // Otherwise the marker is written, the command runs with its output in p.Log, the marker is removed whatever happened, and an exit 0 returns StatusPassed.
-// The pass writes the record only when HEAD still names the tree the run started on, so a commit that lands mid-run costs the next call a re-run rather than recording a tree the command did not run on.
+// The pass writes the record only when HEAD still names the tree and commit the run started on, so a commit that lands mid-run costs the next call a re-run rather than recording a tree the command did not run on.
+// The write replaces the entry of command and drops every other command's entry naming a different tree, except site.BaseCommand's.
 // A non-zero exit is StatusFailed with the exit code, and a shell that could not start is StatusFailed with exit code -1 and the cause in Detail.
 // A command still running after timeout is killed and returns StatusFailed with exit code -1, TimedOut set and the timeout in Detail;
 // no record is written.
@@ -147,7 +200,11 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 	if err != nil {
 		return Result{}, err
 	}
-	if rec, ok := readRecord(p.Record); ok && rec.Tree == tree && rec.Command == command {
+	commit, err := headCommit(p.Worktree)
+	if err != nil {
+		return Result{}, err
+	}
+	if e, ok := readRecord(p.Record).find(command); ok && e.Tree == tree {
 		return Result{Status: StatusSkipped, Tree: tree}, nil
 	}
 
@@ -183,15 +240,20 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 	}
 
 	// A commit that landed mid-run means the command read a tree that was not the recorded one, so the pass is not recorded.
-	after, err := headTree(p.Worktree)
+	afterTree, err := headTree(p.Worktree)
 	if err != nil {
 		return Result{}, err
 	}
-	if after != tree {
+	afterCommit, err := headCommit(p.Worktree)
+	if err != nil {
+		return Result{}, err
+	}
+	if afterTree != tree || afterCommit != commit {
 		return Result{Status: StatusPassed, Tree: tree}, nil
 	}
 
-	if err := writeRecord(p.Record, record{Tree: tree, Command: command, VerifiedAt: time.Now()}); err != nil {
+	next := readRecord(p.Record).withPass(command, site.BaseCommand, Pass{Tree: tree, Commit: commit, VerifiedAt: time.Now()})
+	if err := writeRecord(p.Record, next); err != nil {
 		return Result{}, err
 	}
 	return Result{Status: StatusPassed, Tree: tree}, nil
@@ -207,17 +269,26 @@ func headTree(worktree string) (string, error) {
 }
 
 // readRecord reads the record at path.
-// An absent, unreadable or malformed record reads as none, which only costs a re-run.
-func readRecord(path string) (record, bool) {
+// An absent, unreadable, malformed or older-format record reads as an empty one, which only costs a re-run.
+func readRecord(path string) record {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return record{}, false
+		return record{}
 	}
 	var rec record
 	if err := yaml.Unmarshal(data, &rec); err != nil {
-		return record{}, false
+		return record{}
 	}
-	return rec, true
+	return rec
+}
+
+// headCommit returns HEAD's commit SHA in worktree.
+func headCommit(worktree string) (string, error) {
+	out, err := gitexec.Run([]string{"rev-parse", "HEAD"}, worktree)
+	if err != nil {
+		return "", fmt.Errorf("verifytree: resolve HEAD commit in %s: %w", worktree, err)
+	}
+	return strings.TrimSpace(out), nil
 }
 
 // writeRecord writes rec to path.

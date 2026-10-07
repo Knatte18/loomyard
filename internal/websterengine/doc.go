@@ -71,6 +71,7 @@
 // pass before that card's commit; there is no batch-wide verify distinct
 // from its cards' own gates, mirroring the plan-format card model
 // directly.
+// A card's own gate command, which begin-batch and recover-batch render into the fork's prompt, builds and tests everything, runs the integration-tagged tests of the card's package directories, and ends with `lyx loom lint-comments`, the comment line-break lint.
 //
 // record-batch and recover-batch apply one merge-only rule when they cross-check the consumed report's `head_sha` against the worktree's HEAD,
 // so a parent merge-in landing between a fork's commit and the report's consumption cannot wedge the run.
@@ -215,7 +216,7 @@
 // It audits nothing while a later fork batch of the session is open or the verify-gate report exists, since an unseen transcript may then be that fork's.
 // A report that cannot be attributed to a begun batch, or to any fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
 // The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
-// A delete-not-done finding gets one more check, planglyph.LaterDeleteReferences over the batch's own cards and the cards of every batch with no record:
+// A delete-not-done finding gets one more check, planindex.Index.LaterDeleteReferences over the batch's own cards and the cards of every batch with no record:
 // when an unbegun later card's Edit code still references the target, the failure's reasons name that card and the reference,
 // and the BatchFailedError's way forward is the plan edit (move the delete after that card, rebaseline, then recover-batch), or the `--fresh` steps when the record also lists uncheckable entries, since recover-batch would repeat the same failure.
 // PersistRecoveryTerminal fails a recovered batch the same way, and recover-batch runs the same check before spawning:
@@ -455,10 +456,17 @@
 // # The Git seam
 //
 // Every question the bracket verbs and the run-level checks put to a worktree's repository goes through the Git interface (git.go):
-// the head, dirtiness, a merge in progress, a commit's parents, the clean-parent-merge verdict, commit existence and ancestry, ignore rules, linked worktrees, blobs, and the delta of a commit range.
+// the head, dirtiness, a merge in progress, a commit's parents, the clean-parent-merge verdict, commit existence and ancestry, ignore rules, linked worktrees and blobs.
 // Geometry.Git carries it, and nil means the real repository, so no production caller sets it and the helpers in gitwrap.go stay the one place webster runs git.
 // A test that asserts on webster's own records, warnings and verdicts sets a fake and spawns nothing;
-// a test whose behavior is git itself (merge commits, ignore rules, blobs, the quarry delta, the verify gate) builds a real scratch repository under the `integration` tag.
+// a test whose behavior is git itself (merge commits, ignore rules, blobs, the verify gate) builds a real scratch repository under the `integration` tag.
+//
+// # The code-index seam
+//
+// Every plan gate and the batch delta go through Geometry.Index, a planindex.Index (internal/planindex), so this package imports neither internal/planglyph nor quarry and links no tree-sitter.
+// The CLI layer sets the real index (planglyph.NewIndex); hubgeom and standalonegeom leave it empty because they sit below cliwire.
+// A call that reaches a nil Index returns an error naming the missing wiring.
+// A test that drives the real resolve pass sets planglyph.NewIndex, and a test that steers the batch delta sets a fake planindex.Delta.
 //
 // # No shared substrate or parser with any other batch-implementation loop
 //

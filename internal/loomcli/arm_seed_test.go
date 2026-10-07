@@ -43,6 +43,7 @@ func TestResolveRunID(t *testing.T) {
 		{name: "start never refuses", verb: "start"},
 		{name: "validate-discussion never refuses", verb: "validate-discussion"},
 		{name: "validate-plan never refuses", verb: "validate-plan"},
+		{name: "lint-comments never refuses", verb: "lint-comments"},
 		{name: "reject's review file is not a run-id", verb: "reject", args: []string{"review.md"}, wantRunID: shedrun.SelfRunID},
 	}
 	for _, tt := range tests {

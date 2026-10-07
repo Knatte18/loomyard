@@ -30,6 +30,8 @@ const minCopyRepoScanFiles = 100
 // receiver identifier is this file's gitkit import and whose selected name is CopyRepo.
 // The match is on the AST, never on raw text, so a doc comment mentioning the qualified call cannot
 // trip it.
+//
+//lyx:guard
 func TestCopyRepoCallerSet_LyxcwdOnly(t *testing.T) {
 	var failures []string
 

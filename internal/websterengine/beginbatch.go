@@ -18,7 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/friction"
-	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -71,11 +71,7 @@ func cardNumberOf(name string) string {
 	return num
 }
 
-// ErrPlanDrifted is the sentinel BeginBatch returns when the dispatch-boundary re-resolution
-// (planglyph.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards
-// excluded) reports a non-empty blocking
-// findings set — webster's own sentinel, per the webster-owns-its-own-domain-types decision, so a
-// caller distinguishes this refusal from ErrPaused and ErrFingerprintMismatch via errors.Is.
+// ErrPlanDrifted is the sentinel BeginBatch returns when the dispatch-boundary re-resolution (planindex.Index.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards excluded) reports a non-empty blocking findings set — webster's own sentinel, per the webster-owns-its-own-domain-types decision, so a caller distinguishes this refusal from ErrPaused and ErrFingerprintMismatch via errors.Is.
 // Dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
 var ErrPlanDrifted = errors.New("webster: plan re-resolution at begin-batch reported a blocking finding")
 
@@ -112,10 +108,7 @@ type BeginResult struct {
 	// or — on a re-begin over a record that already carries one — that earlier value,
 	// so it stays the HEAD from before the batch's first fork.
 	StartSHA string
-	// Advisories is every informational finding the dispatch-boundary re-resolution
-	// (planglyph.ValidateDispatch) reported, rendered via Finding.Error, so an operator sees them
-	// without the run stopping — a non-empty blocking findings set never reaches this far, since it
-	// returns ErrPlanDrifted instead.
+	// Advisories is every informational finding the dispatch-boundary re-resolution (planindex.Index.ValidateDispatch) reported, rendered via Finding.Error, so an operator sees them without the run stopping — a non-empty blocking findings set never reaches this far, since it returns ErrPlanDrifted instead.
 	Advisories []string
 	// ArchivedReport is the path a report left with no begin-batch record was archived to, empty when there was none.
 	ArchivedReport string
@@ -159,7 +152,7 @@ func completedCards(batches []batcher.Batch, st *State, exclude int) []planparse
 // A batch begun but never recorded (its record-batch refused, or the run died between the fork's commit and the record) may already have landed its work, so its Create targets can legitimately exist;
 // validating it as unstarted reported them as create-already-exists and refused the very resume that would record the batch.
 // Its targets may equally not have landed yet, which is why forthcoming exists:
-// planglyph.ValidateDispatch excludes a forthcoming card's Create and Rename New targets from the status check, so a later card that Uses them is not refused.
+// planindex.Index.ValidateDispatch excludes a forthcoming card's Create and Rename New targets from the status check, so a later card that Uses them is not refused.
 // Master re-drives such a batch through record-batch or recover-batch, which apply their own checks.
 func DispatchScope(batches []batcher.Batch, st *State) (begun, forthcoming []planparser.Card) {
 	if st == nil {
@@ -263,7 +256,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// Re-resolve the plan against the current tree before a pack is built, never from a cache.
 	// deps.Geom.WorktreeRoot is the same root BeginBatch already reads for its head-SHA capture
 	// below, so this adds no path derivation and no internal/lyxcwd import. An infrastructure error
-	// (errors.Is(err, planglyph.ErrQuarryUnavailable)) blocks exactly like a blocking finding does:
+	// (errors.Is(err, planindex.ErrQuarryUnavailable)) blocks exactly like a blocking finding does:
 	// dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
 	// Scoped to the cards still to be built: a card already built contradicts the tree by design, and
 	// re-resolving it reports the plan working correctly as a blocking defect.
@@ -273,7 +266,11 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// so a re-begun batch whose fork landed nothing does not refuse the later cards that Use them (#329).
 	// Once any batch is begun, a pending card's Delete target that is already gone arrives in the advisories below as delete-target-gone, not as a blocking finding.
 	begun, forthcoming := DispatchScope(deps.Batches, deps.State)
-	resolveFindings, resolveErr := planglyph.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, begun, forthcoming)
+	index, err := deps.Geom.index()
+	if err != nil {
+		return nil, err
+	}
+	resolveFindings, resolveErr := index.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, begun, forthcoming)
 	// ValidateDispatch's resolve pass canonicalizes handles, which rewrites the plan on disk, and it
 	// then keeps going: the status, Create-inversion and containment passes all run after the
 	// rewrite, so "rewrote the plan" and "reported a blocking finding" co-occur routinely, and the
@@ -291,7 +288,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	var blocking []string
 	var advisories []string
 	for _, f := range resolveFindings {
-		if f.Severity == planglyph.SeverityBlocking {
+		if f.Severity == planindex.SeverityBlocking {
 			blocking = append(blocking, f.Error())
 		} else {
 			advisories = append(advisories, f.Error())

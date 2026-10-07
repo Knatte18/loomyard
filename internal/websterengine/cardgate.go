@@ -13,9 +13,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// cardGateCommand returns the gate command for card: build and test everything, then the integration-tagged tests of each package directory the card's targets live in.
+// cardGateCommand returns the gate command for card: build and test everything, then the integration-tagged tests of each package directory the card's targets live in, then the comment line-break lint.
 // A directory drops out when every target in it is a Delete, or when it neither names Go source nor holds a .go file in worktree, so a stencil or doc folder never reaches `go test`.
-// The integration step is omitted when no directory survives.
+// The integration step is omitted when no directory survives; the lint step is always last.
 func cardGateCommand(plan *planparser.Plan, card planparser.Card, worktree string) string {
 	command := "go build ./... && go test ./..."
 	var dirs []string
@@ -25,10 +25,10 @@ func cardGateCommand(plan *planparser.Plan, card planparser.Card, worktree strin
 		}
 		dirs = append(dirs, packageArg(td.Dir))
 	}
-	if len(dirs) == 0 {
-		return command
+	if len(dirs) > 0 {
+		command += " && go test -tags integration " + strings.Join(dirs, " ")
 	}
-	return command + " && go test -tags integration " + strings.Join(dirs, " ")
+	return command + " && lyx loom lint-comments"
 }
 
 // packageArg spells a worktree-relative directory as a `go test` package argument.

@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentreview"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -265,6 +266,7 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
 	c.env.Rework.ReadCommitted = committedAnchoredReader(location)
+	c.env.PlanIndex = planglyph.NewIndex()
 }
 
 // committedAnchoredReader returns the seam that reads an anchor-relative file as committed at HEAD for location, with found false when HEAD has no such file.
@@ -427,6 +429,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	websterGeom := hubgeom.WebsterGeometry(location)
+	websterGeom.Index = planglyph.NewIndex()
 
 	// frictionDir is the single resolved value every told-friction consumer below reads: non-empty
 	// only when loom.yaml's friction key is set, per the "Tier 2 off is an empty path string, never a
@@ -525,6 +528,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		SupportLogPath:     loomengine.DiscussionSupportLog(location),
 		ParentName:         c.parentName,
 		WebsterDeps:        runDeps,
+		PlanIndex:          websterGeom.Index,
 		// ReflectFriction is a method value over the receiver, so frictionDir is read when the row runs, not when wire runs.
 		ReflectFriction: c.reflectFrictionRow,
 		// WebsterRun is set explicitly to websterengine.Run, per the

@@ -251,6 +251,8 @@ func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 }
 
 // TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain fails for every package with an integration-, tmux- or llm-tagged test file unless a TestMain compiles under each tag set and on each platform that compile any of its test files and every TestMain in the package calls tmuxkit.Main.
+//
+//lyx:guard
 func TestTmuxIsolation_TaggedPackagesRunThroughTmuxkitMain(t *testing.T) {
 	allow := scankit.NewAllowlist(allowedNoTmuxMain)
 	failures, tagged, scanned := tmuxIsolationFailures(t, scankit.Options{}, allow)

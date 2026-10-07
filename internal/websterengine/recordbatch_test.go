@@ -98,6 +98,7 @@ type recordFixture struct {
 	Audit      *recordAudit
 	Sleeper    *recordFakeSleeper
 	Git        *fakeGit
+	Index      *fakeIndex
 	Worktree   string
 	ReportsDir string
 	StartSHA   string
@@ -127,6 +128,7 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 func newRecordFixtureOver(t *testing.T, worktree string, git websterengine.Git, startSHA, headSHA string, scripted []shuttleengine.ForkAudit) *recordFixture {
 	t.Helper()
 
+	fakeIdx, index := indexOver(git)
 	cards := []planparser.Card{{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}}
 	batches := []batcher.Batch{{Cards: cards}}
 	plan := &planparser.Plan{Format: 5, Cards: cards}
@@ -167,6 +169,7 @@ func newRecordFixtureOver(t *testing.T, worktree string, git websterengine.Git, 
 			ReportsDir:   reportsDir,
 			PlanDir:      planDir,
 			Git:          git,
+			Index:        index,
 		},
 		RefMatcher:  websterengine.NeverMatches{},
 		OutcomePath: filepath.Join(contractDir, "outcome.yaml"),
@@ -175,7 +178,7 @@ func newRecordFixtureOver(t *testing.T, worktree string, git websterengine.Git, 
 		Plan:        plan,
 	}
 
-	return &recordFixture{Deps: deps, Audit: audit, Sleeper: sleeper, Worktree: worktree, ReportsDir: reportsDir, StartSHA: startSHA, HeadSHA: headSHA}
+	return &recordFixture{Deps: deps, Audit: audit, Sleeper: sleeper, Index: fakeIdx, Worktree: worktree, ReportsDir: reportsDir, StartSHA: startSHA, HeadSHA: headSHA}
 }
 
 // addPendingCard appends a second card to fx's plan, in its own second batch that has no BatchState
@@ -1460,7 +1463,7 @@ func TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable(t *testing.T) {
 	})
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 	fx.Deps.State.Batches[1].StartSHA = "does-not-exist-rev"
-	fx.Git.deltaErr = fmt.Errorf("%w: delta does-not-exist-rev..%s: unknown revision", planglyph.ErrQuarryUnavailable, fx.HeadSHA)
+	fx.Index.deltaErr = fmt.Errorf("%w: delta does-not-exist-rev..%s: unknown revision", planglyph.ErrQuarryUnavailable, fx.HeadSHA)
 
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err != nil {
@@ -1604,8 +1607,8 @@ func TestRecordBatch_ParentMovedHead(t *testing.T) {
 						t.Errorf("warning %q names the parent side's symbol", w)
 					}
 				}
-				if want := []deltaRange{{from: fx.StartSHA, to: fx.HeadSHA}}; !slices.Equal(fx.Git.deltaRanges, want) {
-					t.Errorf("delta ranges asked = %v; want %v", fx.Git.deltaRanges, want)
+				if want := []deltaRange{{from: fx.StartSHA, to: fx.HeadSHA}}; !slices.Equal(fx.Index.deltaRanges, want) {
+					t.Errorf("delta ranges asked = %v; want %v", fx.Index.deltaRanges, want)
 				}
 			},
 		},

@@ -240,6 +240,8 @@ func offside(raw string) bool {
 // TestRefKindScan_RealTreeClean is the refKind scan's real-tree half: after the classify.go/shape.go
 // migration, no production file in internal/planparser or internal/planglyph outside those two
 // exempt files may name classifyRef, the refKind type, or one of its declared constants.
+//
+//lyx:guard
 func TestRefKindScan_RealTreeClean(t *testing.T) {
 	t.Parallel()
 
@@ -271,6 +273,8 @@ func TestRefKindScan_RealTreeClean(t *testing.T) {
 // shape.go, and internal/planparser/handle.go may open-code "plan:" string surgery.
 // internal/planglyph/handle.go is scanned like any other planglyph file -- it is NOT exempt, despite
 // sharing a basename with the exempt planparser file.
+//
+//lyx:guard
 func TestPlanOpScan_RealTreeClean(t *testing.T) {
 	t.Parallel()
 
