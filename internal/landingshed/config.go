@@ -37,6 +37,9 @@ type Config struct {
 	DescribeTimeoutMin int `yaml:"describe_timeout_min"`
 	// CoAuthoredBy is the value of the landing commit's single Co-Authored-By trailer.
 	CoAuthoredBy string `yaml:"co_authored_by"`
+	// PublishVerify is the shell command Publish runs in the task worktree after the plan's verify passes.
+	// Empty runs nothing; Finalize never runs it.
+	PublishVerify string `yaml:"publish_verify"`
 }
 
 // LoadConfig loads and unmarshals configuration for the landing module.

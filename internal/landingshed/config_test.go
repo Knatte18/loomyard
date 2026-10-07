@@ -106,3 +106,32 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 		t.Errorf("LoadConfig() error = %q; want %q", err.Error(), want)
 	}
 }
+
+// TestLoadConfig_PublishVerify verifies the publish_verify key loads as written, and that a landing.yaml without it loads the template's empty value.
+func TestLoadConfig_PublishVerify(t *testing.T) {
+	t.Parallel()
+
+	const withoutKey = "require_pr_to_base: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
+		"describe: sonnet[medium]\ndescribe_timeout_min: 30\nco_authored_by: Claude <noreply@anthropic.com>\n"
+	cases := []struct {
+		name, contents, want string
+	}{
+		{"key set", withoutKey + "publish_verify: go test -tags tmux ./...\n", "go test -tags tmux ./..."},
+		{"key absent", withoutKey, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			baseDir := t.TempDir()
+			seedLandingConfig(t, baseDir, tc.contents)
+			cfg, err := LoadConfig(baseDir, "landing")
+			if err != nil {
+				t.Fatalf("LoadConfig() = _, %v; want nil error", err)
+			}
+			if cfg.PublishVerify != tc.want {
+				t.Errorf("cfg.PublishVerify = %q; want %q", cfg.PublishVerify, tc.want)
+			}
+		})
+	}
+}

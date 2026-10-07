@@ -27,6 +27,12 @@ type fakeVerifyTree struct {
 	result      verifytree.Result
 	verifyErr   error
 	onVerify    func()
+
+	// commands and sites record every verify call in order.
+	commands []string
+	sites    []verifytree.Site
+	// resultByCommand overrides result for a command it names.
+	resultByCommand map[string]verifytree.Result
 }
 
 // dirtyAt scripts the dirty paths the i-th (zero-based) clean-tree check reports.
@@ -55,8 +61,13 @@ func (f *fakeVerifyTree) verify(ctx context.Context, p verifytree.Paths, site ve
 	f.paths = p
 	f.site = site
 	f.command = command
+	f.commands = append(f.commands, command)
+	f.sites = append(f.sites, site)
 	if f.onVerify != nil {
 		f.onVerify()
+	}
+	if result, ok := f.resultByCommand[command]; ok {
+		return result, f.verifyErr
 	}
 	return f.result, f.verifyErr
 }
