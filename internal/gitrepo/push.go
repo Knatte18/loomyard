@@ -3,8 +3,9 @@
 // processes via the lock queue rather than an internal retry loop), PushRebaseFree (a single
 // plain push that never rebases, for callers that supply their own serialization), and
 // DeleteRemoteBranch (a single remote branch deletion, idempotent when the ref is already absent),
-// and DeleteRemoteBranchLeased (the same deletion, only while the remote branch sits at an expected SHA).
-// All five are push-shaped remote calls; committing is always the caller's separate StageAndCommit
+// DeleteRemoteBranchLeased (the same deletion, only while the remote branch sits at an expected SHA),
+// and UpdateRemoteBranchLeased (a forced move of a remote branch, only while it sits at an expected SHA).
+// All six are push-shaped remote calls; committing is always the caller's separate StageAndCommit
 // or StageAllAndCommit call.
 
 package gitrepo
@@ -22,6 +23,15 @@ import (
 // ErrPushRejected is returned by PushRebaseFree when push is rejected due to remote divergence.
 // It is a distinguishable error, not a failure.
 var ErrPushRejected = errors.New("gitrepo: push rejected (remote diverged)")
+
+// ErrLeaseRejected is returned by UpdateRemoteBranchLeased when the remote branch no longer sits at the expected SHA.
+// It is a distinguishable error, not a failure of the push itself.
+var ErrLeaseRejected = errors.New("gitrepo: lease rejected (remote branch moved)")
+
+// leaseRejectedTrigger is the git-push stderr substring meaning a --force-with-lease
+// expectation no longer held; git words it `! [rejected] <ref> (stale info)`.
+// The package doc's locale caveat applies.
+const leaseRejectedTrigger = "stale info"
 
 // PushLockFileName is the name of the single-pusher lock file PushCoalesced acquires in the repo's
 // worktree root.
@@ -148,6 +158,31 @@ func (r *Repo) DeleteRemoteBranchLeased(remote, branch, expectSHA string) error 
 		return fmt.Errorf("gitrepo: git push --delete (leased at %s): %w", expectSHA, err)
 	}
 	return nil
+}
+
+// UpdateRemoteBranchLeased moves branch on the named remote to sha via `git push --force-with-lease=refs/heads/<branch>:<expectSHA>`,
+// succeeding only while the remote branch still sits at expectSHA; sha may be an ancestor of expectSHA, so the branch can move backwards.
+// sha and expectSHA must be valid hex object names, or ErrInvalidSHA is returned before any git spawn.
+// A branch that moved or vanished since expectSHA was read is a failed lease, returned bare as ErrLeaseRejected;
+// every other failure (network, authentication, a hook rejection) returns the wrapped git error and never the sentinel.
+// It is the package's only force-shaped push: fabric's destruction gate is its only caller, and it never takes a lease it did not read itself.
+func (r *Repo) UpdateRemoteBranchLeased(remote, branch, sha, expectSHA string) error {
+	if !validSHA(sha) || !validSHA(expectSHA) {
+		return ErrInvalidSHA
+	}
+
+	lease := "--force-with-lease=refs/heads/" + branch + ":" + expectSHA
+	_, err := r.runChecked("push", lease, remote, sha+":refs/heads/"+branch)
+	if err == nil {
+		return nil
+	}
+	// ErrLeaseRejected is a sentinel consumers match with errors.Is, so it is
+	// returned bare rather than wrapped with %w, as ErrPushRejected is.
+	var gitErr *gitexec.GitError
+	if errors.As(err, &gitErr) && strings.Contains(gitErr.Stderr, leaseRejectedTrigger) {
+		return ErrLeaseRejected
+	}
+	return fmt.Errorf("gitrepo: git push --force-with-lease (leased at %s): %w", expectSHA, err)
 }
 
 // containsAny reports whether s contains any substring from substrs.

@@ -1,4 +1,4 @@
-// ancestry_test.go covers IsAncestor's argument-validation guard — pure string-matching logic that
+// ancestry_test.go covers IsAncestor's and CommitsNotIn's argument-validation guard — pure string-matching logic that
 // must reject a malformed sha or a leading-dash ref before ever spawning git.
 // It is deliberately untagged (no //go:build constraint) and in the internal package so it can
 // assert no git spawn happens on the rejected path, keeping it in Tier 1 alongside plain `go test`
@@ -40,6 +40,36 @@ func TestIsAncestor_RejectsInvalidArgs(t *testing.T) {
 			}
 			if got {
 				t.Errorf("IsAncestor(%q, %q) = %v; want false alongside the error", tt.sha, tt.ref, got)
+			}
+		})
+	}
+}
+
+// TestCommitsNotIn_RejectsInvalidArgs asserts a validSHA-failing tip or base returns ErrInvalidSHA and no commits, without spawning git, for the same untagged Tier-1 reason as TestIsAncestor_RejectsInvalidArgs.
+func TestCommitsNotIn_RejectsInvalidArgs(t *testing.T) {
+	t.Parallel()
+
+	const valid = "0123456789abcdef0123456789abcdef01234567"
+	repo := New(t.TempDir())
+
+	tests := []struct {
+		name string
+		tip  string
+		base string
+	}{
+		{"InvalidTip_TooShort", "abc", valid},
+		{"InvalidBase_LongOption", valid, "--help"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := repo.CommitsNotIn(tt.tip, tt.base)
+			if !errors.Is(err, ErrInvalidSHA) {
+				t.Errorf("CommitsNotIn(%q, %q) error = %v; want errors.Is(err, ErrInvalidSHA)", tt.tip, tt.base, err)
+			}
+			if got != nil {
+				t.Errorf("CommitsNotIn(%q, %q) = %v; want nil alongside the error", tt.tip, tt.base, got)
 			}
 		})
 	}

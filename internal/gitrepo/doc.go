@@ -24,7 +24,7 @@
 // no-`fatal:`-leak surface forbids folding git's stderr into their
 // messages, which is what run's raw form lets them keep working around.
 // Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push,
-// PushCoalesced, ResetHard, IsAncestor, and
+// PushCoalesced, ResetHard, IsAncestor, CommitsNotIn, UpdateRemoteBranchLeased, and
 // HasUnpushed (measured and reverted from a go-git ancestry walk; see
 // HasUnpushed's own godoc in push.go for the reversal criterion) — sits on
 // runChecked. See PATTERN-gitrepo-client-boundary for the
@@ -64,7 +64,12 @@
 //   - IsAncestor is the ancestry/reachability primitive: it answers "is sha
 //     an ancestor of ref" via `git merge-base --is-ancestor`, mapping git's
 //     tri-state exit code directly rather than folding any non-zero exit
-//     into failure.
+//     into failure. CommitsNotIn is its listing sibling: the commits reachable
+//     from a tip and not from a base, newest first, via `git rev-list`.
+//   - UpdateRemoteBranchLeased moves a remote branch to a SHA, backwards
+//     included, only while the remote branch still sits at the SHA the caller
+//     read; a moved branch is ErrLeaseRejected, distinct from any other push
+//     failure.
 //   - ResetHard is the SHA-validated hard-reset surface (see below).
 //   - CurrentBranch reads the branch HEAD points to, and errors on a detached HEAD.
 //
