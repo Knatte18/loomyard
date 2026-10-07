@@ -559,13 +559,7 @@
 // returned"; it has never meant "nothing happened", and mixing the two up is what `mutations` and
 // `partial` exist to stop a consumer from doing by accident.
 //
-// The vocabulary is `Kind` (mutation.go's closed, string-backed enum — `path_removed`,
-// `worktree_removed`, `link_removed`, `branch_deleted`, `remote_branch_deleted`, `remote_branch_updated`, `worktree_reset`,
-// `dir_created`, `worktree_created`, `branch_created`, `branch_pushed`, `commit_created`,
-// `link_created`, `file_written`, `push_spawned`, `worktree_switched`, `repo_advanced`,
-// `merge_staged`, `merge_resolved_staged`, `merge_committed`), a flat `Mutation` entry (kind,
-// target, optional detail), and `Mutations`, the ordered accumulator a verb call threads through
-// everything it performs.
+// The vocabulary is `Kind` (mutation.go's closed, string-backed enum — `path_removed`, `worktree_removed`, `link_removed`, `branch_deleted`, `remote_branch_deleted`, `remote_branch_updated`, `worktree_reset`, `dir_created`, `worktree_created`, `branch_created`, `branch_pushed`, `commit_created`, `link_created`, `file_written`, `push_spawned`, `worktree_switched`, `repo_advanced`, `merge_staged`, `merge_resolved_staged`, `merge_committed`), a flat `Mutation` entry (kind, target, optional detail), and `Mutations`, the ordered accumulator a verb call threads through everything it performs.
 //
 // The accumulate-as-you-mutate rule is simple and has no exception: append an entry immediately
 // after a primitive observably changed state, never before, and never for a no-op or a refusal.
@@ -678,8 +672,7 @@
 // this section is the rationale the invariant deliberately omits.
 //
 // **The pair-scoped reset.**
-// `ResetPairWarp(rec, sha, parentBranch, ownPaths, opts)` resets a task pair's warp checkout through `resetHardTo`, beside `ResetHard`,
-// which refuses on any tracked dirt and accepts the prime checkout.
+// `ResetPairWarp(rec, sha, parentBranch, ownPaths, opts)` resets a task pair's warp checkout through `resetHardTo`, beside `ResetHard`, which refuses on any tracked dirt and accepts the prime checkout.
 // Its request declares the hub as container and the warp worktree as target;
 // ownership `ownedPairWarpCheckout`, a registered linked worktree that is not on `parentBranch` and whose weft checkout has `WeftBranchName` of the same branch checked out, a detached HEAD refusing;
 // dirtiness `dirtyTrackedExcept(ownPaths)`, so a tracked change refuses unless its worktree-relative, slash-separated path is one the caller names, and the refusal names each other path;

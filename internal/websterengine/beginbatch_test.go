@@ -1,11 +1,7 @@
 // beginbatch_test.go exercises BeginBatch end to end (Tier 1 — see docs/benchmarks/running-tests.md): a temp directory backs WorktreeRoot with a fakeGit answering the HeadSHA capture, while the reed query seam is a shuttlefake.Reed.
 // The plan itself is a minimal *planparser.Plan (Dir only — begin-batch never reads Plan.Cards, only deps.Batches, the already-derived execution batches), backed by a t.TempDir() seeded with a throwaway markdown file so the fingerprint gate has something real to hash.
-// There is no chain/restart
-// path and no oversized role under the flat card-list model: this file's
-// own mustFingerprint helper duplicates fingerprint.go's pure hashing
-// algorithm rather than importing anything, since this file deliberately
-// stays in the external websterengine_test package (fingerprint itself is
-// package-private).
+// There is no chain/restart path and no oversized role under the flat card-list model:
+// this file's own mustFingerprint helper duplicates fingerprint.go's pure hashing algorithm rather than importing anything, since this file deliberately stays in the external websterengine_test package (fingerprint itself is package-private).
 
 package websterengine_test
 
@@ -92,11 +88,7 @@ func beginCard(number int, slug string) batcher.Batch {
 	return batcher.Batch{Cards: []planparser.Card{{Number: number, Slug: slug, Title: slug, Intent: "placeholder card " + slug}}}
 }
 
-// beginFixture is a fully-wired set of BeginBatch dependencies: a temp
-// directory holding base.txt as WorktreeRoot over a fakeGit at one commit,
-// fresh webster/reports/prompts temp dirs,
-// two literal single-card execution batches backed by a seeded plan dir for
-// the fingerprint gate.
+// beginFixture is a fully-wired set of BeginBatch dependencies: a temp directory holding base.txt as WorktreeRoot over a fakeGit at one commit, fresh webster/reports/prompts temp dirs, two literal single-card execution batches backed by a seeded plan dir for the fingerprint gate.
 type beginFixture struct {
 	Deps      websterengine.BeginDeps
 	Reed      *shuttlefake.Reed

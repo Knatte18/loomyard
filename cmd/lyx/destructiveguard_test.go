@@ -38,13 +38,11 @@
 //
 // This file also carries TestMutationRecord_FabricengineProductionSource, the Mutation Record Invariant's guard (see `PATTERN-mutation-record`).
 // It pins two shapes by raw source inspection alone, both against internal/fabricengine/destroy.go and the mutating result types' declarations: that every one of destroy.go's executors declares a leading `rec *Mutations` parameter, and that every mutating verb's result type embeds MutationRecord while the read-only verbs' result types do not.
-// Its blind spots are deliberate and
-// significant: it never inspects an executor's body for a `rec.Append`/`rec.AppendRef` call, so it
-// cannot tell a correctly recording executor from one whose parameter is a dead letter, and it
-// cannot tell a real recording call from one sitting inside a comment. Whether each body's
-// recording call is actually present and correct is a review obligation, not something this guard
-// proves. A new Kind added to mutation.go with no recording site anywhere is caught by nothing
-// here either — see the Mutation Record Invariant's own text for that gap.
+// Its blind spots are deliberate and significant: it never inspects an executor's body for a `rec.Append`/`rec.AppendRef` call,
+// so it cannot tell a correctly recording executor from one whose parameter is a dead letter,
+// and it cannot tell a real recording call from one sitting inside a comment.
+// Whether each body's recording call is actually present and correct is a review obligation, not something this guard proves.
+// A new Kind added to mutation.go with no recording site anywhere is caught by nothing here either — see the Mutation Record Invariant's own text for that gap.
 
 package main
 

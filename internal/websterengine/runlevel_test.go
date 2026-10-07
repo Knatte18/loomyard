@@ -933,9 +933,7 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 	}
 }
 
-// TestRun_MasterSpawn asserts what Run hands the Master spawn and records around it: the strand
-// role, model and skills, the awaited shell, the gate entries, the prompt (never written to a
-// master.md), the strand and session identities, and the order of the batches the prompt lists.
+// TestRun_MasterSpawn asserts what Run hands the Master spawn and records around it: the strand role, model and skills, the awaited shell, the gate entries, the prompt (never written to a master.md), the strand and session identities, and the order of the batches the prompt lists.
 func TestRun_MasterSpawn(t *testing.T) {
 	t.Parallel()
 

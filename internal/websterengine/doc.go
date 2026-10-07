@@ -244,23 +244,16 @@
 //
 // Because the fork runs inside Master's own session, there is nothing for Go to spawn in the normal path — spawn-batch does not exist here.
 // Go provides thin bracket verbs Master calls around each fork: begin-batch (pause/fingerprint checks, records the batch's start-SHA, renders and writes the fork prompt) immediately before forking, and record-batch (incremental fork audit, batch-report parsing, digest distillation, state update) once the fork has delivered.
-// The Agent-tool fork is a BACKGROUNDED agent: the fork
-// call returns immediately, before the batch is done, so Master ends its
-// turn right after spawning it and calls record-batch when the fork's
-// completion notification starts its next turn. That turn end does not end
-// the run: shuttle reads a turn that ends with a background agent still
-// running as EventWaiting, which its wait loop treats as still running,
-// so Master spends no turns while a fork works. await-batch (a stateless,
-// bounded wait on a batch's report path) remains as a verb an operator can
-// call, but no longer sits in Master's loop. Go's
-// gates only run when Master actually calls them — the fork itself is
-// Master's own un-gateable act, so enforcement is two-layer: template
-// discipline (the master template pins the begin -> fork -> notification ->
-// record sequence, property-tested) plus fail-loud detection after the fact
+// The Agent-tool fork is a BACKGROUNDED agent: the fork call returns immediately, before the batch is done,
+// so Master ends its turn right after spawning it and calls record-batch when the fork's completion notification starts its next turn.
+// That turn end does not end the run: shuttle reads a turn that ends with a background agent still running as EventWaiting, which its wait loop treats as still running,
+// so Master spends no turns while a fork works.
+// await-batch (a stateless, bounded wait on a batch's report path) remains as a verb an operator can call, but no longer sits in Master's loop.
+// Go's gates only run when Master actually calls them — the fork itself is Master's own un-gateable act,
+// so enforcement is two-layer: template discipline (the master template pins the begin -> fork -> notification -> record sequence, property-tested) plus fail-loud detection after the fact
 // (record-batch archives the report and refuses when a batch has no begin-batch record, naming begin-batch as the way forward;
-// the audit cross-checks fork-transcript count against begun-batch count). This
-// is a steering guard, not a security boundary, the same class as burler's
-// nested-Agent ban.
+// the audit cross-checks fork-transcript count against begun-batch count).
+// This is a steering guard, not a security boundary, the same class as burler's nested-Agent ban.
 //
 // A third, deterministic layer closes the fork-loop deadlock: because a fork
 // inherits Master's whole prompt (the batch loop included), a fork that
@@ -352,11 +345,8 @@
 // commits survives independently of Master's fate; only reports and state
 // are fabric-committed per batch, so nothing already recorded is ever lost.
 // One crash window needs a distinct resume move: a crash landing between a fork's report and record-batch leaves the re-driven batch with a report already on disk, which begin-batch refuses to overwrite when state.json records the batch — the resumed Master consumes it with record-batch instead (its fork audit keys on the bracket-opening session recorded in the batch state, never the current Master session, so the crashed session's fork transcript — still on disk — is found and policy-checked exactly as a late record would have), or with recover-batch's attach path for a recovery batch (found live in round fable-r3, where auditing the current session instead wedged that resume across all three verbs).
-// This crash window resumes on the SAME
-// machine only: fork transcripts live under the machine-local ~/.claude
-// projects directory, while state.json and the reports are fabric-synced —
-// a different machine sees the report with no transcript behind it, which
-// record-batch treats exactly as it treats a forged report:
+// This crash window resumes on the SAME machine only: fork transcripts live under the machine-local ~/.claude projects directory, while state.json and the reports are fabric-synced —
+// a different machine sees the report with no transcript behind it, which record-batch treats exactly as it treats a forged report:
 // it archives the report and returns a *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
 // A report with no begin-batch record is archived by begin-batch itself, which proceeds and returns the archive path as BeginResult.ArchivedReport;
 // only a batch with no record is archived this way, and a recorded batch's report is never archived by begin-batch.

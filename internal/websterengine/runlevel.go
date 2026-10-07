@@ -761,14 +761,9 @@ func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summar
 	if mapErr != nil {
 		return RunResult{}, mapErr
 	}
-	// Cycles are always informational: prepend one warning per cycle
-	// ahead of the verify gate's own warnings below,
-	// so the sequencing observations, which describe the whole run,
-	// read first. Non-done outcomes (asking/died/timeout) return an
-	// error rather than a RunResult, so a cycle observed on a run that
-	// ends stuck/paused/died reaches the operator through that error
-	// path's own message rather than through Cycles — an accepted,
-	// stated limitation, not an oversight.
+	// Cycles are always informational: prepend one warning per cycle ahead of the verify gate's own warnings below, so the sequencing observations, which describe the whole run, read first.
+	// Non-done outcomes (asking/died/timeout) return an error rather than a RunResult,
+	// so a cycle observed on a run that ends stuck/paused/died reaches the operator through that error path's own message rather than through Cycles — an accepted, stated limitation, not an oversight.
 	runResult.Warnings = append(freshWarnings, runResult.Warnings...)
 	runResult.Cycles = cycles
 	if len(cycles) > 0 {
