@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -54,14 +55,14 @@ func formatWaitNote(producer, what string, elapsed time.Duration, detail string)
 // verifyWaiting returns the Waiting hook that reports a running verify from the marker at markerPath, and falls through to next otherwise.
 // The note names the run's current producer and measures elapsed time from now.
 // A marker whose pid is dead reads as absent, so a crashed verify never sticks in the status line.
-func verifyWaiting(markerPath string, now func() time.Time, next func() (string, error)) func(st shedengine.Status) (string, error) {
+func verifyWaiting(markerPath string, now func() time.Time, next func(st shedengine.Status) (string, error)) func(st shedengine.Status) (string, error) {
 	return func(st shedengine.Status) (string, error) {
 		m, live, err := verifytree.ReadMarker(markerPath)
 		if err != nil {
 			return "", err
 		}
 		if !live {
-			return next()
+			return next(st)
 		}
 		var detail []string
 		if m.Attempt > 0 {
@@ -72,13 +73,37 @@ func verifyWaiting(markerPath string, now func() time.Time, next func() (string,
 	}
 }
 
+// shuttleWaiting returns the Waiting hook that reports a shuttle wait from the marker readMarker finds, and falls through to next otherwise.
+// The note names the run's current producer and the wait's kind, with no detail clause.
+// readMarker returns false for a marker whose pid is dead, so a crashed wait never sticks in the status line.
+func shuttleWaiting(readMarker func() (shuttleengine.WaitMarker, bool, error), now func() time.Time, next func(st shedengine.Status) (string, error)) func(st shedengine.Status) (string, error) {
+	return func(st shedengine.Status) (string, error) {
+		marker, live, err := readMarker()
+		if err != nil {
+			return "", err
+		}
+		if !live {
+			return next(st)
+		}
+		return formatWaitNote(st.CurrentProducer, marker.Kind, now().Sub(marker.Started), ""), nil
+	}
+}
+
 // reviewWaitingFor builds the Waiting hook for loc's worktree, or nil when no location is wired.
-// A running verify is reported ahead of the parent-review note.
+// A running verify is reported first, then a shuttle wait, then the parent-review note.
 func reviewWaitingFor(loc *lyxcwd.Location) func(st shedengine.Status) (string, error) {
 	if loc == nil {
 		return nil
 	}
-	review := reviewWaiting(loomengine.LoomParentReviewDir(loc), loomengine.LoomParentReviewLockDir(loc))
+	reviewNote := reviewWaiting(loomengine.LoomParentReviewDir(loc), loomengine.LoomParentReviewLockDir(loc))
+	review := func(shedengine.Status) (string, error) { return reviewNote() }
+	readShuttleMarker := func() (shuttleengine.WaitMarker, bool, error) {
+		cfg, err := shuttleengine.LoadConfig(loc.AnchorPath(), "shuttle")
+		if err != nil {
+			return shuttleengine.WaitMarker{}, false, err
+		}
+		return shuttleengine.ReadWaitMarker(cfg, loc.AnchorPath())
+	}
 	markerPath := verifytree.NewPaths(loc.WorktreePath(), verifytree.Dir(loc.AnchorPath())).Marker
-	return verifyWaiting(markerPath, time.Now, review)
+	return verifyWaiting(markerPath, time.Now, shuttleWaiting(readShuttleMarker, time.Now, review))
 }

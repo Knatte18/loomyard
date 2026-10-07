@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 func reviewStore(t *testing.T) parentreview.Store {
@@ -117,6 +118,82 @@ func TestReviewWaiting(t *testing.T) {
 	}
 }
 
+// reviewAsNext adapts the review store's waiting note to the hook chain's next step.
+func reviewAsNext(s parentreview.Store) func(shedengine.Status) (string, error) {
+	note := reviewWaiting(s.Root, s.LockDir)
+	return func(shedengine.Status) (string, error) { return note() }
+}
+
+// writeShuttleMarker writes a wait marker held by pid into a run directory under runRoot.
+func writeShuttleMarker(t *testing.T, runRoot string, pid int) {
+	t.Helper()
+	runDir := filepath.Join(runRoot, "run-1")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "kind: gate validate-plan\nstarted: 2026-10-03T09:15:00Z\npid: " + strconv.Itoa(pid) + "\n"
+	if err := os.WriteFile(filepath.Join(runDir, "wait.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestShuttleWaiting asserts a live shuttle marker is reported when no verify runs, a live verify marker is reported ahead of it, and a dead shuttle marker falls through to the review note.
+func TestShuttleWaiting(t *testing.T) {
+	tests := []struct {
+		name         string
+		shuttlePID   int
+		verifyMarker func(t *testing.T) string
+		want         string
+		wantReview   bool
+	}{
+		{
+			name:         "live shuttle marker when no verify runs",
+			shuttlePID:   os.Getpid(),
+			verifyMarker: func(t *testing.T) string { return filepath.Join(t.TempDir(), "absent.yaml") },
+			want:         "Plan-Write: gate validate-plan running 6m",
+		},
+		{
+			name:         "live verify marker ahead of the shuttle marker",
+			shuttlePID:   os.Getpid(),
+			verifyMarker: func(t *testing.T) string { return writeVerifyMarker(t, os.Getpid(), 0) },
+			want:         "Plan-Write: verify running 6m (go test ./...)",
+		},
+		{
+			name:         "dead shuttle marker falls to review",
+			shuttlePID:   2147483646,
+			verifyMarker: func(t *testing.T) string { return filepath.Join(t.TempDir(), "absent.yaml") },
+			wantReview:   true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runRoot := t.TempDir()
+			writeShuttleMarker(t, runRoot, tt.shuttlePID)
+			s := reviewStore(t)
+			openReview(t, s)
+			started := time.Date(2026, 10, 3, 9, 15, 0, 0, time.UTC)
+			now := func() time.Time { return started.Add(6*time.Minute + 20*time.Second) }
+			readMarker := func() (shuttleengine.WaitMarker, bool, error) {
+				return shuttleengine.ReadWaitMarker(shuttleengine.Config{RunDir: runRoot}, t.TempDir())
+			}
+			hook := verifyWaiting(tt.verifyMarker(t), now, shuttleWaiting(readMarker, now, reviewAsNext(s)))
+			note, err := hook(shedengine.Status{CurrentProducer: "Plan-Write"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.wantReview {
+				if !strings.HasPrefix(note, "parent review: ") {
+					t.Errorf("note = %q; want the parent-review note", note)
+				}
+				return
+			}
+			if note != tt.want {
+				t.Errorf("note = %q; want %q", note, tt.want)
+			}
+		})
+	}
+}
+
 // writeVerifyMarker writes a running marker held by pid and returns its path.
 func writeVerifyMarker(t *testing.T, pid int, attempt int) string {
 	t.Helper()
@@ -183,7 +260,7 @@ func TestVerifyWaiting(t *testing.T) {
 			}
 			started := time.Date(2026, 10, 3, 9, 15, 0, 0, time.UTC)
 			now := func() time.Time { return started.Add(6*time.Minute + 20*time.Second) }
-			note, err := verifyWaiting(tt.marker(t), now, reviewWaiting(s.Root, s.LockDir))(shedengine.Status{CurrentProducer: "Webster-Burler"})
+			note, err := verifyWaiting(tt.marker(t), now, reviewAsNext(s))(shedengine.Status{CurrentProducer: "Webster-Burler"})
 			if err != nil {
 				t.Fatal(err)
 			}
