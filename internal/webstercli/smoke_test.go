@@ -40,7 +40,11 @@ func realForkSettingsPath(t *testing.T) string {
 	t.Helper()
 	runDir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "smoke", Interactive: false, ForkSubagents: true}
-	cfg := shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true}
+	cfg, err := shuttleengine.LoadConfig(t.TempDir(), "shuttle")
+	if err != nil {
+		t.Fatalf("load the shipped shuttle template: %v", err)
+	}
+	cfg.ClaudeDenyAgentTool, cfg.ClaudeDenyAskUserQuestion = true, true
 	if _, err := claudeengine.New().Prepare(runDir, spec, cfg); err != nil {
 		t.Fatalf("Prepare fork-mode settings: %v", err)
 	}

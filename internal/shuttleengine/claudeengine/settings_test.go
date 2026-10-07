@@ -352,7 +352,7 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 // so a prompt over the old 30000-byte bound launches and prompt.md holds all of it.
 // Only a pointer over maxLaunchPromptBytes, reached by a pathological run-directory path, is rejected, before any run artifact is written.
 func TestPrepare_PromptLaunchLimit(t *testing.T) {
-	cfg := shuttleengine.Config{}
+	cfg := templateConfig(t)
 	c := New()
 
 	t.Run("LargePrompt_LaunchesWithPointer", func(t *testing.T) {
@@ -404,7 +404,8 @@ func TestPrepare_PromptLaunchLimit(t *testing.T) {
 func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	runDir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: false}
-	cfg := shuttleengine.Config{ClaudeDenyAgentTool: true, ClaudeDenyAskUserQuestion: true}
+	cfg := templateConfig(t)
+	cfg.ClaudeDenyAgentTool, cfg.ClaudeDenyAskUserQuestion = true, true
 
 	c := New()
 	launch, err := c.Prepare(runDir, spec, cfg)

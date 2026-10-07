@@ -16,12 +16,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// The leading CLAUDE_ENV_FILE assignment every launch and resume line carries, per dialect, for the env file paths the tests below thread through.
+// The leading CLAUDE_ENV_FILE assignment and the default 5m CLAUDE_CODE_PROMPT_CACHE_TTL assignment every launch and resume line carries, per dialect, for the env file paths the tests below thread through.
 const (
 	pwshEnvFilePath  = `C:\run\bash-env.sh`
 	posixEnvFilePath = "/run/bash-env.sh"
-	pwshEnvLead      = `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; `
-	posixEnvLead     = `CLAUDE_ENV_FILE='/run/bash-env.sh' `
+	pwshEnvLead      = `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '5m'; `
+	posixEnvLead     = `CLAUDE_ENV_FILE='/run/bash-env.sh' CLAUDE_CODE_PROMPT_CACHE_TTL='5m' `
 )
 
 func TestClaudeBinary(t *testing.T) {
@@ -57,8 +57,19 @@ func TestBuildLaunchCmd(t *testing.T) {
 		notice        string
 		interactive   bool
 		forkSubagents bool
-		want          string
+		// promptCacheTTL defaults to 5m when empty.
+		promptCacheTTL string
+		want           string
 	}{
+		{
+			name:           "prompt_cache_ttl_one_hour",
+			bin:            "claude",
+			promptPath:     `C:\run\prompt.md`,
+			settingsPath:   `C:\run\settings.json`,
+			sessionID:      "abc-123",
+			promptCacheTTL: "1h",
+			want:           `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' 'Read C:\run\prompt.md in full first; it is your complete, authoritative instructions.' --session-id 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`,
+		},
 		{
 			name:         "autonomous_no_model",
 			bin:          "claude",
@@ -315,7 +326,11 @@ func TestBuildLaunchCmd(t *testing.T) {
 			} else {
 				envFilePath = posixEnvFilePath
 			}
-			got := buildLaunchCmd(sh, tt.bin, launchPointer(tt.promptPath), tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.notice, envFilePath, false, !tt.interactive, tt.forkSubagents)
+			promptCacheTTL := tt.promptCacheTTL
+			if promptCacheTTL == "" {
+				promptCacheTTL = "5m"
+			}
+			got := buildLaunchCmd(sh, tt.bin, launchPointer(tt.promptPath), tt.settingsPath, tt.sessionID, tt.model, tt.effort, tt.notice, envFilePath, promptCacheTTL, false, !tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildLaunchCmd(...) = %q; want %q", got, tt.want)
 			}
@@ -410,22 +425,24 @@ func TestBuildResumeCmd(t *testing.T) {
 		notice        string
 		interactive   bool
 		forkSubagents bool
+		ttl           string
 		want          string
 	}{
-		{"autonomous_bare", "", "", "", false, false, pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`},
-		{"interactive_bare", "", "", "", true, false, pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME"`},
-		{"model_and_effort_pinned", "haiku", "low", "", false, false, pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --model 'haiku' --effort 'low' --dangerously-skip-permissions`},
-		{"notice_on_resume", "", "", "Agent is denied.", false, false, pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt 'Agent is denied.'`},
+		{"autonomous_bare", "", "", "", false, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions`},
+		{"interactive_bare", "", "", "", true, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME"`},
+		{"model_and_effort_pinned", "haiku", "low", "", false, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --model 'haiku' --effort 'low' --dangerously-skip-permissions`},
+		{"notice_on_resume", "", "", "Agent is denied.", false, false, "5m", pwshEnvLead + `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME" --dangerously-skip-permissions --append-system-prompt 'Agent is denied.'`},
 		{
 			// A resumed fork-mode session must keep the fork-subagent
 			// capability it launched with.
-			"fork_mode_on", "", "", "", true, true,
+			"fork_mode_on", "", "", "", true, true, "5m",
 			pwshEnvLead + `$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME"`,
 		},
+		{"prompt_cache_ttl_one_hour", "", "", "", true, false, "1h", `$env:CLAUDE_ENV_FILE = 'C:\run\bash-env.sh'; $env:CLAUDE_CODE_PROMPT_CACHE_TTL = '1h'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --name "$env:LYX_STRAND_NAME"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.model, tt.effort, tt.notice, pwshEnvFilePath, !tt.interactive, tt.forkSubagents)
+			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.model, tt.effort, tt.notice, pwshEnvFilePath, tt.ttl, !tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildResumeCmd(...) = %q; want %q", got, tt.want)
 			}
@@ -443,7 +460,7 @@ func TestBuildResumeCmd_NoticePosix(t *testing.T) {
 	notice := noticeAgentForkDeny + " " + noticeAskUserQuestionDeny
 	want := posixEnvLead + `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' --resume 'abc-123' --settings '/run/settings.json' --name "${LYX_STRAND_NAME}" --dangerously-skip-permissions --append-system-prompt '` + notice + `'`
 
-	got := buildResumeCmd(shell.Posix(), "claude", "/run/settings.json", "abc-123", "", "", notice, posixEnvFilePath, true, true)
+	got := buildResumeCmd(shell.Posix(), "claude", "/run/settings.json", "abc-123", "", "", notice, posixEnvFilePath, "5m", true, true)
 	if got != want {
 		t.Errorf("buildResumeCmd(...) = %q; want %q", got, want)
 	}

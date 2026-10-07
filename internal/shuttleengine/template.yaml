@@ -9,3 +9,7 @@ submit_redraw_settle_ms: 300  # milliseconds to wait after an Enter before the i
 claude: ${env:LYX_SHUTTLE_CLAUDE:-}  # path to the claude executable; empty falls back to "claude" on PATH — prefer an explicit path, PATH aliases can hit the 0-byte WindowsApps stub
 claude_deny_agent_tool: true  # emit a PreToolUse deny for the in-process Agent tool
 claude_deny_ask_user_question: true  # emit a PreToolUse deny for the AskUserQuestion tool (autonomous runs only)
+claude_prompt_cache_ttl: 5m  # prompt-cache TTL for every role without an entry in claude_prompt_cache_ttl_roles; Claude Code's own values, validated when a run starts, and the refusal names the accepted ones
+claude_prompt_cache_ttl_roles:  # prompt-cache TTL per role, keyed by a strand's role segment (Spec.Role); the operator's own map, replacing the template's whole when present, so leaving a role out drops it to the default; values are Claude Code's, validated when a run starts, and the refusal names the accepted ones
+  driver: 1h
+  webster: 1h

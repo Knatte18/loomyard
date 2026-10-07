@@ -5,6 +5,7 @@
 package shuttleengine_test
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,6 +91,65 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	}
 	if !cfg.ClaudeDenyAskUserQuestion {
 		t.Error("ClaudeDenyAskUserQuestion = false, want true")
+	}
+	if cfg.ClaudePromptCacheTTL != "5m" {
+		t.Errorf("ClaudePromptCacheTTL = %q, want 5m", cfg.ClaudePromptCacheTTL)
+	}
+	if want := map[string]string{"driver": "1h", "webster": "1h"}; !maps.Equal(cfg.ClaudePromptCacheTTLRoles, want) {
+		t.Errorf("ClaudePromptCacheTTLRoles = %v, want %v", cfg.ClaudePromptCacheTTLRoles, want)
+	}
+}
+
+func TestLoadConfig_PromptCacheTTLKeys(t *testing.T) {
+	t.Parallel()
+
+	// The TTL keys are the template's last lines; each row replaces them with its own and keeps every other template key.
+	templateWithoutTTLKeys := shuttleengine.ConfigTemplate()
+	templateWithoutTTLKeys = templateWithoutTTLKeys[:strings.Index(templateWithoutTTLKeys, "claude_prompt_cache_ttl:")]
+
+	tests := []struct {
+		name      string
+		ttlKeys   string
+		wantTTL   string
+		wantRoles map[string]string
+	}{
+		{
+			name:      "file lacking both keys resolves the template default and map",
+			ttlKeys:   "",
+			wantTTL:   "5m",
+			wantRoles: map[string]string{"driver": "1h", "webster": "1h"},
+		},
+		{
+			name:      "present map replaces the template map whole",
+			ttlKeys:   "claude_prompt_cache_ttl_roles:\n  orch: 1h\n",
+			wantTTL:   "5m",
+			wantRoles: map[string]string{"orch": "1h"},
+		},
+		{
+			name:      "default without a map keeps the template map",
+			ttlKeys:   "claude_prompt_cache_ttl: 1h\n",
+			wantTTL:   "1h",
+			wantRoles: map[string]string{"driver": "1h", "webster": "1h"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			seedLyxConfig(t, tmpDir, "shuttle", templateWithoutTTLKeys+tt.ttlKeys)
+
+			cfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.ClaudePromptCacheTTL != tt.wantTTL {
+				t.Errorf("ClaudePromptCacheTTL = %q, want %q", cfg.ClaudePromptCacheTTL, tt.wantTTL)
+			}
+			if !maps.Equal(cfg.ClaudePromptCacheTTLRoles, tt.wantRoles) {
+				t.Errorf("ClaudePromptCacheTTLRoles = %v, want %v", cfg.ClaudePromptCacheTTLRoles, tt.wantRoles)
+			}
+		})
 	}
 }
 

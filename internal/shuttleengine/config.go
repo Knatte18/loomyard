@@ -34,6 +34,17 @@ type Config struct {
 	Claude                    string `yaml:"claude"`
 	ClaudeDenyAgentTool       bool   `yaml:"claude_deny_agent_tool"`
 	ClaudeDenyAskUserQuestion bool   `yaml:"claude_deny_ask_user_question"`
+
+	// ClaudePromptCacheTTL is Claude Code's prompt-cache TTL for a role without a map entry; the claude engine validates it, not LoadConfig.
+	ClaudePromptCacheTTL string `yaml:"claude_prompt_cache_ttl"`
+
+	// ClaudePromptCacheTTLRoles maps a strand's role segment (Spec.Role) to Claude Code's prompt-cache TTL; the claude engine validates it, not LoadConfig.
+	ClaudePromptCacheTTLRoles map[string]string `yaml:"claude_prompt_cache_ttl_roles"`
+}
+
+// ConfigOpenMaps returns the shuttle.yaml keys whose entries are the operator's own, which configengine carries whole through reconcile and --set.
+func ConfigOpenMaps() []string {
+	return []string{"claude_prompt_cache_ttl_roles"}
 }
 
 // LoadConfig loads and unmarshals shuttle module configuration.
@@ -41,7 +52,7 @@ type Config struct {
 // An absent <baseDir>/_lyx/ directory or an absent config file resolves the embedded template;
 // a config file that exists but is invalid still errors.
 func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.LoadOrTemplate(baseDir, module, []byte(ConfigTemplate()))
+	resolved, err := configengine.LoadOrTemplate(baseDir, module, []byte(ConfigTemplate()), ConfigOpenMaps()...)
 	if err != nil {
 		return Config{}, err
 	}
