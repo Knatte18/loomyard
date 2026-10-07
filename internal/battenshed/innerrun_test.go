@@ -5,29 +5,49 @@
 package battenshed
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// fakeClock is a Sleep seam a test can hold still: Sleep records calls without ever blocking.
+// fakeClock is the Sleep and Now seam of a wait a test drives: Sleep moves the clock by the interval and never blocks.
+// It also owns the on-disk status file of the fake child and the pause flag of the fake batten status, so a test makes the changes a wait ends on without real time passing.
 type fakeClock struct {
 	sleepCalls int
 	now        time.Time
+	// t fails a wait that never ends.
+	t *testing.T
+	// statusPath is the status file newInnerRunDeps keeps for the fake child, and statusBumps how often bumpStatus moved its modification time.
+	statusPath  string
+	statusBumps int
+	// pauseAtSleep is the check at which the fake batten status carries pause_requested; zero means never.
+	// newInnerRunDeps sets it to 1, so a wait that nothing else ends returns at its first check.
+	pauseAtSleep int
+	// onSleep runs at every Sleep, before the check that follows it, with the number of Sleep calls so far.
+	onSleep func(call int)
+	// reasonFile, when set, is the stuck-reason file whose content pauseRequested appends to reasons at the end of every check, so a test reads the wait reason in force at each check.
+	reasonFile string
+	reasons    []string
 }
 
 // testGrace is the driver-exit grace every test producer is built with unless it says otherwise.
 const testGrace = 10 * time.Minute
 
-// Now is the fake clock's fixed time, moved only by advance.
+// maxFakeSleeps bounds the checks of one test, so a wait nothing ends fails instead of hanging.
+const maxFakeSleeps = 500
+
+// Now is the fake clock's time, moved by advance and Sleep.
 func (c *fakeClock) Now() time.Time {
 	if c.now.IsZero() {
 		c.now = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -40,12 +60,59 @@ func (c *fakeClock) advance(d time.Duration) { c.now = c.Now().Add(d) }
 
 func (c *fakeClock) Sleep(ctx context.Context, d time.Duration) {
 	c.sleepCalls++
+	c.advance(d)
+	if c.t != nil && c.sleepCalls > maxFakeSleeps {
+		c.t.Fatalf("the wait made %d checks without ending", c.sleepCalls)
+	}
+	if c.onSleep != nil {
+		c.onSleep(c.sleepCalls)
+	}
+}
+
+// watchReason has the clock record the producer's wait reason at the end of every check.
+func (c *fakeClock) watchReason(scratchDir string) {
+	c.reasonFile = StuckReasonFile(scratchDir, "innerrun")
+}
+
+// lastReason is the wait reason in force at the end of the newest check.
+func (c *fakeClock) lastReason() string {
+	if len(c.reasons) == 0 {
+		return ""
+	}
+	return c.reasons[len(c.reasons)-1]
+}
+
+// pauseRequested is the fake batten status's pause_requested.
+func (c *fakeClock) pauseRequested() (bool, error) {
+	if raw, err := os.ReadFile(c.reasonFile); err == nil {
+		c.reasons = append(c.reasons, strings.TrimSuffix(string(raw), "\n"))
+	}
+	return c.pauseAtSleep > 0 && c.sleepCalls >= c.pauseAtSleep, nil
+}
+
+// bumpStatus moves the fake child's status file modification time, which makes the wait decode it.
+func (c *fakeClock) bumpStatus() {
+	c.t.Helper()
+	c.statusBumps++
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(c.statusBumps) * time.Second)
+	if err := os.Chtimes(c.statusPath, at, at); err != nil {
+		c.t.Fatal(err)
+	}
 }
 
 // newInnerRunDeps builds an InnerRunDeps whose ReadStatus returns the next entry of statuses on
 // each call, holding on the last entry once exhausted, and whose Spawn returns spawnErr and
 // records how many times it was called.
-func newInnerRunDeps(spawnErr error, resolveErr error, statuses []statusResult, clock *fakeClock) (*int, *int, InnerRunDeps) {
+// The fake child keeps a real status file, since the wait stats it, and the deps' pause seam ends the wait at its first check unless the clock says otherwise.
+func newInnerRunDeps(t *testing.T, spawnErr error, resolveErr error, statuses []statusResult, clock *fakeClock) (*int, *int, InnerRunDeps) {
+	t.Helper()
+	clock.t = t
+	clock.statusPath = filepath.Join(t.TempDir(), "status.json")
+	if err := os.WriteFile(clock.statusPath, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	clock.bumpStatus()
+	clock.pauseAtSleep = 1
 	readCalls := 0
 	spawnCalls := 0
 	deps := InnerRunDeps{
@@ -57,8 +124,11 @@ func newInnerRunDeps(spawnErr error, resolveErr error, statuses []statusResult, 
 			if resolveErr != nil {
 				return "", "", resolveErr
 			}
-			return "/status/path", "/status/lock/path", nil
+			return clock.statusPath, "/status/lock/path", nil
 		},
+		PauseRequested: clock.pauseRequested,
+		// The wait does its probe work at entry only, unless a test lowers this; a status decode then happens only after bumpStatus.
+		NoticeProbe: time.Hour,
 		ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 			idx := readCalls
 			readCalls++
@@ -84,13 +154,18 @@ type statusResult struct {
 }
 
 func TestInnerRun_VerdictTable(t *testing.T) {
+	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Review"}, found: true}
 	tests := []struct {
-		name       string
-		statuses   []statusResult
-		wantDone   bool
-		wantStuck  bool
-		wantErr    bool
-		wantReason string
+		name     string
+		statuses []statusResult
+		// changeAtCheck is the check at which the test rewrites the child's status file, so the next entry of statuses is read; zero never does.
+		changeAtCheck int
+		wantDone      bool
+		wantStuck     bool
+		wantErr       bool
+		wantReason    string
+		// wantPath is the prefix of the returned Stuck's Path, which names what ended the wait.
+		wantPath string
 	}{
 		{
 			// A done child whose driver is gone must never itself be Stuck: ProducerDef.OnStuck is a static per-producer value, so it routes every Stuck from this row back to itself with no per-verdict distinction possible.
@@ -100,29 +175,37 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 			wantDone: true,
 		},
 		{
-			name:      "StillRunningIsStuck",
-			statuses:  []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}},
+			name:      "RunningWaitsUntilPaused",
+			statuses:  []statusResult{running},
 			wantStuck: true,
+			wantPath:  "pause requested at ",
 		},
 		{
-			name:      "AbsentStatusSpawnsThenRunningIsStuck",
-			statuses:  []statusResult{{found: false}, {status: shedengine.Status{State: shedengine.StateRunning}, found: true}},
+			name:      "AbsentStatusSpawnsThenRunningWaitsUntilPaused",
+			statuses:  []statusResult{{found: false}, running},
 			wantStuck: true,
+			wantPath:  "pause requested at ",
 		},
 		{
-			name:      "BlockedIsAWait",
-			statuses:  []statusResult{{status: shedengine.Status{State: shedengine.StateBlocked, Error: "boom", CurrentProducer: "p1"}, found: true}},
-			wantStuck: true,
+			name:          "BlockedWaitsUntilTheStateChanges",
+			statuses:      []statusResult{{status: shedengine.Status{State: shedengine.StateBlocked, Error: "boom", CurrentProducer: "p1"}, found: true}, running},
+			changeAtCheck: 1,
+			wantStuck:     true,
+			wantPath:      "child blocked → running at Plan-Review",
 		},
 		{
-			name:      "PausedIsAWait",
-			statuses:  []statusResult{{status: shedengine.Status{State: shedengine.StatePaused, Error: "paused-err", CurrentProducer: "p2"}, found: true}},
-			wantStuck: true,
+			name:          "PausedWaitsUntilTheStateChanges",
+			statuses:      []statusResult{{status: shedengine.Status{State: shedengine.StatePaused, Error: "paused-err", CurrentProducer: "p2"}, found: true}, running},
+			changeAtCheck: 1,
+			wantStuck:     true,
+			wantPath:      "child paused → running at Plan-Review",
 		},
 		{
-			name:      "FailedIsAWait",
-			statuses:  []statusResult{{status: shedengine.Status{State: shedengine.StateFailed, Error: "failed-err", CurrentProducer: "p3"}, found: true}},
-			wantStuck: true,
+			name:          "FailedWaitsUntilTheStateChanges",
+			statuses:      []statusResult{{status: shedengine.Status{State: shedengine.StateFailed, Error: "failed-err", CurrentProducer: "p3"}, found: true}, running},
+			changeAtCheck: 1,
+			wantStuck:     true,
+			wantPath:      "child failed → running at Plan-Review",
 		},
 		{
 			name:     "AbsentStatusStillAbsentAfterSpawnIsError",
@@ -135,6 +218,13 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 			wantErr:  true,
 		},
 		{
+			name:          "DecodeErrorInTheWaitIsReturnedError",
+			statuses:      []statusResult{running, {err: errors.New("decode failed")}},
+			changeAtCheck: 1,
+			wantErr:       true,
+			wantReason:    "decode failed",
+		},
+		{
 			name:     "UnrecognizedStateIsReturnedError",
 			statuses: []statusResult{{status: shedengine.Status{State: "bogus"}, found: true}},
 			wantErr:  true,
@@ -145,7 +235,14 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			scratchDir := t.TempDir()
 			clock := &fakeClock{}
-			_, _, deps := newInnerRunDeps(nil, nil, tt.statuses, clock)
+			_, _, deps := newInnerRunDeps(t, nil, nil, tt.statuses, clock)
+			if tt.changeAtCheck > 0 {
+				clock.onSleep = func(call int) {
+					if call == tt.changeAtCheck {
+						clock.bumpStatus()
+					}
+				}
+			}
 
 			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 			outcome, ptr, err := producer.Call(context.Background())
@@ -176,6 +273,9 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 				if ptr.Reason == "" || ptr.Reason+"\n" != string(data) {
 					t.Errorf("returned Reason = %q; want the reason file's line %q", ptr.Reason, strings.TrimSuffix(string(data), "\n"))
 				}
+				if !ptr.BudgetExempt || ptr.Path != ptr.Reason || !strings.HasPrefix(ptr.Path, tt.wantPath) {
+					t.Errorf("returned pointer = %+v; want a budget-exempt Stuck whose Path mirrors its Reason and starts %q", ptr, tt.wantPath)
+				}
 			}
 		})
 	}
@@ -185,7 +285,7 @@ func TestInnerRun_SpawnFailureIsReturnedError(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	spawnErr := errors.New("spawn failed")
-	_, spawnCalls, deps := newInnerRunDeps(spawnErr, nil, []statusResult{{found: false}}, clock)
+	_, spawnCalls, deps := newInnerRunDeps(t, spawnErr, nil, []statusResult{{found: false}}, clock)
 
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 	outcome, _, err := producer.Call(context.Background())
@@ -207,7 +307,7 @@ func TestInnerRun_ResolveStatusFailureIsReturnedError(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	resolveErr := errors.New("resolve failed")
-	_, _, deps := newInnerRunDeps(nil, resolveErr, nil, clock)
+	_, _, deps := newInnerRunDeps(t, nil, resolveErr, nil, clock)
 
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 	_, _, err := producer.Call(context.Background())
@@ -222,7 +322,7 @@ func TestInnerRun_ResolveStatusFailureIsReturnedError(t *testing.T) {
 func TestInnerRun_CancelledContext(t *testing.T) {
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
-	_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateDone}, found: true}}, clock)
+	_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateDone}, found: true}}, clock)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -320,32 +420,53 @@ func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) 
 	}
 }
 
-// TestInnerRun_RunningArmReviewWaitNote pins the running arm's reason with a reviewer note, without one, and when ReviewWait fails.
-// Whatever the reason, the arm performs exactly one deps.Sleep call and no more: the wait across Call invocations is shedengine's own bounce budget, not a loop inside this producer.
+// TestInnerRun_RunningArmReviewWaitNote pins the running arm's reason with a reviewer note, without one, when ReviewWait fails, and that a changed note rewrites the reason once.
+// The wait reads the note on every probe check, and the reason is written at entry and only when it changes.
 func TestInnerRun_RunningArmReviewWaitNote(t *testing.T) {
 	plain := "inner shed run still running; sleeping 5s before the next bounce"
+	hub := "inner shed run waiting: parent review: waiting on the hub; sleeping 5s before the next bounce"
+	script := func(notes ...string) func() (string, error) {
+		calls := 0
+		return func() (string, error) {
+			i := min(calls, len(notes)-1)
+			calls++
+			return notes[i], nil
+		}
+	}
 	tests := []struct {
 		name       string
 		reviewWait func() (string, error)
-		wantReason string
+		// wantReasons is the reason in force at the end of each of the three checks.
+		wantReasons []string
+		// wantWrites counts reason writes: the entry, each change, and the pause that ends the wait.
+		wantWrites int
 	}{
-		{"note replaces plain reason", func() (string, error) { return "parent review: waiting on the hub", nil }, "inner shed run waiting: parent review: waiting on the hub; sleeping 5s before the next bounce"},
-		{"empty note keeps plain reason", func() (string, error) { return "", nil }, plain},
-		{"nil ReviewWait keeps plain reason", nil, plain},
-		{"failing ReviewWait falls back to plain reason", func() (string, error) { return "", errors.New("boom") }, plain},
+		{"note replaces plain reason", func() (string, error) { return "parent review: waiting on the hub", nil }, []string{hub, hub, hub}, 2},
+		{"empty note keeps plain reason", func() (string, error) { return "", nil }, []string{plain, plain, plain}, 2},
+		{"nil ReviewWait keeps plain reason", nil, []string{plain, plain, plain}, 2},
+		{"failing ReviewWait falls back to plain reason", func() (string, error) { return "", errors.New("boom") }, []string{plain, plain, plain}, 2},
+		{"a changed note rewrites the reason once", script("", "", "parent review: waiting on the hub"), []string{plain, hub, hub}, 3},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger.SetOutput(&buf)
+			t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+			scratchDir := t.TempDir()
 			clock := &fakeClock{}
-			_, _, deps := newInnerRunDeps(nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
+			_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
+			clock.watchReason(scratchDir)
+			clock.pauseAtSleep = 3
+			deps.NoticeProbe = 0
 			deps.ReviewWait = tt.reviewWait
 
-			ptr := shedfake.RequireOutcome(t, NewInnerRun("innerrun", "myslug", deps, 5*time.Second, t.TempDir(), testGrace), shedengine.Stuck)
-			if ptr.Reason != tt.wantReason {
-				t.Errorf("reason = %q; want %q", ptr.Reason, tt.wantReason)
+			shedfake.RequireOutcome(t, NewInnerRun("innerrun", "myslug", deps, 5*time.Second, scratchDir, testGrace), shedengine.Stuck)
+			if !slices.Equal(clock.reasons, tt.wantReasons) {
+				t.Errorf("reasons at each check = %q; want %q", clock.reasons, tt.wantReasons)
 			}
-			if clock.sleepCalls != 1 {
-				t.Errorf("Sleep calls = %d; want exactly 1", clock.sleepCalls)
+			if got := strings.Count(buf.String(), "producer stuck"); got != tt.wantWrites {
+				t.Errorf("reason writes = %d; want %d", got, tt.wantWrites)
 			}
 		})
 	}
@@ -439,7 +560,7 @@ func TestInnerRun_SpawnsUntilASpawnIsConfirmed(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			_, spawnCalls, deps := newInnerRunDeps(tt.spawnErr, nil, []statusResult{tt.status}, &fakeClock{})
+			_, spawnCalls, deps := newInnerRunDeps(t, tt.spawnErr, nil, []statusResult{tt.status}, &fakeClock{})
 
 			_, _, _ = NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace).Call(context.Background())
 
@@ -488,7 +609,7 @@ func TestInnerRun_AdoptsARunningChildWithADriver(t *testing.T) {
 			if err := os.WriteFile(marker, pidMarker(os.Getpid()+1), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{running}, &fakeClock{})
+			_, spawnCalls, deps := newInnerRunDeps(t, nil, nil, []statusResult{running}, &fakeClock{})
 			deps.DriverStrand = func(context.Context) (ChildDriverStrand, error) { return tt.strand, tt.strandErr }
 			deps.ChildRunLockHeld = func() (bool, error) { return tt.lockHeld, tt.lockErr }
 
@@ -514,7 +635,7 @@ func TestInnerRun_FailedSpawnIsRetriedOnTheNextCall(t *testing.T) {
 	scratchDir := t.TempDir()
 	spawnErr := errors.New("bootstrap exited 1")
 	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
-	_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{{found: false}, running}, &fakeClock{})
+	_, spawnCalls, deps := newInnerRunDeps(t, nil, nil, []statusResult{{found: false}, running}, &fakeClock{})
 	failing := deps
 	failing.Spawn = func(ctx context.Context) error {
 		*spawnCalls++

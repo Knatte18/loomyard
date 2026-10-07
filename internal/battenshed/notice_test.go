@@ -34,7 +34,7 @@ func newNoticeHarness(t *testing.T) *noticeHarness {
 		t:          t,
 		scratch:    filepath.Join(dir, "scratch"),
 		statusPath: filepath.Join(dir, "status.json"),
-		clock:      &fakeClock{},
+		clock:      &fakeClock{t: t, pauseAtSleep: 1},
 		status:     shedengine.Status{State: shedengine.StateRunning},
 		alive:      true,
 		quiet:      45 * time.Minute,
@@ -62,10 +62,11 @@ func (h *noticeHarness) producer() shedengine.ShedProducer {
 		ReadStatus: func(string, string) (shedengine.Status, bool, error) {
 			return h.status, true, nil
 		},
-		Sleep:        h.clock.Sleep,
-		Now:          h.clock.Now,
-		ReadDecision: func() (ChildDecision, bool, error) { return ChildDecision{}, false, nil },
-		DriverAlive:  func(context.Context) (bool, error) { return h.alive, nil },
+		Sleep:          h.clock.Sleep,
+		Now:            h.clock.Now,
+		PauseRequested: h.clock.pauseRequested,
+		ReadDecision:   func() (ChildDecision, bool, error) { return ChildDecision{}, false, nil },
+		DriverAlive:    func(context.Context) (bool, error) { return h.alive, nil },
 		Notify: func(_ context.Context, line string) error {
 			h.notified = append(h.notified, line)
 			return h.notifyErr
@@ -254,13 +255,14 @@ func TestNotice_NilNotifyRunsNoStep(t *testing.T) {
 	h := newNoticeHarness(t)
 	h.status = shedengine.Status{State: shedengine.StateBlocked}
 	deps := InnerRunDeps{
-		Spawn:         func(context.Context) error { return nil },
-		ResolveStatus: func() (string, string, error) { return h.statusPath, "", nil },
-		ReadStatus:    func(string, string) (shedengine.Status, bool, error) { return h.status, true, nil },
-		Sleep:         h.clock.Sleep,
-		Now:           h.clock.Now,
-		ReadDecision:  func() (ChildDecision, bool, error) { return ChildDecision{}, false, nil },
-		DriverAlive:   func(context.Context) (bool, error) { return true, nil },
+		Spawn:          func(context.Context) error { return nil },
+		ResolveStatus:  func() (string, string, error) { return h.statusPath, "", nil },
+		ReadStatus:     func(string, string) (shedengine.Status, bool, error) { return h.status, true, nil },
+		Sleep:          h.clock.Sleep,
+		Now:            h.clock.Now,
+		PauseRequested: h.clock.pauseRequested,
+		ReadDecision:   func() (ChildDecision, bool, error) { return ChildDecision{}, false, nil },
+		DriverAlive:    func(context.Context) (bool, error) { return true, nil },
 	}
 	p := NewInnerRun("Run-Shed", "task", deps, time.Second, h.scratch, testGrace)
 	h.call(p)

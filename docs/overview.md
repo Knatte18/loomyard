@@ -381,7 +381,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `start` is also the one site that reads a recorded seed's driver value, per [PATTERN-driver-choice-single-site](../pattern/PATTERN-driver-choice-single-site.md).
   `start` resumes a parked loom driver by typing one line into its pane (returning once the line's delivery is verified), and refuses after a bounded wait when the pane is not ready, since the driver may have resumed on its own.
   A live driver over a run halted at a hand-back with no park marker yet is still writing its stop report, so `start` refuses with the retryable kind `driver_not_parked`;
-  batten's Inner-Run retries it on its next poll without recording the approval as acted on.
+  batten's Inner-Run retries it, at most once per `notice_probe_s`, without recording the approval as acted on.
   When `start` would spawn or resume a driver over a pair with an unfinished merge it refuses with the non-retryable kind `merge_in_progress`, listing the conflicted paths under `conflicts` and naming the remedy.
   `lyx loom resume` wakes a halted run's live, parked driver through the same branch and never spawns a driver, adds a strand or brings reed up, while `start` still resumes as before;
   it reads the driver strand from reed's sessionless directory, and refuses every other state with its way forward, as the loom section of [refusal-spec.md](../contracts/specs/refusal-spec.md) lists.
@@ -480,7 +480,7 @@ User-facing modules each get one `lyx <module>` namespace:
   and batten never resumes a halted child (it does restart an approved or rejected `awaiting` one): the operator resumes the child from inside the task worktree (`lyx loom resume`) and the watch carries on, with one warning per halt episode;
   the reason, naming `lyx loom start` too when no driver can be woken, is what batten logs and writes to the row's stuck-reason file,
   and `lyx batten status` does not show it while the child is halted;
-  `lyx batten pause <slug>` stops the wait.
+  `lyx batten pause <slug>` stops the wait within one check.
   When a halted or awaiting child's reed state holds a dead driver strand, batten revives the pair's strands through reed resume once per halt episode per batten process, which brings the parked driver back with its own session and leaves the run halted and the park marker in place,
   so a later `lyx loom resume` wakes that driver;
   a retiring strand is left to `lyx loom start`.
@@ -500,12 +500,12 @@ User-facing modules each get one `lyx <module>` namespace:
   `Worktree-Create` and `Worktree-Teardown` wait for a prime lock another run holds, polling every 2 s for up to 10 min, and halt `blocked` only once that wait runs out.
   `step` drives exactly one producer forward from the run's persisted current producer, seeding a fresh run first when none is persisted yet — the same single-producer primitive `lyx loom step` is.
   `run` and `step` carry `--driver` (batten's own, `go`-only: batten has no bootstrap verb, so `llm` is refused by name) and `--child-driver` (the driver the task worktree's own inner run uses, `llm` by default or `go`); both are recorded into the run's write-once seed at first seeding, and an explicitly typed flag that disagrees with an already-seeded run is refused rather than silently dropped.
-  Those per-poll history writes, appends and folds alike, rewrite the run's durable `status.json` without committing it — the status commit skips a transition it has already committed,
-  and every self-bounce repeats the same `Run-Shed`/`running` pair — so prime's own pair carries an uncommitted change at `_lyx/shed/<slug>/status.json` for the whole watch;
-  the running watch is budgeted at 12 hours, while an awaiting wait is not bounded.
-  That is deliberate (the alternative is 1440 identical commits), and it has one operator-visible consequence worth knowing: `lyx fabric checkout` refuses hub-wide while a batten run is watching, because it requires a clean pair.
-  `status` bounds the history it reports to the most recent entries, alongside the true `history_length` and a `history_truncated` flag — the running watch appends one entry per poll, bounded by its 1440-bounce budget, while a budget-exempt wait (an awaiting hand-off, the driver-exit grace) folds consecutive identical polls into one entry carrying `repeats` and `last_at`,
-  so such a wait neither grows the history nor advances `history_length` — and surfaces the blocked run's own producer-supplied `stuck_reason`, kept for the `Run-Shed` block through the budget arm, whose persisted `error` stays the fixed budget literal (the other rows carry no `on_stuck`,
+  `Run-Shed` waits on its child inside its own call rather than bouncing once per poll: it checks the child's status file every `poll_interval_s` (2 s) and returns only for a state change, an arm event, a pause or a failed status stat, each a budget-exempt `Stuck` that is its own history entry.
+  Anything costing a process or a multiplexer round trip runs at most once per `notice_probe_s` (30 s).
+  A running child is waited on without a time limit; `lyx batten pause`, honoured within one check, cancellation and the notices bound it.
+  The history writes of those returns rewrite the run's durable `status.json` without committing it — the status commit skips a transition it has already committed — so prime's own pair carries an uncommitted change at `_lyx/shed/<slug>/status.json` while a watch goes between them.
+  That is deliberate (the alternative is one identical commit per bounce), and it has one operator-visible consequence worth knowing: `lyx fabric checkout` refuses hub-wide while a batten run is watching, because it requires a clean pair.
+  `status` bounds the history it reports to the most recent entries, alongside the true `history_length` and a `history_truncated` flag — the history grows only on a state change, a pause or a failed status stat — and surfaces the blocked run's own producer-supplied `stuck_reason`, kept for the `Run-Shed` block through the budget arm, whose persisted `error` stays the fixed budget literal (the other rows carry no `on_stuck`,
   so their own reason is the persisted `error`), plus the teardown row's `abandonedSession` — recorded by the producer rather than only returned,
   so a `step`-driven lifecycle reports it as well as a `run`-driven one.
   ✅ Implemented. See the `internal/battenshed` and `internal/battenrecipe` package documentation.

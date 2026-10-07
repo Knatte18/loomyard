@@ -467,6 +467,14 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				_, err := orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())
 				return err
 			},
+			// PauseRequested reads batten's own status file, the one `lyx batten pause` writes, so the in-call wait notices a pause within one check.
+			PauseRequested: func() (bool, error) {
+				status, found, err := state.ReadJSONStrict[shedengine.Status](StatusFile(location, slug), StatusLock(location, slug))
+				if err != nil || !found {
+					return false, err
+				}
+				return status.PauseRequested, nil
+			},
 			AttachDir: func() (string, error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {

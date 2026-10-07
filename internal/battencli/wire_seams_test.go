@@ -11,6 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
@@ -144,5 +146,44 @@ func TestWire_AttachDirRefusesAnAbsentTaskWorktreeByName(t *testing.T) {
 	_, err := c.env.InnerRun.AttachDir()
 	if err == nil || !strings.Contains(err.Error(), "a-slug") {
 		t.Errorf("AttachDir() error = %v; want the absent-worktree refusal naming the slug", err)
+	}
+}
+
+// TestWire_PauseRequestedReadsBattensOwnStatus asserts the pause seam reports the pause_requested flag of batten's own status file, and false while that file is absent.
+func TestWire_PauseRequestedReadsBattensOwnStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		status *shedengine.Status
+		want   bool
+	}{
+		{name: "AbsentStatusIsNotPaused"},
+		{name: "FlagClear", status: &shedengine.Status{State: shedengine.StateRunning}},
+		{name: "FlagSet", status: &shedengine.Status{State: shedengine.StateRunning, PauseRequested: true}, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c, location := wiredPrime(t)
+			statusPath, lockPath := StatusFile(location, "a-slug"), StatusLock(location, "a-slug")
+			// The batten pre-run creates both directories before any verb runs.
+			for _, dir := range []string{filepath.Dir(statusPath), filepath.Dir(lockPath)} {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.status != nil {
+				if err := state.WriteJSON(statusPath, lockPath, *tt.status); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			got, err := c.env.InnerRun.PauseRequested()
+			if err != nil || got != tt.want {
+				t.Errorf("PauseRequested() = %v, %v; want %v, nil", got, err, tt.want)
+			}
+		})
 	}
 }

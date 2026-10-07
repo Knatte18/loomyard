@@ -29,6 +29,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -47,8 +48,8 @@ import (
 )
 
 // shortPollBattenRecipe is contracts/recipes/batten-recipe.yaml, byte-for-byte the same four rows
-// and the same on_stuck self-route and max_bounces, with poll_interval_s dropped from 30 to 1 so
-// the step-driven re-entrancy test below does not spend 30 real seconds. It is built here, not by
+// and the same on_stuck self-route with no max_bounces, with poll_interval_s dropped from 2 to 1 so
+// the step-driven re-entrancy test below spends whole seconds only on the checks it needs. It is built here, not by
 // faking Env.InnerRun.Sleep, because this tier exists to exercise the assembled wiring -- the
 // embedded recipe's own config value flowing through shedbuild into innerRunEntry -- rather than
 // the InnerRun producer in isolation, which battenshed's own untagged tests already cover.
@@ -71,7 +72,6 @@ producers:
     engine: InnerRun
     on_done: Worktree-Teardown
     on_stuck: Run-Shed
-    max_bounces: 1440
     config:
       poll_interval_s: 1
       driver_exit_grace_s: 900
@@ -85,6 +85,9 @@ producers:
 // CreateWorktree and a real Teardown, both driving fabricengine's topology holder against h's own
 // hub -- then overrides Env.InnerRun.Spawn and Env.InnerRun.ReadStatus with readStatus, per this
 // file's own header.
+//
+// The Run-Shed wait stats the child's status file, so a stubbed read moves that file into a temporary directory and also creates it when it is absent.
+// The wait's sleep is a counter and the pause seam reports a pause from the first check on, so a stubbed child that never changes makes the wait return after one check; a test that wants a longer wait replaces either.
 func wireForHub(t *testing.T, h *hubforge.Hub, slug string, readStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)) *battenCLI {
 	t.Helper()
 	c := &battenCLI{}
@@ -92,8 +95,34 @@ func wireForHub(t *testing.T, h *hubforge.Hub, slug string, readStatus func(stat
 		t.Fatalf("wire(%s): %v", slug, err)
 	}
 	c.env.InnerRun.Spawn = func(ctx context.Context) error { return nil }
-	c.env.InnerRun.ReadStatus = readStatus
+	c.env.InnerRun.ReadStatus = nil
+	if readStatus != nil {
+		// The child's status file lives outside the repository, so the file the wait stats leaves nothing for a teardown to commit.
+		childStatus := filepath.Join(t.TempDir(), "child-status.json")
+		c.env.InnerRun.ResolveStatus = func() (string, string, error) { return childStatus, childStatus + ".lock", nil }
+		c.env.InnerRun.ReadStatus = func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
+			ensureStatusFile(t, statusPath)
+			return readStatus(statusPath, statusLockPath)
+		}
+	}
+	sleeps := 0
+	c.env.InnerRun.Sleep = func(ctx context.Context, d time.Duration) { sleeps++ }
+	c.env.InnerRun.PauseRequested = func() (bool, error) { return sleeps > 0, nil }
 	return c
+}
+
+// ensureStatusFile creates the child's status file at path when it is absent, standing in for the file the real read decodes.
+func ensureStatusFile(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); err == nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir child status dir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write child status file: %v", err)
+	}
 }
 
 // seedEntryStatus writes c's status file with CurrentProducer/State as given, an empty non-nil
@@ -176,7 +205,7 @@ func TestBattenIntegration_Rows(t *testing.T) {
 		{"Teardown_FailedRemoteDeletionHaltsResumably", stepTeardown_FailedRemoteDeletionHaltsResumably},
 		{"Teardown_UnreachableRemoteHaltsBeforeRemovalResumably", stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably},
 		{"Teardown_AlreadyGonePairWithNoBranchIsDone", stepTeardown_AlreadyGonePairWithNoBranchIsDone},
-		{"StepDrivenRunShed_ReturnsAfterOnePollInterval", stepStepDrivenRunShed_ReturnsAfterOnePollInterval},
+		{"StepDrivenRunShed_ReturnsOnTheChildsStateChange", stepStepDrivenRunShed_ReturnsOnTheChildsStateChange},
 		{"RunShedPausedChild_WaitsThenTearsDownOnceDone", stepRunShedPausedChild_WaitsThenTearsDownOnceDone},
 		{"CreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree", stepCreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree},
 		{"CreateRow_PairWithoutOriginRecordIsIncomplete", stepCreateRow_PairWithoutOriginRecordIsIncomplete},
@@ -567,18 +596,23 @@ func stepTeardown_AlreadyGonePairWithNoBranchIsDone(t *testing.T, h *hubforge.Hu
 	}
 }
 
-// stepStepDrivenRunShed_ReturnsAfterOnePollInterval proves Run-Shed's step-driven re-entrancy: a still-running child yields a re-entrant "lyx batten step" that returns after one poll_interval_s rather than holding for the child's whole duration.
+// stepStepDrivenRunShed_ReturnsOnTheChildsStateChange proves Run-Shed's in-call wait through a step: a running child yields a "lyx batten step" that checks every poll_interval_s and returns once the child's state changes, naming the change, rather than after one poll interval.
 //
-// It proves exactly that bound and nothing more.
-// The step BLOCKS for one poll_interval_s and then returns, because the sleep stays inside Call and the row cannot see which verb drove it -- the bounded return is the property the re-entrancy decision buys; it is not a non-blocking step, and nothing here makes it one.
-func stepStepDrivenRunShed_ReturnsAfterOnePollInterval(t *testing.T, h *hubforge.Hub) {
+// The wait runs on the real sleep with no pause: the step BLOCKS across the checks the change takes, and the bound is the change, not the poll interval.
+func stepStepDrivenRunShed_ReturnsOnTheChildsStateChange(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-step-reentrant"
 	// The pair must already exist on disk: InnerRun's ResolveStatus resolves the child worktree's own *lyxcwd.Location, which requires a real git worktree there, standing in for a Worktree-Create that already completed on an earlier step -- exactly as stepMidListResume_SkipsTheCompletedCreateRow's own fixture does.
 	hubforge.AddPair(t, h, slug)
 
+	var mu sync.Mutex
+	childState := shedengine.StateRunning
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
-		return shedengine.Status{State: shedengine.StateRunning}, true, nil
+		mu.Lock()
+		defer mu.Unlock()
+		return shedengine.Status{State: childState, CurrentProducer: "Plan-Review"}, true, nil
 	})
+	c.env.InnerRun.Sleep = nil
+	c.env.InnerRun.PauseRequested = nil
 	// The Board task's own Seed-Child row is not exercised by this test: Run-Shed is already the
 	// persisted current producer, standing in for a Worktree-Create + Seed-Child that already
 	// completed on an earlier step.
@@ -591,6 +625,22 @@ func stepStepDrivenRunShed_ReturnsAfterOnePollInterval(t *testing.T, h *hubforge
 	if err != nil {
 		t.Fatalf("shedbuild.NewShed: %v", err)
 	}
+	childStatusPath, _, err := c.env.InnerRun.ResolveStatus()
+	if err != nil {
+		t.Fatalf("resolve the child's status path: %v", err)
+	}
+	ensureStatusFile(t, childStatusPath)
+
+	// The child blocks between the first and the second check of the 1s poll.
+	time.AfterFunc(1500*time.Millisecond, func() {
+		mu.Lock()
+		childState = shedengine.StateBlocked
+		mu.Unlock()
+		later := time.Now().Add(time.Hour)
+		if err := os.Chtimes(childStatusPath, later, later); err != nil {
+			t.Errorf("rewrite the child's status file: %v", err)
+		}
+	})
 
 	start := time.Now()
 	result, err := shed.Step(context.Background())
@@ -603,7 +653,7 @@ func stepStepDrivenRunShed_ReturnsAfterOnePollInterval(t *testing.T, h *hubforge
 		t.Errorf("Producer = %q; want %q", result.Producer, battenrecipe.NameRunShed)
 	}
 	if result.Outcome != shedengine.Stuck {
-		t.Errorf("Outcome = %q; want %q (still running, self-routed)", result.Outcome, shedengine.Stuck)
+		t.Errorf("Outcome = %q; want %q (the change, self-routed)", result.Outcome, shedengine.Stuck)
 	}
 	if result.Next != battenrecipe.NameRunShed {
 		t.Errorf("Next = %q; want %q (self-route)", result.Next, battenrecipe.NameRunShed)
@@ -611,39 +661,51 @@ func stepStepDrivenRunShed_ReturnsAfterOnePollInterval(t *testing.T, h *hubforge
 	if result.State != shedengine.StateRunning {
 		t.Errorf("State = %q; want %q (self-routed Stuck stays running, never blocked)", result.State, shedengine.StateRunning)
 	}
+	if want := "child running → blocked at Plan-Review"; result.Output != want {
+		t.Errorf("Output = %q; want the change named: %q", result.Output, want)
+	}
 
-	// The bound this test exists to prove: roughly one poll_interval_s (1s in shortPollBattenRecipe),
-	// not the 30s the shipped recipe's own poll_interval_s carries, and nowhere close to "held for
-	// the child's whole duration."
-	if elapsed < 900*time.Millisecond {
-		t.Errorf("Step returned after %s; want it to have blocked for roughly one poll_interval_s (>= 900ms)", elapsed)
+	// The step returned on the change, past the first check at 1s, not after one poll_interval_s.
+	if elapsed < 1800*time.Millisecond {
+		t.Errorf("Step returned after %s; want it to have waited past the first check for the change (>= 1.8s)", elapsed)
 	}
 	if elapsed > 10*time.Second {
-		t.Errorf("Step returned after %s; want it bounded near one poll_interval_s, not held for a much longer wait", elapsed)
+		t.Errorf("Step returned after %s; want it to return on the change, not hold for a much longer wait", elapsed)
 	}
 }
 
-// stepRunShedPausedChild_WaitsThenTearsDownOnceDone drives a read-status answering StatePaused, then running, then done, asserting the run survives the paused poll with the pair intact and then reaches Worktree-Teardown, which removes the pair.
+// stepRunShedPausedChild_WaitsThenTearsDownOnceDone drives a child that is paused, then resumed, then done, asserting each change ends a Run-Shed step with the pair intact and that the run then reaches Worktree-Teardown, which removes the pair.
 //
 // A halted child is a budget-exempt wait out of InnerRun.Call, never a hard error:
 // the pair keeps the watcher that lands and tears it down once the operator resumes the child.
-// The running answer appears twice because the running arm re-spawns once with no spawn confirmed and reads the status again.
 func stepRunShedPausedChild_WaitsThenTearsDownOnceDone(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-paused"
 	hubforge.AddPair(t, h, slug)
 
-	answers := []shedengine.State{shedengine.StatePaused, shedengine.StateRunning, shedengine.StateRunning}
-	reads := 0
+	childState := shedengine.StatePaused
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
-		st := shedengine.StateDone
-		if reads < len(answers) {
-			st = answers[reads]
-		}
-		reads++
-		return shedengine.Status{State: st, CurrentProducer: "loom-side-producer", Error: "loom session paused"}, true, nil
+		return shedengine.Status{State: childState, CurrentProducer: "loom-side-producer", Error: "loom session paused"}, true, nil
 	})
-	// The poll sleep is not what this step pins, so it is a no-op; the step-driven step keeps the real one.
-	c.env.InnerRun.Sleep = func(ctx context.Context, d time.Duration) {}
+	childStatusPath, _, err := c.env.InnerRun.ResolveStatus()
+	if err != nil {
+		t.Fatalf("resolve the child's status path: %v", err)
+	}
+	ensureStatusFile(t, childStatusPath)
+	// Each check moves the child on one state and rewrites its status file, so the first step ends on the resume and the second on the finish.
+	moves := []shedengine.State{shedengine.StateRunning, shedengine.StateDone}
+	rewrites := 0
+	c.env.InnerRun.Sleep = func(ctx context.Context, d time.Duration) {
+		if len(moves) == 0 {
+			return
+		}
+		childState, moves = moves[0], moves[1:]
+		rewrites++
+		at := time.Now().Add(time.Duration(rewrites) * time.Hour)
+		if err := os.Chtimes(childStatusPath, at, at); err != nil {
+			t.Errorf("rewrite the child's status file: %v", err)
+		}
+	}
+	c.env.InnerRun.PauseRequested = nil
 	seedEntryStatus(t, c, battenrecipe.NameRunShed, shedengine.StateRunning, []shedengine.HistoryEntry{
 		{Producer: battenrecipe.NameWorktreeCreate, Outcome: shedengine.Done},
 		{Producer: battenrecipe.NameSeedChild, Outcome: shedengine.Done},
@@ -656,20 +718,22 @@ func stepRunShedPausedChild_WaitsThenTearsDownOnceDone(t *testing.T, h *hubforge
 	ctx := context.Background()
 	pairPath := h.PairWarpWorktree(slug)
 
-	res, err := shed.Step(ctx)
-	if err != nil {
-		t.Fatalf("Step (Run-Shed over a paused child): %v", err)
-	}
-	if res.Outcome != shedengine.Stuck || res.Next != battenrecipe.NameRunShed || res.State != shedengine.StateRunning {
-		t.Errorf("paused Step = outcome %q next %q state %q; want a Stuck self-route that stays running", res.Outcome, res.Next, res.State)
-	}
-	if !pathExists(pairPath) {
-		t.Fatalf("pair does not exist after a paused poll; want it left intact: %s", pairPath)
+	for i, wantOutput := range []string{"child paused → running at loom-side-producer", "child running → done at loom-side-producer"} {
+		res, err := shed.Step(ctx)
+		if err != nil {
+			t.Fatalf("Step %d (Run-Shed over a changing child): %v", i, err)
+		}
+		if res.Outcome != shedengine.Stuck || res.Next != battenrecipe.NameRunShed || res.State != shedengine.StateRunning || res.Output != wantOutput {
+			t.Errorf("Step %d = outcome %q next %q state %q output %q; want a Stuck self-route that stays running with output %q", i, res.Outcome, res.Next, res.State, res.Output, wantOutput)
+		}
+		if !pathExists(pairPath) {
+			t.Fatalf("pair does not exist after step %d; want it left intact: %s", i, pairPath)
+		}
 	}
 
 	for i := 0; i < 5 && pathExists(pairPath); i++ {
 		if _, err := shed.Step(ctx); err != nil {
-			t.Fatalf("Step %d after the child resumed: %v", i, err)
+			t.Fatalf("Step %d after the child finished: %v", i, err)
 		}
 	}
 	if pathExists(pairPath) {

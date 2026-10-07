@@ -17,6 +17,17 @@
 // Control flow is unchanged: a notice is informational, a Notify error is only warned about, and the outcomes, bounce budget, halts and waits are the same with or without it.
 // A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window; an operator attaches to the child's session to tell the cases apart.
 //
+// The InnerRun row waits on its child inside its call rather than returning once per poll.
+// Every poll_interval_s it stats the child's status file, and decodes it when its modification time differs from the last decode or notice_probe_s has passed.
+// It returns a budget-exempt Stuck only when something is worth a history entry:
+// the child's state changed, and the Stuck's Path and Reason name the change;
+// batten's own status carries pause_requested;
+// or the status file cannot be stat'ed.
+// An arm's own event ends it too: an awaiting child's decision is acted on and then waited out, and a done child's driver ending or its grace elapsing returns Done.
+// File stats and small file reads run on every check; anything costing a process or a multiplexer round trip (the driver and review reads, the forced decode, a not-parked resume retry, the notice step) runs at most once per notice_probe_s.
+// Bound: a running child is waited on without a time limit, bounded by "lyx batten pause" (honoured within one check), cancellation and the notices;
+// a running child whose driver is dead and whose status file does not change returns nothing from the wait, the driver-dead notice being the only signal.
+//
 // A running child whose spawn this batten process has not confirmed is spawned again,
 // so a restarted batten brings a driverless child back up:
 // the confirmation marker holds the pid of the process that wrote it,
@@ -25,13 +36,13 @@
 // so a second driver is never stacked.
 //
 // A child that halts (blocked, paused or failed) is a budget-exempt wait, not a failure of the Run-Shed row:
-// batten never spawns or resumes a halted child, logs one Warn per halt episode, and keeps polling every poll interval with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
+// batten never spawns or resumes a halted child, logs one Warn per halt episode, and keeps waiting with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
 // A halted or awaiting child whose reed state holds a dead driver strand has its pair's strands revived through reed resume, once per halt episode per batten process;
 // the run stays halted and nothing is resumed,
 // so the operator's "lyx loom resume" wakes the revived driver.
 // A retiring strand is not revived and a child with no driver strand has none to revive;
 // a revive that fails, and a child with no driver strand, make the reason also name "lyx loom start" in the task worktree.
-// The wait has no time limit and spends no bounce budget; "lyx batten pause" stops it, and the row reads the child as running again once the operator resumes it.
+// The wait has no time limit and spends no bounce budget; "lyx batten pause" stops it within one check, and the row reads the child as running again once the operator resumes it.
 //
 // Its counterpart is equally by design: a driver that finishes NORMALLY leaves its strand and its
 // run directory behind. Nothing here tears either down as part of a clean finish -- only the

@@ -34,7 +34,7 @@ var ErrUnsupportedChildRecipe = errors.New("battenshed: recipe cannot be a task 
 var ErrDisagreeingChildSeed = errors.New("battenshed: task worktree already seeded with a disagreeing seed")
 
 // ErrChildNotParked is the sentinel an InnerRunDeps.Spawn closure wraps when the child's bootstrap refused because its live driver has halted the run at a hand-back but not parked yet.
-// InnerRun treats it as a retryable wait on the approval-resume path: it records nothing and spawns again on its next poll.
+// InnerRun treats it as a retryable wait on the approval-resume path: it records nothing and spawns again, at most once per notice probe, until the driver parks or the child's state changes.
 var ErrChildNotParked = errors.New("battenshed: the task worktree's driver has not parked yet")
 
 // PrimeLock carries the told absolute path to a hub-scoped advisory lock plus the injected
@@ -84,12 +84,13 @@ type InnerRunDeps struct {
 	// Spawn starts the inner shed run and blocks until the bootstrap process it launched exits,
 	// which is not the inner run's own completion:
 	// the bootstrap returns once the child's driver is up, and the wait for the campaign itself is
-	// the recipe row's on_stuck self-route, one bounce per poll.
+	// the producer's own wait loop, inside the call.
 	//
 	// InnerRun waits for that bootstrap process rather than detaching, per the Live-Substrate Spawn
-	// Observability invariant. Call invokes Spawn at most once per invocation, and only when its own
+	// Observability invariant. Call invokes Spawn at its start only when its own
 	// read-before-spawn check found no status file yet, or a running one with no spawn confirmed
-	// under the row's scratch directory. Spawn must therefore be idempotent against a driver that
+	// under the row's scratch directory, and later only to resume a decided awaiting child.
+	// Spawn must therefore be idempotent against a driver that
 	// is already alive: a bootstrap killed after its driver came up but before it returned is
 	// spawned again.
 	//
@@ -101,25 +102,30 @@ type InnerRunDeps struct {
 	// earlier would resolve a path that is not there yet.
 	ResolveStatus func() (statusPath, statusLockPath string, err error)
 	// ReadStatus reads and decodes the persisted status file under statusLockPath's protection,
-	// reporting found == false when no status file exists yet. Call reads it before doing
-	// anything else, and again once more after a spawn it triggers -- never in a bounded poll
-	// loop, since the wait across Call invocations is shedengine's own bounce budget.
+	// reporting found == false when no status file exists yet.
+	// Call reads it before doing anything else, and again once more after a spawn it triggers;
+	// the wait loop then decodes it again only when the file's modification time moved or the notice probe is due.
 	ReadStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)
 	// Sleep pauses for d, returning early when ctx is cancelled.
-	// It takes a context because it is the longest wait the producer performs and sits directly in
+	// It is the wait loop's check interval, and it takes a context because it sits directly in
 	// front of a cancellation check, which an uninterruptible sleep would delay by a whole interval
 	// for any caller driving the producer under a cancellable context (the lyx CLI's own context is
 	// never cancelled; see waitOrCancel).
 	// A nil Sleep resolves to waitOrCancel in NewInnerRun;
-	// a test replaces it with a no-op so the attempt-cap test proves the bound is attempt-counted
-	// rather than wall-clock-timed.
+	// a test replaces it with a function that advances its fake clock and never blocks.
 	Sleep func(ctx context.Context, d time.Duration)
+	// PauseRequested reports whether batten's own status carries pause_requested, which ends the wait within one check.
+	// A nil PauseRequested resolves to reporting false in NewInnerRun; an error is warned about and reads as not paused.
+	PauseRequested func() (bool, error)
+	// NoticeProbe is how rarely the wait does anything costing a process or a multiplexer round trip: the driver and review reads, the forced status decode, the not-parked resume retry and the notice step.
+	// Zero makes every check a probe.
+	NoticeProbe time.Duration
 	// ReadDecision reads whichever operator record the child's run holds, an approval or a rejection, reporting found == false when neither exists.
 	// Call invokes it while the child is awaiting a decision, to tell a fresh decision from one it has already resumed on.
 	// It is resolved on Call, never at wiring time, since the task worktree holding the record does not exist until WorktreeCreate has run.
 	ReadDecision func() (ChildDecision, bool, error)
 	// DriverAlive reports whether the child's driver strand is live.
-	// Call invokes it once the child is done, to wait for the driver to finish its stop report before the pair is torn down.
+	// Call invokes it once the child is done, at most once per notice probe, to wait for the driver to finish its stop report before the pair is torn down.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	DriverAlive func(ctx context.Context) (bool, error)
 	// ReviewWait returns a note naming the reviewer the still-running child waits on, or an empty string when it waits on none.

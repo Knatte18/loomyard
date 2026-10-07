@@ -190,6 +190,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			},
 			ChildRunLockHeld: func() (bool, error) { return false, nil },
 			ReviveStrands:    func(context.Context) error { return nil },
+			PauseRequested:   func() (bool, error) { return false, nil },
 		},
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },
