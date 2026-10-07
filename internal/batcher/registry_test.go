@@ -12,8 +12,10 @@ import (
 // probeBatcher is a minimal Batcher stand-in for testing register/lookup.
 type probeBatcher struct{ name string }
 
-func (p probeBatcher) Batch(cards []planparser.Card) []Batch { return nil }
-func (p probeBatcher) Name() string                          { return p.name }
+func (p probeBatcher) Batch(*planparser.Plan, []planparser.Card, SizeSource) ([]Batch, error) {
+	return nil, nil
+}
+func (p probeBatcher) Name() string { return p.name }
 
 // withEmptyRegistry temporarily replaces the registry for isolated testing.
 func withEmptyRegistry(t *testing.T) {

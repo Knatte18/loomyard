@@ -50,7 +50,7 @@ func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
 	}
 	requireWayForward(t, err, "lyx webster rebaseline", "lyx webster run --fresh")
 
-	res, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Batches: fx.Deps.Batches, State: fx.Deps.State, Geom: fx.Deps.Geom})
+	res, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Active: fixedBatcher{fx.Deps.Batches}, State: fx.Deps.State, Geom: fx.Deps.Geom})
 	if err != nil {
 		t.Fatalf("Rebaseline() error = %v; want nil", err)
 	}
@@ -67,6 +67,16 @@ func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
 	}
 }
 
+// fixedBatcher is a Batcher stand-in that returns the batches it holds whatever the plan and size source,
+// so a test pins the grouping Rebaseline compares the run's begun batches against.
+type fixedBatcher struct{ batches []batcher.Batch }
+
+func (f fixedBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource) ([]batcher.Batch, error) {
+	return f.batches, nil
+}
+
+func (fixedBatcher) Name() string { return "fixed" }
+
 func rebaselineDeps(t *testing.T, batches []batcher.Batch, recs map[int]*websterengine.BatchState) websterengine.RebaselineDeps {
 	t.Helper()
 	planDir := seedPlanDir(t)
@@ -79,10 +89,10 @@ func rebaselineDeps(t *testing.T, batches []batcher.Batch, recs map[int]*webster
 		}
 	}
 	return websterengine.RebaselineDeps{
-		Plan:    &planparser.Plan{Dir: planDir, Format: 5},
-		Batches: batches,
-		State:   &websterengine.State{PlanFingerprint: "old-fingerprint", Batches: recs},
-		Geom:    websterengine.Geometry{WorktreeRoot: worktree, WebsterDir: t.TempDir(), Git: git},
+		Plan:   &planparser.Plan{Dir: planDir, Format: 5},
+		Active: fixedBatcher{batches},
+		State:  &websterengine.State{PlanFingerprint: "old-fingerprint", Batches: recs},
+		Geom:   websterengine.Geometry{WorktreeRoot: worktree, WebsterDir: t.TempDir(), Git: git},
 	}
 }
 
@@ -165,7 +175,7 @@ func beginAndFinishBatchOne(t *testing.T, fx *beginFixture) {
 }
 
 func rebaselineFixtureDeps(fx *beginFixture) websterengine.RebaselineDeps {
-	return websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Batches: fx.Deps.Batches, State: fx.Deps.State, Geom: fx.Deps.Geom}
+	return websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Active: fixedBatcher{fx.Deps.Batches}, State: fx.Deps.State, Geom: fx.Deps.Geom}
 }
 
 // editCard2 rewrites unbegun card 2 of the begin fixture with a reworded intent.

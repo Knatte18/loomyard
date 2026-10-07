@@ -330,8 +330,7 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 
 // RenderMasterPrompt fills webster-template-master for one `lyx webster run` invocation, read from
 // the caller-supplied stencilsDir.
-// batches is the sequenced execution order — the caller is responsible for handing it a slice
-// SequenceBatches already reordered, since nothing in this function reorders it further.
+// batches is the execution order, the batchifier's own order — nothing in this function reorders it.
 // It fills no {{.worktree_root}} key at all — repoRoot, the repository's worktree root holding PATTERN.md, feeds pattern.Directive alone, and
 // worktreeRoot (the pane's own cwd) feeds only masterPlanDirDisplay's relative-spelling decision.
 // planDir is the told plan directory (Geometry.PlanDir), rendered so a standalone Master — whose plan lives in the derived state directory, not at the pane's own `_lyx/plan` — can actually find what the prompt tells it to read (found live in crucible round fable5-high-r3, F-A4).

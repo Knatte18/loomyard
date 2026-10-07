@@ -40,7 +40,7 @@ there is no wider unit left to declare a footprint for.
 
 The flat card list is the **plan** (a DAG of intent: what depends on what).
 It is not itself an execution order.
-Whoever executes the plan (webster today, or a hypothetical future parallel executor — see the roadmap's Someday list) decides *how* to turn the DAG into an actual run — webster today derives a topological order from the cards' own `Targets`/`Uses` refs and runs it strictly sequentially, one fork at a time, potentially wave-based parallel execution for some future version.
+Whoever executes the plan (webster today, or a hypothetical future parallel executor — see the roadmap's Someday list) decides *how* to turn the DAG into an actual run — webster today runs the batches in card order and refuses a backward dependency between them, derived from the cards' own `Targets`/`Uses` refs, strictly sequentially, one fork at a time, potentially wave-based parallel execution for some future version.
 **The plan format should not need to change if that execution-policy decision changes later.**
 
 ## On-disk layout
@@ -340,7 +340,7 @@ The **`changes-files`/deviation union** — the artifact webster's fork-return c
 See `internal/websterengine`'s package documentation for the verification semantics.
 This union is defined over each card's flat target set (the union across all of that card's own `TargetGroups`), so it is unchanged by multi-label: a card carrying two groups contributes both groups' targets exactly as it always contributed one group's.
 
-Symbol/path matching and SCC condensation into a deterministic topological order have shipped — see `internal/websterengine`'s package documentation under its "Execution order is derived, not declared" section.
+Symbol/path matching of the cards' `Targets`/`Uses` refs asserts that the batches run in card order, and webster refuses a backward dependency between them — see `internal/websterengine`'s package documentation under its "Batches run in the batchifier's order, asserted not derived" section.
 What remains deferred is continuous DAG update across waves and any parallel execution, both of which belong to the roadmap's Someday `webster: worktree-per-card parallel execution` item.
 
 A parked, more aggressive parallel-execution idea also exists — see the `internal/websterengine` package documentation.

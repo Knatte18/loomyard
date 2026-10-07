@@ -29,12 +29,13 @@ func cardNumberInt(id string) int {
 	return n
 }
 
-// RebaselineDeps is what Rebaseline reads: the edited on-disk plan, the batches sequenced from it,
-// and the run state whose fingerprint it restamps.
+// RebaselineDeps is what Rebaseline reads: the edited on-disk plan, the batchifier and size source
+// that group its cards, and the run state whose fingerprint it restamps.
 type RebaselineDeps struct {
-	Plan    *planparser.Plan
-	Batches []batcher.Batch
-	State   *State
+	Plan   *planparser.Plan
+	Active batcher.Batcher
+	Sizes  batcher.SizeSource
+	State  *State
 	// Cards are the card numbers the operator names as edited; a changed card file whose number is absent is refused.
 	Cards []int
 	// Geom locates the worktree whose history names the run's start commit.
@@ -72,6 +73,11 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		return nil, fmt.Errorf("webster: rebaseline requires loaded run state; RebaselineDeps.State is nil")
 	}
 
+	batches, err := formBatches(deps.Plan, deps.Active, deps.Sizes)
+	if err != nil {
+		return nil, err
+	}
+
 	var cardsAccepted []string
 	if len(deps.State.PlanFileHashes) > 0 {
 		changedFiles, err := changedPlanFiles(deps.State, deps.Plan.Dir)
@@ -95,9 +101,9 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		}
 	}
 
-	current := make(map[int][]string, len(deps.Batches))
-	currentCards := make(map[int][]planparser.Card, len(deps.Batches))
-	for _, b := range deps.Batches {
+	current := make(map[int][]string, len(batches))
+	currentCards := make(map[int][]planparser.Card, len(batches))
+	for _, b := range batches {
 		n, _ := batchIdentity(b)
 		current[n] = batchCardIDs(b)
 		currentCards[n] = b.Cards

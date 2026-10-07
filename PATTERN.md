@@ -49,7 +49,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-glyph-conversion-chokepoint` — Converting between glyphs and paths: only `glyph.Self`, `Glyph.UnitPath`, `glyph.Parse` and `Glyph.String`, never trimming, regex or disk reads. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
 - `PATTERN-gate-self-check-parity` — Adding a mechanical gate: its closure and its CLI self-check verb call the same package function, and both land in one task. — [background](pattern/PATTERN-gate-self-check-parity.md)
 - `PATTERN-verified-tree` — Running a plan's verify command: through `verifytree.Verify` only, never on a dirty tree, skipping only on a record of HEAD's tree. (test) — [background](pattern/PATTERN-verified-tree.md)
-- `PATTERN-batcher-registry` — Choosing webster's execution unit: the batchifier-derived batch, selected by `internal/batcher`'s registry and `batcher.yaml`'s `active:` key.
+- `PATTERN-batcher-registry` — Choosing webster's execution unit: the batchifier-derived batch, selected by `internal/batcher`'s registry and `batcher.yaml`'s `active:` key, with the partition fixed per run: computed at first init, recorded in `state.json`, replaced only by a rebaseline.
 - `PATTERN-review-round` — Running a review and fix round: review on disk before any target is touched, every finding fixed, converged only on a judge verdict. — [background](pattern/PATTERN-review-round.md)
 - `PATTERN-sole-parsers` — Reading or writing plan, discussion, summary or recipe files: only `planparser`, `discussionparser`, `summaryparser` and `shedbuild` parse them. (test) — [background](pattern/PATTERN-sole-parsers.md)
 

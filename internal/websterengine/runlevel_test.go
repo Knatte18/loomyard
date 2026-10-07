@@ -994,6 +994,26 @@ func TestRun_MasterSpawn(t *testing.T) {
 			},
 		},
 		{
+			// The partition is formed once by the active batchifier and recorded before the spawn.
+			name:  "a first init under a grouping batcher records the partition with each batch's profile and estimate",
+			cards: 2,
+			prepare: func(t *testing.T, fx *runFixture) {
+				fx.Deps.Batcher = sizeBatcher{}
+			},
+			check: func(t *testing.T, fx *runFixture) {
+				got := loadRunState(t, fx).Partition
+				if len(got) != 1 {
+					t.Fatalf("State.Partition = %+v; want one batch holding both cards", got)
+				}
+				if want := []string{"01-batch1", "02-batch2"}; !slices.Equal(got[0].Cards, want) {
+					t.Errorf("State.Partition[0].Cards = %v; want %v", got[0].Cards, want)
+				}
+				if got[0].Profile != "size" || got[0].Estimate != 7 {
+					t.Errorf("State.Partition[0] profile and estimate = %q, %v; want %q, 7", got[0].Profile, got[0].Estimate, "size")
+				}
+			},
+		},
+		{
 			// When FindRun fails AFTER Master's pane is live, state.json has already recorded
 			// MasterStrand, so the next run's entry-time reclaim can find and stop the orphaned pane.
 			name:       "the Master strand is persisted before the session resolve",
@@ -1422,25 +1442,6 @@ func TestRun_DoneOutcome(t *testing.T) {
 				}
 			},
 		},
-		{
-			name:    "an acyclic plan reports no cycles and no sequencing warning",
-			cards:   2,
-			session: "master-session-acyclic",
-			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
-				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
-				2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done"},
-			}},
-			audit:       func(*runFixture) shuttleengine.ForkAudit { return shuttleengine.ForkAudit{Forks: forkReports(2)} },
-			batchesDone: 2,
-			check: func(t *testing.T, fx *runFixture, result websterengine.RunResult) {
-				if len(result.Cycles) != 0 {
-					t.Errorf("RunResult.Cycles = %v; want empty for an acyclic plan", result.Cycles)
-				}
-				if warningsContain(result.Warnings, "dependency cycle") {
-					t.Errorf("RunResult.Warnings = %v; want no sequencing-cycle warning for an acyclic plan", result.Warnings)
-				}
-			},
-		},
 	}
 
 	for _, tc := range cases {
@@ -1825,7 +1826,7 @@ func requireReachedMaster(t *testing.T, fx *runFixture, err error) {
 	}
 }
 
-// rebaselineOnDisk is what the rebaseline verb does: parse the edited plan, re-derive its batches, restamp the recorded fingerprint and save.
+// rebaselineOnDisk is what the rebaseline verb does: parse the edited plan, re-batch its cards, restamp the recorded fingerprint and save.
 func rebaselineOnDisk(t *testing.T, fx *runFixture, cards ...int) {
 	t.Helper()
 	plan, err := planparser.ParsePlan(fx.PlanDir)
@@ -1833,8 +1834,7 @@ func rebaselineOnDisk(t *testing.T, fx *runFixture, cards ...int) {
 		t.Fatalf("ParsePlan() error = %v", err)
 	}
 	st := loadRunState(t, fx)
-	batches, _ := websterengine.SequenceBatches(fx.Deps.Batcher.Batch(plan.Cards))
-	if _, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Batches: batches, State: st, Cards: cards, Geom: fx.Deps.Geom}); err != nil {
+	if _, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Active: fx.Deps.Batcher, Sizes: batcher.DiskSizes(fx.Deps.Geom.WorktreeRoot), State: st, Cards: cards, Geom: fx.Deps.Geom}); err != nil {
 		t.Fatalf("Rebaseline() error = %v", err)
 	}
 	if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
@@ -1845,8 +1845,10 @@ func rebaselineOnDisk(t *testing.T, fx *runFixture, cards ...int) {
 // emptyBatcher is a batchifier that derives no execution batches from any plan.
 type emptyBatcher struct{}
 
-func (emptyBatcher) Batch([]planparser.Card) []batcher.Batch { return nil }
-func (emptyBatcher) Name() string                            { return "empty" }
+func (emptyBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource) ([]batcher.Batch, error) {
+	return nil, nil
+}
+func (emptyBatcher) Name() string { return "empty" }
 
 // TestRun_RunExitRefusals reaches each run-exit refusal over a done Master, asserts its message and way forward, then takes the way forward (the state a re-driven batch leaves, a finished summary, an audit that completed) and proves the re-run ends done; a resume whose prior session's batches fall outside the audit passes outright.
 func TestRun_RunExitRefusals(t *testing.T) {

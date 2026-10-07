@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -62,7 +63,6 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			batches, _ := websterengine.SequenceBatches(c.batcher.Batch(plan.Cards))
 
 			mutateLock, err := websterengine.AcquireStateMutation(c.geom.ScratchDir)
 			if err != nil {
@@ -86,7 +86,7 @@ Example:
 				return nil
 			}
 
-			result, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Batches: batches, State: st, Cards: cards, Geom: c.geom})
+			result, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Active: c.batcher, Sizes: batcher.DiskSizes(c.geom.WorktreeRoot), State: st, Cards: cards, Geom: c.geom})
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil

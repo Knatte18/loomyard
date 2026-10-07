@@ -81,7 +81,7 @@ var ErrPlanDrifted = errors.New("webster: plan re-resolution at begin-batch repo
 
 // BeginDeps carries every seam BeginBatch needs, so a test can fake each one independently:
 // Plan is the already-parsed plan;
-// Batches is the sequenced execution order (see RunDeps.Batcher and SequenceBatches) `run` computed once at entry and threads through every bracket verb call — predecessorDigestLine's lookup depends on Batches already being in that order;
+// Batches is the execution order, the batchifier's own order read from the recorded partition by ExecutionBatches — predecessorDigestLine's lookup depends on Batches already being in that order;
 // State is the already-loaded run state BeginBatch reads and mutates;
 // Config is the loaded webster.yaml;
 // Reed is the live reed query surface the prior-recovery-strand reclaim consults (a dead-but-live recovery record a fork batch is about to overwrite);
@@ -205,9 +205,9 @@ func digestSummaryLine(d *Digest) string {
 
 // predecessorDigestLine renders the digest of whichever batch actually ran immediately before
 // batchNumber in execution order.
-// batches is required to already be in execution order — SequenceBatches at every call site
-// guarantees this; the old batchNumber-1 arithmetic this helper replaces was correct only while
-// the identity batchifier made batch number and execution position coincide.
+// batches is required to already be in execution order, the batchifier's order that
+// ExecutionBatches returns at every call site; batchNumber-1 arithmetic would be correct only while
+// batch number and execution position coincide.
 // It locates batchNumber's position in batches by batchIdentity, exactly as findBatch does, and
 // returns "" when the batch is absent from batches or sits at index 0 (nothing executed before
 // it), or when the predecessor's state entry or its digest is absent.

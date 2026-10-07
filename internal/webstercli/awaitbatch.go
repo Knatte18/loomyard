@@ -54,9 +54,16 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			// Every batch-computation site sequences, so all five agree on
-			// one order by construction rather than by comment.
-			batches, _ := websterengine.SequenceBatches(c.batcher.Batch(plan.Cards))
+			st, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			batches, err := c.executionBatches(plan, st)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
 
 			// Default to a short block so an agent caller's foreground call
 			// stays under Claude Code's auto-background threshold.

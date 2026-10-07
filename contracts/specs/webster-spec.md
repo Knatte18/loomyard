@@ -12,6 +12,7 @@ Everything about *how* webster reaches those shapes — the fork mechanism, the 
 
 Webster consumes the pinned flat card-list plan-format via `internal/planparser`, the sole parser of `_lyx/plan/` — the format itself is pinned in `contracts/stencils/loom/loom-template-plan.md`, the Plan producer's own stencil, not a separate reference doc.
 webster groups a plan's cards into execution batches via a batcher configured through `batcher.yaml`.
+The grouping is computed once per run and recorded in `state.json`, and every verb reads the recorded partition, so a file the batches change never regroups the cards mid-run.
 
 ## `_lyx/webster/` as an ownership boundary
 
