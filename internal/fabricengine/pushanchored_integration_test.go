@@ -293,7 +293,8 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		t.Errorf("weft bare = %q; want local HEAD %q after the retry", got, weftSHA)
 	}
 
-	// A remote that keeps declining: the one retry is rejected too, so the bare rejection surfaces and nothing local moves.
+	// A remote that keeps declining: the one retry is rejected too,
+	// so the bare rejection surfaces and nothing local moves.
 	installPreReceive(t, p.hub.WarpBare, "#!/bin/sh\necho 'declined always' >&2\nexit 1\n")
 	gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp change declined", "warp change declined")
 	declinedWarpBare := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch)
@@ -308,6 +309,21 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	if got := head(p.warpPath); got != declinedWarpHead {
 		t.Errorf("local warp HEAD = %q; want unchanged %q", got, declinedWarpHead)
 	}
+
+	// A rejection whose fetch then fails is not retried: the code side pushes to its real bare, but fetches from a missing path.
+	warpFetchURL := gitkit.Git(t, p.warpPath, "config", "--get", "remote.origin.url")
+	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.pushurl", warpFetchURL)
+	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.url", filepath.Join(t.TempDir(), "missing"))
+	_, err = fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
+	if !fabricengine.IsPushRejected(err) {
+		t.Errorf("PushPairAnchored() with a rejected push and a failing fetch error = %v; want the bare rejection", err)
+	}
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch); got != declinedWarpBare {
+		t.Errorf("warp bare = %q; want it unmoved at %q", got, declinedWarpBare)
+	}
+	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.url", warpFetchURL)
+	gitkit.MustRun(t, p.warpPath, "git", "config", "--unset", "remote.origin.pushurl")
+
 	if err := os.Remove(preReceiveHookPath(p.hub.WarpBare)); err != nil {
 		t.Fatalf("remove always-declining hook: %v", err)
 	}
@@ -374,7 +390,9 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 }
 
 // TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks covers the push lock both entries take:
-// with the lock held by the test, a bounded wait returns ErrPushLockBusy naming neither side and moves no remote, SkipPush and SkipGit return at once, and an unbounded wait returns only once the lock is released and then pushes.
+// with the lock held by the test, a bounded wait returns ErrPushLockBusy naming neither side and moves no remote;
+// SkipPush and SkipGit return at once;
+// and an unbounded wait returns only once the lock is released and then pushes.
 func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 	t.Parallel()
 
