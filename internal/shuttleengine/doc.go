@@ -125,6 +125,7 @@
 // and a probe that attaches or refuses removes nothing.
 // A strand that cannot be removed comes back as an error naming `lyx reed remove <guid>`, never as a not-found answer.
 // Runner.AttachIfLive is the same probe with the removal off, for a caller that waits on a live run and starts nothing after a not-found answer.
+// Runner.ProbeGated is AttachGated's probe returning the reconstructed *Run unwaited, so a caller can hold two probed runs and wait on both concurrently.
 //
 // Skill loading: Spec.Skills names provider-neutral skills that shuttle loads into a fresh session, all in one turn, before the prompt.
 // It needs the optional SkillLoader capability, and a spec that names skills on an engine without it is refused before any run directory exists.

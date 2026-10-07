@@ -176,6 +176,7 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | seed missing | a loom verb addresses a run-id with no seed | correctness halt | run "lyx loom start" first to bootstrap this task |
 | status file missing | `lyx loom status` or `lyx loom approve` finds no status file | correctness halt | run "lyx loom start" first to bootstrap this task |
 | approve: not at PR-Gate | `lyx loom approve` runs while the run is not awaiting or blocked at PR-Gate | correctness halt | `lyx loom status` shows where the run is; approve once it halts at PR-Gate |
+| config: review or fix key not a model-spec list | `loom.yaml`'s `review` or `fix` is empty, a mapping, a list holding a non-scalar, or holds an entry that is not a model-spec; or the registry does not define an entry, which stops `lyx loom start` before round 1 | correctness halt | set the key to a model-spec, or to a non-empty list of model-specs; for a registry refusal, set that entry in loom.yaml to a model-spec the registry defines |
 | config: review key below 1 | `loom.yaml`'s `review_circling_checkpoint` or `review_max_bounces` is 0 or negative | correctness halt | set it to a positive integer in loom.yaml |
 | approve: no pull request | no pull request from the task branch to its parent exists | correctness halt | `lyx loom goto --to Publish` moves the run back to Publish, then `lyx loom step` opens a new pull request |
 | approve: pull request not open | the pull request is closed or merged | correctness halt | `lyx loom goto --to Publish` moves the run back to Publish, then `lyx loom step` opens a new pull request |
@@ -239,12 +240,14 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | Publish: push rejected | the remote rejects the task branch's push, because the remote task branch holds commits the local branch lacks, or the remote task branch's tip could not be read to tell | correctness halt | run `git merge origin/<task-branch>` in the task worktree, then resume the run with `lyx loom start` |
 | Publish: push rejected by a remote rule | the remote rejects the task branch's push while the remote has no task branch or its task branch holds no commit the local branch lacks, because a remote hook or rule refuses it | correctness halt | clear what the remote's rule objects to, then resume the run with `lyx loom start` |
 | merge conflict session: untracked file | the conflict session left an untracked file, which a merge commit never carries | correctness halt | the merge is aborted and the step stops Stuck naming the files; remove them or commit them as their own change on the task branch, then re-step the row |
-| producer re-run: superseded strand not removed | a producer row re-run finds a live strand of an earlier run of the same outputs and reed cannot remove it | transient | run "lyx reed remove <guid>", then re-step the row |
+| producer re-run: superseded strand not removed | a producer row re-run finds a live strand of an earlier run of the same outputs and reed cannot remove it, or a BurlerRound row's half stays live because reed cannot stop it | transient | run "lyx reed remove <guid>", then re-step the row |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
 | raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed, lock or records file fails | transient | re-run the refused verb; nothing is mutated |
 
 ## Out of scope
 
-Landing, batten, orch, fabric, burler and board refusals are not in this table, except the verify-gate, dirty-tree and conflict-session rows above;
+Landing, batten, orch, fabric, burler and board refusals are not in this table, except the verify-gate, dirty-tree, conflict-session and superseded-strand rows above;
 a later audit adds each as its own section.
+Burler's own round errors stay out too, as the strict review parse and the cluster audit already do:
+a skipped handoff, a changed review, and a failed removal or write of the ready marker each name the file concerned in their message and land no row.
 The fast-forward merge-in limit is out of scope too, since its message already names a git recourse.

@@ -42,10 +42,13 @@ type Profile struct {
 	ClusterFan string
 	// ClusterExclude names lenses to drop from the resolved ClusterFan — a
 	// per-call advisory filter, not config.
-	ClusterExclude    []string
-	clusterLenses     []Lens
-	ReviewPath        string
-	FixerReportPath   string
+	ClusterExclude  []string
+	clusterLenses   []Lens
+	ReviewPath      string
+	FixerReportPath string
+	// ReadyMarkerPath is the told path of the file the engine writes once the reviewer's review is accepted and the fixer waits on.
+	// The caller derives it with burlermarker.Path; the engine derives no path.
+	ReadyMarkerPath   string
 	PriorReviews      []string
 	PriorFixerReports []string
 	// FocusDirective is an optional path to this round's focus directive file, kept apart from PriorReviews.
@@ -54,11 +57,12 @@ type Profile struct {
 }
 
 // RunOpts carries run-tuning knobs kept off Profile.
-// Each field maps 1:1 onto shuttleengine.Spec;
+// Review and Fix map onto their own half's shuttleengine.Spec and every other field onto both halves';
 // zero values defer to engine/config default.
 type RunOpts struct {
-	Model   string
-	Effort  string
+	// Review and Fix are the reviewer's and the fixer's model choices.
+	Review  ModelChoice
+	Fix     ModelChoice
 	Timeout time.Duration
 	Round   string
 	// NoteID is the caller-supplied friction-note stem for this round --
@@ -87,6 +91,7 @@ func (p *Profile) validate(worktreeRoot string, cfg Config) error {
 	p.FocusDirective = resolvePath(worktreeRoot, p.FocusDirective)
 	p.ReviewPath = resolvePath(worktreeRoot, p.ReviewPath)
 	p.FixerReportPath = resolvePath(worktreeRoot, p.FixerReportPath)
+	p.ReadyMarkerPath = resolvePath(worktreeRoot, p.ReadyMarkerPath)
 
 	// Target and Fasit must each carry at least one of Paths/Instructions.
 	if len(p.Target.Paths) == 0 && strings.TrimSpace(p.Target.Instructions) == "" {
@@ -141,6 +146,9 @@ func (p *Profile) validate(worktreeRoot string, cfg Config) error {
 	}
 	if p.FixerReportPath == "" {
 		return fmt.Errorf("burler: profile.FixerReportPath must not be empty")
+	}
+	if p.ReadyMarkerPath == "" {
+		return fmt.Errorf("burler: profile.ReadyMarkerPath must not be empty")
 	}
 	// A same-path pair would violate the file contract (OutputFiles must be distinct).
 	if p.ReviewPath == p.FixerReportPath {

@@ -447,7 +447,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// AnchorPath semantics and the field set burlerengine.Geometry declares, rather than webster's
 	// (see hubgeom.go's BurlerGeometry doc comment). The two geometry builders are distinct types
 	// with distinct field sets, not interchangeable constructors of the same shape.
-	burlerEngine := burlerengine.New(runner, hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir, frictionDir)
+	burlerRemover := burlerengine.NewReedStrandRemover(reedEngine)
+	burlerEngine := burlerengine.New(burlerengine.RunnerShuttle(runner), burlerRemover, hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir, frictionDir)
 
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},
@@ -679,7 +680,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// RunRoot is durable: the status seam commits it with every transition.
 		RunRoot: loomengine.LoomReviewsDir(location),
 		Burler:  burlerEngine,
-		Now:     time.Now,
+		// The remover the engine stops a half with, so the producer stops the one live half of a resumed round the same way.
+		BurlerRemover: burlerRemover,
+		Now:           time.Now,
 
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug:           seedSlug(location.WorktreeName),
@@ -688,9 +691,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 
-		ReviewModel:   reviewSettings.Model,
-		ReviewEffort:  reviewSettings.Effort,
-		ReviewVersion: reviewSettings.Version,
+		ReviewModels:  reviewSettings.Models,
 		ReviewTimeout: reviewSettings.Timeout,
 
 		JudgeModel:   judgeSettings.Model,

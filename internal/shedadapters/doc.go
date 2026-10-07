@@ -2,7 +2,7 @@
 // product drive shuttle, Webster, one burlerengine round, and the generic review-gate
 // Bouncer as ordinary producers in its own flat producer list.
 // SingleLLMProducer wraps one shuttleengine run, WebsterProducer wraps one websterengine
-// multi-spawn run, and BurlerProducer wraps one burlerengine A-review/B-fix round as a single Shed
+// multi-spawn run, and BurlerProducer wraps one burlerengine round, a reviewer strand and a fixer strand, as a single Shed
 // row: each of these three is a thin translation layer over an already-shipped engine, never a
 // second implementation of that engine's own loop.
 // Bouncer is the one member of this package for which that is false: it is new logic over
@@ -42,6 +42,10 @@
 //     condition: a round producer has no independent notion of "finished," only the judge does.
 //     That Stuck is BudgetExempt when the previous round carries a recorded continue decision whose cause is budget,
 //     so the one more round a budget continue grants spends no budget; each further round needs its own decision.
+//     A round names two strands, the reviewer's and the fixer's, and each round's ready marker is derived from BurlerDeps.AnchorPath with burlermarker.Path.
+//     Each attempt picks both halves' models from BurlerDeps.Models for the round.
+//     A runner error wrapping burlerengine.ErrHalfNotStopped returns without archiving and without the retry, since a live half may still write the round's files.
+//     Before archiving or spawning it probes the round's two halves and resumes, stops or respawns by what is live (see "Every spawning adapter probes for a live agent first").
 //     Every non-done shuttle outcome that survives the bounded retry -- two
 //     consecutive OutcomeDied/OutcomeTimeout results, or an unrecognized outcome -- is an
 //     engine-level error, not Stuck, because the Bouncer tells its seed call from its judge call by
@@ -189,10 +193,11 @@
 //
 // All four adapters answer the same question before they start anything: is an agent for this exact
 // step still alive? They answer it in two different ways, and the difference is the engine's, not a
-// policy choice here. SingleLLMProducer, Bouncer (on its seed pass, on its judge pass, on the
-// re-bounce, and once more at Call entry -- see below), and BurlerProducer all call shuttleengine's
-// Attach seam with the step's own OutputFiles and wait on a match; WebsterProducer inherits
-// websterengine's own entry-time reclaim, which stops a leftover Master rather than attaching to it.
+// policy choice here.
+// SingleLLMProducer and Bouncer call shuttleengine's Attach seam with the step's own OutputFiles and wait on a match.
+// The Bouncer does so on its seed pass, on its judge pass, on the re-bounce, and once more at Call entry (see below).
+// BurlerProducer probes its round's two halves through its runner (see below).
+// WebsterProducer inherits websterengine's own entry-time reclaim, which stops a leftover Master rather than attaching to it.
 //
 // "Every mode" is meant literally, and was not always true. The re-bounce -- an already-seeded
 // segment whose round producer handed back without a report -- spawns nothing, so it looked like a
@@ -203,10 +208,22 @@
 // round producer began reading the very file it might still be rewriting. Reproduced live, and
 // closed by giving the branch the same probe the seed pass already had.
 //
-// The probe always runs BEFORE the archive, in all three attaching adapters. Archiving renames the
+// The probe always runs BEFORE the archive, in all three probing adapters. Archiving renames the
 // very files a live agent is about to write, and shuttle's Wait polls for bare existence at those
 // paths, so archiving first would make an attached run unable to ever classify done -- in exactly
 // the case the probe exists to protect.
+//
+// BurlerProducer's probe is two-stranded, because a round is a reviewer and a fixer, each declaring its own single output file.
+// BurlerRunner.ProbeRound reports each half as live, done or gone, and Call acts on the pair.
+// With both halves live it calls Resume and maps the result through the outcome switch a spawned attempt uses.
+// A died or timeout result there falls through to a fresh attempt 1, since the resumed round is not counted as an attempt.
+// With exactly one half live it removes that half's strand through BurlerDeps.Remover (the same remover the engine is told) and falls through to attempt 1.
+// So a live fixer beside a finished review is stopped and re-run rather than attached, and its target edits stay in the worktree for the next attempt's reviewer to review.
+// With one half done and the other gone nothing is live, so nothing is removed and it falls through to attempt 1.
+// With neither half live it falls through.
+// A fall-through spawn archives the round's outputs and the engine removes the ready marker, so a round never ends with one half still live and a live half is never spawned a second time.
+// A probe error, a failed removal and a Resume error wrapping burlerengine.ErrHalfNotStopped are returned without archiving and without spawning, since a half that may still be live may be writing the round's files.
+// The failed-removal error wraps burlerengine.ErrHalfNotStopped and ends with the way forward, run "lyx reed remove <guid>" and re-step the row.
 //
 // The Bouncer's third probe covers the two modes that spawn nothing at all, and it exists because
 // its own judgment record is narrower than the judge spawn that produces it: a recorded judgment is

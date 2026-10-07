@@ -1,9 +1,8 @@
-// review.go implements ResolveReview, the review segment's config-to-settings resolver: a pure
-// composer that parses and resolves the review role's model-spec and pairs it with the review
-// round timeout.
+// review.go implements ResolveReview, the review segment's config-to-settings resolver:
+// a pure composer that parses and resolves the review and fix roles' model-spec lists and pairs them with the review round timeout.
 // Unlike DiscussionSpec and PlanSpec, it returns no shuttleengine.Spec -- there is no prompt to
 // compose here, because the review segment's prompts are the Bouncer's own stencils, composed
-// inside internal/shedadapters at call time. The caller threads ReviewSettings' four values onto
+// inside internal/shedadapters at call time. The caller threads ReviewSettings' values onto
 // shedrecipe.Env instead.
 
 package loomengine
@@ -12,18 +11,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 )
 
 // ReviewSettings is the review segment's run-wide model and timeout settings, resolved once from
 // Config and threaded onto shedrecipe.Env for every review-segment row to fall back to.
 type ReviewSettings struct {
-	// Model is the resolved review role's provider-side model string.
-	Model string
-	// Effort is the resolved review role's "effort" parameter, empty when unset.
-	Effort string
-	// Version is the resolved review role's "version" parameter, empty when unset.
-	Version string
+	// Models holds the resolved review and fix model lists the burler round picks from per round.
+	Models burlerengine.RoundModels
 	// Timeout is one review round's shuttle-run deadline, derived from cfg.ReviewTimeoutMin.
 	Timeout time.Duration
 }
@@ -57,22 +53,42 @@ func ResolveJudge(cfg Config, reg modelspec.Registry) (JudgeSettings, error) {
 	}, nil
 }
 
-// ResolveReview parses and resolves the review role's model-spec from cfg, and pairs it with the
-// review round timeout, returning the ReviewSettings the caller threads onto shedrecipe.Env.
+// ResolveReview resolves every entry of the review and fix model-spec lists through reg,
+// and pairs them with the review round timeout, returning the ReviewSettings the caller threads onto shedrecipe.Env.
+// Every entry is resolved at run start, so a bad later-round entry fails before round 1.
 func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
-	spec, err := modelspec.Parse(cfg.Review)
+	review, err := resolveModelChoices("review", cfg.Review, reg)
 	if err != nil {
-		return ReviewSettings{}, fmt.Errorf("loom: ResolveReview: review role model-spec: %w", err)
+		return ReviewSettings{}, err
 	}
-	resolved, err := reg.Resolve(spec)
+	fix, err := resolveModelChoices("fix", cfg.Fix, reg)
 	if err != nil {
-		return ReviewSettings{}, fmt.Errorf("loom: ResolveReview: review role model-spec: %w", err)
+		return ReviewSettings{}, err
 	}
 
 	return ReviewSettings{
-		Model:   resolved.Model,
-		Effort:  resolved.Params["effort"],
-		Version: resolved.Params["version"],
+		Models:  burlerengine.RoundModels{Review: review, Fix: fix},
 		Timeout: time.Duration(cfg.ReviewTimeoutMin) * time.Minute,
 	}, nil
+}
+
+// resolveModelChoices parses and resolves each entry of specs, naming key and the 1-based entry index in an error.
+func resolveModelChoices(key string, specs ModelSpecList, reg modelspec.Registry) ([]burlerengine.ModelChoice, error) {
+	choices := make([]burlerengine.ModelChoice, 0, len(specs))
+	for i, raw := range specs {
+		spec, err := modelspec.Parse(raw)
+		if err != nil {
+			return nil, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in loom.yaml to a model-spec the registry defines", key, i+1, err)
+		}
+		resolved, err := reg.Resolve(spec)
+		if err != nil {
+			return nil, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in loom.yaml to a model-spec the registry defines", key, i+1, err)
+		}
+		choices = append(choices, burlerengine.ModelChoice{
+			Model:   resolved.Model,
+			Effort:  resolved.Params["effort"],
+			Version: resolved.Params["version"],
+		})
+	}
+	return choices, nil
 }

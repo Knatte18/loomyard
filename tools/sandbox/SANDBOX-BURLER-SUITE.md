@@ -7,7 +7,7 @@ Like `SANDBOX-SHUTTLE-SUITE.md`, the value here is partly **visual**: a burler r
 Not an automated suite -- an agent drives it, an operator watches.
 
 burler drives one review+fix round over an artifact: an A phase reviews the target against a fasit (a source of truth) and writes a structured review file (verdict + findings), then a B phase fixes what A found and writes a fixer report.
-Scenarios S1-S3 prove one burler round end-to-end through the debug CLI (`lyx burler run`), never review quality -- they are deliberately trivial (a toy chair/table color mismatch) so the assertions are about the mechanics (verdict parse, file contract, fix actually applied), not about whether the review is insightful.
+Scenarios S1-S3 prove one burler round end-to-end through the debug CLI (`lyx burler run`), and S4 the fixer's wait verb (`lyx burler await-review`), never review quality -- they are deliberately trivial (a toy chair/table color mismatch) so the assertions are about the mechanics (verdict parse, file contract, fix actually applied), not about whether the review is insightful.
 
 ## Pre-conditions
 
@@ -156,6 +156,23 @@ the fixer-report still exists and is non-empty (it is written unconditionally ev
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### S4 -- The await-review wait verb
+
+**Covers:** burler
+
+**Goal:** "Confirm `lyx burler await-review` answers ready at once for a file that exists and answers not-ready after its cap for one that does not, writing nothing either way."
+
+**Watch:** Pick a path inside the sandbox that does not exist, e.g. `./marker.ready`.
+Run `lyx burler await-review ./marker.ready --cap 2s`.
+It exits 0 after about two seconds with a JSON envelope carrying `"ready":false` and the absolute marker path, and `./marker.ready` still does not exist.
+Create the file (`touch ./marker.ready`) and run the same command again.
+It exits 0 at once with `"ready":true` and the same absolute marker path.
+Run it a third time with no argument: it exits 1 with a JSON error envelope.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -167,6 +184,7 @@ Binary fingerprint: <copy from the header above>
 S1: <OK|WARN|FAIL> -- <one-line note if not OK>
 S2: <OK|WARN|FAIL> -- <one-line note if not OK>
 S3: <OK|WARN|FAIL> -- <one-line note if not OK>
+S4: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

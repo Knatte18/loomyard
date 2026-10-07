@@ -1,6 +1,6 @@
-// template_test.go proves each of the four shipped round-prompt assets actually fills through stencil with its own required marker subset, that the three optional directives of instruction 1 render cleanly empty and placed ahead of its first work instruction, and that composePrompt reads a round prompt from disk at call time.
+// template_test.go proves each of the shipped round-prompt assets actually fills through stencil with its own required marker subset, that the three optional directives of instruction 1 render cleanly empty and placed ahead of its first work instruction, and that composePrompt reads a round prompt from disk at call time.
 // The assets' load-bearing statements and the orchestrator's exclusion of downstream bodies are pinned from a full composePrompt render in prompt_test.go (PATTERN-review-round's machine half).
-// The four assets are read from the top-level stencils package's exported embedded defaults (stencils.BurlerTemplateRoundOrchestrator etc.) rather than this package's own now-deleted package-private vars — a cross-package import, not a rename, since composePrompt itself reads its four prompts from disk at call time via stencilstore.Read (see prompt.go).
+// The assets are read from the top-level stencils package's exported embedded defaults (stencils.BurlerTemplateReviewOrchestrator etc.) rather than this package's own now-deleted package-private vars — a cross-package import, not a rename, since composePrompt itself reads its prompts from disk at call time via stencilstore.Read (see prompt.go).
 
 package burlerengine
 
@@ -24,15 +24,23 @@ func requireContains(t *testing.T, text, needle string) {
 	}
 }
 
-// orchestratorMarkerValues returns a values map with every one of the
-// orchestrator's four required top-level markers set to a non-empty
-// placeholder.
-func orchestratorMarkerValues() map[string]string {
+// reviewOrchestratorMarkerValues returns a values map with every one of the reviewer orchestrator's required top-level markers set to a non-empty placeholder.
+func reviewOrchestratorMarkerValues() map[string]string {
 	return map[string]string{
 		"instruction_1_path": "/tmp/instruction-1-explore.md",
 		"instruction_2_path": "/tmp/instruction-2-review.md",
+		"review_path":        "/tmp/review.md",
+	}
+}
+
+// fixOrchestratorMarkerValues returns a values map with every one of the fixer orchestrator's required top-level markers set to a non-empty placeholder.
+func fixOrchestratorMarkerValues() map[string]string {
+	return map[string]string{
+		"instruction_1_path": "/tmp/instruction-1-explore.md",
+		"review_format_path": "/tmp/instruction-2-review.md",
 		"instruction_3_path": "/tmp/instruction-3-fix.md",
 		"review_path":        "/tmp/review.md",
+		"ready_marker_path":  "/tmp/review.md.ready",
 	}
 }
 
@@ -71,9 +79,9 @@ func instruction3MarkerValues() map[string]string {
 	}
 }
 
-// TestTemplate_FillsWithAllMarkers asserts each of the four embedded assets fills through stencil when supplied its own full marker set (required markers plus, for instruction 1, the optional pattern_directive, friction_directive and focus_directive), and fails — naming the marker — when any single REQUIRED marker for that asset is absent.
+// TestTemplate_FillsWithAllMarkers asserts each of the embedded assets fills through stencil when supplied its own full marker set (required markers plus, for instruction 1, the optional pattern_directive, friction_directive and focus_directive), and fails — naming the marker — when any single REQUIRED marker for that asset is absent.
 // pattern_directive, friction_directive and focus_directive are deliberately excluded from instruction 1's deletion sweep:
-// they are the optional markers across all four assets, so deleting any of them must not error.
+// they are the optional markers across the assets, so deleting any of them must not error.
 func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -83,11 +91,18 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 		requiredMarkers []string
 	}{
 		{
-			name:            "orchestrator",
-			template:        stencils.BurlerTemplateRoundOrchestrator,
-			values:          orchestratorMarkerValues(),
+			name:            "review orchestrator",
+			template:        stencils.BurlerTemplateReviewOrchestrator,
+			values:          reviewOrchestratorMarkerValues(),
 			optional:        []string{"parent_directive"},
-			requiredMarkers: []string{"instruction_1_path", "instruction_2_path", "instruction_3_path", "review_path"},
+			requiredMarkers: []string{"instruction_1_path", "instruction_2_path", "review_path"},
+		},
+		{
+			name:            "fix orchestrator",
+			template:        stencils.BurlerTemplateFixOrchestrator,
+			values:          fixOrchestratorMarkerValues(),
+			optional:        []string{"parent_directive"},
+			requiredMarkers: []string{"instruction_1_path", "review_format_path", "instruction_3_path", "review_path", "ready_marker_path"},
 		},
 		{
 			name:            "instruction 1 (explore)",
@@ -224,10 +239,10 @@ func TestComposePrompt_ReadsEditedStencilFromDisk(t *testing.T) {
 		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
 	}
 
-	_, files, err := composePrompt(stencilsDir, "", &p, "", "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
+	prompts, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
 
-	requireContains(t, files[1].Content, modifiedMarker)
+	requireContains(t, prompts.Files[2].Content, modifiedMarker)
 }
