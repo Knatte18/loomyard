@@ -226,8 +226,8 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 	if !t.Run("fails with the file and line of a misplaced marker", func(t *testing.T) {
 		f.commitFiles(t, map[string]string{"a/a_test.go": "package a\n\nimport \"testing\"\n\n//lyx:guard\nvar misplaced = 1\n\nfunc TestA(t *testing.T) {}\n"})
 		passed, findings := f.runGate(t)
-		if passed || !strings.Contains(findings, "a/a_test.go:5") {
-			t.Errorf("gate() passed = %v, findings = %q; want a failure naming a/a_test.go:5", passed, findings)
+		if passed || !strings.Contains(findings, "a/a_test.go:5") || !strings.Contains(findings, "directly above") {
+			t.Errorf("gate() passed = %v, findings = %q; want a failure naming a/a_test.go:5 and the way to place the marker", passed, findings)
 		}
 	}) {
 		return

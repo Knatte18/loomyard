@@ -31,9 +31,9 @@ const verifyLogTailBytes = 4096
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
 // `StatusFailed` fails with the exit code, the log path and the log's tail.
-// A comment lint finding or a misplaced `//lyx:guard` marker fails with its file and line.
+// A comment lint finding, or a test file the guard scan rejects such as a misplaced `//lyx:guard` marker, fails with its file and line and the way forward.
 // A plan with no `## verify:` section passes with a logged warning.
-// A plan read error, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
+// A plan read error, a failure to read git or a package directory, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
 func NewVerifyGate(anchorPath, worktreeRoot, verifyDir, siteLabel string) shuttleengine.Gate {
 	attempt := 0
 	paths := verifytree.NewPaths(worktreeRoot, verifyDir)
@@ -54,9 +54,12 @@ func NewVerifyGate(anchorPath, worktreeRoot, verifyDir, siteLabel string) shuttl
 			base = pass.Commit
 		}
 		derivation, err := impactset.Derive(worktreeRoot, base)
+		if impactset.IsGuardScanError(err) {
+			logger.Warn("loomshed: verify gate found a test file the guard scan rejects", "gate", siteLabel, "attempt", attempt, "err", err)
+			return shuttleengine.GateResult{Passed: false, Findings: guardScanFindings(err)}, nil
+		}
 		if err != nil {
-			logger.Warn("loomshed: verify gate could not derive the round command", "gate", siteLabel, "attempt", attempt, "err", err)
-			return shuttleengine.GateResult{Passed: false, Findings: fmt.Sprintf("The round command could not be derived: %v.", err)}, nil
+			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: derive the round command: %w", err)
 		}
 		if derivation.Base != "" {
 			commentFindings, err := commentlint.Lint(worktreeRoot, derivation.Base)
@@ -92,6 +95,11 @@ func NewVerifyGate(anchorPath, worktreeRoot, verifyDir, siteLabel string) shuttl
 			return shuttleengine.GateResult{Passed: false, Findings: findings}, nil
 		}
 	}
+}
+
+// guardScanFindings renders a guard scan rejection with the file and line it names and the way to fix it.
+func guardScanFindings(err error) string {
+	return fmt.Sprintf("A test file blocks the guard scan, so no test ran: %v.\n\nPut `//lyx:guard` on the line directly above its top-level `func Test…` line (only `//testtiming:keep` lines may sit between), keep it out of `tmux` and `llm` test files, and make every test file parse.\n", err)
 }
 
 // commentLintFindings renders the comment lint's findings as one line each, file and line first.

@@ -33,7 +33,7 @@ type Derivation struct {
 }
 
 // Derive derives the round gate's command for the diff between base and HEAD in worktree.
-// A fallback reason is not an error; an error is a failure to read git, run `go list`, parse a test file, or a misplaced guard marker.
+// A fallback reason is not an error; an error is a failure to read git or a package directory, or a *GuardScanError for a test file the guard scan cannot accept.
 func Derive(worktree, base string) (Derivation, error) {
 	if _, err := os.Stat(filepath.Join(worktree, "go.mod")); err != nil {
 		return Derivation{Fallback: "no go.mod at the worktree root"}, nil
