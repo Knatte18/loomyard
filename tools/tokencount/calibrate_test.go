@@ -273,6 +273,24 @@ func TestCalibrate(t *testing.T) {
 			t.Errorf("markdown lacks %q:\n%s", want, out.String())
 		}
 	}
+
+	t.Run("peak rows are priced at each fork's own position", func(t *testing.T) {
+		t.Parallel()
+		// The grow profile is fit with a batch_growth of 5, so alpha's forks at positions 1 to 4 estimate 110, 65, 70 and 75, each with an estimated growth of the same 100, 50, 50 and 50 once its own start is taken off.
+		grown, err := Calibrate(runs[:1], "grow", configDir, history, base)
+		if err != nil {
+			t.Fatalf("Calibrate: %v", err)
+		}
+		wantEstimates, wantGrowths := []float64{110, 65, 70, 75}, []float64{100, 50, 50, 50}
+		if len(grown.Rows) != len(wantEstimates) {
+			t.Fatalf("rows = %+v; want %d", grown.Rows, len(wantEstimates))
+		}
+		for i, row := range grown.Rows {
+			if !near(row.Estimate, wantEstimates[i]) || !near(row.EstimatedGrowth, wantGrowths[i]) {
+				t.Errorf("row %d at position %d = estimate %v, estimated growth %v; want %v and %v", i, row.Position, row.Estimate, row.EstimatedGrowth, wantEstimates[i], wantGrowths[i])
+			}
+		}
+	})
 }
 
 // TestCalibrateStartFit asserts the start rows' positions restart in each webster session, and the least-squares fit of the start coefficients: exact on starts laid on a line, not fitted from a single position, and marked unusable when the growth comes out negative.
