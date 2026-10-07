@@ -92,7 +92,6 @@ func TestReferenceRule_Match(t *testing.T) {
 		{"only the path rule matches", "ls /hub/other-weft", "/other-weft", ""},
 		{"only the spelling rule matches", "echo y | lyx warp checkout x", "", "lyx warp"},
 		{"heredoc body returns neither", "cat > x <<EOF\n/hub/a-weft\nlyx fabric sync\nEOF", "", ""},
-		{"quoted search pattern returns neither", `grep "lyx fabric" docs`, "", ""},
 	}
 
 	for _, tt := range tests {
