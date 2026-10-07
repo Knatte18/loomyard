@@ -41,9 +41,10 @@ its class, detail and paths.
 
 With --batch NN it instead accepts failed batch NN's uncheckable findings,
 which otherwise make recover-batch refuse toward reset and run --fresh.
-It accepts only pathless fabric-reference findings, and only when the batch
-made no commit, HEAD is the batch's start commit and the worktree is clean;
-anything else refuses, changing nothing. Each accepted finding is recorded on
+It accepts only pathless fabric-reference findings, and only when HEAD is the
+batch's start commit and the worktree is clean, for example after
+git reset --keep <start> discarded the batch's commits; anything else
+refuses, changing nothing. Each accepted finding is recorded on
 the batch as an audit warning, and the envelope's next names
 lyx webster recover-batch NN.
 

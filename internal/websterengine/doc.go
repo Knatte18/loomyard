@@ -205,7 +205,7 @@
 // and the way forward is `lyx webster run --fresh` after resetting the branch to the run's start commit.
 // `run --fresh` drops such a batch under the same HEAD and path rules as a pending finding.
 // One narrow exception keeps the batches before it (AcceptBatchFabricReference, `lyx webster accept-audit --batch NN`):
-// when every Uncheckable entry is a pathless fabric reference, the batch made no commit (its digest head is its start), HEAD is that start and the worktree is clean apart from the run's own state,
+// when every Uncheckable entry is a pathless fabric reference, the batch recorded a start commit, HEAD is that start (a batch that committed qualifies after `git reset --keep <start>`) and the worktree is clean apart from the run's own state,
 // the explicit call clears the entries and records each as a batch audit warning, and recover-batch then proceeds;
 // the refusal names that route only for such a record.
 // The evidence shows the task tree unchanged; the fabric repo's own state it cannot show, and the caller vouches for it by running the verb.
