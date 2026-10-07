@@ -284,4 +284,6 @@
 // reviewGateAttempts times and then lets the run through, so a file still
 // invalid after the budget fails at the strict parse after the gate. The
 // gate (through CheckReviewFile) and that parse both reach ParseReview.
+// `lyx burler validate-review <review-file>` is the gate's self-check verb:
+// it runs CheckReviewFile read-only and needs no hub, mode or git repository.
 package burlerengine

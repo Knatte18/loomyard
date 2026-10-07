@@ -73,8 +73,9 @@ type burlerCLI struct {
 // Skips resolution entirely when the group command itself is invoked (bare listing or
 // unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
 // be present -- preserved exactly as today because TestRunCLI_GroupGuard_OutsideGitRepo pins it.
+// The validate-review verb is skipped the same way: it reads one told file and needs no hub, mode or engine wiring.
 func (c *burlerCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
-	if cmd.Name() == "burler" {
+	if cmd.Name() == "burler" || cmd.Name() == validateReviewVerb {
 		return nil
 	}
 
@@ -150,6 +151,7 @@ Example (standalone, outside any lyx hub):
 		"standalone-only: the directory burler reviews against; defaults to the current directory, and either way is lifted to the containing repository's root; refused in hub mode, where the anchor path is already the target")
 
 	parent.AddCommand(c.runCmd())
+	parent.AddCommand(c.validateReviewCmd())
 
 	return parent
 }
