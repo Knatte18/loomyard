@@ -34,6 +34,7 @@ var shedrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/loomshed",
 	"github.com/Knatte18/loomyard/internal/landingshed",
 	"github.com/Knatte18/loomyard/internal/parentreview",
+	"github.com/Knatte18/loomyard/internal/planindex",
 	"github.com/Knatte18/loomyard/internal/battenshed",
 	"github.com/Knatte18/loomyard/internal/preflightshed",
 	"github.com/Knatte18/loomyard/internal/websterengine",

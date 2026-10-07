@@ -27,8 +27,8 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 //
 // Each element carries a required "name", resolved against a closed six-value vocabulary:
 // "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and returns loomshed.NewDiscussionGate over them;
-// "plan" requires env.AnchorPath and env.WorktreeRoot and returns loomshed.NewPlanGate over them;
-// "rework-plan" requires the same two roots plus a non-nil env.Rework.ReadCommitted and returns loomshed.NewReworkPlanGate over them;
+// "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex and returns loomshed.NewPlanGate over them;
+// "rework-plan" requires the same two roots and index plus a non-nil env.Rework.ReadCommitted and returns loomshed.NewReworkPlanGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
 // "verify" requires the absolute env.AnchorPath, env.WorktreeRoot and env.VerifyDir and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate";
 // "parent-review" requires the absolute Env.ParentReview.Store.Root, Store.LockDir, DecisionRecord and SupportLog, a non-empty Slug and both render seams, and returns parentreview.NewGate's closure pair, the second being the entry's Final closure;
@@ -175,7 +175,10 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 		if err := requireAbsRoot(entry, "WorktreeRoot", env.WorktreeRoot); err != nil {
 			return nil, err
 		}
-		return loomshed.NewPlanGate(env.AnchorPath, env.WorktreeRoot), nil
+		if err := requireSeam(entry, "PlanIndex", env.PlanIndex); err != nil {
+			return nil, err
+		}
+		return loomshed.NewPlanGate(env.AnchorPath, env.WorktreeRoot, env.PlanIndex), nil
 	case "rework-plan":
 		if err := requireAbsRoot(entry, "AnchorPath", env.AnchorPath); err != nil {
 			return nil, err
@@ -183,10 +186,13 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 		if err := requireAbsRoot(entry, "WorktreeRoot", env.WorktreeRoot); err != nil {
 			return nil, err
 		}
+		if err := requireSeam(entry, "PlanIndex", env.PlanIndex); err != nil {
+			return nil, err
+		}
 		if err := requireSeam(entry, "Rework.ReadCommitted", env.Rework.ReadCommitted); err != nil {
 			return nil, err
 		}
-		return loomshed.NewReworkPlanGate(env.AnchorPath, env.WorktreeRoot, env.Rework.ReadCommitted), nil
+		return loomshed.NewReworkPlanGate(env.AnchorPath, env.WorktreeRoot, env.PlanIndex, env.Rework.ReadCommitted), nil
 	case "description":
 		if err := requireAbsRoot(entry, "DescriptionPath", env.DescriptionPath); err != nil {
 			return nil, err

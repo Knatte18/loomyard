@@ -7,6 +7,8 @@
 // The stops its gate rows halt on each name a way forward, tabulated in contracts/specs/refusal-spec.md.
 // Loom-Preflight's half-finished-run stop names `lyx loom goto` as that way forward.
 //
+// Its plan gates resolve plan refs through a told planindex.Index, so the package links no tree-sitter grammar.
+//
 // The Plan-Write rotation archives the prior plan and appends a prior-plan block naming that archive to the respawned session's prompt.
 //
 // It declares its own unexported cancellation helpers (entryErr/cancelErr in ctx.go) rather than

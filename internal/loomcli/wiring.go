@@ -264,6 +264,7 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
 	c.env.Rework.ReadCommitted = committedAnchoredReader(location)
+	c.env.PlanIndex = planglyph.NewIndex()
 }
 
 // committedAnchoredReader returns the seam that reads an anchor-relative file as committed at HEAD for location, with found false when HEAD has no such file.
@@ -525,6 +526,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		SupportLogPath:     loomengine.DiscussionSupportLog(location),
 		ParentName:         c.parentName,
 		WebsterDeps:        runDeps,
+		PlanIndex:          websterGeom.Index,
 		// ReflectFriction is a method value over the receiver, so frictionDir is read when the row runs, not when wire runs.
 		ReflectFriction: c.reflectFrictionRow,
 		// WebsterRun is set explicitly to websterengine.Run, per the

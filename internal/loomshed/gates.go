@@ -1,6 +1,6 @@
 // gates.go implements this package's three gate closures: NewDiscussionGate, NewPlanGate and NewReworkPlanGate.
 // Each is the gate half of the Gate Self-Check Parity Invariant -- each calls the identical package
-// function its CLI self-check verb does (discussionparser.Validate, planglyph.ValidateFormat and
+// function its CLI self-check verb does (discussionparser.Validate, the index's ValidateFormat and
 // ValidateReworkPlan, respectively), so the operator's own self-check verb and the automated gate can never disagree
 // about what "valid" means.
 
@@ -14,7 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -38,7 +38,7 @@ func formatDiscussionFindings(findings []discussionparser.Finding) string {
 // It calls each Finding's own Error() rather than re-deriving its layout, which is what makes the
 // "describe a violation identically" promise above hold by construction rather than by two copies of
 // one format string agreeing today; formatDiscussionFindings above does the same.
-func formatPlanFindings(findings []planglyph.Finding) string {
+func formatPlanFindings(findings []planindex.Finding) string {
 	parts := make([]string, len(findings))
 	for i, f := range findings {
 		parts[i] = f.Error()
@@ -50,7 +50,7 @@ func formatPlanFindings(findings []planglyph.Finding) string {
 // informational.
 //
 // It tests NOT-informational rather than equals-blocking, and that asymmetry is the point.
-// planglyph.Severity is an open string type, so an unrecognized value — or the zero value, which a
+// planindex.Severity is an open string type, so an unrecognized value — or the zero value, which a
 // hand-built Finding or a future producer that forgets to stamp one carries — took the informational
 // branch, logged a Warn, and returned Done with the plan directory as its pointer: the run advanced
 // past a finding that was meant to block it. That is the same "a validator's complaint reported as a
@@ -58,9 +58,9 @@ func formatPlanFindings(findings []planglyph.Finding) string {
 // present on the severity path (crucible round opus-medium-r6, R6-27).
 // Failing closed costs at most a spurious bounce on a severity nobody has defined yet; failing open
 // costs a dispatched batch over a defect the gate saw.
-func hasBlockingFinding(findings []planglyph.Finding) bool {
+func hasBlockingFinding(findings []planindex.Finding) bool {
 	for _, f := range findings {
-		if f.Severity != planglyph.SeverityInformational {
+		if f.Severity != planindex.SeverityInformational {
 			return true
 		}
 	}
@@ -100,12 +100,12 @@ func NewDiscussionGate(decisionRecordPath, supportLogPath string) shuttleengine.
 
 // NewPlanGate returns the Plan-Write row's gate closure: a shuttleengine.Gate that parses the plan
 // through planparser.ParsePlan(planparser.PlanDir(anchorPath)) and then runs
-// planglyph.ValidateFormat(plan, worktreeRoot), mapping the result onto the gate contract.
+// index.ValidateFormat(plan, worktreeRoot), mapping the result onto the gate contract.
 //
 // The two path parameters are separate because planparser.PlanDir takes the anchor path while
-// planglyph.ValidateFormat takes the worktree root, and they are not the same value.
+// index.ValidateFormat takes the worktree root, and they are not the same value.
 //
-// ValidateFormat is called, never planglyph.Validate: both plan gate sites run strictly before the
+// ValidateFormat is called, never the require_approved-aware validation: both plan gate sites run strictly before the
 // Plan-Review segment's approve seam writes the approval flag, so demanding it would fail every
 // single fix round.
 //
@@ -126,7 +126,7 @@ func NewDiscussionGate(decisionRecordPath, supportLogPath string) shuttleengine.
 // artifact, since discussionparser.Validate already reports a missing file as a finding and only a
 // non-not-exist read failure as an error.
 //
-// Every planglyph error stays a returned error in full and is explicitly NOT part of the carve-out:
+// Every index error stays a returned error in full and is explicitly NOT part of the carve-out:
 // a resolve or quarry failure means the gate could not read the code, not that it found a defect,
 // and three absurd re-prompts over a missing quarry binary would hide the real fault.
 //
@@ -138,40 +138,40 @@ func NewDiscussionGate(decisionRecordPath, supportLogPath string) shuttleengine.
 // formatPlanFindings(findings)} after a logger.Warn carrying the same formatted text.
 //
 // hasBlockingFinding is called, never re-derived: it encodes a crucible-round finding that
-// planglyph.Severity is an open string type, so testing not-informational rather than
+// planindex.Severity is an open string type, so testing not-informational rather than
 // equals-blocking is what keeps an unrecognized or zero-valued severity from silently passing.
-func NewPlanGate(anchorPath, worktreeRoot string) shuttleengine.Gate {
-	return planGate("Plan-Gate", anchorPath, func(plan *planparser.Plan) ([]planglyph.Finding, error) {
-		return planglyph.ValidateFormat(plan, worktreeRoot)
+func NewPlanGate(anchorPath, worktreeRoot string, index planindex.Index) shuttleengine.Gate {
+	return planGate("Plan-Gate", anchorPath, func(plan *planparser.Plan) ([]planindex.Finding, error) {
+		return index.ValidateFormat(plan, worktreeRoot)
 	})
 }
 
-// NewReworkPlanGate returns the PR-Rework row's gate closure: a shuttleengine.Gate that parses the plan under anchorPath and checks it with ValidateReworkPlan,
+// NewReworkPlanGate returns the PR-Rework row's gate closure: a shuttleengine.Gate that parses the plan under anchorPath and checks it with ValidateReworkPlan over index,
 // so the whole new plan is held to the plan-format checks plus the told first_card.
 // readCommitted returns an anchor-relative file as committed at HEAD, with found false when HEAD has no such file.
 //
 // Parse failures, the blocking-versus-informational split and the logging follow the plan gate's contract.
 // A plan that cannot be read as committed at HEAD is a returned error, never a finding: the rework session cannot fix a missing baseline.
-func NewReworkPlanGate(anchorPath, worktreeRoot string, readCommitted func(anchorRel string) ([]byte, bool, error)) shuttleengine.Gate {
-	return planGate("Rework-Plan-Gate", anchorPath, func(plan *planparser.Plan) ([]planglyph.Finding, error) {
-		return ValidateReworkPlan(plan, worktreeRoot, readCommitted)
+func NewReworkPlanGate(anchorPath, worktreeRoot string, index planindex.Index, readCommitted func(anchorRel string) ([]byte, bool, error)) shuttleengine.Gate {
+	return planGate("Rework-Plan-Gate", anchorPath, func(plan *planparser.Plan) ([]planindex.Finding, error) {
+		return ValidateReworkPlan(plan, worktreeRoot, index, readCommitted)
 	})
 }
 
-// ValidateReworkPlan checks the whole new plan with planglyph.ValidateRework: the plan gate's format-only set, plus the check that first_card equals the number Go told the session.
+// ValidateReworkPlan checks the whole new plan with index.ValidateRework: the plan gate's format-only set, plus the check that first_card equals the number Go told the session.
 // The told number is NextReworkCardNumber over the plan committed at HEAD, which still holds the retired generation until the round commit, so it is stable for the gate's whole window.
 // readCommitted returns an anchor-relative file as committed at HEAD, with found false when HEAD has no such file.
 // A plan that cannot be read as committed at HEAD is a returned error.
-func ValidateReworkPlan(plan *planparser.Plan, worktreeRoot string, readCommitted func(anchorRel string) ([]byte, bool, error)) ([]planglyph.Finding, error) {
+func ValidateReworkPlan(plan *planparser.Plan, worktreeRoot string, index planindex.Index, readCommitted func(anchorRel string) ([]byte, bool, error)) ([]planindex.Finding, error) {
 	told, err := NextReworkCardNumber(plan.Dir, readCommitted)
 	if err != nil {
 		return nil, fmt.Errorf("read the plan committed at HEAD: %w", err)
 	}
-	return planglyph.ValidateRework(plan, worktreeRoot, told)
+	return index.ValidateRework(plan, worktreeRoot, told)
 }
 
 // planGate builds a plan gate closure named gateName in its log lines: it parses the plan under anchorPath, runs validate over it, and maps the result onto the gate contract.
-func planGate(gateName, anchorPath string, validate func(*planparser.Plan) ([]planglyph.Finding, error)) shuttleengine.Gate {
+func planGate(gateName, anchorPath string, validate func(*planparser.Plan) ([]planindex.Finding, error)) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
 		planDir := planparser.PlanDir(anchorPath)
 		plan, err := planparser.ParsePlan(planDir)

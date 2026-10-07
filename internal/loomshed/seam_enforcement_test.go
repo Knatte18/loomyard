@@ -28,12 +28,9 @@ var loomshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/websterengine",
 	"github.com/Knatte18/loomyard/internal/loomengine",
 	"github.com/Knatte18/loomyard/internal/planparser",
-	// internal/planglyph is a genuine new dependency, not a loosened rule: planvalidate.go's producer
-	// now runs the gate through planglyph's resolve-backed entry points, and planglyph itself derives
-	// no path of its own and never imports internal/lyxcwd, per the told-geometry-for-planglyph
-	// Shared Decision -- so its transitive geometry footprint is exactly zero, same as
-	// internal/planparser's own membership above.
-	"github.com/Knatte18/loomyard/internal/planglyph",
+	// internal/planindex is the cgo-free seam the plan gates resolve through; the resolve-backed
+	// implementation, internal/planglyph, links tree-sitter and stays out of this package for good.
+	"github.com/Knatte18/loomyard/internal/planindex",
 	"github.com/Knatte18/loomyard/internal/discussionparser",
 	"github.com/Knatte18/loomyard/internal/batcher",
 	"github.com/Knatte18/loomyard/internal/state",
