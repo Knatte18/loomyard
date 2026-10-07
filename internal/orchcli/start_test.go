@@ -1,4 +1,4 @@
-// start_test.go drives the start verb's RunE with --no-attach over a fake strandOps, session starter and watcher spawn, asserting the recorded calls and the saved state without a spawn.
+// start_test.go drives the start verb's RunE over a fake strandOps, session starter and watcher spawn, asserting the recorded calls and the saved state without a spawn.
 
 package orchcli
 
@@ -58,11 +58,11 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	return h
 }
 
-// run executes start with --no-attach plus args and decodes the envelope.
+// run executes start with args and decodes the envelope.
 func (h *startHarness) run(t *testing.T, args ...string) (int, map[string]any) {
 	t.Helper()
 	var out bytes.Buffer
-	code := clihelp.Execute(h.cli.startCmd(), &out, append([]string{"--no-attach"}, args...))
+	code := clihelp.Execute(h.cli.startCmd(), &out, args)
 	var env map[string]any
 	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
 		t.Fatalf("output %q is not one JSON object: %v", out.String(), err)
@@ -102,7 +102,7 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if st := h.state(t); st.Strand != "new-guid" || st.Phase != orchengine.PhaseIdle {
 		t.Errorf("state = %+v; want strand new-guid in idle", st)
 	}
-	if env["action"] != actionRelaunched || env["strand"] != "new-guid" || env["prompt_source"] != orchengine.SourceFresh || env["attached"] != false {
+	if env["action"] != actionRelaunched || env["strand"] != "new-guid" || env["prompt_source"] != orchengine.SourceFresh {
 		t.Errorf("envelope = %v", env)
 	}
 
@@ -138,7 +138,7 @@ func TestStart_LiveStrand(t *testing.T) {
 		wantAction string
 		wantSpawns int
 	}{
-		{"with a watcher does nothing", true, actionAttachOnly, 0},
+		{"with a watcher does nothing", true, actionAlreadyRunning, 0},
 		{"without a watcher spawns the watcher only", false, actionSpawnedWatcher, 1},
 	}
 	for _, c := range cases {
@@ -170,6 +170,19 @@ func TestStart_LiveStrand(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestStart_NeverAttaches is not parallel: it sets the process-global TMUX with t.Setenv.
+func TestStart_NeverAttaches(t *testing.T) {
+	t.Setenv("TMUX", "/tmp/tmux-1000/default,1234,0")
+
+	for _, args := range [][]string{nil, {"--no-attach"}} {
+		h := newStartHarness(t)
+		code, env := h.run(t, args...)
+		if code != 0 || env["ok"] != true || env["action"] != actionRelaunched || env["strand"] != "new-guid" {
+			t.Errorf("start %v with TMUX set: exit = %d; env = %v; want exit 0 and the success envelope", args, code, env)
+		}
 	}
 }
 

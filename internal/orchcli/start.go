@@ -1,5 +1,5 @@
-// start.go implements the `start` orch verb: the idempotent bootstrap that leaves one live orchestrator strand and one watcher bound to it, then hands the terminal over.
-// Every fallible step reports on the envelope before the handover, which alone takes the CLI/Cobra Invariant's interactive-handoff exception.
+// start.go implements the `start` orch verb: the idempotent bootstrap that leaves one live orchestrator strand and one watcher bound to it, then reports on the envelope.
+// It never attaches or switches a tmux client; `lyx reed attach` is the only way into the session.
 
 package orchcli
 
@@ -30,7 +30,7 @@ var orchSkills = []string{"scribe:prose", "scribe:conversation", "ly:board"}
 
 // Envelope "action" values.
 const (
-	actionAttachOnly     = "attach-only"
+	actionAlreadyRunning = "already-running"
 	actionSpawnedWatcher = "spawned-watcher"
 	actionRelaunched     = "relaunched"
 )
@@ -95,12 +95,11 @@ func fileExists(path string) bool {
 }
 
 // startFields builds the success envelope.
-func startFields(action, strand, promptSource string, attached bool, hint, warning string) map[string]any {
+func startFields(action, strand, promptSource, hint, warning string) map[string]any {
 	fields := map[string]any{
 		"action":        action,
 		"strand":        strand,
 		"prompt_source": promptSource,
-		"attached":      attached,
 	}
 	if hint != "" {
 		fields["hint"] = hint
@@ -118,17 +117,17 @@ func (c *orchCLI) startCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "launch or reattach the orchestrator session and its watcher",
-		Long: `start is idempotent. With a live orchestrator strand and a live watcher it only
-hands the terminal over. With a live strand and no watcher it spawns the watcher.
+		Short: "launch the orchestrator session and its watcher",
+		Long: `start is idempotent. With a live orchestrator strand and a live watcher it changes
+nothing and reports them. With a live strand and no watcher it spawns the watcher.
 With a dead or absent strand it removes the corpse, launches a fresh session and
 spawns a watcher for it. The fresh session resumes from --handoff when given, else
 from the last completed handoff, else starts from the start stencil.
 With --adopt <session-id> the fresh launch instead resumes that existing Claude
 session, recorded under the prime's own directory, as the orchestrator strand;
 --adopt and --handoff are exclusive, and --adopt is refused while the strand is live.
-The terminal is attached to reed's session (or the tmux client switched onto it)
-unless --no-attach is given.`,
+start never attaches or switches a tmux client; run "lyx reed attach" to watch the
+session.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -260,29 +259,17 @@ unless --no-attach is given.`,
 				if err := c.adoptStrand(st, guid); err != nil {
 					return fail(err)
 				}
-				envAction = actionAttachOnly
+				envAction = actionAlreadyRunning
 			}
 
 			releaseLock()
 
-			decision := handoverEnvelope
-			if !noAttach {
-				tmuxEnv := os.Getenv("TMUX")
-				reedOwns := tmuxEnv != "" && c.reed.OwnsTmuxEnv(tmuxEnv)
-				decision = decideHandover(false, tmuxEnv, reedOwns, c.currentTmuxSession(reedOwns), c.reed.SessionName())
-			}
-			switch decision {
-			case handoverEnvelope:
-				clihelp.SetExit(ctx, output.Ok(out, startFields(envAction, guid, promptSource, false, "", warning)))
-			case handoverHint:
-				clihelp.SetExit(ctx, output.Ok(out, startFields(envAction, guid, promptSource, false, attachHint, warning)))
-			default:
-				c.runHandover(ctx, decision)
-			}
+			clihelp.SetExit(ctx, output.Ok(out, startFields(envAction, guid, promptSource, "", warning)))
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&noAttach, "no-attach", false, "for unattended callers: return once the session and watcher are up instead of handing the terminal to the session")
+	cmd.Flags().BoolVar(&noAttach, "no-attach", false, "accepted and ignored; kept for existing callers")
+	_ = cmd.Flags().MarkHidden("no-attach")
 	cmd.Flags().StringVar(&handoffFlag, "handoff", "", "resume a fresh launch from this handoff file instead of the last completed one; refused while the strand is live")
 	cmd.Flags().StringVar(&adoptFlag, "adopt", "", "resume this existing Claude session (the id `/status` shows in it) as the orchestrator strand; exclusive with --handoff, and refused while the strand is live")
 	return cmd

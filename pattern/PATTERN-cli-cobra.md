@@ -13,7 +13,7 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 
 ## Interactive-handoff exception
 
-Narrow and per-command: `reedengine` `attach` and `watchdog`, `lyx loom status --watch`, `lyx orch start`, `lyx shed status --watch`, `lyx batten status --watch`, and the `status` verbs' terminal rendering.
+Narrow and per-command: `reedengine` `attach` and `watchdog`, `lyx loom status --watch`, `lyx shed status --watch`, `lyx batten status --watch`, and the `status` verbs' terminal rendering.
 
 ## Package naming
 

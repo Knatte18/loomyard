@@ -20,11 +20,11 @@
 //
 // # The run loop, per task
 //
-//  1. Create the task worktree with `lyx fabric add <slug>`, then start its run from inside it with `lyx loom start --no-attach`.
+//  1. Create the task worktree with `lyx fabric add <slug>`, then start its run from inside it with `lyx loom start`.
 //     The run's status file is `_lyx/shed/<slug>/status.json` under the worktree, and its `state` is one of running, awaiting, blocked, failed or done.
 //  2. Keep no watch loop of your own: batten notices arrive as typed turns from the orch watcher, and on one you check the run with `lyx batten status <slug>`.
 //  3. At an awaiting Publish, review the PR: a small diff yourself, with build, vet and test over the touched packages; a large one through a read-only background subagent.
-//     Then `lyx loom approve` in the worktree, wait until the session has no agent pane left (the driver removes itself after a hand-back, and an early restart races that removal and leaves no driver), and `lyx loom start --no-attach` again.
+//     Then `lyx loom approve` in the worktree, wait until the session has no agent pane left (the driver removes itself after a hand-back, and an early restart races that removal and leaves no driver), and `lyx loom start` again.
 //     Finalize squash-merges, closes the PR and marks the board task done.
 //  4. On blocked or failed, read `error` in the status file and rerun the failing tests to tell a flaky failure from a real one.
 //     A real regression in the task is fixed in the task worktree by a background subagent, with code commits only, no `lyx fabric`, no `_lyx` or `.lyx` edits and no push, and the run is started again.

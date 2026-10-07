@@ -10,7 +10,8 @@
 // `lyx orch` runs from the hub's prime worktree only; every verb refuses elsewhere.
 //
 //   - start: the idempotent bootstrap.
-//     It leaves one live orchestrator strand and one watcher bound to it, then hands the terminal over to reed's attach.
+//     It leaves one live orchestrator strand and one watcher bound to it, then reports on the envelope.
+//     It never attaches or switches a tmux client; `lyx reed attach` is the only way into the session.
 //     `--adopt <session-id>` resumes an existing Claude session as the orchestrator strand instead of launching a fresh one.
 //   - status: reports the strand, the watcher and the persisted cycle state.
 //   - refresh: writes a clear-cycle request, which makes the watcher write a note and clear the session at its next idle moment regardless of the token count and of `cycle_mode`.
@@ -45,7 +46,7 @@
 // A render failure is handled where a stencil render failure is: `start` refuses, a note request changes nothing, and a clear that cannot render aborts the cycle.
 //
 // DecideStart maps the strand and watcher liveness pair onto the branch `start` takes:
-// attach only, spawn a watcher, or relaunch.
+// already running, spawn a watcher, or relaunch.
 // A dead or absent strand always relaunches.
 //
 // # Permission mode and subagents
