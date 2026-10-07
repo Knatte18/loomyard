@@ -22,7 +22,9 @@
 // A child with a live or retiring driver strand in its reed state, or a held run lock, is adopted instead, with the confirmation recorded for this process, so a second driver is never stacked.
 //
 // A child that halts (blocked, paused or failed) is a budget-exempt wait, not a failure of the Run-Shed row:
-// batten never spawns or resumes a halted child, logs one Warn per halt episode, and keeps polling every poll interval with the child's state, error, current producer and the resume command ("lyx loom start" in the task worktree) as its reason.
+// batten never spawns or resumes a halted child, logs one Warn per halt episode, and keeps polling every poll interval with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
+// A halted or awaiting child whose reed state holds a dead driver strand has its pair's strands revived through reed resume, once per halt episode per batten process; the run stays halted and nothing is resumed, so the operator's "lyx loom resume" wakes the revived driver.
+// A retiring strand is not revived and a child with no driver strand has none to revive; a revive that fails, and a child with no driver strand, make the reason also name "lyx loom start" in the task worktree.
 // The wait has no time limit and spends no bounce budget; "lyx batten pause" stops it, and the row reads the child as running again once the operator resumes it.
 //
 // Its counterpart is equally by design: a driver that finishes NORMALLY leaves its strand and its

@@ -53,6 +53,7 @@ func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
 		{"DriverAlive", c.env.InnerRun.DriverAlive != nil},
 		{"DriverStrand", c.env.InnerRun.DriverStrand != nil},
 		{"ChildRunLockHeld", c.env.InnerRun.ChildRunLockHeld != nil},
+		{"ReviveStrands", c.env.InnerRun.ReviveStrands != nil},
 		{"OpenIDE", c.env.InnerRun.OpenIDE != nil},
 		{"CommitStatus", c.shedPaths.CommitStatus != nil},
 	}

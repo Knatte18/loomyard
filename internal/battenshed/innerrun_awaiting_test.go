@@ -55,6 +55,34 @@ func TestInnerRun_AwaitingWithoutApprovalWaitsExempt(t *testing.T) {
 	}
 }
 
+// TestInnerRun_AwaitingRevivesADeadDriverAndKeepsItsHints asserts an awaiting child's dead driver strand is revived once, and that the hand-off hint keeps its verbs and never names `lyx loom resume`, which refuses an awaiting run.
+func TestInnerRun_AwaitingRevivesADeadDriverAndKeepsItsHints(t *testing.T) {
+	clock := &fakeClock{}
+	_, spawnCalls, deps := newInnerRunDeps(nil, nil, awaitingStatus(), clock)
+	revives := 0
+	deps.DriverStrand = driverStrandScript(ChildDriverDead, ChildDriverLive)
+	deps.ReviveStrands = func(context.Context) error {
+		revives++
+		return nil
+	}
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, t.TempDir(), testGrace)
+
+	var ptr shedengine.OutputPointer
+	for i := 0; i < 2; i++ {
+		_, ptr = shedfake.CallOK(t, producer)
+	}
+
+	if revives != 1 {
+		t.Errorf("revives across two Calls = %d; want 1", revives)
+	}
+	if *spawnCalls != 0 {
+		t.Errorf("Spawn calls = %d; want 0 without a decision", *spawnCalls)
+	}
+	if !strings.Contains(ptr.Reason, "lyx loom approve") || strings.Contains(ptr.Reason, "lyx loom resume") {
+		t.Errorf("Reason = %q; want the approve hand-off hint and no lyx loom resume", ptr.Reason)
+	}
+}
+
 // awaitingStatusWithHistory is an awaiting child whose history holds n entries.
 func awaitingStatusWithHistory(n int) statusResult {
 	return statusResult{

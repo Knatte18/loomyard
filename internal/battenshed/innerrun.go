@@ -46,9 +46,14 @@ func SpawnConfirmedFile(scratchDir, producer string) string {
 }
 
 // haltedWaitReason renders the stuck reason of a halted child's wait.
-// Nothing on the prime side can resume the child's own driver, so the reason names the operator's resume command and says this run keeps watching.
-func haltedWaitReason(status shedengine.Status) string {
-	return fmt.Sprintf("inner shed run is %s: error=%q current_producer=%q; run \"lyx loom start\" in the task worktree to resume it; this run then keeps watching", status.State, status.Error, status.CurrentProducer)
+// Nothing on the prime side resumes the child's own driver, so the reason names the operator's resume command and says this run keeps watching.
+// startFallback adds `lyx loom start`, for a child with no driver strand to wake or whose revive failed.
+func haltedWaitReason(status shedengine.Status, startFallback bool) string {
+	resume := `run "lyx loom resume" in the task worktree to resume it`
+	if startFallback {
+		resume = `run "lyx loom resume" in the task worktree to resume it, or "lyx loom start" in the task worktree when no driver can be woken`
+	}
+	return fmt.Sprintf("inner shed run is %s: error=%q current_producer=%q; %s; this run then keeps watching", status.State, status.Error, status.CurrentProducer, resume)
 }
 
 // haltWarnedFileSuffix is the fixed suffix of the marker recording the child's history length at the last halt Warn, joined onto the producer's own name.
@@ -57,6 +62,15 @@ const haltWarnedFileSuffix = "-halt-warned"
 // haltWarnedFile returns the path of the marker holding the child's history length, in decimal, at the last halt Warn.
 func haltWarnedFile(scratchDir, producer string) string {
 	return filepath.Join(scratchDir, producer+haltWarnedFileSuffix)
+}
+
+// revivedFileSuffix is the fixed suffix of the marker recording that this batten process already tried a driver revive in the current halt episode, joined onto the producer's own name.
+// It holds the process's pid and the attempt's result, `ok` or `failed`, on one line.
+const revivedFileSuffix = "-revived"
+
+// revivedFile returns the path of the revive once-marker.
+func revivedFile(scratchDir, producer string) string {
+	return filepath.Join(scratchDir, producer+revivedFileSuffix)
 }
 
 // decisionActedFileSuffix is the fixed suffix of the marker recording the decision identity the producer last resumed the child on, followed by the child's history length at that resume, joined onto the producer's own name.
@@ -144,7 +158,7 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 //
 // A nil deps.Sleep resolves to waitOrCancel, and a nil deps.Now to time.Now, once here rather than on every Call, so a test's no-op sleep and fixed clock are the only values ever substituted.
 // A nil deps.Notify resolves to a no-op and switches the notice step off.
-// A nil deps.DriverStrand resolves to reporting no driver strand and a nil deps.ChildRunLockHeld to reporting no held lock.
+// A nil deps.DriverStrand resolves to reporting no driver strand, a nil deps.ChildRunLockHeld to reporting no held lock and a nil deps.ReviveStrands to a revive that fails as not wired.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
 	if deps.Sleep == nil {
 		deps.Sleep = waitOrCancel
@@ -167,6 +181,9 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	}
 	if deps.ChildRunLockHeld == nil {
 		deps.ChildRunLockHeld = func() (bool, error) { return false, nil }
+	}
+	if deps.ReviveStrands == nil {
+		deps.ReviveStrands = func(context.Context) error { return errors.New("no strand revive wired") }
 	}
 	return &innerRunProducer{
 		name:         name,
@@ -206,13 +223,13 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // Once the child's state is settled, the notice step runs (noticeStep): informational only, one notice per condition per episode, never changing the outcome below.
 // Then by state:
 //   - running sleeps p.pollInterval and returns a counted Stuck;
-//   - awaiting with no decision record sleeps and returns a budget-exempt Stuck naming the hand-off;
+//   - awaiting first revives a dead driver strand once per episode, then with no decision record sleeps and returns a budget-exempt Stuck naming the hand-off;
 //   - awaiting with a decision not yet acted on spawns the child's driver again (the child's own bootstrap resumes an approved or rejected run), records the decision in the decision-acted marker only once the spawn succeeded, then sleeps and returns a budget-exempt Stuck;
 //     a spawn refused with ErrChildNotParked records nothing and sleeps and returns a budget-exempt Stuck, so the next poll retries the resume;
 //   - awaiting with a decision already acted on and the child's history length unchanged since that resume does not spawn, and sleeps and returns a budget-exempt Stuck saying the resume was delivered and the child's driver has not re-stepped yet;
 //   - awaiting with a decision already acted on and the child's history longer (or an old-layout marker) does not spawn, and sleeps and returns a budget-exempt Stuck naming the recovery of deciding again;
 //   - done records the first-sight time in the done-seen marker and returns Done once the driver strand is gone or driverExitGrace has elapsed since first sight, and otherwise sleeps and returns a budget-exempt Stuck, the wait for the driver to finish its stop report;
-//   - blocked, paused or failed never spawns, Warns once per halt episode, and sleeps and returns a budget-exempt Stuck whose reason carries the child's State, Error and CurrentProducer and the resume command; a resumed child is then read as running again;
+//   - blocked, paused or failed never spawns or resumes the child, Warns once per halt episode, revives a dead driver strand once per episode (reviveDeadDriver), and sleeps and returns a budget-exempt Stuck whose reason carries the child's State, Error and CurrentProducer and the resume command; a resumed child is then read as running again;
 //   - any other value is a hard error naming the unrecognised state.
 //
 // The self-route's "sole Stuck arm" reasoning still holds in the sense it exists for:
@@ -312,6 +329,15 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 		}
 	}
 
+	switch status.State {
+	case shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed, shedengine.StateAwaiting:
+	default:
+		// A child seen out of a halted or awaiting state ends the episode, so the next halt revives afresh.
+		if err := os.Remove(revivedFile(p.scratchDir, p.name)); err != nil && !os.IsNotExist(err) {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: clear revived marker: %w", p.name, err)
+		}
+	}
+
 	p.noticeStep(ctx, statusPath, status)
 
 	switch status.State {
@@ -382,7 +408,7 @@ func (p *innerRunProducer) exemptWait(ctx context.Context, reason string) (shede
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason, BudgetExempt: true}, nil
 }
 
-// callHalted handles a blocked, paused or failed child: it never spawns or resumes the child, Warns once per halt episode, and waits with a budget-exempt Stuck until the operator resumes the child.
+// callHalted handles a blocked, paused or failed child: it never spawns or resumes the child, Warns once per halt episode, revives a dead driver strand once per episode, and waits with a budget-exempt Stuck until the operator resumes the child.
 // An episode ends when Call sees the child out of a halted state, which removes the halt-warned marker, or when the child's history length differs from the length the marker recorded at the last Warn:
 // a re-halt after an observed resume Warns again even at the same history length, since a hard producer error or a mid-call pause appends no history entry, and the polls within one episode stay quiet.
 // A marker read or write failure is a hard error, as the other markers' are.
@@ -403,7 +429,58 @@ func (p *innerRunProducer) callHalted(ctx context.Context, status shedengine.Sta
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: write halt-warned marker: %w", p.name, err)
 		}
 	}
-	return p.exemptWait(ctx, haltedWaitReason(status))
+	revival := p.reviveDeadDriver(ctx)
+	return p.exemptWait(ctx, haltedWaitReason(status, revival.startFallback))
+}
+
+// driverRevival is what reviveDeadDriver learned about the child's driver strand.
+type driverRevival struct {
+	// startFallback is true when the halted reason should also name `lyx loom start`: the child has no driver strand in reed state, or a revive failed in this episode.
+	startFallback bool
+}
+
+// reviveDeadDriver brings back the dead driver strand of a halted or awaiting child through deps.ReviveStrands, at most once per episode per batten process.
+// A retiring strand is left to `lyx loom start`, a live one needs nothing, and a child with no driver strand has nothing to revive, which it never tells from a Go-driven child by the seed.
+// The attempt is recorded in the revived marker with this process's pid; a marker naming another pid belongs to an earlier process, whose episode this one retries once.
+// It changes no run state and removes no park marker, and every failure, a strand read included, is warned about and never fails the row.
+func (p *innerRunProducer) reviveDeadDriver(ctx context.Context) driverRevival {
+	strand, err := p.deps.DriverStrand(ctx)
+	if err != nil {
+		logger.Warn("battenshed: could not read the child's driver strand; skipping the revive", "producer", p.name, "slug", p.slug, "error", err)
+		return driverRevival{}
+	}
+	switch strand {
+	case ChildDriverNone:
+		return driverRevival{startFallback: true}
+	case ChildDriverDead:
+	default:
+		return driverRevival{}
+	}
+
+	markerPath := revivedFile(p.scratchDir, p.name)
+	if raw, err := os.ReadFile(markerPath); err == nil {
+		if pid, _, _ := strings.Cut(strings.TrimSpace(string(raw)), " "); pid == strconv.Itoa(os.Getpid()) {
+			// Already tried by this process in this episode, and the strand is dead still.
+			return driverRevival{startFallback: true}
+		}
+	}
+
+	logger.Info("battenshed: reviving the halted child's dead driver strand", "producer", p.name, "slug", p.slug)
+	reviveErr := p.deps.ReviveStrands(ctx)
+	after, readErr := p.deps.DriverStrand(ctx)
+	revived := reviveErr == nil && readErr == nil && after == ChildDriverLive
+	result := "failed"
+	if revived {
+		result = "ok"
+	} else {
+		logger.Warn("battenshed: the revive left the child's driver strand not live", "producer", p.name, "slug", p.slug, "revive_error", reviveErr, "read_error", readErr, "strand", after)
+	}
+	if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
+		logger.Warn("battenshed: create scratch directory for revived marker failed", "producer", p.name, "slug", p.slug, "scratchDir", p.scratchDir, "error", err)
+	} else if err := os.WriteFile(markerPath, []byte(strconv.Itoa(os.Getpid())+" "+result+"\n"), 0o644); err != nil {
+		logger.Warn("battenshed: write revived marker failed", "producer", p.name, "slug", p.slug, "path", markerPath, "error", err)
+	}
+	return driverRevival{startFallback: !revived}
 }
 
 // callAwaiting handles a child halted at a human hand-off: it waits for a decision, resumes the child once per decision, and otherwise waits, always with a budget-exempt Stuck.
@@ -412,6 +489,7 @@ func (p *innerRunProducer) callHalted(ctx context.Context, status shedengine.Sta
 // and any other length (or an old-layout marker) means the child is awaiting again and gets the decide-again hint.
 // The length is a clock-free discriminator because a re-await appends at least the child's own Awaiting entry, which the history fold never folds onto.
 func (p *innerRunProducer) callAwaiting(ctx context.Context, status shedengine.Status) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	p.reviveDeadDriver(ctx)
 	decision, found, err := p.deps.ReadDecision()
 	if err != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {

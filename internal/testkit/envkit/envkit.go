@@ -174,6 +174,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				return battenshed.ChildDriverNone, nil
 			},
 			ChildRunLockHeld: func() (bool, error) { return false, nil },
+			ReviveStrands:    func(context.Context) error { return nil },
 		},
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },

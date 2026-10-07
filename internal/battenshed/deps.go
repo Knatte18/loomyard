@@ -154,6 +154,11 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil ChildRunLockHeld resolves to a function reporting false in NewInnerRun.
 	ChildRunLockHeld func() (bool, error)
+	// ReviveStrands brings back the strands of the child's pair through reed resume, which relaunches the dead driver strand with its own session.
+	// Call invokes it at most once per halt episode per process, for a halted or awaiting child whose DriverStrand reports dead; it starts no run step and sends no resume line.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil ReviveStrands resolves to a function returning an error that says no revive is wired, in NewInnerRun.
+	ReviveStrands func(ctx context.Context) error
 }
 
 // ChildDriverStrand is the state of a child's driver strand in its reed state.

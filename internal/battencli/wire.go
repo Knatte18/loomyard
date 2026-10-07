@@ -531,6 +531,29 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return reedengine.New(reedCfg, reedGeom).Directory()
 				})
 			},
+			// ReviveStrands resumes the task worktree's reed session, which relaunches the dead driver strand and every other non-live strand of the pair.
+			ReviveStrands: func(ctx context.Context) error {
+				taskLocation, err := taskWorktreeLocation(location, slug)
+				if err != nil {
+					return err
+				}
+				reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+				if err != nil {
+					return err
+				}
+				reedGeom, err := hubgeom.ReedGeometry(taskLocation)
+				if err != nil {
+					return err
+				}
+				logger.Info("battencli: reviving the task worktree's strands through reed resume", "slug", slug)
+				res, err := reedengine.New(reedCfg, reedGeom).Resume()
+				if err != nil {
+					logger.Warn("battencli: reed resume of the task worktree failed", "slug", slug, "error", err)
+					return err
+				}
+				logger.Info("battencli: reed resume of the task worktree finished", "slug", slug, "resumed", res.Resumed, "dropped", res.Dropped)
+				return nil
+			},
 			// ChildRunLockHeld probes the child's run lock without keeping it; the lock's directory is created first, since a child that never started has none.
 			ChildRunLockHeld: func() (bool, error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)
