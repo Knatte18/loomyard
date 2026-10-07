@@ -266,8 +266,7 @@ Example (standalone, outside any lyx hub):
 	return parent
 }
 
-// executionBatches returns the batches every verb runs for plan and the loaded state, sizing cards
-// from the task worktree.
+// executionBatches returns the batches every verb runs for plan and the loaded state, sizing cards from the task worktree.
 func (c *websterCLI) executionBatches(plan *planparser.Plan, st *websterengine.State) ([]batcher.Batch, error) {
 	return websterengine.ExecutionBatches(plan, st, c.batcher, batcher.DiskSizes(c.geom.WorktreeRoot))
 }

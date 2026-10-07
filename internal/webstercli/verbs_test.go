@@ -959,8 +959,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 		if !strings.Contains(got, `"ok":false`) {
 			t.Errorf("output missing ok:false; got %q", got)
 		}
-		// The message is JSON-encoded (its literal quotes become \"), so match
-		// the substrings separately rather than the raw Go-quoted form.
+		// The message is JSON-encoded (its literal quotes become \"), so match the substrings separately rather than the raw Go-quoted form.
 		for _, want := range []string{"batcher.yaml did not load", "bogus", "way forward: fix batcher.yaml under _lyx/config"} {
 			if !strings.Contains(got, want) {
 				t.Errorf("output missing %q; got %q", want, got)

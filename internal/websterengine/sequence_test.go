@@ -1,8 +1,4 @@
-// sequence_test.go covers CheckBatchOrder through its exported surface: a batch list whose every
-// dependency edge (a Uses entry naming another card's Targets entry, or two cards writing one
-// Targets entry in card order) runs forward is accepted, and one with an edge to an earlier batch,
-// including a cycle, is refused with an error that wraps ErrBatchOrder and names both batch numbers,
-// the card, the ref and the way forward.
+// sequence_test.go covers CheckBatchOrder through its exported surface: a batch list whose every dependency edge (a Uses entry naming another card's Targets entry, or two cards writing one Targets entry in card order) runs forward is accepted, and one with an edge to an earlier batch, including a cycle, is refused with an error that wraps ErrBatchOrder and names both batch numbers, the card, the ref and the way forward.
 // Tier 1: package websterengine_test, no git, no disk — every fixture is a hand-built []batcher.Batch
 // literal; nothing goes through planparser.ParsePlan.
 
@@ -33,8 +29,7 @@ func oneCardBatch(number int, slug string, targets, uses []string) batcher.Batch
 	}
 }
 
-// TestCheckBatchOrder asserts which batch lists CheckBatchOrder accepts and the findings it names for
-// each refused shape of Targets/Uses relation.
+// TestCheckBatchOrder asserts which batch lists CheckBatchOrder accepts and the findings it names for each refused shape of Targets/Uses relation.
 func TestCheckBatchOrder(t *testing.T) {
 	t.Parallel()
 
@@ -43,7 +38,8 @@ func TestCheckBatchOrder(t *testing.T) {
 	tests := []struct {
 		name string
 		in   []batcher.Batch
-		// wantFindings lists the substrings a refusal's message holds; none means the list is accepted.
+		// wantFindings lists the substrings a refusal's message holds;
+		// none means the list is accepted.
 		wantFindings []string
 	}{
 		{

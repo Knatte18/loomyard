@@ -1,8 +1,5 @@
-// partition_test.go covers ExecutionBatches and RecordPartition: which batches each state shape
-// resolves to, that a recorded partition outlives a changed size source, and the refusals for a
-// recorded partition that no longer matches the plan or runs backward.
-// Tier 1: package websterengine_test, no git, no disk — a fake size source and a size-driven fake
-// batchifier stand in for the real ones.
+// partition_test.go covers ExecutionBatches and RecordPartition: which batches each state shape resolves to, that a recorded partition outlives a changed size source, and the refusals for a recorded partition that no longer matches the plan or runs backward.
+// Tier 1: package websterengine_test, no git, no disk — a fake size source and a size-driven fake batchifier stand in for the real ones.
 
 package websterengine_test
 
@@ -24,8 +21,7 @@ type linesSizes int
 func (l linesSizes) Lines(string) (int, bool, error)  { return int(l), true, nil }
 func (linesSizes) TestFiles(string) ([]string, error) { return nil, nil }
 
-// sizeBatcher is a grouping batchifier whose grouping depends on the size source: one batch holding
-// every card while a file is small, one batch per card once it grows.
+// sizeBatcher is a grouping batchifier whose grouping depends on the size source: one batch holding every card while a file is small, one batch per card once it grows.
 type sizeBatcher struct{}
 
 func (sizeBatcher) Name() string { return "size" }
@@ -67,10 +63,7 @@ func batchIDs(batches []batcher.Batch) []string {
 	return out
 }
 
-// TestExecutionBatches asserts the batches each state shape resolves to: the active batchifier's
-// grouping with no state, the recorded partition (profile and estimate kept) when the state holds one
-// even after the size source changed, and the identity batchifier over a state with no partition
-// whatever batchifier is active.
+// TestExecutionBatches asserts the batches each state shape resolves to: the active batchifier's grouping with no state, the recorded partition (profile and estimate kept) when the state holds one even after the size source changed, and the identity batchifier over a state with no partition whatever batchifier is active.
 func TestExecutionBatches(t *testing.T) {
 	t.Parallel()
 
@@ -135,8 +128,7 @@ func TestExecutionBatches(t *testing.T) {
 	}
 }
 
-// TestExecutionBatches_Refusals asserts a recorded partition that names a card the plan lacks, leaves
-// a plan card out, or runs a card before the card it uses is refused with the card named and the way forward.
+// TestExecutionBatches_Refusals asserts a recorded partition that names a card the plan lacks, leaves a plan card out, or runs a card before the card it uses is refused with the card named and the way forward.
 func TestExecutionBatches_Refusals(t *testing.T) {
 	t.Parallel()
 

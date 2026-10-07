@@ -1,7 +1,6 @@
-// sequence.go asserts that a batch list runs in dependency order, derived from card-level
-// Targets/Uses ref matching.
-// internal/batcher owns grouping and order (batches come back in plan card order); this file only
-// checks that no batch depends on one that runs after it, so the order is asserted, never derived.
+// sequence.go asserts that a batch list runs in dependency order, derived from card-level Targets/Uses ref matching.
+// internal/batcher owns grouping and order (batches come back in plan card order);
+// this file only checks that no batch depends on one that runs after it, so the order is asserted, never derived.
 
 package websterengine
 
@@ -14,12 +13,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 )
 
-// ErrBatchOrder is the sentinel CheckBatchOrder's error wraps when a batch depends on a batch that
-// runs after it.
+// ErrBatchOrder is the sentinel CheckBatchOrder's error wraps when a batch depends on a batch that runs after it.
 var ErrBatchOrder = errors.New("webster: batch order: dependency on a later batch")
 
-// CheckBatchOrder returns an error wrapping ErrBatchOrder that names every dependency edge running
-// from a batch to an earlier one, and nil when every batch follows the batches it depends on.
+// CheckBatchOrder returns an error wrapping ErrBatchOrder that names every dependency edge running from a batch to an earlier one, and nil when every batch follows the batches it depends on.
 // Each finding names both batch numbers and the card and ref that make the dependency.
 // A cycle between batches always holds such an edge, so it is refused by the same rule.
 func CheckBatchOrder(batches []batcher.Batch) error {
@@ -41,8 +38,7 @@ func CheckBatchOrder(batches []batcher.Batch) error {
 		ErrBatchOrder, strings.Join(findings, "; "))
 }
 
-// backwardEdgeFinding describes why the batch that runs first must run after the batch that runs
-// later, naming both batch numbers and the first card pair and ref that make the dependency.
+// backwardEdgeFinding describes why the batch that runs first must run after the batch that runs later, naming both batch numbers and the first card pair and ref that make the dependency.
 // producer is the later batch in the list, consumer the earlier one.
 func backwardEdgeFinding(producer, consumer batcher.Batch) string {
 	producerNumber, _ := batchIdentity(producer)
@@ -64,8 +60,7 @@ func backwardEdgeFinding(producer, consumer batcher.Batch) string {
 	return fmt.Sprintf("batch %d depends on batch %d, which runs later", consumerNumber, producerNumber)
 }
 
-// firstSharedRef returns the first entry of left that right also holds under refsIntersect's
-// comparison, or "" when there is none.
+// firstSharedRef returns the first entry of left that right also holds under refsIntersect's comparison, or "" when there is none.
 func firstSharedRef(left, right []string) string {
 	for _, ref := range left {
 		if refsIntersect([]string{ref}, right) {
@@ -77,8 +72,7 @@ func firstSharedRef(left, right []string) string {
 
 // deriveEdges builds the vertex adjacency list — one entry per input batch index — by comparing
 // every ordered pair of cards drawn from different batches.
-// Each vertex's successor list is deduplicated and sorted ascending, which keeps the result
-// deterministic.
+// Each vertex's successor list is deduplicated and sorted ascending, which keeps the result deterministic.
 //
 // An edge i -> j is added when:
 //   - batch j's card b has a Uses entry matching batch i's card a's Targets entry (producer before

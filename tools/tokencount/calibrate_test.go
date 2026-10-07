@@ -1,5 +1,4 @@
-// calibrate_test.go drives the calibration over an in-memory plan history and base tree and a
-// fixture batcher.yaml: the row arithmetic, the skip reasons and the fit summary.
+// calibrate_test.go drives the calibration over an in-memory plan history and base tree and a fixture batcher.yaml: the row arithmetic, the skip reasons and the fit summary.
 // Tier-1 (no git, no spawn).
 
 package main
@@ -83,8 +82,7 @@ func planWith(targets map[int]string) map[string]string {
 // lines is content of n lines.
 func lines(n int) string { return strings.Repeat("x\n", n) }
 
-// seedProfile writes a batcher.yaml whose "fit" profile prices one card as target_messages x
-// (startup_context + the lines of its file), with every other coefficient 0.
+// seedProfile writes a batcher.yaml whose "fit" profile prices one card as target_messages x (startup_context + the lines of its file), with every other coefficient 0.
 func seedProfile(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(configengine.ConfigDir(dir), 0o755); err != nil {

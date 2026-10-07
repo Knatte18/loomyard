@@ -36,31 +36,18 @@
 //
 // # Batches run in the batchifier's order, asserted not derived
 //
-// internal/batcher owns both grouping and order: a batchifier returns its batches in plan card
-// order, and webster runs them in that order, never reordering them.
-// sequence.go's CheckBatchOrder only asserts it: it derives edges from Targets/Uses ref matching
-// across the plan's cards — a Uses entry naming another card's Targets entry puts the producer
-// before the consumer, and two cards writing the same Targets entry settle by declared card
-// number — and refuses, wrapping ErrBatchOrder, when any edge runs from a batch to an earlier one.
+// internal/batcher owns both grouping and order: a batchifier returns its batches in plan card order, and webster runs them in that order, never reordering them.
+// sequence.go's CheckBatchOrder only asserts it: it derives edges from Targets/Uses ref matching across the plan's cards — a Uses entry naming another card's Targets entry puts the producer before the consumer, and two cards writing the same Targets entry settle by declared card number — and refuses, wrapping ErrBatchOrder, when any edge runs from a batch to an earlier one.
 // A cycle between batches always holds such an edge, so the same rule refuses it.
-// Plan-Gate's uses-later-target refusal already holds, so the assertion fires only on a plan that
-// bypassed or predates that gate.
-// The previous-digest lookup in beginbatch.go/recoverbatch.go (predecessorDigestLine) depends on
-// the order: it reads whichever batch sits immediately before the target batch in the execution
-// order, not the batch one number lower.
+// Plan-Gate's uses-later-target refusal already holds, so the assertion fires only on a plan that bypassed or predates that gate.
+// The previous-digest lookup in beginbatch.go/recoverbatch.go (predecessorDigestLine) depends on the order: it reads whichever batch sits immediately before the target batch in the execution order, not the batch one number lower.
 //
 // # The partition is recorded once per run
 //
-// The first init of a run (no state.json, or the --fresh re-init) forms the partition with the
-// active batchifier, refuses it on CheckBatchOrder's error before saving anything, and records it in
-// State.Partition: each batch's card ids, profile and estimate.
-// Every other verb reads that record through partition.go's ExecutionBatches, which maps the
-// recorded ids onto the plan's cards and re-asserts the order, so a size the batchifier weighed
-// changing under the run's own commits never regroups cards mid-run.
-// A recorded id the plan lacks, or a plan card in no recorded batch, is refused with
-// ErrPartitionMismatch.
-// A state written before the field existed records no partition and runs on the identity
-// batchifier whatever profile is active, so an in-flight run keeps the grouping it started under.
+// The first init of a run (no state.json, or the --fresh re-init) forms the partition with the active batchifier, refuses it on CheckBatchOrder's error before saving anything, and records it in State.Partition: each batch's card ids, profile and estimate.
+// Every other verb reads that record through partition.go's ExecutionBatches, which maps the recorded ids onto the plan's cards and re-asserts the order, so a size the batchifier weighed changing under the run's own commits never regroups cards mid-run.
+// A recorded id the plan lacks, or a plan card in no recorded batch, is refused with ErrPartitionMismatch.
+// A state written before the field existed records no partition and runs on the identity batchifier whatever profile is active, so an in-flight run keeps the grouping it started under.
 // Batches run in the recorded order.
 // Only a first init or a rebaseline replaces the record.
 //

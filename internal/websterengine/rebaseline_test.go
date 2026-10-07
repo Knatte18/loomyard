@@ -101,7 +101,8 @@ func rebaselineDeps(t *testing.T, planCards []planparser.Card, partition []webst
 // TestRebaseline_CardSet proves Rebaseline compares the cards of every batch up to the last begun one with the edited plan's:
 // a removed, renumbered, reordered or inserted card at or before the last begun card refuses, naming the batch, the card and the fresh-restart steps, whether or not the record carries a StartSHA;
 // cards after it are re-batched by the active batchifier, with the begun batch keeping its recorded profile and estimate and the new partition replacing the old only on accept;
-// a tail whose order breaks a dependency refuses with ErrBatchOrder; a state without a partition regroups by identity and records none;
+// a tail whose order breaks a dependency refuses with ErrBatchOrder;
+// a state without a partition regroups by identity and records none;
 // and a legacy record with no card set is accepted and restamped.
 func TestRebaseline_CardSet(t *testing.T) {
 	t.Parallel()
@@ -127,9 +128,11 @@ func TestRebaseline_CardSet(t *testing.T) {
 		active    batcher.Batcher
 		// edit adjusts the batch-1 record before the call.
 		edit func(rec *websterengine.BatchState)
-		// wantErr is the sentinel a refusal wraps; nil expects an accept.
+		// wantErr is the sentinel a refusal wraps;
+		// nil expects an accept.
 		wantErr error
-		// wantPartition is State.Partition after the call; a refusal expects the partition it began with.
+		// wantPartition is State.Partition after the call;
+		// a refusal expects the partition it began with.
 		wantPartition []websterengine.PartitionBatch
 	}{
 		{
@@ -615,8 +618,7 @@ func TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330(t *testing.T) 
 	if err := os.WriteFile(filepath.Join(fx.PlanDir, "03-third.md"), []byte("# Card 3 — third\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** reworded.\n"), 0o644); err != nil {
 		t.Fatalf("edit card 3: %v", err)
 	}
-	// The mid-run Uses edge runs backward (begun card 1 uses card 2's target), so Rebaseline refuses on
-	// the batch order, and never on a card-set or hash change of the rewritten begun card.
+	// The mid-run Uses edge runs backward (begun card 1 uses card 2's target), so Rebaseline refuses on the batch order, and never on a card-set or hash change of the rewritten begun card.
 	deps := rebaselineFixtureDeps(fx)
 	deps.Cards = []int{3}
 	_, err = websterengine.Rebaseline(deps)

@@ -1,7 +1,6 @@
 //go:build integration
 
-// calibrate_integration_test.go checks that the gitrepo-backed plan history and base tree give the
-// calibration the same row as the in-memory ones.
+// calibrate_integration_test.go checks that the gitrepo-backed plan history and base tree give the calibration the same row as the in-memory ones.
 
 package main
 

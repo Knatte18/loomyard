@@ -1,5 +1,4 @@
-// cost_test.go verifies the cost-model batchifier's hard limits, tie rule and optimality against a
-// brute-force search over every contiguous split.
+// cost_test.go verifies the cost-model batchifier's hard limits, tie rule and optimality against a brute-force search over every contiguous split.
 // Tier-1 (pure logic, no git, no spawn).
 
 package batcher_test
@@ -124,9 +123,7 @@ func TestCostBatchifier_Limits(t *testing.T) {
 	}
 }
 
-// TestCostBatchifier_OptimalAndFeasible checks, over a seeded input set, that the split keeps card
-// order, respects every hard limit, reports each batch's SegmentCost, and has the least total cost
-// of any feasible contiguous split, ties going to more batches.
+// TestCostBatchifier_OptimalAndFeasible checks, over a seeded input set, that the split keeps card order, respects every hard limit, reports each batch's SegmentCost, and has the least total cost of any feasible contiguous split, ties going to more batches.
 func TestCostBatchifier_OptimalAndFeasible(t *testing.T) {
 	t.Parallel()
 
@@ -219,8 +216,7 @@ func feasibleSegment(t *testing.T, plan *planparser.Plan, cards []planparser.Car
 	return cost <= params.Budget
 }
 
-// bruteForceBest enumerates every contiguous split of cards and returns the least total cost over
-// the feasible ones, with the most batches among the splits that reach it.
+// bruteForceBest enumerates every contiguous split of cards and returns the least total cost over the feasible ones, with the most batches among the splits that reach it.
 func bruteForceBest(t *testing.T, plan *planparser.Plan, cards []planparser.Card, params batcher.CostParams) (float64, int) {
 	t.Helper()
 	bestTotal, bestBatches := math.Inf(1), 0

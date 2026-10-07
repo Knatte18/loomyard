@@ -29,8 +29,7 @@ func cardNumberInt(id string) int {
 	return n
 }
 
-// RebaselineDeps is what Rebaseline reads: the edited on-disk plan, the batchifier and size source
-// that group its cards, and the run state whose fingerprint it restamps.
+// RebaselineDeps is what Rebaseline reads: the edited on-disk plan, the batchifier and size source that group its cards, and the run state whose fingerprint it restamps.
 type RebaselineDeps struct {
 	Plan   *planparser.Plan
 	Active batcher.Batcher
@@ -55,7 +54,8 @@ type RebaselineResult struct {
 }
 
 // rebaselineBatches returns the batches the edited plan runs as, and whether they replace the recorded partition.
-// With a recorded partition, the batches up to and including the last begun one are kept as recorded, with their profile and estimate, and every plan card after them is batched by deps.Active; a plan whose first cards are not exactly the kept batches' recorded cards wraps ErrRebaselineCardSetChanged.
+// With a recorded partition, the batches up to and including the last begun one are kept as recorded, with their profile and estimate, and every plan card after them is batched by deps.Active;
+// a plan whose first cards are not exactly the kept batches' recorded cards wraps ErrRebaselineCardSetChanged.
 // A state without a partition is grouped by the identity batchifier and records none.
 // Either way the result is asserted with CheckBatchOrder.
 func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
@@ -106,7 +106,8 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 }
 
 // Rebaseline accepts the on-disk plan as the run's plan without discarding any batch record.
-// With a recorded partition it keeps every batch up to the last begun one as recorded, re-batches the plan's cards after it with the active batchifier, and replaces State.Partition with the result once every check passes; cards added, removed or reordered after the last begun batch are accepted.
+// With a recorded partition it keeps every batch up to the last begun one as recorded, re-batches the plan's cards after it with the active batchifier, and replaces State.Partition with the result once every check passes;
+// cards added, removed or reordered after the last begun batch are accepted.
 // It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number, or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only), except that a card named in deps.Cards is accepted when its batch is terminal failed, dead or stuck.
 // It also refuses when 00-overview.md changed, or a changed card file's number is not in deps.Cards, unless the state predates State.PlanFileHashes.
 // The start commit a refusal names is picked by git ancestry.

@@ -28,8 +28,7 @@ func assistant(id, model string, out, read int) string {
 		`,"cache_creation_input_tokens":0,"cache_read_input_tokens":` + strconv.Itoa(read) + `}}}`
 }
 
-// toolResult is a user transcript line at ts holding one tool result whose content is
-// contentJSON, a JSON string or list.
+// toolResult is a user transcript line at ts holding one tool result whose content is contentJSON, a JSON string or list.
 func toolResult(ts, contentJSON string) string {
 	return toolResultFor("t", ts, contentJSON)
 }

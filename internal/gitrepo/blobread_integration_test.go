@@ -17,7 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
-// TestHistoryReads drives the history reads over one repository: commit A writes a.txt as "version one", commit B rewrites it as "version two" and commit C adds an unrelated file and a directory holding two files and a subdirectory; a second branch and a tag then point at commit C.
+// TestHistoryReads drives the history reads over one repository: commit A writes a.txt as "version one", commit B rewrites it as "version two" and commit C adds an unrelated file and a directory holding two files and a subdirectory;
+// a second branch and a tag then point at commit C.
 // Every step only reads, so the steps run serially in one order over the shared repository and depend on nothing an earlier step does.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestHistoryReads(t *testing.T) {
@@ -139,7 +140,8 @@ func TestHistoryReads(t *testing.T) {
 				t.Errorf("PathRevisions(a.txt, 1) = %v; want [%s]", limited, shaB)
 			}
 		}},
-		// FilesInDirAtRevision lists only the regular files directly in the directory, sorted; an absent directory is empty and a malformed revision is ErrInvalidSHA.
+		// FilesInDirAtRevision lists only the regular files directly in the directory, sorted;
+		// an absent directory is empty and a malformed revision is ErrInvalidSHA.
 		{"FilesInDirAtRevision lists the files directly in a directory", func(t *testing.T) {
 			got, err := repo.FilesInDirAtRevision(shaC, "pkg")
 			if err != nil {
@@ -161,7 +163,8 @@ func TestHistoryReads(t *testing.T) {
 				t.Errorf("FilesInDirAtRevision(invalid SHA, pkg) error = %v; want ErrInvalidSHA", err)
 			}
 		}},
-		// A commit reached by two branches and a tag is found once; an absent subject finds nothing.
+		// A commit reached by two branches and a tag is found once;
+		// an absent subject finds nothing.
 		{"CommitsWithSubject finds a commit once however many refs reach it", func(t *testing.T) {
 			got, err := repo.CommitsWithSubject("commit C")
 			if err != nil {

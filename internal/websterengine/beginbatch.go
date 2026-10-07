@@ -205,9 +205,8 @@ func digestSummaryLine(d *Digest) string {
 
 // predecessorDigestLine renders the digest of whichever batch actually ran immediately before
 // batchNumber in execution order.
-// batches is required to already be in execution order, the batchifier's order that
-// ExecutionBatches returns at every call site; batchNumber-1 arithmetic would be correct only while
-// batch number and execution position coincide.
+// batches is required to already be in execution order, the batchifier's order that ExecutionBatches returns at every call site;
+// batchNumber-1 arithmetic would be correct only while batch number and execution position coincide.
 // It locates batchNumber's position in batches by batchIdentity, exactly as findBatch does, and
 // returns "" when the batch is absent from batches or sits at index 0 (nothing executed before
 // it), or when the predecessor's state entry or its digest is absent.

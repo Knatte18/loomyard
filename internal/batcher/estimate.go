@@ -1,9 +1,8 @@
 // estimate.go — the card-size estimator behind the cost-model batchifier.
 //
-// Declares SizeSource, the file-size and test-file reads the estimator needs, and DiskSizes, its
-// on-disk implementation; Weights, the coefficients of the cost model, and ProfileWeights, which
-// reads them from a batcher.yaml profile; and SegmentCost, the estimated token cost of running a
-// contiguous run of cards in one fork.
+// Declares SizeSource, the file-size and test-file reads the estimator needs, and DiskSizes, its on-disk implementation;
+// Weights, the coefficients of the cost model, and ProfileWeights, which reads them from a batcher.yaml profile;
+// and SegmentCost, the estimated token cost of running a contiguous run of cards in one fork.
 
 package batcher
 
@@ -26,7 +25,8 @@ type SizeSource interface {
 	// Lines reports the line count of the file at path, and false when the file does not exist.
 	Lines(path string) (n int, exists bool, err error)
 
-	// TestFiles lists the *_test.go files directly in dir; an absent dir has none.
+	// TestFiles lists the *_test.go files directly in dir;
+	// an absent dir has none.
 	TestFiles(dir string) ([]string, error)
 }
 
@@ -100,8 +100,8 @@ type Weights struct {
 	PackageContext float64
 }
 
-// coefficients maps each weights: key to the Weights field it fills; it is the one declaration of
-// the key set.
+// coefficients maps each weights: key to the Weights field it fills;
+// it is the one declaration of the key set.
 var coefficients = []struct {
 	key   string
 	field func(*Weights) *float64
@@ -116,8 +116,7 @@ var coefficients = []struct {
 }
 
 // ProfileWeights loads batcher.yaml under baseDir and returns the named profile's weights.
-// It errors naming batcher.yaml when the profile is absent, a coefficient is missing or negative,
-// or a weights: key is not a coefficient.
+// It errors naming batcher.yaml when the profile is absent, a coefficient is missing or negative, or a weights: key is not a coefficient.
 func ProfileWeights(baseDir, profileName string) (Weights, error) {
 	cfg, err := loadConfig(baseDir)
 	if err != nil {
@@ -130,8 +129,7 @@ func ProfileWeights(baseDir, profileName string) (Weights, error) {
 	return profileWeights(profileName, prof)
 }
 
-// profileWeights reads prof's weights: map into Weights, erroring naming batcher.yaml when a
-// coefficient is missing or negative or a key is not a coefficient.
+// profileWeights reads prof's weights: map into Weights, erroring naming batcher.yaml when a coefficient is missing or negative or a key is not a coefficient.
 func profileWeights(profileName string, prof profile) (Weights, error) {
 	known := make(map[string]bool, len(coefficients))
 	for _, c := range coefficients {
@@ -162,16 +160,14 @@ func profileWeights(profileName string, prof profile) (Weights, error) {
 	return w, nil
 }
 
-// cardLoad is what one card costs to run: the messages it sends and the weight of each entry in its
-// read set.
+// cardLoad is what one card costs to run: the messages it sends and the weight of each entry in its read set.
 type cardLoad struct {
 	messages float64
 	readSet  map[string]float64
 }
 
 // SegmentCost estimates the cost of running cards in order in one fork:
-// the fork's own startup messages, plus each card's messages priced at the startup context and the
-// weight of every distinct read-set entry the fork has gathered up to and including that card.
+// the fork's own startup messages, plus each card's messages priced at the startup context and the weight of every distinct read-set entry the fork has gathered up to and including that card.
 // A card's own estimate is the SegmentCost of the one-card segment.
 // A SizeSource error is returned wrapped.
 func SegmentCost(plan *planparser.Plan, cards []planparser.Card, sizes SizeSource, w Weights) (float64, error) {
@@ -195,8 +191,8 @@ func SegmentCost(plan *planparser.Plan, cards []planparser.Card, sizes SizeSourc
 }
 
 // loadCard derives a card's messages and read set.
-// A file entry weighs its lines, and a package entry and a package's tests entry each weigh
-// PackageContext; the key prefixes keep the three kinds from colliding.
+// A file entry weighs its lines, and a package entry and a package's tests entry each weigh PackageContext;
+// the key prefixes keep the three kinds from colliding.
 func loadCard(plan *planparser.Plan, card planparser.Card, sizes SizeSource, w Weights) (cardLoad, error) {
 	readSet := map[string]float64{}
 	addFile := func(ref string) error {

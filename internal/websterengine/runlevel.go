@@ -874,8 +874,7 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 	}, nil
 }
 
-// batchIdentity returns b's own number/slug identity: a batch is numbered and named by its first
-// card, so `begin-batch NN` names a batch by its first card's number.
+// batchIdentity returns b's own number/slug identity: a batch is numbered and named by its first card, so `begin-batch NN` names a batch by its first card's number.
 func batchIdentity(b batcher.Batch) (number int, slug string) {
 	if len(b.Cards) == 0 {
 		return 0, ""

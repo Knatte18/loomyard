@@ -1,5 +1,4 @@
-// cost.go implements costBatcher, the cost-model Batcher: it splits the card sequence into the
-// contiguous batches with the lowest estimated cost under hard limits, by an exact dynamic program.
+// cost.go implements costBatcher, the cost-model Batcher: it splits the card sequence into the contiguous batches with the lowest estimated cost under hard limits, by an exact dynamic program.
 
 package batcher
 
@@ -42,8 +41,8 @@ func (b costBatcher) Name() string {
 }
 
 // Batch splits cards into contiguous batches of minimum total estimated cost, in card order.
-// A one-card segment is always feasible; a longer segment needs every member's own cost at most
-// AloneAbove, at most MaxCards cards and a SegmentCost within Budget.
+// A one-card segment is always feasible;
+// a longer segment needs every member's own cost at most AloneAbove, at most MaxCards cards and a SegmentCost within Budget.
 // A tie between splits goes to the one with more batches.
 // Each returned Batch carries the profile name and its SegmentCost as Estimate.
 func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes SizeSource) ([]Batch, error) {
@@ -56,7 +55,8 @@ func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes
 		own[i] = cost
 	}
 
-	// best[i] is the minimum total cost of splitting cards[:i]; count[i] the batches of that split;
+	// best[i] is the minimum total cost of splitting cards[:i];
+	// count[i] the batches of that split;
 	// start[i] the first card of its last segment.
 	best := make([]float64, len(cards)+1)
 	count := make([]int, len(cards)+1)

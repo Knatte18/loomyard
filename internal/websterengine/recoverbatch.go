@@ -64,8 +64,8 @@ type Clock interface {
 
 // RecoverDeps carries seams RecoverBatch needs: Starter, Plan, Batches, State, Roles, Config,
 // Engine, Reed, ShuttleCfg, and Geom, the told Geometry every path is read from.
-// Batches is the execution order, the batchifier's own order (ExecutionBatches); predecessorDigestLine's lookup
-// depends on Batches already being in that order.
+// Batches is the execution order, the batchifier's own order (ExecutionBatches);
+// predecessorDigestLine's lookup depends on Batches already being in that order.
 type RecoverDeps struct {
 	Starter    Starter
 	Plan       *planparser.Plan

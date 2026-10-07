@@ -1,5 +1,4 @@
-// estimate_test.go verifies SegmentCost against a fake size source and hand-built cards, and
-// DiskSizes against a temporary worktree tree.
+// estimate_test.go verifies SegmentCost against a fake size source and hand-built cards, and DiskSizes against a temporary worktree tree.
 // Tier-1 (pure logic, no git, no spawn).
 
 package batcher_test

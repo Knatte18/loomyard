@@ -1,7 +1,4 @@
-// calibrate.go sets the batcher's per-card estimate beside the measured weight of the Webster
-// fork that ran the card, for past runs: the plan comes from the history repository, the tree the
-// estimate reads is the run's base commit in the code repository, and the profile's weights come
-// from batcher.yaml.
+// calibrate.go sets the batcher's per-card estimate beside the measured weight of the Webster fork that ran the card, for past runs: the plan comes from the history repository, the tree the estimate reads is the run's base commit in the code repository, and the profile's weights come from batcher.yaml.
 // Read-only: it calls batcher.SegmentCost, the same function the live batchifier calls.
 
 package main
@@ -79,7 +76,8 @@ func (f Fit) Spread() (float64, bool) {
 	return f.P75 / f.P25, true
 }
 
-// FitOf summarizes the ratios of rows; no rows is a zero Fit.
+// FitOf summarizes the ratios of rows;
+// no rows is a zero Fit.
 func FitOf(rows []CalibrationRow) Fit {
 	ratios := make([]float64, 0, len(rows))
 	for _, row := range rows {
@@ -105,10 +103,9 @@ func percentile(sorted []float64, p float64) float64 {
 	return sorted[lower] + (rank-float64(lower))*(sorted[upper]-sorted[lower])
 }
 
-// Calibrate runs the estimator over every run's plan, with the weights of the profile named in
-// batcher.yaml under configDir.
-// A run or card that cannot be reconstructed is a skip, never an error; an error is a failed read
-// of the history or the base tree, or an unusable profile.
+// Calibrate runs the estimator over every run's plan, with the weights of the profile named in batcher.yaml under configDir.
+// A run or card that cannot be reconstructed is a skip, never an error;
+// an error is a failed read of the history or the base tree, or an unusable profile.
 func Calibrate(runs []RunTally, profile, configDir string, history PlanHistory, base BaseTrees) (Calibration, error) {
 	weights, err := batcher.ProfileWeights(configDir, profile)
 	if err != nil {
@@ -256,8 +253,7 @@ func (t treeSizes) TestFiles(dir string) ([]string, error) {
 	return files, nil
 }
 
-// WriteMarkdown writes the calibration section: one row per card, the skipped runs and cards each
-// with its reason, and the fit per run and overall.
+// WriteMarkdown writes the calibration section: one row per card, the skipped runs and cards each with its reason, and the fit per run and overall.
 func (c Calibration) WriteMarkdown(w io.Writer) {
 	fmt.Fprintf(w, "## Calibration (%s)\n\n", c.Profile)
 	fmt.Fprintln(w, "| run | card | estimate | measured | ratio |")

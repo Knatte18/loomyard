@@ -14,17 +14,15 @@ type Batch struct {
 	// Profile is the Name of the batchifier that formed this batch.
 	Profile string
 
-	// Estimate is this batch's segment cost under that batchifier's weights; zero when the
-	// batchifier does not estimate.
+	// Estimate is this batch's segment cost under that batchifier's weights;
+	// zero when the batchifier does not estimate.
 	Estimate float64
 }
 
 // Batcher groups a plan's flat card list into Batches.
 type Batcher interface {
-	// Batch groups cards, a contiguous run of plan.Cards, into an ordered list of Batches in
-	// card order.
-	// plan carries the glyph language the estimator maps refs to files with, and sizes reads the
-	// worktree facts it weighs.
+	// Batch groups cards, a contiguous run of plan.Cards, into an ordered list of Batches in card order.
+	// plan carries the glyph language the estimator maps refs to files with, and sizes reads the worktree facts it weighs.
 	Batch(plan *planparser.Plan, cards []planparser.Card, sizes SizeSource) ([]Batch, error)
 
 	// Name reports this batchifier's registry key.

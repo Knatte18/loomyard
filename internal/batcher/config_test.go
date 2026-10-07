@@ -1,9 +1,4 @@
-// config_test.go verifies batcher.yaml's template parses and Active resolves the configured
-// profile, including its two degrading-absence cases (absent _lyx/, absent batcher.yaml) and its
-// load-error paths, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() rather
-// than gitkit's config fixture-copy helpers: configengine.LoadOrTemplate only requires a
-// filesystem _lyx/config/<module>.yaml, no git repository, so this test stays untagged and
-// spawn-free.
+// config_test.go verifies batcher.yaml's template parses and Active resolves the configured profile, including its two degrading-absence cases (absent _lyx/, absent batcher.yaml) and its load-error paths, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() rather than gitkit's config fixture-copy helpers: configengine.LoadOrTemplate only requires a filesystem _lyx/config/<module>.yaml, no git repository, so this test stays untagged and spawn-free.
 // Tier-1 (pure logic, no git, no TestMain), per the go-test-tiers-and-hermetic-git Shared Decision.
 
 package batcher_test
@@ -162,8 +157,7 @@ func TestActive(t *testing.T) {
 	}
 }
 
-// TestProfileWeights asserts ProfileWeights returns a valid profile's coefficients and errors naming
-// batcher.yaml for an absent profile, a missing coefficient, a negative one and an unknown key.
+// TestProfileWeights asserts ProfileWeights returns a valid profile's coefficients and errors naming batcher.yaml for an absent profile, a missing coefficient, a negative one and an unknown key.
 func TestProfileWeights(t *testing.T) {
 	t.Parallel()
 	const valid = `profiles:

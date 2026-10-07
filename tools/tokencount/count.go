@@ -63,8 +63,8 @@ type RunTally struct {
 	Roles      map[string]*RoleTally
 	Forks      []ForkTally
 	Duplicates int // transcript lines skipped as a repeat of a message already counted
-	// BaseSHA is the start_sha of the earliest successful begin-batch result in the run's
-	// webster sessions, the HEAD before its first batch forked; empty when there is none.
+	// BaseSHA is the start_sha of the earliest successful begin-batch result in the run's webster sessions, the HEAD before its first batch forked;
+	// empty when there is none.
 	BaseSHA string
 	// baseAt is the timestamp of the result BaseSHA came from.
 	baseAt time.Time
@@ -92,8 +92,8 @@ var (
 	cardPointer    = regexp.MustCompile("^- `(?:[^`]*/)?(\\d\\d-[^/`]+)\\.md`$")
 )
 
-// cardPointers returns the card ids of every card pointer line in text, in order; a Read
-// result's line-number prefix is ignored.
+// cardPointers returns the card ids of every card pointer line in text, in order;
+// a Read result's line-number prefix is ignored.
 func cardPointers(text string) []string {
 	var cards []string
 	for _, raw := range strings.Split(text, "\n") {
@@ -111,8 +111,8 @@ type toolResultItem struct {
 	Text  string
 }
 
-// toolResultItems returns every tool result in a user message's content, which is a string or
-// a list of items; a tool result's own content is likewise a string or a list of text items.
+// toolResultItems returns every tool result in a user message's content, which is a string or a list of items;
+// a tool result's own content is likewise a string or a list of text items.
 func toolResultItems(content json.RawMessage) []toolResultItem {
 	var items []struct {
 		Type      string          `json:"type"`
@@ -159,8 +159,7 @@ func toolResultTexts(content json.RawMessage) []string {
 // beginBatchCommand matches a Bash command that invokes the webster begin-batch verb.
 var beginBatchCommand = regexp.MustCompile(`\blyx\s+webster\s+begin-batch\b`)
 
-// bashCommands returns the command of every Bash tool use in an assistant message's content,
-// keyed by tool use id.
+// bashCommands returns the command of every Bash tool use in an assistant message's content, keyed by tool use id.
 func bashCommands(content json.RawMessage) map[string]string {
 	var items []struct {
 		Type  string `json:"type"`
@@ -182,10 +181,9 @@ func bashCommands(content json.RawMessage) map[string]string {
 	return commands
 }
 
-// recordBase scans one webster session for begin-batch result envelopes and keeps the start_sha
-// of the earliest-timestamped one across every session of the run.
-// An envelope is a tool result answering a begin-batch Bash call whose text is a JSON object
-// with a non-empty start_sha; a refusal carries none.
+// recordBase scans one webster session for begin-batch result envelopes and keeps the start_sha of the earliest-timestamped one across every session of the run.
+// An envelope is a tool result answering a begin-batch Bash call whose text is a JSON object with a non-empty start_sha;
+// a refusal carries none.
 func (run *RunTally) recordBase(path string) error {
 	beginBatchUses := map[string]bool{}
 	return eachLine(path, func(l line) {
@@ -340,8 +338,8 @@ func latestTitle(path string) (string, error) {
 	return title, err
 }
 
-// countFile tallies one transcript under role; a non-nil fork also receives the transcript's
-// own tally and card attribution.
+// countFile tallies one transcript under role;
+// a non-nil fork also receives the transcript's own tally and card attribution.
 func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *ForkTally) error {
 	tally := run.Roles[role]
 	if tally == nil {
@@ -376,8 +374,7 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *Fo
 	})
 }
 
-// observe records a line's timestamp and, until a card pointer has been found, its card
-// attribution: the fork's prompt is the first tool result holding a card pointer line.
+// observe records a line's timestamp and, until a card pointer has been found, its card attribution: the fork's prompt is the first tool result holding a card pointer line.
 func (f *ForkTally) observe(l line) {
 	if f.Started.IsZero() && l.Timestamp != "" {
 		if t, err := time.Parse(time.RFC3339Nano, l.Timestamp); err == nil {

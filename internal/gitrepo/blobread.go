@@ -1,9 +1,5 @@
-// blobread.go adds the read-only, go-git-only primitives diff-base recovery and history lookups
-// build on: FileAtRevision reads one path's blob contents as of a given revision, FilesInDirAtRevision
-// lists the files directly in one directory as of a revision, PathRevisions walks the commits that
-// touched a path, and CommitsWithSubject finds the commits carrying one subject line. No method calls
-// r.run or r.runChecked — all resolve state that is already on disk, which is go-git's side of the
-// package's Client Boundary Invariant.
+// blobread.go adds the read-only, go-git-only primitives diff-base recovery and history lookups build on: FileAtRevision reads one path's blob contents as of a given revision, FilesInDirAtRevision lists the files directly in one directory as of a revision, PathRevisions walks the commits that touched a path, and CommitsWithSubject finds the commits carrying one subject line.
+// No method calls r.run or r.runChecked — all resolve state that is already on disk, which is go-git's side of the package's Client Boundary Invariant.
 
 package gitrepo
 
@@ -103,8 +99,10 @@ func (r *Repo) PathRevisions(relPath string, limit int) ([]string, error) {
 }
 
 // FilesInDirAtRevision returns the names of the regular files directly in dir in rev's tree, sorted.
-// dir is slash-separated and repo-relative; "" or "." names the root.
-// An absent directory is an empty result, not an error; an invalid rev is ErrInvalidSHA.
+// dir is slash-separated and repo-relative;
+// "" or "." names the root.
+// An absent directory is an empty result, not an error;
+// an invalid rev is ErrInvalidSHA.
 func (r *Repo) FilesInDirAtRevision(rev, dir string) ([]string, error) {
 	if !validSHA(rev) {
 		return nil, ErrInvalidSHA
@@ -154,8 +152,7 @@ type SubjectCommit struct {
 	Committed time.Time
 }
 
-// CommitsWithSubject returns every commit reachable from any branch or tag whose message's first line equals subject,
-// once each however many refs reach it, newest committer time first.
+// CommitsWithSubject returns every commit reachable from any branch or tag whose message's first line equals subject, once each however many refs reach it, newest committer time first.
 // No match is an empty slice and no error.
 func (r *Repo) CommitsWithSubject(subject string) ([]SubjectCommit, error) {
 	repo, err := r.goGit()

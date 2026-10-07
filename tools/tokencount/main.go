@@ -28,41 +28,24 @@
 // One API message can appear on several transcript lines, and a fork repeats its
 // parent's context, so usage is counted once per message id within a run.
 //
-// One fork is one sub-agent transcript of a session whose role is webster; the report's
-// "Webster forks" section lists every such fork of every run, by run as listed and then by
-// start time, with the cards it ran, its counted messages, its peak context (the largest
-// input + cache write + cache read of any counted message) and its weight.
-// A fork's cards are read from its prompt, never from commit times: the prompt is the first
-// tool result in the fork's transcript holding a card pointer line, a "- `<path>/NN-<slug>.md`"
-// bullet with nothing after the closing backtick (a Read result's line-number prefix is
-// ignored), and the cards are every such line of that one result.
+// One fork is one sub-agent transcript of a session whose role is webster;
+// the report's "Webster forks" section lists every such fork of every run, by run as listed and then by start time, with the cards it ran, its counted messages, its peak context (the largest input + cache write + cache read of any counted message) and its weight.
+// A fork's cards are read from its prompt, never from commit times: the prompt is the first tool result in the fork's transcript holding a card pointer line, a "- `<path>/NN-<slug>.md`" bullet with nothing after the closing backtick (a Read result's line-number prefix is ignored), and the cards are every such line of that one result.
 // A fork whose transcript has no such result is listed as unattributed.
 //
-// With -calibrate <profile> the report gains a "Calibration (<profile>)" section: the batcher's
-// estimate for each card beside the measured weight of the fork that ran it, for every run
-// counted.
-// -history names the repository holding the runs' plan commits and is required with
-// -calibrate; -config names the directory whose batcher.yaml holds the profile, default the
-// current directory.
+// With -calibrate <profile> the report gains a "Calibration (<profile>)" section: the batcher's estimate for each card beside the measured weight of the fork that ran it, for every run counted.
+// -history names the repository holding the runs' plan commits and is required with -calibrate;
+// -config names the directory whose batcher.yaml holds the profile, default the current directory.
 // The code repository is the current directory.
-// A run's plan is read from the newest "loom: plan artifacts for <slug>" commit in the history
-// repository committed before the run's first Webster fork started.
-// Its base tree is the start_sha of the earliest successful begin-batch result in the run's
-// webster session transcripts, the HEAD before the first batch forked, read from the code
-// repository.
-// A card's estimate is batcher.SegmentCost of the card alone over the base tree with the
-// profile's weights; its measured weight is the summed weight of every fork whose cards name
-// it, and its ratio is measured over estimate.
+// A run's plan is read from the newest "loom: plan artifacts for <slug>" commit in the history repository committed before the run's first Webster fork started.
+// Its base tree is the start_sha of the earliest successful begin-batch result in the run's webster session transcripts, the HEAD before the first batch forked, read from the code repository.
+// A card's estimate is batcher.SegmentCost of the card alone over the base tree with the profile's weights;
+// its measured weight is the summed weight of every fork whose cards name it, and its ratio is measured over estimate.
 // The section lists the runs and cards it left out, each with its reason:
-//   - a run: "no webster fork"; "no plan commit before the first fork"; "plan at <sha> does
-//     not parse: <error>"; "no base: no begin-batch result in its webster sessions"; "base
-//     <sha> is not in the repository";
-//   - a card: "no fork names it"; "ran in a multi-card fork", since only a one-card fork
-//     measures a one-card cost; "estimate is 0".
+//   - a run: "no webster fork"; "no plan commit before the first fork"; "plan at <sha> does not parse: <error>"; "no base: no begin-batch result in its webster sessions"; "base <sha> is not in the repository";
+//   - a card: "no fork names it"; "ran in a multi-card fork", since only a one-card fork measures a one-card cost; "estimate is 0".
 //
-// The section ends with the fit per run and overall: the number of cards, the median ratio and
-// the spread, the 75th percentile of the ratios over the 25th, both interpolated linearly
-// between the closest ranks.
+// The section ends with the fit per run and overall: the number of cards, the median ratio and the spread, the 75th percentile of the ratios over the 25th, both interpolated linearly between the closest ranks.
 //
 // The weight column is input + 1.25 x cache writes + 0.1 x cache reads + 5 x output: a
 // relative figure for ranking roles, not a price, and blind to the per-model price
