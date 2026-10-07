@@ -194,6 +194,8 @@ func TestCompact_CompletesOnBoundaryAfterEntryAndIdle(t *testing.T) {
 }
 
 func TestCompact_CycleReloadsPluginsThenPointerNamingTheNote(t *testing.T) {
+	t.Parallel()
+
 	e := newCompactEnv(t)
 	e.withSkills()
 	e.reachCompacting()

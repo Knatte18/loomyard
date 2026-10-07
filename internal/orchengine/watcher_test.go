@@ -1182,6 +1182,8 @@ func TestWatcher_ReloadTypesNothingWhenIdleProbeFails(t *testing.T) {
 }
 
 func TestWatcher_AutoCompactionReloadsPluginsThenPointer(t *testing.T) {
+	t.Parallel()
+
 	e := newWatchEnv(t)
 	e.withSkills()
 	boundary := e.clock.now.Add(time.Second)
