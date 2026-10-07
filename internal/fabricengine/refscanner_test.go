@@ -76,6 +76,8 @@ func TestRefScanner_Matches(t *testing.T) {
 // TestReferenceRule_Match covers what TestRefScanner_Matches cannot see.
 // That is the matched text each rule returns, taken from the copy its pattern ran on, and the two rules being callable apart.
 func TestReferenceRule_Match(t *testing.T) {
+	t.Parallel()
+
 	rule := fabricengine.NewReferenceRule()
 
 	tests := []struct {
@@ -95,6 +97,7 @@ func TestReferenceRule_Match(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			path, pathOK := rule.MatchPath(tt.cmd)
 			if path != tt.wantPath || pathOK != (tt.wantPath != "") {
 				t.Errorf("MatchPath(%q) = %q, %v; want %q", tt.cmd, path, pathOK, tt.wantPath)
