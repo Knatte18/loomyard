@@ -25,7 +25,8 @@ type ConfigChanges struct {
 // ReadConfigChanges reports which of configRels changed on taskBranch's weft branch since it forked from parentBranch's weft branch.
 // configRels are anchor-relative paths the caller supplies;
 // an empty configRels returns an empty ConfigChanges without running git.
-// The diff runs from the merge-base to the task tip, so a commit on the parent's side after the fork never appears.
+// The diff runs from the merge-base to the task tip,
+// so a commit on the parent's side after the fork never appears.
 // A failure is wrapped naming both branches compared.
 // It writes nothing.
 func ReadConfigChanges(l *lyxcwd.Location, taskBranch, parentBranch string, configRels []string) (ConfigChanges, error) {

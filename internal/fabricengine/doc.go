@@ -493,7 +493,9 @@
 // Before its first mutation it probes both origins read-only (remoteleftover.go) and decides whether the pair is live.
 // A pair is live when its weft branch exists locally, or exists on origin with no `archive/<slug>/*` tag covering its tip;
 // archive tags are consulted only when there is no local weft branch.
-// A live pair is adopted, never forked: a local weft branch behind origin is fast-forwarded to origin's tip (`KindRepoAdvanced`), a weft branch only on origin becomes a local tracking branch through `resolveWeftBranch`,
+// A live pair is adopted, never forked:
+// a local weft branch behind origin is fast-forwarded to origin's tip (`KindRepoAdvanced`),
+// a weft branch only on origin becomes a local tracking branch through `resolveWeftBranch`,
 // and an origin warp branch becomes a local tracking branch whatever its relation to `HEAD`.
 // A true divergence between the local weft branch and origin's is refused with an `*ErrRemoteLeftover`,
 // and nothing on origin is ever force-pushed or deleted for a live pair.

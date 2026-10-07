@@ -1,6 +1,5 @@
 // remoteleftover.go holds Add's read-only pre-flight probes of both origins.
-// A branch on the weft or warp origin either makes the pair live, so Add adopts it,
-// or is a removed pair's leftover that is proven replaceable or refused before Add's first mutation,
+// A branch on the weft or warp origin either makes the pair live, so Add adopts it, or is a removed pair's leftover that is proven replaceable or refused before Add's first mutation,
 // so the refusal never arrives mid-Add as a rejected push.
 // Every probe is read-only git through gitexec;
 // the fetches (the weft archive and fast-forward probes) write FETCH_HEAD only and create no branch, remote-tracking ref or tag.
@@ -67,8 +66,13 @@ type weftLeftover struct {
 }
 
 // probeWeftLeftover inspects the weft origin for weftBranch, run in the weft repo against originRemoteName.
-// With localExists the pair is live: an origin tip that equals or is an ancestor of the local tip needs nothing, a local tip that is a strict ancestor of the origin tip becomes fastForwardTo, and a true divergence is refused.
-// Without it, an absent remote branch returns the zero answer, an origin tip covered by an archive/<slug>/* tag whose target equals or descends from it is a replaceable leftover (tip and tag), and any other origin tip makes the pair live.
+// With localExists the pair is live:
+// an origin tip that equals or is an ancestor of the local tip needs nothing,
+// a local tip that is a strict ancestor of the origin tip becomes fastForwardTo,
+// and a true divergence is refused.
+// Without it, an absent remote branch returns the zero answer,
+// an origin tip covered by an archive/<slug>/* tag whose target equals or descends from it is a replaceable leftover (tip and tag),
+// and any other origin tip makes the pair live.
 func probeWeftLeftover(l *lyxcwd.Location, slug, weftBranch string, localExists bool) (weftLeftover, error) {
 	weftRoot, err := WeftRepoRoot(l)
 	if err != nil {
