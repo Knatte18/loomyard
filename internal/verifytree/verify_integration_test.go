@@ -49,7 +49,7 @@ func TestVerify_PerCommandRecord(t *testing.T) {
 	const plan, roundA, roundB = "true", ": round a", ": round b"
 	verifyWithBase := func(command string) Result {
 		t.Helper()
-		res, err := Verify(context.Background(), p, Site{Label: "Webster-Burler gate", BaseCommand: plan}, command)
+		res, err := Verify(context.Background(), p, Site{Label: "Webster-Burler gate", BaseCommand: plan}, command, Timeout)
 		if err != nil {
 			t.Fatalf("Verify(%q): %v", command, err)
 		}
