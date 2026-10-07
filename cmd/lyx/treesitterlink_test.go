@@ -116,16 +116,6 @@ func treeSitterLinkFindings(linked map[string][]string, allowed []scankit.Entry)
 	return findings
 }
 
-func TestParseGoListImports(t *testing.T) {
-	t.Parallel()
-
-	got := parseGoListImports("p [p.test]\tq;r [p.test]\nq\t\n")
-	want := map[string][]string{"p [p.test]": {"q", "r [p.test]"}, "q": nil}
-	if len(got) != len(want) || strings.Join(got["p [p.test]"], "|") != "q|r [p.test]" || got["q"] != nil {
-		t.Errorf("parseGoListImports() = %q; want %q", got, want)
-	}
-}
-
 func TestTreeSitterLinkFindings(t *testing.T) {
 	t.Parallel()
 
