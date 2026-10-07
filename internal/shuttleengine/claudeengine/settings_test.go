@@ -338,6 +338,11 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 				if !strings.Contains(notice, noticeAskUserQuestionDeny) {
 					t.Errorf("notice = %q; want the AskUserQuestion sentence kept", notice)
 				}
+				for _, text := range append(askCommands, notice) {
+					if !strings.Contains(text, "waits for the answer, which arrives as your next turn") {
+						t.Errorf("AskUserQuestion text = %q; want it to say the run waits for the answer as the next turn", text)
+					}
+				}
 			}
 		})
 	}

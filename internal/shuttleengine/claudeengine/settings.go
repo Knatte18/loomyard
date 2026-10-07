@@ -30,7 +30,7 @@ const steerAgentDeny = "do the work in this session; nested agents are not avail
 const steerAgentNonForkDeny = "only fork subagents may be spawned here; other agents are unavailable — do the work in this session or in your forks"
 
 // steerAskUserQuestionDeny denies AskUserQuestion in autonomous runs, where no operator is present to answer.
-const steerAskUserQuestionDeny = "you cannot open an interactive dialog here. If you are blocked or need operator input, state the question as your final message and end your turn WITHOUT writing the result file."
+const steerAskUserQuestionDeny = "you cannot open an interactive dialog here. If you are blocked or need operator input, state the question as your final message and end your turn WITHOUT writing the result file. The run then waits for the answer, which arrives as your next turn."
 
 // steerWebsterForkDeny guards against fork-context deadlock: a fork inherits Master's await-batch loop and polling it would livelock the run.
 // It refuses `lyx webster` commands inside forks (detected by top-level agent_id in the payload). Must contain no single/double quote or backslash (checked at init).
@@ -44,7 +44,7 @@ const noticeAgentDeny = "The Agent tool is unavailable in this session: do all e
 const noticeAgentForkDeny = "The Agent tool accepts only fork subagents and refuses every other subagent type; a fork does its own work and never spawns further subagents."
 
 // noticeAskUserQuestionDeny announces the AskUserQuestion deny in an autonomous run.
-const noticeAskUserQuestionDeny = "AskUserQuestion is unavailable: when blocked or needing operator input, state the question as your final message and end your turn without writing the result file."
+const noticeAskUserQuestionDeny = "AskUserQuestion is unavailable: when blocked or needing operator input, state the question as your final message and end your turn without writing the result file; the run then waits for the answer, which arrives as your next turn."
 
 // hookCommand is one Claude Code hook invocation, run under git-bash on Windows.
 type hookCommand struct {
