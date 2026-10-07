@@ -25,6 +25,7 @@ var costSizes = fakeSizes{lines: map[string]int{
 	"internal/big/b.go": 100,
 }}
 
+// batchSizes returns the card count of each batch, in order.
 func batchSizes(batches []batcher.Batch) []int {
 	sizes := make([]int, len(batches))
 	for i, batch := range batches {
@@ -33,6 +34,7 @@ func batchSizes(batches []batcher.Batch) []int {
 	return sizes
 }
 
+// TestCostBatchifier_Limits asserts the grouping and per-batch estimate the cost batchifier returns for each hard limit and the tie rule.
 func TestCostBatchifier_Limits(t *testing.T) {
 	t.Parallel()
 
