@@ -72,3 +72,37 @@ func TestRefScanner_Matches(t *testing.T) {
 		})
 	}
 }
+
+// TestReferenceRule_Match covers what TestRefScanner_Matches cannot see.
+// That is the matched text each rule returns, taken from the copy its pattern ran on, and the two rules being callable apart.
+func TestReferenceRule_Match(t *testing.T) {
+	rule := fabricengine.NewReferenceRule()
+
+	tests := []struct {
+		name         string
+		cmd          string
+		wantPath     string
+		wantSpelling string
+	}{
+		{"quoted separator path keeps its quotes in view", `cat "/hub/other-weft/_lyx/plan.md"`, "/other-weft", ""},
+		{"bare word is read from the quote-blanked copy", "git -C other-weft status", "other-weft", ""},
+		{"spelling is read from the quote-blanked copy", `grep -q "x" f.txt && lyx fabric sync`, "", "lyx fabric"},
+		{"only the path rule matches", "ls /hub/other-weft", "/other-weft", ""},
+		{"only the spelling rule matches", "echo y | lyx warp checkout x", "", "lyx warp"},
+		{"heredoc body returns neither", "cat > x <<EOF\n/hub/a-weft\nlyx fabric sync\nEOF", "", ""},
+		{"quoted search pattern returns neither", `grep "lyx fabric" docs`, "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path, pathOK := rule.MatchPath(tt.cmd)
+			if path != tt.wantPath || pathOK != (tt.wantPath != "") {
+				t.Errorf("MatchPath(%q) = %q, %v; want %q", tt.cmd, path, pathOK, tt.wantPath)
+			}
+			spelling, spellingOK := rule.MatchSpelling(tt.cmd)
+			if spelling != tt.wantSpelling || spellingOK != (tt.wantSpelling != "") {
+				t.Errorf("MatchSpelling(%q) = %q, %v; want %q", tt.cmd, spelling, spellingOK, tt.wantSpelling)
+			}
+		})
+	}
+}
