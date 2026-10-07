@@ -5,8 +5,10 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,9 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
+// The test changes the working directory, which run reads the base trees from, so it never runs in parallel.
 func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
-	t.Parallel()
-
 	configDir := t.TempDir()
 	seedProfile(t, configDir)
 
@@ -82,5 +83,30 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	}
 	if len(got.Rows) != 1 || got.Rows[0] != want.Rows[0] || len(got.Skips) != 0 {
 		t.Errorf("git-backed calibration rows = %+v, skips = %+v; want rows %+v and no skips", got.Rows, got.Skips, want.Rows)
+	}
+
+	// run drives the same calibration end to end: the one repository flag names the fixture, whose directory is also the code repository.
+	hub, projects := t.TempDir(), t.TempDir()
+	sessions := projectDir(projects, filepath.Join(hub, "alpha"))
+	forkStart := started.UTC().Format(time.RFC3339Nano)
+	writeLines(t, filepath.Join(sessions, "w.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:alpha:webster"}`,
+		bashUse(t, "begin", "lyx "+"webster begin-batch 1"),
+		toolResultFor("begin", forkStart, jsonString(t, `{"batch":"01-c1","start_sha":"`+baseSHA+`"}`)),
+	)
+	writeLines(t, filepath.Join(sessions, "w", "subagents", "agent-1.jsonl"),
+		toolResult(forkStart, jsonString(t, "- `_lyx/plan/01-c1.md`")),
+		assistant("m1", "opus", 1, 219),
+	)
+	t.Chdir(dir)
+	var report bytes.Buffer
+	args := []string{"-" + repositoryFlag, dir, "-calibrate", "fit", "-config", configDir, "-hub", hub, "-projects", projects, "alpha"}
+	if err := run(args, &report); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, wantLine := range []string{"## Calibration (fit)", "| alpha | 01-c1 | 110 | 220 | 2.000 |"} {
+		if !strings.Contains(report.String(), wantLine) {
+			t.Errorf("report lacks %q:\n%s", wantLine, report.String())
+		}
 	}
 }

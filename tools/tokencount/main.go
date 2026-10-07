@@ -17,7 +17,7 @@
 // With no slugs it counts the -last finished runs whose sessions changed most recently,
 // leaving out the prime, the current directory.
 // A run is finished once its pair is torn down, which leaves an archive/<slug>/<sha> tag in
-// the prime's weft repository (-weft, default the current worktree's weft sibling); a run still in flight,
+// the prime's fabric repository (the one repository flag, -weft, default the current worktree's weft sibling); a run still in flight,
 // or parked before Webster, would count as one whose later steps cost nothing.
 // Claude Code keeps a worktree's sessions in ~/.claude/projects/<encoded path>/, one
 // <session>.jsonl per session, and a session's sub-agents (the Webster master's forks)
@@ -37,10 +37,11 @@
 // A fork whose transcript has no such result is listed as unattributed.
 //
 // With -calibrate <profile> the report gains a "Calibration (<profile>)" section: the batcher's peak-context estimate for each card beside the measured peak context of the fork that ran it, for every run counted.
-// -history names the repository holding the runs' plan commits and is required with -calibrate;
+// The one repository flag, -weft, names the repository holding the archive tags of finished runs, the runs' plan commits and the runs' webster records;
+// its default, the current worktree's weft sibling, applies whenever the flag is empty and either no slugs are named or the calibration is asked for, so -calibrate needs no other flag.
 // -config names the directory whose batcher.yaml holds the profile, default the current directory.
 // The code repository is the current directory.
-// A run's plan is read from the newest "loom: plan artifacts for <slug>" commit in the history repository committed before the run's first Webster fork started.
+// A run's plan is read from the newest "loom: plan artifacts for <slug>" commit in that repository committed before the run's first Webster fork started.
 // Its base tree is the start_sha of the earliest successful begin-batch result in the run's webster session transcripts, the HEAD before the first batch forked, read from the code repository.
 // A card's estimate is batcher.PeakContext of the card alone over the base tree with the profile's weights;
 // its measured peak is the largest PeakContext of any fork whose cards name it, and its ratio is measured over estimate.
@@ -71,6 +72,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
+// repositoryFlag is the name of the one flag naming the repository that holds the archive tags, plan commits and webster records.
+const repositoryFlag = "weft"
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "tokencount:", err)
@@ -84,15 +88,11 @@ func run(args []string, stdout io.Writer) error {
 	projects := fs.String("projects", "", "Claude Code projects directory (default: ~/.claude/projects)")
 	out := fs.String("out", "", "write the report to this file instead of stdout")
 	last := fs.Int("last", 6, "with no slugs named, count this many of the most recently active finished runs")
-	weft := fs.String("weft", "", "the prime's weft repository holding the archive tags of finished runs (default: the current worktree's weft sibling)")
+	weft := fs.String(repositoryFlag, "", "the prime's fabric repository holding the archive tags of finished runs, the runs' plan commits and webster records (default: the current worktree's weft sibling)")
 	calibrate := fs.String("calibrate", "", "add the calibration section for this batcher.yaml profile")
-	history := fs.String("history", "", "repository holding the runs' plan commits, required with -calibrate")
 	configDir := fs.String("config", "", "directory whose batcher.yaml holds the profile (default: the current directory)")
 	if err := fs.Parse(args); err != nil {
 		return err
-	}
-	if *calibrate != "" && *history == "" {
-		return fmt.Errorf("-calibrate needs -history, the repository holding the plan commits")
 	}
 	wd, err := lyxcwd.Getwd()
 	if err != nil {
@@ -109,14 +109,14 @@ func run(args []string, stdout io.Writer) error {
 		*projects = filepath.Join(home, ".claude", "projects")
 	}
 	slugs := fs.Args()
-	if len(slugs) == 0 {
-		if *weft == "" {
-			loc, err := lyxcwd.Resolve(wd)
-			if err != nil {
-				return err
-			}
-			*weft = fabricengine.WeftWorktree(loc)
+	if *weft == "" && (len(slugs) == 0 || *calibrate != "") {
+		loc, err := lyxcwd.Resolve(wd)
+		if err != nil {
+			return err
 		}
+		*weft = fabricengine.WeftWorktree(loc)
+	}
+	if len(slugs) == 0 {
 		finished, err := finishedRuns(*weft)
 		if err != nil {
 			return err
@@ -144,7 +144,7 @@ func run(args []string, stdout io.Writer) error {
 		if *configDir == "" {
 			*configDir = wd
 		}
-		c, err := Calibrate(report.Runs, *calibrate, *configDir, gitrepo.New(*history), gitrepo.New(wd))
+		c, err := Calibrate(report.Runs, *calibrate, *configDir, gitrepo.New(*weft), gitrepo.New(wd))
 		if err != nil {
 			return err
 		}
