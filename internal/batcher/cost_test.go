@@ -50,9 +50,11 @@ func TestCostBatchifier_Limits(t *testing.T) {
 		return cards
 	}
 	tests := []struct {
-		name         string
-		params       batcher.CostParams
-		cards        []planparser.Card
+		name   string
+		params batcher.CostParams
+		cards  []planparser.Card
+		// before is the number of batches the run executes ahead of cards.
+		before       int
 		wantSizes    []int
 		wantEstimate []float64
 	}{
@@ -120,6 +122,18 @@ func TestCostBatchifier_Limits(t *testing.T) {
 			wantSizes:    []int{2, 1},
 			wantEstimate: []float64{53, 62},
 		},
+		{
+			// a with b peaks at 53 handed over at before 0, and at 63 at position 2, so they split into positions 2 and 3.
+			name:   "cards that fit one batch split further when handed over after earlier batches",
+			params: batcher.CostParams{Budget: 60, MaxCards: 5, Weights: costGrowthWeights},
+			cards: []planparser.Card{
+				editCard(1, []string{"internal/a/a.go"}),
+				editCard(2, []string{"internal/b/b.go"}),
+			},
+			before:       1,
+			wantSizes:    []int{1, 1},
+			wantEstimate: []float64{42, 52},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -128,7 +142,7 @@ func TestCostBatchifier_Limits(t *testing.T) {
 			if batcherUnderTest.Name() != "cautious" {
 				t.Errorf("Name = %q; want %q", batcherUnderTest.Name(), "cautious")
 			}
-			batches, err := batcherUnderTest.Batch(plan, tt.cards, costSizes)
+			batches, err := batcherUnderTest.Batch(plan, tt.cards, costSizes, tt.before)
 			if err != nil {
 				t.Fatalf("Batch: %v", err)
 			}
@@ -141,8 +155,8 @@ func TestCostBatchifier_Limits(t *testing.T) {
 				}
 			}
 			for i, batch := range batches {
-				if batch.Breakdown.Position != i+1 {
-					t.Errorf("batch %d Breakdown.Position = %d; want %d", i, batch.Breakdown.Position, i+1)
+				if batch.Breakdown.Position != tt.before+i+1 {
+					t.Errorf("batch %d Breakdown.Position = %d; want %d", i, batch.Breakdown.Position, tt.before+i+1)
 				}
 			}
 		})
@@ -185,7 +199,7 @@ func TestCostBatchifier_OptimalAndFeasible(t *testing.T) {
 		}
 
 		wantBatches, wantLargest := bruteForceBest(t, plan, cards, params)
-		batches, err := batcher.NewCost("cautious", params).Batch(plan, cards, costSizes)
+		batches, err := batcher.NewCost("cautious", params).Batch(plan, cards, costSizes, 0)
 		if err != nil {
 			t.Fatalf("iteration %d: Batch: %v", iteration, err)
 		}

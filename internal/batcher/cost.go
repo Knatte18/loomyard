@@ -47,7 +47,7 @@ type split struct {
 }
 
 // Batch splits cards into the fewest contiguous batches, in card order.
-// The k-th batch of the result is the fork at position k, whose start context grows with k, so a segment's peak depends on the batch it forms.
+// The k-th batch of the result is the fork at position before + k, where before is the number of batches the run executes ahead of cards[0], and its start context grows with that position, so a segment's peak depends on the batch it forms.
 // A one-card segment is always feasible;
 // a longer segment needs at most MaxCards cards and a PeakContext at its own position within Budget.
 // Budget limits only segments of two or more cards, so a card whose own peak at its position exceeds it still runs alone, and nothing halts or warns;
@@ -56,7 +56,7 @@ type split struct {
 // a remaining tie goes to the split whose last batch is shortest.
 // Each returned Batch carries the profile name, its PeakContext at its own position as Estimate and the components behind it as Breakdown.
 // The search is a dynamic program over (batches so far, last card placed), O(cards² × MaxCards) in segment evaluations.
-func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes SizeSource) ([]Batch, error) {
+func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes SizeSource, before int) ([]Batch, error) {
 	w := b.params.Weights
 	loads := make([]cardLoad, len(cards))
 	for i, card := range cards {
@@ -67,7 +67,7 @@ func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes
 		loads[i] = load
 	}
 
-	// table[k][end] is the best split of cards[:end] into exactly k batches, the last of them at position k.
+	// table[k][end] is the best split of cards[:end] into exactly k batches, the last of them at position before + k.
 	table := make([][]split, len(cards)+1)
 	for k := range table {
 		table[k] = make([]split, len(cards)+1)
@@ -75,14 +75,14 @@ func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes
 	table[0][0] = split{found: true}
 	for end := 1; end <= len(cards); end++ {
 		var peak peakAccumulator
-		peak.start(w, 1)
+		peak.start(w, before+1)
 		for begin := end - 1; begin >= 0; begin-- {
 			peak.add(loads[begin], w)
 			if end-begin > 1 && (end-begin > b.params.MaxCards || peak.value > b.params.Budget) {
-				// The peak at position 1 only grows as the segment reaches back, and later positions only add to it, so no longer segment ending here fits either.
+				// The peak at the first position only grows as the segment reaches back, and later positions only add to it, so no longer segment ending here fits either.
 				break
 			}
-			// peak.value is the segment's peak at position 1; each later position adds its growth.
+			// peak.value is the segment's peak at position before + 1; each later position adds its growth.
 			for k := 1; k <= begin+1; k++ {
 				before := table[k-1][begin]
 				if !before.found {
@@ -109,7 +109,7 @@ func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes
 	batches := make([]Batch, count)
 	for end, k := len(cards), count; k > 0; k-- {
 		begin := table[k][end].start
-		breakdown := breakdownOf(cards[begin:end], loads[begin:end], w, k)
+		breakdown := breakdownOf(cards[begin:end], loads[begin:end], w, before+k)
 		batches[k-1] = Batch{Cards: cards[begin:end], Profile: b.name, Estimate: table[k][end].peak, Breakdown: &breakdown}
 		end = begin
 	}

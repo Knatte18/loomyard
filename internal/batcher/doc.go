@@ -52,7 +52,7 @@
 // the recorded Estimate and Position show it.
 // Among the splits with the fewest batches it takes the one whose largest batch peaks lowest, so batches come out balanced;
 // a remaining tie leaves the last batch shortest.
-// The k-th batch of the result is at position k, so a segment's peak depends on the batch it forms.
+// Batch is told how many batches the run executes ahead of its cards, so the k-th batch of the result is at position before + k, and a segment's peak depends on the batch it forms.
 // An exact dynamic program over (batches so far, last card placed) finds the split in O(cards² x MaxCards) segment evaluations, accumulating each segment's position-independent peak one card at a time and adding the position term per batch count.
 // Each batch carries the profile name, its PeakContext at its own position as its estimate and the estimate's Breakdown, which records that position.
 package batcher
