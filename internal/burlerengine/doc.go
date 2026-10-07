@@ -96,7 +96,7 @@
 // A half is stopped through the told StrandRemover (RemoveStrandIfLive on its strand guid).
 // The round returns the failing half's outcome, never the stopped half's consequential died outcome.
 // A failed stop is ErrHalfNotStopped, never retried or archived over, whose message ends with the way forward (run "lyx reed remove <guid>", then re-step the row).
-// A half that timed out is stopped as well, since shuttle keeps a timed-out run's strand live and a retry would otherwise run beside it.
+// A half that timed out is stopped as well, since shuttle keeps a timed-out run's strand live and a retry would otherwise run beside it, and so is a half whose wait returned an error, since it may still be running.
 // join returns only after both waiting goroutines have returned, so no half is left live.
 // The one exception is the half it failed to stop, which it reports without waiting for.
 // A half whose provider never came up is that half's OutcomeDied with NotStarted set and a nil error.

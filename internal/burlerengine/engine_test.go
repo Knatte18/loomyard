@@ -1094,6 +1094,16 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			wantStarted:   []string{reviewRole, fixRole},
 		},
 		{
+			name: "a reviewer whose wait failed is stopped too, and the shuttle error is returned",
+			shuttle: &fakeShuttle{
+				review: halfScript{err: errors.New("shuttle: liveness probe failed")},
+				fix:    halfScript{result: done, waitForMarker: true},
+			},
+			wantErrText: "burler: shuttle run: shuttle: liveness probe failed",
+			wantRemoved: []string{fixRole + "-guid", reviewRole + "-guid"},
+			wantStarted: []string{reviewRole, fixRole},
+		},
+		{
 			name: "a reviewer that never started leaves the fixer unstarted",
 			shuttle: &fakeShuttle{
 				review: halfScript{startErr: notStarted},
