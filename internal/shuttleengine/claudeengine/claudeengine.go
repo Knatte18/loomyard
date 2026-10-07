@@ -1,6 +1,7 @@
 // claudeengine.go defines the Claude type and its compile-time assertion against
 // shuttleengine.Engine.
-// The type carries only its submit settle, fixed at construction, and every method it implements is a pure function of its arguments and that settle (see command.go, settings.go, events.go, startup.go), which is what makes the whole adapter hermetically testable without tmux or a real claude process.
+// The type carries only its submit settle, fixed at construction,
+// and every method it implements is a pure function of its arguments and that settle (see command.go, settings.go, events.go, startup.go), which is what makes the whole adapter hermetically testable without tmux or a real claude process.
 
 package claudeengine
 

@@ -228,9 +228,11 @@
 //   - After a compaction the watcher ran: the pointer names the cycle's note.
 //   - After an auto-compaction: in idle, a turn end read makes the watcher ask for a main-chain compaction boundary after State.CompactionBaseline, with the turn ends that follow it in the transcript.
 //     Exactly one turn end after the boundary, and that turn end the newest one read on the tick, enters the sequence, with the `orch-template-reload` pointer: read the role file and continue the work, no note.
-//     More than one turn end after the boundary means turns ran without a reload, or a restarted watcher on an old cursor found an old boundary:
+//     More than one turn end after the boundary means turns ran without a reload,
+//     or a restarted watcher on an old cursor found an old boundary:
 //     the baseline moves to the boundary, the watcher logs it at Info and types nothing.
-//     One turn end after the boundary that the watcher has not read yet, or none, types nothing and leaves the baseline, so a later turn end evaluates the boundary again.
+//     One turn end after the boundary that the watcher has not read yet, or none, types nothing and leaves the baseline,
+//     so a later turn end evaluates the boundary again.
 //     A confirmed boundary is held in memory only until the idle probe passes,
 //     and a restarted watcher finds it again at its next turn end, since the baseline has not moved.
 //     A tick that read a turn end replaces the held boundary from its own evaluation alone,
