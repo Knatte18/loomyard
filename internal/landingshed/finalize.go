@@ -215,8 +215,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	return fz.stuckOrCancelled(ctx, fmt.Sprintf("parent-side merge failed: %v", mergeErr), "error", mergeErr)
 }
 
-// configChangeNotice composes the one-line notice about the task's per-worktree config changes,
-// or "" when there is nothing to report or no seam is wired.
+// configChangeNotice composes the one-line notice about the task's per-worktree config changes, or "" when there is nothing to report or no seam is wired.
 // Finalize never carries those files to the parent, so the notice tells the orchestrator to re-apply each change meant for the parent.
 // A read failure is logged and reported in the notice instead of stopping the landing.
 func (fz *Finalize) configChangeNotice() string {

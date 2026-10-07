@@ -62,9 +62,7 @@ const (
 	KindPushSpawned Kind = "push_spawned"
 	// KindWorktreeSwitched records Checkout's `git switch` sites.
 	KindWorktreeSwitched Kind = "worktree_switched"
-	// KindRepoAdvanced records a repo advance:
-	// the weft fast-forward pull, the warp advance,
-	// or the fast-forward of a live pair's behind local weft branch to its origin tip at Add (Target the weft repo root, Detail the branch and its new tip).
+	// KindRepoAdvanced records a repo advance: the weft fast-forward pull, the warp advance, or the fast-forward of a live pair's behind local weft branch to its origin tip at Add (Target the weft repo root, Detail the branch and its new tip).
 	//
 	// "repo" is deliberately side-agnostic here and is not vocabulary drift: this kind is recorded
 	// for both the weft fast-forward pull and the warp advance, and the entry's Target — the

@@ -1,10 +1,7 @@
 // reconcile.go implements the fabric repair-and-adopt sweep for paired warp↔weft worktrees.
 //
-// Reconcile walks all warp worktrees (never the branch namespace directly) and applies the minimal
-// corrective action needed to restore a valid paired topology: it recreates a missing weft worktree
-// when the branch still exists locally or on origin, re-points a broken junction,
-// adopts a raw (non-lyx) warp worktree by creating the weft side dormant,
-// and reports (but does not touch) a warp worktree on an unmanaged branch.
+// Reconcile walks all warp worktrees (never the branch namespace directly) and applies the minimal corrective action needed to restore a valid paired topology:
+// it recreates a missing weft worktree when the branch still exists locally or on origin, re-points a broken junction, adopts a raw (non-lyx) warp worktree by creating the weft side dormant, and reports (but does not touch) a warp worktree on an unmanaged branch.
 // An origin weft branch is adopted before a dormant one is forked, for a raw or an unmanaged warp worktree alike.
 // Wherever a warp branch name needs a weft counterpart, fabric derives it via
 // WeftBranchName(warpBranch).
