@@ -14,7 +14,7 @@ they are out of scope, and a finding raised against one is never legitimate.
 
 The format contract, and the Card model it implements, are both `{{.specs_dir}}/loom/loom-plan-spec.md`.
 This rubric points at both and restates neither.
-The mechanical checks over that contract are already enforced by this round's own gate over this round's own output — the format-only set, every check but `plan-unapproved` — while `plan-unapproved` is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil.
+The mechanical checks over that contract are already enforced by this round's own gate over this round's own output — every check but `plan-unapproved` and `delete-target-gone` — while `plan-unapproved` is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil, and `delete-target-gone` fires only at Webster's dispatch, after this round.
 
 `Plan-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer, which has only checks and never judgment, cannot exhibit.
 Sitting behind a mechanical gate over this round's own output makes this gate's over-flagging surface larger than that of a gate with no validator ahead of it, not smaller.
@@ -28,7 +28,8 @@ It appears in neither the artifact list nor the answer key, and it must not be r
 Do not flag any of the following as a finding:
 
 - **Anything this round's own gate already checks.**
-  Every check ID `{{.specs_dir}}/loom/loom-plan-spec.md`'s own validation-checks section lists, from `format-unrecognized` through `commit-subject-mismatch`, is enforced deterministically — every one but `plan-unapproved` by this round's own gate over this round's own output, while `plan-unapproved` is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil.
+  Every check ID `{{.specs_dir}}/loom/loom-plan-spec.md`'s own validation-checks section lists is enforced deterministically: the `internal/planparser` checks from `format-unrecognized` through `commit-subject-mismatch` and the `internal/planglyph` check `delete-before-reference` by this round's own gate over this round's own output, except `plan-unapproved`, which is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil.
+  `delete-target-gone` fires only at Webster's dispatch, after this round, so no plan this round reviews can carry it.
   Re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the gate.
 - **A missing `DependsOn`/`Produces` field, or an incomplete dependency list.**
   Dependency edges are derived, never authored — a card's `Uses` intersected against every other card's target list.
