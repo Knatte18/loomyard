@@ -21,6 +21,11 @@
 // was not; and making the error informational everywhere, which makes the outage invisible at
 // precisely the boundaries whose whole job is to be mechanical. See repo.go and planglyph.go.
 //
+// The finding types and ErrQuarryUnavailable are declared in internal/planindex, which links no
+// tree-sitter; this package aliases them, so errors.Is matches under either name. NewIndex returns
+// the real planindex.Index, which a package that calls the code index receives from the CLI layer
+// instead of importing planglyph (index.go).
+//
 // Every resolve-backed Finding.Check ID this package can raise, the canonical list a caller checks
 // a claim against without reading Go source — the parallel this package owes planparser's own
 // exhaustively numbered "Validation checks" section in contracts/specs/loom-plan-spec.md, since

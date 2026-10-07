@@ -117,6 +117,22 @@ func TestRealGitDelta(t *testing.T) {
 		return
 	}
 
+	if !t.Run("Index.Delta on an unreadable range is quarry unavailable with a usable empty delta", func(t *testing.T) {
+		got, err := NewIndex().Delta(f.root, "does-not-exist-rev", empty)
+		if !errors.Is(err, ErrQuarryUnavailable) {
+			t.Fatalf("Index.Delta error = %v; want errors.Is(err, ErrQuarryUnavailable)", err)
+		}
+		if got == nil {
+			t.Fatal("Index.Delta returned a nil delta; want the empty delta")
+		}
+		findings, bindErr := got.BindHandles(&planparser.Plan{}, f.root, nil)
+		if bindErr != nil || len(findings) != 0 {
+			t.Errorf("BindHandles on the empty delta = (%+v, %v); want no findings and no error", findings, bindErr)
+		}
+	}) {
+		return
+	}
+
 	var delta quarry.GitDeltaAnswer
 	if !t.Run("rename delta carries the exact-tier pair", func(t *testing.T) {
 		var err error

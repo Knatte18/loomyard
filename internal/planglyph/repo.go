@@ -1,6 +1,6 @@
 // repo.go is planglyph's one call site for quarry.Open and every quarry.Repo query method (TOC,
-// Glyphs, Resolve, Expand) — the package's entry points into quarry.Repo — and declares Finding,
-// this package's own finding type.
+// Glyphs, Resolve, Expand) — the package's entry points into quarry.Repo — and aliases the finding
+// types planindex declares.
 //
 // Beside openRepo and resolveTargets, this file exports four query wrappers — TOC, Glyphs,
 // Resolve and Expand — each taking worktreeRoot plus that verb's own argument, opening the
@@ -10,62 +10,29 @@
 package planglyph
 
 import (
-	"errors"
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// ErrQuarryUnavailable marks quarry failing to answer at all — a non-nil error from quarry.Open or
-// (*quarry.Repo).Resolve, and a quarry.Name answer whose length does not match the declarations it
-// was given (handle.go), which is the same class of failure seen through a batched boundary: a
-// category distinct from any per-target verdict, so a caller distinguishes it with errors.Is
-// rather than by string matching. quarry's own contract draws exactly this line — the failure
-// envelope's own presence marks that quarry could not answer at all, never that the answer is
-// negative — and conflating the two would let a transport failure read as a clean not_found,
-// which is, under this package's Create inversion (create.go), a pass: a quarry outage would
-// silently mark every Create card done.
-//
-// Rejected, and worth stating so it is not reintroduced: degrading to format-only validation with
-// a warning is the exact failure mode where a plan looks validated and was not; and making the
-// error informational everywhere makes the outage invisible at precisely the boundaries whose
-// whole job is to be mechanical.
-var ErrQuarryUnavailable = errors.New("planglyph: quarry could not answer")
+// ErrQuarryUnavailable is planindex's error of the same name: quarry failing to answer at all,
+// distinct from any per-target verdict, matched with errors.Is under either name.
+var ErrQuarryUnavailable = planindex.ErrQuarryUnavailable
 
-// Severity is the closed vocabulary a Finding's own Severity is drawn from.
-type Severity string
+// Severity is planindex's closed vocabulary a Finding's own Severity is drawn from.
+type Severity = planindex.Severity
 
 const (
 	// SeverityBlocking marks a finding that fails the gate it is reported against.
-	SeverityBlocking Severity = "blocking"
+	SeverityBlocking = planindex.SeverityBlocking
 	// SeverityInformational marks a finding surfaced for visibility that never fails a gate.
-	SeverityInformational Severity = "informational"
+	SeverityInformational = planindex.SeverityInformational
 )
 
-// Finding is this package's own finding type: the same Check, Card and Detail fields
-// planparser.ValidationError carries, plus a Severity every converted planparser finding is
-// stamped with by fromValidationError.
-// Ref is the raw plan ref a per-ref finding reports, empty for a finding that is not about one ref.
-type Finding struct {
-	Check    string
-	Card     string
-	Detail   string
-	Severity Severity
-	Ref      string
-}
-
-// Error implements the error interface, formatted as "check[/card]: detail", exactly as
-// planparser.ValidationError.Error does, plus its own Severity — so a caller rendering a mixed
-// []planglyph.Finding set (via renderFindings in internal/loomcli/validate.go) can distinguish an
-// informational create-new-unit from a blocking glyph-not-found in the one string that record
-// exists.
-func (f Finding) Error() string {
-	if f.Card == "" {
-		return fmt.Sprintf("%s[%s]: %s", f.Check, f.Severity, f.Detail)
-	}
-	return fmt.Sprintf("%s/%s[%s]: %s", f.Check, f.Card, f.Severity, f.Detail)
-}
+// Finding is planindex's finding type, which every gate of this package reports.
+type Finding = planindex.Finding
 
 // fromValidationError converts v into a Finding stamped SeverityBlocking — the severity every
 // planparser check reports today, per the plan's blocking-policy Shared Decision.
