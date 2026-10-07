@@ -19,4 +19,21 @@
 // one batch per dependency-free card cluster) drop into the registry without any change to
 // webster's call sites.
 // No type, file, or identifier in this package carries a version suffix.
+//
+// The estimator (estimate.go) prices a run of cards without running them, so a cost-model
+// batchifier can compare groupings.
+// A SizeSource supplies the worktree facts it weighs: a file's line count and a directory's
+// test files; DiskSizes reads them from a told worktree root.
+// A card's read set holds one entry per target and Uses ref that planparser.RefFile maps to an
+// existing file, weighing its lines times context_per_line, plus a package entry and a tests entry
+// for each directory the card's targets live in, each weighing package_context.
+// A card's messages are target_messages per target (a Rename pair counts once), test_file_messages
+// per test file in its target directories and uses_messages per Uses entry.
+// SegmentCost of cards 1..n is fork_messages x startup_context, plus for each card k its messages
+// times startup_context plus the weight of the distinct read-set entries of cards 1..k, so cards
+// sharing files cost less together while a card that adds a large file makes every later message
+// in the fork dearer.
+// A card's own estimate is the SegmentCost of its one-card segment.
+// The coefficients are a Weights value, read by ProfileWeights from a profile's weights: map in
+// batcher.yaml.
 package batcher

@@ -116,3 +116,93 @@ func TestActive(t *testing.T) {
 		})
 	}
 }
+
+// TestProfileWeights asserts ProfileWeights returns a valid profile's coefficients and errors naming
+// batcher.yaml for an absent profile, a missing coefficient, a negative one and an unknown key.
+func TestProfileWeights(t *testing.T) {
+	t.Parallel()
+	const valid = `profiles:
+  cautious:
+    weights:
+      startup_context: 10
+      fork_messages: 2
+      target_messages: 3
+      test_file_messages: 4
+      uses_messages: 5
+      context_per_line: 0.5
+      package_context: 7
+`
+	tests := []struct {
+		name        string
+		config      string
+		profile     string
+		want        batcher.Weights
+		wantErrWith []string
+	}{
+		{
+			name:    "validProfile",
+			config:  valid,
+			profile: "cautious",
+			want: batcher.Weights{
+				StartupContext: 10, ForkMessages: 2, TargetMessages: 3, TestFileMessages: 4,
+				UsesMessages: 5, ContextPerLine: 0.5, PackageContext: 7,
+			},
+		},
+		{
+			name:        "absentProfile",
+			config:      valid,
+			profile:     "other",
+			wantErrWith: []string{"batcher.yaml", "other"},
+		},
+		{
+			name:        "noProfilesKey",
+			config:      `active: ""` + "\n",
+			profile:     "cautious",
+			wantErrWith: []string{"batcher.yaml", "cautious"},
+		},
+		{
+			name:        "missingCoefficient",
+			config:      strings.Replace(valid, "      package_context: 7\n", "", 1),
+			profile:     "cautious",
+			wantErrWith: []string{"batcher.yaml", "package_context"},
+		},
+		{
+			name:        "negativeCoefficient",
+			config:      strings.Replace(valid, "fork_messages: 2", "fork_messages: -1", 1),
+			profile:     "cautious",
+			wantErrWith: []string{"batcher.yaml", "fork_messages"},
+		},
+		{
+			name:        "unknownKey",
+			config:      valid + "      bogus_weight: 1\n",
+			profile:     "cautious",
+			wantErrWith: []string{"batcher.yaml", "bogus_weight"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir := t.TempDir()
+			seedConfig(t, baseDir, "batcher", tt.config)
+
+			got, err := batcher.ProfileWeights(baseDir, tt.profile)
+			if len(tt.wantErrWith) > 0 {
+				if err == nil {
+					t.Fatal("ProfileWeights = nil error; want an error")
+				}
+				for _, want := range tt.wantErrWith {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("ProfileWeights error = %q; want it to contain %q", err.Error(), want)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ProfileWeights = _, %v; want nil error", err)
+			}
+			if got != tt.want {
+				t.Errorf("ProfileWeights = %+v; want %+v", got, tt.want)
+			}
+		})
+	}
+}
