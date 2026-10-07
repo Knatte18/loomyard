@@ -11,8 +11,8 @@
 // directly in bypass mode. The merge verbs are registered in merge_verbs.go's addMergeVerbs, which
 // reaches the resolved Fabric handle through a getter closure over this file's fab local, since
 // PersistentPreRunE assigns it only at run time, after registration.
-// push and sync both push the warp side and the weft side: push in-process through
-// fabricengine.PushPairAnchored, sync through a detached child that re-enters bypass mode.
+// push and sync both push the warp side and the weft side:
+// push in-process through fabricengine.PushPairAnchored, sync through a detached child that re-enters bypass mode.
 
 package fabriccli
 
@@ -315,9 +315,8 @@ Related commands:
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
-			// The push happens in a detached child process after this one returns, so its outcome is
-			// unobservable here: record one KindPushSpawned entry per side handed to the child, never
-			// branch_pushed, which would assert an outcome this process did not observe.
+			// The push happens in a detached child process after this one returns, so its outcome is unobservable here:
+			// record one KindPushSpawned entry per side handed to the child, never branch_pushed, which would assert an outcome this process did not observe.
 			rec.Append(fabricengine.KindPushSpawned, warpWorktree, "detached")
 			rec.Append(fabricengine.KindPushSpawned, weftWorktree, "detached")
 			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), map[string]any{}))

@@ -1,7 +1,6 @@
 //go:build integration
 
-// pushanchored_integration_test.go covers PushAnchored and PushPairAnchored against real hubforge
-// pairs, the push lock both take, and PushAnchored against a hub's weft sibling:
+// pushanchored_integration_test.go covers PushAnchored and PushPairAnchored against real hubforge pairs, the push lock both take, and PushAnchored against a hub's weft sibling:
 // SkipGit and SkipPush each short-circuit to an empty result and push nothing; a weft carrying an
 // unpushed commit is genuinely pushed and the mutation record carries exactly one KindBranchPushed
 // entry; and a diverged weft remote surfaces gitrepo.ErrPushRejected unwrapped, distinguishable via
@@ -211,8 +210,7 @@ func newPushPair(t *testing.T) pushPair {
 	}
 }
 
-// declineOncePreReceive installs a pre-receive hook in bareDir that declines the first push it sees
-// and accepts every later one.
+// declineOncePreReceive installs a pre-receive hook in bareDir that declines the first push it sees and accepts every later one.
 func declineOncePreReceive(t *testing.T, bareDir string) {
 	t.Helper()
 
@@ -238,10 +236,8 @@ func countBranchPushed(res fabricengine.PushResult, detailPrefix string) int {
 	return count
 }
 
-// TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide walks one pair through the
-// behaviors of PushPairAnchored in order: both sides pushed and recorded, a remote that declines
-// once retried to success on both entries, a diverged code side reported while the records side
-// still pushes, and both sides failing reported together.
+// TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide walks one pair through the behaviors of PushPairAnchored in order:
+// both sides pushed and recorded, a remote that declines once retried to success on both entries, a diverged code side reported while the records side still pushes, and both sides failing reported together.
 func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T) {
 	t.Parallel()
 
@@ -333,10 +329,8 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	}
 }
 
-// TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks covers the push lock both entries take: with
-// the lock held by the test, a bounded wait returns ErrPushLockBusy naming neither side and moves no
-// remote, SkipPush and SkipGit return at once, and an unbounded wait returns only once the lock is
-// released and then pushes.
+// TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks covers the push lock both entries take:
+// with the lock held by the test, a bounded wait returns ErrPushLockBusy naming neither side and moves no remote, SkipPush and SkipGit return at once, and an unbounded wait returns only once the lock is released and then pushes.
 func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 	t.Parallel()
 

@@ -579,19 +579,14 @@
 // `RequireDrivableWorktree` is `RequireWarpWorktree` under a name a non-owner may say at all — the
 // invariant's scan matches the bare token inside an identifier, so the published name is itself the
 // leak, and a caller that must refuse fabric's own checkouts before driving topology has no other
-// way in. `PushAnchored` and `PushPairAnchored` are the synchronous,
-// rebase-free counterparts to `CommitAnchoredPaths`: the first pushes the records side only, the
-// second pushes the code side and then the records side, and both run under the weft-side absorbing
-// push lock that `CoalescePushBothAt` also holds. `lockWait` bounds only the wait for that lock:
-// `StatusPushLockWait` is the bound the per-transition status pushes pass, an expiry returns an
-// error wrapping `ErrPushLockBusy` with nothing pushed, and `LockWaitUnbounded` blocks as the
-// detached push child does. A rejected push is retried once, after a fetch, only when the fetched
-// remote tip is already contained in local HEAD, so a stale remote-tracking ref recovers by itself
-// while a real divergence does not; a caller treats the `gitrepo.ErrPushRejected` that remains as a
-// human-decidable condition, and `IsPushRejected(err)` is the side-neutral predicate that reads it
-// without importing `gitrepo`. `MergeStateActive`
-// is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing —
-// distinct from both `Fabric.MergeInProgress` and the two-sided `foreignMergeStatePresent`.
+// way in.
+// `PushAnchored` and `PushPairAnchored` are the synchronous, rebase-free counterparts to `CommitAnchoredPaths`:
+// the first pushes the records side only, the second pushes the code side and then the records side, and both run under the weft-side absorbing push lock that `CoalescePushBothAt` also holds.
+// `lockWait` bounds only the wait for that lock:
+// `StatusPushLockWait` is the bound the per-transition status pushes pass, an expiry returns an error wrapping `ErrPushLockBusy` with nothing pushed, and `LockWaitUnbounded` blocks as the detached push child does.
+// A rejected push is retried once, after a fetch, only when the fetched remote tip is already contained in local HEAD, so a stale remote-tracking ref recovers by itself while a real divergence does not.
+// A caller treats the `gitrepo.ErrPushRejected` that remains as a human-decidable condition, and `IsPushRejected(err)` is the side-neutral predicate that reads it without importing `gitrepo`.
+// `MergeStateActive` is the weft-only, git-level mid-merge probe a path-scoped commit must consult before landing, distinct from both `Fabric.MergeInProgress` and the two-sided `foreignMergeStatePresent`.
 // `PairComplete(l)` is the same shape over `Add`'s own post-condition: a caller that must tell a genuinely finished pair creation from one a SIGKILL interrupted partway through cannot name the weft worktree path or the junction machinery itself to check it by hand.
 // `Remove` itself finishes a half-removed pair, so a teardown re-entered after an interruption calls it again.
 //

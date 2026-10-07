@@ -66,8 +66,8 @@ func newPlainWeftRepo(t *testing.T) string {
 	return dir
 }
 
-// PushLockPathForTest returns the absorbing push lock file under weftPath, creating its directory,
-// so a test can hold the lock a push contends on.
+// PushLockPathForTest returns the absorbing push lock file under weftPath, creating its directory.
+// A test holds that lock to contend with a push.
 func PushLockPathForTest(t *testing.T, weftPath string) string {
 	t.Helper()
 
