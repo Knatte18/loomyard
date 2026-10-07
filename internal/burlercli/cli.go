@@ -124,9 +124,10 @@ func Command() *cobra.Command {
 reviewer reviews the target against a fasit (a source of truth) and writes a
 structured review file (verdict + findings), while a fixer orients in the
 target, waits for the review to be accepted, then validates what the reviewer
-found, fixes it and writes a fixer report. What to review, what to judge it against, and how the round is
-allowed to write its fixes are all supplied as a profile YAML file — burler
-itself carries zero domain logic about the artifact under review.
+found, fixes it and writes a fixer report. What to review, what to judge it
+against, and how the round is allowed to write its fixes are all supplied as a
+profile YAML file — burler itself carries zero domain logic about the artifact
+under review.
 
 Modes:
   burler runs in hub mode inside a lyx hub worktree, and in standalone mode
