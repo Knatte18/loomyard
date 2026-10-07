@@ -117,6 +117,8 @@ func TestCommandFor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			command, fallback := commandFor(tt.graph, tt.changed, tt.guards)
 			if command != tt.wantCommand || fallback != tt.wantFallback {
 				t.Errorf("commandFor() = (%q, %q); want (%q, %q)", command, fallback, tt.wantCommand, tt.wantFallback)

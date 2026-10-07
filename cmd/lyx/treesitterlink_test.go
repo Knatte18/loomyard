@@ -159,6 +159,8 @@ func TestTreeSitterLinkFindings(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := treeSitterLinkFindings(treeSitterLinkedTestPackages(deps), tt.allowed)
 			if strings.Join(got, "\n") != strings.Join(tt.want, "\n") {
 				t.Errorf("treeSitterLinkFindings() = %q; want %q", got, tt.want)

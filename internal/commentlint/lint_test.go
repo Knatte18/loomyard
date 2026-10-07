@@ -77,6 +77,8 @@ func TestFindNewWrappedBreaks(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			if got := flaggedLines(tt.base, tt.new); !slices.Equal(got, tt.want) {
 				t.Errorf("flagged lines = %v; want %v", got, tt.want)
 			}
