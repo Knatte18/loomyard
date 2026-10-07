@@ -64,6 +64,19 @@
 // The section ends with the fit per run and overall: the number of forks, the median peak ratio and its spread, and the number of forks with a growth ratio, their median growth ratio and its spread.
 // A spread is the 75th percentile of the ratios over the 25th, both interpolated linearly between the closest ranks.
 //
+// With -calibrate the report then gains three more sections, read from the same repository through gitrepo's read side: the cost of each batch, one row per run and one summary line per profile.
+// A run's webster records are the commits whose subject is "loom: webster run record for <slug>", and the last one is the newest;
+// its state.json, decoded leniently so an older shape still reads, gives the partition and the batch records.
+// A batch's profile is its recorded partition batch's profile, and a run with no recorded partition counts as "identity", one batch per card, with its cards counted from the run's plan commit.
+// A batch's weight and measured peak come from the run's forks whose transcript file name is among its record's fork transcripts;
+// a batch is failed when its record's terminal status is failed, dead or stuck or its kind is recovery, and a record of kind recovery is one recovery.
+// A run whose records carry more than one run guid was restarted with --fresh, and a run whose state cannot be read or decoded has no partition to name a profile;
+// each keeps a row marked with its reason and enters no profile line.
+// Webster-Review findings are those of the round-<n>-review.md files directly in the webster review directory at the last record, counted through the review parser;
+// no such file, or one that does not parse, marks the run's findings not read.
+// Per-batch figures go to each batch's own profile, so a run whose batches name several profiles contributes to each.
+// A run contributes findings to a profile line only when its batches name one profile, it was not restarted with --fresh and its review files were read, and the line's findings per card is over the cards of those runs alone, with their number stated, or "n/a" when there are none.
+//
 // The weight column is input + 1.25 x cache writes + 0.1 x cache reads + 5 x output: a
 // relative figure for ranking roles, not a price, and blind to the per-model price
 // difference shown in the models column.
@@ -152,15 +165,22 @@ func run(args []string, stdout io.Writer) error {
 	}
 
 	var calibration *Calibration
+	var profiles *ProfileReport
 	if *calibrate != "" {
 		if *configDir == "" {
 			*configDir = wd
 		}
-		c, err := Calibrate(report.Runs, *calibrate, *configDir, gitrepo.New(*weft), gitrepo.New(wd))
+		fabric := gitrepo.New(*weft)
+		c, err := Calibrate(report.Runs, *calibrate, *configDir, fabric, gitrepo.New(wd))
 		if err != nil {
 			return err
 		}
 		calibration = &c
+		p, err := BuildProfileReport(report.Runs, fabric)
+		if err != nil {
+			return err
+		}
+		profiles = &p
 	}
 
 	w := stdout
@@ -178,6 +198,9 @@ func run(args []string, stdout io.Writer) error {
 	}
 	if calibration != nil {
 		calibration.WriteMarkdown(w)
+	}
+	if profiles != nil {
+		profiles.WriteMarkdown(w)
 	}
 	if *out != "" {
 		fmt.Fprintln(stdout, "wrote", *out)

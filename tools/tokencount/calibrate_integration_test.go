@@ -6,14 +6,19 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
+	"path"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // The test changes the working directory, which run reads the base trees from, so it never runs in parallel.
@@ -51,9 +56,27 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The run's webster record holds its state and one round review file.
+	recordState, err := json.Marshal(websterengine.State{
+		RunGUID:   "g",
+		Partition: []websterengine.PartitionBatch{{Cards: []string{"01-c1"}, Profile: "fit"}},
+		Batches:   map[int]*websterengine.BatchState{1: {Kind: "fork", Terminal: true, Status: "done", ForkTranscripts: []string{"subagents/agent-1.jsonl"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	statePath := path.Join(websterengine.DirRel(), "state.json")
+	reviewPath := path.Join(loomengine.LoomReviewsDirRel(), "webster", "round-1-review.md")
+	write(statePath, string(recordState))
+	write(reviewPath, reviewFile(2))
+	gitkit.Git(t, dir, "add", ".")
+	gitkit.Git(t, dir, "commit", "-m", websterRecordSubjectPrefix+"alpha")
+
 	// The fork starts after any commit the fixture makes.
 	started := time.Now().Add(time.Hour)
-	runs := []RunTally{{Slug: "alpha", BaseSHA: baseSHA, Forks: []ForkTally{fork(started, 10, 220, "01-c1")}}}
+	transcript := fork(started, 10, 220, "01-c1")
+	transcript.File = "agent-1.jsonl"
+	runs := []RunTally{{Slug: "alpha", BaseSHA: baseSHA, Forks: []ForkTally{transcript}}}
 
 	got, err := Calibrate(runs, "fit", configDir, repo, repo)
 	if err != nil {
@@ -85,6 +108,25 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 		t.Errorf("git-backed calibration rows = %+v, skips = %+v; want rows %+v and no skips", got.Rows, got.Skips, want.Rows)
 	}
 
+	records, err := repo.CommitsWithSubject(websterRecordSubjectPrefix + "alpha")
+	if err != nil || len(records) != 1 {
+		t.Fatalf("CommitsWithSubject = %v, %v; want the one webster record", records, err)
+	}
+	memHistory.commits[websterRecordSubjectPrefix+"alpha"] = records
+	memHistory.files[records[0].SHA+":"+statePath] = string(recordState)
+	memHistory.files[records[0].SHA+":"+reviewPath] = reviewFile(2)
+	gotProfiles, err := BuildProfileReport(runs, repo)
+	if err != nil {
+		t.Fatalf("BuildProfileReport over git: %v", err)
+	}
+	wantProfiles, err := BuildProfileReport(runs, fakeRecords{memHistory})
+	if err != nil {
+		t.Fatalf("BuildProfileReport in memory: %v", err)
+	}
+	if len(wantProfiles.Profiles) != 1 || wantProfiles.Profiles[0].Findings != 2 || !reflect.DeepEqual(gotProfiles, wantProfiles) {
+		t.Errorf("git-backed profile report = %+v; want the in-memory %+v with one profile line of 2 findings", gotProfiles, wantProfiles)
+	}
+
 	// run drives the same calibration end to end: the one repository flag names the fixture, whose directory is also the code repository.
 	hub, projects := t.TempDir(), t.TempDir()
 	sessions := projectDir(projects, filepath.Join(hub, "alpha"))
@@ -105,7 +147,7 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	if err := run(args, &report); err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	for _, wantLine := range []string{"## Calibration (fit)", "| alpha | 01-c1 | 1 | 110 | 220 | 2.000 | 100 | 210 | 2.100 |"} {
+	for _, wantLine := range []string{"## Calibration (fit)", "| alpha | 01-c1 | 1 | 110 | 220 | 2.000 | 100 | 210 | 2.100 |", "## Profiles", "| fit | 1 | 1 | 1 |"} {
 		if !strings.Contains(report.String(), wantLine) {
 			t.Errorf("report lacks %q:\n%s", wantLine, report.String())
 		}

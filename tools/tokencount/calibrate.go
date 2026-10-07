@@ -23,6 +23,9 @@ import (
 // planCommitSubjectPrefix starts the subject of the commit that records a run's plan artifacts.
 const planCommitSubjectPrefix = "loom: plan artifacts for "
 
+// websterRecordSubjectPrefix starts the subject of the commit that records a run's webster state.
+const websterRecordSubjectPrefix = "loom: webster run record for "
+
 // PlanHistory reads the repository holding the runs' plan commits.
 type PlanHistory interface {
 	CommitsWithSubject(subject string) ([]gitrepo.SubjectCommit, error)
