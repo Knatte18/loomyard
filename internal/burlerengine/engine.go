@@ -1,12 +1,11 @@
-// engine.go implements the round driver: Engine.Run validates a Profile, composes its prompt,
-// drives one shuttle run over the Shuttle seam, and maps the shuttle's outcome (plus, on done, the
-// parsed review file) into a Result.
-// This is the library's one external entry point — a caller invokes it once per round. Today that
-// caller is internal/shedadapters.BurlerProducer, which wraps the call as a Shed row.
+// engine.go implements the round driver: Engine.Run validates a Profile, composes both halves' prompts, starts the reviewer and the fixer over the Shuttle seam, and joins them through the ready marker (handoff.go) into one Result.
+// This is the library's one external entry point — a caller invokes it once per round.
+// Today that caller is internal/shedadapters.BurlerProducer, which wraps the call as a Shed row.
 
 package burlerengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,26 +17,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// Shuttle is the seam Engine drives one round through.
-type Shuttle interface {
-	Run(shuttleengine.Spec) (shuttleengine.Result, error)
-	// RunGated is Run, gated: the run's declared output artifacts are additionally validated by the gate's entries (if any) before the round's report is trusted.
-	// Added beside Run rather than a widening of it, per the "added forms, never widened signatures" decision.
-	RunGated(shuttleengine.Spec, shuttleengine.GateSpec) (shuttleengine.Result, error)
-}
+// The agent-name roles of a round's two halves.
+const (
+	burlerReviewRole = "burler-review"
+	burlerFixRole    = "burler-fix"
+)
 
-var _ Shuttle = (*shuttleengine.Runner)(nil)
-
-// burlerRole is the agent-name role this module's burler spawn carries.
-const burlerRole = "burler"
-
-// burlerSkills are the skills the round session loads, in order.
+// burlerSkills are the skills both halves of the round load, in order.
 var burlerSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}
 
 // Engine drives burler rounds through a Shuttle, resolving Profile paths against geom.WorktreeRoot
 // and Profile.ClusterFan against cfg's lens/fan library.
 type Engine struct {
 	shuttle     Shuttle
+	remover     StrandRemover
 	geom        Geometry
 	cfg         Config
 	stencilsDir string
@@ -47,81 +40,129 @@ type Engine struct {
 // New returns an Engine ready to run rounds against shuttle, resolving relative Profile paths
 // against geom.WorktreeRoot and any Profile.ClusterFan against cfg (the burler.yaml lens/fan
 // library, loaded via LoadConfig).
+// remover is the told seam the engine stops a half with.
 // geom is the told geometry the caller supplies (hubgeom.BurlerGeometry in hub mode).
 // stencilsDir is the absolute stencils directory (see fabricengine.StencilsDir) composePrompt reads
-// burler's four round prompts from at call time via stencilstore.Read.
+// burler's round prompts from at call time via stencilstore.Read.
 // frictionDir is told rather than derived: burlerengine must not import loomengine, and
 // burlerengine.Geometry is internal/hubgeom's/internal/standalonegeom's to construct under the
 // Told-Geometry Invariant, so an explicit constructor parameter is the remaining told seam. An empty
 // value means Tier 2 is off for this engine.
-func New(shuttle Shuttle, geom Geometry, cfg Config, stencilsDir, frictionDir string) *Engine {
-	return &Engine{shuttle: shuttle, geom: geom, cfg: cfg, stencilsDir: stencilsDir, frictionDir: frictionDir}
+func New(shuttle Shuttle, remover StrandRemover, geom Geometry, cfg Config, stencilsDir, frictionDir string) *Engine {
+	return &Engine{shuttle: shuttle, remover: remover, geom: geom, cfg: cfg, stencilsDir: stencilsDir, frictionDir: frictionDir}
 }
 
-// Result is one round's outcome: how the shuttle run classified (Outcome), the parsed verdict and
-// findings (set only when Outcome is shuttleengine.OutcomeDone and the review file parses cleanly),
-// the resolved output paths, and the identities/last-message/run-dir a caller needs to act on a
-// non-done outcome further.
-type Result struct {
-	Outcome              shuttleengine.Outcome
-	Verdict              Verdict
-	Findings             []Finding
-	ReviewPath           string
-	FixerReportPath      string
+// Half is one half of a round: the identities, last message and kept run directory a caller needs to act on a non-done outcome further.
+type Half struct {
 	SessionID            string
 	StrandGUID           string
 	LastAssistantMessage string
-	// RunDir is a 1:1 passthrough of shuttleengine.Result.RunDir: the kept
-	// shuttle run directory a caller surfaces when a round dies or times
-	// out, so it can point an operator (or the caller's own error message) at
-	// the run's SessionID/StrandGUID and artifacts for inspection.
+	// RunDir is the kept shuttle run directory a caller surfaces when the half dies or times out,
+	// so it can point an operator at the run's artifacts for inspection.
 	RunDir string
-	// ForkAudit is a 1:1 passthrough of shuttleengine.Result.ForkAudit, set
-	// only for a cluster round (Profile.ClusterFan != "") whose run reached
+	// StartError is the text of the start error of a half that never started, which names the run dir, the strand and whether the strand was removed.
+	// It is empty for a half that started.
+	StartError string
+}
+
+// Result is one round's outcome.
+// It carries how the deciding half's shuttle run classified (Outcome), the parsed verdict and findings (set only when the reviewer's review was accepted and the fixer finished cleanly), the resolved output paths, and each half's identity.
+type Result struct {
+	Outcome         shuttleengine.Outcome
+	Verdict         Verdict
+	Findings        []Finding
+	ReviewPath      string
+	FixerReportPath string
+	// Review and Fix are the reviewer's and the fixer's halves.
+	Review Half
+	Fix    Half
+	// ForkAudit is a 1:1 passthrough of the reviewer's shuttleengine.Result.ForkAudit, set
+	// only for a cluster round (Profile.ClusterFan != "") whose reviewer reached
 	// shuttleengine.OutcomeDone. nil for a non-cluster round or a
-	// non-done outcome.
+	// non-done reviewer.
 	ForkAudit *shuttleengine.ForkAudit
 	// ClusterWarnings carries the non-fatal audit findings auditClusterRound
 	// returns for a cluster round (e.g. a fork that never returned a
 	// report) — sloppiness no mechanism prevents in advance, surfaced here
 	// rather than failing the round. Empty for a non-cluster round.
 	ClusterWarnings []string
-	// Gate is a 1:1 passthrough of shuttleengine.Result.Gate, exactly as RunDir and ForkAudit
-	// already are. nil means the round ran ungated.
+	// Gate is a 1:1 passthrough of the fixer's shuttleengine.Result.Gate.
+	// nil means the fixer ran ungated.
 	Gate *shuttleengine.GateOutcome
-	// NotStarted is a 1:1 passthrough of shuttleengine.Result.NotStarted: true when the round's provider never came up,
-	// so a producer can tell that from an agent that died mid-run.
+	// NotStarted is true when a half's provider never came up, so a producer can tell that from an agent that died mid-run.
 	NotStarted bool
+}
+
+// halfSpec is one half's shuttle spec and gate.
+type halfSpec struct {
+	spec shuttleengine.Spec
+	gate shuttleengine.GateSpec
+}
+
+// roundHalves builds both halves' specs and gates for p under opts, the prompts being the already-composed orchestrators.
+// The reviewer declares the review file alone and is gated by the review-parse entry alone;
+// the fixer declares the fixer-report alone and is gated by opts.Gate, every entry wrapped by repairReportBeforeGate.
+func (p *Profile) roundHalves(opts RunOpts, reviewPrompt, fixPrompt string) (review, fix halfSpec) {
+	review = halfSpec{
+		spec: shuttleengine.Spec{
+			Prompt:        reviewPrompt,
+			OutputFiles:   []string{p.ReviewPath},
+			Model:         opts.Review.Model,
+			Effort:        opts.Review.Effort,
+			Version:       opts.Review.Version,
+			Timeout:       opts.Timeout,
+			Role:          burlerReviewRole,
+			Skills:        burlerSkills,
+			Round:         opts.Round,
+			ForkSubagents: p.ClusterFan != "",
+		},
+		gate: shuttleengine.GateSpec{ReviewGateEntry(p.ReviewPath)},
+	}
+
+	// A fresh copy, so the caller's slice is never mutated;
+	// off entries are wrapped too, since they never run and the wrap is harmless there.
+	fixGate := make(shuttleengine.GateSpec, 0, len(opts.Gate))
+	for _, entry := range opts.Gate {
+		entry.Gate = repairReportBeforeGate(entry.Gate, p.FixerReportPath)
+		fixGate = append(fixGate, entry)
+	}
+	fix = halfSpec{
+		spec: shuttleengine.Spec{
+			Prompt:      fixPrompt,
+			OutputFiles: []string{p.FixerReportPath},
+			Model:       opts.Fix.Model,
+			Effort:      opts.Fix.Effort,
+			Version:     opts.Fix.Version,
+			Timeout:     opts.Timeout,
+			Role:        burlerFixRole,
+			Skills:      burlerSkills,
+			Round:       opts.Round,
+		},
+		gate: fixGate,
+	}
+	return review, fix
 }
 
 // Run drives one burler round for p, tuned by opts.
 // Sequence: validate p against the engine's worktree root;
 // resolve opts.NoteID against the engine's friction directory and swallow a friction.Directive error
 // as a Warn, exactly as if Tier 2 were off (see composePrompt's frictionDirective parameter);
-// compose its prompt;
-// materialize the three rendered instruction files to a fresh per-round directory under .lyx (via
-// lyxdirs.DotLyxDirName) so the orchestrator prompt can name their absolute paths;
-// build the shuttle Spec (Interactive/Parent/Display/ KeepPane stay zero-valued — rounds are
-// autonomous by default, per the run-tuning-off-profile decision) with Prompt set to the thin
-// orchestrator only;
-// run it through the Shuttle seam via RunGated, wrapping every entry's closure in opts.Gate in repairReportBeforeGate so a failing gate's findings also instruct the agent to rewrite this round's own review and fixer-report files,
-// and appending after them the review-parse entry (ReviewGateEntry), unwrapped, which re-prompts the reviewer in its own session while the review file does not parse;
-// that entry re-prompts at most reviewGateAttempts times and then lets the run through,
-// so a file still invalid after the budget fails at the strict parse below;
-// populate Result (including its 1:1 Gate passthrough) from the shuttle Result;
-// when the run reached done with a non-nil, failing Result.Gate, return immediately with Verdict and
-// Findings left empty — the round's review file was written before the gate ran, so a gate that
-// failed leaves it describing a fix over an artifact state that has since been proven invalid, and a
-// caller parsing it would be trusting a report the gate itself just discredited;
-// for a cluster round (p.ClusterFan != "") that reached done with a passing (or absent) gate, copy
-// the shuttle's ForkAudit onto Result and enforce the cluster audit policy (auditClusterRound)
-// before reading the review file at all;
-// and, only then, read and strictly parse the review file into Verdict/Findings.
+// compose both halves' prompts;
+// materialize the four rendered instruction files to a fresh per-round directory under .lyx (via
+// lyxdirs.DotLyxDirName) so the orchestrator prompts can name their absolute paths;
+// remove any stale ready marker, since no caller carries that duty;
+// start the reviewer, then the fixer, through the Shuttle seam, each as an autonomous run (Interactive/Parent/Display/KeepPane stay zero-valued);
+// and join them (see join).
+//
+// A half that never starts because its provider never came up is that half's OutcomeDied with NotStarted set and a nil error.
+// StartGated returns only the error there, so the half carries its StartError text and no identity.
+// A reviewer that fails to start leaves the fixer never started; a fixer that fails to start stops the already-started reviewer first.
+// Any other start error is a pre-strand failure and is returned wrapped, with the already-started reviewer stopped first.
 //
 // Run returns a nil error for every non-done outcome (died/timeout are normal loop events a
 // caller branches on via Result.Outcome, with an empty Verdict) and reserves errors for hard
-// failures: an invalid profile, a shuttle start/run failure, a cluster audit policy violation, and
-// — deliberately fail-loud — a verdict parse failure on a done run, since a defaulted verdict could
+// failures: an invalid profile, a shuttle start failure, a cluster audit policy violation, a half that cannot be stopped, a fixer that skipped the handoff or changed the review, and
+// — deliberately fail-loud — a verdict parse failure on a done review, since a defaulted verdict could
 // silently terminate a caller's round loop on a malformed round.
 func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 	if err := p.validate(e.geom.WorktreeRoot, e.cfg); err != nil {
@@ -159,129 +200,89 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		return Result{}, fmt.Errorf("burler: materialize instruction files: %w", err)
 	}
 
-	inst1Path := filepath.Join(roundDir, "instruction-1-explore.md")
-	inst2Path := filepath.Join(roundDir, "instruction-2-review.md")
-	inst3Path := filepath.Join(roundDir, "instruction-3-fix.md")
-
-	prompt, files, err := composePrompt(e.stencilsDir, e.geom.ParentName, &p, directive, frictionDirective, inst1Path, inst2Path, inst3Path)
+	prompts, err := composePrompt(e.stencilsDir, e.geom.ParentName, &p, directive, frictionDirective, roundFilePaths{
+		ReviewerExplore: filepath.Join(roundDir, "instruction-1-explore-reviewer.md"),
+		FixerExplore:    filepath.Join(roundDir, "instruction-1-explore-fixer.md"),
+		Review:          filepath.Join(roundDir, "instruction-2-review.md"),
+		Fix:             filepath.Join(roundDir, "instruction-3-fix.md"),
+	})
 	if err != nil {
 		return Result{}, err
 	}
 
-	for _, f := range files {
+	for _, f := range prompts.Files {
 		if err := os.WriteFile(f.Path, []byte(f.Content), 0o644); err != nil {
 			return Result{}, fmt.Errorf("burler: materialize instruction files: %w", err)
 		}
 	}
 
-	spec := shuttleengine.Spec{
-		Prompt:        prompt,
-		OutputFiles:   []string{p.ReviewPath, p.FixerReportPath},
-		Model:         opts.Model,
-		Effort:        opts.Effort,
-		Timeout:       opts.Timeout,
-		Role:          burlerRole,
-		Skills:        burlerSkills,
-		Round:        opts.Round,
-		ForkSubagents: p.ClusterFan != "",
+	if err := os.Remove(p.ReadyMarkerPath); err != nil && !os.IsNotExist(err) {
+		return Result{}, fmt.Errorf("burler: remove the stale ready marker %q: %w", p.ReadyMarkerPath, err)
 	}
 
-	// A fresh copy, so the caller's slice is never mutated;
-	// off entries are wrapped too, since they never run and the wrap is harmless there.
-	// The review-parse entry goes last and unwrapped: its findings already name the review file.
-	gateSpec := make(shuttleengine.GateSpec, 0, len(opts.Gate)+1)
-	for _, entry := range opts.Gate {
-		entry.Gate = repairReportBeforeGate(entry.Gate, p.ReviewPath, p.FixerReportPath)
-		gateSpec = append(gateSpec, entry)
-	}
-	gateSpec = append(gateSpec, ReviewGateEntry(p.ReviewPath))
+	reviewSpec, fixSpec := p.roundHalves(opts, prompts.Reviewer, prompts.Fixer)
 
-	shuttleResult, err := e.shuttle.RunGated(spec, gateSpec)
+	reviewHandle, err := e.shuttle.StartGated(reviewSpec.spec, reviewSpec.gate)
 	if err != nil {
+		if errors.Is(err, shuttleengine.ErrNotStarted) {
+			return notStartedResult(&p, err, nil), nil
+		}
 		return Result{}, fmt.Errorf("burler: shuttle run: %w", err)
 	}
 
-	result := Result{
-		Outcome:              shuttleResult.Outcome,
-		ReviewPath:           p.ReviewPath,
-		FixerReportPath:      p.FixerReportPath,
-		SessionID:            shuttleResult.SessionID,
-		StrandGUID:           shuttleResult.StrandGUID,
-		LastAssistantMessage: shuttleResult.LastAssistantMessage,
-		RunDir:               shuttleResult.RunDir,
-		Gate:                 shuttleResult.Gate,
-		NotStarted:           shuttleResult.NotStarted,
-	}
-
-	if result.Outcome != shuttleengine.OutcomeDone {
-		// died/timeout are normal loop events, not errors — the caller branches on Outcome.
-		// Verdict stays empty: there is no review file to trust yet.
-		return result, nil
-	}
-
-	if result.Gate != nil && !result.Gate.Passed {
-		// A failed gate is not an error and not a synthesised Outcome — the round genuinely
-		// classified OutcomeDone and the gate is a separate fact about it. A burler round writes
-		// both its review file and its fixer report BEFORE its gate runs, so a gate that fails,
-		// re-prompts, and then passes would otherwise leave this function parsing a verdict written
-		// against the pre-repair artifact — a report claiming a fix over a state that has since
-		// changed. Verdict/Findings are left empty and the review file is never read.
-		return result, nil
-	}
-
-	if p.ClusterFan != "" {
-		// Copy the audit onto the Result before checking it, so a caller
-		// inspecting a policy failure below still gets the raw ForkAudit
-		// for diagnosis — the same "populated-so-far Result on a hard
-		// error" shape the verdict-parse failure path below uses.
-		result.ForkAudit = shuttleResult.ForkAudit
-		warnings, err := auditClusterRound(shuttleResult.ForkAudit, len(p.clusterLenses))
-		if err != nil {
-			return result, err
+	fixHandle, err := e.shuttle.StartGated(fixSpec.spec, fixSpec.gate)
+	if err != nil {
+		if stopErr := e.stopHalf(reviewHandle); stopErr != nil {
+			return Result{}, stopErr
 		}
-		result.ClusterWarnings = warnings
+		if errors.Is(err, shuttleengine.ErrNotStarted) {
+			return notStartedResult(&p, err, reviewHandle), nil
+		}
+		return Result{}, fmt.Errorf("burler: shuttle run: %w", err)
 	}
 
-	content, err := os.ReadFile(p.ReviewPath)
-	if err != nil {
-		return result, fmt.Errorf("burler: read review file %q: %w", p.ReviewPath, err)
-	}
-
-	verdict, findings, err := ParseReview(content)
-	if err != nil {
-		return result, fmt.Errorf("burler: round reached done but its review file is invalid: %w", err)
-	}
-
-	result.Verdict = verdict
-	result.Findings = findings
-	return result, nil
+	return e.join(&p, opts, reviewHandle, fixHandle)
 }
 
-// repairReportBeforeGate wraps told, a round's own gate closure, in a per-round closure that
-// additionally instructs the agent to rewrite reviewPath and fixerReportPath when the gate fails.
+// notStartedResult is the round's result when a half's provider never came up: OutcomeDied with NotStarted set.
+// With a non-nil reviewHandle the fixer is the half that never started and the reviewer's started identity is kept; otherwise the reviewer never started.
+func notStartedResult(p *Profile, startErr error, reviewHandle Handle) Result {
+	result := Result{
+		Outcome:         shuttleengine.OutcomeDied,
+		ReviewPath:      p.ReviewPath,
+		FixerReportPath: p.FixerReportPath,
+		NotStarted:      true,
+	}
+	if reviewHandle == nil {
+		result.Review.StartError = startErr.Error()
+		return result
+	}
+	result.Review = Half{StrandGUID: reviewHandle.StrandGUID(), RunDir: reviewHandle.RunDir()}
+	result.Fix.StartError = startErr.Error()
+	return result
+}
+
+// repairReportBeforeGate wraps told, a round's own gate closure, in a per-round closure that additionally instructs the fixer to rewrite fixerReportPath when the gate fails.
 //
-// It exists because a burler round writes both of those files BEFORE its gate runs, so a gate that
-// fails, re-prompts, and then passes would otherwise leave Engine.Run parsing a verdict written
-// against the pre-repair artifact — a report claiming a fix over a state that has since changed,
-// which is exactly what the segment's judge then consumes.
+// It exists because the fixer writes its fixer-report BEFORE its gate runs.
+// A gate that fails, re-prompts, and then passes would otherwise leave the round trusting a report written against the pre-repair artifact.
+// Such a report claims a fix over a state that has since changed, which is exactly what the segment's judge then consumes.
 //
-// It calls told exactly once; on a non-nil error or a passing result it returns that verbatim; on a
-// failing result it appends to GateResult.Findings a blank line and an instruction naming reviewPath
-// and fixerReportPath, requiring both to be rewritten to reflect the repair the agent is about to
-// make. The instruction rides the findings FILE and never the Send line, which must stay a single
-// line — see the "findings always ride a file" decision.
+// It calls told exactly once.
+// On a non-nil error or a passing result it returns that verbatim.
+// On a failing result it appends to GateResult.Findings a blank line and an instruction naming fixerReportPath, requiring it to be rewritten to reflect the repair the agent is about to make.
+// The instruction rides the findings FILE and never the Send line, which must stay a single line — see the "findings always ride a file" decision.
 //
-// It is composed here, in Engine.Run, rather than in the closure the caller built, because only
-// Engine.Run knows the round's own two paths.
-func repairReportBeforeGate(told shuttleengine.Gate, reviewPath, fixerReportPath string) shuttleengine.Gate {
+// It is composed in roundHalves, rather than in the closure the caller built, because only the round's profile knows its own fixer-report path.
+func repairReportBeforeGate(told shuttleengine.Gate, fixerReportPath string) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
 		result, err := told()
 		if err != nil || result.Passed {
 			return result, err
 		}
 		result.Findings += fmt.Sprintf(
-			"\n\nBoth this round's own review file (%s) and its own fixer report (%s) were written before this gate ran. Rewrite both to reflect the repair you are about to make.",
-			reviewPath, fixerReportPath,
+			"\n\nThis round's own fixer report (%s) was written before this gate ran. Rewrite it to reflect the repair you are about to make.",
+			fixerReportPath,
 		)
 		return result, nil
 	}

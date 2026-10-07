@@ -1,9 +1,9 @@
-// Package burlerengine runs one review+fix round over an artifact and
-// returns a verdict. It is named for burling and mending: the
-// cloth-finishing step where a worker inspects woven fabric for defects
-// AND repairs them in one pass. That is exactly what a burler does — A:
-// review (find the defects), then B: fix (repair them) — in a single
-// agent, one shuttle run.
+// Package burlerengine runs one review+fix round over an artifact and returns a verdict.
+// It is named for burling and mending: the cloth-finishing step where a worker inspects woven fabric for defects AND repairs them.
+// A round splits that into two agents started together.
+// A reviewer finds the defects and writes the review.
+// A fixer orients while the review is written, waits for lyx to accept it, then validates the findings and repairs them.
+// Each half is its own shuttle run.
 //
 // A burler runs ONE round and exits. It knows nothing about round loops,
 // caps, convergence, or progress across rounds — that is its caller's job,
@@ -13,7 +13,7 @@
 // caller -> burler -> shuttle, a strict chain: each layer knows only the one
 // below it. This split is deliberate and is why burler is a separate module
 // from its caller rather than folded into it: burler is LLM-heavy (one
-// round is a shuttle run; its tests are a fake-shuttle unit suite plus a
+// round is two shuttle runs; its tests are a fake-shuttle unit suite plus a
 // handful of opt-in real-engine smoke tests), while the loop owner is
 // deterministic Go (the round advance and the Bouncer's judge call; its
 // tests use a fake burler returning scripted verdicts, no LLM at all).
@@ -30,34 +30,41 @@
 //
 // # Skills and the parent directive
 //
-// The round session loads `scribe:prose`, `scribe:code-quality` and `scribe:testing` through its spawn spec's skills (`burlerSkills`).
-// The orchestrator stencil renders the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.BurlerGeometry fills from the worktree's origin record;
+// Both halves load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn specs' skills (`burlerSkills`).
+// Each orchestrator stencil renders the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.BurlerGeometry fills from the worktree's origin record;
 // standalone geometry leaves it empty, which renders the no-parent variant.
-// The three instruction files carry no directive.
+// The instruction files carry no directive.
 //
-// # The A/B round
+// # The two halves
 //
-// A-before-B is a hard gate, not advisory: job A must be complete, with
-// the review fully written to disk, before the round touches a single
-// target file. Fixing findings as they are spotted turns the "review"
-// into a post-hoc rationalization of edits already made, which destroys
-// the independent judgment the whole method depends on — see
-// PATTERN-review-round and the four round-prompt assets (a
-// thin orchestrator, burler-template-round-orchestrator.md, plus three
-// instruction files, burler-step-{1-explore,2-review,3-fix}.md) that state
-// this rule to the agent every round. The prompts ship as embedded defaults
-// in the top-level stencils package and are read from the hub's stencils
-// directory (see fabricengine.StencilsDir) at call time via
-// stencilstore.Read, never from a compiled-in copy — see prompt.go. The
-// orchestrator is the single source of truth for ordering — it names the
-// three instruction files and states the sequencing rule; each
-// instruction file carries exactly one step's rules, read only when the
-// round reaches that step. Engine.Run renders the three instruction files
+// The reviewer's role is burler-review and the fixer's is burler-fix.
+// The strands are therefore <shortname>:<slug>:burler-review and <shortname>:<slug>:burler-fix.
+// The reviewer explores the target, judges it against the fasit and writes the review file;
+// its write surface is the review file alone, in every fix scope, and it never edits, creates or deletes a target file.
+// Its spec declares the review file as its only output file.
+// Its gate is the review-parse entry (ReviewGateEntry) alone.
+// It sets ForkSubagents exactly when the profile names a cluster fan.
+// The fixer explores the target while the review is written.
+// It then runs `lyx burler await-review` on the ready marker until it reports ready, reads the review, validates each finding against the code and the fasit, and fixes it.
+// Its spec declares the fixer-report as its only output file.
+// Its gate is RunOpts.Gate, every entry wrapped by repairReportBeforeGate.
+// The fixer is the round's only friction-note writer.
+// RunOpts.Review and RunOpts.Fix pick each half's model, effort and version.
+//
+// # The handoff
+//
+// Review-before-fix is a hard gate, not advisory: the review is fully on disk, and accepted by Go, before the round touches a single target file.
+// Fixing findings as they are spotted turns the "review" into a post-hoc rationalization of edits already made, which destroys the independent judgment the whole method depends on.
+// See PATTERN-review-round and the round-prompt assets that state this rule to each agent every round.
+// Those assets are the two orchestrators, burler-template-{review,fix}-orchestrator.md, and the instruction files burler-step-{1-explore,2-review,3-fix}.md, the explore step rendered once per half.
+// The prompts ship as embedded defaults in the top-level stencils package.
+// They are read from the hub's stencils directory (see fabricengine.StencilsDir) at call time via stencilstore.Read, never from a compiled-in copy — see prompt.go.
+// Engine.Run renders the instruction files
 // per round and writes them to a fresh directory under .lyx, AnchorPath-anchored so it is a
 // directory sibling of the durable _lyx tree
 // (via lyxdirs.DotLyxDirName, machine-local, never committed —
-// distinct from the committed _lyx), then hands the shuttle only the orchestrator, which
-// names their absolute paths so the agent reads each step's rules when it
+// distinct from the committed _lyx), then hands each half's shuttle run only its orchestrator, which
+// names the files' absolute paths so the agent reads each step's rules when it
 // reaches that step. Run never prunes these per-round directories itself —
 // they accumulate under .lyx/burler across rounds in a long-lived worktree.
 // This is accepted machine-local litter, not a leak: .lyx is never
@@ -66,14 +73,44 @@
 // manual deletion) removes it along with everything else machine-local
 // there.
 //
-// Every recorded finding is fixed in B, all severities including LOW and
-// NIT: severity affects how a finding is reported, never whether it gets
-// fixed. Leaving low-severity findings unfixed "because they're just
-// nits" is a known failure mode — unfixed nits re-surface or silently
-// vanish across rounds instead of ever closing, so round count goes up
-// instead of down. The only legitimate exception is something the round
-// genuinely cannot do alone; even then it must be named explicitly, with
-// its reason, in the fixer-report's deferred section.
+// The edge that releases the fixer is the ready marker, a file whose path the caller tells the engine on Profile.ReadyMarkerPath.
+// The caller derives it with burlermarker.Path (the engine derives no path), and only lyx code writes it.
+// Run removes any stale marker before either half starts.
+// reviewReady writes it only after the current attempt's reviewer reached done, passed the fork audit (cluster rounds) and parsed strictly.
+// An unparseable review after the review gate's budget is the strict-parse error, never a gate-failed outcome.
+// The engine cannot see a fixer that creates the marker itself, edits the target before it, names another existing file to the wait verb, or writes a round file other than its fixer-report.
+// Those rules are prompt-enforced and caught by review alone.
+// What the engine does check is the review file: after the fixer is done it compares the file with the bytes it parsed, and a difference is an error.
+//
+// # How the round ends
+//
+// join waits on both halves and is the one place the round's failure rules live:
+//   - The reviewer ends in anything but done, or its handoff fails: the fixer is stopped and the round returns the reviewer's outcome (died, timeout) with a nil error, or the audit or strict-parse error.
+//   - The fixer dies or times out while the reviewer runs: the reviewer is stopped and the round returns the fixer's outcome.
+//   - The fixer reaches done before the marker was released: the reviewer is stopped and the round returns an error naming the skipped handoff.
+//     Whether the marker was released is the reviewer goroutine's recorded fact, set as the marker write begins, never the order the two results arrive in.
+//   - Otherwise the round completes with the fixer's run.
+//     A failing fixer gate returns the fixer's Gate with Verdict and Findings empty.
+//     A done fixer with a passing or absent gate compares the review file with the parsed bytes before Verdict and Findings are set.
+//
+// A half is stopped through the told StrandRemover (RemoveStrandIfLive on its strand guid).
+// The round returns the failing half's outcome, never the stopped half's consequential died outcome.
+// A failed stop is ErrHalfNotStopped, never retried or archived over, whose message ends with the way forward (run "lyx reed remove <guid>", then re-step the row).
+// join returns only after both waiting goroutines have returned, so no half is left live.
+// The one exception is the half it failed to stop, which it reports without waiting for.
+// A half whose provider never came up is that half's OutcomeDied with NotStarted set and a nil error.
+// StartGated reports only the error there, so the half carries its StartError text and no identity.
+// A reviewer that fails to start leaves the fixer never started, and a fixer that fails to start stops the already-started reviewer first.
+// Any other start error is a pre-strand failure, returned wrapped, with the started reviewer stopped first.
+//
+// Every recorded finding is fixed by the fixer, all severities including LOW and NIT.
+// Severity affects how a finding is reported, never whether it gets fixed.
+// Leaving low-severity findings unfixed "because they're just nits" is a known failure mode:
+// unfixed nits re-surface or silently vanish across rounds instead of ever closing, so round count goes up instead of down.
+// Two exceptions exist.
+// A finding whose premise the fixer shows false against the code or the fasit is disputed with evidence in the fixer-report's Disputed section.
+// Severity, size, cost or disagreement with the rubric never justify a dispute, and a dispute never converges a segment on its own.
+// Something the round genuinely cannot do alone is named explicitly, with its reason, in the deferred section.
 //
 // # Finding class
 //
@@ -98,13 +135,11 @@
 // The trap to design against is reading class as a severity ladder and filing real problems under a low class to dodge the fix-everything default,
 // which is why class decides who decides and when the loop stops, never whether a finding is fixed.
 //
-// A single burler round never grades its own fix. Because A precedes B
-// within a round, A is a legitimate, independent gate exactly like a
-// normal reviewer — but the fix FROM round N is judged by a FRESH
-// burler's A in round N+1, not by the same round that made it. That
-// cross-round independence is the caller's discipline (it spawns a new
-// burler each round); a single Engine.Run call only guarantees A-before-B
-// within its own round.
+// A single burler round never grades its own fix.
+// Because the review precedes the fix within a round, the reviewer is a legitimate, independent gate exactly like a normal reviewer.
+// The fix FROM round N is judged by a FRESH reviewer in round N+1, not by the same round that made it.
+// That cross-round independence is the caller's discipline (it spawns a new burler each round);
+// a single Engine.Run call only guarantees review-before-fix within its own round.
 //
 // # Profile vs RunOpts
 //
@@ -116,21 +151,22 @@
 // real substrate (ToolUse), cluster fan-out (ClusterFan), the caller-named
 // output paths, and optional prior-round hydration paths.
 //
-// RunOpts (Model, Effort, Timeout, Round) is kept deliberately OFF the
+// RunOpts (Review, Fix, Timeout, Round) is kept deliberately OFF the
 // content Profile: run-tuning is a caller-resolved, config-driven
-// selection that varies per invocation — a caller may vary model/effort
+// selection that varies per invocation — a caller may vary each half's model/effort
 // per round of the SAME artifact — while Profile describes what does not
-// change about the round's content. Run maps RunOpts 1:1 onto the
-// shuttle Spec and leaves Interactive/Parent/Display/KeepPane at their
-// zero values: rounds are autonomous by default.
+// change about the round's content.
+// Run maps RunOpts onto each half's shuttle Spec and leaves Interactive/Parent/Display/KeepPane at their zero values:
+// rounds are autonomous by default.
+// Profile.ReadyMarkerPath is told with the round's other paths and required.
 //
 // # FixScope: overlay vs source
 //
-// FixScope selects B's write-surface and git discipline — content-agnostic
+// FixScope selects the fixer's write-surface and git discipline — content-agnostic
 // (a burler improves code, text, or any artifact; the split is never about
 // file type):
 //
-//   - FixScopeSource: the target is the repo's own files. B's write
+//   - FixScopeSource: the target is the repo's own files. The fixer's write
 //     surface is the working tree; it commits each fix individually
 //     once green (message format
 //     "<module-or-target>: fix <finding-id> — <one-line what/why>") and
@@ -138,8 +174,8 @@
 //     findings landed.
 //   - FixScopeOverlay: the target is lyx system/orchestration state (plan,
 //     discussion, review artifacts), reached through
-//     the _lyx junction. B's write surface is EXACTLY Target.Paths plus
-//     the two output files, nothing else, and the round runs NO git
+//     the _lyx junction. The fixer's write surface is EXACTLY Target.Paths plus
+//     the fixer-report, never the review file, and the round runs NO git
 //     commands at all — the Fabric Git Invariant reserves committing that
 //     class of file to the loop owner, never an agent.
 //
@@ -186,8 +222,8 @@
 // nothing last round" meant and re-running the full fan costs tokens, never
 // correctness.
 //
-// A cluster round still runs as ONE shuttle session — the handler — inside
-// job A, in three phases: (1) the handler explores the target in full; (2)
+// A cluster round still runs its review as ONE shuttle session, the handler, in three phases.
+// (1) the handler explores the target in full; (2)
 // the handler spawns all N lens forks in a SINGLE message via Claude Code's
 // built-in fork subagents (Agent tool, subagent_type "fork", always
 // unnamed), and, while they run, performs its own HOLISTIC review —
@@ -197,10 +233,9 @@
 // file: dedup across lenses, an origin: frontmatter key on every kept
 // finding (lens:<name> or handler), a ## Rejected prose section for false
 // positives (judged with equal skepticism, never appearing in the parsed
-// findings), and severity ordering. All three phases are part of job A —
-// A-before-B is intact exactly as in a solo round, since the consolidated
-// review is fully written to disk before the round's fix phase (B) touches
-// a single target file.
+// findings), and severity ordering.
+// All three phases are part of the review, so review-before-fix is intact exactly as in a solo round:
+// the consolidated review is fully written to disk, and accepted, before the fixer touches a single target file.
 //
 // Fork discipline is fixed boilerplate the handler composes into every
 // fork's prompt, never per-lens: read-only evidence gathering only (no
@@ -261,27 +296,22 @@
 //
 // # What a round returns
 //
-// Result is an invariant contract regardless of what was reviewed: a
-// Verdict (VerdictApproved or VerdictBlocking), the parsed Findings
-// (ParseReview enforces unique, non-empty ids fail-loud, so cross-round
-// hydration and audit can cite a finding unambiguously — the caller judges
-// progress across rounds holistically via its own verdict judge, not by
-// tracking finding-key identity), the resolved ReviewPath/FixerReportPath, and the
-// shuttle run's SessionID/StrandGUID/LastAssistantMessage/RunDir. Run returns
-// a nil error for every shuttleengine outcome except a hard failure
-// (invalid profile, shuttle start/run failure, or — deliberately loud — a
-// verdict parse failure on a done run, since a defaulted verdict could
-// silently terminate a caller's round loop on a malformed round).
-// died/timeout are normal loop events a caller branches on via
-// Result.Outcome, with an empty Verdict.
+// Result is an invariant contract regardless of what was reviewed.
+// It carries a Verdict (VerdictApproved or VerdictBlocking) and the parsed Findings.
+// ParseReview enforces unique, non-empty ids fail-loud, so cross-round hydration and audit can cite a finding unambiguously;
+// the caller judges progress across rounds holistically via its own verdict judge, not by tracking finding-key identity.
+// It also carries the resolved ReviewPath/FixerReportPath, and each half's SessionID/StrandGUID/LastAssistantMessage/RunDir (Result.Review and Result.Fix, with StartError set only on a half that never started).
+// Outcome is the deciding half's, the fixer's Gate is passed through, and ForkAudit and ClusterWarnings come from the reviewer.
+// Run returns a nil error for every shuttleengine outcome except a hard failure:
+// an invalid profile, a shuttle start failure, a half that cannot be stopped, a skipped handoff, a changed review,
+// or — deliberately loud — a verdict parse failure on a done review, since a defaulted verdict could silently terminate a caller's round loop on a malformed round.
+// died/timeout are normal loop events a caller branches on via Result.Outcome, with an empty Verdict.
 //
 // # The review-parse gate
 //
-// Every round's gate spec ends with the review entry (ReviewGateEntry), after the caller's own entries.
-// While the round's own review file does not parse,
-// the entry re-prompts the reviewer in its own session with the parse error, its quoting hint and the file to rewrite.
-// It re-prompts at most reviewGateAttempts times and then lets the run through,
-// so a file still invalid after the budget fails at the strict parse after the gate.
+// The reviewer's gate spec is the review entry (ReviewGateEntry) alone, and the caller's own entries gate the fixer.
+// While the round's own review file does not parse, the entry re-prompts the reviewer in its own session with the parse error, its quoting hint and the file to rewrite.
+// It re-prompts at most reviewGateAttempts times and then lets the run through, so a file still invalid after the budget fails at the strict parse in the handoff.
 // The gate (through CheckReviewFile) and that parse both reach ParseReview.
 // `lyx burler validate-review <review-file>` is the gate's self-check verb:
 // it runs CheckReviewFile read-only and needs no hub, mode or git repository.

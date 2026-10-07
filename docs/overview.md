@@ -457,9 +457,10 @@ User-facing modules each get one `lyx <module>` namespace:
   The driver re-steps once on its own after a transient failure or a deployed `lyx`, and a loom-launched driver parks at a hand-back until `lyx loom start` resumes it.
   `internal/shedrun` is the sole declarer of the `shed` run-directory path segment (`_lyx/shed/<run-id>/` durable, `.lyx/shed/<run-id>/` ephemeral), the run-id vocabulary (including the default literal `self`), and the `seed.json` contract — the closed `recipe`/`driver` vocabularies and the sole `ReadSeed`/`WriteSeed`/`List` reader-writer, consumed by `loomcli`, `battencli`, and `shedcli` alike. See [PATTERN-shed-run-directory](../pattern/PATTERN-shed-run-directory.md).
   See the `internal/shedengine`, `internal/shedadapters`, `internal/shedcheck`, `internal/shedrecipe`, `internal/shedbuild`, `internal/shedverbs`, `internal/shedcli`, `internal/shedrun`, and `internal/loomrecipe` package documentation, and [the recipe format](../contracts/specs/shed-recipe-spec.md).
-- **burler** — one review+fix round: A-review → B-fix, one agent, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
-  Profile-driven: `{overlay, source}` fix-scope, tool-use.
-  Cluster review fans job A out into N fork-subagent reviewers by naming a fan (`cluster-fan`) from the seed-only `burler.yaml` lens/fan library — never on by default.
+- **burler** — one review+fix round: two agents, a reviewer then a fixer, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
+  The reviewer writes the review while the fixer orients, and the fixer waits on a Go-written ready marker before it validates and fixes the findings, disputing one only with evidence that its premise is false.
+  Profile-driven: `{overlay, source}` fix-scope, tool-use; `loom.yaml`'s `review` and `fix` keys pick each half's model per round.
+  Cluster review fans the reviewer out into N fork-subagent reviewers by naming a fan (`cluster-fan`) from the seed-only `burler.yaml` lens/fan library — never on by default.
   Strict frontmatter verdict parse;
   debug CLI `lyx burler run`, the read-only review-gate self-check `lyx burler validate-review <review-file>`, and the read-only capped wait `lyx burler await-review <marker-path>` on a round's review-ready marker. ✅ Implemented.
   See the `internal/burlerengine` package documentation.
@@ -533,7 +534,7 @@ internal/reed     the window to the world — overlay + strand bookkeeping +    
                   them, persists to .lyx/reed.json
 internal/shuttle  run ONE LLM agent in a strand via a swappable engine over    [builds on reed]    ✅
                   the file contract; Stop-hook completion
-burler            one review+fix round: A-review (+cluster) → B-fix           [builds on shuttle] ✅
+burler            one review+fix round: reviewer (+cluster) → fixer           [builds on shuttle] ✅
 shed              generic outer phase-FSM: walk one flat producer list,        [stdlib +           ✅
                   honoring resume/crash-recovery/pause at producer granularity  internal/state,lock
                                                                                  only -- skeleton]
@@ -586,10 +587,10 @@ loom wants a plan-reviewer for worktree `feature-x`:
 
 1. `loom` → its Plan-Review segment's `Bouncer` — "review this plan against the discussion until clean."
 2. the segment's `Burler`-round producer → `burler.Run(profile, priorFiles)` — "run one review+fix round."
-3. `burler` → `shuttle.Run(prompt, engine)` — "run one handler agent."
+3. `burler` → starts two shuttle runs, a reviewer and a fixer — "run one reviewer agent and one fixer agent."
 4. `shuttle` → `reed.AddStrand{ cmd:"claude …", worktree:"feature-x", display:{anchor:below-parent, focus:true} }`.
 5. `reed` records the strand in `.lyx/reed.json`, runs the command via `proc` in a pane, re-renders the layout (`layout = rules(strands)`), and applies it.
-6. The `Stop` hook fires → reed notes the edge → shuttle reads the output file → returns to burler → burler writes review/fixer-report + verdict → the segment's `Bouncer` reads it, decides another round or exit → on a `CONVERGED` verdict returns `Done` → loom advances.
+6. The `Stop` hook fires → reed notes the edge → shuttle reads the output file → returns to burler → the reviewer's review is accepted and burler writes the ready marker the waiting fixer is released by → the fixer writes its fixer-report → burler returns the verdict → the segment's `Bouncer` reads it, decides another round or exit → on a `CONVERGED` verdict returns `Done` → loom advances.
 
 ### The disambiguating test
 
@@ -642,7 +643,7 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
   module doc deleted per the documentation lifecycle).
 - `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract (as-built;
   module doc deleted per the documentation lifecycle).
-- `internal/burlerengine` package documentation — one review+fix round: A-review → B-fix, no self-grading (as-built;
+- `internal/burlerengine` package documentation — one review+fix round: reviewer then fixer, no self-grading (as-built;
   module doc deleted per the documentation lifecycle).
 - `internal/treadleengine` package documentation — the generalized round-loop engine (judge, gate, round-spawn, milestone cap ladder, judge-maintained handoff, pause, run-dir lock), with a pluggable `RoundRunner` seam a future consumer (Tenter) can drive (as-built;
   module doc deleted per the documentation lifecycle).

@@ -239,7 +239,7 @@ func newBurlerProducer(t *testing.T, runDir string, runner *shedfake.BurlerRunne
 	for _, opt := range opts {
 		opt(&spec)
 	}
-	p, err := NewBurlerProducer("burler", BurlerDeps{Runner: runner, Attach: spec.attach, Models: spec.models}, spec.profile, spec.opts, runDir, spec.now)
+	p, err := NewBurlerProducer("burler", BurlerDeps{Runner: runner, Attach: spec.attach, Models: spec.models, AnchorPath: filepath.Dir(runDir)}, spec.profile, spec.opts, runDir, spec.now)
 	if err != nil {
 		t.Fatalf("NewBurlerProducer() error = %v; want nil", err)
 	}

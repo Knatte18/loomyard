@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -185,7 +186,7 @@ fixer-report-path: fixer-report.md
 // and lands the told mode/stateDir/stencilsDir parameters under their own keys.
 func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 	t.Run("nil ForkAudit", func(t *testing.T) {
-		env := resultEnvelope(burlerengine.Result{Outcome: shuttleengine.OutcomeDone}, "hub", "", "/hub/stencils")
+		env := resultEnvelope(burlerengine.Result{Outcome: shuttleengine.OutcomeDone}, "/hub/.lyx/review.md.ready", "hub", "", "/hub/stencils")
 		if got := env["forkCount"]; got != 0 {
 			t.Errorf(`resultEnvelope() forkCount = %v; want 0`, got)
 		}
@@ -214,7 +215,18 @@ func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 			},
 			ClusterWarnings: []string{`fork "b" never returned a final report`},
 		}
-		env := resultEnvelope(result, "standalone", "/state/dir", "/state/dir/_lyx/stencils")
+		result.Review = burlerengine.Half{SessionID: "rs", StrandGUID: "rg", LastAssistantMessage: "rm", RunDir: "/kept/r"}
+		result.Fix = burlerengine.Half{StartError: "never came up"}
+		env := resultEnvelope(result, "/state/dir/.lyx/review.md.ready", "standalone", "/state/dir", "/state/dir/_lyx/stencils")
+		if got := env["readyMarkerPath"]; got != "/state/dir/.lyx/review.md.ready" {
+			t.Errorf(`resultEnvelope() readyMarkerPath = %v; want the told marker`, got)
+		}
+		if got := env["review"]; !reflect.DeepEqual(got, map[string]any{"sessionId": "rs", "strandGuid": "rg", "lastAssistantMessage": "rm", "runDir": "/kept/r", "startError": ""}) {
+			t.Errorf(`resultEnvelope() review = %v; want the reviewer's identity`, got)
+		}
+		if got := env["fix"].(map[string]any)["startError"]; got != "never came up" {
+			t.Errorf(`resultEnvelope() fix startError = %v; want "never came up"`, got)
+		}
 		if got := env["forkCount"]; got != 2 {
 			t.Errorf(`resultEnvelope() forkCount = %v; want 2`, got)
 		}

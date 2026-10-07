@@ -8,6 +8,7 @@ package shedadapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/burlermarker"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -65,6 +67,7 @@ type BurlerProducer struct {
 	runner  BurlerRunner
 	attach  Shuttle
 	models  burlerengine.RoundModels
+	anchor  string
 	profile burlerengine.Profile
 	opts    burlerengine.RunOpts
 	runDir  string
@@ -79,15 +82,18 @@ type BurlerDeps struct {
 	Attach Shuttle
 	// Models holds the per-round review and fix model lists; each round runs on the pick for its number.
 	Models burlerengine.RoundModels
+	// AnchorPath is the absolute anchor the round's ready marker is derived under, through burlermarker.Path.
+	AnchorPath string
 }
 
 // NewBurlerProducer returns a BurlerProducer identified as name, driving profile through deps.Runner under opts, with round artifacts under runDir.
 // profile is a template whose ReviewPath, FixerReportPath, FocusDirective, PriorReviews, PriorFixerReports, and ClusterExclude fields are overwritten per round;
-// opts is a template whose Round, Model and Effort fields are overwritten per attempt, the last two from deps.Models.
+// opts is a template whose Round, Review and Fix fields are overwritten per attempt, the last two from deps.Models.
 // A nil now defaults to time.Now, and the injected clock resolves only the archive filename's
 // same-second collision suffix.
+// profile's ReadyMarkerPath is overwritten per round too, from deps.AnchorPath.
 // It returns a distinct error for each of: a nil runner, a nil attach seam, an empty name, an empty
-// runDir, and a runDir that is not absolute per filepath.IsAbs.
+// runDir, a runDir that is not absolute per filepath.IsAbs, and an anchor path that is not absolute.
 // NewBurlerProducer never stats, creates, or otherwise touches runDir -- creating it is Call's job.
 //
 // deps.Attach is the live-round probe, and it is required rather than optional. A round this producer
@@ -95,10 +101,9 @@ type BurlerDeps struct {
 // fixer-report files -- and, on a fix-scope: source row, two sessions holding commit authority over
 // the same branch. Accepting a nil seam would make that outcome reachable again through a wiring
 // slip, silently, which is exactly how it shipped the first time.
-// It is deliberately the same Shuttle seam the Bouncer row already holds rather than a new method on
-// BurlerRunner: burlerengine declares exactly [ReviewPath, FixerReportPath] as its shuttle run's
-// OutputFiles, which is the set shuttleengine.Attach matches on, so the probe is reachable from here
-// with no change to burlerengine at all.
+// It is deliberately the same Shuttle seam the Bouncer row already holds rather than a new method on BurlerRunner.
+// The probe matches a run declaring both round files, which neither half of a two-agent round does,
+// so until it learns the two-strand shape it matches no run and is inert.
 func NewBurlerProducer(name string, deps BurlerDeps, profile burlerengine.Profile, opts burlerengine.RunOpts, runDir string, now func() time.Time) (*BurlerProducer, error) {
 	if deps.Runner == nil {
 		return nil, fmt.Errorf("shedadapters: %s (%s): runner must not be nil", name, burlerEngineLabel)
@@ -115,6 +120,9 @@ func NewBurlerProducer(name string, deps BurlerDeps, profile burlerengine.Profil
 	if !filepath.IsAbs(runDir) {
 		return nil, fmt.Errorf("shedadapters: %s (%s): runDir %q is not absolute", name, burlerEngineLabel, runDir)
 	}
+	if !filepath.IsAbs(deps.AnchorPath) {
+		return nil, fmt.Errorf("shedadapters: %s (%s): anchor path %q is not absolute", name, burlerEngineLabel, deps.AnchorPath)
+	}
 	if now == nil {
 		now = time.Now
 	}
@@ -123,6 +131,7 @@ func NewBurlerProducer(name string, deps BurlerDeps, profile burlerengine.Profil
 		runner:  deps.Runner,
 		attach:  deps.Attach,
 		models:  deps.Models,
+		anchor:  deps.AnchorPath,
 		profile: profile,
 		opts:    opts,
 		runDir:  runDir,
@@ -324,6 +333,10 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 
 	reviewPath := roundReviewPath(p.runDir, round)
 	fixerReportPath := roundFixerReportPath(p.runDir, round)
+	readyMarkerPath, err := burlermarker.Path(p.anchor, p.anchor, reviewPath)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: ready marker path: %w", p.name, burlerEngineLabel, round, err)
+	}
 
 	focus := readRoundFocus(p.name, p.runDir, round)
 	priorReviews, priorFixerReports, err := hydrationPaths(p.runDir, round)
@@ -332,13 +345,14 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 	}
 
 	// A fresh copy of the stored template, built per round:
-	// every round must carry its own ReviewPath, FixerReportPath, FocusDirective, PriorReviews, PriorFixerReports, and ClusterExclude values,
+	// every round must carry its own ReviewPath, FixerReportPath, ReadyMarkerPath, FocusDirective, PriorReviews, PriorFixerReports, and ClusterExclude values,
 	// and a reused copy would leak the previous round's values into the next one.
 	// The stored template itself is never mutated -- every slice field set below is a freshly allocated slice, never an in-place append onto p.profile's own backing array.
 	profile := p.profile
 	profile.ReviewPath = reviewPath
 	profile.FocusDirective = focus.DirectivePath
 	profile.FixerReportPath = fixerReportPath
+	profile.ReadyMarkerPath = readyMarkerPath
 	profile.PriorReviews = append(append([]string{}, p.profile.PriorReviews...), priorReviews...)
 	profile.PriorFixerReports = append(append([]string{}, p.profile.PriorFixerReports...), priorFixerReports...)
 	profile.ClusterExclude = nil
@@ -423,15 +437,21 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 		}
 		attemptOpts := p.opts
 		attemptOpts.Round = attemptToken
-		reviewChoice, _ := p.models.Pick(round)
-		attemptOpts.Model = reviewChoice.Model
-		attemptOpts.Effort = reviewChoice.Effort
+		attemptOpts.Review, attemptOpts.Fix = p.models.Pick(round)
 		// p.runDir's base is the segment's own run_subdir recipe value (webster, plan, discussion),
 		// so this stem distinguishes Plan-Burler round 3 from Webster-Burler round 3 rather than
 		// letting them collide in one friction directory.
 		attemptOpts.NoteID = "burler-" + filepath.Base(p.runDir) + "-r" + strconv.Itoa(round)
 
 		result, runErr := p.runner.Run(profile, attemptOpts)
+		if errors.Is(runErr, burlerengine.ErrHalfNotStopped) {
+			// Returned bare, without archiving or the retry, like the attach error below:
+			// a half that could not be stopped may still be writing the round's files.
+			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
+				return "", shedengine.OutputPointer{}, cerr
+			}
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d attempt %s: run: %w", p.name, burlerEngineLabel, round, attemptToken, runErr)
+		}
 		if runErr != nil {
 			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attempt %s: run: %w", p.name, burlerEngineLabel, round, attemptToken, runErr))
 		}
@@ -464,15 +484,15 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 
 		case shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout:
 			if attempt == 1 {
-				logger.Warn("shedadapters: burler round attempt died or timed out, retrying", "producer", p.name, "engine", burlerEngineLabel, "round", round, "attempt", attemptToken, "outcome", result.Outcome, "sessionID", result.SessionID)
+				logger.Warn("shedadapters: burler round attempt died or timed out, retrying", "producer", p.name, "engine", burlerEngineLabel, "round", round, "attempt", attemptToken, "outcome", result.Outcome, "halves", describeHalves(result))
 				priorResult = result
 				priorToken = attemptToken
 				continue
 			}
 			if result.NotStarted {
-				return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d: two consecutive died/timeout outcomes (attempt %s outcome %s session %s run dir %s; attempt %s outcome %s session %s run dir %s): %w", p.name, burlerEngineLabel, round, priorToken, priorResult.Outcome, priorResult.SessionID, priorResult.RunDir, attemptToken, result.Outcome, result.SessionID, result.RunDir, shuttleengine.ErrNotStarted))
+				return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d: two consecutive died/timeout outcomes (attempt %s outcome %s %s; attempt %s outcome %s %s): %w", p.name, burlerEngineLabel, round, priorToken, priorResult.Outcome, describeHalves(priorResult), attemptToken, result.Outcome, describeHalves(result), shuttleengine.ErrNotStarted))
 			}
-			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d: two consecutive died/timeout outcomes (attempt %s outcome %s session %s run dir %s; attempt %s outcome %s session %s run dir %s)", p.name, burlerEngineLabel, round, priorToken, priorResult.Outcome, priorResult.SessionID, priorResult.RunDir, attemptToken, result.Outcome, result.SessionID, result.RunDir))
+			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d: two consecutive died/timeout outcomes (attempt %s outcome %s %s; attempt %s outcome %s %s)", p.name, burlerEngineLabel, round, priorToken, priorResult.Outcome, describeHalves(priorResult), attemptToken, result.Outcome, describeHalves(result)))
 
 		default:
 			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attempt %s: unrecognized burler outcome %q", p.name, burlerEngineLabel, round, attemptToken, result.Outcome))
@@ -481,6 +501,23 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 
 	// Unreachable: every path through the loop above returns.
 	return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: attempt loop exited without a verdict", p.name, burlerEngineLabel, round)
+}
+
+// describeHalves names both halves of a round for a log line or an error: each half's session and run directory,
+// or the start error of a half that never started.
+func describeHalves(result burlerengine.Result) string {
+	return describeHalf("review", result.Review) + ", " + describeHalf("fix", result.Fix)
+}
+
+// describeHalf names one half by its session and run directory, by its start error when it never came up, or as not started when it carries nothing.
+func describeHalf(label string, half burlerengine.Half) string {
+	switch {
+	case half.StartError != "":
+		return fmt.Sprintf("%s never started (%s)", label, half.StartError)
+	case half == (burlerengine.Half{}):
+		return label + " not started"
+	}
+	return fmt.Sprintf("%s session %s run dir %s", label, half.SessionID, half.RunDir)
 }
 
 // roundBudgetExempt reports whether the Stuck that hands completed round N back to the Bouncer is exempt from the bounce budget:

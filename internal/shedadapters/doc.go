@@ -2,7 +2,7 @@
 // product drive shuttle, Webster, one burlerengine round, and the generic review-gate
 // Bouncer as ordinary producers in its own flat producer list.
 // SingleLLMProducer wraps one shuttleengine run, WebsterProducer wraps one websterengine
-// multi-spawn run, and BurlerProducer wraps one burlerengine A-review/B-fix round as a single Shed
+// multi-spawn run, and BurlerProducer wraps one burlerengine round, a reviewer strand and a fixer strand, as a single Shed
 // row: each of these three is a thin translation layer over an already-shipped engine, never a
 // second implementation of that engine's own loop.
 // Bouncer is the one member of this package for which that is false: it is new logic over
@@ -42,6 +42,9 @@
 //     condition: a round producer has no independent notion of "finished," only the judge does.
 //     That Stuck is BudgetExempt when the previous round carries a recorded continue decision whose cause is budget,
 //     so the one more round a budget continue grants spends no budget; each further round needs its own decision.
+//     A round names two strands, the reviewer's and the fixer's, and each round's ready marker is derived from BurlerDeps.AnchorPath with burlermarker.Path.
+//     Each attempt picks both halves' models from BurlerDeps.Models for the round.
+//     A runner error wrapping burlerengine.ErrHalfNotStopped returns without archiving and without the retry, since a live half may still write the round's files.
 //     Every non-done shuttle outcome that survives the bounded retry -- two
 //     consecutive OutcomeDied/OutcomeTimeout results, or an unrecognized outcome -- is an
 //     engine-level error, not Stuck, because the Bouncer tells its seed call from its judge call by

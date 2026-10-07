@@ -231,11 +231,6 @@ var wordingClaims = []stencilClaims{
 		{must: "`decision`", why: "the review format names the decision class"},
 		{must: "`consistency`", why: "the review format names the consistency class"},
 	}},
-	{"burler-template-round-orchestrator.md", BurlerTemplateRoundOrchestrator, []claim{
-		{must: "Sequencing rule", why: "the orchestrator states the sequencing rule between its two jobs"},
-		{must: "fully written to", why: "the review file is fully written before the fix job starts"},
-		{must: "before you touch", why: "the review is saved before the orchestrator touches a target file"},
-	}},
 	{"burler-template-review-orchestrator.md", BurlerTemplateReviewOrchestrator, []claim{
 		{must: "never edit, create, or delete a target file", why: "the reviewer never touches a target file"},
 		{must: "you never fix a finding", why: "the reviewer records findings and the fixer fixes them"},

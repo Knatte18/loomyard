@@ -60,6 +60,7 @@ func newValidProfileFixture(t *testing.T) (root string, base Profile) {
 		ToolUse:           false,
 		ReviewPath:        "review.md",
 		FixerReportPath:   "fixer-report.md",
+		ReadyMarkerPath:   "review.md.ready",
 		PriorReviews:      []string{"prior-review.md"},
 		PriorFixerReports: []string{"prior-fixer.md"},
 	}
@@ -126,6 +127,9 @@ func TestProfile_Validate(t *testing.T) {
 				}
 				if want := filepath.Join(root, "fixer-report.md"); got.FixerReportPath != want {
 					t.Errorf("FixerReportPath = %q; want %q", got.FixerReportPath, want)
+				}
+				if want := filepath.Join(root, "review.md.ready"); got.ReadyMarkerPath != want {
+					t.Errorf("ReadyMarkerPath = %q; want %q", got.ReadyMarkerPath, want)
 				}
 			},
 		},
@@ -321,6 +325,14 @@ func TestProfile_Validate(t *testing.T) {
 			},
 			wantErr:   true,
 			errSubstr: "profile.FixerReportPath must not be empty",
+		},
+		{
+			name: "readymarkerpath empty",
+			mutate: func(t *testing.T, root string, p *Profile) {
+				p.ReadyMarkerPath = ""
+			},
+			wantErr:   true,
+			errSubstr: "profile.ReadyMarkerPath must not be empty",
 		},
 		{
 			// B1: a same-path pair must be rejected — the shuttle file

@@ -59,6 +59,13 @@ type burlerCLI struct {
 	mode        string
 	stateDir    string
 	stencilsDir string
+
+	// markerRoot and markerBase are the two told directories burlermarker.Path derives a round's ready marker from:
+	// the root the review path must lie inside, and the base whose ephemeral lyx directory holds the marker.
+	// Hub wiring sets both to the anchor; standalone wiring sets the reviewed target and the state directory.
+	// They sit here because burlerengine.Engine keeps its geometry unexported.
+	markerRoot string
+	markerBase string
 }
 
 // resolvePersistentPreRun resolves cwd, calls preflight.ResolveMode(cwd), and delegates the mode
@@ -113,10 +120,11 @@ func Command() *cobra.Command {
 	parent := &cobra.Command{
 		Use:   "burler",
 		Short: "run one review+fix round over an artifact (the burler round worker)",
-		Long: `burler drives one review+fix round over an artifact: an A phase reviews
-the target against a fasit (a source of truth) and writes a structured review
-file (verdict + findings), then a B phase fixes what A found and writes a
-fixer report. What to review, what to judge it against, and how the round is
+		Long: `burler drives one review+fix round over an artifact with two agents: a
+reviewer reviews the target against a fasit (a source of truth) and writes a
+structured review file (verdict + findings), while a fixer orients in the
+target, waits for the review to be accepted, then validates what the reviewer
+found, fixes it and writes a fixer report. What to review, what to judge it against, and how the round is
 allowed to write its fixes are all supplied as a profile YAML file — burler
 itself carries zero domain logic about the artifact under review.
 

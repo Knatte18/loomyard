@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, resolves the row's "gates" Config key through resolveGateSpec into the RunOpts.Gate it builds, joins and creates the run directory this row's segment shares with its Bouncer row, and returns shedadapters.NewBurlerProducer(name, shedadapters.BurlerDeps{Runner: env.Burler, Attach: env.Shuttle, Models: env.ReviewModels}, profile, opts, runDir, env.Now).
+// burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, resolves the row's "gates" Config key through resolveGateSpec into the RunOpts.Gate it builds, joins and creates the run directory this row's segment shares with its Bouncer row, and returns shedadapters.NewBurlerProducer(name, shedadapters.BurlerDeps{Runner: env.Burler, Attach: env.Shuttle, Models: env.ReviewModels, AnchorPath: env.AnchorPath}, profile, opts, runDir, env.Now).
 //
 // All three burler rows (Discussion-Burler, Plan-Burler, Webster-Burler) share this one constructor, which is why the validator is selected by the "gates" key rather than implied by the constructor:
 // the Webster round names the "verify" gate, so a round that changed code ends with a passing plan verify, and the two review rounds name their own validators.
@@ -60,6 +60,10 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 	if err := requireAbsRoot("BurlerRound", "RunRoot", env.RunRoot); err != nil {
 		return nil, err
 	}
+	// The anchor the round's ready marker is derived under.
+	if err := requireAbsRoot("BurlerRound", "AnchorPath", env.AnchorPath); err != nil {
+		return nil, err
+	}
 	if err := requireSeam("BurlerRound", "Burler", env.Burler); err != nil {
 		return nil, err
 	}
@@ -82,7 +86,7 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, fmt.Errorf("shedrecipe: BurlerRound: create run dir %q: %w", runDir, err)
 	}
 
-	producer, err := shedadapters.NewBurlerProducer(name, shedadapters.BurlerDeps{Runner: env.Burler, Attach: env.Shuttle, Models: env.ReviewModels}, profile, opts, runDir, env.Now)
+	producer, err := shedadapters.NewBurlerProducer(name, shedadapters.BurlerDeps{Runner: env.Burler, Attach: env.Shuttle, Models: env.ReviewModels, AnchorPath: env.AnchorPath}, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerRound: %w", err)
 	}
@@ -125,10 +129,9 @@ func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, 
 // Six of these seven key names are a hand-maintained duplicate of internal/burlercli's profileYAML
 // kebab-case shape, kept identical deliberately so a human who has written a burler profile file
 // reads a recipe row without a second vocabulary. review-path, fixer-report-path, prior-reviews,
-// prior-fixer-reports, and cluster-exclude are deliberately absent because
-// shedadapters.NewBurlerProducer's own doc states those five burlerengine.Profile fields and
-// burlerengine.RunOpts.Round are overwritten per round, so a recipe author setting one would be
-// setting a value the producer silently discards.
+// prior-fixer-reports, and cluster-exclude are deliberately absent.
+// shedadapters.NewBurlerProducer's own doc states that those burlerengine.Profile fields, the ready marker path and burlerengine.RunOpts.Round are overwritten per round.
+// A recipe author setting one would therefore set a value the producer silently discards.
 //
 // rubric_stencil is the one key with no profileYAML counterpart: it names a stencilstore rubric
 // stencil, read and filled via shedadapters.ReadRubric, to set Profile.Rubric in place of a literal

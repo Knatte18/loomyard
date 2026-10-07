@@ -50,15 +50,16 @@ func newTestEnv(t *testing.T) Env {
 	}
 
 	return Env{
-		Cwd:                mustMkdir("cwd"),
-		AnchorPath:         mustMkdir("anchor"),
-		WorktreeRoot:       mustMkdir("worktree"),
-		VerifyDir:          mustMkdir("verify"),
-		StatusPath:         filepath.Join(dir, "status.json"),
-		StatusLockPath:     filepath.Join(dir, "status.json.lock"),
-		StencilsDir:        mustMkdir("stencils"),
-		SpecsDir:           mustMkdir("specs"),
-		RunRoot:            mustMkdir("run-root"),
+		Cwd:            mustMkdir("cwd"),
+		AnchorPath:     mustMkdir("anchor"),
+		WorktreeRoot:   mustMkdir("worktree"),
+		VerifyDir:      mustMkdir("verify"),
+		StatusPath:     filepath.Join(dir, "status.json"),
+		StatusLockPath: filepath.Join(dir, "status.json.lock"),
+		StencilsDir:    mustMkdir("stencils"),
+		SpecsDir:       mustMkdir("specs"),
+		// Inside the anchor, as in production: the round's ready marker is derived from a review path under the run root and must lie inside the anchor.
+		RunRoot:            mustMkdir("anchor/run-root"),
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
 		Shuttle:            &shedfake.Shuttle{},

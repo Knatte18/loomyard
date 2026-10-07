@@ -36,6 +36,6 @@ It maps its own criteria onto that fixed four-value severity vocabulary;
 it never introduces a new severity name, and neither do you.
 Each finding also carries one of the four classes — `design`, `scope`, `decision`, `consistency` — and the rubric says what `design` means for this target.
 
-## Tool-use rules — how you gather evidence in job A
+## Tool-use rules — how you gather evidence
 
 {{.tool_use_rules}}

@@ -70,11 +70,6 @@ var LoomTemplateParentReviewDelivery []byte
 //go:embed loom/loom-template-parent-review-brief.md
 var LoomTemplateParentReviewBrief []byte
 
-// BurlerTemplateRoundOrchestrator is burler's shipped-default per-round orchestrator prompt.
-//
-//go:embed burler/burler-template-round-orchestrator.md
-var BurlerTemplateRoundOrchestrator []byte
-
 // BurlerTemplateReviewOrchestrator is burler's shipped-default reviewer orchestrator prompt.
 //
 //go:embed burler/burler-template-review-orchestrator.md
@@ -307,7 +302,6 @@ var entries = []registryEntry{
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
 	{"loom-template-parent-review-delivery", &LoomTemplateParentReviewDelivery},
 	{"loom-template-parent-review-brief", &LoomTemplateParentReviewBrief},
-	{"burler-template-round-orchestrator", &BurlerTemplateRoundOrchestrator},
 	{"burler-template-review-orchestrator", &BurlerTemplateReviewOrchestrator},
 	{"burler-template-fix-orchestrator", &BurlerTemplateFixOrchestrator},
 	{"burler-step-1-explore", &BurlerStep1Explore},
@@ -360,7 +354,6 @@ var roleOpeningStencils = map[string][]string{
 	"rework":            {"loom-template-rework"},
 	"webster-master":    {"webster-template-master"},
 	"webster-recovery":  {"webster-prefix-recovery"},
-	"burler":            {"burler-template-round-orchestrator"},
 	"burler-review":     {"burler-template-review-orchestrator"},
 	"burler-fix":        {"burler-template-fix-orchestrator"},
 	"conflict":          {"landing-template-conflict"},

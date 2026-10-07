@@ -240,12 +240,14 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | Publish: push rejected | the remote rejects the task branch's push, because the remote task branch holds commits the local branch lacks, or the remote task branch's tip could not be read to tell | correctness halt | run `git merge origin/<task-branch>` in the task worktree, then resume the run with `lyx loom start` |
 | Publish: push rejected by a remote rule | the remote rejects the task branch's push while the remote has no task branch or its task branch holds no commit the local branch lacks, because a remote hook or rule refuses it | correctness halt | clear what the remote's rule objects to, then resume the run with `lyx loom start` |
 | merge conflict session: untracked file | the conflict session left an untracked file, which a merge commit never carries | correctness halt | the merge is aborted and the step stops Stuck naming the files; remove them or commit them as their own change on the task branch, then re-step the row |
-| producer re-run: superseded strand not removed | a producer row re-run finds a live strand of an earlier run of the same outputs and reed cannot remove it | transient | run "lyx reed remove <guid>", then re-step the row |
+| producer re-run: superseded strand not removed | a producer row re-run finds a live strand of an earlier run of the same outputs and reed cannot remove it, or a BurlerRound row's half stays live because reed cannot stop it | transient | run "lyx reed remove <guid>", then re-step the row |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
 | raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed, lock or records file fails | transient | re-run the refused verb; nothing is mutated |
 
 ## Out of scope
 
-Landing, batten, orch, fabric, burler and board refusals are not in this table, except the verify-gate, dirty-tree and conflict-session rows above;
+Landing, batten, orch, fabric, burler and board refusals are not in this table, except the verify-gate, dirty-tree, conflict-session and superseded-strand rows above;
 a later audit adds each as its own section.
+Burler's own round errors stay out too, as the strict review parse and the cluster audit already do:
+a skipped handoff, a changed review, and a failed removal or write of the ready marker each name the file concerned in their message and land no row.
 The fast-forward merge-in limit is out of scope too, since its message already names a git recourse.
