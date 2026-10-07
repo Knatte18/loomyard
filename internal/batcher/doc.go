@@ -36,4 +36,17 @@
 // A card's own estimate is the SegmentCost of its one-card segment.
 // The coefficients are a Weights value, read by ProfileWeights from a profile's weights: map in
 // batcher.yaml.
+//
+// The cost-model batchifier (cost.go), built by NewCost from CostParams, splits the card sequence
+// into contiguous batches of the lowest total SegmentCost.
+// Cards share a fork only inside a contiguous segment of the given order, so card order and every
+// forward dependency are kept.
+// A one-card segment is always feasible; a segment of two or more cards is feasible only when no
+// member's own cost exceeds AloneAbove, it holds at most MaxCards cards and its SegmentCost stays
+// within Budget.
+// A card over AloneAbove or Budget therefore runs alone, as under identity, so no card costs more
+// than today, and no threshold value makes the split infeasible.
+// An exact dynamic program over the segments ending at each card finds the minimum, in
+// O(cards x MaxCards) segment evaluations; a tie between splits goes to the one with more batches.
+// Each batch carries the profile name and its SegmentCost as its estimate.
 package batcher

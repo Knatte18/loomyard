@@ -115,26 +115,26 @@ A symbol no card in the plan touches needs no edge — its state never changes d
 
 ## Card types
 
-| Type | Target list holds | Mechanical check | `ImpactSummary` | Batchable? |
-|---|---|---|---|---|
-| Create | new symbol(s)/file(s) | none — check nothing equivalent exists first | not required | No — one judgment unit per card |
-| Edit | existing symbol(s) | impact/blast-radius on the symbol being changed | required | No |
-| Delete | existing symbol(s) OR whole file(s) | assert-no-callers (necessary, not sufficient) | required | Yes — independent targets only |
-| Rename | existing symbol(s), `old -> new` pairs | AST-aware script + grep verify, never text/regex replace | not required | Yes — independent symbols only |
-| Move | existing symbol relocated to a file, OR a whole file relocated | `git mv` + import fixup; destination stated in `Intent`, not the target list | not required | Yes |
-| Prosa | file(s), no symbol target | none | not required | — |
-| Custom | either | none — explicit escape hatch | as applicable | — |
+| Type | Target list holds | Mechanical check | `ImpactSummary` |
+|---|---|---|---|
+| Create | new symbol(s)/file(s) | none — check nothing equivalent exists first | not required |
+| Edit | existing symbol(s) | impact/blast-radius on the symbol being changed | required |
+| Delete | existing symbol(s) OR whole file(s) | assert-no-callers (necessary, not sufficient) | required |
+| Rename | existing symbol(s), `old -> new` pairs | AST-aware script + grep verify, never text/regex replace | not required |
+| Move | existing symbol relocated to a file, OR a whole file relocated | `git mv` + import fixup; destination stated in `Intent`, not the target list | not required |
+| Prosa | file(s), no symbol target | none | not required |
+| Custom | either | none — explicit escape hatch | as applicable |
+
+How cards group into execution batches is not a card property; `internal/batcher`'s package doc describes it.
 
 `ImpactSummary` is required for `Edit` and `Delete` only — a `Create` card has no existing callers to have a blast radius over, which is why this spec resolves the design doc's table in favour of the design doc's own prose rather than its table row, a drafting slip the doc's prose does not carry.
 
-A multi-label card composes this table's four columns as follows, one rule per column:
+A multi-label card composes this table's three rule columns as follows, one rule per column:
 
 - **Target list holds** — per group, no composition: each label's own sub-bullets hold only that label's own kind of target, exactly as the table row states for that label alone.
 - **Mechanical check** — the union across the card's own groups: every group's own mechanical check runs, each against that group's own targets, never against another group's targets.
   `Create`'s "none — check nothing equivalent exists first" cell is a real obligation that joins this union like any other, not a no-op that a multi-label card can skip past.
 - **`ImpactSummary`** — required whenever any of the card's own groups is `Edit` or `Delete`, and stays exactly one per card even when several of its groups require it: it states the blast radius across every `Edit`/`Delete` group's targets together, never a separate summary per group.
-- **Batchable?** — least permissive wins across the card's own groups: a card is batchable only when every one of its groups says `Yes`, and a single `No` group makes the whole card `No`.
-  `Prosa`/`Custom`'s "—" is never a vote in this computation — it neither forces `No` nor grants `Yes`, so a `Prosa`/`Custom` group's presence is transparent to the other groups' own answer.
 
 `Intent` versus `ImpactSummary`: `Intent` is what and why, the card's main content.
 `ImpactSummary` is a separate, hard-capped one-line blast-radius conclusion ("3 callers, all local to the billing package, no cross-module effects") — its own field specifically so it stays terse, since folding it into `Intent` lets it balloon into unbounded reasoning.
