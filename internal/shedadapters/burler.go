@@ -500,12 +500,12 @@ func (p *BurlerProducer) roundBudgetExempt(round int) bool {
 // two paths, and an attach that could not determine whether a run is live is the one situation where
 // archiving is most dangerous -- a live agent may still be mid-write on them.
 //
-// The probe runs through AttachGated with p.opts.Gate plus the round's review-parse entry, never the
-// plain Attach: an attached Discussion or Plan fix round is gated exactly as a freshly-spawned one is,
-// which is what makes "one GateSpec at every hop" true rather than aspirational -- the same RunOpts
-// field is read at the spawn hop (via the runner's own RunOpts.Gate) and at this resume hop, and no
-// second carrier enters NewBurlerProducer. The review-parse entry is appended here because this hop
-// never passes through burlerengine.Engine.Run, which appends it at the spawn hop.
+// The probe runs through AttachGated with p.opts.Gate plus the round's review-parse entry, never the plain Attach:
+// an attached Discussion or Plan fix round is gated exactly as a freshly-spawned one is,
+// which is what makes "one GateSpec at every hop" true rather than aspirational --
+// the same RunOpts field is read at the spawn hop (via the runner's own RunOpts.Gate) and at this resume hop,
+// and no second carrier enters NewBurlerProducer.
+// The review-parse entry is appended here because this hop never passes through burlerengine.Engine.Run, which appends it at the spawn hop.
 func (p *BurlerProducer) probeLiveRound(
 	ctx context.Context,
 	round int,

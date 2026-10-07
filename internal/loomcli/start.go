@@ -363,10 +363,9 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 			return false
 		}
 		if result == awaitRunLockChildDied {
-			// Not a failure: the driver ran to completion and exited before the handshake's
-			// first poll, which is what every fast-halting run does. The bootstrap
-			// still reports success, because the status strand in that session is where the halt is
-			// legible. See dispositionForHandshake for the full argument.
+			// Not a failure: the driver ran to completion and exited before the handshake's first poll, which is what every fast-halting run does.
+			// The bootstrap still reports success, because the status strand in that session is where the halt is legible.
+			// See dispositionForHandshake for the full argument.
 			logger.Info("loom: driver exited before the handshake observed the run lock; its outcome is recorded in the driver log", "pid", childPID, "log", driverLogPath)
 		}
 		if result == awaitRunLockHalted {
@@ -519,10 +518,10 @@ Example:
 
 			// Still part of step 4, not a step of its own: this call reports nothing on the
 			// envelope, so it earns no "// Step N:" marker, and giving it one would leave a reader
-			// wondering why the numbering appears to skip something. Three placement facts matter
-			// here. First, the daemon is per-hub and reconciles a session
-			// that exists on every invocation, where the detached driver still spawns agent
-			// strands that need reconciling.
+			// wondering why the numbering appears to skip something.
+			// Three placement facts matter here.
+			// First, the daemon is per-hub and reconciles a session that exists on every invocation,
+			// where the detached driver still spawns agent strands that need reconciling.
 			// Second, it sits after the strand branch, outside it, so both arms reach it,
 			// and `step` does not spawn the watchdog.
 			// Third, it stays inside the region where the bootstrap lock is still held, deliberately: the

@@ -57,8 +57,8 @@ func mustSpawnDriver(runLockHeld bool, driverStrandLive bool) bool {
 	return !runLockHeld && !driverStrandLive
 }
 
-// startEnvelopeFields builds the success envelope `lyx loom start` prints: the run's driver, slug,
-// resolved run id and status file. It is a pure function so a Tier 1 test can pin the key set.
+// startEnvelopeFields builds the success envelope `lyx loom start` prints: the run's driver, slug, resolved run id and status file.
+// It is a pure function so a Tier 1 test can pin the key set.
 func startEnvelopeFields(driver, slug, runID, statusFile string) map[string]any {
 	return map[string]any{
 		"driver":      driver,
@@ -142,8 +142,7 @@ const (
 // handshake's first poll is a driver that RAN AND FINISHED -- the common case, since a run that
 // halts fast (a blocked Preflight or Loom-Preflight, an exhausted bounce budget) exits within
 // milliseconds, well inside the first poll interval. Refusing there tells the operator the bootstrap
-// broke when in fact their task halted, and withholds the success envelope that is the bootstrap's
-// entire job.
+// broke when in fact their task halted, and withholds the success envelope that is the bootstrap's entire job.
 //
 // awaitRunLockHalted proceeds for exactly the same reason, and covers the case Tier 2 introduced:
 // the driver halted just as fast, but did NOT exit, because after a blocked halt `lyx loom run` runs
