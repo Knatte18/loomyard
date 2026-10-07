@@ -7,10 +7,16 @@
 package lock
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gofrs/flock"
 )
+
+// boundedWaitRetryDelay is the pause between acquisition attempts while a bounded wait polls a held lock.
+const boundedWaitRetryDelay = 10 * time.Millisecond
 
 // FileLock wraps a file-based advisory lock (gofrs/flock) for both exclusive and shared access.
 type FileLock struct {
@@ -36,6 +42,23 @@ func TryAcquireWriteLock(lockPath string) (*FileLock, bool, error) {
 	}
 	if !locked {
 		return nil, false, nil
+	}
+	return &FileLock{fl}, true, nil
+}
+
+// AcquireWriteLockWithin acquires an exclusive lock, waiting at most wait for it.
+// It reports (lock, true, nil) on success, and (nil, false, nil) when the lock is still held once wait runs out (not an error).
+func AcquireWriteLockWithin(lockPath string, wait time.Duration) (*FileLock, bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	defer cancel()
+
+	fl := flock.New(lockPath)
+	_, err := fl.TryLockContext(ctx, boundedWaitRetryDelay)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("acquire write lock within %s: %w", wait, err)
 	}
 	return &FileLock{fl}, true, nil
 }

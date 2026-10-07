@@ -86,7 +86,7 @@ func battenCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatu
 			return err
 		},
 		Push: func() error {
-			_, err := fabricengine.PushAnchored(location, fabricengine.EnvSyncOptions())
+			_, err := fabricengine.PushAnchored(location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait)
 			return err
 		},
 	}
