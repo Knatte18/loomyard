@@ -47,7 +47,7 @@ type Runner struct {
 	// each constructing its own realClock{} inline — the only way a test can control an ATTACHED
 	// run's reconstructed deadline, since Attach returns a Result rather than a *Run for a test to
 	// patch run.clock on afterwards.
-	clock clock
+	clock Clock
 	// notifier receives the notice line of each held turn end of an autonomous run; nil, the default, holds silently.
 	notifier func(line string) error
 }
@@ -57,6 +57,14 @@ type Runner struct {
 // A notify error is logged and never ends the run.
 func (r *Runner) SetNotifier(notify func(line string) error) {
 	r.notifier = notify
+}
+
+// SetClock sets the time source of the runs this Runner starts or attaches, the time seam for a caller that replays a run.
+// The clock's Now sets every deadline and its Sleep paces every poll, so a replaying clock skips real sleeping.
+// A run takes the clock when Start or Attach builds it, so a later call never changes a run in flight;
+// the constructors default to the real clock.
+func (r *Runner) SetClock(c Clock) {
+	r.clock = c
 }
 
 // NewRunner returns a Runner ready to start runs against reed and engine, scoped to anchorPath and
@@ -225,7 +233,7 @@ type Run struct {
 	// deadline is the wall-clock time after which a run is classified OutcomeTimeout.
 	deadline time.Time
 	// clock is the time seam for tests.
-	clock clock
+	clock Clock
 	// lastStartupCapture is the last successful pane capture the startup step (checkLivenessTick,
 	// called from awaitStartup or Wait) took, empty until the first successful CapturePane. On a
 	// not-ready teardown (abandonStartup) it is saved to startupCaptureFileName inside the run

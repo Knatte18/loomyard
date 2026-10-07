@@ -105,7 +105,7 @@ func TestAttach_LegacyAskingAndHeldRuns(t *testing.T) {
 			t.Parallel()
 			status := reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Name: strandName, PaneID: "%1", Live: true}}}
 			timeout := heldTestTimeout
-			var clk clock = newFakeClock(time.Now())
+			var clk Clock = newFakeClock(time.Now())
 			if tt.shellJump > 0 {
 				timeout = time.Hour
 				clk = &jumpClock{fakeClock: newFakeClock(time.Now()), jump: tt.shellJump}

@@ -45,7 +45,7 @@ func (c *fakeClock) Sleep(d time.Duration) {
 	c.mu.Unlock()
 }
 
-var _ clock = (*fakeClock)(nil)
+var _ Clock = (*fakeClock)(nil)
 
 // scriptedClock wraps a fakeClock and runs onSleep once, after the first
 // Sleep call, letting a test mutate on-disk fixtures (e.g. completing a
@@ -64,7 +64,7 @@ func (c *scriptedClock) Sleep(d time.Duration) {
 	}
 }
 
-var _ clock = (*scriptedClock)(nil)
+var _ Clock = (*scriptedClock)(nil)
 
 // TestPollInterval_FloorsNonPositive pins the busy-spin guard: a configured poll_interval_ms of 0
 // or below must fall back to the template default rather than making Wait tick with a zero sleep.
@@ -387,7 +387,7 @@ func (c *multiStepClock) Sleep(d time.Duration) {
 	}
 }
 
-var _ clock = (*multiStepClock)(nil)
+var _ Clock = (*multiStepClock)(nil)
 
 // TestRun_Wait_HeldTurnEnd drives Run.Wait over turn ends that leave the output files missing:
 // each is held and polling continues, so the run ends only through done, died or timeout.
@@ -470,7 +470,7 @@ func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 
 			fx := newFixture(t, &fakeReed{StatusQueue: tt.status}, &fakeEngine{StartupScript: []StartupState{StartupReady}}, withConfig(fastConfig))
 			fc := newFakeClock(time.Now())
-			var clk clock = fc
+			var clk Clock = fc
 			if tt.script != nil {
 				actions := tt.script(agentActions{
 					writeOutput: func() { touchOutputFile(t, outputFile) },
@@ -889,7 +889,7 @@ func TestRun_Wait_EventsHandling(t *testing.T) {
 			engine := &fakeEngine{ParseEventsFailCount: tt.parseFailCount}
 			fx := newFixture(t, &fakeReed{}, engine, withConfig(sparseProbeConfig))
 			fc := newFakeClock(time.Now())
-			var clk clock = fc
+			var clk Clock = fc
 			if tt.completeLineOnFirstSleep {
 				clk = &scriptedClock{fakeClock: fc, onSleep: func() {
 					appendEventsLine(t, eventsPath, "")

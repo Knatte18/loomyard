@@ -91,8 +91,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
-// clock abstracts time for tests.
-type clock interface {
+// Clock is a run's time source: Now reads the time deadlines are measured against and Sleep waits between polls.
+type Clock interface {
 	Now() time.Time
 	Sleep(d time.Duration)
 }

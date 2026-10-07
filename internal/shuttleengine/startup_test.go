@@ -33,7 +33,7 @@ type frozenClock struct {
 func (c *frozenClock) Now() time.Time      { return c.now }
 func (c *frozenClock) Sleep(time.Duration) {}
 
-var _ clock = (*frozenClock)(nil)
+var _ Clock = (*frozenClock)(nil)
 
 // flakyStatusReed embeds *fakeReed and overrides Status to return a scripted error for its first
 // failFirst calls before delegating to the embedded fakeReed.Status — the double the retry-cap tests

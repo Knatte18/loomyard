@@ -160,7 +160,7 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 				timeout = time.Hour
 			}
 			fc := newFakeClock(time.Now())
-			var clk clock = fc
+			var clk Clock = fc
 			var steps *multiStepClock
 			switch {
 			case tt.shellJump > 0:
