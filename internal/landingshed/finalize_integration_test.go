@@ -103,7 +103,8 @@ func configNoticeSeams(t *testing.T, taskBranch, taskCode string, notices *[]str
 }
 
 // newFinalizeAt builds a Finalize that lands the task pair at taskCode into the parent pair at parentCode, over the fake conflict-resolution session shuttle.
-// squash is the landing's squash setting; configChanges and notify fill the two config-notice seams and may be nil.
+// squash is the landing's squash setting;
+// configChanges and notify fill the two config-notice seams and may be nil.
 func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttle *shedfake.MergeShuttle, squash bool, configChanges func() (fabricengine.ConfigChanges, error), notify func(string) error) *landingshed.Finalize {
 	t.Helper()
 	deps := landingshed.NewTestDeps(t)

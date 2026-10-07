@@ -72,9 +72,12 @@ func (e *ErrBranchExists) Error() string {
 // and the pair's first weft commit (the origin record's) also records the root's deletion.
 // An adopted, already-existing weft branch keeps its own run records.
 // A pair is live when its weft branch exists locally, or on origin with no archive/<slug>/* tag covering its tip (tags are consulted only when there is no local branch).
-// A live pair is adopted rather than forked: the weft branch from the local copy, with a behind local copy fast-forwarded to origin's tip, or else from origin as a local tracking branch, and the warp branch from origin when it is there, whatever its relation to HEAD.
-// A weft worktree that already carries the origin record keeps it, so a task moved between machines keeps its recorded parent.
-// Under SkipGit or SkipPush no origin is consulted: the pair is live only by a local weft branch, and the warp branch forks from HEAD.
+// A live pair is adopted rather than forked: the weft branch from the local copy, with a behind local copy fast-forwarded to origin's tip, or else from origin as a local tracking branch,
+// and the warp branch from origin when it is there, whatever its relation to HEAD.
+// A weft worktree that already carries the origin record keeps it,
+// so a task moved between machines keeps its recorded parent.
+// Under SkipGit or SkipPush no origin is consulted: the pair is live only by a local weft branch,
+// and the warp branch forks from HEAD.
 func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res AddResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -160,7 +163,8 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	parentWeftBranch := WeftBranchName(parentBranch)
 
 	// Probe both origins before the first mutation: decide whether the pair is live, and refuse an unreplaceable leftover here rather than at step 11 or 12's push.
-	// The weft answer is carried on: its fastForwardTo advances a behind local weft branch, and an archived leftover is replaced at step 12 just before the push.
+	// The weft answer is carried on: its fastForwardTo advances a behind local weft branch,
+	// and an archived leftover is replaced at step 12 just before the push.
 	weftOld := weftLeftover{live: weftBranchAlreadyExists}
 	var warpAdoptTip string
 	if !opts.SkipPush && !opts.SkipGit {
@@ -210,7 +214,8 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 
 	// A local weft branch behind origin advances to origin's tip.
-	// git refuses a fetch into a branch that is not a fast-forward, so a branch that moved since the pre-flight is never rewound or overwritten.
+	// git refuses a fetch into a branch that is not a fast-forward,
+	// so a branch that moved since the pre-flight is never rewound or overwritten.
 	if weftOld.fastForwardTo != "" {
 		if _, err := gitexec.Run([]string{"fetch", "--no-tags", originRemoteName, "refs/heads/" + weftBranch + ":refs/heads/" + weftBranch}, weftRepoRoot); err != nil {
 			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
@@ -285,7 +290,8 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	// (10c) Record and commit the pair's provenance now that the pair is fully wired, and
 	// before step 11's warp push and step 12's weft push — the weft push that already runs at
 	// step 12 carries this commit to the remote, so no new push call is added here.
-	// An adopted weft worktree that already carries the record keeps it: neither rewritten nor committed, so a task moved between machines keeps its recorded parent.
+	// An adopted weft worktree that already carries the record keeps it: neither rewritten nor committed,
+	// so a task moved between machines keeps its recorded parent.
 	// A forked weft always gets its own record, though it may carry the parent's.
 	if _, statErr := os.Stat(OriginRecordPathFor(l, slug)); !weftAdopted || statErr != nil {
 		if err := WriteOrigin(rec, l, slug, Origin{ParentBranch: parentBranch, ParentWorktree: l.WorktreeName}); err != nil {

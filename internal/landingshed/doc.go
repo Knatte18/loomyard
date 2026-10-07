@@ -29,7 +29,8 @@
 // and a dirty tree or a failure is Stuck with the parent branch untouched.
 // The landing commit carries the change description and exactly one Co-Authored-By trailer, appended from landing.yaml's co_authored_by.
 // Before the catch-up merge-in, Finalize reads the task's changes to its own per-worktree config files and, at Done, queues one notice about them for the hub's orchestrator;
-// it never carries those files to the parent, and a read failure or a failed notice never stops the landing.
+// it never carries those files to the parent,
+// and a read failure or a failed notice never stops the landing.
 // After the parent-side merge and before the push, Finalize marks the board task done; after a
 // successful push it closes the open pull request with a comment naming the landing commit. A parent
 // that already holds the task's work makes Finalize idempotent: it takes the already-landed path

@@ -357,7 +357,8 @@ func (t *Topology) reconcileWarpBinding(rec *Mutations, l *lyxcwd.Location) (War
 }
 
 // restoreWeftLockDir recreates an existing weft worktree's missing .weft lock directory, records the creation in rec and notes it in pr's Detail.
-// It never changes pr.Action; a failure sets pr.Error.
+// It never changes pr.Action;
+// a failure sets pr.Error.
 func restoreWeftLockDir(rec *Mutations, weftPath string, pr *ReconcilePairResult) {
 	lockDir := filepath.Join(weftPath, weftLockDirName)
 	if _, err := os.Stat(lockDir); err == nil || !os.IsNotExist(err) {

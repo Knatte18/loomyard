@@ -128,8 +128,10 @@ func requireAdoptedFromOrigin(t *testing.T, h *hubforge.Hub, slug string) {
 }
 
 // TestRunCLI_AdoptRemoteWeftScenario runs the checkout and reconcile checks over one hub.
-// Steps run serially, each on its own pair; the steps that remove the weft repo's origin come last.
-// The scenario calls t.Parallel as a whole; no step does, because they share the one hub.
+// Steps run serially, each on its own pair;
+// the steps that remove the weft repo's origin come last.
+// The scenario calls t.Parallel as a whole;
+// no step does, because they share the one hub.
 func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 	t.Parallel()
 
@@ -268,7 +270,9 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			}
 		}},
 		{"ReconcileRollsBackBranchWhenAdoptFails", func(t *testing.T) {
-			// A weft branch created from origin is deleted again when its worktree cannot be created, so no local branch outlives the failure; origin keeps its tip.
+			// A weft branch created from origin is deleted again when its worktree cannot be created,
+			// so no local branch outlives the failure;
+			// origin keeps its tip.
 			const slug = "rc-rollback"
 			addRawWarpWorktree(t, h, slug, true)
 			weftBranch := fabricengine.WeftBranchName(slug)
