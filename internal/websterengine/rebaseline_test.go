@@ -587,6 +587,11 @@ func beginThenLeaveHandleDraft(t *testing.T) *beginFixture {
 	return fx
 }
 
+// TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330 pins what #330 still guards once batches run in recorded order.
+// begin-batch's handle canonicalization rewrites a begun card only when that card Uses a handle a later card declares, a backward dependency, so the plan that provokes the rewrite is one the order assertion refuses.
+// The first half asserts begin-batch moves the begun card's recorded hash to the rewritten bytes;
+// the second asserts Rebaseline refuses on the batch order and never as a card-set or hash change of the rewritten card.
+// The accept of a named, edited unbegun card is pinned by the "an edited unbegun card that is named is accepted" row of TestRebaseline_EditedPlan, which holds no backward edge.
 func TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330(t *testing.T) {
 	fx := beginThenLeaveHandleDraft(t)
 	st := fx.Deps.State
