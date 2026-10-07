@@ -496,6 +496,11 @@
 // A rollback never restores the deleted branch: its content is reachable from the archive tag.
 // No remote warp branch is ever deleted, and `SkipPush`/`SkipGit` skip every probe and the replacement.
 //
+// **Weft-branch resolution.**
+// `resolveWeftBranch` (weftbranch.go) is the one place a verb decides where a pair's weft branch comes from: the local branch first, then the branch on origin, adopted as a local branch tracking it, then none, and the caller forks.
+// `Checkout` takes the weft branch that way, whether or not an archive tag covers the origin tip, and rolls an adopted branch back like a forked one, deleting only the local branch.
+// An unreachable origin stops the verb instead of forking, and a weft repo with no `origin` remote forks as before.
+//
 // `Add` also drops the parent's shed run records from a pair it forks (forkrecords.go).
 // A weft branch forked from its parent would otherwise carry every committed run directory, including one for the child's own slug, and the child's `Seed-Child` would refuse a disagreeing seed.
 // The fork is `worktree add --no-checkout`, followed by a write-out of the index without the `shedrun.RunsRootRel()` tree, so no run record ever reaches the new worktree's disk and nothing is deleted (an index-only removal after a full checkout would leave the files `shedrun` reads).

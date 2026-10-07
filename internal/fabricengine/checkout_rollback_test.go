@@ -136,6 +136,85 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	}
 }
 
+// TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin covers the rollback of a checkout whose weft branch existed only on origin:
+// the local branch Checkout created tracking it is deleted, origin's copy is untouched, and both sides return to their original branches.
+// The failure is injected after the adoption, either at junction wiring or at the weft switch itself.
+func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
+	t.Parallel()
+
+	const markerRel = "origin-marker.txt"
+
+	cases := []struct {
+		name   string
+		inject func(t *testing.T, l *lyxcwd.Location)
+	}{
+		{"junction wiring fails", func(t *testing.T, l *lyxcwd.Location) {
+			warpLyx := fabricengine.WarpLyxLinkHere(l)
+			if err := os.Remove(warpLyx); err != nil {
+				t.Fatalf("remove warp junction to corrupt it: %v", err)
+			}
+			if err := os.MkdirAll(warpLyx, 0o755); err != nil {
+				t.Fatalf("create real _lyx dir: %v", err)
+			}
+		}},
+		// An untracked file at the path the origin branch tracks passes the pre-switch tracked-dirty check and makes git refuse the switch.
+		{"weft switch fails", func(t *testing.T, l *lyxcwd.Location) {
+			path := filepath.Join(fabricengine.WeftWorktree(l), markerRel)
+			if err := os.WriteFile(path, []byte("untracked\n"), 0o644); err != nil {
+				t.Fatalf("write untracked file: %v", err)
+			}
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := hubforge.NewHub(t, ".")
+			l := h.Location
+
+			const targetBranch = "checkout-rollback-origin"
+			weftBranch := fabricengine.WeftBranchName(targetBranch)
+
+			slug := filepath.Base(l.WorktreePath())
+			if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+				t.Fatalf("setup WireJunctions: %v", err)
+			}
+			// Only the warp branch exists locally: the weft branch is on origin alone.
+			gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
+			clone := t.TempDir()
+			mustGit(clone, "clone", "--quiet", h.WeftBare, ".")
+			mustGit(clone, "checkout", "--quiet", "-b", weftBranch)
+			gitkit.CommitFile(t, clone, markerRel, "from origin\n", "origin-only weft branch")
+			mustGit(clone, "push", "--quiet", "origin", weftBranch)
+			originTip := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch)
+
+			originalWarpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
+			originalWeftBranch := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l))
+
+			tc.inject(t, l)
+
+			res, err := h.Topology.Checkout(l, targetBranch)
+			if err == nil {
+				t.Fatalf("Checkout(%q) error = nil; want the injected failure (res=%+v)", targetBranch, res)
+			}
+
+			if got := gitkit.CurrentBranch(t, l.WorktreePath()); got != originalWarpBranch {
+				t.Errorf("warp branch after failed Checkout = %q; want %q (original)", got, originalWarpBranch)
+			}
+			if got := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l)); got != originalWeftBranch {
+				t.Errorf("weft branch after failed Checkout = %q; want %q (original)", got, originalWeftBranch)
+			}
+			if gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
+				t.Errorf("local weft branch %q adopted from origin survived the rollback; want it deleted", weftBranch)
+			}
+			if got := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch); got != originTip {
+				t.Errorf("origin %s = %s after the rollback; want %s (unchanged)", weftBranch, got, originTip)
+			}
+		})
+	}
+}
+
 // TestCheckout_WarpSwitchFailureCarriesGitStderr proves a failing warp switch surfaces git's own
 // explanation rather than only an exit code. The everyday cause is a branch already checked out in
 // another worktree, and "git exit 128" alone leaves the operator nothing to act on.

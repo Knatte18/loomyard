@@ -100,26 +100,26 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 
 	// Resolve the weft sibling branch; roll back warp on failure.
 	slug := filepath.Base(l.WorktreePath())
-	weftForked, err := t.switchOrForkWeft(rec, l, branch)
-	if err != nil {
-		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, "")
-		return CheckoutResult{}, err
+	// A branch the call created (forked, or adopted from origin) is deleted on rollback, also when
+	// the weft switch itself failed after the branch was adopted.
+	weftCreated, err := t.switchOrForkWeft(rec, l, branch)
+	createdWeftBranch := ""
+	if weftCreated {
+		createdWeftBranch = WeftBranchName(branch)
 	}
-
-	// Track any forked weft branch for deletion on rollback.
-	forkedWeftBranch := ""
-	if weftForked {
-		forkedWeftBranch = WeftBranchName(branch)
+	if err != nil {
+		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, createdWeftBranch)
+		return CheckoutResult{}, err
 	}
 
 	// Re-point junctions; roll back both sides on failure (weft already switched).
 	names, err := RepoWiredNames(l)
 	if err != nil {
-		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, forkedWeftBranch)
+		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, createdWeftBranch)
 		return CheckoutResult{}, fmt.Errorf("re-point junctions: load fabric config: %w", err)
 	}
 	if err := WireJunctionsWith(rec, l, slug, names); err != nil {
-		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, forkedWeftBranch)
+		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, createdWeftBranch)
 		return CheckoutResult{}, fmt.Errorf("re-point junctions: %w", err)
 	}
 
@@ -134,25 +134,34 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 	}, nil
 }
 
-// switchOrForkWeft switches or forks the weft branch to match the warp target,
-// reporting whether a new branch was created (forked) so rollback can clean it up.
+// switchOrForkWeft switches the weft worktree to the weft branch matching the warp target: the local
+// branch, else the branch on origin adopted as a local tracking branch, else a fork of the current
+// weft branch.
+// It reports whether this call created the local branch (adopted from origin or forked), so rollback
+// can delete it; created stays true alongside an error when the weft switch fails after the branch
+// was adopted from origin.
 // rec is Checkout's own recorder; it records KindWorktreeSwitched at the weft worktree root with the
-// branch switched to as Detail on either branch, and additionally records KindBranchCreated for the
-// forked branch on the fork branch, since `switch -c` creates it.
-func (t *Topology) switchOrForkWeft(rec *Mutations, l *lyxcwd.Location, branch string) (forked bool, err error) {
+// branch switched to as Detail on every path, and additionally records KindBranchCreated for a
+// created branch: from the resolver when adopted from origin, here when forked, since `switch -c`
+// creates it.
+// An unreachable origin is an error and forks nothing.
+func (t *Topology) switchOrForkWeft(rec *Mutations, l *lyxcwd.Location, branch string) (created bool, err error) {
 	weftWorktree := WeftWorktree(l)
 	weftBranch := WeftBranchName(branch)
 
-	if weftBranchExists(l, weftBranch) {
-		// Branch exists: switch to it.
+	exists, fromOrigin, err := resolveWeftBranch(rec, l, weftBranch, true)
+	if err != nil {
+		return false, err
+	}
+	if exists {
 		if _, err := gitexec.Run(
 			[]string{"switch", weftBranch},
 			weftWorktree,
 		); err != nil {
-			return false, fmt.Errorf("weft switch to branch %q failed: %w", weftBranch, err)
+			return fromOrigin, fmt.Errorf("weft switch to branch %q failed: %w", weftBranch, err)
 		}
 		rec.Append(KindWorktreeSwitched, weftWorktree, weftBranch)
-		return false, nil
+		return fromOrigin, nil
 	}
 
 	// Branch does not exist: fork from current weft HEAD to preserve merge-base.
@@ -179,7 +188,8 @@ func (t *Topology) switchOrForkWeft(rec *Mutations, l *lyxcwd.Location, branch s
 }
 
 // rollbackSwitch switches both warp and weft back to their original branches on failure,
-// cleaning up any forked weft branch, with errors silently discarded.
+// cleaning up any weft branch the checkout created (forked, or adopted from origin; only the local
+// branch is deleted), with errors silently discarded.
 // The junction stays consistent without rewiring because the worktree directory path doesn't change.
 //
 // rollbackSwitch is void and discards every error from its two git switch calls, deliberately — that
