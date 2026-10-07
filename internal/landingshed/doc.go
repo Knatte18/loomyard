@@ -13,6 +13,8 @@
 //
 // After the merge-in, the told verify command runs through internal/verifytree before the push, unless its verified-tree record already names the tree and the command.
 // A verify that does not finish within the verify timeout is killed and halts the run Stuck with the log path.
+// While the verify runs, the told Deps.VerifyWaitMark callback marks the run's driver strand on screen as `verify <producer>`, and clears the mark on every way out of the verify.
+// The mark is display only: a failing or absent callback changes no Stuck reason, error or verify outcome.
 // The record is keyed on the tree, so the verify runs after a resolved conflict, after new parent commits and after a crash between a merge and its verify, and a no-op merge onto a verified tree skips it.
 // A failure is Stuck with the merge commit kept for the operator to fix forward,
 // and a missing command logs a warning and proceeds.
