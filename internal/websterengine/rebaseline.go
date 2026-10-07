@@ -93,9 +93,9 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 	}
 
 	if tail := plan.Cards[offset:]; len(tail) > 0 {
-		tailBatches, err := deps.Active.Batch(plan, tail, deps.Sizes)
+		tailBatches, err := batchCards(plan, tail, deps.Active, deps.Sizes)
 		if err != nil {
-			return nil, false, fmt.Errorf("webster: batch the cards of plan %s: %w; way forward: transient, re-run the verb", plan.Dir, err)
+			return nil, false, err
 		}
 		batches = append(batches, tailBatches...)
 	}

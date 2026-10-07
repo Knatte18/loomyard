@@ -35,12 +35,22 @@ func cardID(c planparser.Card) string {
 // asserts the result runs in dependency order.
 // A batchifier failure is refused as transient, naming the plan; an order violation wraps ErrBatchOrder.
 func formBatches(plan *planparser.Plan, active batcher.Batcher, sizes batcher.SizeSource) ([]batcher.Batch, error) {
-	batches, err := active.Batch(plan, plan.Cards, sizes)
+	batches, err := batchCards(plan, plan.Cards, active, sizes)
 	if err != nil {
-		return nil, fmt.Errorf("webster: batch the cards of plan %s: %w; way forward: transient, re-run the verb", plan.Dir, err)
+		return nil, err
 	}
 	if err := CheckBatchOrder(batches); err != nil {
 		return nil, err
+	}
+	return batches, nil
+}
+
+// batchCards batches cards, a contiguous run of plan.Cards, with active.
+// A batchifier failure is refused as transient, naming the plan.
+func batchCards(plan *planparser.Plan, cards []planparser.Card, active batcher.Batcher, sizes batcher.SizeSource) ([]batcher.Batch, error) {
+	batches, err := active.Batch(plan, cards, sizes)
+	if err != nil {
+		return nil, fmt.Errorf("webster: batch the cards of plan %s: %w; way forward: transient, re-run the verb", plan.Dir, err)
 	}
 	return batches, nil
 }
