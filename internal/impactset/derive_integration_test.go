@@ -40,8 +40,10 @@ func derive(t *testing.T, dir, base string) Derivation {
 }
 
 // TestDerive_OverARepository walks one repository through each fallback and a one-package change.
-// The steps share the repository and run in order, each against the commit the step before left.
+// The steps share the repository and run in order, each against the commit the step before left, so the test is parallel as a whole and no step is.
 func TestDerive_OverARepository(t *testing.T) {
+	t.Parallel()
+
 	t.Run("no go.mod falls back", func(t *testing.T) {
 		dir := t.TempDir()
 		gitkit.Git(t, dir, "init", "-q")

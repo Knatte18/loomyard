@@ -34,6 +34,8 @@ const treeSitterLinkMinTestBinaries = 100
 //
 //lyx:guard
 func TestTreeSitterLink_OnlyAllowedTestBinariesLinkIt(t *testing.T) {
+	t.Parallel()
+
 	cmd := exec.Command("go", "list", "-test", "-deps", "-tags", "integration,tmux,llm",
 		"-f", goListImportsFormat, "./...")
 	cmd.Dir = scankit.Root(t)

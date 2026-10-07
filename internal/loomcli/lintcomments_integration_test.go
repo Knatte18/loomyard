@@ -18,8 +18,10 @@ import (
 )
 
 // TestLintCommentsCmd_OverARepository walks one repository through a wrapped new comment, a clean tree and a committed range.
-// The steps share the repository and run in order.
+// The steps share the repository and run in order, so the test is parallel as a whole and no step is.
 func TestLintCommentsCmd_OverARepository(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	gitkit.Git(t, dir, "init", "-q")
 	write := func(name, content string) {

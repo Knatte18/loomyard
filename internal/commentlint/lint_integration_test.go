@@ -42,8 +42,10 @@ func findingKeys(findings []Finding) []string {
 }
 
 // TestLint_OverARepository walks one repository through a pure rename, a committed edit and an uncommitted edit.
-// The steps share the repository and run in order.
+// The steps share the repository and run in order, so the test is parallel as a whole and no step is.
 func TestLint_OverARepository(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	gitkit.Git(t, dir, "init", "-q")
 	writeFile(t, dir, "legacy.go", legacyWrapped)
