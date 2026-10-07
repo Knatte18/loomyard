@@ -278,9 +278,9 @@ func (r *Runner) reconstructAndWait(candidate attachCandidate, normalized Spec, 
 		// StrandGUID, and SessionID.
 		runDir: candidate.runDir,
 		state:  state,
-		// offset starts at the prompt offset, deliberately replaying every event of the run's own turns: seeding at EOF would
-		// mean a terminal Stop that landed while the driver was down is never observed, converting a
-		// completed step into an OutcomeTimeout failure — and a replayed backlog ending in an ask is read as a held turn end.
+		// offset starts at the prompt offset, deliberately replaying every event of the run's own turns:
+		// seeding at EOF would mean a terminal Stop that landed while the driver was down is never observed, converting a completed step into an OutcomeTimeout failure —
+		// and a replayed backlog ending in an ask is read as a held turn end.
 		// The one exception is a candidate that recorded an asking offset (startOffset above): the parent already saw that ask.
 		offset: startOffset,
 		clock:  r.clock,
