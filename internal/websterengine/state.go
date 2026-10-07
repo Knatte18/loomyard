@@ -1,8 +1,4 @@
-// state.go implements the durable run state webster keeps at _lyx/webster/state.json: the run
-// identity, the plan-fingerprint anchor crash/resume compares against, the current-batch cursor,
-// Master's own strand/session identity and last-asserted model, every batch's own persisted record
-// (including its carried-forward digest and per-card SHA trail), and the set of fork transcripts
-// already attributed across every batch.
+// state.go implements the durable run state webster keeps at _lyx/webster/state.json: the run identity, the plan-fingerprint anchor crash/resume compares against, the current-batch cursor, Master's own strand/session identity, every batch's own persisted record (including its carried-forward digest and per-card SHA trail), and the set of fork transcripts already attributed across every batch.
 // LoadState/SaveState are state.json's only readers/writers;
 // every other websterengine file mutates the in-memory *State the caller loaded and calls SaveState
 // to persist it back.
