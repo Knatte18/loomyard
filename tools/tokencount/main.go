@@ -14,8 +14,11 @@
 //
 // Each argument is a task slug, read as the worktree <hub>/<slug>; -hub defaults to the
 // parent of the current directory, which is the hub when run from its prime.
-// With no slugs it counts the -last runs whose sessions changed most recently, leaving out
-// the prime, the current directory.
+// With no slugs it counts the -last finished runs whose sessions changed most recently,
+// leaving out the prime, the current directory.
+// A run is finished once its pair is torn down, which leaves an archive/<slug>/<sha> tag in
+// the prime's weft repository (-weft, default the current worktree's weft sibling); a run still in flight,
+// or parked before Webster, would count as one whose later steps cost nothing.
 // Claude Code keeps a worktree's sessions in ~/.claude/projects/<encoded path>/, one
 // <session>.jsonl per session, and a session's sub-agents (the Webster master's forks)
 // in <session>/subagents/*.jsonl.
@@ -27,6 +30,26 @@
 //
 // One API message can appear on several transcript lines, and a fork repeats its
 // parent's context, so usage is counted once per message id within a run.
+//
+// One fork is one sub-agent transcript of a session whose role is webster;
+// the report's "Webster forks" section lists every such fork of every run, by run as listed and then by start time, with the cards it ran, its counted messages, its peak context (the largest input + cache write + cache read of any counted message) and its weight.
+// A fork's cards are read from its prompt, never from commit times: the prompt is the first tool result in the fork's transcript holding a card pointer line, a "- `<path>/NN-<slug>.md`" bullet with nothing after the closing backtick (a Read result's line-number prefix is ignored), and the cards are every such line of that one result.
+// A fork whose transcript has no such result is listed as unattributed.
+//
+// With -calibrate <profile> the report gains a "Calibration (<profile>)" section: the batcher's peak-context estimate for each card beside the measured peak context of the fork that ran it, for every run counted.
+// -history names the repository holding the runs' plan commits and is required with -calibrate;
+// -config names the directory whose batcher.yaml holds the profile, default the current directory.
+// The code repository is the current directory.
+// A run's plan is read from the newest "loom: plan artifacts for <slug>" commit in the history repository committed before the run's first Webster fork started.
+// Its base tree is the start_sha of the earliest successful begin-batch result in the run's webster session transcripts, the HEAD before the first batch forked, read from the code repository.
+// A card's estimate is batcher.PeakContext of the card alone over the base tree with the profile's weights;
+// its measured peak is the largest PeakContext of any fork whose cards name it, and its ratio is measured over estimate.
+// The card's own text is not in the base tree, so the estimate leaves it out.
+// The section lists the runs and cards it left out, each with its reason:
+//   - a run: "no webster fork"; "no plan commit before the first fork"; "plan at <sha> does not parse: <error>"; "no base: no begin-batch result in its webster sessions"; "base <sha> is not in the repository";
+//   - a card: "no fork names it"; "ran in a multi-card fork", since only a one-card fork measures a one-card cost; "estimate is 0".
+//
+// The section ends with the fit per run and overall: the number of cards, the median ratio and the spread, the 75th percentile of the ratios over the 25th, both interpolated linearly between the closest ranks.
 //
 // The weight column is input + 1.25 x cache writes + 0.1 x cache reads + 5 x output: a
 // relative figure for ranking roles, not a price, and blind to the per-model price
@@ -43,6 +66,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -58,9 +83,16 @@ func run(args []string, stdout io.Writer) error {
 	hub := fs.String("hub", "", "hub directory holding the task worktrees (default: parent of the current directory)")
 	projects := fs.String("projects", "", "Claude Code projects directory (default: ~/.claude/projects)")
 	out := fs.String("out", "", "write the report to this file instead of stdout")
-	last := fs.Int("last", 6, "with no slugs named, count this many of the most recently active runs")
+	last := fs.Int("last", 6, "with no slugs named, count this many of the most recently active finished runs")
+	weft := fs.String("weft", "", "the prime's weft repository holding the archive tags of finished runs (default: the current worktree's weft sibling)")
+	calibrate := fs.String("calibrate", "", "add the calibration section for this batcher.yaml profile")
+	history := fs.String("history", "", "repository holding the runs' plan commits, required with -calibrate")
+	configDir := fs.String("config", "", "directory whose batcher.yaml holds the profile (default: the current directory)")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *calibrate != "" && *history == "" {
+		return fmt.Errorf("-calibrate needs -history, the repository holding the plan commits")
 	}
 	wd, err := lyxcwd.Getwd()
 	if err != nil {
@@ -78,12 +110,23 @@ func run(args []string, stdout io.Writer) error {
 	}
 	slugs := fs.Args()
 	if len(slugs) == 0 {
-		slugs, err = recentRuns(*projects, *hub, filepath.Base(wd), *last)
+		if *weft == "" {
+			loc, err := lyxcwd.Resolve(wd)
+			if err != nil {
+				return err
+			}
+			*weft = fabricengine.WeftWorktree(loc)
+		}
+		finished, err := finishedRuns(*weft)
+		if err != nil {
+			return err
+		}
+		slugs, err = recentRuns(*projects, *hub, filepath.Base(wd), finished, *last)
 		if err != nil {
 			return err
 		}
 		if len(slugs) == 0 {
-			return fmt.Errorf("no task runs of %s under %s", *hub, *projects)
+			return fmt.Errorf("no finished task runs of %s under %s", *hub, *projects)
 		}
 	}
 
@@ -94,6 +137,18 @@ func run(args []string, stdout io.Writer) error {
 			return err
 		}
 		report.Runs = append(report.Runs, r)
+	}
+
+	var calibration *Calibration
+	if *calibrate != "" {
+		if *configDir == "" {
+			*configDir = wd
+		}
+		c, err := Calibrate(report.Runs, *calibrate, *configDir, gitrepo.New(*history), gitrepo.New(wd))
+		if err != nil {
+			return err
+		}
+		calibration = &c
 	}
 
 	w := stdout
@@ -108,6 +163,9 @@ func run(args []string, stdout io.Writer) error {
 	fmt.Fprintf(w, "# Token usage by role\n\nGenerated %s for %s.\n\n", time.Now().Format("2006-01-02 15:04"), strings.Join(slugs, ", "))
 	if err := report.WriteMarkdown(w); err != nil {
 		return err
+	}
+	if calibration != nil {
+		calibration.WriteMarkdown(w)
 	}
 	if *out != "" {
 		fmt.Fprintln(stdout, "wrote", *out)

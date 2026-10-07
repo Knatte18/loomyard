@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -222,6 +223,7 @@ Verbs:
   lyx webster recover-batch 3 --wait 8m      escalate batch 3 to a cold recovery strand
   lyx webster rebaseline --card NN   accept a mid-run edit of the named cards
   lyx webster accept-audit                   accept the pending run-exit audit findings once their paths are checked
+  lyx webster accept-audit --batch 8         accept failed batch 8's pathless fabric references once HEAD is back at its start
   lyx webster restore-plan                   restore every plan file that differs from the plan the run recorded
   lyx webster reset --to start|pre-fix       move the task branch back to the run's start commit or the verify gate's pre-fix head
   lyx webster verify                         run the plan's verify command over the worktree, as the verify gates do
@@ -263,6 +265,11 @@ Example (standalone, outside any lyx hub):
 	c.addVerbs(parent)
 
 	return parent
+}
+
+// executionBatches returns the batches every verb runs for plan and the loaded state, sizing cards from the task worktree.
+func (c *websterCLI) executionBatches(plan *planparser.Plan, st *websterengine.State) ([]batcher.Batch, error) {
+	return websterengine.ExecutionBatches(plan, st, c.batcher, batcher.DiskSizes(c.geom.WorktreeRoot))
 }
 
 // addVerbs registers every webster verb under parent.

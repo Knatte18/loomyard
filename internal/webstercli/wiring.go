@@ -141,7 +141,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	}
 	activeBatcher, err := batcher.Active(anchorPath)
 	if err != nil {
-		return err
+		return batcherLoadError(err)
 	}
 	registry, err := modelspec.LoadRegistry(anchorPath)
 	if err != nil {
@@ -264,7 +264,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	}
 	activeBatcher, err := batcher.Active(res.StateDir)
 	if err != nil {
-		return err
+		return batcherLoadError(err)
 	}
 	registry, err := modelspec.LoadRegistry(res.StateDir)
 	if err != nil {
@@ -319,6 +319,12 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	c.parentBranch = nil
 	c.batcher = activeBatcher
 	return nil
+}
+
+// batcherLoadError wraps a batcher.Active error as a refusal naming batcher.yaml and the way forward.
+// Both wiring prologues return it before any verb's body runs, so a profile that does not load leaves the recorded partition and state untouched.
+func batcherLoadError(cause error) error {
+	return fmt.Errorf("webster: batcher.yaml did not load: %w; way forward: fix batcher.yaml under _lyx/config, then re-run the verb", cause)
 }
 
 // setRunner stores runner and its adapted seams (starter, masterStarter) plus the claude/reed engines onto c, shared by both wireHub and wireStandalone so the adaptation is named once.

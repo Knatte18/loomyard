@@ -716,7 +716,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				_, err = fabricengine.PushAnchored(childLocation, fabricengine.EnvSyncOptions())
+				_, err = fabricengine.PushAnchored(childLocation, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait)
 				return err
 			},
 		},
