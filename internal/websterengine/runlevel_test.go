@@ -408,7 +408,9 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 		wayForward     []string
 		// reachesStarter marks a refusal raised by the Starter itself.
 		reachesStarter bool
-		check          func(t *testing.T, fx *runFixture, err error)
+		// fresh runs with --fresh.
+		fresh bool
+		check func(t *testing.T, fx *runFixture, err error)
 	}{
 		{
 			name:  "another run holds run.lock",
@@ -471,6 +473,30 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			errIs:      websterengine.ErrBatchOrder,
 			wayForward: []string{"lyx webster rebaseline --card NN", "lyx webster run --fresh"},
 			check:      requireNoRecordedState,
+		},
+		{
+			name:  "a --fresh re-init whose batches run a dependency backward archives nothing",
+			cards: 2,
+			fresh: true,
+			setup: func(t *testing.T, fx *runFixture) func() {
+				st := &websterengine.State{PlanFingerprint: "stale-fingerprint", Batches: map[int]*websterengine.BatchState{}}
+				if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
+					t.Fatalf("seed stale state: %v", err)
+				}
+				addCardUses(t, fx.PlanDir, 1, "internal/batch2/new.go")
+				return nil
+			},
+			errIs:      websterengine.ErrBatchOrder,
+			wayForward: []string{"lyx webster rebaseline --card NN", "lyx webster run --fresh"},
+			check: func(t *testing.T, fx *runFixture, err error) {
+				st := loadRunState(t, fx)
+				if st.PlanFingerprint != "stale-fingerprint" {
+					t.Errorf("state PlanFingerprint = %q; want the stale state left in place by the refused --fresh", st.PlanFingerprint)
+				}
+				if archived, globErr := filepath.Glob(filepath.Join(fx.Deps.Geom.WebsterDir, "state-*.json")); globErr != nil || len(archived) != 0 {
+					t.Errorf("archived state glob = %v, %v; want none before the order refusal", archived, globErr)
+				}
+			},
 		},
 		{
 			name:  "a blocking glyph finding",
@@ -640,7 +666,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				takeWayForward = tc.setup(t, fx)
 			}
 
-			_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+			_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: tc.fresh})
 			if err == nil {
 				t.Fatal("Run() error = nil; want a refusal")
 			}
@@ -838,6 +864,9 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 					}
 					if strings.Contains(string(liveData), `"stale"`) {
 						t.Errorf("live state.json still carries the stale fingerprint; want it reinitialized fresh")
+					}
+					if got := loadRunState(t, fx).Partition; len(got) != 1 || !slices.Equal(got[0].Cards, []string{"01-batch1"}) || got[0].Profile != "identity" {
+						t.Errorf("reinitialized State.Partition = %+v; want the active batchifier's partition recorded by the --fresh init", got)
 					}
 
 					if _, statErr := os.Stat(reportPath); !os.IsNotExist(statErr) {
