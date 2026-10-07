@@ -439,7 +439,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 
 // TestWire_DiscussionSpecEvaluatesToExpectedShape evaluates c.env.DiscussionSpec() for both
 // discussion_interactive values and asserts on the returned shuttleengine.Spec's shape. Interactive
-// and AwaitOperator must both be false when discussion_interactive is false, and both true when
+// must be false when discussion_interactive is false, and true when
 // discussion_interactive is true; every other assertion (Role, Timeout, Model, OutputFiles, Prompt)
 // must hold in both cases.
 func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
@@ -449,10 +449,9 @@ func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
 		name                  string
 		discussionInteractive bool
 		wantInteractive       bool
-		wantAwaitOperator     bool
 	}{
-		{"Autonomous", false, false, false},
-		{"Interactive", true, true, true},
+		{"Autonomous", false, false},
+		{"Interactive", true, true},
 	}
 
 	for _, tt := range tests {
@@ -474,9 +473,6 @@ func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
 
 			if spec.Interactive != tt.wantInteractive {
 				t.Errorf("spec.Interactive = %v; want %v", spec.Interactive, tt.wantInteractive)
-			}
-			if spec.AwaitOperator != tt.wantAwaitOperator {
-				t.Errorf("spec.AwaitOperator = %v; want %v", spec.AwaitOperator, tt.wantAwaitOperator)
 			}
 			if spec.Role != "discussion" {
 				t.Errorf("spec.Role = %q; want %q", spec.Role, "discussion")

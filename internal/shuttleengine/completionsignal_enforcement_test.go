@@ -55,8 +55,8 @@ var completionSignalScannedFiles = []string{"wait.go", "attach.go"}
 // it is the third disposition of the same three-way choice verdictRespawnEligible belongs to, and a
 // new one of those is exactly as worth a human look.
 //
-// OutcomeDone and OutcomeAsking are deliberately absent: they are the positive and the
-// still-in-progress answers, and neither abandons a run.
+// OutcomeDone and OutcomeAsking are deliberately absent: OutcomeDone is the positive answer, and
+// OutcomeAsking is a legacy value no wait path returns; neither abandons a run.
 var negativeVerdictMarkers = map[string]bool{
 	"OutcomeDied":                 true,
 	"OutcomeTimeout":              true,
@@ -170,7 +170,7 @@ var auditedNegativeVerdictReturns = map[string]int{
 // two call sites — its retry-cap guard and its tick-cap answer — carried over unchanged by the
 // shuttle-blocking-start batch when the startup step moved from its own method into Start's own
 // blocking call),
-// plus expiredTurnEnd, whose OutcomeAsking answer for a waited-out background shell consults the files first.
+// plus expiredTurnEnd, whose held turn end for a waited-out background shell consults the files first.
 var auditedFileContractCallSites = map[string]int{
 	"awaitStartup":                    2,
 	"checkLivenessTick":               2,

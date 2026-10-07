@@ -1,5 +1,5 @@
 // wait.go implements Run.Wait: the poll loop that reads a run's events.jsonl, classifies its
-// terminal outcome (done/asking/died/timeout), probes the startup window for a trust-dialog
+// terminal outcome (done/died/timeout), probes the startup window for a trust-dialog
 // dismissal or a fast-failing dead pane, and runs the done-outcome cleanup (strand removal + run
 // dir deletion).
 // It also hosts awaitStartup, the startup probe run.go's own start method calls before issuing a run
@@ -13,18 +13,17 @@
 // alive; the two ways reed's own bookkeeping can go away instead — a strand it no longer tracks
 // (errStrandNotTracked) and a strand whose pane binding it cleared (errStrandPaneBindingCleared) —
 // are mechanism failures, not classifications.
-// When the run's Spec.AwaitOperator is true, an OutcomeAsking classification is non-terminal: Wait
-// logs the observation and keeps polling instead of returning, so an interactive interview survives
-// its first question batch. Every other exit (OutcomeDone, OutcomeDied, a liveness mechanism
-// failure, OutcomeTimeout) is unaffected.
+// A turn end without every output file never ends the run: Wait logs the hold and keeps polling the same agent,
+// so every other exit (OutcomeDone, OutcomeDied, a liveness mechanism failure, OutcomeTimeout) is the only way out.
 // That observation is logged at Info, so it reaches internal/logger's DURABLE trace sink
 // (.lyx/logs/trace-<stamp>-<trace>-<pid>.log, unconditionally enabled at Info) and not the detached
 // driver's own log, which captures stderr and therefore only Warn and above. An operator asking "is
-// this interview waiting for me, or is it wedged?" reads the trace sink -- stated here because the
-// design that introduced AwaitOperator asserted the driver log records each ask, and it does not.
+// this interview waiting for me, or is it wedged?" reads the trace sink.
+// A hold never extends run.deadline: a held run is bounded by its caller's own Spec.Timeout (run_timeout_min only where that is zero),
+// and by the liveness check, which still classifies a dead pane.
 //
 // The events-tick Done branch splits in two, on whether run.gate is empty:
-// an ungated run's Done (and every OutcomeAsking not deferred to AwaitOperator) finalizes exactly as before the gate existed, unaware the gate exists at all.
+// an ungated run's Done finalizes exactly as before the gate existed, unaware the gate exists at all.
 // A gated Done instead evaluates the gate's entries through run.evaluateGate() and, when an entry failed with its own budget remaining, sends a one-line re-prompt naming the findings file and keeps polling rather than finalizing -- the bounded re-prompt loop the "one GateSpec at every hop" and "attempts counts re-prompts actually sent" plan decisions describe.
 // A gated Done is also the writer's turn boundary, and a PassOnCap entry may answer pending there:
 // the loop sends the entry's carried text (only at a boundary), keeps polling, and re-evaluates on every poll tick with no new arrival while the writer is idle, so a verdict recorded meanwhile is read without a new arrival.
@@ -171,9 +170,8 @@ var ErrNotStarted = errors.New("shuttle: the provider never became ready")
 
 // Wait blocks until run reaches a terminal outcome.
 // Error is reserved for mechanism failures that leave no classifiable outcome.
-// When run.spec.AwaitOperator is true, an OutcomeAsking classification does not count as terminal —
-// Wait logs the ask and keeps polling, so it terminates only on OutcomeDone, OutcomeDied, a liveness
-// mechanism failure, or OutcomeTimeout.
+// A turn end without every output file is held, never terminal: Wait logs the hold and keeps polling,
+// so it terminates only on OutcomeDone, OutcomeDied, a liveness mechanism failure, or OutcomeTimeout.
 //
 // An error result still carries the run's IDENTITY — SessionID, StrandGUID, and RunDir — with an
 // empty Outcome, because a mechanism failure is precisely when a caller needs them: no cleanup ran,
@@ -231,7 +229,7 @@ func (run *Run) Wait() (Result, error) {
 	statusFailures := 0
 
 	for tick := 1; ; tick++ {
-		outcome, message, err := run.pollEventsTick()
+		outcome, held, err := run.pollEventsTick()
 		if err != nil {
 			eventsFailures++
 			if eventsFailures >= maxEventsReadRetries {
@@ -244,18 +242,17 @@ func (run *Run) Wait() (Result, error) {
 			}
 		} else {
 			eventsFailures = 0
-			if outcome == OutcomeAsking && run.spec.AwaitOperator {
-				// AwaitOperator makes an ask non-terminal: log the observation so the driver log
-				// records each one, and keep polling instead of finalizing here. OutcomeDone still
-				// falls through to finalize below, unaffected by this branch.
-				logger.Info("shuttle: awaiting operator, ask observed", "strandGUID", run.state.StrandGUID, "lastAssistantMessage", message)
+			if held != nil {
+				// A turn end without every output file never ends the run: log it so the durable trace
+				// records each one, and keep polling the same agent.
+				logger.Info("shuttle: turn end held, output files missing", "strandGUID", run.state.StrandGUID, "offset", held.offset, "outstanding", len(held.tasks), "lastAssistantMessage", held.message)
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
 				// Not a gated Done: finalize exactly as this branch always has.
-				return run.finalize(outcome, message)
+				return run.finalize(outcome, "")
 			} else if outcome == OutcomeDone {
-				// A gated Done is the writer's turn boundary: remember the message a later pass finalizes with and let the shared helper judge it.
+				// A gated Done is the writer's turn boundary: let the shared helper judge it.
 				run.gateAtBoundary = true
-				run.gateLastDone = message
+				run.gateLastDone = ""
 				if result, finished, ferr := run.handleGatedBoundary(); finished {
 					return result, ferr
 				}
@@ -553,25 +550,17 @@ func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
 // re-classifies them on the next tick, rather than silently discarding a
 // batch that may contain the run's only qualifying event (the Engine seam
 // permits an erroring parser; the retry counter Wait maintains implies this
-// re-read guarantee). It classifies OutcomeDone/OutcomeAsking from the LAST
-// Event among the newly parsed ones (a batch containing more than one
+// re-read guarantee). It classifies the batch by its LAST event (a batch containing more than one
 // event — e.g. an interrupted turn immediately followed by a resumed one —
 // is classified by its most recent one, and every consumed byte still
 // counts once parsing succeeds, so none of the earlier events in the same
-// batch is ever reprocessed). The done/asking branch below is the SAME
-// two-way check regardless of the last event's Kind: an EventStop with no
-// output files and an EventAsk with no output files both classify
-// OutcomeAsking identically — Kind only selects Message's source, inside
-// ParseEvents, not this branch (a Kind switch here would be dead code,
-// since both non-done kinds behave the same way). This is what makes a live,
-// in-progress tool-call signal the engine surfaces (see claudeengine's
-// ParseEvents for the concrete provider mapping) classify as a real-time
-// asking the instant the tool call opens, exactly like today's turn-end
-// asking case. The one Kind this function does read is EventWaiting: when
-// every output file exists the run is done whatever the last event was, and
-// otherwise a batch ending in EventWaiting is still running (the session is
-// waiting on its own background work), so it returns outcome == "" with the
-// offset already advanced.
+// batch is ever reprocessed).
+// When every output file exists the run is done whatever the last event's Kind was.
+// Otherwise the turn end is held, whatever its Kind: an EventStop and an EventAsk with output files missing
+// return a held turn end carrying the event's message and the offset just past its line, and Wait keeps polling the same agent.
+// Kind only selects Message's source, inside ParseEvents, not this branch.
+// An EventWaiting is the one Kind that is not held at once: the session is waiting on its own background work,
+// so the tick returns what expiredTurnEnd answers, which is nothing while the work is outstanding.
 // The exception is a gated run (len(run.gate) > 0): its waiting turn end is not an arrival even when every output file exists,
 // because the files may be left over from an earlier arrival while the session works on in the background,
 // and the next real turn end is the boundary.
@@ -579,11 +568,13 @@ func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
 // The run deadline and the liveness checks still classify Done from the files and evaluate the gate one final time.
 // A waiting turn end that leaves only background shells outstanding is the one case that does not wait forever:
 // on every tick, with or without new bytes, expiredTurnEnd counts it as a turn end once each non-awaited shell has been outstanding for background_shell_wait_min.
-// Returns outcome == "" when there is nothing new to classify yet.
-func (run *Run) pollEventsTick() (Outcome, string, error) {
-	data, newOffset, err := readEventsFrom(run.state.EventsPath, run.offset)
+// A hold never extends run.deadline, so a held run is bounded by its caller's own deadline and by the liveness check.
+// Returns outcome == "" and a nil held turn end when there is nothing new to classify yet.
+func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
+	startOffset := run.offset
+	data, newOffset, err := readEventsFrom(run.state.EventsPath, startOffset)
 	if err != nil {
-		return "", "", err
+		return "", nil, err
 	}
 	if len(data) == 0 {
 		return run.expiredTurnEnd()
@@ -591,7 +582,7 @@ func (run *Run) pollEventsTick() (Outcome, string, error) {
 
 	events, err := run.runner.engine.ParseEvents(data)
 	if err != nil {
-		return "", "", err
+		return "", nil, err
 	}
 	// Only now, with parsing proven successful, is it safe to advance past
 	// these bytes — a parse failure must leave them for the next tick to
@@ -602,8 +593,9 @@ func (run *Run) pollEventsTick() (Outcome, string, error) {
 	}
 
 	last := events[len(events)-1]
+	turnEndOffset := offsetPastEvent(data, startOffset, newOffset, last)
 	if last.Kind == EventWaiting {
-		run.recordWaiting(last)
+		run.recordWaiting(last, turnEndOffset)
 	} else {
 		run.waitingTasks = nil
 	}
@@ -611,18 +603,46 @@ func (run *Run) pollEventsTick() (Outcome, string, error) {
 		return run.expiredTurnEnd()
 	}
 	if allOutputFilesExist(run.spec.OutputFiles) {
-		return OutcomeDone, "", nil
+		return OutcomeDone, nil, nil
 	}
 	if last.Kind == EventWaiting {
 		return run.expiredTurnEnd()
 	}
-	return OutcomeAsking, last.Message, nil
+	return "", &heldTurnEnd{message: last.Message, offset: turnEndOffset}, nil
 }
 
-// recordWaiting keeps a waiting turn end's outstanding list, logs what it waits on once, and stamps each shell id not seen before with now.
-func (run *Run) recordWaiting(ev Event) {
+// heldTurnEnd is a turn end that left the run's output files missing, so the run is held rather than ended.
+// A plain Stop or a live ask carries no tasks; an expired-shell turn end carries the expired shells.
+type heldTurnEnd struct {
+	// message is the agent's last message at the turn end.
+	message string
+	// tasks are the outstanding tasks the turn end waited on, empty for a plain Stop.
+	tasks []BackgroundTask
+	// offset is the events-file byte offset just past the turn end's line.
+	offset int64
+}
+
+// offsetPastEvent returns the events-file offset just past the line ev was parsed from, given the
+// batch's data, its start offset and the offset past the whole batch.
+// An event whose Raw line is not found in the batch resolves to the batch's end.
+func offsetPastEvent(data []byte, startOffset, batchEnd int64, ev Event) int64 {
+	at := bytes.LastIndex(data, ev.Raw)
+	if at < 0 || len(ev.Raw) == 0 {
+		return batchEnd
+	}
+	end := at + len(ev.Raw)
+	if newline := bytes.IndexByte(data[end:], '\n'); newline >= 0 {
+		end += newline + 1
+	}
+	return startOffset + int64(end)
+}
+
+// recordWaiting keeps a waiting turn end's outstanding list, message and the offset just past its line, logs what it waits on once, and stamps each shell id not seen before with now.
+// The offset stays with the turn end, so expiredTurnEnd reports the same one on a later tick with no new bytes.
+func (run *Run) recordWaiting(ev Event, offset int64) {
 	run.waitingTasks = ev.Outstanding
 	run.waitingMessage = ev.Message
+	run.waitingOffset = offset
 	tasks := make([]string, 0, len(ev.Outstanding))
 	for _, task := range ev.Outstanding {
 		tasks = append(tasks, fmt.Sprintf("kind=%s id=%s label=%q signal=%s", task.Kind, task.ID, task.Label, task.Signal))
@@ -665,27 +685,27 @@ func (run *Run) awaitedShell(task BackgroundTask) bool {
 	return false
 }
 
-// expiredTurnEnd classifies the recorded waiting turn end as a turn end once every outstanding task is a non-awaited shell that is already expired or has been outstanding for the bound.
+// expiredTurnEnd counts the recorded waiting turn end as a turn end once every outstanding task is a non-awaited shell that is already expired or has been outstanding for the bound.
 // A fork, or an awaited shell, keeps the turn waiting.
 // It marks each newly expired shell, logs it and clears the waiting list, then classifies as a Stop would:
-// OutcomeDone when every output file exists, otherwise OutcomeAsking with the waiting event's message.
-// Returns outcome == "" while the turn keeps waiting.
-func (run *Run) expiredTurnEnd() (Outcome, string, error) {
+// OutcomeDone when every output file exists, otherwise a held turn end carrying the waiting event's message, the expired shells and the offset the waiting turn end was recorded with.
+// Returns outcome == "" and a nil held turn end while the turn keeps waiting.
+func (run *Run) expiredTurnEnd() (Outcome, *heldTurnEnd, error) {
 	if len(run.waitingTasks) == 0 {
-		return "", "", nil
+		return "", nil, nil
 	}
 	now := run.clock.Now()
 	bound := run.shellWaitBound()
 	var newlyExpired []BackgroundTask
 	for _, task := range run.waitingTasks {
 		if task.Kind != BackgroundShell || run.awaitedShell(task) {
-			return "", "", nil
+			return "", nil, nil
 		}
 		if run.expiredShells[task.ID] {
 			continue
 		}
 		if now.Sub(run.shellFirstSeen[task.ID]) < bound {
-			return "", "", nil
+			return "", nil, nil
 		}
 		newlyExpired = append(newlyExpired, task)
 	}
@@ -697,12 +717,12 @@ func (run *Run) expiredTurnEnd() (Outcome, string, error) {
 		run.expiredLabels = append(run.expiredLabels, task.Label)
 		logger.Warn("shuttle: background shell waited out; counting the turn end", "runDir", run.runDir, "shell", task.Label)
 	}
-	message := run.waitingMessage
+	held := &heldTurnEnd{message: run.waitingMessage, tasks: run.waitingTasks, offset: run.waitingOffset}
 	run.waitingTasks = nil
 	if allOutputFilesExist(run.spec.OutputFiles) {
-		return OutcomeDone, "", nil
+		return OutcomeDone, nil, nil
 	}
-	return OutcomeAsking, message, nil
+	return "", held, nil
 }
 
 // readEventsFrom reads path from byte offset onward, returning bytes up to
@@ -1106,14 +1126,6 @@ func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 	}
 
 	run.state.Outcome = string(outcome)
-	// An asking classification records how much of the events file it consumed, so a later Attach can
-	// tell a strand that kept working past the ask (events grew) from one still parked on it.
-	// Every other outcome clears it: the offset is meaningful only beside an asking Outcome.
-	run.state.AskingOffset = nil
-	if outcome == OutcomeAsking {
-		consumed := run.offset
-		run.state.AskingOffset = &consumed
-	}
 	if err := saveRunState(run.runDir, run.state); err != nil {
 		logger.Warn("shuttle: persist run outcome failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome), "error", err)
 	}

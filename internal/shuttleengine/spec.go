@@ -87,20 +87,6 @@ type Spec struct {
 	// shuttle config's claude_deny_agent_tool / claude_deny_ask_user_question
 	// keys).
 	Interactive bool
-	// AwaitOperator governs the wait loop only: when true, Run.Wait treats an
-	// OutcomeAsking classification as non-terminal and keeps polling, so the
-	// run still terminates on OutcomeDone, OutcomeDied, a liveness mechanism
-	// failure, or OutcomeTimeout. It is a second field rather than a widening
-	// of Interactive because internal/shuttleengine/claudeengine/settings.go
-	// installs a PreToolUse(AskUserQuestion) hook in every interactive run
-	// precisely so an ask classifies as a real-time asking signal, and
-	// `lyx shuttle run --interactive` depends on that signal staying
-	// terminal — widening Interactive would suppress it for that caller too.
-	// Accepted failure mode: an interactive run whose agent is genuinely
-	// wedged now hangs until its Timeout rather than reporting Stuck
-	// promptly, which is the correct trade for a mode whose premise is that
-	// a human is watching the pane.
-	AwaitOperator bool
 	// Role is the role segment of the strand's name; it may be empty.
 	// Round is not part of the name; it names the run's directory.
 	Role  string

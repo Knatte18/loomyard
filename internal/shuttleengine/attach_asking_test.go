@@ -7,10 +7,13 @@ package shuttleengine
 import (
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 const askingEventsOld = "ASK:old\n"
@@ -67,15 +70,16 @@ func TestCollectAttachCandidates_RecordsEventsSize(t *testing.T) {
 	}
 }
 
-// TestAttach_AskingReentryStartsAtRecordedOffset attaches to an asking run whose events grew, and
-// checks the reconstructed run read only the new events: the old ask is not re-classified.
+// TestAttach_AskingReentryStartsAtRecordedOffset attaches to a legacy asking run whose events grew, and
+// checks the reconstructed run read the post-offset Stop as a held turn end: the run keeps polling
+// until its deadline, and Attach no longer writes AskingOffset.
 func TestAttach_AskingReentryStartsAtRecordedOffset(t *testing.T) {
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
-	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir(), withClock(newFakeClock(time.Now())))
 	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 
-	outputFile := filepath.Join(runRoot, "out.md")
+	outputFile := filepath.Join(runRoot, "out.md") // never created
 	runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{
 		strandGUID: "strand-1", sessionID: "session-1", outputFiles: []string{outputFile}, outcome: "asking", includeOutcome: true,
 	})
@@ -93,21 +97,28 @@ func TestAttach_AskingReentryStartsAtRecordedOffset(t *testing.T) {
 		t.Fatalf("seed events: %v", err)
 	}
 
-	result, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute})
+	buf := logcapture.CaptureVerbose(t)
+	result, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: heldTestTimeout})
 	if err != nil {
 		t.Fatalf("Attach() error = %v; want nil", err)
 	}
 	if !found {
 		t.Fatalf("found = false; want true (asking run that kept working attaches)")
 	}
-	if result.Outcome != OutcomeAsking || result.LastAssistantMessage != "new" {
-		t.Errorf("result = {%s %q}; want asking with the post-offset message %q", result.Outcome, result.LastAssistantMessage, "new")
+	if result.Outcome != OutcomeTimeout {
+		t.Errorf("Outcome = %q; want %q (the post-offset Stop is held to the deadline)", result.Outcome, OutcomeTimeout)
+	}
+	wantOffset := len(askingEventsOld + "STOP:new\n")
+	for _, want := range []string{"turn end held", "lastAssistantMessage=new", "offset=" + strconv.Itoa(wantOffset)} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("hold log = %q; want it to contain %q", buf.String(), want)
+		}
 	}
 	after, _, err := loadRunState(runDir)
 	if err != nil {
 		t.Fatalf("loadRunState after: %v", err)
 	}
-	if after.AskingOffset == nil || *after.AskingOffset != int64(len(askingEventsOld+"STOP:new\n")) {
-		t.Errorf("AskingOffset after = %v; want the new asking's consumed offset", after.AskingOffset)
+	if after.AskingOffset != nil {
+		t.Errorf("AskingOffset after = %v; want nil: finalize never writes it", *after.AskingOffset)
 	}
 }

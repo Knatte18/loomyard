@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -125,6 +126,9 @@ func TestRun_Wait_MechanismFailure_KeepsRunIdentity(t *testing.T) {
 	}
 }
 
+// heldTestTimeout is the short run deadline a held-run test lets expire, in virtual time.
+const heldTestTimeout = 50 * time.Millisecond
+
 // cleanupExpectation says what a Wait that finalized must have done to the strand and run dir.
 type cleanupExpectation int
 
@@ -160,7 +164,7 @@ const (
 // needs the handles to reach it. Finalize also logs the teardown through internal/logger, so the
 // durable Info+ trace file shows every shuttle run ending as well as beginning.
 //
-//testtiming:keep pins the outcome, message and cleanup of every pane, events and file state Wait classifies, of which the AwaitOperator test reaches only a few
+//testtiming:keep pins the outcome, hold log and cleanup of every pane, events and file state Wait classifies, of which the held-run test reaches only a few
 func TestRun_Wait_Classification(t *testing.T) {
 	liveStrands := []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}
 	deadPane := []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}}
@@ -181,7 +185,6 @@ func TestRun_Wait_Classification(t *testing.T) {
 		keepPane    bool
 		anchor      render.Anchor
 		wantOutcome Outcome
-		wantMessage string
 		// wantErr is the error Wait must wrap; wantErrIn a fragment it must name, wantIdentity that
 		// the Result still carries the run's identity.
 		wantErr      error
@@ -201,14 +204,18 @@ func TestRun_Wait_Classification(t *testing.T) {
 			wantLogged: []string{"shuttle: run finished", "outcome=done", "strand-1", "cleanedUp=false"},
 		},
 		{
-			name: "asking carries the message and keeps the strand", status: liveStrands, startup: ready, events: "STOP:need operator input\n",
-			wantOutcome: OutcomeAsking, wantMessage: "need operator input", wantCleanup: cleanupSkipped,
+			// A Stop with output files missing never ends the run: it is held, logged with its message,
+			// and the run ends only at its unchanged deadline.
+			name: "a stop with output missing is held to the deadline", status: liveStrands, startup: ready, events: "STOP:need operator input\n",
+			timeout: heldTestTimeout, wantOutcome: OutcomeTimeout, wantCleanup: cleanupSkipped,
+			wantLogged: []string{"turn end held", "need operator input"},
 		},
 		{
-			// An EventAsk with no output files present classifies asking just like the turn-end case,
-			// proving the unchanged pollEventsTick branch also covers the live-ask signal ParseEvents emits.
-			name: "live ask classifies real-time asking", status: liveStrands, startup: ready, events: "ASK:which approach?\n",
-			wantOutcome: OutcomeAsking, wantMessage: "which approach?", wantCleanup: cleanupSkipped,
+			// An EventAsk with no output files present is held just like the turn-end case,
+			// proving the one pollEventsTick branch also covers the live-ask signal ParseEvents emits.
+			name: "a live ask with output missing is held to the deadline", status: liveStrands, startup: ready, events: "ASK:which approach?\n",
+			timeout: heldTestTimeout, wantOutcome: OutcomeTimeout, wantCleanup: cleanupSkipped,
+			wantLogged: []string{"turn end held", "which approach?"},
 		},
 		{
 			// An EventAsk never overrides an already-satisfied file contract.
@@ -323,9 +330,6 @@ func TestRun_Wait_Classification(t *testing.T) {
 			if result.Outcome != tt.wantOutcome {
 				t.Errorf("Outcome = %q; want %q", result.Outcome, tt.wantOutcome)
 			}
-			if tt.wantMessage != "" && result.LastAssistantMessage != tt.wantMessage {
-				t.Errorf("LastAssistantMessage = %q; want %q", result.LastAssistantMessage, tt.wantMessage)
-			}
 
 			switch tt.wantCleanup {
 			case cleanupPerformed:
@@ -385,234 +389,117 @@ func (c *multiStepClock) Sleep(d time.Duration) {
 
 var _ clock = (*multiStepClock)(nil)
 
-// TestRun_Wait_AwaitOperator_AskingNonTerminal is the defect-A coverage: an ask that is terminal
-// today must become non-terminal once Spec.AwaitOperator is set, while every other exit stays
-// exactly as it was.
-func TestRun_Wait_AwaitOperator_AskingNonTerminal(t *testing.T) {
-	t.Run("AwaitOperatorFalse_PinsTodaysAskingBehaviour", func(t *testing.T) {
-		runDir := t.TempDir()
-		eventsPath := filepath.Join(runDir, "events.jsonl")
-		outputFile := filepath.Join(runDir, "out.md") // never created
+// TestRun_Wait_HeldTurnEnd drives Run.Wait over turn ends that leave the output files missing:
+// each is held and polling continues, so the run ends only through done, died or timeout.
+// A later Stop with every output file finalizes done, also through a gate; a held run finalizes died
+// on a dead pane, done when its outputs appear as the pane dies, and timeout at its unchanged deadline.
+func TestRun_Wait_HeldTurnEnd(t *testing.T) {
+	passingGate := GateSpec{{Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}
+	live := []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}
+	dead := []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}}
 
-		if err := os.WriteFile(eventsPath, []byte("STOP:need operator input\n"), 0o644); err != nil {
-			t.Fatalf("seed events: %v", err)
-		}
-
-		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-		fx := newFixture(t, reed, engine, withConfig(fastConfig))
-		fc := newFakeClock(time.Now())
-		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: false},
-			withRunDir(runDir),
-			withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-			withRunClock(fc, fc.Now().Add(time.Minute)))
-
-		result, err := run.Wait()
-		if err != nil {
-			t.Fatalf("Wait() error: %v", err)
-		}
-		if result.Outcome != OutcomeAsking {
-			t.Errorf("Outcome = %q, want %q (AwaitOperator false must keep an ask terminal)", result.Outcome, OutcomeAsking)
-		}
-	})
-
-	t.Run("AwaitOperatorTrue_DropsAskAndFinalizesOnceOutputFilesAppear", func(t *testing.T) {
-		runDir := t.TempDir()
-		eventsPath := filepath.Join(runDir, "events.jsonl")
-		outputFile := filepath.Join(runDir, "out.md")
-
-		if err := os.WriteFile(eventsPath, []byte("STOP:need operator input\n"), 0o644); err != nil {
-			t.Fatalf("seed events: %v", err)
-		}
-
-		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-		fx := newFixture(t, reed, engine, withConfig(sparseProbeConfig))
-		fc := newFakeClock(time.Now())
-		mc := &multiStepClock{fakeClock: fc, steps: []func(){
-			func() {
-				// Fires between tick 1 (which observed the dropped ask) and tick 2: the agent
-				// finishes, writes its output file, and appends the terminating Stop event.
-				if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
-					t.Fatalf("write output file: %v", err)
-				}
-				f, err := os.OpenFile(eventsPath, os.O_APPEND|os.O_WRONLY, 0o644)
-				if err != nil {
-					t.Fatalf("open events file to append: %v", err)
-				}
-				defer f.Close()
-				if _, err := f.WriteString("STOP:done\n"); err != nil {
-					t.Fatalf("append done event: %v", err)
+	// agentActions are what a held run's agent does between two ticks.
+	type agentActions struct {
+		writeOutput func()
+		appendLine  func(line string)
+	}
+	tests := []struct {
+		name   string
+		events string
+		status []reedengine.StatusResult
+		gate   GateSpec
+		// script returns the actions run once per Sleep, in order.
+		script      func(a agentActions) []func()
+		timeout     time.Duration
+		wantOutcome Outcome
+		wantGate    bool
+	}{
+		{
+			name: "a stop with output missing keeps polling until a later stop with outputs", events: "STOP:need operator input\n", status: live,
+			script: func(a agentActions) []func() {
+				return []func(){func() { a.writeOutput(); a.appendLine("STOP:done") }}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+		},
+		{
+			name: "several held stops in a row then done", events: "STOP:question batch one\n", status: live,
+			script: func(a agentActions) []func() {
+				return []func(){
+					func() { a.appendLine("STOP:question batch two") },
+					func() { a.appendLine("ASK:question batch three") },
+					func() { a.writeOutput(); a.appendLine("STOP:done") },
 				}
 			},
-		}}
-
-		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
-			withRunDir(runDir),
-			withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-			withRunClock(mc, mc.Now().Add(time.Minute)))
-
-		result, err := run.Wait()
-		if err != nil {
-			t.Fatalf("Wait() error: %v", err)
-		}
-		if result.Outcome != OutcomeDone {
-			t.Errorf("Outcome = %q, want %q (the ask must be dropped and polling must continue to the later Done)", result.Outcome, OutcomeDone)
-		}
-	})
-
-	t.Run("AwaitOperatorTrue_SeveralAsksInARowThenDone", func(t *testing.T) {
-		runDir := t.TempDir()
-		eventsPath := filepath.Join(runDir, "events.jsonl")
-		outputFile := filepath.Join(runDir, "out.md")
-
-		if err := os.WriteFile(eventsPath, []byte("STOP:question batch one\n"), 0o644); err != nil {
-			t.Fatalf("seed events: %v", err)
-		}
-
-		appendEvent := func(line string) func() {
-			return func() {
-				f, err := os.OpenFile(eventsPath, os.O_APPEND|os.O_WRONLY, 0o644)
-				if err != nil {
-					t.Fatalf("open events file to append: %v", err)
-				}
-				defer f.Close()
-				if _, err := f.WriteString(line); err != nil {
-					t.Fatalf("append event: %v", err)
-				}
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+		},
+		{
+			name: "a held run through a gate finalizes done on the later stop", events: "STOP:need operator input\n", status: live, gate: passingGate,
+			script: func(a agentActions) []func() {
+				return []func(){func() { a.writeOutput(); a.appendLine("STOP:done") }}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone, wantGate: true,
+		},
+		{
+			name: "a held run on a dead pane is died", events: "STOP:need operator input\n", status: dead,
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDied,
+		},
+		{
+			name: "a held run whose outputs appear as the pane dies is done", events: "STOP:need operator input\n", status: slices.Concat(live, dead),
+			script:      func(a agentActions) []func() { return []func(){a.writeOutput} },
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+		},
+		{
+			name: "a held run times out at its unchanged deadline", events: "STOP:need operator input\n", status: live,
+			timeout:     heldTestTimeout,
+			wantOutcome: OutcomeTimeout,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, "events.jsonl")
+			outputFile := filepath.Join(runDir, "out.md")
+			if err := os.WriteFile(eventsPath, []byte(tt.events), 0o644); err != nil {
+				t.Fatalf("seed events: %v", err)
 			}
-		}
 
-		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-		fx := newFixture(t, reed, engine, withConfig(sparseProbeConfig))
-		fc := newFakeClock(time.Now())
-		mc := &multiStepClock{fakeClock: fc, steps: []func(){
-			appendEvent("STOP:question batch two\n"),
-			appendEvent("STOP:question batch three\n"),
-			func() {
-				if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
-					t.Fatalf("write output file: %v", err)
-				}
-				appendEvent("STOP:done\n")()
-			},
-		}}
+			fx := newFixture(t, &fakeReed{StatusQueue: tt.status}, &fakeEngine{StartupScript: []StartupState{StartupReady}}, withConfig(fastConfig))
+			fc := newFakeClock(time.Now())
+			var clk clock = fc
+			if tt.script != nil {
+				actions := tt.script(agentActions{
+					writeOutput: func() { touchOutputFile(t, outputFile) },
+					appendLine:  func(line string) { appendEventsLine(t, eventsPath, line) },
+				})
+				clk = &multiStepClock{fakeClock: fc, steps: actions}
+			}
+			opts := []runOpt{
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+				withRunClock(clk, clk.Now().Add(tt.timeout)),
+			}
+			if tt.gate != nil {
+				opts = append(opts, withRunGate(tt.gate))
+			}
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: tt.timeout}, opts...)
 
-		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
-			withRunDir(runDir),
-			withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-			withRunClock(mc, mc.Now().Add(time.Minute)))
-
-		result, err := run.Wait()
-		if err != nil {
-			t.Fatalf("Wait() error: %v", err)
-		}
-		if result.Outcome != OutcomeDone {
-			t.Errorf("Outcome = %q, want %q (a multi-batch interview must survive every ask and finalize on the eventual Done)", result.Outcome, OutcomeDone)
-		}
-	})
-
-	t.Run("AwaitOperatorTrue_StillTimesOutWithFilesAbsent", func(t *testing.T) {
-		runDir := t.TempDir()
-		eventsPath := filepath.Join(runDir, "events.jsonl")
-		outputFile := filepath.Join(runDir, "out.md") // never created
-
-		if err := os.WriteFile(eventsPath, []byte("STOP:need operator input\n"), 0o644); err != nil {
-			t.Fatalf("seed events: %v", err)
-		}
-
-		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
-		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
-		fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 30}))
-		fc := newFakeClock(time.Now())
-		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Second, AwaitOperator: true},
-			withRunDir(runDir),
-			withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-			withRunClock(fc, fc.Now().Add(time.Second)))
-
-		result, err := run.Wait()
-		if err != nil {
-			t.Fatalf("Wait() error: %v", err)
-		}
-		if result.Outcome != OutcomeTimeout {
-			t.Errorf("Outcome = %q, want %q (AwaitOperator does not extend the run deadline, only drops asks)", result.Outcome, OutcomeTimeout)
-		}
-	})
-
-	t.Run("AwaitOperatorTrue_StillDiesOnDeadPane", func(t *testing.T) {
-		runDir := t.TempDir()
-		eventsPath := filepath.Join(runDir, "events.jsonl") // never created
-		outputFile := filepath.Join(runDir, "out.md")       // never created
-
-		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}}}
-		engine := &fakeEngine{}
-		fx := newFixture(t, reed, engine, withConfig(fastConfig))
-		fc := newFakeClock(time.Now())
-		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
-			withRunDir(runDir),
-			withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-			withRunClock(fc, fc.Now().Add(time.Minute)))
-
-		result, err := run.Wait()
-		if err != nil {
-			t.Fatalf("Wait() error: %v", err)
-		}
-		if result.Outcome != OutcomeDied {
-			t.Errorf("Outcome = %q, want %q (a dead pane still terminates the wait under AwaitOperator)", result.Outcome, OutcomeDied)
-		}
-	})
-
-	t.Run("AwaitOperatorTrue_StillSurfacesUntrackedStrandMechanismFailure", func(t *testing.T) {
-		runDir := t.TempDir()
-		eventsPath := filepath.Join(runDir, "events.jsonl") // never created
-		outputFile := filepath.Join(runDir, "out.md")       // never created
-
-		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "someone-elses-strand", Live: true}}}}}
-		fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
-		fc := newFakeClock(time.Now())
-		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true},
-			withRunDir(runDir),
-			withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
-			withRunClock(fc, fc.Now().Add(time.Minute)))
-
-		result, err := run.Wait()
-		if err == nil {
-			t.Fatalf("Wait() = (%+v, nil); want the untracked-strand mechanism error", result)
-		}
-		if !errors.Is(err, errStrandNotTracked) {
-			t.Errorf("Wait() error = %v; want one wrapping errStrandNotTracked", err)
-		}
-		if result.Outcome != "" {
-			t.Errorf("Outcome = %q; want empty — a mechanism failure reached no classification", result.Outcome)
-		}
-	})
-
-	t.Run("AwaitOperatorTrue_StillSurfacesClearedPaneBindingMechanismFailure", func(t *testing.T) {
-		runDir := t.TempDir()
-		eventsPath := filepath.Join(runDir, "events.jsonl") // never created
-		outputFile := filepath.Join(runDir, "out.md")       // never created
-
-		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{
-			Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "", Live: false}},
-		}}}
-		fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig))
-		fc := newFakeClock(time.Now())
-		run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, AwaitOperator: true, Display: render.Display{Anchor: render.AnchorBelowParent}},
-			withRunDir(runDir),
-			withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
-			withRunClock(fc, fc.Now().Add(time.Minute)))
-
-		result, err := run.Wait()
-		if err == nil {
-			t.Fatalf("Wait() = (%+v, nil); want the cleared-pane-binding mechanism error", result)
-		}
-		if !errors.Is(err, errStrandPaneBindingCleared) {
-			t.Errorf("Wait() error = %v; want one wrapping errStrandPaneBindingCleared", err)
-		}
-		if result.Outcome != "" {
-			t.Errorf("Outcome = %q; want empty — a mechanism failure reached no classification", result.Outcome)
-		}
-	})
+			result, err := run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != tt.wantOutcome {
+				t.Errorf("Outcome = %q, want %q", result.Outcome, tt.wantOutcome)
+			}
+			if (result.Gate != nil) != tt.wantGate {
+				t.Errorf("Gate = %+v, want gate report = %v", result.Gate, tt.wantGate)
+			}
+		})
+	}
 }
 
 // TestRun_Wait_StartupWindow drives Wait over a live pane that never reaches StartupReady, with the
@@ -997,7 +884,7 @@ func TestRun_Wait_EventsHandling(t *testing.T) {
 			if err := os.WriteFile(eventsPath, []byte(tt.events), 0o644); err != nil {
 				t.Fatalf("seed events: %v", err)
 			}
-			outputFile := filepath.Join(runDir, "out.md") // never created -> asking once classified
+			outputFile := filepath.Join(runDir, "out.md") // never created -> the last turn end is held until the deadline
 
 			engine := &fakeEngine{ParseEventsFailCount: tt.parseFailCount}
 			fx := newFixture(t, &fakeReed{}, engine, withConfig(sparseProbeConfig))
@@ -1008,20 +895,21 @@ func TestRun_Wait_EventsHandling(t *testing.T) {
 					appendEventsLine(t, eventsPath, "")
 				}}
 			}
-			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: heldTestTimeout},
 				withRunDir(runDir),
 				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-				withRunClock(clk, clk.Now().Add(time.Minute)))
+				withRunClock(clk, clk.Now().Add(heldTestTimeout)))
 
+			buf := logcapture.CaptureVerbose(t)
 			result, err := run.Wait()
 			if err != nil {
 				t.Fatalf("Wait() error: %v", err)
 			}
-			if result.Outcome != OutcomeAsking {
-				t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeAsking)
+			if result.Outcome != OutcomeTimeout {
+				t.Errorf("Outcome = %q, want %q (the held turn end ends only at the deadline)", result.Outcome, OutcomeTimeout)
 			}
-			if result.LastAssistantMessage != tt.wantMessage {
-				t.Errorf("LastAssistantMessage = %q, want %q", result.LastAssistantMessage, tt.wantMessage)
+			if !strings.Contains(buf.String(), "lastAssistantMessage="+tt.wantMessage) {
+				t.Errorf("hold log = %q, want the last event's message %q", buf.String(), tt.wantMessage)
 			}
 			if run.offset != tt.wantOffset {
 				t.Errorf("offset = %d, want %d (bytes consumed only after a successful parse of a complete line)", run.offset, tt.wantOffset)
@@ -1066,14 +954,6 @@ func TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome(t *testing.T) 
 			startup:     []StartupState{StartupReady},
 			timeout:     time.Minute,
 			wantOutcome: OutcomeDone,
-		},
-		{
-			name:        "asking",
-			seedEvents:  "STOP:need operator input\n",
-			statusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
-			startup:     []StartupState{StartupReady},
-			timeout:     time.Minute,
-			wantOutcome: OutcomeAsking,
 		},
 		{
 			name:        "died",
@@ -1162,7 +1042,7 @@ func TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult(t *t
 		t.Fatalf("seed events: %v", err)
 	}
 	// run.json as a directory makes saveRunState's write fail without disturbing anything else
-	// finalize touches (the outcome is asking, so no cleanup runs regardless).
+	// finalize touches (the outcome is timeout, so no cleanup runs regardless).
 	if err := os.MkdirAll(filepath.Join(runDir, runStateFileName), 0o755); err != nil {
 		t.Fatalf("plant run.json dir: %v", err)
 	}
@@ -1171,18 +1051,18 @@ func TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult(t *t
 	engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
 	fx := newFixture(t, reed, engine, withConfig(fastConfig))
 	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: heldTestTimeout},
 		withRunDir(runDir),
 		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath, Outcome: runOutcomeRunning}),
-		withRunClock(fc, fc.Now().Add(time.Minute)))
+		withRunClock(fc, fc.Now().Add(heldTestTimeout)))
 
 	buf := logcapture.CaptureVerbose(t)
 	result, err := run.Wait()
 	if err != nil {
 		t.Fatalf("Wait() error: %v, want the classified Result returned despite the failed Outcome write", err)
 	}
-	if result.Outcome != OutcomeAsking {
-		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeAsking)
+	if result.Outcome != OutcomeTimeout {
+		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeTimeout)
 	}
 	if !strings.Contains(buf.String(), "persist run outcome failed") {
 		t.Errorf("logger output = %q; want the best-effort write failure logged", buf.String())

@@ -171,7 +171,7 @@ func validateToldPaths(anchorPath, worktreeRoot string) error {
 
 // Result is a completed run's terminal report: how it was classified, the identities a caller needs
 // to act on it further (SessionID for a resume, StrandGUID for interrupt/send/diagnosis), the
-// agent's last message (set only for OutcomeAsking), and the run directory (already removed for a
+// agent's last message (empty: Wait holds a turn end without output instead of ending on it), and the run directory (already removed for a
 // cleaned-up OutcomeDone, still present otherwise).
 type Result struct {
 	Outcome              Outcome
@@ -225,8 +225,10 @@ type Run struct {
 
 	// waitingTasks is the outstanding list of the latest EventWaiting, cleared by any later non-waiting event and by an expiry.
 	waitingTasks []BackgroundTask
-	// waitingMessage is that EventWaiting's message, which an expiry classified as asking carries.
+	// waitingMessage is that EventWaiting's message, which an expiry's held turn end carries.
 	waitingMessage string
+	// waitingOffset is the events-file offset just past that EventWaiting's line, which an expiry's held turn end carries.
+	waitingOffset int64
 	// shellFirstSeen records when each shell id was first seen outstanding.
 	shellFirstSeen map[string]time.Time
 	// expiredShells holds the shell ids already waited out in this run, so a later turn end listing one again does not restart its wait.

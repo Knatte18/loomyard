@@ -46,14 +46,17 @@
 // tmux command or a Claude specific — panes are reed's vocabulary, reached only through ReedOps,
 // and provider grammar is the concrete Engine's, reached only through the Engine interface.
 //
-// Spec.AwaitOperator is the wait loop's "wait for the operator rather than reporting back" knob,
-// orthogonal to Spec.Interactive's "an operator is present" (which governs launch flags and the
-// AskUserQuestion recording hook): one caller, `lyx shuttle run --interactive`, wants the first
-// without the second, since it needs the real-time asking signal to stay terminal. RunState.Outcome
-// records whether a run ever ended, seeded "running" and overwritten on every terminal
+// A turn end without every output file never ends a run: Wait holds it, logs it at Info and keeps polling the same agent,
+// whether the turn end is a Stop, a live ask or an expired-shell turn end.
+// A run ends only as done (every output file present at a turn end, or at the deadline or a pane's death),
+// died, timeout or a mechanism failure, so Wait never returns asking.
+// A hold never extends the run's deadline: it is bounded by the caller's own Spec.Timeout (run_timeout_min only where that is zero, so the bound differs per caller),
+// each Attach starts a fresh deadline, and the liveness check still classifies a dead pane.
+// RunState.Outcome records whether a run ever ended, seeded "running" and overwritten on every terminal
 // classification, so "has this run already ended?" is a fact on disk rather than an inference from
-// pane liveness. Neither field grows a Claude specific — both stay provider-invariant, per the
-// Shuttle Provider-Seam Invariant.
+// pane liveness.
+// RunState.AskingOffset is read for records an older binary wrote and never written.
+// It stays provider-invariant, per the Shuttle Provider-Seam Invariant.
 //
 // Spec.PermissionMode, Spec.AllowAgentTool and Spec.ResumeSessionID are caller-owned engine vocabulary, like Spec.Effort: Spec.validate never inspects them,
 // and the engine is the sole validator and realizer.
@@ -112,7 +115,7 @@
 // and while the box still holds the sent text it sends one extra Enter, at most two per send, before failing the send as pending.
 // An engine without the capability keeps the appearance-only check.
 // The run's events offset ends past every load turn end, the retry's included,
-// so Wait never reads one as the run asking.
+// so Wait never reads one as a held turn end.
 // run.json records that offset as `promptOffset` before the prompt goes out,
 // and every reader that replays the events file without Waiting on the Run starts there: Attach, and webster's recovery classification through its batch record.
 // A pane that dies meanwhile is a died startup.
@@ -128,7 +131,7 @@
 //
 // A turn end that leaves background work outstanding (EventWaiting) keeps the run waiting, with one bound.
 // Once every outstanding task is a background shell and each has been outstanding for Config.BackgroundShellWaitMin minutes (stamped when first seen, kept across ticks),
-// the wait loop counts the turn end as a Stop would: OutcomeDone when every output file exists, otherwise OutcomeAsking with the waiting event's message.
+// the wait loop counts the turn end as a Stop would: OutcomeDone when every output file exists, otherwise a held turn end naming the expired shells.
 // A gated run reaches its gate through the Done branch, so the expiry is an arrival.
 // A fork in the list keeps the turn waiting however long it runs, as does a shell whose label starts with one of Spec.AwaitedShellPrefixes;
 // both are bounded only by the run's own Timeout.

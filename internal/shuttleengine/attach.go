@@ -267,7 +267,7 @@ func (r *Runner) reconstructAndWait(candidate attachCandidate, normalized Spec, 
 		// offset starts at the prompt offset, deliberately replaying every event of the run's own turns: seeding at EOF would
 		// mean a terminal Stop that landed while the driver was down is never observed, converting a
 		// completed step into an OutcomeTimeout failure — and a replayed backlog ending in an ask is
-		// correct in both AwaitOperator modes. The one exception is a candidate that recorded an
+		// read as a held turn end. The one exception is a candidate that recorded an
 		// asking offset (startOffset above): its old ask is already answered.
 		offset: startOffset,
 		clock:  r.clock,

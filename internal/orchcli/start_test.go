@@ -123,8 +123,8 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if !spec.AllowAgentTool || !spec.ForkSubagents {
 		t.Errorf("AllowAgentTool/ForkSubagents = %v/%v; want both true", spec.AllowAgentTool, spec.ForkSubagents)
 	}
-	if !spec.Interactive || !spec.AwaitOperator || spec.NameOverride != "orch" || spec.Role != "orch" || !spec.Display.Focus {
-		t.Errorf("spec = %+v; want interactive, await-operator, focused, named orch", spec)
+	if !spec.Interactive || spec.NameOverride != "orch" || spec.Role != "orch" || !spec.Display.Focus {
+		t.Errorf("spec = %+v; want interactive, focused, named orch", spec)
 	}
 	if !slices.Equal(spec.Skills, []string{"scribe:prose", "scribe:conversation", "ly:board"}) {
 		t.Errorf("Skills = %v; want the three orch skills", spec.Skills)
