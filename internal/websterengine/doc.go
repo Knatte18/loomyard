@@ -44,7 +44,7 @@
 //
 // # The partition is recorded once per run
 //
-// The first init of a run (no state.json, or the --fresh re-init) forms the partition with the active batchifier, refuses it on CheckBatchOrder's error before saving anything, and records it in State.Partition: each batch's card ids, profile and estimate.
+// The first init of a run (no state.json, or the --fresh re-init) forms the partition with the active batchifier, refuses it on CheckBatchOrder's error before saving anything, and records it in State.Partition: each batch's card ids, profile and estimate, and for a cost profile the estimate's breakdown (weights, startup, read union and per-card components), so a finished run can be fitted against its forks' measured peaks.
 // Every other verb reads that record through partition.go's ExecutionBatches, which maps the recorded ids onto the plan's cards and re-asserts the order, so a size the batchifier weighed changing under the run's own commits never regroups cards mid-run.
 // A recorded id the plan lacks, or a plan card in no recorded batch, is refused with ErrPartitionMismatch.
 // A state written before the field existed records no partition and runs on the identity batchifier whatever profile is active, so an in-flight run keeps the grouping it started under.

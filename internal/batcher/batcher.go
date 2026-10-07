@@ -14,9 +14,13 @@ type Batch struct {
 	// Profile is the Name of the batchifier that formed this batch.
 	Profile string
 
-	// Estimate is this batch's segment cost under that batchifier's weights;
+	// Estimate is this batch's estimated peak fork context under that batchifier's weights;
 	// zero when the batchifier does not estimate.
 	Estimate float64
+
+	// Breakdown records the components behind Estimate;
+	// nil when the batchifier does not estimate.
+	Breakdown *Breakdown
 }
 
 // Batcher groups a plan's flat card list into Batches.

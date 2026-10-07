@@ -16,10 +16,12 @@ import (
 var ErrPartitionMismatch = errors.New("webster: recorded partition does not match the plan")
 
 // PartitionBatch is one recorded batch of the run's partition: the NN-<slug> ids of its cards in card order, the profile that formed it and its estimate.
+// Breakdown keeps the estimate's components, so a finished run can be fitted against the peak context its forks measured.
 type PartitionBatch struct {
-	Cards    []string `json:"cards"`
-	Profile  string   `json:"profile,omitempty"`
-	Estimate float64  `json:"estimate,omitempty"`
+	Cards     []string           `json:"cards"`
+	Profile   string             `json:"profile,omitempty"`
+	Estimate  float64            `json:"estimate,omitempty"`
+	Breakdown *batcher.Breakdown `json:"breakdown,omitempty"`
 }
 
 // cardID returns the NN-<slug> id of c.
@@ -84,7 +86,7 @@ func mapPartition(plan *planparser.Plan, partition []PartitionBatch) ([]batcher.
 	var unknown []string
 	batches := make([]batcher.Batch, 0, len(partition))
 	for _, pb := range partition {
-		batch := batcher.Batch{Profile: pb.Profile, Estimate: pb.Estimate}
+		batch := batcher.Batch{Profile: pb.Profile, Estimate: pb.Estimate, Breakdown: pb.Breakdown}
 		for _, id := range pb.Cards {
 			card, ok := cardsByID[id]
 			if !ok {
@@ -119,11 +121,11 @@ func mapPartition(plan *planparser.Plan, partition []PartitionBatch) ([]batcher.
 		ErrPartitionMismatch, strings.Join(problems, "; "))
 }
 
-// RecordPartition writes the batches' card ids, profiles and estimates into st.Partition, replacing any partition it held.
+// RecordPartition writes the batches' card ids, profiles, estimates and estimate breakdowns into st.Partition, replacing any partition it held.
 func RecordPartition(st *State, batches []batcher.Batch) {
 	partition := make([]PartitionBatch, len(batches))
 	for i, b := range batches {
-		partition[i] = PartitionBatch{Cards: batchCardIDs(b), Profile: b.Profile, Estimate: b.Estimate}
+		partition[i] = PartitionBatch{Cards: batchCardIDs(b), Profile: b.Profile, Estimate: b.Estimate, Breakdown: b.Breakdown}
 	}
 	st.Partition = partition
 }

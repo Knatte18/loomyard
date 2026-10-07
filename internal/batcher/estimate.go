@@ -2,7 +2,7 @@
 //
 // Declares SizeSource, the file-size and test-file reads the estimator needs, and DiskSizes, its on-disk implementation;
 // Weights, the coefficients of the cost model, and ProfileWeights, which reads them from a batcher.yaml profile;
-// and SegmentCost, the estimated token cost of running a contiguous run of cards in one fork.
+// and PeakContext, the estimated context a fork holds after running a contiguous run of cards.
 
 package batcher
 
@@ -78,26 +78,32 @@ func (d diskSizes) absolute(relPath string) string {
 
 // Weights are the cost model's coefficients, one per key of a batcher.yaml profile's weights: map.
 type Weights struct {
-	// StartupContext is the context a fork starts with, paid by every message it sends.
-	StartupContext float64
+	// StartupContext is the context a fork starts with.
+	StartupContext float64 `json:"startup_context"`
 
 	// ForkMessages is the messages spent starting a fork, before any card.
-	ForkMessages float64
+	ForkMessages float64 `json:"fork_messages"`
+
+	// MessageContext is the context one message adds: its tool call and the tool's output.
+	MessageContext float64 `json:"message_context"`
 
 	// TargetMessages is the messages per target a card edits.
-	TargetMessages float64
+	TargetMessages float64 `json:"target_messages"`
 
 	// TestFileMessages is the messages per test file in a card's target directories.
-	TestFileMessages float64
+	TestFileMessages float64 `json:"test_file_messages"`
 
 	// UsesMessages is the messages per entry in a card's Uses list.
-	UsesMessages float64
+	UsesMessages float64 `json:"uses_messages"`
 
-	// ContextPerLine is the context a read file adds per line.
-	ContextPerLine float64
+	// ContextPerLine is the context a read file, or the card's own text, adds per line.
+	ContextPerLine float64 `json:"context_per_line"`
 
 	// PackageContext is the context a target directory adds, once for its package and once for its tests.
-	PackageContext float64
+	PackageContext float64 `json:"package_context"`
+
+	// WritePerCardLine is the context a card's output adds per line of its card text, which carries the code the fork writes.
+	WritePerCardLine float64 `json:"write_per_card_line"`
 }
 
 // coefficients maps each weights: key to the Weights field it fills;
@@ -108,11 +114,13 @@ var coefficients = []struct {
 }{
 	{"startup_context", func(w *Weights) *float64 { return &w.StartupContext }},
 	{"fork_messages", func(w *Weights) *float64 { return &w.ForkMessages }},
+	{"message_context", func(w *Weights) *float64 { return &w.MessageContext }},
 	{"target_messages", func(w *Weights) *float64 { return &w.TargetMessages }},
 	{"test_file_messages", func(w *Weights) *float64 { return &w.TestFileMessages }},
 	{"uses_messages", func(w *Weights) *float64 { return &w.UsesMessages }},
 	{"context_per_line", func(w *Weights) *float64 { return &w.ContextPerLine }},
 	{"package_context", func(w *Weights) *float64 { return &w.PackageContext }},
+	{"write_per_card_line", func(w *Weights) *float64 { return &w.WritePerCardLine }},
 }
 
 // ProfileWeights loads batcher.yaml under baseDir and returns the named profile's weights.
@@ -163,31 +171,112 @@ func profileWeights(profileName string, prof profile) (Weights, error) {
 // cardLoad is what one card costs to run: the messages it sends and the weight of each entry in its read set.
 type cardLoad struct {
 	messages float64
-	readSet  map[string]float64
+	// written is the context the card's own output adds beyond its messages: the code and prose it writes.
+	written float64
+	readSet map[string]float64
 }
 
-// SegmentCost estimates the cost of running cards in order in one fork:
-// the fork's own startup messages, plus each card's messages priced at the startup context and the weight of every distinct read-set entry the fork has gathered up to and including that card.
-// A card's own estimate is the SegmentCost of the one-card segment.
+// PeakContext estimates the context a fork holds after running cards in one session, which is its largest:
+// the startup context, plus the weight of every distinct read-set entry the cards gather, plus the fork's own startup messages and every card's messages at MessageContext each.
+// Context only grows within a fork, so a segment's peak is the context after its last card, and adding a card never lowers it.
+// A card's own estimate is the PeakContext of the one-card segment.
 // A SizeSource error is returned wrapped.
-func SegmentCost(plan *planparser.Plan, cards []planparser.Card, sizes SizeSource, w Weights) (float64, error) {
-	cost := w.ForkMessages * w.StartupContext
-	gathered := map[string]float64{}
-	gatheredWeight := 0.0
-	for _, card := range cards {
+func PeakContext(plan *planparser.Plan, cards []planparser.Card, sizes SizeSource, w Weights) (float64, error) {
+	loads := make([]cardLoad, len(cards))
+	for i, card := range cards {
 		load, err := loadCard(plan, card, sizes, w)
 		if err != nil {
 			return 0, fmt.Errorf("estimate card %d: %w", card.Number, err)
 		}
+		loads[i] = load
+	}
+	var peak peakAccumulator
+	peak.start(w)
+	for _, load := range loads {
+		peak.add(load, w)
+	}
+	return peak.value, nil
+}
+
+// Breakdown records how a batch's PeakContext was formed, so a recorded run can be fitted against the peak its fork measured.
+// The peak is Startup plus ReadUnion plus every card's Written.
+type Breakdown struct {
+	// Weights are the coefficients the estimate used.
+	Weights Weights `json:"weights"`
+
+	// Startup is the fork's startup context plus its startup messages.
+	Startup float64 `json:"startup"`
+
+	// ReadUnion is the weight of the distinct read-set entries of all the batch's cards, card texts included.
+	ReadUnion float64 `json:"read_union"`
+
+	// Cards are the per-card components, in card order.
+	Cards []CardBreakdown `json:"cards"`
+}
+
+// CardBreakdown is one card's components before the batch's read sets are merged.
+type CardBreakdown struct {
+	Card int `json:"card"`
+
+	// CardText is the weight of the card's own text.
+	CardText float64 `json:"card_text"`
+
+	// Reads are the card's other read-set entries, file:, package: and tests: keys with their weights.
+	Reads map[string]float64 `json:"reads"`
+
+	// Messages is the card's estimated message count.
+	Messages float64 `json:"messages"`
+
+	// Written is the card's write allowance: its messages at MessageContext plus its card text at WritePerCardLine.
+	Written float64 `json:"written"`
+}
+
+// breakdownOf builds the Breakdown of the segment whose cards and loads are told, which must be the same length.
+func breakdownOf(cards []planparser.Card, loads []cardLoad, w Weights) Breakdown {
+	b := Breakdown{Weights: w, Startup: w.StartupContext + w.ForkMessages*w.MessageContext}
+	seen := map[string]bool{}
+	for i, load := range loads {
+		cb := CardBreakdown{Card: cards[i].Number, Reads: map[string]float64{}, Messages: load.messages, Written: load.messages*w.MessageContext + load.written}
 		for key, weight := range load.readSet {
-			if _, seen := gathered[key]; !seen {
-				gathered[key] = weight
-				gatheredWeight += weight
+			if strings.HasPrefix(key, cardKeyPrefix) {
+				cb.CardText = weight
+			} else {
+				cb.Reads[key] = weight
+			}
+			if !seen[key] {
+				seen[key] = true
+				b.ReadUnion += weight
 			}
 		}
-		cost += load.messages * (w.StartupContext + gatheredWeight)
+		b.Cards = append(b.Cards, cb)
 	}
-	return cost, nil
+	return b
+}
+
+// cardKeyPrefix opens the read-set key of a card's own text.
+const cardKeyPrefix = "card:"
+
+// peakAccumulator builds a segment's PeakContext one card at a time, in either direction, since the peak of a set of cards does not depend on their order.
+type peakAccumulator struct {
+	gathered map[string]bool
+	value    float64
+}
+
+// start resets the accumulator to an empty fork: its startup context and startup messages.
+func (p *peakAccumulator) start(w Weights) {
+	p.gathered = map[string]bool{}
+	p.value = w.StartupContext + w.ForkMessages*w.MessageContext
+}
+
+// add takes one card into the segment: its messages, and the read-set entries no earlier card gathered.
+func (p *peakAccumulator) add(load cardLoad, w Weights) {
+	p.value += load.messages*w.MessageContext + load.written
+	for key, weight := range load.readSet {
+		if !p.gathered[key] {
+			p.gathered[key] = true
+			p.value += weight
+		}
+	}
 }
 
 // loadCard derives a card's messages and read set.
@@ -245,8 +334,21 @@ func loadCard(plan *planparser.Plan, card planparser.Card, sizes SizeSource, w W
 		}
 	}
 
+	// The card's own text is in the fork's context, and the code it carries is roughly what the fork writes back out.
+	cardLines := 0
+	if card.SourcePath != "" {
+		lines, exists, err := sizes.Lines(card.SourcePath)
+		if err != nil {
+			return cardLoad{}, err
+		}
+		if exists {
+			cardLines = lines
+			readSet[cardKeyPrefix+card.SourcePath] = float64(lines) * w.ContextPerLine
+		}
+	}
+
 	messages := w.TargetMessages*float64(targets) +
 		w.TestFileMessages*float64(len(testFiles)) +
 		w.UsesMessages*float64(len(card.Uses))
-	return cardLoad{messages: messages, readSet: readSet}, nil
+	return cardLoad{messages: messages, written: float64(cardLines) * w.WritePerCardLine, readSet: readSet}, nil
 }

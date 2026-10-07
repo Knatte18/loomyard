@@ -36,14 +36,15 @@
 // A fork's cards are read from its prompt, never from commit times: the prompt is the first tool result in the fork's transcript holding a card pointer line, a "- `<path>/NN-<slug>.md`" bullet with nothing after the closing backtick (a Read result's line-number prefix is ignored), and the cards are every such line of that one result.
 // A fork whose transcript has no such result is listed as unattributed.
 //
-// With -calibrate <profile> the report gains a "Calibration (<profile>)" section: the batcher's estimate for each card beside the measured weight of the fork that ran it, for every run counted.
+// With -calibrate <profile> the report gains a "Calibration (<profile>)" section: the batcher's peak-context estimate for each card beside the measured peak context of the fork that ran it, for every run counted.
 // -history names the repository holding the runs' plan commits and is required with -calibrate;
 // -config names the directory whose batcher.yaml holds the profile, default the current directory.
 // The code repository is the current directory.
 // A run's plan is read from the newest "loom: plan artifacts for <slug>" commit in the history repository committed before the run's first Webster fork started.
 // Its base tree is the start_sha of the earliest successful begin-batch result in the run's webster session transcripts, the HEAD before the first batch forked, read from the code repository.
-// A card's estimate is batcher.SegmentCost of the card alone over the base tree with the profile's weights;
-// its measured weight is the summed weight of every fork whose cards name it, and its ratio is measured over estimate.
+// A card's estimate is batcher.PeakContext of the card alone over the base tree with the profile's weights;
+// its measured peak is the largest PeakContext of any fork whose cards name it, and its ratio is measured over estimate.
+// The card's own text is not in the base tree, so the estimate leaves it out.
 // The section lists the runs and cards it left out, each with its reason:
 //   - a run: "no webster fork"; "no plan commit before the first fork"; "plan at <sha> does not parse: <error>"; "no base: no begin-batch result in its webster sessions"; "base <sha> is not in the repository";
 //   - a card: "no fork names it"; "ran in a multi-card fork", since only a one-card fork measures a one-card cost; "estimate is 0".

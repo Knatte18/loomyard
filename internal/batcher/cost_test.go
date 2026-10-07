@@ -13,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// costWeights make a one-card edit of a 20-line file cost 40 and merging cards on that file cheaper.
-var costWeights = batcher.Weights{StartupContext: 10, ForkMessages: 1, TargetMessages: 1, ContextPerLine: 1}
+// costWeights make a one-card edit of a 20-line file peak at 10 startup + 1 fork message + 1 card message + 20 lines = 32.
+var costWeights = batcher.Weights{StartupContext: 10, ForkMessages: 1, MessageContext: 1, TargetMessages: 1, ContextPerLine: 1}
 
 var costSizes = fakeSizes{lines: map[string]int{
 	"internal/a/a.go":   20,
@@ -33,7 +33,7 @@ func batchSizes(batches []batcher.Batch) []int {
 	return sizes
 }
 
-// TestCostBatchifier_Limits asserts the grouping and per-batch estimate the cost batchifier returns for each hard limit and the tie rule.
+// TestCostBatchifier_Limits asserts the grouping and per-batch peak the cost batchifier returns for each hard limit and the tie rule.
 func TestCostBatchifier_Limits(t *testing.T) {
 	t.Parallel()
 
@@ -54,50 +54,56 @@ func TestCostBatchifier_Limits(t *testing.T) {
 		wantEstimate []float64
 	}{
 		{
-			name:      "two small cards editing one file are grouped",
-			params:    batcher.CostParams{AloneAbove: unlimited, Budget: unlimited, MaxCards: 5, Weights: costWeights},
-			cards:     sameFile(2),
-			wantSizes: []int{2},
+			name:         "cards within the budget share one fork, and its peak counts a shared file once",
+			params:       batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
+			cards:        sameFile(3),
+			wantSizes:    []int{3},
+			wantEstimate: []float64{10 + 1 + 3 + 20},
 		},
 		{
-			name:   "two small cards in unrelated packages are not grouped",
-			params: batcher.CostParams{AloneAbove: unlimited, Budget: unlimited, MaxCards: 5, Weights: costWeights},
+			name:   "cards in unrelated packages share one fork when it fits",
+			params: batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
 			cards: []planparser.Card{
 				editCard(1, []string{"internal/a/a.go"}),
 				editCard(2, []string{"internal/b/b.go"}),
 			},
-			wantSizes: []int{1, 1},
+			wantSizes:    []int{2},
+			wantEstimate: []float64{10 + 1 + 2 + 20 + 20},
 		},
 		{
-			name:      "cards above AloneAbove run alone",
-			params:    batcher.CostParams{AloneAbove: 35, Budget: unlimited, MaxCards: 5, Weights: costWeights},
-			cards:     sameFile(3),
-			wantSizes: []int{1, 1, 1},
+			name:   "a segment whose peak exceeds the budget is split",
+			params: batcher.CostParams{Budget: 60, MaxCards: 5, Weights: costWeights},
+			cards: []planparser.Card{
+				editCard(1, []string{"internal/a/a.go"}),
+				editCard(2, []string{"internal/b/b.go"}),
+				editCard(3, []string{"internal/c/c.go"}),
+			},
+			wantSizes:    []int{2, 1},
+			wantEstimate: []float64{53, 52},
 		},
 		{
-			name:      "the same cards group when AloneAbove allows",
-			params:    batcher.CostParams{AloneAbove: unlimited, Budget: unlimited, MaxCards: 5, Weights: costWeights},
-			cards:     sameFile(3),
-			wantSizes: []int{3},
+			name:         "a card over the budget runs alone and the split is still returned",
+			params:       batcher.CostParams{Budget: 30, MaxCards: 5, Weights: costWeights},
+			cards:        sameFile(2),
+			wantSizes:    []int{1, 1},
+			wantEstimate: []float64{32, 32},
 		},
 		{
-			name:         "a card over Budget but under AloneAbove runs alone and the split is still returned",
-			params:       batcher.CostParams{AloneAbove: unlimited, Budget: 30, MaxCards: 5, Weights: costWeights},
-			cards:        sameFile(3),
-			wantSizes:    []int{1, 1, 1},
-			wantEstimate: []float64{40, 40, 40},
+			name:      "no batch holds more than MaxCards, and a full tie leaves the last batch shortest",
+			params:    batcher.CostParams{Budget: unlimited, MaxCards: 2, Weights: costWeights},
+			cards:     sameFile(5),
+			wantSizes: []int{2, 2, 1},
 		},
 		{
-			name:      "no batch holds more than MaxCards",
-			params:    batcher.CostParams{AloneAbove: unlimited, Budget: unlimited, MaxCards: 2, Weights: costWeights},
-			cards:     sameFile(4),
-			wantSizes: []int{2, 2},
-		},
-		{
-			name:      "equal-cost splits go to the one with more batches",
-			params:    batcher.CostParams{AloneAbove: unlimited, Budget: unlimited, MaxCards: 3, Weights: batcher.Weights{}},
-			cards:     sameFile(3),
-			wantSizes: []int{1, 1, 1},
+			// big alone peaks at 112 and big with a at 133, while a with b peaks at 53 and all three at 154.
+			name:   "among the fewest batches the split with the smaller largest peak wins",
+			params: batcher.CostParams{Budget: 140, MaxCards: 5, Weights: costWeights},
+			cards: []planparser.Card{
+				editCard(1, []string{"internal/big/b.go"}),
+				editCard(2, []string{"internal/a/a.go"}),
+				editCard(3, []string{"internal/b/b.go"}),
+			},
+			wantSizes: []int{1, 2},
 		},
 	}
 	for _, tt := range tests {
@@ -123,14 +129,13 @@ func TestCostBatchifier_Limits(t *testing.T) {
 	}
 }
 
-// TestCostBatchifier_OptimalAndFeasible checks, over a seeded input set, that the split keeps card order, respects every hard limit, reports each batch's SegmentCost, and has the least total cost of any feasible contiguous split, ties going to more batches.
+// TestCostBatchifier_OptimalAndFeasible checks, over a seeded input set, that the split keeps card order, respects every hard limit, reports each batch's PeakContext with a breakdown whose components sum to it, and has the fewest batches of any feasible contiguous split, ties going to the smallest largest peak.
 func TestCostBatchifier_OptimalAndFeasible(t *testing.T) {
 	t.Parallel()
 
 	plan := &planparser.Plan{Language: "go"}
 	files := []string{"internal/a/a.go", "internal/b/b.go", "internal/c/c.go", "internal/d/d.go", "internal/big/b.go"}
 	rng := rand.New(rand.NewSource(1))
-	aloneAbove := []float64{30, 60, 1e9}
 	budgets := []float64{50, 100, 200, 1e9}
 	maxCards := []int{1, 2, 3, 6}
 
@@ -138,16 +143,16 @@ func TestCostBatchifier_OptimalAndFeasible(t *testing.T) {
 		weights := batcher.Weights{
 			StartupContext: float64(1 + rng.Intn(20)),
 			ForkMessages:   float64(rng.Intn(4)),
+			MessageContext: float64(rng.Intn(5)),
 			TargetMessages: float64(1 + rng.Intn(3)),
 			UsesMessages:   float64(rng.Intn(3)),
 			ContextPerLine: float64(rng.Intn(3)),
 			PackageContext: float64(rng.Intn(10)),
 		}
 		params := batcher.CostParams{
-			AloneAbove: aloneAbove[rng.Intn(len(aloneAbove))],
-			Budget:     budgets[rng.Intn(len(budgets))],
-			MaxCards:   maxCards[rng.Intn(len(maxCards))],
-			Weights:    weights,
+			Budget:   budgets[rng.Intn(len(budgets))],
+			MaxCards: maxCards[rng.Intn(len(maxCards))],
+			Weights:  weights,
 		}
 		cards := make([]planparser.Card, 1+rng.Intn(6))
 		for i := range cards {
@@ -158,13 +163,13 @@ func TestCostBatchifier_OptimalAndFeasible(t *testing.T) {
 			cards[i] = editCard(i+1, []string{files[rng.Intn(len(files))]}, uses...)
 		}
 
-		wantTotal, wantBatches := bruteForceBest(t, plan, cards, params)
+		wantBatches, wantLargest := bruteForceBest(t, plan, cards, params)
 		batches, err := batcher.NewCost("cautious", params).Batch(plan, cards, costSizes)
 		if err != nil {
 			t.Fatalf("iteration %d: Batch: %v", iteration, err)
 		}
 
-		var gotTotal float64
+		var gotLargest float64
 		next := 0
 		for _, batch := range batches {
 			for _, card := range batch.Cards {
@@ -173,55 +178,57 @@ func TestCostBatchifier_OptimalAndFeasible(t *testing.T) {
 				}
 				next++
 			}
-			estimate, err := batcher.SegmentCost(plan, batch.Cards, costSizes, weights)
-			if err != nil {
-				t.Fatalf("iteration %d: SegmentCost: %v", iteration, err)
+			peak := peakOf(t, plan, batch.Cards, weights)
+			if batch.Estimate != peak || batch.Profile != "cautious" {
+				t.Errorf("iteration %d: batch = {Profile %q, Estimate %v}; want {cautious, %v}", iteration, batch.Profile, batch.Estimate, peak)
 			}
-			if batch.Estimate != estimate || batch.Profile != "cautious" {
-				t.Errorf("iteration %d: batch = {Profile %q, Estimate %v}; want {cautious, %v}", iteration, batch.Profile, batch.Estimate, estimate)
+			if b := batch.Breakdown; b == nil || len(b.Cards) != len(batch.Cards) || b.Weights != weights {
+				t.Errorf("iteration %d: breakdown %+v does not describe the batch's %d cards under its weights", iteration, b, len(batch.Cards))
+			} else {
+				sum := b.Startup + b.ReadUnion
+				for _, cb := range b.Cards {
+					sum += cb.Written
+				}
+				if sum != peak {
+					t.Errorf("iteration %d: breakdown components sum to %v; want the peak %v", iteration, sum, peak)
+				}
 			}
 			if len(batch.Cards) > 1 && !feasibleSegment(t, plan, batch.Cards, params) {
 				t.Errorf("iteration %d: infeasible batch of %d cards", iteration, len(batch.Cards))
 			}
-			gotTotal += estimate
+			gotLargest = math.Max(gotLargest, peak)
 		}
 		if next != len(cards) {
 			t.Fatalf("iteration %d: batches cover %d cards; want %d", iteration, next, len(cards))
 		}
-		if gotTotal != wantTotal || len(batches) != wantBatches {
-			t.Errorf("iteration %d: total %v in %d batches; want %v in %d", iteration, gotTotal, len(batches), wantTotal, wantBatches)
+		if len(batches) != wantBatches || gotLargest != wantLargest {
+			t.Errorf("iteration %d: %d batches, largest peak %v; want %d, %v", iteration, len(batches), gotLargest, wantBatches, wantLargest)
 		}
 	}
+}
+
+// peakOf returns the PeakContext of cards over costSizes.
+func peakOf(t *testing.T, plan *planparser.Plan, cards []planparser.Card, w batcher.Weights) float64 {
+	t.Helper()
+	peak, err := batcher.PeakContext(plan, cards, costSizes, w)
+	if err != nil {
+		t.Fatalf("PeakContext: %v", err)
+	}
+	return peak
 }
 
 // feasibleSegment applies the multi-card hard limits to cards.
 func feasibleSegment(t *testing.T, plan *planparser.Plan, cards []planparser.Card, params batcher.CostParams) bool {
 	t.Helper()
-	if len(cards) > params.MaxCards {
-		return false
-	}
-	for _, card := range cards {
-		own, err := batcher.SegmentCost(plan, []planparser.Card{card}, costSizes, params.Weights)
-		if err != nil {
-			t.Fatalf("SegmentCost: %v", err)
-		}
-		if own > params.AloneAbove {
-			return false
-		}
-	}
-	cost, err := batcher.SegmentCost(plan, cards, costSizes, params.Weights)
-	if err != nil {
-		t.Fatalf("SegmentCost: %v", err)
-	}
-	return cost <= params.Budget
+	return len(cards) <= params.MaxCards && peakOf(t, plan, cards, params.Weights) <= params.Budget
 }
 
-// bruteForceBest enumerates every contiguous split of cards and returns the least total cost over the feasible ones, with the most batches among the splits that reach it.
-func bruteForceBest(t *testing.T, plan *planparser.Plan, cards []planparser.Card, params batcher.CostParams) (float64, int) {
+// bruteForceBest enumerates every contiguous split of cards and returns the fewest batches over the feasible ones, with the smallest largest peak among the splits that reach it.
+func bruteForceBest(t *testing.T, plan *planparser.Plan, cards []planparser.Card, params batcher.CostParams) (int, float64) {
 	t.Helper()
-	bestTotal, bestBatches := math.Inf(1), 0
+	bestBatches, bestLargest := math.MaxInt, math.Inf(1)
 	for mask := 0; mask < 1<<(len(cards)-1); mask++ {
-		var total float64
+		var largest float64
 		batches, feasible := 0, true
 		begin := 0
 		for end := 1; end <= len(cards); end++ {
@@ -233,20 +240,16 @@ func bruteForceBest(t *testing.T, plan *planparser.Plan, cards []planparser.Card
 				feasible = false
 				break
 			}
-			cost, err := batcher.SegmentCost(plan, segment, costSizes, params.Weights)
-			if err != nil {
-				t.Fatalf("SegmentCost: %v", err)
-			}
-			total += cost
+			largest = math.Max(largest, peakOf(t, plan, segment, params.Weights))
 			batches++
 			begin = end
 		}
 		if !feasible {
 			continue
 		}
-		if total < bestTotal || (total == bestTotal && batches > bestBatches) {
-			bestTotal, bestBatches = total, batches
+		if batches < bestBatches || (batches == bestBatches && largest < bestLargest) {
+			bestBatches, bestLargest = batches, largest
 		}
 	}
-	return bestTotal, bestBatches
+	return bestBatches, bestLargest
 }

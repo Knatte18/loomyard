@@ -1,5 +1,5 @@
-// calibrate.go sets the batcher's per-card estimate beside the measured weight of the Webster fork that ran the card, for past runs: the plan comes from the history repository, the tree the estimate reads is the run's base commit in the code repository, and the profile's weights come from batcher.yaml.
-// Read-only: it calls batcher.SegmentCost, the same function the live batchifier calls.
+// calibrate.go sets the batcher's per-card peak-context estimate beside the measured peak context of the Webster fork that ran the card, for past runs: the plan comes from the history repository, the tree the estimate reads is the run's base commit in the code repository, and the profile's weights come from batcher.yaml.
+// Read-only: it calls batcher.PeakContext, the same estimate the live batchifier bounds its batches by.
 
 package main
 
@@ -39,7 +39,7 @@ type BaseTrees interface {
 	FilesInDirAtRevision(rev, dir string) ([]string, error)
 }
 
-// CalibrationRow is one card's estimate beside its measured fork weight.
+// CalibrationRow is one card's peak-context estimate beside its fork's measured peak context.
 type CalibrationRow struct {
 	Run, Card string
 	Estimate  float64
@@ -53,7 +53,7 @@ type CalibrationSkip struct {
 	Run, Card, Reason string
 }
 
-// Calibration is the estimator run on past plans beside the measured fork weights.
+// Calibration is the estimator run on past plans beside the measured fork peaks.
 type Calibration struct {
 	Profile string
 	Rows    []CalibrationRow
@@ -183,7 +183,7 @@ func (c *Calibration) addRun(run RunTally, weights batcher.Weights, history Plan
 			}
 			named = true
 			multi = multi || len(fork.Cards) > 1
-			measured += fork.Usage.Weight()
+			measured = max(measured, float64(fork.PeakContext))
 		}
 		switch {
 		case !named:
@@ -194,7 +194,7 @@ func (c *Calibration) addRun(run RunTally, weights batcher.Weights, history Plan
 			continue
 		}
 
-		estimate, err := batcher.SegmentCost(plan, []planparser.Card{card}, sizes, weights)
+		estimate, err := batcher.PeakContext(plan, []planparser.Card{card}, sizes, weights)
 		if err != nil {
 			return fmt.Errorf("estimate %s of %s: %w", id, run.Slug, err)
 		}
