@@ -53,7 +53,7 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 
 	// The fork starts after any commit the fixture makes.
 	started := time.Now().Add(time.Hour)
-	runs := []RunTally{{Slug: "alpha", BaseSHA: baseSHA, Forks: []ForkTally{fork(started, 220, "01-c1")}}}
+	runs := []RunTally{{Slug: "alpha", BaseSHA: baseSHA, Forks: []ForkTally{fork(started, 10, 220, "01-c1")}}}
 
 	got, err := Calibrate(runs, "fit", configDir, repo, repo)
 	if err != nil {
@@ -96,6 +96,7 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	)
 	writeLines(t, filepath.Join(sessions, "w", "subagents", "agent-1.jsonl"),
 		toolResult(forkStart, jsonString(t, "- `_lyx/plan/01-c1.md`")),
+		assistant("m0", "opus", 1, 9),
 		assistant("m1", "opus", 1, 219),
 	)
 	t.Chdir(dir)
@@ -104,7 +105,7 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	if err := run(args, &report); err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	for _, wantLine := range []string{"## Calibration (fit)", "| alpha | 01-c1 | 110 | 220 | 2.000 |"} {
+	for _, wantLine := range []string{"## Calibration (fit)", "| alpha | 01-c1 | 1 | 110 | 220 | 2.000 | 100 | 210 | 2.100 |"} {
 		if !strings.Contains(report.String(), wantLine) {
 			t.Errorf("report lacks %q:\n%s", wantLine, report.String())
 		}

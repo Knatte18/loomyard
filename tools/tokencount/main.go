@@ -38,21 +38,31 @@
 // A fork's cards are read from its prompt, never from commit times: the prompt is the first tool result in the fork's transcript holding a card pointer line, a "- `<path>/NN-<slug>.md`" bullet with nothing after the closing backtick (a Read result's line-number prefix is ignored), and the cards are every such line of that one result.
 // A fork whose transcript has no such result is listed as unattributed.
 //
-// With -calibrate <profile> the report gains a "Calibration (<profile>)" section: the batcher's peak-context estimate for each card beside the measured peak context of the fork that ran it, for every run counted.
+// With -calibrate <profile> the report gains a "Calibration (<profile>)" section of two tables, each row a fork that names cards.
 // The one repository flag, -weft, names the repository holding the archive tags of finished runs, the runs' plan commits and the runs' webster records;
 // its default, the current worktree's weft sibling, applies whenever the flag is empty and either no slugs are named or the calibration is asked for, so -calibrate needs no other flag.
 // -config names the directory whose batcher.yaml holds the profile, default the current directory.
 // The code repository is the current directory.
-// A run's plan is read from the newest "loom: plan artifacts for <slug>" commit in that repository committed before the run's first Webster fork started.
-// Its base tree is the start_sha of the earliest successful begin-batch result in the run's webster session transcripts, the HEAD before the first batch forked, read from the code repository.
-// A card's estimate is batcher.PeakContext of the card alone over the base tree with the profile's weights;
-// its measured peak is the largest PeakContext of any fork whose cards name it, and its ratio is measured over estimate.
-// The card's own text is not in the base tree, so the estimate leaves it out.
-// The section lists the runs and cards it left out, each with its reason:
-//   - a run: "no webster fork"; "no plan commit before the first fork"; "plan at <sha> does not parse: <error>"; "no base: no begin-batch result in its webster sessions"; "base <sha> is not in the repository";
-//   - a card: "no fork names it"; "ran in a multi-card fork", since only a one-card fork measures a one-card cost; "estimate is 0".
 //
-// The section ends with the fit per run and overall: the number of cards, the median ratio and the spread, the 75th percentile of the ratios over the 25th, both interpolated linearly between the closest ranks.
+// A fork's position is one plus the card-naming forks before it in the same Merriam session, by start time, so a resumed session restarts its positions at 1.
+// The start table gives each fork's measured start context beside the start the profile estimates for its position, master_base + (position - 1) x batch_growth.
+// It needs only the transcripts, so a run left out of the peak table for its plan or base still contributes its start rows.
+// Below it the section prints the least-squares fit of master_base and batch_growth, the measured start over position - 1 across all those forks, beside the profile's values, with its residual spread: the 75th over the 25th percentile of each fork's measured start over its fitted start.
+// With fewer than two distinct positions it prints "not fitted" with that reason, and a negative fitted coefficient is printed and marked unusable, since batcher.yaml refuses a negative weight.
+// The fit is a report; nothing consumes it and the tool never edits batcher.yaml.
+//
+// The peak table gives, for every fork whose cards are all cards of the run's plan, one-card and multi-card alike, batcher.PeakContext of the fork's cards at its position beside the fork's measured peak context and their ratio, measured over estimate.
+// A run's plan is read from the newest "loom: plan artifacts for <slug>" commit in the repository committed before the run's first Webster fork started.
+// The estimate's tree is the run's base: the start_sha of the earliest successful begin-batch result in the run's webster session transcripts, the HEAD before the first batch forked, read from the code repository.
+// The card's own text is not in the base tree, so the estimate leaves it out.
+// Each row also gives the fork's in-fork growth: its measured peak minus its measured start, against its estimated peak minus the estimated start of its position, and the growth ratio of the two, "n/a" when the estimated growth is not positive.
+// The section lists the runs, forks and cards it left out, each with its reason:
+//   - a run: "no webster fork"; "no plan commit before the first fork"; "plan at <sha> does not parse: <error>"; "no base: no begin-batch result in its webster sessions"; "base <sha> is not in the repository";
+//   - a fork: "names a card the plan lacks: <id>"; "estimate is 0";
+//   - a card: "no fork names it".
+//
+// The section ends with the fit per run and overall: the number of forks, the median peak ratio and its spread, and the number of forks with a growth ratio, their median growth ratio and its spread.
+// A spread is the 75th percentile of the ratios over the 25th, both interpolated linearly between the closest ranks.
 //
 // The weight column is input + 1.25 x cache writes + 0.1 x cache reads + 5 x output: a
 // relative figure for ranking roles, not a price, and blind to the per-model price
