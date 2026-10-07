@@ -1,6 +1,6 @@
 // Command tokencount reads Claude Code's session transcripts for a set of task runs and
-// writes a markdown report of their token use per run and per role, the overview of all
-// runs first.
+// writes a markdown report of their token use per run and per role, each role summed
+// over all runs first.
 //
 //	go run ./tools/tokencount
 //	go run ./tools/tokencount -last 10
