@@ -72,8 +72,9 @@ func (e *ErrBranchExists) Error() string {
 // and the pair's first weft commit (the origin record's) also records the root's deletion.
 // An adopted, already-existing weft branch keeps its own run records.
 // A pair is live when its weft branch exists locally, or on origin with no archive/<slug>/* tag covering its tip (tags are consulted only when there is no local branch).
-// A live pair is adopted rather than forked: the weft branch from the local copy, with a behind local copy fast-forwarded to origin's tip, or else from origin as a local tracking branch,
-// and the warp branch from origin when it is there, whatever its relation to HEAD.
+// A live pair is adopted rather than forked.
+// The weft branch comes from the local copy, with a behind local copy fast-forwarded to origin's tip, or else from origin as a local tracking branch;
+// the warp branch comes from origin when it is there, whatever its relation to HEAD.
 // A weft worktree that already carries the origin record keeps it,
 // so a task moved between machines keeps its recorded parent.
 // Under SkipGit or SkipPush no origin is consulted: the pair is live only by a local weft branch,
