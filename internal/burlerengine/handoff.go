@@ -184,7 +184,7 @@ func (e *Engine) join(p *Profile, opts RunOpts, review, fix Handle) (Result, err
 		}
 	}
 
-	logger.Info("burler: round halves joined","round", opts.Round, "reviewOutcome", reviewEnd.result.Outcome, "fixOutcome", fixEnd.result.Outcome)
+	logger.Info("burler: round halves joined", "round", opts.Round, "reviewOutcome", reviewEnd.result.Outcome, "fixOutcome", fixEnd.result.Outcome)
 
 	result := Result{
 		ReviewPath:      p.ReviewPath,
