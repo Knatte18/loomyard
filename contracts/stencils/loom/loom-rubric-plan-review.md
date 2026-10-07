@@ -14,10 +14,10 @@ they are out of scope, and a finding raised against one is never legitimate.
 
 The format contract, and the Card model it implements, are both `{{.specs_dir}}/loom/loom-plan-spec.md`.
 This rubric points at both and restates neither.
-The mechanical checks over that contract are already enforced by this round's own gate over this round's own output — the format-only set, twenty-seven of the twenty-eight checks — while `plan-unapproved` is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil.
+The mechanical checks over that contract are already enforced by this round's own gate over this round's own output — the format-only set, every check but `plan-unapproved` — while `plan-unapproved` is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil.
 
 `Plan-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer, which has only checks and never judgment, cannot exhibit.
-Sitting behind a twenty-seven-check mechanical gate over this round's own output makes this gate's over-flagging surface larger than that of a gate with no validator ahead of it, not smaller.
+Sitting behind a mechanical gate over this round's own output makes this gate's over-flagging surface larger than that of a gate with no validator ahead of it, not smaller.
 
 **`support-log.md` is outside this review entirely.**
 It appears in neither the artifact list nor the answer key, and it must not be read or reasoned from.
@@ -28,7 +28,7 @@ It appears in neither the artifact list nor the answer key, and it must not be r
 Do not flag any of the following as a finding:
 
 - **Anything this round's own gate already checks.**
-  The twenty-eight check IDs `{{.specs_dir}}/loom/loom-plan-spec.md`'s own validation-checks section lists, `format-unrecognized` through `commit-subject-mismatch`, are enforced deterministically — twenty-seven of the twenty-eight by this round's own gate over this round's own output, while `plan-unapproved` is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil.
+  Every check ID `{{.specs_dir}}/loom/loom-plan-spec.md`'s own validation-checks section lists, from `format-unrecognized` through `commit-subject-mismatch`, is enforced deterministically — every one but `plan-unapproved` by this round's own gate over this round's own output, while `plan-unapproved` is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil.
   Re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the gate.
 - **A missing `DependsOn`/`Produces` field, or an incomplete dependency list.**
   Dependency edges are derived, never authored — a card's `Uses` intersected against every other card's target list.
