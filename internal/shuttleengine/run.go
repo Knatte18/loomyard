@@ -792,6 +792,10 @@ const (
 	sendVerifyAttempts = 20
 	sendVerifyInterval = 250 * time.Millisecond
 	sendReplays        = 1
+	// sendExtraEnters bounds the Enters a verified send adds when the provider's input box still holds the sent text.
+	sendExtraEnters = 2
+	// sendNeedleRunes is the length of the leading slice of a sent text that identifies it in a pane.
+	sendNeedleRunes = 48
 )
 
 // inputSleep is the time seam for tests to control pacing.
@@ -1012,10 +1016,20 @@ func deliveredBelowBaseline(current, baseline paneNeedleScan) bool {
 // Residual, stated rather than papered over: if the pane churns hard enough that the delivered copy
 // is itself evicted between two polls, no viewport-only check can see it at all. That window is far
 // narrower than the one closed here and cannot be closed without scrollback.
+//
+// When engine also implements InputBoxReader, an accepted delivery is then confirmed submitted:
+// after the provider's SubmitSettle the input box is read, and while it holds the sent text one extra Enter is sent,
+// at most sendExtraEnters times, before the send fails naming the pending input.
+// An extra Enter is sent only when the provider reports the box holding the sent text,
+// so it never lands on an empty box, a running turn or a draft lacking the needle;
+// a draft containing the needle of a text of sendNeedleRunes or more characters is indistinguishable from the sent text and is submitted by the Enter.
+// An engine without the capability keeps the appearance-only check,
+// so a text that collapses into a paste placeholder is never confirmed there and relies on the engine's own pacing.
 func sendVerified(reed ReedOps, engine Engine, guid, text string) error {
-	needle := normalizePaneText(text)
-	if runes := []rune(needle); len(runes) > 48 {
-		needle = string(runes[:48])
+	normalized := normalizePaneText(text)
+	needle := normalized
+	if runes := []rune(needle); len(runes) > sendNeedleRunes {
+		needle = string(runes[:sendNeedleRunes])
 	}
 
 	baseline := paneNeedleScan{linesBelow: -1}
@@ -1032,9 +1046,9 @@ func sendVerified(reed ReedOps, engine Engine, guid, text string) error {
 			if err == nil {
 				switch current := scanPaneForNeedle(capture, needle); {
 				case current.count > baseline.count:
-					return nil
+					return confirmSubmitted(reed, engine, guid, normalized, needle)
 				case deliveredBelowBaseline(current, baseline):
-					return nil
+					return confirmSubmitted(reed, engine, guid, normalized, needle)
 				case current.count < baseline.count:
 					// The viewport scrolled past an occurrence the baseline counted. Track the
 					// pane's reality rather than holding a threshold it can no longer reach.
@@ -1045,6 +1059,47 @@ func sendVerified(reed ReedOps, engine Engine, guid, text string) error {
 		}
 	}
 	return fmt.Errorf("shuttle: Send: sent text never appeared in the pane after %d attempt(s) — the provider TUI likely swallowed the input; the send was NOT delivered", 1+sendReplays)
+}
+
+// confirmSubmitted reads the provider's input box after each settle and sends one extra Enter while the box still holds the sent text, at most sendExtraEnters times.
+// normalized is the whole sent text normalized by normalizePaneText and needle its leading sendNeedleRunes characters.
+// It returns nil at once for an engine that cannot read its input box.
+func confirmSubmitted(reed ReedOps, engine Engine, guid, normalized, needle string) error {
+	reader, ok := engine.(InputBoxReader)
+	if !ok {
+		return nil
+	}
+	settle := reader.SubmitSettle()
+	for extraEnters := 0; ; extraEnters++ {
+		inputSleep(settle)
+		if !inputBoxHoldsSentText(reed, reader, guid, normalized, needle) {
+			return nil
+		}
+		if extraEnters == sendExtraEnters {
+			return fmt.Errorf("shuttle: Send: the sent text is still pending in the input box after %d extra Enter(s); the submission did not land", sendExtraEnters)
+		}
+		if err := reed.SendKey(guid, "Enter"); err != nil {
+			return err
+		}
+	}
+}
+
+// inputBoxHoldsSentText reports whether the pane's input box holds the sent text.
+// A box showing a longer draft that merely contains a short sent text, a collapsed paste placeholder, nothing, no readable box or a failed capture all count as not holding it.
+func inputBoxHoldsSentText(reed ReedOps, reader InputBoxReader, guid, normalized, needle string) bool {
+	capture, err := reed.CapturePane(guid)
+	if err != nil {
+		return false
+	}
+	boxText, ok := reader.InputBoxText(capture)
+	if !ok {
+		return false
+	}
+	box := normalizePaneText(boxText)
+	if len([]rune(normalized)) < sendNeedleRunes {
+		return box == normalized
+	}
+	return strings.Contains(box, needle)
 }
 
 // normalizePaneText lowercases s and strips whitespace for canonical matching.

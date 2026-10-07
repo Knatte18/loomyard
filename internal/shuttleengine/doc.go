@@ -99,6 +99,9 @@
 // So a launch runs at most two load turns, each bounded by the timeout,
 // and a skipped skill never fails or hangs it.
 // Then PromptLine goes out through the verified send path.
+// That path confirms a send is submitted, not only that its text appeared in the pane, for an engine that implements the optional InputBoxReader capability:
+// after the provider's settle it reads the input box, and while the box still holds the sent text it sends one extra Enter, at most two per send, before failing the send as pending.
+// An engine without the capability keeps the appearance-only check.
 // The run's events offset ends past every load turn end, the retry's included,
 // so Wait never reads one as the run asking.
 // run.json records that offset as `promptOffset` before the prompt goes out,
