@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,9 +23,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// BurlerRunner is the narrow seam BurlerProducer drives one burler round through.
+// BurlerRunner is the narrow seam BurlerProducer drives one burler round through:
+// Run spawns a round, ProbeRound reports what became of a previous session's two halves, and Resume completes a round whose halves are both live.
 type BurlerRunner interface {
 	Run(p burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.Result, error)
+	ProbeRound(p burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.LiveRound, error)
+	Resume(p burlerengine.Profile, opts burlerengine.RunOpts, live burlerengine.LiveRound) (burlerengine.Result, error)
 }
 
 // Compile-time proof that *burlerengine.Engine satisfies BurlerRunner.
@@ -65,7 +67,7 @@ var _ BurlerRunner = (*burlerengine.Engine)(nil)
 type BurlerProducer struct {
 	name    string
 	runner  BurlerRunner
-	attach  Shuttle
+	remover burlerengine.StrandRemover
 	models  burlerengine.RoundModels
 	anchor  string
 	profile burlerengine.Profile
@@ -78,8 +80,9 @@ type BurlerProducer struct {
 type BurlerDeps struct {
 	// Runner drives one round.
 	Runner BurlerRunner
-	// Attach is the live-round probe, required.
-	Attach Shuttle
+	// Remover stops the live half of a round that has only one live half, required.
+	// It is the same remover the engine is told, so a half is stopped one way on every path.
+	Remover burlerengine.StrandRemover
 	// Models holds the per-round review and fix model lists; each round runs on the pick for its number.
 	Models burlerengine.RoundModels
 	// AnchorPath is the absolute anchor the round's ready marker is derived under, through burlermarker.Path.
@@ -92,24 +95,20 @@ type BurlerDeps struct {
 // A nil now defaults to time.Now, and the injected clock resolves only the archive filename's
 // same-second collision suffix.
 // profile's ReadyMarkerPath is overwritten per round too, from deps.AnchorPath.
-// It returns a distinct error for each of: a nil runner, a nil attach seam, an empty name, an empty
+// It returns a distinct error for each of: a nil runner, a nil remover, an empty name, an empty
 // runDir, a runDir that is not absolute per filepath.IsAbs, and an anchor path that is not absolute.
 // NewBurlerProducer never stats, creates, or otherwise touches runDir -- creating it is Call's job.
 //
-// deps.Attach is the live-round probe, and it is required rather than optional. A round this producer
-// respawns over a still-live agent produces two concurrent sessions writing the same review and
-// fixer-report files -- and, on a fix-scope: source row, two sessions holding commit authority over
-// the same branch. Accepting a nil seam would make that outcome reachable again through a wiring
-// slip, silently, which is exactly how it shipped the first time.
-// It is deliberately the same Shuttle seam the Bouncer row already holds rather than a new method on BurlerRunner.
-// The probe matches a run declaring both round files, which neither half of a two-agent round does,
-// so until it learns the two-strand shape it matches no run and is inert.
+// deps.Remover is required rather than optional.
+// A round this producer respawns beside a still-live half produces two concurrent sessions writing the same review or fixer-report file.
+// On a fix-scope: source row, that is two sessions holding commit authority over the same branch.
+// Accepting a nil seam would make that outcome reachable again through a wiring slip, silently, which is exactly how it shipped the first time.
 func NewBurlerProducer(name string, deps BurlerDeps, profile burlerengine.Profile, opts burlerengine.RunOpts, runDir string, now func() time.Time) (*BurlerProducer, error) {
 	if deps.Runner == nil {
 		return nil, fmt.Errorf("shedadapters: %s (%s): runner must not be nil", name, burlerEngineLabel)
 	}
-	if deps.Attach == nil {
-		return nil, fmt.Errorf("shedadapters: %s (%s): attach seam must not be nil", name, burlerEngineLabel)
+	if deps.Remover == nil {
+		return nil, fmt.Errorf("shedadapters: %s (%s): remover must not be nil", name, burlerEngineLabel)
 	}
 	if name == "" {
 		return nil, fmt.Errorf("shedadapters: %s (%s): name must not be empty", name, burlerEngineLabel)
@@ -129,7 +128,7 @@ func NewBurlerProducer(name string, deps BurlerDeps, profile burlerengine.Profil
 	return &BurlerProducer{
 		name:    name,
 		runner:  deps.Runner,
-		attach:  deps.Attach,
+		remover: deps.Remover,
 		models:  deps.Models,
 		anchor:  deps.AnchorPath,
 		profile: profile,
@@ -389,15 +388,9 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 	}
 
 	// Probe before archive, exactly as SingleLLMProducer.Call does and for the identical reason:
-	// archiving renames the very two files a live round is about to write, and shuttle's Wait polls
-	// for bare existence at those paths, so archiving ahead of the probe would make an attached
-	// round unable to ever classify done -- in precisely the case the probe exists to protect.
-	//
-	// The spec carries only what Attach reads: the OutputFiles it set-matches a persisted run.json
-	// against, and the round's own timeout so an attached run's deadline is the round's, not the
-	// shuttle config's shorter default. Role and Round are identity fields Attach never matches on;
-	// they are filled anyway so a logged attach is attributable.
-	if attachedOutcome, attachedPtr, attachedErr, handled := p.probeLiveRound(ctx, round, reviewPath, fixerReportPath, archiveRound, failureExit); handled {
+	// archiving renames the very two files a live round is about to write.
+	// Shuttle's Wait polls for bare existence at those paths, so archiving ahead of the probe would make a resumed round unable to ever classify done -- in precisely the case the probe exists to protect.
+	if attachedOutcome, attachedPtr, attachedErr, handled := p.probeLiveRound(ctx, round, profile, archiveRound, failureExit); handled {
 		return attachedOutcome, attachedPtr, attachedErr
 	}
 
@@ -445,7 +438,7 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 
 		result, runErr := p.runner.Run(profile, attemptOpts)
 		if errors.Is(runErr, burlerengine.ErrHalfNotStopped) {
-			// Returned bare, without archiving or the retry, like the attach error below:
+			// Returned bare, without archiving or the retry, like the live-round probe's errors:
 			// a half that could not be stopped may still be writing the round's files.
 			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
@@ -458,29 +451,7 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 
 		switch result.Outcome {
 		case shuttleengine.OutcomeDone:
-			if result.Gate != nil && !result.Gate.Passed {
-				// A failed gate must not consume or trigger the attempt-1/attempt-2 retry: that retry
-				// exists for OutcomeDied/OutcomeTimeout, which are infrastructure, while gate
-				// exhaustion is a determinate verdict the gate already re-prompted its whole budget
-				// over inside the session, and a second full round on the same input would re-spend
-				// an LLM generation to reach the same answer. Archiving is what keeps the hand-back
-				// honest: a gate-failed round's review file must not be left for the Bouncer to judge
-				// -- a Go validator already proved it invalid.
-				archiveRound()
-				if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
-					return "", shedengine.OutputPointer{}, cerr
-				}
-				logger.Warn("shedadapters: burler round's gate did not pass", "producer", p.name, "engine", burlerEngineLabel, "round", round, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath)
-				return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate), Reason: gateFailedReason(result.Gate)}, nil
-			}
-			// A genuine success verdict survives cancellation only up to the moment the round
-			// completed and parsed; a cancellation observed after that point still yields an
-			// error (internal/shedengine binds every implementation to surface cancellation as a
-			// non-nil error, never as Stuck), but the already-complete artifacts survive.
-			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
-				return "", shedengine.OutputPointer{}, cerr
-			}
-			return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath, GateAttempts: gateAttemptsPointer(result.Gate), BudgetExempt: p.roundBudgetExempt(round)}, nil
+			return p.doneExit(ctx, round, result, archiveRound)
 
 		case shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout:
 			if attempt == 1 {
@@ -501,6 +472,35 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 
 	// Unreachable: every path through the loop above returns.
 	return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: attempt loop exited without a verdict", p.name, burlerEngineLabel, round)
+}
+
+// doneExit maps a round that reached OutcomeDone onto Call's contract, for a spawned and a resumed round alike.
+//
+// A failed gate must not consume or trigger the attempt-1/attempt-2 retry: that retry
+// exists for OutcomeDied/OutcomeTimeout, which are infrastructure, while gate
+// exhaustion is a determinate verdict the gate already re-prompted its whole budget
+// over inside the session, and a second full round on the same input would re-spend
+// an LLM generation to reach the same answer. Archiving is what keeps the hand-back
+// honest: a gate-failed round's review file must not be left for the Bouncer to judge
+// -- a Go validator already proved it invalid.
+//
+// A genuine success verdict survives cancellation only up to the moment the round
+// completed and parsed; a cancellation observed after that point still yields an
+// error (internal/shedengine binds every implementation to surface cancellation as a
+// non-nil error, never as Stuck), but the already-complete artifacts survive.
+func (p *BurlerProducer) doneExit(ctx context.Context, round int, result burlerengine.Result, archiveRound func()) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if result.Gate != nil && !result.Gate.Passed {
+		archiveRound()
+		if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		logger.Warn("shedadapters: burler round's gate did not pass", "producer", p.name, "engine", burlerEngineLabel, "round", round, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath)
+		return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate), Reason: gateFailedReason(result.Gate)}, nil
+	}
+	if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
+		return "", shedengine.OutputPointer{}, cerr
+	}
+	return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, round), GateAttempts: gateAttemptsPointer(result.Gate), BudgetExempt: p.roundBudgetExempt(round)}, nil
 }
 
 // describeHalves names both halves of a round for a log line or an error: each half's session and run directory,
@@ -536,85 +536,103 @@ func (p *BurlerProducer) roundBudgetExempt(round int) bool {
 	return exists && decision == CirclingContinue && cause == EscalationBudget
 }
 
-// probeLiveRound asks the attach seam whether a still-live round is already writing this round's own
-// two artifacts, and maps a found run's outcome onto Call's contract.
+// probeLiveRound asks the runner what became of a previous session's two halves of this round and resumes the round when both are still live.
 //
-// It reports handled=false in exactly two cases -- no live run was found, or one was found but had
-// already died or timed out -- and in both the caller proceeds to its ordinary archive-then-spawn
-// path, since the agent is gone either way. Every other case reports handled=true along with the
-// three values Call must return.
+// It reports handled=false whenever the caller should proceed to its ordinary archive-then-spawn path:
+// neither half is live, exactly one half is live and was stopped, or the resumed round had already died or timed out.
+// Every other case reports handled=true along with the three values Call must return.
 //
-// An attach error is returned bare rather than through failureExit: failureExit archives the round's
-// two paths, and an attach that could not determine whether a run is live is the one situation where
-// archiving is most dangerous -- a live agent may still be mid-write on them.
+// With both halves live it calls Resume and maps the result through the same outcome switch as a spawned attempt, except that a died or timeout result falls through to a fresh attempt 1.
+// The bounded retry then applies to that spawn from its own attempt 1, deliberately: the attached round was not this producer's attempt, and counting it would silently halve the retry budget of every resumed round.
+// With exactly one half live that half's strand is removed through the remover and the round respawns, so a live fixer beside a finished review is stopped and re-run rather than attached;
+// its target edits stay in the worktree and the next attempt's reviewer reviews them.
+// With no half live, whatever the other halves' files hold, nothing is removed.
+// The respawn's archive then renames the round's outputs and the engine removes the ready marker.
 //
-// The probe runs through AttachGated with p.opts.Gate plus the round's review-parse entry, never the plain Attach:
-// an attached Discussion or Plan fix round is gated exactly as a freshly-spawned one is,
-// which is what makes "one GateSpec at every hop" true rather than aspirational:
-// the same RunOpts field is read at the spawn hop (via the runner's own RunOpts.Gate) and at this resume hop,
-// and no second carrier enters NewBurlerProducer.
-// The review-parse entry is appended here because this hop never passes through burlerengine.Engine.Run, which appends it at the spawn hop.
+// A probe error, a failed removal and a Resume error wrapping burlerengine.ErrHalfNotStopped are returned bare rather than through failureExit:
+// failureExit archives the round's two paths, and a half that may still be live is the one situation where archiving is most dangerous, since it may be mid-write on them.
+// A failed removal wraps ErrHalfNotStopped and ends with the way forward, like the engine's own failed stop.
 func (p *BurlerProducer) probeLiveRound(
 	ctx context.Context,
 	round int,
-	reviewPath, fixerReportPath string,
+	profile burlerengine.Profile,
 	archiveRound func(),
 	failureExit func(error) (shedengine.Outcome, shedengine.OutputPointer, error),
 ) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	spec := shuttleengine.Spec{
-		OutputFiles: []string{reviewPath, fixerReportPath},
-		Timeout:     p.opts.Timeout,
-		Role:        burlerEngineLabel,
-		Round:       strconv.Itoa(round),
-	}
+	probeToken := strconv.Itoa(round)
+	opts := p.opts
+	opts.Round = probeToken
+	opts.Review, opts.Fix = p.models.Pick(round)
 
-	// A fresh copy,
-	// so the caller's slice is never mutated.
-	gateSpec := append(slices.Clone(p.opts.Gate), burlerengine.ReviewGateEntry(reviewPath))
-	result, found, err := p.attach.AttachGated(spec, gateSpec)
+	live, err := p.runner.ProbeRound(profile, opts)
 	if err != nil {
-		if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr, true
-		}
-		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: attach probe: %w", p.name, burlerEngineLabel, round, err), true
-	}
-	if !found {
-		return "", shedengine.OutputPointer{}, nil, false
+		return p.liveRoundErrorExit(ctx, fmt.Errorf("shedadapters: %s (%s): round %d: probe the round's halves: %w", p.name, burlerEngineLabel, round, err))
 	}
 
-	logger.Info("shedadapters: attached to a live burler round instead of respawning", "producer", p.name, "engine", burlerEngineLabel, "round", round, "sessionID", result.SessionID, "strandGUID", result.StrandGUID)
+	reviewLive := live.Review.State == burlerengine.HalfLive
+	fixLive := live.Fix.State == burlerengine.HalfLive
+	switch {
+	case reviewLive && fixLive:
+		return p.resumeLiveRound(ctx, round, profile, opts, live, archiveRound, failureExit)
+	case reviewLive:
+		return p.stopLiveHalf(ctx, round, live.Review.Handle)
+	case fixLive:
+		return p.stopLiveHalf(ctx, round, live.Fix.Handle)
+	}
+	return "", shedengine.OutputPointer{}, nil, false
+}
+
+// stopLiveHalf removes the strand of the one live half of a round, so the respawn that follows runs beside no live half.
+// A removal that fails is the round's error, wrapping burlerengine.ErrHalfNotStopped and ending with the way forward.
+func (p *BurlerProducer) stopLiveHalf(ctx context.Context, round int, half burlerengine.Handle) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	guid := half.StrandGUID()
+	logger.Warn("shedadapters: stopping the one live half of a burler round before respawning it", "producer", p.name, "engine", burlerEngineLabel, "round", round, "strandGUID", guid)
+	if err := p.remover.RemoveStrandIfLive(guid); err != nil {
+		return p.liveRoundErrorExit(ctx, fmt.Errorf("shedadapters: %s (%s): round %d: %w: strand %s: %v; way forward: run \"lyx reed remove %s\", then re-step the row", p.name, burlerEngineLabel, round, burlerengine.ErrHalfNotStopped, guid, err, guid))
+	}
+	return "", shedengine.OutputPointer{}, nil, false
+}
+
+// resumeLiveRound resumes a round whose halves are both live and maps its result onto Call's contract.
+func (p *BurlerProducer) resumeLiveRound(
+	ctx context.Context,
+	round int,
+	profile burlerengine.Profile,
+	opts burlerengine.RunOpts,
+	live burlerengine.LiveRound,
+	archiveRound func(),
+	failureExit func(error) (shedengine.Outcome, shedengine.OutputPointer, error),
+) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	result, err := p.runner.Resume(profile, opts, live)
+	if errors.Is(err, burlerengine.ErrHalfNotStopped) {
+		return p.liveRoundErrorExit(ctx, fmt.Errorf("shedadapters: %s (%s): round %d: resume: %w", p.name, burlerEngineLabel, round, err))
+	}
+	if err != nil {
+		outcome, ptr, exitErr := failureExit(fmt.Errorf("shedadapters: %s (%s): round %d: resume: %w", p.name, burlerEngineLabel, round, err))
+		return outcome, ptr, exitErr, true
+	}
+
+	logger.Info("shedadapters: resumed a live burler round instead of respawning", "producer", p.name, "engine", burlerEngineLabel, "round", round, "halves", describeHalves(result))
 
 	switch result.Outcome {
 	case shuttleengine.OutcomeDone:
-		if result.Gate != nil && !result.Gate.Passed {
-			// Identical to the spawn path's own gate-failed branch: this is what makes "one GateSpec
-			// at every hop" true rather than aspirational -- an attached Discussion or Plan fix round
-			// is gated exactly as a freshly-spawned one is, and its failure maps onto the same
-			// empty-Path Stuck, archived first, never consuming the attempt-1/attempt-2 retry.
-			archiveRound()
-			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
-				return "", shedengine.OutputPointer{}, cerr, true
-			}
-			logger.Warn("shedadapters: attached burler round's gate did not pass", "producer", p.name, "engine", burlerEngineLabel, "round", round, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath)
-			return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate), Reason: gateFailedReason(result.Gate)}, nil, true
-		}
-		// Identical to the spawn path's own success return, including the cancellation rule: a
-		// completed round's artifacts survive, but a cancelled context still errors.
-		if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr, true
-		}
-		return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath, GateAttempts: gateAttemptsPointer(result.Gate), BudgetExempt: p.roundBudgetExempt(round)}, nil, true
+		outcome, ptr, exitErr := p.doneExit(ctx, round, result, archiveRound)
+		return outcome, ptr, exitErr, true
 
 	case shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout:
-		// The attached agent is gone, so a fresh spawn is both safe and correct. The bounded retry
-		// below then applies to that spawn from its own attempt 1, deliberately: the attached run
-		// was not this producer's attempt, and counting it would silently halve the retry budget of
-		// every resumed round.
-		logger.Warn("shedadapters: attached burler round had already died or timed out; respawning", "producer", p.name, "engine", burlerEngineLabel, "round", round, "outcome", result.Outcome, "sessionID", result.SessionID)
+		logger.Warn("shedadapters: resumed burler round had already died or timed out; respawning", "producer", p.name, "engine", burlerEngineLabel, "round", round, "outcome", result.Outcome, "halves", describeHalves(result))
 		return "", shedengine.OutputPointer{}, nil, false
 
 	default:
-		outcome, ptr, exitErr := failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attached run reported unrecognized outcome %q", p.name, burlerEngineLabel, round, result.Outcome))
+		outcome, ptr, exitErr := failureExit(fmt.Errorf("shedadapters: %s (%s): round %d resumed run reported unrecognized outcome %q", p.name, burlerEngineLabel, round, result.Outcome))
 		return outcome, ptr, exitErr, true
 	}
+}
+
+// liveRoundErrorExit returns err without archiving, unless the context was cancelled, whose error takes precedence.
+func (p *BurlerProducer) liveRoundErrorExit(ctx context.Context, err error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
+		return "", shedengine.OutputPointer{}, cerr, true
+	}
+	return "", shedengine.OutputPointer{}, err, true
 }

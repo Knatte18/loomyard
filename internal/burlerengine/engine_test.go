@@ -2,6 +2,7 @@
 // It covers spec construction for both halves (including the ClusterFan -> Spec.ForkSubagents wiring and the concurrent start) and the cluster audit policy wiring.
 // It covers every shuttleengine.Outcome of either half, the fixer's gate outcomes, the review-parse gate's re-prompts and the marker lifecycle.
 // It covers the round's failure rules (every failure row of join, the start failures and ErrHalfNotStopped).
+// It covers ProbeRound's per-half classification and Resume's attach, marker removal and routing into join.
 // It covers the per-round instruction-file materialization step, and the PATTERN-directive transposition detector for the pattern.Directive call site.
 // Every Geometry built here points WorktreeRoot at a test temp dir, so materialization lands there
 // rather than in the real package source tree. TestEngine_Run_MaterializesInstructionFiles is the
@@ -63,6 +64,13 @@ type fakeShuttle struct {
 	handles       map[string]*fakeHandle
 	// gateFindings collects the findings of every failed gate evaluation.
 	gateFindings []string
+
+	// live holds the roles of the halves ProbeGated finds live; a role absent from it is found nowhere.
+	live map[string]bool
+	// probeErr holds, per role, the error ProbeGated answers instead of a result.
+	probeErr map[string]error
+	// probeSpecs holds, per role, the spec ProbeGated was last asked about.
+	probeSpecs map[string]shuttleengine.Spec
 }
 
 // fakeHandle is one started fake half.
@@ -215,39 +223,57 @@ func (h *fakeHandle) evaluateGate() (*shuttleengine.GateOutcome, error) {
 	return outcome, nil
 }
 
+// scriptFor is the halfScript of the half spec's role names.
+func (f *fakeShuttle) scriptFor(spec shuttleengine.Spec) halfScript {
+	if spec.Role == burlerReviewRole {
+		return f.review
+	}
+	return f.fix
+}
+
+// initLocked allocates the recording maps on first use; the caller holds f.mu.
+func (f *fakeShuttle) initLocked() {
+	if f.specs != nil {
+		return
+	}
+	f.specs = map[string]shuttleengine.Spec{}
+	f.gates = map[string]shuttleengine.GateSpec{}
+	f.handles = map[string]*fakeHandle{}
+	f.markerAtStart = map[string]bool{}
+	f.probeSpecs = map[string]shuttleengine.Spec{}
+}
+
+// registerLocked builds the handle of spec's half from script and records it; the caller holds f.mu.
+func (f *fakeShuttle) registerLocked(spec shuttleengine.Spec, gate shuttleengine.GateSpec, script halfScript) *fakeHandle {
+	handle := &fakeHandle{
+		shuttle: f,
+		role:    spec.Role,
+		guid:    spec.Role + "-guid",
+		runDir:  "/kept/" + spec.Role,
+		spec:    spec,
+		gate:    gate,
+		script:  script,
+		stopped: make(chan struct{}),
+	}
+	f.handles[spec.Role] = handle
+	return handle
+}
+
 // StartGated registers the half its spec's role names and returns a handle scripted from that half's halfScript, or its start error.
 func (f *fakeShuttle) StartGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (Handle, error) {
-	script := f.fix
-	if spec.Role == burlerReviewRole {
-		script = f.review
-	}
+	script := f.scriptFor(spec)
 
 	f.mu.Lock()
-	if f.specs == nil {
-		f.specs = map[string]shuttleengine.Spec{}
-		f.gates = map[string]shuttleengine.GateSpec{}
-		f.handles = map[string]*fakeHandle{}
-		f.markerAtStart = map[string]bool{}
+	f.initLocked()
+	var handle *fakeHandle
+	if script.startErr == nil {
+		handle = f.registerLocked(spec, gate, script)
 	}
 	f.started = append(f.started, spec.Role)
 	f.specs[spec.Role] = spec
 	f.gates[spec.Role] = gate
 	_, statErr := os.Stat(f.markerPath)
 	f.markerAtStart[spec.Role] = statErr == nil
-	var handle *fakeHandle
-	if script.startErr == nil {
-		handle = &fakeHandle{
-			shuttle: f,
-			role:    spec.Role,
-			guid:    spec.Role + "-guid",
-			runDir:  "/kept/" + spec.Role,
-			spec:    spec,
-			gate:    gate,
-			script:  script,
-			stopped: make(chan struct{}),
-		}
-		f.handles[spec.Role] = handle
-	}
 	f.mu.Unlock()
 
 	if script.onStart != nil {
@@ -257,6 +283,21 @@ func (f *fakeShuttle) StartGated(spec shuttleengine.Spec, gate shuttleengine.Gat
 		return nil, script.startErr
 	}
 	return handle, nil
+}
+
+// ProbeGated records spec and answers the half its role names: its scripted probe error, a handle scripted like a started half when the role is live, and otherwise not found.
+func (f *fakeShuttle) ProbeGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (Handle, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.initLocked()
+	f.probeSpecs[spec.Role] = spec
+	if err := f.probeErr[spec.Role]; err != nil {
+		return nil, false, err
+	}
+	if !f.live[spec.Role] {
+		return nil, false, nil
+	}
+	return f.registerLocked(spec, gate, f.scriptFor(spec)), true, nil
 }
 
 // stop ends the blocked Wait of the handle with guid, if one was started.
@@ -1315,5 +1356,153 @@ func TestEngine_Run_MaterializeFailure(t *testing.T) {
 	}
 	if len(shuttle.started) != 0 {
 		t.Errorf("started halves = %v; want none on a materialization failure", shuttle.started)
+	}
+}
+
+// TestEngine_ProbeRound classifies each half as live, done or gone by its shuttle probe and its output file, and returns a live half's handle.
+// The rows include a found run whose output file already exists, which stays live, and a probe error from either half.
+func TestEngine_ProbeRound(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// live holds the roles the shuttle holds a run for.
+		live []string
+		// files holds the output files already on disk, relative to the profile's root.
+		files     []string
+		probeErr  map[string]error
+		wantErr   bool
+		wantState [2]HalfState
+	}{
+		{name: "both live", live: []string{reviewRole, fixRole}, wantState: [2]HalfState{HalfLive, HalfLive}},
+		{name: "found run with its output file on disk stays live", live: []string{reviewRole}, files: []string{"review.md"}, wantState: [2]HalfState{HalfLive, HalfGone}},
+		{name: "no live run and the output file present is done", files: []string{"review.md", "fixer-report.md"}, wantState: [2]HalfState{HalfDone, HalfDone}},
+		{name: "live fixer beside a finished review", live: []string{fixRole}, files: []string{"review.md"}, wantState: [2]HalfState{HalfDone, HalfLive}},
+		{name: "neither live and no output file is gone", wantState: [2]HalfState{HalfGone, HalfGone}},
+		{name: "reviewer probe error", probeErr: map[string]error{reviewRole: errors.New("reed unreadable")}, wantErr: true},
+		{name: "fixer probe error", probeErr: map[string]error{fixRole: errors.New("reed unreadable")}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root, p := newEngineTestProfile(t)
+			shuttle := &fakeShuttle{live: map[string]bool{}, probeErr: tt.probeErr}
+			for _, role := range tt.live {
+				shuttle.live[role] = true
+			}
+			for _, name := range tt.files {
+				if err := os.WriteFile(filepath.Join(root, name), []byte("on disk"), 0o644); err != nil {
+					t.Fatalf("WriteFile(%s) = %v; want nil", name, err)
+				}
+			}
+			e, _ := newEngineForTest(t, root, shuttle)
+
+			live, err := e.ProbeRound(p, RunOpts{Timeout: time.Minute})
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ProbeRound() error = %v; wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			for i, half := range []struct {
+				role string
+				got  LiveHalf
+				file string
+			}{{reviewRole, live.Review, "review.md"}, {fixRole, live.Fix, "fixer-report.md"}} {
+				if half.got.State != tt.wantState[i] {
+					t.Errorf("%s state = %d; want %d", half.role, half.got.State, tt.wantState[i])
+				}
+				if wantHandle := tt.wantState[i] == HalfLive; (half.got.Handle != nil) != wantHandle {
+					t.Errorf("%s handle = %v; want non-nil only for a live half", half.role, half.got.Handle)
+				}
+				if half.got.Handle != nil && half.got.Handle.StrandGUID() != half.role+"-guid" {
+					t.Errorf("%s handle guid = %q; want %q", half.role, half.got.Handle.StrandGUID(), half.role+"-guid")
+				}
+				spec := shuttle.probeSpecs[half.role]
+				if want := []string{filepath.Join(root, half.file)}; !slices.Equal(spec.OutputFiles, want) {
+					t.Errorf("%s probe OutputFiles = %v; want %v", half.role, spec.OutputFiles, want)
+				}
+				if spec.Timeout != time.Minute {
+					t.Errorf("%s probe Timeout = %s; want the round's %s", half.role, spec.Timeout, time.Minute)
+				}
+			}
+			if len(shuttle.started) != 0 {
+				t.Errorf("ProbeRound started %v; want nothing started", shuttle.started)
+			}
+		})
+	}
+}
+
+// TestEngine_Resume attaches to two live halves and ends the round through join.
+// The fixer waits for the ready marker, so a round that completes proves neither wait blocked the other and the stale marker was removed.
+// The failure rows prove the attached handles route into join: an unparseable review leaves no marker, and an attached fixer that completes before the marker stops the reviewer.
+func TestEngine_Resume(t *testing.T) {
+	t.Parallel()
+
+	done := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+	fixerWaiting := halfScript{result: done, waitForMarker: true, writes: "nothing fixed"}
+
+	tests := []struct {
+		name        string
+		review, fix halfScript
+		staleMarker bool
+		wantErr     string
+		wantMarker  bool
+		wantRemoved []string
+		wantVerdict Verdict
+		// onlyReviewerLive makes the fixer's run absent, so the probed round cannot be resumed.
+		onlyReviewerLive bool
+	}{
+		{name: "both attached and joined through the marker", review: halfScript{result: done, writes: approvedReview}, fix: fixerWaiting, wantMarker: true, wantVerdict: VerdictApproved},
+		{name: "stale marker is removed before the attached reviewer is done", review: halfScript{result: done, writes: approvedReview}, fix: fixerWaiting, staleMarker: true, wantMarker: true, wantVerdict: VerdictApproved},
+		{name: "unparseable review writes no marker and stops the fixer", review: halfScript{result: done, writes: malformedReview}, fix: fixerWaiting, staleMarker: true, wantErr: "review file is invalid", wantRemoved: []string{fixRole + "-guid"}},
+		{name: "attached fixer completing before the marker stops the reviewer", review: halfScript{result: done, writes: approvedReview, hold: make(chan struct{})}, fix: halfScript{result: done, writes: "nothing fixed"}, wantErr: "before the review was handed off", wantRemoved: []string{reviewRole + "-guid"}},
+		{name: "a round without both halves live is refused and nothing is stopped", review: halfScript{result: done}, onlyReviewerLive: true, wantErr: "both halves live"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root, p := newEngineTestProfile(t)
+			shuttle := &fakeShuttle{review: tt.review, fix: tt.fix, live: map[string]bool{reviewRole: true, fixRole: !tt.onlyReviewerLive}}
+			e, remover := newEngineForTest(t, root, shuttle)
+			markerPath := filepath.Join(root, "review.md.ready")
+			if tt.staleMarker {
+				if err := os.WriteFile(markerPath, []byte("stale"), 0o644); err != nil {
+					t.Fatalf("WriteFile(stale marker) = %v; want nil", err)
+				}
+			}
+			live, err := e.ProbeRound(p, RunOpts{})
+			if err != nil {
+				t.Fatalf("ProbeRound() error = %v; want nil", err)
+			}
+
+			result, err := e.Resume(p, RunOpts{}, live)
+
+			switch {
+			case tt.wantErr == "" && err != nil:
+				t.Fatalf("Resume() error = %v; want nil", err)
+			case tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)):
+				t.Fatalf("Resume() error = %v; want it to contain %q", err, tt.wantErr)
+			}
+			if tt.wantErr == "" {
+				if result.Outcome != shuttleengine.OutcomeDone || result.Verdict != tt.wantVerdict {
+					t.Errorf("Resume() outcome %q verdict %v; want done and %v", result.Outcome, result.Verdict, tt.wantVerdict)
+				}
+			}
+			if _, statErr := os.Stat(markerPath); (statErr == nil) != tt.wantMarker {
+				t.Errorf("marker exists after the round = %v; want %v", statErr == nil, tt.wantMarker)
+			}
+			if !slices.Equal(remover.removed, tt.wantRemoved) {
+				t.Errorf("removed strands = %v; want %v", remover.removed, tt.wantRemoved)
+			}
+			if len(shuttle.started) != 0 {
+				t.Errorf("Resume started %v; want nothing started", shuttle.started)
+			}
+			// A refused round attached to nothing, so the probed reviewer's handle was never waited on.
+			if blocked := shuttle.blocked(); len(blocked) != 0 && !tt.onlyReviewerLive {
+				t.Errorf("handles left blocked = %v; want none", blocked)
+			}
+		})
 	}
 }

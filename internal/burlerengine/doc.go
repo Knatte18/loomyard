@@ -103,6 +103,17 @@
 // A reviewer that fails to start leaves the fixer never started, and a fixer that fails to start stops the already-started reviewer first.
 // Any other start error is a pre-strand failure, returned wrapped, with the started reviewer stopped first.
 //
+// # Resuming a round
+//
+// A caller that finds a previous session's round on disk asks ProbeRound what became of each half, without waiting on either.
+// A half is live when the shuttle holds a run for its one output file, even when that file is already on disk, as a reviewer repairing its review in the parse gate is.
+// A half is done when it has no live run and its output file is present, and gone otherwise.
+// The LiveRound it returns carries each half's state and, for a live half, its Handle, whose strand guid is what a caller stops the half by.
+// Resume attaches to a round whose halves are both live: it starts nothing, removes the ready marker it finds (a finished reviewer's run is never live, so a marker is stale),
+// and hands both handles to join, so a resumed round ends exactly as a fresh one does.
+// Any other combination is the caller's to settle by stopping what is live through the same StrandRemover and running a fresh round;
+// Resume refuses it, since a round never ends with one half live and a live half is never started a second time.
+//
 // Every recorded finding is fixed by the fixer, all severities including LOW and NIT.
 // Severity affects how a finding is reported, never whether it gets fixed.
 // Leaving low-severity findings unfixed "because they're just nits" is a known failure mode:

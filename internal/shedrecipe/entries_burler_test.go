@@ -226,10 +226,6 @@ func TestBurlerRoundEntry_RubricStencil(t *testing.T) {
 		}
 	})
 
-	// A nil Shuttle is refused rather than tolerated: it is the round's live-agent probe, and a
-	// producer built without it respawns over a still-live round -- two agents writing one review,
-	// and on a fix-scope: source row, two agents committing to one branch. A wiring slip must fail
-	// here, at construction, not silently at the next crash.
 	t.Run("RelativeAnchorPathIsRefused", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.AnchorPath = "relative/anchor"
@@ -239,13 +235,27 @@ func TestBurlerRoundEntry_RubricStencil(t *testing.T) {
 		assertErrContains(t, err, "AnchorPath")
 	})
 
-	t.Run("NilShuttleSeamIsRefused", func(t *testing.T) {
+	// A nil BurlerRemover is refused rather than tolerated: it stops the one live half of a resumed round.
+	// A producer built without it respawns beside a still-live half, which is two agents writing one file and, on a fix-scope: source row, two agents committing to one branch.
+	// A wiring slip must fail here, at construction, not silently at the next crash.
+	t.Run("NilBurlerRemoverSeamIsRefused", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.BurlerRemover = nil
+		cfg := minimalBurlerConfig()
+
+		_, err := burlerRoundEntry("review-round", cfg, env)
+		assertErrContains(t, err, "BurlerRemover")
+	})
+
+	// The round probes through its runner, so the row reads no Shuttle.
+	t.Run("NilShuttleSeamIsTolerated", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.Shuttle = nil
 		cfg := minimalBurlerConfig()
 
-		_, err := burlerRoundEntry("review-round", cfg, env)
-		assertErrContains(t, err, "Shuttle")
+		if _, err := burlerRoundEntry("review-round", cfg, env); err != nil {
+			t.Fatalf("burlerRoundEntry() error = %v; want nil", err)
+		}
 	})
 }
 

@@ -608,6 +608,11 @@ func (s *diedShuttle) StartGated(spec shuttleengine.Spec, _ shuttleengine.GateSp
 	return diedHandle{role: spec.Role}, nil
 }
 
+// ProbeGated finds no live run, since a diedShuttle only starts halves.
+func (s *diedShuttle) ProbeGated(shuttleengine.Spec, shuttleengine.GateSpec) (burlerengine.Handle, bool, error) {
+	return nil, false, nil
+}
+
 // diedHandle is the started half of a diedShuttle.
 type diedHandle struct{ role string }
 

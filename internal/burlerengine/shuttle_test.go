@@ -8,16 +8,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
-func TestRunnerShuttle_StartGated(t *testing.T) {
+// TestRunnerShuttle drives RunnerShuttle over a real shuttleengine.Runner on fake seams: StartGated's started and failed starts, and ProbeGated's not-found answer.
+// Every failure or not-found answer returns an interface-nil Handle, never a nil *shuttleengine.Run wrapped in one.
+func TestRunnerShuttle(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name      string
 		addErr    error
 		wantStart bool
+		// probe drives ProbeGated, over a runner with no candidate run, instead of StartGated.
+		probe bool
 	}{
 		{name: "a started run returns a handle naming its strand", wantStart: true},
 		{name: "a failed start returns an interface-nil handle and the error", addErr: errors.New("reed: add strand failed")},
+		{name: "a probe with no candidate run returns an interface-nil handle and not found", probe: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -26,6 +31,14 @@ func TestRunnerShuttle_StartGated(t *testing.T) {
 			reed := &shuttlefake.Reed{AddErr: tt.addErr}
 			cfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30}
 			shuttle := RunnerShuttle(shuttleengine.NewRunner(reed, &shuttlefake.Engine{}, root, root, cfg))
+
+			if tt.probe {
+				handle, found, err := shuttle.ProbeGated(shuttleengine.Spec{OutputFiles: []string{"out.md"}}, nil)
+				if err != nil || found || handle != nil {
+					t.Errorf("ProbeGated() = (%#v, %v, %v); want (nil, false, nil)", handle, found, err)
+				}
+				return
+			}
 
 			handle, err := shuttle.StartGated(shuttleengine.Spec{Prompt: "review", OutputFiles: []string{"out.md"}}, nil)
 

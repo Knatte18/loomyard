@@ -273,6 +273,12 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("env burler remover is wired", func(t *testing.T) {
+		if c.env.BurlerRemover == nil {
+			t.Error("c.env.BurlerRemover = nil; want the remover the burler engine is built with")
+		}
+	})
+
 	t.Run("description path matches the landing dir", func(t *testing.T) {
 		if want := summaryparser.Path(loomengine.LandingDir(loc)); c.env.DescriptionPath != want {
 			t.Errorf("c.env.DescriptionPath = %q; want %q", c.env.DescriptionPath, want)
