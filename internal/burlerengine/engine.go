@@ -118,7 +118,7 @@ type Result struct {
 // before reading the review file at all;
 // and, only then, read and strictly parse the review file into Verdict/Findings.
 //
-// Run returns a nil error for every non-done outcome (asking/died/timeout are normal loop events a
+// Run returns a nil error for every non-done outcome (died/timeout are normal loop events a
 // caller branches on via Result.Outcome, with an empty Verdict) and reserves errors for hard
 // failures: an invalid profile, a shuttle start/run failure, a cluster audit policy violation, and
 // — deliberately fail-loud — a verdict parse failure on a done run, since a defaulted verdict could
@@ -214,9 +214,8 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 	}
 
 	if result.Outcome != shuttleengine.OutcomeDone {
-		// asking/died/timeout are normal loop events, not errors — the
-		// caller branches on Outcome (and, for asking, LastAssistantMessage
-		// above). Verdict stays empty: there is no review file to trust yet.
+		// died/timeout are normal loop events, not errors — the
+		// caller branches on Outcome. Verdict stays empty: there is no review file to trust yet.
 		return result, nil
 	}
 

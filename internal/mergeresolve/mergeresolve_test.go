@@ -317,7 +317,6 @@ func TestResolve_ShuttleOutcomes_MapToStuckNoConclude(t *testing.T) {
 		name    string
 		outcome shuttleengine.Outcome
 	}{
-		{"Asking", shuttleengine.OutcomeAsking},
 		{"Died", shuttleengine.OutcomeDied},
 		{"Timeout", shuttleengine.OutcomeTimeout},
 	}

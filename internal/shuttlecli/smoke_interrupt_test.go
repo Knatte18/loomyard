@@ -20,18 +20,12 @@
 // its own, so the run can reach a terminal outcome before the mid-turn poll
 // ever catches it — this is retried (see maxMidTurnAttempts) rather than
 // treated as a hard failure. Second, and more fundamentally: the provider's
-// Stop hook fires on ANY turn end, including one ended by Interrupt itself —
-// so a blocked Wait can classify and return (typically OutcomeAsking, since
-// the output file is not yet written) from the INTERRUPTED turn's own Stop
-// event before Send's redirect turn ever starts. This is not a bug to work
-// around; it is the documented v1 limitation that there is no re-wait path
-// once Wait returns (see (*Run).Interrupt's doc comment). Asserting
-// Wait()'s outcome is therefore not a deterministic property of a correct
-// interrupt+send sequence. What IS deterministic, and what this test
-// asserts, is that the redirect actually reaches the still-live pane and
-// the agent (which keeps running independently of whatever Wait already
-// returned) eventually rewrites the output file — proven by polling the
-// file directly rather than trusting Wait's classification.
+// Stop hook fires on ANY turn end, including one ended by Interrupt itself.
+// Wait holds that Stop, since the output file is not yet written, and keeps
+// polling the same agent, so the redirect turn Send starts is the one that
+// finishes the run. The test asserts that the redirect actually reaches the
+// still-live pane and the agent rewrites the output file — proven by polling
+// the file directly — and that Wait then returns done.
 //
 // Determinism notes (round fable-r6): the provider TUI renders NO streamed
 // response text while a turn is in progress — the whole response flushes to
@@ -144,7 +138,7 @@ func startMidTurnCountingRun(t *testing.T, runner *shuttleengine.Runner, engine 
 	// an attempt that ends before yielding a usable mid-turn window is a
 	// transient miss against a live model, not a test failure, so it must be
 	// retried rather than hard-failed. The strand is removed because an
-	// asking/died/timeout run (or one still mid-turn when we give up) would
+	// died/timeout run (or one still mid-turn when we give up) would
 	// otherwise survive per the run-loop cleanup rules and leak into the next
 	// attempt; RemoveStrand's error is non-fatal cleanup noise.
 	abandonAttempt := func(reason string) (*shuttleengine.Run, chan waitOutcome, bool) {
@@ -236,12 +230,9 @@ func pollFileContentEquals(path, want string, deadline time.Time) (last string, 
 // retries with a fresh run if real claude self-ends the turn before a mid-turn window is observed
 // (see startMidTurnCountingRun), then calls run.Interrupt() followed by run.Send() with a one-line
 // replacement instruction.
-// It asserts the deterministic property established live (see the file-level doc comment): the
-// output file eventually carries the REDIRECTED content, proven by polling the file directly rather
-// than asserting on Wait's classification of the interrupted turn.
-// Wait is still drained and its outcome logged,
-// and a mechanism failure (an error, or a died/timeout outcome) still fails the test — only the
-// specific "must be done" claim is dropped.
+// It asserts that the output file eventually carries the REDIRECTED content, proven by polling the
+// file directly, and that Wait then drains with the done outcome: the interrupted turn's own Stop is
+// a hold, so only the redirect turn's completion ends the run.
 func TestSmokeInterruptSendContinues(t *testing.T) {
 	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
@@ -260,33 +251,9 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
-	// Build the runner the same way shuttlecli.Command()'s PersistentPreRunE
-	// does, but keep the *Run handle Start returns instead of blocking on
-	// Runner.Run — the test needs it to Interrupt/Send while Wait blocks in
-	// a goroutine below.
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		t.Fatalf("lyxcwd.Getwd: %v", err)
-	}
-	layout, err := lyxcwd.Resolve(cwd)
-	if err != nil {
-		t.Fatalf("lyxcwd.Resolve: %v", err)
-	}
-	shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
-	if err != nil {
-		t.Fatalf("shuttleengine.LoadConfig: %v", err)
-	}
-	reedCfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
-	if err != nil {
-		t.Fatalf("reedengine.LoadConfig: %v", err)
-	}
-	reedGeom, err := hubgeom.ReedGeometry(layout)
-	if err != nil {
-		t.Fatalf("reed geometry: %v", err)
-	}
-	reedEngine := reedengine.New(reedCfg, reedGeom)
-	engine := claudeengine.New()
-	runner := shuttleengine.NewRunner(reedEngine, engine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	// Keep the *Run handle Start returns instead of blocking on Runner.Run —
+	// the test needs it to Interrupt/Send while Wait blocks in a goroutine below.
+	runner, engine, reedEngine, shuttleCfg := newSmokeRunner(t)
 
 	outputPath := filepath.Join(h.PrimeWorktree(), "smoke-interrupt-output.txt")
 
@@ -311,10 +278,7 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 		t.Fatalf("run.Send: %v", err)
 	}
 
-	// The deterministic assertion: regardless of how Wait classifies the
-	// interrupted turn (its own Stop event can resolve Wait before the
-	// redirect's turn ever starts — see the file-level doc comment), the
-	// redirected instruction reaches the still-live pane and the agent
+	// The redirected instruction reaches the still-live pane and the agent
 	// eventually rewrites the output file.
 	fileDeadline := time.Now().Add(3 * time.Minute)
 	if last, matched := pollFileContentEquals(outputPath, "REDIRECTED", fileDeadline); !matched {
@@ -322,22 +286,51 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 	}
 
 	// Drain Wait so the goroutine and reed/run-dir state settle before
-	// teardown. Log the outcome rather than asserting a specific value —
-	// both OutcomeDone and OutcomeAsking are legitimate depending on which
-	// Stop event Wait's poll loop happened to observe first (see the
-	// file-level doc comment) — but an error, or OutcomeDied/OutcomeTimeout,
-	// indicates a genuine mechanism failure, not a benign classification
-	// race, and still fails the test.
+	// teardown. The interrupted turn's Stop is a hold, so only the redirect
+	// turn's completion ends the run: any error or outcome but OutcomeDone
+	// indicates a genuine mechanism failure.
 	select {
 	case res := <-waitCh:
 		t.Logf("run.Wait outcome=%s err=%v", res.result.Outcome, res.err)
 		if res.err != nil {
 			t.Fatalf("run.Wait: %v", res.err)
 		}
-		if res.result.Outcome == shuttleengine.OutcomeDied || res.result.Outcome == shuttleengine.OutcomeTimeout {
-			t.Fatalf("run.Wait outcome = %q; want %q or %q (a died/timeout outcome after a successful redirect indicates a real mechanism failure)", res.result.Outcome, shuttleengine.OutcomeDone, shuttleengine.OutcomeAsking)
+		if res.result.Outcome != shuttleengine.OutcomeDone {
+			t.Fatalf("run.Wait outcome = %q; want %q (any other outcome after a successful redirect indicates a real mechanism failure)", res.result.Outcome, shuttleengine.OutcomeDone)
 		}
 	case <-time.After(5 * time.Minute):
 		t.Fatal("run.Wait did not return within 5m after the interrupt+send sequence")
 	}
+}
+
+// newSmokeRunner builds a shuttleengine.Runner against the hub the test is chdir'd into, the same way
+// shuttlecli.Command()'s PersistentPreRunE does, and returns it with the engine, reed engine and config
+// it was built from. Tests that need the *Run handle Start returns use it instead of RunCLI.
+func newSmokeRunner(t *testing.T) (*shuttleengine.Runner, shuttleengine.Engine, *reedengine.Engine, shuttleengine.Config) {
+	t.Helper()
+
+	cwd, err := lyxcwd.Getwd()
+	if err != nil {
+		t.Fatalf("lyxcwd.Getwd: %v", err)
+	}
+	layout, err := lyxcwd.Resolve(cwd)
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve: %v", err)
+	}
+	shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
+	if err != nil {
+		t.Fatalf("shuttleengine.LoadConfig: %v", err)
+	}
+	reedCfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
+	if err != nil {
+		t.Fatalf("reedengine.LoadConfig: %v", err)
+	}
+	reedGeom, err := hubgeom.ReedGeometry(layout)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
+	reedEngine := reedengine.New(reedCfg, reedGeom)
+	engine := claudeengine.New()
+	runner := shuttleengine.NewRunner(reedEngine, engine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	return runner, engine, reedEngine, shuttleCfg
 }

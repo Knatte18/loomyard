@@ -517,8 +517,8 @@ func dispositionCandidate(c attachCandidate, strands []reedengine.StrandStatus, 
 // all already exist is a leftover from a run that already finished, respawn-eligible at any directory
 // age; otherwise a candidate whose persisted Outcome already reads a terminal value is respawn-eligible
 // at any age too, for the same reason dispositionCandidate's own tracked-and-live branch already treats
-// a terminal Outcome as respawn-eligible whatever reed says of the pane: an untracked timeout/asking
-// record written by finalize may still have a live pane behind it (finalize cleans up only on
+// a terminal Outcome as respawn-eligible whatever reed says of the pane: an untracked timeout
+// (or legacy asking) record written by finalize may still have a live pane behind it (finalize cleans up only on
 // OutcomeDone), and respawning beside it adds no hazard class the tracked-live branch does not already
 // accept; otherwise a candidate old enough to rule out a concurrently-starting run (sweepOrphans' own
 // minAge guard) is respawn-eligible; a younger one with an empty (legacy) or unrecognised Outcome keeps

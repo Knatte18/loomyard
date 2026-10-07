@@ -55,8 +55,7 @@ var completionSignalScannedFiles = []string{"wait.go", "attach.go"}
 // it is the third disposition of the same three-way choice verdictRespawnEligible belongs to, and a
 // new one of those is exactly as worth a human look.
 //
-// OutcomeDone and OutcomeAsking are deliberately absent: OutcomeDone is the positive answer, and
-// OutcomeAsking is a legacy value no wait path returns; neither abandons a run.
+// OutcomeDone is deliberately absent: it is the positive answer and abandons no run.
 var negativeVerdictMarkers = map[string]bool{
 	"OutcomeDied":                 true,
 	"OutcomeTimeout":              true,

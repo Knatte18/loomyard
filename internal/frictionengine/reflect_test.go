@@ -485,7 +485,6 @@ func TestReflect_ShuttleFailures_FailedNoArchive(t *testing.T) {
 	}{
 		{"Died", &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}},
 		{"Timeout", &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}},
-		{"Asking", &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}},
 		{"RunError", &shedfake.Shuttle{Err: errors.New("run failed")}},
 	}
 	for _, tt := range tests {

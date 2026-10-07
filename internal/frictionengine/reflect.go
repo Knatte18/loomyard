@@ -173,7 +173,7 @@ func Reflect(deps Deps) (Report, error) {
 		return Report{Status: StatusFailed, NoteCount: len(notes)}, nil
 	}
 	if result.Outcome != shuttleengine.OutcomeDone {
-		// died, timeout, asking, or any outcome this package does not recognize: the notes and the record are left exactly as they are,
+		// died, timeout, or any outcome this package does not recognize: the notes and the record are left exactly as they are,
 		// so the next trigger in the same task settles or reflects on the same notes again.
 		logger.Warn("frictionengine: reflection run did not complete", "dir", deps.FrictionDir, "outcome", result.Outcome)
 		return Report{Status: StatusFailed, NoteCount: len(notes)}, nil

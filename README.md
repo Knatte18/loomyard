@@ -93,7 +93,7 @@ shed     walk a flat producer list to a terminal outcome
 loom     shed + the task recipe            batten    shed + the worktree-lifecycle recipe
 ```
 
-`shuttle` classifies every run as `done`, `asking`, `died`, or `timeout`, and owns everything provider-specific — how Claude is launched and which startup gates it shows — behind an engine interface, so a second provider plugs in as another engine without any layer above changing.
+`shuttle` classifies every run as `done`, `died`, or `timeout`, holds a turn end that lacks its output files (an autonomous run notifies its parent once per held turn end), reads background work off the Stop payload first, and owns everything provider-specific — how Claude is launched and which startup gates it shows — behind an engine interface, so a second provider plugs in as another engine without any layer above changing.
 
 ## Fabric: state that travels without touching your repo
 

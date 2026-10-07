@@ -373,10 +373,6 @@ func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
 		wantFindingIDs []string
 	}{
 		{
-			name:    "asking",
-			shuttle: &fakeShuttle{result: scripted(shuttleengine.OutcomeAsking, "which color did you mean?", false)},
-		},
-		{
 			name:    "died",
 			shuttle: &fakeShuttle{result: scripted(shuttleengine.OutcomeDied, "", false)},
 		},

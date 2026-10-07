@@ -851,7 +851,7 @@ func TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome(t *testing.T) {
 }
 
 // TestRun_Wait_EventsHandling drives Wait over an events file whose Stop events arrive in awkward
-// shapes, with the output file never created so a classified batch is asking: two Stops in one read
+// shapes, with the output file never created so a classified batch is a hold: two Stops in one read
 // classify as the LAST of them with both consumed; a ParseEvents error must NOT advance run.offset
 // past the bytes it failed to parse, or the batch's Stop event would be discarded unread once
 // parsing starts succeeding on the NEXT tick's (empty) read, so the same bytes are retried and DO

@@ -83,12 +83,13 @@ type RunState struct {
 	// Outcome has three writable states. Start writes the sentinel
 	// runOutcomeRunning ("running") when it first persists this record.
 	// Run.finalize overwrites it with the classification string
-	// (done/asking/died/timeout) for EVERY terminal outcome, not only
-	// OutcomeDone. Any other value, INCLUDING THE EMPTY STRING, means the
+	// (done/died/timeout) for EVERY terminal outcome, not only
+	// OutcomeDone. The legacy value "asking" is one only an older binary wrote.
+	// Any other value, INCLUDING THE EMPTY STRING, means the
 	// record was written by a binary that did not know about this field and
 	// is therefore never attachable — a plain "" decodes from every run.json
 	// a pre-change binary wrote, so treating empty as attachable would let an
-	// in-flight worktree upgraded mid-Asking attach to an idle pane and wait
+	// in-flight worktree upgraded mid-run attach to an idle pane and wait
 	// out a freshly restarted run_timeout_min.
 	Outcome string `json:"outcome"`
 	// Started is false when Start first persists this record, and is flipped true and re-persisted

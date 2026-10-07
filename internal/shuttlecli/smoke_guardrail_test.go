@@ -6,8 +6,8 @@
 // is not yet probed"): a REAL claude, when its Agent tool call is denied by
 // the PreToolUse hook, actually resumes in-session on the steered
 // instruction rather than stalling or aborting the turn, and a REAL claude
-// asked to pose a question surfaces it as the run loop's classified
-// "asking" outcome. Follows the same conventions as smoke_run_test.go,
+// asked to pose a question stays held, notifies its parent once and
+// finishes once answered. Follows the same conventions as smoke_run_test.go,
 // whose helpers (deferHubRelease, reedStatusStrand) this
 // file reuses.
 
@@ -20,10 +20,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 )
 
@@ -88,13 +91,13 @@ func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 	}
 }
 
-// TestSmokeGuardrailAskingSurfacesQuestion proves the AskUserQuestion PreToolUse deny's steer
-// (claudeengine's steerAskUserQuestionDeny reason) surfaces as the run loop's "asking" outcome: an
-// autonomous run instructed to ask the operator a question before writing anything must end its
-// turn with that question as its last message, without writing the output file, and the strand/run
-// directory must survive for the operator to answer into — the same live state the sandbox suite's
-// S2 operator-assisted scenario depends on.
-func TestSmokeGuardrailAskingSurfacesQuestion(t *testing.T) {
+// TestSmokeGuardrailQuestionHoldsRunUntilAnswered proves the AskUserQuestion PreToolUse deny's steer
+// (claudeengine's steerAskUserQuestionDeny reason) leaves an autonomous run held: an agent told to ask
+// the operator a question before writing anything states it and ends its turn, Wait does not return,
+// and the parent's notifier is called exactly once for that held turn end.
+// The test then answers through Run.Send with a text ending in MessageTail, and the run finishes done
+// with the output file written — the same live state the sandbox suite's S2 hold scenario depends on.
+func TestSmokeGuardrailQuestionHoldsRunUntilAnswered(t *testing.T) {
 	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
 	h := hubforge.NewHub(t, ".")
@@ -110,57 +113,88 @@ func TestSmokeGuardrailAskingSurfacesQuestion(t *testing.T) {
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
-	outputPath := filepath.Join(h.PrimeWorktree(), "smoke-guardrail-asking-output.txt")
+	runner, _, _, _ := newSmokeRunner(t)
+	var (
+		noticesMu sync.Mutex
+		notices   []string
+	)
+	noticeCount := func() int {
+		noticesMu.Lock()
+		defer noticesMu.Unlock()
+		return len(notices)
+	}
+	runner.SetNotifier(func(line string) error {
+		noticesMu.Lock()
+		defer noticesMu.Unlock()
+		notices = append(notices, line)
+		return nil
+	})
+
+	outputPath := filepath.Join(h.PrimeWorktree(), "smoke-guardrail-question-output.txt")
 	prompt := fmt.Sprintf(
 		"Before writing anything to %s, stop and ask me which of two options you should "+
 			"pick — do not guess, and do not write the file until I answer.",
 		outputPath,
 	)
-
-	var out bytes.Buffer
-	code := RunCLI(&out, []string{
-		"run",
-		"--prompt", prompt,
-		"--output-file", outputPath,
-		"--model", smokeClaudeModel,
-		"--timeout", "5m",
+	run, err := runner.Start(shuttleengine.Spec{
+		Prompt:      prompt,
+		OutputFiles: []string{outputPath},
+		Model:       smokeClaudeModel,
+		Timeout:     5 * time.Minute,
 	})
-	if code != 0 {
-		t.Fatalf("shuttle run = %d; want 0, output: %s", code, out.String())
+	if err != nil {
+		t.Fatalf("runner.Start: %v", err)
 	}
 
-	var result map[string]any
-	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
-		t.Fatalf("parse run result: %v; output: %s", err, out.String())
-	}
-	if outcome, _ := result["outcome"].(string); outcome != "asking" {
-		t.Fatalf("run outcome = %q; want \"asking\"; output: %s", outcome, out.String())
-	}
-	if msg, _ := result["lastAssistantMessage"].(string); strings.TrimSpace(msg) == "" {
-		t.Errorf("run result lastAssistantMessage is empty; want the agent's question; output: %s", out.String())
+	waitCh := make(chan waitOutcome, 1)
+	go func() {
+		result, waitErr := run.Wait()
+		waitCh <- waitOutcome{result, waitErr}
+	}()
+
+	noticeDeadline := time.Now().Add(3 * time.Minute)
+	for noticeCount() == 0 {
+		select {
+		case res := <-waitCh:
+			t.Fatalf("run.Wait returned (outcome=%s err=%v) before the held turn end was notified; want it to keep waiting", res.result.Outcome, res.err)
+		default:
+		}
+		if time.Now().After(noticeDeadline) {
+			t.Fatal("no hold notice within 3m; want one for the agent's question turn end")
+		}
+		time.Sleep(time.Second)
 	}
 
 	if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
-		t.Errorf("output file %s exists after an \"asking\" outcome (stat err=%v); want it not yet written", outputPath, err)
+		t.Errorf("output file %s exists while held (stat err=%v); want it not yet written", outputPath, err)
+	}
+	select {
+	case res := <-waitCh:
+		t.Fatalf("run.Wait returned (outcome=%s err=%v) at the held turn end; want it to keep waiting", res.result.Outcome, res.err)
+	default:
 	}
 
-	guid, _ := result["guid"].(string)
-	if guid == "" {
-		t.Fatalf("run result missing guid: %v", result)
-	}
-	strand, found := reedStatusStrand(t, guid)
-	if !found {
-		t.Fatalf("reed status missing strand %s after an \"asking\" outcome; want it still tracked", guid)
-	}
-	if live, _ := strand["live"].(bool); !live {
-		t.Errorf("strand %s live = false after an \"asking\" outcome; want true", guid)
+	answer := shuttleengine.WithMessageTail(fmt.Sprintf("Pick the first option and write exactly DONE to %s.", outputPath))
+	if err := run.Send(answer); err != nil {
+		t.Fatalf("run.Send: %v", err)
 	}
 
-	runDir, _ := result["runDir"].(string)
-	if runDir == "" {
-		t.Fatalf("run result missing runDir: %v", result)
+	select {
+	case res := <-waitCh:
+		if res.err != nil {
+			t.Fatalf("run.Wait: %v", res.err)
+		}
+		if res.result.Outcome != shuttleengine.OutcomeDone {
+			t.Fatalf("run.Wait outcome = %q; want %q after the answer", res.result.Outcome, shuttleengine.OutcomeDone)
+		}
+	case <-time.After(5 * time.Minute):
+		t.Fatal("run.Wait did not return within 5m after the answer")
 	}
-	if _, err := os.Stat(runDir); err != nil {
-		t.Errorf("run dir %s missing after an \"asking\" outcome (stat err=%v); want it to persist for diagnosis", runDir, err)
+
+	if _, err := os.Stat(outputPath); err != nil {
+		t.Errorf("output file %s missing after the run finished done (stat err=%v)", outputPath, err)
+	}
+	if got := noticeCount(); got != 1 {
+		t.Errorf("notifier called %d times; want exactly 1, for the one held turn end", got)
 	}
 }
