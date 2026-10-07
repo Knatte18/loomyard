@@ -210,19 +210,30 @@ func newPushPair(t *testing.T) pushPair {
 	}
 }
 
-// declineOncePreReceive installs a pre-receive hook in bareDir that declines the first push it sees and accepts every later one.
-func declineOncePreReceive(t *testing.T, bareDir string) {
+// preReceiveHookPath returns the pre-receive hook file of bareDir.
+func preReceiveHookPath(bareDir string) string {
+	return filepath.Join(bareDir, "hooks", "pre-receive")
+}
+
+// installPreReceive writes script as the pre-receive hook of bareDir.
+func installPreReceive(t *testing.T, bareDir, script string) {
 	t.Helper()
 
-	marker := filepath.ToSlash(filepath.Join(bareDir, "declined-once"))
-	script := "#!/bin/sh\nif [ ! -e '" + marker + "' ]; then\n  : > '" + marker + "'\n  echo 'declined once' >&2\n  exit 1\nfi\nexit 0\n"
-	hookPath := filepath.Join(bareDir, "hooks", "pre-receive")
+	hookPath := preReceiveHookPath(bareDir)
 	if err := os.MkdirAll(filepath.Dir(hookPath), 0o755); err != nil {
 		t.Fatalf("mkdir hooks: %v", err)
 	}
 	if err := os.WriteFile(hookPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write pre-receive hook: %v", err)
 	}
+}
+
+// declineOncePreReceive installs a pre-receive hook in bareDir that declines the first push it sees and accepts every later one.
+func declineOncePreReceive(t *testing.T, bareDir string) {
+	t.Helper()
+
+	marker := filepath.ToSlash(filepath.Join(bareDir, "declined-once"))
+	installPreReceive(t, bareDir, "#!/bin/sh\nif [ ! -e '"+marker+"' ]; then\n  : > '"+marker+"'\n  echo 'declined once' >&2\n  exit 1\nfi\nexit 0\n")
 }
 
 // countBranchPushed returns how many KindBranchPushed entries of res carry detailPrefix.
@@ -237,7 +248,7 @@ func countBranchPushed(res fabricengine.PushResult, detailPrefix string) int {
 }
 
 // TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide walks one pair through the behaviors of PushPairAnchored in order:
-// both sides pushed and recorded, a remote that declines once retried to success on both entries, a diverged code side reported while the records side still pushes, and both sides failing reported together.
+// both sides pushed and recorded, a remote that declines once retried to success on both entries, a remote that keeps declining reported as a bare rejection, an unborn code side skipped while the records side still pushes, a diverged code side reported while the records side still pushes, and both sides failing reported together.
 func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T) {
 	t.Parallel()
 
@@ -281,6 +292,39 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WeftBare, p.weftBranch); got != weftSHA {
 		t.Errorf("weft bare = %q; want local HEAD %q after the retry", got, weftSHA)
 	}
+
+	// A remote that keeps declining: the one retry is rejected too, so the bare rejection surfaces and nothing local moves.
+	installPreReceive(t, p.hub.WarpBare, "#!/bin/sh\necho 'declined always' >&2\nexit 1\n")
+	gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp change declined", "warp change declined")
+	declinedWarpBare := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch)
+	declinedWarpHead := head(p.warpPath)
+	_, err = fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
+	if !fabricengine.IsPushRejected(err) {
+		t.Errorf("PushPairAnchored() against a remote that keeps declining error = %v; want IsPushRejected after the one retry", err)
+	}
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch); got != declinedWarpBare {
+		t.Errorf("warp bare = %q; want it unmoved at %q", got, declinedWarpBare)
+	}
+	if got := head(p.warpPath); got != declinedWarpHead {
+		t.Errorf("local warp HEAD = %q; want unchanged %q", got, declinedWarpHead)
+	}
+	if err := os.Remove(preReceiveHookPath(p.hub.WarpBare)); err != nil {
+		t.Fatalf("remove always-declining hook: %v", err)
+	}
+
+	// An unborn code side is skipped, and the records side still pushes.
+	gitkit.MustRun(t, p.warpPath, "git", "checkout", "-q", "--orphan", "unborn")
+	weftSHA = gitkit.CommitFile(t, p.weftPath, "weft-file.txt", "weft change unborn", "weft change unborn")
+	if _, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded); err != nil {
+		t.Fatalf("PushPairAnchored() with an unborn code side error = %v; want nil", err)
+	}
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WeftBare, p.weftBranch); got != weftSHA {
+		t.Errorf("weft bare = %q; want local HEAD %q with the code side unborn", got, weftSHA)
+	}
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch); got != declinedWarpBare {
+		t.Errorf("warp bare = %q; want it unmoved at %q", got, declinedWarpBare)
+	}
+	gitkit.MustRun(t, p.warpPath, "git", "checkout", "-q", "-f", p.warpBranch)
 
 	// A diverged code side: reported against the warp side, the records side still pushes.
 	warpClone := cloneBareForTest(t, p.hub.WarpBare, p.warpBranch)
