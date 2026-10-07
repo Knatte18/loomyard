@@ -63,6 +63,11 @@ type RunTally struct {
 	Roles      map[string]*RoleTally
 	Forks      []ForkTally
 	Duplicates int // transcript lines skipped as a repeat of a message already counted
+	// BaseSHA is the start_sha of the earliest successful begin-batch result in the run's
+	// webster sessions, the HEAD before its first batch forked; empty when there is none.
+	BaseSHA string
+	// baseAt is the timestamp of the result BaseSHA came from.
+	baseAt time.Time
 }
 
 // line is the part of a transcript line tokencount reads.
@@ -100,25 +105,31 @@ func cardPointers(text string) []string {
 	return cards
 }
 
-// toolResultTexts returns the text of every tool result in a user message's content, which is
-// a string or a list of items; a tool result's own content is likewise a string or a list of
-// text items.
-func toolResultTexts(content json.RawMessage) []string {
+// toolResultItem is one tool result of a user message: the tool use it answers and its text.
+type toolResultItem struct {
+	UseID string
+	Text  string
+}
+
+// toolResultItems returns every tool result in a user message's content, which is a string or
+// a list of items; a tool result's own content is likewise a string or a list of text items.
+func toolResultItems(content json.RawMessage) []toolResultItem {
 	var items []struct {
-		Type    string          `json:"type"`
-		Content json.RawMessage `json:"content"`
+		Type      string          `json:"type"`
+		ToolUseID string          `json:"tool_use_id"`
+		Content   json.RawMessage `json:"content"`
 	}
 	if json.Unmarshal(content, &items) != nil {
 		return nil
 	}
-	var texts []string
+	var results []toolResultItem
 	for _, item := range items {
 		if item.Type != "tool_result" {
 			continue
 		}
 		var text string
 		if json.Unmarshal(item.Content, &text) == nil {
-			texts = append(texts, text)
+			results = append(results, toolResultItem{item.ToolUseID, text})
 			continue
 		}
 		var parts []struct {
@@ -131,9 +142,84 @@ func toolResultTexts(content json.RawMessage) []string {
 		for _, p := range parts {
 			joined = append(joined, p.Text)
 		}
-		texts = append(texts, strings.Join(joined, "\n"))
+		results = append(results, toolResultItem{item.ToolUseID, strings.Join(joined, "\n")})
+	}
+	return results
+}
+
+// toolResultTexts returns the text of every tool result in a user message's content.
+func toolResultTexts(content json.RawMessage) []string {
+	var texts []string
+	for _, item := range toolResultItems(content) {
+		texts = append(texts, item.Text)
 	}
 	return texts
+}
+
+// beginBatchCommand matches a Bash command that invokes the webster begin-batch verb.
+var beginBatchCommand = regexp.MustCompile(`\blyx\s+webster\s+begin-batch\b`)
+
+// bashCommands returns the command of every Bash tool use in an assistant message's content,
+// keyed by tool use id.
+func bashCommands(content json.RawMessage) map[string]string {
+	var items []struct {
+		Type  string `json:"type"`
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Input struct {
+			Command string `json:"command"`
+		} `json:"input"`
+	}
+	if json.Unmarshal(content, &items) != nil {
+		return nil
+	}
+	commands := map[string]string{}
+	for _, item := range items {
+		if item.Type == "tool_use" && item.Name == "Bash" {
+			commands[item.ID] = item.Input.Command
+		}
+	}
+	return commands
+}
+
+// recordBase scans one webster session for begin-batch result envelopes and keeps the start_sha
+// of the earliest-timestamped one across every session of the run.
+// An envelope is a tool result answering a begin-batch Bash call whose text is a JSON object
+// with a non-empty start_sha; a refusal carries none.
+func (run *RunTally) recordBase(path string) error {
+	beginBatchUses := map[string]bool{}
+	return eachLine(path, func(l line) {
+		if l.Message == nil {
+			return
+		}
+		switch l.Type {
+		case "assistant":
+			for id, command := range bashCommands(l.Message.Content) {
+				if beginBatchCommand.MatchString(command) {
+					beginBatchUses[id] = true
+				}
+			}
+		case "user":
+			at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
+			if err != nil {
+				return
+			}
+			for _, item := range toolResultItems(l.Message.Content) {
+				if !beginBatchUses[item.UseID] {
+					continue
+				}
+				var envelope struct {
+					StartSHA string `json:"start_sha"`
+				}
+				if json.Unmarshal([]byte(item.Text), &envelope) != nil || envelope.StartSHA == "" {
+					continue
+				}
+				if run.baseAt.IsZero() || at.Before(run.baseAt) {
+					run.BaseSHA, run.baseAt = envelope.StartSHA, at
+				}
+			}
+		}
+	})
 }
 
 var nonAlnum = regexp.MustCompile(`[^A-Za-z0-9]`)
@@ -216,6 +302,11 @@ func CountRun(dir, slug string) (RunTally, error) {
 		role := roleOf(title)
 		if err := run.countFile(session, role, seen, nil); err != nil {
 			return RunTally{}, err
+		}
+		if role == websterMasterRole {
+			if err := run.recordBase(session); err != nil {
+				return RunTally{}, err
+			}
 		}
 		subs, err := filepath.Glob(filepath.Join(strings.TrimSuffix(session, ".jsonl"), "subagents", "*.jsonl"))
 		if err != nil {

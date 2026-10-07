@@ -31,7 +31,18 @@ func assistant(id, model string, out, read int) string {
 // toolResult is a user transcript line at ts holding one tool result whose content is
 // contentJSON, a JSON string or list.
 func toolResult(ts, contentJSON string) string {
-	return `{"type":"user","timestamp":"` + ts + `","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":` + contentJSON + `}]}}`
+	return toolResultFor("t", ts, contentJSON)
+}
+
+// toolResultFor is toolResult answering the tool use with the given id.
+func toolResultFor(useID, ts, contentJSON string) string {
+	return `{"type":"user","timestamp":"` + ts + `","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"` + useID + `","content":` + contentJSON + `}]}}`
+}
+
+// bashUse is an assistant transcript line holding one Bash tool use of command.
+func bashUse(t *testing.T, id, command string) string {
+	t.Helper()
+	return `{"type":"assistant","message":{"id":"use-` + id + `","content":[{"type":"tool_use","id":"` + id + `","name":"Bash","input":{"command":` + jsonString(t, command) + `}}]}}`
 }
 
 func jsonString(t *testing.T, s string) string {
@@ -59,8 +70,21 @@ func TestCountRun(t *testing.T) {
 		`not json`,
 		`{"type":"custom-title","customTitle":"ly:my-task:burler-2"}`,
 	)
+	// Two successful begin-batch pairs, the later-timestamped one in the file that sorts first.
+	// The refusal envelope and the unrelated result mentioning start_sha precede the earliest pair.
+	writeLines(t, filepath.Join(dir, "a-webster.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:my-task:webster"}`,
+		bashUse(t, "late", "lyx webster begin-batch 2"),
+		toolResultFor("late", "2026-01-02T03:20:00Z", jsonString(t, `{"batch":"02-beta","start_sha":"late000"}`)),
+	)
 	writeLines(t, filepath.Join(dir, "b.jsonl"),
 		`{"type":"custom-title","customTitle":"ly:my-task:webster"}`,
+		bashUse(t, "refused", "lyx webster begin-batch 1"),
+		toolResultFor("refused", "2026-01-02T02:00:00Z", jsonString(t, `{"ok":false,"error":"paused"}`)),
+		bashUse(t, "other", "git log"),
+		toolResultFor("other", "2026-01-02T02:30:00Z", jsonString(t, `{"start_sha":"unrelated"}`)),
+		bashUse(t, "early", "lyx webster begin-batch 1"),
+		toolResultFor("early", "2026-01-02T03:00:00Z", `[{"type":"text","text":`+jsonString(t, `{"batch":"01-alpha","start_sha":"early00"}`)+`}]`),
 		assistant("m2", "sonnet", 1, 1),
 	)
 	prompt := "1\t# Webster fork\n" +
@@ -103,6 +127,23 @@ func TestCountRun(t *testing.T) {
 	}
 	if run.Duplicates != 2 {
 		t.Errorf("duplicates = %d, want 2", run.Duplicates)
+	}
+	if run.BaseSHA != "early00" {
+		t.Errorf("BaseSHA = %q, want the earliest successful begin-batch envelope's early00", run.BaseSHA)
+	}
+
+	noBase := projectDir(projects, "/hub/no-base")
+	writeLines(t, filepath.Join(noBase, "w.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:no-base:webster"}`,
+		bashUse(t, "refused", "lyx webster begin-batch 1"),
+		toolResultFor("refused", "2026-01-02T02:00:00Z", jsonString(t, `{"ok":false,"error":"paused"}`)),
+	)
+	bare, err := CountRun(noBase, "no-base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bare.BaseSHA != "" {
+		t.Errorf("BaseSHA = %q, want empty for a run with no successful begin-batch pair", bare.BaseSHA)
 	}
 
 	wantForks := []ForkTally{
