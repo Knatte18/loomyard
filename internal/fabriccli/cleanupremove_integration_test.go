@@ -194,7 +194,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			const slug = "cli-half-removed"
 			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
-			gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "remove", "--force", h.PairWarpWorktree(slug))
+			gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "remove", "--force", h.PairCodeWorktree(slug))
 
 			code, output := runFabric(t, h.PrimeWorktree(), "remove", slug)
 			if code != 0 {
@@ -207,7 +207,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			if _, present := env.Raw["session_ended"]; !present {
 				t.Errorf("envelope has no \"session_ended\" key\noutput: %s", output)
 			}
-			if _, err := os.Stat(h.PairWeftSibling(slug)); !os.IsNotExist(err) {
+			if _, err := os.Stat(h.PairRecordsSibling(slug)); !os.IsNotExist(err) {
 				t.Errorf("sibling worktree still present after finishing the pair: %v", err)
 			}
 		}},
@@ -215,7 +215,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			const slug = "cli-task-dirty"
 			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-			warpPath := h.PairWarpWorktree(slug)
+			warpPath := h.PairCodeWorktree(slug)
 			gitkit.CommitFile(t, warpPath, "tracked.md", "committed\n", "seed tracked file")
 			if err := os.WriteFile(filepath.Join(warpPath, "tracked.md"), []byte("committed\nuncommitted\n"), 0o644); err != nil {
 				t.Fatalf("dirty the task worktree: %v", err)
@@ -226,7 +226,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 				t.Fatalf("remove of a task-side-dirty pair exited 0; output: %s", output)
 			}
 			envelope.RequireErr(t, output, "")
-			for _, path := range []string{warpPath, h.PairWeftSibling(slug)} {
+			for _, path := range []string{warpPath, h.PairRecordsSibling(slug)} {
 				if _, err := os.Stat(path); err != nil {
 					t.Errorf("%s was touched by a refused remove: %v", path, err)
 				}
@@ -246,7 +246,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			if !gitkit.BranchExists(t, weftRoot, branch) {
 				t.Errorf("branch %q was removed locally by cleanup --remote with no --apply", branch)
 			}
-			if !gitkit.BranchExists(t, h.WeftBare, branch) {
+			if !gitkit.BranchExists(t, h.RecordsBare, branch) {
 				t.Errorf("branch %q was removed on the remote by cleanup --remote with no --apply", branch)
 			}
 		}},
@@ -275,10 +275,10 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			if entries, ok := env.Raw["warp_entries"].([]any); !ok || len(entries) != 0 {
 				t.Errorf("warp_entries = %v; want an empty array\noutput: %s", env.Raw["warp_entries"], output)
 			}
-			if !gitkit.BranchExists(t, h.WarpBare, "gone-landed-unreachable") {
+			if !gitkit.BranchExists(t, h.CodeBare, "gone-landed-unreachable") {
 				t.Errorf("task branch gone-landed-unreachable was deleted from origin although GitHub was unreachable")
 			}
-			if gitkit.BranchExists(t, h.WeftBare, orphan) {
+			if gitkit.BranchExists(t, h.RecordsBare, orphan) {
 				t.Errorf("weft orphan %q survives on the weft origin; the weft sweep must still run", orphan)
 			}
 		}},
@@ -302,7 +302,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			if e := warpEntryOf(t, dryEnv, dry, "gone-landed"); e["candidate"] != true || e["deleted"] != false {
 				t.Errorf("gone-landed dry-run entry = %v; want a candidate, not deleted", e)
 			}
-			if !gitkit.BranchExists(t, h.WarpBare, "gone-landed") {
+			if !gitkit.BranchExists(t, h.CodeBare, "gone-landed") {
 				t.Fatalf("dry run deleted gone-landed from origin")
 			}
 
@@ -314,10 +314,10 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			if e := warpEntryOf(t, appliedEnv, applied, "gone-landed"); e["deleted"] != true {
 				t.Errorf("gone-landed apply entry = %v; want deleted", e)
 			}
-			if gitkit.BranchExists(t, h.WarpBare, "gone-landed") {
+			if gitkit.BranchExists(t, h.CodeBare, "gone-landed") {
 				t.Errorf("gone-landed still on origin after --apply")
 			}
-			if !gitkit.BranchExists(t, h.WarpBare, "has-pr") {
+			if !gitkit.BranchExists(t, h.CodeBare, "has-pr") {
 				t.Errorf("has-pr was deleted from origin although a pull request is open")
 			}
 		}},

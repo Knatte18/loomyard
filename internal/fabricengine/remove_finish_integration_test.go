@@ -71,10 +71,10 @@ func TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand(t *testing.T) {
 	if res.ArchiveTag == "" {
 		t.Fatalf("ArchiveTag is empty; want the tag covering the committed record")
 	}
-	if got := showAtTag(t, h.WeftBare, res.ArchiveTag, rel); got != "stopped\n" {
+	if got := showAtTag(t, h.RecordsBare, res.ArchiveTag, rel); got != "stopped\n" {
 		t.Errorf("archived %s = %q; want the committed record", rel, got)
 	}
-	msg, err := gitexec.Run([]string{"log", "-1", "--format=%B", tagTargetAt(t, h.WeftBare, res.ArchiveTag)}, h.WeftBare)
+	msg, err := gitexec.Run([]string{"log", "-1", "--format=%B", tagTargetAt(t, h.RecordsBare, res.ArchiveTag)}, h.RecordsBare)
 	if err != nil {
 		t.Fatalf("read the archived tip's message: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestRemove_FinishesPairWithBothWorktreesGone(t *testing.T) {
 	if res.ArchiveTag == "" {
 		t.Fatalf("ArchiveTag is empty; want the sibling branch archived before its deletion")
 	}
-	if got := tagTargetAt(t, h.WeftBare, res.ArchiveTag); got != siblingTip {
+	if got := tagTargetAt(t, h.RecordsBare, res.ArchiveTag); got != siblingTip {
 		t.Errorf("origin archive tag points at %q; want the sibling tip %s", got, siblingTip)
 	}
 	requireSteps(t, res.Steps, fabricengine.RemoveStepArchive, fabricengine.RemoveStepSiblingBranch, fabricengine.RemoveStepTaskBranch)
@@ -151,7 +151,7 @@ func TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	siblingTip := gitkit.RevParse(t, h.WeftBare, fabricengine.WeftBranchName(slug))
+	siblingTip := gitkit.RevParse(t, h.RecordsBare, fabricengine.WeftBranchName(slug))
 	leaveSiblingBranchOnlyOnOrigin(t, h, slug)
 
 	res, err := h.Topology.Remove(l, slug, false, true)
@@ -161,13 +161,13 @@ func TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin(t *testing.T) {
 	if res.ArchiveTag == "" {
 		t.Fatalf("ArchiveTag is empty; want the origin copy archived")
 	}
-	if got := tagTargetAt(t, h.WeftBare, res.ArchiveTag); got != siblingTip {
+	if got := tagTargetAt(t, h.RecordsBare, res.ArchiveTag); got != siblingTip {
 		t.Errorf("origin archive tag points at %q; want the origin copy's tip %s", got, siblingTip)
 	}
 	if !res.RemoteBranchDeleted || res.RemoteBranchError != "" {
 		t.Errorf("RemoteBranchDeleted = %v, RemoteBranchError = %q; want the origin copy deleted", res.RemoteBranchDeleted, res.RemoteBranchError)
 	}
-	if gitkit.BranchExists(t, h.WeftBare, fabricengine.WeftBranchName(slug)) {
+	if gitkit.BranchExists(t, h.RecordsBare, fabricengine.WeftBranchName(slug)) {
 		t.Errorf("sibling branch still on origin after Remove(remote=true)")
 	}
 	requireSteps(t, res.Steps, fabricengine.RemoveStepArchive, fabricengine.RemoveStepSiblingBranchOnOrigin)
@@ -187,7 +187,7 @@ func TestRemove_KeepsOriginOnlySiblingBranchWithoutRemote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove(remote=false) error = %v", err)
 	}
-	if !gitkit.BranchExists(t, h.WeftBare, fabricengine.WeftBranchName(slug)) {
+	if !gitkit.BranchExists(t, h.RecordsBare, fabricengine.WeftBranchName(slug)) {
 		t.Errorf("sibling branch gone from origin after Remove(remote=false); want it kept")
 	}
 	if res.RemoteSkippedReason == "" {

@@ -43,7 +43,7 @@ func newResetFixture(t *testing.T, h *hubforge.Hub, slug string) *resetFixture {
 	t.Helper()
 
 	hubforge.AddPair(t, h, slug)
-	checkout := h.PairWarpWorktree(slug)
+	checkout := h.PairCodeWorktree(slug)
 	loc, err := lyxcwd.ResolveWorktree(checkout)
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%s): %v", checkout, err)

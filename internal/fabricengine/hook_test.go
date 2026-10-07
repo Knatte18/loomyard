@@ -165,7 +165,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	hub := h.PrimeWorktree()
-	weftPrime := h.PrimeWeft()
+	weftPrime := h.PrimeRecords()
 
 	// Install the hook in the shared repo.
 	if err := fabricengine.InstallPostCheckoutHook(l); err != nil {
@@ -227,16 +227,16 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	hub := h.PrimeWorktree()
-	weftPrime := h.PrimeWeft()
+	weftPrime := h.PrimeRecords()
 
 	// Create a child worktree pair directly via git worktree add — fabricengine's
 	// own Add verb lands in a later batch; this test only needs a warp/weft
 	// worktree pair on disk to exercise the hook script itself.
-	childWarp := h.PairWarpWorktree(slug)
+	childWarp := h.PairCodeWorktree(slug)
 	gitkit.MustRun(t, hub, "git", "worktree", "add", childWarp, "-b", slug)
 
 	weftBranch := fabricengine.WeftBranchName(slug)
-	childWeft := h.PairWeftSibling(slug)
+	childWeft := h.PairRecordsSibling(slug)
 	gitkit.MustRun(t, weftPrime, "git", "worktree", "add", childWeft, "-b", weftBranch)
 
 	// Install the hook (affects the shared common .git/hooks for the warp repo,

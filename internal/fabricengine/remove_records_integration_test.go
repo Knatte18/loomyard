@@ -66,11 +66,11 @@ func TestRemove_CommitsPendingRecordsIntoArchiveTag(t *testing.T) {
 	if res.ArchiveTag == "" {
 		t.Fatalf("ArchiveTag is empty; want the archive tag covering the committed record")
 	}
-	if got := showAtTag(t, h.WeftBare, res.ArchiveTag, rel); got != "stopped\n" {
+	if got := showAtTag(t, h.RecordsBare, res.ArchiveTag, rel); got != "stopped\n" {
 		t.Errorf("archived %s = %q; want the committed report", rel, got)
 	}
-	tagTip := tagTargetAt(t, h.WeftBare, res.ArchiveTag)
-	msg, err := gitexec.Run([]string{"log", "-1", "--format=%B", tagTip}, h.WeftBare)
+	tagTip := tagTargetAt(t, h.RecordsBare, res.ArchiveTag)
+	msg, err := gitexec.Run([]string{"log", "-1", "--format=%B", tagTip}, h.RecordsBare)
 	if err != nil {
 		t.Fatalf("read the archived tip's message: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 	if n := res.Mutated().Len(); n != 0 {
 		t.Errorf("refused Remove recorded %d mutations; want 0", n)
 	}
-	if tags := archiveTagsAt(t, h.WeftBare); len(tags) != 0 {
+	if tags := archiveTagsAt(t, h.RecordsBare); len(tags) != 0 {
 		t.Errorf("origin archive tags after a refused Remove = %v; want none", tags)
 	}
 	if tipAfter := gitkit.RevParse(t, weftRoot, fabricengine.WeftBranchName(slug)); tipAfter != tipBefore {
@@ -128,7 +128,7 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 	if forced.ArchiveTag == "" {
 		t.Errorf("forced Remove ArchiveTag is empty; want the archive to run")
 	}
-	if got := showAtTag(t, h.WeftBare, forced.ArchiveTag, "_lyx/record.txt"); got != "a record\n" {
+	if got := showAtTag(t, h.RecordsBare, forced.ArchiveTag, "_lyx/record.txt"); got != "a record\n" {
 		t.Errorf("forced Remove archived _lyx/record.txt = %q; want the committed record", got)
 	}
 }
@@ -170,7 +170,7 @@ func TestRemoveRefusal_ProbeLeavesPairUntouched(t *testing.T) {
 	assertUntouched := func(t *testing.T) {
 		t.Helper()
 
-		if tags := archiveTagsAt(t, h.WeftBare); len(tags) != 0 {
+		if tags := archiveTagsAt(t, h.RecordsBare); len(tags) != 0 {
 			t.Errorf("origin archive tags after RemoveRefusal = %v; want none", tags)
 		}
 		if tags := archiveTagsAt(t, weftRoot); len(tags) != 0 {

@@ -51,9 +51,9 @@ func perWorktreeModuleNames() []string {
 func hubRelativeWeftTarget(t *testing.T, h *hubforge.Hub) string {
 	t.Helper()
 
-	rel, err := filepath.Rel(h.Path, h.PrimeWeft())
+	rel, err := filepath.Rel(h.Path, h.PrimeRecords())
 	if err != nil {
-		t.Fatalf("filepath.Rel(%s, %s): %v", h.Path, h.PrimeWeft(), err)
+		t.Fatalf("filepath.Rel(%s, %s): %v", h.Path, h.PrimeRecords(), err)
 	}
 	return filepath.ToSlash(rel)
 }
@@ -106,11 +106,11 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 	}{
 		{"CloneConfigCommit_WeftPrimeCleanAfterClone", func(t *testing.T) {
 			// A freshly-built hub's weft prime worktree is clean, and git ls-files reports every per-worktree module's config file.
-			if status := gitkit.GitStatusPorcelain(t, h.PrimeWeft()); status != "" {
+			if status := gitkit.GitStatusPorcelain(t, h.PrimeRecords()); status != "" {
 				t.Errorf("weft prime status --porcelain = %q; want empty (clean)", status)
 			}
 
-			tracked := gitkit.LsFiles(t, h.PrimeWeft())
+			tracked := gitkit.LsFiles(t, h.PrimeRecords())
 			for _, name := range perWorktreeModuleNames() {
 				want := configengine.ConfigFileRel(name)
 				if !slices.Contains(tracked, want) {
@@ -120,7 +120,7 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 		}},
 		{"CloneConfigCommit_OneCommitNotOnePerModule", func(t *testing.T) {
 			// The weft primary branch carries the clone's config commit subject exactly once, and a second ReconcileAll over the same weft base reports Applied false for every module.
-			out := gitOutputCLI(t, h.PrimeWeft(), "log", "--oneline")
+			out := gitOutputCLI(t, h.PrimeRecords(), "log", "--oneline")
 
 			const wantSubject = "fabric clone: record module configs"
 			count := strings.Count(out, wantSubject)
@@ -361,7 +361,7 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 			// A pair created off a freshly-built hub has its anchored loom.yaml config on disk, the direct end-to-end proof that the clone's config commit reaches a forked pair.
 			hubforge.AddPair(t, h, "pair-inherits-configs")
 
-			anchoredWeftBase := filepath.Join(h.PairWeftSibling("pair-inherits-configs"), h.Anchor)
+			anchoredWeftBase := filepath.Join(h.PairRecordsSibling("pair-inherits-configs"), h.Anchor)
 			loomConfigPath := configengine.ConfigFile(anchoredWeftBase, "loom")
 			if _, err := os.Stat(loomConfigPath); err != nil {
 				t.Errorf("pair weft sibling loom config %s: %v; want it present on disk (inherited from the clone commit)", loomConfigPath, err)
@@ -510,7 +510,7 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 func TestRunCLI_AnchoredHubScenario(t *testing.T) {
 	t.Parallel()
 
-	// "backend" is a subpath anchor, so the weft ROOT (h.PrimeWeft()) is not the anchored directory
+	// "backend" is a subpath anchor, so the weft ROOT (h.PrimeRecords()) is not the anchored directory
 	// (h.WeftBase) -- fabriccli.CloneAndWire records that anchor for real, so no hand-written anchor
 	// marker is needed here.
 	h := hubforge.NewHub(t, "backend")
@@ -521,11 +521,11 @@ func TestRunCLI_AnchoredHubScenario(t *testing.T) {
 	}{
 		{"CloneConfigCommit_AnchorScoped", func(t *testing.T) {
 			// The clean-and-tracked assertion at a non-"." anchor, with committed paths prefixed by the anchor, proving the clone's config commit was anchor-scoped rather than run at the weft base, which at a non-"." anchor is a subdirectory of the worktree root.
-			if status := gitkit.GitStatusPorcelain(t, h.PrimeWeft()); status != "" {
+			if status := gitkit.GitStatusPorcelain(t, h.PrimeRecords()); status != "" {
 				t.Errorf("weft prime status --porcelain = %q; want empty (clean)", status)
 			}
 
-			tracked := gitkit.LsFiles(t, h.PrimeWeft())
+			tracked := gitkit.LsFiles(t, h.PrimeRecords())
 			for _, name := range perWorktreeModuleNames() {
 				want := "backend/" + configengine.ConfigFileRel(name)
 				if !slices.Contains(tracked, want) {
@@ -535,7 +535,7 @@ func TestRunCLI_AnchoredHubScenario(t *testing.T) {
 		}},
 		{"WeftSiblingNonAnchoredCwd_GetsWeftRefusal", func(t *testing.T) {
 			// The refusal an operator sees from a weft sibling's NON-anchored directory on a subpath-anchored hub is the specific weft-sibling message, never the generic cwd-gate error, which would direct the operator deeper INTO the weft.
-			code, output := runFabric(t, h.PrimeWeft(), "pairs")
+			code, output := runFabric(t, h.PrimeRecords(), "pairs")
 			if code == 0 {
 				t.Fatalf("RunCLI(pairs) from weft sibling = 0; want a refusal\noutput: %s", output)
 			}

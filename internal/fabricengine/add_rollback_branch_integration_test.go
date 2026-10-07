@@ -139,12 +139,12 @@ func TestAddRollback_DeletesTheWarpBranchItCreated(t *testing.T) {
 			if gitkit.BranchExists(t, h.PrimeWorktree(), slug) {
 				t.Errorf("local warp branch %q survived the rollback", slug)
 			}
-			originHasBranch := gitkit.BranchExists(t, h.WarpBare, slug)
+			originHasBranch := gitkit.BranchExists(t, h.CodeBare, slug)
 			if originHasBranch != tc.wantOriginAtHead {
 				t.Fatalf("origin has warp branch = %v; want %v", originHasBranch, tc.wantOriginAtHead)
 			}
 			if tc.wantOriginAtHead && !tc.opts.SkipPush {
-				if got, want := gitkit.RevParse(t, h.WarpBare, slug), gitkit.RevParse(t, h.PrimeWorktree(), "HEAD"); got != want {
+				if got, want := gitkit.RevParse(t, h.CodeBare, slug), gitkit.RevParse(t, h.PrimeWorktree(), "HEAD"); got != want {
 					t.Errorf("origin warp branch = %s; want the pushed %s", got, want)
 				}
 			}

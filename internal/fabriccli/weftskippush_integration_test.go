@@ -38,9 +38,9 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 			t.Fatalf("WriteFile: %v", err)
 		}
 
-		weftBranch := strings.TrimSpace(gitOutputCLI(t, h.PrimeWeft(), "rev-parse", "--abbrev-ref", "HEAD"))
-		weftBareBefore := gitOutputCLI(t, h.WeftBare, "for-each-ref", "refs/heads/"+weftBranch)
-		warpBareBefore := gitkit.RevParse(t, h.WarpBare, "HEAD")
+		weftBranch := strings.TrimSpace(gitOutputCLI(t, h.PrimeRecords(), "rev-parse", "--abbrev-ref", "HEAD"))
+		weftBareBefore := gitOutputCLI(t, h.RecordsBare, "for-each-ref", "refs/heads/"+weftBranch)
+		warpBareBefore := gitkit.RevParse(t, h.CodeBare, "HEAD")
 
 		code, output := runFabric(t, h.PrimeWorktree(), "push")
 		if code != 0 {
@@ -50,10 +50,10 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 
 		envelope.RequireOK(t, output)
 
-		if got := gitOutputCLI(t, h.WeftBare, "for-each-ref", "refs/heads/"+weftBranch); got != weftBareBefore {
+		if got := gitOutputCLI(t, h.RecordsBare, "for-each-ref", "refs/heads/"+weftBranch); got != weftBareBefore {
 			t.Errorf("weft bare %s = %s; want %s (WEFT_SKIP_PUSH must push nothing)", weftBranch, got, weftBareBefore)
 		}
-		if got := gitkit.RevParse(t, h.WarpBare, "HEAD"); got != warpBareBefore {
+		if got := gitkit.RevParse(t, h.CodeBare, "HEAD"); got != warpBareBefore {
 			t.Errorf("warp bare HEAD = %s; want %s (WEFT_SKIP_PUSH must push nothing)", got, warpBareBefore)
 		}
 	}) {
@@ -82,9 +82,9 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 			t.Errorf("push_spawned targets = %v; want exactly the records side\noutput: %s", got, output)
 		}
 
-		tracked := strings.TrimSpace(gitOutputCLI(t, h.PrimeWeft(), "log", "-1", "--name-only", "--pretty=format:"))
+		tracked := strings.TrimSpace(gitOutputCLI(t, h.PrimeRecords(), "log", "-1", "--name-only", "--pretty=format:"))
 		if !strings.Contains(tracked, filepath.ToSlash(filepath.Join(lyxdirs.LyxDirName, "placeholder"))) {
-			t.Errorf("HEAD commit on %s does not touch %s; want the sync-built pathspec to still cover _lyx even though the repo-wide config names only _extra\nfiles: %s", h.PrimeWeft(), lyxdirs.LyxDirName, tracked)
+			t.Errorf("HEAD commit on %s does not touch %s; want the sync-built pathspec to still cover _lyx even though the repo-wide config names only _extra\nfiles: %s", h.PrimeRecords(), lyxdirs.LyxDirName, tracked)
 		}
 	})
 
@@ -94,7 +94,7 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 		if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
 			t.Fatalf("RunCLI(add) = %d; want 0\noutput: %s", code, output)
 		}
-		pairLyx := filepath.Join(h.PairWeftSibling(slug), lyxdirs.LyxDirName)
+		pairLyx := filepath.Join(h.PairRecordsSibling(slug), lyxdirs.LyxDirName)
 		if err := os.MkdirAll(pairLyx, 0o755); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
 		}
@@ -102,7 +102,7 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 			t.Fatalf("WriteFile: %v", err)
 		}
 
-		code, output := runFabric(t, h.PairWarpWorktree(slug), "sync")
+		code, output := runFabric(t, h.PairCodeWorktree(slug), "sync")
 		if code != 0 {
 			t.Fatalf("RunCLI(sync) = %d; want 0\noutput: %s", code, output)
 		}

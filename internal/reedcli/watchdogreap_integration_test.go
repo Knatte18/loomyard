@@ -37,7 +37,7 @@ func newReapFixture(t *testing.T, h *hubforge.Hub, primeEngine *reedengine.Engin
 	t.Helper()
 
 	hubforge.AddPair(t, h, pairName)
-	pairWorktree := h.PairWarpWorktree(pairName)
+	pairWorktree := h.PairCodeWorktree(pairName)
 	pairEngine := watchdogIntegrationEngine(t, pairWorktree)
 
 	return reapFixture{
@@ -303,7 +303,7 @@ func TestWatchdogReap(t *testing.T) {
 		// A newly-appeared session, added right as the first reap is in flight, must still be
 		// discovered — the loop must not stall behind the dispatched reap goroutine.
 		hubforge.AddPair(t, fx.hub, "reap-inflight-b")
-		freshWorktree := fx.hub.PairWarpWorktree("reap-inflight-b")
+		freshWorktree := fx.hub.PairCodeWorktree("reap-inflight-b")
 		freshEng := watchdogIntegrationEngine(t, freshWorktree)
 		waitForCondition(t, timing.DiscoveryCycle*10, func() bool {
 			return sessionListed(fx.tmuxPath, socket, freshEng.SessionName())

@@ -337,7 +337,7 @@ func stepFourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T, h *hubforge.Hub)
 	}
 
 	ctx := context.Background()
-	pairPath := h.PairWarpWorktree(slug)
+	pairPath := h.PairCodeWorktree(slug)
 
 	if _, err := shed.Step(ctx); err != nil {
 		t.Fatalf("Step (Worktree-Create): %v", err)
@@ -367,7 +367,7 @@ func stepFourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T, h *hubforge.Hub)
 		t.Errorf("child seed recipe = %q; want %q (the Board task's own type)", seed.Recipe, "loom")
 	}
 
-	recordsPath := h.PairWeftSibling(slug)
+	recordsPath := h.PairRecordsSibling(slug)
 	seedRel := filepath.ToSlash(shedrun.SeedRel(childLocation, shedrun.SelfRunID))
 	committedData := gitShow(t, recordsPath, "HEAD:"+seedRel)
 	if !bytes.Equal(committedData, seedData) {
@@ -393,7 +393,7 @@ func stepFourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T, h *hubforge.Hub)
 	// linger where "lyx fabric cleanup" (its own enumeration is local-branches-only) can never reach
 	// it. See F-CLEANUP-REMOTE-ORPHAN.
 	recordsBranch := fabricengine.WeftBranchName(slug)
-	if err := exec.Command("git", "-C", h.WeftBare, "rev-parse", "--verify", "refs/heads/"+recordsBranch).Run(); err == nil {
+	if err := exec.Command("git", "-C", h.RecordsBare, "rev-parse", "--verify", "refs/heads/"+recordsBranch).Run(); err == nil {
 		t.Errorf("records branch %q still present on the remote after teardown; want it deleted alongside the local copy", recordsBranch)
 	}
 }
@@ -418,7 +418,7 @@ func stepTeardown_AlreadyGonePairFinishesItsBranchDeletion(t *testing.T, h *hubf
 			slug := "batten-branch-left-" + tt.name
 			hubforge.AddPair(t, h, slug)
 			recordsBranch := fabricengine.WeftBranchName(slug)
-			if !remoteBranchExists(h.WeftBare, recordsBranch) {
+			if !remoteBranchExists(h.RecordsBare, recordsBranch) {
 				t.Fatalf("precondition: %q not on the remote after the create", recordsBranch)
 			}
 			// Both worktrees removed, the remote copy kept -- the state a kill between the local
@@ -441,7 +441,7 @@ func stepTeardown_AlreadyGonePairFinishesItsBranchDeletion(t *testing.T, h *hubf
 			if err := c.env.Teardown.Remove(context.Background()); err != nil {
 				t.Fatalf("Teardown.Remove() = %v; want nil", err)
 			}
-			if remoteBranchExists(h.WeftBare, recordsBranch) {
+			if remoteBranchExists(h.RecordsBare, recordsBranch) {
 				t.Errorf("%q still on the remote after the re-entered teardown; want it deleted", recordsBranch)
 			}
 			if exec.Command("git", "-C", recordsRepoRoot, "rev-parse", "--verify", "refs/heads/"+recordsBranch).Run() == nil {
@@ -481,7 +481,7 @@ func stepTeardown_FailedRemoteDeletionHaltsResumably(t *testing.T, h *hubforge.H
 	slug := "batten-remote-fails"
 	hubforge.AddPair(t, h, slug)
 	recordsBranch := fabricengine.WeftBranchName(slug)
-	restore := refuseRemoteBranchDeletions(t, h.WeftBare)
+	restore := refuseRemoteBranchDeletions(t, h.RecordsBare)
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 		return shedengine.Status{State: shedengine.StateDone}, true, nil
@@ -493,10 +493,10 @@ func stepTeardown_FailedRemoteDeletionHaltsResumably(t *testing.T, h *hubforge.H
 	if !strings.Contains(err.Error(), "resume this run") {
 		t.Errorf("Teardown.Remove() error = %q; want it to name the resume", err.Error())
 	}
-	if pathExists(h.PairWarpWorktree(slug)) {
+	if pathExists(h.PairCodeWorktree(slug)) {
 		t.Errorf("task worktree still present; want the pair removed before the remote deletion failed")
 	}
-	if !remoteArchiveTagExists(h.WeftBare, slug) {
+	if !remoteArchiveTagExists(h.RecordsBare, slug) {
 		t.Errorf("no archive/%s/ tag on the remote; want the records archived before the pair was removed", slug)
 	}
 
@@ -504,7 +504,7 @@ func stepTeardown_FailedRemoteDeletionHaltsResumably(t *testing.T, h *hubforge.H
 	if err := c.env.Teardown.Remove(context.Background()); err != nil {
 		t.Fatalf("Teardown.Remove() on resume = %v; want nil", err)
 	}
-	if remoteBranchExists(h.WeftBare, recordsBranch) {
+	if remoteBranchExists(h.RecordsBare, recordsBranch) {
 		t.Errorf("%q still on the remote after the resumed teardown; want it deleted", recordsBranch)
 	}
 }
@@ -533,21 +533,21 @@ func stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably(t *testing.T, h *
 	if !strings.Contains(err.Error(), "lyx batten run "+slug) {
 		t.Errorf("Teardown.Remove() error = %q; want it to name the resume", err.Error())
 	}
-	if !pathExists(h.PairWarpWorktree(slug)) {
+	if !pathExists(h.PairCodeWorktree(slug)) {
 		t.Errorf("task worktree removed; want the pair left in place when the archive fails")
 	}
 
-	gitkit.MustRun(t, recordsRepoRoot, "git", "remote", "set-url", "origin", h.WeftBare)
+	gitkit.MustRun(t, recordsRepoRoot, "git", "remote", "set-url", "origin", h.RecordsBare)
 	if err := c.env.Teardown.Remove(context.Background()); err != nil {
 		t.Fatalf("Teardown.Remove() on resume = %v; want nil", err)
 	}
-	if pathExists(h.PairWarpWorktree(slug)) {
+	if pathExists(h.PairCodeWorktree(slug)) {
 		t.Errorf("task worktree still present after the resumed teardown; want it removed")
 	}
-	if !remoteArchiveTagExists(h.WeftBare, slug) {
+	if !remoteArchiveTagExists(h.RecordsBare, slug) {
 		t.Errorf("no archive/%s/ tag on the remote after the resumed teardown; want the records archived", slug)
 	}
-	if remoteBranchExists(h.WeftBare, recordsBranch) {
+	if remoteBranchExists(h.RecordsBare, recordsBranch) {
 		t.Errorf("%q still on the remote after the resumed teardown; want it deleted", recordsBranch)
 	}
 }
@@ -654,7 +654,7 @@ func stepRunShedPausedChild_WaitsThenTearsDownOnceDone(t *testing.T, h *hubforge
 		t.Fatalf("shedbuild.NewShed: %v", err)
 	}
 	ctx := context.Background()
-	pairPath := h.PairWarpWorktree(slug)
+	pairPath := h.PairCodeWorktree(slug)
 
 	res, err := shed.Step(ctx)
 	if err != nil {
@@ -707,8 +707,8 @@ func stepCreateRow_IsIdempotentAgainstAnAlreadyPresentWorktree(t *testing.T, h *
 	if step.Next != battenrecipe.NameSeedChild {
 		t.Errorf("Next = %q; want %q -- the run must advance rather than halt", step.Next, battenrecipe.NameSeedChild)
 	}
-	if !pathExists(h.PairWarpWorktree(slug)) {
-		t.Errorf("task worktree missing after the idempotent create row: %s", h.PairWarpWorktree(slug))
+	if !pathExists(h.PairCodeWorktree(slug)) {
+		t.Errorf("task worktree missing after the idempotent create row: %s", h.PairCodeWorktree(slug))
 	}
 }
 
@@ -767,7 +767,7 @@ func stepCreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T, h *hubforge.Hu
 // Reproduces the state a process killed right after Add's own first step leaves -- the code worktree and branch exist, nothing else does -- by driving the same git command Add's own createGitWorktree issues, rather than stubbing anything: this proves taskWorktreeComplete's real filesystem check, not a fake of it.
 func stepCreateRow_IncompletePairRefusesRatherThanSkippingAdd(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-incomplete-pair"
-	target := h.PairWarpWorktree(slug)
+	target := h.PairCodeWorktree(slug)
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "add", "-b", slug, target)
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
@@ -786,7 +786,7 @@ func stepCreateRow_IncompletePairRefusesRatherThanSkippingAdd(t *testing.T, h *h
 	}
 	// The refusal must be read-only: no repair attempt, no partial Add left further along than it
 	// started.
-	if pathExists(h.PairWeftSibling(slug)) {
+	if pathExists(h.PairRecordsSibling(slug)) {
 		t.Errorf("the pair's other-side worktree exists after the refusal; want CreateWorktree to have made no repair attempt")
 	}
 }
@@ -803,7 +803,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: r4/\npathspec: \"\"\n")
 	slug := "batten-incomplete-prefixed"
 	branch := "r4/" + slug
-	target := h.PairWarpWorktree(slug)
+	target := h.PairCodeWorktree(slug)
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "add", "-b", branch, target)
 
 	// Stands in for Add's own later steps -- the other side's worktree and the portal -- run
@@ -812,7 +812,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	if err != nil {
 		t.Fatalf("resolve records repo root: %v", err)
 	}
-	gitkit.MustRun(t, recordsRepoRoot, "git", "worktree", "add", "-b", fabricengine.WeftBranchName(branch), h.PairWeftSibling(slug))
+	gitkit.MustRun(t, recordsRepoRoot, "git", "worktree", "add", "-b", fabricengine.WeftBranchName(branch), h.PairRecordsSibling(slug))
 	portal := fabricengine.PortalLink(h.Location, slug)
 	if err := os.MkdirAll(filepath.Dir(portal), 0o755); err != nil {
 		t.Fatalf("mkdir portals: %v", err)
@@ -856,8 +856,8 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	if err := c.env.CreateWorktree(context.Background()); err != nil {
 		t.Fatalf("CreateWorktree() after the remedy = %v; want the fresh create to succeed", err)
 	}
-	if !pathExists(h.PairWeftSibling(slug)) {
-		t.Errorf("the pair's other side is missing after the resumed create: %s", h.PairWeftSibling(slug))
+	if !pathExists(h.PairRecordsSibling(slug)) {
+		t.Errorf("the pair's other side is missing after the resumed create: %s", h.PairRecordsSibling(slug))
 	}
 }
 
@@ -891,8 +891,8 @@ func stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated(t *testing.T, h *hubfor
 	if result.HaltedProducer != battenrecipe.NameWorktreeCreate {
 		t.Errorf("HaltedProducer = %q; want %q", result.HaltedProducer, battenrecipe.NameWorktreeCreate)
 	}
-	if pathExists(h.PairWarpWorktree(slug)) {
-		t.Errorf("pair exists even though the create row blocked before creating anything: %s", h.PairWarpWorktree(slug))
+	if pathExists(h.PairCodeWorktree(slug)) {
+		t.Errorf("pair exists even though the create row blocked before creating anything: %s", h.PairCodeWorktree(slug))
 	}
 }
 
@@ -921,8 +921,8 @@ func stepMidListResume_SkipsTheCompletedCreateRow(t *testing.T, h *hubforge.Hub)
 	if !strings.Contains(out.String(), `"ok":true`) {
 		t.Errorf("run() output missing ok:true envelope; got: %q", out.String())
 	}
-	if pathExists(h.PairWarpWorktree(slug)) {
-		t.Errorf("pair still exists after the resumed run's teardown row completed: %s", h.PairWarpWorktree(slug))
+	if pathExists(h.PairCodeWorktree(slug)) {
+		t.Errorf("pair still exists after the resumed run's teardown row completed: %s", h.PairCodeWorktree(slug))
 	}
 
 	var envelope map[string]any
@@ -947,7 +947,7 @@ func stepNonPrimeRefusal(t *testing.T, h *hubforge.Hub) {
 	taskSlug := "batten-task-cwd"
 	hubforge.AddPair(t, h, taskSlug)
 
-	taskCwd := h.PairWarpWorktree(taskSlug)
+	taskCwd := h.PairCodeWorktree(taskSlug)
 	primeName := h.Location.WorktreeName
 
 	for _, verb := range []string{"run", "step", "status", "pause"} {
@@ -971,7 +971,7 @@ func stepNonPrimeRefusal(t *testing.T, h *hubforge.Hub) {
 // stepRecordsPrimeRefusal pins the other half of the Bookend guard: the records sibling of the prime is a repository of its own whose prime is itself, so a name comparison alone admits it, and both bookend rows would then drive fabric's topology against the records repository.
 // Every verb must refuse there before arming anything -- no seed written under the records prime, nothing created -- and the refusal must say which checkout the operator is standing in.
 func stepRecordsPrimeRefusal(t *testing.T, h *hubforge.Hub) {
-	recordsPrimeCwd := h.PrimeWeft()
+	recordsPrimeCwd := h.PrimeRecords()
 
 	for _, verb := range []string{"run", "step", "status", "pause"} {
 		t.Run(verb, func(t *testing.T) {
@@ -1012,7 +1012,7 @@ func stepTeardown_ReEntryAfterCompletedRemovalIsDone(t *testing.T, h *hubforge.H
 			t.Fatalf("%s Teardown.Remove() = %v; want nil", pass, err)
 		}
 	}
-	if pathExists(h.PairWarpWorktree(slug)) {
+	if pathExists(h.PairCodeWorktree(slug)) {
 		t.Error("task worktree still present after the teardown; want it removed")
 	}
 }
@@ -1039,7 +1039,7 @@ func stepTeardown_SiblingDirtOutsideRecordPathsRefusesShutdown(t *testing.T, h *
 	if strings.Contains(err.Error(), "--force") {
 		t.Errorf("Teardown.Shutdown() error = %q; want it to never name --force", err.Error())
 	}
-	if !pathExists(h.PairWarpWorktree(slug)) {
+	if !pathExists(h.PairCodeWorktree(slug)) {
 		t.Error("task worktree is gone after the refused shutdown; want the pair left in place")
 	}
 	if !pathExists(stray) {

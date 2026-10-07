@@ -39,23 +39,23 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 		{"BypassPushAdvancesBothUpstreams", func(t *testing.T) {
 			// With unpushed commits on both sides, --warp-path/--weft-path bypass push exits 0 and both bare upstreams' HEAD matches their local checkout's HEAD.
 			// Add one more commit on top of the weft side's already-pushed history, so the weft side has something genuinely unpushed to push.
-			placeholderFile := filepath.Join(h.PrimeWeft(), lyxdirs.LyxDirName, "placeholder")
+			placeholderFile := filepath.Join(h.PrimeRecords(), lyxdirs.LyxDirName, "placeholder")
 			if err := os.WriteFile(placeholderFile, []byte("bypass push test"), 0o644); err != nil {
 				t.Fatalf("WriteFile: %v", err)
 			}
-			gitkit.MustRun(t, h.PrimeWeft(), "git", "add", ".")
-			gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "-q", "-m", "weft bypass push")
+			gitkit.MustRun(t, h.PrimeRecords(), "git", "add", ".")
+			gitkit.MustRun(t, h.PrimeRecords(), "git", "commit", "-q", "-m", "weft bypass push")
 
 			// The prime pair's weft branch, so the bare-side assertion below checks that branch specifically rather than the bare's own HEAD symref -- a real hub's weft bare also carries weft:main's own "main" branch (the board checkout), and the bare's default HEAD may not name the prime pair's branch.
-			weftBranch := strings.TrimSpace(gitOutputCLI(t, h.PrimeWeft(), "rev-parse", "--abbrev-ref", "HEAD"))
-			wantWeftSHA := gitkit.RevParse(t, h.PrimeWeft(), "HEAD")
+			weftBranch := strings.TrimSpace(gitOutputCLI(t, h.PrimeRecords(), "rev-parse", "--abbrev-ref", "HEAD"))
+			wantWeftSHA := gitkit.RevParse(t, h.PrimeRecords(), "HEAD")
 			wantWarpSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 
 			// A real forked push child cannot itself be observed from a test binary (it would re-exec the test binary), so the synchronous bypass handler it runs is the deterministic proof that a supplied path is pushed.
 			var out bytes.Buffer
 			exitCode := fabriccli.RunCLI(&out, []string{
 				"--warp-path", h.PrimeWorktree(),
-				"--weft-path", h.PrimeWeft(),
+				"--weft-path", h.PrimeRecords(),
 				"push",
 			})
 			if exitCode != 0 {
@@ -64,10 +64,10 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 
 			envelope.RequireOK(t, out.String())
 
-			if gotWeftSHA := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch); gotWeftSHA != wantWeftSHA {
+			if gotWeftSHA := gitkit.RevParse(t, h.RecordsBare, "refs/heads/"+weftBranch); gotWeftSHA != wantWeftSHA {
 				t.Errorf("weft bare %s = %s; want %s (the unpushed commit was not pushed)", weftBranch, gotWeftSHA, wantWeftSHA)
 			}
-			if gotWarpSHA := gitkit.RevParse(t, h.WarpBare, "HEAD"); gotWarpSHA != wantWarpSHA {
+			if gotWarpSHA := gitkit.RevParse(t, h.CodeBare, "HEAD"); gotWarpSHA != wantWarpSHA {
 				t.Errorf("warp bare HEAD = %s; want %s (the unpushed commit was not pushed)", gotWarpSHA, wantWarpSHA)
 			}
 		}},
@@ -78,7 +78,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
 				t.Fatalf("RunCLI(add) = %d; want 0\noutput: %s", code, output)
 			}
-			pairWarp, pairWeft := h.PairWarpWorktree(slug), h.PairWeftSibling(slug)
+			pairWarp, pairWeft := h.PairCodeWorktree(slug), h.PairRecordsSibling(slug)
 			gitkit.CommitFile(t, pairWarp, "warp-push.txt", "warp\n", "warp push")
 			gitkit.CommitFile(t, pairWeft, filepath.Join(lyxdirs.LyxDirName, "weft-push.txt"), "weft\n", "weft push")
 
@@ -95,10 +95,10 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 				t.Errorf("push envelope carries code_push_skipped in a task pair: %s", output)
 			}
 
-			if got := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch); got != wantWeftSHA {
+			if got := gitkit.RevParse(t, h.RecordsBare, "refs/heads/"+weftBranch); got != wantWeftSHA {
 				t.Errorf("weft bare %s = %s; want %s (the weft side was not pushed)", weftBranch, got, wantWeftSHA)
 			}
-			if got := gitkit.RevParse(t, h.WarpBare, "refs/heads/"+slug); got != wantWarpSHA {
+			if got := gitkit.RevParse(t, h.CodeBare, "refs/heads/"+slug); got != wantWarpSHA {
 				t.Errorf("warp bare %s = %s; want %s (the warp side was not pushed)", slug, got, wantWarpSHA)
 			}
 
@@ -113,7 +113,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
 				t.Fatalf("first add exit = %d; output: %s", code, output)
 			}
-			warp := h.PairWarpWorktree(slug)
+			warp := h.PairCodeWorktree(slug)
 			gitkit.CommitFile(t, warp, "work.txt", "work\n", "warp work")
 			gitkit.MustRun(t, warp, "git", "push", "--quiet", "origin", slug)
 			gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--squash", slug)
@@ -213,7 +213,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			const slug = "vanished-cli"
 			hubforge.AddPair(t, h, slug)
 
-			if err := os.RemoveAll(h.PairWarpWorktree(slug)); err != nil {
+			if err := os.RemoveAll(h.PairCodeWorktree(slug)); err != nil {
 				t.Fatalf("remove warp worktree directory (leaving git's registration behind): %v", err)
 			}
 
@@ -301,11 +301,11 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 		{"PrimePushReportsItsUnpushedCodeBranchAndPushesRecords", func(t *testing.T) {
 			// With an unpushed commit on the prime's code branch, "lyx fabric push" from the prime exits 0, pushes the records side, leaves the code branch on its bare unchanged, and names the skipped branch in code_push_skipped.
 			warpBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
-			warpBareBefore := gitkit.RevParse(t, h.WarpBare, "refs/heads/"+warpBranch)
+			warpBareBefore := gitkit.RevParse(t, h.CodeBare, "refs/heads/"+warpBranch)
 
 			gitkit.CommitFile(t, h.PrimeWorktree(), "local-only.txt", "local\n", "local warp work")
-			gitkit.CommitFile(t, h.PrimeWeft(), filepath.Join(lyxdirs.LyxDirName, "weft-after-skip.txt"), "weft\n", "weft after skip")
-			weftBranch := gitkit.CurrentBranch(t, h.PrimeWeft())
+			gitkit.CommitFile(t, h.PrimeRecords(), filepath.Join(lyxdirs.LyxDirName, "weft-after-skip.txt"), "weft\n", "weft after skip")
+			weftBranch := gitkit.CurrentBranch(t, h.PrimeRecords())
 
 			code, output := runFabric(t, h.PrimeWorktree(), "push")
 			if code != 0 {
@@ -317,10 +317,10 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 				t.Errorf("code_push_skipped = %q; want it to name branch %q", skipped, warpBranch)
 			}
 
-			if got, want := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch), gitkit.RevParse(t, h.PrimeWeft(), "HEAD"); got != want {
+			if got, want := gitkit.RevParse(t, h.RecordsBare, "refs/heads/"+weftBranch), gitkit.RevParse(t, h.PrimeRecords(), "HEAD"); got != want {
 				t.Errorf("weft bare %s = %s; want %s (the records side must be pushed)", weftBranch, got, want)
 			}
-			if got := gitkit.RevParse(t, h.WarpBare, "refs/heads/"+warpBranch); got != warpBareBefore {
+			if got := gitkit.RevParse(t, h.CodeBare, "refs/heads/"+warpBranch); got != warpBareBefore {
 				t.Errorf("warp bare %s = %s; want unchanged %s (the prime's code side is never pushed)", warpBranch, got, warpBareBefore)
 			}
 		}},
@@ -361,7 +361,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			l := h.Location
 			warpWorktree := l.WorktreePath()
 			warpDotLyx := filepath.Join(warpWorktree, l.AnchorRel, lyxdirs.DotLyxDirName)
-			weftDotLyx := filepath.Join(h.PrimeWeft(), l.AnchorRel, lyxdirs.DotLyxDirName)
+			weftDotLyx := filepath.Join(h.PrimeRecords(), l.AnchorRel, lyxdirs.DotLyxDirName)
 
 			// Tear the wired junction down to a real directory, then plant a collision adoption still
 			// refuses: the same name is a FILE on the warp side and a DIRECTORY on the weft side.

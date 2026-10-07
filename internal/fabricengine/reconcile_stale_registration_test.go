@@ -100,7 +100,7 @@ func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 
-	if err := os.RemoveAll(h.PrimeWeft()); err != nil {
+	if err := os.RemoveAll(h.PrimeRecords()); err != nil {
 		t.Fatalf("remove weft prime: %v", err)
 	}
 

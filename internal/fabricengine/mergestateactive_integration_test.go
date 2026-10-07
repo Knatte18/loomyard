@@ -63,7 +63,7 @@ func TestMergeStateActive(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.NewHub(t, ".")
-	f := fabricengine.NewFabricForTest(t, h.PrimeWorktree(), h.PrimeWeft())
+	f := fabricengine.NewFabricForTest(t, h.PrimeWorktree(), h.PrimeRecords())
 
 	requireMergeStateActive := func(t *testing.T, want bool, shape string) {
 		t.Helper()
@@ -87,15 +87,15 @@ func TestMergeStateActive(t *testing.T) {
 	})
 
 	t.Run("weft MERGE_HEAD present reports true", func(t *testing.T) {
-		driveMergeHeadOnlyNoConflicts(t, h.PrimeWeft())
+		driveMergeHeadOnlyNoConflicts(t, h.PrimeRecords())
 
 		requireMergeStateActive(t, true, "a live weft MERGE_HEAD")
 
-		gitkit.MustRun(t, h.PrimeWeft(), "git", "merge", "--abort")
+		gitkit.MustRun(t, h.PrimeRecords(), "git", "merge", "--abort")
 	})
 
 	t.Run("weft conflicted squash without MERGE_HEAD reports true", func(t *testing.T) {
-		driveConflictedSquashMerge(t, h.PrimeWeft())
+		driveConflictedSquashMerge(t, h.PrimeRecords())
 
 		requireMergeStateActive(t, true, "a conflicted weft squash merge (no MERGE_HEAD)")
 	})

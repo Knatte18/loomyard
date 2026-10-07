@@ -34,7 +34,7 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 	// The fixture's <Hub>/_board worktree stays on "main", which is what records the repo's
 	// primary warp branch.
 	gitkit.MustRun(t, l.WorktreePath(), "git", "checkout", "-b", "alt")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "checkout", "-b", fabricengine.WeftBranchName("alt"))
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "checkout", "-b", fabricengine.WeftBranchName("alt"))
 
 	result, err := h.Topology.Cleanup(l, true, true, false)
 	if err != nil {

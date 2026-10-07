@@ -3,7 +3,7 @@
 // remove_archive_integration_test.go covers Remove's archive step: after every refusal and before any mutation it tags the pair's weft tip under archive/<slug>/ and pushes the tag to the weft origin, so the run records committed on that branch outlive the branch itself.
 // It covers the tag's landing, its reuse when the same-tip tag is already on the origin, the commit-then-archive flow for a weft worktree holding uncommitted records, the fail-closed shape of an unreachable origin, the fact that neither force nor remote=false skips the step, the no-origin skip, and that a rolled-back Add never archives.
 //
-// Every hub is built through hubforge.NewHub, with the hub's WeftBare as the weft origin.
+// Every hub is built through hubforge.NewHub, with the hub's RecordsBare as the weft origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -53,7 +53,7 @@ func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
 	if res.ArchiveSkippedReason != "" {
 		t.Errorf("ArchiveSkippedReason = %q; want empty", res.ArchiveSkippedReason)
 	}
-	if got := tagTargetAt(t, h.WeftBare, wantTag); got != tip {
+	if got := tagTargetAt(t, h.RecordsBare, wantTag); got != tip {
 		t.Errorf("origin tag %s points at %q; want the tip %s", wantTag, got, tip)
 	}
 }
@@ -82,10 +82,10 @@ func TestRemove_ReusesSameTipArchiveTag(t *testing.T) {
 	if res.ArchiveTag != wantTag {
 		t.Errorf("ArchiveTag = %q; want the reused %q", res.ArchiveTag, wantTag)
 	}
-	if got := tagTargetAt(t, h.WeftBare, wantTag); got != tip {
+	if got := tagTargetAt(t, h.RecordsBare, wantTag); got != tip {
 		t.Errorf("origin tag %s points at %q; want %s", wantTag, got, tip)
 	}
-	if tags := archiveTagsAt(t, h.WeftBare); len(tags) != 1 || tags[0] != wantTag {
+	if tags := archiveTagsAt(t, h.RecordsBare); len(tags) != 1 || tags[0] != wantTag {
 		t.Errorf("origin archive tags = %v; want exactly [%s]", tags, wantTag)
 	}
 }
@@ -115,7 +115,7 @@ func TestRemove_PendingRecordsAreCommittedAndArchivedOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove on a weft worktree holding an uncommitted record error = %v; want it committed and archived", err)
 	}
-	tip := tagTargetAt(t, h.WeftBare, res.ArchiveTag)
+	tip := tagTargetAt(t, h.RecordsBare, res.ArchiveTag)
 	if tip == tipBefore {
 		t.Fatalf("archived tip %s equals the pre-Remove tip; want a new commit carrying the record", tip)
 	}
@@ -123,13 +123,13 @@ func TestRemove_PendingRecordsAreCommittedAndArchivedOnce(t *testing.T) {
 	if res.ArchiveTag != wantTag {
 		t.Errorf("ArchiveTag = %q; want %q", res.ArchiveTag, wantTag)
 	}
-	if tags := archiveTagsAt(t, h.WeftBare); len(tags) != 1 || tags[0] != wantTag {
+	if tags := archiveTagsAt(t, h.RecordsBare); len(tags) != 1 || tags[0] != wantTag {
 		t.Errorf("origin archive tags = %v; want exactly [%s]", tags, wantTag)
 	}
-	if got := tagTargetAt(t, h.WeftBare, wantTag); got != tip {
+	if got := tagTargetAt(t, h.RecordsBare, wantTag); got != tip {
 		t.Errorf("origin tag %s points at %q; want the post-commit tip %s", wantTag, got, tip)
 	}
-	if got := showAtTag(t, h.WeftBare, wantTag, "_lyx/record.txt"); got != "run record\n" {
+	if got := showAtTag(t, h.RecordsBare, wantTag, "_lyx/record.txt"); got != "run record\n" {
 		t.Errorf("archived _lyx/record.txt = %q; want the committed record", got)
 	}
 	if tags := archiveTagsAt(t, weftRoot); len(tags) != 1 {
@@ -190,7 +190,7 @@ func TestRemove_ForceStillArchives(t *testing.T) {
 	if res.ArchiveTag != wantTag {
 		t.Errorf("ArchiveTag = %q; want %q", res.ArchiveTag, wantTag)
 	}
-	if got := tagTargetAt(t, h.WeftBare, wantTag); got != tip {
+	if got := tagTargetAt(t, h.RecordsBare, wantTag); got != tip {
 		t.Errorf("origin tag %s points at %q; want %s", wantTag, got, tip)
 	}
 }
@@ -214,7 +214,7 @@ func TestRemove_RemoteFalseStillPushesArchiveTag(t *testing.T) {
 		t.Errorf("RemoteBranchDeleted = true; want false")
 	}
 	wantTag := "archive/" + slug + "/" + tip[:12]
-	if got := tagTargetAt(t, h.WeftBare, wantTag); got != tip {
+	if got := tagTargetAt(t, h.RecordsBare, wantTag); got != tip {
 		t.Errorf("origin tag %s points at %q; want %s", wantTag, got, tip)
 	}
 }
@@ -269,7 +269,7 @@ func TestAddRollback_LeavesNoArchiveTag(t *testing.T) {
 	if tags := archiveTagsAt(t, weftRoot); len(tags) != 0 {
 		t.Errorf("local archive tags after a rolled-back Add = %v; want none", tags)
 	}
-	if tags := archiveTagsAt(t, h.WeftBare); len(tags) != 0 {
+	if tags := archiveTagsAt(t, h.RecordsBare); len(tags) != 0 {
 		t.Errorf("origin archive tags after a rolled-back Add = %v; want none", tags)
 	}
 }

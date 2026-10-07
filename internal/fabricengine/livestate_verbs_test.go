@@ -317,8 +317,8 @@ func pairPermittedRoots(tb testing.TB, h *hubforge.Hub, slug string) []string {
 	tb.Helper()
 
 	return []string{
-		hubRelative(tb, h, h.PairWarpWorktree(slug)),
-		hubRelative(tb, h, h.PairWeftSibling(slug)),
+		hubRelative(tb, h, h.PairCodeWorktree(slug)),
+		hubRelative(tb, h, h.PairRecordsSibling(slug)),
 		hubRelative(tb, h, h.PairPortalLink(slug)),
 		hubRelative(tb, h, h.PairLauncherDir(slug)),
 	}
@@ -432,13 +432,13 @@ func addCase() VerbCase {
 				BrokenOriginURL: broken,
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
-					WeftCheckout: h.PrimeWeft(),
+					WeftCheckout: h.PrimeRecords(),
 					// StructuralPath is the pair's own warp worktree path, which does not exist yet --
 					// exactly what add.go's own gate call (add.go:263-295) acts on during rollback, and
 					// the reason the two link-shaped structural states are omitted for Add (the junction
 					// paths do not exist before Run either) while the two directory-shaped ones, which
 					// plant fresh content via os.MkdirAll rather than replacing an existing link, remain.
-					StructuralPath: h.PairWarpWorktree(slug),
+					StructuralPath: h.PairCodeWorktree(slug),
 				},
 			}
 		},
@@ -458,7 +458,7 @@ func addCase() VerbCase {
 					Kind:      KindRefusedBefore,
 					Substring: "source worktree has uncommitted changes",
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
-						assertGone(tb, h.PairWarpWorktree(f.Slug))
+						assertGone(tb, h.PairCodeWorktree(f.Slug))
 					},
 				}
 			case "foreignDirAtFabricOwnedPath", "unrelatedGitCloneAtWeftNamedPath":
@@ -489,8 +489,8 @@ func addCase() VerbCase {
 					Substring: "push branch",
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
-						assertGone(tb, h.PairWarpWorktree(f.Slug))
-						assertGone(tb, h.PairWeftSibling(f.Slug))
+						assertGone(tb, h.PairCodeWorktree(f.Slug))
+						assertGone(tb, h.PairRecordsSibling(f.Slug))
 						assertGone(tb, h.PairPortalLink(f.Slug))
 						assertGone(tb, h.PairLauncherDir(f.Slug))
 						if gitkit.BranchExists(tb, h.PrimeWorktree(), f.Slug) {
@@ -532,8 +532,8 @@ func removeCase() VerbCase {
 			return VerbFixture{
 				Slug: slug,
 				Target: StateTarget{
-					WarpCheckout: h.PairWarpWorktree(slug),
-					WeftCheckout: h.PairWeftSibling(slug),
+					WarpCheckout: h.PairCodeWorktree(slug),
+					WeftCheckout: h.PairRecordsSibling(slug),
 					// StructuralPath is the pair's own wired junction link: remove.go's link sweep
 					// (scanOnDiskJunctionNames + removeWarpJunction) is ownership-filtered -- "only the
 					// links fabric itself created there" -- which the two link-shaped structural states
@@ -559,7 +559,7 @@ func removeCase() VerbCase {
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						assertExists(tb, h.PairPortalLink(f.Slug))
 						assertExists(tb, h.PairLauncherDir(f.Slug))
-						assertExists(tb, h.PairWarpWorktree(f.Slug))
+						assertExists(tb, h.PairCodeWorktree(f.Slug))
 					},
 				}
 			default:
@@ -568,8 +568,8 @@ func removeCase() VerbCase {
 					PermittedRoots: slugPermittedRoots("verb-remove-owner"),
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
-						assertGone(tb, h.PairWarpWorktree(f.Slug))
-						assertGone(tb, h.PairWeftSibling(f.Slug))
+						assertGone(tb, h.PairCodeWorktree(f.Slug))
+						assertGone(tb, h.PairRecordsSibling(f.Slug))
 						assertGone(tb, h.PairPortalLink(f.Slug))
 						assertGone(tb, h.PairLauncherDir(f.Slug))
 					},
@@ -591,14 +591,14 @@ func pruneCase() VerbCase {
 
 			slug := "verb-prune-owner"
 			hubforge.AddPair(tb, h, slug)
-			if err := os.RemoveAll(h.PairWarpWorktree(slug)); err != nil {
-				tb.Fatalf("remove warp worktree %s to stage a stale pair: %v", h.PairWarpWorktree(slug), err)
+			if err := os.RemoveAll(h.PairCodeWorktree(slug)); err != nil {
+				tb.Fatalf("remove warp worktree %s to stage a stale pair: %v", h.PairCodeWorktree(slug), err)
 			}
 			return VerbFixture{
 				Slug: slug,
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
-					WeftCheckout: h.PairWeftSibling(slug),
+					WeftCheckout: h.PairRecordsSibling(slug),
 					// StructuralPath is a SEPARATE weft-named sibling path that was never Added at all
 					// -- an orphan directory shaped exactly like debris Prune's own orphan pass would
 					// enumerate, distinct from "verb-prune-owner"'s own (genuinely registered) stale
@@ -606,7 +606,7 @@ func pruneCase() VerbCase {
 					// is exactly what must refuse to touch it: it is never a registered linked worktree
 					// of this hub's weft repo, so it must survive Prune's own teardown of the real stale
 					// pair untouched.
-					StructuralPath: h.PairWeftSibling("verb-prune-structural-orphan"),
+					StructuralPath: h.PairRecordsSibling("verb-prune-structural-orphan"),
 				},
 			}
 		},
@@ -628,7 +628,7 @@ func pruneCase() VerbCase {
 					PermittedRoots: slugPermittedRoots("verb-prune-owner"),
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
-						assertExists(tb, h.PairWeftSibling(f.Slug))
+						assertExists(tb, h.PairRecordsSibling(f.Slug))
 						assertExists(tb, h.PairPortalLink(f.Slug))
 						assertExists(tb, h.PairLauncherDir(f.Slug))
 					},
@@ -639,7 +639,7 @@ func pruneCase() VerbCase {
 					PermittedRoots: slugPermittedRoots("verb-prune-owner"),
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
-						assertGone(tb, h.PairWeftSibling(f.Slug))
+						assertGone(tb, h.PairRecordsSibling(f.Slug))
 						assertGone(tb, h.PairPortalLink(f.Slug))
 						assertGone(tb, h.PairLauncherDir(f.Slug))
 					},
@@ -678,26 +678,26 @@ func cleanupCase() VerbCase {
 
 			slug := "verb-cleanup-owner"
 			hubforge.AddPair(tb, h, slug)
-			mustGit(h.PrimeWorktree(), "worktree", "remove", "--force", h.PairWarpWorktree(slug))
+			mustGit(h.PrimeWorktree(), "worktree", "remove", "--force", h.PairCodeWorktree(slug))
 			mustGit(h.PrimeWorktree(), "branch", "-D", slug)
 			// The weft branch must not be checked out anywhere either: cleanup.go:162-166
 			// unconditionally protects a checked-out branch, and the pair's own weft worktree is
 			// still on it after only the warp side is torn down.
-			mustGit(h.PrimeWeft(), "worktree", "remove", "--force", h.PairWeftSibling(slug))
+			mustGit(h.PrimeRecords(), "worktree", "remove", "--force", h.PairRecordsSibling(slug))
 
 			// Move the prime pair off the default branch. The _board worktree (never touched here)
 			// keeps recording "original" as the primary warp branch, so the primary weft branch is
 			// now neither the checked-out weft worktree's own branch nor named by any live pair --
 			// exactly the condition that makes Cleanup's primaryWeft carve-out load-bearing.
 			mustGit(h.PrimeWorktree(), "checkout", "-b", "verb-cleanup-alt")
-			mustGit(h.PrimeWeft(), "checkout", "-b", fabricengine.WeftBranchName("verb-cleanup-alt"))
+			mustGit(h.PrimeRecords(), "checkout", "-b", fabricengine.WeftBranchName("verb-cleanup-alt"))
 
 			return VerbFixture{
 				Slug:           slug,
 				OriginalBranch: original,
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
-					WeftCheckout: h.PairWeftSibling(slug),
+					WeftCheckout: h.PairRecordsSibling(slug),
 				},
 			}
 		},
@@ -712,7 +712,7 @@ func cleanupCase() VerbCase {
 				Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 					tb.Helper()
 					orphan := fabricengine.WeftBranchName(f.Slug)
-					if gitkit.BranchExists(tb, h.PrimeWeft(), orphan) {
+					if gitkit.BranchExists(tb, h.PrimeRecords(), orphan) {
 						tb.Errorf("Cleanup left orphan branch %q behind", orphan)
 					}
 					// Card 16's clean-state effect: "orphan managed branches gone, primary weft
@@ -720,7 +720,7 @@ func cleanupCase() VerbCase {
 					// this assertion is independently provable here rather than only in
 					// fabricengine_test's hermetic TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout.
 					primary := fabricengine.WeftBranchName(f.OriginalBranch)
-					if !gitkit.BranchExists(tb, h.PrimeWeft(), primary) {
+					if !gitkit.BranchExists(tb, h.PrimeRecords(), primary) {
 						tb.Errorf("Cleanup deleted the primary weft branch %q", primary)
 					}
 				},
@@ -746,8 +746,8 @@ func checkoutCase() VerbCase {
 			// add.go's own error message points to ("switch a pair onto it"). Without this, `git
 			// switch` refuses because the branch is already checked out at the pair worktree this
 			// same Arrange just created.
-			mustGit(h.PrimeWorktree(), "worktree", "remove", "--force", h.PairWarpWorktree(slug))
-			mustGit(h.PrimeWeft(), "worktree", "remove", "--force", h.PairWeftSibling(slug))
+			mustGit(h.PrimeWorktree(), "worktree", "remove", "--force", h.PairCodeWorktree(slug))
+			mustGit(h.PrimeRecords(), "worktree", "remove", "--force", h.PairRecordsSibling(slug))
 			original := gitkit.CurrentBranch(tb, h.PrimeWorktree())
 
 			return VerbFixture{
@@ -756,7 +756,7 @@ func checkoutCase() VerbCase {
 				CheckoutBranch: slug,
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
-					WeftCheckout: h.PrimeWeft(),
+					WeftCheckout: h.PrimeRecords(),
 				},
 			}
 		},
@@ -778,7 +778,7 @@ func checkoutCase() VerbCase {
 						if got := gitkit.CurrentBranch(tb, h.PrimeWorktree()); got != f.OriginalBranch {
 							tb.Errorf("prime warp branch after refused Checkout = %q; want unchanged %q", got, f.OriginalBranch)
 						}
-						if got := gitkit.CurrentBranch(tb, h.PrimeWeft()); got != fabricengine.WeftBranchName(f.OriginalBranch) {
+						if got := gitkit.CurrentBranch(tb, h.PrimeRecords()); got != fabricengine.WeftBranchName(f.OriginalBranch) {
 							tb.Errorf("prime weft branch after refused Checkout = %q; want unchanged %q", got, fabricengine.WeftBranchName(f.OriginalBranch))
 						}
 					},
@@ -795,7 +795,7 @@ func checkoutCase() VerbCase {
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						warpBranch := gitkit.CurrentBranch(tb, h.PrimeWorktree())
-						weftBranch := gitkit.CurrentBranch(tb, h.PrimeWeft())
+						weftBranch := gitkit.CurrentBranch(tb, h.PrimeRecords())
 						switched := warpBranch == f.CheckoutBranch
 						weftSwitched := weftBranch == fabricengine.WeftBranchName(f.CheckoutBranch)
 						if switched != weftSwitched {
@@ -820,7 +820,7 @@ func checkoutCase() VerbCase {
 							tb.Errorf("prime warp branch after Checkout = %q; want %q", got, f.CheckoutBranch)
 						}
 						wantWeft := fabricengine.WeftBranchName(f.CheckoutBranch)
-						if got := gitkit.CurrentBranch(tb, h.PrimeWeft()); got != wantWeft {
+						if got := gitkit.CurrentBranch(tb, h.PrimeRecords()); got != wantWeft {
 							tb.Errorf("prime weft branch after Checkout = %q; want %q", got, wantWeft)
 						}
 						if f.CheckoutBranch == f.OriginalBranch {
@@ -843,7 +843,7 @@ func reconcileCase() VerbCase {
 			return VerbFixture{
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
-					WeftCheckout: h.PrimeWeft(),
+					WeftCheckout: h.PrimeRecords(),
 				},
 			}
 		},
@@ -879,8 +879,8 @@ func unwireJunctionsCase() VerbCase {
 			return VerbFixture{
 				Slug: slug,
 				Target: StateTarget{
-					WarpCheckout: h.PairWarpWorktree(slug),
-					WeftCheckout: h.PairWeftSibling(slug),
+					WarpCheckout: h.PairCodeWorktree(slug),
+					WeftCheckout: h.PairRecordsSibling(slug),
 					// StructuralPath is the pair's own first wired junction link. unseedJunctionRecords
 					// (junction.go:420-489) walks every wired junction in order and bails out the moment
 					// one fails its own pre-flight (a foreign link's resolved target not matching the
@@ -943,7 +943,7 @@ func unwireJunctionsCase() VerbCase {
 						for _, j := range fabricengine.WarpJunctions(h.Location, f.Slug, names) {
 							assertGone(tb, j.Link)
 						}
-						assertExists(tb, h.PairWarpWorktree(f.Slug))
+						assertExists(tb, h.PairCodeWorktree(f.Slug))
 					},
 				}
 			}
@@ -964,7 +964,7 @@ func pullCase() VerbCase {
 			from := gitkit.RevParse(tb, h.PrimeWorktree(), "HEAD")
 
 			scratch := tb.TempDir()
-			mustGit(filepath.Dir(scratch), "clone", h.WarpBare, filepath.Base(scratch))
+			mustGit(filepath.Dir(scratch), "clone", h.CodeBare, filepath.Base(scratch))
 			gitkit.CommitFile(tb, scratch, "pull-advance.txt", "livestate: pull advance\n", "livestate: advance warp bare for Pull")
 			mustGit(scratch, "push", "origin", "HEAD:"+gitkit.CurrentBranch(tb, h.PrimeWorktree()))
 			to := gitkit.RevParse(tb, scratch, "HEAD")
@@ -974,7 +974,7 @@ func pullCase() VerbCase {
 				AdvancedToSHA:   to,
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
-					WeftCheckout: h.PrimeWeft(),
+					WeftCheckout: h.PrimeRecords(),
 				},
 			}
 		},
@@ -1087,8 +1087,8 @@ func cloneHubResetRealHubCase() VerbCase {
 			tb.Helper()
 			return VerbFixture{
 				ResetCwd:     h.Container,
-				ResetWarpURL: filepath.ToSlash(h.WarpBare),
-				ResetWeftURL: filepath.ToSlash(h.WeftBare),
+				ResetWarpURL: filepath.ToSlash(h.CodeBare),
+				ResetWeftURL: filepath.ToSlash(h.RecordsBare),
 				ResetHubPath: h.Path,
 			}
 		},
@@ -1174,7 +1174,7 @@ func addHostileCases() []VerbCase {
 					Substring: "worktree",
 					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
-						assertGone(tb, h.PairWarpWorktree(f.Slug))
+						assertGone(tb, h.PairCodeWorktree(f.Slug))
 					},
 				}
 			},

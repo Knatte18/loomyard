@@ -33,7 +33,7 @@ func TestMidMerge_FabricParkedWithConflicts_Parked(t *testing.T) {
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -92,7 +92,7 @@ func TestMidMerge_ForeignState_EverySideAndShape(t *testing.T) {
 			dir := h.PrimeWorktree()
 			branch, conflictPath := "other", "plain-conflict.txt"
 			if tt.onWeft {
-				dir = h.PrimeWeft()
+				dir = h.PrimeRecords()
 				branch, conflictPath = "other-weft", "_lyx/plain-conflict.txt"
 			}
 

@@ -32,7 +32,7 @@ func TestNotifyPrime_QueuesInThePrimeOnly(t *testing.T) {
 
 			h := hubforge.NewHub(t, ".")
 			hubforge.AddPair(t, h, "notify-task")
-			task, err := lyxcwd.ResolveWorktree(h.PairWarpWorktree("notify-task"))
+			task, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("notify-task"))
 			if err != nil {
 				t.Fatalf("ResolveWorktree task: %v", err)
 			}

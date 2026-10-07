@@ -36,10 +36,10 @@ func TestAdd_RetriesATransientlyRefusedWeftPush(t *testing.T) {
 	if !refused {
 		t.Fatalf("the weft push was never refused")
 	}
-	if !gitkit.BranchExists(t, h.PrimeWorktree(), slug) || !gitkit.BranchExists(t, h.PrimeWeft(), weftBranch) {
+	if !gitkit.BranchExists(t, h.PrimeWorktree(), slug) || !gitkit.BranchExists(t, h.PrimeRecords(), weftBranch) {
 		t.Errorf("a local branch is missing after the retried Add")
 	}
-	if !gitkit.BranchExists(t, h.WarpBare, slug) || !gitkit.BranchExists(t, h.WeftBare, weftBranch) {
+	if !gitkit.BranchExists(t, h.CodeBare, slug) || !gitkit.BranchExists(t, h.RecordsBare, weftBranch) {
 		t.Errorf("a branch is missing on origin after the retried Add")
 	}
 }

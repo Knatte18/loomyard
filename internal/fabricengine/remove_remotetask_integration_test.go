@@ -3,7 +3,7 @@
 // remove_remotetask_integration_test.go covers Remove's deletion of the pair's task branch on the warp repo's origin under remote:
 // a landed tip goes, an unlanded one stays with a reason (and is then the only copy of its work, the local step having deleted the pushed local branch), a tip that moved after it was observed fails the lease, and without remote the origin copy is untouched.
 //
-// Every hub is built through hubforge.NewHub with an empty branch_prefix, so the pair's warp branch is the bare slug, and h.WarpBare is the origin.
+// Every hub is built through hubforge.NewHub with an empty branch_prefix, so the pair's warp branch is the bare slug, and h.CodeBare is the origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -63,7 +63,7 @@ func TestRemove_RemoteDeletesSquashLandedTaskBranchOnOrigin(t *testing.T) {
 	if !res.RemoteWarpBranchDeleted || res.RemoteWarpBranchKeptReason != "" {
 		t.Errorf("RemoteWarpBranchDeleted = %v, kept reason = %q; want deleted", res.RemoteWarpBranchDeleted, res.RemoteWarpBranchKeptReason)
 	}
-	if originHasBranch(t, h.WarpBare, slug) {
+	if originHasBranch(t, h.CodeBare, slug) {
 		t.Errorf("task branch %q still on origin", slug)
 	}
 	found := false
@@ -91,7 +91,7 @@ func TestRemove_RemoteKeepsUnlandedTaskBranchOnOrigin(t *testing.T) {
 	if !strings.Contains(res.RemoteWarpBranchKeptReason, "commit(s)") {
 		t.Errorf("RemoteWarpBranchKeptReason = %q; want it to name the unlanded commits", res.RemoteWarpBranchKeptReason)
 	}
-	if !originHasBranch(t, h.WarpBare, slug) {
+	if !originHasBranch(t, h.CodeBare, slug) {
 		t.Errorf("task branch %q was deleted on origin despite unlanded work", slug)
 	}
 	// The local step counts the pushed origin copy as holding the work, so it deletes the local branch; the origin copy is then the only one left, which is why the remote gate excludes copies of the branch itself.
@@ -114,7 +114,7 @@ func TestRemove_WithoutRemoteLeavesTaskBranchOnOrigin(t *testing.T) {
 	if res.RemoteWarpBranchDeleted || res.RemoteWarpBranchKeptReason != "" {
 		t.Errorf("RemoteWarpBranchDeleted = %v, kept reason = %q; want neither without remote", res.RemoteWarpBranchDeleted, res.RemoteWarpBranchKeptReason)
 	}
-	if !originHasBranch(t, h.WarpBare, slug) {
+	if !originHasBranch(t, h.CodeBare, slug) {
 		t.Errorf("task branch %q was deleted on origin without remote", slug)
 	}
 }
@@ -143,7 +143,7 @@ func TestDeleteTaskBranchAtTip_MovedTipFailsLease(t *testing.T) {
 	if reason == "" {
 		t.Errorf("kept reason is empty; want the lease failure")
 	}
-	if !originHasBranch(t, h.WarpBare, slug) {
+	if !originHasBranch(t, h.CodeBare, slug) {
 		t.Errorf("task branch %q was deleted on origin despite the moved tip", slug)
 	}
 }

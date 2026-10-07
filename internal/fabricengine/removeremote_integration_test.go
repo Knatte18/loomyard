@@ -5,7 +5,7 @@
 // non-fatal remote-failure partial-teardown guarantee, and the once-per-verb no-origin pre-check
 // shared with Cleanup.
 //
-// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant, using the hub's own WeftBare field as the weft remote to assert against.
+// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant, using the hub's own RecordsBare field as the weft remote to assert against.
 // mustBreakOrigin/mustRemoveOrigin are shared with cleanupremote_integration_test.go
 // and reconcile_stale_registration_test.go — every assertion here goes through exported API.
 //
@@ -46,7 +46,7 @@ func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 	if res.RemoteBranchError != "" {
 		t.Errorf("RemoteBranchError = %q; want empty", res.RemoteBranchError)
 	}
-	if gitkit.BranchExists(t, h.WeftBare, weftBranch) {
+	if gitkit.BranchExists(t, h.RecordsBare, weftBranch) {
 		t.Errorf("weft branch %q still exists on the remote after Remove(remote=true)", weftBranch)
 	}
 
@@ -81,7 +81,7 @@ func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 	if res.RemoteBranchDeleted {
 		t.Errorf("RemoteBranchDeleted = true; want false — remote is opt-in")
 	}
-	if !gitkit.BranchExists(t, h.WeftBare, weftBranch) {
+	if !gitkit.BranchExists(t, h.RecordsBare, weftBranch) {
 		t.Errorf("weft branch %q no longer exists on the remote after Remove(remote=false)", weftBranch)
 	}
 }

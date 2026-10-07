@@ -2,7 +2,7 @@
 
 // pairbranch_archive_integration_test.go covers the archive step of the verb that deletes an existing pair's weft branch besides Remove: Cleanup's apply loop tags the branch tip under archive/<slug>/ and pushes the tag to the weft origin before deleting the branch.
 //
-// Every hub is built through hubforge.NewHub, with the hub's WeftBare as the weft origin.
+// Every hub is built through hubforge.NewHub, with the hub's RecordsBare as the weft origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -47,7 +47,7 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 		if !entry.Deleted || entry.ArchiveTag != wantTag {
 			t.Errorf("entry %s = %+v; want Deleted with ArchiveTag %q", branch, *entry, wantTag)
 		}
-		if got := tagTargetAt(t, h.WeftBare, wantTag); got != tips[slug] {
+		if got := tagTargetAt(t, h.RecordsBare, wantTag); got != tips[slug] {
 			t.Errorf("origin tag %s = %q; want %s", wantTag, got, tips[slug])
 		}
 		if gitkit.BranchExists(t, weftRoot, branch) {

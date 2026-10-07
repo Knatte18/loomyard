@@ -136,7 +136,7 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 			weftRoot := mustWeftRepoRoot(t, l)
 
 			clone := t.TempDir()
-			gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.WeftBare, ".")
+			gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.RecordsBare, ".")
 			gitkit.MustRun(t, clone, "git", "checkout", "--quiet", "-b", weftBranch)
 			gitkit.CommitFile(t, clone, "first.txt", "first\n", "first origin work")
 			gitkit.MustRun(t, clone, "git", "push", "--quiet", "origin", weftBranch)
@@ -146,7 +146,7 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 				gitkit.CommitFile(t, clone, "second.txt", "second\n", "second origin work")
 				gitkit.MustRun(t, clone, "git", "push", "--quiet", "origin", weftBranch)
 			}
-			originTip := gitkit.RevParse(t, h.WeftBare, weftBranch)
+			originTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
 
 			// A blocker at the portal location fails Add at createPortal, after the weft branch is taken from origin.
 			portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
@@ -161,7 +161,7 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 				t.Fatalf("Add should have failed (portal blocker)")
 			}
 
-			if got := gitkit.RevParse(t, h.WeftBare, weftBranch); got != originTip {
+			if got := gitkit.RevParse(t, h.RecordsBare, weftBranch); got != originTip {
 				t.Errorf("origin weft branch = %s; want unchanged %s", got, originTip)
 			}
 			exists := gitkit.BranchExists(t, weftRoot, weftBranch)
@@ -232,10 +232,10 @@ func TestAddRollback_RefusedWarpBranchDeletionLogsWarn(t *testing.T) {
 	pushedTip := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 
 	clone := t.TempDir()
-	gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.WarpBare, ".")
+	gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.CodeBare, ".")
 	movedTip := gitkit.CommitFile(t, clone, "moved.txt", "moved\n", "moved on origin")
 	gitkit.MustRun(t, clone, "git", "push", "--quiet", "origin", "HEAD:refs/heads/elsewhere")
-	installPreReceive(t, h.WeftBare, "#!/bin/sh\nenv -i PATH=\"$PATH\" git --git-dir='"+filepath.ToSlash(h.WarpBare)+"' update-ref refs/heads/"+slug+" "+movedTip+"\necho declined >&2\nexit 1\n")
+	installPreReceive(t, h.RecordsBare, "#!/bin/sh\nenv -i PATH=\"$PATH\" git --git-dir='"+filepath.ToSlash(h.CodeBare)+"' update-ref refs/heads/"+slug+" "+movedTip+"\necho declined >&2\nexit 1\n")
 
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
@@ -245,7 +245,7 @@ func TestAddRollback_RefusedWarpBranchDeletionLogsWarn(t *testing.T) {
 		t.Fatalf("Add should have failed (weft push declined)")
 	}
 
-	if got := gitkit.RevParse(t, h.WarpBare, slug); got != movedTip {
+	if got := gitkit.RevParse(t, h.CodeBare, slug); got != movedTip {
 		t.Errorf("origin warp branch = %s; want the moved tip %s left in place", got, movedTip)
 	}
 	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
@@ -267,8 +267,8 @@ func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
 	h := removedPair(t, slug)
 	l := h.Location
 	// A weft branch on origin that moved past its archive tag makes the pair live, so Add adopts both branches from origin.
-	pushCommitToOrigin(t, h.WeftBare, fabricengine.WeftBranchName(slug))
-	originTip := gitkit.RevParse(t, h.WarpBare, slug)
+	pushCommitToOrigin(t, h.RecordsBare, fabricengine.WeftBranchName(slug))
+	originTip := gitkit.RevParse(t, h.CodeBare, slug)
 
 	portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
 	if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
@@ -285,7 +285,7 @@ func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
 	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
 		t.Errorf("local warp branch %q adopted from origin survived the rollback", slug)
 	}
-	if got := gitkit.RevParse(t, h.WarpBare, slug); got != originTip {
+	if got := gitkit.RevParse(t, h.CodeBare, slug); got != originTip {
 		t.Errorf("origin warp branch = %s; want unchanged %s", got, originTip)
 	}
 }

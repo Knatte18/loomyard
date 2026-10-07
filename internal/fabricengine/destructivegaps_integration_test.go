@@ -647,7 +647,7 @@ func TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	hubforge.AddPair(t, h, slug)
 
-	warpPath := h.PairWarpWorktree(slug)
+	warpPath := h.PairCodeWorktree(slug)
 	if err := os.RemoveAll(warpPath); err != nil {
 		t.Fatalf("remove warp worktree directory (leaving git's registration behind): %v", err)
 	}

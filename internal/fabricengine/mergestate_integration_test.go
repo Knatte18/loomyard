@@ -27,7 +27,7 @@ func newMergeStateFixture(t *testing.T) (f *fabricengine.Fabric, h *hubforge.Hub
 	t.Helper()
 
 	h = hubforge.NewHub(t, ".")
-	f = fabricengine.NewFabricForTest(t, h.PrimeWorktree(), h.PrimeWeft())
+	f = fabricengine.NewFabricForTest(t, h.PrimeWorktree(), h.PrimeRecords())
 	return f, h
 }
 
@@ -131,7 +131,7 @@ func TestMergeState_Record(t *testing.T) {
 		}
 
 		assertMergeStateFileInvisibleToGit(t, "warp", h.PrimeWorktree())
-		assertMergeStateFileInvisibleToGit(t, "weft", h.PrimeWeft())
+		assertMergeStateFileInvisibleToGit(t, "weft", h.PrimeRecords())
 	})
 
 	t.Run("delete removes the record and tolerates a second call", func(t *testing.T) {
@@ -269,7 +269,7 @@ func TestMergeState_ResetMergeSides(t *testing.T) {
 	t.Parallel()
 
 	f, h := newMergeStateFixture(t)
-	warpPath, weftPath := h.PrimeWorktree(), h.PrimeWeft()
+	warpPath, weftPath := h.PrimeWorktree(), h.PrimeRecords()
 
 	t.Run("warp side conflicted", func(t *testing.T) {
 		warpStartSHA := fabricengine.CurrentSHAForTest(t, warpPath)

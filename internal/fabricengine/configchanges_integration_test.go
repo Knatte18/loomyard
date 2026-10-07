@@ -109,7 +109,7 @@ func TestReadConfigChanges(t *testing.T) {
 
 			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-			pairWeft := h.PairWeftSibling(slug)
+			pairWeft := h.PairRecordsSibling(slug)
 			for _, rel := range tc.taskFiles {
 				gitkit.CommitFile(t, pairWeft, filepath.Join(l.AnchorRel, rel), "task change", "task change")
 			}

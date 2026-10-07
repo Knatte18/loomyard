@@ -31,7 +31,7 @@ func pushOriginOnlyWeftBranch(t *testing.T, h *hubforge.Hub, slug, weftBranch st
 	t.Helper()
 
 	clone := t.TempDir()
-	gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.WeftBare, ".")
+	gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.RecordsBare, ".")
 	gitkit.MustRun(t, clone, "git", "checkout", "--quiet", "-b", weftBranch)
 	tip := gitkit.CommitFile(t, clone, originMarkerFile, "from origin\n", "origin-only weft branch")
 	gitkit.MustRun(t, clone, "git", "push", "--quiet", "origin", weftBranch)
@@ -57,10 +57,10 @@ func addPairWithLocalWarpBranch(t *testing.T, h *hubforge.Hub, slug, branch stri
 func requireOnOriginalBranches(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 
-	if got := gitkit.CurrentBranch(t, h.PairWarpWorktree(slug)); got != slug {
+	if got := gitkit.CurrentBranch(t, h.PairCodeWorktree(slug)); got != slug {
 		t.Errorf("warp branch = %q; want %q (unchanged)", got, slug)
 	}
-	if got, want := gitkit.CurrentBranch(t, h.PairWeftSibling(slug)), fabricengine.WeftBranchName(slug); got != want {
+	if got, want := gitkit.CurrentBranch(t, h.PairRecordsSibling(slug)), fabricengine.WeftBranchName(slug); got != want {
 		t.Errorf("weft branch = %q; want %q (unchanged)", got, want)
 	}
 }
@@ -74,10 +74,10 @@ const weftLockDirName = ".weft"
 func addRawWarpWorktree(t *testing.T, h *hubforge.Hub, slug string, removeAtCleanup bool) {
 	t.Helper()
 
-	gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "add", "-b", slug, h.PairWarpWorktree(slug))
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "add", "-b", slug, h.PairCodeWorktree(slug))
 	if removeAtCleanup {
 		t.Cleanup(func() {
-			gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "remove", "--force", h.PairWarpWorktree(slug))
+			gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "remove", "--force", h.PairCodeWorktree(slug))
 			gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "-D", slug)
 		})
 	}
@@ -107,7 +107,7 @@ func reconcilePair(t *testing.T, h *hubforge.Hub, slug string) (int, map[string]
 func requireAdoptedFromOrigin(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 
-	weft := h.PairWeftSibling(slug)
+	weft := h.PairRecordsSibling(slug)
 	weftBranch := fabricengine.WeftBranchName(slug)
 	if got := gitkit.CurrentBranch(t, weft); got != weftBranch {
 		t.Errorf("weft branch = %q; want %q", got, weftBranch)
@@ -120,7 +120,7 @@ func requireAdoptedFromOrigin(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 	for _, path := range []string{
 		filepath.Join(weft, weftLockDirName),
-		filepath.Join(h.PairWarpWorktree(slug), h.Location.AnchorRel, lyxdirs.LyxDirName),
+		filepath.Join(h.PairCodeWorktree(slug), h.Location.AnchorRel, lyxdirs.LyxDirName),
 		h.PairPortalLink(slug),
 		h.PairLauncherDir(slug),
 	} {
@@ -157,11 +157,11 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 				weftBranch := fabricengine.WeftBranchName(tc.branch)
 				tip := pushOriginOnlyWeftBranch(t, h, tc.slug, weftBranch, tc.archiveTag)
 
-				if code, output := runFabric(t, h.PairWarpWorktree(tc.slug), "checkout", tc.branch); code != 0 {
+				if code, output := runFabric(t, h.PairCodeWorktree(tc.slug), "checkout", tc.branch); code != 0 {
 					t.Fatalf("checkout %s (archiveTag=%v) exit = %d; output: %s", tc.branch, tc.archiveTag, code, output)
 				}
 
-				weft := h.PairWeftSibling(tc.slug)
+				weft := h.PairRecordsSibling(tc.slug)
 				if got := gitkit.CurrentBranch(t, weft); got != weftBranch {
 					t.Errorf("weft branch = %q; want %q", got, weftBranch)
 				}
@@ -181,11 +181,11 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			const slug, branch = "co-unreachable", "co-unreachable-b"
 			addPairWithLocalWarpBranch(t, h, slug, branch)
 
-			weftRepo := h.PrimeWeft()
+			weftRepo := h.PrimeRecords()
 			gitkit.MustRun(t, weftRepo, "git", "remote", "set-url", "origin", filepath.Join(h.Container, "missing-origin"))
-			defer gitkit.MustRun(t, weftRepo, "git", "remote", "set-url", "origin", h.WeftBare)
+			defer gitkit.MustRun(t, weftRepo, "git", "remote", "set-url", "origin", h.RecordsBare)
 
-			code, output := runFabric(t, h.PairWarpWorktree(slug), "checkout", branch)
+			code, output := runFabric(t, h.PairCodeWorktree(slug), "checkout", branch)
 			if code == 0 {
 				t.Fatalf("checkout with an unreachable origin exit = 0; want non-zero\noutput: %s", output)
 			}
@@ -226,10 +226,10 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 				t.Fatalf("add %s exit = %d; output: %s", slug, code, output)
 			}
 			weftBranch := fabricengine.WeftBranchName(slug)
-			weftSibling := h.PairWeftSibling(slug)
+			weftSibling := h.PairRecordsSibling(slug)
 			gitkit.MustRun(t, weftSibling, "git", "push", "--quiet", "origin", weftBranch)
-			gitkit.MustRun(t, h.PrimeWeft(), "git", "worktree", "remove", "--force", weftSibling)
-			gitkit.MustRun(t, h.PrimeWeft(), "git", "branch", "-D", weftBranch)
+			gitkit.MustRun(t, h.PrimeRecords(), "git", "worktree", "remove", "--force", weftSibling)
+			gitkit.MustRun(t, h.PrimeRecords(), "git", "branch", "-D", weftBranch)
 
 			code, pair := reconcilePair(t, h, slug)
 			if code != 0 {
@@ -243,7 +243,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			}
 			for _, path := range []string{
 				filepath.Join(weftSibling, weftLockDirName),
-				filepath.Join(h.PairWarpWorktree(slug), h.Location.AnchorRel, lyxdirs.LyxDirName),
+				filepath.Join(h.PairCodeWorktree(slug), h.Location.AnchorRel, lyxdirs.LyxDirName),
 				h.PairPortalLink(slug),
 				h.PairLauncherDir(slug),
 			} {
@@ -257,9 +257,9 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			const slug = "rc-unreachable"
 			addRawWarpWorktree(t, h, slug, true)
 
-			weftRepo := h.PrimeWeft()
+			weftRepo := h.PrimeRecords()
 			gitkit.MustRun(t, weftRepo, "git", "remote", "set-url", "origin", filepath.Join(h.Container, "missing-origin"))
-			defer gitkit.MustRun(t, weftRepo, "git", "remote", "set-url", "origin", h.WeftBare)
+			defer gitkit.MustRun(t, weftRepo, "git", "remote", "set-url", "origin", h.RecordsBare)
 
 			code, pair := reconcilePair(t, h, slug)
 			if code == 0 {
@@ -281,7 +281,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			weftBranch := fabricengine.WeftBranchName(slug)
 			tip := pushOriginOnlyWeftBranch(t, h, slug, weftBranch, false)
 
-			blocker := h.PairWeftSibling(slug)
+			blocker := h.PairRecordsSibling(slug)
 			if err := os.WriteFile(blocker, []byte("a file where the worktree belongs"), 0o644); err != nil {
 				t.Fatalf("plant blocker: %v", err)
 			}
@@ -294,10 +294,10 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			if reason, _ := pair["error"].(string); reason == "" {
 				t.Errorf("pair carries no error; want the adopt failure")
 			}
-			if gitkit.BranchExists(t, h.PrimeWeft(), weftBranch) {
+			if gitkit.BranchExists(t, h.PrimeRecords(), weftBranch) {
 				t.Errorf("local weft branch %q survives the failed adopt; want it deleted", weftBranch)
 			}
-			if got := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch); got != tip {
+			if got := gitkit.RevParse(t, h.RecordsBare, "refs/heads/"+weftBranch); got != tip {
 				t.Errorf("origin %s = %s; want unchanged %s", weftBranch, got, tip)
 			}
 		}},
@@ -310,13 +310,13 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			runRecord := filepath.Join(h.Location.AnchorRel, shedrun.RunsRootRel(), "run-1", "note.txt")
 
 			warpClone := t.TempDir()
-			gitkit.MustRun(t, warpClone, "git", "clone", "--quiet", h.WarpBare, ".")
+			gitkit.MustRun(t, warpClone, "git", "clone", "--quiet", h.CodeBare, ".")
 			gitkit.MustRun(t, warpClone, "git", "checkout", "--quiet", "-b", slug)
 			warpTip := gitkit.CommitFile(t, warpClone, "warp-origin.txt", "from origin\n", "origin-only warp work")
 			gitkit.MustRun(t, warpClone, "git", "push", "--quiet", "origin", slug)
 
 			weftClone := t.TempDir()
-			gitkit.MustRun(t, weftClone, "git", "clone", "--quiet", h.WeftBare, ".")
+			gitkit.MustRun(t, weftClone, "git", "clone", "--quiet", h.RecordsBare, ".")
 			gitkit.MustRun(t, weftClone, "git", "checkout", "--quiet", "-b", weftBranch)
 			gitkit.CommitFile(t, weftClone, originMarkerFile, "from origin\n", "origin-only weft work")
 			weftTip := gitkit.CommitFile(t, weftClone, runRecord, "run record\n", "origin-only run record")
@@ -326,11 +326,11 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 				t.Fatalf("add %s exit = %d; output: %s", slug, code, output)
 			}
 
-			warp, weft := h.PairWarpWorktree(slug), h.PairWeftSibling(slug)
+			warp, weft := h.PairCodeWorktree(slug), h.PairRecordsSibling(slug)
 			if got := gitkit.RevParse(t, warp, "HEAD"); got != warpTip {
 				t.Errorf("warp HEAD = %s; want origin's tip %s", got, warpTip)
 			}
-			if got := gitkit.RevParse(t, h.WarpBare, "refs/heads/"+slug); got != warpTip {
+			if got := gitkit.RevParse(t, h.CodeBare, "refs/heads/"+slug); got != warpTip {
 				t.Errorf("origin warp tip = %s; want unchanged %s", got, warpTip)
 			}
 			for _, tc := range []struct{ dir, branch string }{{warp, slug}, {weft, weftBranch}} {
@@ -341,7 +341,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			if n := gitkit.RevListCount(t, weft, weftTip+"..HEAD"); n != 1 {
 				t.Errorf("weft HEAD is %d commits past the scratch clone's tip; want 1 (the origin record)", n)
 			}
-			if got, want := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch), gitkit.RevParse(t, weft, "HEAD"); got != want {
+			if got, want := gitkit.RevParse(t, h.RecordsBare, "refs/heads/"+weftBranch), gitkit.RevParse(t, weft, "HEAD"); got != want {
 				t.Errorf("origin weft tip = %s; want the pair's weft HEAD %s", got, want)
 			}
 			for _, path := range []string{filepath.Join(weft, runRecord), filepath.Join(weft, weftLockDirName)} {
@@ -355,18 +355,18 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			const slug, branch = "co-noorigin", "co-noorigin-b"
 			addPairWithLocalWarpBranch(t, h, slug, branch)
 
-			weftRepo := h.PrimeWeft()
+			weftRepo := h.PrimeRecords()
 			gitkit.MustRun(t, weftRepo, "git", "remote", "remove", "origin")
-			defer gitkit.MustRun(t, weftRepo, "git", "remote", "add", "origin", h.WeftBare)
+			defer gitkit.MustRun(t, weftRepo, "git", "remote", "add", "origin", h.RecordsBare)
 
-			if code, output := runFabric(t, h.PairWarpWorktree(slug), "checkout", branch); code != 0 {
+			if code, output := runFabric(t, h.PairCodeWorktree(slug), "checkout", branch); code != 0 {
 				t.Fatalf("checkout without an origin remote exit = %d; output: %s", code, output)
 			}
 			weftBranch := fabricengine.WeftBranchName(branch)
-			if got := gitkit.CurrentBranch(t, h.PairWeftSibling(slug)); got != weftBranch {
+			if got := gitkit.CurrentBranch(t, h.PairRecordsSibling(slug)); got != weftBranch {
 				t.Errorf("weft branch = %q; want the forked %q", got, weftBranch)
 			}
-			if strings.Contains(strings.Join(gitkit.LsFiles(t, h.PairWeftSibling(slug)), "\n"), originMarkerFile) {
+			if strings.Contains(strings.Join(gitkit.LsFiles(t, h.PairRecordsSibling(slug)), "\n"), originMarkerFile) {
 				t.Errorf("forked weft branch tracks %s; want a fork of the pair's own branch", originMarkerFile)
 			}
 		}},
@@ -376,9 +376,9 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			const slug = "rc-noorigin"
 			addRawWarpWorktree(t, h, slug, false)
 
-			weftRepo := h.PrimeWeft()
+			weftRepo := h.PrimeRecords()
 			gitkit.MustRun(t, weftRepo, "git", "remote", "remove", "origin")
-			defer gitkit.MustRun(t, weftRepo, "git", "remote", "add", "origin", h.WeftBare)
+			defer gitkit.MustRun(t, weftRepo, "git", "remote", "add", "origin", h.RecordsBare)
 
 			code, pair := reconcilePair(t, h, slug)
 			if code != 0 {
@@ -387,7 +387,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			if got := pair["action"]; got != string(fabricengine.ReconcileActionRawAdopted) {
 				t.Errorf("action = %v; want %s", got, fabricengine.ReconcileActionRawAdopted)
 			}
-			if _, err := os.Stat(filepath.Join(h.PairWeftSibling(slug), weftLockDirName)); err != nil {
+			if _, err := os.Stat(filepath.Join(h.PairRecordsSibling(slug), weftLockDirName)); err != nil {
 				t.Errorf("dormant weft lacks its lock directory: %v", err)
 			}
 		}},

@@ -6,7 +6,7 @@
 // remote failure, and the once-per-verb no-origin pre-check across every combination of apply and
 // remote.
 //
-// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant, using the hub's own WeftBare field as the weft remote to assert against — this hub's private copy of the weft bare remote,
+// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant, using the hub's own RecordsBare field as the weft remote to assert against — this hub's private copy of the weft bare remote,
 // so a test can push an orphan branch to it and then assert the ref is gone.
 //
 // Package fabricengine_test to reuse mustWeftRepoRoot (add_rollback_adopt_test.go / reconcile_stale_registration_test.go) — every assertion here goes through exported API;
@@ -82,7 +82,7 @@ func TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan(t *testing.T) {
 	if gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q still exists locally after Cleanup(apply=true)", branch)
 	}
-	if gitkit.BranchExists(t, h.WeftBare, branch) {
+	if gitkit.BranchExists(t, h.RecordsBare, branch) {
 		t.Errorf("branch %q still exists on the remote after Cleanup(apply=true, remote=true)", branch)
 	}
 }
@@ -113,7 +113,7 @@ func TestCleanup_RemoteFalseLeavesRemoteCopyIntact(t *testing.T) {
 	if entry.RemoteDeleted {
 		t.Errorf("entry.RemoteDeleted = true; want false — remote is opt-in")
 	}
-	if !gitkit.BranchExists(t, h.WeftBare, branch) {
+	if !gitkit.BranchExists(t, h.RecordsBare, branch) {
 		t.Errorf("branch %q no longer exists on the remote after Cleanup(apply=true, remote=false); remote must be opt-in", branch)
 	}
 }
@@ -144,7 +144,7 @@ func TestCleanup_DryRunWithRemoteDeletesNeither(t *testing.T) {
 	if !gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("branch %q was removed locally on a dry run", branch)
 	}
-	if !gitkit.BranchExists(t, h.WeftBare, branch) {
+	if !gitkit.BranchExists(t, h.RecordsBare, branch) {
 		t.Errorf("branch %q was removed on the remote on a dry run", branch)
 	}
 }
@@ -217,7 +217,7 @@ func TestCleanup_ProtectedEntryUntouchedOnRemote(t *testing.T) {
 	if !gitkit.BranchExists(t, weftRoot, branch) {
 		t.Errorf("protected branch %q was removed locally", branch)
 	}
-	if !gitkit.BranchExists(t, h.WeftBare, branch) {
+	if !gitkit.BranchExists(t, h.RecordsBare, branch) {
 		t.Errorf("protected branch %q was removed on the remote", branch)
 	}
 }
@@ -234,7 +234,7 @@ func TestCleanup_RemoteFailureIsNonFatal(t *testing.T) {
 
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustPushBranch(t, weftRoot, branch)
-	gitkit.MustRun(t, h.WeftBare, "git", "config", "receive.denyDeletes", "true")
+	gitkit.MustRun(t, h.RecordsBare, "git", "config", "receive.denyDeletes", "true")
 
 	topology := h.Topology
 	res, err := topology.Cleanup(l, true, false, true)

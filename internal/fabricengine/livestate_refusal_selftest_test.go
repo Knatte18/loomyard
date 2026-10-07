@@ -111,7 +111,7 @@ func driveDirtinessGateRefusal(t testing.TB, h *hubforge.Hub, slug string) error
 	hubforge.AddPair(t, h, slug)
 
 	pairLocation := &lyxcwd.Location{HubPath: h.Path, WorktreeName: slug, AnchorRel: h.Location.AnchorRel}
-	warpTarget := h.PairWarpWorktree(slug)
+	warpTarget := h.PairCodeWorktree(slug)
 
 	trackedFile := filepath.Join(warpTarget, "dirt.txt")
 	head := gitkit.CommitFile(t, warpTarget, "dirt.txt", "v1\n", "livestate: seed tracked file for dirtiness refusal")
@@ -242,7 +242,7 @@ func TestRefusedBefore(t *testing.T) {
 		const slug = "before-dirty-owner"
 		hubforge.AddPair(t, h, slug)
 
-		warpTarget := h.PairWarpWorktree(slug)
+		warpTarget := h.PairCodeWorktree(slug)
 		scratch := filepath.Join(warpTarget, "scratch-dirty.txt")
 		if err := os.WriteFile(scratch, []byte("dirty"), 0o644); err != nil {
 			t.Fatalf("write %s: %v", scratch, err)

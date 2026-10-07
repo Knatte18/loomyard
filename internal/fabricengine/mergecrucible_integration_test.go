@@ -59,7 +59,7 @@ func TestMergeCrucible_DetachedHeadRefused(t *testing.T) {
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-q", "--detach", "HEAD")
 
 	warpBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
 	_, err := f.MergeIn("feature")
 	assertSoleGuardReason(t, "MergeIn(feature)", err, "checkout is not on a branch")
@@ -67,7 +67,7 @@ func TestMergeCrucible_DetachedHeadRefused(t *testing.T) {
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpBefore {
 		t.Errorf("warp HEAD = %q; want unchanged %q", got, warpBefore)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftBefore {
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeRecords()); got != weftBefore {
 		t.Errorf("weft HEAD = %q; want unchanged %q", got, weftBefore)
 	}
 
@@ -91,10 +91,10 @@ func TestMergeCrucible_WeftDetachedDoesNotRefuse(t *testing.T) {
 	commitOnWarpBranch("feature", "feature.txt", "feature\n", "feature: warp")
 	commitOnWeftBranch("feature-weft", "feature.txt", "feature\n", "feature: weft")
 
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "checkout", "-q", "--detach", "HEAD")
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "checkout", "-q", "--detach", "HEAD")
 
 	warpBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
 	_, err := f.MergeIn("feature")
 	if err != nil {
@@ -103,7 +103,7 @@ func TestMergeCrucible_WeftDetachedDoesNotRefuse(t *testing.T) {
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got == warpBefore {
 		t.Errorf("warp HEAD = %q; want it to have moved off %q", got, warpBefore)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftBefore {
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeRecords()); got != weftBefore {
 		t.Errorf("weft HEAD = %q; want unchanged %q — MergeIn never touches the weft", got, weftBefore)
 	}
 }
@@ -129,7 +129,7 @@ func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testin
 	commitOnWeftCurrent("target.txt", "target\n", "target: weft")
 
 	warpStart := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftStart := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	weftStart := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
 	// The warp side of the attempt really ran; the weft side never did.
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-commit", "feature")
@@ -152,7 +152,7 @@ func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testin
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpStart {
 		t.Errorf("warp HEAD = %q after the refused MergeContinue; want unchanged %q — the refusal must land nothing", got, warpStart)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftStart {
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeRecords()); got != weftStart {
 		t.Errorf("weft HEAD = %q after the refused MergeContinue; want unchanged %q", got, weftStart)
 	}
 
@@ -163,7 +163,7 @@ func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testin
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpStart {
 		t.Errorf("warp HEAD = %q after MergeAbort; want %q", got, warpStart)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftStart {
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeRecords()); got != weftStart {
 		t.Errorf("weft HEAD = %q after MergeAbort; want %q", got, weftStart)
 	}
 	inProgress, err := openFreshFabric(t, h.PrimeWorktree()).MergeInProgress()
@@ -266,8 +266,8 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 	const slug = "merge-crucible-source"
 	hubforge.AddPair(t, h, slug)
 
-	sourceWarpDir := h.PairWarpWorktree(slug)
-	sourceWeftDir := h.PairWeftSibling(slug)
+	sourceWarpDir := h.PairCodeWorktree(slug)
+	sourceWeftDir := h.PairRecordsSibling(slug)
 	sourceBranch := gitkit.CurrentBranch(t, sourceWarpDir)
 
 	// Conflicting divergence on the warp side only — a weft-root conflict would be unmappable and
@@ -276,7 +276,7 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 	gitkit.CommitFile(t, sourceWarpDir, "conflict.txt", "source side\n", "source: warp conflict")
 	gitkit.CommitFile(t, sourceWeftDir, "source-only.txt", "source weft\n", "source: weft advance")
 	gitkit.CommitFile(t, h.PrimeWorktree(), "conflict.txt", "prime side\n", "prime: warp conflict")
-	gitkit.CommitFile(t, h.PrimeWeft(), "prime-only.txt", "prime weft\n", "prime: weft advance")
+	gitkit.CommitFile(t, h.PrimeRecords(), "prime-only.txt", "prime weft\n", "prime: weft advance")
 
 	primeLocation, err := lyxcwd.ResolveWorktree(h.PrimeWorktree())
 	if err != nil {
@@ -303,7 +303,7 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 	if !fileExistsInWorktree(t, sourceWarpDir, "conflict.txt") {
 		t.Errorf("source warp worktree %s was torn down by the refused Remove", sourceWarpDir)
 	}
-	if !gitkit.BranchExists(t, h.PrimeWeft(), fabricengine.WeftBranchName(sourceBranch)) {
+	if !gitkit.BranchExists(t, h.PrimeRecords(), fabricengine.WeftBranchName(sourceBranch)) {
 		t.Errorf("weft branch %q was deleted by the refused Remove; want it intact", fabricengine.WeftBranchName(sourceBranch))
 	}
 
@@ -475,7 +475,7 @@ func TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned(t *testing.T) {
 	commitOnWeftCurrent("shared-weft.txt", "same change\n", "target: weft same change, reached independently")
 
 	warpBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -485,7 +485,7 @@ func TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned(t *testing.T) {
 	if mergeHeadPresentInCheckout(t, h.PrimeWorktree()) {
 		t.Error("MERGE_HEAD is live in the warp checkout after MergeIn returned without error; fabric abandoned a merge it started")
 	}
-	if mergeHeadPresentInCheckout(t, h.PrimeWeft()) {
+	if mergeHeadPresentInCheckout(t, h.PrimeRecords()) {
 		t.Error("MERGE_HEAD is live in the weft checkout after MergeIn returned without error; fabric abandoned a merge it started")
 	}
 
@@ -499,7 +499,7 @@ func TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned(t *testing.T) {
 		t.Errorf("warp HEAD = %q, unchanged; want the conclude-commit to have landed", got)
 	}
 	// The weft is not a merge participant, so its HEAD never moves.
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftBefore {
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeRecords()); got != weftBefore {
 		t.Errorf("weft HEAD = %q; want unchanged %q — the weft is not a merge participant", got, weftBefore)
 	}
 
@@ -642,7 +642,7 @@ func TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone(t *testing.T) {
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != st.WarpStart {
 		t.Fatalf("warp HEAD = %q after the reset; want the recorded start %q, or the HEAD-moved clause refuses instead of the one under test", got, st.WarpStart)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != st.WeftStart {
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeRecords()); got != st.WeftStart {
 		t.Fatalf("weft HEAD = %q; want the recorded start %q", got, st.WeftStart)
 	}
 
@@ -665,7 +665,7 @@ func TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone(t *testing.T) {
 func readMergeRecordWarpStart(t *testing.T, h *hubforge.Hub) string {
 	t.Helper()
 
-	path := filepath.Join(strings.TrimSpace(gitOutput(t, h.PrimeWeft(), "rev-parse", "--absolute-git-dir")), "fabric-merge.json")
+	path := filepath.Join(strings.TrimSpace(gitOutput(t, h.PrimeRecords(), "rev-parse", "--absolute-git-dir")), "fabric-merge.json")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read merge record %s: %v", path, err)
@@ -712,12 +712,12 @@ func TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord(t *testing.T) {
 	if gitkit.IsAncestor(t, h.PrimeWorktree(), "feature", "HEAD") {
 		t.Fatal("fixture broken: feature is an ancestor of the warp HEAD, so the pre-lock probe would short-circuit before the derived field is read")
 	}
-	if gitkit.IsAncestor(t, h.PrimeWeft(), "feature-weft", "HEAD") {
+	if gitkit.IsAncestor(t, h.PrimeRecords(), "feature-weft", "HEAD") {
 		t.Fatal("fixture broken: feature-weft is an ancestor of the weft HEAD, so the pre-lock probe would short-circuit before the derived field is read")
 	}
 
 	warpBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
 	res, err := f.Merge("feature", fabricengine.MergeOptions{Squash: true})
 	if err != nil {
@@ -733,10 +733,10 @@ func TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord(t *testing.T) {
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpBefore {
 		t.Errorf("warp HEAD = %q; want unchanged %q", got, warpBefore)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftBefore {
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeRecords()); got != weftBefore {
 		t.Errorf("weft HEAD = %q; want unchanged %q", got, weftBefore)
 	}
-	if mergeHeadPresentInCheckout(t, h.PrimeWorktree()) || mergeHeadPresentInCheckout(t, h.PrimeWeft()) {
+	if mergeHeadPresentInCheckout(t, h.PrimeWorktree()) || mergeHeadPresentInCheckout(t, h.PrimeRecords()) {
 		t.Error("MERGE_HEAD is live after a squash merge; squash never writes one, so the up_to_date classification must not have left git mid-merge")
 	}
 
@@ -773,10 +773,10 @@ func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testi
 	hubforge.AddPair(t, h, consumerSlug)
 	hubforge.AddPair(t, h, sourceSlug)
 
-	consumerWarpDir := h.PairWarpWorktree(consumerSlug)
-	consumerWeftDir := h.PairWeftSibling(consumerSlug)
-	sourceWarpDir := h.PairWarpWorktree(sourceSlug)
-	sourceWeftDir := h.PairWeftSibling(sourceSlug)
+	consumerWarpDir := h.PairCodeWorktree(consumerSlug)
+	consumerWeftDir := h.PairRecordsSibling(consumerSlug)
+	sourceWarpDir := h.PairCodeWorktree(sourceSlug)
+	sourceWeftDir := h.PairRecordsSibling(sourceSlug)
 
 	sourceBranch := gitkit.CurrentBranch(t, sourceWarpDir)
 
@@ -798,11 +798,11 @@ func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testi
 
 	// Precondition: the record really is in the LINKED shape, and the prime shape is empty — otherwise
 	// this test would be re-covering the path the sibling test already covers.
-	linkedRecord := filepath.Join(h.PrimeWeft(), ".git", "worktrees", filepath.Base(consumerWeftDir), "fabric-merge.json")
+	linkedRecord := filepath.Join(h.PrimeRecords(), ".git", "worktrees", filepath.Base(consumerWeftDir), "fabric-merge.json")
 	if _, err := os.Stat(linkedRecord); err != nil {
 		t.Fatalf("Stat(%s) = %v; want the merge record in the linked pair's own weft gitdir", linkedRecord, err)
 	}
-	primeRecord := filepath.Join(h.PrimeWeft(), ".git", "fabric-merge.json")
+	primeRecord := filepath.Join(h.PrimeRecords(), ".git", "fabric-merge.json")
 	if _, err := os.Stat(primeRecord); !os.IsNotExist(err) {
 		t.Fatalf("Stat(%s) = %v; want not-exist — a record in the prime shape would let this test pass without the linked glob", primeRecord, err)
 	}
@@ -820,7 +820,7 @@ func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testi
 	if !fileExistsInWorktree(t, sourceWarpDir, "conflict.txt") {
 		t.Errorf("source warp worktree %s was torn down by the refused Remove", sourceWarpDir)
 	}
-	if !gitkit.BranchExists(t, h.PrimeWeft(), fabricengine.WeftBranchName(sourceBranch)) {
+	if !gitkit.BranchExists(t, h.PrimeRecords(), fabricengine.WeftBranchName(sourceBranch)) {
 		t.Errorf("weft branch %q was deleted by the refused Remove; want it intact", fabricengine.WeftBranchName(sourceBranch))
 	}
 

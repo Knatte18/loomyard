@@ -102,7 +102,7 @@ func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, w
 
 	slug = "loom-smoke-task"
 	hubforge.AddPair(t, h, slug)
-	worktree = h.PairWarpWorktree(slug)
+	worktree = h.PairCodeWorktree(slug)
 
 	var err error
 	loc, err = lyxcwd.Resolve(worktree)
@@ -262,7 +262,7 @@ func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lyxcwd.Location)) 
 	})
 	const slug = "loom-smoke-task"
 	hubforge.AddPair(t, h, slug)
-	worktree := h.PairWarpWorktree(slug)
+	worktree := h.PairCodeWorktree(slug)
 	loc, err := lyxcwd.Resolve(worktree)
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%s): %v", worktree, err)

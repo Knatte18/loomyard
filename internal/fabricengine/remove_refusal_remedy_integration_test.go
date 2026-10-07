@@ -58,7 +58,7 @@ func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 		t.Errorf("refusal recorded %d mutations; want 0", n)
 	}
 	assertPairIntact(t, l, slug)
-	assertNoArchiveTag(t, h.WeftBare, weftRoot)
+	assertNoArchiveTag(t, h.RecordsBare, weftRoot)
 }
 
 // TestRemove_WarpStatusProbeFailurePushesNoTag breaks the warp worktree's gitfile so the status probe fails, and asserts the refusal pushes no archive tag and tears nothing down.
@@ -86,7 +86,7 @@ func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 	if !strings.Contains(err.Error(), "check warp worktree status") {
 		t.Errorf("error does not name the failed probe:\n%s", err.Error())
 	}
-	assertNoArchiveTag(t, h.WeftBare, weftRoot)
+	assertNoArchiveTag(t, h.RecordsBare, weftRoot)
 	for _, p := range []string{
 		fabricengine.PortalLink(l, slug),
 		fabricengine.LauncherDir(l, slug),

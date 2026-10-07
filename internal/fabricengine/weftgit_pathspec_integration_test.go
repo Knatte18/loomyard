@@ -69,9 +69,9 @@ func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeWeft(), "newmodule", "newfile.txt"), "brand new, never staged")
+	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "newmodule", "newfile.txt"), "brand new, never staged")
 
 	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"doesnotexist", "newmodule"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
@@ -84,7 +84,7 @@ func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 		t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
 	}
 
-	tracked := strings.Join(gitkit.LsFiles(t, weftFixture.PrimeWeft()), "\n")
+	tracked := strings.Join(gitkit.LsFiles(t, weftFixture.PrimeRecords()), "\n")
 	if !strings.Contains(tracked, "newmodule/newfile.txt") {
 		t.Errorf("git ls-files = %q; want it to track newmodule/newfile.txt", tracked)
 	}
@@ -103,12 +103,12 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	trackedPath := filepath.Join(weftFixture.PrimeWeft(), "_lyx", "trackedfile.txt")
+	trackedPath := filepath.Join(weftFixture.PrimeRecords(), "_lyx", "trackedfile.txt")
 	mustWriteFileWeft(t, trackedPath, "tracked content")
-	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "add", "_lyx/trackedfile.txt")
-	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "commit", "-q", "-m", "seed tracked file")
+	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "add", "_lyx/trackedfile.txt")
+	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "commit", "-q", "-m", "seed tracked file")
 
 	// Delete from disk only — the file survives in the index until something
 	// stages the deletion. This is the exact state undo.go's os.RemoveAll
@@ -128,7 +128,7 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 		t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
 	}
 
-	tracked := strings.Join(gitkit.LsFiles(t, weftFixture.PrimeWeft()), "\n")
+	tracked := strings.Join(gitkit.LsFiles(t, weftFixture.PrimeRecords()), "\n")
 	if strings.Contains(tracked, "_lyx/trackedfile.txt") {
 		t.Errorf("git ls-files = %q; want _lyx/trackedfile.txt no longer tracked after the deletion commit", tracked)
 	}
@@ -147,10 +147,10 @@ func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeWeft(), "_lyx", "durable.txt"), "durable state")
-	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeWeft(), "_lyx", "run.lock"), "machine-local lock")
+	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "_lyx", "durable.txt"), "durable state")
+	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "_lyx", "run.lock"), "machine-local lock")
 
 	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx", ":(exclude)_lyx/*.lock"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
@@ -163,7 +163,7 @@ func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 		t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
 	}
 
-	tracked := strings.Join(gitkit.LsFiles(t, weftFixture.PrimeWeft()), "\n")
+	tracked := strings.Join(gitkit.LsFiles(t, weftFixture.PrimeRecords()), "\n")
 	if !strings.Contains(tracked, "_lyx/durable.txt") {
 		t.Errorf("git ls-files = %q; want it to track _lyx/durable.txt", tracked)
 	}
@@ -185,15 +185,15 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	preSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
+	preSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeRecords())
 
 	// A genuinely dirty tracked file and an untracked lock file: if the
 	// filter mishandled the all-negative pathspec by staging everything,
 	// both would show up staged below.
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "dirtied but must stay unstaged")
-	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeWeft(), "_lyx", "run.lock"), "machine-local lock")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "dirtied but must stay unstaged")
+	mustWriteFileWeft(t, filepath.Join(weftFixture.PrimeRecords(), "_lyx", "run.lock"), "machine-local lock")
 
 	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"doesnotexist", ":(exclude)_lyx/*.lock"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
@@ -206,10 +206,10 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 		t.Errorf("commitWeft() sha = %q; want empty", sha)
 	}
 
-	if !diffCachedQuietWeft(t, weftFixture.PrimeWeft()) {
+	if !diffCachedQuietWeft(t, weftFixture.PrimeRecords()) {
 		t.Errorf("git diff --cached --quiet reports staged changes; want nothing staged at all")
 	}
-	postSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
+	postSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeRecords())
 	if postSHA != preSHA {
 		t.Errorf("weft HEAD changed from %q to %q; want unchanged (no commit should have been made)", preSHA, postSHA)
 	}
@@ -276,13 +276,13 @@ func TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptio
 
 		warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 		weftFixture := hubforge.NewHub(t, ".")
-		f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
+		f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-		if _, err := os.Stat(filepath.Join(weftFixture.PrimeWeft(), "_extra")); !os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(weftFixture.PrimeRecords(), "_extra")); !os.IsNotExist(err) {
 			t.Fatalf("precondition: _extra must not exist in this fixture; Stat err = %v", err)
 		}
 
-		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "lyx change, _extra wholly absent")
+		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "lyx change, _extra wholly absent")
 
 		sha, committed, err := fabricengine.CommitWeftForTest(f, dirs, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 		if err != nil {
@@ -301,15 +301,15 @@ func TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptio
 
 		warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 		weftFixture := hubforge.NewHub(t, ".")
-		f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
+		f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 		// git tracks files, not directories: a materialised-but-empty
 		// "_extra/" still has nothing for a pathspec to match.
-		if err := os.MkdirAll(filepath.Join(weftFixture.PrimeWeft(), "_extra"), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(weftFixture.PrimeRecords(), "_extra"), 0o755); err != nil {
 			t.Fatalf("MkdirAll _extra: %v", err)
 		}
 
-		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "lyx change, _extra present but empty")
+		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "lyx change, _extra present but empty")
 
 		sha, committed, err := fabricengine.CommitWeftForTest(f, dirs, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 		if err != nil {

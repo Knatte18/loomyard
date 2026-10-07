@@ -27,7 +27,7 @@ func pairFabric(t *testing.T, h *hubforge.Hub, slug string) (*fabricengine.Fabri
 	t.Helper()
 
 	hubforge.AddPair(t, h, slug)
-	warp := h.PairWarpWorktree(slug)
+	warp := h.PairCodeWorktree(slug)
 	loc, err := lyxcwd.ResolveWorktree(warp)
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%s): %v", warp, err)
@@ -182,7 +182,7 @@ func TestResetPairWarp_OwnershipRefusals(t *testing.T) {
 		const slug = "rpw-otherweft"
 		h := hubforge.NewHub(t, ".")
 		f, warp := pairFabric(t, h, slug)
-		gitkit.MustRun(t, h.PairWeftSibling(slug), "git", "checkout", "-b", "some-other-branch")
+		gitkit.MustRun(t, h.PairRecordsSibling(slug), "git", "checkout", "-b", "some-other-branch")
 		head := gitkit.RevParse(t, warp, "HEAD")
 		rec := fabricengine.NewMutations("")
 		assertResetRefused(t, f.ResetPairWarp(rec, head, "main", nil, fabricengine.SyncOptions{}), rec, fabricengine.CheckOwnership)

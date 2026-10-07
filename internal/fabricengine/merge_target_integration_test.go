@@ -39,9 +39,9 @@ func newMergeTargetFixture(t *testing.T, anchor string) (h *hubforge.Hub, target
 	h, _, commitOnSourceWarp, commitOnSourceWeft, _, _ = newMergePairFixture(t, anchor)
 	hubforge.AddPair(t, h, "target")
 
-	l, err := lyxcwd.ResolveWorktree(h.PairWarpWorktree("target"))
+	l, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("target"))
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", h.PairWarpWorktree("target"), err)
+		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", h.PairCodeWorktree("target"), err)
 	}
 	target, err = fabricengine.Open(l)
 	if err != nil {
@@ -128,7 +128,7 @@ func TestMerge_CleanSquash(t *testing.T) {
 		t.Fatalf("Merge(feature, squash).Committed = false; want true")
 	}
 
-	targetWarpPath, targetWeftPath := h.PairWarpWorktree("target"), h.PairWeftSibling("target")
+	targetWarpPath, targetWeftPath := h.PairCodeWorktree("target"), h.PairRecordsSibling("target")
 	warpHEAD := fabricengine.CurrentSHAForTest(t, targetWarpPath)
 	weftHEAD := fabricengine.CurrentSHAForTest(t, targetWeftPath)
 
@@ -160,7 +160,7 @@ func TestMerge_CleanNonSquash(t *testing.T) {
 
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 
-	targetWarpPath, targetWeftPath := h.PairWarpWorktree("target"), h.PairWeftSibling("target")
+	targetWarpPath, targetWeftPath := h.PairCodeWorktree("target"), h.PairRecordsSibling("target")
 	// A target-side commit on each checkout, so merging "feature" is a genuine (non-fast-forward)
 	// merge on the warp side rather than a plain pointer advance. The weft-side commit only proves the
 	// weft checkout stays put across the merge.
@@ -204,7 +204,7 @@ func TestMerge_MessagePrecedence(t *testing.T) {
 			t.Fatalf("Merge(feature, squash).Committed = false; want true")
 		}
 
-		subj := gitCommitSubject(t, h.PairWarpWorktree("target"), "HEAD")
+		subj := gitCommitSubject(t, h.PairCodeWorktree("target"), "HEAD")
 		if !strings.Contains(strings.ToLower(subj), "squash") {
 			t.Errorf("warp commit subject = %q; want git's own prepared squash message", subj)
 		}
@@ -213,7 +213,7 @@ func TestMerge_MessagePrecedence(t *testing.T) {
 	t.Run("set is used verbatim on the warp side", func(t *testing.T) {
 		h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 		seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
-		weftBefore := fabricengine.CurrentSHAForTest(t, h.PairWeftSibling("target"))
+		weftBefore := fabricengine.CurrentSHAForTest(t, h.PairRecordsSibling("target"))
 
 		const msg = "custom target-pair merge message"
 		res, err := target.Merge("feature", fabricengine.MergeOptions{Squash: true, Message: msg})
@@ -224,12 +224,12 @@ func TestMerge_MessagePrecedence(t *testing.T) {
 			t.Fatalf("Merge(feature, squash, message).Committed = false; want true")
 		}
 
-		if got := gitCommitSubject(t, h.PairWarpWorktree("target"), "HEAD"); got != msg {
+		if got := gitCommitSubject(t, h.PairCodeWorktree("target"), "HEAD"); got != msg {
 			t.Errorf("warp commit subject = %q; want verbatim %q", got, msg)
 		}
 		// The weft is not a merge participant, so the message option never reaches it — the weft HEAD
 		// stays exactly where it was.
-		if got := fabricengine.CurrentSHAForTest(t, h.PairWeftSibling("target")); got != weftBefore {
+		if got := fabricengine.CurrentSHAForTest(t, h.PairRecordsSibling("target")); got != weftBefore {
 			t.Errorf("target weft HEAD = %q; want unchanged %q", got, weftBefore)
 		}
 	})
@@ -246,10 +246,10 @@ func TestMerge_DirtyTargetHalts(t *testing.T) {
 
 	h1, target1, commitOnSourceWarp1, commitOnSourceWeft1 := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp1, commitOnSourceWeft1)
-	targetWarpPath1 := h1.PairWarpWorktree("target")
+	targetWarpPath1 := h1.PairCodeWorktree("target")
 	gitkit.CommitFile(t, targetWarpPath1, "tracked.txt", "v1\n", "target: seed tracked")
 	warpBefore1 := fabricengine.CurrentSHAForTest(t, targetWarpPath1)
-	weftBefore1 := fabricengine.CurrentSHAForTest(t, h1.PairWeftSibling("target"))
+	weftBefore1 := fabricengine.CurrentSHAForTest(t, h1.PairRecordsSibling("target"))
 	if err := os.WriteFile(filepath.Join(targetWarpPath1, "tracked.txt"), []byte("v2 (uncommitted)\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(tracked.txt): %v", err)
 	}
@@ -266,7 +266,7 @@ func TestMerge_DirtyTargetHalts(t *testing.T) {
 	if got := fabricengine.CurrentSHAForTest(t, targetWarpPath1); got != warpBefore1 {
 		t.Errorf("[warp dirty] target warp HEAD changed to %q; want unchanged %q", got, warpBefore1)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h1.PairWeftSibling("target")); got != weftBefore1 {
+	if got := fabricengine.CurrentSHAForTest(t, h1.PairRecordsSibling("target")); got != weftBefore1 {
 		t.Errorf("[warp dirty] target weft HEAD changed to %q; want unchanged %q", got, weftBefore1)
 	}
 	if exists, err := fabricengine.MergeRecordExistsForTest(target1); err != nil || exists {
@@ -274,13 +274,13 @@ func TestMerge_DirtyTargetHalts(t *testing.T) {
 	}
 
 	h2, target2, commitOnSourceWarp2, commitOnSourceWeft2 := newMergeTargetFixture(t, ".")
-	targetWarpPath2 := h2.PairWarpWorktree("target")
+	targetWarpPath2 := h2.PairCodeWorktree("target")
 	// A target-side warp commit, so merging "feature" is a genuine (non-fast-forward) merge that
 	// fabricates a commit — the shape needed to assert Committed true below, mirroring
 	// TestMerge_CleanNonSquash's own reason for the same seed commit.
 	gitkit.CommitFile(t, targetWarpPath2, "warp-progress.txt", "target progress\n", "target: progress")
 	seedSourceAndTarget(t, commitOnSourceWarp2, commitOnSourceWeft2)
-	targetWeftPath2 := h2.PairWeftSibling("target")
+	targetWeftPath2 := h2.PairRecordsSibling("target")
 	gitkit.CommitFile(t, targetWeftPath2, "_lyx/tracked.txt", "v1\n", "target: seed tracked weft")
 	warpBefore2 := fabricengine.CurrentSHAForTest(t, targetWarpPath2)
 	weftBefore2 := fabricengine.CurrentSHAForTest(t, targetWeftPath2)
@@ -315,7 +315,7 @@ func TestMerge_StaleTargetSyncsBeforeMerging(t *testing.T) {
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
-	advanceRemoteBranch(t, h.WarpBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
+	advanceRemoteBranch(t, h.CodeBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
 
 	res, err := target.Merge("feature", fabricengine.MergeOptions{})
 	if err != nil {
@@ -335,7 +335,7 @@ func TestMerge_StaleTargetSyncsBeforeMerging(t *testing.T) {
 		t.Errorf("Merge(feature).Mutated() = %v; want at least one repo_advanced entry from the pre-merge sync step", res.Mutated().Entries())
 	}
 
-	if _, err := os.Stat(filepath.Join(h.PairWarpWorktree("target"), "remote-warp.txt")); err != nil {
+	if _, err := os.Stat(filepath.Join(h.PairCodeWorktree("target"), "remote-warp.txt")); err != nil {
 		t.Errorf("remote-warp.txt missing after Merge: %v; want it fetched and fast-forwarded before merging", err)
 	}
 }
@@ -349,15 +349,15 @@ func TestMerge_DivergedTargetRefuses(t *testing.T) {
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
-	targetWarpPath := h.PairWarpWorktree("target")
-	advanceRemoteBranch(t, h.WarpBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
+	targetWarpPath := h.PairCodeWorktree("target")
+	advanceRemoteBranch(t, h.CodeBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
 	// Fetch so the guard's own read-only @{u} check sees the remote advance (the guard stage never
 	// fetches on its own), then diverge locally so neither direction is an ancestor of the other.
 	gitkit.MustRun(t, targetWarpPath, "git", "fetch", "-q", "origin")
 	gitkit.CommitFile(t, targetWarpPath, "local-warp.txt", "local content\n", "target: local progress")
 
 	warpBefore := fabricengine.CurrentSHAForTest(t, targetWarpPath)
-	weftBefore := fabricengine.CurrentSHAForTest(t, h.PairWeftSibling("target"))
+	weftBefore := fabricengine.CurrentSHAForTest(t, h.PairRecordsSibling("target"))
 
 	res, err := target.Merge("feature", fabricengine.MergeOptions{})
 	var guardErr *fabricengine.MergeGuardError
@@ -371,7 +371,7 @@ func TestMerge_DivergedTargetRefuses(t *testing.T) {
 	if got := fabricengine.CurrentSHAForTest(t, targetWarpPath); got != warpBefore {
 		t.Errorf("target warp HEAD changed to %q; want unchanged %q", got, warpBefore)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PairWeftSibling("target")); got != weftBefore {
+	if got := fabricengine.CurrentSHAForTest(t, h.PairRecordsSibling("target")); got != weftBefore {
 		t.Errorf("target weft HEAD changed to %q; want unchanged %q", got, weftBefore)
 	}
 	if res.Mutated().Len() != 0 {
@@ -393,7 +393,7 @@ func TestMerge_NoUpstreamSidePassesVacuously(t *testing.T) {
 	}
 
 	h2, target2, commitOnSourceWarp2, commitOnSourceWeft2 := newMergeTargetFixture(t, ".")
-	gitkit.MustRun(t, h2.PairWeftSibling("target"), "git", "branch", "--unset-upstream")
+	gitkit.MustRun(t, h2.PairRecordsSibling("target"), "git", "branch", "--unset-upstream")
 	seedSourceAndTarget(t, commitOnSourceWarp2, commitOnSourceWeft2)
 	resNoUpstream, err := target2.Merge("feature", fabricengine.MergeOptions{})
 	if err != nil {
@@ -433,12 +433,12 @@ func TestMerge_ConflictSelfAborts(t *testing.T) {
 	t.Parallel()
 
 	hWarp, targetWarp, commitOnSourceWarp1, commitOnSourceWeft1 := newMergeTargetFixture(t, ".")
-	gitkit.CommitFile(t, hWarp.PairWarpWorktree("target"), "conflict.txt", "target content\n", "target: seed conflict.txt")
+	gitkit.CommitFile(t, hWarp.PairCodeWorktree("target"), "conflict.txt", "target content\n", "target: seed conflict.txt")
 	commitOnSourceWarp1("feature", "conflict.txt", "feature content\n", "feature: diverge conflict.txt")
 	commitOnSourceWeft1("feature-weft", "clean-weft.txt", "clean\n", "weft: clean branch")
 
-	warpBeforeW := fabricengine.CurrentSHAForTest(t, hWarp.PairWarpWorktree("target"))
-	weftBeforeW := fabricengine.CurrentSHAForTest(t, hWarp.PairWeftSibling("target"))
+	warpBeforeW := fabricengine.CurrentSHAForTest(t, hWarp.PairCodeWorktree("target"))
+	weftBeforeW := fabricengine.CurrentSHAForTest(t, hWarp.PairRecordsSibling("target"))
 
 	_, errWarpConflict := targetWarp.Merge("feature", fabricengine.MergeOptions{})
 	var reqWarp *fabricengine.ErrMergeInRequired
@@ -448,13 +448,13 @@ func TestMerge_ConflictSelfAborts(t *testing.T) {
 	if reqWarp.Source != "feature" {
 		t.Errorf("[warp conflict] ErrMergeInRequired.Source = %q; want %q", reqWarp.Source, "feature")
 	}
-	if got := fabricengine.CurrentSHAForTest(t, hWarp.PairWarpWorktree("target")); got != warpBeforeW {
+	if got := fabricengine.CurrentSHAForTest(t, hWarp.PairCodeWorktree("target")); got != warpBeforeW {
 		t.Errorf("[warp conflict] target warp HEAD = %q; want restored pre-merge SHA %q", got, warpBeforeW)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, hWarp.PairWeftSibling("target")); got != weftBeforeW {
+	if got := fabricengine.CurrentSHAForTest(t, hWarp.PairRecordsSibling("target")); got != weftBeforeW {
 		t.Errorf("[warp conflict] target weft HEAD = %q; want restored pre-merge SHA %q", got, weftBeforeW)
 	}
-	if out := gitkit.GitStatusPorcelain(t, hWarp.PairWarpWorktree("target")); out != "" {
+	if out := gitkit.GitStatusPorcelain(t, hWarp.PairCodeWorktree("target")); out != "" {
 		t.Errorf("[warp conflict] target warp git status --porcelain = %q; want clean", out)
 	}
 	if exists, err := fabricengine.MergeRecordExistsForTest(targetWarp); err != nil || exists {
@@ -473,7 +473,7 @@ func TestMerge_BothSidesAlreadyUpToDate(t *testing.T) {
 	h, target, _, _ := newMergeTargetFixture(t, ".")
 
 	branchAtCurrentHEAD(t, h.PrimeWorktree(), "feature")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	res, err := target.Merge("feature", fabricengine.MergeOptions{})
 	if err != nil {
@@ -498,7 +498,7 @@ func TestMerge_CrashRecovery(t *testing.T) {
 
 	t.Run("MergeInProgress true and MergeAbort restores", func(t *testing.T) {
 		h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
-		targetWarpPath, targetWeftPath := h.PairWarpWorktree("target"), h.PairWeftSibling("target")
+		targetWarpPath, targetWeftPath := h.PairCodeWorktree("target"), h.PairRecordsSibling("target")
 		gitkit.CommitFile(t, targetWarpPath, "target-progress.txt", "v1\n", "target: progress")
 		gitkit.CommitFile(t, targetWeftPath, "_lyx/target-progress.txt", "v1\n", "target: progress weft")
 		seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
@@ -558,7 +558,7 @@ func TestMerge_CrashRecovery(t *testing.T) {
 
 	t.Run("MergeContinue concludes a crashed-after-clean-staging merge", func(t *testing.T) {
 		h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
-		targetWarpPath, targetWeftPath := h.PairWarpWorktree("target"), h.PairWeftSibling("target")
+		targetWarpPath, targetWeftPath := h.PairCodeWorktree("target"), h.PairRecordsSibling("target")
 		gitkit.CommitFile(t, targetWarpPath, "target-progress.txt", "v1\n", "target: progress")
 		gitkit.CommitFile(t, targetWeftPath, "_lyx/target-progress.txt", "v1\n", "target: progress weft")
 		seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
@@ -625,9 +625,9 @@ func TestMerge_PreMergeSyncRunsInsideTheWriteLock(t *testing.T) {
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
-	advanceRemoteBranch(t, h.WarpBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
+	advanceRemoteBranch(t, h.CodeBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
 
-	syncedWarpFile := filepath.Join(h.PairWarpWorktree("target"), "remote-warp.txt")
+	syncedWarpFile := filepath.Join(h.PairCodeWorktree("target"), "remote-warp.txt")
 	if _, err := os.Stat(syncedWarpFile); !os.IsNotExist(err) {
 		t.Fatalf("Stat(%s) before Merge = %v; want not-exist — the fixture must be genuinely stale for the sync step to have anything to do", syncedWarpFile, err)
 	}
@@ -716,13 +716,13 @@ func assertMergeRefusedAsNotSynced(t *testing.T, h *hubforge.Hub, res fabricengi
 	if res.Committed {
 		t.Errorf("Merge(feature).Committed = true; want false — a refused merge lands nothing")
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PairWarpWorktree("target")); got != warpBefore {
+	if got := fabricengine.CurrentSHAForTest(t, h.PairCodeWorktree("target")); got != warpBefore {
 		t.Errorf("target warp HEAD = %q; want unchanged %q", got, warpBefore)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PairWeftSibling("target")); got != weftBefore {
+	if got := fabricengine.CurrentSHAForTest(t, h.PairRecordsSibling("target")); got != weftBefore {
 		t.Errorf("target weft HEAD = %q; want unchanged %q", got, weftBefore)
 	}
-	if exists, err := fabricengine.MergeRecordExistsForTest(openFreshFabric(t, h.PairWarpWorktree("target"))); err != nil || exists {
+	if exists, err := fabricengine.MergeRecordExistsForTest(openFreshFabric(t, h.PairCodeWorktree("target"))); err != nil || exists {
 		t.Errorf("MergeRecordExistsForTest() after the refusal = (%v, %v); want (false, nil)", exists, err)
 	}
 }
@@ -743,10 +743,10 @@ func TestMerge_UnfetchedDivergedTargetRefuses(t *testing.T) {
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
-	divergeSideWithoutFetching(t, h.PairWarpWorktree("target"), h.WarpBare, "target", "remote-warp.txt", "local-warp.txt")
+	divergeSideWithoutFetching(t, h.PairCodeWorktree("target"), h.CodeBare, "target", "remote-warp.txt", "local-warp.txt")
 
-	warpBefore := fabricengine.CurrentSHAForTest(t, h.PairWarpWorktree("target"))
-	weftBefore := fabricengine.CurrentSHAForTest(t, h.PairWeftSibling("target"))
+	warpBefore := fabricengine.CurrentSHAForTest(t, h.PairCodeWorktree("target"))
+	weftBefore := fabricengine.CurrentSHAForTest(t, h.PairRecordsSibling("target"))
 
 	res, err := target.Merge("feature", fabricengine.MergeOptions{})
 	assertMergeRefusedAsNotSynced(t, h, res, err, warpBefore, weftBefore)
@@ -785,16 +785,16 @@ func TestMerge_FetchedDivergedWeftDoesNotRefuse(t *testing.T) {
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
-	targetWarpPath := h.PairWarpWorktree("target")
-	targetWeftPath := h.PairWeftSibling("target")
+	targetWarpPath := h.PairCodeWorktree("target")
+	targetWeftPath := h.PairRecordsSibling("target")
 
-	advanceRemoteBranch(t, h.WeftBare, "target-weft", "remote-weft.txt", "remote content\n", "origin: advance target-weft")
+	advanceRemoteBranch(t, h.RecordsBare, "target-weft", "remote-weft.txt", "remote content\n", "origin: advance target-weft")
 	gitkit.MustRun(t, targetWeftPath, "git", "fetch", "-q", "origin")
 	gitkit.CommitFile(t, targetWeftPath, "local-weft.txt", "local content\n", "target-weft: local progress")
 
 	// The warp side is left strictly behind its upstream: legal on its own (the sync step exists to
 	// fast-forward exactly this).
-	advanceRemoteBranch(t, h.WarpBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
+	advanceRemoteBranch(t, h.CodeBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
 
 	// Precondition: the weft side is genuinely diverged with the divergence already visible to the
 	// pre-lock guard — the shape that used to make only the weft half of that guard refuse.
@@ -836,8 +836,8 @@ func TestMerge_FetchedBehindTargetIsSyncedNotRefused(t *testing.T) {
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
-	targetWarpPath := h.PairWarpWorktree("target")
-	advanceRemoteBranch(t, h.WarpBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
+	targetWarpPath := h.PairCodeWorktree("target")
+	advanceRemoteBranch(t, h.CodeBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
 	gitkit.MustRun(t, targetWarpPath, "git", "fetch", "-q", "origin")
 
 	// Precondition: strictly behind — HEAD is an ancestor of the fetched upstream and not equal to it,

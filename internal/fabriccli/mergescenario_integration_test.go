@@ -62,7 +62,7 @@ func divergeConflicting(t *testing.T, h *hubforge.Hub, branch, filename string) 
 	t.Helper()
 
 	setupConflictingDivergenceCLI(t, h.PrimeWorktree(), branch, filename)
-	branchAtCurrentHEADCLI(t, h.PrimeWeft(), branch+"-weft")
+	branchAtCurrentHEADCLI(t, h.PrimeRecords(), branch+"-weft")
 }
 
 // divergeCleanly gives branch and the prime pair's current branch each a commit on a different file, and cuts the weft counterpart of branch at the weft's current HEAD.
@@ -71,7 +71,7 @@ func divergeCleanly(t *testing.T, h *hubforge.Hub, branch string) {
 
 	commitOnBranchCLI(t, h.PrimeWorktree(), branch, branch+".txt", "feature\n", "feature: add file")
 	gitkit.CommitFile(t, h.PrimeWorktree(), "main-side-"+branch+".txt", "main\n", "main: add file")
-	branchAtCurrentHEADCLI(t, h.PrimeWeft(), branch+"-weft")
+	branchAtCurrentHEADCLI(t, h.PrimeRecords(), branch+"-weft")
 }
 
 // mergeInExpectingConflict runs "merge-in branch" from the prime worktree, requires the conflict exit code and returns the decoded envelope.
@@ -139,8 +139,8 @@ func seedWebsterState(t *testing.T, h *hubforge.Hub, outcome string) {
 			t.Fatalf("WriteFile(outcome.yaml): %v", err)
 		}
 	}
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "add", "-A")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "-q", "-m", "seed webster state")
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "add", "-A")
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "commit", "-q", "-m", "seed webster state")
 }
 
 // runMergeIn runs "merge-in branch" from the prime worktree and returns the exit code and decoded envelope.
@@ -235,7 +235,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			divergeConflicting(t, h, "abort-feature", "abort-conflict.txt")
 
 			warpStartSHA := strings.TrimSpace(gitOutputCLI(t, h.PrimeWorktree(), "rev-parse", "HEAD"))
-			weftStartSHA := strings.TrimSpace(gitOutputCLI(t, h.PrimeWeft(), "rev-parse", "HEAD"))
+			weftStartSHA := strings.TrimSpace(gitOutputCLI(t, h.PrimeRecords(), "rev-parse", "HEAD"))
 
 			mergeInExpectingConflict(t, h, "abort-feature")
 
@@ -248,7 +248,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			if got := strings.TrimSpace(gitOutputCLI(t, h.PrimeWorktree(), "rev-parse", "HEAD")); got != warpStartSHA {
 				t.Errorf("warp HEAD after merge --abort = %q; want restored pre-merge SHA %q", got, warpStartSHA)
 			}
-			if got := strings.TrimSpace(gitOutputCLI(t, h.PrimeWeft(), "rev-parse", "HEAD")); got != weftStartSHA {
+			if got := strings.TrimSpace(gitOutputCLI(t, h.PrimeRecords(), "rev-parse", "HEAD")); got != weftStartSHA {
 				t.Errorf("weft HEAD after merge --abort = %q; want restored pre-merge SHA %q", got, weftStartSHA)
 			}
 		}},
@@ -347,7 +347,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			// Both conflicting paths are warp-side: the weft side is not a merge participant.
 			setupConflictingDivergenceCLI(t, h.PrimeWorktree(), "partial-feature", "partial-a.txt")
 			setupConflictingDivergenceCLI(t, h.PrimeWorktree(), "partial-feature", "partial-b.txt")
-			branchAtCurrentHEADCLI(t, h.PrimeWeft(), "partial-feature-weft")
+			branchAtCurrentHEADCLI(t, h.PrimeRecords(), "partial-feature-weft")
 
 			mergeInEnv := mergeInExpectingConflict(t, h, "partial-feature")
 			defer abortParkedMerge(t, h)
@@ -417,7 +417,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 		{"MergeInAlreadyUpToDate", func(t *testing.T) {
 			// merge-in against a branch already an ancestor of both sides' HEADs exits 0 with "already_up_to_date": true.
 			branchAtCurrentHEADCLI(t, h.PrimeWorktree(), "uptodate-feature")
-			branchAtCurrentHEADCLI(t, h.PrimeWeft(), "uptodate-feature-weft")
+			branchAtCurrentHEADCLI(t, h.PrimeRecords(), "uptodate-feature-weft")
 
 			code, output := runFabric(t, h.PrimeWorktree(), "merge-in", "uptodate-feature")
 			if code != 0 {
@@ -434,9 +434,9 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			hubforge.AddPair(t, h, "squash-target")
 
 			commitOnBranchCLI(t, h.PrimeWorktree(), "squash-feature", "warp-feature.txt", "warp feature\n", "warp: add feature")
-			commitOnBranchCLI(t, h.PrimeWeft(), "squash-feature-weft", "weft-feature.txt", "weft feature\n", "weft: add feature")
+			commitOnBranchCLI(t, h.PrimeRecords(), "squash-feature-weft", "weft-feature.txt", "weft feature\n", "weft: add feature")
 
-			code, output := runFabric(t, h.PairWarpWorktree("squash-target"), "merge", "squash-feature", "--squash")
+			code, output := runFabric(t, h.PairCodeWorktree("squash-target"), "merge", "squash-feature", "--squash")
 			if code != 0 {
 				t.Fatalf("RunCLI(merge squash-feature --squash) = %d; want 0\noutput: %s", code, output)
 			}
@@ -450,14 +450,14 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 			// A "merge <branch>" on a target pair that would conflict reports the fixed ErrMergeInRequired message and leaves the target pair unchanged.
 			hubforge.AddPair(t, h, "abort-target")
 
-			gitkit.CommitFile(t, h.PairWarpWorktree("abort-target"), "selfabort-conflict.txt", "target content\n", "target: seed selfabort-conflict.txt")
+			gitkit.CommitFile(t, h.PairCodeWorktree("abort-target"), "selfabort-conflict.txt", "target content\n", "target: seed selfabort-conflict.txt")
 			commitOnBranchCLI(t, h.PrimeWorktree(), "selfabort-feature", "selfabort-conflict.txt", "feature content\n", "feature: diverge selfabort-conflict.txt")
-			commitOnBranchCLI(t, h.PrimeWeft(), "selfabort-feature-weft", "clean-weft.txt", "clean\n", "weft: clean branch")
+			commitOnBranchCLI(t, h.PrimeRecords(), "selfabort-feature-weft", "clean-weft.txt", "clean\n", "weft: clean branch")
 
-			warpBefore := strings.TrimSpace(gitOutputCLI(t, h.PairWarpWorktree("abort-target"), "rev-parse", "HEAD"))
-			weftBefore := strings.TrimSpace(gitOutputCLI(t, h.PairWeftSibling("abort-target"), "rev-parse", "HEAD"))
+			warpBefore := strings.TrimSpace(gitOutputCLI(t, h.PairCodeWorktree("abort-target"), "rev-parse", "HEAD"))
+			weftBefore := strings.TrimSpace(gitOutputCLI(t, h.PairRecordsSibling("abort-target"), "rev-parse", "HEAD"))
 
-			code, output := runFabric(t, h.PairWarpWorktree("abort-target"), "merge", "selfabort-feature")
+			code, output := runFabric(t, h.PairCodeWorktree("abort-target"), "merge", "selfabort-feature")
 			if code != 1 {
 				t.Fatalf("RunCLI(merge selfabort-feature) [would conflict] = %d; want 1\noutput: %s", code, output)
 			}
@@ -468,10 +468,10 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 				t.Errorf("RunCLI(merge) [would conflict] error = %q; want %q", result.Error, wantErr)
 			}
 
-			if got := strings.TrimSpace(gitOutputCLI(t, h.PairWarpWorktree("abort-target"), "rev-parse", "HEAD")); got != warpBefore {
+			if got := strings.TrimSpace(gitOutputCLI(t, h.PairCodeWorktree("abort-target"), "rev-parse", "HEAD")); got != warpBefore {
 				t.Errorf("target warp HEAD after self-aborted merge = %q; want unchanged %q", got, warpBefore)
 			}
-			if got := strings.TrimSpace(gitOutputCLI(t, h.PairWeftSibling("abort-target"), "rev-parse", "HEAD")); got != weftBefore {
+			if got := strings.TrimSpace(gitOutputCLI(t, h.PairRecordsSibling("abort-target"), "rev-parse", "HEAD")); got != weftBefore {
 				t.Errorf("target weft HEAD after self-aborted merge = %q; want unchanged %q", got, weftBefore)
 			}
 		}},
@@ -513,7 +513,7 @@ func TestRunCLI_MergeScenario(t *testing.T) {
 		}},
 		{"MergeIn_NoWarningsWhenAlreadyUpToDate", func(t *testing.T) {
 			branchAtCurrentHEADCLI(t, h.PrimeWorktree(), "inflight-uptodate-feature")
-			branchAtCurrentHEADCLI(t, h.PrimeWeft(), "inflight-uptodate-feature-weft")
+			branchAtCurrentHEADCLI(t, h.PrimeRecords(), "inflight-uptodate-feature-weft")
 
 			code, env := runMergeIn(t, h, "inflight-uptodate-feature")
 			if code != 0 {

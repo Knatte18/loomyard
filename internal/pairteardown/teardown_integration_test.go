@@ -126,7 +126,7 @@ func TestRun_TeardownScenario(t *testing.T) {
 	}{
 		{"TaskSideDirtinessRefusalLeavesSessionAndStrandsLive", func(t *testing.T) {
 			p := addLivePair(t, h, cfg.Tmux, "pt-dirty")
-			writeFile(t, filepath.Join(p.h.PairWarpWorktree(p.slug), "dirty.txt"), "uncommitted\n")
+			writeFile(t, filepath.Join(p.h.PairCodeWorktree(p.slug), "dirty.txt"), "uncommitted\n")
 
 			_, err := p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug})
 			if err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
@@ -139,7 +139,7 @@ func TestRun_TeardownScenario(t *testing.T) {
 		}},
 		{"SiblingChangesOutsidePathspecLeaveEverythingUntouched", func(t *testing.T) {
 			p := addLivePair(t, h, cfg.Tmux, "pt-sibling")
-			sibling := p.h.PairWeftSibling(p.slug)
+			sibling := p.h.PairRecordsSibling(p.slug)
 			writeFile(t, filepath.Join(sibling, "stray.txt"), "not a record\n")
 			tip := gitkit.RevParse(t, sibling, "HEAD")
 
@@ -179,7 +179,7 @@ func TestRun_TeardownScenario(t *testing.T) {
 			p := addLivePair(t, h, cfg.Tmux, "pt-wait")
 			p.td.SetIntervalForTest(50 * time.Millisecond)
 
-			sibling := p.h.PairWeftSibling(p.slug)
+			sibling := p.h.PairRecordsSibling(p.slug)
 			rel := "_lyx/shed/" + p.slug + "/drive-reports/stop.md"
 			writeFile(t, filepath.Join(sibling, filepath.FromSlash(rel)), "stopped\n")
 			gitkit.MustRun(t, sibling, "git", "add", rel)
@@ -210,7 +210,7 @@ func TestRun_TeardownScenario(t *testing.T) {
 			if res.Removal.ArchiveTag == "" {
 				t.Fatal("Removal.ArchiveTag is empty")
 			}
-			out, err := gitexec.Run([]string{"show", "refs/tags/" + res.Removal.ArchiveTag + ":" + rel}, p.h.WeftBare)
+			out, err := gitexec.Run([]string{"show", "refs/tags/" + res.Removal.ArchiveTag + ":" + rel}, p.h.RecordsBare)
 			if err != nil {
 				t.Fatalf("show the report in the archive tag: %v", err)
 			}
@@ -221,7 +221,7 @@ func TestRun_TeardownScenario(t *testing.T) {
 		{"TaskWorktreeRemovedByHandEndsTheSessionByName", func(t *testing.T) {
 			// Runs last: it ends the only live session on the hub's server, so the server's socket file must go.
 			p := addLivePair(t, h, cfg.Tmux, "pt-gone")
-			if _, err := gitexec.Run([]string{"worktree", "remove", "--force", p.h.PairWarpWorktree(p.slug)}, p.h.PrimeWorktree()); err != nil {
+			if _, err := gitexec.Run([]string{"worktree", "remove", "--force", p.h.PairCodeWorktree(p.slug)}, p.h.PrimeWorktree()); err != nil {
 				t.Fatalf("remove the task worktree by hand: %v", err)
 			}
 			if !p.sessionUp(t) {

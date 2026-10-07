@@ -44,7 +44,7 @@ func TestRemove_UntrackedDriveReportIsCommittedAndArchived(t *testing.T) {
 		t.Fatalf("ArchiveTag is empty; want the tag covering the committed report")
 	}
 	rel := "_lyx/shed/" + slug + "/drive-reports/stop.md"
-	if got := showAtTag(t, h.WeftBare, res.ArchiveTag, rel); got != "stopped\n" {
+	if got := showAtTag(t, h.RecordsBare, res.ArchiveTag, rel); got != "stopped\n" {
 		t.Errorf("archived %s = %q; want the committed report", rel, got)
 	}
 }

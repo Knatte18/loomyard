@@ -56,7 +56,7 @@ func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 	})
 	const slug = "loom-smoke-start-task"
 	hubforge.AddPair(t, h, slug)
-	worktree := h.PairWarpWorktree(slug)
+	worktree := h.PairCodeWorktree(slug)
 	loc, err := lyxcwd.Resolve(worktree)
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%s): %v", worktree, err)

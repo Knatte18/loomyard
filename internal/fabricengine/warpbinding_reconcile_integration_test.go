@@ -35,8 +35,8 @@ type clonedHubFixture struct {
 	Result   fabricengine.CloneResult
 	Layout   *lyxcwd.Location
 	Topology *fabricengine.Topology
-	WarpBare string
-	WeftBare string
+	CodeBare string
+	RecordsBare string
 }
 
 // newClonedHubFixture builds a genuinely remote-backed hub via fabricengine.CloneHub against two bare
@@ -91,8 +91,8 @@ func newClonedHubFixture(t *testing.T) clonedHubFixture {
 		Result:   res,
 		Layout:   l,
 		Topology: top,
-		WarpBare: warpBare,
-		WeftBare: weftBare,
+		CodeBare: warpBare,
+		RecordsBare: weftBare,
 	}
 }
 
@@ -151,7 +151,7 @@ func TestReconcile_BacksFillsBindingOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read %s: %v", bindingPath, err)
 	}
-	if got, want := strings.TrimSpace(string(data)), filepath.ToSlash(fixture.WarpBare); got != want {
+	if got, want := strings.TrimSpace(string(data)), filepath.ToSlash(fixture.CodeBare); got != want {
 		t.Errorf("binding content = %q; want %q (the warp origin URL)", got, want)
 	}
 
@@ -199,7 +199,7 @@ func TestReconcile_NormalizedRecordReportsPresent(t *testing.T) {
 
 	fixture := newClonedHubFixture(t)
 
-	origin := filepath.ToSlash(fixture.WarpBare)
+	origin := filepath.ToSlash(fixture.CodeBare)
 	trimmed := strings.TrimSuffix(origin, ".git")
 	if trimmed == origin {
 		t.Fatalf("fixture warp URL %q has no trailing .git to trim", origin)
@@ -223,7 +223,7 @@ func TestReconcile_DivergentRecordIsLeftUntouched(t *testing.T) {
 
 	fixture := newClonedHubFixture(t)
 
-	origin := filepath.ToSlash(fixture.WarpBare)
+	origin := filepath.ToSlash(fixture.CodeBare)
 	divergent := origin + "-not-the-same-repo"
 	writeAndCommitBinding(t, fixture.Result.BoardDir, divergent)
 
@@ -259,7 +259,7 @@ func TestReconcile_TransportOnlyDifferenceIsAdvisory(t *testing.T) {
 
 	fixture := newClonedHubFixture(t)
 
-	origin := filepath.ToSlash(fixture.WarpBare)
+	origin := filepath.ToSlash(fixture.CodeBare)
 	caseDiffered := strings.ToUpper(origin)
 	if caseDiffered == origin {
 		t.Fatalf("fixture warp URL %q has no letters to case-flip", origin)

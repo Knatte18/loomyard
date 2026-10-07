@@ -87,8 +87,8 @@ func TestNewHub(t *testing.T) {
 					if _, err := os.Stat(h.PrimeWorktree()); err != nil {
 						t.Errorf("prime warp worktree missing at %s: %v", h.PrimeWorktree(), err)
 					}
-					if _, err := os.Stat(h.PrimeWeft()); err != nil {
-						t.Errorf("weft sibling missing at %s: %v", h.PrimeWeft(), err)
+					if _, err := os.Stat(h.PrimeRecords()); err != nil {
+						t.Errorf("weft sibling missing at %s: %v", h.PrimeRecords(), err)
 					}
 
 					primeCwd := filepath.Join(h.PrimeWorktree(), h.Anchor)
@@ -100,8 +100,8 @@ func TestNewHub(t *testing.T) {
 						t.Errorf("resolved AnchorRel = %q; want %q", l.AnchorRel, anchor)
 					}
 
-					if rooted := anchor == "."; (h.WeftBase == h.PrimeWeft()) != rooted {
-						t.Errorf("h.WeftBase = %s, h.PrimeWeft() = %s at the %q anchor; want them equal only at the root anchor", h.WeftBase, h.PrimeWeft(), anchor)
+					if rooted := anchor == "."; (h.WeftBase == h.PrimeRecords()) != rooted {
+						t.Errorf("h.WeftBase = %s, h.PrimeRecords() = %s at the %q anchor; want them equal only at the root anchor", h.WeftBase, h.PrimeRecords(), anchor)
 					}
 				}},
 				{"ConfigMaterializedWithoutSeeding", func(t *testing.T) {
@@ -203,14 +203,14 @@ func TestNewHub(t *testing.T) {
 					if skipped.Pushed {
 						t.Errorf("AddPairWith(SkipPush) Pushed = true; want false")
 					}
-					if gitkit.BranchExists(t, h.WeftBare, skippedWeft) {
+					if gitkit.BranchExists(t, h.RecordsBare, skippedWeft) {
 						t.Errorf("branch %q is on the weft bare; want it absent under SkipPush", skippedWeft)
 					}
 
 					pushed := AddPairWith(t, h, "pushed", fabricengine.AddOptions{})
 					pushedWeft := fabricengine.WeftBranchName(pushed.Branch)
-					if !pushed.Pushed || !gitkit.BranchExists(t, h.WeftBare, pushedWeft) {
-						t.Errorf("zero-options AddPairWith: Pushed = %v, weft branch on bare = %v; want both true", pushed.Pushed, gitkit.BranchExists(t, h.WeftBare, pushedWeft))
+					if !pushed.Pushed || !gitkit.BranchExists(t, h.RecordsBare, pushedWeft) {
+						t.Errorf("zero-options AddPairWith: Pushed = %v, weft branch on bare = %v; want both true", pushed.Pushed, gitkit.BranchExists(t, h.RecordsBare, pushedWeft))
 					}
 				}},
 				{"OpenFabricOpensThePrimePair", func(t *testing.T) {
@@ -318,7 +318,7 @@ func assertRealHub(t *testing.T, h *Hub) {
 }
 
 // TestNewHub_Concurrent launches N concurrent NewHub calls from one test, asserting every returned hub
-// is independently a real hub and that no two share a Path, Container, WarpBare, or WeftBare — the
+// is independently a real hub and that no two share a Path, Container, CodeBare, or RecordsBare — the
 // structural parallel safety a sync.Once template read followed by per-call tb.TempDir() is supposed
 // to guarantee.
 func TestNewHub_Concurrent(t *testing.T) {
@@ -350,8 +350,8 @@ func TestNewHub_Concurrent(t *testing.T) {
 		assertRealHub(t, h)
 		recordUnique("Path", h.Path, i)
 		recordUnique("Container", h.Container, i)
-		recordUnique("WarpBare", h.WarpBare, i)
-		recordUnique("WeftBare", h.WeftBare, i)
+		recordUnique("CodeBare", h.CodeBare, i)
+		recordUnique("RecordsBare", h.RecordsBare, i)
 	}
 }
 
@@ -403,8 +403,8 @@ func TestNewHub_TeardownRemovesJunctionsKeepsTargets(t *testing.T) {
 			Anchor:    res.Anchor,
 			Location:  loc,
 			Topology:  fabricengine.NewTopology(fabricengine.Config{}),
-			WarpBare:  warpBare,
-			WeftBare:  weftBare,
+			CodeBare:  warpBare,
+			RecordsBare:  weftBare,
 			WeftBase:  res.WeftBase,
 			Container: container,
 		}

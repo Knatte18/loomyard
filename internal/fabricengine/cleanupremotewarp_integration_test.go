@@ -111,7 +111,7 @@ func TestCleanupRemoteWarp_DryRunClassifiesEveryBranch(t *testing.T) {
 		t.Errorf("dry run recorded mutations: %+v", res.Mutations.Entries())
 	}
 	for branch := range wantReasons {
-		if !originHasBranch(t, h.WarpBare, branch) {
+		if !originHasBranch(t, h.CodeBare, branch) {
 			t.Errorf("dry run removed %q from origin", branch)
 		}
 	}
@@ -131,11 +131,11 @@ func TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate(t *testing.T) {
 	if e := got["gone-landed"]; !e.Deleted || e.Error != "" {
 		t.Errorf("gone-landed = %+v; want deleted", e)
 	}
-	if originHasBranch(t, h.WarpBare, "gone-landed") {
+	if originHasBranch(t, h.CodeBare, "gone-landed") {
 		t.Errorf("gone-landed still on origin")
 	}
 	for _, kept := range []string{"unmanaged", "live", "has-pr", "gone-unlanded"} {
-		if !originHasBranch(t, h.WarpBare, kept) {
+		if !originHasBranch(t, h.CodeBare, kept) {
 			t.Errorf("%q was deleted from origin", kept)
 		}
 	}
@@ -167,7 +167,7 @@ func TestCleanupRemoteWarp_NilOpenPRHeadsRefusesEveryDeletion(t *testing.T) {
 			t.Errorf("%s = %+v; want nothing deleted or offered without the open-PR set", e.Branch, e)
 		}
 	}
-	if !originHasBranch(t, h.WarpBare, "gone-landed") {
+	if !originHasBranch(t, h.CodeBare, "gone-landed") {
 		t.Errorf("gone-landed was deleted without the open-PR set")
 	}
 }
@@ -187,7 +187,7 @@ func TestCleanupRemoteWarp_MovedTipKeepsTheBranchWithAnError(t *testing.T) {
 	if e.Deleted || e.Error == "" {
 		t.Errorf("gone-landed = %+v; want kept with an error after its tip moved", e)
 	}
-	if !originHasBranch(t, h.WarpBare, "gone-landed") {
+	if !originHasBranch(t, h.CodeBare, "gone-landed") {
 		t.Errorf("gone-landed was deleted despite the moved tip")
 	}
 }

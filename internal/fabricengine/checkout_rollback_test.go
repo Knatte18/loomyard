@@ -185,11 +185,11 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 			// Only the warp branch exists locally: the weft branch is on origin alone.
 			gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 			clone := t.TempDir()
-			mustGit(clone, "clone", "--quiet", h.WeftBare, ".")
+			mustGit(clone, "clone", "--quiet", h.RecordsBare, ".")
 			mustGit(clone, "checkout", "--quiet", "-b", weftBranch)
 			gitkit.CommitFile(t, clone, markerRel, "from origin\n", "origin-only weft branch")
 			mustGit(clone, "push", "--quiet", "origin", weftBranch)
-			originTip := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch)
+			originTip := gitkit.RevParse(t, h.RecordsBare, "refs/heads/"+weftBranch)
 
 			originalWarpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
 			originalWeftBranch := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l))
@@ -210,7 +210,7 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 			if gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
 				t.Errorf("local weft branch %q adopted from origin survived the rollback; want it deleted", weftBranch)
 			}
-			if got := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch); got != originTip {
+			if got := gitkit.RevParse(t, h.RecordsBare, "refs/heads/"+weftBranch); got != originTip {
 				t.Errorf("origin %s = %s after the rollback; want %s (unchanged)", weftBranch, got, originTip)
 			}
 		})

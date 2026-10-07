@@ -32,7 +32,7 @@ func TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchan
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
 
-	if err := os.MkdirAll(filepath.Join(h.PrimeWeft(), "_lyx", "loom"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(h.PrimeRecords(), "_lyx", "loom"), 0o755); err != nil {
 		t.Fatalf("MkdirAll(_lyx/loom): %v", err)
 	}
 	// The weft counterpart rewrites the same system file many times on the source branch.
@@ -40,7 +40,7 @@ func TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchan
 		commitOnSourceWeft("feature-weft", "_lyx/loom/status.json", fmt.Sprintf(`{"n":%d}`, i), fmt.Sprintf("weft: status rewrite %d", i))
 	}
 
-	targetWarpPath, targetWeftPath := h.PairWarpWorktree("target"), h.PairWeftSibling("target")
+	targetWarpPath, targetWeftPath := h.PairCodeWorktree("target"), h.PairRecordsSibling("target")
 	warpBefore := fabricengine.CurrentSHAForTest(t, targetWarpPath)
 	weftBefore := fabricengine.CurrentSHAForTest(t, targetWeftPath)
 
@@ -72,12 +72,12 @@ func TestMergeWeftLocal_TargetWeftDivergedStatus_ContentUnchanged(t *testing.T) 
 
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
 	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
-	if err := os.MkdirAll(filepath.Join(h.PrimeWeft(), "_lyx", "loom"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(h.PrimeRecords(), "_lyx", "loom"), 0o755); err != nil {
 		t.Fatalf("MkdirAll(_lyx/loom) on source weft: %v", err)
 	}
 	commitOnSourceWeft("feature-weft", "_lyx/loom/status.json", `{"source":true}`, "feature: weft status")
 
-	targetWeftPath := h.PairWeftSibling("target")
+	targetWeftPath := h.PairRecordsSibling("target")
 	statusRel := filepath.Join("_lyx", "loom", "status.json")
 	if err := os.MkdirAll(filepath.Join(targetWeftPath, "_lyx", "loom"), 0o755); err != nil {
 		t.Fatalf("MkdirAll(_lyx/loom) on target weft: %v", err)
@@ -120,9 +120,9 @@ func TestMergeWeftLocal_BothSidesEvolveLyxFromSharedBase_NowCompletes(t *testing
 	// A target-side warp commit, so merging "feature" is a genuine (non-fast-forward) merge that
 	// lands a real conclude-commit — otherwise a plain fast-forward reports Committed false on its
 	// own, for a reason unrelated to what this scenario is about.
-	gitkit.CommitFile(t, h.PairWarpWorktree("target"), "target-progress.txt", "target progress\n", "target: progress")
+	gitkit.CommitFile(t, h.PairCodeWorktree("target"), "target-progress.txt", "target progress\n", "target: progress")
 
-	targetWeftPath := h.PairWeftSibling("target")
+	targetWeftPath := h.PairRecordsSibling("target")
 	gitkit.CommitFile(t, targetWeftPath, "_lyx/shared.txt", "target content\n", "target: lyx shared")
 	commitOnSourceWeft("feature-weft", "_lyx/shared.txt", "feature content\n", "feature: lyx shared")
 
@@ -147,13 +147,13 @@ func TestMergeWeftLocal_MergeIn_ParentLyxNeverReachesChildWeft(t *testing.T) {
 	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
 
 	const childContent = "child content\n"
-	gitkit.CommitFile(t, h.PrimeWeft(), "_lyx/parent-child.txt", childContent, "child: seed lyx content")
+	gitkit.CommitFile(t, h.PrimeRecords(), "_lyx/parent-child.txt", childContent, "child: seed lyx content")
 
 	commitOnWarpBranch("parent", "parent-warp.txt", "parent warp content\n", "parent: warp change")
 	commitOnWeftBranch("parent-weft", "_lyx/parent-only.txt", "parent lyx content\n", "parent: weft lyx change")
 
-	parentWeftSHA := gitkit.RevParse(t, h.PrimeWeft(), "parent-weft")
-	childWeftSHABefore := gitkit.RevParse(t, h.PrimeWeft(), "HEAD")
+	parentWeftSHA := gitkit.RevParse(t, h.PrimeRecords(), "parent-weft")
+	childWeftSHABefore := gitkit.RevParse(t, h.PrimeRecords(), "HEAD")
 	if parentWeftSHA == childWeftSHABefore {
 		t.Fatalf("parent-weft (%s) equals the child's own weft HEAD (%s); the fixture must diverge them", parentWeftSHA, childWeftSHABefore)
 	}
@@ -176,7 +176,7 @@ func TestMergeWeftLocal_MergeIn_ParentLyxNeverReachesChildWeft(t *testing.T) {
 	if string(got) != childContent {
 		t.Errorf("_lyx/parent-child.txt after MergeIn = %q; want unchanged %q", got, childContent)
 	}
-	if got := gitkit.RevParse(t, h.PrimeWeft(), "HEAD"); got != childWeftSHABefore {
+	if got := gitkit.RevParse(t, h.PrimeRecords(), "HEAD"); got != childWeftSHABefore {
 		t.Errorf("child weft HEAD after MergeIn = %q; want unchanged %q", got, childWeftSHABefore)
 	}
 }
@@ -190,7 +190,7 @@ func TestMergeWeftLocal_MergeIn_WarpConflictReachesUnifyConflictPaths(t *testing
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {

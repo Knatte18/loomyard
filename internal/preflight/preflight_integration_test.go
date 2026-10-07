@@ -53,8 +53,8 @@ func setupFixture(t *testing.T) (*hubforge.Hub, string) {
 	// junction target materializes as an empty directory git does not track -- so this pair becomes
 	// a no-op that must be allowed to succeed rather than deleted, because deleting it would silently
 	// drop the guarantee if a future fixture change reintroduces untracked records content.
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "add", "-A")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "--allow-empty", "-m", "seed junctions")
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "add", "-A")
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "commit", "--allow-empty", "-m", "seed junctions")
 
 	return h, slug
 }
@@ -261,7 +261,7 @@ func TestCheckResolved_Failures(t *testing.T) {
 		},
 		{
 			name:    "DirtyPairedSide",
-			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) { writeUntracked(t, h.PrimeWeft()) },
+			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) { writeUntracked(t, h.PrimeRecords()) },
 			want:    []preflight.CheckID{preflight.CheckWorktreeClean},
 		},
 		{
@@ -289,14 +289,14 @@ func TestCheckResolved_Failures(t *testing.T) {
 			name: "DirtyBothSides",
 			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) {
 				writeUntracked(t, h.PrimeWorktree())
-				writeUntracked(t, h.PrimeWeft())
+				writeUntracked(t, h.PrimeRecords())
 			},
 			want: []preflight.CheckID{preflight.CheckWorktreeClean},
 		},
 		{
 			name: "FabricNotReady",
 			corrupt: func(t *testing.T, h *hubforge.Hub, slug string) {
-				if err := os.RemoveAll(h.PrimeWeft()); err != nil {
+				if err := os.RemoveAll(h.PrimeRecords()); err != nil {
 					t.Fatalf("remove paired-sibling worktree: %v", err)
 				}
 			},

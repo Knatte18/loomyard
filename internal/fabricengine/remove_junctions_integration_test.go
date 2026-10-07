@@ -164,7 +164,7 @@ func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
 	weftTarget := fabricengine.WeftWorktreePath(l, slug)
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "worktree", "lock", weftTarget)
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "worktree", "lock", weftTarget)
 
 	_, err := topology.Remove(l, slug, true, false)
 	if err == nil {
