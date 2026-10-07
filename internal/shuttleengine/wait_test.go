@@ -394,6 +394,7 @@ var _ Clock = (*multiStepClock)(nil)
 // A later Stop with every output file finalizes done, also through a gate; a held run finalizes died
 // on a dead pane, done when its outputs appear as the pane dies, and timeout at its unchanged deadline.
 func TestRun_Wait_HeldTurnEnd(t *testing.T) {
+	t.Parallel()
 	passingGate := GateSpec{{Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}
 	live := []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}
 	dead := []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}}
@@ -461,6 +462,7 @@ func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			runDir := t.TempDir()
 			eventsPath := filepath.Join(runDir, "events.jsonl")
 			outputFile := filepath.Join(runDir, "out.md")

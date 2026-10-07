@@ -31,6 +31,7 @@ func manyShells(n int) []BackgroundTask {
 }
 
 func TestWait_HeldTurnEndNotice(t *testing.T) {
+	t.Parallel()
 	const strandName = "lyx:slug:driver"
 	tail := MessageTail
 	tests := []struct {
@@ -154,6 +155,7 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{outstanding: tt.outstand}, withConfig(gateConfig))
 			timeout := heldTestTimeout
 			if tt.shellJump > 0 {

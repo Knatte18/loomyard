@@ -24,6 +24,7 @@ func offsetOf(events string) *int64 {
 
 //testtiming:keep pins the unit-level verdicts for a legacy asking record, with and without a recorded offset, and the unchanged verdicts for a dead pane and an untracked strand, which the end-to-end attach test never reaches
 func TestDispositionCandidate_AskingReentry(t *testing.T) {
+	t.Parallel()
 	live := []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}
 	dead := []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: false}}
 	spec := Spec{OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}}
@@ -40,6 +41,7 @@ func TestDispositionCandidate_AskingReentry(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			c := attachCandidate{
 				dirMtime: time.Now(),
 				state:    RunState{StrandGUID: "strand-1", Outcome: legacyAskingOutcome, AskingOffset: tt.offset},
@@ -54,6 +56,7 @@ func TestDispositionCandidate_AskingReentry(t *testing.T) {
 // TestAttach_LegacyAskingAndHeldRuns drives Attach over a run.json with a recording notifier and asserts
 // the run's final outcome and which held turn ends reach the parent.
 func TestAttach_LegacyAskingAndHeldRuns(t *testing.T) {
+	t.Parallel()
 	const strandName = "lyx:slug:driver"
 	shell := []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999"}}
 	tests := []struct {
