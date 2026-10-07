@@ -41,6 +41,10 @@ type fakeShuttle struct {
 
 	// gateSpec is the GateSpec RunGated last received.
 	gateSpec shuttleengine.GateSpec
+	// reviewRewrites holds the review file content the reviewer writes at each re-prompt, in order.
+	reviewRewrites []string
+	// gateFindings collects the findings of every failed gate evaluation.
+	gateFindings []string
 }
 
 func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error) {
@@ -63,10 +67,11 @@ func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error)
 	return f.result, nil
 }
 
-// RunGated implements the shared fake contract every shedadapters.Shuttle/burlerengine.Shuttle test fake follows (see the "every test fake evaluates the gate once" decision):
-// delegate to Run's own body, then — only when gate is non-empty and the delegated outcome is OutcomeDone — invoke the entries once each in list order, skipping off entries and stopping at the first failure, returning a closure's error if non-nil and otherwise stamping a *GateOutcome onto the returned Result.
-// The fake runs no re-prompt loop;
-// there is no pane to send into, and the loop's own coverage lives against the real Wait in batch 1's tests.
+// RunGated delegates to Run's own body, then — only when gate is non-empty and the delegated outcome is OutcomeDone — evaluates the gate spec like the shuttle wait loop:
+// each entry's closure runs in list order, skipping off entries.
+// A failing entry is re-prompted up to its Attempts, each re-prompt first writing the next reviewRewrites content to the review file as the reviewer would, and a PassOnCap entry that spent its budget is let through.
+// Any other entry that spent its budget fails the gate and stops the evaluation.
+// A closure's error is returned, and otherwise a *GateOutcome is stamped onto the returned Result.
 func (f *fakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
 	f.gateSpec = gate
 
@@ -80,12 +85,28 @@ func (f *fakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateS
 		if entry.Attempts <= 0 {
 			continue
 		}
-		gateResult, gerr := entry.Gate()
-		if gerr != nil {
-			return result, gerr
+		for reprompts := 0; ; reprompts++ {
+			gateResult, gerr := entry.Gate()
+			if gerr != nil {
+				return result, gerr
+			}
+			if gateResult.Passed {
+				break
+			}
+			f.gateFindings = append(f.gateFindings, gateResult.Findings)
+			if reprompts == entry.Attempts {
+				if !entry.PassOnCap {
+					outcome.Passed = false
+				}
+				break
+			}
+			if reprompts < len(f.reviewRewrites) {
+				if err := os.WriteFile(spec.OutputFiles[0], []byte(f.reviewRewrites[reprompts]), 0o644); err != nil {
+					return result, err
+				}
+			}
 		}
-		if !gateResult.Passed {
-			outcome.Passed = false
+		if !outcome.Passed {
 			break
 		}
 	}
@@ -463,7 +484,9 @@ func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
 }
 
 // TestEngine_Run_GateOutcomes table-drives Run over a round's gate list.
-// A round carrying the zero GateSpec behaves exactly as an ungated round, with Result.Gate nil.
+// Whatever the caller's list, the gate spec the shuttle receives ends with the review-parse entry, unwrapped:
+// its findings name the review file but not the fixer report, which only repairReportBeforeGate adds.
+// A round carrying the zero GateSpec therefore receives exactly that one entry, and its approved review passes it.
 // A round whose gate fails returns a Result with Gate populated and Passed false, Verdict and Findings left empty, Outcome still OutcomeDone and a nil error -- with the review file never read:
 // no review file is left on disk, so a "missing review file" error would mean the gate-failure short-circuit did not fire before the parse step.
 // Engine.Run wraps every gate entry's closure in repairReportBeforeGate before handing it to RunGated, so the failing entry's closure the shuttle received is the wrapped one the round actually ran; re-invoking it (the told closure is pure) recovers the findings text the failing attempt produced, which must name this round's own review path and fixer-report path.
@@ -518,9 +541,27 @@ func TestEngine_Run_GateOutcomes(t *testing.T) {
 				t.Fatalf("gate entry names = %v; want the caller's list left as it was, %v", namesAfter, namesBefore)
 			}
 
+			if len(shuttle.gateSpec) != len(tt.gate)+1 {
+				t.Fatalf("gate spec has %d entries; want the %d told entries plus the review entry", len(shuttle.gateSpec), len(tt.gate))
+			}
+			reviewEntry := shuttle.gateSpec[len(tt.gate)]
+			if reviewEntry.Name != "review" || reviewEntry.Attempts != reviewGateAttempts || !reviewEntry.PassOnCap {
+				t.Errorf("last gate entry = {Name: %q, Attempts: %d, PassOnCap: %v}; want the review entry with %d attempts that passes on cap", reviewEntry.Name, reviewEntry.Attempts, reviewEntry.PassOnCap, reviewGateAttempts)
+			}
+			if err := os.Remove(filepath.Join(root, "review.md")); err != nil && !os.IsNotExist(err) {
+				t.Fatalf("Remove(review) = %v; want nil", err)
+			}
+			reviewResult, gerr := reviewEntry.Gate()
+			if gerr != nil || reviewResult.Passed {
+				t.Fatalf("review entry on a missing file = (%+v, %v); want a failed result and nil error", reviewResult, gerr)
+			}
+			if !strings.Contains(reviewResult.Findings, filepath.Join(root, "review.md")) || strings.Contains(reviewResult.Findings, filepath.Join(root, "fixer-report.md")) {
+				t.Errorf("review entry findings = %q; want them to name the review file only", reviewResult.Findings)
+			}
+
 			if tt.failingIndex < 0 {
-				if got.Gate != nil {
-					t.Errorf("Result.Gate = %+v; want nil for the zero GateSpec", got.Gate)
+				if got.Gate == nil || !got.Gate.Passed {
+					t.Errorf("Result.Gate = %+v; want populated and passed", got.Gate)
 				}
 				return
 			}
@@ -545,6 +586,68 @@ func TestEngine_Run_GateOutcomes(t *testing.T) {
 				if !strings.Contains(gateResult.Findings, want) {
 					t.Errorf("gate findings = %q; want them to name %q", gateResult.Findings, want)
 				}
+			}
+		})
+	}
+}
+
+// TestEngine_Run_ReviewGateRepairsUnparseableReview drives Run with a first review file that fails ParseReview.
+// The review entry fails with the parse error and the quoting hint in its findings, and the fake shuttle's reviewer rewrites the file at each re-prompt.
+// A rewrite that parses passes the entry, and Run returns the verdict of the repaired file.
+// A file still invalid after the entry's budget is let through, and Run fails with the strict post-gate parse error, after exactly one failed evaluation per attempt plus the capping one.
+func TestEngine_Run_ReviewGateRepairsUnparseableReview(t *testing.T) {
+	t.Parallel()
+
+	const quotedFragmentReview = "---\nverdict: BLOCKING\nfindings:\n" +
+		"  - id: F1\n    severity: BLOCKING\n    class: design\n    location: target.txt:1\n    summary: \"capital\" is misspelled as \"captial\"\n" +
+		"---\nfound a mismatch\n"
+
+	tests := []struct {
+		name           string
+		rewrites       []string
+		wantErrSubstr  string
+		wantVerdict    Verdict
+		wantEvaluation int
+	}{
+		{name: "repaired on the first re-prompt", rewrites: []string{blockingReview}, wantVerdict: VerdictBlocking, wantEvaluation: 1},
+		{name: "still invalid after the budget", rewrites: []string{quotedFragmentReview, quotedFragmentReview}, wantErrSubstr: "round reached done but its review file is invalid", wantEvaluation: reviewGateAttempts + 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root, p := newEngineTestProfile(t)
+			shuttle := &fakeShuttle{
+				reviewContent:  quotedFragmentReview,
+				fixerContent:   "fixed the mismatch",
+				reviewRewrites: tt.rewrites,
+				result:         shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+			}
+			e := newEngineForTest(t, root, shuttle)
+
+			got, err := e.Run(p, RunOpts{})
+
+			if len(shuttle.gateFindings) != tt.wantEvaluation {
+				t.Fatalf("failed review gate evaluations = %d; want %d", len(shuttle.gateFindings), tt.wantEvaluation)
+			}
+			for _, findings := range shuttle.gateFindings {
+				for _, want := range []string{"frontmatter is not valid YAML", "ONE double-quoted string", filepath.Join(root, "review.md")} {
+					if !strings.Contains(findings, want) {
+						t.Errorf("review gate findings = %q; want them to carry %q", findings, want)
+					}
+				}
+			}
+			if tt.wantErrSubstr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErrSubstr) {
+					t.Fatalf("Run() error = %v; want it to carry %q", err, tt.wantErrSubstr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Run() = %v; want nil error", err)
+			}
+			if got.Verdict != tt.wantVerdict {
+				t.Errorf("Result.Verdict = %q; want %q", got.Verdict, tt.wantVerdict)
 			}
 		})
 	}
