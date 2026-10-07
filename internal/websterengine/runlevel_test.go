@@ -471,7 +471,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 					if err := os.WriteFile(cardPath, original, 0o644); err != nil {
 						t.Fatalf("fix card: %v", err)
 					}
-					diedMaster(t, fx,"validated")
+					diedMaster(t, fx, "validated")
 					if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); !errors.Is(err, websterengine.ErrFingerprintMismatch) {
 						t.Fatalf("Run() after the plan fix error = %v; want errors.Is(err, ErrFingerprintMismatch) until rebaselined", err)
 					}
@@ -650,7 +650,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 
 			if takeWayForward != nil {
 				takeWayForward()
-				diedMaster(t, fx,"recovered")
+				diedMaster(t, fx, "recovered")
 				_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
 				requireReachedMaster(t, fx, err)
 			}
@@ -742,7 +742,7 @@ func TestRun_EntryValidationReachesMaster(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(t, fx)
 			}
-			diedMaster(t, fx,"entry")
+			diedMaster(t, fx, "entry")
 
 			_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
 			requireReachedMaster(t, fx, err)
@@ -2204,7 +2204,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 	t.Run("drops a pathless finding on an unchanged plan", func(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		seedFreshPendingState(t, fx)
-		diedMaster(t, fx,"pathless")
+		diedMaster(t, fx, "pathless")
 		logs := captureLogs(t)
 
 		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
@@ -2231,7 +2231,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 		if err := os.Remove(contract); err != nil {
 			t.Fatalf("remove contract file: %v", err)
 		}
-		diedMaster(t, fx,"contract absent")
+		diedMaster(t, fx, "contract absent")
 		_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 		requireReachedMaster(t, fx, err)
 	})
@@ -2251,7 +2251,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 		if _, err := websterengine.RestorePlan(loadRunState(t, fx), fx.Deps.Geom); err != nil {
 			t.Fatalf("RestorePlan() error = %v", err)
 		}
-		diedMaster(t, fx,"restored")
+		diedMaster(t, fx, "restored")
 		_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 		requireReachedMaster(t, fx, err)
 		requireReinitialisedRun(t, fx)
@@ -2265,7 +2265,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 		if err := os.RemoveAll(filepath.Join(fx.Deps.Geom.WebsterDir, "plan-baseline")); err != nil {
 			t.Fatalf("empty the plan baseline store: %v", err)
 		}
-		diedMaster(t, fx,"no copy")
+		diedMaster(t, fx, "no copy")
 		logs := captureLogs(t)
 
 		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
@@ -2293,7 +2293,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 	t.Run("drops a batch failed on an uncheckable finding when HEAD is the start commit", func(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		seedUncheckableState(t, fx)
-		diedMaster(t, fx,"uncheckable")
+		diedMaster(t, fx, "uncheckable")
 		logs := captureLogs(t)
 
 		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
@@ -2344,7 +2344,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 		}
 
 		fx.Git.head = root
-		diedMaster(t, fx,"divergent")
+		diedMaster(t, fx, "divergent")
 		_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 		requireReachedMaster(t, fx, err)
 		if st := loadRunState(t, fx); st.RunGUID == "stale-run" {
@@ -2355,7 +2355,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 	t.Run("--fresh stays a no-op on an unchanged plan with nothing pending", func(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		seedMatchingState(t, fx, &websterengine.State{RunGUID: "kept-run"})
-		diedMaster(t, fx,"resume")
+		diedMaster(t, fx, "resume")
 
 		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 		requireReachedMaster(t, fx, err)
