@@ -8,14 +8,24 @@ Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a produ
 |---|---|---|---|
 | 1 | none | nothing: offline, no spawn | seconds, runs on every `go test ./...` |
 | 2 | `integration` | git, a built `lyx`, subprocesses; no tmux server and no LLM | tens of seconds, runs under the card gates |
-| 3 | `tmux` | a real tmux server, no LLM | slower, runs under the plan verify and by hand |
-| 4 | `llm` | a real LLM session | billed, run by hand only |
+| 3 | `tmux` | a real tmux server, no LLM | slower, runs at Publish through landing config's `publish_verify` and by hand |
+| 4 | `llm` | a real LLM session | billed, compiled by every gate and run by hand only |
 
 - Tags do not nest: `-tags integration` runs no `tmux` or `llm` file, so a run names every tag it wants.
 - A test needing two substrates takes the higher tier.
 - Each tag compiles on its own: `go vet -tags tmux ./...` and `go vet -tags llm ./...` each pass.
 - A helper file used by files of two tiers and spawning something carries the disjunction of their tags (`//go:build tmux || llm`); a helper that spawns nothing goes untagged; a helper only one tier uses lives in that tier's file.
 - `llm` files are compiled by `go vet -tags llm ./...` and never run by a gate.
+
+### Gate per tier
+
+| Gate | Runs |
+|---|---|
+| Card gate | the card's own command, then the comment lint |
+| Webster-Burler round gate | the comment lint, then the impacted-set command, or the plan's verify wherever the impacted set cannot narrow; the `tmux` and `llm` tiers are compiled by its `go vet` steps, never run |
+| Webster's gate, Publish, Finalize | the plan's `## verify:` in full: build, vet under each tag, the untagged tier, then the `integration` tier |
+| Publish, after the plan verify | landing config's `publish_verify`, where the repo sets it: the `tmux` tier |
+| By hand | the `llm` tier |
 
 ## Only `llm` files reach an LLM
 

@@ -9,6 +9,11 @@
 //
 // Its plan gates resolve plan refs through a told planindex.Index, so the package links no tree-sitter grammar.
 //
+// The Webster-Burler round gate (NewVerifyGate) runs less than the plan's `## verify:`.
+// It lints the comments added since the plan verify's last recorded pass, then runs the command impactset derives from that diff through verifytree.Verify, falling back to the plan's own command wherever impactset cannot narrow.
+// The narrowing is impactset's; Webster's gate, Publish and Finalize keep the full plan verify on the tree that lands.
+// The round compiles the `tmux` and `llm` tiers and never runs them.
+//
 // The Plan-Write rotation archives the prior plan and appends a prior-plan block naming that archive to the respawned session's prompt.
 //
 // It declares its own unexported cancellation helpers (entryErr/cancelErr in ctx.go) rather than

@@ -8,9 +8,10 @@ A mechanical gate's **closure** and its CLI self-check verb call the same packag
 - Plan-Write's and Plan-Burler's gates and `validate-plan`: `planindex.Index.ValidateFormat`, implemented by `planglyph`.
 - PR-Rework's gate and `validate-plan --rework`: `loomshed.ValidateReworkPlan`, which checks the whole new plan plus the told `first_card`.
 - Describe's gate and `validate-description`: `summaryparser.ValidateDescription`.
-- The webster `verify` gate (`websterengine.NewVerifyGate`) and Webster-Burler's `verify` gate (`loomshed.NewVerifyGate`) and `lyx webster verify`: `verifytree.Verify`.
+- The webster `verify` gate (`websterengine.NewVerifyGate`) and `lyx webster verify`: `verifytree.Verify`.
+  Webster-Burler's `verify` gate (`loomshed.NewVerifyGate`) runs the comment lint and the derived round command through `verifytree.Verify`.
 - Every card gate's comment lint and `lyx loom lint-comments`: `commentlint.Lint`.
-  The Webster-Burler round gate joins this pair when it runs the lint.
+  The Webster-Burler round gate (`loomshed.NewVerifyGate`) joins this pair when it runs the lint.
 - Every burler round's `review` gate and `lyx burler validate-review`: `burlerengine.CheckReviewFile`, over `ParseReview`.
 
 ## Rules

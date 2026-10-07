@@ -47,6 +47,10 @@ var loomshedAllowedImports = []string{
 	// internal/verifytree is the shared plan-verify function.
 	// It is told its worktree and verify directory and resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/verifytree",
+	// internal/commentlint and internal/impactset are the round gate's lint and impacted-set derivation.
+	// Both are told the worktree and resolve no geometry.
+	"github.com/Knatte18/loomyard/internal/commentlint",
+	"github.com/Knatte18/loomyard/internal/impactset",
 }
 
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {

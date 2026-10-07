@@ -30,7 +30,7 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex and returns loomshed.NewPlanGate over them;
 // "rework-plan" requires the same two roots and index plus a non-nil env.Rework.ReadCommitted and returns loomshed.NewReworkPlanGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
-// "verify" requires the absolute env.AnchorPath, env.WorktreeRoot and env.VerifyDir and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate";
+// "verify" requires the absolute env.AnchorPath, env.WorktreeRoot and env.VerifyDir and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate"; the gate runs the comment lint and then the impacted-set command of the round, or the plan's verify command where no base or no narrowing is available;
 // "parent-review" requires the absolute Env.ParentReview.Store.Root, Store.LockDir, DecisionRecord and SupportLog, a non-empty Slug and both render seams, and returns parentreview.NewGate's closure pair, the second being the entry's Final closure;
 // it is must-pass and may hold the run, its "attempts" is the reject cap told to the gate, and its "pass_on_cap" tells the gate to let the rewrite after the cap's reject through rather than halt the run;
 // any other value is an error naming the key and all six legal values.
