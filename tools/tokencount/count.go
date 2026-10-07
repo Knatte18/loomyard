@@ -214,12 +214,20 @@ func writeTable(w io.Writer, roles map[string]*RoleTally) {
 		}
 		return tallies[i].Role < tallies[j].Role
 	})
-	fmt.Fprintln(w, "| role | sessions | output | cache write | cache read | input | weight | models (messages) |")
-	fmt.Fprintln(w, "|---|---|---|---|---|---|---|---|")
+	tableWeight := 0.0
+	for _, t := range tallies {
+		tableWeight += t.Usage.Weight()
+	}
+	fmt.Fprintln(w, "| role | sessions | output | cache write | cache read | input | weight | share | models (messages) |")
+	fmt.Fprintln(w, "|---|---|---|---|---|---|---|---|---|")
 	for _, t := range tallies {
 		u := t.Usage
-		fmt.Fprintf(w, "| %s | %d | %d | %d | %d | %d | %.1fM | %s |\n",
-			t.Role, t.Sessions, u.Output, u.CacheCreate, u.CacheRead, u.Input, u.Weight()/1e6, models(t.Models))
+		share := 0.0
+		if tableWeight > 0 {
+			share = 100 * u.Weight() / tableWeight
+		}
+		fmt.Fprintf(w, "| %s | %d | %d | %d | %d | %d | %.1fM | %.1f%% | %s |\n",
+			t.Role, t.Sessions, u.Output, u.CacheCreate, u.CacheRead, u.Input, u.Weight()/1e6, share, models(t.Models))
 	}
 	fmt.Fprintln(w)
 }

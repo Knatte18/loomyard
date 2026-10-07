@@ -21,6 +21,7 @@
 // The weight column is input + 1.25 x cache writes + 0.1 x cache reads + 5 x output: a
 // relative figure for ranking roles, not a price, and blind to the per-model price
 // difference shown in the models column.
+// The share column is a role's weight as a percentage of its table's total weight.
 package main
 
 import (
