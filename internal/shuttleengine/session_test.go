@@ -21,8 +21,8 @@ type cyclerEngine struct {
 }
 
 func (e *cyclerEngine) ContextTokens(Event) ContextReading { return ContextReading{} }
-func (e *cyclerEngine) CompactedSince(Event, time.Time) (time.Time, bool) {
-	return time.Time{}, false
+func (e *cyclerEngine) CompactedSince(Event, time.Time) (CompactionBoundary, bool) {
+	return CompactionBoundary{}, false
 }
 func (e *cyclerEngine) IdleSession(capture string) bool {
 	e.captures = append(e.captures, capture)

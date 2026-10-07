@@ -98,18 +98,18 @@ func (r *Runner) ContextTokens(turnEnd Event) (ContextReading, error) {
 	return cycler.ContextTokens(turnEnd), nil
 }
 
-// CompactedSince returns the timestamp of the newest compaction boundary after since in the transcript turnEnd names, via the engine's SessionCycler.
+// CompactedSince returns the newest compaction boundary after since in the transcript turnEnd names, with the turn ends that follow it, via the engine's SessionCycler.
 // found is false when there is none or the transcript could not be read.
-func (r *Runner) CompactedSince(turnEnd Event, since time.Time) (time.Time, bool, error) {
+func (r *Runner) CompactedSince(turnEnd Event, since time.Time) (CompactionBoundary, bool, error) {
 	if r.toldErr != nil {
-		return time.Time{}, false, r.toldErr
+		return CompactionBoundary{}, false, r.toldErr
 	}
 	cycler, err := r.sessionCycler()
 	if err != nil {
-		return time.Time{}, false, err
+		return CompactionBoundary{}, false, err
 	}
-	at, found := cycler.CompactedSince(turnEnd, since)
-	return at, found, nil
+	boundary, found := cycler.CompactedSince(turnEnd, since)
+	return boundary, found, nil
 }
 
 // SessionIdle probes the live pane of the run identified by guid for the provider idle.

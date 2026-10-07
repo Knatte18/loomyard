@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -91,37 +92,43 @@ func readBackward(r io.ReaderAt, size int64, chunk int, scan func(data []byte) b
 	}
 }
 
-// CompactedSince returns the timestamp of the newest main-chain compaction boundary after since in the transcript turnEnd names.
+// CompactedSince returns the newest main-chain compaction boundary after since in the transcript turnEnd names, with the main-chain turn ends that follow it.
+// ReadTurnEndAfter compares the turn end's last_assistant_message with the final text block of the newest of those turn ends, ignoring surrounding whitespace;
+// a Stop payload without a message cannot be matched, so it reports false.
+// Claude writes a turn's assistant entry before its Stop hook fires, so the turn end being read is already in the transcript.
 // Like ContextTokens it degrades to not found on every failure and never errors.
-func (c *Claude) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (time.Time, bool) {
+func (c *Claude) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool) {
 	var payload struct {
-		TranscriptPath string `json:"transcript_path"`
+		TranscriptPath       string `json:"transcript_path"`
+		LastAssistantMessage string `json:"last_assistant_message"`
 	}
 	if err := json.Unmarshal(turnEnd.Raw, &payload); err != nil || payload.TranscriptPath == "" {
-		return time.Time{}, false
+		return shuttleengine.CompactionBoundary{}, false
 	}
 	f, err := os.Open(payload.TranscriptPath)
 	if err != nil {
-		return time.Time{}, false
+		return shuttleengine.CompactionBoundary{}, false
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return time.Time{}, false
+		return shuttleengine.CompactionBoundary{}, false
 	}
-	return compactedSince(f, info.Size(), initialReadChunk, since)
+	return compactedSince(f, info.Size(), initialReadChunk, since, payload.LastAssistantMessage)
 }
 
-// compactedSince walks the transcript backward and returns the first compaction boundary after since.
+// compactedSince walks the transcript backward and returns the first compaction boundary after since, with the turn ends after it.
 // It stops at the first entry whose timestamp is not after since, so the walk reads only what is newer than since.
-func compactedSince(r io.ReaderAt, size int64, chunk int, since time.Time) (time.Time, bool) {
-	var at time.Time
+// readMessage is the Stop payload's last_assistant_message.
+func compactedSince(r io.ReaderAt, size int64, chunk int, since time.Time, readMessage string) (shuttleengine.CompactionBoundary, bool) {
+	var boundary shuttleengine.CompactionBoundary
 	var found bool
 	readBackward(r, size, chunk, func(data []byte) bool {
-		at, found = boundarySince(data, since)
-		return found || reachedSince(data, since)
+		var reachedSince bool
+		boundary, found, reachedSince = boundarySince(data, since, readMessage)
+		return found || reachedSince
 	})
-	return at, found
+	return boundary, found
 }
 
 // transcriptEntry is the part of a transcript line the compaction reads look at.
@@ -133,11 +140,45 @@ type transcriptEntry struct {
 	CompactMetadata struct {
 		PostTokens int `json:"postTokens"`
 	} `json:"compactMetadata"`
+	Message struct {
+		StopReason string          `json:"stop_reason"`
+		Content    json.RawMessage `json:"content"`
+	} `json:"message"`
 }
 
-// boundarySince scans the complete lines of data from the last to the first and returns the first main-chain compaction boundary after since.
-// It stops at the first entry whose timestamp is not after since.
-func boundarySince(data []byte, since time.Time) (time.Time, bool) {
+// isTurnEnd reports whether e is a main-chain assistant entry that ends a turn: its stop reason is set and is not tool_use.
+func (e transcriptEntry) isTurnEnd() bool {
+	return !e.IsSidechain && e.Type == "assistant" && e.Message.StopReason != "" && e.Message.StopReason != "tool_use"
+}
+
+// finalText returns the text of the last text block of the entry's message content, or "" when it has none.
+// A bare string content counts as one text block.
+func (e transcriptEntry) finalText() string {
+	var bare string
+	if json.Unmarshal(e.Message.Content, &bare) == nil {
+		return bare
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(e.Message.Content, &blocks) != nil {
+		return ""
+	}
+	for i := len(blocks) - 1; i >= 0; i-- {
+		if blocks[i].Type == "text" {
+			return blocks[i].Text
+		}
+	}
+	return ""
+}
+
+// boundarySince scans the complete lines of data from the last to the first and returns the first main-chain compaction boundary after since,
+// counting the turn ends it passes on the way.
+// reachedSince is true when it met an entry whose timestamp is not after since, which ends the backward walk whether or not a boundary was found.
+func boundarySince(data []byte, since time.Time, readMessage string) (boundary shuttleengine.CompactionBoundary, found, reachedSince bool) {
+	turnEnds := 0
+	newestText := ""
 	for end := len(data); end > 0; {
 		start := bytes.LastIndexByte(data[:end], '\n') + 1
 		line := bytes.TrimSpace(data[start:end])
@@ -149,35 +190,26 @@ func boundarySince(data []byte, since time.Time) (time.Time, bool) {
 		if err := json.Unmarshal(line, &e); err != nil {
 			continue
 		}
-		at, err := time.Parse(time.RFC3339, e.Timestamp)
-		if err != nil {
-			continue
+		at, timeErr := time.Parse(time.RFC3339, e.Timestamp)
+		if timeErr == nil && !at.After(since) {
+			return shuttleengine.CompactionBoundary{}, false, true
 		}
-		if !at.After(since) {
-			return time.Time{}, false
-		}
-		if !e.IsSidechain && e.Type == "system" && e.Subtype == "compact_boundary" && e.CompactMetadata.PostTokens > 0 {
-			return at, true
-		}
-	}
-	return time.Time{}, false
-}
-
-// reachedSince reports whether data holds an entry whose timestamp is not after since, which ends the backward walk.
-func reachedSince(data []byte, since time.Time) bool {
-	for end := len(data); end > 0; {
-		start := bytes.LastIndexByte(data[:end], '\n') + 1
-		line := bytes.TrimSpace(data[start:end])
-		end = start - 1
-		var e transcriptEntry
-		if len(line) == 0 || json.Unmarshal(line, &e) != nil {
-			continue
-		}
-		if at, err := time.Parse(time.RFC3339, e.Timestamp); err == nil && !at.After(since) {
-			return true
+		switch {
+		case timeErr == nil && !e.IsSidechain && e.Type == "system" && e.Subtype == "compact_boundary" && e.CompactMetadata.PostTokens > 0:
+			wanted := strings.TrimSpace(readMessage)
+			return shuttleengine.CompactionBoundary{
+				At:               at,
+				TurnEndsAfter:    turnEnds,
+				ReadTurnEndAfter: turnEnds > 0 && wanted != "" && strings.TrimSpace(newestText) == wanted,
+			}, true, false
+		case e.isTurnEnd():
+			if turnEnds == 0 {
+				newestText = e.finalText()
+			}
+			turnEnds++
 		}
 	}
-	return false
+	return shuttleengine.CompactionBoundary{}, false, false
 }
 
 // latestReading scans the complete lines of data from the last to the first and returns the reading of the first qualifying entry.

@@ -69,9 +69,10 @@ func (s runnerSession) ClassifySkillLoad(turnEnd shuttleengine.Event, skills []s
 	return s.runner.ClassifySkillLoad(turnEnd, skills)
 }
 
-// CompactedSince delegates to Runner.CompactedSince.
+// CompactedSince delegates to Runner.CompactedSince and reports the boundary's timestamp.
 func (s runnerSession) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (time.Time, bool, error) {
-	return s.runner.CompactedSince(turnEnd, since)
+	b, found, err := s.runner.CompactedSince(turnEnd, since)
+	return b.At, found, err
 }
 
 // CompactSession delegates to Runner.CompactSession, which types into the pane through tmux.
