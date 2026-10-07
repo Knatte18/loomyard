@@ -45,3 +45,11 @@ Tests stay fast: Tier 1 is offline and spawns nothing, no test waits out a produ
 
 - A test calls `t.Parallel` unless it touches process-global state: env, cwd or a shared fixture.
 - A comment at the test, or once atop its file, names that state.
+
+## Tree-sitter links
+
+- Linking tree-sitter slows a test binary's link, so only the packages that call the code index for real may do it.
+- `treeSitterAllowedLinks` in `cmd/lyx/treesitterlink_integration_test.go` lists those packages, each with its reason.
+- The `integration`-tier guard runs `go list -test -deps` under every tag and fails, naming one import chain, when a test binary outside the list links `github.com/tree-sitter/go-tree-sitter`.
+- It also fails when a listed package's test binary no longer links it, so the list tracks the tree.
+- The chain search and the comparison are in `cmd/lyx/treesitterlink_test.go`.
