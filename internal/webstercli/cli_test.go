@@ -427,10 +427,7 @@ func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
 // With no run recorded, card 1's already-existing Create target is a blocking create-already-exists and the verb must still refuse -- that is the pre-flight answer the verb exists for.
 // With state.json recording batch 1 begun, terminal or not, that same finding is the plan working as designed and must vanish, leaving only card 2's informational finding and exit 0.
 func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
-	identity, err := batcher.Select("identity")
-	if err != nil {
-		t.Fatalf("batcher.Select(identity) = %v; want nil", err)
-	}
+	identity := batcher.Identity()
 
 	t.Run("NoRunRecordedGetsWholePlanAnswer", func(t *testing.T) {
 		c, _ := newTestCLI(t)
@@ -506,10 +503,7 @@ func TestValidateCmd_ScopeFollowsRunProgress(t *testing.T) {
 //
 //testtiming:keep pins that validate restamps a stale plan fingerprint and leaves the run's other state fields untouched, which its covering tests do not assert
 func TestValidateCmd_RebaselinesStalePlanFingerprint(t *testing.T) {
-	identity, err := batcher.Select("identity")
-	if err != nil {
-		t.Fatalf("batcher.Select(identity) = %v; want nil", err)
-	}
+	identity := batcher.Identity()
 
 	c, _ := newTestCLI(t)
 	c.batcher = identity
@@ -581,10 +575,7 @@ func TestBringUpDisposition_RecoverAndRun(t *testing.T) {
 			c, _ := newTestCLI(t)
 			seedValidPlanDir(t, c.geom.PlanDir)
 			if tc.withRun {
-				identity, err := batcher.Select("identity")
-				if err != nil {
-					t.Fatalf("batcher.Select(identity) = %v; want nil", err)
-				}
+				identity := batcher.Identity()
 				c.batcher = identity
 				if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, &websterengine.State{
 					RunGUID: "run-guid",
@@ -779,10 +770,7 @@ func testPlanFingerprint(t *testing.T, planDir string) string {
 // newRunTestCLI returns newTestCLI's CLI with the identity batcher selected -- what PersistentPreRunE would have resolved by default -- and the one-card plan seeded.
 func newRunTestCLI(t *testing.T) *websterCLI {
 	t.Helper()
-	identity, err := batcher.Select("")
-	if err != nil {
-		t.Fatalf("batcher.Select(\"\") error = %v", err)
-	}
+	identity := batcher.Identity()
 	c, _ := newTestCLI(t)
 	c.batcher = identity
 	seedValidPlanDir(t, c.geom.PlanDir)
@@ -1057,10 +1045,7 @@ func TestValidateCmd_RefusesOverviewEditWithoutRestamp(t *testing.T) {
 func TestValidateCmd_Regression329_ForthcomingCreateTargetPassesPending(t *testing.T) {
 	t.Parallel()
 
-	identity, err := batcher.Select("identity")
-	if err != nil {
-		t.Fatalf("batcher.Select(identity) = %v; want nil", err)
-	}
+	identity := batcher.Identity()
 	c, _ := newTestCLI(t)
 	c.batcher = identity
 

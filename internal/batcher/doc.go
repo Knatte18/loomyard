@@ -1,7 +1,6 @@
 // Package batcher groups a plan's flat card list into the execution units webster forks each run: a
-// library of batchifier implementations behind the Batcher interface, a name-keyed registry those
-// implementations self-register into, Select, which resolves a batcher by name, and Active, the
-// config entry point callers reach for.
+// library of batchifier implementations behind the Batcher interface, a registry mapping each
+// batchifier kind to its constructor, and Active, the config entry point callers reach for.
 // Batching — how many cards land in one fork,
 // and in what grouping — is a standalone step webster consumes today, and one Shed will drive as
 // producer #8 once built.
@@ -9,9 +8,21 @@
 // own) and never an LLM's decision (no batchifier consults a fork's judgment; grouping is pure
 // orchestrator-side logic over the parsed Card list).
 //
-// The active batcher is chosen via batcher.yaml's active: config key (see
-// contracts/specs/loom-plan-spec.md), which Active resolves against the registry at config-load time.
-// An empty key resolves to DefaultName, the identity batcher.
+// batcher.yaml holds named profiles under profiles:, each a batchifier kind (identity or cost) with
+// that kind's parameters; its active: key names the profile in force (see
+// contracts/specs/loom-plan-spec.md).
+// profiles: is an open map, keyed by names the operator chooses, so lyx config reconcile carries
+// the operator's profiles whole; the template's identity and cautious profiles fill in only when
+// the file holds no profiles: key.
+// Active resolves the active profile at config-load time and builds it through the registry.
+// An empty active: and active: identity resolve to the identity batcher even when no profile of
+// that name is configured, so a batcher.yaml without profiles: keeps working; a configured profile
+// named identity wins over that default.
+// A load error names batcher.yaml and the offending profile or key: an active: naming no profile,
+// an unknown batchifier kind, or a cost profile with a missing or non-positive alone_above or
+// budget, a max_cards below 2, or a missing, negative or unknown weights coefficient.
+// The template ships active: empty, so no run groups cards until the operator names the cautious
+// profile.
 //
 // The identity batcher (identity.go) — one card, one batch — is one library entry among future
 // grouping batchers, not a "v0" or interim implementation: it ships production-ready from day one,

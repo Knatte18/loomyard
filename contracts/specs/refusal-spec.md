@@ -43,6 +43,7 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 
 | Refusal | Trigger | Class | Way forward |
 |---|---|---|---|
+| batcher.yaml did not load | a verb's prologue finds `batcher.yaml` does not load: `active:` names no profile, or a profile has an unknown kind or a missing or invalid parameter | correctness halt | fix `batcher.yaml` under `_lyx/config`, then re-run the verb |
 | unknown batch | a batch verb names a number the plan's execution batches do not contain | correctness halt | `lyx webster status` lists the run's batches, name one of those |
 | plan drifted | begin-batch's re-resolution of the plan against the tree finds a blocking defect | correctness halt | edit the plan so the named cards match the tree, run `lyx webster rebaseline --card NN` naming each edited card, then begin-batch again |
 | rebaseline card set changed | `lyx webster rebaseline` finds a begun batch's cards removed or regrouped, or a begun card whose content changed in a batch that is not failed, dead or stuck | correctness halt | restore those cards in the plan, or `1) lyx webster reset --to start; 2) lyx webster run --fresh` |
@@ -218,7 +219,7 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | Loom-Preflight half-finished | the preflight finds a half-finished run | correctness halt | seed a new run, or `lyx loom goto --to Loom-Preflight` accepts this run as a deliberate re-entry |
 | preflight preconditions unmet | the worktree is dirty, fabric is unsynced or a junction is broken | correctness halt | per failed check: commit or stash the code changes with git, and commit the _lyx changes with `lyx fabric commit`, then re-step; `lyx fabric checkout` re-checks out the current branch and re-syncs the _lyx side, then re-step; `lyx fabric reconcile` recreates a missing _lyx worktree and re-points broken junctions, then re-step |
 | invalid history outcome | the status file's history carries an outcome the coherence check does not know | correctness halt | seed a new run |
-| batcher misconfigured | `batcher.yaml`'s `active:` key names no batchifier | correctness halt | fix `batcher.yaml`'s `active:` key, then re-step |
+| batcher misconfigured | `batcher.yaml` does not load: `active:` names no profile, or a profile has an unknown kind or a missing or invalid parameter | correctness halt | fix `batcher.yaml` (its `active:` key or the profile it names), then re-step |
 | produced artifacts commit failed | the Discussion-Write, Plan-Write or Webster row cannot commit its records | transient | the fault is transient, re-step the row |
 | rework archive collision | PR-Rework's archive finds a plan entry, a review run directory or a webster run-record entry at both its origin and its destination under the round's `prior-generation/` | correctness halt | remove whichever copy is stale, then re-step |
 | rework archive: webster busy | PR-Rework's archive of webster's run record finds a webster run holding its run lock | transient | wait for the run to finish, then re-step |

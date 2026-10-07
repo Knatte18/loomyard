@@ -1,1 +1,17 @@
-active: ""  # name of the active batchifier (internal/batcher.Active) that groups the plan's flat card list into execution batches; empty (the default) resolves to the identity batchifier (one card, one batch)
+active: ""  # name of the active profile under profiles: (internal/batcher.Active); empty (the default) resolves to the identity batchifier (one card, one batch)
+profiles:   # named batchifier settings, each chosen by active:; the operator may add profiles of their own
+  identity:   # one card, one batch
+    batchifier: identity
+  cautious:   # the cost batchifier: groups contiguous cards by estimated context-token cost, within hard limits
+    batchifier: cost
+    max_cards: 3   # most cards one batch holds, at least 2
+    alone_above: 1200000   # a card whose own estimate exceeds this runs alone
+    budget: 2000000   # a batch of two or more cards never exceeds this estimate
+    weights:   # the estimator's coefficients, all in context tokens or messages
+      startup_context: 40000
+      fork_messages: 4
+      target_messages: 6
+      test_file_messages: 1
+      uses_messages: 2
+      context_per_line: 12
+      package_context: 2000

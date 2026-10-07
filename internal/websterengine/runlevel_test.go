@@ -215,10 +215,7 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 	// WorktreeRoot is a bare scratch git repo with no _lyx/ tree, and the
 	// point of the runlevel-call-site decision is that Run needs no config
 	// tree.
-	activeBatcher, err := batcher.Select("")
-	if err != nil {
-		t.Fatalf("batcher.Select(\"\") error = %v", err)
-	}
+	activeBatcher := batcher.Identity()
 
 	deps := websterengine.RunDeps{
 		Starter:    starter,

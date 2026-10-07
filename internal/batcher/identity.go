@@ -1,7 +1,6 @@
 // identity.go implements identityBatcher, the library's baseline Batcher: one card per Batch, in
 // input order.
-// It self-registers into the package registry at package init, and Identity returns it without a
-// registry lookup.
+// Identity returns it, and the registry's identity kind builds it.
 
 package batcher
 
@@ -28,9 +27,4 @@ func (identityBatcher) Batch(_ *planparser.Plan, cards []planparser.Card, _ Size
 // Name reports this batchifier's registry key.
 func (identityBatcher) Name() string {
 	return "identity"
-}
-
-// init registers identityBatcher in the package registry.
-func init() {
-	register(identityBatcher{})
 }

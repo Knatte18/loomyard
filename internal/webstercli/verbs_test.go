@@ -8,6 +8,7 @@
 package webstercli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -131,10 +132,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	// -- exactly what PersistentPreRunE would have resolved via Active and
 	// stored on c.batcher, bypassed here along with the rest of
 	// PersistentPreRunE.
-	activeBatcher, err := batcher.Select("")
-	if err != nil {
-		t.Fatalf("batcher.Select(\"\") error = %v", err)
-	}
+	activeBatcher := batcher.Identity()
 
 	c := &websterCLI{
 		runner:     runner,
@@ -940,7 +938,7 @@ func seedPersistentPreRunConfig(t *testing.T, h *hubforge.Hub, batcherConfig str
 }
 
 // TestPersistentPreRunE_BatcherSelection proves the load-time batcher selection (batcher.Active(baseDir), wired into PersistentPreRunE) through the `status` verb, which never itself touches the batcher, over one hub whose batcher.yaml each step rewrites:
-// an unknown active: name is a true fail-fast gate that aborts before any verb's RunE ever runs, with an output.Err envelope naming the bad batcher key, and the default (empty) active: key resolves to the identity batchifier, so the command proceeds normally through the rest of PersistentPreRunE and into the verb's own RunE.
+// an active: naming no profile is a true fail-fast gate that aborts before any verb's RunE ever runs, with an output.Err envelope naming batcher.yaml and the bad key, a rebaseline under a profile with a negative coefficient is refused the same way and leaves state.json byte-identical, and the default (empty) active: key resolves to the identity batchifier, so the command proceeds normally through the rest of PersistentPreRunE and into the verb's own RunE.
 // The steps share one hub and each rewrites its own config, so none relies on another's result.
 // The scenario calls t.Parallel as a whole and no step does, since the steps share the one hub.
 func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
@@ -962,9 +960,11 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 			t.Errorf("output missing ok:false; got %q", got)
 		}
 		// The message is JSON-encoded (its literal quotes become \"), so match
-		// the two substrings separately rather than the raw Go-quoted form.
-		if !strings.Contains(got, "unknown batcher") || !strings.Contains(got, "bogus") {
-			t.Errorf("output missing the unknown-batcher message; got %q", got)
+		// the substrings separately rather than the raw Go-quoted form.
+		for _, want := range []string{"batcher.yaml did not load", "bogus", "way forward: fix batcher.yaml under _lyx/config"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("output missing %q; got %q", want, got)
+			}
 		}
 	}) {
 		return
@@ -981,6 +981,40 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 		}
 		if !strings.Contains(out.String(), `"initialized":false`) {
 			t.Errorf("output missing initialized:false; got %q", out.String())
+		}
+	})
+
+	t.Run("rebaseline with a bad profile leaves state untouched", func(t *testing.T) {
+		seedPersistentPreRunConfig(t, h, strings.NewReplacer(
+			`active: ""`, `active: "cautious"`,
+			"fork_messages: 4", "fork_messages: -1",
+		).Replace(batcher.ConfigTemplate()))
+		geom := hubgeom.WebsterGeometry(h.Location)
+		st := &websterengine.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}
+		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, st); err != nil {
+			t.Fatalf("SaveState() error = %v", err)
+		}
+		statePath := filepath.Join(geom.WebsterDir, "state.json")
+		before, err := os.ReadFile(statePath)
+		if err != nil {
+			t.Fatalf("read state.json: %v", err)
+		}
+
+		var out strings.Builder
+		exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"rebaseline"})
+
+		if exitCode != 1 {
+			t.Fatalf("rebaseline with a negative coefficient = %d; want 1, output: %s", exitCode, out.String())
+		}
+		if !strings.Contains(out.String(), "batcher.yaml") || !strings.Contains(out.String(), "fork_messages") {
+			t.Errorf("output does not name batcher.yaml and the coefficient; got %q", out.String())
+		}
+		after, err := os.ReadFile(statePath)
+		if err != nil {
+			t.Fatalf("read state.json after: %v", err)
+		}
+		if !bytes.Equal(before, after) {
+			t.Errorf("state.json changed under a refused rebaseline:\nbefore %s\nafter  %s", before, after)
 		}
 	})
 }

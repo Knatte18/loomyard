@@ -127,7 +127,12 @@ func ProfileWeights(baseDir, profileName string) (Weights, error) {
 	if !ok {
 		return Weights{}, fmt.Errorf("batcher.yaml has no profile %q", profileName)
 	}
+	return profileWeights(profileName, prof)
+}
 
+// profileWeights reads prof's weights: map into Weights, erroring naming batcher.yaml when a
+// coefficient is missing or negative or a key is not a coefficient.
+func profileWeights(profileName string, prof profile) (Weights, error) {
 	known := make(map[string]bool, len(coefficients))
 	for _, c := range coefficients {
 		known[c.key] = true
