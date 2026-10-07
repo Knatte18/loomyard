@@ -3,6 +3,7 @@ package shedadapters
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/burlermarker"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -69,21 +71,23 @@ func TestNewBurlerProducer_Validation(t *testing.T) {
 	tests := []struct {
 		name    string
 		runner  BurlerRunner
-		attach  Shuttle
+		remover burlerengine.StrandRemover
 		pname   string
 		runDir  string
+		anchor  string
 		wantErr bool
 	}{
-		{"Valid", &shedfake.BurlerRunner{}, &shedfake.Shuttle{}, "burler", filepath.Join(dir, "runs"), false},
-		{"NilRunner", nil, &shedfake.Shuttle{}, "burler", filepath.Join(dir, "runs"), true},
-		{"NilAttachSeam", &shedfake.BurlerRunner{}, nil, "burler", filepath.Join(dir, "runs"), true},
-		{"EmptyName", &shedfake.BurlerRunner{}, &shedfake.Shuttle{}, "", filepath.Join(dir, "runs"), true},
-		{"EmptyRunDir", &shedfake.BurlerRunner{}, &shedfake.Shuttle{}, "burler", "", true},
-		{"RelativeRunDir", &shedfake.BurlerRunner{}, &shedfake.Shuttle{}, "burler", "relative/runs", true},
+		{"Valid", &shedfake.BurlerRunner{}, &shedfake.StrandRemover{}, "burler", filepath.Join(dir, "runs"), dir, false},
+		{"NilRunner", nil, &shedfake.StrandRemover{}, "burler", filepath.Join(dir, "runs"), dir, true},
+		{"NilRemover", &shedfake.BurlerRunner{}, nil, "burler", filepath.Join(dir, "runs"), dir, true},
+		{"EmptyName", &shedfake.BurlerRunner{}, &shedfake.StrandRemover{}, "", filepath.Join(dir, "runs"), dir, true},
+		{"EmptyRunDir", &shedfake.BurlerRunner{}, &shedfake.StrandRemover{}, "burler", "", dir, true},
+		{"RelativeRunDir", &shedfake.BurlerRunner{}, &shedfake.StrandRemover{}, "burler", "relative/runs", dir, true},
+		{"RelativeAnchorPath", &shedfake.BurlerRunner{}, &shedfake.StrandRemover{}, "burler", filepath.Join(dir, "runs"), "relative/anchor", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p, err := NewBurlerProducer(tt.pname, tt.runner, tt.attach, profile, burlerengine.RunOpts{}, tt.runDir, nil)
+			p, err := NewBurlerProducer(tt.pname, BurlerDeps{Runner: tt.runner, Remover: tt.remover, AnchorPath: tt.anchor}, profile, burlerengine.RunOpts{}, tt.runDir, nil)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("NewBurlerProducer() error = nil; want non-nil")
@@ -155,8 +159,7 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 		runDir := t.TempDir()
 		writeRoundPair(t, runDir, 1) // complete, but the Bouncer wrote no verdict for it
 		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-		attach := &shedfake.Shuttle{}
-		p := newBurlerProducer(t, runDir, runner, withAttach(attach), withBurlerClock(fixedClock(time.Now())))
+		p := newBurlerProducer(t, runDir, runner, withBurlerClock(fixedClock(time.Now())))
 
 		ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 		if want := roundReviewPath(runDir, 1); ptr.Path != want {
@@ -168,8 +171,8 @@ func TestBurlerProducer_RoundScan(t *testing.T) {
 		if runner.Calls != 0 {
 			t.Errorf("runner.Run calls = %d; want 0 -- a fresh round is a real LLM session spent on a review nobody judged", runner.Calls)
 		}
-		if attach.AttachCalled {
-			t.Error("Attach was called; want the hand-back to precede the live-round probe, since no round is being started")
+		if runner.ProbeCalls != 0 {
+			t.Error("ProbeRound was called; want the hand-back to precede the live-round probe, since no round is being started")
 		}
 		if n := stampedSiblingCount(t, runDir, filepath.Base(roundReviewPath(runDir, 1))); n != 0 {
 			t.Errorf("stamped archive siblings = %d; want 0 -- the unjudged round's own artifacts are what the Bouncer must judge", n)
@@ -553,6 +556,13 @@ func TestBurlerProducer_Call_ProfileCarriesDerivedFields(t *testing.T) {
 	if !stringSlicesEqual(got.ClusterExclude, []string{"lensA"}) {
 		t.Errorf("ClusterExclude = %v; want %v", got.ClusterExclude, []string{"lensA"})
 	}
+	wantMarker, err := burlermarker.Path(filepath.Dir(runDir), filepath.Dir(runDir), roundReviewPath(runDir, 2))
+	if err != nil {
+		t.Fatalf("burlermarker.Path() = %v; want nil", err)
+	}
+	if got.ReadyMarkerPath != wantMarker {
+		t.Errorf("ReadyMarkerPath = %q; want the round's marker %q", got.ReadyMarkerPath, wantMarker)
+	}
 }
 
 func TestBurlerProducer_Call_ClusterExcludeDropWarning(t *testing.T) {
@@ -594,36 +604,48 @@ func TestBurlerProducer_Call_ClusterExcludeDropWarning(t *testing.T) {
 }
 
 // TestBurlerProducer_Call_RunOptsCarriesRoundTokenAndNoteID covers the RunOpts each call hands the
-// runner: the round token, the note id derived from the run directory's name and the round, and
+// runner: the round token, both halves' model picks for the round, the note id derived from the run directory's name and the round, and
 // the opts template carried through.
 //
 //testtiming:keep pins the round token, the note id and the opts template the runner receives, which the round-scan tests do not read off the recorded opts
 func TestBurlerProducer_Call_RunOptsCarriesRoundTokenAndNoteID(t *testing.T) {
+	models := burlerengine.RoundModels{
+		Review: []burlerengine.ModelChoice{{Model: "m1", Effort: "e1"}, {Model: "m2", Effort: "e2"}},
+		Fix:    []burlerengine.ModelChoice{{Model: "f1", Effort: "g1"}},
+	}
 	tests := []struct {
-		name         string
-		runDirName   string
-		judgedRound  int
-		wantRound    string
-		wantNoteID   string
-		wantModelOpt string
+		name            string
+		runDirName      string
+		judgedRound     int
+		wantRound       string
+		wantNoteID      string
+		wantReview      burlerengine.ModelChoice
+		wantFix         burlerengine.ModelChoice
+		wantTimeoutOpts time.Duration
 	}{
-		{name: "round token and opts template", runDirName: "runs", judgedRound: 4, wantRound: "5", wantModelOpt: "m"},
-		{name: "note id", runDirName: "webster", judgedRound: 2, wantRound: "3", wantNoteID: "burler-webster-r3"},
+		{name: "round 1 runs the first entry of each list", runDirName: "runs", wantRound: "1", wantReview: models.Review[0], wantFix: models.Fix[0], wantTimeoutOpts: time.Minute},
+		{name: "a round past a list runs its last entry", runDirName: "runs", judgedRound: 4, wantRound: "5", wantReview: models.Review[1], wantFix: models.Fix[0], wantTimeoutOpts: time.Minute},
+		{name: "note id", runDirName: "webster", judgedRound: 2, wantRound: "3", wantNoteID: "burler-webster-r3", wantReview: models.Review[1], wantFix: models.Fix[0], wantTimeoutOpts: time.Minute},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			runDir := filepath.Join(t.TempDir(), tt.runDirName)
-			writeJudgedRound(t, runDir, tt.judgedRound)
+			for n := 1; n <= tt.judgedRound; n++ {
+				writeJudgedRound(t, runDir, n)
+			}
 			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-			p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(burlerengine.RunOpts{Model: tt.wantModelOpt}))
+			p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(burlerengine.RunOpts{Timeout: time.Minute}), withBurlerModels(models))
 
 			shedfake.CallOK(t, p)
 			got := runner.GotOpts[0]
 			if got.Round != tt.wantRound {
 				t.Errorf("Round = %q; want %q", got.Round, tt.wantRound)
 			}
-			if got.Model != tt.wantModelOpt {
-				t.Errorf("Model = %q; want %q (opts template carried through)", got.Model, tt.wantModelOpt)
+			if got.Review != tt.wantReview || got.Fix != tt.wantFix {
+				t.Errorf("Review, Fix = %+v, %+v; want %+v, %+v (the picks for the round)", got.Review, got.Fix, tt.wantReview, tt.wantFix)
+			}
+			if got.Timeout != tt.wantTimeoutOpts {
+				t.Errorf("Timeout = %v; want %v (opts template carried through)", got.Timeout, tt.wantTimeoutOpts)
 			}
 			if tt.wantNoteID != "" && got.NoteID != tt.wantNoteID {
 				t.Errorf("NoteID = %q; want %q", got.NoteID, tt.wantNoteID)
@@ -639,7 +661,7 @@ func TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry(t *testing.T) {
 	fixerPath := roundFixerReportPath(runDir, 1)
 	runner := &shedfake.BurlerRunner{
 		Results: []burlerengine.Result{
-			{Outcome: shuttleengine.OutcomeDied, SessionID: "s1"},
+			{Outcome: shuttleengine.OutcomeDied, Review: burlerengine.Half{SessionID: "s1"}},
 			{Outcome: shuttleengine.OutcomeDone},
 		},
 	}
@@ -685,13 +707,22 @@ func TestBurlerProducer_Call_FailedRunIsAnError(t *testing.T) {
 		wantIs       error
 	}{
 		{
-			name: "TimeoutTwiceNamesBothSessions",
+			name: "TimeoutTwiceNamesBothHalvesOfBothAttempts",
 			runner: &shedfake.BurlerRunner{Results: []burlerengine.Result{
-				{Outcome: shuttleengine.OutcomeTimeout, SessionID: "s1", RunDir: "/kept/1"},
-				{Outcome: shuttleengine.OutcomeTimeout, SessionID: "s2", RunDir: "/kept/2"},
+				{Outcome: shuttleengine.OutcomeTimeout, Review: burlerengine.Half{SessionID: "s1", RunDir: "/kept/1"}, Fix: burlerengine.Half{SessionID: "t1", RunDir: "/kept/1f"}},
+				{Outcome: shuttleengine.OutcomeTimeout, Review: burlerengine.Half{SessionID: "s2", RunDir: "/kept/2"}, Fix: burlerengine.Half{SessionID: "t2", RunDir: "/kept/2f"}},
 			}},
 			wantCalls:    2,
-			wantContains: []string{"s1", "s2"},
+			wantContains: []string{"s1", "t1", "/kept/1f", "s2", "t2", "/kept/2f"},
+		},
+		{
+			name: "NeverStartedHalfNamesItsStartError",
+			runner: &shedfake.BurlerRunner{Results: []burlerengine.Result{
+				{Outcome: shuttleengine.OutcomeDied, NotStarted: true, Review: burlerengine.Half{StartError: "run dir /r1 strand g1 removed"}},
+				{Outcome: shuttleengine.OutcomeDied, NotStarted: true, Review: burlerengine.Half{StrandGUID: "g2"}, Fix: burlerengine.Half{StartError: "run dir /r2 strand g3 removed"}},
+			}},
+			wantCalls:    2,
+			wantContains: []string{"review never started (run dir /r1 strand g1 removed)", "fix not started", "fix never started (run dir /r2 strand g3 removed)"},
 		},
 		{
 			name:      "RunnerErrorWrapped",
@@ -885,68 +916,49 @@ func TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer(t *testing.T)
 }
 
 // TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically is the regression guard for the resume hole:
-// probeLiveRound must pass p.opts.Gate, followed by the round's own review-parse entry, into the gated attach, leaving the caller's gate list as it was,
-// and an attached round's failed gate -- a told entry or the review entry -- must map identically to the spawn path's -- Stuck with an empty pointer, archived, retry untouched.
-// The round's review file holds unparseable content,
-// so the review entry fails whenever it is reached.
+// the live-round probe must hand the runner the caller's gate list, leaving it as it was, so a resumed fixer is gated exactly as a fresh one is,
+// and a resumed round's failed gate must map identically to the spawn path's -- Stuck with an empty pointer, archived, retry untouched.
 func TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name string
-		// toldPasses makes the told entry pass,
-		// so the failure comes from the review entry behind it.
-		toldPasses bool
-	}{
-		{name: "failing told entry", toldPasses: false},
-		{name: "failing review entry", toldPasses: true},
+	runDir := t.TempDir()
+	reviewPath := roundReviewPath(runDir, 1)
+	runner := &shedfake.BurlerRunner{
+		Results:    []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}},
+		LiveRounds: []burlerengine.LiveRound{roundWith(burlerengine.HalfLive, burlerengine.HalfLive)},
+		ResumeResults: []burlerengine.Result{{
+			Outcome: shuttleengine.OutcomeDone,
+			Gate:    &shuttleengine.GateOutcome{Passed: false},
+		}},
 	}
+	opts := burlerengine.RunOpts{Gate: shuttleengine.GateSpec{{Name: "told", Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
+		return shuttleengine.GateResult{}, nil
+	}}}}
+	p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(opts), withBurlerClock(fixedClock(time.Now())))
+	// Only the review file exists at Call entry -- a complete pair here would make highestCompleteRound treat round 1 as already finished and hand back before the probe is ever reached.
+	writeRoundFile(t, reviewPath)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			runDir := t.TempDir()
-			reviewPath := roundReviewPath(runDir, 1)
-			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-			attach := &shedfake.Shuttle{
-				AttachFound: true,
-				AttachResult: shuttleengine.Result{
-					Outcome: shuttleengine.OutcomeDone,
-					Gate:    &shuttleengine.GateOutcome{Passed: false},
-				},
-			}
-			opts := burlerengine.RunOpts{Gate: shuttleengine.GateSpec{{Name: "told", Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
-				return shuttleengine.GateResult{Passed: tt.toldPasses}, nil
-			}}}}
-			p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(opts), withAttach(attach), withBurlerClock(fixedClock(time.Now())))
-			// Only the review file exists at Call entry -- a complete pair here would make highestCompleteRound treat round 1 as already finished and hand back before probeLiveRound is ever reached,
-			// exactly as the pre-existing attach tests in this file are careful to leave incomplete.
-			writeRoundFile(t, reviewPath)
-
-			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-			if ptr.Path != "" {
-				t.Errorf("Call() pointer.Path = %q; want empty, identically to the spawn path's own gate-failed exit", ptr.Path)
-			}
-			if ptr.GateAttempts == nil || *ptr.GateAttempts != 0 {
-				t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0", ptr.GateAttempts)
-			}
-			if want := "gate did not pass after 0 attempts; findings: "; ptr.Reason != want {
-				t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
-			}
-			if len(attach.GotAttachGateSpec) != 2 || attach.GotAttachGateSpec[0].Name != "told" || attach.GotAttachGateSpec[1].Name != "review" {
-				t.Errorf("AttachGated gate spec = %+v; want the told entry followed by the review entry", attach.GotAttachGateSpec)
-			}
-			if len(opts.Gate) != 1 {
-				t.Errorf("caller's gate list has %d entries; want it left at 1", len(opts.Gate))
-			}
-			if runner.Calls != 0 {
-				t.Errorf("runner.Run calls = %d; want 0 -- an attached round is never respawned", runner.Calls)
-			}
-			if _, statErr := os.Stat(reviewPath); !os.IsNotExist(statErr) {
-				t.Error("gate-failed attached round's review file was not archived away")
-			}
-		})
+	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
+	if ptr.Path != "" {
+		t.Errorf("Call() pointer.Path = %q; want empty, identically to the spawn path's own gate-failed exit", ptr.Path)
+	}
+	if ptr.GateAttempts == nil || *ptr.GateAttempts != 0 {
+		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0", ptr.GateAttempts)
+	}
+	if want := "gate did not pass after 0 attempts; findings: "; ptr.Reason != want {
+		t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
+	}
+	if got := runner.GotProbeOpts[0].Gate; len(got) != 1 || got[0].Name != "told" {
+		t.Errorf("probe gate spec = %+v; want the caller's one told entry", got)
+	}
+	if len(opts.Gate) != 1 {
+		t.Errorf("caller's gate list has %d entries; want it left at 1", len(opts.Gate))
+	}
+	if runner.Calls != 0 {
+		t.Errorf("runner.Run calls = %d; want 0 -- a resumed round is never respawned", runner.Calls)
+	}
+	if _, statErr := os.Stat(reviewPath); !os.IsNotExist(statErr) {
+		t.Error("gate-failed resumed round's review file was not archived away")
 	}
 }
 
@@ -971,8 +983,8 @@ func TestBurlerProducer_Call_ArchiveOnExit(t *testing.T) {
 		reviewPath := roundReviewPath(runDir, 1)
 		runner := &shedfake.BurlerRunner{
 			Results: []burlerengine.Result{
-				{Outcome: shuttleengine.OutcomeDied, SessionID: "s1"},
-				{Outcome: shuttleengine.OutcomeDied, SessionID: "s2"},
+				{Outcome: shuttleengine.OutcomeDied, Review: burlerengine.Half{SessionID: "s1"}},
+				{Outcome: shuttleengine.OutcomeDied, Review: burlerengine.Half{SessionID: "s2"}},
 			},
 		}
 		runner.DuringRun = func(i int) {
@@ -993,8 +1005,8 @@ func TestBurlerProducer_Call_ArchiveOnExit(t *testing.T) {
 		for _, notStarted := range []bool{true, false} {
 			runDir := t.TempDir()
 			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{
-				{Outcome: shuttleengine.OutcomeDied, SessionID: "s1", NotStarted: notStarted},
-				{Outcome: shuttleengine.OutcomeDied, SessionID: "s2", NotStarted: notStarted},
+				{Outcome: shuttleengine.OutcomeDied, Review: burlerengine.Half{SessionID: "s1"}, NotStarted: notStarted},
+				{Outcome: shuttleengine.OutcomeDied, Review: burlerengine.Half{SessionID: "s2"}, NotStarted: notStarted},
 			}}
 			p := newBurlerProducer(t, runDir, runner)
 
@@ -1023,6 +1035,34 @@ func TestBurlerProducer_Call_ArchiveOnExit(t *testing.T) {
 			t.Fatal("Call() error = nil; want non-nil")
 		}
 		assertUnchangedRoundOnRerun(t, runDir)
+	})
+
+	t.Run("HalfNotStoppedReturnsWithoutArchivingOrRetrying", func(t *testing.T) {
+		runDir := t.TempDir()
+		reviewPath := roundReviewPath(runDir, 1)
+		fixerPath := roundFixerReportPath(runDir, 1)
+		runner := &shedfake.BurlerRunner{
+			Errs: []error{fmt.Errorf("%w: strand g", burlerengine.ErrHalfNotStopped)},
+		}
+		runner.DuringRun = func(int) {
+			writeRoundFile(t, reviewPath)
+			writeRoundFile(t, fixerPath)
+		}
+		p := newBurlerProducer(t, runDir, runner)
+
+		_, _, err := p.Call(context.Background())
+
+		if !errors.Is(err, burlerengine.ErrHalfNotStopped) {
+			t.Fatalf("Call() error = %v; want it to wrap ErrHalfNotStopped", err)
+		}
+		if runner.Calls != 1 {
+			t.Errorf("runner.Calls = %d; want 1 -- a half that cannot be stopped is never retried", runner.Calls)
+		}
+		for _, path := range []string{reviewPath, fixerPath} {
+			if _, statErr := os.Stat(path); statErr != nil {
+				t.Errorf("%s was archived away (%v); a live half may still write it", path, statErr)
+			}
+		}
 	})
 
 	t.Run("RunnerErrorWithDoneOutcomeAndBothFilesWritten", func(t *testing.T) {

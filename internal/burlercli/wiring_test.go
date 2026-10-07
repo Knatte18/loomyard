@@ -44,6 +44,7 @@ package burlercli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -53,6 +54,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/burlermarker"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -61,8 +63,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 // hubLocation returns a *lyxcwd.Location standing in for a real hub's prime.
@@ -132,6 +136,9 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 		if c.reedUp != nil {
 			t.Error("wireHub armed c.reedUp; want nil -- hub mode's reed session is not run's to boot")
 		}
+		if c.markerRoot != loc.AnchorPath() || c.markerBase != loc.AnchorPath() {
+			t.Errorf("c.markerRoot, c.markerBase = %q, %q; want the anchor %q for both", c.markerRoot, c.markerBase, loc.AnchorPath())
+		}
 	})
 
 	t.Run("Standalone", func(t *testing.T) {
@@ -158,6 +165,9 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 		}
 		if c.reedUp == nil {
 			t.Error("wireStandalone left c.reedUp nil; want the in-process reed bring-up seam armed")
+		}
+		if c.markerRoot != target || c.markerBase != stateDir {
+			t.Errorf("c.markerRoot, c.markerBase = %q, %q; want the target %q and the state directory %q", c.markerRoot, c.markerBase, target, stateDir)
 		}
 	})
 }
@@ -341,6 +351,7 @@ func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *tes
 		FixScope:        burlerengine.FixScopeOverlay,
 		ReviewPath:      "review.md",
 		FixerReportPath: "fixer.md",
+		ReadyMarkerPath: "review.md.ready",
 	}
 
 	_, err := c.engine.Run(profile, burlerengine.RunOpts{})
@@ -587,41 +598,178 @@ func TestReedUpSeam_WatcherLifecycle(t *testing.T) {
 	})
 }
 
-// TestRunCmd_PassesWatchTrueToReedUp proves burler's run verb calls c.reedUp with watch: true, the
-// disposition card 43 fixes for it -- driven through run's own RunE with a recording fake in
-// c.reedUp rather than by reading source text. The fake returns an error so the call terminates
-// immediately after the reedUp check, never reaching c.engine (left nil on this fixture), exactly the
-// same shape internal/webstercli's recover-batch test in cli_test.go uses for its own call site.
-func TestRunCmd_PassesWatchTrueToReedUp(t *testing.T) {
+// diedShuttle is a burlerengine.Shuttle double whose started halves all report died at once, so a round driven through it ends at once with the reviewer's died outcome; it records every spec it starts.
+type diedShuttle struct {
+	specs []shuttleengine.Spec
+}
+
+func (s *diedShuttle) StartGated(spec shuttleengine.Spec, _ shuttleengine.GateSpec) (burlerengine.Handle, error) {
+	s.specs = append(s.specs, spec)
+	return diedHandle{role: spec.Role}, nil
+}
+
+// ProbeGated finds no live run, since a diedShuttle only starts halves.
+func (s *diedShuttle) ProbeGated(shuttleengine.Spec, shuttleengine.GateSpec) (burlerengine.Handle, bool, error) {
+	return nil, false, nil
+}
+
+// diedHandle is the started half of a diedShuttle.
+type diedHandle struct{ role string }
+
+func (h diedHandle) StrandGUID() string { return h.role + "-guid" }
+
+func (h diedHandle) RunDir() string { return "/kept/" + h.role }
+
+func (h diedHandle) Wait() (shuttleengine.Result, error) {
+	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, nil
+}
+
+// noStrandRemover is a burlerengine.StrandRemover that stops nothing, since a diedShuttle's halves are already over.
+type noStrandRemover struct{}
+
+func (noStrandRemover) RemoveStrandIfLive(string) error { return nil }
+
+// TestRunCmd drives burler's run verb through its own RunE with seams in place of the live substrate.
+// One row proves it calls c.reedUp with watch: true, through a recording fake that fails, so the call ends right after the reedUp check and c.engine stays nil.
+// One row proves it maps the four model flags onto the two halves and reports the ready marker burlermarker.Path derives over the wired root and base, and each half's identity.
+// One row proves it rejects the retired --model flag.
+// One row proves it refuses a review-path outside the wired root with the way forward.
+//
+//testtiming:keep the three round-driving rows pin the run verb's flag mapping, envelope and review-path refusal, which no other test reaches
+func TestRunCmd(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	profilePath := filepath.Join(dir, "profile.yaml")
-	if err := os.WriteFile(profilePath, []byte("rubric: placeholder\n"), 0o644); err != nil {
-		t.Fatalf("write profile: %v", err)
+	const profileYAML = `target:
+  paths: [target.txt]
+fasit:
+  paths: [fasit.txt]
+rubric: placeholder
+fix-scope: source
+review-path: %s
+fixer-report-path: reviews/fixer-report.md
+`
+
+	// newRound builds a CLI over an engine on a diedShuttle, rooted at a fresh directory holding the profile.
+	newRound := func(t *testing.T, reviewPath string) (c *burlerCLI, shuttle *diedShuttle, profilePath, root, markerBase string) {
+		t.Helper()
+		root, markerBase = t.TempDir(), t.TempDir()
+		for _, name := range []string{"target.txt", "fasit.txt"} {
+			if err := os.WriteFile(filepath.Join(root, name), []byte(name), 0o644); err != nil {
+				t.Fatalf("write %s: %v", name, err)
+			}
+		}
+		profilePath = filepath.Join(root, "profile.yaml")
+		if err := os.WriteFile(profilePath, []byte(fmt.Sprintf(profileYAML, reviewPath)), 0o644); err != nil {
+			t.Fatalf("write profile: %v", err)
+		}
+		shuttle = &diedShuttle{}
+		engine := burlerengine.New(shuttle, noStrandRemover{}, burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root}, burlerengine.Config{}, stencilkit.Seed(t), "")
+		c = &burlerCLI{cwd: root, engine: engine, mode: "standalone", markerRoot: root, markerBase: markerBase}
+		return c, shuttle, profilePath, root, markerBase
 	}
 
-	c := &burlerCLI{cwd: dir}
-	var bringUps int
-	var gotWatch bool
-	c.reedUp = func(ctx context.Context, watch bool) error {
-		bringUps++
-		gotWatch = watch
-		return errors.New("no tmux server available in this test")
-	}
+	t.Run("passes watch true to the reed bring-up", func(t *testing.T) {
+		t.Parallel()
 
-	var out bytes.Buffer
-	exitCode := clihelp.Execute(c.runCmd(), &out, []string{"--profile", profilePath})
+		dir := t.TempDir()
+		profilePath := filepath.Join(dir, "profile.yaml")
+		if err := os.WriteFile(profilePath, []byte("rubric: placeholder\nreview-path: review.md\n"), 0o644); err != nil {
+			t.Fatalf("write profile: %v", err)
+		}
 
-	if bringUps != 1 {
-		t.Fatalf("c.reedUp calls = %d; want exactly 1", bringUps)
-	}
-	if !gotWatch {
-		t.Error("c.reedUp watch = false; want true -- run binds the watcher to the run's own context")
-	}
-	if exitCode != 1 {
-		t.Fatalf("run with a failing reed bring-up = %d; want 1, output: %s", exitCode, out.String())
-	}
+		c := &burlerCLI{cwd: dir, markerRoot: dir, markerBase: dir}
+		var bringUps int
+		var gotWatch bool
+		c.reedUp = func(ctx context.Context, watch bool) error {
+			bringUps++
+			gotWatch = watch
+			return errors.New("no tmux server available in this test")
+		}
+
+		var out bytes.Buffer
+		exitCode := clihelp.Execute(c.runCmd(), &out, []string{"--profile", profilePath})
+
+		if bringUps != 1 {
+			t.Fatalf("c.reedUp calls = %d; want exactly 1", bringUps)
+		}
+		if !gotWatch {
+			t.Error("c.reedUp watch = false; want true -- run binds the watcher to the run's own context")
+		}
+		if exitCode != 1 {
+			t.Fatalf("run with a failing reed bring-up = %d; want 1, output: %s", exitCode, out.String())
+		}
+	})
+
+	t.Run("maps the four model flags onto the halves and reports the marker", func(t *testing.T) {
+		t.Parallel()
+
+		c, shuttle, profilePath, root, markerBase := newRound(t, "reviews/review.md")
+		var out bytes.Buffer
+		exitCode := clihelp.Execute(c.runCmd(), &out, []string{
+			"--profile", profilePath,
+			"--review-model", "rm", "--review-effort", "re", "--fix-model", "fm", "--fix-effort", "fe",
+		})
+		if exitCode != 0 {
+			t.Fatalf("run = exit %d, output: %s", exitCode, out.String())
+		}
+
+		var envelope map[string]any
+		if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+			t.Fatalf("envelope %q is not JSON: %v", out.String(), err)
+		}
+		wantMarker, err := burlermarker.Path(root, markerBase, "reviews/review.md")
+		if err != nil {
+			t.Fatalf("burlermarker.Path() = %v; want nil", err)
+		}
+		if envelope["readyMarkerPath"] != wantMarker {
+			t.Errorf("readyMarkerPath = %v; want %q (burlermarker.Path over the wired root and base)", envelope["readyMarkerPath"], wantMarker)
+		}
+		for key, role := range map[string]string{"review": "burler-review", "fix": "burler-fix"} {
+			half, ok := envelope[key].(map[string]any)
+			if !ok || half["strandGuid"] != role+"-guid" {
+				t.Errorf("envelope %s = %v; want the %s half with strand %q", key, envelope[key], role, role+"-guid")
+			}
+		}
+
+		got := map[string][2]string{}
+		for _, spec := range shuttle.specs {
+			got[spec.Role] = [2]string{spec.Model, spec.Effort}
+		}
+		want := map[string][2]string{"burler-review": {"rm", "re"}, "burler-fix": {"fm", "fe"}}
+		if len(got) != len(want) || got["burler-review"] != want["burler-review"] || got["burler-fix"] != want["burler-fix"] {
+			t.Errorf("started halves' (model, effort) = %v; want %v", got, want)
+		}
+	})
+
+	t.Run("rejects the retired --model flag", func(t *testing.T) {
+		t.Parallel()
+
+		c, shuttle, profilePath, _, _ := newRound(t, "reviews/review.md")
+		var out bytes.Buffer
+		exitCode := clihelp.Execute(c.runCmd(), &out, []string{"--profile", profilePath, "--model", "m"})
+
+		if exitCode == 0 || !strings.Contains(out.String(), "--model") {
+			t.Errorf("run --model = exit %d, output %q; want a non-zero exit naming the unknown flag", exitCode, out.String())
+		}
+		if len(shuttle.specs) != 0 {
+			t.Errorf("started halves = %d; want none for a rejected flag", len(shuttle.specs))
+		}
+	})
+
+	t.Run("refuses a review-path outside the wired root with the way forward", func(t *testing.T) {
+		t.Parallel()
+
+		c, shuttle, profilePath, _, _ := newRound(t, "../outside/review.md")
+		var out bytes.Buffer
+		exitCode := clihelp.Execute(c.runCmd(), &out, []string{"--profile", profilePath})
+
+		if exitCode != 1 || !strings.Contains(out.String(), "place the review path under") {
+			t.Errorf("run = exit %d, output %q; want exit 1 with the way forward", exitCode, out.String())
+		}
+		if len(shuttle.specs) != 0 {
+			t.Errorf("started halves = %d; want none for a refused review path", len(shuttle.specs))
+		}
+	})
 }
 
 // TestProductionFiles_NeverReferenceHubWatchdogMechanism proves standalone's production files never reference the detached per-hub watchdog daemon's mechanism: standalone computes no hub lock path (fabricengine.HubScratchDir), spawns no daemon (the "reed watchdog" verb), and never calls the seam that owns the daemon's detached spawn (reedengine.SpawnWatchdog).

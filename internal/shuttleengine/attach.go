@@ -2,7 +2,7 @@
 // there a still-live, never-terminated run for this exact output-file set" before a caller respawns
 // a fresh agent over one that may already be working. It scans the run-dir root for a matching
 // run.json, dispositions each match, and — on exactly one attachable match — reconstructs a *Run
-// over the persisted state and hands it to Wait, never calling Start.
+// over the persisted state and hands it to Wait (or, for ProbeGated, to the caller unwaited), never calling Start.
 // The disposition consults TWO facts in a fixed precedence, not one: the run's own file contract
 // first, reed's liveness answer only after. A matched record still reading runOutcomeRunning whose
 // every declared output file is already on disk is a run that FINISHED, and is harvested whatever
@@ -42,7 +42,7 @@ import (
 // Before it answers not found it removes the live strand of every respawn-eligible candidate,
 // as AttachGated documents.
 func (r *Runner) Attach(spec Spec) (Result, bool, error) {
-	return r.attach(spec, GateSpec{}, true)
+	return r.attachAndWait(spec, GateSpec{}, true)
 }
 
 // AttachGated is Attach, gated: a run it reconstructs and waits on carries gate exactly as a fresh
@@ -57,6 +57,15 @@ func (r *Runner) Attach(spec Spec) (Result, bool, error) {
 // It removes only strands of runs whose record declares the exact output-file set of spec;
 // a probe that attaches or refuses (errored or several attachable candidates) removes nothing.
 func (r *Runner) AttachGated(spec Spec, gate GateSpec) (Result, bool, error) {
+	return r.attachAndWait(spec, gate, true)
+}
+
+// ProbeGated is AttachGated's probe without the wait: the same spec normalization, candidate scan, reed gates, dispositions, multiplicity refusals and superseded-strand removal on the not-found answer,
+// but a found run comes back as its reconstructed handle (fresh deadline, gate set) and nothing has observed it yet.
+// The caller waits on the handle itself, so it can hold two probed runs and wait on both concurrently.
+// The not-found answer is a nil handle, false and a nil error.
+// A caller that never waits leaves the run's record reading running; a later Wait or attach over the same record classifies it as it would have before.
+func (r *Runner) ProbeGated(spec Spec, gate GateSpec) (*Run, bool, error) {
 	return r.attach(spec, gate, true)
 }
 
@@ -64,19 +73,30 @@ func (r *Runner) AttachGated(spec Spec, gate GateSpec) (Result, bool, error) {
 // for a caller that waits on a live run but starts nothing after a not-found answer.
 // It removes nothing on any path.
 func (r *Runner) AttachIfLive(spec Spec) (Result, bool, error) {
-	return r.attach(spec, GateSpec{}, false)
+	return r.attachAndWait(spec, GateSpec{}, false)
 }
 
-// attach is the one body behind Attach, AttachGated and AttachIfLive;
+// attachAndWait is the probe followed by Wait on a found run, the shared tail of Attach, AttachGated and AttachIfLive.
+func (r *Runner) attachAndWait(spec Spec, gate GateSpec, removeSuperseded bool) (Result, bool, error) {
+	run, found, err := r.attach(spec, gate, removeSuperseded)
+	if err != nil || !found {
+		return Result{}, found, err
+	}
+	result, err := run.Wait()
+	return result, true, err
+}
+
+// attach is the one probe body behind Attach, AttachGated, AttachIfLive and ProbeGated;
 // removeSuperseded is false only for AttachIfLive.
-func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (Result, bool, error) {
+// It returns the reconstructed run without waiting on it.
+func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (*Run, bool, error) {
 	if r.toldErr != nil {
-		return Result{}, false, r.toldErr
+		return nil, false, r.toldErr
 	}
 
 	normalized, err := normalizeAttachSpec(spec, r.worktreeRoot, r.cfg)
 	if err != nil {
-		return Result{}, false, err
+		return nil, false, err
 	}
 
 	// Told-Geometry / Lyxdirs Single-Declarer Invariants: the scan root comes from the existing
@@ -84,7 +104,7 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (Result
 	root := runDirRoot(r.cfg, r.anchorPath)
 	candidates, err := collectAttachCandidates(root, normalized.OutputFiles)
 	if err != nil {
-		return Result{}, false, err
+		return nil, false, err
 	}
 
 	// Zero candidates returns immediately, without reading reed state at all. This precedence is
@@ -93,7 +113,7 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (Result
 	// otherwise hard-error on its very first Discussion-Write or Plan-Write call, with nothing to
 	// attach to and nothing wrong.
 	if len(candidates) == 0 {
-		return Result{}, false, nil
+		return nil, false, nil
 	}
 
 	// First reed read: does reed have a state table at all. This must not be answered via
@@ -111,18 +131,18 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (Result
 	if err != nil {
 		if finished, ok := soleFinishedCandidate(candidates, normalized); ok {
 			logger.Warn("shuttle: attach: harvesting a finished run despite an unreadable reed state file", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "error", err, "seeAlso", "lyx reed status")
-			return r.reconstructAndWait(finished, normalized, gate)
+			return r.reconstruct(finished, normalized, gate), true, nil
 		}
 		warnAttachCandidates(candidates, "shuttle: attach: load reed state failed", err)
-		return Result{}, false, fmt.Errorf("shuttle: attach: load reed state at %s: %w — an absent or unreadable strand table is not evidence any run is dead; check \"lyx reed status\"", dotLyxDir, err)
+		return nil, false, fmt.Errorf("shuttle: attach: load reed state at %s: %w — an absent or unreadable strand table is not evidence any run is dead; check \"lyx reed status\"", dotLyxDir, err)
 	}
 	if st == nil {
 		if finished, ok := soleFinishedCandidate(candidates, normalized); ok {
 			logger.Warn("shuttle: attach: harvesting a finished run despite an absent reed state file", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "seeAlso", "lyx reed status")
-			return r.reconstructAndWait(finished, normalized, gate)
+			return r.reconstruct(finished, normalized, gate), true, nil
 		}
 		warnAttachCandidates(candidates, "shuttle: attach: no reed state file", nil)
-		return Result{}, false, fmt.Errorf("shuttle: attach: no reed state file at %s — an absent strand table is not evidence any of the %d matching run dir(s) are dead; check \"lyx reed status\"", dotLyxDir, len(candidates))
+		return nil, false, fmt.Errorf("shuttle: attach: no reed state file at %s — an absent strand table is not evidence any of the %d matching run dir(s) are dead; check \"lyx reed status\"", dotLyxDir, len(candidates))
 	}
 
 	// Second reed read, only once the first reported present: is this guid tracked, and is its pane
@@ -131,10 +151,10 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (Result
 	if err != nil {
 		if finished, ok := soleFinishedCandidate(candidates, normalized); ok {
 			logger.Warn("shuttle: attach: harvesting a finished run despite a failing reed status", "runDir", finished.runDir, "strandGUID", finished.state.StrandGUID, "error", err, "seeAlso", "lyx reed status")
-			return r.reconstructAndWait(finished, normalized, gate)
+			return r.reconstruct(finished, normalized, gate), true, nil
 		}
 		warnAttachCandidates(candidates, "shuttle: attach: reed status failed", err)
-		return Result{}, false, fmt.Errorf("shuttle: attach: reed status: %w — check \"lyx reed status\"", err)
+		return nil, false, fmt.Errorf("shuttle: attach: reed status: %w — check \"lyx reed status\"", err)
 	}
 
 	minAge := 2 * time.Duration(r.cfg.StartupTimeoutS) * time.Second
@@ -155,18 +175,18 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (Result
 	// The multiplicity rule applies only to the surviving attachable set, never to raw matches — see
 	// candidate-evaluation-order.
 	if len(errored) > 0 {
-		return Result{}, false, fmt.Errorf("shuttle: attach: %d candidate run dir(s) under %s cannot be confirmed dead or alive (untracked or with a cleared pane binding, younger than %s): %s — check \"lyx reed status\" and either wait or clear the stale directory by hand", len(errored), root, minAge, joinRunDirs(errored))
+		return nil, false, fmt.Errorf("shuttle: attach: %d candidate run dir(s) under %s cannot be confirmed dead or alive (untracked or with a cleared pane binding, younger than %s): %s — check \"lyx reed status\" and either wait or clear the stale directory by hand", len(errored), root, minAge, joinRunDirs(errored))
 	}
 	if len(attachable) > 1 {
-		return Result{}, false, fmt.Errorf("shuttle: attach: %d live runs match the same output files, refusing to pick one: %s", len(attachable), joinRunDirs(attachable))
+		return nil, false, fmt.Errorf("shuttle: attach: %d live runs match the same output files, refusing to pick one: %s", len(attachable), joinRunDirs(attachable))
 	}
 	if len(attachable) == 0 {
 		if removeSuperseded {
 			if err := r.removeSupersededStrands(respawnEligible, status.Strands); err != nil {
-				return Result{}, false, err
+				return nil, false, err
 			}
 		}
-		return Result{}, false, nil
+		return nil, false, nil
 	}
 
 	chosen := attachable[0]
@@ -175,7 +195,7 @@ func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (Result
 			chosen.state.StrandName = strand.Name
 		}
 	}
-	return r.reconstructAndWait(chosen, normalized, gate)
+	return r.reconstruct(chosen, normalized, gate), true, nil
 }
 
 // removeSupersededStrands removes the strand of each candidate that reed tracks as live,
@@ -241,8 +261,7 @@ func soleFinishedCandidate(candidates []attachCandidate, spec Spec) (attachCandi
 	return finished, true
 }
 
-// reconstructAndWait builds a *Run over candidate's persisted state and blocks on its Wait,
-// returning Wait's own Result and error alongside a true "found" bool.
+// reconstruct builds a *Run over candidate's persisted state, without waiting on it.
 //
 // It is a shared seam rather than inline code because Attach reaches it from two kinds of place: the
 // ordinary one-attachable-match tail, and each of the three reed-gate harvests above. Duplicating
@@ -252,7 +271,7 @@ func soleFinishedCandidate(candidates []attachCandidate, spec Spec) (attachCandi
 // gate is set on the reconstructed handle, so a resumed run is gated exactly as a fresh RunGated one
 // is — the gate travels with AttachGated's own caller-told GateSpec, never with anything read off the
 // persisted candidate.
-func (r *Runner) reconstructAndWait(candidate attachCandidate, normalized Spec, gate GateSpec) (Result, bool, error) {
+func (r *Runner) reconstruct(candidate attachCandidate, normalized Spec, gate GateSpec) *Run {
 	// A legacy asking candidate is reset to running so the run's own finalize records its verdict.
 	// With a recorded AskingOffset it replays from there and counts that old ask as notified:
 	// the parent already saw that run halt, so the ask is neither read nor notified again.
@@ -295,8 +314,7 @@ func (r *Runner) reconstructAndWait(candidate attachCandidate, normalized Spec, 
 	// a spawn.
 	logger.Info("shuttle: run attached", "runDir", candidate.runDir, "strandGUID", candidate.state.StrandGUID, "sessionID", candidate.state.SessionID)
 
-	result, err := run.Wait()
-	return result, true, err
+	return run
 }
 
 // normalizeAttachSpec returns a normalized copy of spec, performing exactly three of

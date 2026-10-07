@@ -1,31 +1,36 @@
-<!-- This is burler round instruction 3 of 3: job B — fix every finding,
+<!-- This is burler round instruction 3 of 3: the fixer's step — fix every finding,
      the write-surface/git discipline for the fix, the fixer-report, and the never-push/never-touch-`_lyx` rule.
      It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go),
      seeded to <hub>/_board/_lyx/stencils/burler/ and read from there at call time by composePrompt
-     (prompt.go) via internal/stencil, then read by the agent only when the round orchestrator
-     (burler-template-round-orchestrator.md) directs it here, after instructions 1 and 2.
+     (prompt.go) via internal/stencil, then read by the fixer only when the fixer orchestrator
+     (burler-template-fix-orchestrator.md) directs it here, after it has oriented and the review is ready.
      Every marker below is a top-level {{.X}} substitution;
      stencil.Fill requires all three non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). -->
 
 ## Fix-everything rule (BLOCKING — do not skip low-severity findings)
 
-Every finding you record in the review gets fixed in job B — all severities, including LOW and NIT.
+Every finding in the review gets fixed — all severities, including LOW and NIT.
 Severity affects how a finding is reported, not whether it gets fixed.
-The only legitimate reason to leave a finding unfixed is something you genuinely cannot do alone this round (an operator decision on a real tradeoff,
+The one exception is a finding whose premise you show to be false against the code or the fasit: it is disputed, not fixed.
+A disputed finding goes into a `Disputed` section of the fixer-report with the finding id and the evidence, the cited code or fasit text that contradicts the finding's premise.
+A dispute is allowed only for a factually wrong premise;
+severity, size, cost, or disagreement with the rubric never justify one.
+The other legitimate reason to leave a finding unfixed is something you genuinely cannot do alone this round (an operator decision on a real tradeoff,
 or a capability you do not have);
-even then you must say so explicitly, with the specific reason, in the fixer-report's deferred section.
+even then you must say so explicitly, with the specific reason, in the fixer-report's deferred section, which keeps that meaning.
 Never leave a finding unfixed just because it looked small — small findings are usually the cheapest to fix, not a reason to skip them.
 A fix adds a test only when the finding is a coverage gap; for any other finding it corrects the existing test that asserted the wrong thing, per `PATTERN-test-economy`.
 
-## Fix-scope rules — your write surface and git discipline for job B
+## Fix-scope rules — your write surface and git discipline
 
 {{.fix_scope_rules}}
 
 ## Fixer-report rule (write this to `{{.fixer_report_path}}`)
 
 Write `{{.fixer_report_path}}` unconditionally, every round — even when the verdict was APPROVED and nothing needed fixing, in which case state "nothing fixed".
-Include what you changed and a deferred-with-reason section (empty if nothing was deferred).
-The round is not done until BOTH `{{.review_path}}` and `{{.fixer_report_path}}` exist on disk — a skipped fixer-report leaves the round looking unfinished.
+Include what you changed, a `Disputed` section (empty if you disputed nothing) and a deferred-with-reason section (empty if nothing was deferred).
+The review at `{{.review_path}}` is the reviewer's file: you never write it.
+The round is not done until `{{.fixer_report_path}}` exists on disk — a skipped fixer-report leaves the round looking unfinished.
 
 ## Never push, never touch `_lyx`
 

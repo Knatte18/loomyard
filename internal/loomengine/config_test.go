@@ -75,7 +75,8 @@ func templateConfig() Config {
 		DiscussionInteractive:    false,
 		Plan:                     "opus[medium]",
 		PlanTimeoutMin:           120,
-		Review:                   "sonnet[medium]",
+		Review:                   ModelSpecList{"sonnet[medium]"},
+		Fix:                      ModelSpecList{"opus[medium]"},
 		Judge:                    "sonnet[medium]",
 		ReviewTimeoutMin:         240,
 		Friction:                 "sonnet[medium]",
@@ -111,6 +112,16 @@ review_timeout_min: 240
 			name:     "retired selfreport key ignored",
 			contents: ConfigTemplate() + "selfreport: false\n",
 			mutate:   func(*Config) {},
+		},
+		{
+			name:   "review as a per-round list",
+			values: map[string]string{"review": "\n  - sonnet[low]\n  - opus[high]"},
+			mutate: func(c *Config) { c.Review = ModelSpecList{"sonnet[low]", "opus[high]"} },
+		},
+		{
+			name:   "fix as a per-round list",
+			values: map[string]string{"fix": "\n  - opus[low]\n  - opus[high]"},
+			mutate: func(c *Config) { c.Fix = ModelSpecList{"opus[low]", "opus[high]"} },
 		},
 		{
 			name:   "discussion_interactive true",
@@ -156,7 +167,7 @@ review_timeout_min: 240
 			name:     "keys absent from a seeded file take template defaults",
 			contents: legacyContents,
 			mutate: func(c *Config) {
-				c.Discussion, c.Plan, c.Review = "opus[effort=high]", "opus[effort=high]", "opus[effort=high]"
+				c.Discussion, c.Plan, c.Review = "opus[effort=high]", "opus[effort=high]", ModelSpecList{"opus[effort=high]"}
 			},
 		},
 		{
@@ -201,7 +212,7 @@ review_timeout_min: 240
 			if err != nil {
 				t.Fatalf("LoadConfig(%q, \"loom\") = _, %v; want nil error", baseDir, err)
 			}
-			if got != want {
+			if !reflect.DeepEqual(got, want) {
 				t.Errorf("LoadConfig() = %+v; want %+v", got, want)
 			}
 		})
@@ -221,7 +232,13 @@ func TestLoadConfig_Refuses(t *testing.T) {
 	}{
 		{"malformed discussion spec", "discussion", `"opus[effort"`, nil},
 		{"malformed plan spec", "plan", `"opus[effort"`, nil},
-		{"malformed review spec", "review", `"opus[effort"`, nil},
+		{"malformed review spec", "review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
+		{"malformed fix spec", "fix", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
+		{"malformed later review entry", "review", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}},
+		{"empty review list", "review", "[]", []string{"empty", "a non-empty list of model-specs"}},
+		{"empty fix list", "fix", "[]", []string{"empty", "a non-empty list of model-specs"}},
+		{"mapping review value", "review", "\n  model: opus", []string{"a non-empty list of model-specs"}},
+		{"mapping inside a fix list", "fix", "\n  - model: opus", []string{"a non-empty list of model-specs"}},
 		{"malformed judge spec", "judge", `"sonnet[medium"`, nil},
 		{"malformed friction spec", "friction", `"opus[effort"`, nil},
 		{"malformed driver spec", "driver", `"opus[effort"`, nil},

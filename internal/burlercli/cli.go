@@ -59,6 +59,13 @@ type burlerCLI struct {
 	mode        string
 	stateDir    string
 	stencilsDir string
+
+	// markerRoot and markerBase are the two told directories burlermarker.Path derives a round's ready marker from:
+	// the root the review path must lie inside, and the base whose ephemeral lyx directory holds the marker.
+	// Hub wiring sets both to the anchor; standalone wiring sets the reviewed target and the state directory.
+	// They sit here because burlerengine.Engine keeps its geometry unexported.
+	markerRoot string
+	markerBase string
 }
 
 // resolvePersistentPreRun resolves cwd, calls preflight.ResolveMode(cwd), and delegates the mode
@@ -73,9 +80,9 @@ type burlerCLI struct {
 // Skips resolution entirely when the group command itself is invoked (bare listing or
 // unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
 // be present -- preserved exactly as today because TestRunCLI_GroupGuard_OutsideGitRepo pins it.
-// The validate-review verb is skipped the same way: it reads one told file and needs no hub, mode or engine wiring.
+// The validate-review and await-review verbs are skipped the same way: each reads one told path and needs no hub, mode or engine wiring.
 func (c *burlerCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
-	if cmd.Name() == "burler" || cmd.Name() == validateReviewVerb {
+	if cmd.Name() == "burler" || cmd.Name() == validateReviewVerb || cmd.Name() == awaitReviewVerb {
 		return nil
 	}
 
@@ -113,12 +120,14 @@ func Command() *cobra.Command {
 	parent := &cobra.Command{
 		Use:   "burler",
 		Short: "run one review+fix round over an artifact (the burler round worker)",
-		Long: `burler drives one review+fix round over an artifact: an A phase reviews
-the target against a fasit (a source of truth) and writes a structured review
-file (verdict + findings), then a B phase fixes what A found and writes a
-fixer report. What to review, what to judge it against, and how the round is
-allowed to write its fixes are all supplied as a profile YAML file — burler
-itself carries zero domain logic about the artifact under review.
+		Long: `burler drives one review+fix round over an artifact with two agents: a
+reviewer reviews the target against a fasit (a source of truth) and writes a
+structured review file (verdict + findings), while a fixer orients in the
+target, waits for the review to be accepted, then validates what the reviewer
+found, fixes it and writes a fixer report. What to review, what to judge it
+against, and how the round is allowed to write its fixes are all supplied as a
+profile YAML file — burler itself carries zero domain logic about the artifact
+under review.
 
 Modes:
   burler runs in hub mode inside a lyx hub worktree, and in standalone mode
@@ -152,6 +161,7 @@ Example (standalone, outside any lyx hub):
 
 	parent.AddCommand(c.runCmd())
 	parent.AddCommand(c.validateReviewCmd())
+	parent.AddCommand(c.awaitReviewCmd())
 
 	return parent
 }

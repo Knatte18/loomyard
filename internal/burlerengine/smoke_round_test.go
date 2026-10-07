@@ -31,6 +31,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/burlermarker"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -46,6 +47,16 @@ import (
 // for the orphaned-conhost teardown probe. Explicit absolute path, never a
 // bare "pwsh": the WindowsApps execution alias is a 0-byte ConPTY stub.
 const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
+
+// readyMarkerPath derives the round's ready marker the way a caller does, with the anchor as both root and base.
+func readyMarkerPath(t *testing.T, anchorPath, reviewPath string) string {
+	t.Helper()
+	marker, err := burlermarker.Path(anchorPath, anchorPath, reviewPath)
+	if err != nil {
+		t.Fatalf("burlermarker.Path(%q, %q, %q) = %v; want nil", anchorPath, anchorPath, reviewPath, err)
+	}
+	return marker
+}
 
 // seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil,
 // through the same stencilstore.Reconcile pass cmd/lyx's root pre-run runs. hubforge.NewHub builds
@@ -289,6 +300,7 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 		ToolUse:         false,
 		ReviewPath:      reviewPath,
 		FixerReportPath: fixerReportPath,
+		ReadyMarkerPath: readyMarkerPath(t, h.Location.AnchorPath(), reviewPath),
 	}
 
 	// Wire the real stack directly: burlerengine never imports claudeengine
@@ -307,7 +319,7 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
-	engine := burlerengine.New(runner, hubgeom.BurlerGeometry(h.Location), burlerengine.Config{}, fabricengine.StencilsDir(h.Location.HubPath), "")
+	engine := burlerengine.New(burlerengine.RunnerShuttle(runner), burlerengine.NewReedStrandRemover(reedEngine), hubgeom.BurlerGeometry(h.Location), burlerengine.Config{}, fabricengine.StencilsDir(h.Location.HubPath), "")
 
 	result, err := engine.Run(profile, burlerengine.RunOpts{Timeout: 5 * time.Minute})
 	if err != nil {
@@ -315,7 +327,7 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	}
 
 	if result.Outcome != shuttleengine.OutcomeDone {
-		t.Fatalf("round outcome = %q; want %q; lastAssistantMessage: %q", result.Outcome, shuttleengine.OutcomeDone, result.LastAssistantMessage)
+		t.Fatalf("round outcome = %q; want %q; reviewer message: %q; fixer message: %q", result.Outcome, shuttleengine.OutcomeDone, result.Review.LastAssistantMessage, result.Fix.LastAssistantMessage)
 	}
 	if result.Verdict != burlerengine.VerdictBlocking {
 		t.Fatalf("round verdict = %q; want %q (the toy fixture's color mismatch is unambiguous)", result.Verdict, burlerengine.VerdictBlocking)

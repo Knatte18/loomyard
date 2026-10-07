@@ -1,7 +1,7 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, review, judge, friction, and driver role model-specs' grammar via modelspec.Parse, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1,
+// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
@@ -10,6 +10,7 @@
 package loomengine
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -290,27 +291,101 @@ func LoomFrictionLock(l *lyxcwd.Location) string {
 
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
 type Config struct {
-	Discussion            string `yaml:"discussion"`
-	DiscussionTimeoutMin  int    `yaml:"discussion_timeout_min"`
-	DiscussionInteractive bool   `yaml:"discussion_interactive"`
-	Plan                  string `yaml:"plan"`
-	PlanTimeoutMin        int    `yaml:"plan_timeout_min"`
-	Review                string `yaml:"review"`
-	Judge                 string `yaml:"judge"`
-	ReviewTimeoutMin      int    `yaml:"review_timeout_min"`
-	Friction              string `yaml:"friction"`
-	FrictionTimeoutMin    int    `yaml:"friction_timeout_min"`
-	Driver                string `yaml:"driver"`
-	ParentReviewWaitMin   int    `yaml:"parent_review_wait_min"`
+	Discussion            string        `yaml:"discussion"`
+	DiscussionTimeoutMin  int           `yaml:"discussion_timeout_min"`
+	DiscussionInteractive bool          `yaml:"discussion_interactive"`
+	Plan                  string        `yaml:"plan"`
+	PlanTimeoutMin        int           `yaml:"plan_timeout_min"`
+	Review                ModelSpecList `yaml:"review"`
+	Fix                   ModelSpecList `yaml:"fix"`
+	Judge                 string        `yaml:"judge"`
+	ReviewTimeoutMin      int           `yaml:"review_timeout_min"`
+	Friction              string        `yaml:"friction"`
+	FrictionTimeoutMin    int           `yaml:"friction_timeout_min"`
+	Driver                string        `yaml:"driver"`
+	ParentReviewWaitMin   int           `yaml:"parent_review_wait_min"`
 
 	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
 	ReviewMaxBounces         int `yaml:"review_max_bounces"`
 }
 
+// ModelSpecList is a model-spec key's value: one model-spec for every round, or a list of model-specs, one per round, whose last entry serves every later round.
+// A YAML scalar loads as a list of one.
+type ModelSpecList []string
+
+// modelSpecListWayForward is the way forward every model-spec list refusal ends with.
+const modelSpecListWayForward = "set the key to a model-spec, or to a non-empty list of model-specs"
+
+// modelSpecShapeError reports a model-spec list key whose value is neither a scalar nor a sequence of scalars.
+// line is the value's line in the file, which LoadConfig uses to name the key.
+type modelSpecShapeError struct {
+	line int
+}
+
+func (e *modelSpecShapeError) Error() string {
+	return fmt.Sprintf("value at line %d is neither a model-spec nor a list of model-specs; %s", e.line, modelSpecListWayForward)
+}
+
+// UnmarshalYAML accepts a scalar or a block sequence of scalars and rejects any other shape.
+func (l *ModelSpecList) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		*l = ModelSpecList{node.Value}
+		return nil
+	case yaml.SequenceNode:
+		specs := make(ModelSpecList, 0, len(node.Content))
+		for _, entry := range node.Content {
+			if entry.Kind != yaml.ScalarNode {
+				return &modelSpecShapeError{line: entry.Line}
+			}
+			specs = append(specs, entry.Value)
+		}
+		*l = specs
+		return nil
+	default:
+		return &modelSpecShapeError{line: node.Line}
+	}
+}
+
+// ConfigOpenMaps returns the loom.yaml keys whose value is a scalar or a per-round list, which configengine carries whole through reconcile and --set.
+func ConfigOpenMaps() []string {
+	return []string{"review", "fix"}
+}
+
+// keyAtLine returns the top-level key of contents whose entry spans line, or "" when none does.
+// An entry spans from its key's line up to the next key's line.
+func keyAtLine(contents []byte, line int) string {
+	var root yaml.Node
+	if err := yaml.Unmarshal(contents, &root); err != nil || len(root.Content) == 0 {
+		return ""
+	}
+	keys := root.Content[0].Content
+	found := ""
+	for i := 0; i < len(keys); i += 2 {
+		if keys[i].Line <= line {
+			found = keys[i].Value
+		}
+	}
+	return found
+}
+
+// validateModelSpecList rejects an empty list and an entry that is not a model-spec, naming key and the 1-based entry index.
+func validateModelSpecList(key string, specs ModelSpecList) error {
+	if len(specs) == 0 {
+		return fmt.Errorf("loom config key %q: the list is empty; %s", key, modelSpecListWayForward)
+	}
+	for i, spec := range specs {
+		if _, err := modelspec.Parse(spec); err != nil {
+			return fmt.Errorf("loom config key %q entry %d: %w; %s", key, i+1, err, modelSpecListWayForward)
+		}
+	}
+	return nil
+}
+
 // LoadConfig loads and unmarshals configuration for the loom module.
 // It validates model-spec grammar at load time.
 func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
+	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()), ConfigOpenMaps()...)
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
@@ -320,6 +395,10 @@ func LoadConfig(baseDir, module string) (Config, error) {
 
 	var cfg Config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
+		var shape *modelSpecShapeError
+		if errors.As(err, &shape) {
+			return Config{}, fmt.Errorf("loom config key %q: %w", keyAtLine(resolved, shape.line), err)
+		}
 		return Config{}, fmt.Errorf("unmarshal loom config: %w", err)
 	}
 
@@ -331,8 +410,12 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		return Config{}, fmt.Errorf("loom config key %q: %w", "plan", err)
 	}
 
-	if _, err := modelspec.Parse(cfg.Review); err != nil {
-		return Config{}, fmt.Errorf("loom config key %q: %w", "review", err)
+	if err := validateModelSpecList("review", cfg.Review); err != nil {
+		return Config{}, err
+	}
+
+	if err := validateModelSpecList("fix", cfg.Fix); err != nil {
+		return Config{}, err
 	}
 
 	if _, err := modelspec.Parse(cfg.Judge); err != nil {

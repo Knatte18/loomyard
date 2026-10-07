@@ -1,6 +1,6 @@
 // Package shedfake fakes the shed-layer seams: the shuttle, the burler runner, the merge shuttle and the webster run seams, plus the producer Call helpers.
 //
-// Shuttle satisfies shedadapters.Shuttle and frictionengine.Shuttle, BurlerRunner satisfies shedadapters.BurlerRunner, and MergeShuttle satisfies mergeresolve.Shuttle, all structurally, so no consumer package is imported here and shedadapters' and landingshed's in-package tests can use the kit.
+// Shuttle satisfies shedadapters.Shuttle and frictionengine.Shuttle, BurlerRunner satisfies shedadapters.BurlerRunner, StrandRemover satisfies burlerengine.StrandRemover, and MergeShuttle satisfies mergeresolve.Shuttle, all structurally, so no consumer package is imported here and shedadapters' and landingshed's in-package tests can use the kit.
 // Every fake exposes fields and optional func overrides, and none asserts anything.
 // CallOK and RequireOutcome are the only assertions the kit makes.
 //
@@ -151,11 +151,23 @@ func evalGateList(gate shuttleengine.GateSpec) (bool, error) {
 }
 
 // BurlerRunner is a fake burler runner: Results[i] and Errs[i] answer the (i+1)th Run, and once either slice is exhausted its last entry repeats.
+// ProbeRound and Resume answer their own scripted slices the same way, and unscripted answer a round with neither half live.
 type BurlerRunner struct {
 	mu sync.Mutex
 
 	Results []burlerengine.Result
 	Errs    []error
+
+	// LiveRounds and ProbeErrs script ProbeRound; ResumeResults and ResumeErrs script Resume.
+	LiveRounds    []burlerengine.LiveRound
+	ProbeErrs     []error
+	ResumeResults []burlerengine.Result
+	ResumeErrs    []error
+	// ProbeCalls and ResumeCalls count the invocations, GotProbeOpts holds every RunOpts handed to ProbeRound and GotLive every LiveRound handed to Resume.
+	ProbeCalls   int
+	ResumeCalls  int
+	GotProbeOpts []burlerengine.RunOpts
+	GotLive      []burlerengine.LiveRound
 
 	// GotProfiles and GotOpts hold every Profile and RunOpts handed to Run, in order, and Calls counts the invocations.
 	GotProfiles []burlerengine.Profile
@@ -191,6 +203,55 @@ func (f *BurlerRunner) Run(p burlerengine.Profile, opts burlerengine.RunOpts) (b
 		err = f.Errs[len(f.Errs)-1]
 	}
 	return result, err
+}
+
+// ProbeRound counts the call, records opts and answers the scripted LiveRound and error for this invocation.
+func (f *BurlerRunner) ProbeRound(_ burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.LiveRound, error) {
+	f.mu.Lock()
+	i := f.ProbeCalls
+	f.ProbeCalls++
+	f.GotProbeOpts = append(f.GotProbeOpts, opts)
+	f.mu.Unlock()
+	return scripted(f.LiveRounds, i), scripted(f.ProbeErrs, i)
+}
+
+// Resume counts the call, records live and answers the scripted Result and error for this invocation.
+func (f *BurlerRunner) Resume(_ burlerengine.Profile, _ burlerengine.RunOpts, live burlerengine.LiveRound) (burlerengine.Result, error) {
+	f.mu.Lock()
+	i := f.ResumeCalls
+	f.ResumeCalls++
+	f.GotLive = append(f.GotLive, live)
+	f.mu.Unlock()
+	return scripted(f.ResumeResults, i), scripted(f.ResumeErrs, i)
+}
+
+// scripted returns entries[i], the last entry once i runs past them, and the zero value for no entries.
+func scripted[T any](entries []T, i int) T {
+	var zero T
+	switch {
+	case i < len(entries):
+		return entries[i]
+	case len(entries) > 0:
+		return entries[len(entries)-1]
+	}
+	return zero
+}
+
+// StrandRemover is a fake burlerengine.StrandRemover: it records every guid it is asked to remove and fails with Err when set.
+type StrandRemover struct {
+	mu sync.Mutex
+
+	Err error
+	// Removed holds every guid RemoveStrandIfLive was called with, in order.
+	Removed []string
+}
+
+// RemoveStrandIfLive records guid and answers Err.
+func (f *StrandRemover) RemoveStrandIfLive(guid string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Removed = append(f.Removed, guid)
+	return f.Err
 }
 
 // MergeShuttle is a Run-only fake shuttle: Results[i] and Errs[i] answer the (i+1)th call, and a call past the scripted entries answers a zero Result and a nil error, so an unscripted MergeShuttle is a no-op.

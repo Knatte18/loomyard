@@ -198,7 +198,8 @@ func writeBouncerStencils(t *testing.T, dir string, files map[string]string) {
 type burlerProducerSpec struct {
 	profile burlerengine.Profile
 	opts    burlerengine.RunOpts
-	attach  Shuttle
+	remover burlerengine.StrandRemover
+	models  burlerengine.RoundModels
 	now     func() time.Time
 }
 
@@ -212,9 +213,14 @@ func withBurlerRunOpts(opts burlerengine.RunOpts) burlerProducerOpt {
 	return func(s *burlerProducerSpec) { s.opts = opts }
 }
 
-// withAttach supplies the attach seam for the cases that script what the live-round probe finds.
-func withAttach(attach Shuttle) burlerProducerOpt {
-	return func(s *burlerProducerSpec) { s.attach = attach }
+// withRemover supplies the strand remover for the cases that assert which strand a one-live-half round stops.
+func withRemover(remover burlerengine.StrandRemover) burlerProducerOpt {
+	return func(s *burlerProducerSpec) { s.remover = remover }
+}
+
+// withBurlerModels supplies the per-round review and fix model lists.
+func withBurlerModels(models burlerengine.RoundModels) burlerProducerOpt {
+	return func(s *burlerProducerSpec) { s.models = models }
 }
 
 func withBurlerClock(now func() time.Time) burlerProducerOpt {
@@ -222,18 +228,18 @@ func withBurlerClock(now func() time.Time) burlerProducerOpt {
 }
 
 // newBurlerProducer builds a BurlerProducer over runDir with runner, failing the test on constructor error.
-// The attach seam defaults to a shedfake.Shuttle finding nothing live, the ordinary no-live-round condition.
+// The remover defaults to a shedfake.StrandRemover that records and never fails.
 func newBurlerProducer(t *testing.T, runDir string, runner *shedfake.BurlerRunner, opts ...burlerProducerOpt) *BurlerProducer {
 	t.Helper()
 
 	spec := burlerProducerSpec{
 		profile: simpleBurlerProfile(),
-		attach:  &shedfake.Shuttle{},
+		remover: &shedfake.StrandRemover{},
 	}
 	for _, opt := range opts {
 		opt(&spec)
 	}
-	p, err := NewBurlerProducer("burler", runner, spec.attach, spec.profile, spec.opts, runDir, spec.now)
+	p, err := NewBurlerProducer("burler", BurlerDeps{Runner: runner, Remover: spec.remover, Models: spec.models, AnchorPath: filepath.Dir(runDir)}, spec.profile, spec.opts, runDir, spec.now)
 	if err != nil {
 		t.Fatalf("NewBurlerProducer() error = %v; want nil", err)
 	}

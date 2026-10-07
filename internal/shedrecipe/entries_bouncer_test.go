@@ -234,9 +234,6 @@ func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
 		env.JudgeModel = "env-model"
 		env.JudgeEffort = "env-effort"
 		env.JudgeVersion = "env-version"
-		env.ReviewModel = "review-model"
-		env.ReviewEffort = "review-effort"
-		env.ReviewVersion = "review-version"
 		cfg := minimalBouncerConfig(t, env)
 
 		spec := callAndCaptureSpec(t, cfg, env)

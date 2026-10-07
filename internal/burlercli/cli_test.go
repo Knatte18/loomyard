@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -185,7 +186,7 @@ fixer-report-path: fixer-report.md
 // and lands the told mode/stateDir/stencilsDir parameters under their own keys.
 func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 	t.Run("nil ForkAudit", func(t *testing.T) {
-		env := resultEnvelope(burlerengine.Result{Outcome: shuttleengine.OutcomeDone}, "hub", "", "/hub/stencils")
+		env := resultEnvelope(burlerengine.Result{Outcome: shuttleengine.OutcomeDone}, "/hub/.lyx/review.md.ready", "hub", "", "/hub/stencils")
 		if got := env["forkCount"]; got != 0 {
 			t.Errorf(`resultEnvelope() forkCount = %v; want 0`, got)
 		}
@@ -214,7 +215,18 @@ func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 			},
 			ClusterWarnings: []string{`fork "b" never returned a final report`},
 		}
-		env := resultEnvelope(result, "standalone", "/state/dir", "/state/dir/_lyx/stencils")
+		result.Review = burlerengine.Half{SessionID: "rs", StrandGUID: "rg", LastAssistantMessage: "rm", RunDir: "/kept/r"}
+		result.Fix = burlerengine.Half{StartError: "never came up"}
+		env := resultEnvelope(result, "/state/dir/.lyx/review.md.ready", "standalone", "/state/dir", "/state/dir/_lyx/stencils")
+		if got := env["readyMarkerPath"]; got != "/state/dir/.lyx/review.md.ready" {
+			t.Errorf(`resultEnvelope() readyMarkerPath = %v; want the told marker`, got)
+		}
+		if got := env["review"]; !reflect.DeepEqual(got, map[string]any{"sessionId": "rs", "strandGuid": "rg", "lastAssistantMessage": "rm", "runDir": "/kept/r", "startError": ""}) {
+			t.Errorf(`resultEnvelope() review = %v; want the reviewer's identity`, got)
+		}
+		if got := env["fix"].(map[string]any)["startError"]; got != "never came up" {
+			t.Errorf(`resultEnvelope() fix startError = %v; want "never came up"`, got)
+		}
 		if got := env["forkCount"]; got != 2 {
 			t.Errorf(`resultEnvelope() forkCount = %v; want 2`, got)
 		}
@@ -416,5 +428,109 @@ func TestValidateReviewVerb_AgreesWithTheReviewGate(t *testing.T) {
 				t.Errorf("ReviewGate findings = %q; want them to contain the verb's error %q", gateResult.Findings, message)
 			}
 		})
+	}
+}
+
+// TestAwaitReviewVerb runs await-review from a temp directory outside any git repository and asserts its answer, exit code and envelope for each way a marker can be present, absent, appearing, or unreadable, and that the verb writes nothing.
+// It is the only test of the verb's behavior.
+func TestAwaitReviewVerb(t *testing.T) {
+	t.Parallel()
+
+	const markerName = "round-1-review.md.ready"
+	tests := []struct {
+		name string
+		// seed creates the files that exist before the verb runs.
+		seed func(t *testing.T, dir string)
+		// during runs concurrently with the verb, after it has started polling.
+		during  func(t *testing.T, dir string)
+		args    []string
+		wantErr bool
+		// wantReady is the envelope's ready answer on a successful run.
+		wantReady bool
+		// wantEntries are the names the directory holds afterwards.
+		wantEntries []string
+	}{
+		{
+			name:        "present marker is ready at once",
+			seed:        func(t *testing.T, dir string) { writeFile(t, filepath.Join(dir, markerName)) },
+			args:        []string{markerName},
+			wantReady:   true,
+			wantEntries: []string{markerName},
+		},
+		{
+			name:      "absent marker answers not ready after the cap",
+			args:      []string{markerName, "--cap", "50ms"},
+			wantReady: false,
+		},
+		{
+			name:        "marker created while polling is ready",
+			during:      func(t *testing.T, dir string) { writeFile(t, filepath.Join(dir, markerName)) },
+			args:        []string{markerName, "--cap", "30s"},
+			wantReady:   true,
+			wantEntries: []string{markerName},
+		},
+		{
+			name:    "missing argument is an error",
+			args:    nil,
+			wantErr: true,
+		},
+		{
+			name:        "marker under a regular file is a stat error",
+			seed:        func(t *testing.T, dir string) { writeFile(t, filepath.Join(dir, "blocker")) },
+			args:        []string{filepath.Join("blocker", markerName), "--cap", "50ms"},
+			wantErr:     true,
+			wantEntries: []string{"blocker"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if tt.seed != nil {
+				tt.seed(t, dir)
+			}
+			if tt.during != nil {
+				go tt.during(t, dir)
+			}
+
+			var out bytes.Buffer
+			code := RunCLIIn(dir, &out, append([]string{"await-review"}, tt.args...))
+
+			var envelope map[string]any
+			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+				t.Fatalf("envelope %q is not JSON: %v", out.String(), err)
+			}
+			if tt.wantErr {
+				if code != 1 || envelope["ok"] != false {
+					t.Errorf("await-review = exit %d, envelope %v; want exit 1, ok false", code, envelope)
+				}
+			} else {
+				if code != 0 || envelope["ok"] != true || envelope["ready"] != tt.wantReady || envelope["marker"] != filepath.Join(dir, markerName) {
+					t.Errorf("await-review = exit %d, envelope %v; want exit 0, ok true, ready %v, marker %q", code, envelope, tt.wantReady, filepath.Join(dir, markerName))
+				}
+			}
+
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatalf("ReadDir() error = %v", err)
+			}
+			var got []string
+			for _, entry := range entries {
+				got = append(got, entry.Name())
+			}
+			if !equalStrings(got, tt.wantEntries) {
+				t.Errorf("directory entries = %v; want %v (the verb writes nothing)", got, tt.wantEntries)
+			}
+		})
+	}
+}
+
+// writeFile creates an empty file at path.
+func writeFile(t *testing.T, path string) {
+	t.Helper()
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Errorf("WriteFile(%q) error = %v", path, err)
 	}
 }

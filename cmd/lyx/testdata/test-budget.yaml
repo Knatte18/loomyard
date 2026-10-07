@@ -14,8 +14,9 @@ internal/boardcli: 12
 internal/boardengine: 73
 internal/boardengine/boardtest: 3
 internal/buildinfo: 2
-internal/burlercli: 18
-internal/burlerengine: 32
+internal/burlercli: 19
+internal/burlerengine: 39
+internal/burlermarker: 1
 internal/clihelp: 11
 internal/cliwire: 12
 internal/commentlint: 3
@@ -81,7 +82,7 @@ internal/shedtransient: 2
 internal/shedverbs: 65
 internal/shell: 11
 internal/shuttlecli: 19
-internal/shuttleengine: 141
+internal/shuttleengine: 142
 internal/shuttleengine/claudeengine: 90
 internal/standalonegeom: 7
 internal/standalonestate: 6

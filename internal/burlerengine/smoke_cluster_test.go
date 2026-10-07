@@ -137,7 +137,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	cfg := burlerengine.Config{Lenses: clusterSmokeLenses, Fans: clusterSmokeFans}
-	engine := burlerengine.New(runner, hubgeom.BurlerGeometry(h.Location), cfg, fabricengine.StencilsDir(h.Location.HubPath), "")
+	engine := burlerengine.New(burlerengine.RunnerShuttle(runner), burlerengine.NewReedStrandRemover(reedEngine), hubgeom.BurlerGeometry(h.Location), cfg, fabricengine.StencilsDir(h.Location.HubPath), "")
 	return engine, h
 }
 
@@ -168,6 +168,7 @@ func TestSmokeBurlerClusterCleanFan(t *testing.T) {
 		ClusterFan:      "clean",
 		ReviewPath:      reviewPath,
 		FixerReportPath: fixerReportPath,
+		ReadyMarkerPath: readyMarkerPath(t, h.Location.AnchorPath(), reviewPath),
 	}
 
 	result, err := engine.Run(profile, burlerengine.RunOpts{Timeout: clusterSmokeTimeout})
@@ -176,7 +177,7 @@ func TestSmokeBurlerClusterCleanFan(t *testing.T) {
 	}
 
 	if result.Outcome != shuttleengine.OutcomeDone {
-		t.Fatalf("round outcome = %q; want %q; lastAssistantMessage: %q", result.Outcome, shuttleengine.OutcomeDone, result.LastAssistantMessage)
+		t.Fatalf("round outcome = %q; want %q; reviewer message: %q; fixer message: %q", result.Outcome, shuttleengine.OutcomeDone, result.Review.LastAssistantMessage, result.Fix.LastAssistantMessage)
 	}
 
 	if result.ForkAudit == nil {
@@ -257,6 +258,7 @@ func TestSmokeBurlerClusterRogueFork(t *testing.T) {
 		ClusterFan:      "rogue",
 		ReviewPath:      reviewPath,
 		FixerReportPath: fixerReportPath,
+		ReadyMarkerPath: readyMarkerPath(t, h.Location.AnchorPath(), reviewPath),
 	}
 
 	result, err := engine.Run(profile, burlerengine.RunOpts{Timeout: clusterSmokeTimeout})
