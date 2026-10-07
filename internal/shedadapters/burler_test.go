@@ -896,6 +896,8 @@ func TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer(t *testing.T)
 // and an attached round's failed gate -- a told entry or the review entry -- must map identically to the spawn path's -- Stuck with an empty pointer, archived, retry untouched.
 // The round's review file holds unparseable content, so the review entry fails whenever it is reached.
 func TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		// toldPasses makes the told entry pass, so the failure comes from the review entry behind it.
@@ -907,6 +909,8 @@ func TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdenticall
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			runDir := t.TempDir()
 			reviewPath := roundReviewPath(runDir, 1)
 			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}

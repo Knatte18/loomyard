@@ -908,6 +908,8 @@ func (e *watchEnv) assertReload(prefix, note string, afterClear bool) {
 }
 
 func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
+	t.Parallel()
+
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.reachClearing()
@@ -1052,6 +1054,8 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 }
 
 func TestWatcher_ReloadRestartRetypesOnlyTheUnconfirmedStep(t *testing.T) {
+	t.Parallel()
+
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.reachClearing()

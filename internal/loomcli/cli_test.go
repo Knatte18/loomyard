@@ -48,6 +48,8 @@ func TestResolvePersistentPreRun_SkipsReviewGroup(t *testing.T) {
 // verb does, and its Use must equal the subtree verb's own Use so the alias and the subtree verb can
 // never drift apart.
 func TestStartAliasCommand_StaysOneCommandWithSubtreeVerb(t *testing.T) {
+	t.Parallel()
+
 	alias := StartAliasCommand()
 
 	if alias.Short == "" {

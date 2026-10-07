@@ -356,6 +356,8 @@ func TestTrustDismissSequence(t *testing.T) {
 }
 
 func TestComposeSend(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		engine *Claude
@@ -366,6 +368,8 @@ func TestComposeSend(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := tt.engine.ComposeSend("hello")
 			want := []shuttleengine.PaneInput{
 				{Key: "Escape", SettleMS: composeSendSettleMS},

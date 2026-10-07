@@ -25,6 +25,8 @@ func handoffVoucherPaths(t *testing.T) (string, string) {
 
 //testtiming:keep pins the voucher matching only on an equal history length and state, a grown history, a changed state or an absent voucher not matching, and the voucher being deleted on every read; the observe-entry test covers only the matching, one-shot case
 func TestConsumeHandoffVoucher(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name            string
 		record          bool
@@ -63,6 +65,8 @@ func TestConsumeHandoffVoucher(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			voucherPath, lockPath := handoffVoucherPaths(t)
 			if tt.record {
 				recordHandoffVoucher(voucherPath, lockPath, tt.recordedHistory, tt.recordedState)
@@ -99,6 +103,8 @@ func TestConsumeHandoffVoucher(t *testing.T) {
 // persisted status yields Vouched true, and -- the one-shot property -- a second identical
 // observation yields false, because the first consumed the voucher.
 func TestObserveEntry_ConsumesHandoffVoucherIntoObservation(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")
 	statusLockPath := filepath.Join(dir, "status.json.lock")
