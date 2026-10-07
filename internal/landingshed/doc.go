@@ -16,6 +16,13 @@
 // A failure is Stuck with the merge commit kept for the operator to fix forward,
 // and a missing command logs a warning and proceeds.
 //
+// The push that follows is never retried when the remote rejects it, because the remote task branch moved and a repeat would be rejected again.
+// Publish reads the remote task branch's tip and the commits on it that the local branch lacks through Deps.RemoteOnlyCommits,
+// and stops Stuck with a reason stating that the merge-in already ran, the tip, the commit count, and the way forward:
+// merge `origin/<task-branch>` in the task worktree, then resume the run with `lyx loom start`, which re-runs Publish over the merged branch.
+// A failed read keeps the rejection and the way forward and names the cause.
+// Every other push failure keeps its own reason, and a transient one is returned as an error so the driver re-steps.
+//
 // require_pr_to_base is a list of base-branch names, not a bool, because whether a pull request is
 // needed depends on which parent branch a task targets -- a per-task runtime fact no static profile
 // setting can encode as one flag. A bool would force (or skip) a pull request on every task-to-task

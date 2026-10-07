@@ -45,7 +45,7 @@ type Publish struct {
 
 var _ shedengine.ShedProducer = (*Publish)(nil)
 
-// NewPublish constructs a Publish from deps, rejecting a nil OpenFabric or PushBranch closure up
+// NewPublish constructs a Publish from deps, rejecting a nil OpenFabric, PushBranch or RemoteOnlyCommits closure up
 // front with a distinct error each -- rather than nil-panicking at call time.
 //
 // It builds the resolver at construction time, opening deps.OpenFabric's lazily-opened handle and
@@ -61,6 +61,9 @@ func NewPublish(deps Deps) (*Publish, error) {
 	}
 	if deps.PushBranch == nil {
 		return nil, fmt.Errorf("landingshed: NewPublish: Deps.PushBranch must not be nil")
+	}
+	if deps.RemoteOnlyCommits == nil {
+		return nil, fmt.Errorf("landingshed: NewPublish: Deps.RemoteOnlyCommits must not be nil")
 	}
 	if deps.DescriptionPath == "" {
 		return nil, fmt.Errorf("landingshed: NewPublish: Deps.DescriptionPath must not be empty")
@@ -94,6 +97,7 @@ func NewPublish(deps Deps) (*Publish, error) {
 // A failed task-branch push, pull-request query or pull-request create is split by shedtransient.Class:
 // a transient failure is returned as an error, so the driver re-steps once (a re-step re-queries before creating, so nothing is duplicated),
 // and anything else is a Stuck verdict for a human.
+// A push the remote rejects is never retried: it is Stuck with a reason naming the remote tip, the commits it holds that the local branch lacks and the resume.
 // Done after a created or open pull request is safe because the next row is the PR-Gate producer, which owns approval, rejection and the wait;
 // an open pull request's title and body are refreshed from the change description first.
 // Out of scope: Finalize's pull-request close calls only warn;
@@ -173,7 +177,7 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 			return "", shedengine.OutputPointer{}, terr
 		}
 		if errors.Is(err, gitrepo.ErrPushRejected) {
-			return p.stuckOrCancelled(ctx, "push rejected by the remote", "error", err)
+			return p.stuckOrCancelled(ctx, p.pushRejectedReason(), "error", err)
 		}
 		return p.stuckOrCancelled(ctx, fmt.Sprintf("push failed: %v", err), "error", err)
 	}
@@ -252,6 +256,20 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		// Closed and not merged: a human decision to stop, which must never read as proceed.
 		return p.stuckOrCancelled(ctx, withPRURL("the pull request was closed without being merged", pr.GetHTMLURL()))
 	}
+}
+
+// pushRejectedReason builds the stuck reason for a rejected task-branch push:
+// it states that the merge-in already ran, what the remote task branch holds that the local one lacks, and how to resume.
+// A failed remote read keeps the rejection and the way forward and names the cause.
+// Publish does not retry the push, since a rejected push means the remote moved and a repeat would be rejected again.
+func (p *Publish) pushRejectedReason() string {
+	wayForward := fmt.Sprintf("way forward: run `git merge origin/%s` in the task worktree, then resume the run with `lyx loom start`", p.deps.TaskBranch)
+	prefix := fmt.Sprintf("push rejected by the remote after the merge-in against parent branch %q", p.deps.ParentBranch)
+	tip, commits, err := p.deps.RemoteOnlyCommits()
+	if err != nil {
+		return fmt.Sprintf("%s; the remote tip could not be read: %v; %s", prefix, err, wayForward)
+	}
+	return fmt.Sprintf("%s; the remote task branch is at %s and holds %d commit(s) the local branch lacks; %s", prefix, tip, len(commits), wayForward)
 }
 
 // gateStop maps one gate call's result onto Call's return.

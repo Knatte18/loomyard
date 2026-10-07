@@ -51,6 +51,13 @@ func landingDeps(
 		OriginURL:       originURL,
 		PushSkipped:     pushSkipped,
 		PushBranch:      pushBranch,
+		RemoteOnlyCommits: func() (string, []string, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return "", nil, err
+			}
+			return f.RemoteOnlyCommits()
+		},
 		OpenFabric: func() (*fabricengine.Fabric, error) {
 			return fabricengine.Open(l)
 		},
