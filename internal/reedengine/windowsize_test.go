@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/tokenvocab"
 )
 
 //testtiming:keep pins the window-size parser: a well-formed pair with trailing newline or extra whitespace parses, and an empty, one-field, three-field, non-numeric, zero or negative answer is rejected; its covering tests run this code without asserting it
@@ -261,6 +262,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		// newTestEngine's Geometry leaves WorktreeName unset; the default status-line template's
 		// {{.worktree}} marker requires it, so this case sets it so StatusLineText() succeeds.
 		e.geom.WorktreeName = "test-worktree"
+		// A "#" in the hub path proves the identity text is escaped while the waits segment stays raw.
+		e.geom.HubPath = "/hub/a#b"
 		fake := installFakeTmux(t, e)
 
 		wantText, err := e.StatusLineText()
@@ -268,6 +271,11 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			t.Fatalf("StatusLineText() unexpected error: %v", err)
 		}
 		wantEscaped := escapeStatusText(strings.TrimRight(wantText, "\r\n"))
+		if !strings.Contains(wantEscaped, "a##b") {
+			t.Fatalf("escaped status text = %q; want the hub path's # doubled", wantEscaped)
+		}
+		wantStatusLeft := strings.ReplaceAll(wantEscaped, tokenvocab.WaitsPlaceholder, waitsSegmentFormat)
+		wantLength := statusLeftLength(strings.ReplaceAll(wantEscaped, tokenvocab.WaitsPlaceholder, "")) + waitsSegmentLengthAllowance
 
 		e.pinGeometryOptionsLocked()
 		calls := fake.ArgvFor("set-option")
@@ -276,9 +284,9 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		wantOptions := [][]string{
 			{"set-option", "-t", target, "status", "on"},
 			{"set-option", "-t", target, "status-position", "bottom"},
-			{"set-option", "-t", target, "status-left", wantEscaped},
+			{"set-option", "-t", target, "status-left", wantStatusLeft},
 			{"set-option", "-t", target, "status-right", ""},
-			{"set-option", "-t", target, "status-left-length", strconv.Itoa(statusLeftLength(wantEscaped))},
+			{"set-option", "-t", target, "status-left-length", strconv.Itoa(wantLength)},
 			{"set-option", "-w", "-t", target, "window-status-format", ""},
 			{"set-option", "-w", "-t", target, "window-status-current-format", ""},
 			{"set-option", "-w", "-t", target, "window-size", "latest"},

@@ -23,7 +23,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/tokenvocab"
 )
+
+// waitsSegmentFormat is the raw tmux format that stands in for the "waits" token in status-left.
+// For every pane of every window whose @lyx_wait option is set it expands to "<pane title> ⏳<label> <minutes>m ",
+// the minutes being the status refresh's own strftime epoch (%s) minus @lyx_wait_start; an unmarked pane expands to nothing.
+// It is substituted only after escapeStatusText has run, which would otherwise double every "#" of it.
+const waitsSegmentFormat = "#{W:#{P:#{?@lyx_wait,#{pane_title} ⏳#{@lyx_wait} #{e|/:#{e|-:%s,#{@lyx_wait_start}},60}m ,}}}"
+
+// waitsSegmentLengthAllowance is the status-left-length reserved for the waits segment, which the format string's own length does not measure.
+const waitsSegmentLengthAllowance = 120
 
 // parseWindowSize parses a `display-message -p '#{window_width} #{window_height}'` answer into a
 // width/height pair.
@@ -130,8 +140,8 @@ func statusLeftLength(escaped string) int {
 // to render is already refused loudly at boot by ValidateStatusLine, so reaching here means a degraded
 // path, not a normal one. On success it escapes the rendered text with escapeStatusText (tmux expands
 // "#{…}"/"#[…]" inside a status string) and issues, in order: "status" "on"; "status-position"
-// "bottom"; "status-left" <escaped>; "status-right" ""; "status-left-length"
-// <statusLeftLength(escaped)>; and, window-targeted with -w, "window-status-format" "" and
+// "bottom"; "status-left" <escaped, with the waits placeholder swapped for waitsSegmentFormat>; "status-right" ""; "status-left-length"
+// <statusLeftLength(escaped without the placeholder) plus waitsSegmentLengthAllowance when the placeholder is present>; and, window-targeted with -w, "window-status-format" "" and
 // "window-status-current-format" "". Suppressing the window-status segment is deliberate rather than
 // left at tmux's default: reed's session has exactly one window, so the default "0:bash*" segment
 // beside the identity text names nothing the operator can act on and would shift position as the
@@ -169,6 +179,12 @@ func (e *Engine) pinGeometryOptionsLocked() {
 	} else {
 		escaped = escapeStatusText(strings.TrimRight(text, "\r\n"))
 	}
+	statusLeft, statusLeftLen := escaped, statusLeftLength(escaped)
+	if strings.Contains(escaped, tokenvocab.WaitsPlaceholder) {
+		withoutSegment := strings.ReplaceAll(escaped, tokenvocab.WaitsPlaceholder, "")
+		statusLeft = strings.ReplaceAll(escaped, tokenvocab.WaitsPlaceholder, waitsSegmentFormat)
+		statusLeftLen = statusLeftLength(withoutSegment) + waitsSegmentLengthAllowance
+	}
 
 	if err := e.tmux.run("set-option", "-t", target, "status", "on"); err != nil {
 		logger.Warn("reed: failed to pin status on", "socket", e.Socket(), "session", e.SessionName(), "option", "status", "err", err)
@@ -177,7 +193,7 @@ func (e *Engine) pinGeometryOptionsLocked() {
 		logger.Warn("reed: failed to pin status-position bottom", "socket", e.Socket(), "session", e.SessionName(), "option", "status-position", "err", err)
 	}
 	if haveText {
-		if err := e.tmux.run("set-option", "-t", target, "status-left", escaped); err != nil {
+		if err := e.tmux.run("set-option", "-t", target, "status-left", statusLeft); err != nil {
 			logger.Warn("reed: failed to pin status-left", "socket", e.Socket(), "session", e.SessionName(), "option", "status-left", "err", err)
 		}
 	}
@@ -185,7 +201,7 @@ func (e *Engine) pinGeometryOptionsLocked() {
 		logger.Warn("reed: failed to pin status-right empty", "socket", e.Socket(), "session", e.SessionName(), "option", "status-right", "err", err)
 	}
 	if haveText {
-		if err := e.tmux.run("set-option", "-t", target, "status-left-length", strconv.Itoa(statusLeftLength(escaped))); err != nil {
+		if err := e.tmux.run("set-option", "-t", target, "status-left-length", strconv.Itoa(statusLeftLen)); err != nil {
 			logger.Warn("reed: failed to pin status-left-length", "socket", e.Socket(), "session", e.SessionName(), "option", "status-left-length", "err", err)
 		}
 	}

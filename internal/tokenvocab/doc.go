@@ -3,7 +3,7 @@
 
 // Package tokenvocab is the shared token vocabulary for prompt/template rendering across lyx: today
 // reed's status-line text pipeline, later loom's prompt templates.
-// It owns the token registry (currently "repo", "hub", and "worktree", all plain fields on Ctx) and
+// It owns the token registry (currently "repo", "hub" and "worktree", plain fields on Ctx, and "waits", the fixed WaitsPlaceholder that reed's status line swaps for its marked-pane segment) and
 // Render, the reusable compose over internal/stencil that every consumer calls to fill a template
 // with the vocabulary.
 //
