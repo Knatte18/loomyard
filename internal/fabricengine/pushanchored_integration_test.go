@@ -293,6 +293,26 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 		t.Errorf("weft bare = %q; want local HEAD %q after the retry", got, weftSHA)
 	}
 
+	// A rejection whose fetch then fails is not retried:
+	// the code side pushes to its real bare but fetches from a missing path, and a remote that declines once would accept a retry.
+	warpBareBeforeFetchFailure := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch)
+	if err := os.Remove(filepath.Join(p.hub.WarpBare, "declined-once")); err != nil {
+		t.Fatalf("reset decline-once marker: %v", err)
+	}
+	gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp change fetch failure", "warp change fetch failure")
+	warpFetchURL := gitkit.Git(t, p.warpPath, "config", "--get", "remote.origin.url")
+	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.pushurl", warpFetchURL)
+	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.url", filepath.Join(t.TempDir(), "missing"))
+	_, err = fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
+	if !fabricengine.IsPushRejected(err) {
+		t.Errorf("PushPairAnchored() with a rejected push and a failing fetch error = %v; want the bare rejection", err)
+	}
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch); got != warpBareBeforeFetchFailure {
+		t.Errorf("warp bare = %q; want it unmoved at %q (no retry after a failed fetch)", got, warpBareBeforeFetchFailure)
+	}
+	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.url", warpFetchURL)
+	gitkit.MustRun(t, p.warpPath, "git", "config", "--unset", "remote.origin.pushurl")
+
 	// A remote that keeps declining: the one retry is rejected too,
 	// so the bare rejection surfaces and nothing local moves.
 	installPreReceive(t, p.hub.WarpBare, "#!/bin/sh\necho 'declined always' >&2\nexit 1\n")
@@ -309,20 +329,6 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	if got := head(p.warpPath); got != declinedWarpHead {
 		t.Errorf("local warp HEAD = %q; want unchanged %q", got, declinedWarpHead)
 	}
-
-	// A rejection whose fetch then fails is not retried: the code side pushes to its real bare, but fetches from a missing path.
-	warpFetchURL := gitkit.Git(t, p.warpPath, "config", "--get", "remote.origin.url")
-	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.pushurl", warpFetchURL)
-	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.url", filepath.Join(t.TempDir(), "missing"))
-	_, err = fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
-	if !fabricengine.IsPushRejected(err) {
-		t.Errorf("PushPairAnchored() with a rejected push and a failing fetch error = %v; want the bare rejection", err)
-	}
-	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch); got != declinedWarpBare {
-		t.Errorf("warp bare = %q; want it unmoved at %q", got, declinedWarpBare)
-	}
-	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.url", warpFetchURL)
-	gitkit.MustRun(t, p.warpPath, "git", "config", "--unset", "remote.origin.pushurl")
 
 	if err := os.Remove(preReceiveHookPath(p.hub.WarpBare)); err != nil {
 		t.Fatalf("remove always-declining hook: %v", err)
