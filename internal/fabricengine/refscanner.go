@@ -141,33 +141,81 @@ func stripHeredocBodies(cmd string) string {
 // A backslash outside single quotes escapes the next character, as in POSIX shells; an unterminated
 // quote blanks to the end of the command.
 func blankQuoted(cmd string) string {
+	return blankQuotedSpans(cmd, false)
+}
+
+// blankQuotedSpans is blankQuoted's scan.
+// With singleOnly set it blanks single-quoted spans only and keeps double-quoted ones, since a shell runs a substitution inside double quotes but never inside single quotes.
+func blankQuotedSpans(cmd string, singleOnly bool) string {
 	var b strings.Builder
 	b.Grow(len(cmd))
 	var quote rune
 	escaped := false
 	for _, r := range cmd {
+		before := quote
+		keep := false
 		switch {
 		case escaped:
 			escaped = false
-			if quote == 0 {
-				b.WriteRune(r)
-				continue
-			}
+			keep = quote == 0
 		case r == '\\' && quote != '\'':
 			escaped = true
-			if quote == 0 {
-				b.WriteRune(r)
-				continue
-			}
+			keep = quote == 0
 		case quote == 0 && (r == '\'' || r == '"'):
 			quote = r
 		case r == quote:
 			quote = 0
-		case quote == 0:
-			b.WriteRune(r)
-			continue
+		default:
+			keep = quote == 0
 		}
-		b.WriteByte(' ')
+		if singleOnly && (before == '"' || quote == '"') {
+			keep = true
+		}
+		if keep {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte(' ')
+		}
 	}
 	return b.String()
+}
+
+// readOnlyCommands is the closed list of readers a read-only command is built from.
+var readOnlyCommands = map[string]bool{
+	"cat": true, "head": true, "tail": true, "ls": true, "wc": true, "grep": true, "jq": true, "cut": true,
+}
+
+// substitutionMarkers are the spellings of command and process substitution.
+var substitutionMarkers = []string{"$(", "`", "<(", ">("}
+
+// IsReadOnlyCommand reports whether cmd is built only from the readers cat, head, tail, ls, wc, grep, jq and cut, each in command position, joined by `|`, `;`, `&&` or a newline.
+// It is false for any output redirection (`>`, `>>`, `>|`, `&>`, a numbered descriptor redirection, `<>`), for command or process substitution, for backgrounding, and for any other command, `sort`, `tee`, `find`, an interpreter, `lyx`, `git` and `go` included.
+// A separator or redirection character inside a quoted span is text.
+// A substitution is found with only single-quoted spans blanked, because a shell runs one inside double quotes.
+func IsReadOnlyCommand(cmd string) bool {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return false
+	}
+	substitutionView := blankQuotedSpans(cmd, true)
+	for _, marker := range substitutionMarkers {
+		if strings.Contains(substitutionView, marker) {
+			return false
+		}
+	}
+	unquoted := blankQuoted(cmd)
+	if strings.Contains(unquoted, ">") {
+		return false
+	}
+	unquoted = strings.NewReplacer("&&", ";", "\n", ";", "|", ";").Replace(unquoted)
+	if strings.Contains(unquoted, "&") {
+		return false
+	}
+	for _, segment := range strings.Split(unquoted, ";") {
+		words := strings.Fields(segment)
+		if len(words) == 0 || !readOnlyCommands[words[0]] {
+			return false
+		}
+	}
+	return true
 }

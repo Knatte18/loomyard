@@ -106,3 +106,57 @@ func TestReferenceRule_Match(t *testing.T) {
 		})
 	}
 }
+
+// TestIsReadOnlyCommand covers the closed reader list and every way a command stops being read-only: a redirection, a substitution, backgrounding and any other command.
+func TestIsReadOnlyCommand(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		cmd  string
+		want bool
+	}{
+		{"cat alone", "cat docs/overview.md", true},
+		{"head alone", "head -n 5 x.txt", true},
+		{"tail alone", "tail -n 5 x.txt", true},
+		{"ls alone", "ls -la internal", true},
+		{"wc alone", "wc -l x.txt", true},
+		{"grep alone", "grep -rn needle internal", true},
+		{"jq alone", "jq .name package.json", true},
+		{"cut alone", "cut -d, -f1 x.csv", true},
+		{"pipeline of readers", "cat x.txt | grep needle | wc -l", true},
+		{"semicolon chain", "ls a; ls b", true},
+		{"and chain", "ls a && cat b", true},
+		{"separators inside quotes are text", `grep "a|b;c && d > e" x.txt`, true},
+		{"redirection character inside quotes is text", `grep '>' x.txt`, true},
+		{"substitution inside single quotes is text", `grep '$(x)' y.txt`, true},
+		{"output redirection", "cat x > y", false},
+		{"append redirection", "cat x >> y", false},
+		{"descriptor redirection", "cat x 2>/dev/null", false},
+		{"bare command substitution", "cat $(ls)", false},
+		{"command substitution inside double quotes", `cat "$(ls)"`, false},
+		{"bare backtick", "cat `ls`", false},
+		{"backtick inside double quotes", "cat \"`ls`\"", false},
+		{"process substitution", "cat <(ls)", false},
+		{"trailing background", "ls a &", false},
+		{"sort", "sort x.txt", false},
+		{"uniq", "cat x | uniq", false},
+		{"tee", "cat x | tee y", false},
+		{"xargs", "ls | xargs cat", false},
+		{"find", "find . -name x", false},
+		{"python", `python3 -c "print(1)"`, false},
+		{"git", "git status", false},
+		{"go", "go test ./...", false},
+		{"reader after a non-reader", "ls a && git push", false},
+		{"empty command", "  ", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := fabricengine.IsReadOnlyCommand(tt.cmd); got != tt.want {
+				t.Errorf("IsReadOnlyCommand(%q) = %v; want %v", tt.cmd, got, tt.want)
+			}
+		})
+	}
+}
