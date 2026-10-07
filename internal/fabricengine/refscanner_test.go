@@ -153,6 +153,8 @@ func TestIsReadOnlyCommand(t *testing.T) {
 		{"single-quoted non-reader before a reader name", "'tee' cat", false},
 		{"double-quoted non-reader after a separator", `ls a && "rm" cat x`, false},
 		{"quoted non-reader after a pipe", "cat a | 'tee' cat", false},
+		{"reader name with a quoted suffix names another command", `cat"x" y`, false},
+		{"backslash in the command word", `\cat x`, false},
 		{"empty command", "  ", false},
 	}
 
