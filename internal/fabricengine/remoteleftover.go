@@ -27,8 +27,7 @@ const (
 	leftoverDivergedWarp
 )
 
-// ErrRemoteLeftover is Add's refusal when a remote branch cannot be adopted or proven replaceable:
-// a remote weft branch that diverges from the local one, or a remote warp branch left by a removed pair.
+// ErrRemoteLeftover is Add's refusal when a remote branch cannot be adopted or proven replaceable: a remote weft branch that diverges from the local one, or a remote warp branch left by a removed pair.
 type ErrRemoteLeftover struct {
 	// Slug is the slug Add was asked to create.
 	Slug string
