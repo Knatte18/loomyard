@@ -4,6 +4,7 @@
 package webstercli
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -24,6 +25,7 @@ the run recorded, so a recovery needs no git reset of its own.
 --to start is the run's start commit: the oldest recorded batch start, or the
 octopus merge-base of the starts when none is the oldest.
 --to pre-fix is the HEAD the verify gate started its fixes from.
+--to start removes the run's live recovery strands first, so no recovery agent keeps writing into the tree the reset moves; --to pre-fix removes none.
 It refuses, changing nothing, while a run holds the run lock, during a merge, off
 the task branch, with no recorded target, when the target commit is missing or
 is not an ancestor of HEAD, and while a tracked path the run did not write
@@ -100,6 +102,15 @@ Example:
 			parent, err := c.parentBranch()
 			if err != nil {
 				return fail(fmt.Sprintf("webster: reset --to %s refused: the parent branch is unknown (%v); way forward: run `lyx fabric reconcile` to repair the pair, then re-run `lyx webster reset --to %s`", target, err, target))
+			}
+			if target == websterengine.ResetToStart {
+				if err := websterengine.RemoveRecoveryStrands(c.reed, st); err != nil {
+					var removeErr *websterengine.RecoveryStrandRemoveError
+					if !errors.As(err, &removeErr) {
+						return fail(fmt.Sprintf("webster: reset --to %s refused: %v", target, err))
+					}
+					return fail(fmt.Sprintf("webster: reset --to %s refused: %v; way forward: run `lyx reed remove %s`, then re-run `lyx webster reset --to %s`", target, removeErr, removeErr.GUID, target))
+				}
 			}
 			rec := fabricengine.NewMutations("")
 			if err := fab.ResetPairWarp(rec, plan.SHA, parent, plan.OwnPaths); err != nil {
