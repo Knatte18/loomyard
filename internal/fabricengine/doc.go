@@ -509,6 +509,10 @@
 // `Reconcile` consults it for a pair whose weft worktree is missing, before its raw-warp and unmanaged branches: a weft branch found locally or on origin is adopted as a worktree and the pair's wiring repaired (`weft_recreated`), so a raw warp worktree with an origin weft ends wired rather than dormant, and only with no such branch does it fork a dormant weft.
 // When the worktree adopt fails after the resolver created the local branch from origin, `Reconcile` deletes that branch again through the destruction gate, so a surviving local weft branch stays proof of a live pair; origin is never touched.
 //
+// **Config changes.**
+// `ReadConfigChanges` (configchanges.go) diffs a task's weft branch against its fork point from the parent's weft branch and reports which of the config files its caller names changed, as `ConfigChanges`.
+// It is read-only and writes nothing; the caller supplies the anchor-relative file set, because the config registry imports this package.
+//
 // `Add` also drops the parent's shed run records from a pair it forks (forkrecords.go).
 // A weft branch forked from its parent would otherwise carry every committed run directory, including one for the child's own slug, and the child's `Seed-Child` would refuse a disagreeing seed.
 // The fork is `worktree add --no-checkout`, followed by a write-out of the index without the `shedrun.RunsRootRel()` tree, so no run record ever reaches the new worktree's disk and nothing is deleted (an index-only removal after a full checkout would leave the files `shedrun` reads).
