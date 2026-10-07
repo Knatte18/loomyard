@@ -45,6 +45,9 @@
 //     tier's own fail-closed arm, for a member target whose answer is outside quarry's four-value
 //     vocabulary: dropping such a target from the containment index instead would silently exempt it
 //     from the overlap check.
+//   - delete-before-reference (blocking) — LaterDeleteReferences (deleteorder.go), a card that deletes
+//     a symbol whose reference a later card's Edit code still holds, so the delete must move after
+//     that card.
 //   - handle-name-failed, handle-canonical-collision (both blocking) — CanonicalizeHandles
 //     (handle.go), a declaration that fails to parse or two draft handles that canonicalize to the
 //     same glyph.

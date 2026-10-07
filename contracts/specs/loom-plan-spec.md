@@ -349,6 +349,7 @@ A parked, more aggressive parallel-execution idea also exists — see the `inter
 
 Machine checks this format is designed to support, in this fixed order, one row per distinct `Check:` ID — never one row per presentation row, so the table below is itself the authoritative list and no count of it is pinned anywhere in prose.
 The IDs are split across two entry points, `ValidateFormat` and `Validate`: every one but `plan-unapproved` (row 3 below) is in the format-only set `ValidateFormat` runs, and `plan-unapproved` is additionally checked by `Validate`, the full entry point.
+The rows that name `internal/planglyph` as their emitter are the exception: that package's resolve pass adds them on top of both entry points.
 The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-three slot in that order even though it alone belongs to the wider entry point:
 
 1. `format-unrecognized` — `format:` is a recognized version (currently only `5`); else refuse to run.
@@ -395,6 +396,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     A `Rename` group's own `Pairs.Old` entries are checked instead of its `Refs`, and its `Pairs.New` side is never checked.
     `Custom` stays exempt on its own targets — and from the `prosa-symbol-target` rule above, restated in group terms: a `Custom` group's own targets are exempt from both rules — and from nothing else, since every other group and every card-generic check still binds it.
 29. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix. Card-generic.
+30. `delete-before-reference` — a `Delete:` target that is a member glyph or a package self glyph, while a card with a higher number still references it in its `Edit:` code (a member glyph's resolved span, or the whole file of a path or file self glyph). Emitted by `internal/planglyph`'s resolve pass, not by `internal/planparser`, at `ValidateFormat`, `Validate`, `ValidateRework` and `ValidateDispatch`, and never under `language: "none"`. The match is textual, and the finding is attributed to the deleting card; the fix is to move the delete to a card after the editing one.
 
 One further check, `rework-first-card`, is outside both entry points and has no row above.
 Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.

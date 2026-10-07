@@ -172,6 +172,41 @@ func twoCardUsesPlan(consumerNumber, producerNumber int) plankit.Plan {
 	return plankit.Plan{Approved: true, Framing: "Framing.", Cards: cards}
 }
 
+// deleteOrderFiles is the source tree deleteOrderPlan resolves against: sub/b.go's Bar still calls the Foo that sub/a.go declares.
+var deleteOrderFiles = map[string]string{
+	"sub/a.go": "package sub\n\nfunc Foo() {}\n",
+	"sub/b.go": "package sub\n\nfunc Bar() { Foo() }\n",
+}
+
+// deleteOrderPlan returns a two-card plan in which the "deleter" card Deletes sub#Foo and the "editor" card Edits sub#Bar, whose code still calls Foo;
+// deleterNumber and editorNumber place the two cards, so the plan is in executable order only when the editor's number is lower.
+func deleteOrderPlan(deleterNumber, editorNumber int) plankit.Plan {
+	cards := []plankit.Card{
+		{
+			Number:  deleterNumber,
+			Slug:    "deleter",
+			Summary: "deletes Foo",
+			Groups:  []plankit.Group{{Label: "Delete", Targets: []string{"sub#Foo"}}},
+			Intent:  "placeholder card.",
+
+			ImpactSummary: "none.",
+		},
+		{
+			Number:  editorNumber,
+			Slug:    "editor",
+			Summary: "edits Bar",
+			Groups:  []plankit.Group{{Label: "Edit", Targets: []string{"sub#Bar"}}},
+			Intent:  "placeholder card.",
+
+			ImpactSummary: "none.",
+		},
+	}
+	if deleterNumber > editorNumber {
+		cards[0], cards[1] = cards[1], cards[0]
+	}
+	return plankit.Plan{Approved: true, Framing: "Framing.", Cards: cards}
+}
+
 // seedValidPlanDir writes a valid plan with one card into dir.
 func seedValidPlanDir(t *testing.T, dir string) {
 	t.Helper()
@@ -240,6 +275,24 @@ func TestValidateCmd_Envelopes(t *testing.T) {
 		{
 			name:     "the same Uses after the card that produces its target passes",
 			seed:     func(t *testing.T, c *websterCLI) { plankit.Write(t, c.geom.PlanDir, twoCardUsesPlan(2, 1)) },
+			wantExit: 0,
+			wantIn:   []string{`"valid":true`, `"cards":2`},
+		},
+		{
+			name: "a delete before a later card's Edit that still references it is refused under the deleting card",
+			seed: func(t *testing.T, c *websterCLI) {
+				plankit.Write(t, c.geom.PlanDir, deleteOrderPlan(1, 2))
+				c.geom.WorktreeRoot = plankit.Repo(t, deleteOrderFiles)
+			},
+			wantExit: 1,
+			wantIn:   []string{`"ok":false`, `"check":"delete-before-reference"`, `"card":"1-deleter"`, "sub/b.go:3"},
+		},
+		{
+			name: "the same delete after the card that edits the reference passes",
+			seed: func(t *testing.T, c *websterCLI) {
+				plankit.Write(t, c.geom.PlanDir, deleteOrderPlan(2, 1))
+				c.geom.WorktreeRoot = plankit.Repo(t, deleteOrderFiles)
+			},
 			wantExit: 0,
 			wantIn:   []string{`"valid":true`, `"cards":2`},
 		},

@@ -282,7 +282,10 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 	findings = append(findings, createFindings(current, createIndex)...)
 	findings = append(findings, resolveContainment(current, results)...)
 
-	return findings, nil
+	deleteOrderFindings, err := LaterDeleteReferences(plan, current.Cards, current.Cards, worktreeRoot)
+	findings = append(findings, deleteOrderFindings...)
+
+	return findings, err
 }
 
 // renameNewTargetSet returns the set of every Rename pair's New-side ref across plan, matching the
