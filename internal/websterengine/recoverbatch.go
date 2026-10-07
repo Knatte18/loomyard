@@ -580,7 +580,8 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 		}
 	}
 
-	// Only a done digest drops the run dir; stuck and dead keep it for diagnosis.
+	// Only a done digest drops the run dir;
+	// stuck and dead keep it for diagnosis.
 	if digest.Status == DigestStatusDone && bs.ShuttleRunDir != "" {
 		if err := os.RemoveAll(bs.ShuttleRunDir); err != nil {
 			warnings = append(warnings, fmt.Sprintf("recover-batch: remove run dir %s: %v", bs.ShuttleRunDir, err))

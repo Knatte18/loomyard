@@ -9,7 +9,8 @@ import "fmt"
 type StartAction int
 
 const (
-	// StartAlreadyRunning: strand and watcher are both live; start changes nothing.
+	// StartAlreadyRunning: strand and watcher are both live;
+	// start changes nothing.
 	StartAlreadyRunning StartAction = iota
 	// StartSpawnWatcher: strand is live but no watcher holds it; spawn one.
 	StartSpawnWatcher

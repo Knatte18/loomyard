@@ -111,7 +111,8 @@ func (e *RecoveryStrandRemoveError) Error() string {
 func (e *RecoveryStrandRemoveError) Unwrap() error { return e.Err }
 
 // RemoveRecoveryStrands removes every live recovery strand the state records, in batch-number order.
-// Only a batch of Kind "recovery" with a StrandGUID names one; implementer forks and the Master have no recorded strand.
+// Only a batch of Kind "recovery" with a StrandGUID names one;
+// implementer forks and the Master have no recorded strand.
 // The first failure returns a *RecoveryStrandRemoveError naming the strand guid.
 // A nil state removes nothing.
 func RemoveRecoveryStrands(reed shuttleengine.ReedOps, st *State) error {

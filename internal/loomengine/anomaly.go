@@ -47,7 +47,8 @@ type EntryObservation struct {
 	Vouched bool
 	// VoucherFound is true when a handoff voucher existed at entry, whether or not it matched.
 	// VoucherHistoryLength and VoucherState are the values it recorded, meaningful only when VoucherFound is true.
-	// They are carried into the crash-resume note so the reader can compare the recorded reading with the observed one; DetectCrashResume reads Vouched only.
+	// They are carried into the crash-resume note so the reader can compare the recorded reading with the observed one;
+	// DetectCrashResume reads Vouched only.
 	VoucherFound         bool
 	VoucherHistoryLength int
 	VoucherState         shedengine.State

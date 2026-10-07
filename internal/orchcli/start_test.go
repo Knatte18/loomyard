@@ -40,7 +40,8 @@ type startHarness struct {
 	strands *fakeStrands
 	starter *fakeStarter
 	spawns  int
-	// sleeps counts the waits start asked for; onSleep, when set, runs on each.
+	// sleeps counts the waits start asked for;
+	// onSleep, when set, runs on each.
 	sleeps  int
 	onSleep func()
 }
@@ -144,7 +145,9 @@ func TestStart_LiveStrand(t *testing.T) {
 
 	cases := []struct {
 		name string
-		// watcher holds watch.lock; stopping records the watcher stopping; releases frees the lock on the first sleep.
+		// watcher holds watch.lock;
+		// stopping records the watcher stopping;
+		// releases frees the lock on the first sleep.
 		watcher, stopping, releases bool
 		wantAction                  string
 		wantSpawns                  int

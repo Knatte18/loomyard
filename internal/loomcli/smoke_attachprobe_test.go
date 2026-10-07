@@ -346,7 +346,8 @@ func TestSmokeSingleLLM_RerunRemovesTheSupersededStrand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reed geometry: %v", err)
 	}
-	// The first two runs stay quiet and never write their outputs; the fresh run the producer starts writes its output after a second.
+	// The first two runs stay quiet and never write their outputs;
+	// the fresh run the producer starts writes its output after a second.
 	launchEngine := &shellLaunchEngine{quietSeconds: 600}
 	runner := shuttleengine.NewRunner(reedEngine, launchEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 

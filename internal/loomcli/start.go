@@ -1,6 +1,7 @@
 // start.go implements the `start` loom verb: the session bootstrap.
 // It resolves the recorded parent branch, seeds the status file when absent, commits that seed into the fabric, ensures the reed substrate and picks the session's status strand by the recorded driver (kept on a go-driven run, removed on an llm-driven one), spawns the detached driver when none is already alive, waits for the handshake that confirms the driver took the run lock, and finally prints the success envelope.
-// The verb never attaches or switches a tmux client; every step runs on the envelope.
+// The verb never attaches or switches a tmux client;
+// every step runs on the envelope.
 
 package loomcli
 
@@ -554,7 +555,8 @@ Example:
 			}
 
 			// Step 7: release the bootstrap lock and report the success envelope.
-			// The verb never attaches or switches a tmux client; attaching is `lyx reed attach`.
+			// The verb never attaches or switches a tmux client;
+			// attaching is `lyx reed attach`.
 			_ = bootstrapLock.Release()
 
 			runID := shedrun.ResolveRunID(c.location, c.runID)

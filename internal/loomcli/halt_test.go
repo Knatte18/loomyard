@@ -36,7 +36,8 @@ type haltFixture struct {
 	c           *loomCLI
 	shuttle     *shedfake.Shuttle
 	frictionDir string
-	// commitStatus is the shed's CommitStatus seam in stepOver; nil leaves it unset.
+	// commitStatus is the shed's CommitStatus seam in stepOver;
+	// nil leaves it unset.
 	commitStatus func(producer, state string) error
 }
 
@@ -519,7 +520,8 @@ func TestStep_CrashResumeNoteFollowsTheHandoffVoucher(t *testing.T) {
 		beforeSecond func(t *testing.T, f *haltFixture)
 		// failCommit makes the first step's status commit fail after Row-A's done transition is on disk, so that step returns an error having completed.
 		failCommit bool
-		// wantInNote is the set of substrings the crash-resume note carries; nil means no note is written.
+		// wantInNote is the set of substrings the crash-resume note carries;
+		// nil means no note is written.
 		wantInNote []string
 	}{
 		{name: "MarkerKept"},

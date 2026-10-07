@@ -95,7 +95,8 @@ type State struct {
 	ReloadTypedAt time.Time `json:"reload_typed_at"`
 	// ReloadRetry is the skills the retry step still loads; empty outside it.
 	ReloadRetry []string `json:"reload_retry"`
-	// ReloadSkipsSkills is true for a reload entered after a compaction, which has no skills step; false after `/clear`.
+	// ReloadSkipsSkills is true for a reload entered after a compaction, which has no skills step;
+	// false after `/clear`.
 	ReloadSkipsSkills bool `json:"reload_skips_skills"`
 }
 

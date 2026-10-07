@@ -69,7 +69,8 @@ type Watcher struct {
 	skills      []string // Skills the reload sequence's skills step loads in one turn after a clear, before the pointer.
 	clock       Clock
 
-	// compactedAt is the time of an auto-compaction boundary a turn end read confirmed fresh and not yet reloaded from; zero when none.
+	// compactedAt is the time of an auto-compaction boundary a turn end read confirmed fresh and not yet reloaded from;
+	// zero when none.
 	// A tick that reads a turn end replaces it from its own evaluation, and binding to another strand clears it.
 	// It is memory only: a restarted watcher finds the boundary again at its next turn end, since the baseline has not moved.
 	compactedAt time.Time

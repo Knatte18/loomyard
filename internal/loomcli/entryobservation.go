@@ -63,9 +63,9 @@ func recordHandoffVoucherFromStatus(path, lockPath, statusPath, statusLockPath s
 // resumes from a step handoff and then itself dies before appending any history -- an observation
 // otherwise identical to the handoff -- is correctly reported as a crash by the drive after it,
 // instead of being suppressed forever by a voucher nothing invalidated.
-// A missing or unreadable voucher reports found false and no match; a delete failure is warned and does not change the
-// result, since a lingering voucher can at worst suppress one further matching observation and the
-// warn names it.
+// A missing or unreadable voucher reports found false and no match;
+// a delete failure is warned and does not change the result,
+// since a lingering voucher can at worst suppress one further matching observation and the warn names it.
 func consumeHandoffVoucher(path, lockPath string, historyLength int, observedState shedengine.State) (voucher handoffVoucher, found, matches bool) {
 	voucher, found, err := state.ReadJSONStrict[handoffVoucher](path, lockPath)
 	if err != nil {

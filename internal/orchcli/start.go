@@ -1,5 +1,6 @@
 // start.go implements the `start` orch verb: the idempotent bootstrap that leaves one live orchestrator strand and one watcher bound to it, then reports on the envelope.
-// It never attaches or switches a tmux client; `lyx reed attach` is the only way into the session.
+// It never attaches or switches a tmux client;
+// `lyx reed attach` is the only way into the session.
 
 package orchcli
 

@@ -11,7 +11,8 @@
 //
 //   - start: the idempotent bootstrap.
 //     It leaves one live orchestrator strand and one watcher bound to it, then reports on the envelope.
-//     It never attaches or switches a tmux client; `lyx reed attach` is the only way into the session.
+//     It never attaches or switches a tmux client;
+//     `lyx reed attach` is the only way into the session.
 //     `--adopt <session-id>` resumes an existing Claude session as the orchestrator strand instead of launching a fresh one.
 //   - status: reports the strand, the watcher and the persisted cycle state.
 //   - refresh: writes a clear-cycle request, which makes the watcher write a note and clear the session at its next idle moment regardless of the token count and of `cycle_mode`.
@@ -183,11 +184,14 @@
 //
 // # The reload sequence
 //
-// A compaction keeps the skills the session invoked, which Claude Code re-injects, and `/clear` loses them; both lose the role.
+// A compaction keeps the skills the session invoked, which Claude Code re-injects,
+// and `/clear` loses them;
+// both lose the role.
 // Every entry point therefore starts the sequence with a plugins step, so a skill deployed after the session started loads at the next reload.
 // After `/clear` a skills step then loads the whole orch skill list in one turn,
 // an optional retry step loads what that turn left missing,
-// and the one-line pointer follows; after a compaction the pointer follows the plugins step directly.
+// and the one-line pointer follows;
+// after a compaction the pointer follows the plugins step directly.
 // `start` and `--adopt` load the same skills through the launch spec.
 // The step, the skills the retry step loads, whether the sequence skips the skills, the step's first typing time and its events offset are persisted in State (`reload_step`, `reload_retry`, `reload_skips_skills`, `reload_typed_at`, `phase_events_offset`), the offset and time at the first typing, before the text is typed.
 // `reload_step` is -2 for the plugins step, 0 for the skills step and -1 for the retry step.
@@ -229,7 +233,8 @@
 //     a tick that read none keeps it, and binding to another strand clears it.
 //     Bound: a compaction mid-turn whose turn end is followed by another before the watcher reads gets no reload, and the role pointer reaches the session at its next cycle.
 //
-// Bound: only the two compaction entries skip the skills step and `/clear` keeps it; the pointer step still has the session read its role file.
+// Bound: only the two compaction entries skip the skills step and `/clear` keeps it;
+// the pointer step still has the session read its role file.
 // A session that did lose a skill in a compaction misses it until its next `/clear` or restart.
 //
 // State.CompactionBaseline is set to the launch time by a fresh launch, so a boundary an adopted session already carried never reloads,
