@@ -80,7 +80,7 @@ func roleOf(title string) string {
 
 // recentRuns names the task runs of the hub whose sessions changed most recently, newest
 // first, at most last of them: every project directory of a worktree under the hub except
-// the prime's own and the weft's.
+// the prime's own.
 func recentRuns(projects, hub, prime string, last int) ([]string, error) {
 	prefix := filepath.Base(projectDir(projects, hub)) + "-"
 	entries, err := os.ReadDir(projects)
@@ -94,7 +94,7 @@ func recentRuns(projects, hub, prime string, last int) ([]string, error) {
 	var found []candidate
 	for _, e := range entries {
 		slug, ok := strings.CutPrefix(e.Name(), prefix)
-		if !e.IsDir() || !ok || slug == "" || slug == prime || strings.HasSuffix(slug, "-weft") {
+		if !e.IsDir() || !ok || slug == "" || slug == prime {
 			continue
 		}
 		sessions, err := filepath.Glob(filepath.Join(projects, e.Name(), "*.jsonl"))

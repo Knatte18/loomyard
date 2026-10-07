@@ -111,7 +111,6 @@ func TestRecentRuns(t *testing.T) {
 	touch("/hub/new", time.Hour)
 	touch("/hub/mid", 2*time.Hour)
 	touch("/hub/prime", 0)
-	touch("/hub/x-weft", 0)
 	touch("/other/newest", 0)
 	if err := os.MkdirAll(projectDir(projects, "/hub/empty"), 0o755); err != nil {
 		t.Fatal(err)
