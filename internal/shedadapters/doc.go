@@ -17,8 +17,6 @@
 //
 //   - SingleLLMProducer: shuttleengine.OutcomeDone maps to Done, reporting the first entry of the
 //     evaluated Spec's OutputFiles as the pointer's path.
-//     OutcomeAsking maps to Stuck with an empty Path and a fixed one-line Reason naming the session
-//     or run dir; the agent's own message stays in the log.
 //     OutcomeDied and OutcomeTimeout are engine-level errors, not Stuck.
 //     Before any of this, SingleLLMProducer.Call probes shuttleengine's Attach seam for a still-live,
 //     never-terminated run matching the evaluated Spec -- on every call and regardless of mode, not
@@ -36,7 +34,7 @@
 //     It deliberately cannot be a decorator wrapping this producer: a decorator runs before Call and therefore before the probe, which is the same archive-before-probe hazard stated above, reintroduced one layer up.
 //   - WebsterProducer: Webster's own "done" outcome maps to Done, reporting Webster's summary path
 //     (summaryparser.Path) as the pointer's path.
-//     Webster's own "stuck" outcome, a websterengine.ErrMasterAsking error, and a websterengine.ErrPendingAuditFindings error all map to Stuck with an empty Path and a Reason: Master's own stuck_reason, a fixed asking summary, or the run-entry refusal's text, whose way forward already ends in this row's re-entry step (NewWebsterProducer sets RunDeps.ReentryStep to "re-step the <row> row" when it is empty).
+//     Webster's own "stuck" outcome and a websterengine.ErrPendingAuditFindings error both map to Stuck with an empty Path and a Reason: Master's own stuck_reason or the run-entry refusal's text, whose way forward already ends in this row's re-entry step (NewWebsterProducer sets RunDeps.ReentryStep to "re-step the <row> row" when it is empty).
 //     Webster's own "paused" outcome reaching Call out of band is an engine-level error.
 //   - BurlerProducer: a completed round -- shuttleengine.OutcomeDone reached within the bounded
 //     retry -- maps to Stuck, never Done, reporting the round's own review path as the pointer.
@@ -44,7 +42,7 @@
 //     condition: a round producer has no independent notion of "finished," only the judge does.
 //     That Stuck is BudgetExempt when the previous round carries a recorded continue decision whose cause is budget,
 //     so the one more round a budget continue grants spends no budget; each further round needs its own decision.
-//     Every non-done shuttle outcome that survives the bounded retry -- OutcomeAsking, two
+//     Every non-done shuttle outcome that survives the bounded retry -- two
 //     consecutive OutcomeDied/OutcomeTimeout results, or an unrecognized outcome -- is an
 //     engine-level error, not Stuck, because the Bouncer tells its seed call from its judge call by
 //     the round artifacts on disk, and a failed round returning Stuck with no review written would

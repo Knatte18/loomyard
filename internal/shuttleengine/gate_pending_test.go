@@ -83,8 +83,8 @@ func scriptedPending(calls *int, script ...GateResult) Gate {
 	}
 }
 
-//testtiming:keep pins that a pending gate sends its carried text exactly once, charges no attempt, and settles with the remembered Done message
-func TestGatePending_HoldsSendsOnceAndPassesWithRememberedMessage(t *testing.T) {
+//testtiming:keep pins that a pending gate sends its carried text exactly once, charges no attempt, and settles done
+func TestGatePending_HoldsSendsOnceAndPasses(t *testing.T) {
 	var calls int
 	gate := scriptedPending(&calls,
 		GateResult{Pending: true, Send: pendingSendText},
@@ -100,9 +100,6 @@ func TestGatePending_HoldsSendsOnceAndPassesWithRememberedMessage(t *testing.T) 
 	}
 	if result.Outcome != OutcomeDone {
 		t.Errorf("Outcome = %q, want done", result.Outcome)
-	}
-	if result.LastAssistantMessage != f.run.gateLastDone {
-		t.Errorf("LastAssistantMessage = %q, want the remembered Done message %q", result.LastAssistantMessage, f.run.gateLastDone)
 	}
 	if calls != 3 {
 		t.Errorf("gate ran %d times, want 3 (Done, the next Done, one idle poll tick)", calls)

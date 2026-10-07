@@ -1,4 +1,5 @@
 // cli_test.go covers the shuttlecli cobra seam through RunCLI: run's flag-shape validation, and interrupt/send's exact-args validation.
+// It also pins, over a fake reed and engine, the message tail `send` appends.
 // No live tmux/claude session is required by any test in this file;
 // the full run/interrupt/send round-trip against a live agent lives in smoke tests (batch 6) and
 // the sandbox suite.
@@ -294,5 +295,62 @@ func TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity(t *testing.T) {
 	}
 	if got, _ := envelope["runDir"].(string); got == "" {
 		t.Errorf("envelope runDir is empty; want the run dir that is still on disk; output: %s", out.String())
+	}
+}
+
+// TestSendCmd_AppendsMessageTail drives sendCmd over a started run on a fake reed and engine and asserts the one text typed into the pane,
+// so the verb is what is pinned, not the helper it calls.
+func TestSendCmd_AppendsMessageTail(t *testing.T) {
+	t.Parallel()
+	tail := shuttleengine.MessageTail
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{"plain text gains the tail", "read the plan", "read the plan " + tail},
+		{"text already ending with the tail is typed once with it", "read the plan " + tail, "read the plan " + tail},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			var pane strings.Builder
+			reed := &shuttlefake.Reed{
+				SendTextFn: func(_, text string, _ bool) error {
+					pane.WriteString(text + "\n")
+					return nil
+				},
+				CapturePaneFn: func(string) (string, error) { return pane.String(), nil },
+			}
+			engine := &shuttlefake.Engine{
+				PrepareLaunch: &shuttleengine.Launch{Cmd: "launch", ResumeCmd: "resume", SessionID: "session-1"},
+				ComposeSendFn: func(text string) []shuttleengine.PaneInput {
+					return []shuttleengine.PaneInput{{Text: text, Submit: true}}
+				},
+			}
+			runner := shuttleengine.NewRunner(reed, engine, root, root, shuttleengine.Config{RunTimeoutMin: 30, PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+			run, err := runner.Start(shuttleengine.Spec{Prompt: "do the thing", OutputFiles: []string{filepath.Join(root, "out.md")}})
+			if err != nil {
+				t.Fatalf("runner.Start: %v", err)
+			}
+
+			cmd := (&shuttleCLI{runner: runner}).sendCmd()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs([]string{run.StrandGUID(), tt.text})
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+			}
+
+			envelope := parseSingleEnvelope(t, out.Bytes())
+			if ok, _ := envelope["ok"].(bool); !ok {
+				t.Fatalf("envelope ok = false; output: %s", out.String())
+			}
+			if len(reed.SendTextCalls) != 1 || reed.SendTextCalls[0].Text != tt.want {
+				t.Errorf("typed texts = %+v; want exactly one, %q", reed.SendTextCalls, tt.want)
+			}
+		})
 	}
 }

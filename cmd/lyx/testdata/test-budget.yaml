@@ -52,7 +52,7 @@ internal/loomshed: 68
 internal/lyxcwd: 23
 internal/mergeresolve: 17
 internal/modelspec: 11
-internal/orchcli: 23
+internal/orchcli: 24
 internal/orchengine: 121
 internal/output: 4
 internal/pairteardown: 4
@@ -80,9 +80,9 @@ internal/shedrun: 22
 internal/shedtransient: 2
 internal/shedverbs: 65
 internal/shell: 11
-internal/shuttlecli: 11
-internal/shuttleengine: 139
-internal/shuttleengine/claudeengine: 88
+internal/shuttlecli: 19
+internal/shuttleengine: 140
+internal/shuttleengine/claudeengine: 89
 internal/standalonegeom: 7
 internal/standalonestate: 6
 internal/state: 8

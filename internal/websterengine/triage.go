@@ -44,9 +44,9 @@ func writeTriageFrictionNote(frictionDir string, flaky []string) error {
 	return nil
 }
 
-// backgroundShellOutcome is how a run ended after Master's wait counted a turn end past a background shell, and so what finally ends the shell.
+// backgroundShellOutcome is how a run ended after Master's wait stopped waiting on a background shell at a turn end, and so what finally ends the shell.
 type backgroundShellOutcome struct {
-	// description is the run's outcome after the counted turn end.
+	// description is the run's final outcome.
 	description string
 	// strandReclaimed is true when Master's strand outlives the run until the next `lyx webster run` reclaims it, and false when shuttle removes the strand as the run finishes.
 	strandReclaimed bool
@@ -66,12 +66,13 @@ func finishedShellOutcome(runResult RunResult) backgroundShellOutcome {
 }
 
 // errorShellOutcome describes a run that returned err.
-// strandReclaimed is true for an error that leaves Master's strand alive (asking, died, timeout), and false for an error after a shuttle-done end, where shuttle still removes the strand.
+// strandReclaimed is true for an error that leaves Master's strand alive (died, timeout), and false for an error after a shuttle-done end, where shuttle still removes the strand.
 func errorShellOutcome(err error, strandReclaimed bool) backgroundShellOutcome {
 	return backgroundShellOutcome{description: "error (" + err.Error() + ")", strandReclaimed: strandReclaimed}
 }
 
-// expiredShellWarning states what happened to one background shell the Master wait counted a turn end past, what ends it, and the run's outcome.
+// expiredShellWarning states what happened to one background shell the Master wait stopped waiting on at a turn end, what ends it, and the run's final outcome.
+// That turn end finished the run when Master's output files existed and otherwise held it for the parent.
 // It is both the run warning and the friction note's line for that shell, so the two carry the same wording.
 // waitMin is the bound in minutes; a non-positive value names the key alone.
 func expiredShellWarning(label string, waitMin int, outcome backgroundShellOutcome) string {
@@ -83,10 +84,10 @@ func expiredShellWarning(label string, waitMin int, outcome backgroundShellOutco
 	if outcome.strandReclaimed {
 		ends = "Master's strand stays alive until the next `lyx webster run` reclaims it at entry, which ends the session and the shell with it"
 	}
-	return fmt.Sprintf("background shell `%s` ran past %s: the wait stopped waiting and counted Master's turn end, and lyx did not stop the shell; %s; the run's outcome after that turn end: %s", label, bound, ends, outcome.description)
+	return fmt.Sprintf("background shell `%s` ran past %s: the wait stopped waiting on the shell at a turn end, which finished the run when Master's output files existed and otherwise held it for the parent, and lyx did not stop the shell; %s; the run's final outcome: %s", label, bound, ends, outcome.description)
 }
 
-// writeBackgroundShellFrictionNote records the shells Master's wait counted a turn end past and the run's outcome,
+// writeBackgroundShellFrictionNote records the shells Master's wait stopped waiting on at a turn end and the run's final outcome,
 // so reflection has the evidence a hang otherwise leaves only in events.jsonl.
 // waitMin is the bound in minutes; a non-positive value names the key alone.
 // It is a no-op when frictionDir is empty or labels is empty.
@@ -101,7 +102,7 @@ func writeBackgroundShellFrictionNote(frictionDir string, labels []string, waitM
 	}
 
 	var b strings.Builder
-	b.WriteString("Master's wait counted a turn end past a background shell\n\n")
+	b.WriteString("Master's wait stopped waiting on a background shell at a turn end\n\n")
 	for _, l := range labels {
 		b.WriteString("- " + expiredShellWarning(l, waitMin, outcome) + "\n")
 	}

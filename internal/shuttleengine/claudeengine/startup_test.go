@@ -6,6 +6,7 @@ package claudeengine
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -359,16 +360,22 @@ func TestComposeSend(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		engine *Claude
-		settle int
+		name         string
+		engine       *Claude
+		settle       int
+		redrawSettle time.Duration
 	}{
-		{"default settle", New(), defaultSubmitSettleMS},
-		{"configured settle", NewFromConfig(shuttleengine.Config{SubmitSettleMS: 120}), 120},
+		{"default settle", New(), defaultSubmitSettleMS, 300 * time.Millisecond},
+		{"configured settle", NewFromConfig(shuttleengine.Config{SubmitSettleMS: 120, SubmitRedrawSettleMS: 80}), 120, 80 * time.Millisecond},
+		{"zero redraw settle reads at once", NewFromConfig(shuttleengine.Config{SubmitSettleMS: 120}), 120, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
+			if got := tt.engine.SubmitSettle(); got != tt.redrawSettle {
+				t.Errorf("SubmitSettle() = %v, want %v", got, tt.redrawSettle)
+			}
 
 			got := tt.engine.ComposeSend("hello")
 			want := []shuttleengine.PaneInput{

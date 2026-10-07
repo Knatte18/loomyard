@@ -29,6 +29,8 @@ type Config struct {
 
 	SubmitSettleMS int `yaml:"submit_settle_ms"` // Pause between typed text and its submitting Enter; LoadConfig refuses negative.
 
+	SubmitRedrawSettleMS int `yaml:"submit_redraw_settle_ms"` // Wait after an Enter before the input box is read to confirm the send; 0 reads at once, LoadConfig refuses negative.
+
 	Claude                    string `yaml:"claude"`
 	ClaudeDenyAgentTool       bool   `yaml:"claude_deny_agent_tool"`
 	ClaudeDenyAskUserQuestion bool   `yaml:"claude_deny_ask_user_question"`
@@ -55,6 +57,10 @@ func LoadConfig(baseDir, module string) (Config, error) {
 
 	if cfg.SubmitSettleMS < 0 {
 		return Config{}, fmt.Errorf("shuttle config: submit_settle_ms must not be negative, got %d", cfg.SubmitSettleMS)
+	}
+
+	if cfg.SubmitRedrawSettleMS < 0 {
+		return Config{}, fmt.Errorf("shuttle config: submit_redraw_settle_ms must not be negative, got %d", cfg.SubmitRedrawSettleMS)
 	}
 
 	return cfg, nil

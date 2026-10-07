@@ -114,16 +114,16 @@ and afterward the strand's pane and run directory are cleaned up (no leftover pa
 
 ---
 
-### S2 -- Asking path (operator-assisted)
+### S2 -- Hold path (operator-assisted)
 
 **Covers:** shuttle
 
-**Goal:** "Give a shuttle agent a task it cannot complete without a decision only the operator can make, and confirm the run reports `asking` with the question, then let the operator answer it directly in the pane."
+**Goal:** "Give a shuttle agent a task it cannot complete without a decision only the operator can make, and confirm the run keeps waiting at the agent's question, then let the operator answer it directly in the pane or by `lyx shuttle send`, and confirm the run ends `done`."
 
-**Watch:** `lyx shuttle run --prompt "before writing decision.md, stop and ask me which of two options you should pick — do not guess" --output-file decision.md --interactive` blocks, then returns with `"outcome":"asking"` and a non-empty `lastAssistantMessage` carrying the question;
+**Watch:** `lyx shuttle run --prompt "before writing decision.md, stop and ask me which of two options you should pick — do not guess" --output-file decision.md --interactive` does not return when the agent ends its turn with its question: the run is held;
 the strand and its pane are still alive (`lyx reed status` still lists the guid;
 `decision.md` does not exist yet).
-The agent then instructs the operator to attach (`lyx reed attach` in a second terminal, per the reed suite's M7/M14 pattern), answer the question in the pane, and confirm the agent continues and eventually writes `decision.md`.
+The agent then instructs the operator to attach (`lyx reed attach` in a second terminal, per the reed suite's M7/M14 pattern), answer the question in the pane or by `lyx shuttle send <guid> "<answer>"`, and confirm the agent continues, eventually writes `decision.md`, and the original `lyx shuttle run` returns `"outcome":"done"`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -138,8 +138,8 @@ The agent then instructs the operator to attach (`lyx reed attach` in a second t
 **Watch:** Start a long-running run in one terminal, e.g. `lyx shuttle run --prompt "count slowly to a very large number out loud, one number per line, before writing done.md" --output-file done.md`.
 From a second terminal, note the `guid` (via `lyx reed status`) and run `lyx shuttle interrupt <guid>` -- the agent's current turn stops without killing its pane or session (`lyx reed status` still shows it `live: true`).
 Then run `lyx shuttle send <guid> "stop counting and write done.md right away"` -- a single-line update only.
-The deterministic property to verify is that `done.md` eventually appears with the redirected content: the first terminal's envelope may report either `"outcome":"done"` or `"outcome":"asking"`, because the interrupted turn's own Stop event can resolve the blocking run before the redirect turn starts (the documented v1 no-re-wait limitation) -- an `asking` envelope with `done.md` correctly written is a PASS, not a failure.
-Only `died`/`timeout` (or a missing/wrong `done.md`) is a real failure here.
+The deterministic property to verify is that `done.md` eventually appears with the redirected content: the first terminal's envelope reports `"outcome":"done"`, because the interrupted turn's own Stop is a hold and only the redirect turn's completion ends the run.
+Any other outcome (or a missing/wrong `done.md`) is a real failure here.
 Sending multiline text must be rejected outright (a "must be a single line" error), not silently truncated or mis-submitted.
 
 **Verdict:** `OK` / `WARN` / `FAIL`

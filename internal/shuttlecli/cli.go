@@ -37,7 +37,7 @@ func Command() *cobra.Command {
 		Short: "run one LLM agent over the file contract via a swappable engine",
 		Long: `shuttle drives one LLM agent through a single run: a prompt goes in, the
 agent's output files (the file contract) and a classified outcome
-(done/asking/died/timeout) come out. The provider itself is swappable behind
+(done/died/timeout) come out. The provider itself is swappable behind
 an engine seam (Claude Code today) so the run loop and CLI never depend on
 provider specifics.`,
 		// RunE is set so that bare "lyx shuttle" lists subcommands and "lyx

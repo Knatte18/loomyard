@@ -1,0 +1,20 @@
+# Issue 411, second run: the same absorbed notification in another gated Burler round.
+source:
+  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYXHUB-bugfix-sessions/3c2c87b2-91e2-498b-9337-16ff67e20974.jsonl
+  session_id: 3c2c87b2-91e2-498b-9337-16ff67e20974
+  run: bugfix-sessions Webster-Burler round 2, run d9a47c207a52c3c94532ffc39927988b
+date: 2026-10-07
+claude_code_version: 2.1.292
+what_went_wrong: >-
+  The round launched a backgrounded test run (launch toolu_01CpWHu7fKM8iH7NoWVUBVPD, task b5o9v6f2u) whose notification was absorbed mid-turn,
+  appearing only as queue-operation lines and a queued_command attachment.
+  The old transcript scan read the turn end as waiting on b5o9v6f2u, and the step sat in shuttle's wait for 94 minutes until the host hibernated.
+events_reconstructed: true
+events_note: >-
+  The run directory was removed, so events.jsonl is one Stop line rebuilt from the transcript's turn end;
+  background_tasks is empty because the task had finished before the turn ended.
+gated: true
+turn_ends:
+  - reading: done
+    outputs_exist: true
+    old_reading: waiting on shell b5o9v6f2u, forever

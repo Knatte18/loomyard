@@ -1,0 +1,24 @@
+# A Plan-Write writer that stopped to ask its parent, and was answered in its own session.
+source:
+  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYXHUB-bugfix-sessions/88a2c2aa-bdc2-401b-bf76-73c3813b0c62.jsonl
+  session_id: 88a2c2aa-bdc2-401b-bf76-73c3813b0c62
+  run: bugfix-sessions Plan-Write, run 51c3b5673e6b946af73c516ebb16b201
+date: 2026-10-06
+claude_code_version: 2.1.291
+what_went_wrong: >-
+  The writer ended its turn with a question to ly:orch and no plan written.
+  The old code read that turn end as asking and finalized the run, so the producer treated a working writer as stuck;
+  ly:orch's answer reached the same session as its next turn, and the writer was torn down mid-turn while writing the plan.
+correction: >-
+  The plan expected a held turn end and then a done one.
+  The real session never ended the answered turn: the transcript stops mid-turn at 10:57, with no second turn end and no plan files,
+  so the case reads the one held turn end and nothing after it.
+events_reconstructed: true
+events_note: >-
+  The run directory was removed, so events.jsonl is the asking Stop rebuilt from the transcript's turn end;
+  background_tasks is empty because the writer launched no background work.
+gated: true
+turn_ends:
+  - reading: held
+    outputs_exist: false
+    old_reading: asking, which finalized the run

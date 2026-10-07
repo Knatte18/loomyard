@@ -48,7 +48,6 @@ type roundOutcome struct {
 	BlockingCount   int
 	ReviewPath      string
 	FixerReportPath string
-	TriagePath      string
 	SessionID       string
 	Paths           roundArtifactPaths
 }
@@ -220,7 +219,6 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			BlockingCount:   outcome.BlockingCount,
 			ReviewPath:      outcome.ReviewPath,
 			FixerReportPath: outcome.FixerReportPath,
-			TriagePath:      outcome.TriagePath,
 			SeedPath:        seedPath,
 			SessionID:       outcome.SessionID,
 		}
@@ -431,8 +429,7 @@ func (e *Engine) runPreRoundTargeting(runDir string, round int, p Profile, round
 }
 
 // runRound drives round's RoundRunner attempts (up to two: a fresh attempt,
-// then one deterministic retry after a died/timeout outcome or an
-// asking-triage RETRY verdict), returning the round's outcome once the
+// then one deterministic retry after a died/timeout outcome), returning the round's outcome once the
 // runner reaches done. priorReviews and priorFixerReports are the hydration
 // accumulated from every already-completed round; seedPath is this round's
 // pre-round-targeting seed (already resolved once by runPreRoundTargeting,
@@ -442,12 +439,6 @@ func (e *Engine) runPreRoundTargeting(runDir string, round int, p Profile, round
 // an infrastructure error, deliberately NOT modeled as OutcomeStuck — it
 // means the machinery failed twice, not that the artifact will not converge.
 func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, priorFixerReports []string, seedPath string) (roundOutcome, error) {
-	// triagePath accumulates across the retry loop: it is set only when an
-	// asking attempt actually spawns a triage call, and is threaded into
-	// the eventual done-outcome's roundOutcome so state.json records that a
-	// triage call ran, even though the retry that follows it produces the
-	// round's final (done) attempt.
-	var triagePath string
 	for attempt := 1; attempt <= 2; attempt++ {
 		// Attempt 1's stale artifacts (including any leftover seed file)
 		// were already cleared by the caller, before pre-round targeting
@@ -489,36 +480,13 @@ func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, pri
 				BlockingCount:   result.BlockingCount,
 				ReviewPath:      result.ReviewPath,
 				FixerReportPath: result.FixerReportPath,
-				TriagePath:      triagePath,
 				SessionID:       result.SessionID,
 				Paths:           paths,
 			}, nil
 		}
 
-		if result.Outcome == shuttleengine.OutcomeAsking {
-			// A second consecutive asking outcome fails the same generic
-			// "failed twice" way a died/timeout round does, WITHOUT a
-			// second triage spawn: the round is already failing regardless
-			// of this attempt's triage verdict, so there is nothing left
-			// for triage to usefully classify.
-			if attempt == 2 {
-				return roundOutcome{}, e.errf("round %d failed twice (%s); session %s, kept run dir %s", round, result.Outcome, result.SessionID, result.RunDir)
-			}
-			// The agent stopped mid-round asking a question rather than
-			// finishing; triage classifies whether a fresh retry can
-			// plausibly proceed. Triage itself is fail-safe (never an
-			// error) and defaults to RETRY on any of its own
-			// infrastructure failures.
-			triageVerdict, rationale := runTriage(e.stencilsDir, e.parentName, e.shuttle, e.name, round, result.LastAssistantMessage, paths.Triage, p.JudgeModel, p.JudgeEffort)
-			triagePath = paths.Triage
-			if triageVerdict == TriageGiveUp {
-				return roundOutcome{}, e.errf("round %d agent gave up asking: %s (session %s, run dir %s)", round, rationale, result.SessionID, result.RunDir)
-			}
-			continue
-		}
-
 		// died / timeout: a cheap deterministic retry — these are nearly
-		// always environmental, unlike asking's interpretable text.
+		// always environmental.
 		if attempt == 2 {
 			return roundOutcome{}, e.errf("round %d failed twice (%s); session %s, kept run dir %s", round, result.Outcome, result.SessionID, result.RunDir)
 		}
@@ -614,7 +582,6 @@ func resultFromState(st runState, outcome Outcome, stuckReason StuckReason) Resu
 			FixerReportPath: r.FixerReportPath,
 			JudgePath:       r.JudgePath,
 			GatePath:        r.GatePath,
-			TriagePath:      r.TriagePath,
 			JudgeVerdict:    r.JudgeVerdict,
 			GatePassed:      r.GatePassed,
 		})

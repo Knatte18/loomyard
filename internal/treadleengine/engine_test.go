@@ -1,7 +1,7 @@
 // engine_test.go drives Engine.Run against a scripted fakeRunner (RoundRunner) and a scripted
-// queuedShuttle (judge/triage/targeting), adapted to the attempt-level RoundRunner seam.
+// queuedShuttle (judge/targeting), adapted to the attempt-level RoundRunner seam.
 // Deliberately scoped to the seam contract itself: that the generalized loop works against a
-// non-burler runner, AttemptInput population and hydration, retry/triage semantics at the seam,
+// non-burler runner, AttemptInput population and hydration, retry semantics at the seam,
 // name-parameterized diagnostics for an arbitrary caller name, ladder + gate parity, profile
 // validation, and the profile-gated pre-round targeting capability.
 // Untagged file: no spawning — the fake CommandRunner is an in-process func (Test Tier Purity
@@ -68,18 +68,16 @@ func (f *fakeRunner) RunAttempt(in AttemptInput) (AttemptResult, error) {
 	return result, nil
 }
 
-// queuedShuttleEntry is one scripted judge/triage verdict-file content (or
+// queuedShuttleEntry is one scripted judge verdict-file content (or
 // error) queuedShuttle.Run dequeues. handoffContent, when non-empty, is
-// written to a judge call's second OutputFiles entry (the handoff path) —
-// a triage call's Spec has only one OutputFiles entry, so handoffContent is
-// simply unused for those scripted entries.
+// written to a judge call's second OutputFiles entry (the handoff path).
 type queuedShuttleEntry struct {
 	verdictContent string
 	handoffContent string
 	err            error
 }
 
-// queuedShuttle is a same-package Shuttle double for the judge/triage
+// queuedShuttle is a same-package Shuttle double for the judge
 // calls: Run records every Spec it receives, dequeues the next scripted
 // verdict file content (or error), writes it to the Spec's sole
 // OutputFiles entry when non-empty, and returns a scripted done Result.
@@ -142,7 +140,7 @@ func (f *fakeCommandRunner) run(argv []string, dir string, timeout time.Duration
 	return next.output, next.exitZero, next.err
 }
 
-// verdictFileContent renders a judge/triage verdict file's frontmatter.
+// verdictFileContent renders a judge verdict file's frontmatter.
 func verdictFileContent(verdict, rationale string) string {
 	return fmt.Sprintf("---\nverdict: %s\nrationale: %s\n---\n", verdict, rationale)
 }
@@ -260,10 +258,9 @@ func TestEngine_AttemptInputPopulation(t *testing.T) {
 	}
 }
 
-// TestEngine_RetrySemantics proves the seam's retry policy: a second consecutive non-done attempt
-// is a name-prefixed hard error (never STUCK),
-// and an asking outcome's triage call determines whether the round retries (RETRY) or the block
-// errors (GIVE_UP).
+// TestEngine_RetrySemantics proves the seam's retry policy:
+// a second consecutive non-done attempt is a name-prefixed hard error (never STUCK),
+// and a died or timed-out first attempt is retried once.
 func TestEngine_RetrySemantics(t *testing.T) {
 	t.Run("second consecutive died is a name-prefixed hard error", func(t *testing.T) {
 		runDir := filepath.Join(t.TempDir(), "run")
@@ -287,17 +284,14 @@ func TestEngine_RetrySemantics(t *testing.T) {
 		}
 	})
 
-	t.Run("asking with triage RETRY re-attempts the round", func(t *testing.T) {
+	t.Run("a died attempt is retried once and the round completes", func(t *testing.T) {
 		runDir := filepath.Join(t.TempDir(), "run")
 		fr := &fakeRunner{}
 		fr.queue = []queuedAttemptResult{
-			{result: AttemptResult{Outcome: shuttleengine.OutcomeAsking, SessionID: "ask-1", RunDir: "/kept/ask-1", LastAssistantMessage: "should I proceed?"}},
+			{result: AttemptResult{Outcome: shuttleengine.OutcomeDied, SessionID: "died-1", RunDir: "/kept/died-1"}},
 			{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s2"}},
 		}
 		qs := &queuedShuttle{}
-		qs.queue = []queuedShuttleEntry{
-			{verdictContent: verdictFileContent(string(TriageRetry), "plausibly proceeds")},
-		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
 		e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
@@ -308,36 +302,8 @@ func TestEngine_RetrySemantics(t *testing.T) {
 		if got.Rounds[0].Attempts != 2 {
 			t.Errorf("Rounds[0].Attempts = %d; want 2", got.Rounds[0].Attempts)
 		}
-		if len(qs.specs) != 1 || qs.specs[0].Role != "triage" {
-			t.Errorf("queuedShuttle specs = %+v; want exactly one triage spec", qs.specs)
-		}
-		if got.Rounds[0].TriagePath == "" {
-			t.Error("Rounds[0].TriagePath is empty; want the triage verdict path mirrored onto the Result")
-		}
-	})
-
-	t.Run("asking with triage GIVE_UP errors carrying the rationale", func(t *testing.T) {
-		runDir := filepath.Join(t.TempDir(), "run")
-		fr := &fakeRunner{}
-		fr.queue = []queuedAttemptResult{
-			{result: AttemptResult{Outcome: shuttleengine.OutcomeAsking, SessionID: "ask-1", RunDir: "/kept/ask-1", LastAssistantMessage: "the fasit file does not exist"}},
-		}
-		qs := &queuedShuttle{}
-		qs.queue = []queuedShuttleEntry{
-			{verdictContent: verdictFileContent(string(TriageGiveUp), "the fasit file referenced does not exist")},
-		}
-		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e := New("gate", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
-
-		_, err := e.Run(p, runDir)
-		if err == nil {
-			t.Fatalf("Run() error = nil; want an error carrying the triage rationale")
-		}
-		if !strings.Contains(err.Error(), "the fasit file referenced does not exist") {
-			t.Errorf("Run() error = %q; want it to carry the triage rationale", err.Error())
-		}
-		if !strings.Contains(err.Error(), "ask-1") || !strings.Contains(err.Error(), "/kept/ask-1") {
-			t.Errorf("Run() error = %q; want it to carry the session id and kept run dir", err.Error())
+		if len(qs.specs) != 0 {
+			t.Errorf("queuedShuttle specs = %+v; want none, a retry spawns no utility call", qs.specs)
 		}
 	})
 }
@@ -1273,7 +1239,7 @@ func (f *fixedShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error) {
 // TestRunTargeting_FailSafe proves runTargeting's fail-safe posture directly against every failure
 // path (d) names: a shuttle Run error, a non-done Outcome, and a claimed-done Outcome whose seed
 // file was never actually written (or was written empty) — every path returns ("", false) rather
-// than an error, mirroring runCircling/runMilestone/runTriage.
+// than an error, mirroring runCircling/runMilestone.
 func TestRunTargeting_FailSafe(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -1288,7 +1254,7 @@ func TestRunTargeting_FailSafe(t *testing.T) {
 		{
 			name: "non-done outcome",
 			shSet: func(string) Shuttle {
-				return &fixedShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
+				return &fixedShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}
 			},
 		},
 		{

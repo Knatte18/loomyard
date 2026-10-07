@@ -251,7 +251,7 @@ var _ shedengine.ShedProducer = (*BurlerProducer)(nil)
 //
 // Archive rule: every return in which the round did not produce a usable review archives both
 // round paths first, keyed on that fact rather than on whether the return is an error -- this
-// covers a runner error (regardless of the Result.Outcome it carries), an asking hard error, a
+// covers a runner error (regardless of the Result.Outcome it carries), a
 // second consecutive died/timeout, an unrecognized outcome, a gate-failed round, and a
 // cancellation detected between attempts. Two carve-outs leave the round's files in place: the
 // success return, and a cancellation detected after the round already completed and parsed --
@@ -448,9 +448,6 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 			}
 			return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath, GateAttempts: gateAttemptsPointer(result.Gate), BudgetExempt: p.roundBudgetExempt(round)}, nil
 
-		case shuttleengine.OutcomeAsking:
-			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attempt %s: shuttle run is asking: %s", p.name, burlerEngineLabel, round, attemptToken, result.LastAssistantMessage))
-
 		case shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout:
 			if attempt == 1 {
 				logger.Warn("shedadapters: burler round attempt died or timed out, retrying", "producer", p.name, "engine", burlerEngineLabel, "round", round, "attempt", attemptToken, "outcome", result.Outcome, "sessionID", result.SessionID)
@@ -556,10 +553,6 @@ func (p *BurlerProducer) probeLiveRound(
 			return "", shedengine.OutputPointer{}, cerr, true
 		}
 		return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath, GateAttempts: gateAttemptsPointer(result.Gate), BudgetExempt: p.roundBudgetExempt(round)}, nil, true
-
-	case shuttleengine.OutcomeAsking:
-		outcome, ptr, exitErr := failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attached run is asking: %s", p.name, burlerEngineLabel, round, result.LastAssistantMessage))
-		return outcome, ptr, exitErr, true
 
 	case shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout:
 		// The attached agent is gone, so a fresh spawn is both safe and correct. The bounded retry

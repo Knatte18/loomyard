@@ -174,7 +174,6 @@ func (f *liveFixture) startPlainRun(t *testing.T, role, prompt string) shuttleen
 		OutputFiles:    []string{filepath.Join(f.paths.Dir, role+".never")},
 		Interactive:    true,
 		PermissionMode: "bypass",
-		AwaitOperator:  true,
 		Role:           role,
 		Display:        render.Display{},
 	})

@@ -1,8 +1,8 @@
-// judge_test.go tables runCircling, runMilestone, and runTriage against a same-package
+// judge_test.go tables runCircling and runMilestone against a same-package
 // fakeJudgeShuttle: the happy path (spec construction — Role, Model/Effort passthrough, OutputFiles
 // — plus a valid scripted verdict file) and every fail-safe branch (Run error, non-done outcome,
-// missing verdict file, unparseable verdict file) for each of the three calls, asserting the safe
-// default and an empty rationale — never an error, since none of the three functions returns one.
+// missing verdict file, unparseable verdict file) for each of the two calls, asserting the safe
+// default and an empty rationale — never an error, since neither function returns one.
 // It also declares newTestStencilsDir, the package-local test helper every treadleengine test uses
 // to seed a hermetic stencils directory through `stencilkit`.
 
@@ -52,7 +52,7 @@ func (f *fakeJudgeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, e
 	return f.result, nil
 }
 
-// TestSpawnedRoles_SkillAndParentDirective tables every spawned prompt (circling and milestone judge, triage, targeting)
+// TestSpawnedRoles_SkillAndParentDirective tables every spawned prompt (circling and milestone judge, targeting)
 // against a told parent name and the no-parent variant, asserting the directive and the role's skill on the spec.
 func TestSpawnedRoles_SkillAndParentDirective(t *testing.T) {
 	const parentName = "mill:parent"
@@ -65,9 +65,6 @@ func TestSpawnedRoles_SkillAndParentDirective(t *testing.T) {
 		},
 		"milestone judge": func(sh *fakeJudgeShuttle, stencilsDir, parent string) {
 			runMilestone(sh, "gate", judgeInputs{Round: 5, HardCap: 10, PriorReviews: []string{"/run/round-4-review.md"}, VerdictPath: filepath.Join(dir, "mv.md"), HandoffPath: filepath.Join(dir, "mh.md"), StencilsDir: stencilsDir, ParentName: parent})
-		},
-		"triage": func(sh *fakeJudgeShuttle, stencilsDir, parent string) {
-			runTriage(stencilsDir, parent, sh, "gate", 1, "a question", filepath.Join(dir, "tv.md"), "", "")
 		},
 		"targeting": func(sh *fakeJudgeShuttle, stencilsDir, parent string) {
 			runTargeting(stencilsDir, parent, sh, "gate", 3, "", filepath.Join(dir, "seed.md"), "", "")
@@ -83,7 +80,7 @@ func TestSpawnedRoles_SkillAndParentDirective(t *testing.T) {
 			{"without a parent", "", false},
 		} {
 			t.Run(name+" "+tc.label, func(t *testing.T) {
-				sh := &fakeJudgeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
+				sh := &fakeJudgeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}
 				call(sh, newTestStencilsDir(t), tc.parent)
 
 				if !sh.called {
@@ -172,7 +169,7 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 	})
 
 	t.Run("non-done outcome defaults to progressing", func(t *testing.T) {
-		sh := &fakeJudgeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
+		sh := &fakeJudgeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}
 		verdict, rationale, ok := runCircling(sh, "gate", judgeInputs{Round: 1, VerdictPath: filepath.Join(t.TempDir(), "v.md"), StencilsDir: newTestStencilsDir(t)})
 		if verdict != JudgeProgressing {
 			t.Errorf("verdict = %q; want %q", verdict, JudgeProgressing)
@@ -230,8 +227,8 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 		sh := &fakeJudgeShuttle{
 			verdictContent: verdictContent,
 			// The file contract is unsatisfied (no handoff written), which is
-			// exactly what real shuttle reports as asking rather than done.
-			result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking},
+			// exactly what real shuttle reports as a non-done outcome.
+			result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied},
 		}
 
 		verdict, rationale, ok := runCircling(sh, "gate", judgeInputs{
@@ -372,91 +369,6 @@ rationale: the same two findings oscillate every round
 		}
 		if ok {
 			t.Error("ok = true; want false on a fail-safe path")
-		}
-	})
-}
-
-func TestRunTriage(t *testing.T) {
-	verdictContent := `---
-verdict: GIVE_UP
-rationale: the fasit file referenced does not exist
----
-`
-
-	t.Run("happy path", func(t *testing.T) {
-		dir := t.TempDir()
-		verdictPath := filepath.Join(dir, "round-2-triage.md")
-		sh := &fakeJudgeShuttle{
-			verdictContent: verdictContent,
-			result:         shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-		}
-
-		verdict, rationale := runTriage(newTestStencilsDir(t), "", sh, "gate", 2, "should I proceed without the fasit file?", verdictPath, "haiku", "low")
-
-		if verdict != TriageGiveUp {
-			t.Errorf("runTriage() verdict = %q; want %q", verdict, TriageGiveUp)
-		}
-		if rationale == "" {
-			t.Error("runTriage() rationale is empty; want the scripted rationale")
-		}
-		if sh.spec.Role != "triage" {
-			t.Errorf("runTriage() spec.Role = %q; want %q", sh.spec.Role, "triage")
-		}
-		if sh.spec.Model != "haiku" {
-			t.Errorf("runTriage() spec.Model = %q; want %q", sh.spec.Model, "haiku")
-		}
-		if sh.spec.Effort != "low" {
-			t.Errorf("runTriage() spec.Effort = %q; want %q", sh.spec.Effort, "low")
-		}
-		if len(sh.spec.OutputFiles) != 1 || sh.spec.OutputFiles[0] != verdictPath {
-			t.Errorf("runTriage() spec.OutputFiles = %v; want [%q]", sh.spec.OutputFiles, verdictPath)
-		}
-	})
-
-	t.Run("shuttle run error defaults to retry", func(t *testing.T) {
-		sh := &fakeJudgeShuttle{err: errTestShuttle}
-		verdict, rationale := runTriage(newTestStencilsDir(t), "", sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "", "")
-		if verdict != TriageRetry {
-			t.Errorf("verdict = %q; want %q", verdict, TriageRetry)
-		}
-		if rationale != "" {
-			t.Errorf("rationale = %q; want empty", rationale)
-		}
-	})
-
-	t.Run("non-done outcome defaults to retry", func(t *testing.T) {
-		sh := &fakeJudgeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}
-		verdict, rationale := runTriage(newTestStencilsDir(t), "", sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "", "")
-		if verdict != TriageRetry {
-			t.Errorf("verdict = %q; want %q", verdict, TriageRetry)
-		}
-		if rationale != "" {
-			t.Errorf("rationale = %q; want empty", rationale)
-		}
-	})
-
-	t.Run("missing verdict file defaults to retry", func(t *testing.T) {
-		sh := &fakeJudgeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-		verdict, rationale := runTriage(newTestStencilsDir(t), "", sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "never-written.md"), "", "")
-		if verdict != TriageRetry {
-			t.Errorf("verdict = %q; want %q", verdict, TriageRetry)
-		}
-		if rationale != "" {
-			t.Errorf("rationale = %q; want empty", rationale)
-		}
-	})
-
-	t.Run("unparseable verdict file defaults to retry", func(t *testing.T) {
-		sh := &fakeJudgeShuttle{
-			verdictContent: "garbled, not a verdict file",
-			result:         shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
-		}
-		verdict, rationale := runTriage(newTestStencilsDir(t), "", sh, "gate", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "", "")
-		if verdict != TriageRetry {
-			t.Errorf("verdict = %q; want %q", verdict, TriageRetry)
-		}
-		if rationale != "" {
-			t.Errorf("rationale = %q; want empty", rationale)
 		}
 	})
 }

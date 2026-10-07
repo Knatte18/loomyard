@@ -1,0 +1,30 @@
+# A Webster Master whose batch fork was killed by an API error.
+source:
+  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYXHUB-card-batching/74a42312-8d0f-4201-aafb-a1681a5404aa.jsonl
+  session_id: 74a42312-8d0f-4201-aafb-a1681a5404aa
+  run: card-batching Webster Master, run 2ceab74cf70f87ce2485d4b1225ce682
+date: 2026-10-07
+claude_code_version: 2.1.292
+what_went_wrong: >-
+  The batch 03 fork (a27eca52738f2239a) died on an API error at 11:02, and the Master's own turn on its notification died on the same outage,
+  ending without a Stop.
+  ly:orch messaged the Master at 12:22, and it re-forked batch 03 (afb597a692202e929) and ended its turn waiting on the new fork.
+correction: >-
+  The plan expected the turn end after the death to read done or held.
+  The real Master re-forked in that turn, so it reads waiting on the re-fork; the killed fork appears in no later turn end.
+events_reconstructed: true
+events_note: >-
+  The run directory was removed, so events.jsonl is rebuilt from the transcript's two turn ends;
+  each background_tasks lists the one fork the transcript shows running at that turn end.
+gated: true
+turn_ends:
+  - reading: waiting
+    outputs_exist: false
+    tasks:
+      - {kind: fork, id: a27eca52738f2239a, signal: payload}
+    old_reading: waiting on the same fork
+  - reading: waiting
+    outputs_exist: false
+    tasks:
+      - {kind: fork, id: afb597a692202e929, signal: payload}
+    old_reading: waiting on the re-fork; the transcript scan matched the killed fork's notification

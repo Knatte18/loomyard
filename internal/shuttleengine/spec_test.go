@@ -15,7 +15,7 @@ import (
 )
 
 // TestSpec_Validate drives Spec.validate through its rejections, its defaults and the fields it
-// must leave alone. Effort, Version, AwaitOperator and NameOverride are provider or engine
+// must leave alone. Effort, Version and NameOverride are provider or engine
 // vocabulary validated elsewhere, so validate must neither default nor reject them: a later "tidy
 // up the validator" change must not quietly start doing either.
 func TestSpec_Validate(t *testing.T) {
@@ -23,7 +23,7 @@ func TestSpec_Validate(t *testing.T) {
 
 	const worktreeRoot = `C:\worktree`
 	// A pre-existing output file would satisfy the file contract on the very first turn end,
-	// silently classifying an asking run as done (proven live), so validate must reject it loudly.
+	// silently classifying an unfinished run as done (proven live), so validate must reject it loudly.
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "stale.md"), []byte("stale artifact"), 0o644); err != nil {
 		t.Fatalf("seed stale output file: %v", err)
@@ -152,24 +152,6 @@ func TestSpec_Validate(t *testing.T) {
 			check: func(t *testing.T, s *Spec) {
 				if s.Version != "weird" {
 					t.Errorf("Version = %q, want unchanged %q", s.Version, "weird")
-				}
-			},
-		},
-		{
-			name: "await operator true stays true",
-			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, AwaitOperator: true},
-			check: func(t *testing.T, s *Spec) {
-				if !s.AwaitOperator {
-					t.Errorf("AwaitOperator = %v, want unchanged true", s.AwaitOperator)
-				}
-			},
-		},
-		{
-			name: "await operator false stays false",
-			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"other.md"}, AwaitOperator: false},
-			check: func(t *testing.T, s *Spec) {
-				if s.AwaitOperator {
-					t.Errorf("AwaitOperator = %v, want unchanged false", s.AwaitOperator)
 				}
 			},
 		},

@@ -105,7 +105,7 @@ func (r *Resolver) resolveConflicts(ctx context.Context, conflicts []string) (Re
 		}
 
 		if runResult.Outcome != shuttleengine.OutcomeDone {
-			// asking, died, timeout, or any outcome this package does not recognize: consult
+			// died, timeout, or any outcome this package does not recognize: consult
 			// cancelErr first, then abort and report stuck; the conclude call is never reached.
 			// The Warn line lands before abortAndStuck so the diagnostic survives even when
 			// MergeAbort itself fails.

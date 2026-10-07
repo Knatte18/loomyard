@@ -1,0 +1,40 @@
+# A Webster Master whose turn ends wait on the batch fork it launched.
+source:
+  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYXHUB-test-tiers/39aea993-b483-4287-a488-e26c7cdbd727.jsonl
+  session_id: 39aea993-b483-4287-a488-e26c7cdbd727
+  run: test-tiers Webster Master, run 76332bc6fd4e8a6a66a988ba22955a34
+date: 2026-10-07
+claude_code_version: 2.1.292
+what_went_wrong: >-
+  Nothing in the first four turn ends: each lists the running batch fork in background_tasks and reads waiting.
+  The last turn end lists only a shell the batch 10 fork left running after it returned;
+  the old code counted that turn end once the shell passed background_shell_wait_min and read it as asking, the outcome the run directory still records.
+events_reconstructed: false
+events_note: The real events file's Stop lines after the skill-load turn end, unchanged.
+gated: true
+turn_ends:
+  - reading: waiting
+    outputs_exist: false
+    tasks:
+      - {kind: fork, id: abdd61954f2e6290f, signal: payload}
+    old_reading: waiting on the same fork
+  - reading: waiting
+    outputs_exist: false
+    tasks:
+      - {kind: fork, id: a48c6619b0ef9a5e7, signal: payload}
+    old_reading: waiting on the same fork
+  - reading: waiting
+    outputs_exist: false
+    tasks:
+      - {kind: fork, id: a7b186117fe9ad9b5, signal: payload}
+    old_reading: waiting on the same fork
+  - reading: waiting
+    outputs_exist: false
+    tasks:
+      - {kind: fork, id: a5e3629456cc7489a, signal: payload}
+    old_reading: waiting on the same fork
+  - reading: waiting
+    outputs_exist: false
+    tasks:
+      - {kind: shell, id: bm80315xg, signal: payload}
+    old_reading: waiting on the shell, then asking once the shell expired

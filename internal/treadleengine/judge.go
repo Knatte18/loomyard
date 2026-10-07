@@ -1,8 +1,6 @@
-// judge.go implements treadle's two ephemeral LLM utility calls — the progress judge (per-round
-// circling check, milestone continuation gate) and the asking-triage call — as fail-safe spawns
-// over a package-local Shuttle seam, mirroring burlerengine.Engine's Shuttle pattern.
-// Unlike a round-runner attempt, none of the three calls here ever returns an error: any
-// infrastructure failure degrades to the safe default and logs a logger.Warn, per the original
+// judge.go implements treadle's ephemeral progress-judge LLM calls (per-round circling check, milestone continuation gate) as fail-safe spawns over a package-local Shuttle seam, mirroring burlerengine.Engine's Shuttle pattern.
+// Unlike a round-runner attempt, neither call here ever returns an error:
+// any infrastructure failure degrades to the safe default and logs a logger.Warn, per the original
 // error-and-fail-safe-posture decision (03-judge-triage.md) — a false STUCK is the costly failure
 // mode, not a few extra bounded rounds.
 // Every Warn label is prefixed with the calling engine's name (threaded in as name), per the
@@ -25,16 +23,10 @@ import (
 // judgeRole is the agent-name role this module's judge spawn carries.
 const judgeRole = "judge"
 
-// triageRole is the agent-name role this module's triage spawn carries.
-const triageRole = "triage"
+// judgeSkills are the skills the judge spawns load before their prompt.
+var judgeSkills = []string{"scribe:prose"}
 
-// judgeSkills and triageSkills are the skills the judge and triage spawns load before their prompt.
-var (
-	judgeSkills  = []string{"scribe:prose"}
-	triageSkills = []string{"scribe:prose"}
-)
-
-// Shuttle is the seam judge.go drives its three ephemeral calls through, satisfied by
+// Shuttle is the seam judge.go drives its ephemeral calls through, satisfied by
 // *shuttleengine.Runner in production and fakes in tests.
 type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
@@ -173,72 +165,4 @@ func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]st
 		return fallback, "", false
 	}
 	return verdict, rationale, true
-}
-
-// runTriage spawns the asking-triage call: a review agent stopped mid-round
-// asking question rather than finishing, and this call classifies whether
-// a fresh retry can plausibly proceed (RETRY) or the round profile itself
-// is broken (GIVE_UP). Fail-safe: any failure — the prompt's stencilstore.Read,
-// stencil fill, shuttle Run error, non-done Outcome, verdict file read, or
-// parse — logs a name-prefixed logger.Warn naming the round and cause, and
-// returns (TriageRetry, "") rather than an error. stencilsDir is the
-// absolute stencils directory this call reads its prompt from, leading
-// rather than trailing so a mis-ordered call site still compiles (see the
-// composePrompt convention this mirrors).
-func runTriage(stencilsDir, parentName string, sh Shuttle, name string, round int, question, verdictPath, model, effort string) (TriageVerdict, string) {
-	triageTemplate, err := stencilstore.Read(stencilsDir, "treadle-template-triage")
-	if err != nil {
-		logger.Warn(name+": triage template unreadable, defaulting to retry", "round", round, "cause", err)
-		return TriageRetry, ""
-	}
-	directive, err := parentdirective.Directive(stencilsDir, parentName, false)
-	if err != nil {
-		logger.Warn(name+": triage parent directive unreadable, defaulting to retry", "round", round, "cause", err)
-		return TriageRetry, ""
-	}
-	values := map[string]string{
-		"round":                    strconv.Itoa(round),
-		"question":                 question,
-		"verdict_path":             verdictPath,
-		parentdirective.MarkerName: directive,
-	}
-
-	prompt, err := stencil.Fill(triageTemplate, values)
-	if err != nil {
-		logger.Warn(name+": triage failed, defaulting to retry", "round", round, "cause", err)
-		return TriageRetry, ""
-	}
-
-	spec := shuttleengine.Spec{
-		Prompt:      string(prompt),
-		OutputFiles: []string{verdictPath},
-		Model:       model,
-		Effort:      effort,
-		Role:        triageRole,
-		Skills:      triageSkills,
-		Round:       strconv.Itoa(round),
-	}
-
-	result, err := sh.Run(spec)
-	if err != nil {
-		logger.Warn(name+": triage shuttle run failed, defaulting to retry", "round", round, "cause", err)
-		return TriageRetry, ""
-	}
-	if result.Outcome != shuttleengine.OutcomeDone {
-		logger.Warn(name+": triage did not complete, defaulting to retry", "round", round, "outcome", result.Outcome)
-		return TriageRetry, ""
-	}
-
-	content, err := os.ReadFile(verdictPath)
-	if err != nil {
-		logger.Warn(name+": triage verdict file unreadable, defaulting to retry", "round", round, "cause", err)
-		return TriageRetry, ""
-	}
-
-	verdict, rationale, err := ParseTriageVerdict(content)
-	if err != nil {
-		logger.Warn(name+": triage verdict file unparseable, defaulting to retry", "round", round, "cause", err)
-		return TriageRetry, ""
-	}
-	return verdict, rationale
 }

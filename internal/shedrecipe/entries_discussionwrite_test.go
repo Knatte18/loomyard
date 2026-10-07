@@ -170,32 +170,6 @@ func TestDiscussionWriteEntry_GateConfig(t *testing.T) {
 	})
 }
 
-// TestDiscussionWriteEntry_CallAsking asserts an OutcomeAsking shuttle result maps to
-// shedengine.Stuck and leaves the commit closure uninvoked -- the outcome mapping the decorator
-// must preserve untouched.
-func TestDiscussionWriteEntry_CallAsking(t *testing.T) {
-	env := newTestEnv(t)
-
-	commitCalls := 0
-	env.CommitDiscussion = func() error {
-		commitCalls++
-		return nil
-	}
-
-	producer, err := discussionWriteEntry("Row", Config{}, env)
-	if err != nil {
-		t.Fatalf("discussionWriteEntry() error = %v; want nil", err)
-	}
-
-	fake := env.Shuttle.(*shedfake.Shuttle)
-	fake.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}
-
-	shedfake.RequireOutcome(t, producer, shedengine.Stuck)
-	if commitCalls != 0 {
-		t.Errorf("commit closure invoked %d times; want 0 for an Asking outcome", commitCalls)
-	}
-}
-
 // hasRound reports whether the parent-review store holds a round.
 func hasRound(t *testing.T, env Env) bool {
 	t.Helper()
@@ -260,8 +234,8 @@ func TestDiscussionWriteEntry_ParentReviewBeginRound(t *testing.T) {
 		env := parentReviewEnv(t)
 		attached := env.Shuttle.(*shedfake.Shuttle)
 		attached.AttachFound = true
-		// shedfake.Shuttle evaluates the gate on an attached Done run, and the parent-review gate opens a round; an Asking run takes the attach branch without evaluating it.
-		attached.AttachResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}
+		// shedfake.Shuttle evaluates the gate on an attached Done run, and the parent-review gate opens a round; a Died run takes the attach branch without evaluating it.
+		attached.AttachResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}
 		p, err := discussionWriteEntry("Row", parentReviewCfg(3), env)
 		if err != nil {
 			t.Fatalf("discussionWriteEntry() error = %v", err)

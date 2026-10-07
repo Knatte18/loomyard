@@ -129,11 +129,6 @@ var TreadleTemplateJudgeCircling []byte
 //go:embed treadle/treadle-template-judge-milestone.md
 var TreadleTemplateJudgeMilestone []byte
 
-// TreadleTemplateTriage is treadle's shipped-default asking-triage prompt.
-//
-//go:embed treadle/treadle-template-triage.md
-var TreadleTemplateTriage []byte
-
 // TreadleTemplateTargeting is treadle's shipped-default pre-round targeting judge prompt.
 //
 //go:embed treadle/treadle-template-targeting.md
@@ -313,7 +308,6 @@ var entries = []registryEntry{
 	{"bouncer-template-parent-notice", &BouncerTemplateParentNotice},
 	{"treadle-template-judge-circling", &TreadleTemplateJudgeCircling},
 	{"treadle-template-judge-milestone", &TreadleTemplateJudgeMilestone},
-	{"treadle-template-triage", &TreadleTemplateTriage},
 	{"treadle-template-targeting", &TreadleTemplateTargeting},
 	{"webster-template-master", &WebsterTemplateMaster},
 	{"webster-body-verify-fix", &WebsterBodyVerifyFix},
@@ -360,7 +354,6 @@ var roleOpeningStencils = map[string][]string{
 	"bouncer-seed":      {"bouncer-template-seed"},
 	"treadle-targeting": {"treadle-template-targeting"},
 	"treadle-judge":     {"treadle-template-judge-circling", "treadle-template-judge-milestone"},
-	"treadle-triage":    {"treadle-template-triage"},
 	"friction":          {"friction-template-reflection"},
 	"describe":          {"landing-template-describe"},
 }

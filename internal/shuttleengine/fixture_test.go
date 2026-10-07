@@ -44,7 +44,7 @@ type fixture struct {
 
 type fixtureSettings struct {
 	cfg            Config
-	clk            clock
+	clk            Clock
 	guid           string
 	separateRunDir bool
 }
@@ -57,7 +57,7 @@ func withConfig(cfg Config) fixtureOpt {
 }
 
 // withClock sets the Runner's clock seam.
-func withClock(clk clock) fixtureOpt {
+func withClock(clk Clock) fixtureOpt {
 	return func(s *fixtureSettings) { s.clk = clk }
 }
 
@@ -88,7 +88,7 @@ func newFixture(t *testing.T, reed ReedOps, engine Engine, opts ...fixtureOpt) *
 	}
 	fx.Runner = NewRunner(reed, engine, fx.Anchor, fx.Worktree, s.cfg)
 	if s.clk != nil {
-		fx.Runner.clock = s.clk
+		fx.Runner.SetClock(s.clk)
 	}
 	fx.DotLyx = filepath.Join(fx.Anchor, lyxdirs.DotLyxDirName)
 	fx.RunRoot = runDirRoot(s.cfg, fx.Anchor)
@@ -108,7 +108,7 @@ func newFixture(t *testing.T, reed ReedOps, engine Engine, opts ...fixtureOpt) *
 type runSettings struct {
 	runDir   string
 	state    RunState
-	clk      clock
+	clk      Clock
 	deadline time.Time
 	gate     GateSpec
 }
@@ -143,7 +143,7 @@ func withRunEvents(events string) runOpt {
 }
 
 // withRunClock sets the Run's clock and the deadline it reads against.
-func withRunClock(clk clock, deadline time.Time) runOpt {
+func withRunClock(clk Clock, deadline time.Time) runOpt {
 	return func(_ *testing.T, s *runSettings) {
 		s.clk = clk
 		s.deadline = deadline

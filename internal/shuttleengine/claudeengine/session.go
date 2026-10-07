@@ -84,12 +84,9 @@ func (c *Claude) InputBoxText(capture string) (text string, ok bool) {
 	return strings.Join(parts, " "), true
 }
 
-// submitRedrawSettle is long enough for Claude Code to redraw the input box after an Enter.
-const submitRedrawSettle = 300 * time.Millisecond
-
 // SubmitSettle returns how long after an Enter the input box needs to be redrawn before it is read.
 func (c *Claude) SubmitSettle() time.Duration {
-	return submitRedrawSettle
+	return time.Duration(c.submitRedrawSettleMS) * time.Millisecond
 }
 
 // inputBoxInterior returns the lines between the input box's rules in capture.

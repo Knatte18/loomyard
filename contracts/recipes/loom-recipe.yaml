@@ -15,9 +15,8 @@
 # first two writer rows were already members of this set, only their reachability changed, and
 # Describe is the newest member, a writer row whose exhausted gate halts the run for a human. They
 # are omitted from the sentence above because its subject is gates, not because their Stuck is any
-# softer: it halts the whole run identically. Discussion-Write's Stuck now has two reachable paths --
-# the asking one, where shedadapters.SingleLLMProducer maps a shuttleengine.OutcomeAsking onto
-# shedengine.Stuck, and the gate-exhaustion one the row below used to catch. Plan-Write's Stuck
+# softer: it halts the whole run identically. Discussion-Write's Stuck is reachable through the
+# gate-exhaustion path the row below used to catch. Plan-Write's Stuck
 # becomes reachable for the first time: nothing made it fire before, because its own row's on_done
 # always reached the row now removed regardless of what its gate found.
 #

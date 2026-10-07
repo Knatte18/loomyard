@@ -674,8 +674,7 @@ func TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry(t *testing.T) {
 }
 
 // TestBurlerProducer_Call_FailedRunIsAnError covers the runs that end in an error rather than a
-// hand-off: two timeouts name both sessions, asking is a hard error on the first occurrence and
-// never retried, and a runner error is wrapped.
+// hand-off: two timeouts name both sessions, and a runner error is wrapped.
 func TestBurlerProducer_Call_FailedRunIsAnError(t *testing.T) {
 	seamErr := errors.New("seam exploded")
 	tests := []struct {
@@ -693,12 +692,6 @@ func TestBurlerProducer_Call_FailedRunIsAnError(t *testing.T) {
 			}},
 			wantCalls:    2,
 			wantContains: []string{"s1", "s2"},
-		},
-		{
-			name:         "AskingIsAHardErrorOnFirstOccurrence",
-			runner:       &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeAsking, LastAssistantMessage: "what next?"}}},
-			wantCalls:    1,
-			wantContains: []string{"what next?"},
 		},
 		{
 			name:      "RunnerErrorWrapped",
@@ -775,7 +768,7 @@ func TestBurlerProducer_Call_CancelledDuringFailedRoundArchives(t *testing.T) {
 	runDir := t.TempDir()
 	reviewPath := roundReviewPath(runDir, 1)
 	ctx, cancel := context.WithCancel(context.Background())
-	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeAsking}}}
+	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDied}}}
 	runner.DuringRun = func(int) {
 		writeRoundFile(t, reviewPath)
 		cancel()
@@ -1013,17 +1006,6 @@ func TestBurlerProducer_Call_ArchiveOnExit(t *testing.T) {
 				t.Errorf("NotStarted=%v: errors.Is(err, ErrNotStarted) = %v; want %v", notStarted, got, notStarted)
 			}
 		}
-	})
-
-	t.Run("AskingHardError", func(t *testing.T) {
-		runDir := t.TempDir()
-		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeAsking}}}
-		p := newBurlerProducer(t, runDir, runner)
-
-		if _, _, err := p.Call(context.Background()); err == nil {
-			t.Fatal("Call() error = nil; want non-nil")
-		}
-		assertUnchangedRoundOnRerun(t, runDir)
 	})
 
 	t.Run("CancellationBetweenAttempts", func(t *testing.T) {

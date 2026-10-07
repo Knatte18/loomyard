@@ -178,7 +178,7 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 		{
 			name: "NonOutcomeDone",
 			buildBouncer: func(t *testing.T) (*Bouncer, BouncerConfig) {
-				return newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}})).Build()
+				return newBouncerFixture(t, withShuttle(&shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}})).Build()
 			},
 		},
 		{
@@ -243,7 +243,7 @@ func TestBouncer_SeedSideHarvest_SurvivesALateFailure(t *testing.T) {
 		err    error
 	}{
 		{"a late run error", shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, errors.New("run failed after write")},
-		{"a non-Done outcome", shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}, nil},
+		{"a non-Done outcome", shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -133,6 +134,7 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	}
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(loc, line) })
 
 	// A `lyx burler` run is not a loom run and has no friction directory in either mode.
 	c.engine = burlerengine.New(runner, hubgeom.BurlerGeometry(loc), burlerCfg, stencilsDir, "")

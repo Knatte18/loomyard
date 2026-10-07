@@ -55,7 +55,7 @@ import (
 // it: stay quiet for a moment (so the round is in flight when the probe runs), write every declared
 // output file, THEN append a turn-end line to events.jsonl, then keep running. Wait classifies done
 // only on an event whose tick also finds every output file present, so writing the event first would
-// classify the run asking instead.
+// leave the run held instead.
 type shellLaunchEngine struct {
 	shuttlefake.Engine
 	// quietSeconds is how long the script waits before writing anything, so the run is genuinely

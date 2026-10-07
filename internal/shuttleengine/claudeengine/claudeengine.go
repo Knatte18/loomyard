@@ -1,7 +1,7 @@
 // claudeengine.go defines the Claude type and its compile-time assertion against
 // shuttleengine.Engine.
-// The type carries only its submit settle, fixed at construction,
-// and every method it implements is a pure function of its arguments and that settle (see command.go, settings.go, events.go, startup.go), which is what makes the whole adapter hermetically testable without tmux or a real claude process.
+// The type carries only its two settles, fixed at construction,
+// and every method it implements is a pure function of its arguments and those settles (see command.go, settings.go, events.go, startup.go), which is what makes the whole adapter hermetically testable without tmux or a real claude process.
 
 package claudeengine
 
@@ -20,24 +20,29 @@ import (
 // defaultSubmitSettleMS is the submit settle New uses, matching the shipped shuttle template.
 const defaultSubmitSettleMS = 300
 
+// defaultSubmitRedrawSettleMS is the redraw settle New uses, matching the shipped shuttle template.
+const defaultSubmitRedrawSettleMS = 300
+
 // Claude implements shuttleengine.Engine for the Claude Code CLI.
-// Its methods are pure functions of their arguments and its one settle field, fixed at construction,
+// Its methods are pure functions of their arguments and its settle fields, fixed at construction,
 // so a Claude is safe to share across concurrent runs.
 type Claude struct {
 	// submitSettleMS is the pause between typed text and the Enter that submits it.
 	// Claude Code reads a fast character burst as a paste and swallows an Enter that arrives inside it,
 	// so the settle moves the Enter out of the paste window.
 	submitSettleMS int
+	// submitRedrawSettleMS is the wait after an Enter before the input box is read, so Claude Code has redrawn it.
+	submitRedrawSettleMS int
 }
 
 // New returns a Claude engine with the default submit settle.
 func New() *Claude {
-	return &Claude{submitSettleMS: defaultSubmitSettleMS}
+	return &Claude{submitSettleMS: defaultSubmitSettleMS, submitRedrawSettleMS: defaultSubmitRedrawSettleMS}
 }
 
-// NewFromConfig returns a Claude engine whose submit settle is cfg.SubmitSettleMS.
+// NewFromConfig returns a Claude engine whose submit settle is cfg.SubmitSettleMS and whose redraw settle is cfg.SubmitRedrawSettleMS.
 func NewFromConfig(cfg shuttleengine.Config) *Claude {
-	return &Claude{submitSettleMS: cfg.SubmitSettleMS}
+	return &Claude{submitSettleMS: cfg.SubmitSettleMS, submitRedrawSettleMS: cfg.SubmitRedrawSettleMS}
 }
 
 // Compile-time proof that Claude satisfies the provider seam.

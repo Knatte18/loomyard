@@ -37,7 +37,7 @@ type Gate struct {
 // Gate/GateDir select and locate the convergence check.
 // RoundCaps must be resolved and non-empty;
 // treadle does no default resolution.
-// JudgeModel/ JudgeEffort tune judge/triage calls;
+// JudgeModel/ JudgeEffort tune judge calls;
 // Model/Effort/Timeout tune each round's attempt.
 // PreRoundTargeting gates the optional pre-round targeting capability.
 type Profile struct {

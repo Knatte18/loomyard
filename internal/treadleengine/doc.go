@@ -43,9 +43,7 @@
 // paths, and diagnostic identities. The seam is deliberately attempt-level,
 // not round-level: Engine itself owns the generic machinery every future
 // runner needs for free — the two-attempt retry policy on died/timeout,
-// asking-triage (an ephemeral LLM utility call classifying whether a
-// question-asking attempt can plausibly retry), stale-artifact move-aside
-// before a re-run, round/attempt token naming (roundToken, e.g. "3" then
+// stale-artifact move-aside before a re-run, round/attempt token naming (roundToken, e.g. "3" then
 // "3b" for a retry), artifact path derivation, and the prior-round hydration
 // list assembly (collectPriorHydration) fed into every attempt's input. A
 // RoundRunner implementation therefore only ever adapts "spawn one attempt,
@@ -126,7 +124,7 @@
 //
 // # Skills and the parent directive
 //
-// The three spawned roles (judge, triage, targeting) each load `scribe:prose` through the spec's Skills before the prompt is delivered.
+// The spawned roles (judge, targeting) each load `scribe:prose` through the spec's Skills before the prompt is delivered.
 // Each opening stencil carries `{{.parent_directive}}` near its top, filled with `parentdirective.Directive` from the told Options.ParentName.
 // An empty ParentName renders the no-parent variant;
 // a directive that cannot be rendered takes the same fail-safe path as an unreadable stencil.
@@ -148,7 +146,7 @@
 // run", "kept run dir"), since this package cannot name a specific runner's
 // domain (burler, shuttle) without violating the Runner-Seam Invariant.
 // Second, the package's EXPORTED fail-loud parsers — ParseJudgeVerdict,
-// ParseTriageVerdict, ParseHandoff, and the splitFrontmatter they share —
+// ParseHandoff, and the splitFrontmatter they share —
 // are package-level pure functions with no Engine in scope, so their errors
 // keep a fixed "treadle: " prefix. Those strings are never returned to a
 // caller as an engine error; they surface only as the cause= field of a
