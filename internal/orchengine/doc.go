@@ -99,6 +99,14 @@
 // The time is on disk, so this covers a request whose idle probe never passes and a marker a dead watcher left, across watcher restarts.
 // State records the cycle's mode as CycleMode and the request time as CycleRequestedAt, zero for an automatic trigger.
 //
+// A cycle start clears the request pending at that moment, so a request found later was made after the cycle started.
+// A same-mode request made during a cycle is satisfied by it:
+// the compact cycle removes a pending compact request made no later than the boundary when the compaction completes,
+// and the clear cycle removes a pending clear request when its `/clear` is confirmed typed; each logs the mode and request time.
+// A request of the other mode, and a compact request made after the boundary, stay pending for the idle phase.
+// Bound: it removes only a request made after the cycle started and before its action took effect, for the same thing the action did;
+// the request time is CLI-written and the boundary time is the transcript's, both wall clock on one host.
+//
 // A hard or requested cycle acts only when all of these hold:
 //
 //   - The newest event it has read is a turn end, EventStop or EventWaiting.

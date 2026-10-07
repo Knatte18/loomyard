@@ -508,6 +508,36 @@ func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
 	}
 }
 
+func TestWatcher_ConfirmedClearRemovesOnlyASatisfiedClearRequest(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		mode        string
+		wantPending bool
+	}{
+		{"clear request made during the cycle is removed", CycleClear, false},
+		{"compact request made during the cycle stays pending", CycleCompact, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.reachClearing()
+			if err := RequestCycle(e.paths, c.mode, e.clock.Now()); err != nil {
+				t.Fatal(err)
+			}
+			e.tick()
+			if st := e.state(); st.Phase != PhaseResuming {
+				t.Fatalf("phase = %s, want resuming", st.Phase)
+			}
+			if _, pending, _ := CycleRequested(e.paths); pending != c.wantPending {
+				t.Errorf("request pending = %v, want %v", pending, c.wantPending)
+			}
+		})
+	}
+}
+
 func TestWatcher_ClearingTimeoutNeverTypesWhileBusy(t *testing.T) {
 	t.Parallel()
 

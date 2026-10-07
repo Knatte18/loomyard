@@ -213,6 +213,59 @@ func TestCompact_CompletesOnBoundaryAfterEntryAndIdle(t *testing.T) {
 	}
 }
 
+func TestCompact_CompletionRemovesOnlyASatisfiedCompactRequest(t *testing.T) {
+	t.Parallel()
+
+	const (
+		duringHandoff    = "during handoff"
+		duringCompacting = "during compacting"
+		afterBoundary    = "after boundary"
+	)
+	cases := []struct {
+		name        string
+		mode        string
+		when        string
+		wantPending bool
+	}{
+		{"compact request during the handoff phase is removed", CycleCompact, duringHandoff, false},
+		{"compact request during compacting before the boundary is removed", CycleCompact, duringCompacting, false},
+		{"compact request after the boundary stays pending", CycleCompact, afterBoundary, true},
+		{"clear request during the cycle stays pending", CycleClear, duringCompacting, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newCompactEnv(t)
+			e.injectHandoff()
+			request := func(at time.Time) {
+				if err := RequestCycle(e.paths, c.mode, at); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if c.when == duringHandoff {
+				request(e.clock.Now())
+			}
+			e.finishNote()
+			entered := e.state().PhaseEnteredAt
+			boundaryAt := entered.Add(2 * time.Second)
+			switch c.when {
+			case duringCompacting:
+				request(entered.Add(time.Second))
+			case afterBoundary:
+				request(boundaryAt.Add(time.Second))
+			}
+			e.landBoundary(boundaryAt, 150)
+			e.tick()
+			if st := e.state(); st.Phase != PhaseResuming {
+				t.Fatalf("phase = %s, want the compaction completed", st.Phase)
+			}
+			if _, pending, _ := CycleRequested(e.paths); pending != c.wantPending {
+				t.Errorf("request pending = %v, want %v", pending, c.wantPending)
+			}
+		})
+	}
+}
+
 func TestCompact_CycleReloadsPluginsThenPointerNamingTheNote(t *testing.T) {
 	t.Parallel()
 
