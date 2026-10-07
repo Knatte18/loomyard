@@ -104,11 +104,8 @@ Example:
 				return fail(fmt.Sprintf("webster: reset --to %s refused: the parent branch is unknown (%v); way forward: run `lyx fabric reconcile` to repair the pair, then re-run `lyx webster reset --to %s`", target, err, target))
 			}
 			if target == websterengine.ResetToStart {
-				if err := websterengine.RemoveRecoveryStrands(c.reed, st); err != nil {
-					var removeErr *websterengine.RecoveryStrandRemoveError
-					if !errors.As(err, &removeErr) {
-						return fail(fmt.Sprintf("webster: reset --to %s refused: %v", target, err))
-					}
+				var removeErr *websterengine.RecoveryStrandRemoveError
+				if errors.As(websterengine.RemoveRecoveryStrands(c.reed, st), &removeErr) {
 					return fail(fmt.Sprintf("webster: reset --to %s refused: %v; way forward: run `lyx reed remove %s`, then re-run `lyx webster reset --to %s`", target, removeErr, removeErr.GUID, target))
 				}
 			}
