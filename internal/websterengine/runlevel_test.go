@@ -194,6 +194,8 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 func newRunFixtureOver(t *testing.T, numCards int, worktree string, git websterengine.Git) *runFixture {
 	t.Helper()
 
+	_, index := indexOver(git)
+
 	planDir := seedRunPlanDir(t, numCards)
 
 	// Run never registers a strand itself, so a stray AddStrand fails loud.
@@ -243,6 +245,7 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 			StencilsDir:  fabricengine.StencilsDir(hubPath),
 			PlanDir:      planDir,
 			Git:          git,
+			Index:        index,
 		},
 		RefMatcher: websterengine.NeverMatches{},
 	}

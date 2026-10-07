@@ -116,6 +116,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	worktree := t.TempDir()
 	writeWorktreeFile(t, worktree, "base.txt", "base")
 	git := newFakeGit()
+	index := newFakeIndex()
 
 	promptsDir := t.TempDir()
 	reed := &shuttlefake.Reed{}
@@ -142,6 +143,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 			SpecsDir:     fabricengine.SpecsDir(hubPath),
 			PlanDir:      planDir,
 			Git:          git,
+			Index:        index,
 		},
 	}
 

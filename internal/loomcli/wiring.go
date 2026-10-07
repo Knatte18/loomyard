@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentreview"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -425,6 +426,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	websterGeom := hubgeom.WebsterGeometry(location)
+	websterGeom.Index = planglyph.NewIndex()
 
 	// frictionDir is the single resolved value every told-friction consumer below reads: non-empty
 	// only when loom.yaml's friction key is set, per the "Tier 2 off is an empty path string, never a

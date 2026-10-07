@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -88,9 +88,13 @@ func deleteReferencedWayForward(number int, uncheckable bool) string {
 }
 
 // laterDeleteReferenceReasons returns one reason per reference an unbegun card still has to a symbol the cards in own delete.
-// An infrastructure error is wrapped in planglyph.ErrQuarryUnavailable.
-func laterDeleteReferenceReasons(plan *planparser.Plan, batches []batcher.Batch, st *State, own []planparser.Card, worktreeRoot string) ([]string, error) {
-	findings, err := planglyph.LaterDeleteReferences(plan, own, unbegunCards(batches, st), worktreeRoot)
+// An infrastructure error is wrapped in planindex.ErrQuarryUnavailable.
+func laterDeleteReferenceReasons(plan *planparser.Plan, batches []batcher.Batch, st *State, own []planparser.Card, geom Geometry) ([]string, error) {
+	index, err := geom.index()
+	if err != nil {
+		return nil, err
+	}
+	findings, err := index.LaterDeleteReferences(plan, own, unbegunCards(batches, st), geom.WorktreeRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +136,7 @@ func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, erro
 
 	var wayForward string
 	if deleteNotDone {
-		referenced, err := laterDeleteReferenceReasons(in.Plan, in.Batches, in.State, in.Cards, in.Geom.WorktreeRoot)
+		referenced, err := laterDeleteReferenceReasons(in.Plan, in.Batches, in.State, in.Cards, in.Geom)
 		if err != nil {
 			return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster %s %d`", err, in.Verb, in.Number)
 		}
@@ -668,7 +672,11 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// A card's completion has a mechanical verdict: a Create target that still does not resolve,
 	// or a Delete target that still does, blocks — neither is a judgment call. This runs its own
 	// batched Resolve against the post-card tree, distinct from the single delta call below.
-	doneFindings, err := planglyph.DoneChecks(in.Plan, in.Cards, in.Geom.WorktreeRoot)
+	index, err := in.Geom.index()
+	if err != nil {
+		return nil, err
+	}
+	doneFindings, err := index.DoneChecks(in.Plan, in.Cards, in.Geom.WorktreeRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -683,7 +691,7 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 		return nil, notDone
 	}
 
-	// The batch's single delta call: BindHandles, ScopeGuard and DetectDrift all consume this one quarry.GitDeltaAnswer rather than each spawning their own.
+	// The batch's single delta call: BindHandles, ScopeGuard and DetectDrift all consume this one planindex.Delta rather than each spawning their own.
 	// HeadSHA is the reconciled report head, already cross-checked against the worktree's real HEAD by the caller —
 	// that cross-check is why the delta can be trusted here and nowhere earlier.
 	// A DeltaGit infrastructure error does not abort the sequence: the scope guard degrades to an
@@ -691,14 +699,14 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// Resolve and are unaffected. delta itself is the zero value on error, so BindHandles correctly
 	// cannot confirm any handle bound and reports bind-count-mismatch for every card that declared
 	// one — an unconfirmed Create is exactly a not-done card.
-	delta, deltaErr := in.Geom.git().Delta(in.Geom.WorktreeRoot, in.StartSHA, in.HeadSHA)
-	if deltaErr != nil && !errors.Is(deltaErr, planglyph.ErrQuarryUnavailable) {
+	delta, deltaErr := index.Delta(in.Geom.WorktreeRoot, in.StartSHA, in.HeadSHA)
+	if deltaErr != nil && !errors.Is(deltaErr, planindex.ErrQuarryUnavailable) {
 		return nil, deltaErr
 	}
 
 	// Binding runs after the done-checks above, so a card that already failed create-not-done is
 	// never bound, and applies its whole batch of substitutions in this one RewriteRefs call.
-	bindFindings, bindErr := planglyph.BindHandles(in.Plan, in.Geom.PlanDir, delta, in.Cards)
+	bindFindings, bindErr := delta.BindHandles(in.Plan, in.Geom.PlanDir, in.Cards)
 	// BindHandles' plan-wide RewriteRefs lands on disk BEFORE it reports either a finding or an
 	// error — the substitutions come from delta.Created while a bind-count-mismatch comes from a
 	// card whose handle matched nothing, so one call routinely does both — which is why the
@@ -726,7 +734,7 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	if deltaErr != nil {
 		warnings = append(warnings, fmt.Sprintf("glyph scope guard could not run for batch %s: %v", in.Label, deltaErr))
 	} else {
-		for _, f := range planglyph.ScopeGuard(in.Cards, delta) {
+		for _, f := range delta.ScopeGuard(in.Cards) {
 			warnings = append(warnings, f.Error())
 		}
 	}
@@ -743,8 +751,7 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// in.Plan rides along as DetectDrift's fullPlan so gate one can recognize THIS batch's own
 	// declared Rename outcome — the pending view excludes exactly the cards whose renames the
 	// delta reports.
-	pending := planglyph.PendingPlan(in.Plan, in.Completed)
-	driftFindings, driftErr := planglyph.DetectDrift(in.Plan, pending, in.Geom.PlanDir, in.Geom.WorktreeRoot, delta, in.HeadSHA, time.Now().UTC().Format(time.RFC3339))
+	driftFindings, driftErr := delta.DetectDrift(in.Plan, in.Completed, in.Geom.PlanDir, in.Geom.WorktreeRoot, in.HeadSHA, time.Now().UTC().Format(time.RFC3339))
 	// The exact-tier repair's own RewriteRefs lands on disk before this call reports anything, and
 	// its blocking plan-references-deleted-symbol finding is computed from a different part of the
 	// same delta, so re-baseline here for exactly the reason BindHandles does above.
@@ -754,7 +761,7 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	if driftErr != nil {
 		return warnings, driftErr
 	}
-	// DetectDrift is the one planglyph call in this sequence that returns a MIXED severity set:
+	// DetectDrift is the one index call in this sequence that returns a MIXED severity set:
 	// plan-references-deleted-symbol is blocking, while the evidence tier's rename-candidate is
 	// informational by construction — drift.go's own contract is that the rename-versus-genuine-delete
 	// decision is the reviewer's, never the pipeline's. Failing the batch on it would destroy the very
@@ -762,7 +769,7 @@ func postBatchChecks(in postBatchInputs) (warnings []string, err error) {
 	// So the split here is by whose card the finding concerns: a blocking finding is about a later card, so it is recorded as a "later card:" warning rather than failing this batch,
 	// and an informational one rides out on warnings exactly as ScopeGuard's findings already do.
 	for _, f := range driftFindings {
-		if f.Severity != planglyph.SeverityBlocking {
+		if f.Severity != planindex.SeverityBlocking {
 			warnings = append(warnings, f.Error())
 			continue
 		}
