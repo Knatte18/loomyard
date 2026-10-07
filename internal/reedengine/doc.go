@@ -46,6 +46,10 @@
 // and the remover no-ops on a guid that is already gone.
 // EndSessionByName sits beside ReapSession as the engine-less session end for a pair whose worktree is gone, and kills the server when it ends the last session.
 //
+// Engine.SetWaitMark marks a strand's pane as waiting: it sets the pane user options @lyx_wait (the label) and @lyx_wait_start (epoch seconds), or unsets both on an empty label.
+// The mark is display only, so reed stores nothing for it and the options die with the pane;
+// the default status line renders it, and no Go decision reads it.
+//
 // A second package-level invariant: every session also carries exactly one
 // additional, permanent pane beyond its strands — Selvage
 // (ReedState.SelvagePaneID). It is a first-class construct, deliberately
