@@ -144,11 +144,6 @@ type State struct {
 	// at spawn. record-batch's incremental fork audit resolves fork
 	// transcripts against this session ID.
 	MasterSessionID string `json:"masterSessionId,omitempty"`
-	// AssertedModel is the model role (RoleMaster) last injected into — or
-	// launched with — the Master session. This is the idempotent-assertion
-	// memory begin-batch consults so it never re-asserts a model the
-	// session is already running.
-	AssertedModel string `json:"assertedModel,omitempty"`
 	// Batches holds every batch's own persisted record, keyed by batch
 	// number.
 	Batches map[int]*BatchState `json:"batches"`

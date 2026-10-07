@@ -791,14 +791,13 @@ func newRunTestCLI(t *testing.T) *websterCLI {
 }
 
 // seedRunState writes a minimal state.json, fingerprint-matched to c's on-disk plan, standing in for the state the run verb would have already created before Master ever calls a bracket verb.
-func seedRunState(t *testing.T, c *websterCLI, assertedModel string) *websterengine.State {
+func seedRunState(t *testing.T, c *websterCLI) *websterengine.State {
 	t.Helper()
 	st := &websterengine.State{
 		RunGUID:         "guid-1",
 		PlanFingerprint: testPlanFingerprint(t, c.geom.PlanDir),
 		MasterStrand:    "master-strand-1",
 		MasterSessionID: "master-session-1",
-		AssertedModel:   assertedModel,
 		Batches:         map[int]*websterengine.BatchState{},
 	}
 	if err := websterengine.RestampPlanBaseline(st, c.geom.PlanDir, c.geom.WebsterDir); err != nil {
@@ -1017,7 +1016,7 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 func TestValidateCmd_RefusesOverviewEditWithoutRestamp(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	c := newRunTestCLI(t)
-	before := seedRunState(t, c, "master-model")
+	before := seedRunState(t, c)
 
 	overviewPath := filepath.Join(c.geom.PlanDir, "00-overview.md")
 	data, err := os.ReadFile(overviewPath)
@@ -1130,7 +1129,7 @@ func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	c := newRunTestCLI(t)
 	seedTwoCardPlan(t, c.geom.PlanDir, "second card.")
-	st := seedRunState(t, c, "master-model")
+	st := seedRunState(t, c)
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", Cards: []string{"01-only"}, StartSHA: "abc123", Kind: "fork", Digest: &websterengine.Digest{Batch: "01-only", Status: websterengine.DigestStatusDone, HeadSHA: "def456"}}
 	if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
@@ -1228,7 +1227,7 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 			c := newRunTestCLI(t)
 			// The state is recorded against the two-card plan so the "edited card" row has an unnamed edit to refuse.
 			seedTwoCardPlan(t, c.geom.PlanDir, "second card.")
-			seedRunState(t, c, "master-model")
+			seedRunState(t, c)
 			statePath := filepath.Join(c.geom.WebsterDir, "state.json")
 			args := tc.arrange(t, c)
 			before, err := os.ReadFile(statePath)
@@ -1263,7 +1262,7 @@ func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	c := newRunTestCLI(t)
 	seedTwoCardPlan(t, c.geom.PlanDir, "second card.")
-	seedRunState(t, c, "master-model")
+	seedRunState(t, c)
 	seedTwoCardPlan(t, c.geom.PlanDir, "second card, edited mid-run.")
 	c.openFabric = failingFabricOpen
 
@@ -1286,7 +1285,7 @@ func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
 func TestRestorePlanCmd_RestoresEditedCard(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	c := newRunTestCLI(t)
-	seedRunState(t, c, "master-model")
+	seedRunState(t, c)
 	cardPath := filepath.Join(c.geom.PlanDir, "01-only.md")
 	recorded, err := os.ReadFile(cardPath)
 	if err != nil {

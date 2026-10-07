@@ -54,7 +54,6 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | no run in progress | a bracket verb, `rebaseline`, `restore-plan` or `accept-audit` runs before `lyx webster run` has created state.json | correctness halt | run `lyx webster run` first |
 | recorded commit missing | `accept-audit` or `run --fresh` finds a batch commit the run recorded missing from the repository | correctness halt | fetch the task branch from the machine that ran those batches with git, then re-run the verb |
 | restore-plan: copy missing | `lyx webster restore-plan` finds a plan file to restore with no stored copy | correctness halt | `1) lyx webster reset --to start; 2) lyx webster run --fresh` |
-| model switch injection failed | begin-batch cannot assert the batch's model | transient | transient, re-run `lyx webster begin-batch NN` |
 | report already present | begin-batch finds a report for the batch it would open | correctness halt | `lyx webster record-batch NN` consumes it (`lyx webster recover-batch NN` for a recovery batch), and a stuck batch escalates via `lyx webster recover-batch NN` |
 | report malformed | record-batch cannot decode the batch's report | correctness halt | `lyx webster recover-batch NN` archives the malformed report and re-drives the batch |
 | report unattributable | record-batch finds no begin record, zero fork transcripts, or no transcript directory | correctness halt | `lyx webster begin-batch NN` re-drives the batch; the report is archived |

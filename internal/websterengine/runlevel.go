@@ -691,13 +691,8 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("webster: resolve spawned master run: %w", err)
 	}
 	st.MasterSessionID = runState.SessionID
-	// The launch model IS the idempotent-assertion baseline BeginBatch's
-	// own per-batch model check consults from batch 1 onward — a batch 1
-	// begin-batch call then finds AssertedModel already equal to
-	// RoleMaster's model and injects nothing.
-	st.AssertedModel = resolved.Model
 
-	// Second save: the session ID and launch-model baseline the verbs read.
+	// Second save: the session ID the verbs read.
 	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 		return RunResult{}, err
 	}

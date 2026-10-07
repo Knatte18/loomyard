@@ -40,9 +40,7 @@ func (c *websterCLI) beginBatchCmd() *cobra.Command {
 "paused": true envelope if "lyx webster pause" was called), refuses loud
 when the batch's report file already exists (finished work is never
 silently overwritten -- a stuck batch escalates via recover-batch), records
-the batch's start-SHA in state.json, idempotently asserts Master's model for
-this batch (a repeated call for the same batch never re-injects a switch
-Master's pane is already running), renders and writes that batch's fork
+the batch's start-SHA in state.json, renders and writes that batch's fork
 prompt (carrying the previous batch's own persisted digest), and returns the
 prompt path Master forwards to its Agent-tool fork call verbatim.
 
@@ -101,10 +99,7 @@ Example:
 				Plan:        plan,
 				Batches:     batches,
 				State:       st,
-				Roles:       c.roles,
 				Config:      c.cfg,
-				Engine:      c.engine,
-				Injector:    c.injector,
 				Reed:        c.reed,
 				Geom:        c.geom,
 				FrictionDir: c.frictionDir,
@@ -161,7 +156,6 @@ Example:
 				"batch":       result.BatchName,
 				"prompt_path": result.PromptPath,
 				"start_sha":   result.StartSHA,
-				"model":       result.AssertedModel,
 				"warnings":    ownerlessRunWarnings(c.geom.ScratchDir, nil),
 				"advisories":  result.Advisories,
 			}))

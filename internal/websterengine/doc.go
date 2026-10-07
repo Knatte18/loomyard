@@ -273,24 +273,14 @@
 // cold recovery strand is a separate, non-fork-authorized session and never
 // sees the hook.
 //
-// # idempotent per-batch model assertion
+// # one model per run
 //
 // Forks always inherit Master's current model — there is no per-fork model
 // override, so webster carries no implementer/implementer_oversized fork
 // roles at all; RoleMaster and RoleRecovery are its only two roles.
-// begin-batch synchronously injects RoleMaster into Master's pane via
-// shuttleengine's Runner.Inject before returning its envelope, asserting
-// the correct model for THIS batch rather than assuming the previous
-// batch's state. There is nothing to forget on a failure path that skips
-// record-batch: the next batch's begin-batch call asserts afresh
-// regardless of what the prior batch left behind. Note that the injection
-// itself is DORMANT in the shipped flow: run launches Master with
-// RoleMaster's model AND baselines State.AssertedModel to that same value
-// at every entry, and begin-batch's only target is RoleMaster, so the
-// idempotency check never finds a divergence without manual state
-// tampering — the mechanism is the seam a future per-batch model policy
-// plugs into, and its live timing is exercised only by the sandbox
-// suite's tamper-armed W2 scenario.
+// run launches Master with RoleMaster's model, and nothing in begin-batch
+// reads or changes it afterwards; a Master pane an operator moves with
+// /model stays there for the rest of the run.
 //
 // # cold recovery is the only real model escalation
 //

@@ -126,8 +126,7 @@ var burlerSuite = suiteSpec{
 }
 
 // websterSuite is the SANDBOX-WEBSTER-SUITE spec: the dedicated scheme
-// exercising the lyx webster fork-loop and model-escalation black-box agent
-// scenarios.
+// exercising the lyx webster fork-loop black-box agent scenarios.
 var websterSuite = suiteSpec{
 	fileName:     "SANDBOX-WEBSTER-SUITE.md",
 	doc:          websterSandboxSuiteMD,

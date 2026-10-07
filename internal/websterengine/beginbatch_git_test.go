@@ -19,7 +19,6 @@ func TestBeginBatch_StartSHAIsTheRealHead(t *testing.T) {
 	head := gitkit.CommitFile(t, repo, "base.txt", "base", "base commit")
 	fx.Deps.Geom.Git = nil
 	fx.Deps.Geom.WorktreeRoot = repo
-	fx.Deps.State.AssertedModel = "master-model"
 
 	result, err := websterengine.BeginBatch(fx.Deps, 1)
 	if err != nil {

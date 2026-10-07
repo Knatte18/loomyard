@@ -14,13 +14,12 @@
 // standalone has no fabric repo by construction, and the closure is never called during wiring in
 // either mode.
 //
-// websterCLI stores THREE adapted
+// websterCLI stores TWO adapted
 // views of the one constructed Runner: starter (websterengine.Starter, webster's own local copy of
-// the spawn seam, consumed by recover-batch's cold-strand spawn), injector (websterengine.Injector,
-// consumed by begin-batch's model-switch choreography), and masterStarter
+// the spawn seam, consumed by recover-batch's cold-strand spawn) and masterStarter
 // (websterengine.MasterStarter, behind the runnerMasterStarter adapter, consumed by run's Master
-// spawn) -- because webster's three verbs each need a distinct narrow seam onto the same underlying
-// *shuttleengine.Runner, none of which the others expose.
+// spawn) -- because the two verbs each need a distinct narrow seam onto the same underlying
+// *shuttleengine.Runner, neither of which the other exposes.
 package webstercli
 
 import (
@@ -42,12 +41,11 @@ import (
 
 // websterCLI is the receiver every webster verb hangs off of.
 type websterCLI struct {
-	// runner is the constructed shuttle Runner the three adapted seams below are derived from.
+	// runner is the constructed shuttle Runner the two adapted seams below are derived from.
 	runner *shuttleengine.Runner
 
-	// starter, injector, and masterStarter are the three narrow seams webster's verbs spawn/inject through.
+	// starter and masterStarter are the two narrow seams webster's verbs spawn through.
 	starter       websterengine.Starter
-	injector      websterengine.Injector
 	masterStarter websterengine.MasterStarter
 
 	// engine and reed are the constructed claude and reed engines record-batch and recover-batch need directly.

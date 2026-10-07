@@ -935,7 +935,7 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 
 // TestRun_MasterSpawn asserts what Run hands the Master spawn and records around it: the strand
 // role, model and skills, the awaited shell, the gate entries, the prompt (never written to a
-// master.md), the asserted model and strand identities, and the order of the batches the prompt lists.
+// master.md), the strand and session identities, and the order of the batches the prompt lists.
 func TestRun_MasterSpawn(t *testing.T) {
 	t.Parallel()
 
@@ -982,15 +982,11 @@ func TestRun_MasterSpawn(t *testing.T) {
 			},
 		},
 		{
-			// The idempotent-assertion baseline begin-batch's own per-batch check consults from
-			// batch 1 onward is persisted BEFORE Run blocks on Wait.
-			name:  "the asserted model is initialised to the launch model",
+			// The strand and session identities the bracket verbs read are persisted BEFORE Run blocks on Wait.
+			name:  "the strand and session identities are persisted",
 			cards: 1,
 			check: func(t *testing.T, fx *runFixture) {
 				st := loadRunState(t, fx)
-				if st.AssertedModel != "master-model" {
-					t.Errorf("State.AssertedModel = %q; want %q (the launch model)", st.AssertedModel, "master-model")
-				}
 				if st.MasterStrand != spawnStrand {
 					t.Errorf("State.MasterStrand = %q; want %q", st.MasterStrand, spawnStrand)
 				}

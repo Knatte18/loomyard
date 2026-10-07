@@ -1,7 +1,7 @@
 //go:build integration
 
 // verbs_test.go covers webstercli's git-backed/spawn-backed verbs (begin-batch, record-batch, recover-batch, run) through the RunCLI seam:
-// a real scratch git repo backs WorktreeRoot, a real *shuttleengine.Runner wired over local fake shuttleengine.ReedOps/shuttleengine.Engine doubles is the starter/injector seam, webster's own fixture pattern — a fake struct alone cannot satisfy these interfaces, since a genuine *shuttleengine.Run's StrandGUID is only ever minted by a real Runner.Start), and run's own Master spawn is a local fake MasterStarter (mirroring websterengine's own runlevel_test.go runFakeStarter).
+// a real scratch git repo backs WorktreeRoot, a real *shuttleengine.Runner wired over local fake shuttleengine.ReedOps/shuttleengine.Engine doubles is the starter seam, webster's own fixture pattern — a fake struct alone cannot satisfy these interfaces, since a genuine *shuttleengine.Run's StrandGUID is only ever minted by a real Runner.Start), and run's own Master spawn is a local fake MasterStarter (mirroring websterengine's own runlevel_test.go runFakeStarter).
 // Most tests build a *websterCLI literal directly (bypassing Command()'s PersistentPreRunE) and drive one verb's cobra.Command through clihelp.Execute, webster's own package-local injection point for these tests; seedPersistentPreRunFixture and its tests are the deliberate exception, driving Command()'s real PersistentPreRunE through RunCLIIn.
 // WEFT_SKIP_GIT=1 is set on every test that reaches a fabricSync call, so no real records sibling worktree is needed; the one test that must PROVE fabricSync was never reached (ErrRunBusy) instead leaves WEFT_SKIP_GIT unset and asserts the envelope carries no fabric-sync or fabricengine error text -- the failure a reached fabricSync would stamp in this records-less geometry.
 
@@ -137,7 +137,6 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	c := &websterCLI{
 		runner:     runner,
 		starter:    runner,
-		injector:   runner,
 		engine:     engine,
 		reed:       reed,
 		anchorRel:  layout.AnchorRel,
@@ -204,22 +203,18 @@ func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
 // on-disk plan) for fx's webster dir, standing in for the state "lyx
 // webster run" would have already created before Master ever calls
 // begin-batch/record-batch/recover-batch.
-func (fx *verbsFixture) initState(t *testing.T, assertedModel string) *websterengine.State {
+func (fx *verbsFixture) initState(t *testing.T) *websterengine.State {
 	t.Helper()
-	return seedRunState(t, fx.CLI, assertedModel)
+	return seedRunState(t, fx.CLI)
 }
 
-// TestBeginBatchCmd_HappyPath proves the success envelope carries prompt_path/start_sha/model,
+// TestBeginBatchCmd_HappyPath proves the success envelope carries prompt_path/start_sha and no model key,
+// that begin-batch types nothing into Master's pane,
 // and that state.json was persisted with the new BatchState.
 func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	// Pre-assert the master model so BeginBatch's idempotent model-switch
-	// check skips the Injector.Inject call entirely — this test is about
-	// the CLI's own envelope/state-save wiring, not the inject choreography
-	// itself (covered live by the sandbox suite, per shuttleengine's own
-	// Inject doc).
-	fx.initState(t, "master-model")
+	fx.initState(t)
 
 	var out strings.Builder
 	exitCode := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"})
@@ -228,10 +223,16 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 		t.Fatalf("begin-batch 1 = %d; want 0, output: %s", exitCode, out.String())
 	}
 	got := out.String()
-	for _, want := range []string{`"batch":"01-only"`, `"prompt_path"`, `"start_sha"`, `"model":"master-model"`} {
+	for _, want := range []string{`"batch":"01-only"`, `"prompt_path"`, `"start_sha"`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q; got %q", want, got)
 		}
+	}
+	if strings.Contains(got, `"model"`) {
+		t.Errorf("output = %q; want no model key", got)
+	}
+	if len(fx.Reed.SendTextCalls) != 0 || len(fx.Reed.SendKeyCalls) != 0 {
+		t.Errorf("reed received %d text and %d key inputs; want none, begin-batch types nothing into a pane", len(fx.Reed.SendTextCalls), len(fx.Reed.SendKeyCalls))
 	}
 
 	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
@@ -265,7 +266,7 @@ func TestBeginBatchCmd_DeleteTargetAlreadyGone(t *testing.T) {
 			{Number: 2, Slug: "second", Summary: "also lists the target", Groups: []plankit.Group{{Label: "Delete", Targets: []string{target}}}, Intent: "remove it too.", ImpactSummary: "Removes the target."},
 		},
 	})
-	st := fx.initState(t, "master-model")
+	st := fx.initState(t)
 	if err := os.Remove(filepath.Join(fx.CLI.geom.WorktreeRoot, target)); err != nil {
 		t.Fatalf("remove the target batch 1 deleted: %v", err)
 	}
@@ -293,7 +294,7 @@ func TestBeginBatchCmd_DeleteTargetAlreadyGone(t *testing.T) {
 func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	fx.initState(t, "master-model")
+	fx.initState(t)
 	if err := websterengine.RequestPause(fx.CLI.geom.ScratchDir); err != nil {
 		t.Fatalf("RequestPause() error = %v", err)
 	}
@@ -324,7 +325,7 @@ func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 func TestPauseCmd_ResolvesSameFileAsBeginBatchGate(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	fx.initState(t, "master-model")
+	fx.initState(t)
 
 	var pauseOut strings.Builder
 	exitCode := clihelp.Execute(fx.CLI.pauseCmd(), &pauseOut, []string{})
@@ -384,7 +385,7 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("WEFT_SKIP_GIT", "1")
 			fx := newVerbsFixture(t)
-			st := fx.initState(t, "master-model")
+			st := fx.initState(t)
 			// DoneChecks resolves a card's Create target against
 			// deps.Geom.WorktreeRoot, which hubgeom.WebsterGeometry fills
 			// with layout.AnchorPath() (fx.Worktree + anchorRel), not
@@ -453,7 +454,7 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	st := fx.initState(t, "master-model")
+	st := fx.initState(t)
 	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
 	st.CurrentBatch = 1
@@ -496,7 +497,7 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	fx.initState(t, "master-model")
+	fx.initState(t)
 	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
 	writeBatchReport(t, fx.CLI.geom.ReportsDir, startSHA)
 
@@ -522,7 +523,7 @@ func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	st := fx.initState(t, "master-model")
+	st := fx.initState(t)
 	st.Batches[1] = &websterengine.BatchState{
 		Slug: "only", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed,
 		Digest:      &websterengine.Digest{Batch: "01-only", Status: websterengine.DigestStatusFailed},
@@ -560,7 +561,7 @@ func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	fx.initState(t, "master-model")
+	fx.initState(t)
 
 	// First call: no prior record for batch 1, so RecoverBatch spawns a
 	// fresh recovery strand, then the bounded (near-zero) wait elapses with
@@ -812,7 +813,7 @@ func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
 func TestBeginBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
-	fx.initState(t, "master-model")
+	fx.initState(t)
 	fx.CLI.openFabric = failingFabricOpen
 
 	var out strings.Builder
@@ -837,7 +838,7 @@ func TestBeginBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
-	st := fx.initState(t, "master-model")
+	st := fx.initState(t)
 	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
 	st.CurrentBatch = 1
@@ -867,7 +868,7 @@ func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 func TestRecoverBatchCmd_FabricSyncAndReedBootWayForward(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
-	fx.initState(t, "master-model")
+	fx.initState(t)
 
 	fx.CLI.reedUp = func(context.Context, bool) error { return fmt.Errorf("tmux not ready (injected)") }
 	var out strings.Builder
@@ -916,7 +917,7 @@ func TestBracketVerbs_NoRunInProgressWayForward(t *testing.T) {
 		}
 	}
 
-	fx.initState(t, "master-model")
+	fx.initState(t)
 	var out strings.Builder
 	if code := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"}); code != 0 {
 		t.Fatalf("begin-batch 1 once the run exists = %d; want 0, output: %s", code, out.String())
