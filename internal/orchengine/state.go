@@ -137,10 +137,14 @@ var errStrandReplaced = errors.New("orch: state was bound to another strand sinc
 // saveStateForStrand writes s only while the persisted record still names s.Strand, checked and written under one lock.
 // It returns errStrandReplaced without writing when the record names another strand,
 // so a watcher can never overwrite the binding a concurrent `start` just recorded.
+// The persisted WatcherStopping is kept, since only the signal goroutine and a new run set or clear it, and a tick's save is made from a state loaded before the signal.
 func saveStateForStrand(p Paths, s State) error {
 	err := state.UpdateJSON(p.StatePath, p.StateLockPath, func(cur State, found bool) (State, error) {
 		if found && cur.Strand != s.Strand {
 			return cur, errStrandReplaced
+		}
+		if found {
+			s.WatcherStopping = cur.WatcherStopping
 		}
 		return s, nil
 	})

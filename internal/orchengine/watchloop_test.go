@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // flakySession fails StrandAlive per a script, then defers to the embedded fake.
@@ -177,6 +178,8 @@ func TestRun_CancelledContextRecordsSignal(t *testing.T) {
 func TestRun_RecordsStoppingBeforeTheInFlightTickFinishes(t *testing.T) {
 	e := newWatchEnv(t)
 	ctx, cancel := context.WithCancel(context.Background())
+	// A turn end read after the signal makes the in-flight tick save the state it loaded before it.
+	e.s.events = []shuttleengine.Event{{Kind: shuttleengine.EventStop, Message: "turn end"}}
 	inTick := make(chan struct{})
 	finishTick := make(chan struct{})
 	blocked := false
@@ -217,7 +220,7 @@ func TestRun_RecordsStoppingBeforeTheInFlightTickFinishes(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	if st, _ := LoadState(e.paths); !st.WatcherStopping {
-		t.Error("WatcherStopping cleared by the exiting watcher; want it kept until the next Run")
+		t.Error("WatcherStopping cleared by the exiting watcher or its in-flight tick's save; want it kept until the next Run")
 	}
 
 	stoppingAtNextRun := true
