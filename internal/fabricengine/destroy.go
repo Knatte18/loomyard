@@ -47,14 +47,10 @@
 // See PATTERN-fabric-destruction-chokepoint (added once this slice's guard test
 // lands) for the machine-enforced half of this rule.
 //
-// Recording contract: every one of the nine executors below takes a leading `rec *Mutations`
-// parameter and appends its own primitive's entry itself, after the primitive observably changed
-// state — never before, and never for a no-op. A refusal records nothing, since nothing happened;
-// removeGitWorktree, deleteBranch, and deleteRemoteBranch record only when the underlying git command
-// returned a nil error, since a non-nil error — whether git ran and rejected the command or could not
-// be run at all — would otherwise claim a destruction that never occurred; deleteRemoteBranch
-// additionally requires an observed deletion rather than a nil error alone, since its own
-// nil-error-plus-deleted==false case is the already-absent idempotent success.
+// Recording contract: every executor below takes a leading `rec *Mutations` parameter and appends its own primitive's entry itself, after the primitive observably changed state — never before, and never for a no-op.
+// A refusal records nothing, since nothing happened;
+// removeGitWorktree, deleteBranch, and deleteRemoteBranch record only when the underlying git command returned a nil error, since a non-nil error — whether git ran and rejected the command or could not be run at all — would otherwise claim a destruction that never occurred;
+// deleteRemoteBranch additionally requires an observed deletion rather than a nil error alone, since its own nil-error-plus-deleted==false case is the already-absent idempotent success.
 // The parameter is explicit, never a request-type field,
 // because a missing struct field is a silent zero value the compiler accepts while a missing
 // parameter does not compile — this slice exists because a record was silently dropped, so the
