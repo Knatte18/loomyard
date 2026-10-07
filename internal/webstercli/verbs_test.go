@@ -9,11 +9,13 @@ package webstercli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -847,6 +849,73 @@ func TestRunCmd_ErrRunBusySkipsRecordsBackstop(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "fabricengine:") {
 		t.Errorf("output carries a fabricengine error; ErrRunBusy must return before any fabric call: %q", out.String())
+	}
+}
+
+// verbsDiedMaster is a websterengine.MasterStarter double whose Master ends died with one expired background shell.
+type verbsDiedMaster struct {
+	strandGUID string
+	sessionID  string
+}
+
+func (m *verbsDiedMaster) StartMaster(shuttleengine.Spec, shuttleengine.GateSpec) (websterengine.MasterHandle, error) {
+	return m, nil
+}
+
+func (m *verbsDiedMaster) StrandGUID() string { return m.strandGUID }
+
+func (m *verbsDiedMaster) Wait() (shuttleengine.Result, error) {
+	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, SessionID: m.sessionID, ExpiredShells: []string{"sleep 9999"}}, nil
+}
+
+var (
+	_ websterengine.MasterStarter = (*verbsDiedMaster)(nil)
+	_ websterengine.MasterHandle  = (*verbsDiedMaster)(nil)
+)
+
+// TestRunCmd_DiedMasterNotesExpiredShellOutcome drives `run` through its cobra command with a Master that dies after one background shell ran past the wait,
+// and asserts the friction note on disk states the error outcome and that the next run reclaims the strand.
+func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	fx.CLI.frictionDir = t.TempDir()
+	fx.CLI.shuttleCfg.BackgroundShellWaitMin = 15
+	fx.CLI.cfg.VerifyGateAttempts = 3
+	master := &verbsDiedMaster{strandGUID: "master-strand-died", sessionID: "master-session-died"}
+	fx.CLI.masterStarter = master
+
+	runDir := filepath.Join(fx.CLI.shuttleCfg.RunDir, "fake-run-"+master.strandGUID)
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatalf("mkdir run dir: %v", err)
+	}
+	runState, err := json.Marshal(shuttleengine.RunState{RunID: "fake-run-" + master.strandGUID, StrandGUID: master.strandGUID, SessionID: master.sessionID, CreatedAt: time.Now().UTC().Format(time.RFC3339)})
+	if err != nil {
+		t.Fatalf("marshal run state: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(runDir, "run.json"), runState, 0o644); err != nil {
+		t.Fatalf("write run.json: %v", err)
+	}
+
+	var out strings.Builder
+	exitCode := clihelp.Execute(fx.CLI.runCmd(), &out, []string{})
+
+	if exitCode != 1 {
+		t.Fatalf("run with a died Master = %d; want 1, output: %s", exitCode, out.String())
+	}
+	note, err := os.ReadFile(filepath.Join(fx.CLI.frictionDir, "webster-background-shell.md"))
+	if err != nil {
+		t.Fatalf("read friction note: %v", err)
+	}
+	for _, want := range []string{
+		"`sleep 9999`",
+		"`background_shell_wait_min` (15 minutes)",
+		"lyx did not stop the shell",
+		"the next `lyx webster run` reclaims it at entry",
+		"the run's outcome after that turn end: error (",
+	} {
+		if !strings.Contains(string(note), want) {
+			t.Errorf("friction note = %q; want it to contain %q", note, want)
+		}
 	}
 }
 

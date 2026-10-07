@@ -707,80 +707,110 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("webster: run master: %w", err)
 	}
 
-	// The note is best-effort and written whatever the outcome, so a hang's evidence outlives a non-done run.
-	if err := writeBackgroundShellFrictionNote(deps.FrictionDir, result.ExpiredShells, deps.ShuttleCfg.BackgroundShellWaitMin); err != nil {
-		logger.Warn("websterengine: background shell friction note not written", "err", err)
+	// The note is best-effort and written at every return below, once the outcome is known,
+	// so a hang's evidence outlives a non-done run.
+	noteExpiredShells := func(outcome backgroundShellOutcome) {
+		if err := writeBackgroundShellFrictionNote(deps.FrictionDir, result.ExpiredShells, deps.ShuttleCfg.BackgroundShellWaitMin, outcome); err != nil {
+			logger.Warn("websterengine: background shell friction note not written", "err", err)
+		}
 	}
 
 	switch result.Outcome {
 	case shuttleengine.OutcomeDone:
-		runResult, mapErr := mapMasterDone(deps, batches, outcomePath, summaryPath, result)
-		if mapErr != nil {
-			return RunResult{}, mapErr
+		runResult, doneErr := finishMasterDone(deps, batches, outcomePath, summaryPath, result, freshWarnings, cycles, gateNotes)
+		if doneErr != nil {
+			noteExpiredShells(errorShellOutcome(doneErr, false))
+			return RunResult{}, doneErr
 		}
-		// Cycles are always informational: prepend one warning per cycle
-		// ahead of the verify gate's own warnings below,
-		// so the sequencing observations, which describe the whole run,
-		// read first. Non-done outcomes (asking/died/timeout) return an
-		// error rather than a RunResult, so a cycle observed on a run that
-		// ends stuck/paused/died reaches the operator through that error
-		// path's own message rather than through Cycles — an accepted,
-		// stated limitation, not an oversight.
-		runResult.Warnings = append(freshWarnings, runResult.Warnings...)
-		runResult.Cycles = cycles
-		if len(cycles) > 0 {
-			cycleWarnings := make([]string, len(cycles))
-			for i, c := range cycles {
-				cycleWarnings[i] = c.Warning()
-			}
-			runResult.Warnings = append(cycleWarnings, runResult.Warnings...)
-		}
-		// The plan-level verify ran as a gate on Master's own session, so a flaky pass reaches the run here, after the wait.
-		flakyWarnings, err := gateNotes.Apply(deps.Geom.WebsterDir)
-		if err != nil {
-			return RunResult{}, err
-		}
-		runResult.Warnings = append(runResult.Warnings, flakyWarnings...)
-		// A done outcome reports each shell the wait counted a turn end past;
-		// mapMasterDone has already required its summary.md.
-		if runResult.Outcome == outcomeDone {
-			for _, label := range result.ExpiredShells {
-				runResult.Warnings = append(runResult.Warnings, expiredShellWarning(label))
-			}
-			if err := AppendBackgroundShells(deps.Geom.WebsterDir, result.ExpiredShells); err != nil {
-				return RunResult{}, err
-			}
-		}
-		// A done whose verify gate did not pass ends stuck;
-		// Master's own stuck keeps its own reason.
-		// outcome.yaml is never rewritten.
-		if result.Gate != nil && !result.Gate.Passed && runResult.Outcome == outcomeDone {
-			runResult.Outcome = outcomeStuck
-			runResult.StuckReason = verifyGateStuckReason(deps.Geom.ReportsDir, result.Gate, deps.reentryStep())
-		}
-		// Every warning recorded this run, at record-batch or at run exit, reaches summary.md once, whatever the outcome;
-		// a missing summary on a non-done outcome skips the section.
-		if err := appendRecordedAuditWarnings(deps, batches, summaryPath); err != nil {
-			return RunResult{}, err
-		}
+		noteExpiredShells(finishedShellOutcome(runResult))
 		return runResult, nil
 
 	case shuttleengine.OutcomeAsking:
+		err := &MasterAskingError{SessionID: result.SessionID, RunDir: result.RunDir, Message: result.LastAssistantMessage}
 		logger.Warn("websterengine: master run is asking", "outcome", result.Outcome, "sessionID", result.SessionID, "runDir", result.RunDir, "lastAssistantMessage", result.LastAssistantMessage)
-		return RunResult{}, &MasterAskingError{SessionID: result.SessionID, RunDir: result.RunDir, Message: result.LastAssistantMessage}
+		noteExpiredShells(errorShellOutcome(err, true))
+		return RunResult{}, err
 
 	case shuttleengine.OutcomeDied:
+		err := &MasterDiedError{SessionID: result.SessionID, RunDir: result.RunDir}
 		logger.Warn("websterengine: master run died", "outcome", result.Outcome, "sessionID", result.SessionID, "runDir", result.RunDir)
-		return RunResult{}, &MasterDiedError{SessionID: result.SessionID, RunDir: result.RunDir}
+		noteExpiredShells(errorShellOutcome(err, true))
+		return RunResult{}, err
 
 	case shuttleengine.OutcomeTimeout:
+		err := &MasterTimeoutError{SessionID: result.SessionID, RunDir: result.RunDir}
 		logger.Warn("websterengine: master run timed out", "outcome", result.Outcome, "sessionID", result.SessionID, "runDir", result.RunDir)
-		return RunResult{}, &MasterTimeoutError{SessionID: result.SessionID, RunDir: result.RunDir}
+		noteExpiredShells(errorShellOutcome(err, true))
+		return RunResult{}, err
 
 	default:
+		err := fmt.Errorf("webster: master run returned unrecognized shuttle outcome %q", result.Outcome)
 		logger.Warn("websterengine: master run returned unrecognized shuttle outcome", "outcome", result.Outcome, "sessionID", result.SessionID, "runDir", result.RunDir)
-		return RunResult{}, fmt.Errorf("webster: master run returned unrecognized shuttle outcome %q", result.Outcome)
+		noteExpiredShells(errorShellOutcome(err, true))
+		return RunResult{}, err
 	}
+}
+
+// finishMasterDone maps a shuttle-done Master run onto its RunResult:
+// the outcome file, the cycle and verify-gate warnings, the verify-gate demotion and the background-shell warnings.
+// Every outcome that returns a RunResult (done, stuck, paused) carries one warning per expired shell, stating the run's outcome after the demotion;
+// the summary's background-shell section stays done-only.
+// freshWarnings and cycles are the run's entry-time observations, and gateNotes holds the verify gate's flaky-pass notes.
+func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPath string, result shuttleengine.Result, freshWarnings []string, cycles []Cycle, gateNotes *VerifyGateNotes) (RunResult, error) {
+	runResult, mapErr := mapMasterDone(deps, batches, outcomePath, summaryPath, result)
+	if mapErr != nil {
+		return RunResult{}, mapErr
+	}
+	// Cycles are always informational: prepend one warning per cycle
+	// ahead of the verify gate's own warnings below,
+	// so the sequencing observations, which describe the whole run,
+	// read first. Non-done outcomes (asking/died/timeout) return an
+	// error rather than a RunResult, so a cycle observed on a run that
+	// ends stuck/paused/died reaches the operator through that error
+	// path's own message rather than through Cycles — an accepted,
+	// stated limitation, not an oversight.
+	runResult.Warnings = append(freshWarnings, runResult.Warnings...)
+	runResult.Cycles = cycles
+	if len(cycles) > 0 {
+		cycleWarnings := make([]string, len(cycles))
+		for i, c := range cycles {
+			cycleWarnings[i] = c.Warning()
+		}
+		runResult.Warnings = append(cycleWarnings, runResult.Warnings...)
+	}
+	// The plan-level verify ran as a gate on Master's own session, so a flaky pass reaches the run here, after the wait.
+	flakyWarnings, err := gateNotes.Apply(deps.Geom.WebsterDir)
+	if err != nil {
+		return RunResult{}, err
+	}
+	runResult.Warnings = append(runResult.Warnings, flakyWarnings...)
+	// The summary section is done-only and is decided before the verify-gate demotion;
+	// mapMasterDone has already required its summary.md.
+	masterDone := runResult.Outcome == outcomeDone
+	// A done whose verify gate did not pass ends stuck;
+	// Master's own stuck keeps its own reason.
+	// outcome.yaml is never rewritten.
+	if result.Gate != nil && !result.Gate.Passed && masterDone {
+		runResult.Outcome = outcomeStuck
+		runResult.StuckReason = verifyGateStuckReason(deps.Geom.ReportsDir, result.Gate, deps.reentryStep())
+	}
+	// Each shell the wait counted a turn end past is warned on every outcome that returns a RunResult,
+	// stating the outcome after the demotion.
+	shellOutcome := finishedShellOutcome(runResult)
+	for _, label := range result.ExpiredShells {
+		runResult.Warnings = append(runResult.Warnings, expiredShellWarning(label, deps.ShuttleCfg.BackgroundShellWaitMin, shellOutcome))
+	}
+	if masterDone {
+		if err := AppendBackgroundShells(deps.Geom.WebsterDir, result.ExpiredShells); err != nil {
+			return RunResult{}, err
+		}
+	}
+	// Every warning recorded this run, at record-batch or at run exit, reaches summary.md once, whatever the outcome;
+	// a missing summary on a non-done outcome skips the section.
+	if err := appendRecordedAuditWarnings(deps, batches, summaryPath); err != nil {
+		return RunResult{}, err
+	}
+	return runResult, nil
 }
 
 // mapMasterDone maps a shuttle-level OutcomeDone Master spawn onto RunResult:
