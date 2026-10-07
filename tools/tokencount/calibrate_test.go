@@ -82,7 +82,7 @@ func planWith(targets map[int]string) map[string]string {
 // lines is content of n lines.
 func lines(n int) string { return strings.Repeat("x\n", n) }
 
-// seedProfile writes a batcher.yaml whose "fit" profile estimates one card's peak as startup_context + the lines of its file, with every other coefficient 0.
+// seedProfile writes a batcher.yaml whose "fit" profile estimates one card's peak as master_base + the lines of its file, with every other coefficient 0.
 func seedProfile(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(configengine.ConfigDir(dir), 0o755); err != nil {
@@ -91,7 +91,8 @@ func seedProfile(t *testing.T, dir string) {
 	const config = `profiles:
   fit:
     weights:
-      startup_context: 10
+      master_base: 10
+      batch_growth: 0
       fork_messages: 0
       message_context: 0
       write_per_card_line: 0

@@ -194,7 +194,7 @@ func (c *Calibration) addRun(run RunTally, weights batcher.Weights, history Plan
 			continue
 		}
 
-		estimate, err := batcher.PeakContext(plan, []planparser.Card{card}, sizes, weights)
+		estimate, err := batcher.PeakContext(plan, []planparser.Card{card}, sizes, weights, 1)
 		if err != nil {
 			return fmt.Errorf("estimate %s of %s: %w", id, run.Slug, err)
 		}
