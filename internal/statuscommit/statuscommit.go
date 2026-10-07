@@ -1,4 +1,4 @@
-// Package statuscommit is the shared core of a shed module's per-transition status commit seam: the `shedengine.Shed.CommitStatus` closure that commits a run's status file onto the fabric sibling and pushes it.
+// Package statuscommit is the shared core of a shed module's per-transition status commit seam: the `shedengine.Shed.CommitStatus` closure that commits a run's status file onto the fabric sibling and pushes it, with the task branch in a task pair.
 //
 // `loomcli` and `battencli` each wrap it with what is theirs alone: loom's board-status write ahead of the core, batten's on-disk no-op-transition marker ahead of it and its marker write after a successful commit.
 // The per-module texts stay theirs by parameter: each caller tells the core its commit-message prefix and its log prefix.
@@ -18,7 +18,8 @@ type Deps struct {
 	MergeActive func() (bool, error)
 	// Commit commits the module's own status file with msg.
 	Commit func(msg string) error
-	// Push pushes the fabric sibling worktree's unpushed commits.
+	// Push pushes the run records and, in a task pair, the task branch.
+	// Its error names the side that failed.
 	Push func() error
 }
 
@@ -40,7 +41,8 @@ func Message(prefix, producer, state string) string {
 //  2. commit-hard-errors: a Commit failure returns an error from the seam and therefore halts the run -- a git fault on the run's own bookkeeping is infrastructure breakage.
 //     The one exception is a failure the re-probe explains as a merge that went live after the first probe, which takes the skip disposition instead.
 //  3. push-warns: a Push failure logs a warning and returns nil -- an offline laptop must not kill an autonomous run, and the next transition's push catches the branch up.
-//     EVERY push error warns here, gitrepo.ErrPushRejected and otherwise alike; the sentinel is not discriminated.
+//     EVERY push error warns here, gitrepo.ErrPushRejected, a push lock that stayed busy and otherwise alike; the sentinel is not discriminated.
+//     The warning carries the entry's own error, which names the side that failed.
 //     A rejection means another machine advanced the branch, which is a human decision rather than something a background persist may rewrite history over, and an unreachable remote is the offline case the disposition exists for, so the two land in the same place.
 func New(deps Deps, commitPrefix, logPrefix string, afterCommit func(producer, state string)) func(producer, state string) error {
 	return func(producer, state string) error {
