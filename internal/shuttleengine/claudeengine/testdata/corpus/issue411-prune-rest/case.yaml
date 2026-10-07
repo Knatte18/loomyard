@@ -1,0 +1,20 @@
+# Issue 411: a gated Burler round whose Stop shuttle never took.
+source:
+  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYXHUB-test-suite-prune-rest/97d818aa-8fb0-4103-9b56-0ae4da2a75b7.jsonl
+  session_id: 97d818aa-8fb0-4103-9b56-0ae4da2a75b7
+  run: test-suite-prune-rest Webster-Burler round 2, run 976daeeb219e18f87d1a6954c562b64e
+date: 2026-10-06
+claude_code_version: 2.1.291
+what_went_wrong: >-
+  The round launched a backgrounded go test (launch toolu_0156x6kuzhRxYK53hcQhn2Lk, task bn68egcp9) whose completion notification was absorbed mid-turn,
+  so the transcript carries it only as queue-operation lines and a queued_command attachment, never as a task-notification user message.
+  The old transcript scan matched no notification, read the turn end as waiting on bn68egcp9, and the gated run never took the Stop until the operator sent SIGQUIT.
+events_reconstructed: true
+events_note: >-
+  The run directory was removed, so events.jsonl is one Stop line rebuilt from the transcript's turn end;
+  background_tasks is empty because both background tasks had finished before the turn ended.
+gated: true
+turn_ends:
+  - reading: done
+    outputs_exist: true
+    old_reading: waiting on shell bn68egcp9, forever

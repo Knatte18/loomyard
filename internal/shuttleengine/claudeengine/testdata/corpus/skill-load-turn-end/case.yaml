@@ -1,0 +1,20 @@
+# The skill-load turn end Start consumes before the run's own turn ends.
+source:
+  transcript: ~/.claude/projects/-home-knatte-Code-loomyard-LYXHUB-loomyard/330d7c24-4dec-4289-8a23-e0aa3a7b0587.jsonl
+  session_id: 330d7c24-4dec-4289-8a23-e0aa3a7b0587
+  run: hub orch, run 6c8e3b9253ddaa0334c35176af6225eb, promptOffset 649
+date: 2026-10-06
+claude_code_version: 2.1.291
+what_went_wrong: >-
+  Nothing: the first Stop answers the skill-load message, and Start consumes it, so the first turn end the run reads is the one after the prompt.
+  The operator's keystrokes reached the input box ahead of the load message, so the transcript's user entry does not equal the load message,
+  and the load classifies as unverified, which skips nothing and retries nothing.
+  The source run is interactive and never writes its output file; the replay runs it autonomous, so its turn end holds and notifies.
+events_reconstructed: false
+events_note: The real events file's first two Stop lines, unchanged.
+gated: false
+skills: [scribe:prose, scribe:conversation, ly:board]
+turn_ends:
+  - reading: held
+    outputs_exist: false
+    old_reading: asking

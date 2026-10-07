@@ -67,4 +67,12 @@
 // The engine also announces each standing tool deny to the session through --append-system-prompt, on both the launch and the resume line.
 // The notice is built from the same inputs as the PreToolUse hooks, so the two cannot drift.
 // The webster fork guard is not announced.
+//
+// A replay corpus of real turn ends lives under testdata/corpus, one directory per case:
+// transcript.jsonl holds the source transcript's lines the parsers read, trimmed to the fields they read;
+// events.jsonl is the run's events file, or one rebuilt from the transcript's turn ends when the run directory is gone;
+// and case.yaml names the source run, the date, the Claude Code version, what went wrong, whether the events are rebuilt, whether the run is gated, the skills Start loads,
+// and the reading each turn end must get: done, held, or waiting with its outstanding tasks.
+// corpus_test.go replays every case directory through ParseEvents and shuttle's wait loop under an injected clock, so a new case joins without a code change.
+// A failing llm-tier live scenario keeps its events file and transcript in a directory it prints, so promoting it to a case is a copy, a trim and a case.yaml.
 package claudeengine
