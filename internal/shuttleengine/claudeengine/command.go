@@ -126,8 +126,8 @@ func validatePromptCacheTTL(key, value string) error {
 }
 
 // resolvePromptCacheTTL returns the prompt-cache TTL for a strand's role.
-// It first validates cfg.ClaudePromptCacheTTL and every value in cfg.ClaudePromptCacheTTLRoles, in sorted key order so the reported entry is deterministic,
-// so one bad entry refuses every role until shuttle.yaml is fixed.
+// It first validates cfg.ClaudePromptCacheTTL and every value in cfg.ClaudePromptCacheTTLRoles, in sorted key order so the reported entry is deterministic.
+// One bad entry therefore refuses every role until shuttle.yaml is fixed.
 // It then returns the map's entry for role when one exists, and the default otherwise;
 // an empty role takes the default.
 func resolvePromptCacheTTL(role string, cfg shuttleengine.Config) (string, error) {
