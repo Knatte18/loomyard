@@ -2,12 +2,11 @@
 // with the hub path, tmux path, and shell path the receiver carries, driven with a recording stub
 // substituted for the seam so the assertion needs no real process.
 //
-// The call's gate position -- that it fires even under --no-attach -- is deliberately NOT asserted
-// here.
+// That the call fires on every start is deliberately NOT asserted here.
 // The call sits after c.reed.Up() and the strand branch that follows it, and both must succeed first.
 // c.reed.Up() and the branch's c.reed.Status() run on a concrete *reedengine.Engine, which cannot work without a live tmux server,
 // so no offline test in this package can reach the call site through the real RunE at all.
-// The smoke tier (internal/loomcli/smoke_starttail_test.go) asserts the gate position against a real session instead.
+// The smoke tier (internal/loomcli/smoke_starttail_test.go) asserts it against a real session instead.
 
 package loomcli
 
