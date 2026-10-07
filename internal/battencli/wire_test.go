@@ -12,12 +12,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -151,6 +153,36 @@ func TestDriverStrandFrom(t *testing.T) {
 				t.Errorf("driverStrandFrom() = %v; want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestRunLockHeld covers runLockHeld's answers over a real lock file: a path whose directory does not exist yet is free,
+// and a held lock reads as held and reads as free again once released.
+func TestRunLockHeld(t *testing.T) {
+	t.Parallel()
+
+	lockPath := filepath.Join(t.TempDir(), "absent-dir", "run.lock")
+
+	held, err := runLockHeld(lockPath)
+	if err != nil || held {
+		t.Fatalf("runLockHeld(unheld, directory absent) = (%v, %v); want (false, nil)", held, err)
+	}
+
+	owner, err := lock.AcquireWriteLock(lockPath)
+	if err != nil {
+		t.Fatalf("AcquireWriteLock: %v", err)
+	}
+	held, err = runLockHeld(lockPath)
+	if err != nil || !held {
+		t.Errorf("runLockHeld(held) = (%v, %v); want (true, nil)", held, err)
+	}
+
+	if err := owner.Release(); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	held, err = runLockHeld(lockPath)
+	if err != nil || held {
+		t.Errorf("runLockHeld(released) = (%v, %v); want (false, nil), a probe never keeping the lock", held, err)
 	}
 }
 

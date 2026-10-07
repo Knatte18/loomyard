@@ -94,6 +94,22 @@ func driverStrandFrom(present bool, directory func() ([]reedengine.DirectoryRow,
 	return battenshed.ChildDriverNone, nil
 }
 
+// runLockHeld reports whether the run lock at lockPath is held, probing it without keeping it.
+// The lock's directory is created first, since a child that never started has none.
+func runLockHeld(lockPath string) (bool, error) {
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		return false, err
+	}
+	probe, free, err := lock.TryAcquireWriteLock(lockPath)
+	if err != nil {
+		return false, err
+	}
+	if free {
+		_ = probe.Release()
+	}
+	return !free, nil
+}
+
 // taskWorktreeLocation resolves the managed task worktree's own *lyxcwd.Location, for slug, from
 // the prime *lyxcwd.Location. It is the shared body every lazily-resolved seam below calls, so a
 // caller reading this file only once still sees every "resolved lazily" claim in one place.
@@ -556,25 +572,12 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				logger.Info("battencli: reed resume of the task worktree finished", "slug", slug, "resumed", res.Resumed, "dropped", res.Dropped)
 				return nil
 			},
-			// ChildRunLockHeld probes the child's run lock without keeping it;
-			// the lock's directory is created first, since a child that never started has none.
 			ChildRunLockHeld: func() (bool, error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {
 					return false, err
 				}
-				lockPath := shedrun.RunLock(taskLocation, shedrun.SelfRunID)
-				if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
-					return false, err
-				}
-				probe, free, err := lock.TryAcquireWriteLock(lockPath)
-				if err != nil {
-					return false, err
-				}
-				if free {
-					_ = probe.Release()
-				}
-				return !free, nil
+				return runLockHeld(shedrun.RunLock(taskLocation, shedrun.SelfRunID))
 			},
 			// ResolveStatus also creates the child's ephemeral status-lock directory, since its
 			// caller reads through that lock next and nothing else on the Run-Shed path creates
