@@ -328,6 +328,8 @@ func (f *fakeShuttle) blocked() []string {
 type fakeRemover struct {
 	shuttle *fakeShuttle
 	err     error
+	// errGuid, when set, limits err to the removal of that guid.
+	errGuid string
 
 	mu      sync.Mutex
 	removed []string
@@ -337,7 +339,7 @@ func (r *fakeRemover) RemoveStrandIfLive(guid string) error {
 	r.mu.Lock()
 	r.removed = append(r.removed, guid)
 	r.mu.Unlock()
-	if r.err != nil {
+	if r.err != nil && (r.errGuid == "" || r.errGuid == guid) {
 		return r.err
 	}
 	r.shuttle.stop(guid)
@@ -971,13 +973,14 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 	tests := []struct {
 		name    string
 		shuttle *fakeShuttle
-		// removeErr makes the remover fail every removal.
-		removeErr   error
-		wantOutcome shuttleengine.Outcome
-		wantErrIs   error
-		wantErrText string
-		wantRemoved []string
-		wantStarted []string
+		// removeErr makes the remover fail every removal, or only that of removeErrGuid when it is set.
+		removeErr     error
+		removeErrGuid string
+		wantOutcome   shuttleengine.Outcome
+		wantErrIs     error
+		wantErrText   string
+		wantRemoved   []string
+		wantStarted   []string
 		// leftLive names a row whose failed stop leaves a half running by design.
 		leftLive bool
 		// editReview, when set, is written over the review file by the fixer before it reports done.
@@ -1078,6 +1081,19 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			leftLive:    true,
 		},
 		{
+			name: "a reviewer that timed out and cannot be stopped is ErrHalfNotStopped, not the timeout outcome",
+			shuttle: &fakeShuttle{
+				review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}},
+				fix:    halfScript{result: done, waitForMarker: true},
+			},
+			removeErr:     errors.New("reed unreachable"),
+			removeErrGuid: reviewRole + "-guid",
+			wantErrIs:     ErrHalfNotStopped,
+			wantErrText:   `way forward: run "lyx reed remove ` + reviewRole + `-guid", then re-step the row`,
+			wantRemoved:   []string{fixRole + "-guid", reviewRole + "-guid"},
+			wantStarted:   []string{reviewRole, fixRole},
+		},
+		{
 			name: "a reviewer that never started leaves the fixer unstarted",
 			shuttle: &fakeShuttle{
 				review: halfScript{startErr: notStarted},
@@ -1155,6 +1171,7 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			}
 			e, remover := newEngineForTest(t, root, tt.shuttle)
 			remover.err = tt.removeErr
+			remover.errGuid = tt.removeErrGuid
 
 			got, err := e.Run(p, RunOpts{})
 
