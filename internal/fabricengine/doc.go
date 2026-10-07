@@ -198,6 +198,10 @@
 // out from under it.
 // Reconciling a diverged remote is out of scope here (slice 6).
 //
+// Every weft worktree fabric creates gets its `.weft/` lock directory at birth, whichever way it is created or adopted.
+// `Reconcile` restores a missing one on a pair whose weft worktree exists, without changing the pair's action,
+// and `ReadOriginFor` refuses a record whose weft worktree lacks it, naming `lyx fabric reconcile`, instead of answering "no record".
+//
 // The combined write lock `Fabric.Commit` takes — `.weft/weft.write.lock`, the same lock
 // `commitWeft` already used weft-side — is now acquired for ANY committing call, warp-only included
 // (see the combined-commit-lock Shared Decision), not only when a weft-side commit is involved,

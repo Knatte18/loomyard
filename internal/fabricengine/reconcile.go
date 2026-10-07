@@ -234,6 +234,9 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 		// ReconcileActionRawAdopted deliberately does NOT fall through, since a raw-adopted pair is
 		// dormant by design and wired by the next pass.
 		repairWiring := weftWorktreeExists || (pr.Action == ReconcileActionWeftRecreated && pr.Error == "")
+		if weftWorktreeExists {
+			restoreWeftLockDir(rec, weftPath, &pr)
+		}
 		if repairWiring {
 			t.repairPairWiring(rec, warpLayout, slug, &pr, weftWorktreeExists)
 		}
@@ -354,6 +357,21 @@ func (t *Topology) reconcileWarpBinding(rec *Mutations, l *lyxcwd.Location) (War
 	}
 	rec.Append(KindFileWritten, filepath.Join(boardDir, WarpBindingFileName), "")
 	return WarpBindingOutcomeRecorded, fmt.Sprintf("recorded warp binding %s", origin)
+}
+
+// restoreWeftLockDir recreates an existing weft worktree's missing .weft lock directory, records the creation in rec and notes it in pr's Detail.
+// It never changes pr.Action; a failure sets pr.Error.
+func restoreWeftLockDir(rec *Mutations, weftPath string, pr *ReconcilePairResult) {
+	lockDir := filepath.Join(weftPath, weftLockDirName)
+	if _, err := os.Stat(lockDir); err == nil || !os.IsNotExist(err) {
+		return
+	}
+	if _, err := ensureWeftLockDirAt(weftPath); err != nil {
+		pr.Error = fmt.Sprintf("restore weft lock directory: %v", err)
+		return
+	}
+	rec.Append(KindDirCreated, lockDir, "")
+	appendPrDetail(pr, fmt.Sprintf("weft lock directory restored at %s", lockDir))
 }
 
 // repairPairWiring converges one pair's junctions: it re-wires whatever checkJunctionHealth reports
@@ -503,6 +521,9 @@ func adoptWeftWorktree(warpLayout *lyxcwd.Location, weftPath, branch string) err
 		return []string{"worktree", "add", worktreePath, branch}
 	}); err != nil {
 		return fmt.Errorf("adopt weft worktree %q for branch %q: %w", weftPath, branch, err)
+	}
+	if _, err := ensureWeftLockDirAt(weftPath); err != nil {
+		return fmt.Errorf("create weft lock dir in %q: %w", weftPath, err)
 	}
 	return nil
 }

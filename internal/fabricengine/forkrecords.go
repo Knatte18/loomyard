@@ -62,5 +62,8 @@ func createWeftWorktreeDroppingRuns(rec *Mutations, l *lyxcwd.Location, slug, br
 			return false, fmt.Errorf("restore run records in weft index in %q: %w", weftPath, err)
 		}
 	}
+	if _, err := ensureWeftLockDirAt(weftPath); err != nil {
+		return false, fmt.Errorf("create weft lock dir in %q: %w", weftPath, err)
+	}
 	return rootTracked, nil
 }
