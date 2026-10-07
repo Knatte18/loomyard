@@ -15,7 +15,8 @@ When a message asks you to write the orch note, write it to the path the message
    Detach it from your shell with `setsid nohup`, until `lyx batten start` exists.
    The batten run creates the task pair, drives the loom run inside it and tears the pair down after the run ends.
 2. A halted child (blocked, paused or failed) is a wait batten never resumes on its own: once its cause is known (see Investigating a stop), resume it with `lyx loom resume` in the task worktree.
-   When `lyx loom resume` refuses, its message names the way forward (`lyx batten run <slug>` to bring a dead driver back, or `lyx loom start`), and you take it.
+   When `lyx loom resume` refuses, its message names the way forward (`lyx batten run <slug>` to bring a dead driver back, or `lyx loom start`),
+   and you take it.
 3. Check a run with `lyx batten status <slug>`, hold it with `lyx batten pause <slug>`, and send it to a producer with `lyx batten goto <slug> --to <producer>`.
    Both leave the batten run paused, so resume it with `lyx batten run <slug>`, which starts or resumes the lifecycle run.
 4. Keep no polling shell and start no Monitor for a run.

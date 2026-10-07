@@ -12,9 +12,11 @@ Every code path in `internal/shuttleengine` that finalizes a NEGATIVE answer to 
 ## The done-when list
 
 A reed strand's done-when list is the one place reed learns a strand finished.
-Only `shuttleengine` fills it, from an ungated run's `OutputFiles`; a gated run's strand carries none, since its outputs existing does not mean its gate passed.
+Only `shuttleengine` fills it, from an ungated run's `OutputFiles`;
+a gated run's strand carries none, since its outputs existing does not mean its gate passed.
 Only `reedengine`'s resume reads it, dropping a non-live strand whose list is non-empty and fully present instead of relaunching it.
-Reed cannot know that a gate passed, so a finished gated run's strand is still relaunched when shuttle's own teardown did not run, and the relaunch types no prompt.
+Reed cannot know that a gate passed, so a finished gated run's strand is still relaunched when shuttle's own teardown did not run,
+and the relaunch types no prompt.
 
 ## Enforcement
 
