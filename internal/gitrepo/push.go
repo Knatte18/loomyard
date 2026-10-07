@@ -1,5 +1,5 @@
 // push.go implements the push surface: Push (a single synchronous push with rebase-retry resilience), PushCoalesced (a single-pusher lock plus one guarded push, coalescing across processes via the lock queue rather than an internal retry loop), PushRebaseFree (a single plain push that never rebases, for callers that supply their own serialization), and DeleteRemoteBranch (a single remote branch deletion, idempotent when the ref is already absent), DeleteRemoteBranchLeased (the same deletion, only while the remote branch sits at an expected SHA), and UpdateRemoteBranchLeased (a forced move of a remote branch, only while it sits at an expected SHA).
-// All six are push-shaped remote calls; committing is always the caller's separate StageAndCommit or StageAllAndCommit call.
+// All of them are push-shaped remote calls; committing is always the caller's separate StageAndCommit or StageAllAndCommit call.
 
 package gitrepo
 
