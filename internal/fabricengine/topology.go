@@ -17,6 +17,8 @@ package fabricengine
 // It holds the configuration needed by all topology methods.
 type Topology struct {
 	cfg Config
+	// push is the seam behind Add's branch pushes; its zero value is production.
+	push pushSeam
 }
 
 // NewTopology returns a Topology operating with the given config.

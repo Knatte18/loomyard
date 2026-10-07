@@ -315,7 +315,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 
 	// (11) Push warp branch (LAST step for warp)
-	if _, err := gitexec.Run([]string{"push", "-u", "origin", warpBranch}, l.WorktreePath()); err != nil {
+	if err := t.push.pushBranchWithRetry(l.WorktreePath(), warpBranch); err != nil {
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
 		return AddResult{}, fmt.Errorf("push branch %q failed: %w", warpBranch, err)
 	}
@@ -342,7 +342,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 			return AddResult{}, fmt.Errorf("replace leftover weft branch %q on origin: %w", weftBranch, delErr)
 		}
 	}
-	if err := pushWeftBranch(rec, l, slug, weftBranch, opts); err != nil {
+	if err := pushWeftBranch(rec, l, slug, weftBranch, opts, t.push); err != nil {
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
 		return AddResult{}, err
 	}

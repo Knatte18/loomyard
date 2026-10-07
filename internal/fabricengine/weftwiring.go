@@ -137,19 +137,15 @@ func createWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch, startP
 	return nil
 }
 
-// pushWeftBranch pushes the weft branch to origin, honoring SkipGit/SkipPush.
+// pushWeftBranch pushes the weft branch to origin through push's bounded retry, honoring SkipGit/SkipPush.
 // On success it records KindBranchPushed for branch via AppendRef.
-func pushWeftBranch(rec *Mutations, l *lyxcwd.Location, slug, branch string, opts SyncOptions) error {
+func pushWeftBranch(rec *Mutations, l *lyxcwd.Location, slug, branch string, opts SyncOptions, push pushSeam) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil
 	}
 
 	weftPath := WeftWorktreePath(l, slug)
-	_, err := gitexec.Run(
-		[]string{"push", "-u", "origin", branch},
-		weftPath,
-	)
-	if err != nil {
+	if err := push.pushBranchWithRetry(weftPath, branch); err != nil {
 		return fmt.Errorf("push weft branch %q failed: %w", branch, err)
 	}
 	rec.AppendRef(KindBranchPushed, branch, refDetail("weft", weftPath, "origin"))

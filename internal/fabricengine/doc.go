@@ -513,6 +513,8 @@
 // A replaceable weft leftover is deleted at step 12, immediately before the weft push, through the destructive gate with a lease on the probed tip, so a branch that moved since the probe is refused and `Add` rolls back.
 // A rollback deletes only the local branches this `Add` created, a weft branch taken from origin included, and never restores the deleted remote branch: its content is reachable from the archive tag.
 // A fast-forward `Add` made to a pre-existing local weft branch is not rewound.
+// `Add`'s two branch pushes retry a push the server refuses with a bare `(failed)` on the pushed ref, in 4 attempts in total with exponential backoff;
+// every other push failure returns on the first attempt.
 // `SkipPush`/`SkipGit` skip every probe and the replacement: the pair is then live only by a local weft branch,
 // and the warp branch forks from `HEAD`.
 //

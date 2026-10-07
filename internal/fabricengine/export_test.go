@@ -583,3 +583,10 @@ func CommitPendingRecordsForTest(l *lyxcwd.Location, slug, warpBranch string) (c
 func CleanupRemoteWarpWithHookForTest(t *Topology, l *lyxcwd.Location, apply bool, openPRHeads map[string]bool, afterEnumerate func()) (RemoteWarpCleanupResult, error) {
 	return t.cleanupRemoteWarp(l, apply, openPRHeads, afterEnumerate)
 }
+
+// SetPushSeamForTest makes t's Add pushes run through run and wait through sleep instead of the production runner and a real sleep.
+// A nil argument keeps the production behaviour for that part.
+// It sets the seam on the one Topology, so parallel tests inject per instance.
+func SetPushSeamForTest(t *Topology, run func(args []string, cwd string) (string, error), sleep func(delay time.Duration)) {
+	t.push = pushSeam{run: run, sleep: sleep}
+}
