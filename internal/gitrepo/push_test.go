@@ -614,3 +614,70 @@ func TestPushCoalesced(t *testing.T) {
 		}
 	})
 }
+
+// TestHasUnpulled drives HasUnpulled through a bare remote and a clone of it.
+// The clone's upstream equal to HEAD and an upstream that is an ancestor of HEAD (local ahead) answer false;
+// an upstream that another clone advanced answers false until this clone fetches it, then true;
+// a branch with no upstream answers true.
+func TestHasUnpulled(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, container, bareRemote string, clonePath string)
+		want  bool
+	}{
+		{"upstream equal to HEAD", func(t *testing.T, container, bareRemote, clonePath string) {}, false},
+		{"upstream is an ancestor of HEAD", func(t *testing.T, container, bareRemote, clonePath string) {
+			writeFile(t, clonePath, "local.txt", "local")
+			commitAll(t, clonePath, "local commit")
+		}, false},
+		{"upstream advanced by another clone but not fetched", func(t *testing.T, container, bareRemote, clonePath string) {
+			pushFromOtherClone(t, container, bareRemote)
+		}, false},
+		{"upstream advanced by another clone and fetched", func(t *testing.T, container, bareRemote, clonePath string) {
+			pushFromOtherClone(t, container, bareRemote)
+			gitkit.MustRun(t, clonePath, "git", "fetch", "origin")
+		}, true},
+		{"no upstream configured", func(t *testing.T, container, bareRemote, clonePath string) {
+			gitkit.MustRun(t, clonePath, "git", "branch", "--unset-upstream")
+		}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			container := t.TempDir()
+			bareRemote := newBareRemote(t, container)
+			seedPath, seed := newRepoWithRemote(t, container, "seed", bareRemote)
+			writeFile(t, seedPath, "a.txt", "initial")
+			commitAll(t, seedPath, "init")
+			if err := seed.Push(); err != nil {
+				t.Fatalf("Push() (seed) error = %v; want nil", err)
+			}
+			clonePath, clone := cloneFromBare(t, container, "clone", bareRemote)
+
+			tt.setup(t, container, bareRemote, clonePath)
+
+			got, err := clone.HasUnpulled()
+			if err != nil {
+				t.Fatalf("HasUnpulled() error = %v; want nil", err)
+			}
+			if got != tt.want {
+				t.Errorf("HasUnpulled() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// pushFromOtherClone clones bareRemote into a fresh directory under container, commits there and pushes, advancing the remote past every other clone.
+func pushFromOtherClone(t *testing.T, container, bareRemote string) {
+	t.Helper()
+
+	otherPath, other := cloneFromBare(t, container, "other", bareRemote)
+	writeFile(t, otherPath, "other.txt", "from other")
+	commitAll(t, otherPath, "commit from other")
+	if err := other.Push(); err != nil {
+		t.Fatalf("Push() (other clone) error = %v; want nil", err)
+	}
+}

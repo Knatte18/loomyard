@@ -65,3 +65,15 @@ func newPlainWeftRepo(t *testing.T) string {
 	gitkit.CommitFile(t, dir, filepath.Join(lyxdirs.LyxDirName, "config.yaml"), "test", "init")
 	return dir
 }
+
+// PushLockPathForTest returns the absorbing push lock file under weftPath, creating its directory.
+// A test holds that lock to contend with a push.
+func PushLockPathForTest(t *testing.T, weftPath string) string {
+	t.Helper()
+
+	lockDir, err := ensureWeftLockDirAt(weftPath)
+	if err != nil {
+		t.Fatalf("ensureWeftLockDirAt(%s): %v", weftPath, err)
+	}
+	return filepath.Join(lockDir, weftPushLockFile)
+}

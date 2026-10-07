@@ -209,7 +209,8 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | decision: slug required from the prime | `lyx loom decision add` runs from the prime with no slug | correctness halt | pass the task's slug as listed by `lyx board list`, e.g. `lyx loom decision add <slug>` |
 | decision: unknown slug | `lyx loom decision add` names a slug with no worktree in the hub | correctness halt | pass the task's slug as listed by `lyx board list` |
 | commit-records: probe or commit failed | the merge-state probe or the commit fails | transient | transient, re-run `lyx loom commit-records` |
-| commit-records: not pushed | the commit landed locally but the push failed | transient | `lyx fabric push` pushes the landed commit, or re-run `lyx loom commit-records` |
+| commit-records: push rejected | the commit landed locally but a remote rejected the push of the records or the task branch, alone or beside another failure | transient | merge the remote branch into the local branch in the worktree the error names, or clear what a remote rule objects to, then run `lyx fabric push` or re-run `lyx loom commit-records` |
+| commit-records: push failed | the commit landed locally but the push failed for a reason other than a rejection, a lock expiry included | transient | transient, run `lyx fabric push` or re-run `lyx loom commit-records` |
 | commit-records: park marker failed | the park marker cannot be written | transient | transient, re-run `lyx loom commit-records --park <park>` |
 | start: driver took no lock | the detached driver exits without taking the run lock | transient | `lyx loom start`; the message names the driver log |
 | start: driver not parked | the run is halted at a hand-back and its driver is still writing its stop report and committing its records | transient | retry `lyx loom start` in a few seconds |

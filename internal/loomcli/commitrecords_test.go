@@ -5,8 +5,12 @@ package loomcli
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
 // stubRecordsDeps builds commitStatusDeps counting Commit and Push calls.
@@ -51,14 +55,23 @@ func TestCommitRecordsVerb_Success(t *testing.T) {
 
 func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 	boom := errors.New("boom")
+	rejected := fmt.Errorf("push side at /wt: %w", gitrepo.ErrPushRejected)
+	const (
+		rejectionWayForward = "way forward: merge the remote branch into the local branch in the worktree the error names"
+		transientWayForward = "way forward: transient, run lyx fabric push or re-run lyx loom commit-records"
+		pushFailedPrefix    = "the commit landed locally but the push failed: "
+	)
 	tests := []struct {
 		name                       string
 		probeErr, commitErr, pushE error
-		want                       string
+		want                       []string
 	}{
-		{"probe", boom, nil, nil, "probe merge state"},
-		{"commit", nil, boom, nil, "commit failed"},
-		{"push", nil, nil, boom, "not pushed"},
+		{"probe", boom, nil, nil, []string{"probe merge state"}},
+		{"commit", nil, boom, nil, []string{"commit failed"}},
+		{"push rejected", nil, nil, rejected, []string{pushFailedPrefix, rejectionWayForward}},
+		{"push failed", nil, nil, boom, []string{pushFailedPrefix, transientWayForward}},
+		{"push lock busy", nil, nil, fmt.Errorf("push: %w", fabricengine.ErrPushLockBusy), []string{pushFailedPrefix, transientWayForward}},
+		{"rejected beside another failure", nil, nil, errors.Join(rejected, boom), []string{pushFailedPrefix, rejectionWayForward, "boom", "remote diverged"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -67,8 +80,13 @@ func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 			if code := commitRecordsVerb(&out, deps); code == 0 {
 				t.Fatalf("exit = 0; want non-zero; output %s", out.String())
 			}
-			if !strings.Contains(out.String(), tt.want) {
-				t.Errorf("output = %s; want it to contain %q", out.String(), tt.want)
+			for _, want := range tt.want {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("output = %s; want it to contain %q", out.String(), want)
+				}
+			}
+			if strings.Contains(out.String(), "not pushed") {
+				t.Errorf("output = %s; want no claim that the records were not pushed", out.String())
 			}
 			if !strings.Contains(out.String(), "way forward: ") {
 				t.Errorf("output = %s; want a way forward", out.String())

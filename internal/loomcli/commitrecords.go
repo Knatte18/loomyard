@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/spf13/cobra"
@@ -20,7 +21,7 @@ import (
 // commitRecordsMessage is the commit subject the verb lands under.
 const commitRecordsMessage = "loom: commit run records"
 
-// commitRecordsVerb commits and pushes the run's records over d and reports a JSON envelope, returning the exit code.
+// commitRecordsVerb commits the run's records and pushes them, with the task branch in a task pair, over d and reports a JSON envelope, returning the exit code.
 // A mid-merge sibling is skipped exactly as the status seam skips it, as a success with committed false;
 // a probe error, a commit error and a push error are each an error envelope.
 // A clean tree is not an error: committing an already-clean pathspec is a no-op.
@@ -39,9 +40,19 @@ func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 		return output.Err(out, "loom: commit-records: commit failed: "+err.Error()+"; way forward: transient, re-run lyx loom commit-records")
 	}
 	if err := d.Push(); err != nil {
-		return output.Err(out, "loom: commit-records: the commit landed locally but was not pushed: "+err.Error()+"; way forward: lyx fabric push pushes the landed commit, or re-run lyx loom commit-records")
+		return output.Err(out, "loom: commit-records: the commit landed locally but the push failed: "+err.Error()+"; way forward: "+pushFailureWayForward(err))
 	}
 	return output.Ok(out, map[string]any{"committed": true})
+}
+
+// pushFailureWayForward returns the way forward for a failed push:
+// a rejection, alone or beside another failure, needs a merge or a remote-rule fix;
+// any other failure, a lock expiry included, is transient.
+func pushFailureWayForward(err error) string {
+	if fabricengine.IsPushRejected(err) {
+		return "merge the remote branch into the local branch in the worktree the error names, or clear what a remote rule objects to, then run lyx fabric push or re-run lyx loom commit-records"
+	}
+	return "transient, run lyx fabric push or re-run lyx loom commit-records"
 }
 
 // writeParkMarker writes the driver park marker at markerPath, holding reportPath, creating its directory.

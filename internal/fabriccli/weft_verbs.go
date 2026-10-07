@@ -6,11 +6,13 @@
 // resolve their own layout per invocation and never touch this file's closure state.
 // The PersistentPreRunE splits normal mode (resolve cwd → layout → config → pathspec → Fabric
 // handle) from bypass mode (either hidden path flag injected by the detached push child, push-only
-// gate), driving fabricengine.Fabric's Status/Commit/PushWeft/Pull/Diff/MergeIn/Merge/MergeContinue/
+// gate), driving fabricengine.Fabric's Status/Commit/Pull/Diff/MergeIn/Merge/MergeContinue/
 // MergeAbort/MergeStageResolved in normal mode and fabricengine.CoalescePushBothAt's loop-until-clean coalescing push
 // directly in bypass mode. The merge verbs are registered in merge_verbs.go's addMergeVerbs, which
 // reaches the resolved Fabric handle through a getter closure over this file's fab local, since
 // PersistentPreRunE assigns it only at run time, after registration.
+// push and sync both push the warp side and the weft side:
+// push in-process through fabricengine.PushPairAnchored, sync through a detached child that re-enters bypass mode.
 
 package fabriccli
 
@@ -186,9 +188,13 @@ Related commands:
 	pushCmd := &cobra.Command{
 		Use:   "push",
 		Args:  cobra.NoArgs,
-		Short: "commit and push weft changes",
-		Long: `Commit weft changes exactly as "lyx fabric commit" does, then push the weft
-branch's unpushed commits in the same process.
+		Short: "commit weft changes and push both sides",
+		Long: `Commit weft changes exactly as "lyx fabric commit" does, then push the unpushed
+commits of both the warp branch and the weft branch in the same process.
+The push is plain and rebase-free, never a force, and waits for a push already
+running under fabric's push lock.
+A side the remote rejects is reported as an error naming that side, after the
+other side has been pushed.
 
 Related commands:
   lyx fabric commit — commit only
@@ -227,7 +233,7 @@ Related commands:
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
-			pushRes, err := fab.PushWeft(opts)
+			pushRes, err := fabricengine.PushPairAnchored(l, opts, fabricengine.LockWaitUnbounded)
 			rec.Extend(pushRes.Mutated())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
@@ -282,10 +288,11 @@ tracking ref:
 	syncCmd := &cobra.Command{
 		Use:   "sync",
 		Args:  cobra.NoArgs,
-		Short: "commit and async-push weft changes",
+		Short: "commit weft changes and async-push both sides",
 		Long: `Commit weft changes exactly as "lyx fabric commit" does, then hand the push
-to a detached child process and return immediately — the push happens in the
-background, coalesced under fabric's push lock.
+of both the warp branch and the weft branch to a detached child process and
+return immediately — the push happens in the background, coalesced under
+fabric's push lock.
 
 Related commands:
   lyx fabric commit — commit only
@@ -302,14 +309,16 @@ Related commands:
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
+			warpWorktree := l.WorktreePath()
 			weftWorktree := fabricengine.WeftWorktree(l)
-			if err := spawnPush(weftWorktree); err != nil {
+			if err := spawnPush(warpWorktree, weftWorktree); err != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
-			// The push happens in a detached child process after this one returns, so its outcome is
-			// unobservable here: record exactly one KindPushSpawned entry, never branch_pushed, which
-			// would assert an outcome this process did not observe.
+			// The push happens in a detached child process after this one returns,
+			// so its outcome is unobservable here:
+			// record one KindPushSpawned entry per side handed to the child, never branch_pushed, which would assert an outcome this process did not observe.
+			rec.Append(fabricengine.KindPushSpawned, warpWorktree, "detached")
 			rec.Append(fabricengine.KindPushSpawned, weftWorktree, "detached")
 			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), map[string]any{}))
 			return nil

@@ -376,7 +376,8 @@ awaiting or blocked at PR-Gate, removing any pending rejection; "lyx loom start"
 "reject <review-file>" records the operator's rejection with the findings in that file, for a run
 awaiting or blocked at PR-Gate or blocked at PR-Rework, removing any approval; "lyx loom start" then
 sends the findings to PR-Rework. "commit-records" commits and
-pushes the run's records (status, reviews, friction notes, drive reports); the
+pushes the run's records (status, reviews, friction notes, drive reports), pushing the
+task branch along with them; the
 loom driver's end-of-session command runs it after the driver writes its stop report.
 "review" is the subtree through which a run's parent answers Discussion-Write's
 parent-review gate: "review notify", "review delivered", "review approve" and
