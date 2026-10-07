@@ -111,6 +111,13 @@ type RunState struct {
 	// file's current size, and growth past it means the strand kept working after the ask, so the run
 	// is attachable rather than respawn-eligible.
 	AskingOffset *int64 `json:"askingOffset,omitempty"`
+	// StrandName is the reed name of the run's strand, which a hold notice gives its parent to answer by.
+	// Empty for a record that predates the field, where the notice names the strand guid instead.
+	StrandName string `json:"strandName,omitempty"`
+	// NotifiedOffset is the events-file byte offset just past the last held turn end whose notice Wait sent, zero for none.
+	// Wait persists it before calling the notifier and never notifies a held turn end at or below it,
+	// so a crash between the write and the call loses that one notice and never repeats it.
+	NotifiedOffset int64 `json:"notifiedOffset,omitempty"`
 	// PromptOffset is the events-file byte offset past the skill-load turns Start ran before sending the prompt,
 	// zero when Start loaded no skills or for a record that predates the field.
 	// Every reader that replays the events file from its start begins here instead, so a load turn's end is never read as the run's own.

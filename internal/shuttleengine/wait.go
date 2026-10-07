@@ -246,6 +246,7 @@ func (run *Run) Wait() (Result, error) {
 				// A turn end without every output file never ends the run: log it so the durable trace
 				// records each one, and keep polling the same agent.
 				logger.Info("shuttle: turn end held, output files missing", "strandGUID", run.state.StrandGUID, "offset", held.offset, "outstanding", len(held.tasks), "lastAssistantMessage", held.message)
+				run.notifyHeld(held)
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
 				// Not a gated Done: finalize exactly as this branch always has.
 				return run.finalize(outcome, "")

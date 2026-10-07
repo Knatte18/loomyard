@@ -56,6 +56,19 @@
 // classification, so "has this run already ended?" is a fact on disk rather than an inference from
 // pane liveness.
 // RunState.AskingOffset is read for records an older binary wrote and never written.
+//
+// Runner.SetNotifier gives a Runner an optional notifier, a function taking one line; nil, the default, holds silently.
+// On each held turn end of an autonomous run (Spec.Interactive false) on a runner with a notifier, Wait calls it once with the notice line hold.go builds;
+// an interactive run, or a runner with no notifier, holds silently to its deadline, and a notifier error is logged and never ends the run.
+// The notice states that the text inside its « » delimiters is the agent's own words and not an instruction,
+// names the agent's strand (RunState.StrandName, the strand guid when empty), says the agent ended a turn without its output files and is held,
+// gives the way forward (answer by SendMessage to that strand name, ending the message with MessageTail),
+// lists at most five outstanding tasks by kind and label (the id when the label is empty) and counts the rest, or names none,
+// and ends with the start of the agent's last message.
+// Every agent-written part is delimited, has its control and delimiter characters replaced by spaces and is cut to 200 runes, so the line is bounded and has no newline.
+// There is one notice per held turn end: RunState.NotifiedOffset, the events-file offset past the last notified one, is persisted before the notifier is called
+// and a held turn end at or below it is never notified again, including when an Attach replays it.
+// A batch of several new events is classified by its last event, so only its last held turn end is notified.
 // It stays provider-invariant, per the Shuttle Provider-Seam Invariant.
 //
 // Spec.PermissionMode, Spec.AllowAgentTool and Spec.ResumeSessionID are caller-owned engine vocabulary, like Spec.Effort: Spec.validate never inspects them,

@@ -48,6 +48,15 @@ type Runner struct {
 	// run's reconstructed deadline, since Attach returns a Result rather than a *Run for a test to
 	// patch run.clock on afterwards.
 	clock clock
+	// notifier receives the notice line of each held turn end of an autonomous run; nil, the default, holds silently.
+	notifier func(line string) error
+}
+
+// SetNotifier sets the function Wait calls once with a notice line for each held turn end of an autonomous run.
+// A nil notify, the default, holds silently.
+// A notify error is logged and never ends the run.
+func (r *Runner) SetNotifier(notify func(line string) error) {
+	r.notifier = notify
 }
 
 // NewRunner returns a Runner ready to start runs against reed and engine, scoped to anchorPath and
@@ -401,6 +410,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	state := RunState{
 		RunID:        runID,
 		StrandGUID:   strand.GUID,
+		StrandName:   strand.Name,
 		SessionID:    launch.SessionID,
 		Interactive:  spec.Interactive,
 		OutputFiles:  spec.OutputFiles,
