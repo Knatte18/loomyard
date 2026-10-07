@@ -36,6 +36,8 @@ type haltFixture struct {
 	c           *loomCLI
 	shuttle     *shedfake.Shuttle
 	frictionDir string
+	// commitStatus is the shed's CommitStatus seam in stepOver; nil leaves it unset.
+	commitStatus func(producer, state string) error
 }
 
 func newHaltFixture(t *testing.T) *haltFixture {
@@ -377,6 +379,7 @@ func (f *haltFixture) stepOver(t *testing.T, preStep func(context.Context) (stri
 			StatusPath:     f.c.shedPaths.StatusPath,
 			LockPath:       f.c.shedPaths.LockPath,
 			StatusLockPath: f.c.shedPaths.StatusLockPath,
+			CommitStatus:   f.commitStatus,
 		}, nil
 	}
 	f.c.spec = &spec
@@ -489,16 +492,27 @@ func TestStep_CrashResumeNoteFollowsTheHandoffVoucher(t *testing.T) {
 	tests := []struct {
 		name          string
 		removeVoucher bool
-		wantNote      bool
+		// failCommit makes the first step's status commit fail after Row-A's done transition is on disk, so that step returns an error having completed.
+		failCommit bool
+		wantNote   bool
 	}{
-		{"MarkerKept", false, false},
-		{"MarkerRemoved", true, true},
+		{"MarkerKept", false, false, false},
+		{"MarkerRemoved", true, false, true},
+		{"StepErrorAfterPersistKeepsMarker", false, true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			f := newHaltFixture(t)
+			if tt.failCommit {
+				f.commitStatus = func(producer, st string) error {
+					if producer == "Row-B" && st == string(shedengine.StateRunning) {
+						return errors.New("index locked by a concurrent git write")
+					}
+					return nil
+				}
+			}
 			f.handoffSteps(t, func() {
 				if !tt.removeVoucher {
 					return

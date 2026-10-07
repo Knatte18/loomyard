@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// handoffVoucher is the machine-local record `lyx loom step` writes after every completed step and `lyx loom start` writes right before it spawns a driver:
+// handoffVoucher is the machine-local record `lyx loom step` writes after every step that returns, with or without an error, and `lyx loom start` writes right before it spawns a driver:
 // the persisted history length and state exactly as that step or spawn left them.
 // It exists because a completed step's on-disk aftermath -- state running, run lock free, history non-empty -- is byte-identical to a mid-run driver death,
 // and without this voucher the next drive's entry observation would read as a crash-resume for every operator handing a supervised task to a driver (crucible round 2, R2-F1).
@@ -28,7 +28,7 @@ type handoffVoucher struct {
 }
 
 // recordHandoffVoucher writes the handoff voucher, replacing any earlier one, for a step that just
-// completed or a driver spawn that is about to start, with historyLength persisted entries in persistedState.
+// returned, with or without an error, or a driver spawn that is about to start, with historyLength persisted entries in persistedState.
 // A write failure is warned and nothing else:
 // the voucher only narrows a false positive, so losing one write costs at most one spurious crash-resume reading.
 // The voucher suppresses at most one entry observation, the first, and only when its history length and state equal what was recorded.
@@ -39,6 +39,22 @@ func recordHandoffVoucher(path, lockPath string, historyLength int, persistedSta
 	if err := state.WriteJSON(path, lockPath, voucher); err != nil {
 		logger.Warn("loomcli: could not record the handoff voucher", "path", path, "cause", err)
 	}
+}
+
+// recordHandoffVoucherFromStatus records the handoff voucher from what the status file holds, for a step that returned an error after persisting a transition:
+// a step process that returns at all did not crash, so what it left on disk is vouched for like a clean step's.
+// It reads the status file strictly and warns, recording nothing, when the read fails or the file is absent.
+func recordHandoffVoucherFromStatus(path, lockPath, statusPath, statusLockPath string) {
+	st, found, err := state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
+	if err != nil {
+		logger.Warn("loomcli: could not read the status file to record the handoff voucher", "path", statusPath, "cause", err)
+		return
+	}
+	if !found {
+		logger.Warn("loomcli: no status file to record the handoff voucher from", "path", statusPath)
+		return
+	}
+	recordHandoffVoucher(path, lockPath, len(st.History), st.State)
 }
 
 // consumeHandoffVoucher reads the handoff voucher, DELETES it, and reports whether it

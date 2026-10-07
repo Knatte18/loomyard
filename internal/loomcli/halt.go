@@ -119,8 +119,12 @@ func (c *loomCLI) failedHalt(err error) (haltNote, bool) {
 // A `failed` halt behind stepErr and a `blocked` result each write a halt note and reflect.
 // `done` reports what the Friction-Reflect row recorded, or skipped when the row did not run in this process.
 // Every other state, awaiting and paused included, writes nothing and reports skipped.
+// Every step that returns, with or without an error, vouches for what it left on disk: a step error records the handoff voucher from the status file before the halt check, except a busy refusal, whose driver vouches on its own exit.
 func (c *loomCLI) loomAfterStep(ctx context.Context, res shedengine.StepResult, stepErr error) string {
 	if stepErr != nil {
+		if !errors.Is(stepErr, shedengine.ErrShedBusy) {
+			recordHandoffVoucherFromStatus(loomengine.LoomHandoffVoucher(c.location), loomengine.LoomHandoffVoucherLock(c.location), c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+		}
 		if n, ok := c.failedHalt(stepErr); ok {
 			return c.reflectHalt(n)
 		}
