@@ -461,7 +461,7 @@ User-facing modules each get one `lyx <module>` namespace:
   Profile-driven: `{overlay, source}` fix-scope, tool-use.
   Cluster review fans job A out into N fork-subagent reviewers by naming a fan (`cluster-fan`) from the seed-only `burler.yaml` lens/fan library — never on by default.
   Strict frontmatter verdict parse;
-  debug CLI `lyx burler run`, and the read-only review-gate self-check `lyx burler validate-review <review-file>`. ✅ Implemented.
+  debug CLI `lyx burler run`, the read-only review-gate self-check `lyx burler validate-review <review-file>`, and the read-only capped wait `lyx burler await-review <marker-path>` on a round's review-ready marker. ✅ Implemented.
   See the `internal/burlerengine` package documentation.
 - **hardener** — **DRAFT / concept.**
   Behavior-based reviewer that *runs* a live-substrate module (needs a sandbox repo) to harden it before merge;

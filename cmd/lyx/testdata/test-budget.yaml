@@ -14,7 +14,7 @@ internal/boardcli: 12
 internal/boardengine: 73
 internal/boardengine/boardtest: 3
 internal/buildinfo: 2
-internal/burlercli: 18
+internal/burlercli: 19
 internal/burlerengine: 33
 internal/burlermarker: 1
 internal/clihelp: 11
