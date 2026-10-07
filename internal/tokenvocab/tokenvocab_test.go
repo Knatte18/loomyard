@@ -76,8 +76,8 @@ func TestTokenResolve(t *testing.T) {
 	}
 }
 
-// TestBuild_ReturnsEveryRegistryKey verifies Build resolves the full registry into a flat map keyed by
-// token name, with the Ctx-field tokens correctly valued.
+// TestBuild_ReturnsEveryRegistryKey verifies Build resolves the full registry into a flat map keyed by token name,
+// with the Ctx-field tokens correctly valued.
 func TestBuild_ReturnsEveryRegistryKey(t *testing.T) {
 	t.Parallel()
 

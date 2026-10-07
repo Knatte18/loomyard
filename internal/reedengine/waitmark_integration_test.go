@@ -1,8 +1,7 @@
 //go:build tmux && linux
 
-// waitmark_integration_test.go pins, against a real tmux server, that the default status line
-// expands a marked pane into its title, label and elapsed minutes: the elapsed arithmetic inside the
-// segment format can only be proven on the tmux in use.
+// waitmark_integration_test.go pins, against a real tmux server, that the default status line expands a marked pane into its title, label and elapsed minutes:
+// the elapsed arithmetic inside the segment format can only be proven on the tmux in use.
 
 package reedengine
 

@@ -403,10 +403,11 @@ func TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled(t *testing.T) {
 // pidMarker renders a spawn-confirmation marker holding pid.
 func pidMarker(pid int) []byte { return []byte(strconv.Itoa(pid) + "\n") }
 
-// TestInnerRun_SpawnsUntilASpawnIsConfirmed pins which child states re-spawn when no spawn has been
-// confirmed by this process, and that a marker from another pid or in the old layout is no confirmation. A child bootstrap seeds a running status before it starts its driver,
-// so a running status alone is no proof the spawn completed: it is spawned (again), and the
-// confirmation is recorded only once Spawn succeeds. A halted or done child is never spawned.
+// TestInnerRun_SpawnsUntilASpawnIsConfirmed pins which child states re-spawn when no spawn has been confirmed by this process,
+// and that a marker from another pid or in the old layout is no confirmation.
+// A child bootstrap seeds a running status before it starts its driver,
+// so a running status alone is no proof the spawn completed: it is spawned (again), and the confirmation is recorded only once Spawn succeeds.
+// A halted or done child is never spawned.
 func TestInnerRun_SpawnsUntilASpawnIsConfirmed(t *testing.T) {
 	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
 	tests := []struct {

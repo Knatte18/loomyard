@@ -635,8 +635,8 @@ func (e *Engine) EnsureSession() (booted bool, err error) {
 	return booted, err
 }
 
-// Resume boots server+session if absent, reconciles stale bindings, drops non-live strands whose done-when
-// paths all exist, relaunches the other non-live strands, and re-applies the layout.
+// Resume boots server+session if absent, reconciles stale bindings,
+// drops non-live strands whose done-when paths all exist, relaunches the other non-live strands, and re-applies the layout.
 func (e *Engine) Resume() (ResumeResult, error) {
 	var result ResumeResult
 	err := e.withOpLock(func() error {

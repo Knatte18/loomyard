@@ -1,6 +1,6 @@
-// resume.go implements the `resume` reed verb: the only replayer, recreating not-live, non-hidden
-// strands after a server restart or a single pane's death, dropping a not-live strand whose
-// done-when paths all exist, and leaving already-live strands untouched.
+// resume.go implements the `resume` reed verb: the only replayer,
+// recreating not-live, non-hidden strands after a server restart or a single pane's death,
+// dropping a not-live strand whose done-when paths all exist, and leaving already-live strands untouched.
 
 package reedcli
 

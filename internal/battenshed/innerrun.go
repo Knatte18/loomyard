@@ -200,18 +200,18 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 
 // Call implements shedengine.ShedProducer.
 //
-// It reads the child's status before doing anything else, and spawns only when that status is
-// absent, or is still running with no spawn confirmed by this batten process and no driver at work.
-// The child's status file alone cannot say whether a spawn happened: the child's bootstrap seeds it as running before it
-// starts the driver, so a bootstrap that failed or was killed after seeding leaves a running status
-// with no driver behind it. The confirmation is a marker under scratchDir (SpawnConfirmedFile) holding the pid of the process that wrote it,
-// cleared before every spawn attempt and written only once deps.Spawn returns success; a marker naming another pid, or in the old layout, reads as unconfirmed,
+// It reads the child's status before doing anything else.
+// It spawns only when that status is absent, or is still running with no spawn confirmed by this batten process and no driver at work.
+// The child's status file alone cannot say whether a spawn happened:
+// the child's bootstrap seeds it as running before it starts the driver, so a bootstrap that failed or was killed after seeding leaves a running status with no driver behind it.
+// The confirmation is a marker under scratchDir (SpawnConfirmedFile) holding the pid of the process that wrote it,
+// cleared before every spawn attempt and written only once deps.Spawn returns success;
+// a marker naming another pid, or in the old layout, reads as unconfirmed,
 // since batten's own run lock means a pid other than this process's is an earlier, dead batten process.
 // A running child with an unconfirmed spawn is adopted rather than spawned when deps.DriverStrand reports a live or retiring driver strand or deps.ChildRunLockHeld reports a held run lock:
 // the confirmation is recorded for this process and nothing is spawned.
-// Re-spawning a running child with neither is safe because the bootstrap it runs is idempotent against a driver that is
-// already alive, and it never stacks a second driver. A halted or done child is never re-spawned, marker or not: the outer run watches
-// the child's own run and never restarts it.
+// Re-spawning a running child with neither is safe because the bootstrap it runs is idempotent against a driver that is already alive, and it never stacks a second driver.
+// A halted or done child is never re-spawned, marker or not: the outer run watches the child's own run and never restarts it.
 //
 // The full disposition table, evaluated top to bottom: a spawn as above (logging both Live-Substrate
 // Spawn Observability lines around deps.Spawn), then one more read;
@@ -630,9 +630,9 @@ func spawnConfirmed(path string) bool {
 	return err == nil && pid == os.Getpid()
 }
 
-// recordSpawnConfirmed writes the spawn-confirmation marker at path, holding this process's pid. A write failure is logged
-// rather than escalated: the spawn itself succeeded, and a missing marker costs only one
-// idempotent re-spawn or adoption check on the next Call.
+// recordSpawnConfirmed writes the spawn-confirmation marker at path, holding this process's pid.
+// A write failure is logged rather than escalated:
+// the spawn itself succeeded, and a missing marker costs only one idempotent re-spawn or adoption check on the next Call.
 func recordSpawnConfirmed(producer, slug, scratchDir, path string) {
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
 		logger.Warn("battenshed: create scratch directory for spawn confirmation failed", "producer", producer, "slug", slug, "scratchDir", scratchDir, "error", err)
