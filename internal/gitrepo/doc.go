@@ -64,12 +64,12 @@
 //   - IsAncestor is the ancestry/reachability primitive: it answers "is sha
 //     an ancestor of ref" via `git merge-base --is-ancestor`, mapping git's
 //     tri-state exit code directly rather than folding any non-zero exit
-//     into failure. CommitsNotIn is its listing sibling: the commits reachable
-//     from a tip and not from a base, newest first, via `git rev-list`.
-//   - UpdateRemoteBranchLeased moves a remote branch to a SHA, backwards
-//     included, only while the remote branch still sits at the SHA the caller
-//     read; a moved branch is ErrLeaseRejected, distinct from any other push
-//     failure.
+//     into failure.
+//     CommitsNotIn is its listing sibling:
+//     the commits reachable from a tip and not from a base, newest first, via `git rev-list`.
+//   - UpdateRemoteBranchLeased moves a remote branch to a SHA, backwards included,
+//     only while the remote branch still sits at the SHA the caller read;
+//     a moved branch is ErrLeaseRejected, distinct from any other push failure.
 //   - ResetHard is the SHA-validated hard-reset surface (see below).
 //   - CurrentBranch reads the branch HEAD points to, and errors on a detached HEAD.
 //

@@ -1,8 +1,7 @@
 // beginbatch_test.go exercises BeginBatch end to end (Tier 1 — see
 // docs/benchmarks/running-tests.md): a temp directory backs
-// WorktreeRoot with a fakeGit answering the HeadSHA capture, while the reed query
-// seam is a shuttlefake.Reed. The plan
-// itself is a minimal *planparser.Plan (Dir only — begin-batch never reads
+// WorktreeRoot with a fakeGit answering the HeadSHA capture, while the reed query seam is a shuttlefake.Reed.
+// The plan itself is a minimal *planparser.Plan (Dir only — begin-batch never reads
 // Plan.Cards, only deps.Batches, the already-derived execution batches),
 // backed by a t.TempDir() seeded with a throwaway markdown file so the
 // fingerprint gate has something real to hash. There is no chain/restart

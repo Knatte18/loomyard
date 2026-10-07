@@ -378,9 +378,10 @@ func seedGlyphPlanDir(t *testing.T, planDir, worktreeRoot, createTarget string) 
 // Creates a symbol that already exists on disk (worktreeRoot/sub/a.go's Foo) and whose SECOND card
 // Creates a brand-new unit. The first card is therefore a blocking create-already-exists finding
 // under the whole-plan check set and nothing at all once it counts as completed; the second card is
-// informational in both scopes. A third card Deletes a member that is not on disk: a blocking
-// glyph-not-found under the whole-plan check set, the informational delete-target-gone once a
-// batch is begun. That asymmetry is what lets one plan tell validate's two scopes apart.
+// informational in both scopes.
+// A third card Deletes a member that is not on disk:
+// a blocking glyph-not-found under the whole-plan check set, the informational delete-target-gone once a batch is begun.
+// That asymmetry is what lets one plan tell validate's two scopes apart.
 func seedTwoCardGlyphPlanDir(t *testing.T, planDir, worktreeRoot string) {
 	t.Helper()
 
