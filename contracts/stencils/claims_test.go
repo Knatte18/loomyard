@@ -123,7 +123,7 @@ var wordingClaims = []stencilClaims{
 		{must: "does not run is a finding against the plan", why: "verify must cover every targeted package"},
 		{must: "`llm` tag that the section compiles rather than runs", why: "the rubric does not flag a section that compiles the llm tag"},
 		{must: "`tmux` tag is token-free, so a section that runs it", why: "the rubric does not flag a section that runs the tmux tag"},
-		{must: "commit-subject-mismatch", why: "anything this round's own gate already checks is not flagged, through commit-subject-mismatch"},
+		{must: "`delete-target-gone` fires only at Webster's dispatch", why: "anything this round's own gate already checks is not flagged, and the one check the gate never runs is named"},
 		{must: "Dependency edges are derived, never authored", why: "dependency edges are derived, never authored"},
 		{must: "no graded blast radius to summarise", why: "Rename carries no ImpactSummary because there is no graded blast radius"},
 		{must: "support-log.md", why: "support-log.md is outside this review entirely"},

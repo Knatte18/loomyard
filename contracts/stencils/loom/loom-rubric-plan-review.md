@@ -28,7 +28,7 @@ It appears in neither the artifact list nor the answer key, and it must not be r
 Do not flag any of the following as a finding:
 
 - **Anything this round's own gate already checks.**
-  Every check ID `{{.specs_dir}}/loom/loom-plan-spec.md`'s own validation-checks section lists is enforced deterministically: the `internal/planparser` checks from `format-unrecognized` through `commit-subject-mismatch` and the `internal/planglyph` check `delete-before-reference` by this round's own gate over this round's own output, except `plan-unapproved`, which is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil.
+  Every check ID `{{.specs_dir}}/loom/loom-plan-spec.md`'s own validation-checks section lists is enforced deterministically by this round's own gate over this round's own output, except `plan-unapproved`, which is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil, and `delete-target-gone`.
   `delete-target-gone` fires only at Webster's dispatch, after this round, so no plan this round reviews can carry it.
   Re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the gate.
 - **A missing `DependsOn`/`Produces` field, or an incomplete dependency list.**
