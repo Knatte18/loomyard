@@ -6,6 +6,9 @@ package loomcli
 
 import (
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -15,8 +18,18 @@ import (
 // driverStencilName is the registered name of the shed driver stencil.
 const driverStencilName = "shed-template-driver"
 
+// driverNotifyStencilName and driverNotifyWatchedStencilName are the registered names of the two parent-notification rules driverPrompt fills into the driver stencil's parent_notify marker.
+const (
+	driverNotifyStencilName        = "shed-template-driver-notify"
+	driverNotifyWatchedStencilName = "shed-template-driver-notify-watched"
+)
+
+// driverNotifyMarker is the driver stencil's marker for the parent-notification rule.
+const driverNotifyMarker = "parent_notify"
+
 // driverPrompt composes the driver session's launch prompt: the shed driver stencil, read from stencilsDir through stencilstore.Read and filled with the run-id, the report path the session writes at every stop,
 // driverParkCommand(reportPath), driverTeardownCommand and parentdirective.Directive(stencilsDir, parentName, false).
+// The marker for the parent-notification rule is filled with the watched stencil when watched is true and with the plain one otherwise.
 // The prompt is the driver's whole procedure, so the session depends on no installed skill.
 // At a done run or a busy refusal, as its last act after writing its stop report, the session runs driverTeardownCommand to end its own strand;
 // at every other stop it parks, leaving the session open for `lyx loom start` to resume by typing one line.
@@ -26,11 +39,20 @@ const driverStencilName = "shed-template-driver"
 // and that command is what ends the strand.
 // It returns the read or fill error when the stencil or the directive cannot be rendered.
 // This file composes prompt text alone and names no Claude flag and no command line: the Shuttle Provider-Seam Invariant keeps provider specifics under the claude engine package.
-func driverPrompt(stencilsDir, parentName, runID, reportPath string) (string, error) {
+func driverPrompt(stencilsDir, parentName, runID, reportPath string, watched bool) (string, error) {
 	directive, err := parentdirective.Directive(stencilsDir, parentName, false)
 	if err != nil {
 		return "", err
 	}
+	notifyStencilName := driverNotifyStencilName
+	if watched {
+		notifyStencilName = driverNotifyWatchedStencilName
+	}
+	notifyTemplate, err := stencilstore.Read(stencilsDir, notifyStencilName)
+	if err != nil {
+		return "", fmt.Errorf("loom: driver prompt: %w", err)
+	}
+	notify := strings.TrimRight(stencil.StripLeadingComment(string(notifyTemplate)), "\r\n")
 	template, err := stencilstore.Read(stencilsDir, driverStencilName)
 	if err != nil {
 		return "", fmt.Errorf("loom: driver prompt: %w", err)
@@ -41,11 +63,24 @@ func driverPrompt(stencilsDir, parentName, runID, reportPath string) (string, er
 		"park_command":             driverParkCommand(reportPath),
 		"teardown_command":         driverTeardownCommand,
 		parentdirective.MarkerName: directive,
+		driverNotifyMarker:         notify,
 	})
 	if err != nil {
 		return "", fmt.Errorf("loom: driver prompt: fill stencil %q: %w", driverStencilName, err)
 	}
 	return string(filled), nil
+}
+
+// driverWatched reports whether a live batten watches the run: markerPath names a file holding a pid in decimal on one line, and isAlive confirms that pid.
+// An absent or unreadable marker, one that does not parse as a pid and one whose pid is dead are all unwatched,
+// so the marker a batten left behind when it died never silences a fresh driver.
+func driverWatched(markerPath string, isAlive func(pid int) bool) bool {
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	return err == nil && pid > 0 && isAlive(pid)
 }
 
 // driverRecordsCommand commits the run records; driverTeardownCommand runs it first, and driverParkCommand extends it.
