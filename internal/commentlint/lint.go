@@ -104,9 +104,29 @@ func startsLine(src string, offset int) bool {
 	return strings.TrimSpace(src[lineStart:offset]) == ""
 }
 
-// isProseBlock reports whether the block holds only prose lines: no indented code, list item or heading.
-func isProseBlock(block []commentLine) bool {
+// paragraphs splits a comment block at its blank comment lines.
+func paragraphs(block []commentLine) [][]commentLine {
+	var result [][]commentLine
+	var current []commentLine
 	for _, line := range block {
+		if strings.TrimSpace(line.content) == "" {
+			if len(current) > 0 {
+				result = append(result, current)
+				current = nil
+			}
+			continue
+		}
+		current = append(current, line)
+	}
+	if len(current) > 0 {
+		result = append(result, current)
+	}
+	return result
+}
+
+// isProseParagraph reports whether the paragraph holds only prose lines: no indented code, list item or heading.
+func isProseParagraph(paragraph []commentLine) bool {
+	for _, line := range paragraph {
 		raw := line.raw()
 		if strings.HasPrefix(raw, "\t") || strings.HasPrefix(line.content, " ") || strings.HasPrefix(line.content, "\t") {
 			return false
@@ -125,18 +145,13 @@ func lineEndPair(before, after commentLine) string {
 	return beforeWords[len(beforeWords)-1] + " " + afterWords[0]
 }
 
-// adjacentProse reports whether both lines hold words, so a break between them is a break inside one paragraph.
-func adjacentProse(before, after commentLine) bool {
-	return strings.TrimSpace(before.content) != "" && strings.TrimSpace(after.content) != ""
-}
-
 // baseLineEndPairs returns the word pairs adjacent across a line end inside a comment block of src.
 func baseLineEndPairs(src string) map[string]bool {
 	pairs := map[string]bool{}
 	for _, block := range commentBlocks(src) {
-		for i := 0; i+1 < len(block); i++ {
-			if adjacentProse(block[i], block[i+1]) {
-				pairs[lineEndPair(block[i], block[i+1])] = true
+		for _, paragraph := range paragraphs(block) {
+			for i := 0; i+1 < len(paragraph); i++ {
+				pairs[lineEndPair(paragraph[i], paragraph[i+1])] = true
 			}
 		}
 	}
@@ -163,15 +178,17 @@ func findNewWrappedBreaks(path, baseText, newText string) []Finding {
 	known := baseLineEndPairs(baseText)
 	var findings []Finding
 	for _, block := range commentBlocks(newText) {
-		if !isProseBlock(block) {
-			continue
-		}
-		for i := 0; i+1 < len(block); i++ {
-			before, after := block[i], block[i+1]
-			if !adjacentProse(before, after) || known[lineEndPair(before, after)] || endsSemanticBreak(before, after) {
+		for _, paragraph := range paragraphs(block) {
+			if !isProseParagraph(paragraph) {
 				continue
 			}
-			findings = append(findings, Finding{File: path, Line: before.number, Text: strings.TrimSpace(before.literal)})
+			for i := 0; i+1 < len(paragraph); i++ {
+				before, after := paragraph[i], paragraph[i+1]
+				if known[lineEndPair(before, after)] || endsSemanticBreak(before, after) {
+					continue
+				}
+				findings = append(findings, Finding{File: path, Line: before.number, Text: strings.TrimSpace(before.literal)})
+			}
 		}
 	}
 	return findings
