@@ -21,7 +21,7 @@
 // and stops Stuck with a reason stating that the merge-in already ran, the tip, the commit count, and the way forward:
 // merge `origin/<task-branch>` in the task worktree, then resume the run with `lyx loom start`, which re-runs Publish over the merged branch.
 // A failed read keeps the rejection and the way forward and names the cause.
-// A remote task branch that holds no commit the local branch lacks is not cleared by a merge, so the reason names a remote rule as the cause and the way forward is to clear it, then resume.
+// A remote with no task branch, or a remote task branch that holds no commit the local branch lacks, is not cleared by a merge, so the reason names a remote rule as the cause and the way forward is to clear it, then resume.
 // Every other push failure keeps its own reason, and a transient one is returned as an error so the driver re-steps.
 //
 // require_pr_to_base is a list of base-branch names, not a bool, because whether a pull request is

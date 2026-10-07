@@ -261,17 +261,21 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 // pushRejectedReason builds the stuck reason for a rejected task-branch push:
 // it states that the merge-in already ran, what the remote task branch holds that the local one lacks, and how to resume.
 // A failed remote read keeps the rejection and the way forward and names the cause.
-// A remote task branch that holds nothing the local one lacks cannot be cleared by a merge, so the reason says the remote rejected the push for its own rule instead.
+// A remote with no task branch, or one whose task branch holds nothing the local one lacks, cannot be cleared by a merge, so the reason says the remote rejected the push for its own rule instead.
 // Publish does not retry the push, since a rejected push means the remote moved and a repeat would be rejected again.
 func (p *Publish) pushRejectedReason() string {
 	wayForward := fmt.Sprintf("way forward: run `git merge origin/%s` in the task worktree, then resume the run with `lyx loom start`", p.deps.TaskBranch)
 	prefix := fmt.Sprintf("push rejected by the remote after the merge-in against parent branch %q", p.deps.ParentBranch)
+	ruleWayForward := "so a merge adds nothing and the remote rejected the push for its own rule, such as a hook; way forward: clear what the remote's rule objects to, then resume the run with `lyx loom start`"
 	tip, commits, err := p.deps.RemoteOnlyCommits()
 	if err != nil {
 		return fmt.Sprintf("%s; the remote tip could not be read: %v; %s", prefix, err, wayForward)
 	}
+	if tip == "" {
+		return fmt.Sprintf("%s; the remote has no task branch, %s", prefix, ruleWayForward)
+	}
 	if len(commits) == 0 {
-		return fmt.Sprintf("%s; the remote task branch holds no commit the local branch lacks, so a merge adds nothing and the remote rejected the push for its own rule, such as a hook; way forward: clear what the remote's rule objects to, then resume the run with `lyx loom start`", prefix)
+		return fmt.Sprintf("%s; the remote task branch holds no commit the local branch lacks, %s", prefix, ruleWayForward)
 	}
 	return fmt.Sprintf("%s; the remote task branch is at %s and holds %d commit(s) the local branch lacks; %s", prefix, tip, len(commits), wayForward)
 }
