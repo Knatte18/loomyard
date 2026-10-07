@@ -614,6 +614,59 @@ func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 	}
 }
 
+// TestRebaselineCmd_EditedCardOfFailedBatchThenRecover proves a one-card fix needs no reset:
+// `rebaseline --card 1` over a failed batch's edited card exits 0 and keeps the batch's start SHA,
+// and `recover-batch 1` then spawns with the edited card's gate in its prompt.
+func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	fx.initState(t)
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"}); code != 0 {
+		t.Fatalf("begin-batch 1 = %d; want 0, output: %s", code, out.String())
+	}
+	st, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || st == nil {
+		t.Fatalf("LoadState() = %v, %v; want a state, nil", st, err)
+	}
+	failed := st.Batches[1]
+	failed.Terminal = true
+	failed.Status = websterengine.DigestStatusFailed
+	failed.Digest = &websterengine.Digest{Batch: "01-only", Status: websterengine.DigestStatusFailed, Reasons: []string{"declared work missing"}}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	startSHA := failed.StartSHA
+
+	plankit.Write(t, fx.CLI.geom.PlanDir, onlyCreatePlan("", "internal/edited/new.go"))
+
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, []string{"--card", "1"}); code != 0 {
+		t.Fatalf("rebaseline --card 1 = %d; want 0, output: %s", code, out.String())
+	}
+	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() after rebaseline = %v, %v; want a state, nil", loaded, err)
+	}
+	if bs := loaded.Batches[1]; bs.StartSHA != startSHA || !bs.Terminal || bs.Status != websterengine.DigestStatusFailed {
+		t.Errorf("loaded.Batches[1] = %+v; want the failed record with start SHA %q kept", bs, startSHA)
+	}
+
+	var prompt string
+	fx.Engine.PrepareFn = func(_ string, spec shuttleengine.Spec, _ shuttleengine.Config) (shuttleengine.Launch, error) {
+		prompt = spec.Prompt
+		return shuttleengine.Launch{Cmd: "fake-launch-cmd", SessionID: "fake-session-recovery"}, nil
+	}
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code != 0 {
+		t.Fatalf("recover-batch 1 = %d; want 0, output: %s", code, out.String())
+	}
+	if !strings.Contains(prompt, "./internal/edited") {
+		t.Errorf("recovery prompt lacks the edited card's gate package ./internal/edited; got %q", prompt)
+	}
+}
+
 // TestRecoverBatchCmd_RunningThenTerminal drives recover-batch across two calls against the same
 // batch: the first call performs the spawn and returns a running snapshot (the strand has no report
 // yet), proving the running envelope touches neither status nor digest fields;

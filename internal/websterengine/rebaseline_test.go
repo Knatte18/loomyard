@@ -252,7 +252,66 @@ func TestRebaseline_EditedPlan(t *testing.T) {
 				writePlanFile(t, fx, "01-json-flag.md", "# Card 1 — json-flag\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** placeholder card.\n\n**Verify:** true\n")
 			},
 			cards:    []int{1},
-			wantText: []string{"batch 1 card 01-json-flag changed since it was begun"},
+			wantText: []string{"batch 1 card 01-json-flag changed since it was begun", "batch is done", "--fresh"},
+		},
+		{
+			name: "a named card of a failed batch is accepted and restamped",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				setBatchOneState(fx, true, "failed", nil)
+				editBegunCardOne(t, fx)
+			},
+			cards: []int{1},
+			check: checkBegunCardRestamped,
+		},
+		{
+			name: "a named card of a dead batch is accepted and restamped",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				setBatchOneState(fx, true, websterengine.DigestStatusDead, nil)
+				editBegunCardOne(t, fx)
+			},
+			cards: []int{1},
+			check: checkBegunCardRestamped,
+		},
+		{
+			name: "a named card of a stuck batch is accepted and restamped",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				setBatchOneState(fx, true, websterengine.DigestStatusStuck, nil)
+				editBegunCardOne(t, fx)
+			},
+			cards: []int{1},
+			check: checkBegunCardRestamped,
+		},
+		{
+			name: "a named card of an unfinished batch refuses naming record-batch and recover-batch",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				setBatchOneState(fx, false, "", nil)
+				editBegunCardOne(t, fx)
+			},
+			cards:    []int{1},
+			wantText: []string{"batch 1 card 01-json-flag changed since it was begun", "unfinished", "lyx webster record-batch 1", "lyx webster recover-batch 1"},
+		},
+		{
+			name: "a named card of a failed batch with uncheckable findings refuses toward a fresh restart",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				setBatchOneState(fx, true, "failed", []string{"no-path: unattributed write"})
+				editBegunCardOne(t, fx)
+			},
+			cards:    []int{1},
+			wantText: []string{"batch 1 card 01-json-flag changed since it was begun", "cannot check", "--fresh"},
+		},
+		{
+			name: "an unnamed edited card of a failed batch still refuses as unnamed",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				setBatchOneState(fx, true, "failed", nil)
+				editBegunCardOne(t, fx)
+			},
+			wantText: []string{"01-json-flag.md", "changed but not named", "--card"},
 		},
 		{
 			name: "an edited card that is not named refuses naming --card",
@@ -290,6 +349,7 @@ func TestRebaseline_EditedPlan(t *testing.T) {
 			fx := newBeginFixture(t)
 			tt.prepare(t, fx)
 			before := *fx.Deps.State.Batches[1]
+			before.CardHashes = maps.Clone(before.CardHashes)
 			fingerprint := fx.Deps.State.PlanFingerprint
 
 			deps := rebaselineFixtureDeps(fx)
@@ -320,7 +380,41 @@ func TestRebaseline_EditedPlan(t *testing.T) {
 			if fx.Deps.State.PlanFingerprint != fingerprint {
 				t.Errorf("PlanFingerprint = %q; want it unchanged on refusal", fx.Deps.State.PlanFingerprint)
 			}
+			if got := fx.Deps.State.Batches[1].CardHashes; !maps.Equal(got, before.CardHashes) {
+				t.Errorf("CardHashes = %v; want %v unchanged on refusal", got, before.CardHashes)
+			}
 		})
+	}
+}
+
+// setBatchOneState rewrites batch 1's record after begin to the given terminal state, with one audit warning to prove a restamp keeps it.
+func setBatchOneState(fx *beginFixture, terminal bool, status string, uncheckable []string) {
+	rec := fx.Deps.State.Batches[1]
+	rec.Terminal = terminal
+	rec.Status = status
+	rec.Uncheckable = uncheckable
+	rec.AuditWarnings = []websterengine.AuditWarning{{}}
+}
+
+// editBegunCardOne rewrites begun card 1 of the begin fixture with a reworded intent.
+func editBegunCardOne(t *testing.T, fx *beginFixture) {
+	t.Helper()
+	writePlanFile(t, fx, "01-json-flag.md", "# Card 1 — json-flag\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** reworded after the batch stopped.\n")
+}
+
+// checkBegunCardRestamped asserts the accepted edit moved card 1's recorded hash to the file's new hash and kept the rest of batch 1's record.
+func checkBegunCardRestamped(t *testing.T, fx *beginFixture, before websterengine.BatchState, res *websterengine.RebaselineResult) {
+	t.Helper()
+	got := fx.Deps.State.Batches[1]
+	want := fileSHA(t, filepath.Join(fx.PlanDir, "01-json-flag.md"))
+	if got.CardHashes["01-json-flag"] != want || want == before.CardHashes["01-json-flag"] {
+		t.Errorf("CardHashes = %v; want 01-json-flag restamped to %s, was %v", got.CardHashes, want, before.CardHashes)
+	}
+	if got.StartSHA != before.StartSHA || got.Status != before.Status || got.Terminal != before.Terminal || len(got.AuditWarnings) != len(before.AuditWarnings) {
+		t.Errorf("batch 1 record = %+v; want StartSHA, status and warnings of %+v kept", *got, before)
+	}
+	if !slices.Equal(res.CardsAccepted, []string{"01-json-flag.md"}) {
+		t.Errorf("CardsAccepted = %v; want [01-json-flag.md]", res.CardsAccepted)
 	}
 }
 

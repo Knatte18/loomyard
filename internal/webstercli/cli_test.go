@@ -1165,7 +1165,8 @@ func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
 }
 
 // TestRebaselineCmd_Refusals proves each refused rebaseline exits non-zero with its way forward and leaves state.json byte-identical:
-// an edited card the operator did not name (naming --card), a --card value that is not a positive integer (a usage error naming the value), and a removed card whose batch was begun (naming --fresh).
+// an edited card the operator did not name (naming --card), a --card value that is not a positive integer (a usage error naming the value), a removed card whose batch was begun (naming --fresh),
+// and a named card of a done batch (naming that its work has landed, and --fresh).
 // It sets WEFT_SKIP_GIT, so it is not parallel.
 func TestRebaselineCmd_Refusals(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
@@ -1220,6 +1221,25 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 				return []string{}
 			},
 			wantIn: []string{"--fresh"},
+		},
+		{
+			name: "named card of a done batch",
+			arrange: func(t *testing.T, c *websterCLI) []string {
+				st, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
+				if err != nil || st == nil {
+					t.Fatalf("LoadState() = %v, %v; want a state", st, err)
+				}
+				st.Batches[1] = &websterengine.BatchState{
+					Slug: "only", Cards: []string{"01-only"}, StartSHA: "abc123", Kind: "fork",
+					Terminal: true, Status: websterengine.DigestStatusDone,
+					CardHashes: map[string]string{"01-only": "stale-hash"},
+				}
+				if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
+					t.Fatalf("SaveState() error = %v", err)
+				}
+				return []string{"--card", "1"}
+			},
+			wantIn: []string{"01-only changed since it was begun", "batch is done", "--fresh"},
 		},
 	}
 	for _, tc := range cases {
