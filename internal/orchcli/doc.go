@@ -44,4 +44,5 @@
 //
 // `PrimePaths` is the one accessor other modules use for the orch's told paths, so the notice queue and the orch state are reached without re-deriving either.
 // A module queues a notice through `orchengine.QueueNotice` with those paths and never types into the orch session itself.
+// `NotifyPrime` is the way a task-worktree module reaches the prime's queue: it takes the task worktree's location and a line and resolves the prime itself.
 package orchcli

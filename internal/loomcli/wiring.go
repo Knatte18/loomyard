@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -423,6 +424,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	claudeEngine := claudeengine.NewFromConfig(shuttleCfg)
 	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(location, line) })
 
 	websterGeom := hubgeom.WebsterGeometry(location)
 
