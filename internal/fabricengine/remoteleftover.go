@@ -1,5 +1,7 @@
 // remoteleftover.go holds Add's read-only pre-flight probes of both origins.
-// A branch on the weft or warp origin either makes the pair live, so Add adopts it, or is a removed pair's leftover that is proven replaceable or refused before Add's first mutation,
+// A branch on the weft or warp origin either makes the pair live or is a removed pair's leftover.
+// Add adopts a live pair's branch;
+// a leftover is proven replaceable or refused before Add's first mutation,
 // so the refusal never arrives mid-Add as a rejected push.
 // Every probe is read-only git through gitexec;
 // the fetches (the weft archive and fast-forward probes) write FETCH_HEAD only and create no branch, remote-tracking ref or tag.
@@ -17,7 +19,8 @@ import (
 )
 
 // leftoverKind is the closed set of reasons ErrRemoteLeftover refuses.
-// A remote weft branch no archive tag covers is not one of them: it makes the pair live, and Add adopts it.
+// A remote weft branch no archive tag covers is not one of them: it makes the pair live,
+// and Add adopts it.
 type leftoverKind int
 
 const (
