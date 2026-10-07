@@ -193,24 +193,24 @@ func TestCompact_CompletesOnBoundaryAfterEntryAndIdle(t *testing.T) {
 	e.assertCompactCalls(1)
 }
 
-func TestCompact_CycleReloadsSkillsThenPointerNamingTheNote(t *testing.T) {
+func TestCompact_CycleReloadsPluginsThenPointerNamingTheNote(t *testing.T) {
 	e := newCompactEnv(t)
 	e.withSkills()
 	e.reachCompacting()
 	e.landBoundary(e.state().PhaseEnteredAt.Add(time.Second), 150)
-	e.tick() // boundary read and the pane idle: the skills typed
-	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepSkills {
+	e.tick() // boundary read and the pane idle: the plugins reloaded
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPointer || !st.ReloadSkipsSkills {
 		t.Fatalf("state = %+v", st)
 	}
-	e.endTurn("t1")
+	e.tick() // the pointer
 	e.endTurn("resumed")
-	e.assertReload("compact:", e.state().LastHandoff)
+	e.assertReload("compact:", e.state().LastHandoff, false)
 	if st := e.state(); st.Phase != PhaseIdle {
 		t.Errorf("phase = %s, want idle", st.Phase)
 	}
 	e.assertCompactCalls(1)
 	e.tick()
-	if e.s.count("skills:") != 1 {
+	if e.s.count(reloadPluginsCall) != 1 {
 		t.Errorf("the compaction's own boundary reloaded again: %v", e.s.calls)
 	}
 }

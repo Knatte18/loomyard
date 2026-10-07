@@ -57,6 +57,12 @@ func (s runnerSession) ClearSession(guid string) error {
 	return s.runner.ClearSession(guid)
 }
 
+// ReloadPlugins delegates to Runner.ReloadPlugins, which types into the pane through tmux.
+func (s runnerSession) ReloadPlugins(guid string) error {
+	logger.Debug("orch: reload plugins", "strandGUID", guid)
+	return s.runner.ReloadPlugins(guid)
+}
+
 // LoadSkills delegates to Runner.LoadSkills,
 // which types the one-turn load message into the pane through tmux.
 func (s runnerSession) LoadSkills(guid string, skills []string) error {

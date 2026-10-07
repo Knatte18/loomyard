@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -31,7 +32,7 @@ type fakeSession struct {
 	clearErr   error // Returned by every ClearSession while set.
 	clearErrs  []error
 	compactErr error    // Returned by every CompactSession while set.
-	calls      []string // "send:<text>", "clear" and "compact:<focus>", in order.
+	calls      []string // "send:<text>", "clear", "reload-plugins", "skills:<list>" and "compact:<focus>", in order.
 	tokenAsks  []string
 	onSend     func()
 	onAlive    func()
@@ -113,6 +114,11 @@ func (f *fakeSession) ClearSession(string) error {
 	return nil
 }
 
+func (f *fakeSession) ReloadPlugins(string) error {
+	f.calls = append(f.calls, reloadPluginsCall)
+	return nil
+}
+
 func (f *fakeSession) CompactSession(_, focus string) error {
 	f.calls = append(f.calls, "compact:"+focus)
 	if f.compactErr != nil {
@@ -132,6 +138,9 @@ func (f *fakeSession) count(prefix string) int {
 }
 
 var errBoom = errors.New("boom")
+
+// reloadPluginsCall is the call the fake records for the plugins step.
+const reloadPluginsCall = "reload-plugins"
 
 type watchEnv struct {
 	t     *testing.T
@@ -270,7 +279,7 @@ func (e *watchEnv) reachClearing() {
 	}
 }
 
-// reachResuming continues from reachClearing until the resume prompt is sent.
+// reachResuming continues from reachClearing until the resume prompt is sent: the plugins reload on one tick, the pointer on the next.
 func (e *watchEnv) reachResuming() {
 	e.t.Helper()
 	e.reachClearing()
@@ -278,6 +287,7 @@ func (e *watchEnv) reachResuming() {
 	if st := e.state(); st.Phase != PhaseResuming {
 		e.t.Fatalf("phase = %s, want resuming", st.Phase)
 	}
+	e.tick()
 }
 
 func (e *watchEnv) assertNoCalls() {
@@ -488,6 +498,10 @@ func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
 	if st.Phase != PhaseResuming || st.CycleCount != 1 || st.LastHandoff != handoff {
 		t.Fatalf("state = %+v", st)
 	}
+	if last := e.s.calls[len(e.s.calls)-1]; last != reloadPluginsCall {
+		t.Fatalf("last call = %q, want the plugins reload first", last)
+	}
+	e.tick()
 	last := e.s.calls[len(e.s.calls)-1]
 	if !strings.HasPrefix(last, "send:") || !strings.Contains(last, handoff) {
 		t.Errorf("resume prompt = %q, want one naming %s", last, handoff)
@@ -512,8 +526,12 @@ func TestWatcher_ClearingTimeoutNeverTypesWhileBusy(t *testing.T) {
 	e.s.idle = true
 	e.tick()
 	st = e.state()
-	if st.Phase != PhaseResuming || st.CycleCount != 1 || st.Stuck != "" || e.s.count("send:") != 2 {
+	if st.Phase != PhaseResuming || st.CycleCount != 1 || st.Stuck != "" || e.s.count(reloadPluginsCall) != 1 || e.s.count("send:") != 1 {
 		t.Fatalf("state = %+v calls = %v", st, e.s.calls)
+	}
+	e.tick()
+	if e.s.count("send:") != 2 {
+		t.Fatalf("calls = %v", e.s.calls)
 	}
 }
 
@@ -626,7 +644,7 @@ func TestWatcher_PreClearTurnEndNeverReadNorCyclesAgain(t *testing.T) {
 		t.Fatalf("phase = %s", e.state().Phase)
 	}
 	e.clock.advance(101 * time.Second)
-	e.tick() // resume timeout → idle
+	e.tick() // the pointer is typed after the plugins step
 	sends := e.s.count("send:")
 	for i := 0; i < 3; i++ {
 		e.clock.advance(60 * time.Second)
@@ -866,14 +884,18 @@ func (e *watchEnv) endTurn(msg string) {
 // reloadSkillsCall is the call that loads every one of reloadSkills in one turn.
 var reloadSkillsCall = "skills:" + strings.Join(reloadSkills, ",")
 
-// assertReload checks the calls after prefix are one skills load, then a pointer naming the role file and, when note is not empty, the note.
-func (e *watchEnv) assertReload(prefix, note string) {
+// assertReload checks the calls after prefix are the plugins reload, one skills load when afterClear, then a pointer naming the role file and, when note is not empty, the note.
+func (e *watchEnv) assertReload(prefix, note string, afterClear bool) {
 	e.t.Helper()
-	got := e.callsAfter(prefix)
-	if len(got) != 2 || got[0] != reloadSkillsCall {
-		e.t.Fatalf("calls after %q = %v, want one skills load and a pointer", prefix, got)
+	want := []string{reloadPluginsCall}
+	if afterClear {
+		want = append(want, reloadSkillsCall)
 	}
-	pointer := got[1]
+	got := e.callsAfter(prefix)
+	if len(got) != len(want)+1 || !slices.Equal(got[:len(want)], want) {
+		e.t.Fatalf("calls after %q = %v, want %v and a pointer", prefix, got, want)
+	}
+	pointer := got[len(want)]
 	if !strings.HasPrefix(pointer, "send:") || !strings.Contains(pointer, e.paths.RolePath) {
 		e.t.Errorf("pointer = %q, want it to name the role file", pointer)
 	}
@@ -889,7 +911,20 @@ func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.reachClearing()
-	e.tick() // clearing -> resuming, skills typed
+	e.s.idleSeq = []bool{true, false}
+	e.tick() // clearing -> resuming, plugins typed and nothing else
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepSkills || !st.ReloadTypedAt.IsZero() || st.ReloadSkipsSkills {
+		t.Fatalf("state = %+v, want the skills step not yet typed", st)
+	}
+	if got := e.callsAfter("clear"); !slices.Equal(got, []string{reloadPluginsCall}) {
+		t.Fatalf("calls after clear = %v, want only the plugins reload", got)
+	}
+	e.tick() // the idle probe fails: nothing is typed
+	if got := e.callsAfter("clear"); len(got) != 1 {
+		t.Fatalf("typed behind a failing probe: %v", got)
+	}
+	e.s.idle = true
+	e.tick() // skills typed on a later tick
 	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepSkills || st.ReloadTypedAt.IsZero() {
 		t.Fatalf("state = %+v", st)
 	}
@@ -899,7 +934,7 @@ func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
 	}
 	e.s.usage["resumed"] = 300
 	e.endTurn("resumed")
-	e.assertReload("clear", e.state().LastHandoff)
+	e.assertReload("clear", e.state().LastHandoff, true)
 	if st := e.state(); st.Phase != PhaseIdle || st.LastContextTokens != 300 || st.ReloadStep != ReloadStepSkills {
 		t.Errorf("state = %+v", st)
 	}
@@ -916,7 +951,7 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 		loads     map[string]shuttleengine.SkillLoadReport
 		timeout   bool     // the last load turn typed never ends and passes its timeout
 		endTurns  []string // turn ends read before the timeout and the pointer's
-		wantSkill []string // the skills calls after the clear
+		wantSkill []string // the skills calls after the plugins reload
 		wantSkips int      // the skill skipped warnings
 		wantLogs  []string // fragments the log must hold
 	}{
@@ -976,6 +1011,7 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 			e.withSkills()
 			e.s.skillLoads = tt.loads
 			e.reachClearing()
+			e.tick() // plugins typed
 			e.tick() // skills typed
 			for _, turn := range tt.endTurns {
 				e.endTurn(turn)
@@ -988,9 +1024,9 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 				t.Fatalf("state = %+v, want the pointer step with nothing left to retry", st)
 			}
 			e.endTurn("resumed")
-			got := e.callsAfter("clear")
+			got := e.callsAfter(reloadPluginsCall)
 			if len(got) != len(tt.wantSkill)+1 {
-				t.Fatalf("calls after clear = %v, want %v and a pointer", got, tt.wantSkill)
+				t.Fatalf("calls after the plugins reload = %v, want %v and a pointer", got, tt.wantSkill)
 			}
 			for i, want := range tt.wantSkill {
 				if got[i] != want {
@@ -1019,24 +1055,43 @@ func TestWatcher_ReloadRestartRetypesOnlyTheUnconfirmedStep(t *testing.T) {
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.reachClearing()
-	e.tick()
+	e.tick() // plugins typed
+	e.tick() // skills typed
 	typedAt := e.state().ReloadTypedAt
 
 	e.clock.advance(50 * time.Second)
 	e.w = e.newWatcher()
 	e.s.idle = false
 	e.tick()
-	if got := e.callsAfter("clear"); len(got) != 1 {
+	if got := e.callsAfter("clear"); len(got) != 2 {
 		t.Fatalf("typed behind a failing probe: %v", got)
 	}
 	e.s.idle = true
 	e.tick()
 	got := e.callsAfter("clear")
-	if len(got) != 2 || got[1] != reloadSkillsCall {
+	if len(got) != 3 || got[2] != reloadSkillsCall {
 		t.Fatalf("calls after clear = %v, want the unconfirmed skills step typed again", got)
 	}
 	if st := e.state(); !st.ReloadTypedAt.Equal(typedAt) || st.ReloadStep != ReloadStepSkills {
 		t.Errorf("state = %+v, want the step and its first typing time kept", st)
+	}
+
+	// A restart at the plugins step, long past the timeout and with a turn end read, types /reload-plugins again and only that.
+	e2 := newWatchEnv(t)
+	e2.withSkills()
+	e2.reachClearing()
+	e2.tick() // plugins typed and moved past
+	e2.setState(func(st *State) {
+		st.ReloadStep, st.ReloadTypedAt = ReloadStepPlugins, e2.clock.now.Add(-200*time.Second)
+	})
+	e2.s.events = append(e2.s.events, stop("t"))
+	e2.w = e2.newWatcher()
+	e2.tick()
+	if got := e2.callsAfter("clear"); !slices.Equal(got, []string{reloadPluginsCall, reloadPluginsCall}) {
+		t.Fatalf("calls after clear = %v, want the plugins reload typed again and nothing else", got)
+	}
+	if st := e2.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepSkills || !st.ReloadTypedAt.IsZero() {
+		t.Errorf("state = %+v, want the move to the untyped skills step", st)
 	}
 }
 
@@ -1049,7 +1104,8 @@ func TestWatcher_ReloadRestartAroundTheRetryStep(t *testing.T) {
 		"t2": {Verified: true, Missing: []string{"ly:board"}},
 	}
 	e.reachClearing()
-	e.tick()
+	e.tick()        // plugins typed
+	e.tick()        // skills typed
 	e.endTurn("t1") // moves to the retry step, typed on the same tick
 	if st := e.state(); st.ReloadStep != ReloadStepRetry || len(st.ReloadRetry) != 1 || st.ReloadRetry[0] != "ly:board" {
 		t.Fatalf("state = %+v, want the retry step naming ly:board", st)
@@ -1059,7 +1115,7 @@ func TestWatcher_ReloadRestartAroundTheRetryStep(t *testing.T) {
 	e.w = e.newWatcher()
 	e.tick()
 	got := e.callsAfter("clear")
-	if len(got) != 3 || got[2] != "skills:ly:board" {
+	if len(got) != 4 || got[3] != "skills:ly:board" {
 		t.Fatalf("calls after clear = %v, want only the retry typed again", got)
 	}
 	e.endTurn("t2")
@@ -1109,17 +1165,18 @@ func TestWatcher_ReloadTypesNothingWhenIdleProbeFails(t *testing.T) {
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.reachClearing()
-	e.s.idleSeq = []bool{true, false, false}
-	e.tick() // clearing probe passes, skills typed
+	e.s.idleSeq = []bool{true, true, false, false}
+	e.tick() // clearing probe passes, plugins typed
+	e.tick() // probe passes, skills typed
 	e.s.events = append(e.s.events, stop("t1"))
 	e.tick() // confirmed, but the next probe fails
 	e.tick()
-	if got := e.callsAfter("clear"); len(got) != 1 {
+	if got := e.callsAfter("clear"); len(got) != 2 {
 		t.Fatalf("typed behind a failing probe: %v", got)
 	}
 	e.s.idle = true
 	e.tick()
-	if got := e.callsAfter("clear"); len(got) != 2 || !strings.HasPrefix(got[1], "send:") {
+	if got := e.callsAfter("clear"); len(got) != 3 || !strings.HasPrefix(got[2], "send:") {
 		t.Fatalf("calls after clear = %v", got)
 	}
 }
@@ -1131,16 +1188,16 @@ func TestWatcher_AutoCompactionReloadsSkillsRoleAndPointer(t *testing.T) {
 	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(boundary)}
 	e.s.usage["a"] = 100
 	e.endTurn("a")
-	if st := e.state(); st.Phase != PhaseResuming || !st.CompactionBaseline.Equal(boundary) {
-		t.Fatalf("state = %+v, want resuming with the baseline at the boundary", st)
+	if st := e.state(); st.Phase != PhaseResuming || !st.CompactionBaseline.Equal(boundary) || !st.ReloadSkipsSkills || st.ReloadStep != ReloadStepPointer {
+		t.Fatalf("state = %+v, want resuming at the pointer step with the baseline at the boundary", st)
 	}
 	if _, err := os.Stat(e.paths.RolePath); err != nil {
 		t.Errorf("role file not rendered: %v", err)
 	}
-	e.endTurn("t1")
+	e.tick() // the pointer, with no skills step in between
 	e.endTurn("resumed")
-	if got := e.s.calls; len(got) != 2 || got[0] != reloadSkillsCall {
-		t.Fatalf("calls = %v", got)
+	if got := e.s.calls; len(got) != 2 || got[0] != reloadPluginsCall || e.s.count("skills:") != 0 {
+		t.Fatalf("calls = %v, want the plugins reload then the pointer and no skills load", got)
 	}
 	pointer := e.s.calls[len(e.s.calls)-1]
 	if !strings.Contains(pointer, e.paths.RolePath) || strings.Contains(pointer, "note") {
@@ -1184,7 +1241,7 @@ func TestWatcher_AutoCompactionWaitsForIdleProbe(t *testing.T) {
 	}
 	e.s.idle = true
 	e.tick()
-	if e.s.count("skills:") != 1 {
+	if e.s.count(reloadPluginsCall) != 1 {
 		t.Fatalf("calls = %v", e.s.calls)
 	}
 }
@@ -1222,7 +1279,7 @@ func TestWatcher_AutoCompactionReloadsOnlyAFreshBoundary(t *testing.T) {
 				t.Fatalf("baseline = %v, want it left where it was", st.CompactionBaseline)
 			}
 			e.endTurn("b")
-			if e.s.count("skills:") != 1 {
+			if e.s.count(reloadPluginsCall) != 1 {
 				t.Fatalf("calls = %v, want the reload", e.s.calls)
 			}
 		}},
@@ -1350,6 +1407,7 @@ func TestWatcher_HandoffSendErrorResendsSamePathOnce(t *testing.T) {
 func TestWatcher_ResumeSendErrorResendsOnce(t *testing.T) {
 	e := newWatchEnv(t)
 	e.reachClearing()
+	e.tick() // plugins typed
 	e.s.sendErrs = []error{errBoom}
 	e.tickErr()
 	resume := e.s.calls[len(e.s.calls)-1]
@@ -1363,6 +1421,7 @@ func TestWatcher_ResumeSendErrorResendsOnce(t *testing.T) {
 func TestWatcher_ResumeSendErrorButLandedNoResend(t *testing.T) {
 	e := newWatchEnv(t)
 	e.reachClearing()
+	e.tick() // plugins typed
 	e.s.sendErrs = []error{errBoom}
 	e.tickErr()
 	sends := e.s.count("send:")
@@ -1381,6 +1440,7 @@ func TestWatcher_ClearTimeoutSendErrorResendsOnlyOncePassing(t *testing.T) {
 	e.clock.advance(101 * time.Second)
 	e.tick()
 	e.s.idle = true
+	e.tick() // plugins typed
 	e.s.sendErrs = []error{errBoom}
 	e.tickErr()
 	e.s.idle = false
@@ -1402,6 +1462,7 @@ func TestWatcher_ClearTimeoutSendErrorResendsOnlyOncePassing(t *testing.T) {
 func TestWatcher_ResumeSendErrorWhileTurnRunningNoResend(t *testing.T) {
 	e := newWatchEnv(t)
 	e.reachClearing()
+	e.tick() // plugins typed
 	e.s.sendErrs = []error{errBoom}
 	e.tickErr()
 	sends := e.s.count("send:")
@@ -1466,6 +1527,7 @@ func TestWatcher_ClearErrorsUntilTimeoutResumesWithoutCounting(t *testing.T) {
 	if st.Phase != PhaseResuming || st.CycleCount != 0 {
 		t.Fatalf("state = %+v", st)
 	}
+	e.tick() // the pointer follows the plugins reload
 	if !strings.HasPrefix(e.s.calls[len(e.s.calls)-1], "send:") {
 		t.Errorf("resume prompt not sent: %v", e.s.calls)
 	}
