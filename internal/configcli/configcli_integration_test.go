@@ -24,7 +24,7 @@ import (
 
 // TestConfigOverRealHub drives configuration edits through a real hub with one pair: a per-worktree module edit is synced into the pair's fabric worktree while the code side stays pristine, and a hub-wide module `--set` changes the hub file and commits it in _board with no per-worktree copy written.
 // Its steps run in this order on one hub and pair, so the scenario builds the hub once.
-// It does not call t.Parallel: it sets WEFT_SKIP_GIT and WEFT_SKIP_PUSH below, and t.Setenv panics under t.Parallel.
+// It does not call t.Parallel: it sets FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH below, and t.Setenv panics under t.Parallel.
 func TestConfigOverRealHub(t *testing.T) {
 	const slug = "config-hub-test"
 
@@ -40,9 +40,9 @@ func TestConfigOverRealHub(t *testing.T) {
 	fabricWorktreePath := fabricengine.RecordsWorktreePath(h.Location, slug)
 	boardDir := fabricengine.BoardDir(h.Location.HubPath)
 
-	// Explicitly clear WEFT_SKIP_GIT and WEFT_SKIP_PUSH so the commits are not silent no-ops.
-	t.Setenv("WEFT_SKIP_GIT", "")
-	t.Setenv("WEFT_SKIP_PUSH", "")
+	// Explicitly clear FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH so the commits are not silent no-ops.
+	t.Setenv("FABRIC_SKIP_GIT", "")
+	t.Setenv("FABRIC_SKIP_PUSH", "")
 
 	if !t.Run("per-worktree edit is synced into the fabric worktree and the code side stays pristine", func(t *testing.T) {
 		codeLayout, err := lyxcwd.Resolve(codeWorktreePath)

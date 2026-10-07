@@ -39,8 +39,8 @@ import (
 //
 //testtiming:keep Unwire removing every on-disk fabric junction including one absent from the pathspec; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "unwire-removes-stale"
 	h := hubforge.NewHub(t, ".")
@@ -95,8 +95,8 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 //
 //testtiming:keep weft-side _lyx and .lyx surviving Unwire with their content, WeftContent "preserved" and no clear commit in the weft log; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_PreservesWeftLyxAndOptionalContent(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "unwire-preserves-lyx-and-extra"
 	h := hubforge.NewHub(t, ".")
@@ -206,8 +206,8 @@ func TestUnwireVerbResult_HasNoGitignoreField(t *testing.T) {
 //
 //testtiming:keep a second Unwire call against an already torn-down pair being a clean no-op; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	h := hubforge.NewHub(t, ".")
 
@@ -241,8 +241,8 @@ func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
 //
 //testtiming:keep the repo-wide weft:main records surviving a worktree's Unwire so a later reconcile can re-wire; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "unwire-preserves-repo-wide-records"
 	h := hubforge.NewHub(t, ".")

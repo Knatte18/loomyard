@@ -432,7 +432,7 @@
 // resets the pair's code checkout through fabricengine's pair-checkout reset with the plan's SHA, the parent branch from the origin record and the own paths,
 // clears State.PreFixHead, saves, and fabric-syncs state.json.
 // It changes no other webster state; `run --fresh` or a plain `run` does the rest, as the way-forward texts order them.
-// The reset also moves the task branch on the remote to the same commit, so a later push is not rejected as diverged; `WEFT_SKIP_PUSH=1` skips that half.
+// The reset also moves the task branch on the remote to the same commit, so a later push is not rejected as diverged; `FABRIC_SKIP_PUSH=1` skips that half.
 // The bound: it can discard only commits above a run-recorded commit on the task's own branch, on the checkout and on the remote, and uncommitted tracked changes to paths the run itself wrote.
 // The remote update is made only when every commit it drops is reachable from the task worktree's HEAD and under a lease on the remote tip it read;
 // a remote-only commit becomes reachable only through the `git merge --strategy ours` the operator runs after reading the commits the refusal lists.

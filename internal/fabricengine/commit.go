@@ -104,7 +104,7 @@ var spawnDetachedPushFn = SpawnDetachedPush
 // an empty files list,
 // or unchanged content on every side) spawns no detached child.
 // The push is unconditional on opts here;
-// skip-env gating (WEFT_SKIP_GIT/WEFT_SKIP_PUSH) is handled inside SpawnDetachedPush itself, per
+// skip-env gating (FABRIC_SKIP_GIT/FABRIC_SKIP_PUSH) is handled inside SpawnDetachedPush itself, per
 // the async-push-both-sides-via-detached-child Shared Decision — the WarpCommitted || WeftCommitted
 // guard here is a separate "did anything land" gate, not an opts gate.
 func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts SyncOptions) (res CommitResult, err error) {

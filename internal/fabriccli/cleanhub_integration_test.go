@@ -539,7 +539,7 @@ func TestRunCLI_AnchoredHubScenario(t *testing.T) {
 			if code == 0 {
 				t.Fatalf("RunCLI(pairs) from weft sibling = 0; want a refusal\noutput: %s", output)
 			}
-			envelope.RequireErr(t, output, "weft sibling of a pair")
+			envelope.RequireErr(t, output, "records sibling of a pair")
 		}},
 	}
 	for _, step := range steps {

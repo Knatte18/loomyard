@@ -103,8 +103,8 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 // <worktree>/<anchorRel> — so a root sweep saw nothing, left the links behind, and reported
 // LinksRemoved: 0 while two junctions existed one directory down.
 func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "remove-anchored-sweep"
 	const anchor = "backend"
@@ -153,8 +153,8 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 // refuses it, and asserts Remove reports the surviving weft worktree instead of returning success —
 // the silent `_ =` swallow used to leave a half-torn pair behind with an ok verdict.
 func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "remove-locked-pair"
 	h := hubforge.NewHub(t, ".")

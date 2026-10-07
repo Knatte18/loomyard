@@ -69,8 +69,8 @@ func TestHubContainment_CloneWiresNoBoardJunction(t *testing.T) {
 // pair's anchored directory carries no _board junction and no _board line in the warp repo's
 // .git/info/exclude — the add-time call this batch deleted used to wire both.
 func TestHubContainment_AddWiresNoBoardJunction(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "hubcontainment-add"
 	h := hubforge.NewHub(t, ".")
@@ -99,8 +99,8 @@ func TestHubContainment_AddWiresNoBoardJunction(t *testing.T) {
 // .git/info/exclude — reconcile is the verb that used to re-wire the link unconditionally on every
 // pass, regardless of junction health.
 func TestHubContainment_ReconcileWiresNoBoardJunction(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "hubcontainment-reconcile"
 	h := hubforge.NewHub(t, ".")

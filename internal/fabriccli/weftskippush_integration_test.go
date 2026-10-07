@@ -1,6 +1,6 @@
 //go:build integration
 
-// weftskippush_integration_test.go covers the fabric CLI's content-sync verbs ("push", "sync") against one real hub with WEFT_SKIP_PUSH set, so the detached push child does no network work:
+// weftskippush_integration_test.go covers the fabric CLI's content-sync verbs ("push", "sync") against one real hub with FABRIC_SKIP_PUSH set, so the detached push child does no network work:
 // the env-to-SyncOptions mapping at the CLI edge, and the sync pathspec still covering _lyx when the repo-wide config names only another path.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
@@ -20,19 +20,19 @@ import (
 )
 
 // TestRunCLI_WeftSkipPushScenario runs the push and sync checks over one hub.
-// It stays serial (no t.Parallel): t.Setenv("WEFT_SKIP_PUSH", "1") panics under t.Parallel, and the env var is process-global state.
+// It stays serial (no t.Parallel): t.Setenv("FABRIC_SKIP_PUSH", "1") panics under t.Parallel, and the env var is process-global state.
 // Steps run serially in this order, because both rewrite the weft placeholder file and each commit must differ from the last.
 func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 
 	// Prevent the detached push child from doing any real network work;
 	// SpawnDetachedPush itself checks this env var before spawning.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	weftConfigFile := filepath.Join(h.WeftBase, lyxdirs.LyxDirName, "placeholder")
 
 	if !t.Run("EnvMapToOption", func(t *testing.T) {
-		// The CLI edge maps WEFT_SKIP_PUSH to SyncOptions on the push verb.
+		// The CLI edge maps FABRIC_SKIP_PUSH to SyncOptions on the push verb.
 		// Fabric config is a repo-wide fact read from the board dir: fabriccli.CloneAndWire already materializes it with the plain registered template as part of building h, so nothing further needs seeding here.
 		if err := os.WriteFile(weftConfigFile, []byte("modified"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
@@ -51,10 +51,10 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 		envelope.RequireOK(t, output)
 
 		if got := gitOutputCLI(t, h.RecordsBare, "for-each-ref", "refs/heads/"+weftBranch); got != weftBareBefore {
-			t.Errorf("weft bare %s = %s; want %s (WEFT_SKIP_PUSH must push nothing)", weftBranch, got, weftBareBefore)
+			t.Errorf("weft bare %s = %s; want %s (FABRIC_SKIP_PUSH must push nothing)", weftBranch, got, weftBareBefore)
 		}
 		if got := gitkit.RevParse(t, h.CodeBare, "HEAD"); got != warpBareBefore {
-			t.Errorf("warp bare HEAD = %s; want %s (WEFT_SKIP_PUSH must push nothing)", got, warpBareBefore)
+			t.Errorf("warp bare HEAD = %s; want %s (FABRIC_SKIP_PUSH must push nothing)", got, warpBareBefore)
 		}
 	}) {
 		return

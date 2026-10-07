@@ -481,8 +481,8 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 // warp junctions pointing at directories that vanished with it, so the pair stayed unhealthy — with
 // a raw EvalSymlinks error as its reported reason — until a SECOND reconcile ran.
 func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "reconcile-recreated-pair"
 	h := hubforge.NewHub(t, ".")
@@ -529,8 +529,8 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 // the dry run and the apply, and --apply alone (no --force) actually deletes it — an orphan weft
 // branch is deletable under --apply alone, with no fold-back gate standing between it and deletion.
 func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "cleanup-dryrun-parity"
 	h := hubforge.NewHub(t, ".")
@@ -596,8 +596,8 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 // branch beside a genuine orphan, so both a protected and an unprotected verdict are in the
 // comparison — and then confirms the apply pass with force=true deletes exactly the orphan.
 func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "cleanup-force-reserved"
 	h := hubforge.NewHub(t, ".")

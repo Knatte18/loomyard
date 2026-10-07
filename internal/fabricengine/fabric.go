@@ -99,12 +99,12 @@ type SyncOptions struct {
 	SkipPush bool // Skip push operations if true; affects push only.
 }
 
-// EnvSyncOptions reads the WEFT_SKIP_GIT and WEFT_SKIP_PUSH environment variables and returns the
+// EnvSyncOptions reads the FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH environment variables and returns the
 // SyncOptions they describe — the uniform test/CI bypass gate for every weft-touching operation.
 func EnvSyncOptions() SyncOptions {
 	return SyncOptions{
-		SkipGit:  os.Getenv("WEFT_SKIP_GIT") == "1",
-		SkipPush: os.Getenv("WEFT_SKIP_PUSH") == "1",
+		SkipGit:  os.Getenv("FABRIC_SKIP_GIT") == "1",
+		SkipPush: os.Getenv("FABRIC_SKIP_PUSH") == "1",
 	}
 }
 
@@ -135,7 +135,7 @@ func RequireWarpWorktree(l *lyxcwd.Location) error {
 	name := filepath.Base(l.WorktreePath())
 
 	if strings.HasSuffix(name, weftname.Suffix) {
-		return fmt.Errorf("%w: %s is the weft sibling of a pair, not a warp worktree; run lyx from the paired warp worktree instead",
+		return fmt.Errorf("%w: %s is the records sibling of a pair, not a warp worktree; run lyx from the paired warp worktree instead",
 			ErrNotAWarpWorktree, l.WorktreePath())
 	}
 	if name == BoardDirName {

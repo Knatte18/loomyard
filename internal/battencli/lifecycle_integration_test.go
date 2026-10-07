@@ -981,8 +981,8 @@ func stepRecordsPrimeRefusal(t *testing.T, h *hubforge.Hub) {
 			if exitCode != 1 {
 				t.Fatalf("RunCLIIn(%s) from the records prime exit code = %d; want 1; output: %s", verb, exitCode, out.String())
 			}
-			if !strings.Contains(out.String(), "weft sibling") {
-				t.Errorf("%s refusal = %q; want it to name the weft sibling", verb, out.String())
+			if !strings.Contains(out.String(), "records sibling") {
+				t.Errorf("%s refusal = %q; want it to name the records sibling", verb, out.String())
 			}
 			if !strings.Contains(out.String(), "prime worktree only") {
 				t.Errorf("%s refusal = %q; want the prime-only wording", verb, out.String())

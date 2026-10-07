@@ -32,13 +32,13 @@ import (
 // Shared Decision's spawn point.
 // Either flag is omitted from the child's args when its corresponding path is empty;
 // the caller may pass one or both paths.
-// Returns nil immediately, forking no child, when WEFT_SKIP_GIT or WEFT_SKIP_PUSH is set (skip-env
+// Returns nil immediately, forking no child, when FABRIC_SKIP_GIT or FABRIC_SKIP_PUSH is set (skip-env
 // gating is helper-internal, matching the pre-consolidation fabriccli.spawnPush) or when both paths
 // are empty — there is nothing to push.
 // The child is started but never Waited,
 // and its stdin/stdout/stderr are left nil so no handle is inherited from the parent.
 func SpawnDetachedPush(warpPath, weftPath string) error {
-	if os.Getenv("WEFT_SKIP_GIT") == "1" || os.Getenv("WEFT_SKIP_PUSH") == "1" {
+	if os.Getenv("FABRIC_SKIP_GIT") == "1" || os.Getenv("FABRIC_SKIP_PUSH") == "1" {
 		return nil
 	}
 	if warpPath == "" && weftPath == "" {

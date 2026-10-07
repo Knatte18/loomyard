@@ -186,7 +186,7 @@
 // the warp commit and the async push both proceed regardless of `opts.SkipGit`, a deliberate
 // narrowing of `SyncOptions.SkipGit`'s general "skip all git operations if true" contract for this
 // one entry point. `opts.SkipPush` is likewise **not consulted** by the async push at all: the
-// detached both-sides push gates only on the `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` environment
+// detached both-sides push gates only on the `FABRIC_SKIP_GIT`/`FABRIC_SKIP_PUSH` environment
 // variables, checked helper-internally inside `SpawnDetachedPush` (per the
 // async-push-both-sides-via-detached-child Shared Decision) — so a caller passing
 // `SyncOptions{SkipPush: true}` to `Fabric.Commit` still triggers the fire-and-forget push unless

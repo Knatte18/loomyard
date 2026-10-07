@@ -221,8 +221,8 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 // explanation rather than only an exit code. The everyday cause is a branch already checked out in
 // another worktree, and "git exit 128" alone leaves the operator nothing to act on.
 func TestCheckout_WarpSwitchFailureCarriesGitStderr(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "checkout-stderr"
 	h := hubforge.NewHub(t, ".")
