@@ -28,6 +28,16 @@
 // One API message can appear on several transcript lines, and a fork repeats its
 // parent's context, so usage is counted once per message id within a run.
 //
+// One fork is one sub-agent transcript of a session whose role is webster; the report's
+// "Webster forks" section lists every such fork of every run, by run as listed and then by
+// start time, with the cards it ran, its counted messages, its peak context (the largest
+// input + cache write + cache read of any counted message) and its weight.
+// A fork's cards are read from its prompt, never from commit times: the prompt is the first
+// tool result in the fork's transcript holding a card pointer line, a "- `<path>/NN-<slug>.md`"
+// bullet with nothing after the closing backtick (a Read result's line-number prefix is
+// ignored), and the cards are every such line of that one result.
+// A fork whose transcript has no such result is listed as unattributed.
+//
 // The weight column is input + 1.25 x cache writes + 0.1 x cache reads + 5 x output: a
 // relative figure for ranking roles, not a price, and blind to the per-model price
 // difference shown in the models column.

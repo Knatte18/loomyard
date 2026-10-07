@@ -41,10 +41,27 @@ type RoleTally struct {
 	Models   map[string]int // assistant messages per model
 }
 
+// ForkTally is the usage of one Webster fork: one sub-agent transcript of a session whose role is webster.
+type ForkTally struct {
+	Slug string
+	// File is the transcript's file name.
+	File string
+	// Cards are the card ids (NN-<slug>) the fork's prompt names, empty when unattributed.
+	Cards []string
+	// Messages counts the assistant messages tallied for the fork.
+	Messages int
+	// PeakContext is the largest input + cache write + cache read of any counted message.
+	PeakContext int
+	Usage       Usage
+	// Started is the timestamp of the transcript's first line that carries one.
+	Started time.Time
+}
+
 // RunTally is one task run's usage, split by role.
 type RunTally struct {
 	Slug       string
 	Roles      map[string]*RoleTally
+	Forks      []ForkTally
 	Duplicates int // transcript lines skipped as a repeat of a message already counted
 }
 
@@ -53,11 +70,70 @@ type line struct {
 	Type        string `json:"type"`
 	CustomTitle string `json:"customTitle"`
 	UUID        string `json:"uuid"`
+	Timestamp   string `json:"timestamp"`
 	Message     *struct {
-		ID    string `json:"id"`
-		Model string `json:"model"`
-		Usage *Usage `json:"usage"`
+		ID      string          `json:"id"`
+		Model   string          `json:"model"`
+		Usage   *Usage          `json:"usage"`
+		Content json.RawMessage `json:"content"`
 	} `json:"message"`
+}
+
+// websterMasterRole is the role of the session whose sub-agents are Webster forks.
+const websterMasterRole = "webster"
+
+var (
+	readLinePrefix = regexp.MustCompile(`^\d+\t`)
+	cardPointer    = regexp.MustCompile("^- `(?:[^`]*/)?(\\d\\d-[^/`]+)\\.md`$")
+)
+
+// cardPointers returns the card ids of every card pointer line in text, in order; a Read
+// result's line-number prefix is ignored.
+func cardPointers(text string) []string {
+	var cards []string
+	for _, raw := range strings.Split(text, "\n") {
+		m := cardPointer.FindStringSubmatch(strings.TrimRight(readLinePrefix.ReplaceAllString(raw, ""), "\r"))
+		if m != nil && m[1] != "00-overview" {
+			cards = append(cards, m[1])
+		}
+	}
+	return cards
+}
+
+// toolResultTexts returns the text of every tool result in a user message's content, which is
+// a string or a list of items; a tool result's own content is likewise a string or a list of
+// text items.
+func toolResultTexts(content json.RawMessage) []string {
+	var items []struct {
+		Type    string          `json:"type"`
+		Content json.RawMessage `json:"content"`
+	}
+	if json.Unmarshal(content, &items) != nil {
+		return nil
+	}
+	var texts []string
+	for _, item := range items {
+		if item.Type != "tool_result" {
+			continue
+		}
+		var text string
+		if json.Unmarshal(item.Content, &text) == nil {
+			texts = append(texts, text)
+			continue
+		}
+		var parts []struct {
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(item.Content, &parts) != nil {
+			continue
+		}
+		var joined []string
+		for _, p := range parts {
+			joined = append(joined, p.Text)
+		}
+		texts = append(texts, strings.Join(joined, "\n"))
+	}
+	return texts
 }
 
 var nonAlnum = regexp.MustCompile(`[^A-Za-z0-9]`)
@@ -138,7 +214,7 @@ func CountRun(dir, slug string) (RunTally, error) {
 			return RunTally{}, err
 		}
 		role := roleOf(title)
-		if err := run.countFile(session, role, seen); err != nil {
+		if err := run.countFile(session, role, seen, nil); err != nil {
 			return RunTally{}, err
 		}
 		subs, err := filepath.Glob(filepath.Join(strings.TrimSuffix(session, ".jsonl"), "subagents", "*.jsonl"))
@@ -147,11 +223,19 @@ func CountRun(dir, slug string) (RunTally, error) {
 		}
 		sort.Strings(subs)
 		for _, sub := range subs {
-			if err := run.countFile(sub, role+"+sub", seen); err != nil {
+			var fork *ForkTally
+			if role == websterMasterRole {
+				fork = &ForkTally{Slug: slug, File: filepath.Base(sub)}
+			}
+			if err := run.countFile(sub, role+"+sub", seen, fork); err != nil {
 				return RunTally{}, err
+			}
+			if fork != nil {
+				run.Forks = append(run.Forks, *fork)
 			}
 		}
 	}
+	sort.SliceStable(run.Forks, func(i, j int) bool { return run.Forks[i].Started.Before(run.Forks[j].Started) })
 	return run, nil
 }
 
@@ -165,7 +249,9 @@ func latestTitle(path string) (string, error) {
 	return title, err
 }
 
-func (run *RunTally) countFile(path, role string, seen map[string]bool) error {
+// countFile tallies one transcript under role; a non-nil fork also receives the transcript's
+// own tally and card attribution.
+func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *ForkTally) error {
 	tally := run.Roles[role]
 	if tally == nil {
 		tally = &RoleTally{Role: role, Models: map[string]int{}}
@@ -173,6 +259,9 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool) error {
 	}
 	tally.Sessions++
 	return eachLine(path, func(l line) {
+		if fork != nil {
+			fork.observe(l)
+		}
 		if l.Type != "assistant" || l.Message == nil || l.Message.Usage == nil {
 			return
 		}
@@ -187,7 +276,32 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool) error {
 		seen[id] = true
 		tally.Usage.add(*l.Message.Usage)
 		tally.Models[l.Message.Model]++
+		if fork != nil {
+			fork.Messages++
+			fork.Usage.add(*l.Message.Usage)
+			u := l.Message.Usage
+			fork.PeakContext = max(fork.PeakContext, u.Input+u.CacheCreate+u.CacheRead)
+		}
 	})
+}
+
+// observe records a line's timestamp and, until a card pointer has been found, its card
+// attribution: the fork's prompt is the first tool result holding a card pointer line.
+func (f *ForkTally) observe(l line) {
+	if f.Started.IsZero() && l.Timestamp != "" {
+		if t, err := time.Parse(time.RFC3339Nano, l.Timestamp); err == nil {
+			f.Started = t
+		}
+	}
+	if f.Cards != nil || l.Type != "user" || l.Message == nil {
+		return
+	}
+	for _, text := range toolResultTexts(l.Message.Content) {
+		if cards := cardPointers(text); len(cards) > 0 {
+			f.Cards = cards
+			return
+		}
+	}
 }
 
 // eachLine calls fn for every line of a JSONL file that parses, skipping any that do not.
@@ -243,6 +357,20 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 		fmt.Fprintf(w, "## %s\n\n", run.Slug)
 		writeTable(w, run.Roles)
 	}
+
+	fmt.Fprintf(w, "## Webster forks\n\n")
+	fmt.Fprintln(w, "| run | cards | messages | peak context | weight |")
+	fmt.Fprintln(w, "|---|---|---|---|---|")
+	for _, run := range r.Runs {
+		for _, f := range run.Forks {
+			cards := "unattributed"
+			if len(f.Cards) > 0 {
+				cards = strings.Join(f.Cards, ", ")
+			}
+			fmt.Fprintf(w, "| %s | %s | %d | %d | %.1fM |\n", f.Slug, cards, f.Messages, f.PeakContext, f.Usage.Weight()/1e6)
+		}
+	}
+	fmt.Fprintln(w)
 	return nil
 }
 
