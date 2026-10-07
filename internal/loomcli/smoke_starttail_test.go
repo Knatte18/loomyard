@@ -97,10 +97,8 @@ func TestSmokeStart_AttachTailAddsNoOperatorStrand(t *testing.T) {
 	}
 }
 
-// TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon pins that a `lyx loom start --no-attach` bootstrap leaves a live per-hub watchdog daemon for the fixture hub, found by the same
-// argv-signature scan the smoke teardown uses. This is what proves the watchdog spawn fires on every start, not only on an attaching one --
-// the single thing a later edit is most likely to get wrong -- which is the
-// one property start_watchdog_test.go structurally cannot reach (see its own doc comment).
+// TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon pins that a `lyx loom start --no-attach` bootstrap leaves a live per-hub watchdog daemon for the fixture hub, found by the same argv-signature scan the smoke teardown uses.
+// This is what proves the watchdog spawn fires on every start, not only on an attaching one -- the single thing a later edit is most likely to get wrong -- which is the one property start_watchdog_test.go structurally cannot reach (see its own doc comment).
 func TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon(t *testing.T) {
 	tmuxBinaryPath(t)
 	exe := sharedLyxBinary(t)

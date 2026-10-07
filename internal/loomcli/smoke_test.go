@@ -581,13 +581,12 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		}
 	})
 
-	// The handshake's died-child disposition -- a driver rigged to die immediately does NOT make
-	// the bootstrap refuse. dispositionForHandshake maps awaitRunLockChildDied onto proceed, and
-	// deliberately so: a child already gone before the handshake's first poll is a driver that RAN AND
-	// FINISHED, and refusing there would tell an operator the bootstrap broke when in fact their task
-	// halted, while withholding the success envelope. Only
-	// awaitRunLockDeadline -- a child still alive after the whole attempt budget, never having taken the
-	// lock -- is a genuine refusal, and a dying driver cannot produce that.
+	// The handshake's died-child disposition -- a driver rigged to die immediately does NOT make the bootstrap refuse.
+	// dispositionForHandshake maps awaitRunLockChildDied onto proceed, and deliberately so:
+	// a child already gone before the handshake's first poll is a driver that RAN AND FINISHED,
+	// and refusing there would tell an operator the bootstrap broke when in fact their task halted, while withholding the success envelope.
+	// Only awaitRunLockDeadline -- a child still alive after the whole attempt budget, never having taken the lock -- is a genuine refusal,
+	// and a dying driver cannot produce that.
 	//
 	// What it pins is the disposition that actually ships, plus the two properties that make it safe:
 	// the driver log carries the real reason the run halted, and the bootstrap lock is released rather

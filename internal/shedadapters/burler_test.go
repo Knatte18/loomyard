@@ -891,11 +891,9 @@ func TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer(t *testing.T)
 	}
 }
 
-// TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically is the regression
-// guard for the resume hole: probeLiveRound must pass p.opts.Gate, followed by the round's own
-// review-parse entry, into the gated attach, leaving the caller's gate list as it was, and an
-// attached round's failed gate -- a told entry or the review entry -- must map identically to the
-// spawn path's -- Stuck with an empty pointer, archived, retry untouched.
+// TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically is the regression guard for the resume hole:
+// probeLiveRound must pass p.opts.Gate, followed by the round's own review-parse entry, into the gated attach, leaving the caller's gate list as it was,
+// and an attached round's failed gate -- a told entry or the review entry -- must map identically to the spawn path's -- Stuck with an empty pointer, archived, retry untouched.
 // The round's review file holds unparseable content, so the review entry fails whenever it is reached.
 func TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically(t *testing.T) {
 	tests := []struct {
@@ -923,10 +921,8 @@ func TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdenticall
 				return shuttleengine.GateResult{Passed: tt.toldPasses}, nil
 			}}}}
 			p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(opts), withAttach(attach), withBurlerClock(fixedClock(time.Now())))
-			// Only the review file exists at Call entry -- a complete pair here would make
-			// highestCompleteRound treat round 1 as already finished and hand back before probeLiveRound is
-			// ever reached, exactly as the pre-existing attach tests in this file are careful to leave
-			// incomplete.
+			// Only the review file exists at Call entry -- a complete pair here would make highestCompleteRound treat round 1 as already finished and hand back before probeLiveRound is ever reached,
+			// exactly as the pre-existing attach tests in this file are careful to leave incomplete.
 			writeRoundFile(t, reviewPath)
 
 			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
