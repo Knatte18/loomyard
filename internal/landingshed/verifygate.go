@@ -99,8 +99,8 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 // An empty publishCommand runs nothing and logs nothing.
 // The plan's verify command is the site's BaseCommand, so the pass keeps the plan-verify entry of the record.
 //
-// It returns a non-empty Stuck reason naming `publish_verify` when the command fails or the tree is dirty,
-// a non-nil error for an infrastructure fault or a cancellation, and ("", nil) when the producer may proceed.
+// It returns a non-empty Stuck reason naming `publish_verify` when the command fails or the tree is dirty.
+// It returns a non-nil error for an infrastructure fault or a cancellation, and ("", nil) when the producer may proceed.
 func (g verifyGate) checkPublishVerify(ctx context.Context, producer, parentBranch, publishCommand string) (string, error) {
 	if publishCommand == "" {
 		return "", nil
