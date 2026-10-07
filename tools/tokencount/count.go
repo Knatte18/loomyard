@@ -213,18 +213,15 @@ type Report struct {
 	Runs []RunTally
 }
 
-// WriteMarkdown writes the overview first: each run's share of the whole, then each role
-// summed over all runs.
-// One table per run follows.
+// WriteMarkdown writes the total first, each role summed over all runs, then one table per run.
 func (r Report) WriteMarkdown(w io.Writer) error {
 	total := map[string]*RoleTally{}
 	duplicates := 0
-	runWeights := make([]float64, len(r.Runs))
 	grand := 0.0
-	for i, run := range r.Runs {
+	for _, run := range r.Runs {
 		duplicates += run.Duplicates
 		for role, t := range run.Roles {
-			runWeights[i] += t.Usage.Weight()
+			grand += t.Usage.Weight()
 			sum := total[role]
 			if sum == nil {
 				sum = &RoleTally{Role: role, Models: map[string]int{}}
@@ -236,29 +233,9 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 				sum.Models[model] += n
 			}
 		}
-		grand += runWeights[i]
 	}
 
 	fmt.Fprintf(w, "## All runs\n\n")
-	fmt.Fprintln(w, "| run | sessions | weight | share |")
-	fmt.Fprintln(w, "|---|---|---|---|")
-	order := make([]int, len(r.Runs))
-	for i := range order {
-		order[i] = i
-	}
-	sort.SliceStable(order, func(a, b int) bool { return runWeights[order[a]] > runWeights[order[b]] })
-	for _, i := range order {
-		sessions := 0
-		for _, t := range r.Runs[i].Roles {
-			sessions += t.Sessions
-		}
-		share := 0.0
-		if grand > 0 {
-			share = 100 * runWeights[i] / grand
-		}
-		fmt.Fprintf(w, "| %s | %d | %.1fM | %.1f%% |\n", r.Runs[i].Slug, sessions, runWeights[i]/1e6, share)
-	}
-	fmt.Fprintln(w)
 	writeTable(w, total)
 	fmt.Fprintf(w, "Total weight %.1fM; %d repeated transcript lines skipped.\n\n", grand/1e6, duplicates)
 
