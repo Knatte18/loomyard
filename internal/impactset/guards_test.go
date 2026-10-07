@@ -67,14 +67,14 @@ func TestFindGuardTests(t *testing.T) {
 			wantErr: "p_test.go:4",
 		},
 		{
-			name:    "a marker in a tmux file fails with the file",
+			name:    "a marker in a tmux file fails with its line",
 			file:    "//go:build tmux\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
-			wantErr: "p_test.go",
+			wantErr: "p_test.go:5",
 		},
 		{
-			name:    "a marker in an llm file fails with the file",
+			name:    "a marker in an llm file fails with its line",
 			file:    "//go:build llm && linux\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
-			wantErr: "p_test.go",
+			wantErr: "p_test.go:5",
 		},
 	}
 	for _, tt := range tests {

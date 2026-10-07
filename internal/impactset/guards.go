@@ -72,6 +72,7 @@ func guardNamesInFile(path, rel string) ([]string, error) {
 	}
 
 	var names []string
+	firstMarkerLine := 0
 	placed := map[*ast.Comment]bool{}
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
@@ -86,6 +87,9 @@ func guardNamesInFile(path, rel string) ([]string, error) {
 				continue
 			}
 			placed[comment] = true
+			if firstMarkerLine == 0 {
+				firstMarkerLine = fset.Position(comment.Pos()).Line
+			}
 			names = append(names, fn.Name.Name)
 		}
 	}
@@ -99,7 +103,7 @@ func guardNamesInFile(path, rel string) ([]string, error) {
 		}
 	}
 	if len(names) > 0 && !compiledUnderIntegration(file) {
-		return nil, &GuardScanError{message: fmt.Sprintf("impactset: %s: marks a guard test in a file no integration-tier run compiles", rel)}
+		return nil, &GuardScanError{message: fmt.Sprintf("impactset: %s:%d: %s marks a guard test in a file no integration-tier run compiles", rel, firstMarkerLine, guardMarker)}
 	}
 	return names, nil
 }
