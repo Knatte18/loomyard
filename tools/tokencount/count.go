@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
 // Usage is a token tally: one message's usage, or a sum over many.
@@ -41,11 +43,33 @@ type RoleTally struct {
 	Models   map[string]int // assistant messages per model
 }
 
+// ForkTally is the usage of one Webster fork: one sub-agent transcript of a session whose role is webster.
+type ForkTally struct {
+	Slug string
+	// File is the transcript's file name.
+	File string
+	// Cards are the card ids (NN-<slug>) the fork's prompt names, empty when unattributed.
+	Cards []string
+	// Messages counts the assistant messages tallied for the fork.
+	Messages int
+	// PeakContext is the largest input + cache write + cache read of any counted message.
+	PeakContext int
+	Usage       Usage
+	// Started is the timestamp of the transcript's first line that carries one.
+	Started time.Time
+}
+
 // RunTally is one task run's usage, split by role.
 type RunTally struct {
 	Slug       string
 	Roles      map[string]*RoleTally
+	Forks      []ForkTally
 	Duplicates int // transcript lines skipped as a repeat of a message already counted
+	// BaseSHA is the start_sha of the earliest successful begin-batch result in the run's webster sessions, the HEAD before its first batch forked;
+	// empty when there is none.
+	BaseSHA string
+	// baseAt is the timestamp of the result BaseSHA came from.
+	baseAt time.Time
 }
 
 // line is the part of a transcript line tokencount reads.
@@ -53,11 +77,149 @@ type line struct {
 	Type        string `json:"type"`
 	CustomTitle string `json:"customTitle"`
 	UUID        string `json:"uuid"`
+	Timestamp   string `json:"timestamp"`
 	Message     *struct {
-		ID    string `json:"id"`
-		Model string `json:"model"`
-		Usage *Usage `json:"usage"`
+		ID      string          `json:"id"`
+		Model   string          `json:"model"`
+		Usage   *Usage          `json:"usage"`
+		Content json.RawMessage `json:"content"`
 	} `json:"message"`
+}
+
+// websterMasterRole is the role of the session whose sub-agents are Webster forks.
+const websterMasterRole = "webster"
+
+var (
+	readLinePrefix = regexp.MustCompile(`^\d+\t`)
+	cardPointer    = regexp.MustCompile("^- `(?:[^`]*/)?(\\d\\d-[^/`]+)\\.md`$")
+)
+
+// cardPointers returns the card ids of every card pointer line in text, in order;
+// a Read result's line-number prefix is ignored.
+func cardPointers(text string) []string {
+	var cards []string
+	for _, raw := range strings.Split(text, "\n") {
+		m := cardPointer.FindStringSubmatch(strings.TrimRight(readLinePrefix.ReplaceAllString(raw, ""), "\r"))
+		if m != nil && m[1] != "00-overview" {
+			cards = append(cards, m[1])
+		}
+	}
+	return cards
+}
+
+// toolResultItem is one tool result of a user message: the tool use it answers and its text.
+type toolResultItem struct {
+	UseID string
+	Text  string
+}
+
+// toolResultItems returns every tool result in a user message's content, which is a string or a list of items;
+// a tool result's own content is likewise a string or a list of text items.
+func toolResultItems(content json.RawMessage) []toolResultItem {
+	var items []struct {
+		Type      string          `json:"type"`
+		ToolUseID string          `json:"tool_use_id"`
+		Content   json.RawMessage `json:"content"`
+	}
+	if json.Unmarshal(content, &items) != nil {
+		return nil
+	}
+	var results []toolResultItem
+	for _, item := range items {
+		if item.Type != "tool_result" {
+			continue
+		}
+		var text string
+		if json.Unmarshal(item.Content, &text) == nil {
+			results = append(results, toolResultItem{item.ToolUseID, text})
+			continue
+		}
+		var parts []struct {
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(item.Content, &parts) != nil {
+			continue
+		}
+		var joined []string
+		for _, p := range parts {
+			joined = append(joined, p.Text)
+		}
+		results = append(results, toolResultItem{item.ToolUseID, strings.Join(joined, "\n")})
+	}
+	return results
+}
+
+// toolResultTexts returns the text of every tool result in a user message's content.
+func toolResultTexts(content json.RawMessage) []string {
+	var texts []string
+	for _, item := range toolResultItems(content) {
+		texts = append(texts, item.Text)
+	}
+	return texts
+}
+
+// beginBatchCommand matches a Bash command that invokes the webster begin-batch verb.
+var beginBatchCommand = regexp.MustCompile(`\blyx\s+webster\s+begin-batch\b`)
+
+// bashCommands returns the command of every Bash tool use in an assistant message's content, keyed by tool use id.
+func bashCommands(content json.RawMessage) map[string]string {
+	var items []struct {
+		Type  string `json:"type"`
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Input struct {
+			Command string `json:"command"`
+		} `json:"input"`
+	}
+	if json.Unmarshal(content, &items) != nil {
+		return nil
+	}
+	commands := map[string]string{}
+	for _, item := range items {
+		if item.Type == "tool_use" && item.Name == "Bash" {
+			commands[item.ID] = item.Input.Command
+		}
+	}
+	return commands
+}
+
+// recordBase scans one webster session for begin-batch result envelopes and keeps the start_sha of the earliest-timestamped one across every session of the run.
+// An envelope is a tool result answering a begin-batch Bash call whose text is a JSON object with a non-empty start_sha;
+// a refusal carries none.
+func (run *RunTally) recordBase(path string) error {
+	beginBatchUses := map[string]bool{}
+	return eachLine(path, func(l line) {
+		if l.Message == nil {
+			return
+		}
+		switch l.Type {
+		case "assistant":
+			for id, command := range bashCommands(l.Message.Content) {
+				if beginBatchCommand.MatchString(command) {
+					beginBatchUses[id] = true
+				}
+			}
+		case "user":
+			at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
+			if err != nil {
+				return
+			}
+			for _, item := range toolResultItems(l.Message.Content) {
+				if !beginBatchUses[item.UseID] {
+					continue
+				}
+				var envelope struct {
+					StartSHA string `json:"start_sha"`
+				}
+				if json.Unmarshal([]byte(item.Text), &envelope) != nil || envelope.StartSHA == "" {
+					continue
+				}
+				if run.baseAt.IsZero() || at.Before(run.baseAt) {
+					run.BaseSHA, run.baseAt = envelope.StartSHA, at
+				}
+			}
+		}
+	})
 }
 
 var nonAlnum = regexp.MustCompile(`[^A-Za-z0-9]`)
@@ -78,10 +240,33 @@ func roleOf(title string) string {
 	return trailingNumber.ReplaceAllString(title[strings.LastIndex(title, ":")+1:], "")
 }
 
-// recentRuns names the task runs of the hub whose sessions changed most recently, newest
-// first, at most last of them: every project directory of a worktree under the hub except
-// the prime's own.
-func recentRuns(projects, hub, prime string, last int) ([]string, error) {
+// finishedRuns reads the slugs of the runs whose pairs were torn down from the archive tags
+// in the weft repository at weft.
+func finishedRuns(weft string) (map[string]bool, error) {
+	out, err := gitexec.Run([]string{"for-each-ref", "--format=%(refname)", "refs/tags/archive/"}, weft)
+	if err != nil {
+		return nil, fmt.Errorf("reading the archive tags in %s: %w", weft, err)
+	}
+	return archivedSlugs(out), nil
+}
+
+// archivedSlugs parses for-each-ref output, one refs/tags/archive/<slug>/<sha> per line,
+// into the set of slugs.
+func archivedSlugs(refs string) map[string]bool {
+	slugs := map[string]bool{}
+	for _, line := range strings.Split(refs, "\n") {
+		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "refs/tags/archive/")
+		if slug, _, found := strings.Cut(rest, "/"); ok && found && slug != "" {
+			slugs[slug] = true
+		}
+	}
+	return slugs
+}
+
+// recentRuns names the finished task runs of the hub whose sessions changed most recently,
+// newest first, at most last of them: every project directory of a worktree under the hub
+// whose slug is in finished, except the prime's own.
+func recentRuns(projects, hub, prime string, finished map[string]bool, last int) ([]string, error) {
 	prefix := filepath.Base(projectDir(projects, hub)) + "-"
 	entries, err := os.ReadDir(projects)
 	if err != nil {
@@ -94,7 +279,7 @@ func recentRuns(projects, hub, prime string, last int) ([]string, error) {
 	var found []candidate
 	for _, e := range entries {
 		slug, ok := strings.CutPrefix(e.Name(), prefix)
-		if !e.IsDir() || !ok || slug == "" || slug == prime {
+		if !e.IsDir() || !ok || slug == "" || slug == prime || !finished[slug] {
 			continue
 		}
 		sessions, err := filepath.Glob(filepath.Join(projects, e.Name(), "*.jsonl"))
@@ -138,8 +323,13 @@ func CountRun(dir, slug string) (RunTally, error) {
 			return RunTally{}, err
 		}
 		role := roleOf(title)
-		if err := run.countFile(session, role, seen); err != nil {
+		if err := run.countFile(session, role, seen, nil); err != nil {
 			return RunTally{}, err
+		}
+		if role == websterMasterRole {
+			if err := run.recordBase(session); err != nil {
+				return RunTally{}, err
+			}
 		}
 		subs, err := filepath.Glob(filepath.Join(strings.TrimSuffix(session, ".jsonl"), "subagents", "*.jsonl"))
 		if err != nil {
@@ -147,11 +337,19 @@ func CountRun(dir, slug string) (RunTally, error) {
 		}
 		sort.Strings(subs)
 		for _, sub := range subs {
-			if err := run.countFile(sub, role+"+sub", seen); err != nil {
+			var fork *ForkTally
+			if role == websterMasterRole {
+				fork = &ForkTally{Slug: slug, File: filepath.Base(sub)}
+			}
+			if err := run.countFile(sub, role+"+sub", seen, fork); err != nil {
 				return RunTally{}, err
+			}
+			if fork != nil {
+				run.Forks = append(run.Forks, *fork)
 			}
 		}
 	}
+	sort.SliceStable(run.Forks, func(i, j int) bool { return run.Forks[i].Started.Before(run.Forks[j].Started) })
 	return run, nil
 }
 
@@ -165,7 +363,9 @@ func latestTitle(path string) (string, error) {
 	return title, err
 }
 
-func (run *RunTally) countFile(path, role string, seen map[string]bool) error {
+// countFile tallies one transcript under role;
+// a non-nil fork also receives the transcript's own tally and card attribution.
+func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *ForkTally) error {
 	tally := run.Roles[role]
 	if tally == nil {
 		tally = &RoleTally{Role: role, Models: map[string]int{}}
@@ -173,6 +373,9 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool) error {
 	}
 	tally.Sessions++
 	return eachLine(path, func(l line) {
+		if fork != nil {
+			fork.observe(l)
+		}
 		if l.Type != "assistant" || l.Message == nil || l.Message.Usage == nil {
 			return
 		}
@@ -187,7 +390,31 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool) error {
 		seen[id] = true
 		tally.Usage.add(*l.Message.Usage)
 		tally.Models[l.Message.Model]++
+		if fork != nil {
+			fork.Messages++
+			fork.Usage.add(*l.Message.Usage)
+			u := l.Message.Usage
+			fork.PeakContext = max(fork.PeakContext, u.Input+u.CacheCreate+u.CacheRead)
+		}
 	})
+}
+
+// observe records a line's timestamp and, until a card pointer has been found, its card attribution: the fork's prompt is the first tool result holding a card pointer line.
+func (f *ForkTally) observe(l line) {
+	if f.Started.IsZero() && l.Timestamp != "" {
+		if t, err := time.Parse(time.RFC3339Nano, l.Timestamp); err == nil {
+			f.Started = t
+		}
+	}
+	if f.Cards != nil || l.Type != "user" || l.Message == nil {
+		return
+	}
+	for _, text := range toolResultTexts(l.Message.Content) {
+		if cards := cardPointers(text); len(cards) > 0 {
+			f.Cards = cards
+			return
+		}
+	}
 }
 
 // eachLine calls fn for every line of a JSONL file that parses, skipping any that do not.
@@ -243,6 +470,20 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 		fmt.Fprintf(w, "## %s\n\n", run.Slug)
 		writeTable(w, run.Roles)
 	}
+
+	fmt.Fprintf(w, "## Webster forks\n\n")
+	fmt.Fprintln(w, "| run | cards | messages | peak context | weight |")
+	fmt.Fprintln(w, "|---|---|---|---|---|")
+	for _, run := range r.Runs {
+		for _, f := range run.Forks {
+			cards := "unattributed"
+			if len(f.Cards) > 0 {
+				cards = strings.Join(f.Cards, ", ")
+			}
+			fmt.Fprintf(w, "| %s | %s | %d | %d | %.1fM |\n", f.Slug, cards, f.Messages, f.PeakContext, f.Usage.Weight()/1e6)
+		}
+	}
+	fmt.Fprintln(w)
 	return nil
 }
 

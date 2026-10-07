@@ -123,9 +123,21 @@ func (c *loomCLI) runHaltedAtHandBack() (shedengine.State, error) {
 	return "", nil
 }
 
-// refuseOverUnfinishedMerge probes the pair's merge state and reports whether start may proceed.
+// retryStart and retryResume are the two verbs that put a parked or dead driver back to work, as a refusal message names one for the caller's retry.
+const (
+	retryStart  = "lyx loom start"
+	retryResume = "lyx loom resume"
+)
+
+// driverNotParkedMessage is the refusal for a run halted at a hand-back whose driver has not written its park marker yet;
+// retry is the verb the message names for the caller's retry.
+func driverNotParkedMessage(handBack shedengine.State, retry string) string {
+	return "loom: the driver has not parked yet (the run is " + string(handBack) + " and its driver is still writing its stop report and committing its records); retry `" + retry + "` in a few seconds"
+}
+
+// refuseOverUnfinishedMerge probes the pair's merge state and reports whether the verb named retry may proceed.
 // On a refusal or a probe error it releases bootstrapLock, records the envelope and returns false, leaving the park marker on disk.
-func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, bootstrapLock *lock.FileLock) bool {
+func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, bootstrapLock *lock.FileLock, retry string) bool {
 	st, err := c.midMerge(c.location)
 	if err != nil {
 		_ = bootstrapLock.Release()
@@ -137,9 +149,9 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 	case fabricengine.MidMergeNone:
 		return true
 	case fabricengine.MidMergeParked:
-		msg = `loom: a fabric merge is in progress in this worktree; resolve each listed path, mark it resolved with "lyx fabric merge-stage <path>...", then run "lyx fabric merge --continue" (or "lyx fabric merge --abort" to discard the merge), then re-run "lyx loom start"`
+		msg = `loom: a fabric merge is in progress in this worktree; resolve each listed path, mark it resolved with "lyx fabric merge-stage <path>...", then run "lyx fabric merge --continue" (or "lyx fabric merge --abort" to discard the merge), then re-run "` + retry + `"`
 	default:
-		msg = `loom: a git merge, cherry-pick or squash that fabric did not start is in progress in this worktree; conclude or abort it with git, then re-run "lyx loom start"`
+		msg = `loom: a git merge, cherry-pick or squash that fabric did not start is in progress in this worktree; conclude or abort it with git, then re-run "` + retry + `"`
 	}
 	conflicts := st.Conflicts
 	if conflicts == nil {
@@ -245,7 +257,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 	// A spawn or a resume puts a driver to work, so both refuse over an unfinished merge;
 	// a live strand without a marker is working (or still parking) and is left alone.
 	if mustSpawn || parkedLive {
-		if !c.refuseOverUnfinishedMerge(ctx, out, bootstrapLock) {
+		if !c.refuseOverUnfinishedMerge(ctx, out, bootstrapLock, retryStart) {
 			return false
 		}
 	}
@@ -258,7 +270,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 		c.vouchForSpawnedResume()
 	} else if driverAction == driverStrandLive {
 		if parkedLive {
-			if err := c.resumeParkedDriver(driverGUID); err != nil {
+			if _, err := c.resumeParkedDriver(driverGUID, retryStart); err != nil {
 				_ = bootstrapLock.Release()
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return false
@@ -274,8 +286,7 @@ func (c *loomCLI) runDriverSpawnAndWait(ctx context.Context, out io.Writer, driv
 			}
 			if handBack != "" {
 				_ = bootstrapLock.Release()
-				msg := "loom: the driver has not parked yet (the run is " + string(handBack) + " and its driver is still writing its stop report and committing its records); retry `lyx loom start` in a few seconds"
-				clihelp.SetExit(ctx, output.ErrFields(out, msg, map[string]any{"kind": shedrun.StartNotParkedKind}))
+				clihelp.SetExit(ctx, output.ErrFields(out, driverNotParkedMessage(handBack, retryStart), map[string]any{"kind": shedrun.StartNotParkedKind}))
 				return false
 			}
 		}

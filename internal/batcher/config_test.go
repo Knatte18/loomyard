@@ -1,9 +1,4 @@
-// config_test.go verifies batcher.yaml's template parses and Active resolves the configured
-// batchifier, including its two degrading-absence cases (absent _lyx/, absent batcher.yaml) and its
-// unknown-name error path, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() rather
-// than gitkit's config fixture-copy helpers: configengine.LoadOrTemplate only requires a
-// filesystem _lyx/config/<module>.yaml, no git repository, so this test stays untagged and
-// spawn-free.
+// config_test.go verifies batcher.yaml's template parses and Active resolves the configured profile, including its two degrading-absence cases (absent _lyx/, absent batcher.yaml) and its load-error paths, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() rather than gitkit's config fixture-copy helpers: configengine.LoadOrTemplate only requires a filesystem _lyx/config/<module>.yaml, no git repository, so this test stays untagged and spawn-free.
 // Tier-1 (pure logic, no git, no TestMain), per the go-test-tiers-and-hermetic-git Shared Decision.
 
 package batcher_test
@@ -37,10 +32,13 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 	}
 }
 
-// TestActive asserts Active resolves the configured batchifier from batcher.yaml:
-// the template verbatim (which must itself parse as plain YAML) resolves the documented empty default, an explicit active: value resolves its registered batchifier, an absent batcher.yaml or an absent _lyx/ degrades to the embedded template's batchifier rather than erroring, and an unregistered active: value surfaces Select's own unknown-batcher error naming the value.
+// TestActive asserts Active resolves the configured profile from batcher.yaml:
+// the template verbatim (which must itself parse as plain YAML) resolves identity, an empty or identity active: resolves identity even without a profiles: block, active: cautious on the template builds a cost batcher named after the profile, an absent batcher.yaml or an absent _lyx/ degrades to the embedded template's batchifier rather than erroring, and every load error names batcher.yaml.
+// The no-such-profile row holds only an operator profile, so it fails only while profiles: is an open map that the template's profiles are not filled into.
 func TestActive(t *testing.T) {
 	t.Parallel()
+	template := batcher.ConfigTemplate()
+	cautious := strings.Replace(template, `active: ""`, `active: "cautious"`, 1)
 	tests := []struct {
 		name string
 		// seed prepares baseDir; a nil seed leaves it bare, with no _lyx/ at all.
@@ -52,26 +50,33 @@ func TestActive(t *testing.T) {
 			name: "templateDefaultResolvesIdentity",
 			seed: func(t *testing.T, baseDir string) {
 				var out map[string]any
-				if err := yaml.Unmarshal([]byte(batcher.ConfigTemplate()), &out); err != nil {
+				if err := yaml.Unmarshal([]byte(template), &out); err != nil {
 					t.Fatalf("ConfigTemplate() does not parse as YAML: %v", err)
 				}
-				seedConfig(t, baseDir, "batcher", batcher.ConfigTemplate())
+				seedConfig(t, baseDir, "batcher", template)
 			},
 			wantName: batcher.DefaultName,
 		},
 		{
-			name: "explicitNameResolves",
+			name: "emptyActiveWithoutProfilesResolvesIdentity",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", `active: ""`+"\n")
+			},
+			wantName: batcher.DefaultName,
+		},
+		{
+			name: "identityActiveWithoutProfilesResolvesIdentity",
 			seed: func(t *testing.T, baseDir string) {
 				seedConfig(t, baseDir, "batcher", `active: "identity"`+"\n")
 			},
 			wantName: "identity",
 		},
 		{
-			name: "unknownNameErrors",
+			name: "cautiousOnTemplateResolvesCost",
 			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", `active: "does-not-exist"`+"\n")
+				seedConfig(t, baseDir, "batcher", cautious)
 			},
-			wantErrWith: []string{"unknown batcher", "does-not-exist"},
+			wantName: "cautious",
 		},
 		{
 			name: "absentConfigResolvesTemplate",
@@ -86,6 +91,48 @@ func TestActive(t *testing.T) {
 			name:     "absentLyxDirResolvesTemplate",
 			wantName: batcher.DefaultName,
 		},
+		{
+			name: "noSuchProfileErrors",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", "active: \"cautious\"\nprofiles:\n  mine:\n    batchifier: identity\n")
+			},
+			wantErrWith: []string{"batcher.yaml", "cautious"},
+		},
+		{
+			name: "unknownBatchifierErrors",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", "active: \"mine\"\nprofiles:\n  mine:\n    batchifier: bogus\n")
+			},
+			wantErrWith: []string{"batcher.yaml", "mine", "bogus"},
+		},
+		{
+			name: "missingThresholdErrors",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", strings.Replace(cautious, "    budget: ", "    renamed_budget: ", 1))
+			},
+			wantErrWith: []string{"batcher.yaml", "cautious", "budget"},
+		},
+		{
+			name: "nonPositiveBudgetErrors",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", strings.Replace(cautious, "budget: 450000", "budget: 0", 1))
+			},
+			wantErrWith: []string{"batcher.yaml", "cautious", "budget"},
+		},
+		{
+			name: "retiredAloneAboveErrors",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", strings.Replace(cautious, "    budget: ", "    alone_above: 1200000\n    budget: ", 1))
+			},
+			wantErrWith: []string{"batcher.yaml", "cautious", "alone_above"},
+		},
+		{
+			name: "maxCardsBelowTwoErrors",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", strings.Replace(cautious, "max_cards: 6", "max_cards: 1", 1))
+			},
+			wantErrWith: []string{"batcher.yaml", "cautious", "max_cards"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -98,7 +145,7 @@ func TestActive(t *testing.T) {
 			got, err := batcher.Active(baseDir)
 			if len(tt.wantErrWith) > 0 {
 				if err == nil {
-					t.Fatal("Active = nil error; want error naming the unknown batcher")
+					t.Fatal("Active = nil error; want a load error")
 				}
 				for _, want := range tt.wantErrWith {
 					if !strings.Contains(err.Error(), want) {
@@ -112,6 +159,91 @@ func TestActive(t *testing.T) {
 			}
 			if got.Name() != tt.wantName {
 				t.Errorf("Active().Name() = %q; want %q", got.Name(), tt.wantName)
+			}
+		})
+	}
+}
+
+// TestProfileWeights asserts ProfileWeights returns a valid profile's coefficients and errors naming batcher.yaml for an absent profile, a missing coefficient, a negative one and an unknown key.
+func TestProfileWeights(t *testing.T) {
+	t.Parallel()
+	const valid = `profiles:
+  cautious:
+    weights:
+      startup_context: 10
+      fork_messages: 2
+      message_context: 8
+      target_messages: 3
+      test_file_messages: 4
+      uses_messages: 5
+      context_per_line: 0.5
+      package_context: 7
+      write_per_card_line: 9
+`
+	tests := []struct {
+		name        string
+		config      string
+		profile     string
+		want        batcher.Weights
+		wantErrWith []string
+	}{
+		{
+			name:    "validProfile",
+			config:  valid,
+			profile: "cautious",
+			want: batcher.Weights{
+				StartupContext: 10, ForkMessages: 2, MessageContext: 8, TargetMessages: 3, TestFileMessages: 4,
+				UsesMessages: 5, ContextPerLine: 0.5, PackageContext: 7, WritePerCardLine: 9,
+			},
+		},
+		{
+			name:        "absentProfile",
+			config:      valid,
+			profile:     "other",
+			wantErrWith: []string{"batcher.yaml", "other"},
+		},
+		{
+			name:        "missingCoefficient",
+			config:      strings.Replace(valid, "      package_context: 7\n", "", 1),
+			profile:     "cautious",
+			wantErrWith: []string{"batcher.yaml", "package_context"},
+		},
+		{
+			name:        "negativeCoefficient",
+			config:      strings.Replace(valid, "fork_messages: 2", "fork_messages: -1", 1),
+			profile:     "cautious",
+			wantErrWith: []string{"batcher.yaml", "fork_messages"},
+		},
+		{
+			name:        "unknownKey",
+			config:      valid + "      bogus_weight: 1\n",
+			profile:     "cautious",
+			wantErrWith: []string{"batcher.yaml", "bogus_weight"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir := t.TempDir()
+			seedConfig(t, baseDir, "batcher", tt.config)
+
+			got, err := batcher.ProfileWeights(baseDir, tt.profile)
+			if len(tt.wantErrWith) > 0 {
+				if err == nil {
+					t.Fatal("ProfileWeights = nil error; want an error")
+				}
+				for _, want := range tt.wantErrWith {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("ProfileWeights error = %q; want it to contain %q", err.Error(), want)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ProfileWeights = _, %v; want nil error", err)
+			}
+			if got != tt.want {
+				t.Errorf("ProfileWeights = %+v; want %+v", got, tt.want)
 			}
 		})
 	}

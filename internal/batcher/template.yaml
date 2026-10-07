@@ -1,1 +1,18 @@
-active: ""  # name of the active batchifier (internal/batcher.Active) that groups the plan's flat card list into execution batches; empty (the default) resolves to the identity batchifier (one card, one batch)
+active: ""  # name of the active profile under profiles: (internal/batcher.Active); empty (the default) resolves to the identity batchifier (one card, one batch)
+profiles:   # named batchifier settings, each chosen by active:; the operator may add profiles of their own
+  identity:   # one card, one batch
+    batchifier: identity
+  cautious:   # the cost batchifier: the fewest contiguous batches whose estimated peak fork context fits the budget
+    batchifier: cost
+    max_cards: 6   # most cards one batch holds, at least 2
+    budget: 450000   # a batch of two or more cards never exceeds this peak context, in tokens; a card over it runs alone
+    weights:   # the estimator's coefficients, in context tokens or messages
+      startup_context: 60000   # context a fork starts with
+      fork_messages: 4   # messages a fork spends before its first card
+      message_context: 300   # context one message adds: its tool call and output
+      target_messages: 6   # messages per target a card edits
+      test_file_messages: 0.5   # messages per test file in a card's target directories
+      uses_messages: 2   # messages per Uses entry
+      context_per_line: 12   # context a read file adds per line
+      package_context: 2000   # context a target directory adds, once for its package and once for its tests
+      write_per_card_line: 12   # context a card's output adds per line of its card text, which carries the code the fork writes

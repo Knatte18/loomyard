@@ -588,9 +588,11 @@ func TestRenderStatusLine_ProducerReasonReachesWait(t *testing.T) {
 // and that the hook never runs against a settled run.
 func TestStatusCmd_WaitingNote_RunningOnly(t *testing.T) {
 	calls := 0
+	gotProducer := ""
 	note := "the parent's review"
-	hook := func() (string, error) {
+	hook := func(st shedengine.Status) (string, error) {
 		calls++
+		gotProducer = st.CurrentProducer
 		return note, nil
 	}
 
@@ -599,6 +601,9 @@ func TestStatusCmd_WaitingNote_RunningOnly(t *testing.T) {
 		env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
 		if code != 0 || env["waiting"] != note {
 			t.Errorf("waiting = %v (exit %d); want %q", env["waiting"], code, note)
+		}
+		if gotProducer != "Only" {
+			t.Errorf("hook received producer %q; want the status file's %q", gotProducer, "Only")
 		}
 	})
 
@@ -641,7 +646,7 @@ func TestStatusCmd_WaitingNote_RunningOnly(t *testing.T) {
 // TestStatusCmd_WaitingErrorVerbatim covers a Waiting error reaching the error envelope verbatim.
 func TestStatusCmd_WaitingErrorVerbatim(t *testing.T) {
 	wantErr := errors.New("waiting exploded")
-	spec := seededStatusSpec(t, Hooks{Waiting: func() (string, error) { return "", wantErr }})
+	spec := seededStatusSpec(t, Hooks{Waiting: func(shedengine.Status) (string, error) { return "", wantErr }})
 	env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
 	if code != 1 || env["error"] != wantErr.Error() {
 		t.Errorf("error = %v (exit %d); want verbatim %q", env["error"], code, wantErr.Error())
@@ -653,7 +658,7 @@ func TestStatusCmd_WaitingErrorVerbatim(t *testing.T) {
 func TestStatusWatchLine_AppendsWaitingNote(t *testing.T) {
 	note := "the parent's review"
 	var hookErr error
-	spec := seededStatusSpec(t, Hooks{Waiting: func() (string, error) { return note, hookErr }})
+	spec := seededStatusSpec(t, Hooks{Waiting: func(shedengine.Status) (string, error) { return note, hookErr }})
 	spec.StatusLabel = "loom"
 
 	with := statusWatchLine(spec)

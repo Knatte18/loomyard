@@ -26,6 +26,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-fabric-git` — Running git on warp or weft: only `internal/fabricengine`, in-process, never raw git; the weft commit is Go with a scoped pathspec. — [background](pattern/PATTERN-fabric-git.md)
 - `PATTERN-fabric-destruction-chokepoint` — Destroying anything in fabric: only `internal/fabricengine/destroy.go`, checking containment, ownership, dirtiness, force in that order. — [background](pattern/PATTERN-fabric-destruction-chokepoint.md)
 - `PATTERN-fabric-write-containment` — Writing under `_launchers` or `_portals` from `fabricengine`: through an `os.Root` rooted at the hub, never raw `os.MkdirAll`, `os.WriteFile` or `fslink`.
+- `PATTERN-push-both-sides` — Pushing a run's records side from Go: in a task pair the code branch goes with it, rebase-free, under fabric's absorbing push lock, and pushing is never left to an agent; the prime's per-transition push stays records-only, since its code branch is the operator's parent branch.
 - `PATTERN-mutation-record` — Adding a mutating fabric verb: it accumulates a `*Mutations` record and its result embeds `MutationRecord` under a fixed envelope key set. — [background](pattern/PATTERN-mutation-record.md)
 - `PATTERN-pair-teardown` — Tearing down a pair: only through `internal/pairteardown`, which ends the pair's reed session before any worktree is removed. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: the producer never runs from inside it, and session shutdown precedes removal in one row. — [background](pattern/PATTERN-batten-bookend.md)
@@ -49,7 +50,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-glyph-conversion-chokepoint` — Converting between glyphs and paths: only `glyph.Self`, `Glyph.UnitPath`, `glyph.Parse` and `Glyph.String`, never trimming, regex or disk reads. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
 - `PATTERN-gate-self-check-parity` — Adding a mechanical gate: its closure and its CLI self-check verb call the same package function, and both land in one task. — [background](pattern/PATTERN-gate-self-check-parity.md)
 - `PATTERN-verified-tree` — Running a verify command: through `verifytree.Verify` only, never on a dirty tree, skipping only on a record of HEAD's tree. (test) — [background](pattern/PATTERN-verified-tree.md)
-- `PATTERN-batcher-registry` — Choosing webster's execution unit: the batchifier-derived batch, selected by `internal/batcher`'s registry and `batcher.yaml`'s `active:` key.
+- `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active profile's batchifier derives, its kind chosen by `internal/batcher`'s registry and the profile by `batcher.yaml`'s `active:`; the partition is recorded in `state.json` at first init, replaced only by a rebaseline.
 - `PATTERN-review-round` — Running a review and fix round: review on disk before any target is touched, every finding fixed, converged only on a judge verdict. — [background](pattern/PATTERN-review-round.md)
 - `PATTERN-sole-parsers` — Reading or writing plan, discussion, summary or recipe files: only `planparser`, `discussionparser`, `summaryparser` and `shedbuild` parse them. (test) — [background](pattern/PATTERN-sole-parsers.md)
 
@@ -59,13 +60,14 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-stencil-ownership` — Reading a producer prompt or normative spec: from a told absolute directory at call time through `internal/stencilstore`, never embedded bytes. — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-producer-pointer-rule` — Writing an instruction file: it points at another producer's format contract and never duplicates or paraphrases it.
 - `PATTERN-friction-capture` — Halting a loom run or refusing in webster: a Go-authored friction note is written, and none is archived before a reflection covers it. (test) — [background](pattern/PATTERN-friction-capture.md)
-- `PATTERN-completion-signal` — Finalizing a negative "did this run finish" answer in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
+- `PATTERN-completion-signal` — Finalizing a negative "did this run finish" answer in `internal/shuttleengine`: consult `allOutputFilesExist` first, and a strand's done-when list is filled only there and read only by reed's resume. (test) — [background](pattern/PATTERN-completion-signal.md)
 - `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/claudeengine`, never in `shuttleengine` or `reedengine`. — [background](pattern/PATTERN-shuttle-provider-seam.md)
 - `PATTERN-orch-pane-single-writer` — Typing into the orch session from Go: only the orch watcher does it, idle-gated; another module queues a notice through `orchengine` instead.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only through `internal/shell`, which imports the standard library alone.
 - `PATTERN-pane-binary-resolution` — Creating a strand pane in reed: it resolves `lyx` to the spawning binary through the one chokepoint in `panebin.go`. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading a skill into a spawned session: the spawning module names it on the launch spec and lyx types it; no stencil asks an agent to load a skill. (test)
 - `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive, and no stencil tells an agent to ask the operator; the discussion role's interactive questions come from the `{{.mode_rules}}` marker, not stencil text, and the orch stencils are outside the rule. (test)
+- `PATTERN-wait-mark-display-only` — Marking a wait on screen: the `@lyx_wait` and `@lyx_wait_start` pane options are set only through reed's `SetWaitMark`, by `shuttleengine` and the landing verify callback, and no Go decision reads them.
 - `PATTERN-spawn-observability` — Starting a real OS process from a `lyx` command: log the spawn, and the teardown where it waits, via `internal/logger`. — [background](pattern/PATTERN-spawn-observability.md)
 
 ## Packages

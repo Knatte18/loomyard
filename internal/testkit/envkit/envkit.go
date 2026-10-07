@@ -36,6 +36,7 @@ var nilLegal = map[string]bool{
 	"Landing.ConfigChanges":       true,
 	"Landing.Notify":              true,
 	"Landing.VerifyCommand":       true,
+	"Landing.VerifyWaitMark":      true,
 	"Landing.Registry":            true,
 	"ParentReview.Store":          true,
 	"ParentReview.ReviewerLive":   true,
@@ -184,6 +185,11 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				return battenshed.ChildDecision{}, false, nil
 			},
 			DriverAlive: func(context.Context) (bool, error) { return false, nil },
+			DriverStrand: func(context.Context) (battenshed.ChildDriverStrand, error) {
+				return battenshed.ChildDriverNone, nil
+			},
+			ChildRunLockHeld: func() (bool, error) { return false, nil },
+			ReviveStrands:    func(context.Context) error { return nil },
 		},
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },

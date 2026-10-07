@@ -144,6 +144,25 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		}
 	})
 
+	// An agent's raw `git commit` in the task worktree reaches the remote at the next transition, along with the records.
+	t.Run("raw task-worktree commit is pushed with the records", func(t *testing.T) {
+		commitInTaskWorktree(t, location, "agent.txt")
+		changeStatus()
+
+		if err := seam("Discussion-Write", "running"); err != nil {
+			t.Fatalf("seam error = %v; want nil", err)
+		}
+
+		taskWorktree := location.WorktreePath()
+		if got, want := remoteBranchTip(t, taskWorktree), gitkit.RevParse(t, taskWorktree, "HEAD"); got != want {
+			t.Errorf("remote task branch = %q; want it at the local HEAD %q", got, want)
+		}
+		if got, want := remoteBranchTip(t, recordsSibling), gitkit.RevParse(t, recordsSibling, "HEAD"); got != want {
+			t.Errorf("remote records branch = %q; want it at the records HEAD %q", got, want)
+		}
+		statusOnly(t)
+	})
+
 	t.Run("no reviews directory touches only the status", func(t *testing.T) {
 		changeStatus()
 		if err := seam("Discussion-Write", "running"); err != nil {
@@ -405,6 +424,43 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		}
 	})
 
+	// The task branch diverged on its remote by a second clone:
+	// the verb reports the rejection naming the task worktree;
+	// the records still reach their remote;
+	// and the local task branch is left as it was.
+	t.Run("diverged task branch is reported and the records still push", func(t *testing.T) {
+		taskWorktree := location.WorktreePath()
+		branch := gitkit.CurrentBranch(t, taskWorktree)
+		clone := t.TempDir()
+		gitkit.Git(t, clone, "clone", "-q", "-b", branch, gitkit.Git(t, taskWorktree, "remote", "get-url", "origin"), ".")
+		gitkit.Git(t, clone, "config", "user.email", "rogue@example.test")
+		gitkit.Git(t, clone, "config", "user.name", "rogue")
+		writeRecordFile(t, filepath.Join(clone, "rogue.txt"), "rogue\n")
+		gitkit.Git(t, clone, "add", "rogue.txt")
+		gitkit.Git(t, clone, "commit", "-q", "-m", "rogue advance")
+		gitkit.Git(t, clone, "push", "-q", "origin", branch)
+
+		commitInTaskWorktree(t, location, "diverging.txt")
+		taskHead := gitkit.RevParse(t, taskWorktree, "HEAD")
+		writeRecordFile(t, filepath.Join(shedrun.DriveReportsDir(location, shedrun.SelfRunID), "diverged-report.md"), "stop report\n")
+
+		var out bytes.Buffer
+		if code := commitRecordsVerb(&out, loomCommitStatusDeps(location, shedrun.SelfRunID)); code == 0 {
+			t.Fatalf("exit = 0; want non-zero; output %s", out.String())
+		}
+		for _, want := range []string{"the commit landed locally but the push failed", "way forward: merge the remote branch", taskWorktree} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("output = %s; want it to contain %q", out.String(), want)
+			}
+		}
+		if got := gitkit.RevParse(t, taskWorktree, "HEAD"); got != taskHead {
+			t.Errorf("task branch HEAD = %q; want unchanged %q", got, taskHead)
+		}
+		if got, want := remoteBranchTip(t, recordsSibling), gitkit.RevParse(t, recordsSibling, "HEAD"); got != want {
+			t.Errorf("remote records branch = %q; want it at the records HEAD %q", got, want)
+		}
+	})
+
 	// The push-warns disposition against a genuinely diverged records remote: the seam returns nil, the local commit stays, and the branch is left behind its origin for the next transition to catch up.
 	t.Run("rejected push warns and the commit stays", func(t *testing.T) {
 		// Advance the records remote out from under the local sibling, so the seam's push is rejected for the ordinary reason: another machine got there first.
@@ -447,6 +503,25 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 			t.Errorf("records HEAD = %q; want it moved off %q — the commit lands even though the push failed", got, before)
 		}
 	})
+}
+
+// commitInTaskWorktree commits a new file named name in the task worktree with plain git, as an agent's raw commit would.
+func commitInTaskWorktree(t *testing.T, location *lyxcwd.Location, name string) {
+	t.Helper()
+	taskWorktree := location.WorktreePath()
+	writeRecordFile(t, filepath.Join(taskWorktree, name), name+"\n")
+	gitkit.Git(t, taskWorktree, "add", name)
+	gitkit.Git(t, taskWorktree, "-c", "user.email=agent@example.test", "-c", "user.name=agent", "commit", "-q", "-m", "raw commit "+name)
+}
+
+// remoteBranchTip returns the SHA origin holds for the branch checked out in repo.
+func remoteBranchTip(t *testing.T, repo string) string {
+	t.Helper()
+	fields := strings.Fields(gitkit.Git(t, repo, "ls-remote", "origin", "refs/heads/"+gitkit.CurrentBranch(t, repo)))
+	if len(fields) == 0 {
+		t.Fatalf("origin of %s holds no branch %s", repo, gitkit.CurrentBranch(t, repo))
+	}
+	return fields[0]
 }
 
 // writeReviewsDirFile writes content at rel under the reviews directory, creating its directories.

@@ -788,8 +788,22 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 		}
 		return setup, check
 	}
-	fabricRefusalSetup, fabricRefusalCheck := uncheckableRefusal("fabric-reference: Bash command references the fabric")
-	pauseRefusalSetup, pauseRefusalCheck := uncheckableRefusal(".lyx/webster/pause")
+	fabricRefusalSetup, fabricRefusalBase := uncheckableRefusal("fabric-reference: Bash command references the fabric")
+	pauseRefusalSetup, pauseRefusalBase := uncheckableRefusal(".lyx/webster/pause")
+	// Only a refusal over pathless fabric references names the accept-audit --batch route.
+	const acceptBatchStep = `"lyx webster accept-audit --batch 1" then "lyx webster recover-batch 1"`
+	fabricRefusalCheck := func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+		fabricRefusalBase(t, fx, bs, spawned, err)
+		if err != nil && !strings.Contains(err.Error(), acceptBatchStep) {
+			t.Errorf("error %q lacks %q", err, acceptBatchStep)
+		}
+	}
+	pauseRefusalCheck := func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+		pauseRefusalBase(t, fx, bs, spawned, err)
+		if err != nil && strings.Contains(err.Error(), "accept-audit --batch") {
+			t.Errorf("error %q names accept-audit --batch for a finding that is not a fabric reference", err)
+		}
+	}
 
 	cases := []struct {
 		name  string

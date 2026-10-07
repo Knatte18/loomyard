@@ -6,6 +6,8 @@
 // LatestPass returns the entry of one command, which a caller uses as a diff base.
 // A record in an older format, or a malformed one, reads as no record.
 // The record is written only by Verify and only after a pass, so a crash before that write leaves a mismatch and the next call runs again.
+// A command that outlives the timeout is killed and returns a failed result with TimedOut set and no record;
+// a caller's own cancel is a returned error and no record.
 // While a command runs, Verify keeps a running marker that loom status reads through ReadMarker.
 //
 // Every site of one worktree shares one directory, Dir(anchorRoot), so a pass at one site lets the next site skip.

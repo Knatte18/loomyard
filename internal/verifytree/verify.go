@@ -17,6 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
+// Timeout is the production bound on one verify command.
+const Timeout = 60 * time.Minute
+
 const (
 	dirName    = "verify"
 	recordName = "verified-tree.yaml"
@@ -76,7 +79,10 @@ type Result struct {
 	ExitCode int
 	// Tree is HEAD's tree SHA, empty for a dirty result.
 	Tree string
-	// Detail carries the cause of a shell that could not start.
+	// TimedOut is set when the verify command outlived the timeout and was killed;
+	// the status is then StatusFailed with ExitCode -1.
+	TimedOut bool
+	// Detail carries the cause of a shell that could not start, or names the timeout of a timed-out run.
 	Detail string
 }
 
@@ -178,8 +184,10 @@ func parsePorcelainZ(out string) []string {
 // The pass writes the record only when HEAD still names the tree and commit the run started on, so a commit that lands mid-run costs the next call a re-run rather than recording a tree the command did not run on.
 // The write replaces the entry of command and drops every other command's entry naming a different tree, except site.BaseCommand's.
 // A non-zero exit is StatusFailed with the exit code, and a shell that could not start is StatusFailed with exit code -1 and the cause in Detail.
+// A command still running after timeout is killed and returns StatusFailed with exit code -1, TimedOut set and the timeout in Detail;
+// no record is written.
 // A cancelled ctx is a returned error and writes no record.
-func Verify(ctx context.Context, p Paths, site Site, command string) (Result, error) {
+func Verify(ctx context.Context, p Paths, site Site, command string, timeout time.Duration) (Result, error) {
 	dirty, err := DirtyPaths(p.Worktree)
 	if err != nil {
 		return Result{}, err
@@ -203,7 +211,7 @@ func Verify(ctx context.Context, p Paths, site Site, command string) (Result, er
 	if err := os.MkdirAll(filepath.Dir(p.Marker), 0o755); err != nil {
 		return Result{}, fmt.Errorf("verifytree: create verify directory: %w", err)
 	}
-	if err := writeMarker(p.Marker, Marker{Site: site.Label, Attempt: site.Attempt, Started: time.Now(), PID: os.Getpid()}); err != nil {
+	if err := writeMarker(p.Marker, Marker{Site: site.Label, Attempt: site.Attempt, Command: command, Started: time.Now(), PID: os.Getpid()}); err != nil {
 		return Result{}, err
 	}
 	defer os.Remove(p.Marker)
@@ -214,10 +222,16 @@ func Verify(ctx context.Context, p Paths, site Site, command string) (Result, er
 	}
 	defer logFile.Close()
 
-	code, runErr := verifyrun.Run(ctx, command, p.Worktree, logFile)
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	code, runErr := verifyrun.Run(runCtx, command, p.Worktree, logFile)
 	if runErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return Result{}, fmt.Errorf("verifytree: verify cancelled: %w", ctxErr)
+		}
+		if runCtx.Err() != nil {
+			detail := fmt.Sprintf("the verify command did not finish within %s and was killed", timeout)
+			return Result{Status: StatusFailed, ExitCode: -1, Tree: tree, TimedOut: true, Detail: detail}, nil
 		}
 		return Result{Status: StatusFailed, ExitCode: -1, Tree: tree, Detail: runErr.Error()}, nil
 	}

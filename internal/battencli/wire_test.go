@@ -12,12 +12,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -51,6 +53,9 @@ func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
 		{"TeardownRemove", c.env.Teardown.Remove != nil},
 		{"ReadDecision", c.env.InnerRun.ReadDecision != nil},
 		{"DriverAlive", c.env.InnerRun.DriverAlive != nil},
+		{"DriverStrand", c.env.InnerRun.DriverStrand != nil},
+		{"ChildRunLockHeld", c.env.InnerRun.ChildRunLockHeld != nil},
+		{"ReviveStrands", c.env.InnerRun.ReviveStrands != nil},
 		{"OpenIDE", c.env.InnerRun.OpenIDE != nil},
 		{"CommitStatus", c.shedPaths.CommitStatus != nil},
 	}
@@ -104,6 +109,80 @@ func TestDriverAliveFrom(t *testing.T) {
 				t.Errorf("driverAliveFrom() = %v; want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestDriverStrandFrom covers driverStrandFrom's answers without tmux:
+// an absent task worktree is none without reading the directory,
+// a directory error is returned,
+// and a driver row is live, retiring or dead by its flags, under its full name, its role or the legacy loom-driver literal.
+func TestDriverStrandFrom(t *testing.T) {
+	t.Parallel()
+
+	boom := errors.New("boom")
+	rows := func(rs ...reedengine.DirectoryRow) func() ([]reedengine.DirectoryRow, error) {
+		return func() ([]reedengine.DirectoryRow, error) { return rs, nil }
+	}
+	tests := []struct {
+		name      string
+		present   bool
+		directory func() ([]reedengine.DirectoryRow, error)
+		want      battenshed.ChildDriverStrand
+		wantErr   error
+	}{
+		{"WorktreeAbsentSkipsTheDirectory", false, func() ([]reedengine.DirectoryRow, error) {
+			t.Error("directory read although the task worktree is absent")
+			return nil, nil
+		}, battenshed.ChildDriverNone, nil},
+		{"DirectoryErrorReturned", true, func() ([]reedengine.DirectoryRow, error) { return nil, boom }, battenshed.ChildDriverNone, boom},
+		{"NoRows", true, rows(), battenshed.ChildDriverNone, nil},
+		{"NoDriverRow", true, rows(reedengine.DirectoryRow{Name: "other", Live: true}), battenshed.ChildDriverNone, nil},
+		{"LiveDriver", true, rows(reedengine.DirectoryRow{Name: loomengine.LoomDriverStrandName, Live: true}), battenshed.ChildDriverLive, nil},
+		{"LiveFullNameDriver", true, rows(reedengine.DirectoryRow{Name: "ly:task:driver", Live: true}), battenshed.ChildDriverLive, nil},
+		{"LiveLegacyDriver", true, rows(reedengine.DirectoryRow{Name: loomengine.LegacyLoomDriverStrandName, Live: true}), battenshed.ChildDriverLive, nil},
+		{"RetiringDriver", true, rows(reedengine.DirectoryRow{Name: loomengine.LoomDriverStrandName, Live: true, Retiring: true}), battenshed.ChildDriverRetiring, nil},
+		{"DeadDriver", true, rows(reedengine.DirectoryRow{Name: loomengine.LoomDriverStrandName}), battenshed.ChildDriverDead, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := driverStrandFrom(tt.present, tt.directory)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("driverStrandFrom() error = %v; want %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("driverStrandFrom() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRunLockHeld covers runLockHeld's answers over a real lock file: a path whose directory does not exist yet is free,
+// and a held lock reads as held and reads as free again once released.
+func TestRunLockHeld(t *testing.T) {
+	t.Parallel()
+
+	lockPath := filepath.Join(t.TempDir(), "absent-dir", "run.lock")
+
+	held, err := runLockHeld(lockPath)
+	if err != nil || held {
+		t.Fatalf("runLockHeld(unheld, directory absent) = (%v, %v); want (false, nil)", held, err)
+	}
+
+	owner, err := lock.AcquireWriteLock(lockPath)
+	if err != nil {
+		t.Fatalf("AcquireWriteLock: %v", err)
+	}
+	held, err = runLockHeld(lockPath)
+	if err != nil || !held {
+		t.Errorf("runLockHeld(held) = (%v, %v); want (true, nil)", held, err)
+	}
+
+	if err := owner.Release(); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	held, err = runLockHeld(lockPath)
+	if err != nil || held {
+		t.Errorf("runLockHeld(released) = (%v, %v); want (false, nil), a probe never keeping the lock", held, err)
 	}
 }
 

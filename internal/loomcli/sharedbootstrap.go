@@ -318,6 +318,7 @@ func (c *loomCLI) buildLoomShed() (*shedengine.Shed, error) {
 		c.runner,
 		c.landingCfg,
 		c.parentName,
+		driverWaitMark(c.reed.Status, c.reed.SetWaitMark),
 	)
 
 	return loomrecipe.New(c.env, c.shedPaths)

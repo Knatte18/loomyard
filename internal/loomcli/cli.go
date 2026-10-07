@@ -121,6 +121,8 @@ type loomCLI struct {
 	// reason driverStarter does: *reedengine.Engine is a concrete type and the Test Tier Purity
 	// Invariant bars a real reed call from an untagged file.
 	driverPaneProbe driverPaneProbe
+	// driverDirectory is the seam through which `resume` reads the driver strand from reed's sessionless directory, wrapping the same *reedengine.Engine c.reed already carries.
+	driverDirectory driverDirectoryProbe
 	// reflectionShuttle is the frictionengine.Shuttle every friction reflection goes through, wired to the shuttle runner in production.
 	// It is the seam tests fake the reflection agent, and so its filing, through.
 	// It stays nil on the lightweight wiring path, which frictionengine.Reflect's Deps validation reports as failed.
@@ -377,7 +379,8 @@ awaiting or blocked at PR-Gate, removing any pending rejection; "lyx loom start"
 "reject <review-file>" records the operator's rejection with the findings in that file, for a run
 awaiting or blocked at PR-Gate or blocked at PR-Rework, removing any approval; "lyx loom start" then
 sends the findings to PR-Rework. "commit-records" commits and
-pushes the run's records (status, reviews, friction notes, drive reports); the
+pushes the run's records (status, reviews, friction notes, drive reports), pushing the
+task branch along with them; the
 loom driver's end-of-session command runs it after the driver writes its stop report.
 "review" is the subtree through which a run's parent answers Discussion-Write's
 parent-review gate: "review notify", "review delivered", "review approve" and
@@ -432,7 +435,7 @@ Example:
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd())
+	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd())
 
 	return parent
 }

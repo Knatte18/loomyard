@@ -78,7 +78,7 @@ func NewVerifyGate(anchorPath, worktreeRoot, verifyDir, siteLabel string) shuttl
 		}
 
 		site := verifytree.Site{Label: siteLabel, Attempt: attempt, BaseCommand: plan.Verify}
-		res, err := verifytree.Verify(context.Background(), paths, site, command)
+		res, err := verifytree.Verify(context.Background(), paths, site, command, verifytree.Timeout)
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: %w", err)
 		}
@@ -112,12 +112,16 @@ func commentLintFindings(findings []commentlint.Finding) string {
 	return b.String()
 }
 
-// verifyFailureFindings renders a StatusFailed result as the exit code, the log path and the log's tail.
+// verifyFailureFindings renders a StatusFailed result as the exit code or the timeout, the log path and the log's tail.
 func verifyFailureFindings(res verifytree.Result, logPath string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "The verify command failed with exit code %d.", res.ExitCode)
-	if res.Detail != "" {
-		fmt.Fprintf(&b, " Its shell could not start: %s.", res.Detail)
+	if res.TimedOut {
+		fmt.Fprintf(&b, "The verify command did not finish within %s and was killed.", verifytree.Timeout)
+	} else {
+		fmt.Fprintf(&b, "The verify command failed with exit code %d.", res.ExitCode)
+		if res.Detail != "" {
+			fmt.Fprintf(&b, " Its shell could not start: %s.", res.Detail)
+		}
 	}
 	fmt.Fprintf(&b, "\n\nFull log: %s\n", logPath)
 	if tail := readLogTail(logPath); tail != "" {

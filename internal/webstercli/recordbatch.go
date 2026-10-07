@@ -83,10 +83,6 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			// Every batch-computation site sequences, so all five agree on
-			// one order by construction rather than by comment.
-			batches, _ := websterengine.SequenceBatches(c.batcher.Batch(plan.Cards))
-
 			mutateLock, err := websterengine.AcquireStateMutation(c.geom.ScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
@@ -106,6 +102,12 @@ Example:
 			}
 			if st == nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, `webster: no run in progress; run "lyx webster run" first`))
+				return nil
+			}
+
+			batches, err := c.executionBatches(plan, st)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
 

@@ -1,38 +1,41 @@
-// registry.go implements the package's name-keyed Batcher registry: library members self-register
-// via their own init() (see identity.go),
-// and Active (this package's own config entry point, config.go) resolves the config-chosen batcher
-// back out by name via the exported Select, the name-level lookup Active and tests call directly.
+// registry.go maps each batchifier kind a batcher.yaml profile can name to the constructor that builds it from that profile;
+// Active (config.go) resolves the active profile through it.
 
 package batcher
 
 import "fmt"
 
-// DefaultName is the default batcher key when no config is specified.
+// DefaultName is the profile an empty active: key resolves to.
 const DefaultName = "identity"
 
-// registry holds all registered batchers, keyed by Name().
-var registry = make(map[string]Batcher)
-
-// register adds b to the registry under its own Name().
-func register(b Batcher) {
-	registry[b.Name()] = b
+// constructors maps a profile's batchifier kind to the constructor that builds it, given the profile's name and settings.
+var constructors = map[string]func(name string, p profile) (Batcher, error){
+	"identity": func(string, profile) (Batcher, error) {
+		return Identity(), nil
+	},
+	"cost": newCostFromProfile,
 }
 
-// lookup resolves name against the registry, reporting whether a batcher was
-// registered under that exact name.
-func lookup(name string) (Batcher, bool) {
-	b, ok := registry[name]
-	return b, ok
-}
-
-// Select resolves the active batcher by name, defaulting to DefaultName if empty.
-func Select(name string) (Batcher, error) {
-	if name == "" {
-		name = DefaultName
+// newCostFromProfile builds the cost batchifier a `batchifier: cost` profile describes, erroring naming batcher.yaml and the profile when a parameter is missing or out of range, or when it still carries the retired alone_above.
+func newCostFromProfile(name string, p profile) (Batcher, error) {
+	if p.AloneAbove != nil {
+		return nil, fmt.Errorf("batcher.yaml profile %q carries alone_above, which no longer exists: budget bounds a batch's peak context and a card over it already runs alone; delete the key", name)
 	}
-	b, ok := lookup(name)
-	if !ok {
-		return nil, fmt.Errorf("batcher: unknown batcher %q", name)
+	if p.Budget == nil {
+		return nil, fmt.Errorf("batcher.yaml profile %q is missing budget", name)
 	}
-	return b, nil
+	if p.MaxCards == nil {
+		return nil, fmt.Errorf("batcher.yaml profile %q is missing max_cards", name)
+	}
+	if *p.Budget <= 0 {
+		return nil, fmt.Errorf("batcher.yaml profile %q budget must be positive: %v", name, *p.Budget)
+	}
+	if *p.MaxCards < 2 {
+		return nil, fmt.Errorf("batcher.yaml profile %q max_cards must be at least 2: %d", name, *p.MaxCards)
+	}
+	weights, err := profileWeights(name, p)
+	if err != nil {
+		return nil, err
+	}
+	return NewCost(name, CostParams{Budget: *p.Budget, MaxCards: *p.MaxCards, Weights: weights}), nil
 }

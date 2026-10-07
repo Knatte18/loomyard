@@ -34,26 +34,22 @@
 // which happens to coincide with card number today; a future grouping
 // batchifier changes that coincidence, not this package's contract.
 //
-// # Execution order is derived, not declared
+// # Batches run in the batchifier's order, asserted not derived
 //
-// sequence.go's SequenceBatches derives edges from Targets/Uses ref matching across the plan's
-// cards — a Uses entry naming another card's Targets entry orders the producer before the
-// consumer, and two cards writing the same Targets entry settle by declared card number — then
-// condenses every strongly-connected component it finds and returns a deterministic topological
-// order plus the cycles it condensed. A cycle is reported, never fatal: SequenceBatches keeps
-// every cycle's member batches together, in declared order, and hands the caller both the
-// reordered slice and the []Cycle it condensed. An already dependency-correct plan sequences to
-// exactly its declared order, so this is a strict superset of the old declared-order behavior, not
-// a divergent one. Sequencing is unconditional — there is no config key and no opt-in — which is
-// why every batch-computation site must sequence: Run plus each of the four internal/webstercli
-// bracket verbs (begin-batch, await-batch, record-batch, recover-batch) call SequenceBatches over
-// the batchifier's own output before doing anything else with the result, so all five agree on one
-// order by construction. The previous-digest lookup in beginbatch.go/recoverbatch.go
-// (predecessorDigestLine) depends on that ordering: it reads whichever batch actually sits
-// immediately before the target batch in the sequenced slice, not the batch one number lower.
-// internal/batcher still owns grouping (which cards land in the same batch, per the Batcher
-// Registry+Config Invariant); this package owns only the sequencing of the batches a batchifier
-// already returned — SequenceBatches reorders, never regroups.
+// internal/batcher owns both grouping and order: a batchifier returns its batches in plan card order, and webster runs them in that order, never reordering them.
+// sequence.go's CheckBatchOrder only asserts it: it derives edges from Targets/Uses ref matching across the plan's cards — a Uses entry naming another card's Targets entry puts the producer before the consumer, and two cards writing the same Targets entry settle by declared card number — and refuses, wrapping ErrBatchOrder, when any edge runs from a batch to an earlier one.
+// A cycle between batches always holds such an edge, so the same rule refuses it.
+// Plan-Gate's uses-later-target refusal already holds, so the assertion fires only on a plan that bypassed or predates that gate.
+// The previous-digest lookup in beginbatch.go/recoverbatch.go (predecessorDigestLine) depends on the order: it reads whichever batch sits immediately before the target batch in the execution order, not the batch one number lower.
+//
+// # The partition is recorded once per run
+//
+// The first init of a run (no state.json, or the --fresh re-init) forms the partition with the active batchifier, refuses it on CheckBatchOrder's error before saving anything, and records it in State.Partition: each batch's card ids, profile and estimate, and for a cost profile the estimate's breakdown (weights, startup, read union and per-card components), so a finished run can be fitted against its forks' measured peaks.
+// Every other verb reads that record through partition.go's ExecutionBatches, which maps the recorded ids onto the plan's cards and re-asserts the order, so a size the batchifier weighed changing under the run's own commits never regroups cards mid-run.
+// A recorded id the plan lacks, or a plan card in no recorded batch, is refused with ErrPartitionMismatch.
+// A state written before the field existed records no partition and runs on the identity batchifier whatever profile is active, so an in-flight run keeps the grouping it started under.
+// Batches run in the recorded order.
+// Only a first init or a rebaseline replaces the record.
 //
 // # Fork-return contract: OK/FAILED, a head SHA, an informational deviation list
 //
@@ -167,6 +163,10 @@
 //
 // A foreign edit an operator means to keep has its own way forward:
 // `lyx webster rebaseline --card NN` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record, provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
+// With a recorded partition, Rebaseline keeps every batch up to the last begun one as recorded, profile and estimate included, and refuses a plan whose first cards are not exactly those batches' recorded cards.
+// It batches every plan card after the kept prefix with the then-active batchifier, asserts the order over kept batches and tail together, and only then replaces State.Partition;
+// cards added, removed or reordered after the last begun batch are accepted and regrouped.
+// A state without a partition regroups with the identity batchifier and records none.
 // The operator names every card the edit changed with --card: State.PlanFileHashes records a hash of every plan file, and a changed card file whose number is not named is refused.
 // A named card of a batch that is terminal failed, dead or stuck is accepted even though that batch was begun:
 // Rebaseline restamps that card's CardHashes entry and keeps the rest of the batch record, so a one-card fix needs no reset and no fresh run.
@@ -205,6 +205,11 @@
 // recover-batch refuses it with ErrRecoveryNeedsFresh before spawning anything,
 // and the way forward is `lyx webster run --fresh` after resetting the branch to the run's start commit.
 // `run --fresh` drops such a batch under the same HEAD and path rules as a pending finding.
+// One narrow exception keeps the batches before it (AcceptBatchFabricReference, `lyx webster accept-audit --batch NN`):
+// when every Uncheckable entry is a pathless fabric reference, the batch recorded a start commit, HEAD is that start (a batch that committed qualifies after `git reset --keep <start>`) and the worktree is clean apart from the run's own state,
+// the explicit call clears the entries and records each as a batch audit warning, and recover-batch then proceeds;
+// the refusal names that route only for such a record.
+// The evidence shows the task tree unchanged; the fabric repo's own state it cannot show, and the caller vouches for it by running the verb.
 // record-batch on a batch already terminal as a fork batch first audits the fork transcripts it has not consumed, once and without the settle wait:
 // an undispositioned correctness finding (a fork that marked its own batch done by writing state.json) replaces the terminal record with a failed one,
 // and otherwise the "already terminal" refusal stands.
@@ -383,6 +388,8 @@
 // Otherwise verifytree.Verify runs the command under the site label `webster gate`, and a pass records the tree.
 // A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
 // A failure that survives the rerun returns findings.
+// A run that outlives the verify timeout is never rerun, since a hang is not flakiness: it fails the gate at once,
+// and the report names the timeout, the log path and the log tail.
 // The first failed evaluation of any kind records HEAD as the pre-fix head, so every commit a fixer makes afterwards is checked at the next arrival.
 // The same moment persists it as state.json's `PreFixHead`, overwriting a value an earlier shuttle run left, so a later verb can reset to it;
 // a passing evaluation clears it, and `run --fresh` archives state.json with it.

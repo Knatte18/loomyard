@@ -54,7 +54,9 @@ type commitStatusDeps struct {
 	// When the reviews directory holds a file, the same commit also carries the review round record.
 	// While a rejection is pending the reviews root and the loom durable directory are left out until PR-Rework's round commit has landed and cleared it, so a status commit never lands half of a rework round; the next status commit sweeps them.
 	Commit func(msg string) error
-	// Push pushes the fabric sibling worktree's unpushed commits.
+	// Push pushes the run records and, in a task pair, the task branch.
+	// An error from one side's push names that side.
+	// A push lock that stayed busy names no side.
 	Push func() error
 	// SetBoardStatus writes status onto the run's board entry, leaving an entry that is absent or already done untouched.
 	// Nil writes nothing.
@@ -144,7 +146,7 @@ func holdsFile(dir string) bool {
 	return found
 }
 
-// loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric: MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to statusCommitPathspec (the status file, plus the review round record, the loom durable directory and the drive reports when each holds a file), and Push from fabricengine.PushAnchored.
+// loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric: MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to statusCommitPathspec (the status file, plus the review round record, the loom durable directory and the drive reports when each holds a file), and Push from fabricengine.PushPairAnchored, which pushes the run records and, in a task pair, the task branch.
 func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
 		MergeActive: func() (bool, error) {
@@ -158,7 +160,7 @@ func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusD
 			return err
 		},
 		Push: func() error {
-			_, err := fabricengine.PushAnchored(location, fabricengine.EnvSyncOptions())
+			_, err := fabricengine.PushPairAnchored(location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait)
 			return err
 		},
 		SetBoardStatus: func(status string) error {
@@ -738,6 +740,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.driverSender = runnerDriverStarter{runner: runner}
 	c.driverResumeWait = func() { time.Sleep(driverResumeSendInterval) }
 	c.driverPaneProbe = newReedDriverPaneProbe(reedEngine)
+	c.driverDirectory = newReedDriverDirectory(reedEngine)
 	return nil
 }
 
