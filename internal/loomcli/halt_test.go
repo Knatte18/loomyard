@@ -495,7 +495,8 @@ func TestStep_CrashResumeNoteFollowsTheHandoffVoucher(t *testing.T) {
 			t.Fatalf("Remove(handoff voucher) = %v; want nil", err)
 		}
 	}
-	// longHistory removes the voucher and appends seven entries to the persisted history, so the observed history holds more than five.
+	// longHistory removes the voucher and appends seven entries to the persisted history,
+	// so the observed history holds more than five.
 	longHistory := func(t *testing.T, f *haltFixture) {
 		removeVoucher(t, f)
 		p := f.c.shedPaths
@@ -518,7 +519,8 @@ func TestStep_CrashResumeNoteFollowsTheHandoffVoucher(t *testing.T) {
 		name string
 		// beforeSecond runs between the two steps.
 		beforeSecond func(t *testing.T, f *haltFixture)
-		// failCommit makes the first step's status commit fail after Row-A's done transition is on disk, so that step returns an error having completed.
+		// failCommit makes the first step's status commit fail after Row-A's done transition is on disk,
+		// so that step returns an error having completed.
 		failCommit bool
 		// wantInNote is the set of substrings the crash-resume note carries;
 		// nil means no note is written.

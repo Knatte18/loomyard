@@ -894,13 +894,15 @@ func TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer(t *testing.T)
 // TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically is the regression guard for the resume hole:
 // probeLiveRound must pass p.opts.Gate, followed by the round's own review-parse entry, into the gated attach, leaving the caller's gate list as it was,
 // and an attached round's failed gate -- a told entry or the review entry -- must map identically to the spawn path's -- Stuck with an empty pointer, archived, retry untouched.
-// The round's review file holds unparseable content, so the review entry fails whenever it is reached.
+// The round's review file holds unparseable content,
+// so the review entry fails whenever it is reached.
 func TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		// toldPasses makes the told entry pass, so the failure comes from the review entry behind it.
+		// toldPasses makes the told entry pass,
+		// so the failure comes from the review entry behind it.
 		toldPasses bool
 	}{
 		{name: "failing told entry", toldPasses: false},

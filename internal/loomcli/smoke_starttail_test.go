@@ -39,12 +39,14 @@ func reedAttachedClients(t *testing.T, tmuxPath string, eng *reedengine.Engine) 
 // the fixture is unseeded, so resolveSeedDriver seeds it llm,
 // and an llm-driven start carries no status strand.
 // The literal is spelled inline as a guard against the removed operator strand coming back: Selvage is the operator's terminal, not a strand.
-// The smoke run has no TTY, so a start that still attached would exit non-zero.
+// The smoke run has no TTY,
+// so a start that still attached would exit non-zero.
 func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	exe := sharedLyxBinary(t)
 
-	// A stub provider lets the llm-driven start's driver launch reach readiness, so the verb reaches its success envelope.
+	// A stub provider lets the llm-driven start's driver launch reach readiness,
+	// so the verb reaches its success envelope.
 	h := hubforge.NewHub(t, ".")
 	hubforge.SeedConfig(t, h, map[string]string{
 		"loom":    fastDeadlineLoomConfig(),

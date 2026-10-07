@@ -559,7 +559,8 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 
 	var warnings []string
 
-	// The strand is removed before the refusals below, so a terminal digest that then refuses leaves no live strand.
+	// The strand is removed before the refusals below,
+	// so a terminal digest that then refuses leaves no live strand.
 	if err := removeStrandIfLive(deps.Reed, bs.StrandGUID); err != nil {
 		warnings = append(warnings, fmt.Sprintf("recover-batch: remove strand %s: %v", bs.StrandGUID, err))
 	}

@@ -1018,7 +1018,8 @@ func deliveredBelowBaseline(current, baseline paneNeedleScan) bool {
 // narrower than the one closed here and cannot be closed without scrollback.
 //
 // When engine also implements InputBoxReader, an accepted delivery is then confirmed submitted:
-// after the provider's SubmitSettle the input box is read, and while it holds the sent text one extra Enter is sent,
+// after the provider's SubmitSettle the input box is read,
+// and while it holds the sent text one extra Enter is sent,
 // at most sendExtraEnters times, before the send fails naming the pending input.
 // An extra Enter is sent only when the provider reports the box holding the sent text,
 // so it never lands on an empty box, a running turn or a draft lacking the needle;

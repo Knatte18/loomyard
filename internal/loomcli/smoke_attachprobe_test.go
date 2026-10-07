@@ -317,7 +317,8 @@ func TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 }
 
 // TestSmokeSingleLLM_RerunRemovesTheSupersededStrand is the live-substrate guard for re-running a producer over a halted run:
-// the earlier run's record sits at a terminal outcome with its shell strand still live, and the producer's fresh run must not start beside it.
+// the earlier run's record sits at a terminal outcome with its shell strand still live,
+// and the producer's fresh run must not start beside it.
 // A live strand with other output files, standing in for another producer's agent, survives.
 //
 // The stub Engine and the real Runner, reed session and tmux panes are the ones this file's other tests use.

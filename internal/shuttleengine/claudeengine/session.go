@@ -67,7 +67,8 @@ func (c *Claude) IdleSession(capture string) bool {
 
 // InputBoxText returns the text the input box holds in capture: the interior lines with the caret, side bars and surrounding whitespace removed, non-blank lines joined by a single space.
 // ok is false when capture shows no input box.
-// The box is located exactly as IdleSession locates it, so a running turn over an empty box answers ok true with empty text.
+// The box is located exactly as IdleSession locates it,
+// so a running turn over an empty box answers ok true with empty text.
 func (c *Claude) InputBoxText(capture string) (text string, ok bool) {
 	interior, ok := inputBoxInterior(capture)
 	if !ok {
@@ -167,7 +168,8 @@ func isBlankBoxInterior(line string) bool {
 // ClearSessionSequence returns /clear typed and submitted, with no leading Escape.
 // The caller has just proved the input box empty, so there is nothing to clear,
 // and an Escape landing right after another Escape opens Claude's rewind menu instead.
-// The text and the Enter are two paced steps, so the Enter lands outside the typing burst.
+// The text and the Enter are two paced steps,
+// so the Enter lands outside the typing burst.
 func (c *Claude) ClearSessionSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{
 		{Text: "/clear", SettleMS: c.submitSettleMS},
@@ -176,7 +178,8 @@ func (c *Claude) ClearSessionSequence() []shuttleengine.PaneInput {
 }
 
 // CompactSessionSequence returns /compact typed and submitted, followed by focus when it is non-empty, with no leading Escape because the caller has just proved the input box empty.
-// The text and the Enter are two paced steps, so the Enter lands outside the typing burst.
+// The text and the Enter are two paced steps,
+// so the Enter lands outside the typing burst.
 func (c *Claude) CompactSessionSequence(focus string) []shuttleengine.PaneInput {
 	text := "/compact"
 	if focus != "" {
@@ -190,7 +193,8 @@ func (c *Claude) CompactSessionSequence(focus string) []shuttleengine.PaneInput 
 
 // ReloadPluginsSequence returns /reload-plugins typed and submitted, with no leading Escape for the same reason as ClearSessionSequence.
 // The command rebuilds the skill list the Skill tool reads and ends no turn.
-// The text and the Enter are two paced steps, so the Enter lands outside the typing burst.
+// The text and the Enter are two paced steps,
+// so the Enter lands outside the typing burst.
 func (c *Claude) ReloadPluginsSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{
 		{Text: "/reload-plugins", SettleMS: c.submitSettleMS},

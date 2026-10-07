@@ -47,7 +47,8 @@ func WatcherLive(p Paths) (bool, error) {
 
 // WaitWatcherGone probes the watch lock and, while the state records the watcher stopping and the lock is still held, sleeps interval and probes again, up to bound.
 // It answers whether a watcher still holds the lock at the end.
-// With no stopping record it probes once and returns, so a healthy live watcher costs no wait.
+// With no stopping record it probes once and returns,
+// so a healthy live watcher costs no wait.
 func WaitWatcherGone(p Paths, bound, interval time.Duration, sleep func(time.Duration)) (live bool, err error) {
 	for waited := time.Duration(0); ; waited += interval {
 		live, err = WatcherLive(p)
@@ -94,7 +95,8 @@ func (w *Watcher) recordExit(reason string) error {
 	})
 }
 
-// recordStoppingOnCancel persists WatcherStopping as soon as ctx is cancelled, so the record lands before the in-flight tick finishes and before the lock is released.
+// recordStoppingOnCancel persists WatcherStopping as soon as ctx is cancelled,
+// so the record lands before the in-flight tick finishes and before the lock is released.
 // It returns once ctx is cancelled or runReturned is closed, whichever comes first.
 func (w *Watcher) recordStoppingOnCancel(ctx context.Context, runReturned <-chan struct{}) {
 	select {
@@ -142,7 +144,8 @@ func (w *Watcher) Run(ctx context.Context, sleep func(time.Duration)) error {
 		return err
 	}
 
-	// The goroutine ends before the lock is released, so its record can never land after a successor watcher cleared it.
+	// The goroutine ends before the lock is released,
+	// so its record can never land after a successor watcher cleared it.
 	runReturned := make(chan struct{})
 	recorderExited := make(chan struct{})
 	go func() {

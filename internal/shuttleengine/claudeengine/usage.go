@@ -94,8 +94,10 @@ func readBackward(r io.ReaderAt, size int64, chunk int, scan func(data []byte) b
 
 // CompactedSince returns the newest main-chain compaction boundary after since in the transcript turnEnd names, with the main-chain turn ends that follow it.
 // ReadTurnEndAfter compares the turn end's last_assistant_message with the final text block of the newest of those turn ends, ignoring surrounding whitespace;
-// a Stop payload without a message cannot be matched, so it reports false.
-// Claude writes a turn's assistant entry before its Stop hook fires, so the turn end being read is already in the transcript.
+// a Stop payload without a message cannot be matched,
+// so it reports false.
+// Claude writes a turn's assistant entry before its Stop hook fires,
+// so the turn end being read is already in the transcript.
 // Like ContextTokens it degrades to not found on every failure and never errors.
 func (c *Claude) CompactedSince(turnEnd shuttleengine.Event, since time.Time) (shuttleengine.CompactionBoundary, bool) {
 	var payload struct {

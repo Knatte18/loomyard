@@ -20,7 +20,8 @@ import (
 const defaultSubmitSettleMS = 300
 
 // Claude implements shuttleengine.Engine for the Claude Code CLI.
-// Its methods are pure functions of their arguments and its one settle field, fixed at construction, so a Claude is safe to share across concurrent runs.
+// Its methods are pure functions of their arguments and its one settle field, fixed at construction,
+// so a Claude is safe to share across concurrent runs.
 type Claude struct {
 	// submitSettleMS is the pause between typed text and the Enter that submits it.
 	// Claude Code reads a fast character burst as a paste and swallows an Enter that arrives inside it,

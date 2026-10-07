@@ -472,7 +472,8 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 				fx.Git.merging = true
 				return secondCall{head: head, refusal: []string{"merge --continue", "merge --abort"}}
 			},
-			// A refusing call returns no result, so the check reads only the reed double.
+			// A refusing call returns no result,
+			// so the check reads only the reed double.
 			check: func(t *testing.T, fx *recoverFixture, a attempt) {
 				if !slices.Contains(fx.Reed.RemovedGUIDs, a.strandGUID) {
 					t.Errorf("RemoveStrand calls = %v; want the recovery strand %q removed although the call refused", fx.Reed.RemovedGUIDs, a.strandGUID)

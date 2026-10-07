@@ -905,7 +905,9 @@ func (e *inputBoxEngine) InputBoxText(string) (string, bool) {
 func (e *inputBoxEngine) SubmitSettle() time.Duration { return e.settle }
 
 // TestRun_Send_ConfirmsSubmission drives Send's submission confirmation through an engine with the InputBoxReader capability.
-// The box is read only after a settle, an extra Enter goes out only while the box holds the sent text, and at most sendExtraEnters of them.
+// The box is read only after a settle,
+// an extra Enter goes out only while the box holds the sent text,
+// and at most sendExtraEnters of them.
 // It is not parallel: each row replaces the package-level inputSleep.
 func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 	const settle = 300 * time.Millisecond
@@ -934,7 +936,8 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		wantTail []string
 	}{
 		{
-			// Also the empty box under a running turn: nothing pending, so no Enter.
+			// Also the empty box under a running turn: nothing pending,
+			// so no Enter.
 			name:     "box clears at once",
 			text:     shortText,
 			boxes:    []inputBoxAnswer{{"", true}},

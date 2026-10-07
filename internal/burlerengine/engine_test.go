@@ -69,9 +69,11 @@ func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error)
 
 // RunGated delegates to Run's own body, then — only when gate is non-empty and the delegated outcome is OutcomeDone — evaluates the gate spec like the shuttle wait loop:
 // each entry's closure runs in list order, skipping off entries.
-// A failing entry is re-prompted up to its Attempts, each re-prompt first writing the next reviewRewrites content to the review file as the reviewer would, and a PassOnCap entry that spent its budget is let through.
+// A failing entry is re-prompted up to its Attempts, each re-prompt first writing the next reviewRewrites content to the review file as the reviewer would,
+// and a PassOnCap entry that spent its budget is let through.
 // Any other entry that spent its budget fails the gate and stops the evaluation.
-// A closure's error is returned, and otherwise a *GateOutcome is stamped onto the returned Result.
+// A closure's error is returned,
+// and otherwise a *GateOutcome is stamped onto the returned Result.
 func (f *fakeShuttle) RunGated(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, error) {
 	f.gateSpec = gate
 
@@ -486,7 +488,8 @@ func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
 // TestEngine_Run_GateOutcomes table-drives Run over a round's gate list.
 // Whatever the caller's list, the gate spec the shuttle receives ends with the review-parse entry, unwrapped:
 // its findings name the review file but not the fixer report, which only repairReportBeforeGate adds.
-// A round carrying the zero GateSpec therefore receives exactly that one entry, and its approved review passes it.
+// A round carrying the zero GateSpec therefore receives exactly that one entry,
+// and its approved review passes it.
 // A round whose gate fails returns a Result with Gate populated and Passed false, Verdict and Findings left empty, Outcome still OutcomeDone and a nil error -- with the review file never read:
 // no review file is left on disk, so a "missing review file" error would mean the gate-failure short-circuit did not fire before the parse step.
 // Engine.Run wraps every gate entry's closure in repairReportBeforeGate before handing it to RunGated, so the failing entry's closure the shuttle received is the wrapped one the round actually ran; re-invoking it (the told closure is pure) recovers the findings text the failing attempt produced, which must name this round's own review path and fixer-report path.
@@ -592,9 +595,12 @@ func TestEngine_Run_GateOutcomes(t *testing.T) {
 }
 
 // TestEngine_Run_ReviewGateRepairsUnparseableReview drives Run with a first review file that fails ParseReview.
-// The review entry fails with the parse error and the quoting hint in its findings, and the fake shuttle's reviewer rewrites the file at each re-prompt.
-// A rewrite that parses passes the entry, and Run returns the verdict of the repaired file.
-// A file still invalid after the entry's budget is let through, and Run fails with the strict post-gate parse error, after exactly one failed evaluation per attempt plus the capping one.
+// The review entry fails with the parse error and the quoting hint in its findings,
+// and the fake shuttle's reviewer rewrites the file at each re-prompt.
+// A rewrite that parses passes the entry,
+// and Run returns the verdict of the repaired file.
+// A file still invalid after the entry's budget is let through,
+// and Run fails with the strict post-gate parse error, after exactly one failed evaluation per attempt plus the capping one.
 func TestEngine_Run_ReviewGateRepairsUnparseableReview(t *testing.T) {
 	t.Parallel()
 

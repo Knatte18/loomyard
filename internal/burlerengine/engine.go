@@ -106,7 +106,8 @@ type Result struct {
 // orchestrator only;
 // run it through the Shuttle seam via RunGated, wrapping every entry's closure in opts.Gate in repairReportBeforeGate so a failing gate's findings also instruct the agent to rewrite this round's own review and fixer-report files,
 // and appending after them the review-parse entry (ReviewGateEntry), unwrapped, which re-prompts the reviewer in its own session while the review file does not parse;
-// that entry re-prompts at most reviewGateAttempts times and then lets the run through, so a file still invalid after the budget fails at the strict parse below;
+// that entry re-prompts at most reviewGateAttempts times and then lets the run through,
+// so a file still invalid after the budget fails at the strict parse below;
 // populate Result (including its 1:1 Gate passthrough) from the shuttle Result;
 // when the run reached done with a non-nil, failing Result.Gate, return immediately with Verdict and
 // Findings left empty — the round's review file was written before the gate ran, so a gate that

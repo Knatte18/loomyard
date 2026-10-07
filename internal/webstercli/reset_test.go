@@ -93,7 +93,8 @@ func startedAt(sha string) *websterengine.State {
 	}
 }
 
-// withRecoveryStrands records, beside a fork batch, one recovery batch per strand guid, and seeds the fixture's reed with each strand's liveness.
+// withRecoveryStrands records, beside a fork batch, one recovery batch per strand guid,
+// and seeds the fixture's reed with each strand's liveness.
 func (fx *resetFixture) withRecoveryStrands(st *websterengine.State, liveness map[string]bool) {
 	reed := fx.cli.reed.(*shuttlefake.Reed)
 	number := 2

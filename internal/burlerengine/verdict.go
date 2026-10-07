@@ -170,7 +170,8 @@ func ReviewGate(reviewPath string) shuttleengine.Gate {
 }
 
 // ReviewGateEntry returns the gate entry that re-prompts a round's reviewer to repair an unparseable review file at reviewPath.
-// It lets the run through once its re-prompt budget is spent, so the strict parse after the gate still fails the round.
+// It lets the run through once its re-prompt budget is spent,
+// so the strict parse after the gate still fails the round.
 func ReviewGateEntry(reviewPath string) shuttleengine.GateEntry {
 	return shuttleengine.GateEntry{Name: "review", Gate: ReviewGate(reviewPath), Attempts: reviewGateAttempts, PassOnCap: true}
 }

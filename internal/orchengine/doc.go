@@ -72,10 +72,12 @@
 // Watcher.Run polls at the configured interval, calling Tick once per poll.
 // It holds watch.lock for its whole life, so at most one watcher runs per prime;
 // a second one exits with ErrWatcherRunning.
-// On SIGINT or SIGTERM it records State.WatcherStopping before its in-flight tick finishes and before it releases the lock, and the next Run clears the record.
+// On SIGINT or SIGTERM it records State.WatcherStopping before its in-flight tick finishes and before it releases the lock,
+// and the next Run clears the record.
 // `start` waits for a stopping watcher through WaitWatcherGone, at most three poll intervals, instead of reading the dying watcher as live;
 // past the bound it reports the watcher live with `watcher_stopping: true` and a hint to run `start` again.
-// A healthy live watcher records no stopping, so `start` never waits for it.
+// A healthy live watcher records no stopping,
+// so `start` never waits for it.
 // The consecutive tick-error count is capped, and the watcher exits with its reason recorded in State.WatcherExit once the cap is reached.
 // Every provider and reed interaction goes through the Session seam, so the state machine runs against a fake in unit tests.
 //
@@ -187,7 +189,8 @@
 // A compaction keeps the skills the session invoked, which Claude Code re-injects,
 // and `/clear` loses them;
 // both lose the role.
-// Every entry point therefore starts the sequence with a plugins step, so a skill deployed after the session started loads at the next reload.
+// Every entry point therefore starts the sequence with a plugins step,
+// so a skill deployed after the session started loads at the next reload.
 // After `/clear` a skills step then loads the whole orch skill list in one turn,
 // an optional retry step loads what that turn left missing,
 // and the one-line pointer follows;
@@ -228,10 +231,14 @@
 //     More than one turn end after the boundary means turns ran without a reload, or a restarted watcher on an old cursor found an old boundary:
 //     the baseline moves to the boundary, the watcher logs it at Info and types nothing.
 //     One turn end after the boundary that the watcher has not read yet, or none, types nothing and leaves the baseline, so a later turn end evaluates the boundary again.
-//     A confirmed boundary is held in memory only until the idle probe passes, and a restarted watcher finds it again at its next turn end, since the baseline has not moved.
-//     A tick that read a turn end replaces the held boundary from its own evaluation alone, so a boundary found stale never outlives that tick;
-//     a tick that read none keeps it, and binding to another strand clears it.
-//     Bound: a compaction mid-turn whose turn end is followed by another before the watcher reads gets no reload, and the role pointer reaches the session at its next cycle.
+//     A confirmed boundary is held in memory only until the idle probe passes,
+//     and a restarted watcher finds it again at its next turn end, since the baseline has not moved.
+//     A tick that read a turn end replaces the held boundary from its own evaluation alone,
+//     so a boundary found stale never outlives that tick;
+//     a tick that read none keeps it,
+//     and binding to another strand clears it.
+//     Bound: a compaction mid-turn whose turn end is followed by another before the watcher reads gets no reload,
+//     and the role pointer reaches the session at its next cycle.
 //
 // Bound: only the two compaction entries skip the skills step and `/clear` keeps it;
 // the pointer step still has the session read its role file.

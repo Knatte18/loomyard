@@ -566,7 +566,8 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&parentFlag, "parent", "", "write the pair's provenance record once for a worktree created before that record existed; refused when it disagrees with an already-recorded value")
-	// noAttachFlag is read by nothing: the verb never attaches, and the flag stays accepted for existing callers.
+	// noAttachFlag is read by nothing: the verb never attaches,
+	// and the flag stays accepted for existing callers.
 	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "accepted and ignored; kept for existing callers")
 	_ = cmd.Flags().MarkHidden("no-attach")
 

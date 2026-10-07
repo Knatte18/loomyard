@@ -202,12 +202,14 @@ type SkillLoadReport struct {
 }
 
 // InputBoxReader is an optional capability beside Engine: the provider's way of reading the text its input box holds in a pane capture.
-// A provider without it keeps the appearance-only send check, and the rule that matches the read text against the sent text lives in shuttleengine, not here.
+// A provider without it keeps the appearance-only send check,
+// and the rule that matches the read text against the sent text lives in shuttleengine, not here.
 type InputBoxReader interface {
 	// InputBoxText returns the text the provider's input box holds in capture, with the caret, side bars and line breaks stripped.
 	// ok is false when capture shows no input box the provider can read.
 	InputBoxText(capture string) (text string, ok bool)
-	// SubmitSettle is how long after an Enter the box needs to be redrawn before it is read, so a send whose Enter landed is not read as still pending.
+	// SubmitSettle is how long after an Enter the box needs to be redrawn before it is read,
+	// so a send whose Enter landed is not read as still pending.
 	SubmitSettle() time.Duration
 }
 

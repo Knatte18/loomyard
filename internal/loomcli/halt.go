@@ -75,8 +75,10 @@ func writeHaltNote(frictionDir string, n haltNote) error {
 // reflectHalt writes n as a halt note and runs the non-waiting reflection, returning the envelope's "friction" status.
 // A note write failure only logs.
 // A held reflection lock skips the reflection, as reflectFriction(false) does.
-// An `escalation-to-human` halt writes its note and skips the reflection: the producer's own session holds the open question, so a second session reflecting on it finds only a process signal.
-// Only that kind skips, and the skipped reflection is the only thing lost: the note stays on disk unarchived until a later reflection covers it.
+// An `escalation-to-human` halt writes its note and skips the reflection: the producer's own session holds the open question,
+// so a second session reflecting on it finds only a process signal.
+// Only that kind skips,
+// and the skipped reflection is the only thing lost: the note stays on disk unarchived until a later reflection covers it.
 func (c *loomCLI) reflectHalt(n haltNote) string {
 	if c.frictionDir == "" {
 		return frictionengine.StatusSkipped

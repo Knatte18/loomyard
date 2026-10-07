@@ -71,7 +71,8 @@ type Watcher struct {
 
 	// compactedAt is the time of an auto-compaction boundary a turn end read confirmed fresh and not yet reloaded from;
 	// zero when none.
-	// A tick that reads a turn end replaces it from its own evaluation, and binding to another strand clears it.
+	// A tick that reads a turn end replaces it from its own evaluation,
+	// and binding to another strand clears it.
 	// It is memory only: a restarted watcher finds the boundary again at its next turn end, since the baseline has not moved.
 	compactedAt time.Time
 
@@ -655,8 +656,10 @@ func (w *Watcher) startReload(st State, now time.Time, skipsSkills bool) error {
 	return w.typeReloadStep(st, now)
 }
 
-// reloadStep returns the step st is in, normalised: a reload that skips the skills has no skills step, an empty skill list has none either,
-// a retry step with nothing to retry has no retry, and any value that is none of these is the pointer step.
+// reloadStep returns the step st is in, normalised:
+// a reload that skips the skills has no skills step, an empty skill list has none either,
+// a retry step with nothing to retry has no retry,
+// and any value that is none of these is the pointer step.
 func (w *Watcher) reloadStep(st State) int {
 	switch {
 	case st.ReloadStep == ReloadStepPlugins:
@@ -672,7 +675,8 @@ func (w *Watcher) reloadStep(st State) int {
 // typeReloadStep types the current step, the plugins reload, the skills load, the retry load or the pointer: the caller must have seen the session idle on this tick.
 // The first typing persists the step's time and events offset first, so a turn end read before it never confirms the step.
 // A re-typing after a restart keeps both, so the step's timeout never restarts.
-// The plugins step ends no turn, so it persists the move to the next step itself and types nothing else on this tick.
+// The plugins step ends no turn,
+// so it persists the move to the next step itself and types nothing else on this tick.
 func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 	if st.ReloadTypedAt.IsZero() {
 		st.ReloadTypedAt = now

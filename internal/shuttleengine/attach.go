@@ -49,7 +49,8 @@ func (r *Runner) Attach(spec Spec) (Result, bool, error) {
 // On the not-found answer, and only there,
 // it first removes the strand of each earlier run of the same output-file set that is respawn-eligible and still tracked and live, logging each removal at Warn:
 // re-running a producer is the operator's decision to supersede the halted session.
-// A strand it cannot remove comes back as an error and no not-found answer, so the caller starts nothing beside a live strand.
+// A strand it cannot remove comes back as an error and no not-found answer,
+// so the caller starts nothing beside a live strand.
 // It removes only strands of runs whose record declares the exact output-file set of spec;
 // a probe that attaches or refuses (errored or several attachable candidates) removes nothing.
 func (r *Runner) AttachGated(spec Spec, gate GateSpec) (Result, bool, error) {
