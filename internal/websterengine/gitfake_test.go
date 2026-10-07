@@ -16,6 +16,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -74,7 +75,7 @@ var _ planindex.Index = (*fakeIndex)(nil)
 
 // newFakeIndex returns a fakeIndex over the real index.
 func newFakeIndex() *fakeIndex {
-	return &fakeIndex{Index: planglyph.NewIndex()}
+	return &fakeIndex{Index: planglyph.NewIndex(fabricengine.NewReferenceRule())}
 }
 
 func (i *fakeIndex) Delta(_, fromSHA, toSHA string) (planindex.Delta, error) {
@@ -85,7 +86,7 @@ func (i *fakeIndex) Delta(_, fromSHA, toSHA string) (planindex.Delta, error) {
 // indexOver returns the index a fixture over git runs on: a fakeIndex, returned twice so the caller can steer it, when git is a fake, and the real index, with a nil fakeIndex, when git is nil and the repository on disk answers.
 func indexOver(git websterengine.Git) (*fakeIndex, planindex.Index) {
 	if git == nil {
-		return nil, planglyph.NewIndex()
+		return nil, planglyph.NewIndex(fabricengine.NewReferenceRule())
 	}
 	fake := newFakeIndex()
 	return fake, fake

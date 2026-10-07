@@ -78,8 +78,15 @@ func (d diskSizes) absolute(relPath string) string {
 
 // Weights are the cost model's coefficients, one per key of a batcher.yaml profile's weights: map.
 type Weights struct {
-	// StartupContext is the context a fork starts with.
-	StartupContext float64 `json:"startup_context"`
+	// MasterBase is the context the orchestrating session holds when it spawns its first fork, which every fork inherits.
+	MasterBase float64 `json:"master_base"`
+
+	// BatchGrowth is the context the orchestrating session gains per finished batch, so a fork at position k starts MasterBase + (k−1) × BatchGrowth deep.
+	BatchGrowth float64 `json:"batch_growth"`
+
+	// RetiredStartupContext is read only: it lets a breakdown recorded before the start model grew with batch position decode.
+	// It is outside coefficients and nothing writes it.
+	RetiredStartupContext float64 `json:"startup_context,omitempty"`
 
 	// ForkMessages is the messages spent starting a fork, before any card.
 	ForkMessages float64 `json:"fork_messages"`
@@ -112,7 +119,8 @@ var coefficients = []struct {
 	key   string
 	field func(*Weights) *float64
 }{
-	{"startup_context", func(w *Weights) *float64 { return &w.StartupContext }},
+	{"master_base", func(w *Weights) *float64 { return &w.MasterBase }},
+	{"batch_growth", func(w *Weights) *float64 { return &w.BatchGrowth }},
 	{"fork_messages", func(w *Weights) *float64 { return &w.ForkMessages }},
 	{"message_context", func(w *Weights) *float64 { return &w.MessageContext }},
 	{"target_messages", func(w *Weights) *float64 { return &w.TargetMessages }},
@@ -139,6 +147,9 @@ func ProfileWeights(baseDir, profileName string) (Weights, error) {
 
 // profileWeights reads prof's weights: map into Weights, erroring naming batcher.yaml when a coefficient is missing or negative or a key is not a coefficient.
 func profileWeights(profileName string, prof profile) (Weights, error) {
+	if _, ok := prof.Weights["startup_context"]; ok {
+		return Weights{}, fmt.Errorf("batcher.yaml profile %q carries weights key startup_context, which no longer exists: a fork's start grows with its batch position, so set master_base and batch_growth instead", profileName)
+	}
 	known := make(map[string]bool, len(coefficients))
 	for _, c := range coefficients {
 		known[c.key] = true
@@ -177,11 +188,11 @@ type cardLoad struct {
 }
 
 // PeakContext estimates the context a fork holds after running cards in one session, which is its largest:
-// the startup context, plus the weight of every distinct read-set entry the cards gather, plus the fork's own startup messages and every card's messages at MessageContext each.
+// the start context of the fork's 1-based batch position, MasterBase + (position−1) × BatchGrowth, plus the weight of every distinct read-set entry the cards gather, plus the fork's own startup messages and every card's messages at MessageContext each.
 // Context only grows within a fork, so a segment's peak is the context after its last card, and adding a card never lowers it.
 // A card's own estimate is the PeakContext of the one-card segment.
 // A SizeSource error is returned wrapped.
-func PeakContext(plan *planparser.Plan, cards []planparser.Card, sizes SizeSource, w Weights) (float64, error) {
+func PeakContext(plan *planparser.Plan, cards []planparser.Card, sizes SizeSource, w Weights, position int) (float64, error) {
 	loads := make([]cardLoad, len(cards))
 	for i, card := range cards {
 		load, err := loadCard(plan, card, sizes, w)
@@ -191,7 +202,7 @@ func PeakContext(plan *planparser.Plan, cards []planparser.Card, sizes SizeSourc
 		loads[i] = load
 	}
 	var peak peakAccumulator
-	peak.start(w)
+	peak.start(w, position)
 	for _, load := range loads {
 		peak.add(load, w)
 	}
@@ -204,7 +215,10 @@ type Breakdown struct {
 	// Weights are the coefficients the estimate used.
 	Weights Weights `json:"weights"`
 
-	// Startup is the fork's startup context plus its startup messages.
+	// Position is the 1-based batch position the estimate priced the fork at.
+	Position int `json:"position"`
+
+	// Startup is the fork's start context at Position plus its startup messages.
 	Startup float64 `json:"startup"`
 
 	// ReadUnion is the weight of the distinct read-set entries of all the batch's cards, card texts included.
@@ -231,9 +245,9 @@ type CardBreakdown struct {
 	Written float64 `json:"written"`
 }
 
-// breakdownOf builds the Breakdown of the segment whose cards and loads are told, which must be the same length.
-func breakdownOf(cards []planparser.Card, loads []cardLoad, w Weights) Breakdown {
-	b := Breakdown{Weights: w, Startup: w.StartupContext + w.ForkMessages*w.MessageContext}
+// breakdownOf builds the Breakdown, at the told 1-based position, of the segment whose cards and loads are told, which must be the same length.
+func breakdownOf(cards []planparser.Card, loads []cardLoad, w Weights, position int) Breakdown {
+	b := Breakdown{Weights: w, Position: position, Startup: startContext(w, position) + w.ForkMessages*w.MessageContext}
 	seen := map[string]bool{}
 	for i, load := range loads {
 		cb := CardBreakdown{Card: cards[i].Number, Reads: map[string]float64{}, Messages: load.messages, Written: load.messages*w.MessageContext + load.written}
@@ -262,10 +276,15 @@ type peakAccumulator struct {
 	value    float64
 }
 
-// start resets the accumulator to an empty fork: its startup context and startup messages.
-func (p *peakAccumulator) start(w Weights) {
+// startContext is the context a fork at the 1-based batch position starts with.
+func startContext(w Weights, position int) float64 {
+	return w.MasterBase + float64(position-1)*w.BatchGrowth
+}
+
+// start resets the accumulator to an empty fork at the 1-based batch position: its start context and startup messages.
+func (p *peakAccumulator) start(w Weights, position int) {
 	p.gathered = map[string]bool{}
-	p.value = w.StartupContext + w.ForkMessages*w.MessageContext
+	p.value = startContext(w, position) + w.ForkMessages*w.MessageContext
 }
 
 // add takes one card into the segment: its messages, and the read-set entries no earlier card gathered.

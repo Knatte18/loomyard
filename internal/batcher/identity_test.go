@@ -15,21 +15,23 @@ import (
 func TestIdentityBatcher_Batch(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name  string
-		cards []planparser.Card
+		name   string
+		cards  []planparser.Card
+		before int
 	}{
-		{"empty", nil},
-		{"oneCard", []planparser.Card{{Number: 1, Slug: "a"}}},
+		{"empty", nil, 0},
+		{"oneCard", []planparser.Card{{Number: 1, Slug: "a"}}, 0},
 		{"threeCards", []planparser.Card{
 			{Number: 1, Slug: "a"},
 			{Number: 2, Slug: "b"},
 			{Number: 3, Slug: "c"},
-		}},
+		}, 0},
+		{"aLaterBeforeLeavesTheOutputUnchanged", []planparser.Card{{Number: 4, Slug: "d"}, {Number: 5, Slug: "e"}}, 3},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := Identity().Batch(nil, tt.cards, nil)
+			got, err := Identity().Batch(nil, tt.cards, nil, tt.before)
 			if err != nil {
 				t.Fatalf("Batch: %v", err)
 			}

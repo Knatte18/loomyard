@@ -8,6 +8,10 @@ lyx.exe
 /godocreflow
 godocreflow.exe
 
+# Same for `go build .` run inside tools/tokencount.
+/tools/tokencount/tokencount
+/tools/tokencount/tokencount.exe
+
 # Derived dev-only deploy target (tools/internal/devbin) — never the prod install dir.
 .dev-bin/
 

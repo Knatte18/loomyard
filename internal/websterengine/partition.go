@@ -32,8 +32,8 @@ func cardID(c planparser.Card) string {
 // formBatches batches the plan's whole card list with active, reading file sizes from sizes, and asserts the result runs in dependency order.
 // A batchifier failure is refused as transient, naming the plan;
 // an order violation wraps ErrBatchOrder.
-func formBatches(plan *planparser.Plan, active batcher.Batcher, sizes batcher.SizeSource) ([]batcher.Batch, error) {
-	batches, err := batchCards(plan, plan.Cards, active, sizes)
+func formBatches(plan *planparser.Plan, active batcher.Batcher, sizes batcher.SizeSource, before int) ([]batcher.Batch, error) {
+	batches, err := batchCards(plan, plan.Cards, active, sizes, before)
 	if err != nil {
 		return nil, err
 	}
@@ -43,10 +43,10 @@ func formBatches(plan *planparser.Plan, active batcher.Batcher, sizes batcher.Si
 	return batches, nil
 }
 
-// batchCards batches cards, a contiguous run of plan.Cards, with active.
+// batchCards batches cards, a contiguous run of plan.Cards, with active, told that the run executes before batches ahead of them.
 // A batchifier failure is refused as transient, naming the plan.
-func batchCards(plan *planparser.Plan, cards []planparser.Card, active batcher.Batcher, sizes batcher.SizeSource) ([]batcher.Batch, error) {
-	batches, err := active.Batch(plan, cards, sizes)
+func batchCards(plan *planparser.Plan, cards []planparser.Card, active batcher.Batcher, sizes batcher.SizeSource, before int) ([]batcher.Batch, error) {
+	batches, err := active.Batch(plan, cards, sizes, before)
 	if err != nil {
 		return nil, fmt.Errorf("webster: batch the cards of plan %s: %w; way forward: transient, re-run the verb", plan.Dir, err)
 	}
@@ -60,9 +60,9 @@ func batchCards(plan *planparser.Plan, cards []planparser.Card, active batcher.B
 func ExecutionBatches(plan *planparser.Plan, st *State, active batcher.Batcher, sizes batcher.SizeSource) ([]batcher.Batch, error) {
 	switch {
 	case st == nil:
-		return formBatches(plan, active, sizes)
+		return formBatches(plan, active, sizes, 0)
 	case len(st.Partition) == 0:
-		return formBatches(plan, batcher.Identity(), sizes)
+		return formBatches(plan, batcher.Identity(), sizes, 0)
 	}
 
 	batches, err := mapPartition(plan, st.Partition)

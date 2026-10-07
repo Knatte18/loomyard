@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -337,10 +338,31 @@ func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir st
 	return violations
 }
 
+// fabricReferenceCommandOpen opens the quoted command in a fabric-reference finding's detail.
+const fabricReferenceCommandOpen = "ran a fabric-referencing command ("
+
 // fabricReferenceDetail words a fabric-reference finding;
 // every fabric-referencing command can rewrite run state, so the wording never splits by command.
 func fabricReferenceDetail(cmd, rule string) string {
-	return fmt.Sprintf("ran a fabric-referencing command (%q) that can rewrite run state — %s", cmd, rule)
+	return fmt.Sprintf(fabricReferenceCommandOpen+"%q) that can rewrite run state — %s", cmd, rule)
+}
+
+// fabricReferenceCommand returns the unquoted command a fabric-reference entry records, taken from the text fabricReferenceDetail writes.
+// It is false for an entry with no such text, such as one an older record wrote.
+func fabricReferenceCommand(entry string) (string, bool) {
+	_, quoted, found := strings.Cut(entry, fabricReferenceCommandOpen)
+	if !found {
+		return "", false
+	}
+	prefix, err := strconv.QuotedPrefix(quoted)
+	if err != nil {
+		return "", false
+	}
+	cmd, err := strconv.Unquote(prefix)
+	if err != nil {
+		return "", false
+	}
+	return cmd, true
 }
 
 // ClassifyViolation assigns v its D4 severity, checking the correctness rule first.

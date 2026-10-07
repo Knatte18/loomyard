@@ -65,6 +65,8 @@ Do not flag any of the following as a finding:
   The live generation's round is, among `_lyx/loom/rework/round-<N>/` directories, the highest `N` whose `record.json` carries a `class` and whose `first_card` equals the `first_card` in `_lyx/plan/00-overview.md`'s frontmatter (absent means `1`).
   With no such round (generation 0, or a fresh Plan-Write plan after an operator `goto Plan-Write`), the decision record alone is the answer key.
   The round's `prior-generation/` archive is context only, and a finding raised against anything inside it is never legitimate.
+- **Card order.**
+  A card that depends on something a later card does breaks the rule in `{{.specs_dir}}/loom/loom-plan-spec.md`'s "Plan vs. schedule" section; the finding names the card and the later card it depends on.
 - **Verify coverage.**
   A package a card targets whose tests the plan's `## verify:` section does not run is a finding against the plan, hermetic build-tagged tests (for example `-tags integration`) included.
   The `llm` tag that the section compiles rather than runs (for example `go vet -tags llm <packages>`) is not a finding.

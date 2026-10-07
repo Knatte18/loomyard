@@ -38,10 +38,9 @@ there is no wider unit left to declare a footprint for.
 
 ## Plan vs. schedule
 
-The flat card list is the **plan** (a DAG of intent: what depends on what).
-It is not itself an execution order.
-Whoever executes the plan (webster today, or a hypothetical future parallel executor — see the roadmap's Someday list) decides *how* to turn the DAG into an actual run — webster today runs the batches in card order and refuses a backward dependency between them, derived from the cards' own `Targets`/`Uses` refs, strictly sequentially, one fork at a time, potentially wave-based parallel execution for some future version.
-**The plan format should not need to change if that execution-policy decision changes later.**
+A valid plan is executable strictly in card-number order: a card never depends on anything a later card does.
+Webster runs the cards in that order as written and never sorts them, so a card that needs a symbol, file or fixture a later card creates is a defect of the plan, not something the executor repairs.
+`uses-later-target` and `delete-before-reference` refuse the cases a card's own refs can show; every other dependency on a later card is the writer's to avoid and the plan reviewer's to flag.
 
 ## On-disk layout
 
@@ -354,7 +353,8 @@ A parked, more aggressive parallel-execution idea also exists — see the `inter
 
 Machine checks this format is designed to support, in this fixed order, one row per distinct `Check:` ID — never one row per presentation row, so the table below is itself the authoritative list and no count of it is pinned anywhere in prose.
 The IDs are split across two entry points, `ValidateFormat` and `Validate`: every one but `plan-unapproved` (row 3 below) is in the format-only set `ValidateFormat` runs, and `plan-unapproved` is additionally checked by `Validate`, the full entry point.
-The rows that name `internal/planglyph` as their emitter are the exception: that package's resolve pass adds them on top of both entry points.
+The rows that name `internal/planglyph` as their emitter are an exception: that package's resolve pass adds them on top of both entry points.
+`card-fabric-reference` is the other exception: it is a `planparser` function outside both entry points, which the plan index appends to its own format validation.
 The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-three slot in that order even though it alone belongs to the wider entry point:
 
 1. `format-unrecognized` — `format:` is a recognized version (currently only `5`); else refuse to run.
@@ -409,6 +409,14 @@ The rows below stay in one fixed order regardless of which entry point runs them
 31. `delete-target-gone` (informational) — a `Delete:` target of a card that has not begun, already absent from the tree.
     Emitted by `internal/planglyph` at `ValidateDispatch` only, once at least one batch is begun, in place of the blocking `path-missing` or `glyph-not-found` finding for that target; `ValidateFormat`, `Validate` and `ValidateRework` keep refusing a missing `Delete:` target.
     The same target under the card's own `Edit:`, `Uses:` or `Rename` old side keeps its blocking finding.
+32. `card-fabric-reference` — a command in the plan that reaches the fabric repo: a sibling worktree path (a name ending in the fabric suffix) or a command spelling that drives the fabric repo.
+    It scans a card's `**Verify:**` value and the overview's `## verify:` section body with both rules, every fenced code block of every plan file with both rules, and every inline code span of every plan file with the path rule only, because a span documenting a command opens with the spelling.
+    Prose outside code is never scanned.
+    Each span is matched on its own, with the same rule the implementer audit uses.
+    The finding names the card, or for the overview the section the hit is in, and the matched text.
+    Its way forward is to take the data from committed test data an earlier card creates, or to drop the command.
+    The plan index runs it in its format validation, so both plan gates and `lyx loom validate-plan`'s default and `--rework` modes report it; `--require-approved`, webster's own `validate` verb and dispatch validation do not run it.
+    It only refuses and removes no guard: it misses a spelling in `bash -c "…"` or built from a variable, the rest of a span after an unterminated quote, a spelling in an inline span or prose, and a fabric-repo path not spelled as a name ending in the suffix, and the implementer audit stays the guard for those.
 
 One further check, `rework-first-card`, is outside both entry points and has no row above.
 Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.

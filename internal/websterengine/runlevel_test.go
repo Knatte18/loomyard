@@ -1881,7 +1881,7 @@ func rebaselineOnDisk(t *testing.T, fx *runFixture, cards ...int) {
 // emptyBatcher is a batchifier that derives no execution batches from any plan.
 type emptyBatcher struct{}
 
-func (emptyBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource) ([]batcher.Batch, error) {
+func (emptyBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource, int) ([]batcher.Batch, error) {
 	return nil, nil
 }
 func (emptyBatcher) Name() string { return "empty" }
@@ -1889,7 +1889,7 @@ func (emptyBatcher) Name() string { return "empty" }
 // failingBatcher is a batchifier whose Batch always fails.
 type failingBatcher struct{}
 
-func (failingBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource) ([]batcher.Batch, error) {
+func (failingBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource, int) ([]batcher.Batch, error) {
 	return nil, errors.New("batchifier failed")
 }
 func (failingBatcher) Name() string { return "failing" }

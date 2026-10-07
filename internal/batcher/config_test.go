@@ -170,7 +170,8 @@ func TestProfileWeights(t *testing.T) {
 	const valid = `profiles:
   cautious:
     weights:
-      startup_context: 10
+      master_base: 10
+      batch_growth: 3
       fork_messages: 2
       message_context: 8
       target_messages: 3
@@ -192,7 +193,7 @@ func TestProfileWeights(t *testing.T) {
 			config:  valid,
 			profile: "cautious",
 			want: batcher.Weights{
-				StartupContext: 10, ForkMessages: 2, MessageContext: 8, TargetMessages: 3, TestFileMessages: 4,
+				MasterBase: 10, BatchGrowth: 3, ForkMessages: 2, MessageContext: 8, TargetMessages: 3, TestFileMessages: 4,
 				UsesMessages: 5, ContextPerLine: 0.5, PackageContext: 7, WritePerCardLine: 9,
 			},
 		},
@@ -213,6 +214,24 @@ func TestProfileWeights(t *testing.T) {
 			config:      strings.Replace(valid, "fork_messages: 2", "fork_messages: -1", 1),
 			profile:     "cautious",
 			wantErrWith: []string{"batcher.yaml", "fork_messages"},
+		},
+		{
+			name:        "missingMasterBase",
+			config:      strings.Replace(valid, "      master_base: 10\n", "", 1),
+			profile:     "cautious",
+			wantErrWith: []string{"batcher.yaml", "master_base"},
+		},
+		{
+			name:        "negativeBatchGrowth",
+			config:      strings.Replace(valid, "batch_growth: 3", "batch_growth: -1", 1),
+			profile:     "cautious",
+			wantErrWith: []string{"batcher.yaml", "batch_growth"},
+		},
+		{
+			name:        "retiredStartupContext",
+			config:      valid + "      startup_context: 60000\n",
+			profile:     "cautious",
+			wantErrWith: []string{"batcher.yaml", "cautious", "startup_context", "master_base", "batch_growth"},
 		},
 		{
 			name:        "unknownKey",
@@ -247,4 +266,14 @@ func TestProfileWeights(t *testing.T) {
 			}
 		})
 	}
+	t.Run("templateCautiousCarriesTheMeasuredStart", func(t *testing.T) {
+		t.Parallel()
+		got, err := batcher.ProfileWeights(t.TempDir(), "cautious")
+		if err != nil {
+			t.Fatalf("ProfileWeights = _, %v; want nil error", err)
+		}
+		if got.MasterBase != 52000 || got.BatchGrowth != 7000 || got.RetiredStartupContext != 0 {
+			t.Errorf("template cautious start = master_base %v, batch_growth %v, startup_context %v; want 52000, 7000, 0", got.MasterBase, got.BatchGrowth, got.RetiredStartupContext)
+		}
+	})
 }

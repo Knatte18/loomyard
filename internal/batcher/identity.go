@@ -15,8 +15,8 @@ func Identity() Batcher {
 }
 
 // Batch returns one single-card Batch per card, preserving input order.
-// It ignores plan and sizes and never fails.
-func (identityBatcher) Batch(_ *planparser.Plan, cards []planparser.Card, _ SizeSource) ([]Batch, error) {
+// It ignores plan, sizes and before, and never fails.
+func (identityBatcher) Batch(_ *planparser.Plan, cards []planparser.Card, _ SizeSource, _ int) ([]Batch, error) {
 	batches := make([]Batch, len(cards))
 	for i, card := range cards {
 		batches[i] = Batch{Cards: []planparser.Card{card}, Profile: identityBatcher{}.Name()}

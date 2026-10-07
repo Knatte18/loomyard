@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -97,7 +98,7 @@ func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
 	}
 
 	buf := logcapture.Capture(t)
-	gate := NewPlanGate(anchorPath, anchorPath, planglyph.NewIndex())
+	gate := NewPlanGate(anchorPath, anchorPath, planglyph.NewIndex(fabricengine.NewReferenceRule()))
 
 	result, err := gate()
 	if err != nil {

@@ -188,17 +188,19 @@ func AcceptPendingAudit(engine shuttleengine.Engine, st *State, geom Geometry, p
 	return nil, false, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, strings.Join(parts, "; "))
 }
 
-// AcceptBatchFabricReference clears the Uncheckable entries of failed batch n when every one is a pathless fabric-reference finding and the batch provably changed nothing,
+// AcceptBatchFabricReference clears the Uncheckable entries of failed batch n when every one is a pathless fabric-reference finding and the batch's evidence holds,
 // so `lyx webster recover-batch n` can proceed instead of refusing toward the `--fresh` route.
-// The evidence rule: the batch's recorded start commit is set, the worktree's HEAD is that start, and the worktree is clean.
-// A batch that did commit qualifies once its commits are discarded with `git reset --keep <start>`.
+// The evidence rule: the batch's recorded start commit is set and the worktree is clean apart from the run's own state, and one of two routes holds.
+// Either HEAD is that start, or the start is an ancestor of HEAD and every entry records a command that readOnly accepts.
 // A fabric reference stays correctness everywhere else: this clears it only on that evidence and only by the explicit `accept-audit --batch` call,
 // and each cleared entry is recorded on the batch as an AuditWarning, so a recovery carries it and summary.md names it.
+// The bound of the committed route: the evidence shows the start still lies in HEAD's history, nothing is uncommitted and no listed reader can write;
+// it does not inspect the batch's commits.
 // What the evidence cannot cover, the fabric repo's own state, the caller vouches for by running the verb.
 // Any other entry, a batch that is not terminal failed, or missing evidence refuses with ErrAuditNotAcceptable, mutating nothing.
 // It never saves;
 // the caller holds the state-mutation lease and saves.
-func AcceptBatchFabricReference(st *State, geom Geometry, n int) (accepted []string, err error) {
+func AcceptBatchFabricReference(st *State, geom Geometry, n int, readOnly func(cmd string) bool) (accepted []string, err error) {
 	bs := st.Batches[n]
 	if bs == nil || !bs.Terminal || bs.Status != DigestStatusFailed || len(bs.Uncheckable) == 0 {
 		return nil, fmt.Errorf("%w: batch %02d is not a failed batch with uncheckable findings; accept-audit --batch accepts only those", ErrAuditNotAcceptable, n)
@@ -213,8 +215,15 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int) (accepted []str
 	if err != nil {
 		return nil, err
 	}
-	if head != bs.StartSHA {
-		return nil, fmt.Errorf("%w: HEAD %s is not batch %02d's start commit %s; way forward: git reset --keep %s, then re-run \"lyx webster accept-audit --batch %d\"", ErrAuditNotAcceptable, head, n, bs.StartSHA, bs.StartSHA, n)
+	atStart := head == bs.StartSHA
+	if !atStart {
+		reachable, err := geom.git().IsAncestor(geom.WorktreeRoot, bs.StartSHA, head)
+		if err != nil {
+			return nil, err
+		}
+		if !reachable {
+			return nil, fmt.Errorf("%w: HEAD %s is not batch %02d's start commit %s; way forward: git reset --keep %s, then re-run \"lyx webster accept-audit --batch %d\"", ErrAuditNotAcceptable, head, n, bs.StartSHA, bs.StartSHA, n)
+		}
 	}
 	dirtyPaths, err := geom.git().DirtyPaths(geom.WorktreeRoot)
 	if err != nil {
@@ -229,10 +238,19 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int) (accepted []str
 	if len(dirty) > 0 {
 		return nil, fmt.Errorf("%w: the worktree has uncommitted or untracked changes: %s; way forward: restore or remove them with git, then re-run \"lyx webster accept-audit --batch %d\"", ErrAuditNotAcceptable, strings.Join(dirty, ", "), n)
 	}
+	basis := "HEAD was the batch's start commit and the tree clean"
+	if !atStart {
+		for _, entry := range bs.Uncheckable {
+			if cmd, ok := fabricReferenceCommand(entry); !ok || !readOnly(cmd) {
+				return nil, fmt.Errorf("%w: batch %02d's commits are kept only when every fabric reference is a read-only command, and this one is not: %s; %s", ErrAuditNotAcceptable, n, entry, resetToStartSteps(stepRunFresh))
+			}
+		}
+		basis = "the batch's commits were kept as the command is read-only and the tree clean"
+	}
 	for i, entry := range bs.Uncheckable {
 		id := fmt.Sprintf("accepted:batch-%02d:%d", n, i+1)
 		markDisposition(st, id, dispositionWarned)
-		bs.AuditWarnings = append(bs.AuditWarnings, AuditWarning{Identity: id, Class: string(ClassFabricReference), Detail: "accepted by accept-audit --batch, HEAD was the batch's start commit and the tree clean: " + strings.TrimPrefix(entry, fabricReferencePrefix)})
+		bs.AuditWarnings = append(bs.AuditWarnings, AuditWarning{Identity: id, Class: string(ClassFabricReference), Detail: "accepted by accept-audit --batch, " + basis + ": " + strings.TrimPrefix(entry, fabricReferencePrefix)})
 	}
 	accepted = bs.Uncheckable
 	bs.Uncheckable = nil
