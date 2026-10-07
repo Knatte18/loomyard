@@ -870,6 +870,56 @@ func TestAttach_DeadlineAtAttachTime(t *testing.T) {
 	}
 }
 
+// TestProbeGated_ReturnsHandleWithoutWaiting pins that ProbeGated answers a live candidate with the
+// reconstructed handle before any wait has run, that the handle's own Wait then classifies the run,
+// and that a probe over nothing answers not found.
+func TestProbeGated_ReturnsHandleWithoutWaiting(t *testing.T) {
+	t.Run("live_candidate", func(t *testing.T) {
+		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
+		fx := newFixture(t, reed, &fakeEngine{StartupScript: []StartupState{StartupReady}}, withConfig(fastConfig), withSeparateRunDir())
+		runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
+		seedPresentReedState(t, dotLyxDir)
+		runner.clock = newFakeClock(time.Now())
+
+		outputFile := filepath.Join(runRoot, "out.md")
+		runDir := seedAttachRun(t, runRoot, "run-1", seedAttachRunOpts{strandGUID: "strand-1", sessionID: "session-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true})
+
+		run, found, err := runner.ProbeGated(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute}, GateSpec{})
+		if err != nil {
+			t.Fatalf("ProbeGated() error = %v; want nil", err)
+		}
+		if !found || run == nil {
+			t.Fatalf("found = %v, run = %v; want a handle", found, run)
+		}
+		if run.StrandGUID() != "strand-1" || run.RunDir() != runDir {
+			t.Errorf("handle names strand %q in %q; want strand-1 in %q", run.StrandGUID(), run.RunDir(), runDir)
+		}
+		if _, err := os.Stat(runDir); err != nil {
+			t.Errorf("run dir gone after the probe, stat err = %v; the probe must not have waited", err)
+		}
+
+		touchOutputFile(t, outputFile)
+		if err := os.WriteFile(filepath.Join(runDir, eventsFileName), []byte("STOP:done\n"), 0o644); err != nil {
+			t.Fatalf("append done event: %v", err)
+		}
+		result, err := run.Wait()
+		if err != nil {
+			t.Fatalf("Wait() error = %v; want nil", err)
+		}
+		if result.Outcome != OutcomeDone {
+			t.Errorf("Outcome = %q; want %q", result.Outcome, OutcomeDone)
+		}
+	})
+
+	t.Run("nothing_to_attach_to", func(t *testing.T) {
+		fx := newFixture(t, &fakeReed{}, &fakeEngine{}, withSeparateRunDir())
+		run, found, err := fx.Runner.ProbeGated(Spec{OutputFiles: []string{filepath.Join(fx.RunRoot, "out.md")}, Timeout: time.Minute}, GateSpec{})
+		if err != nil || found || run != nil {
+			t.Errorf("ProbeGated() = (%v, %v, %v); want (nil, false, nil)", run, found, err)
+		}
+	})
+}
+
 // TestAttach_OutputFileMatching_ResolvedAbsoluteSet pins that matching is on the resolved absolute
 // set: a spec with relative entries matches a run.json written with absolute ones, and a spec naming
 // the same files in a different order still matches.
