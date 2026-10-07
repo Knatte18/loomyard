@@ -880,6 +880,141 @@ func TestRun_Send_DeliveryVerification(t *testing.T) {
 	}
 }
 
+// inputBoxAnswer is one scripted InputBoxText reading.
+type inputBoxAnswer struct {
+	text string
+	ok   bool
+}
+
+// inputBoxEngine wraps a fakeEngine with the InputBoxReader capability over a scripted queue of box answers.
+// The queue is consumed FIFO and its last answer sticks, like fakeReed's capture queue.
+type inputBoxEngine struct {
+	*fakeEngine
+	boxes  []inputBoxAnswer
+	settle time.Duration
+}
+
+func (e *inputBoxEngine) InputBoxText(string) (string, bool) {
+	answer := e.boxes[0]
+	if len(e.boxes) > 1 {
+		e.boxes = e.boxes[1:]
+	}
+	return answer.text, answer.ok
+}
+
+func (e *inputBoxEngine) SubmitSettle() time.Duration { return e.settle }
+
+// TestRun_Send_ConfirmsSubmission drives Send's submission confirmation through an engine with the InputBoxReader capability.
+// The box is read only after a settle,
+// an extra Enter goes out only while the box holds the sent text,
+// and at most sendExtraEnters of them.
+// It is not parallel: each row replaces the package-level inputSleep.
+func TestRun_Send_ConfirmsSubmission(t *testing.T) {
+	const settle = 300 * time.Millisecond
+	const shortText = "run the suite"
+	const longText = "please review the whole change set carefully and report every finding you can substantiate"
+	const sleepLine = "Sleep:300ms"
+	prefix := func(text string) []string {
+		return []string{"Status", "CapturePane", "CapturePane", "SendKey:Escape", "SendText:" + text, "CapturePane"}
+	}
+	read := []string{sleepLine, "CapturePane"}
+	enterThenRead := []string{"SendKey:Enter", sleepLine, "CapturePane"}
+	join := func(parts ...[]string) []string {
+		var out []string
+		for _, part := range parts {
+			out = append(out, part...)
+		}
+		return out
+	}
+
+	tests := []struct {
+		name    string
+		text    string
+		boxes   []inputBoxAnswer
+		wantErr string
+		// wantTail is the CallLog after the appearance check.
+		wantTail []string
+	}{
+		{
+			// Also the empty box under a running turn: nothing pending,
+			// so no Enter.
+			name:     "box clears at once",
+			text:     shortText,
+			boxes:    []inputBoxAnswer{{"", true}},
+			wantTail: read,
+		},
+		{
+			name:     "box holds the text once then clears",
+			text:     shortText,
+			boxes:    []inputBoxAnswer{{shortText, true}, {"", true}},
+			wantTail: join(read, enterThenRead),
+		},
+		{
+			name:     "box holds a long text's wrapped draft once then clears",
+			text:     longText,
+			boxes:    []inputBoxAnswer{{"please review the whole change set carefully and report every finding you can substantiate", true}, {"", true}},
+			wantTail: join(read, enterThenRead),
+		},
+		{
+			name:     "box never clears",
+			text:     shortText,
+			boxes:    []inputBoxAnswer{{shortText, true}},
+			wantErr:  "still pending in the input box after 2 extra Enter(s)",
+			wantTail: join(read, enterThenRead, enterThenRead),
+		},
+		{
+			name:     "box holds a draft of other text",
+			text:     shortText,
+			boxes:    []inputBoxAnswer{{"something else entirely", true}},
+			wantTail: read,
+		},
+		{
+			name:     "box holds a longer draft containing the short sent text",
+			text:     shortText,
+			boxes:    []inputBoxAnswer{{"run the suite and then deploy", true}},
+			wantTail: read,
+		},
+		{
+			name:     "box holds a collapsed paste placeholder",
+			text:     longText,
+			boxes:    []inputBoxAnswer{{"[Pasted text #1 +4 lines]", true}},
+			wantTail: read,
+		},
+		{
+			name:     "no readable box",
+			text:     shortText,
+			boxes:    []inputBoxAnswer{{"", false}},
+			wantTail: read,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ ", "❯ " + tt.text}}
+			orig := inputSleep
+			inputSleep = func(d time.Duration) {
+				reed.mu.Lock()
+				defer reed.mu.Unlock()
+				reed.CallLog = append(reed.CallLog, "Sleep:"+d.String())
+			}
+			t.Cleanup(func() { inputSleep = orig })
+			engine := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: tt.boxes, settle: settle}
+			run := newFixture(t, reed, engine, withConfig(Config{})).newRun(Spec{})
+
+			err := run.Send(tt.text)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Send() error: %v, want the send confirmed", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Send() error = %v, want it to name %q", err, tt.wantErr)
+			}
+			if want := join(prefix(tt.text), tt.wantTail); !reflect.DeepEqual(reed.CallLog, want) {
+				t.Errorf("call order = %v, want %v", reed.CallLog, want)
+			}
+		})
+	}
+}
+
 //testtiming:keep pins the pane scan's count and lines-below at the unit level, including a needle straddling a wrap boundary, which the delivery table reaches only through Send
 func TestScanPaneForNeedle(t *testing.T) {
 	tests := []struct {

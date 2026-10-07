@@ -40,6 +40,8 @@ func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 //
 //testtiming:keep pins every shipped template default, which the BackgroundShellWaitMin table does not assert
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 	// Seed the config file with the template itself: this is exactly the
 	// file "lyx config reconcile" would produce, so LoadConfig must accept
@@ -68,6 +70,9 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	}
 	if cfg.BackgroundShellWaitMin != 10 {
 		t.Errorf("BackgroundShellWaitMin = %d, want 10", cfg.BackgroundShellWaitMin)
+	}
+	if cfg.SubmitSettleMS != 300 {
+		t.Errorf("SubmitSettleMS = %d, want 300", cfg.SubmitSettleMS)
 	}
 	if cfg.Claude != "" {
 		t.Errorf("Claude = %q, want empty default", cfg.Claude)
@@ -131,6 +136,47 @@ func TestLoadConfig_BackgroundShellWaitMin(t *testing.T) {
 			}
 			if cfg.BackgroundShellWaitMin != tt.want {
 				t.Errorf("BackgroundShellWaitMin = %d, want %d", cfg.BackgroundShellWaitMin, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_SubmitSettleMS(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		value   string
+		want    int
+		wantErr bool
+	}{
+		{name: "positive override loads", value: "150", want: 150},
+		{name: "zero loads", value: "0", want: 0},
+		{name: "negative refused", value: "-1", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			seeded := strings.Replace(shuttleengine.ConfigTemplate(), "submit_settle_ms: 300", "submit_settle_ms: "+tt.value, 1)
+			seedLyxConfig(t, tmpDir, "shuttle", seeded)
+
+			cfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("LoadConfig accepted submit_settle_ms: %s", tt.value)
+				}
+				if !strings.Contains(err.Error(), "submit_settle_ms") || !strings.Contains(err.Error(), tt.value) {
+					t.Errorf("error %q does not name the key and value %s", err, tt.value)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.SubmitSettleMS != tt.want {
+				t.Errorf("SubmitSettleMS = %d, want %d", cfg.SubmitSettleMS, tt.want)
 			}
 		})
 	}

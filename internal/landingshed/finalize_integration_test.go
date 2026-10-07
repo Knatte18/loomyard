@@ -23,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -84,8 +85,27 @@ func openFabricAtLanding(t *testing.T, path string) *fabricengine.Fabric {
 	return f
 }
 
+// configNoticeSeams wires Deps.ConfigChanges to fabricengine.ReadConfigChanges on the real pair at taskCode, against branch parent, and returns it with a Deps.Notify that appends every notice to notices.
+func configNoticeSeams(t *testing.T, taskBranch, taskCode string, notices *[]string) (func() (fabricengine.ConfigChanges, error), func(string) error) {
+	t.Helper()
+	l, err := lyxcwd.ResolveWorktree(taskCode)
+	if err != nil {
+		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", taskCode, err)
+	}
+	changes := func() (fabricengine.ConfigChanges, error) {
+		return fabricengine.ReadConfigChanges(l, taskBranch, "parent", []string{configengine.ConfigFileRel("loom")})
+	}
+	notify := func(line string) error {
+		*notices = append(*notices, line)
+		return nil
+	}
+	return changes, notify
+}
+
 // newFinalizeAt builds a Finalize that lands the task pair at taskCode into the parent pair at parentCode, over the fake conflict-resolution session shuttle.
-func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttle *shedfake.MergeShuttle) *landingshed.Finalize {
+// squash is the landing's squash setting;
+// configChanges and notify fill the two config-notice seams and may be nil.
+func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttle *shedfake.MergeShuttle, squash bool, configChanges func() (fabricengine.ConfigChanges, error), notify func(string) error) *landingshed.Finalize {
 	t.Helper()
 	deps := landingshed.NewTestDeps(t)
 	deps.WorktreeRoot = taskCode
@@ -95,8 +115,10 @@ func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttl
 	deps.OpenFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, taskCode), nil }
 	deps.OpenParentFabric = func() (*fabricengine.Fabric, error) { return openFabricAtLanding(t, parentCode), nil }
 	deps.Shuttle = shuttle
+	deps.ConfigChanges = configChanges
+	deps.Notify = notify
 	deps.Config = landingshed.Config{
-		Squash:             true,
+		Squash:             squash,
 		Conflict:           "claude:test-model",
 		ConflictTimeoutMin: 1,
 		CoAuthoredBy:       "Test Author <test@example.com>",
@@ -114,8 +136,15 @@ func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttl
 //
 // The second step lands a second task into the same parent once, then calls Finalize again on the same pair, and asserts the second call is Done with no second landing commit.
 // A fresh Finalize over a parent that already carries the task's squashed diff behaves the same way.
+// Both Finalize calls of that step report the task's committed loom config change through the notice seam,
+// and the parent's own copy of the file is left byte-identical.
 //
-// The steps share one hub and one parent pair, and the second relies on the first having landed into that parent, so no step runs in parallel and the top-level test calls t.Parallel because the hub is its own.
+// The third step lands a fresh task with squash off and asserts the same notice and the same untouched parent config.
+//
+// The steps share one hub and one parent pair,
+// and the later ones rely on the first having landed into that parent,
+// so no step runs in parallel;
+// the top-level test calls t.Parallel because the hub is its own.
 func TestFinalize_OverRealHub(t *testing.T) {
 	t.Parallel()
 
@@ -137,7 +166,7 @@ func TestFinalize_OverRealHub(t *testing.T) {
 		gitkit.CommitFile(t, taskRecords, "task-note.txt", "task records note\n", "task: add task-note.txt")
 
 		shuttle := resolutionShuttle(taskCode, "resolved content\n", "conflict.txt")
-		fz := newFinalizeAt(t, "task", taskCode, parentCode, shuttle)
+		fz := newFinalizeAt(t, "task", taskCode, parentCode, shuttle, true, nil, nil)
 
 		// Captured before Call so the records-side-not-a-merge-participant assertion below has a concrete
 		// before/after pair to compare, mirroring internal/fabricengine's own before/HEAD
@@ -207,18 +236,82 @@ func TestFinalize_OverRealHub(t *testing.T) {
 	}
 
 	// Relies on the first step having landed into the parent pair, so this task's merge-in carries that landing in cleanly.
-	t.Run("an already landed parent is idempotent", func(t *testing.T) {
+	if !t.Run("an already landed parent is idempotent", func(t *testing.T) {
 		hubforge.AddPair(t, h, "second-task")
 		secondCode := h.PairWarpWorktree("second-task")
 		gitkit.CommitFile(t, secondCode, "feature.txt", "task feature\n", "task: add feature.txt")
+		commitTaskLoomConfig(t, h, "second-task")
+		parentConfigBefore := readParentLoomConfig(t, h)
 
-		shedfake.RequireOutcome(t, newFinalizeAt(t, "second-task", secondCode, parentCode, resolutionShuttle(secondCode, "")), shedengine.Done)
+		var notices []string
+		changes, notify := configNoticeSeams(t, "second-task", secondCode, &notices)
+		shedfake.RequireOutcome(t, newFinalizeAt(t, "second-task", secondCode, parentCode, resolutionShuttle(secondCode, ""), true, changes, notify), shedengine.Done)
+		requireOneConfigNotice(t, notices, "second-task")
 		headAfterFirst := gitkit.RevParse(t, parentCode, "HEAD")
 
-		// A second Finalize over the now already-landed parent.
-		shedfake.RequireOutcome(t, newFinalizeAt(t, "second-task", secondCode, parentCode, resolutionShuttle(secondCode, "")), shedengine.Done)
+		// A second Finalize over the now already-landed parent queues the notice again.
+		shedfake.RequireOutcome(t, newFinalizeAt(t, "second-task", secondCode, parentCode, resolutionShuttle(secondCode, ""), true, changes, notify), shedengine.Done)
 		if got := gitkit.RevParse(t, parentCode, "HEAD"); got != headAfterFirst {
 			t.Errorf("parent code HEAD = %q after second Finalize; want unchanged %q (no second landing commit)", got, headAfterFirst)
 		}
+		if len(notices) != 2 {
+			t.Errorf("notices = %q after the second Finalize; want one per Finalize", notices)
+		}
+		requireParentLoomConfigUnchanged(t, h, parentConfigBefore)
+	}) {
+		return
+	}
+
+	// Lands a fresh task with squash off, after the idempotent step so the parent already carries the earlier landing.
+	t.Run("a non-squash landing reports the config change", func(t *testing.T) {
+		hubforge.AddPair(t, h, "third-task")
+		thirdCode := h.PairWarpWorktree("third-task")
+		gitkit.CommitFile(t, thirdCode, "third.txt", "third feature\n", "task: add third.txt")
+		commitTaskLoomConfig(t, h, "third-task")
+		parentConfigBefore := readParentLoomConfig(t, h)
+
+		var notices []string
+		changes, notify := configNoticeSeams(t, "third-task", thirdCode, &notices)
+		shedfake.RequireOutcome(t, newFinalizeAt(t, "third-task", thirdCode, parentCode, resolutionShuttle(thirdCode, ""), false, changes, notify), shedengine.Done)
+		requireOneConfigNotice(t, notices, "third-task")
+		requireParentLoomConfigUnchanged(t, h, parentConfigBefore)
 	})
+}
+
+// commitTaskLoomConfig commits a loom config change on the task pair's tracked side, which is the change Finalize reports and never carries.
+func commitTaskLoomConfig(t *testing.T, h *hubforge.Hub, slug string) {
+	t.Helper()
+	gitkit.CommitFile(t, h.PairWeftSibling(slug), configengine.ConfigFileRel("loom"), "task_setting: "+slug+"\n", slug+": change loom config")
+}
+
+// readParentLoomConfig returns the parent pair's loom config file bytes, or nil when the parent has none.
+func readParentLoomConfig(t *testing.T, h *hubforge.Hub) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(h.PairWeftSibling("parent"), configengine.ConfigFileRel("loom")))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read parent loom config: %v", err)
+	}
+	return b
+}
+
+// requireParentLoomConfigUnchanged fails unless the parent pair's loom config file is byte-identical to before.
+func requireParentLoomConfigUnchanged(t *testing.T, h *hubforge.Hub, before []byte) {
+	t.Helper()
+	if got := readParentLoomConfig(t, h); string(got) != string(before) {
+		t.Errorf("parent loom config = %q after landing; want byte-identical %q -- landing never carries a config change", got, before)
+	}
+}
+
+// requireOneConfigNotice fails unless notices holds a notice naming taskBranch and the loom config file.
+func requireOneConfigNotice(t *testing.T, notices []string, taskBranch string) {
+	t.Helper()
+	if len(notices) == 0 {
+		t.Fatal("no notice queued; want one naming the changed config file")
+	}
+	last := notices[len(notices)-1]
+	for _, want := range []string{taskBranch, "loom.yaml"} {
+		if !strings.Contains(last, want) {
+			t.Errorf("notice %q does not carry %q", last, want)
+		}
+	}
 }

@@ -127,6 +127,25 @@ type Deps struct {
 	// its drift guard keeps it filled.
 	MarkTaskDone func() error
 
+	// ConfigChanges returns the task's changes to its own per-worktree config files since its fork point.
+	// Finalize calls it before the catch-up merge-in, so before any parent-side mutation, and only reports the result through Notify:
+	// landing never carries those files to the parent.
+	// A returned error is logged and reported through Notify, never a stop.
+	//
+	// Nil means "no config changes to report", following CommitStatus's nil-is-absent convention.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	ConfigChanges func() (fabricengine.ConfigChanges, error)
+
+	// Notify queues one single-line notice for the hub's orchestrator.
+	// Finalize calls it once at Done when ConfigChanges produced a line, and only logs a failure:
+	// the landing has happened whatever the notice queue says.
+	// landingshed names no orchestrator path,
+	// so the queue wiring lives in the closure.
+	//
+	// Nil means "no one to notify", following CommitStatus's nil-is-absent convention.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	Notify func(line string) error
+
 	// VerifyCommand returns the verify command line the post-merge verify gate runs in the task worktree.
 	// The clean-tree checks around the merge-in run whether or not a command is wired.
 	// It is read each time the gate runs rather than once at construction,

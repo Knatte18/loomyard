@@ -9,8 +9,9 @@ import "fmt"
 type StartAction int
 
 const (
-	// StartAttachOnly: strand and watcher are both live; only hand the terminal over.
-	StartAttachOnly StartAction = iota
+	// StartAlreadyRunning: strand and watcher are both live;
+	// start changes nothing.
+	StartAlreadyRunning StartAction = iota
 	// StartSpawnWatcher: strand is live but no watcher holds it; spawn one.
 	StartSpawnWatcher
 	// StartRelaunch: strand is dead or absent; launch a fresh session and a watcher for it.
@@ -32,7 +33,7 @@ func DecideStart(strandLive, watcherLive bool) StartAction {
 	case !strandLive:
 		return StartRelaunch
 	case watcherLive:
-		return StartAttachOnly
+		return StartAlreadyRunning
 	default:
 		return StartSpawnWatcher
 	}

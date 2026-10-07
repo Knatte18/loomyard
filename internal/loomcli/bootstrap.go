@@ -57,68 +57,15 @@ func mustSpawnDriver(runLockHeld bool, driverStrandLive bool) bool {
 	return !runLockHeld && !driverStrandLive
 }
 
-// handover is what step 7 of the bootstrap does with the operator's terminal.
-type handover int
-
-const (
-	// handoverAttach hands the terminal to a tmux attach, as the bootstrap always did.
-	handoverAttach handover = iota
-	// handoverEnvelope returns the success envelope: the caller is unattended, or already sits in the
-	// task's own session.
-	handoverEnvelope
-	// handoverSwitch switches the caller's tmux client onto the task's session.
-	handoverSwitch
-	// handoverHint returns the success envelope with a hint naming the command to attach from outside
-	// tmux: the caller is inside a tmux server the bootstrap must not nest into.
-	handoverHint
-)
-
-// decideHandover picks step 7's handover from where the command runs. It is the twin of
-// mustSpawnDriver: the whole of a handoff decision, expressed as one pure function rather than
-// written inline in the verb body.
-//
-// noAttach wins over every branch. An unset $TMUX attaches, which also covers psmux on Windows where
-// $TMUX may be absent. A $TMUX naming another tmux server never nests: reedOwns is false, so the
-// caller gets the envelope and a hint. A $TMUX naming reed's server compares currentSession, the
-// session the caller's pane belongs to, against taskSession: equal returns the envelope, different
-// switches the client. An empty currentSession means the pane's session could not be read, and falls
-// back to the hint rather than nesting.
-//
-// The attach this decision can return is the CLI/Cobra Invariant's narrow interactive-handoff
-// exception for `lyx loom start`/`lyx start`; every other branch reports on the envelope.
-func decideHandover(noAttach bool, tmuxEnv string, reedOwns bool, currentSession, taskSession string) handover {
-	switch {
-	case noAttach:
-		return handoverEnvelope
-	case tmuxEnv == "":
-		return handoverAttach
-	case !reedOwns:
-		return handoverHint
-	case currentSession == "":
-		return handoverHint
-	case currentSession == taskSession:
-		return handoverEnvelope
-	default:
-		return handoverSwitch
-	}
-}
-
-// noAttachFields builds the success envelope `lyx loom start` prints in place of an attach: the run's
-// driver, slug, resolved run id and status file, with "attached": false stating which tail was
-// skipped. A non-empty hint adds a "hint" key naming the command to attach from outside tmux. It is a
-// pure function so a Tier 1 test can pin the key set.
-func noAttachFields(driver, slug, runID, statusFile, hint string) map[string]any {
-	fields := map[string]any{
-		"attached":    false,
+// startEnvelopeFields builds the success envelope `lyx loom start` prints: the run's driver, slug, resolved run id and status file.
+// It is a pure function so a Tier 1 test can pin the key set.
+func startEnvelopeFields(driver, slug, runID, statusFile string) map[string]any {
+	return map[string]any{
 		"driver":      driver,
 		"slug":        slug,
 		"run_id":      runID,
 		"status_file": statusFile,
 	}
-	if hint != "" {
-		fields["hint"] = hint
-	}
-	return fields
 }
 
 // awaitRunLockResult is the four-way outcome of awaitRunLock.
@@ -153,7 +100,7 @@ const (
 // working": shedengine.Run releases the lock on return, and after a blocked halt `lyx loom run`
 // then spends up to friction_timeout_min in the Tier 2 reflection step with the lock free and the
 // process very much alive. Without this signal a fast halt plus any friction note is reported as a wedged spawn and
-// the bootstrap skips its own terminal handover — see dispositionForHandshake.
+// the bootstrap refuses — see dispositionForHandshake.
 //
 // lockHeld, alive, halted, and wait are all injected seams so a test can drive this whole poll with
 // no real process, no real lock, no real status file, and no wall-clock sleep, which the Test Tier
@@ -182,9 +129,9 @@ func awaitRunLock(lockHeld func() (bool, error), alive func() bool, halted func(
 type handshakeDisposition int
 
 const (
-	// handshakeProceed means the bootstrap continues to its terminal handover.
+	// handshakeProceed means the bootstrap proceeds to its success envelope.
 	handshakeProceed handshakeDisposition = iota
-	// handshakeRefuse means the bootstrap reports a failure and hands the terminal over to nothing.
+	// handshakeRefuse means the bootstrap reports a failure on the envelope.
 	handshakeRefuse
 )
 
@@ -195,9 +142,7 @@ const (
 // handshake's first poll is a driver that RAN AND FINISHED -- the common case, since a run that
 // halts fast (a blocked Preflight or Loom-Preflight, an exhausted bounce budget) exits within
 // milliseconds, well inside the first poll interval. Refusing there tells the operator the bootstrap
-// broke when in fact their task halted, and skips the tmux handover that is the bootstrap's entire
-// job, so the one place the halt is legible -- the status strand sitting in the session -- is the
-// one place they are not put.
+// broke when in fact their task halted, and withholds the success envelope that is the bootstrap's entire job.
 //
 // awaitRunLockHalted proceeds for exactly the same reason, and covers the case Tier 2 introduced:
 // the driver halted just as fast, but did NOT exit, because after a blocked halt `lyx loom run` runs
@@ -205,7 +150,7 @@ const (
 // real agent bounded by friction_timeout_min -- thirty minutes in the shipped template -- against a
 // handshake budget of thirty seconds, so the child is alive, the lock is free, and the machine is
 // done. Before this arm existed that combination landed on the refusal below, which turned every
-// fast halt carrying a friction note into a reported bootstrap failure with no terminal handover:
+// fast halt carrying a friction note into a reported bootstrap failure:
 // precisely the outcome the paragraph above exists to prevent, reintroduced through a different door.
 //
 // Only awaitRunLockDeadline is a genuine refusal: the child is still alive after the whole attempt

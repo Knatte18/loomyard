@@ -292,6 +292,11 @@
 // and every call then blocks for RecoveryWaitBudget (recovery_timeout_min plus one poll tick) and returns a terminal digest:
 // the budget outlasts the timeout measured from spawn, so a strand that never reports classifies dead on its timeout and the call returns.
 // A re-entrant call finds the strand already recorded in state and skips straight to the wait.
+// Every terminal digest (done, stuck or dead) removes the recovery strand if it is still live, even when the call then refuses on a merge in progress or a report head mismatch;
+// only a done digest also removes the run dir, which stuck and dead keep for diagnosis.
+// `lyx webster reset --to start` likewise removes every live recovery strand the state records before it resets,
+// so no recovery agent keeps writing into the tree the reset moves;
+// `--to pre-fix` removes none.
 // Merriam runs the call as a backgrounded Bash command, ends its turn and acts on the completion notification.
 // Only an operator's shorter --wait can return a running snapshot.
 // This mirrors classify.go's dead/timeout/stuck classification.

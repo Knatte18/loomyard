@@ -10,7 +10,9 @@
 // `lyx orch` runs from the hub's prime worktree only; every verb refuses elsewhere.
 //
 //   - start: the idempotent bootstrap.
-//     It leaves one live orchestrator strand and one watcher bound to it, then hands the terminal over to reed's attach.
+//     It leaves one live orchestrator strand and one watcher bound to it, then reports on the envelope.
+//     It never attaches or switches a tmux client;
+//     `lyx reed attach` is the only way into the session.
 //     `--adopt <session-id>` resumes an existing Claude session as the orchestrator strand instead of launching a fresh one.
 //   - status: reports the strand, the watcher and the persisted cycle state.
 //   - refresh: writes a clear-cycle request, which makes the watcher write a note and clear the session at its next idle moment regardless of the token count and of `cycle_mode`.
@@ -45,7 +47,7 @@
 // A render failure is handled where a stencil render failure is: `start` refuses, a note request changes nothing, and a clear that cannot render aborts the cycle.
 //
 // DecideStart maps the strand and watcher liveness pair onto the branch `start` takes:
-// attach only, spawn a watcher, or relaunch.
+// already running, spawn a watcher, or relaunch.
 // A dead or absent strand always relaunches.
 //
 // # Permission mode and subagents
@@ -70,6 +72,12 @@
 // Watcher.Run polls at the configured interval, calling Tick once per poll.
 // It holds watch.lock for its whole life, so at most one watcher runs per prime;
 // a second one exits with ErrWatcherRunning.
+// On SIGINT or SIGTERM it records State.WatcherStopping before its in-flight tick finishes and before it releases the lock,
+// and the next Run clears the record.
+// `start` waits for a stopping watcher through WaitWatcherGone, at most three poll intervals, instead of reading the dying watcher as live;
+// past the bound it reports the watcher live with `watcher_stopping: true` and a hint to run `start` again.
+// A healthy live watcher records no stopping,
+// so `start` never waits for it.
 // The consecutive tick-error count is capped, and the watcher exits with its reason recorded in State.WatcherExit once the cap is reached.
 // Every provider and reed interaction goes through the Session seam, so the state machine runs against a fake in unit tests.
 //
@@ -178,16 +186,25 @@
 //
 // # The reload sequence
 //
-// A clear, a compaction and an auto-compaction each lose the session's skills and role,
-// so the resuming phase restores them: a skills step loads the whole orch skill list in one turn,
+// A compaction keeps the skills the session invoked, which Claude Code re-injects,
+// and `/clear` loses them;
+// both lose the role.
+// Every entry point therefore starts the sequence with a plugins step,
+// so a skill deployed after the session started loads at the next reload.
+// After `/clear` a skills step then loads the whole orch skill list in one turn,
 // an optional retry step loads what that turn left missing,
-// and the one-line pointer follows.
+// and the one-line pointer follows;
+// after a compaction the pointer follows the plugins step directly.
 // `start` and `--adopt` load the same skills through the launch spec.
-// The step, the skills the retry step loads, the step's first typing time and its events offset are persisted in State (`reload_step`, `reload_retry`, `reload_typed_at`, `phase_events_offset`), the offset and time at the first typing, before the text is typed.
-// `reload_step` is 0 for the skills step and -1 for the retry step.
-// Every other value, including a per-skill index persisted before the one-turn load, is read as the pointer step, as is a retry step with an empty `reload_retry`.
+// The step, the skills the retry step loads, whether the sequence skips the skills, the step's first typing time and its events offset are persisted in State (`reload_step`, `reload_retry`, `reload_skips_skills`, `reload_typed_at`, `phase_events_offset`), the offset and time at the first typing, before the text is typed.
+// `reload_step` is -2 for the plugins step, 0 for the skills step and -1 for the retry step.
+// Every other value, including a per-skill index persisted before the one-turn load, is read as the pointer step, as is a retry step with an empty `reload_retry` and a skills step when `reload_skips_skills` is set.
 //
-//   - The skills step types one provider-built message asking the model to load every skill, only when the idle probe passed on the same tick.
+//   - The plugins step types `/reload-plugins`, only when the idle probe passed on the same tick, and ends no turn.
+//     It persists the move to the next step, the skills step or, when `reload_skips_skills` is set, the pointer, with a zero `reload_typed_at`, and types nothing else on that tick;
+//     the next step is typed on a later tick whose idle probe passed.
+//     It has no confirmation and no timeout: a restart before the move finds it persisted and types `/reload-plugins` again, which is idempotent.
+//   - The skills step, only after `/clear`, types one provider-built message asking the model to load every skill, only when the idle probe passed on the same tick.
 //     Its first turn end after the typing is classified against the transcript.
 //     A skill the provider does not know is skipped, with a log entry naming the skill and the cause `unknown`.
 //     A turn whose transcript cannot be read is confirmed unverified, with one `skill load unverified` entry listing the skills,
@@ -209,9 +226,25 @@
 //
 //   - After `/clear`: the pointer names the note, as before.
 //   - After a compaction the watcher ran: the pointer names the cycle's note.
-//   - After an auto-compaction: in idle, a turn end read makes the watcher ask for a main-chain compaction boundary after State.CompactionBaseline.
-//     A boundary found enters the sequence, with the `orch-template-reload` pointer: read the role file and continue the work, no note.
-//     A boundary not yet reloaded is held in memory only, and a restarted watcher finds it again at its next turn end, since the baseline has not moved.
+//   - After an auto-compaction: in idle, a turn end read makes the watcher ask for a main-chain compaction boundary after State.CompactionBaseline, with the turn ends that follow it in the transcript.
+//     Exactly one turn end after the boundary, and that turn end the newest one read on the tick, enters the sequence, with the `orch-template-reload` pointer: read the role file and continue the work, no note.
+//     More than one turn end after the boundary means turns ran without a reload,
+//     or a restarted watcher on an old cursor found an old boundary:
+//     the baseline moves to the boundary, the watcher logs it at Info and types nothing.
+//     One turn end after the boundary that the watcher has not read yet, or none, types nothing and leaves the baseline,
+//     so a later turn end evaluates the boundary again.
+//     A confirmed boundary is held in memory only until the idle probe passes,
+//     and a restarted watcher finds it again at its next turn end, since the baseline has not moved.
+//     A tick that read a turn end replaces the held boundary from its own evaluation alone,
+//     so a boundary found stale never outlives that tick;
+//     a tick that read none keeps it,
+//     and binding to another strand clears it.
+//     Bound: a compaction mid-turn whose turn end is followed by another before the watcher reads gets no reload,
+//     and the role pointer reaches the session at its next cycle.
+//
+// Bound: only the two compaction entries skip the skills step and `/clear` keeps it;
+// the pointer step still has the session read its role file.
+// A session that did lose a skill in a compaction misses it until its next `/clear` or restart.
 //
 // State.CompactionBaseline is set to the launch time by a fresh launch, so a boundary an adopted session already carried never reloads,
 // and moves to each handled boundary, including a compaction the watcher ran, so no boundary reloads twice.

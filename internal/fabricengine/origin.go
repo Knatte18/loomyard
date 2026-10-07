@@ -5,6 +5,7 @@
 package fabricengine
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -89,19 +90,25 @@ func ReadOrigin(l *lyxcwd.Location) (Origin, bool, error) {
 // ReadOriginFor reads the origin record of slug's worktree pair, for a caller that is not running
 // from that pair — Remove runs from another worktree, where ReadOrigin would read the caller's own.
 // A false second return means there is no record to read and is not an error:
-// an absent weft worktree, record or lock directory all answer that way.
+// an absent weft worktree or record answers that way.
+// A record whose weft worktree lacks its .weft lock directory is an error naming the worktree and `lyx fabric reconcile`, which restores the directory.
 // It creates no directory and seeds no exclude in the other pair's weft worktree,
 // so reading a half-present pair never recreates a weft path it has already lost.
 func ReadOriginFor(l *lyxcwd.Location, slug string) (Origin, bool, error) {
+	weftPath := WeftWorktreePath(l, slug)
 	path := OriginRecordPathFor(l, slug)
-	lockDir := filepath.Join(WeftWorktreePath(l, slug), weftLockDirName)
-	for _, required := range []string{path, lockDir} {
-		if _, err := os.Stat(required); err != nil {
-			if os.IsNotExist(err) {
-				return Origin{}, false, nil
-			}
-			return Origin{}, false, err
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return Origin{}, false, nil
 		}
+		return Origin{}, false, err
+	}
+	lockDir := filepath.Join(weftPath, weftLockDirName)
+	if _, err := os.Stat(lockDir); err != nil {
+		if os.IsNotExist(err) {
+			return Origin{}, false, fmt.Errorf("weft worktree %s has an origin record but its %s lock directory is missing; run `lyx fabric reconcile` to restore it", weftPath, weftLockDirName)
+		}
+		return Origin{}, false, err
 	}
 	return state.ReadJSON[Origin](path, filepath.Join(lockDir, originRecordLockFileName))
 }

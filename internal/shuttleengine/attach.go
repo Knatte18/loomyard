@@ -9,6 +9,10 @@
 // reed says — including when reed cannot be read at all, which is what soleFinishedCandidate is for.
 // See the Completion Signal Invariant in wait.go's own package doc comment for the rule this file
 // is the entry-side half of.
+// A not-found answer after the dispositions is the caller's cue to start a fresh run,
+// so Attach and AttachGated first remove the live strand of every respawn-eligible candidate of the same output-file set:
+// re-running a producer supersedes the session it halted.
+// AttachIfLive is the same probe with that removal off, for a caller that starts nothing after a not-found answer.
 
 package shuttleengine
 
@@ -32,15 +36,37 @@ import (
 // (whose own error, if any, is returned alongside).
 // Attach never calls Start — it reconstructs a *Run directly over a matched run.json — so
 // sweepOrphansOpportunistic never runs on this path.
+// Before it answers not found it removes the live strand of every respawn-eligible candidate,
+// as AttachGated documents.
 func (r *Runner) Attach(spec Spec) (Result, bool, error) {
-	return r.AttachGated(spec, GateSpec{})
+	return r.attach(spec, GateSpec{}, true)
 }
 
 // AttachGated is Attach, gated: a run it reconstructs and waits on carries gate exactly as a fresh
 // RunGated run would, so a resumed fix round is gated exactly as a fresh one is.
 // AttachGated is a deliberate added form beside Attach rather than a widening of it, because Attach's
 // shared seam is held by callers that have no gate and never will (see the "added forms" decision).
+// On the not-found answer, and only there,
+// it first removes the strand of each earlier run of the same output-file set that is respawn-eligible and still tracked and live, logging each removal at Warn:
+// re-running a producer is the operator's decision to supersede the halted session.
+// A strand it cannot remove comes back as an error and no not-found answer,
+// so the caller starts nothing beside a live strand.
+// It removes only strands of runs whose record declares the exact output-file set of spec;
+// a probe that attaches or refuses (errored or several attachable candidates) removes nothing.
 func (r *Runner) AttachGated(spec Spec, gate GateSpec) (Result, bool, error) {
+	return r.attach(spec, gate, true)
+}
+
+// AttachIfLive is Attach's probe with the superseded-strand removal off,
+// for a caller that waits on a live run but starts nothing after a not-found answer.
+// It removes nothing on any path.
+func (r *Runner) AttachIfLive(spec Spec) (Result, bool, error) {
+	return r.attach(spec, GateSpec{}, false)
+}
+
+// attach is the one body behind Attach, AttachGated and AttachIfLive;
+// removeSuperseded is false only for AttachIfLive.
+func (r *Runner) attach(spec Spec, gate GateSpec, removeSuperseded bool) (Result, bool, error) {
 	if r.toldErr != nil {
 		return Result{}, false, r.toldErr
 	}
@@ -111,13 +137,15 @@ func (r *Runner) AttachGated(spec Spec, gate GateSpec) (Result, bool, error) {
 	minAge := 2 * time.Duration(r.cfg.StartupTimeoutS) * time.Second
 	now := r.clock.Now()
 
-	var attachable, errored []attachCandidate
+	var attachable, errored, respawnEligible []attachCandidate
 	for _, c := range candidates {
 		switch dispositionCandidate(c, status.Strands, normalized, minAge, now) {
 		case verdictAttachable:
 			attachable = append(attachable, c)
 		case verdictError:
 			errored = append(errored, c)
+		case verdictRespawnEligible:
+			respawnEligible = append(respawnEligible, c)
 		}
 	}
 
@@ -130,10 +158,32 @@ func (r *Runner) AttachGated(spec Spec, gate GateSpec) (Result, bool, error) {
 		return Result{}, false, fmt.Errorf("shuttle: attach: %d live runs match the same output files, refusing to pick one: %s", len(attachable), joinRunDirs(attachable))
 	}
 	if len(attachable) == 0 {
+		if removeSuperseded {
+			if err := r.removeSupersededStrands(respawnEligible, status.Strands); err != nil {
+				return Result{}, false, err
+			}
+		}
 		return Result{}, false, nil
 	}
 
 	return r.reconstructAndWait(attachable[0], normalized, gate)
+}
+
+// removeSupersededStrands removes the strand of each candidate that reed tracks as live,
+// so the fresh run the caller starts next does not run beside the session it supersedes.
+// A candidate whose strand is untracked or dead has nothing to remove.
+func (r *Runner) removeSupersededStrands(candidates []attachCandidate, strands []reedengine.StrandStatus) error {
+	for _, c := range candidates {
+		strand, tracked := strandStatusByGUID(strands, c.state.StrandGUID)
+		if !tracked || !strand.Live {
+			continue
+		}
+		logger.Warn("shuttle: attach: removing the live strand of a superseded run before a fresh run", "runDir", c.runDir, "strandGUID", c.state.StrandGUID)
+		if _, err := r.reed.RemoveStrand(c.state.StrandGUID, false); err != nil {
+			return fmt.Errorf("shuttle: attach: could not remove the superseded strand %s of run %s: %w; way forward: run \"lyx reed remove %s\", then re-step the row", c.state.StrandGUID, c.runDir, err, c.state.StrandGUID)
+		}
+	}
+	return nil
 }
 
 // soleFinishedCandidate returns the one candidate among candidates whose persisted record still

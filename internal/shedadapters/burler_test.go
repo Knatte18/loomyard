@@ -891,49 +891,69 @@ func TestBurlerProducer_Gate_FailedGateMapsToStuckWithEmptyPointer(t *testing.T)
 	}
 }
 
-// TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically is the regression
-// guard for the resume hole: probeLiveRound must pass p.opts.Gate into the gated attach, and an
-// attached round's failed gate must map identically to the spawn path's -- Stuck with an empty
-// pointer, archived, retry untouched.
+// TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically is the regression guard for the resume hole:
+// probeLiveRound must pass p.opts.Gate, followed by the round's own review-parse entry, into the gated attach, leaving the caller's gate list as it was,
+// and an attached round's failed gate -- a told entry or the review entry -- must map identically to the spawn path's -- Stuck with an empty pointer, archived, retry untouched.
+// The round's review file holds unparseable content,
+// so the review entry fails whenever it is reached.
 func TestBurlerProducer_Gate_ProbeLiveRoundPassesGateAndMapsFailedGateIdentically(t *testing.T) {
-	runDir := t.TempDir()
-	reviewPath := roundReviewPath(runDir, 1)
-	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-	attach := &shedfake.Shuttle{
-		AttachFound: true,
-		AttachResult: shuttleengine.Result{
-			Outcome: shuttleengine.OutcomeDone,
-			Gate:    &shuttleengine.GateOutcome{Passed: false},
-		},
-	}
-	opts := burlerengine.RunOpts{Gate: shuttleengine.GateSpec{{Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
-		return shuttleengine.GateResult{Passed: false}, nil
-	}}}}
-	p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(opts), withAttach(attach), withBurlerClock(fixedClock(time.Now())))
-	// Only the review file exists at Call entry -- a complete pair here would make
-	// highestCompleteRound treat round 1 as already finished and hand back before probeLiveRound is
-	// ever reached, exactly as the pre-existing attach tests in this file are careful to leave
-	// incomplete.
-	writeRoundFile(t, reviewPath)
+	t.Parallel()
 
-	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-	if ptr.Path != "" {
-		t.Errorf("Call() pointer.Path = %q; want empty, identically to the spawn path's own gate-failed exit", ptr.Path)
+	tests := []struct {
+		name string
+		// toldPasses makes the told entry pass,
+		// so the failure comes from the review entry behind it.
+		toldPasses bool
+	}{
+		{name: "failing told entry", toldPasses: false},
+		{name: "failing review entry", toldPasses: true},
 	}
-	if ptr.GateAttempts == nil || *ptr.GateAttempts != 0 {
-		t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0", ptr.GateAttempts)
-	}
-	if want := "gate did not pass after 0 attempts; findings: "; ptr.Reason != want {
-		t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
-	}
-	if len(attach.GotAttachGateSpec) == 0 {
-		t.Error("probeLiveRound did not pass p.opts.Gate into AttachGated -- this reopens the resume gate hole")
-	}
-	if runner.Calls != 0 {
-		t.Errorf("runner.Run calls = %d; want 0 -- an attached round is never respawned", runner.Calls)
-	}
-	if _, statErr := os.Stat(reviewPath); !os.IsNotExist(statErr) {
-		t.Error("gate-failed attached round's review file was not archived away")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			runDir := t.TempDir()
+			reviewPath := roundReviewPath(runDir, 1)
+			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+			attach := &shedfake.Shuttle{
+				AttachFound: true,
+				AttachResult: shuttleengine.Result{
+					Outcome: shuttleengine.OutcomeDone,
+					Gate:    &shuttleengine.GateOutcome{Passed: false},
+				},
+			}
+			opts := burlerengine.RunOpts{Gate: shuttleengine.GateSpec{{Name: "told", Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
+				return shuttleengine.GateResult{Passed: tt.toldPasses}, nil
+			}}}}
+			p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(opts), withAttach(attach), withBurlerClock(fixedClock(time.Now())))
+			// Only the review file exists at Call entry -- a complete pair here would make highestCompleteRound treat round 1 as already finished and hand back before probeLiveRound is ever reached,
+			// exactly as the pre-existing attach tests in this file are careful to leave incomplete.
+			writeRoundFile(t, reviewPath)
+
+			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
+			if ptr.Path != "" {
+				t.Errorf("Call() pointer.Path = %q; want empty, identically to the spawn path's own gate-failed exit", ptr.Path)
+			}
+			if ptr.GateAttempts == nil || *ptr.GateAttempts != 0 {
+				t.Errorf("Call() pointer.GateAttempts = %v; want pointer to 0", ptr.GateAttempts)
+			}
+			if want := "gate did not pass after 0 attempts; findings: "; ptr.Reason != want {
+				t.Errorf("Call() Reason = %q; want %q", ptr.Reason, want)
+			}
+			if len(attach.GotAttachGateSpec) != 2 || attach.GotAttachGateSpec[0].Name != "told" || attach.GotAttachGateSpec[1].Name != "review" {
+				t.Errorf("AttachGated gate spec = %+v; want the told entry followed by the review entry", attach.GotAttachGateSpec)
+			}
+			if len(opts.Gate) != 1 {
+				t.Errorf("caller's gate list has %d entries; want it left at 1", len(opts.Gate))
+			}
+			if runner.Calls != 0 {
+				t.Errorf("runner.Run calls = %d; want 0 -- an attached round is never respawned", runner.Calls)
+			}
+			if _, statErr := os.Stat(reviewPath); !os.IsNotExist(statErr) {
+				t.Error("gate-failed attached round's review file was not archived away")
+			}
+		})
 	}
 }
 

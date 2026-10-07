@@ -29,6 +29,7 @@ package loomcli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -313,6 +314,143 @@ func TestSmokeSingleLLM_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 	if string(content) != "live" {
 		t.Errorf("%s content = %q; want %q -- the harvested run's artifact must be the one that survives", outputFile, content, "live")
 	}
+}
+
+// TestSmokeSingleLLM_RerunRemovesTheSupersededStrand is the live-substrate guard for re-running a producer over a halted run:
+// the earlier run's record sits at a terminal outcome with its shell strand still live,
+// and the producer's fresh run must not start beside it.
+// A live strand with other output files, standing in for another producer's agent, survives.
+//
+// The stub Engine and the real Runner, reed session and tmux panes are the ones this file's other tests use.
+func TestSmokeSingleLLM_RerunRemovesTheSupersededStrand(t *testing.T) {
+	tmuxBinaryPath(t)
+	_, loc, worktree, _ := newWiredPairFixture(t)
+	registerBootstrapTeardown(t, loc, worktree)
+
+	reedEngine := probeReedEngine(t, loc)
+	if _, err := reedEngine.Up(); err != nil {
+		t.Fatalf("reed up: %v", err)
+	}
+
+	outputDir := filepath.Join(loomengine.LoomReviewsDir(loc), "rerun-supersedes")
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", outputDir, err)
+	}
+	outputFile := filepath.Join(outputDir, "rerun.md")
+	otherOutputFile := filepath.Join(outputDir, "other.md")
+
+	shuttleCfg, err := shuttleengine.LoadConfig(loc.AnchorPath(), "shuttle")
+	if err != nil {
+		t.Fatalf("load shuttle config: %v", err)
+	}
+	reedGeom, err := hubgeom.ReedGeometry(loc)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
+	// The first two runs stay quiet and never write their outputs;
+	// the fresh run the producer starts writes its output after a second.
+	launchEngine := &shellLaunchEngine{quietSeconds: 600}
+	runner := shuttleengine.NewRunner(reedEngine, launchEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+
+	spec := shuttleengine.Spec{
+		Prompt:      "smoke: stand in for a producer re-run over a halted session",
+		OutputFiles: []string{outputFile},
+		Role:        "discussion",
+		Round:       "1",
+		Timeout:     2 * time.Minute,
+	}
+	halted, err := runner.Start(spec)
+	if err != nil {
+		t.Fatalf("start the halted stand-in run: %v", err)
+	}
+	t.Cleanup(func() { _, _ = reedEngine.RemoveStrand(halted.StrandGUID(), false) })
+
+	otherSpec := spec
+	otherSpec.OutputFiles = []string{otherOutputFile}
+	other, err := runner.Start(otherSpec)
+	if err != nil {
+		t.Fatalf("start the other-outputs stand-in run: %v", err)
+	}
+	t.Cleanup(func() { _, _ = reedEngine.RemoveStrand(other.StrandGUID(), false) })
+
+	// Leave the first run's record at a terminal outcome, as a halted run does, with its pane still alive.
+	runRoot := filepath.Join(reedGeom.AnchorPath, lyxdirs.DotLyxDirName, "shuttle")
+	if shuttleCfg.RunDir != "" {
+		runRoot = shuttleCfg.RunDir
+		if !filepath.IsAbs(runRoot) {
+			runRoot = filepath.Join(reedGeom.AnchorPath, runRoot)
+		}
+	}
+	markRunTerminal(t, runRoot, halted.StrandGUID(), "timeout")
+
+	launchEngine.quietSeconds = 1
+	producer := shedadapters.NewSingleLLMProducer(
+		"Discussion-Write",
+		func() (shuttleengine.Spec, error) { return spec, nil },
+		runner,
+		nil,
+		nil,
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	outcome, _, err := producer.Call(ctx)
+	if err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	if outcome != shedengine.Done {
+		t.Errorf("Call() outcome = %q; want %q", outcome, shedengine.Done)
+	}
+
+	status, err := reedEngine.Status()
+	if err != nil {
+		t.Fatalf("reed status: %v", err)
+	}
+	var otherAlive bool
+	for _, s := range status.Strands {
+		switch s.GUID {
+		case halted.StrandGUID():
+			t.Errorf("superseded strand %q still in reed status; want it removed before the fresh run", s.GUID)
+		case other.StrandGUID():
+			otherAlive = s.Live
+		}
+	}
+	if !otherAlive {
+		t.Errorf("the strand with other outputs is not live; want it left alone")
+	}
+}
+
+// markRunTerminal rewrites the run.json of the run owning strandGUID under runRoot so its outcome reads outcome, leaving every other field as Start wrote it.
+func markRunTerminal(t *testing.T, runRoot, strandGUID, outcome string) {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(runRoot, "*", "run.json"))
+	if err != nil {
+		t.Fatalf("glob run records: %v", err)
+	}
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		var fields map[string]any
+		if err := json.Unmarshal(data, &fields); err != nil {
+			t.Fatalf("decode %s: %v", path, err)
+		}
+		if fields["strandGuid"] != strandGUID {
+			continue
+		}
+		fields["outcome"] = outcome
+		updated, err := json.MarshalIndent(fields, "", "  ")
+		if err != nil {
+			t.Fatalf("encode %s: %v", path, err)
+		}
+		if err := os.WriteFile(path, updated, 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+		return
+	}
+	t.Fatalf("no run record under %s names strand %s", runRoot, strandGUID)
 }
 
 // waitForOutputFile blocks until path exists or timeout elapses, failing the test when it never

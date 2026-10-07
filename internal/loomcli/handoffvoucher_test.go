@@ -25,6 +25,8 @@ func handoffVoucherPaths(t *testing.T) (string, string) {
 
 //testtiming:keep pins the voucher matching only on an equal history length and state, a grown history, a changed state or an absent voucher not matching, and the voucher being deleted on every read; the observe-entry test covers only the matching, one-shot case
 func TestConsumeHandoffVoucher(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name            string
 		record          bool
@@ -63,6 +65,8 @@ func TestConsumeHandoffVoucher(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			voucherPath, lockPath := handoffVoucherPaths(t)
 			if tt.record {
 				recordHandoffVoucher(voucherPath, lockPath, tt.recordedHistory, tt.recordedState)
@@ -71,10 +75,17 @@ func TestConsumeHandoffVoucher(t *testing.T) {
 				}
 			}
 
-			got := consumeHandoffVoucher(voucherPath, lockPath, tt.observedHistory, tt.observedState)
+			voucher, found, got := consumeHandoffVoucher(voucherPath, lockPath, tt.observedHistory, tt.observedState)
 			if got != tt.want {
-				t.Errorf("consumeHandoffVoucher(recorded %v/%d/%s, observed %d/%s) = %v; want %v",
+				t.Errorf("consumeHandoffVoucher(recorded %v/%d/%s, observed %d/%s) matches = %v; want %v",
 					tt.record, tt.recordedHistory, tt.recordedState, tt.observedHistory, tt.observedState, got, tt.want)
+			}
+			wantVoucher := handoffVoucher{}
+			if tt.record {
+				wantVoucher = handoffVoucher{HistoryLength: tt.recordedHistory, State: string(tt.recordedState)}
+			}
+			if found != tt.record || voucher != wantVoucher {
+				t.Errorf("consumeHandoffVoucher read (%+v, found %v); want (%+v, found %v)", voucher, found, wantVoucher, tt.record)
 			}
 
 			// The voucher is one-shot: consumed (deleted) on every read, match or not,
@@ -92,6 +103,8 @@ func TestConsumeHandoffVoucher(t *testing.T) {
 // persisted status yields Vouched true, and -- the one-shot property -- a second identical
 // observation yields false, because the first consumed the voucher.
 func TestObserveEntry_ConsumesHandoffVoucherIntoObservation(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")
 	statusLockPath := filepath.Join(dir, "status.json.lock")
@@ -119,12 +132,29 @@ func TestObserveEntry_ConsumesHandoffVoucherIntoObservation(t *testing.T) {
 		t.Errorf("observeEntry first call: Vouched = false; want true -- a matching voucher must suppress the crash signature")
 	}
 
-	if want := history[len(history)-recentHistoryRows:]; !slices.Equal(first.RecentHistory, want) {
-		t.Errorf("observeEntry first call: RecentHistory = %v; want the last %d rows %v", first.RecentHistory, recentHistoryRows, want)
+	if !slices.Equal(first.History, history) {
+		t.Errorf("observeEntry first call: History = %v; want every entry %v", first.History, history)
+	}
+	if !first.VoucherFound || first.VoucherHistoryLength != len(history) || first.VoucherState != shedengine.StateRunning {
+		t.Errorf("observeEntry first call: voucher = found %v, %d entries, state %q; want found, %d entries, state %q",
+			first.VoucherFound, first.VoucherHistoryLength, first.VoucherState, len(history), shedengine.StateRunning)
 	}
 
 	second := observeEntry(true, runLockPath, statusPath, statusLockPath, voucherPath, voucherLockPath)
 	if second.Vouched {
 		t.Errorf("observeEntry second call: Vouched = true; want false -- the voucher is one-shot and the first call consumed it")
+	}
+	if second.VoucherFound {
+		t.Errorf("observeEntry second call: VoucherFound = true; want false -- the first call consumed the voucher")
+	}
+
+	recordHandoffVoucher(voucherPath, voucherLockPath, len(history)+2, shedengine.StateBlocked)
+	third := observeEntry(true, runLockPath, statusPath, statusLockPath, voucherPath, voucherLockPath)
+	if third.Vouched {
+		t.Errorf("observeEntry third call: Vouched = true; want false -- the voucher records a different history length and state")
+	}
+	if !third.VoucherFound || third.VoucherHistoryLength != len(history)+2 || third.VoucherState != shedengine.StateBlocked {
+		t.Errorf("observeEntry third call: voucher = found %v, %d entries, state %q; want the mismatching recorded values",
+			third.VoucherFound, third.VoucherHistoryLength, third.VoucherState)
 	}
 }

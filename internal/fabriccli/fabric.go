@@ -175,6 +175,9 @@ and not prime's branch. This makes the new pair an exact continuation of
 the context you were working in. The weft branch name is always the warp
 branch's name with fabric's uniform suffix appended.
 
+A pair whose weft branch already exists, locally or on origin, is adopted
+rather than forked.
+
 The command errors if the worktree is on a detached HEAD or an unborn branch,
 because a fork point cannot be determined in either case.
 

@@ -421,7 +421,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	}
 	c.parentName = reedGeom.ParentName
 	reedEngine := reedengine.New(reedCfg, reedGeom)
-	claudeEngine := claudeengine.New()
+	claudeEngine := claudeengine.NewFromConfig(shuttleCfg)
 	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	websterGeom := hubgeom.WebsterGeometry(location)

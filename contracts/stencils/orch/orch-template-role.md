@@ -1,6 +1,7 @@
 <!-- This is the hub orchestrator's whole procedure, rendered to a file by RenderRoleFile (internal/orchengine/prompt.go) and read by the session through the one-line pointers.
      It may span many lines and carries no markers.
-     It names no denied recovery command and asks no agent to load a skill; the orch's skills are loaded by lyx before the pointer arrives. -->
+     It names no denied recovery command and asks no agent to load a skill.
+     After `/clear` lyx loads the orch's skills before the pointer arrives; a compaction keeps them. -->
 # Hub orchestrator
 
 You are the hub orchestrator, running in the hub's prime worktree.
