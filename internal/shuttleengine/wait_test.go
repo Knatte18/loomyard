@@ -627,7 +627,7 @@ func TestRun_Wait_StartupWindow(t *testing.T) {
 // RunState, so the startup probe never runs and cannot be what classifies this), every declared
 // output file is on disk, and events.jsonl is never created — so the file contract is the only
 // evidence of completion and the RUN deadline is the only thing that ever fires. Reverting the fix
-// (a bare `return run.finalize(OutcomeTimeout, "")`) makes this fail on the outcome.
+// (a bare `return run.finalize(OutcomeTimeout)`) makes this fail on the outcome.
 //
 // Reproduced live before being written: a provider that rendered the ready marker, wrote both of
 // Discussion-Write's output files, and then stayed alive without appending to events.jsonl was

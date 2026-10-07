@@ -281,8 +281,6 @@ type Run struct {
 	// It is false for a fresh run and for one AttachGated reconstructs, and becomes true at the first gated Done arrival;
 	// every gate send and every pending re-evaluation happens only while it is true.
 	gateAtBoundary bool
-	// gateLastDone is the last gated Done arrival's message, the one a later pass finalizes with.
-	gateLastDone string
 
 	// resumeWarning is the non-empty warning SessionResumer.CheckResume returned when it could not confirm the session was resumable, empty otherwise.
 	resumeWarning string

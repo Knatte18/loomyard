@@ -249,11 +249,10 @@ func (run *Run) Wait() (Result, error) {
 				run.notifyHeld(held)
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
 				// Not a gated Done: finalize exactly as this branch always has.
-				return run.finalize(outcome, "")
+				return run.finalize(outcome)
 			} else if outcome == OutcomeDone {
 				// A gated Done is the writer's turn boundary: let the shared helper judge it.
 				run.gateAtBoundary = true
-				run.gateLastDone = ""
 				if result, finished, ferr := run.handleGatedBoundary(); finished {
 					return result, ferr
 				}
@@ -288,7 +287,7 @@ func (run *Run) Wait() (Result, error) {
 			} else {
 				statusFailures = 0
 				if livenessOutcome != "" {
-					return run.finalize(livenessOutcome, "")
+					return run.finalize(livenessOutcome)
 				}
 			}
 		}
@@ -297,7 +296,7 @@ func (run *Run) Wait() (Result, error) {
 			// classifyDeadlineExpiry, not a bare OutcomeTimeout: the run deadline answers "has the
 			// clock run out", never "did this run finish", and a run whose every output file is on
 			// disk finished whatever the clock says — see that function.
-			return run.finalize(run.classifyDeadlineExpiry(OutcomeTimeout), "")
+			return run.finalize(run.classifyDeadlineExpiry(OutcomeTimeout))
 		}
 
 		run.clock.Sleep(interval)
@@ -316,14 +315,13 @@ func gateEntryError(name, problem string) error {
 // No new deadline is introduced and run.deadline is never extended: the loop runs under the deadline Start already set from spec.Timeout,
 // so a timeout mid-wait still reaches classifyDeadlineExpiry, which classifies OutcomeDone when the files are present and therefore still runs the gate one final time through finalize.
 //
-// A pass, a terminal failure (GateResult.Terminal, whatever the entry's failure count, with no re-prompt and no count incremented), or a failure whose budget is spent, finalizes with the remembered Done message.
+// A pass, a terminal failure (GateResult.Terminal, whatever the entry's failure count, with no re-prompt and no count incremented), or a failure whose budget is spent, finalizes done.
 // A failure with budget remaining re-prompts and keeps polling;
 // a re-prompt send failure ends the loop as it always has.
 // A pending result sends its Send text when non-empty and keeps polling;
 // a failed pending send logs one Warn naming the entry, the error and the closure's way-forward, leaves the entry pending and the writer at the boundary, and never ends the loop.
 // The memo is cleared after a pending result, so the next evaluation, and a finalize after it, read the closures afresh.
 func (run *Run) handleGatedBoundary() (Result, bool, error) {
-	message := run.gateLastDone
 	verdict, gerr := run.evaluateGate(false)
 	if gerr != nil {
 		return run.identity(), true, fmt.Errorf("shuttle: gate: %w", gerr)
@@ -343,13 +341,13 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	failed := run.gateFailedAt
 	if failed < 0 || run.gateTerminal || run.gateFails[failed] >= run.gate[failed].Attempts {
 		// No failing entry, a terminal failure, or a spent budget: the verdict is the memo evaluateGate just stored, which finalize reads rather than re-validating.
-		result, ferr := run.finalize(OutcomeDone, message)
+		result, ferr := run.finalize(OutcomeDone)
 		return result, true, ferr
 	}
 	// An entry failed with budget remaining: re-prompt the agent and keep polling.
 	if serr := run.Send(gateRepromptText(run.gateFindingsPath)); serr != nil {
 		logger.Warn("shuttle: gate: re-prompt send failed, ending the loop with the attempts spent so far", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "error", serr)
-		result, ferr := run.finalize(OutcomeDone, message)
+		result, ferr := run.finalize(OutcomeDone)
 		return result, true, ferr
 	}
 	run.gateAtBoundary = false
@@ -508,7 +506,7 @@ func (run *Run) awaitStartup() (Result, error) {
 // directory and its last pane capture are kept for diagnosis.
 //
 // In order: any capture checkLivenessTick recorded is saved to startupCaptureFileName (a write
-// failure is a Warn, and the returned error then says no capture was saved); run.finalize(outcome, "")
+// failure is a Warn, and the returned error then says no capture was saved); run.finalize(outcome)
 // persists RunState.Outcome and logs "run finished", skipping the gate and cleanup since outcome is
 // never OutcomeDone here; the strand is removed whatever Spec.KeepPane says — KeepPane governs a
 // COMPLETED run's pane retention, not a startup failure's, and a provider that never came up leaves
@@ -531,7 +529,7 @@ func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
 		}
 	}
 
-	result, _ := run.finalize(outcome, "")
+	result, _ := run.finalize(outcome)
 
 	removeNote := "the strand was removed"
 	if _, rerr := run.runner.reed.RemoveStrand(run.state.StrandGUID, false); rerr != nil {
@@ -936,7 +934,7 @@ func (run *Run) classifyDeadlineExpiry(expired Outcome) Outcome {
 // path, so no *Run with an empty OutputFiles ever reaches this loop.
 func (run *Run) finishedDespiteMechanismFailure() (Result, error, bool) {
 	if allOutputFilesExist(run.spec.OutputFiles) {
-		result, err := run.finalize(OutcomeDone, "")
+		result, err := run.finalize(OutcomeDone)
 		return result, err, true
 	}
 	return Result{}, nil, false
@@ -1107,14 +1105,13 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 // shuttle run beginning and none of them ending. The two cleanup failures go to logger.Warn for the
 // same reason — a teardown that did not confirm clean is exactly what that level is for, and the
 // bare log package they used before never reaches the trace sink at all.
-func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
+func (run *Run) finalize(outcome Outcome) (Result, error) {
 	result := Result{
-		Outcome:              outcome,
-		SessionID:            run.state.SessionID,
-		StrandGUID:           run.state.StrandGUID,
-		LastAssistantMessage: message,
-		RunDir:               run.runDir,
-		ExpiredShells:        slices.Clone(run.expiredLabels),
+		Outcome:       outcome,
+		SessionID:     run.state.SessionID,
+		StrandGUID:    run.state.StrandGUID,
+		RunDir:        run.runDir,
+		ExpiredShells: slices.Clone(run.expiredLabels),
 	}
 
 	if outcome == OutcomeDone {
