@@ -175,6 +175,10 @@
 //
 // A foreign edit an operator means to keep has its own way forward:
 // `lyx webster rebaseline --card NN` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record, provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
+// With a recorded partition, Rebaseline keeps every batch up to the last begun one as recorded, profile and estimate included, and refuses a plan whose first cards are not exactly those batches' recorded cards.
+// It batches every plan card after the kept prefix with the then-active batchifier, asserts the order over kept batches and tail together, and only then replaces State.Partition;
+// cards added, removed or reordered after the last begun batch are accepted and regrouped.
+// A state without a partition regroups with the identity batchifier and records none.
 // The operator names every card the edit changed with --card: State.PlanFileHashes records a hash of every plan file, and a changed card file whose number is not named is refused.
 // A named card of a batch that is terminal failed, dead or stuck is accepted even though that batch was begun:
 // Rebaseline restamps that card's CardHashes entry and keeps the rest of the batch record, so a one-card fix needs no reset and no fresh run.

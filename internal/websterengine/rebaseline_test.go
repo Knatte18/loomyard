@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -50,7 +51,7 @@ func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
 	}
 	requireWayForward(t, err, "lyx webster rebaseline", "lyx webster run --fresh")
 
-	res, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Active: fixedBatcher{fx.Deps.Batches}, State: fx.Deps.State, Geom: fx.Deps.Geom})
+	res, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Active: batcher.Identity(), State: fx.Deps.State, Geom: fx.Deps.Geom})
 	if err != nil {
 		t.Fatalf("Rebaseline() error = %v; want nil", err)
 	}
@@ -77,7 +78,8 @@ func (f fixedBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSou
 
 func (fixedBatcher) Name() string { return "fixed" }
 
-func rebaselineDeps(t *testing.T, batches []batcher.Batch, recs map[int]*websterengine.BatchState) websterengine.RebaselineDeps {
+// rebaselineDeps builds bare RebaselineDeps over a plan holding planCards, a state recording partition (nil for a state from before partitions) and recs, and active as the tail's batchifier.
+func rebaselineDeps(t *testing.T, planCards []planparser.Card, partition []websterengine.PartitionBatch, active batcher.Batcher, recs map[int]*websterengine.BatchState) websterengine.RebaselineDeps {
 	t.Helper()
 	planDir := seedPlanDir(t)
 	worktree := t.TempDir()
@@ -89,44 +91,126 @@ func rebaselineDeps(t *testing.T, batches []batcher.Batch, recs map[int]*webster
 		}
 	}
 	return websterengine.RebaselineDeps{
-		Plan:   &planparser.Plan{Dir: planDir, Format: 5},
-		Active: fixedBatcher{batches},
-		State:  &websterengine.State{PlanFingerprint: "old-fingerprint", Batches: recs},
+		Plan:   &planparser.Plan{Dir: planDir, Format: 5, Cards: planCards},
+		Active: active,
+		State:  &websterengine.State{PlanFingerprint: "old-fingerprint", Batches: recs, Partition: slices.Clone(partition)},
 		Geom:   websterengine.Geometry{WorktreeRoot: worktree, WebsterDir: t.TempDir(), Git: git},
 	}
 }
 
-// TestRebaseline_CardSet proves Rebaseline compares a begun batch's recorded card set with the edited
-// plan's: a removed, renumbered or regrouped card refuses, leaving the fingerprint and naming the
-// batch, the card and the fresh-restart steps whether or not the record carries a StartSHA, while a
-// legacy record with no card set is accepted and restamped.
+// TestRebaseline_CardSet proves Rebaseline compares the cards of every batch up to the last begun one with the edited plan's:
+// a removed, renumbered, reordered or inserted card at or before the last begun card refuses, naming the batch, the card and the fresh-restart steps, whether or not the record carries a StartSHA;
+// cards after it are re-batched by the active batchifier, with the begun batch keeping its recorded profile and estimate and the new partition replacing the old only on accept;
+// a tail whose order breaks a dependency refuses with ErrBatchOrder; a state without a partition regroups by identity and records none;
+// and a legacy record with no card set is accepted and restamped.
 func TestRebaseline_CardSet(t *testing.T) {
 	t.Parallel()
 
-	two := batcher.Batch{Cards: []planparser.Card{
-		{Number: 1, Slug: "json-flag"},
-		{Number: 2, Slug: "list-tests"},
+	card := func(number int, slug string) planparser.Card { return planparser.Card{Number: number, Slug: slug} }
+	recorded := []websterengine.PartitionBatch{
+		{Cards: []string{"01-json-flag"}, Profile: "cautious", Estimate: 3.5},
+		{Cards: []string{"02-list-tests"}, Profile: "cautious", Estimate: 1.5},
+	}
+	grouped := fixedBatcher{[]batcher.Batch{{
+		Cards:    []planparser.Card{card(2, "list-tests"), card(3, "added")},
+		Profile:  "fixed",
+		Estimate: 7,
+	}}}
+	unordered := fixedBatcher{[]batcher.Batch{
+		{Cards: []planparser.Card{{Number: 2, Slug: "list-tests", Uses: []string{"x.go"}}}},
+		{Cards: []planparser.Card{{Number: 3, Slug: "added", Targets: []string{"x.go"}}}},
 	}}
 	cases := []struct {
-		name    string
-		batches []batcher.Batch
+		name      string
+		cards     []planparser.Card
+		partition []websterengine.PartitionBatch
+		active    batcher.Batcher
 		// edit adjusts the batch-1 record before the call.
-		edit       func(rec *websterengine.BatchState)
-		wantRefuse bool
+		edit func(rec *websterengine.BatchState)
+		// wantErr is the sentinel a refusal wraps; nil expects an accept.
+		wantErr error
+		// wantPartition is State.Partition after the call; a refusal expects the partition it began with.
+		wantPartition []websterengine.PartitionBatch
 	}{
-		{name: "removed card", batches: []batcher.Batch{beginCard(2, "list-tests")}, wantRefuse: true},
-		{name: "renumbered card", batches: []batcher.Batch{beginCard(1, "other-slug"), beginCard(2, "list-tests")}, wantRefuse: true},
-		{name: "regrouped batch", batches: []batcher.Batch{two}, wantRefuse: true},
 		{
-			name:       "removed card from a record without a StartSHA",
-			batches:    []batcher.Batch{beginCard(2, "list-tests")},
-			edit:       func(rec *websterengine.BatchState) { rec.StartSHA = "" },
-			wantRefuse: true,
+			name:          "a plan that still holds the kept cards keeps the recorded grouping",
+			cards:         []planparser.Card{card(1, "json-flag"), card(2, "list-tests")},
+			partition:     recorded,
+			active:        fixedBatcher{[]batcher.Batch{{Cards: []planparser.Card{card(2, "list-tests")}, Profile: "fixed", Estimate: 2}}},
+			wantPartition: []websterengine.PartitionBatch{recorded[0], {Cards: []string{"02-list-tests"}, Profile: "fixed", Estimate: 2}},
 		},
 		{
-			name:    "a legacy record without cards is accepted",
-			batches: []batcher.Batch{beginCard(1, "json-flag")},
-			edit:    func(rec *websterengine.BatchState) { rec.Cards = nil },
+			name:          "a card added after the last begun card is grouped into the tail",
+			cards:         []planparser.Card{card(1, "json-flag"), card(2, "list-tests"), card(3, "added")},
+			partition:     recorded,
+			active:        grouped,
+			wantPartition: []websterengine.PartitionBatch{recorded[0], {Cards: []string{"02-list-tests", "03-added"}, Profile: "fixed", Estimate: 7}},
+		},
+		{
+			name:          "a removed card at the last begun card refuses",
+			cards:         []planparser.Card{card(2, "list-tests")},
+			partition:     recorded,
+			active:        grouped,
+			wantErr:       websterengine.ErrRebaselineCardSetChanged,
+			wantPartition: recorded,
+		},
+		{
+			name:          "a card inserted before the last begun card refuses",
+			cards:         []planparser.Card{card(3, "added"), card(1, "json-flag"), card(2, "list-tests")},
+			partition:     recorded,
+			active:        grouped,
+			wantErr:       websterengine.ErrRebaselineCardSetChanged,
+			wantPartition: recorded,
+		},
+		{
+			name:          "a reordered card at the last begun card refuses",
+			cards:         []planparser.Card{card(2, "list-tests"), card(1, "json-flag")},
+			partition:     recorded,
+			active:        grouped,
+			wantErr:       websterengine.ErrRebaselineCardSetChanged,
+			wantPartition: recorded,
+		},
+		{
+			name:          "a renumbered card refuses",
+			cards:         []planparser.Card{card(1, "other-slug"), card(2, "list-tests")},
+			partition:     recorded,
+			active:        grouped,
+			wantErr:       websterengine.ErrRebaselineCardSetChanged,
+			wantPartition: recorded,
+		},
+		{
+			name:          "a removed card from a record without a StartSHA refuses",
+			cards:         []planparser.Card{card(2, "list-tests")},
+			partition:     recorded,
+			active:        grouped,
+			edit:          func(rec *websterengine.BatchState) { rec.StartSHA = "" },
+			wantErr:       websterengine.ErrRebaselineCardSetChanged,
+			wantPartition: recorded,
+		},
+		{
+			name:          "a tail that uses a later batch's target refuses with ErrBatchOrder",
+			cards:         []planparser.Card{card(1, "json-flag"), card(2, "list-tests"), card(3, "added")},
+			partition:     recorded,
+			active:        unordered,
+			wantErr:       websterengine.ErrBatchOrder,
+			wantPartition: recorded,
+		},
+		{
+			name:   "a state without a partition regroups by identity and records none",
+			cards:  []planparser.Card{card(1, "json-flag"), card(2, "list-tests")},
+			active: grouped,
+		},
+		{
+			name:    "a state without a partition refuses a removed card",
+			cards:   []planparser.Card{card(2, "list-tests")},
+			active:  grouped,
+			wantErr: websterengine.ErrRebaselineCardSetChanged,
+		},
+		{
+			name:   "a legacy record without cards is accepted",
+			cards:  []planparser.Card{card(1, "json-flag")},
+			active: grouped,
+			edit:   func(rec *websterengine.BatchState) { rec.Cards = nil },
 		},
 	}
 	for _, tc := range cases {
@@ -137,9 +221,12 @@ func TestRebaseline_CardSet(t *testing.T) {
 			if tc.edit != nil {
 				tc.edit(rec)
 			}
-			deps := rebaselineDeps(t, tc.batches, map[int]*websterengine.BatchState{1: rec})
+			deps := rebaselineDeps(t, tc.cards, tc.partition, tc.active, map[int]*websterengine.BatchState{1: rec})
 			_, err := websterengine.Rebaseline(deps)
-			if !tc.wantRefuse {
+			if !reflect.DeepEqual(deps.State.Partition, tc.wantPartition) && len(deps.State.Partition)+len(tc.wantPartition) > 0 {
+				t.Errorf("Partition = %+v; want %+v", deps.State.Partition, tc.wantPartition)
+			}
+			if tc.wantErr == nil {
 				if err != nil {
 					t.Fatalf("Rebaseline() error = %v; want nil", err)
 				}
@@ -148,12 +235,14 @@ func TestRebaseline_CardSet(t *testing.T) {
 				}
 				return
 			}
-			if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
-				t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("Rebaseline() error = %v; want errors.Is(err, %v)", err, tc.wantErr)
 			}
-			for _, want := range []string{"batch 1", "01-json-flag", "or 1) lyx webster reset --to start; 2) lyx webster run --fresh"} {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("error %q lacks %q", err.Error(), want)
+			if tc.wantErr == websterengine.ErrRebaselineCardSetChanged {
+				for _, want := range []string{"batch 1", "01-json-flag", "or 1) lyx webster reset --to start; 2) lyx webster run --fresh"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q lacks %q", err.Error(), want)
+					}
 				}
 			}
 			if deps.State.PlanFingerprint != "old-fingerprint" {
@@ -175,7 +264,7 @@ func beginAndFinishBatchOne(t *testing.T, fx *beginFixture) {
 }
 
 func rebaselineFixtureDeps(fx *beginFixture) websterengine.RebaselineDeps {
-	return websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Active: fixedBatcher{fx.Deps.Batches}, State: fx.Deps.State, Geom: fx.Deps.Geom}
+	return websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Active: batcher.Identity(), State: fx.Deps.State, Geom: fx.Deps.Geom}
 }
 
 // editCard2 rewrites unbegun card 2 of the begin fixture with a reworded intent.
@@ -521,10 +610,13 @@ func TestRebaseline_AfterBeginBatchRewroteBegunCard_Regression330(t *testing.T) 
 	if err := os.WriteFile(filepath.Join(fx.PlanDir, "03-third.md"), []byte("# Card 3 — third\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** reworded.\n"), 0o644); err != nil {
 		t.Fatalf("edit card 3: %v", err)
 	}
+	// The mid-run Uses edge runs backward (begun card 1 uses card 2's target), so Rebaseline refuses on
+	// the batch order, and never on a card-set or hash change of the rewritten begun card.
 	deps := rebaselineFixtureDeps(fx)
 	deps.Cards = []int{3}
-	if _, err := websterengine.Rebaseline(deps); err != nil {
-		t.Fatalf("Rebaseline() naming card 3 error = %v; want nil", err)
+	_, err = websterengine.Rebaseline(deps)
+	if !errors.Is(err, websterengine.ErrBatchOrder) || errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
+		t.Fatalf("Rebaseline() naming card 3 error = %v; want ErrBatchOrder and no card-set refusal", err)
 	}
 }
 

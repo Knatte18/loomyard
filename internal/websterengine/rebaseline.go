@@ -54,7 +54,59 @@ type RebaselineResult struct {
 	CardsAccepted []string
 }
 
+// rebaselineBatches returns the batches the edited plan runs as, and whether they replace the recorded partition.
+// With a recorded partition, the batches up to and including the last begun one are kept as recorded, with their profile and estimate, and every plan card after them is batched by deps.Active; a plan whose first cards are not exactly the kept batches' recorded cards wraps ErrRebaselineCardSetChanged.
+// A state without a partition is grouped by the identity batchifier and records none.
+// Either way the result is asserted with CheckBatchOrder.
+func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
+	st, plan := deps.State, deps.Plan
+	if len(st.Partition) == 0 {
+		batches, err := formBatches(plan, batcher.Identity(), deps.Sizes)
+		return batches, false, err
+	}
+
+	keptCount := 0
+	for i, pb := range st.Partition {
+		if st.Batches[cardNumberInt(pb.Cards[0])] != nil {
+			keptCount = i + 1
+		}
+	}
+
+	var changed []string
+	var batches []batcher.Batch
+	offset := 0
+	for _, pb := range st.Partition[:keptCount] {
+		end := min(offset+len(pb.Cards), len(plan.Cards))
+		batch := batcher.Batch{Cards: plan.Cards[offset:end], Profile: pb.Profile, Estimate: pb.Estimate}
+		if now := batchCardIDs(batch); !slices.Equal(now, pb.Cards) {
+			nowText := "no longer in the plan"
+			if len(now) > 0 {
+				nowText = "[" + strings.Join(now, ", ") + "]"
+			}
+			changed = append(changed, fmt.Sprintf("batch %d recorded [%s], plan now %s", cardNumberInt(pb.Cards[0]), strings.Join(pb.Cards, ", "), nowText))
+		}
+		batches = append(batches, batch)
+		offset = end
+	}
+	if len(changed) > 0 {
+		return nil, false, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or %s", ErrRebaselineCardSetChanged, strings.Join(changed, "; "), freshRestartSteps)
+	}
+
+	if tail := plan.Cards[offset:]; len(tail) > 0 {
+		tailBatches, err := deps.Active.Batch(plan, tail, deps.Sizes)
+		if err != nil {
+			return nil, false, fmt.Errorf("webster: batch the cards of plan %s: %w; way forward: transient, re-run the verb", plan.Dir, err)
+		}
+		batches = append(batches, tailBatches...)
+	}
+	if err := CheckBatchOrder(batches); err != nil {
+		return nil, false, err
+	}
+	return batches, true, nil
+}
+
 // Rebaseline accepts the on-disk plan as the run's plan without discarding any batch record.
+// With a recorded partition it keeps every batch up to the last begun one as recorded, re-batches the plan's cards after it with the active batchifier, and replaces State.Partition with the result once every check passes; cards added, removed or reordered after the last begun batch are accepted.
 // It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number, or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only), except that a card named in deps.Cards is accepted when its batch is terminal failed, dead or stuck.
 // It also refuses when 00-overview.md changed, or a changed card file's number is not in deps.Cards, unless the state predates State.PlanFileHashes.
 // The start commit a refusal names is picked by git ancestry.
@@ -73,7 +125,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		return nil, fmt.Errorf("webster: rebaseline requires loaded run state; RebaselineDeps.State is nil")
 	}
 
-	batches, err := formBatches(deps.Plan, deps.Active, deps.Sizes)
+	batches, partition, err := rebaselineBatches(deps)
 	if err != nil {
 		return nil, err
 	}
@@ -180,6 +232,9 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	previous := deps.State.PlanFingerprint
 	if err := restampBaseline(deps.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil {
 		return nil, err
+	}
+	if partition {
+		RecordPartition(deps.State, batches)
 	}
 	return &RebaselineResult{
 		PreviousFingerprint: previous,

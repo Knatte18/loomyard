@@ -22,6 +22,8 @@ func (c *websterCLI) rebaselineCmd() *cobra.Command {
 		Short: "accept an on-disk plan edit as the run's plan without dropping batch records",
 		Long: `rebaseline accepts the plan on disk as the run's plan after a mid-run edit,
 keeping every batch record.
+Batches up to the last begun one stay as recorded; the cards after them are
+re-batched by the active batcher.yaml profile.
 It refuses, leaving state.json untouched, when the edit changes the cards of a
 batch the run already begun (a begun card's content counts, not only its id),
 or removes such a batch; the way forward then is
