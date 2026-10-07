@@ -30,8 +30,8 @@
 // with `ErrWarpDirty` before anything mutates warp, because every warp advance goes through a
 // `reset --hard` that would silently destroy those changes (weft has already been fast-forwarded
 // when this fires; warp is untouched).
-// Every rewrite/anchor determination is ancestry-based — `f.warp.IsAncestor`, via `git merge-base
-// --is-ancestor` — never `f.warp.SHAExists`: `git fetch` never prunes objects, so a rebased-away
+// Every rewrite/anchor determination is ancestry-based — `f.code.IsAncestor`, via `git merge-base
+// --is-ancestor` — never `f.code.SHAExists`: `git fetch` never prunes objects, so a rebased-away
 // commit's object survives fetch and `SHAExists` would report true post-fetch, meaning detection
 // would never fire (see the reachability-never-object-existence Shared Decision).
 // The weft ff-pull is non-fatal: a failed upstream probe or a failed weft pull is warned and leaves
@@ -290,10 +290,8 @@
 // under-report staleness,
 // and collapsing the answer to absent would conflate "never recorded" with "recorded, then
 // rewritten" for no benefit, since both drive the same consumer action.
-// The intended three-step consumer idiom is: read the SHA via `snapshotWarpSHA`, check
-// `f.warp.SHAExists(sha)`, then call `f.warp.ChangedFilesSince(sha)` only if it exists, treating a
-// missing SHA as total staleness — not a burden invented here, since `ChangedFilesSince`'s own doc
-// comment already asks every caller to check `SHAExists` first.
+// The intended three-step consumer idiom is: read the SHA via `snapshotWarpSHA`, check `f.code.SHAExists(sha)`, then call `f.code.ChangedFilesSince(sha)` only if it exists, treating a missing SHA as total staleness;
+// that is not a burden invented here, since `ChangedFilesSince`'s own doc comment already asks every caller to check `SHAExists` first.
 //
 // The reader is per-branch, because it scans only the current weft branch's history: a snapshot
 // recorded on another branch reads as absent the moment a coordinated `Checkout` switches the pair
@@ -304,7 +302,7 @@
 // discard and simply stops seeing the other branch's commits once the weft worktree switches away.
 //
 // The write half closes the one gap the read half's design leaves open: when `snapshotTags` is
-// non-empty and no weft commit would otherwise land, `commitWeftLocked` (weftgit.go) lands an
+// non-empty and no weft commit would otherwise land, `commitWeftLocked` (recordsgit.go) lands an
 // **empty** weft commit carrying the already-composed `Warp-SHA` and `Snapshot:` trailers, via
 // `commitEmptySnapshot` wrapping `gitrepo.Repo.CommitEmpty`.
 // There are four triggering cases, all sharing the identical rationale: a caller's regeneration
@@ -315,7 +313,7 @@
 // A pathspec that survives filtering can still resolve to nothing by the time `git add` runs, which
 // `commitWeftLocked`'s own "did not match any files" tolerance absorbs — reachable only as
 // defense-in-depth, since the filter's own pre-check normally keeps this path from firing.
-// The tolerance lives in `commitWeftLocked` (weftgit.go), not in `gitrepo.StageAndCommit`, which has
+// The tolerance lives in `commitWeftLocked` (recordsgit.go), not in `gitrepo.StageAndCommit`, which has
 // none: `StageAndCommit` wraps and returns `git add`'s failure like any other, and
 // `commitWeftLocked` recognises this one case by matching git's own message text on the way past.
 // That match is the single place in this package whose correctness depends on
@@ -435,13 +433,11 @@
 //
 // The warp binding is a fourth repo-wide record beside the anchor and the repo-wide `fabric.yaml`
 // config, held as a plain single-line file, `.lyx-warp`, at the board root (`<BoardDir>/.lyx-warp`,
-// see warpbinding.go), containing the warp URL only.
+// see codebinding.go), containing the warp URL only.
 // `CloneHub` resolves the effective warp URL from that record when the caller supplies no warp URL,
 // and writes the record when none exists yet and a warp URL is supplied;
 // a supplied URL that disagrees with the recorded one is a hard error, never a silent re-point.
-// That resolution runs through a throwaway pre-hub probe clone of the weft remote (warpprobe.go),
-// because the hub is named after the warp repo and therefore has no path to resolve into until the
-// warp URL is known.
+// That resolution runs through a throwaway pre-hub probe clone of the weft remote (recordsprobe.go), because the hub is named after the warp repo and therefore has no path to resolve into until the warp URL is known.
 // `Reconcile` backfills the record once per hub from the warp side's own `origin` remote
 // (reconcile.go's reconcileWarpBinding), with the CLI layer driving the commit and push, exactly as
 // clone's own binding write is committed CLI-side.
@@ -883,7 +879,7 @@
 // the leaf to `fslink`, so any component escaping the hub is refused at write time. The remaining raw writes
 // in the package are NOT this class — they target a git-owned `.git/…` path (hook.go, gitexclude.go) or a
 // worktree/board directory a contained minter (`createExclusiveDir`/`containedWorktreeAdd`) brought into
-// being in the same call (clone.go, warpbinding.go, weftgit.go, junction.go's weft-target materialisation),
+// being in the same call (clone.go, codebinding.go, recordsgit.go, junction.go's weft-target materialisation),
 // where only a post-creation same-UID race, never a static pre-plant, could redirect them — the same accepted
 // residual class as the gate's dirtiness window — and each is an allowlisted, reasoned entry in the write-side
 // guard rather than a routed write. See PATTERN-fabric-write-containment and
@@ -996,7 +992,7 @@
 // the `conclude-and-conflict-plumbing-is-retained` decision), not dead code waiting to be deleted.
 //
 // The weft conflict list is not, however, permanently empty as a whole, and reading it that way
-// misses a live path: `MergeContinue` reads `f.weft.ConflictedFiles()` for real and routes it
+// misses a live path: `MergeContinue` reads `f.records.ConflictedFiles()` for real and routes it
 // through `unifiedRemainingConflicts` into that same weft arm, so a FOREIGN weft conflict — an
 // operator's own plain-git merge in the weft checkout, which the Fabric Git Invariant's carve-out
 // permits — does surface a weft path in the returned `Conflicts`. Reproduced live: a raw conflicting

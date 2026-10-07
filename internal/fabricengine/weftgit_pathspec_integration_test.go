@@ -2,7 +2,7 @@
 
 // weftgit_pathspec_integration_test.go — integration coverage for
 // weftPathspecFilter, the pre-stage filter CommitWeft runs immediately
-// before f.weft.StageAndCommit: one test per predicate clause, against real
+// before f.records.StageAndCommit: one test per predicate clause, against real
 // git, plus (added by card 14) the batch's own regression assertion that the
 // widened default pathspec and this filter belong together. Package
 // fabricengine_test, reusing export_test.go's NewPlainWarpRepoForTest,

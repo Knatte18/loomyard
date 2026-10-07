@@ -52,22 +52,22 @@ func resolveMergeSources(f *Fabric, source string) (mergeSources, []string) {
 	var reasons []string
 	weftBranch := RecordsBranchName(source)
 
-	if err := f.warp.Fetch(); err != nil {
+	if err := f.code.Fetch(); err != nil {
 		logger.Warn("fabricengine: best-effort fetch before merge source resolution failed", "side", "warp", "error", err)
 	}
-	warpLocalSHA, warpLocalErr := f.warp.ResolveSHA(source)
-	warpRemoteSHA, warpRemoteErr := f.warp.ResolveSHA("origin/" + source)
-	warpSHA, warpFound := pickMergeSourceSHA(f.warp, warpLocalSHA, warpLocalErr == nil, warpRemoteSHA, warpRemoteErr == nil)
+	warpLocalSHA, warpLocalErr := f.code.ResolveSHA(source)
+	warpRemoteSHA, warpRemoteErr := f.code.ResolveSHA("origin/" + source)
+	warpSHA, warpFound := pickMergeSourceSHA(f.code, warpLocalSHA, warpLocalErr == nil, warpRemoteSHA, warpRemoteErr == nil)
 	if !warpFound {
 		reasons = append(reasons, mergeReasonSourceNotFound)
 	}
 
-	if err := f.weft.Fetch(); err != nil {
+	if err := f.records.Fetch(); err != nil {
 		logger.Warn("fabricengine: best-effort fetch before merge source resolution failed", "side", "weft", "error", err)
 	}
-	weftLocalSHA, weftLocalErr := f.weft.ResolveSHA(weftBranch)
-	weftRemoteSHA, weftRemoteErr := f.weft.ResolveSHA("origin/" + weftBranch)
-	weftSHA, _ := pickMergeSourceSHA(f.weft, weftLocalSHA, weftLocalErr == nil, weftRemoteSHA, weftRemoteErr == nil)
+	weftLocalSHA, weftLocalErr := f.records.ResolveSHA(weftBranch)
+	weftRemoteSHA, weftRemoteErr := f.records.ResolveSHA("origin/" + weftBranch)
+	weftSHA, _ := pickMergeSourceSHA(f.records, weftLocalSHA, weftLocalErr == nil, weftRemoteSHA, weftRemoteErr == nil)
 
 	return mergeSources{warpSHA: warpSHA, weftSHA: weftSHA}, reasons
 }
@@ -145,7 +145,7 @@ func upstreamSHAAt(dir string) (sha string, hasUpstream bool, err error) {
 // affect a warp-only merge's correctness, and checking it could only refuse a merge that would have
 // been right.
 func detachedHeadReason(f *Fabric) ([]string, error) {
-	warpDetached, err := f.warp.HeadDetached()
+	warpDetached, err := f.code.HeadDetached()
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: check checkout head attachment: %w", err)
 	}
@@ -189,7 +189,7 @@ func mergeInProgressReason(f *Fabric) ([]string, error) {
 // reason, so the promise holds even when this fast path could not see the divergence. Anything added
 // here that must hold post-fetch belongs there too.
 func syncedToUpstreamReason(f *Fabric) ([]string, error) {
-	warpNotSynced, err := sideNotSyncedToUpstream(f.warp, f.warpPath)
+	warpNotSynced, err := sideNotSyncedToUpstream(f.code, f.warpPath)
 	if err != nil {
 		return nil, err
 	}
@@ -252,11 +252,11 @@ func sideNotSyncedToUpstream(repo *gitrepo.Repo, dir string) (bool, error) {
 // Both sides are evaluated unconditionally before combining, so the single aggregated reason never
 // reveals which side (if either) had landed.
 func concludeLandedReason(f *Fabric, st *mergeState) ([]string, error) {
-	warpLanded, err := sideConcludeMayHaveLanded(f.warp, st.WarpCommitted, st.WarpOutcome, st.WarpStart)
+	warpLanded, err := sideConcludeMayHaveLanded(f.code, st.WarpCommitted, st.WarpOutcome, st.WarpStart)
 	if err != nil {
 		return nil, err
 	}
-	weftLanded, err := sideConcludeMayHaveLanded(f.weft, st.WeftCommitted, st.WeftOutcome, st.WeftStart)
+	weftLanded, err := sideConcludeMayHaveLanded(f.records, st.WeftCommitted, st.WeftOutcome, st.WeftStart)
 	if err != nil {
 		return nil, err
 	}
@@ -280,11 +280,11 @@ func concludeLandedReason(f *Fabric, st *mergeState) ([]string, error) {
 // Both sides are evaluated unconditionally before combining, so the single aggregated reason never
 // reveals which side (if either) had lost its merge.
 func recordedMergeGoneReason(f *Fabric, st *mergeState) ([]string, error) {
-	warpGone, err := sideRecordedMergeGone(f.warp, f.warpPath, st.WarpCommitted, st.WarpOutcome, st.WarpSource, st.Squash)
+	warpGone, err := sideRecordedMergeGone(f.code, f.warpPath, st.WarpCommitted, st.WarpOutcome, st.WarpSource, st.Squash)
 	if err != nil {
 		return nil, err
 	}
-	weftGone, err := sideRecordedMergeGone(f.weft, f.weftPath, st.WeftCommitted, st.WeftOutcome, st.WeftSource, st.Squash)
+	weftGone, err := sideRecordedMergeGone(f.records, f.weftPath, st.WeftCommitted, st.WeftOutcome, st.WeftSource, st.Squash)
 	if err != nil {
 		return nil, err
 	}

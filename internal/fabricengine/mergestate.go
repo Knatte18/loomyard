@@ -274,16 +274,16 @@ type foreignProbeReadings struct {
 func (f *Fabric) readForeignProbes() (foreignProbeReadings, error) {
 	var r foreignProbeReadings
 	var err error
-	if r.warpMergeHead, err = f.warp.MergeHeadPresent(); err != nil {
+	if r.warpMergeHead, err = f.code.MergeHeadPresent(); err != nil {
 		return foreignProbeReadings{}, fmt.Errorf("fabricengine: check merge head: %w", err)
 	}
-	if r.warpConflicted, err = f.warp.ConflictedFiles(); err != nil {
+	if r.warpConflicted, err = f.code.ConflictedFiles(); err != nil {
 		return foreignProbeReadings{}, fmt.Errorf("fabricengine: check conflicted files: %w", err)
 	}
-	if r.weftMergeHead, err = f.weft.MergeHeadPresent(); err != nil {
+	if r.weftMergeHead, err = f.records.MergeHeadPresent(); err != nil {
 		return foreignProbeReadings{}, fmt.Errorf("fabricengine: check merge head: %w", err)
 	}
-	if r.weftConflicted, err = f.weft.ConflictedFiles(); err != nil {
+	if r.weftConflicted, err = f.records.ConflictedFiles(); err != nil {
 		return foreignProbeReadings{}, fmt.Errorf("fabricengine: check conflicted files: %w", err)
 	}
 	return r, nil

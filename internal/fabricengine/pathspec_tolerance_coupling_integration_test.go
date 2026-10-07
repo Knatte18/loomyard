@@ -27,7 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// pathspecMissMarker is the substring commitWeftLocked (weftgit.go) matches to recognise a pathspec
+// pathspecMissMarker is the substring commitWeftLocked (recordsgit.go) matches to recognise a pathspec
 // that matched no files. It is git's own wording, reproduced here so a change to git's message or to
 // the error chain that carries it fails loudly at this test rather than silently at the tolerance.
 const pathspecMissMarker = "did not match any files"

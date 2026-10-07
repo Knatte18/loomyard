@@ -2,14 +2,14 @@
 // internal/gitrepo.Repo instances, plus the sync-options/pathspec plumbing its cross-repo
 // operations need.
 // Fabric holds its two gitrepo.Repo instances as UNEXPORTED fields, so anything repo-specific and
-// uncoordinated (f.warp.StageAndCommit(...), f.weft.ChangedFilesSince(...)) is reachable only from
+// uncoordinated (f.code.StageAndCommit(...), f.records.ChangedFilesSince(...)) is reachable only from
 // inside this package;
 // only the genuinely cross-repo operations (Commit, Pull, Diff, Status) get their own method on
 // Fabric.
 // A single-sided, uncoordinated op also earns a named Fabric method — rather than staying direct
 // field access — precisely when it must be callable from OUTSIDE this package, so the one-repo
 // illusion holds at the public API boundary;
-// f.warp/f.weft field access remains correct for uncoordinated ops used only inside
+// f.code/f.records field access remains correct for uncoordinated ops used only inside
 // internal/fabricengine.
 // See warpforward.go's CurrentBranch/ResetHard for the warp-only
 // examples of this carve-out.
@@ -47,13 +47,13 @@ func (e *ErrMissingPath) Error() string {
 }
 
 // Fabric is the cross-repo coordination handle over paired warp (warp) and weft checkouts.
-// warp and weft are unexported for uncoordinated, repo-specific operations reached only from
+// code and records are unexported for uncoordinated, repo-specific operations reached only from
 // inside this package;
 // cross-repo operations get their own Fabric methods, and a single-sided operation earns a named
 // Fabric method only when out-of-package callers need it.
 type Fabric struct {
-	warp *gitrepo.Repo
-	weft *gitrepo.Repo
+	code    *gitrepo.Repo
+	records *gitrepo.Repo
 
 	warpPath string
 	weftPath string
@@ -73,8 +73,8 @@ func newPaired(warpPath, weftPath string) (*Fabric, error) {
 	}
 
 	return &Fabric{
-		warp:     gitrepo.New(warpPath),
-		weft:     gitrepo.New(weftPath),
+		code:     gitrepo.New(warpPath),
+		records:  gitrepo.New(weftPath),
 		warpPath: warpPath,
 		weftPath: weftPath,
 	}, nil
@@ -205,7 +205,7 @@ func WeftLyxDir(l *lyxcwd.Location) string {
 // that comment use — internal/loomcli needs the origin URL and is not a Fabric Vocabulary Invariant
 // owner.
 func (f *Fabric) OriginURL() (string, error) {
-	return f.warp.RemoteURL("origin")
+	return f.code.RemoteURL("origin")
 }
 
 // PushBranch pushes f's warp side via PushWarpRebaseFreeAt — the vocabulary-neutral spelling

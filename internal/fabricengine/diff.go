@@ -67,7 +67,7 @@ type DiffResult struct {
 // When no weft correspondence exists for sinceWarpSHA, the weft side is empty and
 // DiffResult.NoWeftCorrespondence is true rather than an error.
 func (f *Fabric) Diff(sinceWarpSHA string) (DiffResult, error) {
-	warpFiles, err := f.warp.ChangedFilesSince(sinceWarpSHA)
+	warpFiles, err := f.code.ChangedFilesSince(sinceWarpSHA)
 	if err != nil {
 		return DiffResult{}, fmt.Errorf("fabricengine: diff warp side: %w", err)
 	}
@@ -85,7 +85,7 @@ func (f *Fabric) Diff(sinceWarpSHA string) (DiffResult, error) {
 		return DiffResult{Entries: entries, NoWeftCorrespondence: true}, nil
 	}
 
-	weftFiles, err := f.weft.ChangedFilesSince(weftAnchor)
+	weftFiles, err := f.records.ChangedFilesSince(weftAnchor)
 	if err != nil {
 		return DiffResult{}, fmt.Errorf("fabricengine: diff weft side: %w", err)
 	}
@@ -100,12 +100,12 @@ func (f *Fabric) Diff(sinceWarpSHA string) (DiffResult, error) {
 // into one side-labelled slice.
 // Unlike Diff, there is no correspondence anchor involved — this is a live worktree read.
 func (f *Fabric) Status() ([]ChangeEntry, error) {
-	warpFiles, err := f.warp.WorktreeChangedFiles()
+	warpFiles, err := f.code.WorktreeChangedFiles()
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: status warp side: %w", err)
 	}
 
-	weftFiles, err := f.weft.WorktreeChangedFiles()
+	weftFiles, err := f.records.WorktreeChangedFiles()
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: status weft side: %w", err)
 	}

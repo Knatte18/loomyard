@@ -1,4 +1,4 @@
-// weftgit.go — the weft-git content-sync verbs on Fabric: commitWeft, PushWeft, PullWeft, plus the
+// recordsgit.go — the weft-git content-sync verbs on Fabric: commitWeft, PushWeft, PullWeft, plus the
 // package-level pushWeftAt and commitWeftAt for the detached-push child and board's warp-untethered
 // weft:main commit (via Bolt).
 // commitWeft's commit carries a Warp-SHA trailer and records the correspondence immediately —
@@ -110,7 +110,7 @@ func seedWeftArtifactExcludes(weftPath string) error {
 // warpHeadSHA returns the warp repo's HEAD SHA, or reports unborn=true for an
 // unborn HEAD (zero commits), preventing regression on first-run paths.
 func (f *Fabric) warpHeadSHA() (sha string, unborn bool, err error) {
-	sha, err = f.warp.CurrentSHA()
+	sha, err = f.code.CurrentSHA()
 	if err == nil {
 		return sha, false, nil
 	}
@@ -170,7 +170,7 @@ func entryMatchesWeft(weftPath, entry string) (bool, error) {
 // commitEmptySnapshot lands an empty weft commit with the given commitMessage
 // and records the correspondence via RecordCorrespondence.
 func (f *Fabric) commitEmptySnapshot(commitMessage, warpSHA string) (sha string, committed bool, err error) {
-	sha, err = f.weft.CommitEmpty(commitMessage)
+	sha, err = f.records.CommitEmpty(commitMessage)
 	if err != nil {
 		return "", false, err
 	}
@@ -214,7 +214,7 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOp
 		return "", false, nil
 	}
 
-	sha, committed, err = f.weft.StageAndCommit(commitMessage, filteredPathspec)
+	sha, committed, err = f.records.StageAndCommit(commitMessage, filteredPathspec)
 	if err != nil {
 		if strings.Contains(err.Error(), "did not match any files") {
 			if forceEmptyCommit {
@@ -319,11 +319,11 @@ func (f *Fabric) PushWeft(opts SyncOptions) (res PushResult, err error) {
 		return PushResult{}, nil
 	}
 
-	hadUnpushed, hadUnpushedErr := f.weft.HasUnpushed()
-	if err := f.weft.PushCoalesced(); err != nil {
+	hadUnpushed, hadUnpushedErr := f.records.HasUnpushed()
+	if err := f.records.PushCoalesced(); err != nil {
 		return PushResult{}, err
 	}
-	recordPushIfAdvanced(rec, f.weft, "records", f.weftPath, hadUnpushed, hadUnpushedErr)
+	recordPushIfAdvanced(rec, f.records, "records", f.weftPath, hadUnpushed, hadUnpushedErr)
 
 	return PushResult{}, nil
 }
@@ -333,7 +333,7 @@ func (f *Fabric) PullWeft(opts SyncOptions) error {
 	if opts.SkipGit {
 		return nil
 	}
-	return f.weft.Pull()
+	return f.records.Pull()
 }
 
 // pushWeftAt pushes unpushed commits at weftPath with no Fabric instance,

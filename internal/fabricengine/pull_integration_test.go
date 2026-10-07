@@ -497,7 +497,7 @@ func TestPull_EmptyIndexNoDrift(t *testing.T) {
 
 // TestPull_WeftDivergedAndWarpFetchFails_PartialError forces the weft ff-pull to fail (a local weft
 // commit diverging from a remote-advanced upstream) combined with a warp-side failure (warpPath
-// carries no configured remote, so f.warp.Fetch() itself fails). Since the weft arm is now
+// carries no configured remote, so f.code.Fetch() itself fails). Since the weft arm is now
 // non-fatal, Pull still attempts the warp side, and the combined failure must surface as a
 // *PartialPullError whose WeftPulled is false and whose Error() names both failures rather than
 // claiming the weft pull succeeded — this is the rewrite of the pre-non-fatal-weft test that used
@@ -529,7 +529,7 @@ func TestPull_WeftDivergedAndWarpFetchFails_PartialError(t *testing.T) {
 	// Diverge local weft too, so `git pull --ff-only` cannot fast-forward.
 	gitkit.CommitFile(t, weftFixture.PrimeRecords(), "local-only.txt", "local weft change", "local weft change")
 
-	// warpPath has no configured remote at all -- f.warp.Fetch() fails, giving this test its
+	// warpPath has no configured remote at all -- f.code.Fetch() fails, giving this test its
 	// warp-side failure alongside the weft-side one.
 	result, err := f.Pull(fabricengine.SyncOptions{})
 	var partialErr *fabricengine.PartialPullError

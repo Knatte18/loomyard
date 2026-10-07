@@ -1632,7 +1632,7 @@ func (f *Fabric) ResetHard(rec *Mutations, sha string) error {
 		dirtiness: dirtyScopeTracked(),
 		force:     false,
 	}
-	return resetHardTo(rec, req, f.warp, sha)
+	return resetHardTo(rec, req, f.code, sha)
 }
 
 // ResetPairCode resets a task pair's warp checkout's HEAD, index and working tree to sha.
@@ -1670,7 +1670,7 @@ func (f *Fabric) ResetPairCode(rec *Mutations, sha, parentBranch string, ownPath
 	if err != nil {
 		return err
 	}
-	if err := resetHardTo(rec, req, f.warp, sha); err != nil {
+	if err := resetHardTo(rec, req, f.code, sha); err != nil {
 		if moved {
 			return fmt.Errorf("the remote task branch was already updated to %s, but rewriting the checkout failed: %w; way forward: re-run this reset, which converges", sha, err)
 		}
@@ -1692,7 +1692,7 @@ func (f *Fabric) moveRemoteTaskBranch(rec *Mutations, req pathRequest, sha, pare
 	if tip == "" {
 		return false, nil
 	}
-	branch, err := f.warp.CurrentBranch()
+	branch, err := f.code.CurrentBranch()
 	if err != nil {
 		return false, fmt.Errorf("cannot read the task branch: %w", err)
 	}
@@ -1700,7 +1700,7 @@ func (f *Fabric) moveRemoteTaskBranch(rec *Mutations, req pathRequest, sha, pare
 		return false, fmt.Errorf("the remote task branch %s holds commits this checkout lacks:\n%s\n%s", branch, f.describeCommits(remoteOnly), remoteDivergenceWayForward(originRemoteName, branch))
 	}
 
-	beyondSHA, err := f.warp.CommitsNotIn(tip, sha)
+	beyondSHA, err := f.code.CommitsNotIn(tip, sha)
 	if err != nil {
 		return false, fmt.Errorf("cannot compare the remote task branch with %s: %w", sha, err)
 	}
@@ -1710,7 +1710,7 @@ func (f *Fabric) moveRemoteTaskBranch(rec *Mutations, req pathRequest, sha, pare
 
 	err = updateRemoteBranch(rec, remoteBranchUpdateRequest{
 		pathReq:      req,
-		repo:         f.warp,
+		repo:         f.code,
 		remote:       originRemoteName,
 		branch:       branch,
 		parentBranch: parentBranch,
@@ -1758,5 +1758,5 @@ func (f *Fabric) resetMergeSides(rec *Mutations, warpSHA string) error {
 		dirtiness: dirtyScopeTracked(),
 		force:     true,
 	}
-	return resetHardTo(rec, warpReq, f.warp, warpSHA)
+	return resetHardTo(rec, warpReq, f.code, warpSHA)
 }

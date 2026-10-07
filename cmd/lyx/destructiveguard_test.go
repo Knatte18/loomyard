@@ -70,8 +70,8 @@ var destructiveGuardBannedTokens = []string{
 	"os.Remove(",
 	`"worktree", "remove"`,
 	`"branch", "-D"`,
-	"warp.ResetHard(",
-	"weft.ResetHard(",
+	"code.ResetHard(",
+	"records.ResetHard(",
 	"fslink.Remove(",
 	"createdToken{",
 	"createdBranchToken{",
@@ -87,7 +87,7 @@ var destructiveGuardAllowlist = []scankit.Entry{
 	{Key: "internal/fabricengine/destroy.go", Why: "the gate's own file — the one file the invariant permits to perform a destructive primitive"},
 	{Key: "internal/fabricengine/gitexclude.go", Why: "writeFileAtomically's os.Remove(tempPath) cleans up a temp file the same function created " +
 		"under a repo-wide flock, never operator content"},
-	{Key: "internal/fabricengine/warpprobe.go", Why: "the binding probe's os.RemoveAll(probeDir) removes the throwaway probe clone directory the " +
+	{Key: "internal/fabricengine/recordsprobe.go", Why: "the binding probe's os.RemoveAll(probeDir) removes the throwaway probe clone directory the " +
 		"same function created moments earlier"},
 	{Key: "internal/fabricengine/index.go", Why: "refreshCorrIndexAfterSwitch's os.Remove(path) deliberately deletes the correspondence-index " +
 		"cache before rebuilding it, so a failed refresh misses honestly rather than answering cross-branch"},
@@ -157,7 +157,7 @@ var destructiveGuardMutatingResultTypes = []struct {
 	{"CommitResult", "internal/fabricengine/commit.go"},
 	{"PullResult", "internal/fabricengine/pull.go"},
 	{"CloneResult", "internal/fabricengine/clone.go"},
-	{"PushResult", "internal/fabricengine/weftgit.go"},
+	{"PushResult", "internal/fabricengine/recordsgit.go"},
 	{"MergeResult", "internal/fabricengine/merge.go"},
 	{"StageResult", "internal/fabricengine/mergestage.go"},
 }
