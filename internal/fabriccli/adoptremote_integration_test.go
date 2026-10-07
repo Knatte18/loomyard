@@ -7,6 +7,7 @@
 package fabriccli_test
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 // originMarkerFile is the file an origin-only weft branch carries, so a test can tell the branch adopted from origin from one forked locally.
@@ -59,8 +62,72 @@ func requireOnOriginalBranches(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 }
 
-// TestRunCLI_AdoptRemoteWeftScenario runs the checkout checks over one hub.
-// Steps run serially, each on its own pair; the step that removes the weft repo's origin comes last.
+// weftLockDirName is the lock directory every weft worktree carries.
+const weftLockDirName = ".weft"
+
+// addRawWarpWorktree creates a warp worktree for slug outside lyx, on a new branch slug, at the pair's warp path.
+// It removes the worktree and branch again at cleanup when removeAtCleanup is set, so a pair left unrepairable does not fail later reconciles.
+func addRawWarpWorktree(t *testing.T, h *hubforge.Hub, slug string, removeAtCleanup bool) {
+	t.Helper()
+
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "add", "-b", slug, h.PairWarpWorktree(slug))
+	if removeAtCleanup {
+		t.Cleanup(func() {
+			gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "remove", "--force", h.PairWarpWorktree(slug))
+			gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "-D", slug)
+		})
+	}
+}
+
+// reconcilePair runs `fabric reconcile` from the prime worktree and returns the exit code and the report of slug's pair.
+func reconcilePair(t *testing.T, h *hubforge.Hub, slug string) (int, map[string]any) {
+	t.Helper()
+
+	code, output := runFabric(t, h.PrimeWorktree(), "reconcile")
+	env, err := envelope.Parse(output)
+	if err != nil {
+		t.Fatalf("parse reconcile output: %v\noutput: %s", err, output)
+	}
+	pairs, _ := env.Raw["pairs"].([]any)
+	for _, raw := range pairs {
+		pair, _ := raw.(map[string]any)
+		if warpPath, _ := pair["warp_worktree"].(string); filepath.Base(warpPath) == slug {
+			return code, pair
+		}
+	}
+	t.Fatalf("reconcile report has no pair for %s\noutput: %s", slug, output)
+	return code, nil
+}
+
+// requireAdoptedFromOrigin asserts slug's pair is wired to a weft worktree whose branch tracks origin and which carries its lock directory.
+func requireAdoptedFromOrigin(t *testing.T, h *hubforge.Hub, slug string) {
+	t.Helper()
+
+	weft := h.PairWeftSibling(slug)
+	weftBranch := fabricengine.WeftBranchName(slug)
+	if got := gitkit.CurrentBranch(t, weft); got != weftBranch {
+		t.Errorf("weft branch = %q; want %q", got, weftBranch)
+	}
+	if got := gitkit.Git(t, weft, "rev-parse", "--abbrev-ref", weftBranch+"@{upstream}"); got != "origin/"+weftBranch {
+		t.Errorf("upstream of %s = %q; want origin/%s", weftBranch, got, weftBranch)
+	}
+	if !strings.Contains(strings.Join(gitkit.LsFiles(t, weft), "\n"), originMarkerFile) {
+		t.Errorf("weft worktree does not track %s; want the origin branch's content", originMarkerFile)
+	}
+	for _, path := range []string{
+		filepath.Join(weft, weftLockDirName),
+		filepath.Join(h.PairWarpWorktree(slug), h.Location.AnchorRel, lyxdirs.LyxDirName),
+		h.PairPortalLink(slug),
+		h.PairLauncherDir(slug),
+	} {
+		if _, err := os.Lstat(path); err != nil {
+			t.Errorf("%s missing after reconcile: %v", path, err)
+		}
+	}
+}
+
+// TestRunCLI_AdoptRemoteWeftScenario runs the checkout and reconcile checks over one hub.
+// Steps run serially, each on its own pair; the steps that remove the weft repo's origin come last.
 // The scenario calls t.Parallel as a whole; no step does, because they share the one hub.
 func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 	t.Parallel()
@@ -124,6 +191,108 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 				t.Errorf("local weft branch %q exists after the refused checkout; want none", fabricengine.WeftBranchName(branch))
 			}
 		}},
+		{"ReconcileAdoptsOriginWeftForRawWarp", func(t *testing.T) {
+			// A raw warp worktree whose weft branch exists only on origin ends wired as weft_recreated, with or without an archive tag covering the origin tip.
+			for _, tc := range []struct {
+				slug       string
+				archiveTag bool
+			}{
+				{"rc-adopt", false},
+				{"rc-archived", true},
+			} {
+				addRawWarpWorktree(t, h, tc.slug, false)
+				pushOriginOnlyWeftBranch(t, h, tc.slug, fabricengine.WeftBranchName(tc.slug), tc.archiveTag)
+
+				code, pair := reconcilePair(t, h, tc.slug)
+				if code != 0 {
+					t.Fatalf("reconcile (archiveTag=%v) exit = %d; pair: %v", tc.archiveTag, code, pair)
+				}
+				if got := pair["action"]; got != string(fabricengine.ReconcileActionWeftRecreated) {
+					t.Errorf("action (archiveTag=%v) = %v; want %s", tc.archiveTag, got, fabricengine.ReconcileActionWeftRecreated)
+				}
+				requireAdoptedFromOrigin(t, h, tc.slug)
+			}
+		}},
+		{"ReconcileAdoptsOriginWeftForManagedPair", func(t *testing.T) {
+			// A managed pair whose weft worktree and local weft branch are gone adopts the branch origin keeps and has its wiring repaired.
+			const slug = "rc-managed"
+			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
+				t.Fatalf("add %s exit = %d; output: %s", slug, code, output)
+			}
+			weftBranch := fabricengine.WeftBranchName(slug)
+			weftSibling := h.PairWeftSibling(slug)
+			gitkit.MustRun(t, weftSibling, "git", "push", "--quiet", "origin", weftBranch)
+			gitkit.MustRun(t, h.PrimeWeft(), "git", "worktree", "remove", "--force", weftSibling)
+			gitkit.MustRun(t, h.PrimeWeft(), "git", "branch", "-D", weftBranch)
+
+			code, pair := reconcilePair(t, h, slug)
+			if code != 0 {
+				t.Fatalf("reconcile exit = %d; pair: %v", code, pair)
+			}
+			if got := pair["action"]; got != string(fabricengine.ReconcileActionWeftRecreated) {
+				t.Errorf("action = %v; want %s", got, fabricengine.ReconcileActionWeftRecreated)
+			}
+			if got := gitkit.Git(t, weftSibling, "rev-parse", "--abbrev-ref", weftBranch+"@{upstream}"); got != "origin/"+weftBranch {
+				t.Errorf("upstream of %s = %q; want origin/%s", weftBranch, got, weftBranch)
+			}
+			for _, path := range []string{
+				filepath.Join(weftSibling, weftLockDirName),
+				filepath.Join(h.PairWarpWorktree(slug), h.Location.AnchorRel, lyxdirs.LyxDirName),
+				h.PairPortalLink(slug),
+				h.PairLauncherDir(slug),
+			} {
+				if _, err := os.Lstat(path); err != nil {
+					t.Errorf("%s missing after reconcile: %v", path, err)
+				}
+			}
+		}},
+		{"ReconcileRefusesUnreachableOrigin", func(t *testing.T) {
+			// With origin unreachable and no local weft branch, reconcile reports the pair's error naming origin instead of forking a dormant weft.
+			const slug = "rc-unreachable"
+			addRawWarpWorktree(t, h, slug, true)
+
+			weftRepo := h.PrimeWeft()
+			gitkit.MustRun(t, weftRepo, "git", "remote", "set-url", "origin", filepath.Join(h.Container, "missing-origin"))
+			defer gitkit.MustRun(t, weftRepo, "git", "remote", "set-url", "origin", h.WeftBare)
+
+			code, pair := reconcilePair(t, h, slug)
+			if code == 0 {
+				t.Errorf("reconcile with an unreachable origin exit = 0; want non-zero")
+			}
+			if reason, _ := pair["error"].(string); !strings.Contains(reason, "origin") {
+				t.Errorf("pair error = %q; want it to name origin", reason)
+			}
+			if gitkit.BranchExists(t, weftRepo, fabricengine.WeftBranchName(slug)) {
+				t.Errorf("local weft branch exists after the refused reconcile; want none")
+			}
+		}},
+		{"ReconcileRollsBackBranchWhenAdoptFails", func(t *testing.T) {
+			// A weft branch created from origin is deleted again when its worktree cannot be created, so no local branch outlives the failure; origin keeps its tip.
+			const slug = "rc-rollback"
+			addRawWarpWorktree(t, h, slug, true)
+			weftBranch := fabricengine.WeftBranchName(slug)
+			tip := pushOriginOnlyWeftBranch(t, h, slug, weftBranch, false)
+
+			blocker := h.PairWeftSibling(slug)
+			if err := os.WriteFile(blocker, []byte("a file where the worktree belongs"), 0o644); err != nil {
+				t.Fatalf("plant blocker: %v", err)
+			}
+			defer os.Remove(blocker)
+
+			code, pair := reconcilePair(t, h, slug)
+			if code == 0 {
+				t.Errorf("reconcile with a failing adopt exit = 0; want non-zero")
+			}
+			if reason, _ := pair["error"].(string); reason == "" {
+				t.Errorf("pair carries no error; want the adopt failure")
+			}
+			if gitkit.BranchExists(t, h.PrimeWeft(), weftBranch) {
+				t.Errorf("local weft branch %q survives the failed adopt; want it deleted", weftBranch)
+			}
+			if got := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch); got != tip {
+				t.Errorf("origin %s = %s; want unchanged %s", weftBranch, got, tip)
+			}
+		}},
 		{"CheckoutForksWithoutOriginRemote", func(t *testing.T) {
 			// A weft repo with no origin remote skips the origin step and forks the branch as before.
 			const slug, branch = "co-noorigin", "co-noorigin-b"
@@ -142,6 +311,26 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			}
 			if strings.Contains(strings.Join(gitkit.LsFiles(t, h.PairWeftSibling(slug)), "\n"), originMarkerFile) {
 				t.Errorf("forked weft branch tracks %s; want a fork of the pair's own branch", originMarkerFile)
+			}
+		}},
+		{"ReconcileForksDormantWeftWithoutOriginRemote", func(t *testing.T) {
+			// A weft repo with no origin remote keeps reconcile's dormant fork for a raw warp worktree, and the dormant weft carries its lock directory.
+			const slug = "rc-noorigin"
+			addRawWarpWorktree(t, h, slug, false)
+
+			weftRepo := h.PrimeWeft()
+			gitkit.MustRun(t, weftRepo, "git", "remote", "remove", "origin")
+			defer gitkit.MustRun(t, weftRepo, "git", "remote", "add", "origin", h.WeftBare)
+
+			code, pair := reconcilePair(t, h, slug)
+			if code != 0 {
+				t.Fatalf("reconcile without an origin remote exit = %d; pair: %v", code, pair)
+			}
+			if got := pair["action"]; got != string(fabricengine.ReconcileActionRawAdopted) {
+				t.Errorf("action = %v; want %s", got, fabricengine.ReconcileActionRawAdopted)
+			}
+			if _, err := os.Stat(filepath.Join(h.PairWeftSibling(slug), weftLockDirName)); err != nil {
+				t.Errorf("dormant weft lacks its lock directory: %v", err)
 			}
 		}},
 	}

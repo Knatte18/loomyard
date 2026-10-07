@@ -2,9 +2,11 @@
 //
 // Reconcile walks all warp worktrees (never the branch namespace directly) and applies the minimal
 // corrective action needed to restore a valid paired topology: it recreates a missing weft worktree
-// when the branch still exists, re-points a broken junction, adopts a raw (non-lyx) warp worktree
-// by creating the weft side dormant, and reports (but does not touch) a warp worktree on an
-// unmanaged branch.
+// when the branch still exists locally or on origin, re-points a broken junction, adopts a raw
+// (non-lyx) warp worktree by creating the weft side dormant, and reports (but does not touch) a warp
+// worktree on an unmanaged branch.
+// An origin weft branch is adopted before a dormant one is forked, for a raw or an unmanaged warp
+// worktree alike.
 // Wherever a warp branch name needs a weft counterpart, fabric derives it via
 // WeftBranchName(warpBranch).
 //
@@ -36,8 +38,8 @@ import (
 type ReconcileAction string
 
 const (
-	// ReconcileActionWeftRecreated means a missing weft worktree was recreated from its existing
-	// branch.
+	// ReconcileActionWeftRecreated means a missing weft worktree was recreated from a branch that
+	// existed locally or on origin.
 	ReconcileActionWeftRecreated ReconcileAction = "weft_recreated"
 
 	// ReconcileActionJunctionRepointed means at least one broken or dangling warp junction was
@@ -476,8 +478,14 @@ func (t *Topology) reconcileMissingWeft(
 		return ReconcileActionUnmanagedReported
 	}
 
-	if weftBranchExists(warpLayout, weftBranch) {
-		if weftRepoRoot, weftRepoRootErr := WeftRepoRoot(warpLayout); weftRepoRootErr == nil {
+	exists, fromOrigin, resolveErr := resolveWeftBranch(rec, warpLayout, weftBranch, true)
+	if resolveErr != nil {
+		pr.Error = fmt.Sprintf("recreate weft worktree: %v", resolveErr)
+		return ReconcileActionWeftRecreated
+	}
+	if exists {
+		weftRepoRoot, weftRepoRootErr := WeftRepoRoot(warpLayout)
+		if weftRepoRootErr == nil {
 			// Bookkeeping only: a failed prune leaves the stale registration the adopt below
 			// re-reports, and must not abort the repair.
 			_, _ = gitexec.Run([]string{"worktree", "prune"}, weftRepoRoot)
@@ -485,9 +493,16 @@ func (t *Topology) reconcileMissingWeft(
 
 		if err := adoptWeftWorktree(warpLayout, weftPath, weftBranch); err != nil {
 			pr.Error = fmt.Sprintf("recreate weft worktree: %v", err)
+			if fromOrigin && weftRepoRootErr == nil {
+				t.deleteAdoptedWeftBranch(rec, warpLayout, weftRepoRoot, weftBranch)
+			}
 			return ReconcileActionWeftRecreated
 		}
-		pr.Detail = fmt.Sprintf("recreated weft worktree at %s (branch %s existed)", weftPath, weftBranch)
+		source := "existed"
+		if fromOrigin {
+			source = "adopted from " + originRemoteName
+		}
+		pr.Detail = fmt.Sprintf("recreated weft worktree at %s (branch %s %s)", weftPath, weftBranch, source)
 		return ReconcileActionWeftRecreated
 	}
 
@@ -506,6 +521,31 @@ func (t *Topology) reconcileMissingWeft(
 		warpPath, warpBranch,
 	)
 	return ReconcileActionUnmanagedReported
+}
+
+// deleteAdoptedWeftBranch deletes a local weft branch the resolver just created from origin, after
+// the worktree adopt for it failed, so a surviving local weft branch stays an honest proof of a live pair.
+// It never touches origin.
+// A refused or failed deletion is a logged warning: the adopt error already on the pair stays.
+func (t *Topology) deleteAdoptedWeftBranch(rec *Mutations, warpLayout *lyxcwd.Location, weftRepoRoot, weftBranch string) {
+	req := branchRequest{
+		what:      "delete weft branch adopted from origin",
+		repoDir:   weftRepoRoot,
+		branch:    weftBranch,
+		ownership: ownedManagedBranch(warpLayout, t.cfg.BranchPrefix),
+		dirtiness: dirtyCheckedOutBranch(),
+		force:     false,
+	}
+	err := deleteBranch(rec, req)
+	if err == nil {
+		return
+	}
+	var refusal *destructiveRefusal
+	if errors.As(err, &refusal) {
+		logger.Warn("fabricengine: reconcile's adopted-branch deletion was refused by the destructive gate", "branch", weftBranch, "check", string(refusal.Check))
+		return
+	}
+	logger.Warn("fabricengine: reconcile could not delete the adopted weft branch", "branch", weftBranch, "error", err.Error())
 }
 
 // adoptWeftWorktree creates a git worktree at weftPath for the existing branch in
