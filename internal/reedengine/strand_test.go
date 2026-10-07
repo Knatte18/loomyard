@@ -547,7 +547,8 @@ func TestAddStrandUnless_NamedStrandSkips(t *testing.T) {
 			if err := SaveState(e.stateDir(), &ReedState{Strands: append(slices.Clone(tt.before), tt.orch)}); err != nil {
 				t.Fatalf("SaveState: %v", err)
 			}
-			// The seeded state carries no socket, session or pane-generation stamp, and every load stamps them in memory,
+			// The seeded state carries no socket, session or pane-generation stamp,
+			// and every load stamps them in memory,
 			// so a SaveState on the skip path would change these bytes.
 			statePath := filepath.Join(e.stateDir(), reedStateFileName)
 			stateBefore, err := os.ReadFile(statePath)

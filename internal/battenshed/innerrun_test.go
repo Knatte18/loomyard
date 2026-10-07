@@ -406,14 +406,16 @@ func pidMarker(pid int) []byte { return []byte(strconv.Itoa(pid) + "\n") }
 // TestInnerRun_SpawnsUntilASpawnIsConfirmed pins which child states re-spawn when no spawn has been confirmed by this process,
 // and that a marker from another pid or in the old layout is no confirmation.
 // A child bootstrap seeds a running status before it starts its driver,
-// so a running status alone is no proof the spawn completed: it is spawned (again), and the confirmation is recorded only once Spawn succeeds.
+// so a running status alone is no proof the spawn completed: it is spawned (again),
+// and the confirmation is recorded only once Spawn succeeds.
 // A halted or done child is never spawned.
 func TestInnerRun_SpawnsUntilASpawnIsConfirmed(t *testing.T) {
 	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
 	tests := []struct {
 		name   string
 		status statusResult
-		// marker is the confirmation marker's content before the Call; nil writes none.
+		// marker is the confirmation marker's content before the Call;
+		// nil writes none.
 		marker        []byte
 		spawnErr      error
 		wantSpawns    int
@@ -453,7 +455,8 @@ func TestInnerRun_SpawnsUntilASpawnIsConfirmed(t *testing.T) {
 
 // TestInnerRun_AdoptsARunningChildWithADriver pins the running arm over an unconfirmed spawn:
 // a live or retiring driver strand, or a held child run lock, means a driver is at work, so the child is adopted (the confirmation recorded for this process, nothing spawned);
-// no strand or a dead one with a free lock spawns; a seam error is a hard error that spawns nothing.
+// no strand or a dead one with a free lock spawns;
+// a seam error is a hard error that spawns nothing.
 func TestInnerRun_AdoptsARunningChildWithADriver(t *testing.T) {
 	t.Parallel()
 

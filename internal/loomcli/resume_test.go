@@ -117,14 +117,16 @@ func TestResumeVerb(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// runState is the persisted run state; empty writes no status file.
+		// runState is the persisted run state;
+		// empty writes no status file.
 		runState  shedengine.State
 		directory fakeDriverDirectory
 		runLock   bool
 		marker    bool
 		merge     fabricengine.MidMergeState
 		wantOK    bool
-		// wantKind is the refusal's envelope kind; empty means none.
+		// wantKind is the refusal's envelope kind;
+		// empty means none.
 		wantKind string
 		// wantIn holds substrings of the envelope's message or error.
 		wantIn []string
@@ -242,7 +244,8 @@ func TestResumeVerb_FailedDeliveryNamesResume(t *testing.T) {
 }
 
 // TestResumeVerb_BlocksOnTheBootstrapLockThenReadsState asserts the verb waits for a held bootstrap lock and reads the run's state only after it is released:
-// the status file is written while the lock is held, and the verb must report that state, not the absence it would have found reading first.
+// the status file is written while the lock is held,
+// and the verb must report that state, not the absence it would have found reading first.
 func TestResumeVerb_BlocksOnTheBootstrapLockThenReadsState(t *testing.T) {
 	t.Parallel()
 

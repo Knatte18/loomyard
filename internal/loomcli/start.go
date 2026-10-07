@@ -129,7 +129,8 @@ const (
 	retryResume = "lyx loom resume"
 )
 
-// driverNotParkedMessage is the refusal for a run halted at a hand-back whose driver has not written its park marker yet; retry is the verb the message names for the caller's retry.
+// driverNotParkedMessage is the refusal for a run halted at a hand-back whose driver has not written its park marker yet;
+// retry is the verb the message names for the caller's retry.
 func driverNotParkedMessage(handBack shedengine.State, retry string) string {
 	return "loom: the driver has not parked yet (the run is " + string(handBack) + " and its driver is still writing its stop report and committing its records); retry `" + retry + "` in a few seconds"
 }

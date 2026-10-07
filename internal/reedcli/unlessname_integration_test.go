@@ -57,7 +57,9 @@ func unlessPanes(t *testing.T, tmux, socket, session string) string {
 	return string(out)
 }
 
-// TestUnlessName runs the --unless-name claims against one hub whose prime worktree accumulates strands across the steps: no orch adds as today, a live orch makes the add a no-op, and so does a dormant orch whose pane is gone.
+// TestUnlessName runs the --unless-name claims against one hub whose prime worktree accumulates strands across the steps: no orch adds as today,
+// a live orch makes the add a no-op,
+// and so does a dormant orch whose pane is gone.
 // The steps run serially in a fixed order and each later step relies on the earlier step's session; the scenario calls t.Parallel but no step does, because every step shares the one hub, session and strand table.
 func TestUnlessName(t *testing.T) {
 	t.Parallel()

@@ -211,7 +211,8 @@ type SendTextCall struct {
 	Submit bool
 }
 
-// WaitMarkCall is one recorded SetWaitMark call; an empty Label is a clear.
+// WaitMarkCall is one recorded SetWaitMark call;
+// an empty Label is a clear.
 type WaitMarkCall struct {
 	GUID  string
 	Label string

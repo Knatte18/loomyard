@@ -56,7 +56,8 @@ type fakeReed struct {
 	WaitMarkErr   error
 }
 
-// waitMarkCall is one recorded SetWaitMark call; an empty Label is a clear.
+// waitMarkCall is one recorded SetWaitMark call;
+// an empty Label is a clear.
 type waitMarkCall struct{ GUID, Label string }
 
 func (m *fakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {

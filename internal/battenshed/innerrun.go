@@ -210,7 +210,8 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // since batten's own run lock means a pid other than this process's is an earlier, dead batten process.
 // A running child with an unconfirmed spawn is adopted rather than spawned when deps.DriverStrand reports a live or retiring driver strand or deps.ChildRunLockHeld reports a held run lock:
 // the confirmation is recorded for this process and nothing is spawned.
-// Re-spawning a running child with neither is safe because the bootstrap it runs is idempotent against a driver that is already alive, and it never stacks a second driver.
+// Re-spawning a running child with neither is safe because the bootstrap it runs is idempotent against a driver that is already alive,
+// and it never stacks a second driver.
 // A halted or done child is never re-spawned, marker or not: the outer run watches the child's own run and never restarts it.
 //
 // The full disposition table, evaluated top to bottom: a spawn as above (logging both Live-Substrate
@@ -229,7 +230,8 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 //   - awaiting with a decision already acted on and the child's history length unchanged since that resume does not spawn, and sleeps and returns a budget-exempt Stuck saying the resume was delivered and the child's driver has not re-stepped yet;
 //   - awaiting with a decision already acted on and the child's history longer (or an old-layout marker) does not spawn, and sleeps and returns a budget-exempt Stuck naming the recovery of deciding again;
 //   - done records the first-sight time in the done-seen marker and returns Done once the driver strand is gone or driverExitGrace has elapsed since first sight, and otherwise sleeps and returns a budget-exempt Stuck, the wait for the driver to finish its stop report;
-//   - blocked, paused or failed never spawns or resumes the child, Warns once per halt episode, revives a dead driver strand once per episode (reviveDeadDriver), and sleeps and returns a budget-exempt Stuck whose reason carries the child's State, Error and CurrentProducer and the resume command; a resumed child is then read as running again;
+//   - blocked, paused or failed never spawns or resumes the child, Warns once per halt episode, revives a dead driver strand once per episode (reviveDeadDriver), and sleeps and returns a budget-exempt Stuck whose reason carries the child's State, Error and CurrentProducer and the resume command;
+//     a resumed child is then read as running again;
 //   - any other value is a hard error naming the unrecognised state.
 //
 // The self-route's "sole Stuck arm" reasoning still holds in the sense it exists for:
@@ -365,7 +367,8 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 
 // driverAtWork reports whether the child already has a driver at work: a live or retiring driver strand, or a held child run lock.
 // A retiring strand counts as live, since someone already asked to remove it and `lyx loom start` replaces it.
-// A read error from either seam is returned as a hard error, and the next Call retries.
+// A read error from either seam is returned as a hard error,
+// and the next Call retries.
 func (p *innerRunProducer) driverAtWork(ctx context.Context) (bool, error) {
 	strand, err := p.deps.DriverStrand(ctx)
 	if err != nil {
@@ -439,14 +442,19 @@ func (p *innerRunProducer) callHalted(ctx context.Context, status shedengine.Sta
 
 // driverRevival is what reviveDeadDriver learned about the child's driver strand.
 type driverRevival struct {
-	// startFallback is true when the halted reason should also name `lyx loom start`: the child has no driver strand in reed state, or a revive failed in this episode.
+	// startFallback is true when the halted reason should also name `lyx loom start`: the child has no driver strand in reed state,
+	// or a revive failed in this episode.
 	startFallback bool
 }
 
 // reviveDeadDriver brings back the dead driver strand of a halted or awaiting child through deps.ReviveStrands, at most once per episode per batten process.
-// A retiring strand is left to `lyx loom start`, a live one needs nothing, and a child with no driver strand has nothing to revive, which it never tells from a Go-driven child by the seed.
-// The attempt is recorded in the revived marker with this process's pid; a marker naming another pid belongs to an earlier process, whose episode this one retries once.
-// It changes no run state and removes no park marker, and every failure, a strand read included, is warned about and never fails the row.
+// A retiring strand is left to `lyx loom start`,
+// a live one needs nothing,
+// and a child with no driver strand has nothing to revive, which it never tells from a Go-driven child by the seed.
+// The attempt is recorded in the revived marker with this process's pid;
+// a marker naming another pid belongs to an earlier process, whose episode this one retries once.
+// It changes no run state and removes no park marker,
+// and every failure, a strand read included, is warned about and never fails the row.
 func (p *innerRunProducer) reviveDeadDriver(ctx context.Context) driverRevival {
 	strand, err := p.deps.DriverStrand(ctx)
 	if err != nil {
@@ -464,7 +472,8 @@ func (p *innerRunProducer) reviveDeadDriver(ctx context.Context) driverRevival {
 	markerPath := revivedFile(p.scratchDir, p.name)
 	if raw, err := os.ReadFile(markerPath); err == nil {
 		if pid, _, _ := strings.Cut(strings.TrimSpace(string(raw)), " "); pid == strconv.Itoa(os.Getpid()) {
-			// Already tried by this process in this episode, and the strand is dead still.
+			// Already tried by this process in this episode,
+			// and the strand is dead still.
 			return driverRevival{startFallback: true}
 		}
 	}
@@ -636,7 +645,8 @@ func spawnConfirmed(path string) bool {
 
 // recordSpawnConfirmed writes the spawn-confirmation marker at path, holding this process's pid.
 // A write failure is logged rather than escalated:
-// the spawn itself succeeded, and a missing marker costs only one idempotent re-spawn or adoption check on the next Call.
+// the spawn itself succeeded,
+// and a missing marker costs only one idempotent re-spawn or adoption check on the next Call.
 func recordSpawnConfirmed(producer, slug, scratchDir, path string) {
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
 		logger.Warn("battenshed: create scratch directory for spawn confirmation failed", "producer", producer, "slug", slug, "scratchDir", scratchDir, "error", err)

@@ -66,7 +66,9 @@ func driverAliveFrom(present bool, status func() (reedengine.StatusResult, error
 }
 
 // driverStrandFrom reports the child's driver strand from reed's sessionless directory, over an injected reader so its answers are testable without tmux.
-// An absent task worktree and a directory with no driver row are none; a live row is retiring when its Retiring is set and live otherwise; a row that is not live is dead.
+// An absent task worktree and a directory with no driver row are none;
+// a live row is retiring when its Retiring is set and live otherwise;
+// a row that is not live is dead.
 // A directory read error is returned unchanged.
 func driverStrandFrom(present bool, directory func() ([]reedengine.DirectoryRow, error)) (battenshed.ChildDriverStrand, error) {
 	if !present {
@@ -554,7 +556,8 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				logger.Info("battencli: reed resume of the task worktree finished", "slug", slug, "resumed", res.Resumed, "dropped", res.Dropped)
 				return nil
 			},
-			// ChildRunLockHeld probes the child's run lock without keeping it; the lock's directory is created first, since a child that never started has none.
+			// ChildRunLockHeld probes the child's run lock without keeping it;
+			// the lock's directory is created first, since a child that never started has none.
 			ChildRunLockHeld: func() (bool, error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)
 				if err != nil {

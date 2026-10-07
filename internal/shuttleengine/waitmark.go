@@ -47,7 +47,8 @@ type waitState struct {
 }
 
 // ReadWaitMarker returns the first wait marker with a live pid among the run directories under the run-directory root.
-// A marker whose pid is dead reads as absent and the scan goes on, and an unreadable or undecodable marker is skipped with a logged warning,
+// A marker whose pid is dead reads as absent and the scan goes on,
+// and an unreadable or undecodable marker is skipped with a logged warning,
 // so one torn file cannot hide another run's wait.
 func ReadWaitMarker(cfg Config, anchorPath string) (WaitMarker, bool, error) {
 	root := runDirRoot(cfg, anchorPath)
@@ -162,7 +163,8 @@ func (run *Run) shellWaitActive() bool {
 }
 
 // showWait brings the marker file and the pane mark in line with the wait that should be on show:
-// a running gate entry wins over the background-shell wait, and neither shows nothing.
+// a running gate entry wins over the background-shell wait,
+// and neither shows nothing.
 func (run *Run) showWait() {
 	label, started := "", time.Time{}
 	switch {

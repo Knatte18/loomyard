@@ -72,7 +72,8 @@ func TestResumeParkedDriver(t *testing.T) {
 		sender    *fakeDriverSender
 		wantTexts int
 		wantWaits int
-		// retry is the calling verb; empty means `lyx loom start`.
+		// retry is the calling verb;
+		// empty means `lyx loom start`.
 		retry string
 		// wantErr holds substrings of the refusal; empty means the resume succeeds.
 		wantErr []string

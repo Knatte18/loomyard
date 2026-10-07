@@ -110,7 +110,10 @@ func TestDriverAliveFrom(t *testing.T) {
 	}
 }
 
-// TestDriverStrandFrom covers driverStrandFrom's answers without tmux: an absent task worktree is none without reading the directory, a directory error is returned, and a driver row is live, retiring or dead by its flags, under its full name, its role or the legacy loom-driver literal.
+// TestDriverStrandFrom covers driverStrandFrom's answers without tmux:
+// an absent task worktree is none without reading the directory,
+// a directory error is returned,
+// and a driver row is live, retiring or dead by its flags, under its full name, its role or the legacy loom-driver literal.
 func TestDriverStrandFrom(t *testing.T) {
 	t.Parallel()
 

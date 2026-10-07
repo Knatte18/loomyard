@@ -67,7 +67,8 @@ type Result struct {
 	ExitCode int
 	// Tree is HEAD's tree SHA, empty for a dirty result.
 	Tree string
-	// TimedOut is set when the verify command outlived the timeout and was killed; the status is then StatusFailed with ExitCode -1.
+	// TimedOut is set when the verify command outlived the timeout and was killed;
+	// the status is then StatusFailed with ExitCode -1.
 	TimedOut bool
 	// Detail carries the cause of a shell that could not start, or names the timeout of a timed-out run.
 	Detail string
@@ -130,7 +131,8 @@ func parsePorcelainZ(out string) []string {
 // Otherwise the marker is written, the command runs with its output in p.Log, the marker is removed whatever happened, and an exit 0 returns StatusPassed.
 // The pass writes the record only when HEAD still names the tree the run started on, so a commit that lands mid-run costs the next call a re-run rather than recording a tree the command did not run on.
 // A non-zero exit is StatusFailed with the exit code, and a shell that could not start is StatusFailed with exit code -1 and the cause in Detail.
-// A command still running after timeout is killed and returns StatusFailed with exit code -1, TimedOut set and the timeout in Detail; no record is written.
+// A command still running after timeout is killed and returns StatusFailed with exit code -1, TimedOut set and the timeout in Detail;
+// no record is written.
 // A cancelled ctx is a returned error and writes no record.
 func Verify(ctx context.Context, p Paths, site Site, command string, timeout time.Duration) (Result, error) {
 	dirty, err := DirtyPaths(p.Worktree)

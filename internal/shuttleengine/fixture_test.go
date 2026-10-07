@@ -157,7 +157,8 @@ func (fx *fixture) newRun(spec Spec, opts ...runOpt) *Run {
 	for _, opt := range opts {
 		opt(fx.t, &s)
 	}
-	// Production always has a clock and a run directory; the wait mark reads both.
+	// Production always has a clock and a run directory;
+	// the wait mark reads both.
 	if s.clk == nil {
 		s.clk = realClock{}
 	}

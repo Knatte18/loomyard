@@ -150,12 +150,14 @@ type InnerRunDeps struct {
 	// A nil DriverStrand resolves to a function reporting ChildDriverNone in NewInnerRun, the same way a nil Sleep resolves.
 	DriverStrand func(ctx context.Context) (ChildDriverStrand, error)
 	// ChildRunLockHeld reports whether the child's run lock is held.
-	// Call invokes it beside DriverStrand, and a held lock means a driver is working even when no strand says so.
+	// Call invokes it beside DriverStrand,
+	// and a held lock means a driver is working even when no strand says so.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil ChildRunLockHeld resolves to a function reporting false in NewInnerRun.
 	ChildRunLockHeld func() (bool, error)
 	// ReviveStrands brings back the strands of the child's pair through reed resume, which relaunches the dead driver strand with its own session.
-	// Call invokes it at most once per halt episode per process, for a halted or awaiting child whose DriverStrand reports dead; it starts no run step and sends no resume line.
+	// Call invokes it at most once per halt episode per process, for a halted or awaiting child whose DriverStrand reports dead;
+	// it starts no run step and sends no resume line.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil ReviveStrands resolves to a function returning an error that says no revive is wired, in NewInnerRun.
 	ReviveStrands func(ctx context.Context) error
@@ -165,7 +167,8 @@ type InnerRunDeps struct {
 type ChildDriverStrand int
 
 const (
-	// ChildDriverNone means the child's reed state holds no driver strand, or the child's worktree is absent.
+	// ChildDriverNone means the child's reed state holds no driver strand,
+	// or the child's worktree is absent.
 	ChildDriverNone ChildDriverStrand = iota
 	// ChildDriverLive means the driver strand's pane is alive.
 	ChildDriverLive

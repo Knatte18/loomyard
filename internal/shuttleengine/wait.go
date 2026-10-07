@@ -230,7 +230,8 @@ func (run *Run) Wait() (Result, error) {
 	eventsFailures := 0
 	statusFailures := 0
 
-	// A mark left by a crashed step is gone at the next touch, and every return leaves none behind.
+	// A mark left by a crashed step is gone at the next touch,
+	// and every return leaves none behind.
 	run.clearWait()
 	defer run.endWait()
 

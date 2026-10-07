@@ -28,7 +28,8 @@ import (
 
 // waitsSegmentFormat is the raw tmux format that stands in for the "waits" token in status-left.
 // For every pane of every window whose @lyx_wait option is set it expands to "<pane title> ⏳<label> <minutes>m ",
-// the minutes being the status refresh's own strftime epoch (%s) minus @lyx_wait_start; an unmarked pane expands to nothing.
+// the minutes being the status refresh's own strftime epoch (%s) minus @lyx_wait_start;
+// an unmarked pane expands to nothing.
 // It is substituted only after escapeStatusText has run, which would otherwise double every "#" of it.
 const waitsSegmentFormat = "#{W:#{P:#{?@lyx_wait,#{pane_title} ⏳#{@lyx_wait} #{e|/:#{e|-:%s,#{@lyx_wait_start}},60}m ,}}}"
 

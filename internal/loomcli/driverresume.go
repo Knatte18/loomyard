@@ -26,7 +26,8 @@ const (
 // Only a not-ready pane (shuttleengine.ErrPaneNotReady) is waited on and retried.
 // Any other Send error ends the loop at once: Send already replays its own keystrokes internally,
 // and a "never appeared" verification failure can follow a delivery the pane hid, so re-sending could type the line into the driver twice.
-// A failure leaves the marker in place, and its message names retry, the calling verb, as the way to try again.
+// A failure leaves the marker in place,
+// and its message names retry, the calling verb, as the way to try again.
 // It returns the path of the stop report the driver is asked to write.
 func (c *loomCLI) resumeParkedDriver(guid, retry string) (string, error) {
 	runID := shedrun.ResolveRunID(c.location, c.runID)

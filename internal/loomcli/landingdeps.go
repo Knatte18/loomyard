@@ -150,7 +150,8 @@ func landingDeps(
 
 // driverWaitMark returns the callback landingshed marks the verify wait through, built over two seams so a test needs no tmux:
 // status reads reed's strand table and setMark sets or clears a strand's pane wait mark.
-// The table is read at call time, and the mark goes on the driver strand only while that strand is live and not retiring;
+// The table is read at call time,
+// and the mark goes on the driver strand only while that strand is live and not retiring;
 // a strand that is gone, dead or replaced makes the call a logged no-op returning nil.
 // A failure of either seam is returned for the gate to log.
 func driverWaitMark(

@@ -157,8 +157,10 @@ func planUpLaunches(strands []Strand) []Strand {
 }
 
 // planResumeLaunches splits the non-live strands into those Resume relaunches and those it drops.
-// A non-live strand is dropped, hidden or not, when its DoneWhen list is non-empty and exists reports every path present: its work finished, and a relaunch would redo it.
-// Every other non-live, non-hidden strand is relaunched; a hidden strand that is not dropped is neither.
+// A non-live strand is dropped, hidden or not, when its DoneWhen list is non-empty and exists reports every path present: its work finished,
+// and a relaunch would redo it.
+// Every other non-live, non-hidden strand is relaunched;
+// a hidden strand that is not dropped is neither.
 // A live strand is in neither list.
 func planResumeLaunches(strands []Strand, liveIDs map[string]bool, exists func(path string) bool) (launch, drop []Strand) {
 	for _, s := range strands {

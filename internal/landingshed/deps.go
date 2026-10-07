@@ -158,11 +158,13 @@ type Deps struct {
 	VerifyCommand func() (string, error)
 	// VerifyWaitMark sets or clears the pane mark of the run's driver strand around the post-merge verify, so the wait shows on screen.
 	// The gate clears the mark before each verify, sets it with the label `verify <producer>` and the verify's start time immediately before the verify runs,
-	// and clears it on every path out of the verify; an empty label clears.
+	// and clears it on every path out of the verify;
+	// an empty label clears.
 	// The mark is display only: a returned error is logged and changes no Stuck reason, error return or verify outcome.
 	//
 	// Nil means "no strand to mark", following CommitStatus's nil-is-absent convention, so a run with no driver strand gets the status note only.
-	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	// internal/loomcli's landingDeps fills it,
+	// and its drift guard keeps it filled.
 	VerifyWaitMark func(label string, start time.Time) error
 	// VerifyDir is the told directory internal/verifytree keeps the verified-tree record, the running marker and the verify log in.
 	// Every plan-verify site of the worktree shares it, so a pass at one site lets the next skip.
