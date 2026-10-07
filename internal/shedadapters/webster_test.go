@@ -137,41 +137,6 @@ func TestWebsterProducer_UnrecognizedOutcome(t *testing.T) {
 
 // --- Error mapping table ---
 
-func TestWebsterProducer_MasterAskingError(t *testing.T) {
-	tests := []struct {
-		name       string
-		askingErr  *websterengine.MasterAskingError
-		wantReason string
-	}{
-		{"SessionAndRunDir", &websterengine.MasterAskingError{SessionID: "sess-1", RunDir: "/tmp/run", Message: "which model?"}, "webster master is asking a question; session sess-1, run dir /tmp/run"},
-		{"EmptySessionIDNamesRunDir", &websterengine.MasterAskingError{RunDir: "/tmp/run", Message: "which model?"}, "webster master is asking a question; run dir /tmp/run"},
-		{"NeitherIsBareText", &websterengine.MasterAskingError{Message: "which model?"}, "webster master is asking a question"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
-			fake := &fakeWebsterRunner{err: tt.askingErr}
-			p := NewWebsterProducer("loom", fake.run, deps)
-			// The adapter must match with errors.Is against ErrMasterAsking, not a string match.
-			if !errors.Is(tt.askingErr, websterengine.ErrMasterAsking) {
-				t.Fatalf("test setup: MasterAskingError does not satisfy errors.Is(_, ErrMasterAsking)")
-			}
-
-			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
-			if ptr.Path != "" {
-				t.Errorf("Call() pointer.Path = %q; want empty", ptr.Path)
-			}
-			if ptr.Reason != tt.wantReason {
-				t.Errorf("Call() Reason = %q; want %q", ptr.Reason, tt.wantReason)
-			}
-			if strings.Contains(ptr.Reason, "which model?") {
-				t.Errorf("Call() Reason %q contains the master's message", ptr.Reason)
-			}
-		})
-	}
-}
-
 func TestWebsterProducer_OtherEngineErrors(t *testing.T) {
 	tests := []struct {
 		name string
@@ -196,7 +161,7 @@ func TestWebsterProducer_OtherEngineErrors(t *testing.T) {
 				t.Fatal("Call() error = nil; want non-nil")
 			}
 			if outcome == shedengine.Stuck {
-				t.Errorf("Call() outcome = %q; want the error, not %q (only the asking sentinel maps to Stuck)", outcome, shedengine.Stuck)
+				t.Errorf("Call() outcome = %q; want the error, not %q (only the pending-audit-findings sentinel maps to Stuck)", outcome, shedengine.Stuck)
 			}
 		})
 	}

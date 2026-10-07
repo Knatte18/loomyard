@@ -137,8 +137,7 @@ func (p *SingleLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		}
 	}
 
-	// Probe before archive, unconditionally -- gated on neither spec.Interactive nor
-	// spec.AwaitOperator. Archiving is a rename of the very files a live agent may be about to
+	// Probe before archive, unconditionally -- not gated on spec.Interactive. Archiving is a rename of the very files a live agent may be about to
 	// write, and Wait polls for bare existence at the spec's paths, so archiving before the probe
 	// would make an attached run unable to ever classify Done, in exactly the case the probe exists
 	// to protect. Respawning over a still-live agent is a correctness bug in autonomous mode too --
@@ -215,21 +214,6 @@ func (p *SingleLLMProducer) mapOutcome(ctx context.Context, spec shuttleengine.S
 		// A genuine success verdict survives cancellation -- the one exception cancelErr never
 		// applies to.
 		return shedengine.Done, shedengine.OutputPointer{Path: spec.OutputFiles[0], GateAttempts: gateAttemptsPointer(result.Gate)}, nil
-
-	case shuttleengine.OutcomeAsking:
-		if cerr := cancelErr(ctx, p.name, singleLLMEngineLabel); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr
-		}
-		logger.Warn("shedadapters: shuttle run is asking", "producer", p.name, "engine", singleLLMEngineLabel, "lastAssistantMessage", result.LastAssistantMessage, "sessionID", result.SessionID, "strandGUID", result.StrandGUID, "runDir", result.RunDir)
-		// A fixed summary, never the agent's own message: that would bury the strand line.
-		reason := "agent is asking a question"
-		switch {
-		case result.SessionID != "":
-			reason += "; session " + result.SessionID
-		case result.RunDir != "":
-			reason += "; run dir " + result.RunDir
-		}
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 
 	case shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout:
 		if cerr := cancelErr(ctx, p.name, singleLLMEngineLabel); cerr != nil {
