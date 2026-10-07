@@ -28,8 +28,8 @@ var loomshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/websterengine",
 	"github.com/Knatte18/loomyard/internal/loomengine",
 	"github.com/Knatte18/loomyard/internal/planparser",
-	// internal/planindex is the cgo-free seam the plan gates resolve through; the resolve-backed
-	// implementation, internal/planglyph, links tree-sitter and stays out of this package for good.
+	// internal/planindex is the cgo-free seam the plan gates resolve through.
+	// The resolve-backed implementation, internal/planglyph, links tree-sitter and stays out of this package for good.
 	"github.com/Knatte18/loomyard/internal/planindex",
 	"github.com/Knatte18/loomyard/internal/discussionparser",
 	"github.com/Knatte18/loomyard/internal/batcher",

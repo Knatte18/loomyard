@@ -276,6 +276,7 @@ github.com/Knatte18/loomyard/
 ├── internal/friction/            the Tier 2 friction-note directive leaf, consumed by webster, burler, and loom
 ├── internal/shell/               provider-invariant pane-shell mechanics leaf (pwsh + posix)
 ├── internal/commentlint/        the comment line-break lint: fixed-column wraps in the `//` comment blocks a diff creates, over a told worktree and base
+├── internal/impactset/          the round gate's impacted-set command: the packages a diff reaches over the import graph, plus the `//lyx:guard` tests, or a fallback reason to run the full verify
 ├── internal/verifytree/         the one plan-verify function: clean-tree check, verified-tree record and running marker, used by landing, both webster gates and `lyx webster verify`
 └── internal/verifyrun/          in-process shell-command runner behind `internal/verifytree` and webster's card-verify rerun
 ```

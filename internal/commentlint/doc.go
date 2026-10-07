@@ -17,6 +17,6 @@
 // so is a generated file.
 // Those checks mirror `tools/godocreflow`; this package re-implements them, since `tools/` is not importable.
 //
-// Bound: every comma-plus-conjunction break passes, compound predicates included,
-// because telling them from independent clauses needs a parser; those stay review findings.
+// Bound: every comma-plus-conjunction break passes, compound predicates included.
+// Telling those from independent clauses needs a parser, so they stay review findings.
 package commentlint

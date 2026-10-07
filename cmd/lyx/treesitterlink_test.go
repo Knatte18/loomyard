@@ -1,12 +1,10 @@
-// treesitterlink_test.go declares the pure half of the tree-sitter link guard: the parse of `go list`
-// output, the shortest import chain from a test binary to tree-sitter, and the comparison against the
-// allowed list.
+// treesitterlink_test.go declares the pure half of the tree-sitter link guard.
+// That is the parse of `go list` output, the shortest import chain from a test binary to tree-sitter, and the comparison against the allowed list.
 // treesitterlink_integration_test.go runs `go list` and feeds this half.
 //
-// Linking tree-sitter costs every test binary that does so a slower link, so only the packages that
-// call the code index for real may do it.
-// A package outside the list fails with its chain, and an entry whose binary no longer links
-// tree-sitter fails as stale, so the list tracks the tree in both directions.
+// Linking tree-sitter costs every test binary that does so a slower link, so only the packages that call the code index for real may do it.
+// A package outside the list fails with its chain.
+// An entry whose binary no longer links tree-sitter fails as stale, so the list tracks the tree in both directions.
 
 package main
 

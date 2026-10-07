@@ -1,5 +1,5 @@
-// lintcomments.go implements the `lint-comments` loom verb: the standalone form of the comment line-break lint every card gate runs,
-// a zero-positional caller of the same commentlint.Lint the round gate calls.
+// lintcomments.go implements the `lint-comments` loom verb, the standalone form of the comment line-break lint every card gate runs.
+// It is a caller of the same commentlint.Lint the round gate calls.
 
 package loomcli
 

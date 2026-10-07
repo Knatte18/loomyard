@@ -98,16 +98,12 @@ func NewDiscussionGate(decisionRecordPath, supportLogPath string) shuttleengine.
 	}
 }
 
-// NewPlanGate returns the Plan-Write row's gate closure: a shuttleengine.Gate that parses the plan
-// through planparser.ParsePlan(planparser.PlanDir(anchorPath)) and then runs
-// index.ValidateFormat(plan, worktreeRoot), mapping the result onto the gate contract.
+// NewPlanGate returns the Plan-Write row's gate closure, a shuttleengine.Gate that parses the plan through planparser.ParsePlan(planparser.PlanDir(anchorPath)) and then runs index.ValidateFormat(plan, worktreeRoot), mapping the result onto the gate contract.
 //
-// The two path parameters are separate because planparser.PlanDir takes the anchor path while
-// index.ValidateFormat takes the worktree root, and they are not the same value.
+// The two path parameters are separate because planparser.PlanDir takes the anchor path while index.ValidateFormat takes the worktree root, and they are not the same value.
 //
-// ValidateFormat is called, never the require_approved-aware validation: both plan gate sites run strictly before the
-// Plan-Review segment's approve seam writes the approval flag, so demanding it would fail every
-// single fix round.
+// ValidateFormat is called, never the require_approved-aware validation.
+// Both plan gate sites run strictly before the Plan-Review segment's approve seam writes the approval flag, so demanding it would fail every single fix round.
 //
 // The ParsePlan error set is split by shape rather than treated whole. An error satisfying
 // errors.As(err, new(*fs.PathError)) is a returned error: ParsePlan has exactly two %w-wrapped
@@ -137,17 +133,16 @@ func NewDiscussionGate(decisionRecordPath, supportLogPath string) shuttleengine.
 // at least one blocking entry produces GateResult{Passed: false, Findings:
 // formatPlanFindings(findings)} after a logger.Warn carrying the same formatted text.
 //
-// hasBlockingFinding is called, never re-derived: it encodes a crucible-round finding that
-// planindex.Severity is an open string type, so testing not-informational rather than
-// equals-blocking is what keeps an unrecognized or zero-valued severity from silently passing.
+// hasBlockingFinding is called, never re-derived.
+// It encodes a crucible-round finding that planindex.Severity is an open string type, so testing not-informational rather than equals-blocking is what keeps an unrecognized or zero-valued severity from silently passing.
 func NewPlanGate(anchorPath, worktreeRoot string, index planindex.Index) shuttleengine.Gate {
 	return planGate("Plan-Gate", anchorPath, func(plan *planparser.Plan) ([]planindex.Finding, error) {
 		return index.ValidateFormat(plan, worktreeRoot)
 	})
 }
 
-// NewReworkPlanGate returns the PR-Rework row's gate closure: a shuttleengine.Gate that parses the plan under anchorPath and checks it with ValidateReworkPlan over index,
-// so the whole new plan is held to the plan-format checks plus the told first_card.
+// NewReworkPlanGate returns the PR-Rework row's gate closure: a shuttleengine.Gate that parses the plan under anchorPath and checks it with ValidateReworkPlan over index.
+// The whole new plan is held to the plan-format checks plus the told first_card.
 // readCommitted returns an anchor-relative file as committed at HEAD, with found false when HEAD has no such file.
 //
 // Parse failures, the blocking-versus-informational split and the logging follow the plan gate's contract.
