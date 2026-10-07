@@ -1,12 +1,9 @@
 //go:build llm
 
-// smoke_guardrail_test.go is the live proof of the deny-and-steer guardrail
-// path the hooks research flagged as unprobed
-// (docs/research/reed-hooks-exploration.md: "the deny-and-steer path itself
-// is not yet probed"): a REAL claude, when its Agent tool call is denied by
-// the PreToolUse hook, actually resumes in-session on the steered
-// instruction rather than stalling or aborting the turn, and a REAL claude
-// asked to pose a question stays held, notifies its parent once and finishes once answered.
+// smoke_guardrail_test.go is the live proof of the deny-and-steer guardrail path the hooks research flagged as unprobed
+// (docs/research/reed-hooks-exploration.md: "the deny-and-steer path itself is not yet probed"):
+// a REAL claude, when its Agent tool call is denied by the PreToolUse hook, actually resumes in-session on the steered instruction rather than stalling or aborting the turn,
+// and a REAL claude asked to pose a question stays held, notifies its parent once and finishes once answered.
 // Follows the same conventions as smoke_run_test.go,
 // whose helpers (deferHubRelease, reedStatusStrand) this
 // file reuses.
