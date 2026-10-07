@@ -528,6 +528,7 @@ func TestVerbUsesLightweightWiring(t *testing.T) {
 		{"Pause", "pause", true},
 		{"ValidateDiscussion", "validate-discussion", true},
 		{"ValidatePlan", "validate-plan", true},
+		{"LintComments", "lint-comments", true},
 		{"Run", "run", false},
 		{"Start", "start", false},
 		{"Step", "step", false},

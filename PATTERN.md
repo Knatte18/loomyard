@@ -89,5 +89,5 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 ## Docs
 
 - `PATTERN-markdown-link-integrity` — Linking in a `.md` file under `docs/`: every inline link resolves, file part and `#anchor`. (test) — [background](pattern/PATTERN-markdown-link-integrity.md)
-- `PATTERN-comment-line-breaks` — Writing or changing a Go comment: semantic line breaks, one sentence per line, with no column limit. — [background](pattern/PATTERN-comment-line-breaks.md)
+- `PATTERN-comment-line-breaks` — Writing or changing a Go comment: semantic line breaks, one sentence per line, with no column limit, checked on new breaks by `lyx loom lint-comments`. (test) — [background](pattern/PATTERN-comment-line-breaks.md)
 - `PATTERN-documentation-lifecycle` — Deciding which docs are kept or deleted: no design doc for unbuilt work is kept in the repo, and a built design lives in its package's `doc.go`, see [docs/overview.md#documentation-lifecycle](docs/overview.md#documentation-lifecycle).

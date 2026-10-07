@@ -26,11 +26,12 @@ func gateCard(groups ...planparser.TargetGroup) planparser.Card {
 func TestCardGateCommand(t *testing.T) {
 	plan := &planparser.Plan{Language: "go"}
 	const base = "go build ./... && go test ./..."
+	const lint = " && lyx loom lint-comments"
 
 	t.Run("integration step covers each package directory", func(t *testing.T) {
 		root := t.TempDir()
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/a/a.go#", "internal/b/b.go#Run"}})
-		want := base + " && go test -tags integration ./internal/a ./internal/b"
+		want := base + " && go test -tags integration ./internal/a ./internal/b" + lint
 		if got := cardGateCommand(plan, card, root); got != want {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
@@ -43,7 +44,7 @@ func TestCardGateCommand(t *testing.T) {
 			planparser.TargetGroup{Type: planparser.CardTypeDelete, Refs: []string{"internal/gone/g.go#"}},
 			planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"internal/kept/k.go#"}},
 		)
-		want := base + " && go test -tags integration ./internal/kept"
+		want := base + " && go test -tags integration ./internal/kept" + lint
 		if got := cardGateCommand(plan, card, root); got != want {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
@@ -53,8 +54,8 @@ func TestCardGateCommand(t *testing.T) {
 		root := t.TempDir()
 		writeGateFile(t, root, "contracts/stencils/x.md")
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeProsa, Refs: []string{"contracts/stencils/x.md"}})
-		if got := cardGateCommand(plan, card, root); got != base {
-			t.Errorf("cardGateCommand() = %q; want %q", got, base)
+		if got := cardGateCommand(plan, card, root); got != base+lint {
+			t.Errorf("cardGateCommand() = %q; want %q", got, base+lint)
 		}
 	})
 
@@ -62,7 +63,7 @@ func TestCardGateCommand(t *testing.T) {
 		root := t.TempDir()
 		writeGateFile(t, root, "testdata/helper.go")
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeProsa, Refs: []string{"testdata/notes.md"}})
-		want := base + " && go test -tags integration ./testdata"
+		want := base + " && go test -tags integration ./testdata" + lint
 		if got := cardGateCommand(plan, card, root); got != want {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
@@ -70,7 +71,7 @@ func TestCardGateCommand(t *testing.T) {
 
 	t.Run("worktree root package is spelled dot", func(t *testing.T) {
 		card := gateCard(planparser.TargetGroup{Type: planparser.CardTypeEdit, Refs: []string{"main.go"}})
-		want := base + " && go test -tags integration ."
+		want := base + " && go test -tags integration ." + lint
 		if got := cardGateCommand(plan, card, t.TempDir()); got != want {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
@@ -84,8 +85,8 @@ func TestRenderCardGates_OneLinePerCard(t *testing.T) {
 		{Number: 2, Slug: "docs", SourcePath: "_lyx/plan/02-docs.md"},
 	}
 	got := renderCardGates(&planparser.Plan{Language: "go"}, cards, "_lyx/plan", t.TempDir())
-	want := "- `_lyx/plan/01-gate.md`: `go build ./... && go test ./... && go test -tags integration ./internal/a`\n" +
-		"- `_lyx/plan/02-docs.md`: `go build ./... && go test ./...`"
+	want := "- `_lyx/plan/01-gate.md`: `go build ./... && go test ./... && go test -tags integration ./internal/a && lyx loom lint-comments`\n" +
+		"- `_lyx/plan/02-docs.md`: `go build ./... && go test ./... && lyx loom lint-comments`"
 	if got != want {
 		t.Errorf("renderCardGates() =\n%s\nwant\n%s", got, want)
 	}

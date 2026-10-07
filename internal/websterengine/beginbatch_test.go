@@ -320,7 +320,7 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 				}
 			},
 			number: 1,
-			want:   []string{"`go build ./... && go test ./... && go test -tags integration ./internal/alpha`"},
+			want:   []string{"`go build ./... && go test ./... && go test -tags integration ./internal/alpha && lyx loom lint-comments`"},
 		},
 	}
 	for _, tt := range tests {

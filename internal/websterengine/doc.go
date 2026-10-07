@@ -75,6 +75,7 @@
 // pass before that card's commit; there is no batch-wide verify distinct
 // from its cards' own gates, mirroring the plan-format card model
 // directly.
+// A card's own gate command, which begin-batch and recover-batch render into the fork's prompt, builds and tests everything, runs the integration-tagged tests of the card's package directories, and ends with `lyx loom lint-comments`, the comment line-break lint.
 //
 // record-batch and recover-batch apply one merge-only rule when they cross-check the consumed report's `head_sha` against the worktree's HEAD,
 // so a parent merge-in landing between a fork's commit and the report's consumption cannot wedge the run.
