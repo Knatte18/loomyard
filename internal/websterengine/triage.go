@@ -74,10 +74,10 @@ func errorShellOutcome(err error, strandReclaimed bool) backgroundShellOutcome {
 	return backgroundShellOutcome{description: "error (" + err.Error() + ")", strandReclaimed: strandReclaimed}
 }
 
-// backgroundShellSentence states what happened to one background shell the Master wait counted a turn end past,
-// what ends it, and the run's outcome, so the friction note and the warning carry the same wording.
+// expiredShellWarning states what happened to one background shell the Master wait counted a turn end past, what ends it, and the run's outcome.
+// It is both the run warning and the friction note's line for that shell, so the two carry the same wording.
 // waitMin is the bound in minutes; a non-positive value names the key alone.
-func backgroundShellSentence(label string, waitMin int, outcome backgroundShellOutcome) string {
+func expiredShellWarning(label string, waitMin int, outcome backgroundShellOutcome) string {
 	bound := "`background_shell_wait_min`"
 	if waitMin > 0 {
 		bound = fmt.Sprintf("`background_shell_wait_min` (%d minutes)", waitMin)
@@ -87,11 +87,6 @@ func backgroundShellSentence(label string, waitMin int, outcome backgroundShellO
 		ends = "Master's strand stays alive until the next `lyx webster run` reclaims it at entry, which ends the session and the shell with it"
 	}
 	return fmt.Sprintf("background shell `%s` ran past %s: the wait stopped waiting and counted Master's turn end, and lyx did not stop the shell; %s; the run's outcome after that turn end: %s", label, bound, ends, outcome.description)
-}
-
-// expiredShellWarning returns the warning for one background shell the Master wait counted a turn end past.
-func expiredShellWarning(label string, waitMin int, outcome backgroundShellOutcome) string {
-	return backgroundShellSentence(label, waitMin, outcome)
 }
 
 // writeBackgroundShellFrictionNote records the shells Master's wait counted a turn end past and the run's outcome,
@@ -111,7 +106,7 @@ func writeBackgroundShellFrictionNote(frictionDir string, labels []string, waitM
 	var b strings.Builder
 	b.WriteString("Master's wait counted a turn end past a background shell\n\n")
 	for _, l := range labels {
-		b.WriteString("- " + backgroundShellSentence(l, waitMin, outcome) + "\n")
+		b.WriteString("- " + expiredShellWarning(l, waitMin, outcome) + "\n")
 	}
 	b.WriteString("\n")
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
