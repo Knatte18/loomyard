@@ -14,8 +14,11 @@
 //
 // Each argument is a task slug, read as the worktree <hub>/<slug>; -hub defaults to the
 // parent of the current directory, which is the hub when run from its prime.
-// With no slugs it counts the -last runs whose sessions changed most recently, leaving out
-// the prime, the current directory.
+// With no slugs it counts the -last finished runs whose sessions changed most recently,
+// leaving out the prime, the current directory.
+// A run is finished once its pair is torn down, which leaves an archive/<slug>/<sha> tag in
+// the prime's weft repository (-weft, default <hub>/<prime>-weft); a run still in flight,
+// or parked before Webster, would count as one whose later steps cost nothing.
 // Claude Code keeps a worktree's sessions in ~/.claude/projects/<encoded path>/, one
 // <session>.jsonl per session, and a session's sub-agents (the Webster master's forks)
 // in <session>/subagents/*.jsonl.
@@ -58,7 +61,8 @@ func run(args []string, stdout io.Writer) error {
 	hub := fs.String("hub", "", "hub directory holding the task worktrees (default: parent of the current directory)")
 	projects := fs.String("projects", "", "Claude Code projects directory (default: ~/.claude/projects)")
 	out := fs.String("out", "", "write the report to this file instead of stdout")
-	last := fs.Int("last", 6, "with no slugs named, count this many of the most recently active runs")
+	last := fs.Int("last", 6, "with no slugs named, count this many of the most recently active finished runs")
+	weft := fs.String("weft", "", "the prime's weft repository holding the archive tags of finished runs (default: <hub>/<prime>-weft)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -78,12 +82,19 @@ func run(args []string, stdout io.Writer) error {
 	}
 	slugs := fs.Args()
 	if len(slugs) == 0 {
-		slugs, err = recentRuns(*projects, *hub, filepath.Base(wd), *last)
+		if *weft == "" {
+			*weft = filepath.Join(*hub, filepath.Base(wd)+"-weft")
+		}
+		finished, err := finishedRuns(*weft)
+		if err != nil {
+			return err
+		}
+		slugs, err = recentRuns(*projects, *hub, filepath.Base(wd), finished, *last)
 		if err != nil {
 			return err
 		}
 		if len(slugs) == 0 {
-			return fmt.Errorf("no task runs of %s under %s", *hub, *projects)
+			return fmt.Errorf("no finished task runs of %s under %s", *hub, *projects)
 		}
 	}
 
