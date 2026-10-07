@@ -14,7 +14,8 @@ When a message asks you to write the orch note, write it to the path the message
 1. Start the run from the prime with `lyx batten run <slug>`.
    Detach it from your shell with `setsid nohup`, until `lyx batten start` exists.
    The batten run creates the task pair, drives the loom run inside it and tears the pair down after the run ends.
-2. A halted child (blocked, paused or failed) is a wait batten never resumes on its own: once its cause is known (see Investigating a stop), resume it with `lyx loom start` in the task worktree.
+2. A halted child (blocked, paused or failed) is a wait batten never resumes on its own: once its cause is known (see Investigating a stop), resume it with `lyx loom resume` in the task worktree.
+   When `lyx loom resume` refuses, its message names the way forward (`lyx batten run <slug>` to bring a dead driver back, or `lyx loom start`), and you take it.
 3. Check a run with `lyx batten status <slug>`, hold it with `lyx batten pause <slug>`, and send it to a producer with `lyx batten goto <slug> --to <producer>`.
    Both leave the batten run paused, so resume it with `lyx batten run <slug>`, which starts or resumes the lifecycle run.
 4. Keep no polling shell and start no Monitor for a run.
@@ -33,11 +34,10 @@ A repeat notice for a request you already forked for starts no second fork.
 
 A driver, webster or a review loop that cannot go on escalates to you, its parent.
 - A review loop that ran out of rounds: `lyx loom circling continue <slug>` to grant more, or `lyx loom circling accept <slug>` to take the work as it stands.
-  Either only records the decision, so run `lyx loom start` in the task worktree to resume the run.
+  Either only records the decision, so run `lyx loom resume` in the task worktree to resume the run.
 - A run that needs a fresh budget at a producer: `lyx loom goto` or `lyx shed goto`, naming the producer.
-  A goto leaves the run paused, so run `lyx loom start` in the task worktree to resume it.
+  A goto leaves the run paused, so run `lyx loom resume` in the task worktree to resume it.
 - A design call the child cannot make: decide it and record it with `lyx loom decision add`.
-A driver that is still alive you also message by name, telling it to resume.
 
 ## Investigating a stop
 
