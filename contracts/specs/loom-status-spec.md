@@ -72,10 +72,17 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
 
 ## The `waiting` key
 
-`lyx loom status` adds a `waiting` key to its envelope while the run's state is `running` and the latest parent-review round has an open request with no verdict.
-Its value is one line prefixed `parent review: `, naming the reviewer, when the request opened, and whether the notice was delivered (or why it was not).
-The key is absent when there is no parent-review directory, when the latest round is verdicted, expired or superseded, or when the run is in any state other than `running`.
-It is read from the round store, never from the status file, so the file's schema above is unchanged.
+`lyx loom status` adds a `waiting` key to its envelope while the run's state is `running` and one of three waits is present.
+The waits are read in order, and the first one with a live pid wins:
+
+1. a running verify, read from the verify marker;
+2. a shuttle wait, read from the run's wait marker (a gate entry or the background-shell wait);
+3. an open parent-review request with no verdict in the latest round, read from the round store.
+
+The value is one line: `<producer>: <what> running <elapsed> (<detail>)` for the first two, for example `Webster-Burler: verify running 6m (attempt 2; go test -tags integration ./...)`, and the existing `parent review: ` form, naming the reviewer, when the request opened and whether the notice was delivered (or why it was not), for the third.
+`<producer>` is the run's current producer, `<elapsed>` is whole seconds under a minute, whole minutes under an hour and hours with minutes beyond (`45s`, `6m`, `1h12m`), and the attempt clause of a verify is dropped when no attempt counter applies.
+The key is absent when none of the waits applies, or when the run is in any state other than `running`.
+It is read from the markers and the round store, never from the status file, so the file's schema above is unchanged.
 
 ## Parse discipline
 

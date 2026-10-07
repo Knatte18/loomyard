@@ -152,7 +152,7 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 	if err := os.MkdirAll(filepath.Dir(p.Marker), 0o755); err != nil {
 		return Result{}, fmt.Errorf("verifytree: create verify directory: %w", err)
 	}
-	if err := writeMarker(p.Marker, Marker{Site: site.Label, Attempt: site.Attempt, Started: time.Now(), PID: os.Getpid()}); err != nil {
+	if err := writeMarker(p.Marker, Marker{Site: site.Label, Attempt: site.Attempt, Command: command, Started: time.Now(), PID: os.Getpid()}); err != nil {
 		return Result{}, err
 	}
 	defer os.Remove(p.Marker)

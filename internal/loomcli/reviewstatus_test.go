@@ -6,8 +6,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/parentreview"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
@@ -116,10 +118,10 @@ func TestReviewWaiting(t *testing.T) {
 }
 
 // writeVerifyMarker writes a running marker held by pid and returns its path.
-func writeVerifyMarker(t *testing.T, pid int) string {
+func writeVerifyMarker(t *testing.T, pid int, attempt int) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "running.yaml")
-	body := "site: Publish\nattempt: 2\nstarted: 2026-10-03T09:15:00Z\npid: " + strconv.Itoa(pid) + "\n"
+	body := "site: Publish\nattempt: " + strconv.Itoa(attempt) + "\ncommand: go test ./...\nstarted: 2026-10-03T09:15:00Z\npid: " + strconv.Itoa(pid) + "\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -137,17 +139,26 @@ func TestVerifyWaiting(t *testing.T) {
 		{
 			name:       "live marker ahead of review",
 			openReview: true,
-			marker:     func(t *testing.T) string { return writeVerifyMarker(t, os.Getpid()) },
+			marker:     func(t *testing.T) string { return writeVerifyMarker(t, os.Getpid(), 2) },
 			check: func(t *testing.T, note string) {
-				if !strings.HasPrefix(note, "verify Publish (attempt 2, since ") || strings.Contains(note, "parent review") {
-					t.Errorf("note = %q", note)
+				if want := "Webster-Burler: verify running 6m (attempt 2; go test ./...)"; note != want {
+					t.Errorf("note = %q; want %q", note, want)
+				}
+			},
+		},
+		{
+			name:   "live marker without an attempt drops the attempt clause",
+			marker: func(t *testing.T) string { return writeVerifyMarker(t, os.Getpid(), 0) },
+			check: func(t *testing.T, note string) {
+				if want := "Webster-Burler: verify running 6m (go test ./...)"; note != want {
+					t.Errorf("note = %q; want %q", note, want)
 				}
 			},
 		},
 		{
 			name:       "dead marker falls to review",
 			openReview: true,
-			marker:     func(t *testing.T) string { return writeVerifyMarker(t, 2147483646) },
+			marker:     func(t *testing.T) string { return writeVerifyMarker(t, 2147483646, 2) },
 			check: func(t *testing.T, note string) {
 				if !strings.HasPrefix(note, "parent review: ") {
 					t.Errorf("note = %q", note)
@@ -170,12 +181,34 @@ func TestVerifyWaiting(t *testing.T) {
 			if tt.openReview {
 				openReview(t, s)
 			}
-			note, err := verifyWaiting(tt.marker(t), reviewWaiting(s.Root, s.LockDir))()
+			started := time.Date(2026, 10, 3, 9, 15, 0, 0, time.UTC)
+			now := func() time.Time { return started.Add(6*time.Minute + 20*time.Second) }
+			note, err := verifyWaiting(tt.marker(t), now, reviewWaiting(s.Root, s.LockDir))(shedengine.Status{CurrentProducer: "Webster-Burler"})
 			if err != nil {
 				t.Fatal(err)
 			}
 			tt.check(t, note)
 		})
+	}
+}
+
+// TestFormatElapsed pins the elapsed-time formatter at each unit boundary.
+func TestFormatElapsed(t *testing.T) {
+	tests := []struct {
+		d    time.Duration
+		want string
+	}{
+		{0, "0s"},
+		{45*time.Second + 900*time.Millisecond, "45s"},
+		{time.Minute, "1m"},
+		{6*time.Minute + 59*time.Second, "6m"},
+		{time.Hour, "1h0m"},
+		{time.Hour + 12*time.Minute + 30*time.Second, "1h12m"},
+	}
+	for _, tt := range tests {
+		if got := formatElapsed(tt.d); got != tt.want {
+			t.Errorf("formatElapsed(%v) = %q; want %q", tt.d, got, tt.want)
+		}
 	}
 }
 

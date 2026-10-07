@@ -381,7 +381,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `step` bootstraps idempotently, exactly as `start` does, and drives exactly one producer through `shedengine.Shed`'s own `Step`, emitting a JSON envelope; it spawns no detached driver, making it the single-producer primitive an external supervisor drives.
   `status` reports the current phase as a single JSON envelope and, with `--watch`, tails it, printing a line only when the composed activity changes rather than once per poll.
   On a terminal `status` renders a human view instead, and `--json` forces the envelope there; `--watch --json` is refused.
-  While Discussion-Write's parent-review gate waits, `status` also carries a waiting-on-reviewer note.
+  While a run waits on a verify, a shuttle wait or Discussion-Write's parent-review gate, `status` also carries a waiting note naming the producer, what it waits on and for how long.
   The envelope carries `run_id`, `progress` (the main-line position and bounce count over the recipe's producer graph) and `last_step` (the record `lyx shed step` keeps under `.lyx`).
   It also carries the build identity (`vcs_revision`, `vcs_modified`) of the `lyx` that ran that step, and `binary_changed`, true when the running `lyx` is a different known build.
   A routed `stuck` reads as `bounced to <row>` in `activity.last`.

@@ -175,6 +175,9 @@ func TestVerify_Scenario(t *testing.T) {
 		if m.Site != "webster verify" {
 			t.Errorf("marker site = %q; want %q", m.Site, "webster verify")
 		}
+		if want := "cp " + p.Marker + " " + seen; m.Command != want {
+			t.Errorf("marker command = %q; want %q", m.Command, want)
+		}
 	}) {
 		return
 	}
