@@ -54,7 +54,7 @@ type commitStatusDeps struct {
 	// While a rejection is pending the reviews root and the loom durable directory are left out until PR-Rework's round commit has landed and cleared it, so a status commit never lands half of a rework round; the next status commit sweeps them.
 	Commit func(msg string) error
 	// Push pushes the run records and, in a task pair, the task branch.
-	// Its error names the side that failed.
+	// A failed push's error names the side that failed, and a push lock that stayed busy names none.
 	Push func() error
 	// SetBoardStatus writes status onto the run's board entry, leaving an entry that is absent or already done untouched.
 	// Nil writes nothing.
