@@ -471,7 +471,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 					if err := os.WriteFile(cardPath, original, 0o644); err != nil {
 						t.Fatalf("fix card: %v", err)
 					}
-					askingMaster(t, fx, "validated")
+					diedMaster(t, fx,"validated")
 					if _, err := websterengine.Run(fx.Deps, websterengine.RunOptions{}); !errors.Is(err, websterengine.ErrFingerprintMismatch) {
 						t.Fatalf("Run() after the plan fix error = %v; want errors.Is(err, ErrFingerprintMismatch) until rebaselined", err)
 					}
@@ -650,7 +650,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 
 			if takeWayForward != nil {
 				takeWayForward()
-				askingMaster(t, fx, "recovered")
+				diedMaster(t, fx,"recovered")
 				_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
 				requireReachedMaster(t, fx, err)
 			}
@@ -742,13 +742,13 @@ func TestRun_EntryValidationReachesMaster(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(t, fx)
 			}
-			askingMaster(t, fx, "entry")
+			diedMaster(t, fx,"entry")
 
 			_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
 			requireReachedMaster(t, fx, err)
-			var target *websterengine.MasterAskingError
+			var target *websterengine.MasterDiedError
 			if !errors.As(err, &target) {
-				t.Errorf("Run() error = %v; want a *MasterAskingError", err)
+				t.Errorf("Run() error = %v; want a *MasterDiedError", err)
 			}
 			if fx.Starter.callCount() != 1 {
 				t.Errorf("Starter.callCount() = %d; want 1", fx.Starter.callCount())
@@ -1098,7 +1098,7 @@ func TestRun_MasterSpawn(t *testing.T) {
 	}
 }
 
-// TestRun_MasterEndedEarly asserts each of the asking, died and timeout shuttle outcomes for
+// TestRun_MasterEndedEarly asserts each of the died and timeout shuttle outcomes for
 // Master's own spawn maps to its own typed error, carrying the SessionID and the kept RunDir and
 // matching its sentinel via errors.Is, names the re-run as the way forward, and that a fresh Master
 // resuming from state.json then finishes.
@@ -1109,21 +1109,6 @@ func TestRun_MasterEndedEarly(t *testing.T) {
 		outcome shuttleengine.Outcome
 		check   func(t *testing.T, err error, wantSessionID, wantRunDir string)
 	}{
-		{
-			outcome: shuttleengine.OutcomeAsking,
-			check: func(t *testing.T, err error, wantSessionID, wantRunDir string) {
-				var target *websterengine.MasterAskingError
-				if !errors.As(err, &target) {
-					t.Fatalf("Run() error = %v; want a *MasterAskingError", err)
-				}
-				if target.SessionID != wantSessionID || target.RunDir != wantRunDir {
-					t.Errorf("MasterAskingError = %+v; want session %q, run dir %q", target, wantSessionID, wantRunDir)
-				}
-				if !errors.Is(err, websterengine.ErrMasterAsking) {
-					t.Error("errors.Is(err, ErrMasterAsking) = false; want true")
-				}
-			},
-		},
 		{
 			outcome: shuttleengine.OutcomeDied,
 			check: func(t *testing.T, err error, wantSessionID, wantRunDir string) {
@@ -1496,7 +1481,7 @@ func expiredShellRun(t *testing.T, fx *runFixture, labels []string, outcomeYAML 
 
 // The parts of the sentence the friction note and the warning share for the shell `sleep 9999` under a 15-minute bound.
 const (
-	shellSentenceHead    = "background shell `sleep 9999` ran past `background_shell_wait_min` (15 minutes): the wait stopped waiting and counted Master's turn end, and lyx did not stop the shell; "
+	shellSentenceHead    = "background shell `sleep 9999` ran past `background_shell_wait_min` (15 minutes): the wait stopped waiting on the shell at a turn end, which finished the run when Master's output files existed and otherwise held it for the parent, and lyx did not stop the shell; "
 	shellStrandRemoved   = "shuttle removes Master's strand when the run finishes, which ends the session and the shell with it; "
 	shellStrandReclaimed = "Master's strand stays alive until the next `lyx webster run` reclaims it at entry, which ends the session and the shell with it; "
 )
@@ -1512,7 +1497,7 @@ func TestRun_ExpiredShells(t *testing.T) {
 
 		result := expiredShellRun(t, fx, []string{"sleep 9999"}, "outcome: done\nstuck_reason: null\nbatches_done: 1\n")
 
-		want := shellSentenceHead + shellStrandRemoved + "the run's outcome after that turn end: done"
+		want := shellSentenceHead + shellStrandRemoved + "the run's final outcome: done"
 		if !slices.Contains(result.Warnings, want) {
 			t.Errorf("Warnings = %v; want %q", result.Warnings, want)
 		}
@@ -1536,7 +1521,7 @@ func TestRun_ExpiredShells(t *testing.T) {
 
 		result := expiredShellRun(t, fx, []string{"sleep 9999"}, "outcome: stuck\nstuck_reason: \"batch 1 red\"\nbatches_done: 0\n")
 
-		want := shellSentenceHead + shellStrandRemoved + "the run's outcome after that turn end: stuck (batch 1 red)"
+		want := shellSentenceHead + shellStrandRemoved + "the run's final outcome: stuck (batch 1 red)"
 		if !slices.Contains(result.Warnings, want) {
 			t.Errorf("Warnings = %v; want %q", result.Warnings, want)
 		}
@@ -1579,7 +1564,7 @@ func TestRun_ExpiredShells(t *testing.T) {
 		if readErr != nil {
 			t.Fatalf("read friction note: %v", readErr)
 		}
-		want := "- " + shellSentenceHead + shellStrandReclaimed + "the run's outcome after that turn end: error (" + err.Error() + ")\n"
+		want := "- " + shellSentenceHead + shellStrandReclaimed + "the run's final outcome: error (" + err.Error() + ")\n"
 		if !strings.Contains(string(note), want) {
 			t.Errorf("friction note = %q; want %q", note, want)
 		}
@@ -1799,14 +1784,14 @@ func requireWayForward(t *testing.T, err error, wants ...string) {
 	}
 }
 
-// askingMaster scripts fx's Starter with a Master that ends its turn asking, the cheapest way for a re-run to prove it got past every refusal gate and reached the spawn.
-func askingMaster(t *testing.T, fx *runFixture, label string) {
+// diedMaster scripts fx's Starter with a Master whose pane dies, the cheapest way for a re-run to prove it got past every refusal gate and reached the spawn.
+func diedMaster(t *testing.T, fx *runFixture, label string) {
 	t.Helper()
 	fx.Starter.startErr = nil
 	fx.Starter.handle = &runFakeHandle{
 		strandGUID: "master-strand-" + label,
 		result: shuttleengine.Result{
-			Outcome:   shuttleengine.OutcomeAsking,
+			Outcome:   shuttleengine.OutcomeDied,
 			SessionID: "master-session-" + label,
 			RunDir:    "/run/dir/" + label,
 		},
@@ -1814,10 +1799,10 @@ func askingMaster(t *testing.T, fx *runFixture, label string) {
 	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-"+label, "master-session-"+label)
 }
 
-// requireReachedMaster asserts err is the Master-asking error of a run that got past every gate.
+// requireReachedMaster asserts err is the Master-died error of a run that got past every gate.
 func requireReachedMaster(t *testing.T, fx *runFixture, err error) {
 	t.Helper()
-	if !errors.Is(err, websterengine.ErrMasterAsking) {
+	if !errors.Is(err, websterengine.ErrMasterDied) {
 		t.Fatalf("Run() after taking the way forward error = %v; want it to reach the Master spawn", err)
 	}
 	if fx.Starter.callCount() == 0 {
@@ -2219,12 +2204,12 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 	t.Run("drops a pathless finding on an unchanged plan", func(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		seedFreshPendingState(t, fx)
-		askingMaster(t, fx, "pathless")
+		diedMaster(t, fx,"pathless")
 		logs := captureLogs(t)
 
 		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 		requireReachedMaster(t, fx, err)
-		// Master ends asking, so no RunResult carries the drop warning; the log does.
+		// Master dies, so no RunResult carries the drop warning; the log does.
 		if !strings.Contains(logs.String(), "--fresh dropped pending audit finding sess/parent:write:1") {
 			t.Errorf("log = %q; want the drop warning naming the finding", logs.String())
 		}
@@ -2246,7 +2231,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 		if err := os.Remove(contract); err != nil {
 			t.Fatalf("remove contract file: %v", err)
 		}
-		askingMaster(t, fx, "contract absent")
+		diedMaster(t, fx,"contract absent")
 		_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 		requireReachedMaster(t, fx, err)
 	})
@@ -2266,7 +2251,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 		if _, err := websterengine.RestorePlan(loadRunState(t, fx), fx.Deps.Geom); err != nil {
 			t.Fatalf("RestorePlan() error = %v", err)
 		}
-		askingMaster(t, fx, "restored")
+		diedMaster(t, fx,"restored")
 		_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 		requireReachedMaster(t, fx, err)
 		requireReinitialisedRun(t, fx)
@@ -2280,7 +2265,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 		if err := os.RemoveAll(filepath.Join(fx.Deps.Geom.WebsterDir, "plan-baseline")); err != nil {
 			t.Fatalf("empty the plan baseline store: %v", err)
 		}
-		askingMaster(t, fx, "no copy")
+		diedMaster(t, fx,"no copy")
 		logs := captureLogs(t)
 
 		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
@@ -2308,7 +2293,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 	t.Run("drops a batch failed on an uncheckable finding when HEAD is the start commit", func(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		seedUncheckableState(t, fx)
-		askingMaster(t, fx, "uncheckable")
+		diedMaster(t, fx,"uncheckable")
 		logs := captureLogs(t)
 
 		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
@@ -2359,7 +2344,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 		}
 
 		fx.Git.head = root
-		askingMaster(t, fx, "divergent")
+		diedMaster(t, fx,"divergent")
 		_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 		requireReachedMaster(t, fx, err)
 		if st := loadRunState(t, fx); st.RunGUID == "stale-run" {
@@ -2370,7 +2355,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 	t.Run("--fresh stays a no-op on an unchanged plan with nothing pending", func(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		seedMatchingState(t, fx, &websterengine.State{RunGUID: "kept-run"})
-		askingMaster(t, fx, "resume")
+		diedMaster(t, fx,"resume")
 
 		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 		requireReachedMaster(t, fx, err)

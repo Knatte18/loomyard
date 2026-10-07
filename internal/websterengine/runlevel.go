@@ -229,35 +229,12 @@ func newRunGUID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// MasterAskingError marks Run's mapping of a shuttle OutcomeAsking result for Master's own spawn:
-// Master ended its turn asking a question instead of ever reaching its own outcome-file final
-// action.
-// Unwrap returns ErrMasterAsking so a caller can classify via errors.Is without needing the
-// concrete type;
-// the concrete type itself carries the per-call SessionID, RunDir, and LastAssistantMessage a
-// caller needs to log or resume from.
-type MasterAskingError struct {
-	SessionID string
-	RunDir    string
-	Message   string
-}
-
-func (e *MasterAskingError) Error() string {
-	return fmt.Sprintf("webster: master asked a question instead of finishing (session %s, kept run dir %s): %s%s", e.SessionID, e.RunDir, e.Message, masterRerunWayForward)
-}
-
 // runExitWayForward is the trailing way-forward clause every run-exit refusal carries:
 // state.json keeps every terminal batch, so a fresh Master resumes and re-drives each batch without a done record.
 const runExitWayForward = "; way forward: re-run `lyx webster run`; a fresh Master resumes from state.json and re-drives every batch without a done record"
 
 // masterRerunWayForward is the trailing way-forward clause of the Master-ended-early errors.
 const masterRerunWayForward = "; way forward: re-run `lyx webster run` (re-step the Webster row); a fresh Master resumes from state.json"
-
-// Unwrap lets a caller match this error via errors.Is(err, ErrMasterAsking).
-func (e *MasterAskingError) Unwrap() error { return ErrMasterAsking }
-
-// ErrMasterAsking is the sentinel MasterAskingError wraps.
-var ErrMasterAsking = errors.New("webster: master asking")
 
 // MasterDiedError marks Run's mapping of a shuttle OutcomeDied result for Master's own spawn: its
 // pane died (or it never became ready) before it ever reached its own outcome-file final action.
@@ -725,12 +702,6 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		noteExpiredShells(finishedShellOutcome(runResult))
 		return runResult, nil
 
-	case shuttleengine.OutcomeAsking:
-		err := &MasterAskingError{SessionID: result.SessionID, RunDir: result.RunDir, Message: result.LastAssistantMessage}
-		logger.Warn("websterengine: master run is asking", "outcome", result.Outcome, "sessionID", result.SessionID, "runDir", result.RunDir, "lastAssistantMessage", result.LastAssistantMessage)
-		noteExpiredShells(errorShellOutcome(err, true))
-		return RunResult{}, err
-
 	case shuttleengine.OutcomeDied:
 		err := &MasterDiedError{SessionID: result.SessionID, RunDir: result.RunDir}
 		logger.Warn("websterengine: master run died", "outcome", result.Outcome, "sessionID", result.SessionID, "runDir", result.RunDir)
@@ -762,7 +733,7 @@ func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summar
 		return RunResult{}, mapErr
 	}
 	// Cycles are always informational: prepend one warning per cycle ahead of the verify gate's own warnings below, so the sequencing observations, which describe the whole run, read first.
-	// Non-done outcomes (asking/died/timeout) return an error rather than a RunResult,
+	// Non-done outcomes (died/timeout) return an error rather than a RunResult,
 	// so a cycle observed on a run that ends stuck/paused/died reaches the operator through that error path's own message rather than through Cycles — an accepted, stated limitation, not an oversight.
 	runResult.Warnings = append(freshWarnings, runResult.Warnings...)
 	runResult.Cycles = cycles
