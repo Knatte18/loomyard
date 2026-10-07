@@ -125,6 +125,10 @@ type State struct {
 	// It is recorded beside PlanFingerprint so rebaseline can tell which plan files an edit touched.
 	// A state written before this field existed leaves it empty.
 	PlanFileHashes map[string]string `json:"planFileHashes,omitempty"`
+	// Partition is the run's batches in execution order, recorded at first init.
+	// Every verb reads it and only a first init or a rebaseline replaces it.
+	// A state written before this field existed loads with it nil.
+	Partition []PartitionBatch `json:"partition,omitempty"`
 	// CurrentBatch is the batch number currently in flight, or 0 when none
 	// is (the run has not started yet, or the last batch reached a
 	// terminal classification).

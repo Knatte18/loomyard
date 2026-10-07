@@ -29,7 +29,10 @@ func TestIdentityBatcher_Batch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := identityBatcher{}.Batch(tt.cards)
+			got, err := Identity().Batch(nil, tt.cards, nil)
+			if err != nil {
+				t.Fatalf("Batch: %v", err)
+			}
 			if len(got) != len(tt.cards) {
 				t.Fatalf("Batch(%d cards) returned %d batches; want %d", len(tt.cards), len(got), len(tt.cards))
 			}
@@ -37,6 +40,9 @@ func TestIdentityBatcher_Batch(t *testing.T) {
 				if len(batch.Cards) != 1 {
 					t.Errorf("batch %d has %d cards; want 1", i, len(batch.Cards))
 					continue
+				}
+				if batch.Profile != "identity" || batch.Estimate != 0 {
+					t.Errorf("batch %d has profile %q and estimate %v; want %q and 0", i, batch.Profile, batch.Estimate, "identity")
 				}
 				if batch.Cards[0].Number != tt.cards[i].Number {
 					t.Errorf("batch %d carries card %d; want card %d (order not preserved)", i, batch.Cards[0].Number, tt.cards[i].Number)

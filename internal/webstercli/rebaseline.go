@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -21,6 +22,8 @@ func (c *websterCLI) rebaselineCmd() *cobra.Command {
 		Short: "accept an on-disk plan edit as the run's plan without dropping batch records",
 		Long: `rebaseline accepts the plan on disk as the run's plan after a mid-run edit,
 keeping every batch record.
+Batches up to the last begun one stay as recorded; the cards after them are
+re-batched by the active batcher.yaml profile.
 It refuses, leaving state.json untouched, when the edit changes the cards of a
 batch the run already begun (a begun card's content counts, not only its id),
 or removes such a batch; the way forward then is
@@ -62,7 +65,6 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			batches, _ := websterengine.SequenceBatches(c.batcher.Batch(plan.Cards))
 
 			mutateLock, err := websterengine.AcquireStateMutation(c.geom.ScratchDir)
 			if err != nil {
@@ -86,7 +88,7 @@ Example:
 				return nil
 			}
 
-			result, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Batches: batches, State: st, Cards: cards, Geom: c.geom})
+			result, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Active: c.batcher, Sizes: batcher.DiskSizes(c.geom.WorktreeRoot), State: st, Cards: cards, Geom: c.geom})
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
