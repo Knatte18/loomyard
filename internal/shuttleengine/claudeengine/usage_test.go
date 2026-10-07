@@ -197,6 +197,8 @@ func TestCompactedSince_DegradesToNotFound(t *testing.T) {
 
 // TestCompactedSince_CountsTurnEndsAfterTheBoundary covers the turn-end count and the match of the read turn end against the transcript's newest one.
 func TestCompactedSince_CountsTurnEndsAfterTheBoundary(t *testing.T) {
+	t.Parallel()
+
 	const boundary = `{"type":"system","subtype":"compact_boundary","isSidechain":false,"timestamp":"2026-03-04T01:00:00Z","compactMetadata":{"postTokens":10}}` + "\n"
 	turnEnd := func(hour int, stopReason, text string) string {
 		return fmt.Sprintf(`{"type":"assistant","isSidechain":false,"timestamp":"2026-03-04T%02d:00:00Z","message":{"stop_reason":%s,"content":[{"type":"text","text":%q}]}}`+"\n", hour, stopReason, text)

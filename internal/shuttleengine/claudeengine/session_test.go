@@ -68,6 +68,8 @@ func TestIdleSession(t *testing.T) {
 }
 
 func TestInputBoxText(t *testing.T) {
+	t.Parallel()
+
 	rule := "────────────────────────────────"
 	tests := []struct {
 		name     string
@@ -87,6 +89,8 @@ func TestInputBoxText(t *testing.T) {
 	c := &Claude{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			text, ok := c.InputBoxText(tt.capture)
 			if text != tt.wantText || ok != tt.wantOK {
 				t.Errorf("InputBoxText = (%q, %v); want (%q, %v)", text, ok, tt.wantText, tt.wantOK)
@@ -137,6 +141,8 @@ func TestCompactSessionSequence(t *testing.T) {
 }
 
 func TestReloadPluginsSequence(t *testing.T) {
+	t.Parallel()
+
 	got := New().ReloadPluginsSequence()
 	want := []shuttleengine.PaneInput{{Text: "/reload-plugins", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}
 	if !reflect.DeepEqual(got, want) {

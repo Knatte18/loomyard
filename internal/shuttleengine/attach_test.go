@@ -218,6 +218,8 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 // only the live strand of a respawn-eligible candidate of the same output-file set is removed,
 // an attach or a failed removal never answers not found, and AttachIfLive removes nothing.
 func TestAttach_RemovesSupersededStrands(t *testing.T) {
+	t.Parallel()
+
 	live := func(guid string) reedengine.StrandStatus {
 		return reedengine.StrandStatus{GUID: guid, PaneID: "%" + guid, Live: true}
 	}
@@ -242,6 +244,8 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: tt.strands}}, RemoveStrandErr: tt.removeErr}
 			fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
 			runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot

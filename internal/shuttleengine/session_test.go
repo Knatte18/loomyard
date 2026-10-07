@@ -171,6 +171,8 @@ func TestRunner_ClearSession_PlaysScriptedSequence(t *testing.T) {
 }
 
 func TestRunner_ReloadPlugins_PlaysSequenceOnALiveShuttleStrand(t *testing.T) {
+	t.Parallel()
+
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	runner := newFixture(t, reed, &cyclerEngine{}, withStrand("strand-1")).Runner
 

@@ -136,6 +136,8 @@ func TestResolveDriverStrandAction(t *testing.T) {
 // TestStartEnvelopeFields_PinsSuccessEnvelope pins the exact key set `lyx loom start` prints on success:
 // the driver, slug, run id and status file, with no key describing an attach.
 func TestStartEnvelopeFields_PinsSuccessEnvelope(t *testing.T) {
+	t.Parallel()
+
 	want := map[string]any{
 		"driver":      "go",
 		"slug":        "slug",

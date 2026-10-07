@@ -176,6 +176,8 @@ func TestRun_CancelledContextRecordsSignal(t *testing.T) {
 }
 
 func TestRun_RecordsStoppingBeforeTheInFlightTickFinishes(t *testing.T) {
+	t.Parallel()
+
 	e := newWatchEnv(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	// A turn end read after the signal makes the in-flight tick save the state it loaded before it.

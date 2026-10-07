@@ -140,6 +140,8 @@ func TestLoadConfig_BackgroundShellWaitMin(t *testing.T) {
 }
 
 func TestLoadConfig_SubmitSettleMS(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		value   string
@@ -152,6 +154,8 @@ func TestLoadConfig_SubmitSettleMS(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			tmpDir := t.TempDir()
 			seeded := strings.Replace(shuttleengine.ConfigTemplate(), "submit_settle_ms: 300", "submit_settle_ms: "+tt.value, 1)
 			seedLyxConfig(t, tmpDir, "shuttle", seeded)
