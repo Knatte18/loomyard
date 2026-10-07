@@ -6,8 +6,8 @@
 // is not yet probed"): a REAL claude, when its Agent tool call is denied by
 // the PreToolUse hook, actually resumes in-session on the steered
 // instruction rather than stalling or aborting the turn, and a REAL claude
-// asked to pose a question stays held, notifies its parent once and
-// finishes once answered. Follows the same conventions as smoke_run_test.go,
+// asked to pose a question stays held, notifies its parent once and finishes once answered.
+// Follows the same conventions as smoke_run_test.go,
 // whose helpers (deferHubRelease, reedStatusStrand) this
 // file reuses.
 

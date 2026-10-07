@@ -137,8 +137,9 @@ func (p *SingleLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		}
 	}
 
-	// Probe before archive, unconditionally -- not gated on spec.Interactive. Archiving is a rename of the very files a live agent may be about to
-	// write, and Wait polls for bare existence at the spec's paths, so archiving before the probe
+	// Probe before archive, unconditionally -- not gated on spec.Interactive.
+	// Archiving is a rename of the very files a live agent may be about to write,
+	// and Wait polls for bare existence at the spec's paths, so archiving before the probe
 	// would make an attached run unable to ever classify Done, in exactly the case the probe exists
 	// to protect. Respawning over a still-live agent is a correctness bug in autonomous mode too --
 	// gating on interactive would knowingly ship the duplicate-agent path for Plan-Write and every

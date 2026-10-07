@@ -214,8 +214,8 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 	}
 
 	if result.Outcome != shuttleengine.OutcomeDone {
-		// died/timeout are normal loop events, not errors — the
-		// caller branches on Outcome. Verdict stays empty: there is no review file to trust yet.
+		// died/timeout are normal loop events, not errors — the caller branches on Outcome.
+		// Verdict stays empty: there is no review file to trust yet.
 		return result, nil
 	}
 

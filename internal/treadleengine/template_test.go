@@ -1,8 +1,7 @@
 // template_test.go pins the three shipped-default judge/targeting prompt templates'
 // load-bearing statements as substring assertions,
 // and separately proves each template actually fills through stencil with its required markers —
-// mirroring burlerengine's TestTemplate_StatesRoundDiscipline / TestTemplate_FillsWithAllMarkers
-// style.
+// mirroring burlerengine's TestTemplate_StatesRoundDiscipline / TestTemplate_FillsWithAllMarkers style.
 
 package treadleengine
 
@@ -59,10 +58,8 @@ func requireContains(t *testing.T, text, needle string) {
 	}
 }
 
-// judgeCirclingMarkerValues and judgeMilestoneMarkerValues
-// return a values map with every one of the
-// corresponding template's required top-level markers set to a non-empty
-// placeholder, so tests can delete one key at a time to prove stencil.Fill's
+// judgeCirclingMarkerValues and judgeMilestoneMarkerValues return a values map with every one of the corresponding template's required top-level markers set to a non-empty placeholder,
+// so tests can delete one key at a time to prove stencil.Fill's
 // per-marker error.
 func judgeCirclingMarkerValues() map[string]string {
 	return map[string]string{

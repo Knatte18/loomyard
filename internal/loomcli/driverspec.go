@@ -45,12 +45,11 @@ var driverSkills = []string{"scribe:prose"}
 // every subsequent add, so a true value would re-capture focus on every agent pane the run spawns
 // afterwards.
 //
-// Timeout and KeepPane are left at their zero values deliberately. A zero Timeout
-// defaults to run_timeout_min in Spec.validate, and on this path it bounds only shuttle's startup step
+// Timeout and KeepPane are left at their zero values deliberately.
+// A zero Timeout defaults to run_timeout_min in Spec.validate, and on this path it bounds only shuttle's startup step
 // inside Start -- the startup window itself is startup_timeout_s -- because Wait is never entered: the
-// driver session runs until it stops itself, and this path never waits on it to completion. KeepPane
-// is read only by Wait, so leaving it at its zero value is a statement that
-// nothing on this path reads it, not a choice about pane retention.
+// driver session runs until it stops itself, and this path never waits on it to completion.
+// KeepPane is read only by Wait, so leaving it at its zero value is a statement that nothing on this path reads it, not a choice about pane retention.
 func driverSpec(prompt string, reportPath string, settings loomengine.DriverSettings) shuttleengine.Spec {
 	return shuttleengine.Spec{
 		Prompt:        prompt,

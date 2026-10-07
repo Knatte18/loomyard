@@ -1,8 +1,6 @@
-// judge.go implements treadle's ephemeral progress-judge LLM calls (per-round circling check,
-// milestone continuation gate) as fail-safe spawns over a package-local Shuttle seam, mirroring
-// burlerengine.Engine's Shuttle pattern.
-// Unlike a round-runner attempt, neither call here ever returns an error: any
-// infrastructure failure degrades to the safe default and logs a logger.Warn, per the original
+// judge.go implements treadle's ephemeral progress-judge LLM calls (per-round circling check, milestone continuation gate) as fail-safe spawns over a package-local Shuttle seam, mirroring burlerengine.Engine's Shuttle pattern.
+// Unlike a round-runner attempt, neither call here ever returns an error:
+// any infrastructure failure degrades to the safe default and logs a logger.Warn, per the original
 // error-and-fail-safe-posture decision (03-judge-triage.md) — a false STUCK is the costly failure
 // mode, not a few extra bounded rounds.
 // Every Warn label is prefixed with the calling engine's name (threaded in as name), per the

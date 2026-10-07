@@ -1,8 +1,6 @@
-// judgeverdict.go defines the verdict-file contract treadle's progress judge reads back —
-// JudgeVerdict (both progress-judge framings) — plus the strict parser that turns a verdict
-// file's raw bytes into that type.
-// The file is YAML frontmatter over unconstrained prose, mirroring burlerengine.ParseReview's
-// contract and error posture: every rule below is enforced fail-loud with a "treadle: "-prefixed
+// judgeverdict.go defines the verdict-file contract treadle's progress judge reads back — JudgeVerdict (both progress-judge framings) — plus the strict parser that turns a verdict file's raw bytes into that type.
+// The file is YAML frontmatter over unconstrained prose, mirroring burlerengine.ParseReview's contract and error posture:
+// every rule below is enforced fail-loud with a "treadle: "-prefixed
 // error (these parsers are package-level pure functions with no calling-engine name in scope,
 // unlike the rest of this package's diagnostics — see the pinned parser-prefix resolution in the
 // treadle-extraction batch notes), because a self-contradictory or malformed verdict file is an

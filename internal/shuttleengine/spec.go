@@ -139,13 +139,12 @@ type Spec struct {
 // entry is resolved to an absolute path — already-absolute entries are kept
 // verbatim, relative entries are joined onto worktreeRoot and
 // filepath.Clean-ed — and the resolved paths are written back into
-// s.OutputFiles so every later reader sees only absolute paths. A resolved
-// entry that already exists on disk is rejected: outcome classification
-// tests bare existence, so a stale file would classify the run done on its
-// very first turn end — a misconfigured spec must fail loudly here, never
-// become silent success (proven live: a run that stopped to ask a question, against a pre-existing
-// output file, returned "done" with the question discarded). A negative
-// Timeout is rejected (see the Timeout field's doc comment: it would launch
+// s.OutputFiles so every later reader sees only absolute paths.
+// A resolved entry that already exists on disk is rejected:
+// outcome classification tests bare existence, so a stale file would classify the run done on its very first turn end —
+// a misconfigured spec must fail loudly here, never become silent success
+// (proven live: a run that stopped to ask a question, against a pre-existing output file, returned "done" with the question discarded).
+// A negative Timeout is rejected (see the Timeout field's doc comment: it would launch
 // a run whose deadline is already in the past, leaving stray live state
 // behind an instant OutcomeTimeout); a zero Timeout is replaced with
 // cfg.RunTimeoutMin minutes, and an empty Display.Anchor defaults to

@@ -43,8 +43,7 @@
 // paths, and diagnostic identities. The seam is deliberately attempt-level,
 // not round-level: Engine itself owns the generic machinery every future
 // runner needs for free — the two-attempt retry policy on died/timeout,
-// stale-artifact move-aside
-// before a re-run, round/attempt token naming (roundToken, e.g. "3" then
+// stale-artifact move-aside before a re-run, round/attempt token naming (roundToken, e.g. "3" then
 // "3b" for a retry), artifact path derivation, and the prior-round hydration
 // list assembly (collectPriorHydration) fed into every attempt's input. A
 // RoundRunner implementation therefore only ever adapts "spawn one attempt,
