@@ -10,10 +10,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -331,6 +333,62 @@ func TestValidateCmd_Envelopes(t *testing.T) {
 				if strings.Contains(got, unwanted) {
 					t.Errorf("output carries %q; got %q", unwanted, got)
 				}
+			}
+		})
+	}
+}
+
+// TestValidateCmd_BatchesFlag asserts --batches adds the active batchifier's profile and its partition to the ok envelope,
+// each batch as its card numbers and estimate, and that without the flag the envelope carries neither key.
+func TestValidateCmd_BatchesFlag(t *testing.T) {
+	t.Parallel()
+
+	cost := batcher.NewCost("pair", batcher.CostParams{
+		Budget:   1e9,
+		MaxCards: 2,
+		Weights:  batcher.Weights{StartupContext: 1000},
+	})
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		want map[string]any
+	}{
+		{
+			name: "without the flag",
+			want: map[string]any{"ok": true, "valid": true, "cards": float64(2), "scope": "whole-plan"},
+		},
+		{
+			name: "with the flag",
+			args: []string{"--batches"},
+			want: map[string]any{
+				"ok": true, "valid": true, "cards": float64(2), "scope": "whole-plan",
+				"profile": "pair",
+				"batches": []any{map[string]any{"cards": []any{float64(1), float64(2)}, "estimate": float64(1000)}},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			c, _ := newTestCLI(t)
+			c.batcher = cost
+			plankit.Write(t, c.geom.PlanDir, twoCardUsesPlan(2, 1))
+
+			var out bytes.Buffer
+			exitCode := clihelp.Execute(c.validateCmd(), &out, tc.args)
+
+			if exitCode != 0 {
+				t.Fatalf("validate %v = %d; want 0, output: %s", tc.args, exitCode, out.String())
+			}
+			var got map[string]any
+			if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+				t.Fatalf("envelope is not JSON: %v; output: %s", err, out.String())
+			}
+			// The plan's informational create-new-unit findings are not what this test is about.
+			delete(got, "findings")
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("envelope = %v; want %v", got, tc.want)
 			}
 		})
 	}
