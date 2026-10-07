@@ -20,7 +20,7 @@ import (
 // TestResolveReview verifies ResolveReview returns the expected model/effort/version triple and
 // timeout for the embedded template's own review values.
 func TestResolveReview(t *testing.T) {
-	cfg := Config{Review: "opus[effort=high]", ReviewTimeoutMin: 240}
+	cfg := Config{Review: ModelSpecList{"opus[effort=high]", "sonnet[medium]"}, Fix: ModelSpecList{"opus[effort=low]"}, ReviewTimeoutMin: 240}
 
 	reg, err := modelspec.LoadRegistry(t.TempDir())
 	if err != nil {
@@ -31,11 +31,17 @@ func TestResolveReview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveReview(...) = _, %v; want nil error", err)
 	}
-	if settings.Model == "" {
-		t.Error("ResolveReview(...).Model = \"\"; want non-empty")
+	if len(settings.Models.Review) != 2 || len(settings.Models.Fix) != 1 {
+		t.Fatalf("ResolveReview(...).Models = %+v; want two review entries and one fix entry", settings.Models)
 	}
-	if settings.Effort != "high" {
-		t.Errorf("ResolveReview(...).Effort = %q; want %q", settings.Effort, "high")
+	if settings.Models.Review[0].Model == "" {
+		t.Error("ResolveReview(...).Models.Review[0].Model = \"\"; want non-empty")
+	}
+	if settings.Models.Review[0].Effort != "high" || settings.Models.Review[1].Effort != "medium" {
+		t.Errorf("ResolveReview(...).Models.Review efforts = %q, %q; want high, medium", settings.Models.Review[0].Effort, settings.Models.Review[1].Effort)
+	}
+	if settings.Models.Fix[0].Effort != "low" {
+		t.Errorf("ResolveReview(...).Models.Fix[0].Effort = %q; want %q", settings.Models.Fix[0].Effort, "low")
 	}
 	wantTimeout := 240 * time.Minute
 	if settings.Timeout != wantTimeout {
@@ -64,7 +70,7 @@ func TestResolveJudge(t *testing.T) {
 	}
 }
 
-// TestResolveReviewAndJudge_MalformedSpec verifies an ungrammatical review or judge model-spec returns an error naming its role, rather than being silently carried into a producer's spawn site.
+// TestResolveReviewAndJudge_MalformedSpec verifies an ungrammatical review, fix or judge model-spec returns an error naming its role, rather than being silently carried into a producer's spawn site, and that a bad later review entry or a bad fix entry also names its entry index and the way forward.
 func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -72,11 +78,32 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 		role    string
 		resolve func(Config, modelspec.Registry) error
 		cfg     Config
+		wantIn  []string
 	}{
 		{
 			name: "review",
 			role: "review",
-			cfg:  Config{Review: "opus[effort", ReviewTimeoutMin: 240},
+			cfg:  Config{Review: ModelSpecList{"opus[effort"}, ReviewTimeoutMin: 240},
+			resolve: func(cfg Config, reg modelspec.Registry) error {
+				_, err := ResolveReview(cfg, reg)
+				return err
+			},
+		},
+		{
+			name:   "later review entry",
+			role:   "review",
+			cfg:    Config{Review: ModelSpecList{"sonnet[medium]", "opus[effort"}, Fix: ModelSpecList{"opus[medium]"}},
+			wantIn: []string{"entry 2", "a model-spec the registry defines"},
+			resolve: func(cfg Config, reg modelspec.Registry) error {
+				_, err := ResolveReview(cfg, reg)
+				return err
+			},
+		},
+		{
+			name:   "fix entry",
+			role:   "fix",
+			cfg:    Config{Review: ModelSpecList{"sonnet[medium]"}, Fix: ModelSpecList{"opus[medium]", "opus[effort"}},
+			wantIn: []string{"entry 2", "a model-spec the registry defines"},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveReview(cfg, reg)
 				return err
@@ -106,6 +133,11 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.role) {
 				t.Errorf("resolving the %s role error = %q; want it to name the role", tt.role, err.Error())
+			}
+			for _, want := range tt.wantIn {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("resolving the %s role error = %q; want it to contain %q", tt.role, err.Error(), want)
+				}
 			}
 		})
 	}

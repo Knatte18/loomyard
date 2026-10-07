@@ -688,9 +688,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 
-		ReviewModel:   reviewSettings.Model,
-		ReviewEffort:  reviewSettings.Effort,
-		ReviewVersion: reviewSettings.Version,
+		ReviewModels:  reviewSettings.Models,
 		ReviewTimeout: reviewSettings.Timeout,
 
 		JudgeModel:   judgeSettings.Model,

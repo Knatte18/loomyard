@@ -56,7 +56,7 @@ func Modules() []Module {
 		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true},
 		{Name: "landing", Template: landingshed.ConfigTemplate},
 		{Name: "logger", Template: loggerconfig.ConfigTemplate},
-		{Name: "loom", Template: loomengine.ConfigTemplate},
+		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps()},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true},
 		{Name: "orch", Template: orchengine.ConfigTemplate},
 		{Name: "reed", Template: reedengine.ConfigTemplate},

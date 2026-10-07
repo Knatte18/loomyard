@@ -87,6 +87,7 @@ func TestLookup(t *testing.T) {
 	}{
 		{"batcher", true, []string{"profiles"}},
 		{"board", true, []string{"types", "labels"}},
+		{"loom", true, []string{"review", "fix"}},
 		{"bogus", false, nil},
 	}
 	for _, tt := range tests {

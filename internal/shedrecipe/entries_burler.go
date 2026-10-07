@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, resolves the row's "gates" Config key through resolveGateSpec into the RunOpts.Gate it builds, joins and creates the run directory this row's segment shares with its Bouncer row, and returns shedadapters.NewBurlerProducer(name, env.Burler, env.Shuttle, profile, opts, runDir, env.Now).
+// burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, resolves the row's "gates" Config key through resolveGateSpec into the RunOpts.Gate it builds, joins and creates the run directory this row's segment shares with its Bouncer row, and returns shedadapters.NewBurlerProducer(name, shedadapters.BurlerDeps{Runner: env.Burler, Attach: env.Shuttle, Models: env.ReviewModels}, profile, opts, runDir, env.Now).
 //
 // All three burler rows (Discussion-Burler, Plan-Burler, Webster-Burler) share this one constructor, which is why the validator is selected by the "gates" key rather than implied by the constructor:
 // the Webster round names the "verify" gate, so a round that changed code ends with a passing plan verify, and the two review rounds name their own validators.
@@ -27,14 +27,6 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
-	model, err := configString(cfg, "model", false)
-	if err != nil {
-		return nil, err
-	}
-	effort, err := configString(cfg, "effort", false)
-	if err != nil {
-		return nil, err
-	}
 	timeoutS, err := configInt(cfg, "timeout_s", false)
 	if err != nil {
 		return nil, err
@@ -43,7 +35,7 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "run_subdir", "profile", "model", "effort", "timeout_s", "gates"); err != nil {
+	if err := configRejectUnknown(cfg, "run_subdir", "profile", "timeout_s", "gates"); err != nil {
 		return nil, err
 	}
 
@@ -52,24 +44,15 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, err
 	}
 
-	// A row setting model/effort/timeout_s overrides the Env value; a row omitting it takes the Env
-	// value; both absent leaves the zero value. configInt with required false returns 0 for an
-	// absent key, so 0 is the absent sentinel here -- the same "no meaningful explicit zero"
-	// reasoning as configString's empty-string sentinel.
-	if model == "" {
-		model = env.ReviewModel
-	}
-	if effort == "" {
-		effort = env.ReviewEffort
-	}
+	// A row setting timeout_s overrides the Env value; a row omitting it takes the Env value; both absent leaves the zero value.
+	// configInt with required false returns 0 for an absent key, so 0 is the absent sentinel here.
+	// The reasoning is configString's: an empty string is the absent sentinel because there is no meaningful explicit zero.
 	timeout := time.Duration(timeoutS) * time.Second
 	if timeoutS == 0 {
 		timeout = env.ReviewTimeout
 	}
 
 	opts := burlerengine.RunOpts{
-		Model:   model,
-		Effort:  effort,
 		Timeout: timeout,
 		Gate:    gate,
 	}
@@ -99,7 +82,7 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, fmt.Errorf("shedrecipe: BurlerRound: create run dir %q: %w", runDir, err)
 	}
 
-	producer, err := shedadapters.NewBurlerProducer(name, env.Burler, env.Shuttle, profile, opts, runDir, env.Now)
+	producer, err := shedadapters.NewBurlerProducer(name, shedadapters.BurlerDeps{Runner: env.Burler, Attach: env.Shuttle, Models: env.ReviewModels}, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerRound: %w", err)
 	}

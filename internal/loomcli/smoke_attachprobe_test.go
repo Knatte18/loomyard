@@ -155,8 +155,7 @@ func TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning(t *testing.T) 
 
 	producer, err := shedadapters.NewBurlerProducer(
 		"Webster-Burler",
-		refusingBurlerRunner{t: t},
-		runner,
+		shedadapters.BurlerDeps{Runner: refusingBurlerRunner{t: t}, Attach: runner},
 		burlerengine.Profile{Rubric: "smoke rubric", FixScope: burlerengine.FixScopeOverlay},
 		burlerengine.RunOpts{Timeout: 2 * time.Minute},
 		runDir,

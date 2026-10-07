@@ -64,23 +64,33 @@ type BurlerProducer struct {
 	name    string
 	runner  BurlerRunner
 	attach  Shuttle
+	models  burlerengine.RoundModels
 	profile burlerengine.Profile
 	opts    burlerengine.RunOpts
 	runDir  string
 	now     func() time.Time
 }
 
-// NewBurlerProducer returns a BurlerProducer identified as name, driving profile through runner
-// under opts, with round artifacts under runDir.
+// BurlerDeps are the told collaborators and settings of a BurlerProducer.
+type BurlerDeps struct {
+	// Runner drives one round.
+	Runner BurlerRunner
+	// Attach is the live-round probe, required.
+	Attach Shuttle
+	// Models holds the per-round review and fix model lists; each round runs on the pick for its number.
+	Models burlerengine.RoundModels
+}
+
+// NewBurlerProducer returns a BurlerProducer identified as name, driving profile through deps.Runner under opts, with round artifacts under runDir.
 // profile is a template whose ReviewPath, FixerReportPath, FocusDirective, PriorReviews, PriorFixerReports, and ClusterExclude fields are overwritten per round;
-// opts is a template whose Round field is overwritten per attempt.
+// opts is a template whose Round, Model and Effort fields are overwritten per attempt, the last two from deps.Models.
 // A nil now defaults to time.Now, and the injected clock resolves only the archive filename's
 // same-second collision suffix.
 // It returns a distinct error for each of: a nil runner, a nil attach seam, an empty name, an empty
 // runDir, and a runDir that is not absolute per filepath.IsAbs.
 // NewBurlerProducer never stats, creates, or otherwise touches runDir -- creating it is Call's job.
 //
-// attach is the live-round probe, and it is required rather than optional. A round this producer
+// deps.Attach is the live-round probe, and it is required rather than optional. A round this producer
 // respawns over a still-live agent produces two concurrent sessions writing the same review and
 // fixer-report files -- and, on a fix-scope: source row, two sessions holding commit authority over
 // the same branch. Accepting a nil seam would make that outcome reachable again through a wiring
@@ -89,11 +99,11 @@ type BurlerProducer struct {
 // BurlerRunner: burlerengine declares exactly [ReviewPath, FixerReportPath] as its shuttle run's
 // OutputFiles, which is the set shuttleengine.Attach matches on, so the probe is reachable from here
 // with no change to burlerengine at all.
-func NewBurlerProducer(name string, runner BurlerRunner, attach Shuttle, profile burlerengine.Profile, opts burlerengine.RunOpts, runDir string, now func() time.Time) (*BurlerProducer, error) {
-	if runner == nil {
+func NewBurlerProducer(name string, deps BurlerDeps, profile burlerengine.Profile, opts burlerengine.RunOpts, runDir string, now func() time.Time) (*BurlerProducer, error) {
+	if deps.Runner == nil {
 		return nil, fmt.Errorf("shedadapters: %s (%s): runner must not be nil", name, burlerEngineLabel)
 	}
-	if attach == nil {
+	if deps.Attach == nil {
 		return nil, fmt.Errorf("shedadapters: %s (%s): attach seam must not be nil", name, burlerEngineLabel)
 	}
 	if name == "" {
@@ -110,8 +120,9 @@ func NewBurlerProducer(name string, runner BurlerRunner, attach Shuttle, profile
 	}
 	return &BurlerProducer{
 		name:    name,
-		runner:  runner,
-		attach:  attach,
+		runner:  deps.Runner,
+		attach:  deps.Attach,
+		models:  deps.Models,
 		profile: profile,
 		opts:    opts,
 		runDir:  runDir,
@@ -412,6 +423,9 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 		}
 		attemptOpts := p.opts
 		attemptOpts.Round = attemptToken
+		reviewChoice, _ := p.models.Pick(round)
+		attemptOpts.Model = reviewChoice.Model
+		attemptOpts.Effort = reviewChoice.Effort
 		// p.runDir's base is the segment's own run_subdir recipe value (webster, plan, discussion),
 		// so this stem distinguishes Plan-Burler round 3 from Webster-Burler round 3 rather than
 		// letting them collide in one friction directory.

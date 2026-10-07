@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/parentreview"
@@ -70,16 +71,10 @@ type Env struct {
 	// resolver's "description" gate.
 	DescriptionPath string
 
-	// ReviewModel, ReviewEffort, ReviewVersion, and ReviewTimeout are run-wide review defaults read
-	// by the Bouncer and BurlerRound entries: each is used only when the corresponding per-row
-	// Config key is absent. ReviewTimeout is read by BurlerRound alone, because
-	// shedadapters.BouncerConfig carries no timeout field.
-	// These four are legal on Env at all because Env carries roots and run-wide values only, and one
-	// review model shared by every review segment is exactly such a value -- a per-row value would
-	// have to be a Config key instead.
-	ReviewModel   string
-	ReviewEffort  string
-	ReviewVersion string
+	// ReviewModels holds the reviewer's and the fixer's model lists, which BurlerRound picks from per round.
+	// ReviewTimeout is the run-wide review round deadline, used when a BurlerRound row's timeout_s is absent.
+	// Both are legal on Env at all because Env carries roots and run-wide values only, and one review model list shared by every review segment is exactly such a value.
+	ReviewModels  burlerengine.RoundModels
 	ReviewTimeout time.Duration
 
 	// ReviewMaxBounces is the run-wide bounce budget of every review segment, read by loomrecipe alone.

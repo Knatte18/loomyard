@@ -142,7 +142,8 @@ producers:
         # commits this round's approved settle.
         fix-scope: overlay
         tool-use: true
-      # No model/effort/timeout_s key, for the same Env fallback reason as Discussion-Bouncer.
+      # No model/effort key: model choice lives in loom.yaml's review and fix keys only, and the row carries no model or effort key.
+      # No timeout_s key, for the same Env fallback reason as Discussion-Bouncer.
 
   - name: Plan-Write
     engine: PlanWrite
@@ -242,7 +243,8 @@ producers:
         # variable and only the Card Index names it), resolves symbol-shaped target entries against
         # the repo, and reads the decision record.
         tool-use: true
-      # No model/effort/timeout_s key, for the same Env fallback reason as Plan-Bouncer.
+      # No model/effort key: model choice lives in loom.yaml's review and fix keys only, and the row carries no model or effort key.
+      # No timeout_s key, for the same Env fallback reason as Plan-Bouncer.
 
   - name: Batchifier
     engine: Batchifier
@@ -337,7 +339,8 @@ producers:
         # which burlerengine's fork boilerplate states and its own round audit enforces, so under
         # a fan the forks could not reach a subject that exists only through git. Single reviewer,
         # matching both shipped segments.
-      # No model/effort/timeout_s key, for the same Env fallback reason as Webster-Bouncer.
+      # No model/effort key: model choice lives in loom.yaml's review and fix keys only, and the row carries no model or effort key.
+      # No timeout_s key, for the same Env fallback reason as Webster-Bouncer.
 
   - name: Describe
     engine: Describe

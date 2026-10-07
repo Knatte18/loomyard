@@ -74,8 +74,6 @@ func TestBurlerRoundEntry_ProfileMapping(t *testing.T) {
 			"tool-use":    true,
 			"cluster-fan": "",
 		},
-		"model":     "opus",
-		"effort":    "high",
 		"timeout_s": 30,
 	}
 
@@ -106,12 +104,6 @@ func TestBurlerRoundEntry_ProfileMapping(t *testing.T) {
 		t.Errorf("profile.ClusterFan = %q; want \"\"", profile.ClusterFan)
 	}
 
-	if opts.Model != "opus" {
-		t.Errorf("opts.Model = %q; want %q", opts.Model, "opus")
-	}
-	if opts.Effort != "high" {
-		t.Errorf("opts.Effort = %q; want %q", opts.Effort, "high")
-	}
 	if opts.Timeout != 30*time.Second {
 		t.Errorf("opts.Timeout = %v; want %v", opts.Timeout, 30*time.Second)
 	}
@@ -248,15 +240,14 @@ func TestBurlerRoundEntry_RubricStencil(t *testing.T) {
 	})
 }
 
-// TestBurlerRoundEntry_EnvReviewFallback covers the three fallback outcomes for
-// burlerRoundEntry's model/effort/timeout_s resolution: a row omitting the keys takes
-// env.ReviewModel/ReviewEffort/ReviewTimeout; a row setting all three overrides the Env values;
+// TestBurlerRoundEntry_EnvReviewFallback covers burlerRoundEntry's model and timeout_s resolution:
+// the round's model is the first review pick of env.ReviewModels and a row has no key to change it;
+// a row omitting timeout_s takes env.ReviewTimeout and a row setting it overrides the Env value;
 // both absent with an empty Env leaves the zero values.
 func TestBurlerRoundEntry_EnvReviewFallback(t *testing.T) {
 	t.Run("RowOmitsTakesEnvValues", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.ReviewModel = "env-model"
-		env.ReviewEffort = "env-effort"
+		env.ReviewModels = burlerengine.RoundModels{Review: []burlerengine.ModelChoice{{Model: "env-model", Effort: "env-effort"}}}
 		env.ReviewTimeout = 45 * time.Second
 		cfg := minimalBurlerConfig()
 
@@ -274,21 +265,11 @@ func TestBurlerRoundEntry_EnvReviewFallback(t *testing.T) {
 
 	t.Run("RowSetsOverridesEnvValues", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.ReviewModel = "env-model"
-		env.ReviewEffort = "env-effort"
 		env.ReviewTimeout = 45 * time.Second
 		cfg := minimalBurlerConfig()
-		cfg["model"] = "row-model"
-		cfg["effort"] = "row-effort"
 		cfg["timeout_s"] = 30
 
 		_, opts := callAndCaptureProfile(t, "review-round", cfg, env)
-		if opts.Model != "row-model" {
-			t.Errorf("opts.Model = %q; want %q", opts.Model, "row-model")
-		}
-		if opts.Effort != "row-effort" {
-			t.Errorf("opts.Effort = %q; want %q", opts.Effort, "row-effort")
-		}
 		if opts.Timeout != 30*time.Second {
 			t.Errorf("opts.Timeout = %v; want %v", opts.Timeout, 30*time.Second)
 		}
@@ -351,6 +332,17 @@ func TestBurlerRoundEntry_StrictUnknownKeys(t *testing.T) {
 		_, err := burlerRoundEntry("review-round", cfg, env)
 		assertErrContains(t, err, "unexpected")
 	})
+
+	// The retired model and effort keys: model choice lives in loom.yaml's review and fix keys only.
+	for _, key := range []string{"model", "effort"} {
+		t.Run("RowKey_"+key, func(t *testing.T) {
+			env := newTestEnv(t)
+			cfg := minimalBurlerConfig()
+			cfg[key] = "value"
+			_, err := burlerRoundEntry("review-round", cfg, env)
+			assertErrContains(t, err, key)
+		})
+	}
 
 	for _, key := range []string{"review-path", "fixer-report-path", "prior-reviews", "prior-fixer-reports", "cluster-exclude"} {
 		t.Run("ProfileKey_"+key, func(t *testing.T) {

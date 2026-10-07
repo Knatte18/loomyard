@@ -83,7 +83,7 @@ func TestNewBurlerProducer_Validation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p, err := NewBurlerProducer(tt.pname, tt.runner, tt.attach, profile, burlerengine.RunOpts{}, tt.runDir, nil)
+			p, err := NewBurlerProducer(tt.pname, BurlerDeps{Runner: tt.runner, Attach: tt.attach}, profile, burlerengine.RunOpts{}, tt.runDir, nil)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("NewBurlerProducer() error = nil; want non-nil")
@@ -599,31 +599,40 @@ func TestBurlerProducer_Call_ClusterExcludeDropWarning(t *testing.T) {
 //
 //testtiming:keep pins the round token, the note id and the opts template the runner receives, which the round-scan tests do not read off the recorded opts
 func TestBurlerProducer_Call_RunOptsCarriesRoundTokenAndNoteID(t *testing.T) {
+	models := burlerengine.RoundModels{Review: []burlerengine.ModelChoice{{Model: "m1", Effort: "e1"}, {Model: "m2", Effort: "e2"}}}
 	tests := []struct {
-		name         string
-		runDirName   string
-		judgedRound  int
-		wantRound    string
-		wantNoteID   string
-		wantModelOpt string
+		name            string
+		runDirName      string
+		judgedRound     int
+		wantRound       string
+		wantNoteID      string
+		wantModelOpt    string
+		wantEffortOpt   string
+		wantTimeoutOpts time.Duration
 	}{
-		{name: "round token and opts template", runDirName: "runs", judgedRound: 4, wantRound: "5", wantModelOpt: "m"},
-		{name: "note id", runDirName: "webster", judgedRound: 2, wantRound: "3", wantNoteID: "burler-webster-r3"},
+		{name: "round 1 runs the first review entry", runDirName: "runs", wantRound: "1", wantModelOpt: "m1", wantEffortOpt: "e1", wantTimeoutOpts: time.Minute},
+		{name: "a round past the list runs the last review entry", runDirName: "runs", judgedRound: 4, wantRound: "5", wantModelOpt: "m2", wantEffortOpt: "e2", wantTimeoutOpts: time.Minute},
+		{name: "note id", runDirName: "webster", judgedRound: 2, wantRound: "3", wantNoteID: "burler-webster-r3", wantModelOpt: "m2", wantEffortOpt: "e2", wantTimeoutOpts: time.Minute},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			runDir := filepath.Join(t.TempDir(), tt.runDirName)
-			writeJudgedRound(t, runDir, tt.judgedRound)
+			for n := 1; n <= tt.judgedRound; n++ {
+				writeJudgedRound(t, runDir, n)
+			}
 			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-			p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(burlerengine.RunOpts{Model: tt.wantModelOpt}))
+			p := newBurlerProducer(t, runDir, runner, withBurlerRunOpts(burlerengine.RunOpts{Timeout: time.Minute}), withBurlerModels(models))
 
 			shedfake.CallOK(t, p)
 			got := runner.GotOpts[0]
 			if got.Round != tt.wantRound {
 				t.Errorf("Round = %q; want %q", got.Round, tt.wantRound)
 			}
-			if got.Model != tt.wantModelOpt {
-				t.Errorf("Model = %q; want %q (opts template carried through)", got.Model, tt.wantModelOpt)
+			if got.Model != tt.wantModelOpt || got.Effort != tt.wantEffortOpt {
+				t.Errorf("Model, Effort = %q, %q; want %q, %q (the review pick for the round)", got.Model, got.Effort, tt.wantModelOpt, tt.wantEffortOpt)
+			}
+			if got.Timeout != tt.wantTimeoutOpts {
+				t.Errorf("Timeout = %v; want %v (opts template carried through)", got.Timeout, tt.wantTimeoutOpts)
 			}
 			if tt.wantNoteID != "" && got.NoteID != tt.wantNoteID {
 				t.Errorf("NoteID = %q; want %q", got.NoteID, tt.wantNoteID)

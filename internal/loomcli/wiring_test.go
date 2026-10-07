@@ -295,10 +295,10 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	// The review model, effort, version and timeout equal what loomengine.ResolveReview returns for the
+	// The review and fix model lists and the timeout equal what loomengine.ResolveReview returns for the
 	// same loaded config and registry -- resolved here rather than hardcoded against the template's
 	// literal spec, so a later template edit does not silently break this assertion's meaning.
-	t.Run("review triple matches the loaded config", func(t *testing.T) {
+	t.Run("review models match the loaded config", func(t *testing.T) {
 		registry, err := modelspec.LoadRegistry(loc.AnchorPath())
 		if err != nil {
 			t.Fatalf("modelspec.LoadRegistry(%q) = %v; want nil", loc.AnchorPath(), err)
@@ -308,14 +308,8 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Fatalf("loomengine.ResolveReview(c.cfg, registry) = %v; want nil", err)
 		}
 
-		if c.env.ReviewModel != want.Model {
-			t.Errorf("c.env.ReviewModel = %q; want %q", c.env.ReviewModel, want.Model)
-		}
-		if c.env.ReviewEffort != want.Effort {
-			t.Errorf("c.env.ReviewEffort = %q; want %q", c.env.ReviewEffort, want.Effort)
-		}
-		if c.env.ReviewVersion != want.Version {
-			t.Errorf("c.env.ReviewVersion = %q; want %q", c.env.ReviewVersion, want.Version)
+		if !reflect.DeepEqual(c.env.ReviewModels, want.Models) {
+			t.Errorf("c.env.ReviewModels = %+v; want %+v", c.env.ReviewModels, want.Models)
 		}
 		if c.env.ReviewTimeout != want.Timeout {
 			t.Errorf("c.env.ReviewTimeout = %s; want %s", c.env.ReviewTimeout, want.Timeout)
