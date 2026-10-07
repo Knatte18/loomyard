@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -36,6 +38,10 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 			t.Fatalf("WriteFile: %v", err)
 		}
 
+		weftBranch := strings.TrimSpace(gitOutputCLI(t, h.PrimeWeft(), "rev-parse", "--abbrev-ref", "HEAD"))
+		weftBareBefore := gitOutputCLI(t, h.WeftBare, "for-each-ref", "refs/heads/"+weftBranch)
+		warpBareBefore := gitkit.RevParse(t, h.WarpBare, "HEAD")
+
 		code, output := runFabric(t, h.PrimeWorktree(), "push")
 		if code != 0 {
 			t.Errorf("RunCLI push returned %d; want 0", code)
@@ -43,6 +49,13 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 		}
 
 		envelope.RequireOK(t, output)
+
+		if got := gitOutputCLI(t, h.WeftBare, "for-each-ref", "refs/heads/"+weftBranch); got != weftBareBefore {
+			t.Errorf("weft bare %s = %s; want %s (WEFT_SKIP_PUSH must push nothing)", weftBranch, got, weftBareBefore)
+		}
+		if got := gitkit.RevParse(t, h.WarpBare, "HEAD"); got != warpBareBefore {
+			t.Errorf("warp bare HEAD = %s; want %s (WEFT_SKIP_PUSH must push nothing)", got, warpBareBefore)
+		}
 	}) {
 		return
 	}
@@ -61,7 +74,21 @@ func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
 			t.Fatalf("RunCLI(sync) = %d; want 0\noutput: %s", code, output)
 		}
 
-		envelope.RequireOK(t, output)
+		result := envelope.RequireOK(t, output)
+
+		// sync hands the detached child both sides, so the record holds one push_spawned entry per side.
+		spawnedTargets := map[string]bool{}
+		mutations, _ := result.Raw["mutations"].([]any)
+		for _, raw := range mutations {
+			entry, _ := raw.(map[string]any)
+			if entry["kind"] == string(fabricengine.KindPushSpawned) {
+				target, _ := entry["target"].(string)
+				spawnedTargets[target] = true
+			}
+		}
+		if len(spawnedTargets) != 2 {
+			t.Errorf("push_spawned targets = %v; want one entry per side (warp and weft)\noutput: %s", spawnedTargets, output)
+		}
 
 		tracked := strings.TrimSpace(gitOutputCLI(t, h.PrimeWeft(), "log", "-1", "--name-only", "--pretty=format:"))
 		if !strings.Contains(tracked, filepath.ToSlash(filepath.Join(lyxdirs.LyxDirName, "placeholder"))) {

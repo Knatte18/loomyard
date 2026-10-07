@@ -71,6 +71,28 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 				t.Errorf("warp bare HEAD = %s; want %s (the unpushed commit was not pushed)", gotWarpSHA, wantWarpSHA)
 			}
 		}},
+		{"PushPushesBothSides", func(t *testing.T) {
+			// With unpushed commits on both sides of the prime, "lyx fabric push" exits 0 and both bare upstreams sit at their local checkout's HEAD.
+			gitkit.CommitFile(t, h.PrimeWorktree(), "warp-push.txt", "warp\n", "warp push")
+			gitkit.CommitFile(t, h.PrimeWeft(), filepath.Join(lyxdirs.LyxDirName, "weft-push.txt"), "weft\n", "weft push")
+
+			weftBranch := gitkit.CurrentBranch(t, h.PrimeWeft())
+			wantWeftSHA := gitkit.RevParse(t, h.PrimeWeft(), "HEAD")
+			wantWarpSHA := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
+
+			code, output := runFabric(t, h.PrimeWorktree(), "push")
+			if code != 0 {
+				t.Fatalf("RunCLI(push) = %d; want 0\noutput: %s", code, output)
+			}
+			envelope.RequireOK(t, output)
+
+			if got := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch); got != wantWeftSHA {
+				t.Errorf("weft bare %s = %s; want %s (the weft side was not pushed)", weftBranch, got, wantWeftSHA)
+			}
+			if got := gitkit.RevParse(t, h.WarpBare, "HEAD"); got != wantWarpSHA {
+				t.Errorf("warp bare HEAD = %s; want %s (the warp side was not pushed)", got, wantWarpSHA)
+			}
+		}},
 		{"AddLeftoverWarpIsBarePreflightError", func(t *testing.T) {
 			// A removed pair's landed warp branch still on origin, beside an archived weft branch and no local weft branch, blocks the re-add with a pre-flight failure, so a bare error carrying neither `mutations` nor `partial`.
 			const slug = "leftover-slug"
@@ -261,6 +283,34 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 			if _, present := result.Raw["mutations"]; !present {
 				t.Errorf("RunCLI(remove) output missing 'mutations' key on the failure path")
+			}
+		}},
+		{"PushReportsADivergedWarpSideAndStillPushesWeft", func(t *testing.T) {
+			// With the prime's code branch diverged on its bare by a second clone, the warp side is rejected beyond the one retry: push exits 1 with an error naming the warp side and its worktree, the weft side is still pushed, and nothing local is rewritten.
+			// Placed with the damaging steps, before the one that breaks the shared weft remote, because the warp bare stays diverged for the rest of the scenario.
+			warpBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
+			other := filepath.Join(t.TempDir(), "other-clone")
+			gitkit.MustRun(t, t.TempDir(), "git", "clone", "-q", "--branch", warpBranch, h.WarpBare, other)
+			gitkit.CommitFile(t, other, "diverging.txt", "other\n", "diverge the bare")
+			gitkit.MustRun(t, other, "git", "push", "-q", "origin", warpBranch)
+
+			gitkit.CommitFile(t, h.PrimeWorktree(), "local-only.txt", "local\n", "local warp work")
+			gitkit.CommitFile(t, h.PrimeWeft(), filepath.Join(lyxdirs.LyxDirName, "weft-after-divergence.txt"), "weft\n", "weft after divergence")
+
+			weftBranch := gitkit.CurrentBranch(t, h.PrimeWeft())
+			wantWarpHead := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
+
+			code, output := runFabric(t, h.PrimeWorktree(), "push")
+			if code != 1 {
+				t.Fatalf("RunCLI(push) with a diverged warp bare = %d; want 1\noutput: %s", code, output)
+			}
+			env := envelope.RequireErr(t, output, "push warp side at "+h.PrimeWorktree())
+
+			if got, want := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch), gitkit.RevParse(t, h.PrimeWeft(), "HEAD"); got != want {
+				t.Errorf("weft bare %s = %s; want %s (the weft side must still be pushed)\nerror: %s", weftBranch, got, want, env.Error)
+			}
+			if got := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD"); got != wantWarpHead {
+				t.Errorf("local warp HEAD = %s; want unchanged %s (a rejected push rewrites nothing)", got, wantWarpHead)
 			}
 		}},
 		{"Reconcile_HubConfigPushFailureIsNonFatal", func(t *testing.T) {

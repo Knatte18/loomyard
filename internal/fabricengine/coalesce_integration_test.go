@@ -147,9 +147,9 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 	}
 }
 
-// TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd covers the weft-only "lyx fabric
-// sync" production path (warpPath == "", the shape spawnPush/SpawnDetachedPush always uses per
-// fabriccli/spawn.go): with the detached child's cwd left at some unrelated, non-git directory
+// TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd covers the weft-only detached
+// push (warpPath == "", the shape a caller of SpawnDetachedPush gets by passing no warp path):
+// with the detached child's cwd left at some unrelated, non-git directory
 // (nothing overrides cmd.Dir), CoalescePushBothAt must still push the weft side and return nil —
 // not open (or fail to open) a git checkout at the inherited cwd for the absent warp side.
 // Before the headOrEmpty("") short-circuit fix, this call errored (aborting the loop before the
