@@ -489,16 +489,56 @@ func (f *haltFixture) handoffSteps(t *testing.T, beforeSecond func()) {
 func TestStep_CrashResumeNoteFollowsTheHandoffVoucher(t *testing.T) {
 	t.Parallel()
 
+	removeVoucher := func(t *testing.T, f *haltFixture) {
+		if err := os.Remove(loomengine.LoomHandoffVoucher(f.c.location)); err != nil {
+			t.Fatalf("Remove(handoff voucher) = %v; want nil", err)
+		}
+	}
+	// longHistory removes the voucher and appends seven entries to the persisted history, so the observed history holds more than five.
+	longHistory := func(t *testing.T, f *haltFixture) {
+		removeVoucher(t, f)
+		p := f.c.shedPaths
+		err := state.UpdateJSON[shedengine.Status](p.StatusPath, p.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+			for i := 0; i < 7; i++ {
+				cur.History = append(cur.History, shedengine.HistoryEntry{Producer: fmt.Sprintf("Extra-%d", i), Outcome: shedengine.Done, At: "2026-01-01T00:00:00Z"})
+			}
+			return cur, nil
+		})
+		if err != nil {
+			t.Fatalf("UpdateJSON(append history) = %v; want nil", err)
+		}
+	}
+	// differentVoucher replaces the voucher with one recording another history length and state.
+	differentVoucher := func(t *testing.T, f *haltFixture) {
+		recordHandoffVoucher(loomengine.LoomHandoffVoucher(f.c.location), loomengine.LoomHandoffVoucherLock(f.c.location), 9, shedengine.StateBlocked)
+	}
+
 	tests := []struct {
-		name          string
-		removeVoucher bool
+		name string
+		// beforeSecond runs between the two steps.
+		beforeSecond func(t *testing.T, f *haltFixture)
 		// failCommit makes the first step's status commit fail after Row-A's done transition is on disk, so that step returns an error having completed.
 		failCommit bool
-		wantNote   bool
+		// wantInNote is the set of substrings the crash-resume note carries; nil means no note is written.
+		wantInNote []string
 	}{
-		{"MarkerKept", false, false, false},
-		{"MarkerRemoved", true, false, true},
-		{"StepErrorAfterPersistKeepsMarker", false, true, false},
+		{name: "MarkerKept"},
+		{name: "StepErrorAfterPersistKeepsMarker", failCommit: true},
+		{
+			name:         "MarkerRemoved",
+			beforeSecond: removeVoucher,
+			wantInNote:   []string{"history_entries: 1", "run_lock_held: false", "voucher: none"},
+		},
+		{
+			name:         "DifferentVoucherNamesBothReadings",
+			beforeSecond: differentVoucher,
+			wantInNote:   []string{"history_entries: 1", "state: running", "voucher_history_entries: 9", "voucher_state: blocked"},
+		},
+		{
+			name:         "LongHistoryListsEveryEntry",
+			beforeSecond: longHistory,
+			wantInNote:   []string{"history_entries: 8", "- Row-A / done / ", "- Extra-0 / done / ", "- Extra-1 / done / ", "- Extra-2 / done / ", "- Extra-3 / done / ", "- Extra-4 / done / ", "- Extra-5 / done / ", "- Extra-6 / done / "},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -514,23 +554,21 @@ func TestStep_CrashResumeNoteFollowsTheHandoffVoucher(t *testing.T) {
 				}
 			}
 			f.handoffSteps(t, func() {
-				if !tt.removeVoucher {
-					return
-				}
-				if err := os.Remove(loomengine.LoomHandoffVoucher(f.c.location)); err != nil {
-					t.Fatalf("Remove(handoff voucher) = %v; want nil", err)
+				if tt.beforeSecond != nil {
+					tt.beforeSecond(t, f)
 				}
 			})
 
 			notePath := filepath.Join(f.frictionDir, "loom-crash-resume.md")
-			if !tt.wantNote {
+			if tt.wantInNote == nil {
 				if _, err := os.Stat(notePath); !os.IsNotExist(err) {
 					t.Errorf("crash-resume note %q = %v; want none written", notePath, err)
 				}
 				return
 			}
 			got := readNote(t, notePath)
-			for _, want := range []string{"slug: pair", "parent: main", "state: running", "current_producer: Row-B", "history_entries: 1", "verb: step", "trace_file:", "- Row-A / " + string(shedengine.Done) + " / "} {
+			common := []string{"slug: pair", "parent: main", "current_producer: Row-B", "verb: step", "trace_file:"}
+			for _, want := range append(common, tt.wantInNote...) {
 				if !strings.Contains(got, want) {
 					t.Errorf("crash-resume note %q does not contain %q", got, want)
 				}

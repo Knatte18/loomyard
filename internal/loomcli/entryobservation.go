@@ -57,28 +57,28 @@ func recordHandoffVoucherFromStatus(path, lockPath, statusPath, statusLockPath s
 	recordHandoffVoucher(path, lockPath, len(st.History), st.State)
 }
 
-// consumeHandoffVoucher reads the handoff voucher, DELETES it, and reports whether it
+// consumeHandoffVoucher reads the handoff voucher, DELETES it, and returns what it read together with whether it
 // matches the observed history length and state. The delete is the point, not tidying: the voucher
 // is good for exactly one drive entry. Consuming it there means a driver that
 // resumes from a step handoff and then itself dies before appending any history -- an observation
 // otherwise identical to the handoff -- is correctly reported as a crash by the drive after it,
 // instead of being suppressed forever by a voucher nothing invalidated.
-// A missing or unreadable voucher reports false; a delete failure is warned and does not change the
+// A missing or unreadable voucher reports found false and no match; a delete failure is warned and does not change the
 // result, since a lingering voucher can at worst suppress one further matching observation and the
 // warn names it.
-func consumeHandoffVoucher(path, lockPath string, historyLength int, observedState shedengine.State) bool {
+func consumeHandoffVoucher(path, lockPath string, historyLength int, observedState shedengine.State) (voucher handoffVoucher, found, matches bool) {
 	voucher, found, err := state.ReadJSONStrict[handoffVoucher](path, lockPath)
 	if err != nil {
 		logger.Warn("loomcli: could not read the handoff voucher; treating it as absent", "path", path, "cause", err)
-		return false
+		return handoffVoucher{}, false, false
 	}
 	if !found {
-		return false
+		return handoffVoucher{}, false, false
 	}
 	if err := os.Remove(path); err != nil {
 		logger.Warn("loomcli: could not consume the handoff voucher; a later matching observation may be suppressed once more", "path", path, "cause", err)
 	}
-	return voucher.HistoryLength == historyLength && voucher.State == string(observedState)
+	return voucher, true, voucher.HistoryLength == historyLength && voucher.State == string(observedState)
 }
 
 // observeEntry probes the run lock non-blockingly and, on the reading path, reads the status file,
@@ -125,26 +125,23 @@ func observeEntry(enabled bool, runLockPath, statusPath, statusLockPath, handoff
 		}
 	}
 
-	recent := shed.History
-	if len(recent) > recentHistoryRows {
-		recent = recent[len(recent)-recentHistoryRows:]
-	}
+	voucher, voucherFound, vouched := consumeHandoffVoucher(handoffVoucherPath, handoffVoucherLockPath, len(shed.History), shed.State)
 
 	return loomengine.EntryObservation{
-		Observed:        true,
-		RunLockHeld:     runLockHeld,
-		State:           shed.State,
-		CurrentProducer: shed.CurrentProducer,
-		HistoryLength:   len(shed.History),
-		Slug:            product.Slug,
-		Parent:          product.Parent,
-		Vouched:         consumeHandoffVoucher(handoffVoucherPath, handoffVoucherLockPath, len(shed.History), shed.State),
-		RecentHistory:   recent,
+		Observed:             true,
+		RunLockHeld:          runLockHeld,
+		State:                shed.State,
+		CurrentProducer:      shed.CurrentProducer,
+		HistoryLength:        len(shed.History),
+		Slug:                 product.Slug,
+		Parent:               product.Parent,
+		Vouched:              vouched,
+		VoucherFound:         voucherFound,
+		VoucherHistoryLength: voucher.HistoryLength,
+		VoucherState:         shedengine.State(voucher.State),
+		History:              shed.History,
 	}
 }
-
-// recentHistoryRows caps how many trailing history rows an entry observation carries.
-const recentHistoryRows = 5
 
 // writeCrashResumeNote records a detected crash-resume as a friction note named `loom-crash-resume`, for the named verb (`run` or `step`) and the trace file of this invocation.
 // It is a no-op when frictionDir is empty (Tier 2 off) or when friction.NotePath rejects the id.
@@ -165,9 +162,16 @@ func writeCrashResumeNote(frictionDir string, entry loomengine.EntryObservation,
 	b.WriteString("state: " + string(entry.State) + "\n")
 	b.WriteString("current_producer: " + entry.CurrentProducer + "\n")
 	b.WriteString("history_entries: " + strconv.Itoa(entry.HistoryLength) + "\n")
+	b.WriteString("run_lock_held: " + strconv.FormatBool(entry.RunLockHeld) + "\n")
+	if entry.VoucherFound {
+		b.WriteString("voucher_history_entries: " + strconv.Itoa(entry.VoucherHistoryLength) + "\n")
+		b.WriteString("voucher_state: " + string(entry.VoucherState) + "\n")
+	} else {
+		b.WriteString("voucher: none\n")
+	}
 	b.WriteString("verb: " + verb + "\n")
 	b.WriteString("trace_file: " + traceFile + "\n")
-	writeHistoryRows(&b, entry.RecentHistory)
+	writeHistoryRows(&b, entry.History)
 
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		return fmt.Errorf("loom: write crash-resume note %s: %w", path, err)

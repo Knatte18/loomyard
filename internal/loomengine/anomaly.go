@@ -45,9 +45,15 @@ type EntryObservation struct {
 	// Such a task is an operator handing it from the supervised step loop to a driver, or resuming it deliberately, byte-identical on disk to a mid-run driver death and excluded from trigger 1 for that reason.
 	// The caller consumes the voucher and reports the match here; this package performs no read of its own.
 	Vouched bool
-	// RecentHistory is the last history rows (at most five) observed at entry.
-	// It is carried into the crash-resume note so the reflection sees what the dead driver had just done.
-	RecentHistory []shedengine.HistoryEntry
+	// VoucherFound is true when a handoff voucher existed at entry, whether or not it matched.
+	// VoucherHistoryLength and VoucherState are the values it recorded, meaningful only when VoucherFound is true.
+	// They are carried into the crash-resume note so the reader can compare the recorded reading with the observed one; DetectCrashResume reads Vouched only.
+	VoucherFound         bool
+	VoucherHistoryLength int
+	VoucherState         shedengine.State
+	// History is every history entry observed at entry.
+	// It is carried into the crash-resume note so the reflection sees what the run had done, whole.
+	History []shedengine.HistoryEntry
 }
 
 // DetectCrashResume reports trigger 1: whether entry describes a driver that died mid-run rather than exiting cleanly.
