@@ -7,6 +7,7 @@ package shuttlecli
 import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/spf13/cobra"
 )
 
@@ -20,6 +21,8 @@ func (c *shuttleCLI) sendCmd() *cobra.Command {
 identified by <guid>, typing <text> as its next turn. <text> must be a
 single line: the file contract carries multiline updates — write a file and
 send a one-line pointer to it (e.g. "read updated-task.md and continue").
+The fixed message tail "Answer briefly, then continue your task." is appended
+to <text> unless it already ends with it.
 
 Example:
   lyx shuttle send 3fae21ac9b1d4c0e "read updated-task.md and continue"`,
@@ -31,7 +34,7 @@ Example:
 			out := cmd.OutOrStdout()
 			guid, text := args[0], args[1]
 
-			if err := c.runner.Send(guid, text); err != nil {
+			if err := c.runner.Send(guid, shuttleengine.WithMessageTail(text)); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
