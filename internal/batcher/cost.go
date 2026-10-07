@@ -84,15 +84,15 @@ func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes
 			}
 			// peak.value is the segment's peak at position before + 1; each later position adds its growth.
 			for k := 1; k <= begin+1; k++ {
-				before := table[k-1][begin]
-				if !before.found {
+				prefix := table[k-1][begin]
+				if !prefix.found {
 					continue
 				}
 				segmentPeak := peak.value + float64(k-1)*w.BatchGrowth
 				if end-begin > 1 && segmentPeak > b.params.Budget {
 					continue
 				}
-				largest := max(before.largest, segmentPeak)
+				largest := max(prefix.largest, segmentPeak)
 				if current := table[k][end]; !current.found || largest < current.largest {
 					table[k][end] = split{found: true, largest: largest, start: begin, peak: segmentPeak}
 				}
