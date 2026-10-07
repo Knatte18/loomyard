@@ -250,6 +250,8 @@ type Run struct {
 	expiredShells map[string]bool
 	// expiredLabels is the labels of expiredShells in expiry order, reported as Result.ExpiredShells.
 	expiredLabels []string
+	// wait is the wait marker and pane mark this run has on show, display only.
+	wait waitState
 
 	// gate is the GateSpec this run was told, empty for an ungated run — the same zero value Run/Attach's own RunGated(spec, GateSpec{})/AttachGated(spec, GateSpec{}) delegation passes, so an ungated run behaves byte-for-byte as it did before the gate existed.
 	gate GateSpec
@@ -369,6 +371,14 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		return nil, Result{}, fmt.Errorf("shuttle: prepare run: %w", err)
 	}
 
+	// An ungated run's output files are its finished signal, so reed's resume drops a finished strand;
+	// a gated run's outputs existing does not mean the gate passed,
+	// so it carries no list and is relaunched.
+	var doneWhen []string
+	if len(gate) == 0 {
+		doneWhen = spec.OutputFiles
+	}
+
 	strand, err := r.reed.AddStrand(reedengine.AddSpec{
 		Role:         spec.Role,
 		NameOverride: spec.NameOverride,
@@ -377,6 +387,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		ResumeCmd:    launch.ResumeCmd,
 		SessionID:    launch.SessionID,
 		Display:      spec.Display,
+		DoneWhen:     doneWhen,
 	})
 	if err != nil {
 		// Nothing to resume: the strand never registered, so the run

@@ -121,6 +121,8 @@ type loomCLI struct {
 	// reason driverStarter does: *reedengine.Engine is a concrete type and the Test Tier Purity
 	// Invariant bars a real reed call from an untagged file.
 	driverPaneProbe driverPaneProbe
+	// driverDirectory is the seam through which `resume` reads the driver strand from reed's sessionless directory, wrapping the same *reedengine.Engine c.reed already carries.
+	driverDirectory driverDirectoryProbe
 	// reflectionShuttle is the frictionengine.Shuttle every friction reflection goes through, wired to the shuttle runner in production.
 	// It is the seam tests fake the reflection agent, and so its filing, through.
 	// It stays nil on the lightweight wiring path, which frictionengine.Reflect's Deps validation reports as failed.
@@ -216,13 +218,13 @@ func inReviewGroup(cmd *cobra.Command) bool {
 // resolved location, the two status-file paths, and a handful of cheap path accessors -- no module
 // config, no engine, no producer.
 //
-// The set is the two read-only status verbs (status, pause), the three standalone format self-checks (validate-discussion, validate-plan, validate-description), which read only c.env's path fields and never a loaded config, and approve, which reads the status file, the fabric and GitHub but builds no producer and so needs no module config either, and commit-records, which commits through fabric and builds no producer, so a broken module config must not refuse it at the driver's last act.
+// The set is the two read-only status verbs (status, pause), the three standalone format self-checks (validate-discussion, validate-plan, validate-description) and lint-comments, which read only c.env's path fields and never a loaded config, and approve, which reads the status file, the fabric and GitHub but builds no producer and so needs no module config either, and commit-records, which commits through fabric and builds no producer, so a broken module config must not refuse it at the driver's last act.
 // Crucible round sonnet5-xhigh-r8's F2 extended the set from the original two after finding the writer agents' own stencil-mandated pre-handoff self-check failed on an unrelated module's broken config, the identical hazard that got status/pause this lightweight path in the first place (see wireLightweight's own doc comment for that history).
 // Every other verb builds or drives producers and keeps the full wire(), including its early config refusal.
 // "step" is deliberately excluded from this set for that same reason: it drives a producer through shedengine.Shed's own Step, so it needs the full wire() and its early config refusal exactly as "start" and "run" do.
 func verbUsesLightweightWiring(name string) bool {
 	switch name {
-	case "status", "pause", "goto", "validate-discussion", "validate-plan", "validate-description", "approve", "reject", "commit-records":
+	case "status", "pause", "goto", "validate-discussion", "validate-plan", "validate-description", "lint-comments", "approve", "reject", "commit-records":
 		return true
 	default:
 		return false
@@ -371,12 +373,14 @@ standalone form of the mechanical gates Discussion-Write's and Plan-Write's
 own rows carry, callable by the writer agent before handoff ("validate-plan
 --rework" is PR-Rework's), and
 "validate-description" does the same for the Describe row's change description.
+"lint-comments" finds the fixed-column wraps a change creates in comment line breaks, as every card gate does.
 "approve" records the operator's approval of the open pull request for a run
 awaiting or blocked at PR-Gate, removing any pending rejection; "lyx loom start" then lands it.
 "reject <review-file>" records the operator's rejection with the findings in that file, for a run
 awaiting or blocked at PR-Gate or blocked at PR-Rework, removing any approval; "lyx loom start" then
 sends the findings to PR-Rework. "commit-records" commits and
-pushes the run's records (status, reviews, friction notes, drive reports); the
+pushes the run's records (status, reviews, friction notes, drive reports), pushing the
+task branch along with them; the
 loom driver's end-of-session command runs it after the driver writes its stop report.
 "review" is the subtree through which a run's parent answers Discussion-Write's
 parent-review gate: "review notify", "review delivered", "review approve" and
@@ -401,6 +405,7 @@ Example:
   lyx loom validate-discussion
   lyx loom validate-plan
   lyx loom validate-description
+  lyx loom lint-comments
   lyx loom approve
   lyx loom reject review.md
   lyx loom commit-records
@@ -430,7 +435,7 @@ Example:
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd())
+	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd(), c.lintCommentsCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd())
 
 	return parent
 }

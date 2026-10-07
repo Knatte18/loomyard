@@ -8,7 +8,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
@@ -26,7 +28,7 @@ func newScratch(t *testing.T) Paths {
 
 func mustVerify(t *testing.T, p Paths, command string) Result {
 	t.Helper()
-	res, err := Verify(context.Background(), p, Site{Label: "webster verify"}, command)
+	res, err := Verify(context.Background(), p, Site{Label: "webster verify"}, command, Timeout)
 	if err != nil {
 		t.Fatalf("Verify(%q): %v", command, err)
 	}
@@ -36,6 +38,91 @@ func mustVerify(t *testing.T, p Paths, command string) Result {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// TestVerify_PerCommandRecord covers the per-command record: a round command's pass leaves the plan-verify entry in place and skips on a repeat, a write drops another command's entry naming a different tree while keeping the base command's and replacing its own, LatestPass returns the pass's commit, and an old-format record reads as none.
+// The steps share one repo and run in order, so the test is parallel as a whole and no step is.
+func TestVerify_PerCommandRecord(t *testing.T) {
+	t.Parallel()
+
+	p := newScratch(t)
+	const plan, roundA, roundB = "true", ": round a", ": round b"
+	verifyWithBase := func(command string) Result {
+		t.Helper()
+		res, err := Verify(context.Background(), p, Site{Label: "Webster-Burler gate", BaseCommand: plan}, command, Timeout)
+		if err != nil {
+			t.Fatalf("Verify(%q): %v", command, err)
+		}
+		return res
+	}
+	head := func() string {
+		t.Helper()
+		commit, err := headCommit(p.Worktree)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return commit
+	}
+
+	if !t.Run("a round command's pass leaves the plan entry in place and a repeat skips", func(t *testing.T) {
+		mustVerify(t, p, plan)
+		if res := verifyWithBase(roundA); res.Status != StatusPassed {
+			t.Fatalf("first round Verify = %q; want %q", res.Status, StatusPassed)
+		}
+		if res := verifyWithBase(roundA); res.Status != StatusSkipped {
+			t.Errorf("second round Verify = %q; want %q", res.Status, StatusSkipped)
+		}
+		if res := mustVerify(t, p, plan); res.Status != StatusSkipped {
+			t.Errorf("plan Verify after the round pass = %q; want %q", res.Status, StatusSkipped)
+		}
+		pass, ok := LatestPass(p, plan)
+		if !ok || pass.Commit != head() || pass.Tree == "" || pass.VerifiedAt.IsZero() {
+			t.Errorf("LatestPass(plan) = (%+v, %v); want the pass at commit %s", pass, ok, head())
+		}
+	}) {
+		return
+	}
+
+	planCommit := head()
+	gitkit.CommitFile(t, p.Worktree, "b.txt", "b\n", "second")
+
+	if !t.Run("a write drops another command's stale entry and keeps the base command's", func(t *testing.T) {
+		if res := verifyWithBase(roundB); res.Status != StatusPassed {
+			t.Fatalf("Verify = %q; want %q", res.Status, StatusPassed)
+		}
+		if _, ok := LatestPass(p, roundA); ok {
+			t.Error("the entry of another command naming a different tree survived")
+		}
+		if pass, ok := LatestPass(p, plan); !ok || pass.Commit != planCommit {
+			t.Errorf("LatestPass(plan) = (%+v, %v); want the base entry at commit %s", pass, ok, planCommit)
+		}
+		if pass, ok := LatestPass(p, roundB); !ok || pass.Commit != head() {
+			t.Errorf("LatestPass(round b) = (%+v, %v); want commit %s", pass, ok, head())
+		}
+	}) {
+		return
+	}
+
+	gitkit.CommitFile(t, p.Worktree, "c.txt", "c\n", "third")
+
+	if !t.Run("a write replaces its own command's entry", func(t *testing.T) {
+		verifyWithBase(roundB)
+		if pass, ok := LatestPass(p, roundB); !ok || pass.Commit != head() {
+			t.Errorf("LatestPass(round b) = (%+v, %v); want commit %s", pass, ok, head())
+		}
+	}) {
+		return
+	}
+
+	t.Run("an old-format record reads as none", func(t *testing.T) {
+		old := "tree: abc\ncommand: " + plan + "\nverified_at: 2026-01-01T00:00:00Z\n"
+		if err := os.WriteFile(p.Record, []byte(old), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if pass, ok := LatestPass(p, plan); ok {
+			t.Errorf("LatestPass on an old-format record = (%+v, true); want none", pass)
+		}
+	})
 }
 
 // TestVerify_Scenario is a scenario over one scratch repo, run as named steps in one order, each reaching one rule of Verify: a dirty tree is refused, a record is written only after a pass and only when HEAD did not move during the run, the marker is present only while the command runs, a skip needs a record naming HEAD's tree and the same command, and DirtyPaths names special and renamed paths verbatim.
@@ -88,6 +175,27 @@ func TestVerify_Scenario(t *testing.T) {
 		return
 	}
 
+	if !t.Run("a command outliving the timeout fails as timed out with no record and no marker", func(t *testing.T) {
+		res, err := Verify(context.Background(), p, Site{Label: "webster verify"}, "sleep 30", 300*time.Millisecond)
+		if err != nil {
+			t.Fatalf("Verify with an expired timeout returned an error: %v", err)
+		}
+		if res.Status != StatusFailed || !res.TimedOut || res.ExitCode != -1 {
+			t.Fatalf("Verify = (%q, timedOut %v, %d); want (%q, true, -1)", res.Status, res.TimedOut, res.ExitCode, StatusFailed)
+		}
+		if !strings.Contains(res.Detail, "did not finish within 300ms") {
+			t.Errorf("Detail = %q; want it to name the timeout", res.Detail)
+		}
+		if fileExists(p.Record) {
+			t.Error("a record was written after a timeout")
+		}
+		if fileExists(p.Marker) {
+			t.Error("the marker survived a timeout")
+		}
+	}) {
+		return
+	}
+
 	if !t.Run("a commit during the run leaves no record", func(t *testing.T) {
 		command := "echo c > c.txt && git add c.txt && git commit -q -m mid-run"
 		if res := mustVerify(t, p, command); res.Status != StatusPassed {
@@ -103,7 +211,7 @@ func TestVerify_Scenario(t *testing.T) {
 	if !t.Run("a cancelled run leaves no record and no marker, and a pass then writes the record", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if _, err := Verify(ctx, p, Site{Label: "Publish"}, "true"); err == nil {
+		if _, err := Verify(ctx, p, Site{Label: "Publish"}, "true", Timeout); err == nil {
 			t.Fatal("Verify with a cancelled ctx returned no error")
 		}
 		if fileExists(p.Record) {
@@ -151,6 +259,9 @@ func TestVerify_Scenario(t *testing.T) {
 		}
 		if m.Site != "webster verify" {
 			t.Errorf("marker site = %q; want %q", m.Site, "webster verify")
+		}
+		if want := "cp " + p.Marker + " " + seen; m.Command != want {
+			t.Errorf("marker command = %q; want %q", m.Command, want)
 		}
 	}) {
 		return

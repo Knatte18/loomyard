@@ -100,6 +100,8 @@ func TestFinalizeVerify_Lands(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(tt.alreadyUpToDate)})
 			fx.gate.fake.result = tt.result
+			// A set publish_verify must not run here, so the single verify call below is the plan's.
+			fx.fz.deps.Config.PublishVerify = "go test -tags tmux ./..."
 			shedfake.RequireOutcome(t, fx.fz, shedengine.Done)
 			if len(fx.merger.calls) != 1 || len(fx.merger.pushCalls) != 1 {
 				t.Errorf("merge calls = %d, push calls = %d; want 1 each", len(fx.merger.calls), len(fx.merger.pushCalls))

@@ -74,6 +74,8 @@ var bannedTokens = []string{
 // file (or its containing directory) is on the allowedSpawners allowlist.
 // Platform-only constraints (e.g. `//go:build windows`) count as untagged: they still run in Tier 1
 // on that platform.
+//
+//lyx:guard
 func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 	spawners := scankit.NewAllowlist(allowedSpawners)
 	sleepers := scankit.NewAllowlist(allowedLongSleepers)

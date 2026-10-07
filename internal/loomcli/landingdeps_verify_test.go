@@ -41,7 +41,7 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	deps := landingDeps(loc, websterengine.Geometry{StencilsDir: "/stencils"}, "task/foo",
 		"https://example.com/origin.git", "main", true, func() error { return nil },
-		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "")
+		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil)
 
 	if _, err := deps.VerifyCommand(); err == nil {
 		t.Fatal("VerifyCommand before any plan exists: want an error, got nil")

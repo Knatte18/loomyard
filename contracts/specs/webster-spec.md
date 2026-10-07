@@ -12,6 +12,7 @@ Everything about *how* webster reaches those shapes — the fork mechanism, the 
 
 Webster consumes the pinned flat card-list plan-format via `internal/planparser`, the sole parser of `_lyx/plan/` — the format itself is pinned in `contracts/stencils/loom/loom-template-plan.md`, the Plan producer's own stencil, not a separate reference doc.
 webster groups a plan's cards into execution batches via a batcher configured through `batcher.yaml`.
+The grouping is computed once per run and recorded in `state.json`, and every verb reads the recorded partition, so a file the batches change never regroups the cards mid-run.
 
 ## `_lyx/webster/` as an ownership boundary
 
@@ -53,6 +54,7 @@ Merriam's strand carries the plan's `## verify:` command as one must-pass gate n
 Merriam's strand role is `webster`, so its agent name is `<shortname>:<slug>:webster`.
 A failing run is rerun once;
 a pass on the rerun passes the gate and records the failing identities as flaky.
+A run that exceeds the verify timeout is not rerun, since a hang is not flakiness: it fails the gate at once with the timeout, the log path and the log tail as findings.
 A failure that survives the rerun, or a tree that is not clean, is recorded in `verify-gate.yaml` in the reports directory and returned to Merriam as findings.
 Merriam answers each failure with one fixer fork, whose commits are `fix: <summary>` and are checked at the next attempt.
 `verify_gate_attempts` in `webster.yaml` bounds the attempts;

@@ -48,6 +48,8 @@ const boardGuardMinScannedFiles = 5
 // spawn git via hubforge.NewHub, not production code this guard's ban applies to) and fails if any
 // file imports internal/gitrepo or internal/gitexec directly, or shells out to `git` via
 // exec.Command/exec.CommandContext.
+//
+//lyx:guard
 func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
 	const dir = "internal/boardengine"
 

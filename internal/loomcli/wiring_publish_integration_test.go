@@ -73,6 +73,7 @@ func TestWire_Real_PublishRejectedPushNamesRemoteTip(t *testing.T) {
 		&shuttleengine.Runner{},
 		landingshed.Config{RequirePRToBase: []string{parentBranch}, Conflict: "claude:test-model", ConflictTimeoutMin: 1},
 		"",
+		nil,
 	)
 	// The pair has no run status file to commit and no plan to read a verify command from.
 	deps.CommitStatus = nil

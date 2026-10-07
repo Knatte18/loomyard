@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -27,6 +28,12 @@ type fakeVerifyTree struct {
 	result      verifytree.Result
 	verifyErr   error
 	onVerify    func()
+
+	// commands and sites record every verify call in order.
+	commands []string
+	sites    []verifytree.Site
+	// resultByCommand overrides result for a command it names.
+	resultByCommand map[string]verifytree.Result
 }
 
 // dirtyAt scripts the dirty paths the i-th (zero-based) clean-tree check reports.
@@ -55,8 +62,13 @@ func (f *fakeVerifyTree) verify(ctx context.Context, p verifytree.Paths, site ve
 	f.paths = p
 	f.site = site
 	f.command = command
+	f.commands = append(f.commands, command)
+	f.sites = append(f.sites, site)
 	if f.onVerify != nil {
 		f.onVerify()
+	}
+	if result, ok := f.resultByCommand[command]; ok {
+		return result, f.verifyErr
 	}
 	return f.result, f.verifyErr
 }
@@ -84,8 +96,80 @@ func newGateFixture(t *testing.T, command string, closureErr error) *gateFixture
 		paths:  f.paths,
 		dirty:  f.fake.dirty,
 		verify: f.fake.verify,
+		now:    func() time.Time { return gateMarkStart },
 	}
 	return f
+}
+
+// gateMarkStart is the fixed instant the fixture's gate stamps on its wait mark.
+var gateMarkStart = time.Date(2026, 10, 3, 9, 15, 0, 0, time.UTC)
+
+// waitMarkCall is one call the gate made to its wait-mark callback.
+type waitMarkCall struct {
+	label string
+	start time.Time
+}
+
+// TestVerifyGate_WaitMark pins the mark around every verify: clear, set `verify <producer>` at the start time, clear again on every way out of the verify,
+// and a failing callback or a nil one leaving the verdict exactly as it is without a mark.
+func TestVerifyGate_WaitMark(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		result     verifytree.Result
+		verifyErr  error
+		markErr    error
+		noCallback bool
+		wantReason string
+		wantErr    string
+	}{
+		{name: "pass", result: verifytree.Result{Status: verifytree.StatusPassed}},
+		{name: "skip", result: verifytree.Result{Status: verifytree.StatusSkipped}},
+		{name: "failure", result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}, wantReason: "verify failed"},
+		{name: "timeout", result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true}, wantReason: "did not finish"},
+		{name: "dirty", result: verifytree.Result{Status: verifytree.StatusDirty, Dirty: []string{"a.txt"}}, wantReason: "a.txt"},
+		{name: "error", verifyErr: errors.New("exec failed"), wantErr: "exec failed"},
+		{name: "cancel", verifyErr: context.Canceled, wantErr: "context canceled"},
+		{name: "failing callback changes no verdict", result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}, markErr: errors.New("reed gone"), wantReason: "verify failed"},
+		{name: "nil callback", result: verifytree.Result{Status: verifytree.StatusPassed}, noCallback: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newGateFixture(t, "true", nil)
+			f.fake.result = tc.result
+			f.fake.verifyErr = tc.verifyErr
+			var calls []waitMarkCall
+			if !tc.noCallback {
+				f.gate.waitMark = func(label string, start time.Time) error {
+					calls = append(calls, waitMarkCall{label, start})
+					return tc.markErr
+				}
+			}
+			reason, err := f.gate.check(context.Background(), "Publish", "main")
+
+			if !strings.Contains(reason, tc.wantReason) || (tc.wantReason == "" && reason != "") {
+				t.Errorf("reason = %q, want it to contain %q", reason, tc.wantReason)
+			}
+			if tc.wantErr == "" && err != nil || tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+				t.Errorf("err = %v, want one containing %q", err, tc.wantErr)
+			}
+			if tc.noCallback {
+				return
+			}
+			want := []waitMarkCall{{"", time.Time{}}, {"verify Publish", gateMarkStart}, {"", time.Time{}}}
+			if len(calls) != len(want) {
+				t.Fatalf("mark calls = %+v, want %+v", calls, want)
+			}
+			for i := range want {
+				if calls[i] != want[i] {
+					t.Errorf("mark call %d = %+v, want %+v", i, calls[i], want[i])
+				}
+			}
+		})
+	}
 }
 
 // TestVerifyGate_CheckMapsVerifyResult pins how each verifytree status turns into the gate's verdict, and that the verify seam receives the configured command, the gate's paths and the calling producer's site label.
@@ -117,6 +201,14 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 			name: "could not start", command: "true", site: "Publish",
 			result:        verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, Detail: "exec: sh not found"},
 			wantReasonHas: []string{"could not start", "exec: sh not found", `"main"`},
+		},
+		{
+			name: "timed out", command: "true", site: "Publish",
+			result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true, Detail: "the verify command did not finish within 1h0m0s and was killed"},
+			wantReasonExact: func(logPath string) string {
+				return `verify did not finish within 1h0m0s after merging parent branch "main"; output: ` + logPath +
+					`; fix the hanging test on the task branch, then resume`
+			},
 		},
 		{
 			name: "dirty result names the paths", command: "true", site: "Publish",

@@ -1,4 +1,4 @@
-// targetdirs.go holds CardTargetDirs, the one read-only mapping from a card's written targets to the worktree directories they live in.
+// targetdirs.go holds CardTargetDirs and RefFile, the read-only mappings from a card's refs to the worktree directories and files they name.
 // It lives here so every ref-shape and glyph-to-path decision stays inside this package, per the Planparser Sole-Parser and Glyph Conversion Chokepoint invariants.
 
 package planparser
@@ -67,9 +67,34 @@ func CardTargetDirs(plan *Plan, card Card) []TargetDir {
 	return dirs
 }
 
+// RefFile returns the worktree-relative file a card ref names, and false when the ref names no file.
+// A path ref with a file extension is itself, and a glyph or `plan:` handle whose unit is a file is that file.
+// A directory or package unit and an unmappable ref have no file.
+// A nil plan reads as the default language.
+func RefFile(plan *Plan, ref string) (string, bool) {
+	if plan == nil {
+		plan = &Plan{}
+	}
+	unit, _, ok := refUnit(plan, ref)
+	if !ok || !hasFileExtension(unit) {
+		return "", false
+	}
+	return path.Clean(unit), true
+}
+
 // targetDir maps one target ref to its directory and whether the ref names Go source.
 // ok is false for a ref that cannot be mapped to a directory.
 func targetDir(plan *Plan, raw string) (dir string, namesGo, ok bool) {
+	unit, fromGlyph, ok := refUnit(plan, raw)
+	if !ok {
+		return "", false, false
+	}
+	return unitDir(unit, fromGlyph)
+}
+
+// refUnit maps one ref to the unit or path spelling it names, and whether that spelling came from a glyph.
+// ok is false for a ref that names no unit.
+func refUnit(plan *Plan, raw string) (unit string, fromGlyph, ok bool) {
 	body := raw
 	isHandle := false
 	if b, handle := HandleBody(raw); handle {
@@ -83,13 +108,13 @@ func targetDir(plan *Plan, raw string) (dir string, namesGo, ok bool) {
 			if !unitOK {
 				return "", false, false
 			}
-			return unitDir(unit, true)
+			return unit, true, true
 		}
 	}
 	if isHandle {
 		return "", false, false
 	}
-	return unitDir(body, false)
+	return body, false, true
 }
 
 // unitDir maps a unit or path spelling to its directory.

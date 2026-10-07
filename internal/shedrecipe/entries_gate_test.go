@@ -55,6 +55,21 @@ func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 	}
 }
 
+func TestResolveGateSpec_PlanGatesRequirePlanIndex(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"plan", "rework-plan"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			env := reworkTestEnv(t)
+			env.PlanIndex = nil
+			_, err := resolveGateSpec("Row", gatesCfg(name, 1), env)
+			assertErrContains(t, err, "PlanIndex")
+		})
+	}
+}
+
 func TestResolveGateSpec_ListOrderAndPassOnCap(t *testing.T) {
 	cfg := Config{"gates": []any{
 		map[string]any{"name": "plan", "attempts": 2},

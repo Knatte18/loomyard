@@ -12,9 +12,21 @@
 // a verify that dirties the tree is a non-hermetic test and halts rather than ships.
 //
 // After the merge-in, the told verify command runs through internal/verifytree before the push, unless its verified-tree record already names the tree and the command.
+// A verify that does not finish within the verify timeout is killed and halts the run Stuck with the log path.
+// While the verify runs, the told Deps.VerifyWaitMark callback marks the run's driver strand on screen as `verify <producer>`, and clears the mark on every way out of the verify.
+// The mark is display only: a failing or absent callback changes no Stuck reason, error or verify outcome.
 // The record is keyed on the tree, so the verify runs after a resolved conflict, after new parent commits and after a crash between a merge and its verify, and a no-op merge onto a verified tree skips it.
 // A failure is Stuck with the merge commit kept for the operator to fix forward,
 // and a missing command logs a warning and proceeds.
+//
+// When landing.yaml's `publish_verify` is non-empty, Publish then runs that shell command in the task worktree through the same function, at site `Publish`, before the clean-tree check after the verify.
+// It carries a repo's extra test tier, which the plan's `## verify:` leaves out so every round and every gate does not pay for it.
+// The plan's verify command is the site's base command, so the pass keeps the plan-verify entry of the record.
+// A failure is Stuck with the exit code and the log path, naming `publish_verify`, and a dirty tree is Stuck as for the plan's verify.
+// An empty or absent value runs nothing and logs nothing, and Finalize never runs it.
+// The key is the same trust class as the plan's `## verify:`: it runs any shell command in the task worktree.
+// It runs only where Publish does, so a landing into a parent outside require_pr_to_base runs no such tier and only Finalize's plan verify gates it.
+// A task's own edit of the key is unseen until Finalize's config-change notice, after the landing, so only the full plan verify bounds that landing.
 //
 // The push that follows is never retried when the remote rejects it, because the remote task branch moved and a repeat would be rejected again.
 // Publish reads the remote task branch's tip and the commits on it that the local branch lacks through Deps.RemoteOnlyCommits, and stops Stuck with a reason stating that the merge-in already ran, the tip, the commit count, and the way forward:

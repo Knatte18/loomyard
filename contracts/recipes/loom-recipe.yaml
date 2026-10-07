@@ -293,9 +293,12 @@ producers:
       # The same run_subdir value as Webster-Bouncer is what makes both rows write into one shared
       # run directory.
       run_subdir: webster
-      # The verify gate runs the plan's verify command on the committed tree after each round and
-      # re-prompts the round session with the findings until it passes. A tree the record already
-      # names passes without running, so a round that changed no code costs nothing.
+      # The verify gate runs on the committed tree after each round and re-prompts the round
+      # session with the findings until it passes. It first lints the comments the round added,
+      # then runs the impacted-set command derived from the diff since the plan verify's last
+      # pass, or the plan's verify command wherever that diff cannot be narrowed. A tree the
+      # record already names passes without running, so a round that changed no code costs
+      # nothing.
       gates:
         - name: verify
           attempts: 3

@@ -71,6 +71,7 @@ var gitrepoPinnedRunBoundMethods = []string{
 	"pushWithRebaseRetry",
 	"PushRebaseFree",
 	"HasUnpushed",
+	"HasUnpulled",
 	"DeleteRemoteBranch",
 	"DeleteRemoteBranchLeased",
 	"UpdateRemoteBranchLeased",
@@ -102,6 +103,8 @@ const gitrepoBoundaryMinScannedFiles = 5
 // gitexec.Run call written directly inside a migrated method would satisfy an r.run(/r.runChecked(-
 // keyed check while still violating the CLI/go-git boundary, since gitexec's entry points are the
 // CLI layer's own, one level below run and runChecked.
+//
+//lyx:guard
 func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 	const dir = "internal/gitrepo"
 

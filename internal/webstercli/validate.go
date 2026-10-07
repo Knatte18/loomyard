@@ -12,6 +12,9 @@
 // runlevel.go);
 // validate surfaces that same emptiness through the findings set rather than a distinct check,
 // since a zero-card plan already fails planparser's index-file-consistency checks.
+// With --batches the ok envelope also carries "profile" and "batches":
+// the fresh partition the active batchifier forms for the plan, each batch as its card numbers and estimated peak context.
+// It is computed without state, so it shows what a fresh run would form even while a run holds its recorded partition.
 package webstercli
 
 import (
@@ -20,6 +23,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planglyph"
@@ -91,10 +95,16 @@ func findingsEnvelope(out io.Writer, msg string, findings []planglyph.Finding, s
 // Approval is deliberately not re-checked on that branch, and nothing is lost by it:
 // a run cannot have begun a batch without having passed Run's own entry-time approval refusal first.
 //
+// With no state it computes the fresh partition first and refuses its batch-order error, as the first init would.
 // A nil batcher with a state on disk is a wiring bug rather than a state, and it is reported as one:
 // reading it as "no begun cards" would silently hand back the whole-plan answer this function exists to avoid.
 func (c *websterCLI) scopedValidate(plan *planparser.Plan, st *websterengine.State) ([]planglyph.Finding, string, error) {
 	if st == nil {
+		if c.batcher != nil {
+			if _, err := c.executionBatches(plan, nil); err != nil {
+				return nil, "", err
+			}
+		}
 		findings, err := planglyph.Validate(plan, c.geom.WorktreeRoot)
 		return findings, scopeWholePlan, err
 	}
@@ -102,9 +112,10 @@ func (c *websterCLI) scopedValidate(plan *planparser.Plan, st *websterengine.Sta
 		return nil, "", websterengine.ErrNilBatcher
 	}
 
-	// Every batch-computation site sequences, so all of them agree on one order by construction
-	// rather than by comment.
-	batches, _ := websterengine.SequenceBatches(c.batcher.Batch(plan.Cards))
+	batches, err := c.executionBatches(plan, st)
+	if err != nil {
+		return nil, "", err
+	}
 	begun, forthcoming := websterengine.DispatchScope(batches, st)
 	if len(begun) == 0 {
 		findings, err := planglyph.Validate(plan, c.geom.WorktreeRoot)
@@ -114,8 +125,23 @@ func (c *websterCLI) scopedValidate(plan *planparser.Plan, st *websterengine.Sta
 	return findings, scopePending, err
 }
 
+// batchEntries renders batches as the structured array validate's --batches places under "batches":
+// each entry carries the batch's card numbers and its estimated peak context.
+func batchEntries(batches []batcher.Batch) []map[string]any {
+	entries := make([]map[string]any, len(batches))
+	for i, b := range batches {
+		cards := make([]int, len(b.Cards))
+		for j, card := range b.Cards {
+			cards[j] = card.Number
+		}
+		entries[i] = map[string]any{"cards": cards, "estimate": b.Estimate}
+	}
+	return entries
+}
+
 // validateCmd builds the `validate` subcommand.
 func (c *websterCLI) validateCmd() *cobra.Command {
+	var showBatches bool
 	cmd := &cobra.Command{
 		Use:   "validate",
 		Short: "lint the plan against the plan-format machine checks without running anything",
@@ -154,8 +180,15 @@ and every envelope reports the answer it gave under a "scope" key:
               is not re-checked, being already an established fact of that
               run.
 
-Example:
-  lyx webster validate`,
+With --batches, a passing plan's envelope also carries "profile", the active
+batchifier's name, and "batches", the partition that batchifier forms for the
+plan: one {"cards": [card numbers], "estimate": peak context} per batch, in
+run order. The partition is formed fresh, as a new run would form it, even
+while a run holds its own recorded partition; nothing is started or changed.
+
+Examples:
+  lyx webster validate
+  lyx webster validate --batches`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
@@ -258,10 +291,24 @@ Example:
 			if len(findings) > 0 {
 				fields["findings"] = findingsEntries(findings)
 			}
+			if showBatches {
+				if c.batcher == nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, websterengine.ErrNilBatcher.Error()))
+					return nil
+				}
+				batches, err := c.executionBatches(plan, nil)
+				if err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, "webster: forming the batch partition failed: "+err.Error()))
+					return nil
+				}
+				fields["profile"] = c.batcher.Name()
+				fields["batches"] = batchEntries(batches)
+			}
 			clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 			return nil
 		},
 	}
 
+	cmd.Flags().BoolVar(&showBatches, "batches", false, "also print the active batchifier's profile and the partition it forms for the plan")
 	return cmd
 }

@@ -64,8 +64,8 @@ type Clock interface {
 
 // RecoverDeps carries seams RecoverBatch needs: Starter, Plan, Batches, State, Roles, Config,
 // Engine, Reed, ShuttleCfg, and Geom, the told Geometry every path is read from.
-// Batches is the sequenced execution order (SequenceBatches); predecessorDigestLine's lookup
-// depends on Batches already being in that order.
+// Batches is the execution order, the batchifier's own order (ExecutionBatches);
+// predecessorDigestLine's lookup depends on Batches already being in that order.
 type RecoverDeps struct {
 	Starter    Starter
 	Plan       *planparser.Plan
@@ -331,14 +331,18 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 			for _, p := range contracts.Uncleared {
 				what = append(what, fmt.Sprintf("%s (%s)", p, noteForkWroteLast))
 			}
-			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; %s", batchNumber, strings.Join(what, ", "), resetToStartSteps(stepRunFresh))}
+			wayForward := resetToStartSteps(stepRunFresh)
+			if len(contracts.Uncleared) == 0 && allPathlessFabricReference(contracts.Rest) {
+				wayForward = fmt.Sprintf("way forward: when HEAD is the batch's start commit (git reset --keep to it if the batch committed) and the worktree is clean, \"lyx webster accept-audit --batch %d\" then \"lyx webster recover-batch %d\"; otherwise %s", batchNumber, batchNumber, strings.TrimPrefix(resetToStartSteps(stepRunFresh), "way forward: "))
+			}
+			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; %s", batchNumber, strings.Join(what, ", "), wayForward)}
 		}
 		if len(contracts.Uncleared) > 0 {
 			return nil, false, fmt.Errorf("webster: batch %02d failed on contract file(s) a fork wrote last: %s", batchNumber, contractDeleteClause(contracts.Uncleared, fmt.Sprintf("lyx webster recover-batch %d", batchNumber)))
 		}
 	}
 
-	referenced, err := laterDeleteReferenceReasons(deps.Plan, deps.Batches, deps.State, batch.Cards, deps.Geom.WorktreeRoot)
+	referenced, err := laterDeleteReferenceReasons(deps.Plan, deps.Batches, deps.State, batch.Cards, deps.Geom)
 	if err != nil {
 		return nil, false, fmt.Errorf("%w; way forward: transient, re-run `lyx webster recover-batch %d`", err, batchNumber)
 	}

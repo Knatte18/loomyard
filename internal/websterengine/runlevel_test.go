@@ -194,6 +194,8 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 func newRunFixtureOver(t *testing.T, numCards int, worktree string, git websterengine.Git) *runFixture {
 	t.Helper()
 
+	_, index := indexOver(git)
+
 	planDir := seedRunPlanDir(t, numCards)
 
 	// Run never registers a strand itself, so a stray AddStrand fails loud.
@@ -215,10 +217,7 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 	// WorktreeRoot is a bare scratch git repo with no _lyx/ tree, and the
 	// point of the runlevel-call-site decision is that Run needs no config
 	// tree.
-	activeBatcher, err := batcher.Select("")
-	if err != nil {
-		t.Fatalf("batcher.Select(\"\") error = %v", err)
-	}
+	activeBatcher := batcher.Identity()
 
 	deps := websterengine.RunDeps{
 		Starter:    starter,
@@ -243,6 +242,7 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 			StencilsDir:  fabricengine.StencilsDir(hubPath),
 			PlanDir:      planDir,
 			Git:          git,
+			Index:        index,
 		},
 		RefMatcher: websterengine.NeverMatches{},
 	}
@@ -411,7 +411,9 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 		wayForward     []string
 		// reachesStarter marks a refusal raised by the Starter itself.
 		reachesStarter bool
-		check          func(t *testing.T, fx *runFixture, err error)
+		// fresh runs with --fresh.
+		fresh bool
+		check func(t *testing.T, fx *runFixture, err error)
 	}{
 		{
 			name:  "another run holds run.lock",
@@ -452,6 +454,52 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return func() { fx.Deps.Batcher = realBatcher }
 			},
 			wayForward: []string{"fix the plan's cards", "lyx webster rebaseline --card", "lyx webster run"},
+		},
+		{
+			name:  "the batchifier fails",
+			cards: 1,
+			setup: func(t *testing.T, fx *runFixture) func() {
+				fx.Deps.Batcher = failingBatcher{}
+				return nil
+			},
+			msgContains: []string{"batch the cards of plan", "batchifier failed"},
+			wayForward:  []string{"transient", "re-run the verb"},
+			check:       requireNoRecordedState,
+		},
+		{
+			name:  "a first init whose batches run a dependency backward",
+			cards: 2,
+			setup: func(t *testing.T, fx *runFixture) func() {
+				addCardUses(t, fx.PlanDir, 1, "internal/batch2/new.go")
+				return nil
+			},
+			errIs:      websterengine.ErrBatchOrder,
+			wayForward: []string{"lyx webster rebaseline --card NN", "lyx webster run --fresh"},
+			check:      requireNoRecordedState,
+		},
+		{
+			name:  "a --fresh re-init whose batches run a dependency backward archives nothing",
+			cards: 2,
+			fresh: true,
+			setup: func(t *testing.T, fx *runFixture) func() {
+				st := &websterengine.State{PlanFingerprint: "stale-fingerprint", Batches: map[int]*websterengine.BatchState{}}
+				if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
+					t.Fatalf("seed stale state: %v", err)
+				}
+				addCardUses(t, fx.PlanDir, 1, "internal/batch2/new.go")
+				return nil
+			},
+			errIs:      websterengine.ErrBatchOrder,
+			wayForward: []string{"lyx webster rebaseline --card NN", "lyx webster run --fresh"},
+			check: func(t *testing.T, fx *runFixture, err error) {
+				st := loadRunState(t, fx)
+				if st.PlanFingerprint != "stale-fingerprint" {
+					t.Errorf("state PlanFingerprint = %q; want the stale state left in place by the refused --fresh", st.PlanFingerprint)
+				}
+				if archived, globErr := filepath.Glob(filepath.Join(fx.Deps.Geom.WebsterDir, "state-*.json")); globErr != nil || len(archived) != 0 {
+					t.Errorf("archived state glob = %v, %v; want none before the order refusal", archived, globErr)
+				}
+			},
 		},
 		{
 			name:  "a blocking glyph finding",
@@ -621,7 +669,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				takeWayForward = tc.setup(t, fx)
 			}
 
-			_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+			_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: tc.fresh})
 			if err == nil {
 				t.Fatal("Run() error = nil; want a refusal")
 			}
@@ -820,6 +868,9 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 					if strings.Contains(string(liveData), `"stale"`) {
 						t.Errorf("live state.json still carries the stale fingerprint; want it reinitialized fresh")
 					}
+					if got := loadRunState(t, fx).Partition; len(got) != 1 || !slices.Equal(got[0].Cards, []string{"01-batch1"}) || got[0].Profile != "identity" {
+						t.Errorf("reinitialized State.Partition = %+v; want the active batchifier's partition recorded by the --fresh init", got)
+					}
 
 					if _, statErr := os.Stat(reportPath); !os.IsNotExist(statErr) {
 						t.Errorf("stale report still present at its original path; want the reports dir archived away wholesale")
@@ -990,6 +1041,26 @@ func TestRun_MasterSpawn(t *testing.T) {
 				}
 				if st.MasterSessionID != spawnSession {
 					t.Errorf("State.MasterSessionID = %q; want %q", st.MasterSessionID, spawnSession)
+				}
+			},
+		},
+		{
+			// The partition is formed once by the active batchifier and recorded before the spawn.
+			name:  "a first init under a grouping batcher records the partition with each batch's profile and estimate",
+			cards: 2,
+			prepare: func(t *testing.T, fx *runFixture) {
+				fx.Deps.Batcher = sizeBatcher{}
+			},
+			check: func(t *testing.T, fx *runFixture) {
+				got := loadRunState(t, fx).Partition
+				if len(got) != 1 {
+					t.Fatalf("State.Partition = %+v; want one batch holding both cards", got)
+				}
+				if want := []string{"01-batch1", "02-batch2"}; !slices.Equal(got[0].Cards, want) {
+					t.Errorf("State.Partition[0].Cards = %v; want %v", got[0].Cards, want)
+				}
+				if got[0].Profile != "size" || got[0].Estimate != 7 {
+					t.Errorf("State.Partition[0] profile and estimate = %q, %v; want %q, 7", got[0].Profile, got[0].Estimate, "size")
 				}
 			},
 		},
@@ -1407,25 +1478,6 @@ func TestRun_DoneOutcome(t *testing.T) {
 				}
 			},
 		},
-		{
-			name:    "an acyclic plan reports no cycles and no sequencing warning",
-			cards:   2,
-			session: "master-session-acyclic",
-			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
-				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
-				2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done"},
-			}},
-			audit:       func(*runFixture) shuttleengine.ForkAudit { return shuttleengine.ForkAudit{Forks: forkReports(2)} },
-			batchesDone: 2,
-			check: func(t *testing.T, fx *runFixture, result websterengine.RunResult) {
-				if len(result.Cycles) != 0 {
-					t.Errorf("RunResult.Cycles = %v; want empty for an acyclic plan", result.Cycles)
-				}
-				if warningsContain(result.Warnings, "dependency cycle") {
-					t.Errorf("RunResult.Warnings = %v; want no sequencing-cycle warning for an acyclic plan", result.Warnings)
-				}
-			},
-		},
 	}
 
 	for _, tc := range cases {
@@ -1810,7 +1862,7 @@ func requireReachedMaster(t *testing.T, fx *runFixture, err error) {
 	}
 }
 
-// rebaselineOnDisk is what the rebaseline verb does: parse the edited plan, re-derive its batches, restamp the recorded fingerprint and save.
+// rebaselineOnDisk is what the rebaseline verb does: parse the edited plan, re-batch its cards, restamp the recorded fingerprint and save.
 func rebaselineOnDisk(t *testing.T, fx *runFixture, cards ...int) {
 	t.Helper()
 	plan, err := planparser.ParsePlan(fx.PlanDir)
@@ -1818,8 +1870,7 @@ func rebaselineOnDisk(t *testing.T, fx *runFixture, cards ...int) {
 		t.Fatalf("ParsePlan() error = %v", err)
 	}
 	st := loadRunState(t, fx)
-	batches, _ := websterengine.SequenceBatches(fx.Deps.Batcher.Batch(plan.Cards))
-	if _, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Batches: batches, State: st, Cards: cards, Geom: fx.Deps.Geom}); err != nil {
+	if _, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Active: fx.Deps.Batcher, Sizes: batcher.DiskSizes(fx.Deps.Geom.WorktreeRoot), State: st, Cards: cards, Geom: fx.Deps.Geom}); err != nil {
 		t.Fatalf("Rebaseline() error = %v", err)
 	}
 	if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
@@ -1830,8 +1881,27 @@ func rebaselineOnDisk(t *testing.T, fx *runFixture, cards ...int) {
 // emptyBatcher is a batchifier that derives no execution batches from any plan.
 type emptyBatcher struct{}
 
-func (emptyBatcher) Batch([]planparser.Card) []batcher.Batch { return nil }
-func (emptyBatcher) Name() string                            { return "empty" }
+func (emptyBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource) ([]batcher.Batch, error) {
+	return nil, nil
+}
+func (emptyBatcher) Name() string { return "empty" }
+
+// failingBatcher is a batchifier whose Batch always fails.
+type failingBatcher struct{}
+
+func (failingBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource) ([]batcher.Batch, error) {
+	return nil, errors.New("batchifier failed")
+}
+func (failingBatcher) Name() string { return "failing" }
+
+// requireNoRecordedState asserts a refused first init saved no state.json.
+func requireNoRecordedState(t *testing.T, fx *runFixture, _ error) {
+	t.Helper()
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil || st != nil {
+		t.Errorf("LoadState() = %+v, %v; want no recorded state after the refusal", st, err)
+	}
+}
 
 // TestRun_RunExitRefusals reaches each run-exit refusal over a done Master, asserts its message and way forward, then takes the way forward (the state a re-driven batch leaves, a finished summary, an audit that completed) and proves the re-run ends done; a resume whose prior session's batches fall outside the audit passes outright.
 func TestRun_RunExitRefusals(t *testing.T) {

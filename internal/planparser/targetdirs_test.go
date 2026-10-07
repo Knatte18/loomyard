@@ -108,3 +108,31 @@ func TestCardTargetDirs(t *testing.T) {
 		})
 	}
 }
+
+func TestRefFile(t *testing.T) {
+	t.Parallel()
+
+	plan := &planparser.Plan{Language: "go"}
+	tests := []struct {
+		name     string
+		ref      string
+		want     string
+		wantFile bool
+	}{
+		{name: "go path is itself", ref: "internal/a/a.go", want: "internal/a/a.go", wantFile: true},
+		{name: "file-unit glyph maps to its file", ref: "internal/a/a.go#Run", want: "internal/a/a.go", wantFile: true},
+		{name: "package-unit glyph has no file", ref: "internal/a#Run"},
+		{name: "handle maps through its glyph", ref: "plan:internal/a/a.go#Run", want: "internal/a/a.go", wantFile: true},
+		{name: "directory path has no file", ref: "internal/a"},
+		{name: "empty ref has no file", ref: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := planparser.RefFile(plan, tt.ref)
+			if got != tt.want || ok != tt.wantFile {
+				t.Errorf("RefFile(%q) = %q, %v; want %q, %v", tt.ref, got, ok, tt.want, tt.wantFile)
+			}
+		})
+	}
+}

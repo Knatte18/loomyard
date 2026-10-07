@@ -123,7 +123,8 @@ var wordingClaims = []stencilClaims{
 		{must: "writer/reviewer symmetry note", why: "the rubric names the writer/reviewer symmetry"},
 		{must: "does not run is a finding against the plan", why: "verify must cover every targeted package"},
 		{must: "`llm` tag that the section compiles rather than runs", why: "the rubric does not flag a section that compiles the llm tag"},
-		{must: "`tmux` tag is token-free, so a section that runs it", why: "the rubric does not flag a section that runs the tmux tag"},
+		{must: "compiles the `tmux` tier (for example `go vet -tags tmux <packages>`) rather than running it is not a finding", why: "the rubric does not flag a section that compiles the tmux tier, which Publish runs"},
+		{must: "A section out of the order the plan template states is a finding", why: "the rubric flags a verify section out of the stated order"},
 		{must: "`delete-target-gone` fires only at Webster's dispatch", why: "anything this round's own gate already checks is not flagged, and the one check the gate never runs is named"},
 		{must: "Dependency edges are derived, never authored", why: "dependency edges are derived, never authored"},
 		{must: "no graded blast radius to summarise", why: "Rename carries no ImpactSummary because there is no graded blast radius"},
@@ -179,7 +180,8 @@ var wordingClaims = []stencilClaims{
 			{must: "hermetic build-tagged tests", why: "the verify section includes hermetic build-tagged tests"},
 			{must: "compiled rather than run", why: "live-substrate tags are compiled rather than run"},
 			{must: "`llm` tag, which gates tests that spawn a real LLM, is compiled rather than run", why: "the plan template names the llm tag as compiled, never run"},
-			{must: "`tmux` tag is a token-free tier that a plan's `## verify:` may run", why: "the plan template names the tmux tag as runnable by a plan verify"},
+			{must: "`tmux` tier is compiled by `go vet -tags tmux` and never run by the plan", why: "the plan template names the tmux tier as compiled by the plan, and run at Publish"},
+			{must: "`go build ./...`, `go vet` under each of `-tags integration`, `-tags tmux` and `-tags llm`, the untagged tier (`go test`), then the `integration` tier (`go test -tags integration`)", why: "the plan template states the verify section's order: build, vet, untagged, integration"},
 			{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"},
 		},
 		attackSurfaceClaims,
@@ -438,8 +440,13 @@ var wordingClaims = []stencilClaims{
 			{must: "`lyx loom reject <review-file>`", why: "a reject names its review file"},
 			{must: "marks the board task done, pushes main and closes the PR", why: "Finalize marks the task done, pushes and closes the PR"},
 			{must: "the driver's drive reports from the prime's own copies", why: "after landing the notes and reports are read from the prime"},
-			{must: "run `lyx loom start` in the task worktree to resume the run", why: "a circling decision resumes nothing by itself"},
-			{must: "A goto leaves the run paused, so run `lyx loom start`", why: "a goto leaves the run paused"},
+			{must: "run `lyx loom resume` in the task worktree to resume the run", why: "a circling decision resumes nothing by itself"},
+			{must: "A goto leaves the run paused,\n  so run `lyx loom resume`", why: "a goto leaves the run paused"},
+			{must: "resume it with `lyx loom resume` in the task worktree", why: "a halted child is resumed by waking its parked driver"},
+			{must: "its message names the way forward (`lyx batten run <slug>` to bring a dead driver back, or `lyx loom start`)", why: "a refused resume names its own way forward"},
+			{mustNot: "resume it with `lyx loom start`", why: "resume wakes the parked driver; start is only a refusal's way forward"},
+			{mustNot: "run `lyx loom start` in the task worktree to resume", why: "the circling and goto resumes go through resume"},
+			{mustNot: "message by name, telling it to resume", why: "the verb wakes a parked driver itself"},
 			{must: "resume it with `lyx batten run <slug>`", why: "a batten pause or goto is resumed by batten run"},
 			{must: "`lyx loom decision add`", why: "a design call is recorded with decision add"},
 			{mustNot: "`lyx fabric add", why: "batten run creates the pair"},
@@ -533,6 +540,7 @@ func branchOf(text, start string) (string, bool) {
 	return start + branch, true
 }
 
+//lyx:guard
 func TestStencilClaims(t *testing.T) {
 	for _, row := range wordingClaims {
 		t.Run(row.file, func(t *testing.T) {

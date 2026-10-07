@@ -399,6 +399,8 @@ var docsLinkAllowlist = []scankit.Entry{}
 // TestEnforcement_MarkdownLinks is the permanent guard behind the Markdown Link Integrity invariant:
 // every inline markdown link in a .md file under docs/ must resolve, both its file part
 // and its #anchor.
+//
+//lyx:guard
 func TestEnforcement_MarkdownLinks(t *testing.T) {
 	t.Run("repo", func(t *testing.T) {
 		breaks, stale, scanned := docsLinkScan(t, scankit.Root(t), []string{"docs"}, docsLinkAllowlist)

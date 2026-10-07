@@ -32,8 +32,9 @@
 // The scan does not see a hook, alias or helper that a test installs so that git runs module code.
 // Reading each candidate before deleting it is the backstop.
 // A test the prune keeps carries `//testtiming:keep <reason>` on the line directly above its `func Test…` line.
+// A test that also carries `//lyx:guard` stacks the two as contiguous directive lines above the `func Test…` line, in either order; the keep may sit above `//lyx:` lines but never above another keep.
 // The report lists it under "Kept" with the reason and leaves it out of the candidates table, while it stays in the covering pool and the removable computation.
-// A directive with an empty reason, or not directly above a top-level test, aborts the run before anything is measured or written.
+// A directive with an empty reason, or not directly above a top-level test (past any `//lyx:` lines), aborts the run before anything is measured or written.
 // It exits 1 after writing the report if any package reported an error.
 package main
 

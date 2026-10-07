@@ -59,6 +59,8 @@ func isSpawnSpecType(expr ast.Expr) bool {
 }
 
 // TestSpawnRole_NoInlineRoleLiteral fails when a production spawn spec names its role with a string literal.
+//
+//lyx:guard
 func TestSpawnRole_NoInlineRoleLiteral(t *testing.T) {
 	scanned := scankit.Walk(t, scankit.Options{}, func(f *scankit.File) {
 		for _, finding := range roleLiteralFindings(f.FileSet(), f.AST(t, 0), f.Rel) {

@@ -42,6 +42,8 @@ type AddSpec struct {
 	// validateIfAbsent), and either no-ops on a matched strand, relaunches a matched-but-dead one,
 	// or falls through to an ordinary add when nothing matches.
 	IfAbsent bool
+	// DoneWhen is copied verbatim onto the new strand's DoneWhen.
+	DoneWhen []string
 }
 
 // Removed reports every strand RemoveStrand deleted: the target plus its whole cascaded descendant
@@ -280,12 +282,10 @@ func classifyIfAbsent(strands []Strand, name string, aliveIDs map[string]bool) (
 	return ifAbsentRelaunch, candidates[0]
 }
 
-// liveStrandNamed returns the index of the first strand named name that is visible and alive, or -1.
-// Alive is s.PaneID != "" && aliveIDs[s.PaneID], with aliveIDs the set aliveIDSet builds, never liveIDSet, for the reason classifyIfAbsent records:
-// a dead-but-present pane must not count.
-func liveStrandNamed(strands []Strand, name string, aliveIDs map[string]bool) int {
+// strandNamed returns the index of the first strand named name, live, dormant or hidden, or -1.
+func strandNamed(strands []Strand, name string) int {
 	for i, s := range strands {
-		if s.Name == name && s.Display.Anchor != render.AnchorHidden && s.PaneID != "" && aliveIDs[s.PaneID] {
+		if s.Name == name {
 			return i
 		}
 	}
@@ -339,6 +339,7 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 		ResumeCmd: spec.ResumeCmd,
 		SessionID: spec.SessionID,
 		Display:   spec.Display,
+		DoneWhen:  spec.DoneWhen,
 	})
 	strand := &st.Strands[len(st.Strands)-1]
 
@@ -459,10 +460,10 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 	return strand, err
 }
 
-// AddStrandUnless is AddStrand that is skipped while a strand named unlessName is live in this worktree.
+// AddStrandUnless is AddStrand that is skipped while a strand named unlessName exists in this worktree's state, live, dormant or hidden.
 // A non-empty unlessName resolves to a full name by the rule an explicit name follows, before the session pre-flight, so an unformable name refuses without booting a server.
 // On a match it returns that strand and true, having saved no state, reconciled nothing, launched nothing and moved no focus.
-// A cold worktree the pre-flight just booted has no live pane, so the add proceeds and returns false.
+// A worktree whose state holds no such strand, a cold one included, gets the add and false.
 // An empty unlessName makes it exactly AddStrand.
 func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool, error) {
 	var result Strand
@@ -502,11 +503,7 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 		}
 
 		if unlessFull != "" {
-			live, err := e.tmux.listPanes(e.SessionName())
-			if err != nil {
-				return fmt.Errorf("list panes: %w", err)
-			}
-			if idx := liveStrandNamed(st.Strands, unlessFull, aliveIDSet(live)); idx != -1 {
+			if idx := strandNamed(st.Strands, unlessFull); idx != -1 {
 				result = st.Strands[idx]
 				skipped = true
 				return nil

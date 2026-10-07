@@ -5,9 +5,7 @@
 package websterengine
 
 import (
-	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/verifytree"
-	"github.com/Knatte18/quarry/quarry"
 )
 
 // Git is every question webster's bracket verbs and run-level checks put to a worktree's git repository.
@@ -42,8 +40,6 @@ type Git interface {
 	CommitBlob(worktree, commit, path string) (string, error)
 	// TreePathsWithBlob returns, sorted, every path in commit's tree whose object id is blob.
 	TreePathsWithBlob(worktree, commit, blob string) ([]string, error)
-	// Delta returns what the commits after fromSHA up to toSHA created, modified, renamed and deleted.
-	Delta(worktree, fromSHA, toSHA string) (quarry.GitDeltaAnswer, error)
 }
 
 // realGit is Git over the repository on disk, each method delegating to the helper in gitwrap.go that owns the git call.
@@ -91,10 +87,6 @@ func (realGit) CommitBlob(worktree, commit, path string) (string, error) {
 
 func (realGit) TreePathsWithBlob(worktree, commit, blob string) ([]string, error) {
 	return treePathsWithBlob(worktree, commit, blob)
-}
-
-func (realGit) Delta(worktree, fromSHA, toSHA string) (quarry.GitDeltaAnswer, error) {
-	return planglyph.Delta(worktree, fromSHA, toSHA)
 }
 
 // git returns the Git the geometry was told, or the real one when none was.

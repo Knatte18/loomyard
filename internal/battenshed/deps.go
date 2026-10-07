@@ -144,7 +144,39 @@ type InnerRunDeps struct {
 	// AttachDir returns the task worktree directory the notice's attach command changes into.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	AttachDir func() (string, error)
+	// DriverStrand reports the child's driver strand in its reed state.
+	// Call invokes it when a running child's spawn was not confirmed by this process, to tell a child that still has a driver from one that needs its bootstrap run again.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil DriverStrand resolves to a function reporting ChildDriverNone in NewInnerRun, the same way a nil Sleep resolves.
+	DriverStrand func(ctx context.Context) (ChildDriverStrand, error)
+	// ChildRunLockHeld reports whether the child's run lock is held.
+	// Call invokes it beside DriverStrand,
+	// and a held lock means a driver is working even when no strand says so.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil ChildRunLockHeld resolves to a function reporting false in NewInnerRun.
+	ChildRunLockHeld func() (bool, error)
+	// ReviveStrands brings back the strands of the child's pair through reed resume, which relaunches the dead driver strand with its own session.
+	// Call invokes it at most once per halt episode per process, for a halted or awaiting child whose DriverStrand reports dead;
+	// it starts no run step and sends no resume line.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil ReviveStrands resolves to a function returning an error that says no revive is wired, in NewInnerRun.
+	ReviveStrands func(ctx context.Context) error
 }
+
+// ChildDriverStrand is the state of a child's driver strand in its reed state.
+type ChildDriverStrand int
+
+const (
+	// ChildDriverNone means the child's reed state holds no driver strand,
+	// or the child's worktree is absent.
+	ChildDriverNone ChildDriverStrand = iota
+	// ChildDriverLive means the driver strand's pane is alive.
+	ChildDriverLive
+	// ChildDriverRetiring means the driver strand's pane is alive and marked retiring: someone already asked to remove it.
+	ChildDriverRetiring
+	// ChildDriverDead means the reed state holds a driver strand whose pane is gone.
+	ChildDriverDead
+)
 
 // SeedChildDeps carries every told value and injected closure NewSeedChild needs, carrying no
 // paths of its own: reading the Board task's own type, reading prime's own seed driver, encoding

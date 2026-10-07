@@ -338,3 +338,108 @@ func TestWait_GatedShellExpiryEvaluatesGate(t *testing.T) {
 		t.Errorf("ExpiredShells = %v, want %v", result.ExpiredShells, want)
 	}
 }
+
+// TestShellWaitMark pins the background-shell wait's mark and marker: on while only non-awaited shells are outstanding,
+// off once they are waited out or a new event replaces the waiting turn end, and never on with a fork or an awaited shell outstanding.
+func TestShellWaitMark(t *testing.T) {
+	t.Parallel()
+
+	const bound = 10 * time.Minute
+	tests := []struct {
+		name  string
+		tasks []BackgroundTask
+		spec  Spec
+		// advance moves the clock past the bound before the second tick.
+		advance bool
+		// replace appends a Stop event before the second tick.
+		replace bool
+		wantOn  bool
+		// wantOffAfter is whether the second tick leaves the mark off.
+		wantOffAfter bool
+	}{
+		{name: "waited out", tasks: oneShell, advance: true, wantOn: true, wantOffAfter: true},
+		{name: "replaced by a later event", tasks: oneShell, replace: true, wantOn: true, wantOffAfter: true},
+		{name: "still waiting stays on", tasks: oneShell, wantOn: true},
+		{name: "a fork outstanding is not a shell wait", tasks: []BackgroundTask{oneShell[0], {Kind: BackgroundFork, ID: "fork-1"}}},
+		{
+			name:  "an awaited shell is not a shell wait",
+			tasks: []BackgroundTask{{Kind: BackgroundShell, ID: "sh-2", Label: "await-me 03"}},
+			spec:  Spec{AwaitedShellPrefixes: []string{"await-me"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			run, fc := shellWaitFixture(t, filepath.Join(t.TempDir(), "out.md"), tt.tasks, tt.spec)
+			reed := run.runner.reed.(*fakeReed)
+			markerPath := filepath.Join(run.runDir, waitMarkerFileName)
+
+			run.pollEventsTick()
+			run.syncShellWait()
+
+			_, statErr := os.Stat(markerPath)
+			if on := statErr == nil; on != tt.wantOn {
+				t.Fatalf("marker present after the first tick = %v; want %v", on, tt.wantOn)
+			}
+			if tt.wantOn {
+				if want := []waitMarkCall{{"strand-1", "background shells"}}; !slices.Equal(reed.WaitMarkCalls, want) {
+					t.Fatalf("mark calls = %+v; want %+v", reed.WaitMarkCalls, want)
+				}
+			} else if len(reed.WaitMarkCalls) != 0 {
+				t.Fatalf("mark calls = %+v; want none", reed.WaitMarkCalls)
+			}
+
+			if tt.advance {
+				fc.Sleep(bound)
+			}
+			if tt.replace {
+				appendEventsLine(t, run.state.EventsPath, "STOP:done")
+			}
+			run.pollEventsTick()
+			run.syncShellWait()
+
+			_, statErr = os.Stat(markerPath)
+			if off := os.IsNotExist(statErr); tt.wantOn && off != tt.wantOffAfter {
+				t.Errorf("marker absent after the second tick = %v; want %v", off, tt.wantOffAfter)
+			}
+			if tt.wantOffAfter {
+				if got := reed.WaitMarkCalls; len(got) != 2 || got[1].Label != "" {
+					t.Errorf("mark calls = %+v; want a set then a clear", got)
+				}
+			}
+		})
+	}
+}
+
+// TestWait_ClearsAStaleWaitMarkOnEntry pins that Wait clears the strand's pane mark and removes a marker file a crashed step left behind, before it polls.
+func TestWait_ClearsAStaleWaitMarkOnEntry(t *testing.T) {
+	t.Parallel()
+
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, eventsFileName)
+	outputFile := filepath.Join(runDir, "out.md")
+	touchOutputFile(t, outputFile)
+	if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(runDir, waitMarkerFileName)
+	if err := os.WriteFile(stale, []byte("kind: background shells\npid: 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
+	fc := newFakeClock(time.Now())
+	run := newFixture(t, reed, &fakeEngine{}, withConfig(gateConfig)).newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(fc, fc.Now().Add(time.Hour)))
+
+	if _, err := run.Wait(); err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale wait marker survives Wait: %v", err)
+	}
+	if got := reed.WaitMarkCalls; len(got) == 0 || got[0] != (waitMarkCall{"strand-1", ""}) {
+		t.Errorf("mark calls = %+v; want a clear first", got)
+	}
+}

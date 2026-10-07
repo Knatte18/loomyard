@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -16,23 +17,45 @@ import (
 // dirtyPathsShown caps how many dirty paths a Stuck reason names.
 const dirtyPathsShown = 10
 
-// verifyGate holds the told command closure, the verify paths and the two verifytree seams.
-// The dirty and verify fields are in-package seams tests replace with fakes, so unit tests never spawn git or a shell.
-// A zero dirty seam skips the clean-tree check and a nil command skips the verify.
+// verifyGate holds the told command closure, the told wait-mark callback, the verify paths and the two verifytree seams.
+// The dirty, verify and now fields are in-package seams tests replace with fakes,
+// so unit tests never spawn git or a shell and the mark's start time is fixed.
+// A zero dirty seam skips the clean-tree check, a nil command skips the verify and a nil waitMark marks nothing.
 type verifyGate struct {
-	command func() (string, error)
-	paths   verifytree.Paths
-	dirty   func(worktree string) ([]string, error)
-	verify  func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error)
+	command  func() (string, error)
+	waitMark func(label string, start time.Time) error
+	paths    verifytree.Paths
+	dirty    func(worktree string) ([]string, error)
+	verify   func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error)
+	now      func() time.Time
 }
 
 // newVerifyGate copies the gate's told values from deps and wires the real verifytree functions.
 func newVerifyGate(deps Deps) verifyGate {
 	return verifyGate{
-		command: deps.VerifyCommand,
-		paths:   verifytree.NewPaths(deps.WorktreeRoot, deps.VerifyDir),
-		dirty:   verifytree.DirtyPaths,
-		verify:  verifytree.Verify,
+		command:  deps.VerifyCommand,
+		waitMark: deps.VerifyWaitMark,
+		paths:    verifytree.NewPaths(deps.WorktreeRoot, deps.VerifyDir),
+		dirty:    verifytree.DirtyPaths,
+		now:      time.Now,
+		verify: func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error) {
+			return verifytree.Verify(ctx, p, site, command, verifytree.Timeout)
+		},
+	}
+}
+
+// markWait sets the driver strand's pane mark to label, started now, and clears it when label is empty.
+// A failure is logged and changes nothing else: the mark is display only.
+func (g verifyGate) markWait(label string) {
+	if g.waitMark == nil {
+		return
+	}
+	var start time.Time
+	if label != "" {
+		start = g.now()
+	}
+	if err := g.waitMark(label, start); err != nil {
+		logger.Warn("landingshed: could not set the verify wait mark", "label", label, "cause", err)
 	}
 }
 
@@ -88,25 +111,62 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 		return "", nil
 	}
 
+	g.markWait("")
+	g.markWait("verify " + producer)
 	result, err := g.verify(ctx, g.paths, verifytree.Site{Label: producer}, command)
+	g.markWait("")
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
+	return g.verdict(result, "verify", producer, parentBranch)
+}
 
+// checkPublishVerify runs publishCommand, landing config's `publish_verify`, for producer after the plan's verify passed.
+// An empty publishCommand runs nothing and logs nothing.
+// The plan's verify command is the site's BaseCommand, so the pass keeps the plan-verify entry of the record.
+//
+// It returns a non-empty Stuck reason naming `publish_verify` when the command fails or the tree is dirty.
+// It returns a non-nil error for an infrastructure fault or a cancellation, and ("", nil) when the producer may proceed.
+func (g verifyGate) checkPublishVerify(ctx context.Context, producer, parentBranch, publishCommand string) (string, error) {
+	if publishCommand == "" {
+		return "", nil
+	}
+
+	planCommand := ""
+	if g.command != nil {
+		var err error
+		if planCommand, err = g.command(); err != nil {
+			return "", fmt.Errorf("landingshed: %s: read verify command: %w", producer, err)
+		}
+	}
+
+	result, err := g.verify(ctx, g.paths, verifytree.Site{Label: producer, BaseCommand: planCommand}, publishCommand)
+	if err != nil {
+		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
+	}
+	return g.verdict(result, "publish_verify", producer, parentBranch)
+}
+
+// verdict maps a verify result to the producer's decision, naming the command's config source as what.
+// It returns a non-empty Stuck reason for a dirty tree or a failed command, an error for an unknown status, and ("", nil) when the producer may proceed.
+func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBranch string) (string, error) {
 	switch result.Status {
 	case verifytree.StatusPassed:
-		logger.Info("landingshed: post-merge verify passed", "producer", producer, "parentBranch", parentBranch)
+		logger.Info("landingshed: post-merge "+what+" passed", "producer", producer, "parentBranch", parentBranch)
 	case verifytree.StatusSkipped:
-		logger.Info("landingshed: post-merge verify skipped because the tree is already verified", "producer", producer, "parentBranch", parentBranch, "tree", result.Tree)
+		logger.Info("landingshed: post-merge "+what+" skipped because the tree is already verified", "producer", producer, "parentBranch", parentBranch, "tree", result.Tree)
 	case verifytree.StatusDirty:
-		return dirtyReason("when the verify was about to run", result.Dirty), nil
+		return dirtyReason("when the "+what+" was about to run", result.Dirty), nil
 	case verifytree.StatusFailed:
-		if result.ExitCode < 0 {
-			return fmt.Sprintf("verify could not start after merging parent branch %q: %s; output: %s", parentBranch, result.Detail, g.paths.Log), nil
+		if result.TimedOut {
+			return fmt.Sprintf("verify did not finish within %s after merging parent branch %q; output: %s; fix the hanging test on the task branch, then resume", verifytree.Timeout, parentBranch, g.paths.Log), nil
 		}
-		return fmt.Sprintf("verify failed after merging parent branch %q (exit code %d); output: %s; fix forward on the task branch, then resume", parentBranch, result.ExitCode, g.paths.Log), nil
+		if result.ExitCode < 0 {
+			return fmt.Sprintf("%s could not start after merging parent branch %q: %s; output: %s", what, parentBranch, result.Detail, g.paths.Log), nil
+		}
+		return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s; fix forward on the task branch, then resume", what, parentBranch, result.ExitCode, g.paths.Log), nil
 	default:
-		return "", fmt.Errorf("landingshed: %s: unknown verify status %q", producer, result.Status)
+		return "", fmt.Errorf("landingshed: %s: unknown %s status %q", producer, what, result.Status)
 	}
 	return "", nil
 }

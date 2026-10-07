@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
 )
@@ -128,6 +129,55 @@ func TestTryAcquireWriteLock(t *testing.T) {
 		}
 		defer second.Release()
 	})
+}
+
+// TestAcquireWriteLockWithin verifies bounded acquisition: success on a free or released path, expiry without an error on a held one.
+func TestAcquireWriteLockWithin(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		held         bool
+		releaseAfter time.Duration
+		wait         time.Duration
+		wantLocked   bool
+	}{
+		{name: "free lock is acquired within the wait", wait: 50 * time.Millisecond, wantLocked: true},
+		{name: "held lock expires without an error", held: true, wait: 50 * time.Millisecond, wantLocked: false},
+		{name: "lock released during the wait is acquired", held: true, releaseAfter: 20 * time.Millisecond, wait: 2 * time.Second, wantLocked: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			lockPath := filepath.Join(t.TempDir(), "within.lock")
+			if tt.held {
+				holder, err := lock.AcquireWriteLock(lockPath)
+				if err != nil {
+					t.Fatalf("AcquireWriteLock() error = %v; want nil", err)
+				}
+				if tt.releaseAfter > 0 {
+					time.AfterFunc(tt.releaseAfter, func() { holder.Release() })
+				} else {
+					defer holder.Release()
+				}
+			}
+
+			got, ok, err := lock.AcquireWriteLockWithin(lockPath, tt.wait)
+			if err != nil {
+				t.Fatalf("AcquireWriteLockWithin() error = %v; want nil", err)
+			}
+			if ok != tt.wantLocked {
+				t.Fatalf("AcquireWriteLockWithin() ok = %v; want %v", ok, tt.wantLocked)
+			}
+			if (got != nil) != tt.wantLocked {
+				t.Fatalf("AcquireWriteLockWithin() lock = %v; want non-nil only when acquired", got)
+			}
+			if got != nil {
+				got.Release()
+			}
+		})
+	}
 }
 
 func TestAcquireReadLock(t *testing.T) {

@@ -18,6 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/planindex"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -34,6 +36,7 @@ var nilLegal = map[string]bool{
 	"Landing.ConfigChanges":       true,
 	"Landing.Notify":              true,
 	"Landing.VerifyCommand":       true,
+	"Landing.VerifyWaitMark":      true,
 	"Landing.Registry":            true,
 	"ParentReview.Store":          true,
 	"ParentReview.ReviewerLive":   true,
@@ -51,6 +54,18 @@ var nilLegal = map[string]bool{
 	"InnerRun.AttachDir":          true,
 	"PrimeLock.Sleep":             true,
 	"SegmentBounces":              true,
+}
+
+// noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
+// Its Delta panics: a test that needs a delta supplies its own index.
+type noFindingsIndex struct{ planindex.Index }
+
+func (noFindingsIndex) ValidateFormat(*planparser.Plan, string) ([]planindex.Finding, error) {
+	return nil, nil
+}
+
+func (noFindingsIndex) ValidateRework(*planparser.Plan, string, int) ([]planindex.Finding, error) {
+	return nil, nil
 }
 
 // nilFabricOpener is a typed-nil fabric handle with a nil error.
@@ -149,7 +164,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				OutputFiles: []string{filepath.Join(dir, "rework-coverage.md")},
 			}, nil
 		},
-		Rework: ReworkDeps(t, dir),
+		Rework:    ReworkDeps(t, dir),
+		PlanIndex: noFindingsIndex{},
 
 		Slug:                     "test-slug",
 		ReviewMaxBounces:         5,
@@ -169,6 +185,11 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				return battenshed.ChildDecision{}, false, nil
 			},
 			DriverAlive: func(context.Context) (bool, error) { return false, nil },
+			DriverStrand: func(context.Context) (battenshed.ChildDriverStrand, error) {
+				return battenshed.ChildDriverNone, nil
+			},
+			ChildRunLockHeld: func() (bool, error) { return false, nil },
+			ReviveStrands:    func(context.Context) error { return nil },
 		},
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },

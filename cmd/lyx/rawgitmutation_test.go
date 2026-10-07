@@ -54,6 +54,8 @@ const rawGitMutationMinScannedFiles = 4
 // and fails if any of them (other than a rawGitMutationAllowlist entry) contains the raw substring
 // "gitrepo.New(" or "gitexec.Run(" — the two construction/call tokens a raw, fabric-bypassing
 // git mutation would carry.
+//
+//lyx:guard
 func TestNoRawGitMutation_WebsterProductionSource(t *testing.T) {
 	allow := scankit.NewAllowlist(rawGitMutationAllowlist)
 

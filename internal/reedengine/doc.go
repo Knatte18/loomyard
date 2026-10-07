@@ -46,6 +46,14 @@
 // and the remover no-ops on a guid that is already gone.
 // EndSessionByName sits beside ReapSession as the engine-less session end for a pair whose worktree is gone, and kills the server when it ends the last session.
 //
+// Engine.SetWaitMark marks a strand's pane as waiting: it sets the pane user options @lyx_wait (the label) and @lyx_wait_start (epoch seconds), or unsets both on an empty label.
+// The mark is display only,
+// so reed stores nothing for it and the options die with the pane;
+// the default status line renders it through its {{.waits}} token, as "<pane title> ⏳<label> <elapsed>m" per marked pane with tmux computing the elapsed minutes at each refresh,
+// and no Go decision reads it.
+// The token resolves to a placeholder that pinGeometryOptionsLocked swaps for the raw tmux format after escaping the rest of the line,
+// so an unmarked session renders as before.
+//
 // A second package-level invariant: every session also carries exactly one
 // additional, permanent pane beyond its strands — Selvage
 // (ReedState.SelvagePaneID). It is a first-class construct, deliberately
@@ -132,9 +140,14 @@
 // A role already held in the worktree is numbered `-N`, and an explicit name that is held refuses.
 // A role-less add takes the default role `strand`, and an empty told shortname refuses before anything boots, naming `lyx fabric shortname <shortname>`.
 // The name is a birth attribute and the only lookup key: it is stored in the strand record and every by-name lookup resolves through it, matching the full name, its role segment, or a legacy exact name.
-// An add can also name a strand whose live presence skips it (AddStrandUnless), matched by the same rule as an explicit name;
-// a dead or hidden match does not count, and a skipped add changes nothing.
+// An add can also name a strand whose presence in this worktree's state skips it (AddStrandUnless), matched by the same rule as an explicit name;
+// a live, dormant or hidden match all skip,
+// and a skipped add launches, revives, removes and changes nothing.
 // The retired `strand_name` config key is ignored on load.
+//
+// A strand may carry a done-when list (Strand.DoneWhen, set by its spawner through AddSpec.DoneWhen), the one place reed learns a strand finished.
+// Reed only stats the paths: Resume drops from state, instead of relaunching, a non-live strand whose list is non-empty and whose every path exists, and reports the count on ResumeResult.Dropped.
+// A live strand, a strand with no list and a strand with a path missing are untouched or relaunched as before.
 //
 // The name is mirrored outward, never read back as truth.
 // launchStrandLocked exports it to the strand's process as LYX_STRAND_NAME, with LYX_PARENT when a parent is told, ahead of the launch command.

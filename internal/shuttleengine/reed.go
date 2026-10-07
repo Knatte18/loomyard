@@ -8,12 +8,17 @@
 
 package shuttleengine
 
-import "github.com/Knatte18/loomyard/internal/reedengine"
+import (
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/reedengine"
+)
 
 // ReedOps is the subset of reed's engine API the shuttle run loop drives.
 // AddStrand/RemoveStrand register and tear down the strand a run's pane lives in;
 // Status reports strand liveness;
-// SendText/SendKey/CapturePane are the pane-transport ops.
+// SendText/SendKey/CapturePane are the pane-transport ops;
+// SetWaitMark sets or, with an empty label, clears the strand's pane wait mark, which is display only.
 // shuttleengine depends on this interface, never the concrete *reedengine.Engine directly.
 type ReedOps interface {
 	AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error)
@@ -22,6 +27,7 @@ type ReedOps interface {
 	SendText(guid, text string, submit bool) error
 	SendKey(guid, key string) error
 	CapturePane(guid string) (string, error)
+	SetWaitMark(guid, label string, start time.Time) error
 }
 
 // Compile-time proof that *reedengine.Engine satisfies ReedOps as-is.

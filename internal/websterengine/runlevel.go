@@ -27,7 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/planglyph"
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -196,22 +196,14 @@ type RunResult struct {
 	// outcomes).
 	SummaryTitle string
 	// Warnings carries every non-fatal observation accumulated this run — never a failure.
-	// Mirrors RecordResult.Warnings' shape and contract: the verify gate's flaky notice, and the sequencing and audit warnings.
+	// Mirrors RecordResult.Warnings' shape and contract: the verify gate's flaky notice, and the audit warnings.
 	Warnings []string
-	// Cycles carries every non-trivial strongly-connected component
-	// SequenceBatches condensed for this run — always informational, never
-	// a failure, and empty for the overwhelmingly common acyclic plan.
-	Cycles []Cycle
 }
 
-// hasBlockingFinding reports whether findings carries at least one planglyph.SeverityBlocking
-// entry, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding and
-// internal/loomcli/validate.go's own planFindingsHaveBlocking: severity, not finding count, decides
-// the verdict on every side of this parity, and Run's own pre-flight gate is the real gate the
-// other three mirror.
-func hasBlockingFinding(findings []planglyph.Finding) bool {
+// hasBlockingFinding reports whether findings carries at least one planindex.SeverityBlocking entry, mirroring internal/loomshed/planvalidate.go's own hasBlockingFinding and internal/loomcli/validate.go's own planFindingsHaveBlocking: severity, not finding count, decides the verdict on every side of this parity, and Run's own pre-flight gate is the real gate the other three mirror.
+func hasBlockingFinding(findings []planindex.Finding) bool {
 	for _, f := range findings {
-		if f.Severity == planglyph.SeverityBlocking {
+		if f.Severity == planindex.SeverityBlocking {
 			return true
 		}
 	}
@@ -383,25 +375,6 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, fmt.Errorf("webster: RunDeps.Gate already names an entry %q; Run adds the plan-level verify gate itself; way forward: drop the %q entry from the Webster row's gates", verifyGateName, verifyGateName)
 		}
 	}
-	batches := deps.Batcher.Batch(plan.Cards)
-
-	// nothing-to-build is a malformed plan, never a vacuous outcome: done —
-	// webster's own pre-flight over the batchifier's own output, per
-	// discussion.md's run-verb-shape decision. This refusal runs against the
-	// batchifier's own output, still naming the batchifier, because
-	// SequenceBatches below is length-preserving and can neither create nor
-	// remove this condition.
-	if len(batches) == 0 {
-		return RunResult{}, fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done; way forward: fix the plan's cards, run `lyx webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lyx webster run`", deps.Geom.PlanDir)
-	}
-
-	// Re-bind batches through the sequencer: every later use in this
-	// function (the Master prompt, mapMasterDone) then
-	// sees the derived execution order rather than the batchifier's own
-	// declared order.
-	var cycles []Cycle
-	batches, cycles = SequenceBatches(batches)
-
 	fingerprint, err := fingerprint(deps.Geom.PlanDir)
 	if err != nil {
 		return RunResult{}, err
@@ -446,8 +419,27 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, err
 	}
 
+	// The batches are computed once the state phase has settled which partition the run uses:
+	// a new state forms and records one with the active batchifier, any other reads its recorded one.
+	sizes := batcher.DiskSizes(deps.Geom.WorktreeRoot)
+	var batches []batcher.Batch
+	newPartition := func() ([]batcher.Batch, error) {
+		formed, err := formBatches(plan, deps.Batcher, sizes)
+		if err != nil {
+			return nil, err
+		}
+		if len(formed) == 0 {
+			return nil, zeroBatchesError(deps.Geom.PlanDir)
+		}
+		return formed, nil
+	}
+
 	switch {
 	case st == nil:
+		batches, err = newPartition()
+		if err != nil {
+			return RunResult{}, err
+		}
 		guid, err := newRunGUID()
 		if err != nil {
 			return RunResult{}, err
@@ -458,6 +450,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			PlanFileHashes:  fileHashes,
 			Batches:         map[int]*BatchState{},
 		}
+		RecordPartition(st, batches)
 		if err := storePlanBaseline(deps.Geom.WebsterDir, deps.Geom.PlanDir, fileHashes); err != nil {
 			return RunResult{}, err
 		}
@@ -470,6 +463,10 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint, fingerprintMismatchWayForward(st, deps.Geom.PlanDir))
 		}
 
+		batches, err = newPartition()
+		if err != nil {
+			return RunResult{}, err
+		}
 		if _, err := archiveStateFile(deps.Geom.WebsterDir, time.Now); err != nil {
 			return RunResult{}, err
 		}
@@ -495,11 +492,21 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			PlanFileHashes:  fileHashes,
 			Batches:         map[int]*BatchState{},
 		}
+		RecordPartition(st, batches)
 		if err := storePlanBaseline(deps.Geom.WebsterDir, deps.Geom.PlanDir, fileHashes); err != nil {
 			return RunResult{}, err
 		}
 		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 			return RunResult{}, err
+		}
+
+	default:
+		batches, err = ExecutionBatches(plan, st, deps.Batcher, sizes)
+		if err != nil {
+			return RunResult{}, err
+		}
+		if len(batches) == 0 {
+			return RunResult{}, zeroBatchesError(deps.Geom.PlanDir)
 		}
 	}
 
@@ -519,7 +526,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// The scope here is DispatchScope, not completedCards: a batch begun but not recorded may already have landed its work, or not yet,
 	// and its forthcoming Create targets stay out of the status check.
 	begun, forthcoming := DispatchScope(batches, st)
-	findings, err := planglyph.ValidateDispatch(plan, deps.Geom.WorktreeRoot, begun, forthcoming)
+	index, err := deps.Geom.index()
+	if err != nil {
+		return RunResult{}, err
+	}
+	findings, err := index.ValidateDispatch(plan, deps.Geom.WorktreeRoot, begun, forthcoming)
 	// The resolve pass canonicalizes handles, rewriting the plan on disk before it reports either a
 	// finding or an error, so the staleness re-baseline runs HERE — ahead of both refusals below —
 	// and is persisted immediately. Restamping only past the refusals left state.json describing the
@@ -539,7 +550,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		err = fmt.Errorf("%w; additionally, persisting the plan-fingerprint re-baseline this run had already earned failed: %v", err, rebaseErr)
 	}
 	if err != nil {
-		if errors.Is(err, planglyph.ErrQuarryUnavailable) {
+		if errors.Is(err, planindex.ErrQuarryUnavailable) {
 			// Its own returned error, named for quarry rather than the plan — a gate that could not
 			// read the code has not found a plan defect to refuse the run over, matching
 			// internal/loomshed/planvalidate.go's producer-side disposition.
@@ -694,7 +705,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	switch result.Outcome {
 	case shuttleengine.OutcomeDone:
-		runResult, doneErr := finishMasterDone(deps, batches, outcomePath, summaryPath, result, freshWarnings, cycles, gateNotes)
+		runResult, doneErr := finishMasterDone(deps, batches, outcomePath, summaryPath, result, freshWarnings, gateNotes)
 		if doneErr != nil {
 			noteExpiredShells(errorShellOutcome(doneErr, false))
 			return RunResult{}, doneErr
@@ -723,27 +734,16 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 }
 
 // finishMasterDone maps a shuttle-done Master run onto its RunResult:
-// the outcome file, the cycle and verify-gate warnings, the verify-gate demotion and the background-shell warnings.
+// the outcome file, the verify-gate warnings, the verify-gate demotion and the background-shell warnings.
 // Every outcome that returns a RunResult (done, stuck, paused) carries one warning per expired shell, stating the run's outcome after the demotion;
 // the summary's background-shell section stays done-only.
-// freshWarnings and cycles are the run's entry-time observations, and gateNotes holds the verify gate's flaky-pass notes.
-func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPath string, result shuttleengine.Result, freshWarnings []string, cycles []Cycle, gateNotes *VerifyGateNotes) (RunResult, error) {
+// freshWarnings is the run's entry-time observations, and gateNotes holds the verify gate's flaky-pass notes.
+func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPath string, result shuttleengine.Result, freshWarnings []string, gateNotes *VerifyGateNotes) (RunResult, error) {
 	runResult, mapErr := mapMasterDone(deps, batches, outcomePath, summaryPath, result)
 	if mapErr != nil {
 		return RunResult{}, mapErr
 	}
-	// Cycles are always informational: prepend one warning per cycle ahead of the verify gate's own warnings below, so the sequencing observations, which describe the whole run, read first.
-	// Non-done outcomes (died/timeout) return an error rather than a RunResult,
-	// so a cycle observed on a run that ends stuck/paused/died reaches the operator through that error path's own message rather than through Cycles — an accepted, stated limitation, not an oversight.
 	runResult.Warnings = append(freshWarnings, runResult.Warnings...)
-	runResult.Cycles = cycles
-	if len(cycles) > 0 {
-		cycleWarnings := make([]string, len(cycles))
-		for i, c := range cycles {
-			cycleWarnings[i] = c.Warning()
-		}
-		runResult.Warnings = append(cycleWarnings, runResult.Warnings...)
-	}
 	// The plan-level verify ran as a gate on Master's own session, so a flaky pass reaches the run here, after the wait.
 	flakyWarnings, err := gateNotes.Apply(deps.Geom.WebsterDir)
 	if err != nil {
@@ -845,17 +845,17 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 	}, nil
 }
 
-// batchIdentity returns b's own number/slug identity, taken from its first
-// card. This is a v0 identity-batcher assumption — one card per batch, so
-// the batch's own number/slug coincide with its sole card's — documented
-// the same way state.go's BatchState.CardSHAs is: the multi-card
-// enumeration path is dormant until a grouping batchifier ships, and needs
-// its own identity scheme then, not a change here.
+// batchIdentity returns b's own number/slug identity: a batch is numbered and named by its first card, so `begin-batch NN` names a batch by its first card's number.
 func batchIdentity(b batcher.Batch) (number int, slug string) {
 	if len(b.Cards) == 0 {
 		return 0, ""
 	}
 	return b.Cards[0].Number, b.Cards[0].Slug
+}
+
+// zeroBatchesError is the refusal for a plan whose cards form no batch: nothing to build is a malformed plan.
+func zeroBatchesError(planDir string) error {
+	return fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done; way forward: fix the plan's cards, run `lyx webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lyx webster run`", planDir)
 }
 
 // verifyEveryBatchDone reloads the persisted state and confirms every batch

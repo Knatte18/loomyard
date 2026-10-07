@@ -83,6 +83,8 @@ const configStrictnessMinScannedFiles = 50
 // configStrictnessStrictSet exactly -- in both directions, so a pinned-set member
 // with no matching call anywhere fails just as loudly as an unpinned package that
 // gained a call.
+//
+//lyx:guard
 func TestConfigStrictness_PinnedCallSiteSets(t *testing.T) {
 	collectedDegrading := map[string]bool{}
 	collectedStrict := map[string]bool{}

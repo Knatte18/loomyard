@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/parentreview"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -54,7 +55,9 @@ type commitStatusDeps struct {
 	// When the reviews directory holds a file, the same commit also carries the review round record.
 	// While a rejection is pending the reviews root and the loom durable directory are left out until PR-Rework's round commit has landed and cleared it, so a status commit never lands half of a rework round; the next status commit sweeps them.
 	Commit func(msg string) error
-	// Push pushes the fabric sibling worktree's unpushed commits.
+	// Push pushes the run records and, in a task pair, the task branch.
+	// An error from one side's push names that side.
+	// A push lock that stayed busy names no side.
 	Push func() error
 	// SetBoardStatus writes status onto the run's board entry, leaving an entry that is absent or already done untouched.
 	// Nil writes nothing.
@@ -144,7 +147,7 @@ func holdsFile(dir string) bool {
 	return found
 }
 
-// loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric: MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to statusCommitPathspec (the status file, plus the review round record, the loom durable directory and the drive reports when each holds a file), and Push from fabricengine.PushAnchored.
+// loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric: MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to statusCommitPathspec (the status file, plus the review round record, the loom durable directory and the drive reports when each holds a file), and Push from fabricengine.PushPairAnchored, which pushes the run records and, in a task pair, the task branch.
 func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
 		MergeActive: func() (bool, error) {
@@ -158,7 +161,7 @@ func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusD
 			return err
 		},
 		Push: func() error {
-			_, err := fabricengine.PushAnchored(location, fabricengine.EnvSyncOptions())
+			_, err := fabricengine.PushPairAnchored(location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait)
 			return err
 		},
 		SetBoardStatus: func(status string) error {
@@ -264,6 +267,7 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
 	c.env.Rework.ReadCommitted = committedAnchoredReader(location)
+	c.env.PlanIndex = planglyph.NewIndex()
 }
 
 // committedAnchoredReader returns the seam that reads an anchor-relative file as committed at HEAD for location, with found false when HEAD has no such file.
@@ -427,6 +431,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(location, line) })
 
 	websterGeom := hubgeom.WebsterGeometry(location)
+	websterGeom.Index = planglyph.NewIndex()
 
 	// frictionDir is the single resolved value every told-friction consumer below reads: non-empty
 	// only when loom.yaml's friction key is set, per the "Tier 2 off is an empty path string, never a
@@ -525,6 +530,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		SupportLogPath:     loomengine.DiscussionSupportLog(location),
 		ParentName:         c.parentName,
 		WebsterDeps:        runDeps,
+		PlanIndex:          websterGeom.Index,
 		// ReflectFriction is a method value over the receiver, so frictionDir is read when the row runs, not when wire runs.
 		ReflectFriction: c.reflectFrictionRow,
 		// WebsterRun is set explicitly to websterengine.Run, per the
@@ -736,6 +742,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.driverSender = runnerDriverStarter{runner: runner}
 	c.driverResumeWait = func() { time.Sleep(driverResumeSendInterval) }
 	c.driverPaneProbe = newReedDriverPaneProbe(reedEngine)
+	c.driverDirectory = newReedDriverDirectory(reedEngine)
 	return nil
 }
 

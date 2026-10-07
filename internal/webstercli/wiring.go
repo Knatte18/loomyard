@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -142,7 +143,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	}
 	activeBatcher, err := batcher.Active(anchorPath)
 	if err != nil {
-		return err
+		return batcherLoadError(err)
 	}
 	registry, err := modelspec.LoadRegistry(anchorPath)
 	if err != nil {
@@ -154,6 +155,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	}
 
 	geom := hubgeom.WebsterGeometry(loc)
+	geom.Index = planglyph.NewIndex()
 	if stencilsDir != "" {
 		// The same boundary stat standalone's prologue applies, through the same descriptor method,
 		// so the two modes can never drift on what a told stencils directory must be: a typo'd
@@ -244,6 +246,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	}
 
 	geom := standalonegeom.WebsterGeometry(res.Target, res.StateDir)
+	geom.Index = planglyph.NewIndex()
 	reedGeom := standalonegeom.ReedGeometry(res.Target, res.StateDir, res.Hash8)
 	geom.StencilsDir = res.StencilsDir
 	geom.PlanDir = res.PlanDir
@@ -266,7 +269,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	}
 	activeBatcher, err := batcher.Active(res.StateDir)
 	if err != nil {
-		return err
+		return batcherLoadError(err)
 	}
 	registry, err := modelspec.LoadRegistry(res.StateDir)
 	if err != nil {
@@ -321,6 +324,12 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	c.parentBranch = nil
 	c.batcher = activeBatcher
 	return nil
+}
+
+// batcherLoadError wraps a batcher.Active error as a refusal naming batcher.yaml and the way forward.
+// Both wiring prologues return it before any verb's body runs, so a profile that does not load leaves the recorded partition and state untouched.
+func batcherLoadError(cause error) error {
+	return fmt.Errorf("webster: batcher.yaml did not load: %w; way forward: fix batcher.yaml under _lyx/config, then re-run the verb", cause)
 }
 
 // setRunner stores runner and its adapted seams (starter, masterStarter) plus the claude/reed engines onto c, shared by both wireHub and wireStandalone so the adaptation is named once.

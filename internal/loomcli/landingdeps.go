@@ -7,17 +7,20 @@ package loomcli
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -42,6 +45,7 @@ func landingDeps(
 	runner *shuttleengine.Runner,
 	cfg landingshed.Config,
 	parentName string,
+	verifyWaitMark func(label string, start time.Time) error,
 ) landingshed.Deps {
 	return landingshed.Deps{
 		ParentName:      parentName,
@@ -126,10 +130,35 @@ func landingDeps(
 			}
 			return plan.Verify, nil
 		},
-		VerifyDir: verifytree.Dir(l.AnchorPath()),
-		Shuttle:   runner,
-		Registry:  registry,
-		Config:    cfg,
+		VerifyDir:      verifytree.Dir(l.AnchorPath()),
+		VerifyWaitMark: verifyWaitMark,
+		Shuttle:        runner,
+		Registry:       registry,
+		Config:         cfg,
+	}
+}
+
+// driverWaitMark returns the callback landingshed marks the verify wait through, built over two seams so a test needs no tmux:
+// status reads reed's strand table and setMark sets or clears a strand's pane wait mark.
+// The table is read at call time,
+// and the mark goes on the driver strand only while that strand is live and not retiring;
+// a strand that is gone, dead or replaced makes the call a logged no-op returning nil.
+// A failure of either seam is returned for the gate to log.
+func driverWaitMark(
+	status func() (reedengine.StatusResult, error),
+	setMark func(guid, label string, start time.Time) error,
+) func(label string, start time.Time) error {
+	return func(label string, start time.Time) error {
+		result, err := status()
+		if err != nil {
+			return err
+		}
+		strand, found := findDriverStrand(result.Strands)
+		if !found || !strand.Live || strand.Retiring {
+			logger.Info("loomcli: no live driver strand to carry the verify wait mark", "label", label)
+			return nil
+		}
+		return setMark(strand.GUID, label, start)
 	}
 }
 
