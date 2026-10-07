@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
 // Usage is a token tally: one message's usage, or a sum over many.
@@ -78,10 +80,33 @@ func roleOf(title string) string {
 	return trailingNumber.ReplaceAllString(title[strings.LastIndex(title, ":")+1:], "")
 }
 
-// recentRuns names the task runs of the hub whose sessions changed most recently, newest
-// first, at most last of them: every project directory of a worktree under the hub except
-// the prime's own.
-func recentRuns(projects, hub, prime string, last int) ([]string, error) {
+// finishedRuns reads the slugs of the runs whose pairs were torn down from the archive tags
+// in the weft repository at weft.
+func finishedRuns(weft string) (map[string]bool, error) {
+	out, err := gitexec.Run([]string{"for-each-ref", "--format=%(refname)", "refs/tags/archive/"}, weft)
+	if err != nil {
+		return nil, fmt.Errorf("reading the archive tags in %s: %w", weft, err)
+	}
+	return archivedSlugs(out), nil
+}
+
+// archivedSlugs parses for-each-ref output, one refs/tags/archive/<slug>/<sha> per line,
+// into the set of slugs.
+func archivedSlugs(refs string) map[string]bool {
+	slugs := map[string]bool{}
+	for _, line := range strings.Split(refs, "\n") {
+		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "refs/tags/archive/")
+		if slug, _, found := strings.Cut(rest, "/"); ok && found && slug != "" {
+			slugs[slug] = true
+		}
+	}
+	return slugs
+}
+
+// recentRuns names the finished task runs of the hub whose sessions changed most recently,
+// newest first, at most last of them: every project directory of a worktree under the hub
+// whose slug is in finished, except the prime's own.
+func recentRuns(projects, hub, prime string, finished map[string]bool, last int) ([]string, error) {
 	prefix := filepath.Base(projectDir(projects, hub)) + "-"
 	entries, err := os.ReadDir(projects)
 	if err != nil {
@@ -94,7 +119,7 @@ func recentRuns(projects, hub, prime string, last int) ([]string, error) {
 	var found []candidate
 	for _, e := range entries {
 		slug, ok := strings.CutPrefix(e.Name(), prefix)
-		if !e.IsDir() || !ok || slug == "" || slug == prime {
+		if !e.IsDir() || !ok || slug == "" || slug == prime || !finished[slug] {
 			continue
 		}
 		sessions, err := filepath.Glob(filepath.Join(projects, e.Name(), "*.jsonl"))
