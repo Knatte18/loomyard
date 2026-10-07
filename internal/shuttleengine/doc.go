@@ -175,6 +175,15 @@
 // Wait clears the pane mark and removes the marker file on entry,
 // so a mark a crashed step left behind is gone at the next touch, and again on every return.
 //
+// Agent activity: RunState records the pid of the process that waits on the run, which Start writes and an attach rewrites to the attaching process.
+// A run counts as live when its outcome reads running and that pid is alive; a record without a pid, from an older binary, is not live.
+// ReadAgentActivity returns one AgentActivity per live run under a run-directory root:
+// the run's strand name, its last activity, and whether its newest turn end is an API error with the error's text.
+// The last activity is the newer of the transcript's last write and the events file's last write, the run's creation time when neither is readable.
+// The events past the prompt offset are parsed through the Engine, and the newest turn end goes to the optional ActivityReader capability for the transcript part;
+// an engine without it, and a run with no turn end yet, are judged by the events file alone.
+// Like ReadWaitMarker it reads files only, so a process that runs no shuttle may call it.
+//
 // Start/StartGated/Run/RunGated run the startup probe (readiness plus dismissal of any one-time
 // startup gate, through the Engine seam's startup classification and trust-dismiss sequence) before
 // issuing a handle, so no caller outside this package probes readiness or plays gate keys.

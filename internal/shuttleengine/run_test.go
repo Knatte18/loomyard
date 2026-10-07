@@ -292,6 +292,9 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 		if run.state.Outcome != runOutcomeRunning {
 			t.Errorf("run.state.Outcome = %q, want %q", run.state.Outcome, runOutcomeRunning)
 		}
+		if rs.PID != os.Getpid() {
+			t.Errorf("RunState.PID = %d, want the starting process's pid %d", rs.PID, os.Getpid())
+		}
 	})
 
 	// RunDir() names the one directory holding prompt.md, settings.json and the events file, for a

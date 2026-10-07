@@ -999,7 +999,8 @@ func TestAttach_StartedSeededTrue(t *testing.T) {
 	}}
 	runner.clock = mc
 
-	result, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute})
+	// KeepPane leaves the finished run's record on disk, so the pid the attach wrote can be read back.
+	result, found, err := runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute, KeepPane: true})
 	if err != nil {
 		t.Fatalf("Attach() error = %v; want nil", err)
 	}
@@ -1008,6 +1009,9 @@ func TestAttach_StartedSeededTrue(t *testing.T) {
 	}
 	if result.Outcome == OutcomeDied {
 		t.Errorf("Outcome = %q; want anything but died — the started seed must skip the startup probe entirely", result.Outcome)
+	}
+	if rs, recordFound, err := loadRunState(runDir); err != nil || !recordFound || rs.PID != os.Getpid() {
+		t.Errorf("loadRunState after Attach = (pid %d, found %v, %v); want the attaching process's pid %d", rs.PID, recordFound, err, os.Getpid())
 	}
 	if len(engine.StartupCalls) != 0 {
 		t.Errorf("engine.StartupCalls = %v; want none — an attached run must never re-run the startup classifier", engine.StartupCalls)
