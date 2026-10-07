@@ -354,6 +354,13 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		return nil, Result{}, fmt.Errorf("shuttle: prepare run: %w", err)
 	}
 
+	// An ungated run's output files are its finished signal, so reed's resume drops a finished strand;
+	// a gated run's outputs existing does not mean the gate passed, so it carries no list and is relaunched.
+	var doneWhen []string
+	if len(gate) == 0 {
+		doneWhen = spec.OutputFiles
+	}
+
 	strand, err := r.reed.AddStrand(reedengine.AddSpec{
 		Role:         spec.Role,
 		NameOverride: spec.NameOverride,
@@ -362,6 +369,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		ResumeCmd:    launch.ResumeCmd,
 		SessionID:    launch.SessionID,
 		Display:      spec.Display,
+		DoneWhen:     doneWhen,
 	})
 	if err != nil {
 		// Nothing to resume: the strand never registered, so the run

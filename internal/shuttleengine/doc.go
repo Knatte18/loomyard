@@ -61,6 +61,10 @@
 // and an empty ResumeSessionID mints a new session, so a caller that sets none of them sees no change.
 // A non-empty ResumeSessionID launches that existing session instead.
 //
+// An ungated run's strand is registered with its output files as reed's done-when list, so reed's resume drops a finished agent strand instead of reviving it; a gated run's strand carries none,
+// since its outputs existing does not mean its gate passed, and the gate re-prompts the live agent.
+// The list is provider-neutral, set by the runner and never by a provider engine.
+//
 // Runner.Attach answers one question: is there a still-live-or-already-finished, never-terminated
 // run for this exact output-file set, and if so, wait on it instead of starting a second agent.
 // That question is answered on the persisted RunState.Outcome plus, in a fixed precedence, the run's
