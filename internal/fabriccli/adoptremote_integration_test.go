@@ -1,6 +1,6 @@
 //go:build integration
 
-// adoptremote_integration_test.go drives the fabric CLI verbs that take a pair's weft branch from origin when it exists only there, against one real hub as an ordered scenario.
+// adoptremote_integration_test.go drives the fabric CLI verbs that take a pair's weft branch from origin when it exists only there, and `add`'s adoption of a live pair's branches, against one real hub as an ordered scenario.
 // Origin-only branches are pushed into the hub's bare from a scratch clone, and an unreachable origin is simulated by pointing the weft repo's origin URL at a missing path.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
@@ -291,6 +292,53 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			}
 			if got := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch); got != tip {
 				t.Errorf("origin %s = %s; want unchanged %s", weftBranch, got, tip)
+			}
+		}},
+		{"AddAdoptsLivePairFromOrigin", func(t *testing.T) {
+			// Origin holds a live pair's warp and weft branches, with commits the hub's HEAD lacks and a run record, and the hub has neither locally: add builds the pair on both origin tips and pushes only fast-forwards.
+			const slug = "add-live"
+			weftBranch := fabricengine.WeftBranchName(slug)
+			runRecord := filepath.Join(h.Location.AnchorRel, shedrun.RunsRootRel(), "run-1", "note.txt")
+
+			warpClone := t.TempDir()
+			gitkit.MustRun(t, warpClone, "git", "clone", "--quiet", h.WarpBare, ".")
+			gitkit.MustRun(t, warpClone, "git", "checkout", "--quiet", "-b", slug)
+			warpTip := gitkit.CommitFile(t, warpClone, "warp-origin.txt", "from origin\n", "origin-only warp work")
+			gitkit.MustRun(t, warpClone, "git", "push", "--quiet", "origin", slug)
+
+			weftClone := t.TempDir()
+			gitkit.MustRun(t, weftClone, "git", "clone", "--quiet", h.WeftBare, ".")
+			gitkit.MustRun(t, weftClone, "git", "checkout", "--quiet", "-b", weftBranch)
+			gitkit.CommitFile(t, weftClone, originMarkerFile, "from origin\n", "origin-only weft work")
+			weftTip := gitkit.CommitFile(t, weftClone, runRecord, "run record\n", "origin-only run record")
+			gitkit.MustRun(t, weftClone, "git", "push", "--quiet", "origin", weftBranch)
+
+			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
+				t.Fatalf("add %s exit = %d; output: %s", slug, code, output)
+			}
+
+			warp, weft := h.PairWarpWorktree(slug), h.PairWeftSibling(slug)
+			if got := gitkit.RevParse(t, warp, "HEAD"); got != warpTip {
+				t.Errorf("warp HEAD = %s; want origin's tip %s", got, warpTip)
+			}
+			if got := gitkit.RevParse(t, h.WarpBare, "refs/heads/"+slug); got != warpTip {
+				t.Errorf("origin warp tip = %s; want unchanged %s", got, warpTip)
+			}
+			for _, tc := range []struct{ dir, branch string }{{warp, slug}, {weft, weftBranch}} {
+				if got := gitkit.Git(t, tc.dir, "rev-parse", "--abbrev-ref", tc.branch+"@{upstream}"); got != "origin/"+tc.branch {
+					t.Errorf("upstream of %s = %q; want origin/%s", tc.branch, got, tc.branch)
+				}
+			}
+			if n := gitkit.RevListCount(t, weft, weftTip+"..HEAD"); n != 1 {
+				t.Errorf("weft HEAD is %d commits past the scratch clone's tip; want 1 (the origin record)", n)
+			}
+			if got, want := gitkit.RevParse(t, h.WeftBare, "refs/heads/"+weftBranch), gitkit.RevParse(t, weft, "HEAD"); got != want {
+				t.Errorf("origin weft tip = %s; want the pair's weft HEAD %s", got, want)
+			}
+			for _, path := range []string{filepath.Join(weft, runRecord), filepath.Join(weft, weftLockDirName)} {
+				if _, err := os.Stat(path); err != nil {
+					t.Errorf("%s missing after add: %v", path, err)
+				}
 			}
 		}},
 		{"CheckoutForksWithoutOriginRemote", func(t *testing.T) {

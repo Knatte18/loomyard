@@ -71,33 +71,27 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 				t.Errorf("warp bare HEAD = %s; want %s (the unpushed commit was not pushed)", gotWarpSHA, wantWarpSHA)
 			}
 		}},
-		{"AddLeftoverWeftIsBarePreflightError", func(t *testing.T) {
-			// A leftover remote weft branch from a plain remove blocks the re-add with a pre-flight failure, so a bare error carrying neither `mutations` nor `partial`.
+		{"AddLeftoverWarpIsBarePreflightError", func(t *testing.T) {
+			// A removed pair's landed warp branch still on origin, beside an archived weft branch and no local weft branch, blocks the re-add with a pre-flight failure, so a bare error carrying neither `mutations` nor `partial`.
 			const slug = "leftover-slug"
-			weftBranch := fabricengine.WeftBranchName(slug)
 
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
 				t.Fatalf("first add exit = %d; output: %s", code, output)
 			}
+			warp := h.PairWarpWorktree(slug)
+			gitkit.CommitFile(t, warp, "work.txt", "work\n", "warp work")
+			gitkit.MustRun(t, warp, "git", "push", "--quiet", "origin", slug)
+			gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--squash", slug)
+			gitkit.Git(t, h.PrimeWorktree(), "commit", "-m", "land "+slug)
 			if code, output := runFabric(t, h.PrimeWorktree(), "remove", slug); code != 0 {
 				t.Fatalf("remove exit = %d; output: %s", code, output)
 			}
-
-			clone := t.TempDir()
-			gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.WeftBare, ".")
-			gitkit.MustRun(t, clone, "git", "checkout", "--quiet", weftBranch)
-			if err := os.WriteFile(filepath.Join(clone, "leftover.txt"), []byte("leftover\n"), 0o644); err != nil {
-				t.Fatalf("write leftover file: %v", err)
-			}
-			gitkit.MustRun(t, clone, "git", "add", "leftover.txt")
-			gitkit.MustRun(t, clone, "git", "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "-m", "leftover work")
-			gitkit.MustRun(t, clone, "git", "push", "--quiet", "origin", weftBranch)
 
 			code, output := runFabric(t, h.PrimeWorktree(), "add", slug)
 			if code == 0 {
 				t.Fatalf("second add exit = 0; want non-zero; output: %s", output)
 			}
-			env := envelope.RequireErr(t, output, weftBranch)
+			env := envelope.RequireErr(t, output, slug)
 			if _, present := env.Raw["mutations"]; present {
 				t.Errorf("envelope carries \"mutations\"; a pre-flight failure must not")
 			}

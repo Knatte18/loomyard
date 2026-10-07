@@ -489,12 +489,18 @@
 // `Cleanup` sweeps local leftovers.
 // `CleanupRemoteWarp` is the separate origin sweep: it classifies leftover task branches on origin against the open-PR heads its caller supplies and, with apply, deletes the landed ones; a nil open-PR set refuses every deletion.
 //
-// `Add` (add.go) handles a re-add after a plain `Remove`, which leaves both remote branches behind.
-// Before its first mutation it probes both origins read-only (remoteleftover.go), refusing an unreplaceable leftover with an `*ErrRemoteLeftover`.
-// The archive tag is the orphan proof: a remote weft tip equal to, or an ancestor of, an `archive/<slug>/*` tag's target on origin is replaceable, and anything else is refused.
+// `Add` (add.go) handles a re-add after a plain `Remove`, which leaves both remote branches behind, and a pair moved from another machine.
+// Before its first mutation it probes both origins read-only (remoteleftover.go) and decides whether the pair is live.
+// A pair is live when its weft branch exists locally, or exists on origin with no `archive/<slug>/*` tag covering its tip; archive tags are consulted only when there is no local weft branch.
+// A live pair is adopted, never forked: a local weft branch behind origin is fast-forwarded to origin's tip (`KindRepoAdvanced`), a weft branch only on origin becomes a local tracking branch through `resolveWeftBranch`, and an origin warp branch becomes a local tracking branch whatever its relation to `HEAD`.
+// A true divergence between the local weft branch and origin's is refused with an `*ErrRemoteLeftover`, and nothing on origin is ever force-pushed or deleted for a live pair.
+// An adopted weft worktree that already carries its origin record keeps it, neither rewritten nor committed, so a task moved between machines keeps its recorded parent.
+// A pair that is not live has a removed pair's leftovers: the archive tag is the orphan proof, and a remote weft tip equal to, or an ancestor of, an `archive/<slug>/*` tag's target on origin is replaceable.
+// The warp side of such a pair is refused unless the remote warp tip is an ancestor of `HEAD`.
 // A replaceable weft leftover is deleted at step 12, immediately before the weft push, through the destructive gate with a lease on the probed tip, so a branch that moved since the probe is refused and `Add` rolls back.
-// A rollback never restores the deleted branch: its content is reachable from the archive tag.
-// No remote warp branch is ever deleted, and `SkipPush`/`SkipGit` skip every probe and the replacement.
+// A rollback deletes only the local branches this `Add` created, a weft branch taken from origin included, and never restores the deleted remote branch: its content is reachable from the archive tag.
+// A fast-forward `Add` made to a pre-existing local weft branch is not rewound.
+// `SkipPush`/`SkipGit` skip every probe and the replacement: the pair is then live only by a local weft branch, and the warp branch forks from `HEAD`.
 //
 // **Weft-branch resolution.**
 // `resolveWeftBranch` (weftbranch.go) is the one place a verb decides where a pair's weft branch comes from: the local branch first, then the branch on origin, adopted as a local branch tracking it, then none, and the caller forks.

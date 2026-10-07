@@ -6,7 +6,7 @@
 // it only when it can prove the branch is fabric's (a non-empty branch_prefix, or a -weft weft
 // branch), so under the default empty prefix the bare-slug warp branch is left behind — see
 // rollbackAdd for why, and the "already exists" remedy Add's own re-add error names for the recovery.
-// A leftover remote branch from a removed pair is resolved at pre-flight, before the first mutation, as proven replaceable or refused with an ErrRemoteLeftover (see remoteleftover.go).
+// Whether the pair is live, which branches origin lends it and whether a leftover remote branch from a removed pair is replaceable are all decided at pre-flight, before the first mutation (see remoteleftover.go).
 // The weft side always uses the suffixed branch produced by WeftBranchName.
 
 package fabricengine
@@ -71,6 +71,10 @@ func (e *ErrBranchExists) Error() string {
 // A newly forked weft branch does not inherit the parent's shed run records: the fork is no-checkout, so the run-records root never reaches the new worktree's disk,
 // and the pair's first weft commit (the origin record's) also records the root's deletion.
 // An adopted, already-existing weft branch keeps its own run records.
+// A pair is live when its weft branch exists locally, or on origin with no archive/<slug>/* tag covering its tip (tags are consulted only when there is no local branch).
+// A live pair is adopted rather than forked: the weft branch from the local copy, with a behind local copy fast-forwarded to origin's tip, or else from origin as a local tracking branch, and the warp branch from origin when it is there, whatever its relation to HEAD.
+// A weft worktree that already carries the origin record keeps it, so a task moved between machines keeps its recorded parent.
+// Under SkipGit or SkipPush no origin is consulted: the pair is live only by a local weft branch, and the warp branch forks from HEAD.
 func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res AddResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -155,21 +159,33 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	parentBranch := strings.TrimSpace(headStdout)
 	parentWeftBranch := WeftBranchName(parentBranch)
 
-	// Probe both origins for a leftover branch from a removed pair before the first mutation,
-	// so an unreplaceable one is refused here rather than rejected at step 11 or 12's push.
-	// The weft answer is carried to step 12, where an archived leftover is replaced just before the push.
-	var weftOld weftLeftover
+	// Probe both origins before the first mutation: decide whether the pair is live, and refuse an unreplaceable leftover here rather than at step 11 or 12's push.
+	// The weft answer is carried on: its fastForwardTo advances a behind local weft branch, and an archived leftover is replaced at step 12 just before the push.
+	weftOld := weftLeftover{live: weftBranchAlreadyExists}
+	var warpAdoptTip string
 	if !opts.SkipPush && !opts.SkipGit {
-		if err := probeWarpLeftover(l, slug, warpBranch); err != nil {
+		weftOld, err = probeWeftLeftover(l, slug, weftBranch, weftBranchAlreadyExists)
+		if err != nil {
 			return AddResult{}, err
 		}
-		weftOld, err = probeWeftLeftover(l, slug, weftBranch, weftBranchAlreadyExists)
+		warpAdoptTip, err = probeWarpLeftover(l, slug, warpBranch, weftOld.live)
 		if err != nil {
 			return AddResult{}, err
 		}
 	}
 
+	// An adopted warp branch is a local branch tracking origin's, created from the remote-tracking ref this fetch writes.
+	warpStart, warpRemote := "", ""
+	if warpAdoptTip != "" {
+		warpStart, warpRemote = originRemoteName+"/"+warpBranch, originRemoteName
+		if _, err := gitexec.Run([]string{"fetch", "--no-tags", originRemoteName, "refs/heads/" + warpBranch + ":refs/remotes/" + warpStart}, l.WorktreePath()); err != nil {
+			return AddResult{}, fmt.Errorf("fetch warp branch %q from %q: %w", warpBranch, originRemoteName, err)
+		}
+	}
 	warpTok, err := createGitWorktree(rec, l.WorktreePath(), l.HubPath, target, func(worktreePath string) []string {
+		if warpStart != "" {
+			return []string{"worktree", "add", "--track", "-b", warpBranch, worktreePath, warpStart}
+		}
 		return []string{"worktree", "add", "-b", warpBranch, worktreePath}
 	})
 	if err != nil {
@@ -177,7 +193,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 	// The `-b warpBranch` argument to the worktree add above means this same call created a branch,
 	// not merely a worktree; a branch is a ref, so it records via AppendRef rather than Append.
-	rec.AppendRef(KindBranchCreated, warpBranch, refDetail("warp", l.WorktreePath(), ""))
+	rec.AppendRef(KindBranchCreated, warpBranch, refDetail("warp", l.WorktreePath(), warpRemote))
 
 	// Install the post-checkout hook now that the warp worktree exists.
 	// Hook installation is non-fatal: a failure is logged but does not abort
@@ -187,13 +203,34 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 
 	weftPath := WeftWorktreePath(l, slug)
+	weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
+	if weftRepoRootErr != nil {
+		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
+		return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
+	}
+
+	// A local weft branch behind origin advances to origin's tip.
+	// git refuses a fetch into a branch that is not a fast-forward, so a branch that moved since the pre-flight is never rewound or overwritten.
+	if weftOld.fastForwardTo != "" {
+		if _, err := gitexec.Run([]string{"fetch", "--no-tags", originRemoteName, "refs/heads/" + weftBranch + ":refs/heads/" + weftBranch}, weftRepoRoot); err != nil {
+			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
+			return AddResult{}, fmt.Errorf("fast-forward weft branch %q to its tip on %q failed: %w", weftBranch, originRemoteName, err)
+		}
+		rec.Append(KindRepoAdvanced, weftRepoRoot, weftBranch+" "+weftOld.fastForwardTo)
+	}
+
+	weftAdopted := false
+	if weftOld.live {
+		weftAdopted, _, err = resolveWeftBranch(rec, l, weftBranch, !opts.SkipGit && !opts.SkipPush)
+		if err != nil {
+			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
+			return AddResult{}, err
+		}
+	}
+
 	// runRecordsTracked is whether the fork point tracked run records that step 8 dropped from the new worktree.
 	var runRecordsTracked bool
-	if weftBranchAlreadyExists {
-		weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
-		if weftRepoRootErr != nil {
-			return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
-		}
+	if weftAdopted {
 		// Adopt: git worktree add <path> <branch> (no -b, branch exists), through
 		// containedWorktreeAdd so a symlink toggled at weftPath cannot carry the worktree outside the hub.
 		err := containedWorktreeAdd(weftRepoRoot, l.HubPath, weftPath, func(worktreePath string) []string {
@@ -248,22 +285,26 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	// (10c) Record and commit the pair's provenance now that the pair is fully wired, and
 	// before step 11's warp push and step 12's weft push — the weft push that already runs at
 	// step 12 carries this commit to the remote, so no new push call is added here.
-	if err := WriteOrigin(rec, l, slug, Origin{ParentBranch: parentBranch, ParentWorktree: l.WorktreeName}); err != nil {
-		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
-		return AddResult{}, fmt.Errorf("record parent branch: %w", err)
-	}
-	// The commit's sha and committed returns are not read here: CommitWeftPaths records the
-	// KindCommitCreated entry itself, at its own success site, per the
-	// origin-record-records-both-its-write-and-its-commit decision.
-	// The run-records root joins the commit's paths only when the fork tracked it:
-	// git add on an untracked, absent root is a hard pathspec error, which a hub with no run records must not hit.
-	commitPaths := []string{OriginRecordRel()}
-	if runRecordsTracked {
-		commitPaths = append(commitPaths, shedrun.RunsRootRel())
-	}
-	if _, _, err := CommitWeftPaths(rec, weftPath, l.AnchorRel, commitPaths, "fabric: record parent branch for "+slug, opts); err != nil {
-		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
-		return AddResult{}, fmt.Errorf("commit parent branch record: %w", err)
+	// An adopted weft worktree that already carries the record keeps it: neither rewritten nor committed, so a task moved between machines keeps its recorded parent.
+	// A forked weft always gets its own record, though it may carry the parent's.
+	if _, statErr := os.Stat(OriginRecordPathFor(l, slug)); !weftAdopted || statErr != nil {
+		if err := WriteOrigin(rec, l, slug, Origin{ParentBranch: parentBranch, ParentWorktree: l.WorktreeName}); err != nil {
+			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
+			return AddResult{}, fmt.Errorf("record parent branch: %w", err)
+		}
+		// The commit's sha and committed returns are not read here: CommitWeftPaths records the
+		// KindCommitCreated entry itself, at its own success site, per the
+		// origin-record-records-both-its-write-and-its-commit decision.
+		// The run-records root joins the commit's paths only when the fork tracked it:
+		// git add on an untracked, absent root is a hard pathspec error, which a hub with no run records must not hit.
+		commitPaths := []string{OriginRecordRel()}
+		if runRecordsTracked {
+			commitPaths = append(commitPaths, shedrun.RunsRootRel())
+		}
+		if _, _, err := CommitWeftPaths(rec, weftPath, l.AnchorRel, commitPaths, "fabric: record parent branch for "+slug, opts); err != nil {
+			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
+			return AddResult{}, fmt.Errorf("commit parent branch record: %w", err)
+		}
 	}
 
 	// (11) Push warp branch (LAST step for warp)
@@ -278,11 +319,6 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	if weftOld.tip != "" {
 		if addBeforeWeftReplaceHook != nil {
 			addBeforeWeftReplaceHook()
-		}
-		weftRepoRoot, rootErr := WeftRepoRoot(l)
-		if rootErr != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
-			return AddResult{}, fmt.Errorf("resolve weft repo root: %w", rootErr)
 		}
 		_, delErr := deleteRemoteBranch(rec, remoteBranchRequest{
 			what:      "replace archived leftover weft branch on origin",
@@ -316,6 +352,9 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 
 // rollbackAdd performs best-effort paired cleanup on Add failure, unwiring junctions,
 // removing worktrees and branches, preserving pre-existing adopted weft branches.
+// weftBranchAdopted is whether the local weft branch existed before this Add:
+// a branch Add created, forked or taken from origin as a local tracking branch, is deleted, while a pre-existing one survives, a fast-forward Add made to it included (it is never rewound).
+// No origin branch is ever touched.
 // warpTok is the token createGitWorktree minted when this Add call created the warp worktree at
 // target; it is the ownership proof the gate's warp-side removal requires.
 // The warp-branch deletion (step 5) is the one cleanup the gate may refuse: ownedManagedBranch can
