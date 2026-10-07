@@ -4,6 +4,11 @@
 //	go run ./tools/tokencount bugfix-sessions bugfix-webster
 //	go run ./tools/tokencount -hub ~/Code/loomyard-LYXHUB -out .scratch/tokens.md test-suite-prune-core
 //
+// The two launchers beside this file, tokencount.sh and tokencount.cmd, are the intended
+// entry points: each runs from the repository root and writes
+// .scratch/token-usage-by-role.md, one fixed path overwritten per run, with the run's
+// instant and slugs recorded inside the report.
+//
 // Each argument is a task slug, read as the worktree <hub>/<slug>; -hub defaults to the
 // parent of the current directory, which is the hub when run from its prime.
 // Claude Code keeps a worktree's sessions in ~/.claude/projects/<encoded path>/, one
@@ -30,6 +35,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
 func main() {
@@ -84,5 +91,12 @@ func run(args []string, stdout io.Writer) error {
 		defer f.Close()
 		w = f
 	}
-	return report.WriteMarkdown(w)
+	fmt.Fprintf(w, "# Token usage by role\n\nGenerated %s for %s.\n\n", time.Now().Format("2006-01-02 15:04"), strings.Join(slugs, ", "))
+	if err := report.WriteMarkdown(w); err != nil {
+		return err
+	}
+	if *out != "" {
+		fmt.Fprintln(stdout, "wrote", *out)
+	}
+	return nil
 }
