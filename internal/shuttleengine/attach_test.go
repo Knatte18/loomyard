@@ -901,10 +901,9 @@ func TestAttach_OutputFileMatching_ResolvedAbsoluteSet(t *testing.T) {
 	}
 }
 
-// TestAttach_OffsetStartsAtZero covers attach-reconstructs-the-run-explicitly's replay decision: a
-// pre-existing events.jsonl whose last event is a completion classifies OutcomeDone on the first
-// tick after attach (the missed-terminal-Stop case), and the same backlog with output files absent
-// is a held turn end that keeps the run polling to its deadline.
+// TestAttach_OffsetStartsAtZero covers attach-reconstructs-the-run-explicitly's replay decision:
+// a pre-existing events.jsonl whose last event is a completion classifies OutcomeDone on the first tick after attach (the missed-terminal-Stop case),
+// and the same backlog with output files absent is a held turn end that keeps the run polling to its deadline.
 //
 //testtiming:keep pins that the whole pre-existing events backlog is replayed on attach and its last event wins, for a completion and for a held Stop
 func TestAttach_OffsetStartsAtZero(t *testing.T) {
