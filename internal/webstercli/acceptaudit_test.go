@@ -68,6 +68,47 @@ func TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestAcceptAuditCmd_BatchClearsFabricReference proves --batch clears a failed batch's pathless fabric-reference finding when the batch made no commit,
+// names recover-batch as next, and that a second call refuses because nothing is left to accept.
+// It sets WEFT_SKIP_GIT, so it is not parallel.
+func TestAcceptAuditCmd_BatchClearsFabricReference(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	fx.CLI.geom.WorktreeRoot = fx.Worktree
+	st := fx.initState(t)
+	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
+	st.Batches[2] = &websterengine.BatchState{
+		Slug: "calibrate", Kind: "fork", StartSHA: head, Terminal: true, Status: "failed",
+		Digest:      &websterengine.Digest{Status: "failed", HeadSHA: head},
+		Uncheckable: []string{"fabric-reference: ran a fabric-referencing command (\"ls ../x-records\")"},
+	}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{"--batch", "2"}); code != 0 {
+		t.Fatalf("accept-audit --batch 2 = %d; want 0, output: %s", code, out.String())
+	}
+	for _, want := range []string{"ls ../x-records", "lyx webster recover-batch 2"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q; got %q", want, out.String())
+		}
+	}
+	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() = %v, %v; want a state, nil", loaded, err)
+	}
+	if bs := loaded.Batches[2]; len(bs.Uncheckable) != 0 || len(bs.AuditWarnings) != 1 {
+		t.Errorf("batch 2 = Uncheckable %v, AuditWarnings %v; want cleared with one warning", bs.Uncheckable, bs.AuditWarnings)
+	}
+
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{"--batch", "2"}); code == 0 {
+		t.Fatalf("second accept-audit --batch 2 = 0; want a refusal, output: %s", out.String())
+	}
+}
+
 // TestAcceptAuditCmd_Refusals proves a suspect path that moved since the run recorded it refuses with its way forward and leaves state.json byte-identical:
 // an edited path refuses with the git way forward, and a commit on top of the recorded head refuses even when a second commit restores the file's content.
 // It sets WEFT_SKIP_GIT, so it is not parallel.

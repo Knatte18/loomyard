@@ -331,7 +331,11 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 			for _, p := range contracts.Uncleared {
 				what = append(what, fmt.Sprintf("%s (%s)", p, noteForkWroteLast))
 			}
-			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; %s", batchNumber, strings.Join(what, ", "), resetToStartSteps(stepRunFresh))}
+			wayForward := resetToStartSteps(stepRunFresh)
+			if len(contracts.Uncleared) == 0 && allPathlessFabricReference(contracts.Rest) {
+				wayForward = fmt.Sprintf("way forward: when the batch made no commit and the worktree is clean, \"lyx webster accept-audit --batch %d\" then \"lyx webster recover-batch %d\"; otherwise %s", batchNumber, batchNumber, strings.TrimPrefix(resetToStartSteps(stepRunFresh), "way forward: "))
+			}
+			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; %s", batchNumber, strings.Join(what, ", "), wayForward)}
 		}
 		if len(contracts.Uncleared) > 0 {
 			return nil, false, fmt.Errorf("webster: batch %02d failed on contract file(s) a fork wrote last: %s", batchNumber, contractDeleteClause(contracts.Uncleared, fmt.Sprintf("lyx webster recover-batch %d", batchNumber)))
