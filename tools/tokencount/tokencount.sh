@@ -6,7 +6,10 @@
 # Runs in a subshell cd'd to the repo root (two levels up from this tools/tokencount
 # folder, mirroring the .cmd launcher's pushd/popd) so `go run` finds go.mod and -hub
 # defaults to the repo root's parent, the hub, without touching the caller's own cwd.
-# The arguments are the task slugs to count, and flags such as -hub pass through:
+# The arguments are the task slugs to count, and flags such as -hub pass through; with no
+# slugs it counts the most recently active runs (-last, default 6):
+# tokencount.sh
+# tokencount.sh -last 10
 # tokencount.sh bugfix-sessions bugfix-webster
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
