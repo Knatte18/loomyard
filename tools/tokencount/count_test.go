@@ -78,7 +78,7 @@ func TestCountRun(t *testing.T) {
 	if err := (Report{Runs: []RunTally{run}}).WriteMarkdown(&buf); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"## my-task", "## All runs", "| webster+sub | 1 | 4 | 0 | 5 | 1 |", "opus: 1"} {
+	for _, want := range []string{"## my-task", "## All runs", "| webster+sub | 1 | 4 | 0 | 5 | 1 | 0.0M | 47.9% |", "opus: 1"} {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("report lacks %q:\n%s", want, buf.String())
 		}
