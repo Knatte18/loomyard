@@ -123,8 +123,7 @@ type Deps struct {
 	MarkTaskDone func() error
 
 	// ConfigChanges returns the task's changes to its own per-worktree config files since its fork point.
-	// Finalize calls it before the catch-up merge-in, so before any parent-side mutation,
-	// and only reports the result through Notify:
+	// Finalize calls it before the catch-up merge-in, so before any parent-side mutation, and only reports the result through Notify:
 	// landing never carries those files to the parent.
 	// A returned error is logged and reported through Notify, never a stop.
 	//
@@ -135,7 +134,8 @@ type Deps struct {
 	// Notify queues one single-line notice for the hub's orchestrator.
 	// Finalize calls it once at Done when ConfigChanges produced a line, and only logs a failure:
 	// the landing has happened whatever the notice queue says.
-	// landingshed names no orchestrator path, so the queue wiring lives in the closure.
+	// landingshed names no orchestrator path,
+	// so the queue wiring lives in the closure.
 	//
 	// Nil means "no one to notify", following CommitStatus's nil-is-absent convention.
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
