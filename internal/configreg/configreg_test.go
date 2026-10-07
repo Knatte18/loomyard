@@ -87,6 +87,7 @@ func TestLookup(t *testing.T) {
 	}{
 		{"batcher", true, []string{"profiles"}},
 		{"board", true, []string{"types", "labels"}},
+		{"shuttle", true, []string{"claude_prompt_cache_ttl_roles"}},
 		{"bogus", false, nil},
 	}
 	for _, tt := range tests {
