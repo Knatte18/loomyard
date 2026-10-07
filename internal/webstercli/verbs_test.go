@@ -1201,6 +1201,6 @@ func TestBracketVerbs_NoRunInProgressWayForward(t *testing.T) {
 // hubGeometryWithIndex returns the hub geometry of layout with the real code index the CLI layer wires.
 func hubGeometryWithIndex(layout *lyxcwd.Location) websterengine.Geometry {
 	geom := hubgeom.WebsterGeometry(layout)
-	geom.Index = planglyph.NewIndex()
+	geom.Index = planglyph.NewIndex(fabricengine.NewReferenceRule())
 	return geom
 }
