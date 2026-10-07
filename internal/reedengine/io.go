@@ -16,8 +16,16 @@ package reedengine
 
 import (
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+)
+
+// The pane user options a wait mark is stored in.
+const (
+	waitOption      = "@lyx_wait"
+	waitStartOption = "@lyx_wait_start"
 )
 
 // resolveLivePaneID looks up guid in st.Strands and returns its bound pane
@@ -124,6 +132,45 @@ func (e *Engine) SendKey(guid, key string) error {
 
 		if err := e.tmux.run("send-keys", "-t", paneID, key); err != nil {
 			return fmt.Errorf("send key %q: %w", key, err)
+		}
+		return nil
+	})
+}
+
+// SetWaitMark sets guid's pane wait mark to label, started at start, or clears it when label is empty.
+// The mark is two pane user options, @lyx_wait (the label) and @lyx_wait_start (epoch seconds),
+// which the status line renders and which die with the pane.
+// It is display only: nothing is persisted,
+// and a failure is returned for the caller to log.
+func (e *Engine) SetWaitMark(guid, label string, start time.Time) error {
+	return e.withOpLock(func() error {
+		if err := e.requireSessionLocked(); err != nil {
+			return err
+		}
+
+		st, err := e.loadOrInitStateLocked()
+		if err != nil {
+			return err
+		}
+
+		paneID, err := e.resolvePaneInThisSessionLocked(st, guid)
+		if err != nil {
+			return err
+		}
+
+		if label == "" {
+			for _, option := range []string{waitOption, waitStartOption} {
+				if err := e.tmux.run("set-option", "-p", "-u", "-t", paneID, option); err != nil {
+					return fmt.Errorf("clear wait mark: %w", err)
+				}
+			}
+			return nil
+		}
+		if err := e.tmux.run("set-option", "-p", "-t", paneID, waitOption, label); err != nil {
+			return fmt.Errorf("set wait mark: %w", err)
+		}
+		if err := e.tmux.run("set-option", "-p", "-t", paneID, waitStartOption, strconv.FormatInt(start.Unix(), 10)); err != nil {
+			return fmt.Errorf("set wait mark start: %w", err)
 		}
 		return nil
 	})

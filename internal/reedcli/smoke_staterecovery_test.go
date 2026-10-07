@@ -272,6 +272,9 @@ func TestSmokeStateRecovery(t *testing.T) {
 		if err := json.Unmarshal(mustRunReed(t, prime, "resume"), &resumeResult); err != nil {
 			t.Fatalf("parse resume result: %v", err)
 		}
+		if dropped, ok := resumeResult["dropped"].(float64); !ok || dropped != 0 {
+			t.Errorf("resume dropped = %v; want 0 present for a state with no done-when lists", resumeResult["dropped"])
+		}
 		if resumed, _ := resumeResult["resumed"].(float64); resumed < 1 {
 			t.Errorf("resume resumed = %v; want at least 1 — the stale binding must not make resume skip a strand whose process is not running", resumeResult["resumed"])
 		}

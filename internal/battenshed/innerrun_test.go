@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -399,24 +400,33 @@ func TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled(t *testing.T) {
 	}
 }
 
-// TestInnerRun_SpawnsUntilASpawnIsConfirmed pins which child states re-spawn when no spawn has been
-// confirmed on this machine. A child bootstrap seeds a running status before it starts its driver,
-// so a running status alone is no proof the spawn completed: it is spawned (again), and the
-// confirmation is recorded only once Spawn succeeds. A halted or done child is never spawned.
+// pidMarker renders a spawn-confirmation marker holding pid.
+func pidMarker(pid int) []byte { return []byte(strconv.Itoa(pid) + "\n") }
+
+// TestInnerRun_SpawnsUntilASpawnIsConfirmed pins which child states re-spawn when no spawn has been confirmed by this process,
+// and that a marker from another pid or in the old layout is no confirmation.
+// A child bootstrap seeds a running status before it starts its driver,
+// so a running status alone is no proof the spawn completed: it is spawned (again),
+// and the confirmation is recorded only once Spawn succeeds.
+// A halted or done child is never spawned.
 func TestInnerRun_SpawnsUntilASpawnIsConfirmed(t *testing.T) {
 	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
 	tests := []struct {
-		name          string
-		status        statusResult
-		confirmed     bool
+		name   string
+		status statusResult
+		// marker is the confirmation marker's content before the Call;
+		// nil writes none.
+		marker        []byte
 		spawnErr      error
 		wantSpawns    int
 		wantConfirmed bool
 	}{
 		{name: "RunningUnconfirmedSpawns", status: running, wantSpawns: 1, wantConfirmed: true},
-		{name: "RunningConfirmedDoesNotSpawn", status: running, confirmed: true, wantSpawns: 0, wantConfirmed: true},
+		{name: "RunningConfirmedByThisProcessDoesNotSpawn", status: running, marker: pidMarker(os.Getpid()), wantSpawns: 0, wantConfirmed: true},
+		{name: "RunningConfirmedByAnEarlierPidSpawns", status: running, marker: pidMarker(os.Getpid() + 1), wantSpawns: 1, wantConfirmed: true},
+		{name: "RunningConfirmedInTheOldLayoutSpawns", status: running, marker: []byte("spawned\n"), wantSpawns: 1, wantConfirmed: true},
 		{name: "RunningUnconfirmedFailedSpawnRecordsNothing", status: running, spawnErr: errors.New("bootstrap exited 1"), wantSpawns: 1, wantConfirmed: false},
-		{name: "AbsentStatusClearsAStaleConfirmationBeforeSpawning", status: statusResult{found: false}, confirmed: true, spawnErr: errors.New("bootstrap exited 1"), wantSpawns: 1, wantConfirmed: false},
+		{name: "AbsentStatusClearsAStaleConfirmationBeforeSpawning", status: statusResult{found: false}, marker: pidMarker(os.Getpid()), spawnErr: errors.New("bootstrap exited 1"), wantSpawns: 1, wantConfirmed: false},
 		{name: "DoneUnconfirmedDoesNotSpawn", status: statusResult{status: shedengine.Status{State: shedengine.StateDone}, found: true}, wantSpawns: 0, wantConfirmed: false},
 		{name: "BlockedUnconfirmedDoesNotSpawn", status: statusResult{status: shedengine.Status{State: shedengine.StateBlocked}, found: true}, wantSpawns: 0, wantConfirmed: false},
 	}
@@ -424,8 +434,8 @@ func TestInnerRun_SpawnsUntilASpawnIsConfirmed(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			scratchDir := t.TempDir()
 			marker := SpawnConfirmedFile(scratchDir, "innerrun")
-			if tt.confirmed {
-				if err := os.WriteFile(marker, []byte("spawned\n"), 0o644); err != nil {
+			if tt.marker != nil {
+				if err := os.WriteFile(marker, tt.marker, 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -438,6 +448,60 @@ func TestInnerRun_SpawnsUntilASpawnIsConfirmed(t *testing.T) {
 			}
 			if got := spawnConfirmed(marker); got != tt.wantConfirmed {
 				t.Errorf("spawn confirmed = %v; want %v", got, tt.wantConfirmed)
+			}
+		})
+	}
+}
+
+// TestInnerRun_AdoptsARunningChildWithADriver pins the running arm over an unconfirmed spawn:
+// a live or retiring driver strand, or a held child run lock, means a driver is at work,
+// so the child is adopted (the confirmation recorded for this process, nothing spawned);
+// no strand or a dead one with a free lock spawns;
+// a seam error is a hard error that spawns nothing.
+func TestInnerRun_AdoptsARunningChildWithADriver(t *testing.T) {
+	t.Parallel()
+
+	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
+	seamErr := errors.New("reed state unreadable")
+	tests := []struct {
+		name       string
+		strand     ChildDriverStrand
+		strandErr  error
+		lockHeld   bool
+		lockErr    error
+		wantSpawns int
+		wantAdopt  bool
+		wantErr    error
+	}{
+		{name: "LiveStrandIsAdopted", strand: ChildDriverLive, wantAdopt: true},
+		{name: "RetiringStrandIsAdopted", strand: ChildDriverRetiring, wantAdopt: true},
+		{name: "HeldRunLockIsAdopted", strand: ChildDriverNone, lockHeld: true, wantAdopt: true},
+		{name: "NoStrandWithAFreeLockSpawns", strand: ChildDriverNone, wantSpawns: 1},
+		{name: "DeadStrandWithAFreeLockSpawns", strand: ChildDriverDead, wantSpawns: 1},
+		{name: "StrandReadErrorIsAHardError", strandErr: seamErr, wantErr: seamErr},
+		{name: "LockReadErrorIsAHardError", lockErr: seamErr, wantErr: seamErr},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scratchDir := t.TempDir()
+			marker := SpawnConfirmedFile(scratchDir, "innerrun")
+			if err := os.WriteFile(marker, pidMarker(os.Getpid()+1), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{running}, &fakeClock{})
+			deps.DriverStrand = func(context.Context) (ChildDriverStrand, error) { return tt.strand, tt.strandErr }
+			deps.ChildRunLockHeld = func() (bool, error) { return tt.lockHeld, tt.lockErr }
+
+			_, _, err := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace).Call(context.Background())
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Call() error = %v; want %v", err, tt.wantErr)
+			}
+			if *spawnCalls != tt.wantSpawns {
+				t.Errorf("spawn calls = %d; want %d", *spawnCalls, tt.wantSpawns)
+			}
+			if got := spawnConfirmed(marker); got != (tt.wantAdopt || tt.wantSpawns > 0) {
+				t.Errorf("spawn confirmed = %v after the Call; want %v", got, tt.wantAdopt || tt.wantSpawns > 0)
 			}
 		})
 	}

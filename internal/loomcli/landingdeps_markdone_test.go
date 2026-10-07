@@ -37,7 +37,7 @@ func markDoneFixtureDir(t *testing.T) (markDone func() error, board *boardengine
 	}
 
 	deps := landingDeps(location, websterengine.Geometry{}, "task", "https://example.com/o.git", "main",
-		true, func() error { return nil }, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "")
+		true, func() error { return nil }, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil)
 
 	bc, err := boardengine.LoadConfig(boardDir, "board")
 	if err != nil {

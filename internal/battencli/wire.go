@@ -65,6 +65,51 @@ func driverAliveFrom(present bool, status func() (reedengine.StatusResult, error
 	return false, nil
 }
 
+// driverStrandFrom reports the child's driver strand from reed's sessionless directory, over an injected reader so its answers are testable without tmux.
+// An absent task worktree and a directory with no driver row are none;
+// a live row is retiring when its Retiring is set and live otherwise;
+// a row that is not live is dead.
+// A directory read error is returned unchanged.
+func driverStrandFrom(present bool, directory func() ([]reedengine.DirectoryRow, error)) (battenshed.ChildDriverStrand, error) {
+	if !present {
+		return battenshed.ChildDriverNone, nil
+	}
+	rows, err := directory()
+	if err != nil {
+		return battenshed.ChildDriverNone, err
+	}
+	for _, row := range rows {
+		if !loomengine.IsDriverStrand(row.Name) {
+			continue
+		}
+		switch {
+		case !row.Live:
+			return battenshed.ChildDriverDead, nil
+		case row.Retiring:
+			return battenshed.ChildDriverRetiring, nil
+		default:
+			return battenshed.ChildDriverLive, nil
+		}
+	}
+	return battenshed.ChildDriverNone, nil
+}
+
+// runLockHeld reports whether the run lock at lockPath is held, probing it without keeping it.
+// The lock's directory is created first, since a child that never started has none.
+func runLockHeld(lockPath string) (bool, error) {
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		return false, err
+	}
+	probe, free, err := lock.TryAcquireWriteLock(lockPath)
+	if err != nil {
+		return false, err
+	}
+	if free {
+		_ = probe.Release()
+	}
+	return !free, nil
+}
+
 // taskWorktreeLocation resolves the managed task worktree's own *lyxcwd.Location, for slug, from
 // the prime *lyxcwd.Location. It is the shared body every lazily-resolved seam below calls, so a
 // caller reading this file only once still sees every "resolved lazily" claim in one place.
@@ -482,6 +527,57 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					}
 					return reedengine.New(reedCfg, reedGeom).Status()
 				})
+			},
+			DriverStrand: func(ctx context.Context) (battenshed.ChildDriverStrand, error) {
+				present, err := taskWorktreePresent(location, slug)
+				if err != nil {
+					return battenshed.ChildDriverNone, err
+				}
+				return driverStrandFrom(present, func() ([]reedengine.DirectoryRow, error) {
+					taskLocation, err := taskWorktreeLocation(location, slug)
+					if err != nil {
+						return nil, err
+					}
+					reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+					if err != nil {
+						return nil, err
+					}
+					reedGeom, err := hubgeom.ReedGeometry(taskLocation)
+					if err != nil {
+						return nil, err
+					}
+					return reedengine.New(reedCfg, reedGeom).Directory()
+				})
+			},
+			// ReviveStrands resumes the task worktree's reed session, which relaunches the dead driver strand and every other non-live strand of the pair.
+			ReviveStrands: func(ctx context.Context) error {
+				taskLocation, err := taskWorktreeLocation(location, slug)
+				if err != nil {
+					return err
+				}
+				reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+				if err != nil {
+					return err
+				}
+				reedGeom, err := hubgeom.ReedGeometry(taskLocation)
+				if err != nil {
+					return err
+				}
+				logger.Info("battencli: reviving the task worktree's strands through reed resume", "slug", slug)
+				res, err := reedengine.New(reedCfg, reedGeom).Resume()
+				if err != nil {
+					logger.Warn("battencli: reed resume of the task worktree failed", "slug", slug, "error", err)
+					return err
+				}
+				logger.Info("battencli: reed resume of the task worktree finished", "slug", slug, "resumed", res.Resumed, "dropped", res.Dropped)
+				return nil
+			},
+			ChildRunLockHeld: func() (bool, error) {
+				taskLocation, err := taskWorktreeLocation(location, slug)
+				if err != nil {
+					return false, err
+				}
+				return runLockHeld(shedrun.RunLock(taskLocation, shedrun.SelfRunID))
 			},
 			// ResolveStatus also creates the child's ephemeral status-lock directory, since its
 			// caller reads through that lock next and nothing else on the Run-Shed path creates

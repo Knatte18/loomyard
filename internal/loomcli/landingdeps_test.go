@@ -6,12 +6,16 @@
 package loomcli
 
 import (
+	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -46,6 +50,7 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		runner,
 		cfg,
 		"parent-session",
+		func(string, time.Time) error { return nil },
 	)
 
 	if deps.ParentName != "parent-session" {
@@ -59,5 +64,61 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		if field.IsZero() {
 			t.Errorf("landingDeps(...).%s is the zero value; want it populated", typ.Field(i).Name)
 		}
+	}
+}
+
+// TestDriverWaitMark asserts the callback marks the driver strand only while it is live and not retiring, is a no-op returning nil for a gone, dead or retiring one, and passes a failing strand read or mark op through.
+func TestDriverWaitMark(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2026, 10, 3, 9, 15, 0, 0, time.UTC)
+	driver := func(live, retiring bool) reedengine.StrandStatus {
+		return reedengine.StrandStatus{GUID: "driver-guid", Name: loomengine.LoomDriverStrandName, Live: live, Retiring: retiring}
+	}
+	other := reedengine.StrandStatus{GUID: "other-guid", Name: "someone:else", Live: true}
+	markErr := errors.New("tmux gone")
+	statusErr := errors.New("reed down")
+
+	tests := []struct {
+		name      string
+		strands   []reedengine.StrandStatus
+		statusErr error
+		markErr   error
+		wantGUID  string
+		wantErr   error
+	}{
+		{name: "live driver is marked", strands: []reedengine.StrandStatus{other, driver(true, false)}, wantGUID: "driver-guid"},
+		{name: "gone driver is a no-op", strands: []reedengine.StrandStatus{other}},
+		{name: "dead driver is a no-op", strands: []reedengine.StrandStatus{driver(false, false)}},
+		{name: "retiring driver is a no-op", strands: []reedengine.StrandStatus{driver(true, true)}},
+		{name: "mark failure is passed through", strands: []reedengine.StrandStatus{driver(true, false)}, markErr: markErr, wantGUID: "driver-guid", wantErr: markErr},
+		{name: "status failure is passed through", statusErr: statusErr, wantErr: statusErr},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var gotGUID, gotLabel string
+			var gotStart time.Time
+			mark := driverWaitMark(
+				func() (reedengine.StatusResult, error) {
+					return reedengine.StatusResult{Strands: tt.strands}, tt.statusErr
+				},
+				func(guid, label string, started time.Time) error {
+					gotGUID, gotLabel, gotStart = guid, label, started
+					return tt.markErr
+				},
+			)
+			err := mark("verify Publish", start)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+			if gotGUID != tt.wantGUID {
+				t.Fatalf("marked strand = %q, want %q", gotGUID, tt.wantGUID)
+			}
+			if tt.wantGUID != "" && (gotLabel != "verify Publish" || !gotStart.Equal(start)) {
+				t.Errorf("mark = (%q, %v), want (%q, %v)", gotLabel, gotStart, "verify Publish", start)
+			}
+		})
 	}
 }

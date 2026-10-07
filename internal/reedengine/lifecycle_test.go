@@ -267,21 +267,28 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 	notLive := Strand{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}
 	stillLive := Strand{GUID: "b", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}}
 	hidden := Strand{GUID: "c", Display: render.Display{Anchor: render.AnchorHidden}}
+	withDoneWhen := func(s Strand, paths ...string) Strand {
+		s.DoneWhen = paths
+		return s
+	}
+	existing := map[string]bool{"/out/one": true, "/out/two": true}
+	exists := func(path string) bool { return existing[path] }
 
 	tests := []struct {
-		name    string
-		strands []Strand
-		liveIDs map[string]bool
-		want    []string
+		name       string
+		strands    []Strand
+		liveIDs    map[string]bool
+		wantLaunch []string
+		wantDrop   []string
 	}{
 		{
 			// Server dead (reboot): list-panes reports nothing live at all,
 			// so every not-hidden strand — even ones with a stale PaneID —
 			// must be relaunched.
-			name:    "ServerDead_EveryNonHiddenStrandRelaunched",
-			strands: []Strand{notLive, stillLive, hidden},
-			liveIDs: map[string]bool{},
-			want:    []string{"a", "b"},
+			name:       "ServerDead_EveryNonHiddenStrandRelaunched",
+			strands:    []Strand{notLive, stillLive, hidden},
+			liveIDs:    map[string]bool{},
+			wantLaunch: []string{"a", "b"},
 		},
 		{
 			// Server up, CLI restarted (the normal one-shot case): every
@@ -289,30 +296,65 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 			name:    "ServerUpCLIRestarted_NothingRelaunched",
 			strands: []Strand{notLive, stillLive, hidden},
 			liveIDs: map[string]bool{"%1": true, "%2": true},
-			want:    nil,
 		},
 		{
 			// A single strand's pane died: only that strand's pane id is
 			// missing from liveIDs, so only it gets relaunched;
 			// already-live strands are left untouched.
-			name:    "SingleStrandPaneDied_OnlyThatStrandRelaunched",
-			strands: []Strand{notLive, stillLive, hidden},
-			liveIDs: map[string]bool{"%2": true},
-			want:    []string{"a"},
+			name:       "SingleStrandPaneDied_OnlyThatStrandRelaunched",
+			strands:    []Strand{notLive, stillLive, hidden},
+			liveIDs:    map[string]bool{"%2": true},
+			wantLaunch: []string{"a"},
 		},
 		{
 			name:    "HiddenStrandNeverRelaunched",
 			strands: []Strand{hidden},
 			liveIDs: map[string]bool{},
-			want:    nil,
+		},
+		{
+			name:       "NoDoneWhenListRelaunches",
+			strands:    []Strand{notLive},
+			liveIDs:    map[string]bool{},
+			wantLaunch: []string{"a"},
+		},
+		{
+			name:       "PartlyMissingDoneWhenListRelaunches",
+			strands:    []Strand{withDoneWhen(notLive, "/out/one", "/out/missing")},
+			liveIDs:    map[string]bool{},
+			wantLaunch: []string{"a"},
+		},
+		{
+			name:     "FullyPresentDoneWhenListDrops",
+			strands:  []Strand{withDoneWhen(notLive, "/out/one", "/out/two")},
+			liveIDs:  map[string]bool{},
+			wantDrop: []string{"a"},
+		},
+		{
+			name:    "LiveStrandWithFullyPresentDoneWhenListIsUntouched",
+			strands: []Strand{withDoneWhen(stillLive, "/out/one")},
+			liveIDs: map[string]bool{"%2": true},
+		},
+		{
+			name:     "HiddenStrandWithFullyPresentDoneWhenListDrops",
+			strands:  []Strand{withDoneWhen(hidden, "/out/one")},
+			liveIDs:  map[string]bool{},
+			wantDrop: []string{"c"},
+		},
+		{
+			name:    "HiddenStrandWithPartlyMissingDoneWhenListIsNeitherLaunchedNorDropped",
+			strands: []Strand{withDoneWhen(hidden, "/out/one", "/out/missing")},
+			liveIDs: map[string]bool{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := guids(planResumeLaunches(tt.strands, tt.liveIDs))
-			if !slices.Equal(got, tt.want) {
-				t.Errorf("planResumeLaunches() guids = %v, want %v", got, tt.want)
+			launch, drop := planResumeLaunches(tt.strands, tt.liveIDs, exists)
+			if got := guids(launch); !slices.Equal(got, tt.wantLaunch) {
+				t.Errorf("planResumeLaunches() launch guids = %v, want %v", got, tt.wantLaunch)
+			}
+			if got := guids(drop); !slices.Equal(got, tt.wantDrop) {
+				t.Errorf("planResumeLaunches() drop guids = %v, want %v", got, tt.wantDrop)
 			}
 		})
 	}

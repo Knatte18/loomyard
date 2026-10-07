@@ -171,6 +171,27 @@ func TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions(t *test
 	}
 }
 
+// TestRunner_StartGated_CarriesNoDoneWhen pins that a gated run's strand carries no done-when list, because its output files existing does not mean its gate passed.
+func TestRunner_StartGated_CarriesNoDoneWhen(t *testing.T) {
+	t.Parallel()
+
+	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
+	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd"}}
+	fx := newFixture(t, reed, engine, withConfig(fastConfig))
+	readyStart(reed, engine)
+
+	gate := GateSpec{{Name: "check", Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}
+	if _, err := fx.Runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}, gate); err != nil {
+		t.Fatalf("StartGated() error: %v", err)
+	}
+	if len(reed.AddStrandCalls) != 1 {
+		t.Fatalf("AddStrand calls = %d, want 1", len(reed.AddStrandCalls))
+	}
+	if got := reed.AddStrandCalls[0].DoneWhen; len(got) != 0 {
+		t.Errorf("gated AddStrand DoneWhen = %v, want none", got)
+	}
+}
+
 // TestRunner_Start_HappyPath covers one successful Start whose readyStart scripting resolves
 // StartupReady on the very first tick.
 // The steps share that run and read what it left behind.
@@ -212,8 +233,9 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 			ResumeCmd: "resume-cmd",
 			SessionID: "session-1",
 			Display:   render.Display{Anchor: render.AnchorBelowParent},
+			DoneWhen:  []string{filepath.Join(fx.Worktree, "out.md")},
 		}
-		if got != want {
+		if !reflect.DeepEqual(got, want) {
 			t.Errorf("AddStrand spec = %+v, want %+v", got, want)
 		}
 

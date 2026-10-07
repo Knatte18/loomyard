@@ -30,6 +30,11 @@ type VerifyGateReport struct {
 	Cap int `yaml:"cap"`
 	// Dirty lists the paths of a clean-tree failure, which runs no verify and so has no Failures or LogPath.
 	Dirty []string `yaml:"dirty,omitempty"`
+	// TimedOut is the verify timeout as a duration string when the verify outlived it and was killed, and empty otherwise.
+	// Such a failure has no Failures and carries LogTail instead.
+	TimedOut string `yaml:"timed_out,omitempty"`
+	// LogTail is the bounded tail of the verify log of a timed-out run.
+	LogTail string `yaml:"log_tail,omitempty"`
 	// Failures lists the failing identities the verify output parsed to.
 	Failures []VerifyFailure `yaml:"failures,omitempty"`
 	// LogPath is the full verify log.
@@ -111,8 +116,19 @@ func moduleRelDir(modulePath, pkg string) (string, bool) {
 	return rel, true
 }
 
+// verifyGateLogTailBytes bounds the log tail a timed-out run's report carries.
+const verifyGateLogTailBytes = 4096
+
+// logTail returns the last verifyGateLogTailBytes of output, trimmed.
+func logTail(output string) string {
+	if len(output) > verifyGateLogTailBytes {
+		output = output[len(output)-verifyGateLogTailBytes:]
+	}
+	return strings.TrimSpace(output)
+}
+
 // renderVerifyGateFindings returns the findings text the gate returns to Merriam:
-// the attempt and the cap, then either the dirty paths or each failing identity with its output tail, the full log path, and the hint.
+// the attempt and the cap, then either the dirty paths, the timeout sentence with the log path and tail, or each failing identity with its output tail, the full log path, and the hint.
 func renderVerifyGateFindings(r VerifyGateReport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Verify gate failed (attempt %d of %d).\n", r.Attempt, r.Cap)
@@ -121,6 +137,17 @@ func renderVerifyGateFindings(r VerifyGateReport) string {
 		b.WriteString("The worktree is not clean, so no verify ran. Commit or remove these paths:\n")
 		for _, p := range r.Dirty {
 			fmt.Fprintf(&b, "- %s\n", p)
+		}
+		return b.String()
+	}
+
+	if r.TimedOut != "" {
+		fmt.Fprintf(&b, "The verify command did not finish within %s and was killed.\n", r.TimedOut)
+		if r.LogPath != "" {
+			fmt.Fprintf(&b, "Full log: %s\n", r.LogPath)
+		}
+		if r.LogTail != "" {
+			fmt.Fprintf(&b, "Log tail:\n%s\n", r.LogTail)
 		}
 		return b.String()
 	}

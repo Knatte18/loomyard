@@ -6,6 +6,7 @@ package reedengine
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -75,7 +76,7 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 		t.Fatalf("Strands = %+v, want %+v", got.Strands, want.Strands)
 	}
 	for i := range want.Strands {
-		if got.Strands[i] != want.Strands[i] {
+		if !reflect.DeepEqual(got.Strands[i], want.Strands[i]) {
 			t.Errorf("Strands[%d] = %+v, want %+v", i, got.Strands[i], want.Strands[i])
 		}
 	}

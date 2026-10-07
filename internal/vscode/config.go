@@ -99,7 +99,7 @@ func writeInteractiveTasks(tasksPath, lyxPath, claudePath string) error {
 	// that attempts its own boot and fails for the same underlying reason, leaving no
 	// strand, no pane, and no bare claude either way. No compensating guard of the
 	// runner's behaviour is added here.
-	// The add row's --unless-name keeps a folder-open on a prime whose orch strand is live from stacking claude below it.
+	// The add row's --unless-name keeps a folder-open on a prime whose state holds an orch strand, live or dormant, from stacking claude below it.
 	tasks := map[string]any{
 		"version": "2.0.0",
 		"tasks": []map[string]any{

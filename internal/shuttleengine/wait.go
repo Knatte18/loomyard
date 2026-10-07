@@ -230,8 +230,14 @@ func (run *Run) Wait() (Result, error) {
 	eventsFailures := 0
 	statusFailures := 0
 
+	// A mark left by a crashed step is gone at the next touch,
+	// and every return leaves none behind.
+	run.clearWait()
+	defer run.endWait()
+
 	for tick := 1; ; tick++ {
 		outcome, message, err := run.pollEventsTick()
+		run.syncShellWait()
 		if err != nil {
 			eventsFailures++
 			if eventsFailures >= maxEventsReadRetries {
@@ -993,7 +999,9 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 			if final && entry.Final != nil {
 				closure = entry.Final
 			}
+			run.beginGateWait(entry.Name)
 			result, err := closure()
+			run.endGateWait()
 			if err != nil {
 				return nil, err
 			}

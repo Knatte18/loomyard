@@ -56,6 +56,12 @@ func TestTokenResolve(t *testing.T) {
 			ctx:       Ctx{RepoName: "unrelated-repo-value", HubPath: "unrelated-hub-value", WorktreeName: "reed-header-selvage"},
 			want:      "reed-header-selvage",
 		},
+		{
+			name:      "waits resolves to the fixed placeholder whatever the Ctx",
+			tokenName: "waits",
+			ctx:       Ctx{RepoName: "loomyard", HubPath: "/hub/loomyard-LYXHUB", WorktreeName: "w"},
+			want:      WaitsPlaceholder,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -70,17 +76,17 @@ func TestTokenResolve(t *testing.T) {
 	}
 }
 
-// TestBuild_ReturnsAllThreeKeys verifies Build resolves the full registry into a flat map keyed by
-// token name, with all three current tokens (repo, hub, worktree) present and correctly valued.
-func TestBuild_ReturnsAllThreeKeys(t *testing.T) {
+// TestBuild_ReturnsEveryRegistryKey verifies Build resolves the full registry into a flat map keyed by token name,
+// with the Ctx-field tokens correctly valued.
+func TestBuild_ReturnsEveryRegistryKey(t *testing.T) {
 	t.Parallel()
 
 	ctx := Ctx{RepoName: "loomyard", HubPath: "/hub/loomyard-LYXHUB", WorktreeName: "reed-header-selvage"}
 	got := Build(ctx)
 
-	want := map[string]string{"repo": "loomyard", "hub": "/hub/loomyard-LYXHUB", "worktree": "reed-header-selvage"}
-	if len(got) != len(want) {
-		t.Fatalf("Build() returned %d keys; want %d: %+v", len(got), len(want), got)
+	want := map[string]string{"repo": "loomyard", "hub": "/hub/loomyard-LYXHUB", "worktree": "reed-header-selvage", "waits": WaitsPlaceholder}
+	if len(got) != len(registry) {
+		t.Fatalf("Build() returned %d keys; want one per registry token (%d): %+v", len(got), len(registry), got)
 	}
 	for name, wantValue := range want {
 		if got[name] != wantValue {
@@ -148,13 +154,10 @@ func TestRegistry_AddingATokenIsOneEntry(t *testing.T) {
 		got[token.Name] = token.Resolve(ctx)
 	}
 
-	want := map[string]string{"repo": "loomyard", "hub": "/hub/loomyard-LYXHUB", "worktree": "reed-header-selvage", "slug": "example-slug"}
-	if len(got) != len(want) {
-		t.Fatalf("hypothetical registry resolved to %d keys; want %d: %+v", len(got), len(want), got)
+	if len(got) != len(registry)+1 {
+		t.Fatalf("hypothetical registry resolved to %d keys; want the registry's %d plus one: %+v", len(got), len(registry), got)
 	}
-	for name, wantValue := range want {
-		if got[name] != wantValue {
-			t.Errorf("hypothetical registry[%q] = %q; want %q", name, got[name], wantValue)
-		}
+	if got["slug"] != "example-slug" {
+		t.Errorf("hypothetical registry[%q] = %q; want %q", "slug", got["slug"], "example-slug")
 	}
 }

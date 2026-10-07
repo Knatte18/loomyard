@@ -736,6 +736,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.driverSender = runnerDriverStarter{runner: runner}
 	c.driverResumeWait = func() { time.Sleep(driverResumeSendInterval) }
 	c.driverPaneProbe = newReedDriverPaneProbe(reedEngine)
+	c.driverDirectory = newReedDriverDirectory(reedEngine)
 	return nil
 }
 

@@ -1,4 +1,4 @@
-// directory_test.go pins the name directory on a fake tmux: which strands map to which rows, and that a cold session reports every row dormant.
+// directory_test.go pins the name directory on a fake tmux: which strands map to which rows, that a retiring strand's row carries the flag, and that a cold session reports every row dormant.
 
 package reedengine
 
@@ -13,7 +13,7 @@ func TestDirectory_MapsEachStrandToItsRow(t *testing.T) {
 	strands := []Strand{
 		{GUID: "g1", Name: "tc:tslug:worker", Worktree: "tslug", PaneID: "%1"},
 		{GUID: "g2", Name: "tc:tslug:worker-2", Worktree: "tslug", PaneID: "%2"},
-		{GUID: "g3", Name: "tc:tslug:dead", Worktree: "tslug", PaneID: "%3"},
+		{GUID: "g3", Name: "tc:tslug:dead", Worktree: "tslug", PaneID: "%3", Retiring: true},
 		{GUID: "g4", Name: "tc:tslug:unbound", Worktree: "tslug"},
 	}
 	live := []LivePane{
@@ -30,7 +30,7 @@ func TestDirectory_MapsEachStrandToItsRow(t *testing.T) {
 	want := []DirectoryRow{
 		{Name: "tc:tslug:worker", GUID: "g1", Worktree: "tslug", PaneID: "%1", Title: "tc:tslug:worker", Live: true},
 		{Name: "tc:tslug:worker-2", GUID: "g2", Worktree: "tslug", PaneID: "%2", Title: "hand-set", Live: true, Drift: true},
-		{Name: "tc:tslug:dead", GUID: "g3", Worktree: "tslug", PaneID: "%3"},
+		{Name: "tc:tslug:dead", GUID: "g3", Worktree: "tslug", PaneID: "%3", Retiring: true},
 		{Name: "tc:tslug:unbound", GUID: "g4", Worktree: "tslug"},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -44,7 +44,7 @@ func TestDirectory_MapsEachStrandToItsRow(t *testing.T) {
 	// A cold session has no live panes: every row is dormant.
 	wantCold := make([]DirectoryRow, len(strands))
 	for i, s := range strands {
-		wantCold[i] = DirectoryRow{Name: s.Name, GUID: s.GUID, Worktree: s.Worktree, PaneID: s.PaneID}
+		wantCold[i] = DirectoryRow{Name: s.Name, GUID: s.GUID, Worktree: s.Worktree, PaneID: s.PaneID, Retiring: s.Retiring}
 	}
 	if gotCold := directoryRows(strands, nil); !reflect.DeepEqual(gotCold, wantCold) {
 		t.Errorf("cold rows:\n got %+v\nwant %+v", gotCold, wantCold)

@@ -101,6 +101,8 @@ func TestVerifyGateReport_RoundTrip(t *testing.T) {
 			{ID: "m/a.TestX", Kind: FailureKindTest, Package: "m/a", Tail: "boom"},
 			{ID: "m/b", Kind: FailureKindPackage, Package: "m/b", Tail: "build failed"},
 		},
+		TimedOut:   "1h0m0s",
+		LogTail:    "hung in TestSlow",
 		LogPath:    "/scratch/verify.log",
 		Hint:       []string{"03-third"},
 		FixCommits: []string{"abc123", "def456"},
@@ -147,6 +149,16 @@ func TestRenderVerifyGateFindings(t *testing.T) {
 	r.Hint = nil
 	if got := renderVerifyGateFindings(r); !strings.Contains(got, "No recorded card touched a failing package") {
 		t.Errorf("findings without a hint should say no card touched a failing package:\n%s", got)
+	}
+
+	timedOut := renderVerifyGateFindings(VerifyGateReport{Attempt: 1, Cap: 3, TimedOut: "1h0m0s", LogPath: "/scratch/verify.log", LogTail: "hung in TestSlow"})
+	for _, want := range []string{"attempt 1 of 3", "did not finish within 1h0m0s and was killed", "/scratch/verify.log", "hung in TestSlow"} {
+		if !strings.Contains(timedOut, want) {
+			t.Errorf("timed-out findings missing %q:\n%s", want, timedOut)
+		}
+	}
+	if strings.Contains(timedOut, "Failing identities") {
+		t.Errorf("timed-out findings must not list identities:\n%s", timedOut)
 	}
 
 	dirty := renderVerifyGateFindings(VerifyGateReport{Attempt: 1, Cap: 3, Dirty: []string{"a.go", "b.txt"}})

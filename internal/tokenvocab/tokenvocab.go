@@ -4,6 +4,10 @@
 
 package tokenvocab
 
+// WaitsPlaceholder is the value of the "waits" token.
+// It is a fixed marker, not display text: reed swaps it for the raw tmux format of the marked-pane segment after escaping the rest of the rendered line.
+const WaitsPlaceholder = "@@lyx-waits@@"
+
 // Ctx carries the context a Token.Resolve needs.
 type Ctx struct {
 	// RepoName feeds the "repo" token.
@@ -27,6 +31,7 @@ var registry = []Token{
 	{Name: "repo", Resolve: func(c Ctx) string { return c.RepoName }},
 	{Name: "hub", Resolve: func(c Ctx) string { return c.HubPath }},
 	{Name: "worktree", Resolve: func(c Ctx) string { return c.WorktreeName }},
+	{Name: "waits", Resolve: func(Ctx) string { return WaitsPlaceholder }},
 }
 
 // Build resolves every token in the registry against c.

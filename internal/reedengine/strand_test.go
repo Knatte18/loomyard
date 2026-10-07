@@ -16,6 +16,7 @@ package reedengine
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -512,94 +513,91 @@ func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
 				t.Fatalf("AddStrand(--if-absent): %v", err)
 			}
 
-			if got != tt.persisted {
+			if !reflect.DeepEqual(got, tt.persisted) {
 				t.Errorf("AddStrand(--if-absent) = %+v, want unchanged persisted strand %+v", got, tt.persisted)
 			}
 			loaded, err := LoadState(e.stateDir())
 			if err != nil {
 				t.Fatalf("LoadState: %v", err)
 			}
-			if len(loaded.Strands) != 1 || loaded.Strands[0] != tt.persisted {
+			if len(loaded.Strands) != 1 || !reflect.DeepEqual(loaded.Strands[0], tt.persisted) {
 				t.Errorf("persisted state after no-op = %+v, want unchanged single strand %+v", loaded.Strands, tt.persisted)
 			}
 		})
 	}
 }
 
-//testtiming:keep pins which strand counts as the live named one: the live visible match chosen among others by index, and none for a dead pane, an empty pane id, a hidden strand, an absent strand or another name; its covering tests run this code without asserting it
-func TestLiveStrandNamed(t *testing.T) {
-	const orch = "tc:tslug:orch"
-	visible := render.Display{Anchor: render.AnchorBelowParent}
+// TestAddStrandUnless_NamedStrandSkips pins that a named strand skips the add whether it is live, dormant (its pane gone) or hidden, and that a skip saves, launches and moves nothing.
+func TestAddStrandUnless_NamedStrandSkips(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name    string
-		strands []Strand
-		alive   map[string]bool
-		want    int
+		name   string
+		before []Strand
+		orch   Strand
 	}{
-		{"LiveVisibleMatches", []Strand{{Name: "tc:tslug:other", PaneID: "%0", Display: visible}, {Name: orch, PaneID: "%1", Display: visible}}, map[string]bool{"%0": true, "%1": true}, 1},
-		{"DeadPane", []Strand{{Name: orch, PaneID: "%1", Display: visible}}, map[string]bool{}, -1},
-		{"EmptyPaneID", []Strand{{Name: orch, Display: visible}}, map[string]bool{"": true}, -1},
-		{"Hidden", []Strand{{Name: orch, PaneID: "%1", Display: render.Display{Anchor: render.AnchorHidden}}}, map[string]bool{"%1": true}, -1},
-		{"Absent", nil, map[string]bool{"%1": true}, -1},
-		{"OtherNameLive", []Strand{{Name: "tc:tslug:claude", PaneID: "%1", Display: visible}}, map[string]bool{"%1": true}, -1},
+		{"Live", nil, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}},
+		{"AfterAnotherStrand", []Strand{{GUID: "other-guid", Name: "tc:tslug:other", Display: render.Display{Anchor: render.AnchorBelowParent}}}, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}},
+		{"DormantPaneGone", nil, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%9", Display: render.Display{Anchor: render.AnchorBelowParent}}},
+		{"Hidden", nil, Strand{GUID: "orch-guid", Name: "tc:tslug:orch", Display: render.Display{Anchor: render.AnchorHidden}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := liveStrandNamed(tt.strands, orch, tt.alive); got != tt.want {
-				t.Errorf("liveStrandNamed() = %d, want %d", got, tt.want)
+			t.Parallel()
+
+			e := newTestEngine(t)
+			fake := installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
+
+			if err := SaveState(e.stateDir(), &ReedState{Strands: append(slices.Clone(tt.before), tt.orch)}); err != nil {
+				t.Fatalf("SaveState: %v", err)
+			}
+			// The seeded state carries no socket, session or pane-generation stamp,
+			// and every load stamps them in memory,
+			// so a SaveState on the skip path would change these bytes.
+			statePath := filepath.Join(e.stateDir(), reedStateFileName)
+			stateBefore, err := os.ReadFile(statePath)
+			if err != nil {
+				t.Fatalf("read state: %v", err)
+			}
+
+			got, skipped, err := e.AddStrandUnless(AddSpec{NameOverride: "claude", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}}, "orch")
+			if err != nil {
+				t.Fatalf("AddStrandUnless: %v", err)
+			}
+			if !skipped || !reflect.DeepEqual(got, tt.orch) {
+				t.Errorf("AddStrandUnless = (%+v, %v), want (%+v, true)", got, skipped, tt.orch)
+			}
+			for _, c := range fake.Sequence() {
+				if c == "split-window" || c == "select-layout" || c == "select-pane" || c == "kill-pane" {
+					t.Errorf("tmux %s issued by a skipped add", c)
+				}
+			}
+			stateAfter, err := os.ReadFile(statePath)
+			if err != nil {
+				t.Fatalf("read state: %v", err)
+			}
+			if string(stateAfter) != string(stateBefore) {
+				t.Errorf("persisted state after skip = %s, want unchanged %s", stateAfter, stateBefore)
 			}
 		})
 	}
 }
 
-func TestAddStrandUnless_LiveNamedSkips(t *testing.T) {
-	e := newTestEngine(t)
-	fake := installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
+//testtiming:keep pins the add going ahead when no strand carries the named name, with the new strand named from the told geometry and persisted after the existing ones; its covering tests run this code without asserting it
+func TestAddStrandUnless_NoNamedStrandAdds(t *testing.T) {
+	t.Parallel()
 
-	orch := Strand{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}
-	if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{orch}}); err != nil {
-		t.Fatalf("SaveState: %v", err)
-	}
-	// The seeded state carries no socket, session or pane-generation stamp, and every load stamps them in memory,
-	// so a SaveState on the skip path would change these bytes.
-	statePath := filepath.Join(e.stateDir(), reedStateFileName)
-	stateBefore, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatalf("read state: %v", err)
-	}
-
-	got, skipped, err := e.AddStrandUnless(AddSpec{NameOverride: "claude", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}}, "orch")
-	if err != nil {
-		t.Fatalf("AddStrandUnless: %v", err)
-	}
-	if !skipped || got != orch {
-		t.Errorf("AddStrandUnless = (%+v, %v), want (%+v, true)", got, skipped, orch)
-	}
-	for _, c := range fake.Sequence() {
-		if c == "split-window" || c == "select-layout" || c == "select-pane" || c == "kill-pane" {
-			t.Errorf("tmux %s issued by a skipped add", c)
-		}
-	}
-	stateAfter, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatalf("read state: %v", err)
-	}
-	if string(stateAfter) != string(stateBefore) {
-		t.Errorf("persisted state after skip = %s, want unchanged %s", stateAfter, stateBefore)
-	}
-}
-
-//testtiming:keep pins the add going ahead when the named strand is dead or absent, with the new strand named from the told geometry and persisted after the existing ones; its covering tests run this code without asserting it
-func TestAddStrandUnless_NotLiveAdds(t *testing.T) {
 	tests := []struct {
 		name      string
 		persisted []Strand
 	}{
-		{"DeadOrch", []Strand{{GUID: "orch-guid", Name: "tc:tslug:orch", PaneID: "%9", Display: render.Display{Anchor: render.AnchorBelowParent}}}},
+		{"OtherStrandOnly", []Strand{{GUID: "other-guid", Name: "tc:tslug:other", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}}}},
 		{"NoOrch", nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			e := newTestEngine(t)
 			installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
 			if err := SaveState(e.stateDir(), &ReedState{Strands: tt.persisted}); err != nil {

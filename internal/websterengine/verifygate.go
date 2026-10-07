@@ -148,7 +148,7 @@ func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentB
 		},
 		commitsSince: func(base string) ([]string, error) { return commitsSince(geom.WorktreeRoot, base) },
 		verify: func(site verifytree.Site, command string) (verifytree.Result, error) {
-			return verifytree.Verify(context.Background(), paths, site, command)
+			return verifytree.Verify(context.Background(), paths, site, command, verifytree.Timeout)
 		},
 		readLog: func() (string, error) {
 			data, err := os.ReadFile(paths.Log)
@@ -251,6 +251,16 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 		return parseVerifyFailures(output, false), nil
 	}
 
+	// failTimedOut fails the gate for a verify that outlived its timeout: a hang is not flakiness,
+	// so it is never rerun.
+	failTimedOut := func() (shuttleengine.GateResult, error) {
+		output, err := s.readLog()
+		if err != nil {
+			return shuttleengine.GateResult{}, fmt.Errorf("websterengine: read verify log %s: %w", s.logPath, err)
+		}
+		return fail(VerifyGateReport{TimedOut: verifytree.Timeout.String(), LogPath: s.logPath, LogTail: logTail(output)})
+	}
+
 	return func() (shuttleengine.GateResult, error) {
 		attempt++
 
@@ -303,6 +313,9 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 		case verifytree.StatusDirty:
 			return fail(VerifyGateReport{Dirty: res.Dirty})
 		}
+		if res.TimedOut {
+			return failTimedOut()
+		}
 
 		first, err := failures()
 		if err != nil {
@@ -319,6 +332,9 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 			return pass()
 		case verifytree.StatusDirty:
 			return fail(VerifyGateReport{Dirty: res.Dirty})
+		}
+		if res.TimedOut {
+			return failTimedOut()
 		}
 		surviving, err := failures()
 		if err != nil {
@@ -343,7 +359,7 @@ func readVerifyGateReport(path string) (VerifyGateReport, error) {
 
 // verifyGateStuckReason is the stuck reason of a done run whose verify gate did not pass.
 // A Terminal failure, the rejection of a fixer commit, names the gate's own reason and ends in the reset to the pre-fix head followed by reentry.
-// Otherwise it names the failing identities, or the dirty paths, the latest failed evaluation's report holds, and the attempts spent.
+// Otherwise it names the failing identities, the dirty paths or the verify timeout and its log the latest failed evaluation's report holds, and the attempts spent.
 func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, reentry string) string {
 	if gate.Reason != "" {
 		return "verify gate failed: " + oneLine(gate.Reason) + "; " + wayForwardSteps("lyx webster reset --to pre-fix", reentry)
@@ -358,6 +374,8 @@ func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, r
 		what = strings.Join(failureIDs(report.Failures), ", ")
 	case len(report.Dirty) > 0:
 		what = "uncommitted paths " + strings.Join(report.Dirty, ", ")
+	case report.TimedOut != "":
+		what = fmt.Sprintf("the verify command did not finish within %s and was killed, see %s", report.TimedOut, report.LogPath)
 	}
 	return fmt.Sprintf("verify gate failed after %d attempt(s) of %d: %s", report.Attempt, report.Cap, what)
 }

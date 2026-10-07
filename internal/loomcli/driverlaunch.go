@@ -7,6 +7,7 @@
 package loomcli
 
 import (
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -44,6 +45,14 @@ type driverPaneProbe interface {
 	Strands() ([]reedengine.StrandStatus, error)
 	// RemoveDriverStrand removes the driver strand identified by guid.
 	RemoveDriverStrand(guid string) error
+}
+
+// driverDirectoryProbe reads the driver strand's row from reed's sessionless directory.
+type driverDirectoryProbe interface {
+	// DriverRow returns the first row loomengine.IsDriverStrand accepts, and false when the directory holds none.
+	// A session that died with the machine still lists its strands, dormant,
+	// so a dead driver is a row with Live false rather than an absent one.
+	DriverRow() (reedengine.DirectoryRow, bool, error)
 }
 
 // runnerDriverStarter adapts *shuttleengine.Runner to driverStarter.
@@ -100,4 +109,29 @@ func (p reedDriverPaneProbe) Strands() ([]reedengine.StrandStatus, error) {
 func (p reedDriverPaneProbe) RemoveDriverStrand(guid string) error {
 	_, err := p.remove(guid, false)
 	return err
+}
+
+// reedDriverDirectory adapts *reedengine.Engine to driverDirectoryProbe.
+// It holds the engine's Directory as a plain function field for the reason reedDriverPaneProbe does.
+type reedDriverDirectory struct {
+	directory func() ([]reedengine.DirectoryRow, error)
+}
+
+// newReedDriverDirectory builds a reedDriverDirectory wrapping reed's own Directory method.
+func newReedDriverDirectory(reed *reedengine.Engine) reedDriverDirectory {
+	return reedDriverDirectory{directory: reed.Directory}
+}
+
+// DriverRow implements driverDirectoryProbe over the engine's Directory.
+func (d reedDriverDirectory) DriverRow() (reedengine.DirectoryRow, bool, error) {
+	rows, err := d.directory()
+	if err != nil {
+		return reedengine.DirectoryRow{}, false, err
+	}
+	for _, row := range rows {
+		if loomengine.IsDriverStrand(row.Name) {
+			return row, true, nil
+		}
+	}
+	return reedengine.DirectoryRow{}, false, nil
 }

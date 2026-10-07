@@ -28,7 +28,8 @@ const waitDelay = 10 * time.Second
 // An out of io.Discard is left as nil so the child writes to the null device directly, with no copy pipe a lingering child could hold open.
 //
 // A zero exit returns (0, nil), and a non-zero exit returns (exitCode, nil).
-// A cancelled ctx returns (-1, err) with err wrapping ctx.Err().
+// A cancelled ctx returns (-1, err) with err wrapping ctx.Err(), after killing the shell:
+// on Unix the shell's whole process group, elsewhere the shell alone.
 // A shell that could not start returns (-1, err) naming the command.
 func Run(ctx context.Context, command, dir string, out io.Writer) (int, error) {
 	return run(ctx, command, dir, out, waitDelay)
@@ -44,6 +45,7 @@ func run(ctx context.Context, command, dir string, out io.Writer, delay time.Dur
 	cmd := exec.CommandContext(ctx, shellName, flag, command)
 	cmd.Dir = dir
 	cmd.WaitDelay = delay
+	configureProcessKill(cmd, command)
 	if out != io.Discard {
 		cmd.Stdout = out
 		cmd.Stderr = out

@@ -7,6 +7,8 @@ package reedengine
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/tokenvocab"
 )
 
 // newStatusLineTestEngine builds a test Engine with the given status-line template and geometry.
@@ -26,7 +28,7 @@ func TestStatusLineText(t *testing.T) {
 		want     string
 		trim     bool // the embedded default template ends with a newline
 	}{
-		{"EmptyTemplateRendersEmbeddedDefault", "", "distinct-repo/distinct-worktree · distinct-hub", true},
+		{"EmptyTemplateRendersEmbeddedDefault", "", "distinct-repo/distinct-worktree · distinct-hub " + tokenvocab.WaitsPlaceholder, true},
 		{"ConfiguredTemplateRendersFromConfig", "repo: {{.repo}}", "repo: distinct-repo", false},
 	}
 	for _, tt := range tests {

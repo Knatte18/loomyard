@@ -14,6 +14,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -71,7 +72,7 @@ var _ Engine = (*undismissableEngine)(nil)
 // seedStartupFakes seeds reed.AddStrandResult and engine.PrepareLaunch when they are still zero,
 // so a test that has already scripted its own values is left alone.
 func seedStartupFakes(reed *fakeReed, engine *fakeEngine) {
-	if reed.AddStrandResult == (reedengine.Strand{}) {
+	if reflect.DeepEqual(reed.AddStrandResult, reedengine.Strand{}) {
 		reed.AddStrandResult = reedengine.Strand{GUID: "strand-1"}
 	}
 	if engine.PrepareLaunch == (Launch{}) {
