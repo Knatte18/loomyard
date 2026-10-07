@@ -32,7 +32,9 @@
 // parent's context, so usage is counted once per message id within a run.
 //
 // One fork is one sub-agent transcript of a session whose role is webster;
-// the report's "Webster forks" section lists every such fork of every run, by run as listed and then by start time, with the cards it ran, its counted messages, its peak context (the largest input + cache write + cache read of any counted message) and its weight.
+// the report's "Webster forks" section lists every such fork of every run, by run as listed and then by start time, with the cards it ran, its start context, its counted messages, its peak context and its weight.
+// A fork's start context is the input + cache write + cache read of its first counted message, the context Merriam held when it spawned the fork, and its peak context is the largest such sum of any counted message;
+// the fork also records the file name of the webster session transcript its own transcript sits under, its Merriam session.
 // A fork's cards are read from its prompt, never from commit times: the prompt is the first tool result in the fork's transcript holding a card pointer line, a "- `<path>/NN-<slug>.md`" bullet with nothing after the closing backtick (a Read result's line-number prefix is ignored), and the cards are every such line of that one result.
 // A fork whose transcript has no such result is listed as unattributed.
 //

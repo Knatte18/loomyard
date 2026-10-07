@@ -103,6 +103,11 @@ func TestCountRun(t *testing.T) {
 		toolResult("2026-01-02T03:10:00Z", jsonString(t, "- `docs/plan.md`")),
 		assistant("m6", "sonnet", 3, 2),
 	)
+	// A fork under a second webster session.
+	writeLines(t, filepath.Join(dir, "a-webster", "subagents", "agent-3.jsonl"),
+		toolResult("2026-01-02T03:15:00Z", jsonString(t, "no pointer here")),
+		assistant("m7", "opus", 1, 2),
+	)
 	writeLines(t, filepath.Join(dir, "c.jsonl"), assistant("m4", "haiku", 1, 0))
 
 	run, err := CountRun(dir, "my-task")
@@ -112,7 +117,7 @@ func TestCountRun(t *testing.T) {
 	want := map[string]Usage{
 		"burler":      {Input: 1, Output: 2, CacheRead: 3},
 		"webster":     {Input: 1, Output: 1, CacheRead: 1},
-		"webster+sub": {Input: 3, Output: 9, CacheRead: 16},
+		"webster+sub": {Input: 4, Output: 10, CacheRead: 18},
 		"untitled":    {Input: 1, Output: 1},
 	}
 	if len(run.Roles) != len(want) {
@@ -148,13 +153,18 @@ func TestCountRun(t *testing.T) {
 	wantForks := []ForkTally{
 		{
 			Slug: "my-task", File: "agent-1.jsonl", Cards: []string{"01-alpha", "02-beta"},
-			Messages: 2, PeakContext: 10, Usage: Usage{Input: 2, Output: 6, CacheRead: 14},
+			Session: "b.jsonl", StartContext: 6, Messages: 2, PeakContext: 10, Usage: Usage{Input: 2, Output: 6, CacheRead: 14},
 			Started: time.Date(2026, 1, 2, 3, 4, 5, 500_000_000, time.UTC),
 		},
 		{
 			Slug: "my-task", File: "agent-2.jsonl",
-			Messages: 1, PeakContext: 3, Usage: Usage{Input: 1, Output: 3, CacheRead: 2},
+			Session: "b.jsonl", StartContext: 3, Messages: 1, PeakContext: 3, Usage: Usage{Input: 1, Output: 3, CacheRead: 2},
 			Started: time.Date(2026, 1, 2, 3, 10, 0, 0, time.UTC),
+		},
+		{
+			Slug: "my-task", File: "agent-3.jsonl",
+			Session: "a-webster.jsonl", StartContext: 3, Messages: 1, PeakContext: 3, Usage: Usage{Input: 1, Output: 1, CacheRead: 2},
+			Started: time.Date(2026, 1, 2, 3, 15, 0, 0, time.UTC),
 		},
 	}
 	if len(run.Forks) != len(wantForks) {
@@ -164,6 +174,7 @@ func TestCountRun(t *testing.T) {
 		got := run.Forks[i]
 		if got.Slug != want.Slug || got.File != want.File || !slices.Equal(got.Cards, want.Cards) ||
 			got.Messages != want.Messages || got.PeakContext != want.PeakContext ||
+			got.StartContext != want.StartContext || got.Session != want.Session ||
 			got.Usage != want.Usage || !got.Started.Equal(want.Started) {
 			t.Errorf("fork %d = %+v, want %+v", i, got, want)
 		}
@@ -174,9 +185,9 @@ func TestCountRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"## my-task", "## All runs", "| webster+sub | 2 | 9 | 0 | 16 | 3 | 0.0M | 67.9% |", "opus: 2",
-		"## Webster forks\n\n| run | cards | messages | peak context | weight |\n|---|---|---|---|---|\n" +
-			"| my-task | 01-alpha, 02-beta | 2 | 10 | 0.0M |\n| my-task | unattributed | 1 | 3 | 0.0M |\n",
+		"## my-task", "## All runs", "| webster+sub | 3 | 10 | 0 | 18 | 4 | 0.0M | 70.5% |", "opus: 3, sonnet: 1",
+		"## Webster forks\n\n| run | cards | start context | messages | peak context | weight |\n|---|---|---|---|---|---|\n" +
+			"| my-task | 01-alpha, 02-beta | 6 | 2 | 10 | 0.0M |\n| my-task | unattributed | 3 | 1 | 3 | 0.0M |\n| my-task | unattributed | 3 | 1 | 3 | 0.0M |\n",
 	} {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("report lacks %q:\n%s", want, buf.String())
