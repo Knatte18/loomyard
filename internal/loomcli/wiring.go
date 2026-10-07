@@ -157,7 +157,7 @@ func loomCommitStatusDeps(location *lyxcwd.Location, runID string) commitStatusD
 			return err
 		},
 		Push: func() error {
-			_, err := fabricengine.PushAnchored(location, fabricengine.EnvSyncOptions())
+			_, err := fabricengine.PushAnchored(location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait)
 			return err
 		},
 		SetBoardStatus: func(status string) error {
