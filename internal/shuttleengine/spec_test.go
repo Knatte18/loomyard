@@ -23,7 +23,7 @@ func TestSpec_Validate(t *testing.T) {
 
 	const worktreeRoot = `C:\worktree`
 	// A pre-existing output file would satisfy the file contract on the very first turn end,
-	// silently classifying an asking run as done (proven live), so validate must reject it loudly.
+	// silently classifying an unfinished run as done (proven live), so validate must reject it loudly.
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "stale.md"), []byte("stale artifact"), 0o644); err != nil {
 		t.Fatalf("seed stale output file: %v", err)

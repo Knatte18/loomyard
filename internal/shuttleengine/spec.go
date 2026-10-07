@@ -28,7 +28,7 @@ type Spec struct {
 	// run's output file IS its return value. Entries must NOT already
 	// exist when the run starts (validate rejects a pre-existing entry):
 	// a stale file would satisfy the contract on the very first turn end,
-	// silently classifying an asking or unfinished run as done. Entries
+	// silently classifying an unfinished run as done. Entries
 	// may be absolute or relative to the worktree root; validate resolves
 	// relative entries and rewrites this slice in place with the resolved
 	// absolute paths.
@@ -143,8 +143,8 @@ type Spec struct {
 // entry that already exists on disk is rejected: outcome classification
 // tests bare existence, so a stale file would classify the run done on its
 // very first turn end — a misconfigured spec must fail loudly here, never
-// become silent success (proven live: an asking run against a pre-existing
-// output file returned "done" with the question discarded). A negative
+// become silent success (proven live: a run that stopped to ask a question, against a pre-existing
+// output file, returned "done" with the question discarded). A negative
 // Timeout is rejected (see the Timeout field's doc comment: it would launch
 // a run whose deadline is already in the past, leaving stray live state
 // behind an instant OutcomeTimeout); a zero Timeout is replaced with
@@ -173,7 +173,7 @@ func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 
 	// Reject entries that already exist: "done" is bare file existence, so
 	// a stale artifact would satisfy the contract before the agent writes
-	// anything, silently swallowing an asking outcome as success.
+	// anything, silently swallowing an unfinished run as success.
 	for _, f := range s.OutputFiles {
 		if _, err := os.Stat(f); err == nil {
 			return fmt.Errorf("shuttle: spec.OutputFiles entry %q already exists — a pre-existing file would satisfy the file contract immediately; remove it or name a fresh path", f)

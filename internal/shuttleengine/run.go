@@ -477,7 +477,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 // and an unreadable turn is confirmed unverified.
 // None of these fails or hangs the launch.
 // The run's events offset ends past every load turn end, the retry's included,
-// so Wait never reads one as the run asking.
+// so Wait never reads one as a held turn end of the run's own.
 // A pane that dies meanwhile is a died startup.
 func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 	guid := run.state.StrandGUID

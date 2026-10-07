@@ -347,7 +347,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 }
 
 // TestEngine_Run_ShuttleOutcomes table-drives Run over every shuttle outcome and the review-file parse path.
-// A non-done outcome (asking, died, timeout, and a died run that never started) carries through to Result.Outcome with an empty Verdict and a nil error.
+// A non-done outcome (died, timeout, and a died run that never started) carries through to Result.Outcome with an empty Verdict and a nil error.
 // A done outcome parses its review file into VerdictBlocking with its findings or VerdictApproved with none, and fails loud -- never defaulting a verdict -- on a review file that was never written (a fake-shuttle-only scenario; the real shuttle's file-contract polling makes it impossible in production) or whose frontmatter is malformed; a hard shuttle error is wrapped, not swallowed.
 // Whatever the outcome, the shuttle's identities, last assistant message, kept RunDir and NotStarted flag pass through to the Result unchanged: the RunDir passthrough is what lets a caller point at the kept shuttle run dir for a died or timed-out round.
 func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
