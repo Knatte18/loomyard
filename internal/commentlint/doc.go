@@ -11,8 +11,8 @@
 // A line end an edit carries over unchanged is not new, so fixing one flagged break never makes another break of the block checked,
 // and a legacy wrapped block is flagged only where an edit creates a break.
 //
-// A finding is a line at a checked break that ends neither a sentence (`.`, `!`, `?` or `:`, each optionally followed by a closing `)`, quote or backtick),
-// nor at a semicolon, nor at a comma whose next line starts with a coordinating conjunction (`and`, `but`, `or`, `nor`, `yet` or `so`; `for` is left out because `, for example` is introductory).
+// A checked break passes when its line ends a sentence (`.`, `!`, `?` or `:`, each optionally followed by a closing `)`, quote or backtick), a semicolon, or a comma whose next line starts with a coordinating conjunction (`and`, `but`, `or`, `nor`, `yet` or `so`; `for` is left out because `, for example` is introductory).
+// A finding is the line of a checked break that passes none of these.
 // A directive comment (`//go:`, `//lyx:`, `//testtiming:`, `//nolint`) ends the block it sits in, so the prose above it is still checked.
 // A block is skipped whole when any of its lines is indented code, a doc-comment list item or a heading; so is a generated file.
 // Those checks follow `tools/godocreflow`; this package re-implements them, since `tools/` is not importable.
