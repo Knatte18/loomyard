@@ -71,6 +71,7 @@ var gitrepoPinnedRunBoundMethods = []string{
 	"pushWithRebaseRetry",
 	"PushRebaseFree",
 	"HasUnpushed",
+	"HasUnpulled",
 	"DeleteRemoteBranch",
 	"DeleteRemoteBranchLeased",
 	"UpdateRemoteBranchLeased",

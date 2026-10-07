@@ -209,16 +209,27 @@ func TestRecentRuns(t *testing.T) {
 	touch("/hub/new", time.Hour)
 	touch("/hub/mid", 2*time.Hour)
 	touch("/hub/prime", 0)
+	touch("/hub/parked", 0)
 	touch("/other/newest", 0)
 	if err := os.MkdirAll(projectDir(projects, "/hub/empty"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	finished := map[string]bool{"old": true, "new": true, "mid": true, "prime": true, "empty": true, "newest": true}
 
-	got, err := recentRuns(projects, "/hub", "prime", 2)
+	got, err := recentRuns(projects, "/hub", "prime", finished, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(got, ",") != "new,mid" {
 		t.Errorf("recentRuns = %v, want [new mid]", got)
+	}
+}
+
+func TestArchivedSlugs(t *testing.T) {
+	t.Parallel()
+	refs := "refs/tags/archive/run-pushes/b783fd2\nrefs/tags/archive/run-pushes/0a1b2c3\nrefs/tags/archive/test-tiers/9f8e7d6\nrefs/tags/archive/no-sha\nrefs/tags/other/x/y\n"
+	got := archivedSlugs(refs)
+	if len(got) != 2 || !got["run-pushes"] || !got["test-tiers"] {
+		t.Errorf("archivedSlugs = %v, want run-pushes and test-tiers", got)
 	}
 }
