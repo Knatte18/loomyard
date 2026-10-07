@@ -85,6 +85,8 @@ func TestReadWaitMarker(t *testing.T) {
 }
 
 func TestReadWaitMarker_AbsentRunDirectoryRootReadsAsNone(t *testing.T) {
+	t.Parallel()
+
 	_, found, err := ReadWaitMarker(Config{RunDir: filepath.Join(t.TempDir(), "absent")}, t.TempDir())
 	if found || err != nil {
 		t.Errorf("ReadWaitMarker = (_, %v, %v); want (_, false, nil)", found, err)

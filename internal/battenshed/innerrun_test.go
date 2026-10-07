@@ -455,6 +455,8 @@ func TestInnerRun_SpawnsUntilASpawnIsConfirmed(t *testing.T) {
 // a live or retiring driver strand, or a held child run lock, means a driver is at work, so the child is adopted (the confirmation recorded for this process, nothing spawned);
 // no strand or a dead one with a free lock spawns; a seam error is a hard error that spawns nothing.
 func TestInnerRun_AdoptsARunningChildWithADriver(t *testing.T) {
+	t.Parallel()
+
 	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
 	seamErr := errors.New("reed state unreadable")
 	tests := []struct {

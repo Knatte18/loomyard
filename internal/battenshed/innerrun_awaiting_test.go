@@ -57,6 +57,8 @@ func TestInnerRun_AwaitingWithoutApprovalWaitsExempt(t *testing.T) {
 
 // TestInnerRun_AwaitingRevivesADeadDriverAndKeepsItsHints asserts an awaiting child's dead driver strand is revived once, and that the hand-off hint keeps its verbs and never names `lyx loom resume`, which refuses an awaiting run.
 func TestInnerRun_AwaitingRevivesADeadDriverAndKeepsItsHints(t *testing.T) {
+	t.Parallel()
+
 	clock := &fakeClock{}
 	_, spawnCalls, deps := newInnerRunDeps(nil, nil, awaitingStatus(), clock)
 	revives := 0

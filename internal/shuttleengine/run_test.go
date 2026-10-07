@@ -173,6 +173,8 @@ func TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions(t *test
 
 // TestRunner_StartGated_CarriesNoDoneWhen pins that a gated run's strand carries no done-when list, because its output files existing does not mean its gate passed.
 func TestRunner_StartGated_CarriesNoDoneWhen(t *testing.T) {
+	t.Parallel()
+
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd"}}
 	fx := newFixture(t, reed, engine, withConfig(fastConfig))

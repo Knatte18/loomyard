@@ -58,6 +58,8 @@ func TestResolveLivePaneID(t *testing.T) {
 
 // TestSetWaitMark pins the exact tmux argument lists of a set and a clear, and the unknown-guid refusal.
 func TestSetWaitMark(t *testing.T) {
+	t.Parallel()
+
 	start := time.Unix(1787000000, 0)
 
 	tests := []struct {

@@ -553,6 +553,8 @@ func TestAttach_GateThreading(t *testing.T) {
 // TestGate_WaitMarkAroundEntry pins that a gate entry is marked on screen and on disk while its closure runs and unmarked on every path out,
 // and that a failing SetWaitMark changes neither the verdict nor the error the closure produced.
 func TestGate_WaitMarkAroundEntry(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		result     GateResult

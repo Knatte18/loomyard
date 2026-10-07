@@ -107,6 +107,8 @@ func putParkMarker(t *testing.T, c *loomCLI) string {
 // TestResumeVerb reaches every outcome of `lyx loom resume` and asserts for each the envelope, the exit code, that nothing was spawned, added or removed,
 // that a resume line was typed only when a parked driver was woken, and that no message names `lyx loom start` as the retry of resume.
 func TestResumeVerb(t *testing.T) {
+	t.Parallel()
+
 	liveDriver := fakeDriverDirectory{found: true, row: reedengine.DirectoryRow{Name: driverStrandDisplayName, GUID: "g-drv", Live: true}}
 	deadDriver := fakeDriverDirectory{found: true, row: reedengine.DirectoryRow{Name: driverStrandDisplayName, GUID: "g-drv"}}
 	retiringDriver := fakeDriverDirectory{found: true, row: reedengine.DirectoryRow{Name: driverStrandDisplayName, GUID: "g-drv", Live: true, Retiring: true}}
@@ -210,6 +212,8 @@ func TestResumeVerb(t *testing.T) {
 
 // TestResumeVerb_FailedDeliveryNamesResume asserts a resume line that cannot be delivered is refused naming `lyx loom status` and a re-run of `lyx loom resume`, and leaves the marker.
 func TestResumeVerb_FailedDeliveryNamesResume(t *testing.T) {
+	t.Parallel()
+
 	sender := &fakeDriverSender{repeatErr: notReady()}
 	directory := fakeDriverDirectory{found: true, row: reedengine.DirectoryRow{Name: driverStrandDisplayName, GUID: "g-drv", Live: true}}
 	c, _, _ := newResumeVerbReceiver(t, sender, directory)
@@ -240,6 +244,8 @@ func TestResumeVerb_FailedDeliveryNamesResume(t *testing.T) {
 // TestResumeVerb_BlocksOnTheBootstrapLockThenReadsState asserts the verb waits for a held bootstrap lock and reads the run's state only after it is released:
 // the status file is written while the lock is held, and the verb must report that state, not the absence it would have found reading first.
 func TestResumeVerb_BlocksOnTheBootstrapLockThenReadsState(t *testing.T) {
+	t.Parallel()
+
 	c, _, _ := newResumeVerbReceiver(t, &fakeDriverSender{}, fakeDriverDirectory{})
 	lockPath := loomengine.LoomBootstrapLock(c.location)
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {

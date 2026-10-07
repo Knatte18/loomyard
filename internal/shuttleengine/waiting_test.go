@@ -304,6 +304,8 @@ func TestWait_GatedShellExpiryEvaluatesGate(t *testing.T) {
 // TestShellWaitMark pins the background-shell wait's mark and marker: on while only non-awaited shells are outstanding,
 // off once they are waited out or a new event replaces the waiting turn end, and never on with a fork or an awaited shell outstanding.
 func TestShellWaitMark(t *testing.T) {
+	t.Parallel()
+
 	const bound = 10 * time.Minute
 	tests := []struct {
 		name  string
@@ -372,6 +374,8 @@ func TestShellWaitMark(t *testing.T) {
 
 // TestWait_ClearsAStaleWaitMarkOnEntry pins that Wait clears the strand's pane mark and removes a marker file a crashed step left behind, before it polls.
 func TestWait_ClearsAStaleWaitMarkOnEntry(t *testing.T) {
+	t.Parallel()
+
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, eventsFileName)
 	outputFile := filepath.Join(runDir, "out.md")

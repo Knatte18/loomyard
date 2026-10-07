@@ -1,4 +1,5 @@
 // innerrun_halted_test.go covers the inner-run watch's halted arm: a blocked, paused or failed child is a budget-exempt wait that never spawns or resumes it, Warns once per halt episode and revives a dead driver strand once per episode.
+// The tests that capture log output replace the process-global logger output, so they do not run in parallel.
 
 package battenshed
 
@@ -279,6 +280,8 @@ func TestInnerRun_StrandReadErrorSkipsTheReviveWithAWarn(t *testing.T) {
 
 // TestInnerRun_ARunningChildEndsTheReviveEpisode asserts the revived marker is removed once the child is seen running, so the next halt revives afresh.
 func TestInnerRun_ARunningChildEndsTheReviveEpisode(t *testing.T) {
+	t.Parallel()
+
 	scratchDir := t.TempDir()
 	statuses := []statusResult{
 		haltedStatus(shedengine.StateBlocked, 2),

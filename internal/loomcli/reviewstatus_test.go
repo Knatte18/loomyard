@@ -139,6 +139,8 @@ func writeShuttleMarker(t *testing.T, runRoot string, pid int) {
 
 // TestShuttleWaiting asserts a live shuttle marker is reported when no verify runs, a live verify marker is reported ahead of it, and a dead shuttle marker falls through to the review note.
 func TestShuttleWaiting(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		shuttlePID   int
@@ -271,6 +273,8 @@ func TestVerifyWaiting(t *testing.T) {
 
 // TestFormatElapsed pins the elapsed-time formatter at each unit boundary.
 func TestFormatElapsed(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		d    time.Duration
 		want string
