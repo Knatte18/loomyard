@@ -65,6 +65,9 @@ Each card is the smallest change that:
 4. **Greps for reworded messages** — a card that changes a user-visible message or error text greps the repository for the old text, and every test asserting it joins that card's targets.
    A stale exact-string assertion then fails on the card that reworded it, under that card's own gate, not at the plan-level gate.
 
+The plan runs strictly in card order, and the Card Index lists the cards in that order: a card never depends on anything a later card does.
+`{{.specs_dir}}/loom/loom-plan-spec.md`'s "Plan vs. schedule" section holds the rule.
+
 ### On-disk layout
 
 `00-overview.md` + one `NN-<card-slug>.md` per card. `NN` is zero-padded and equals the card's flat heading number `N`;

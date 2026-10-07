@@ -38,10 +38,9 @@ there is no wider unit left to declare a footprint for.
 
 ## Plan vs. schedule
 
-The flat card list is the **plan** (a DAG of intent: what depends on what).
-It is not itself an execution order.
-Whoever executes the plan (webster today, or a hypothetical future parallel executor — see the roadmap's Someday list) decides *how* to turn the DAG into an actual run — webster today runs the batches in card order and refuses a backward dependency between them, derived from the cards' own `Targets`/`Uses` refs, strictly sequentially, one fork at a time, potentially wave-based parallel execution for some future version.
-**The plan format should not need to change if that execution-policy decision changes later.**
+A valid plan is executable strictly in card-number order: a card never depends on anything a later card does.
+Webster runs the cards in that order as written and never sorts them, so a card that needs a symbol, file or fixture a later card creates is a defect of the plan, not something the executor repairs.
+`uses-later-target` and `delete-before-reference` refuse the cases a card's own refs can show; every other dependency on a later card is the writer's to avoid and the plan reviewer's to flag.
 
 ## On-disk layout
 
