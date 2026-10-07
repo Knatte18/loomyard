@@ -451,6 +451,28 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			wayForward: []string{"fix the plan's cards", "lyx webster rebaseline --card", "lyx webster run"},
 		},
 		{
+			name:  "the batchifier fails",
+			cards: 1,
+			setup: func(t *testing.T, fx *runFixture) func() {
+				fx.Deps.Batcher = failingBatcher{}
+				return nil
+			},
+			msgContains: []string{"batch the cards of plan", "batchifier failed"},
+			wayForward:  []string{"transient", "re-run the verb"},
+			check:       requireNoRecordedState,
+		},
+		{
+			name:  "a first init whose batches run a dependency backward",
+			cards: 2,
+			setup: func(t *testing.T, fx *runFixture) func() {
+				addCardUses(t, fx.PlanDir, 1, "internal/batch2/new.go")
+				return nil
+			},
+			errIs:      websterengine.ErrBatchOrder,
+			wayForward: []string{"lyx webster rebaseline --card NN", "lyx webster run --fresh"},
+			check:      requireNoRecordedState,
+		},
+		{
 			name:  "a blocking glyph finding",
 			cards: 1,
 			setup: func(t *testing.T, fx *runFixture) func() {
@@ -1846,6 +1868,23 @@ func (emptyBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSourc
 	return nil, nil
 }
 func (emptyBatcher) Name() string { return "empty" }
+
+// failingBatcher is a batchifier whose Batch always fails.
+type failingBatcher struct{}
+
+func (failingBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource) ([]batcher.Batch, error) {
+	return nil, errors.New("batchifier failed")
+}
+func (failingBatcher) Name() string { return "failing" }
+
+// requireNoRecordedState asserts a refused first init saved no state.json.
+func requireNoRecordedState(t *testing.T, fx *runFixture, _ error) {
+	t.Helper()
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if err != nil || st != nil {
+		t.Errorf("LoadState() = %+v, %v; want no recorded state after the refusal", st, err)
+	}
+}
 
 // TestRun_RunExitRefusals reaches each run-exit refusal over a done Master, asserts its message and way forward, then takes the way forward (the state a re-driven batch leaves, a finished summary, an audit that completed) and proves the re-run ends done; a resume whose prior session's batches fall outside the audit passes outright.
 func TestRun_RunExitRefusals(t *testing.T) {
