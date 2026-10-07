@@ -38,6 +38,91 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
+// TestVerify_PerCommandRecord covers the per-command record: a round command's pass leaves the plan-verify entry in place and skips on a repeat, a write drops another command's entry naming a different tree while keeping the base command's and replacing its own, LatestPass returns the pass's commit, and an old-format record reads as none.
+// The steps share one repo and run in order, so the test is parallel as a whole and no step is.
+func TestVerify_PerCommandRecord(t *testing.T) {
+	t.Parallel()
+
+	p := newScratch(t)
+	const plan, roundA, roundB = "true", ": round a", ": round b"
+	verifyWithBase := func(command string) Result {
+		t.Helper()
+		res, err := Verify(context.Background(), p, Site{Label: "Webster-Burler gate", BaseCommand: plan}, command)
+		if err != nil {
+			t.Fatalf("Verify(%q): %v", command, err)
+		}
+		return res
+	}
+	head := func() string {
+		t.Helper()
+		commit, err := headCommit(p.Worktree)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return commit
+	}
+
+	if !t.Run("a round command's pass leaves the plan entry in place and a repeat skips", func(t *testing.T) {
+		mustVerify(t, p, plan)
+		if res := verifyWithBase(roundA); res.Status != StatusPassed {
+			t.Fatalf("first round Verify = %q; want %q", res.Status, StatusPassed)
+		}
+		if res := verifyWithBase(roundA); res.Status != StatusSkipped {
+			t.Errorf("second round Verify = %q; want %q", res.Status, StatusSkipped)
+		}
+		if res := mustVerify(t, p, plan); res.Status != StatusSkipped {
+			t.Errorf("plan Verify after the round pass = %q; want %q", res.Status, StatusSkipped)
+		}
+		pass, ok := LatestPass(p, plan)
+		if !ok || pass.Commit != head() || pass.Tree == "" || pass.VerifiedAt.IsZero() {
+			t.Errorf("LatestPass(plan) = (%+v, %v); want the pass at commit %s", pass, ok, head())
+		}
+	}) {
+		return
+	}
+
+	planCommit := head()
+	gitkit.CommitFile(t, p.Worktree, "b.txt", "b\n", "second")
+
+	if !t.Run("a write drops another command's stale entry and keeps the base command's", func(t *testing.T) {
+		if res := verifyWithBase(roundB); res.Status != StatusPassed {
+			t.Fatalf("Verify = %q; want %q", res.Status, StatusPassed)
+		}
+		if _, ok := LatestPass(p, roundA); ok {
+			t.Error("the entry of another command naming a different tree survived")
+		}
+		if pass, ok := LatestPass(p, plan); !ok || pass.Commit != planCommit {
+			t.Errorf("LatestPass(plan) = (%+v, %v); want the base entry at commit %s", pass, ok, planCommit)
+		}
+		if pass, ok := LatestPass(p, roundB); !ok || pass.Commit != head() {
+			t.Errorf("LatestPass(round b) = (%+v, %v); want commit %s", pass, ok, head())
+		}
+	}) {
+		return
+	}
+
+	gitkit.CommitFile(t, p.Worktree, "c.txt", "c\n", "third")
+
+	if !t.Run("a write replaces its own command's entry", func(t *testing.T) {
+		verifyWithBase(roundB)
+		if pass, ok := LatestPass(p, roundB); !ok || pass.Commit != head() {
+			t.Errorf("LatestPass(round b) = (%+v, %v); want commit %s", pass, ok, head())
+		}
+	}) {
+		return
+	}
+
+	t.Run("an old-format record reads as none", func(t *testing.T) {
+		old := "tree: abc\ncommand: " + plan + "\nverified_at: 2026-01-01T00:00:00Z\n"
+		if err := os.WriteFile(p.Record, []byte(old), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if pass, ok := LatestPass(p, plan); ok {
+			t.Errorf("LatestPass on an old-format record = (%+v, true); want none", pass)
+		}
+	})
+}
+
 // TestVerify_Scenario is a scenario over one scratch repo, run as named steps in one order, each reaching one rule of Verify: a dirty tree is refused, a record is written only after a pass and only when HEAD did not move during the run, the marker is present only while the command runs, a skip needs a record naming HEAD's tree and the same command, and DirtyPaths names special and renamed paths verbatim.
 // The steps share one repo, so the test is parallel as a whole and no step is.
 // The steps up to the first pass rely on no record existing yet, so they run before it; each step after it relies on the record the one before left, and the last step relies on being last because it dirties the tree.
