@@ -12,6 +12,7 @@ package claudeengine
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -104,6 +105,51 @@ func claudeBinary(cfg shuttleengine.Config) string {
 // It must ride the pane command because the reed server env is scrubbed of CLAUDE_CODE_* at boot.
 const forkSubagentEnvKey = "CLAUDE_CODE_FORK_SUBAGENT"
 
+// promptCacheTTLEnvKey is the variable Claude Code reads to pick the TTL of the prompt cache it writes.
+// It rides the pane line for the same reason forkSubagentEnvKey does,
+// and it outranks every Claude Code control for the TTL but FORCE_PROMPT_CACHING_5M.
+const promptCacheTTLEnvKey = "CLAUDE_CODE_PROMPT_CACHE_TTL"
+
+// validPromptCacheTTLs is the set of exact, case-sensitive prompt-cache TTL values Claude Code accepts.
+var validPromptCacheTTLs = map[string]bool{
+	"5m": true,
+	"1h": true,
+}
+
+// validatePromptCacheTTL reports an error unless value is a member of validPromptCacheTTLs.
+// key names the shuttle.yaml entry the value came from, so the error points at what to fix.
+func validatePromptCacheTTL(key, value string) error {
+	if validPromptCacheTTLs[value] {
+		return nil
+	}
+	return fmt.Errorf("claudeengine: invalid %s %q; valid values are 5m, 1h (case-sensitive); fix it in shuttle.yaml", key, value)
+}
+
+// resolvePromptCacheTTL returns the prompt-cache TTL for a strand's role.
+// It first validates cfg.ClaudePromptCacheTTL and every value in cfg.ClaudePromptCacheTTLRoles, in sorted key order so the reported entry is deterministic,
+// so one bad entry refuses every role until shuttle.yaml is fixed.
+// It then returns the map's entry for role when one exists, and the default otherwise;
+// an empty role takes the default.
+func resolvePromptCacheTTL(role string, cfg shuttleengine.Config) (string, error) {
+	if err := validatePromptCacheTTL("claude_prompt_cache_ttl", cfg.ClaudePromptCacheTTL); err != nil {
+		return "", err
+	}
+	roles := make([]string, 0, len(cfg.ClaudePromptCacheTTLRoles))
+	for mappedRole := range cfg.ClaudePromptCacheTTLRoles {
+		roles = append(roles, mappedRole)
+	}
+	slices.Sort(roles)
+	for _, mappedRole := range roles {
+		if err := validatePromptCacheTTL(fmt.Sprintf("claude_prompt_cache_ttl_roles[%s]", mappedRole), cfg.ClaudePromptCacheTTLRoles[mappedRole]); err != nil {
+			return "", err
+		}
+	}
+	if ttl, ok := cfg.ClaudePromptCacheTTLRoles[role]; ok {
+		return ttl, nil
+	}
+	return cfg.ClaudePromptCacheTTL, nil
+}
+
 // envFileKey is the variable Claude Code reads to find a file whose content it runs in the Bash tool's shell before each command.
 // It rides the pane line for the same reason forkSubagentEnvKey does.
 const envFileKey = "CLAUDE_ENV_FILE"
@@ -131,8 +177,9 @@ const envFileContent = "exec </dev/null\n"
 // so the pane shell expands the variable from the export reed's launch script makes.
 // It adds --dangerously-skip-permissions when skipPermissions is true, the mode validatePermissionMode resolved.
 // When forkSubagents is true, it wraps the line via sh.WithEnv to enable fork subagent type.
+// It assigns promptCacheTTL, the non-empty value Prepare validated, to promptCacheTTLEnvKey.
 // It then wraps the finished line in the envFileKey assignment naming envFilePath, so that assignment leads the line.
-func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, notice, envFilePath string, resume, skipPermissions, forkSubagents bool) string {
+func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model, effort, notice, envFilePath, promptCacheTTL string, resume, skipPermissions, forkSubagents bool) string {
 	sessionFlag := " --session-id "
 	if resume {
 		sessionFlag = " --resume "
@@ -158,6 +205,7 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 	if forkSubagents {
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
 	}
+	cmd = sh.WithEnv(promptCacheTTLEnvKey, promptCacheTTL, cmd)
 	return sh.WithEnv(envFileKey, envFilePath, cmd)
 }
 
@@ -175,8 +223,9 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 // It carries --name as a reference to LYX_STRAND_NAME, not a value, for the same reason buildLaunchCmd does,
 // and because reed replays this line on every resume, a line without it would bring Claude back unnamed.
 // When forkSubagents is true, the line is wrapped to keep the fork-subagent capability.
+// It carries the promptCacheTTLEnvKey assignment too: the resumed claude inherits nothing from the launch, so without it the session would fall back to Claude Code's default TTL.
 // It carries the envFileKey assignment naming envFilePath, leading the line, so a resumed session keeps the default stdin of its Bash tool.
-func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, notice, envFilePath string, skipPermissions, forkSubagents bool) string {
+func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort, notice, envFilePath, promptCacheTTL string, skipPermissions, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath) +
 		" --name " + sh.EnvRef(agentname.StrandNameEnv)
 	if model != "" {
@@ -194,5 +243,6 @@ func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort,
 	if forkSubagents {
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
 	}
+	cmd = sh.WithEnv(promptCacheTTLEnvKey, promptCacheTTL, cmd)
 	return sh.WithEnv(envFileKey, envFilePath, cmd)
 }

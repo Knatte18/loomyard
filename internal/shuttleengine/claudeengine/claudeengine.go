@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"runtime"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -79,7 +80,7 @@ func validateSessionID(id string) error {
 // Prepare writes prompt.md, settings.json and the Bash env file bash-env.sh into runDir and returns the Launch command strings.
 // The launch line carries a pointer to prompt.md rather than the prompt, so a prompt of any size launches.
 // A spec that names skills leaves the pointer off the launch line and returns it as Launch.PromptLine, for the skills to load first.
-// It validates spec.Effort, spec.Model, spec.PermissionMode and spec.ResumeSessionID before writing any artifacts.
+// It validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID and the prompt-cache TTL config before writing any artifacts.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	// Reject unrealizable effort before any artifact is written (claude ignores bad efforts at launch).
 	if err := validateEffort(spec.Effort); err != nil {
@@ -97,6 +98,13 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	if err != nil {
 		return shuttleengine.Launch{}, err
 	}
+
+	// Resolve the role's prompt-cache TTL once, so both lines carry the same value, before any artifact is written.
+	promptCacheTTL, err := resolvePromptCacheTTL(spec.Role, cfg)
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
+	logger.Info("claudeengine: resolved the prompt-cache TTL", "role", spec.Role, "ttl", promptCacheTTL)
 
 	// An adopted run takes over an existing session; reject a malformed id before any artifact is written.
 	resume := spec.ResumeSessionID != ""
@@ -167,8 +175,8 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		launchArg, promptLine = "", pointer
 	}
 	return shuttleengine.Launch{
-		Cmd:        buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, notice, envFilePath, resume, skipPermissions, spec.ForkSubagents),
-		ResumeCmd:  buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, notice, envFilePath, skipPermissions, spec.ForkSubagents),
+		Cmd:        buildLaunchCmd(sh, bin, launchArg, settingsPath, sessionID, resolvedModel, spec.Effort, notice, envFilePath, promptCacheTTL, resume, skipPermissions, spec.ForkSubagents),
+		ResumeCmd:  buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, notice, envFilePath, promptCacheTTL, skipPermissions, spec.ForkSubagents),
 		SessionID:  sessionID,
 		PromptLine: promptLine,
 	}, nil
