@@ -74,7 +74,7 @@ func TestVerifyGate_Scenario(t *testing.T) {
 	if !t.Run("passes without running on a verified tree", func(t *testing.T) {
 		setVerifyCommand(t, "true")
 		paths := verifytree.NewPaths(worktree, verifyDir)
-		if res, err := verifytree.Verify(context.Background(), paths, verifytree.Site{Label: "Webster-Burler gate"}, "true"); err != nil || res.Status != verifytree.StatusPassed {
+		if res, err := verifytree.Verify(context.Background(), paths, verifytree.Site{Label: "Webster-Burler gate"}, "true", verifytree.Timeout); err != nil || res.Status != verifytree.StatusPassed {
 			t.Fatalf("seed Verify = %+v, %v; want a pass", res, err)
 		}
 		if err := os.Remove(paths.Log); err != nil {

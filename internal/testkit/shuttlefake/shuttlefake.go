@@ -191,6 +191,10 @@ type Reed struct {
 	SendTextCalls []SendTextCall
 	SendKeyCalls  []SendKeyCall
 	CaptureCalls  []string
+	// WaitMarkCalls records every SetWaitMark call, in call order.
+	WaitMarkCalls []WaitMarkCall
+	// WaitMarkErr makes SetWaitMark fail after recording the call.
+	WaitMarkErr error
 
 	AddStrandFn    func(spec reedengine.AddSpec) (reedengine.Strand, error)
 	RemoveStrandFn func(guid string, recursive bool) (reedengine.Removed, error)
@@ -205,6 +209,13 @@ type SendTextCall struct {
 	GUID   string
 	Text   string
 	Submit bool
+}
+
+// WaitMarkCall is one recorded SetWaitMark call;
+// an empty Label is a clear.
+type WaitMarkCall struct {
+	GUID  string
+	Label string
 }
 
 // SendKeyCall is one recorded SendKey call.
@@ -305,6 +316,14 @@ func (r *Reed) SendKey(guid, key string) error {
 		return r.SendKeyFn(guid, key)
 	}
 	return nil
+}
+
+// SetWaitMark records the call and answers WaitMarkErr.
+func (r *Reed) SetWaitMark(guid, label string, start time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.WaitMarkCalls = append(r.WaitMarkCalls, WaitMarkCall{GUID: guid, Label: label})
+	return r.WaitMarkErr
 }
 
 // CapturePane records the call and answers CapturePaneFn, else an empty capture.

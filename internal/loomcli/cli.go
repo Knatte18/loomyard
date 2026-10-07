@@ -121,6 +121,8 @@ type loomCLI struct {
 	// reason driverStarter does: *reedengine.Engine is a concrete type and the Test Tier Purity
 	// Invariant bars a real reed call from an untagged file.
 	driverPaneProbe driverPaneProbe
+	// driverDirectory is the seam through which `resume` reads the driver strand from reed's sessionless directory, wrapping the same *reedengine.Engine c.reed already carries.
+	driverDirectory driverDirectoryProbe
 	// reflectionShuttle is the frictionengine.Shuttle every friction reflection goes through, wired to the shuttle runner in production.
 	// It is the seam tests fake the reflection agent, and so its filing, through.
 	// It stays nil on the lightweight wiring path, which frictionengine.Reflect's Deps validation reports as failed.
@@ -431,7 +433,7 @@ Example:
 	pauseVerb.Args = cobra.MaximumNArgs(1)
 	gotoVerb.Args = cobra.MaximumNArgs(1)
 
-	parent.AddCommand(c.startCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd())
+	parent.AddCommand(c.startCmd(), c.resumeCmd(), runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, c.validateDiscussionCmd(), c.validatePlanCmd(), c.validateDescriptionCmd(), c.approveCmd(), c.rejectCmd(), c.commitRecordsCmd(), c.reviewCmd(), c.circlingCmd(), c.decisionCmd())
 
 	return parent
 }

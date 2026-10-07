@@ -16,21 +16,13 @@ import (
 // isAlive is the liveness seam, so marker tests stay tier 1.
 var isAlive = proc.IsAlive
 
-// Marker is the running marker: which site is verifying, since when, and the pid that holds it.
+// Marker is the running marker: which site is verifying which command, since when, and the pid that holds it.
 type Marker struct {
 	Site    string    `yaml:"site"`
 	Attempt int       `yaml:"attempt"`
+	Command string    `yaml:"command"`
 	Started time.Time `yaml:"started"`
 	PID     int       `yaml:"pid"`
-}
-
-// Note renders the marker for loom status, dropping the attempt clause when Attempt is 0.
-func (m Marker) Note() string {
-	hhmm := m.Started.Format("15:04")
-	if m.Attempt == 0 {
-		return fmt.Sprintf("verify %s (since %s)", m.Site, hhmm)
-	}
-	return fmt.Sprintf("verify %s (attempt %d, since %s)", m.Site, m.Attempt, hhmm)
 }
 
 // ReadMarker reads the marker at path.

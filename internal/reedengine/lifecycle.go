@@ -44,6 +44,8 @@ type UpResult struct {
 type ResumeResult struct {
 	Session string
 	Resumed int
+	// Dropped counts the finished strands Resume removed from state instead of relaunching.
+	Dropped int
 }
 
 // DownResult reports the outcome of Down: the session name that was torn down, plus the name of a
@@ -154,20 +156,61 @@ func planUpLaunches(strands []Strand) []Strand {
 	return nil
 }
 
-// planResumeLaunches returns non-live, non-hidden strands for Resume to relaunch.
-func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
-	var out []Strand
+// planResumeLaunches splits the non-live strands into those Resume relaunches and those it drops.
+// A non-live strand is dropped, hidden or not, when its DoneWhen list is non-empty and exists reports every path present: its work finished,
+// and a relaunch would redo it.
+// Every other non-live, non-hidden strand is relaunched;
+// a hidden strand that is not dropped is neither.
+// A live strand is in neither list.
+func planResumeLaunches(strands []Strand, liveIDs map[string]bool, exists func(path string) bool) (launch, drop []Strand) {
 	for _, s := range strands {
 		live := s.PaneID != "" && liveIDs[s.PaneID]
 		if live {
 			continue
 		}
+		if len(s.DoneWhen) > 0 && allPathsExist(s.DoneWhen, exists) {
+			drop = append(drop, s)
+			continue
+		}
 		if s.Display.Anchor == render.AnchorHidden {
 			continue
 		}
-		out = append(out, s)
+		launch = append(launch, s)
 	}
-	return out
+	return launch, drop
+}
+
+// dropStrands removes drop's strands from st, logs one Info line per strand, and returns how many it removed.
+func dropStrands(st *ReedState, drop []Strand) int {
+	dropping := make(map[string]bool, len(drop))
+	for _, s := range drop {
+		dropping[s.GUID] = true
+		logger.Info("reed: resume dropped a finished strand", "name", s.Name, "guid", s.GUID)
+	}
+	kept := st.Strands[:0]
+	for _, s := range st.Strands {
+		if !dropping[s.GUID] {
+			kept = append(kept, s)
+		}
+	}
+	st.Strands = kept
+	return len(drop)
+}
+
+// allPathsExist reports whether exists holds for every path.
+func allPathsExist(paths []string, exists func(path string) bool) bool {
+	for _, path := range paths {
+		if !exists(path) {
+			return false
+		}
+	}
+	return true
+}
+
+// pathExists reports whether a file or directory is at path.
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // sessionSubstrateLocked is the single "usable substrate" predicate both ensureServerAndSessionLocked's
@@ -594,11 +637,12 @@ func (e *Engine) EnsureSession() (booted bool, err error) {
 	return booted, err
 }
 
-// Resume boots server+session if absent, reconciles stale bindings, relaunches non-live strands,
-// and re-applies the layout.
+// Resume boots server+session if absent, reconciles stale bindings,
+// drops non-live strands whose done-when paths all exist, relaunches the other non-live strands, and re-applies the layout.
 func (e *Engine) Resume() (ResumeResult, error) {
 	var result ResumeResult
 	err := e.withOpLock(func() error {
+		dropped := 0
 		booted, stripped, err := e.ensureServerAndSessionLocked()
 		if err != nil {
 			return err
@@ -644,7 +688,16 @@ func (e *Engine) Resume() (ResumeResult, error) {
 		}
 		// aliveIDSet, not liveIDSet: a strand bound to a dead-but-present pane
 		// (e.g. the kept sole dead pane) is not live and must be relaunched.
-		toLaunch := planResumeLaunches(st.Strands, aliveIDSet(live))
+		toLaunch, toDrop := planResumeLaunches(st.Strands, aliveIDSet(live), pathExists)
+
+		// A finished strand has no live pane,
+		// so dropping it kills nothing.
+		if len(toDrop) > 0 {
+			dropped = dropStrands(st, toDrop)
+			if err := SaveState(e.stateDir(), st); err != nil {
+				return fmt.Errorf("persist dropped strands: %w", err)
+			}
+		}
 
 		launch := make(map[string]bool, len(toLaunch))
 		for _, s := range toLaunch {
@@ -684,7 +737,7 @@ func (e *Engine) Resume() (ResumeResult, error) {
 			return err
 		}
 
-		result = ResumeResult{Session: e.SessionName(), Resumed: launched}
+		result = ResumeResult{Session: e.SessionName(), Resumed: launched, Dropped: dropped}
 		return nil
 	})
 	return result, err

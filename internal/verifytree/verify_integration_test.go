@@ -8,7 +8,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
@@ -26,7 +28,7 @@ func newScratch(t *testing.T) Paths {
 
 func mustVerify(t *testing.T, p Paths, command string) Result {
 	t.Helper()
-	res, err := Verify(context.Background(), p, Site{Label: "webster verify"}, command)
+	res, err := Verify(context.Background(), p, Site{Label: "webster verify"}, command, Timeout)
 	if err != nil {
 		t.Fatalf("Verify(%q): %v", command, err)
 	}
@@ -88,6 +90,27 @@ func TestVerify_Scenario(t *testing.T) {
 		return
 	}
 
+	if !t.Run("a command outliving the timeout fails as timed out with no record and no marker", func(t *testing.T) {
+		res, err := Verify(context.Background(), p, Site{Label: "webster verify"}, "sleep 30", 300*time.Millisecond)
+		if err != nil {
+			t.Fatalf("Verify with an expired timeout returned an error: %v", err)
+		}
+		if res.Status != StatusFailed || !res.TimedOut || res.ExitCode != -1 {
+			t.Fatalf("Verify = (%q, timedOut %v, %d); want (%q, true, -1)", res.Status, res.TimedOut, res.ExitCode, StatusFailed)
+		}
+		if !strings.Contains(res.Detail, "did not finish within 300ms") {
+			t.Errorf("Detail = %q; want it to name the timeout", res.Detail)
+		}
+		if fileExists(p.Record) {
+			t.Error("a record was written after a timeout")
+		}
+		if fileExists(p.Marker) {
+			t.Error("the marker survived a timeout")
+		}
+	}) {
+		return
+	}
+
 	if !t.Run("a commit during the run leaves no record", func(t *testing.T) {
 		command := "echo c > c.txt && git add c.txt && git commit -q -m mid-run"
 		if res := mustVerify(t, p, command); res.Status != StatusPassed {
@@ -103,7 +126,7 @@ func TestVerify_Scenario(t *testing.T) {
 	if !t.Run("a cancelled run leaves no record and no marker, and a pass then writes the record", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if _, err := Verify(ctx, p, Site{Label: "Publish"}, "true"); err == nil {
+		if _, err := Verify(ctx, p, Site{Label: "Publish"}, "true", Timeout); err == nil {
 			t.Fatal("Verify with a cancelled ctx returned no error")
 		}
 		if fileExists(p.Record) {
@@ -151,6 +174,9 @@ func TestVerify_Scenario(t *testing.T) {
 		}
 		if m.Site != "webster verify" {
 			t.Errorf("marker site = %q; want %q", m.Site, "webster verify")
+		}
+		if want := "cp " + p.Marker + " " + seen; m.Command != want {
+			t.Errorf("marker command = %q; want %q", m.Command, want)
 		}
 	}) {
 		return

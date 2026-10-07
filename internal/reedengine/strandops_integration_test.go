@@ -3,11 +3,14 @@
 // strandops_integration_test.go proves ReplaceStrand and AddStrand with an empty Cmd against a real tmux.
 // Replacing the top strand of a three-strand stack leaves the replacement on top at collapsed_rows, with the other strands' panes untouched;
 // an empty Cmd still leaves a live pane running the pane's own shell, now with the pane-binary prelude applied to it.
-// One cold session serves both steps.
+// A third step proves Resume drops a non-live strand whose done-when paths all exist and relaunches one whose list is partly missing.
+// One cold session serves every step.
 
 package reedengine
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -113,6 +116,46 @@ func TestStrandOps_RealTmux(t *testing.T) {
 		}
 		if !found.Live {
 			t.Errorf("added strand's Status() entry = %+v, want Live = true", found)
+		}
+	})
+
+	t.Run("ResumeDropsAFinishedStrandAndRelaunchesAnUnfinishedOne", func(t *testing.T) {
+		finishedPath := filepath.Join(t.TempDir(), "finished")
+		if err := os.WriteFile(finishedPath, nil, 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		display := render.Display{Anchor: render.AnchorBelowParent}
+		finished, err := e.AddStrand(AddSpec{NameOverride: "finished", Display: display, DoneWhen: []string{finishedPath}})
+		if err != nil {
+			t.Fatalf("AddStrand(finished) = %v, want nil", err)
+		}
+		unfinished, err := e.AddStrand(AddSpec{NameOverride: "unfinished", Display: display, DoneWhen: []string{filepath.Join(t.TempDir(), "never-written")}})
+		if err != nil {
+			t.Fatalf("AddStrand(unfinished) = %v, want nil", err)
+		}
+		for _, strand := range []Strand{finished, unfinished} {
+			if err := e.tmux.run("kill-pane", "-t", strand.PaneID); err != nil {
+				t.Fatalf("kill-pane %s: %v", strand.PaneID, err)
+			}
+		}
+
+		result, err := e.Resume()
+		if err != nil {
+			t.Fatalf("Resume = %v, want nil", err)
+		}
+		if result.Dropped != 1 || result.Resumed != 1 {
+			t.Errorf("Resume result = %+v, want Dropped 1 and Resumed 1", result)
+		}
+		after, err := LoadState(e.stateDir())
+		if err != nil || after == nil {
+			t.Fatalf("LoadState after resume = (%+v, %v), want a readable state", after, err)
+		}
+		if _, ok := strandByGUID(after.Strands, finished.GUID); ok {
+			t.Errorf("finished strand %q is still in state after Resume", finished.GUID)
+		}
+		relaunched, ok := strandByGUID(after.Strands, unfinished.GUID)
+		if !ok || relaunched.PaneID == "" {
+			t.Errorf("unfinished strand after Resume = (%+v, %v), want it present with a live pane", relaunched, ok)
 		}
 	})
 }

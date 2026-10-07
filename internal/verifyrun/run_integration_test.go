@@ -12,7 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -108,6 +110,46 @@ func TestRun_SpawnFailure(t *testing.T) {
 	log := buf.String()
 	if !strings.Contains(log, "WARN") || !strings.Contains(log, "cause") {
 		t.Errorf("log = %q; want a WARN line carrying cause", log)
+	}
+}
+
+// TestRun_ExpiryKillsBackgroundedDescendant pins that an expired context kills a descendant of the verify shell that holds the output pipe, not only the shell.
+func TestRun_ExpiryKillsBackgroundedDescendant(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("only the shell is killed on Windows; descendants may outlive it")
+	}
+	t.Parallel()
+
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "sleep.pid")
+	command := "sleep 60 & echo $! > " + pidFile + "; wait"
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	code, err := run(ctx, command, dir, &bytes.Buffer{}, 200*time.Millisecond)
+	if !errors.Is(err, context.DeadlineExceeded) || code != -1 {
+		t.Fatalf("run = (%d, %v); want (-1, context.DeadlineExceeded)", code, err)
+	}
+
+	raw, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for process.Signal(syscall.Signal(0)) == nil {
+		if time.Now().After(deadline) {
+			_ = process.Kill()
+			t.Fatalf("backgrounded sleep %d still alive after the verify expired", pid)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 

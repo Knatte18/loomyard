@@ -15,6 +15,8 @@ type DirectoryRow struct {
 	Live  bool
 	// Drift is true when the strand is live and its pane title differs from its name.
 	Drift bool
+	// Retiring is the strand's own Retiring flag: it is about to remove itself.
+	Retiring bool
 }
 
 // Directory lists this worktree's strands under the op lock without requiring a session.
@@ -65,7 +67,7 @@ func directoryRows(strands []Strand, live []LivePane) []DirectoryRow {
 	}
 	rows := make([]DirectoryRow, 0, len(strands))
 	for _, s := range strands {
-		row := DirectoryRow{Name: s.Name, GUID: s.GUID, Worktree: s.Worktree, PaneID: s.PaneID}
+		row := DirectoryRow{Name: s.Name, GUID: s.GUID, Worktree: s.Worktree, PaneID: s.PaneID, Retiring: s.Retiring}
 		if s.PaneID != "" && alive[s.PaneID] {
 			row.Live = true
 			row.Title = titles[s.PaneID]

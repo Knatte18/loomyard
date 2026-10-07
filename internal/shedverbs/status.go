@@ -100,7 +100,7 @@ func waitingNote(spec *Spec, st shedengine.Status) (string, error) {
 	if spec.Hooks.Waiting == nil || st.State != shedengine.StateRunning {
 		return "", nil
 	}
-	return spec.Hooks.Waiting()
+	return spec.Hooks.Waiting(st)
 }
 
 // runStatusWatch drives the --watch tail against spec's own status file, using spec.StatusLabel as the rendered line's prefix.
