@@ -120,7 +120,7 @@ func TestAddRollback_DeletesTheWarpBranchItCreated(t *testing.T) {
 			t.Parallel()
 
 			const slug = "rollback-created-branch"
-			weftBranch := fabricengine.WeftBranchName(slug)
+			weftBranch := fabricengine.RecordsBranchName(slug)
 			h := hubforge.NewHub(t, ".")
 			if tc.prepare != nil {
 				tc.prepare(t, h, slug)

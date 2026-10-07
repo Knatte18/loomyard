@@ -224,7 +224,7 @@ func mergeBlocksMutation(warpPath, weftPath string) (bool, error) {
 // mergeBlocksMutation's own already-half-broken-pair rule: refusing there would make a broken hub
 // impossible to finish tearing down.
 func mergeSourceInFlight(l *lyxcwd.Location, warpBranch string) (bool, error) {
-	weftRepoRoot, err := WeftRepoRoot(l)
+	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return false, nil
 	}

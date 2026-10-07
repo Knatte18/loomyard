@@ -182,12 +182,11 @@ func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
 	weftFixture := hubforge.NewHub(t, ".")
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	// The weft worktree's original branch is fabricengine.WeftBranchName("main")
-	// ("main-weft"), never bare "main" -- a real hub's own weft:main is a
-	// SEPARATE worktree (_board), so this file's own branch stays suffixed.
+	// The weft worktree's original branch is fabricengine.RecordsBranchName("main") ("main-weft"), never bare "main".
+	// A real hub's own weft:main is a SEPARATE worktree (_board), so this file's own branch stays suffixed.
 	// Fork "tagged" off it and record the Snapshot tag there, so the mainline
 	// branch itself never advances past the fixture's initial commit.
-	mainlineBranch := fabricengine.WeftBranchName("main")
+	mainlineBranch := fabricengine.RecordsBranchName("main")
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "checkout", "-b", "tagged")
 	commitWeftTagged(t, f, warpPath, weftFixture.PrimeRecords(), "tagged change", "raddle")
 
@@ -298,11 +297,10 @@ func TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate(t *testing.T) {
 	weftFixture := hubforge.NewHub(t, ".")
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	// A real hub's weft primary checks out the suffixed branch (fabricengine.WeftBranchName("main")),
-	// never bare "main" -- "main" itself is already checked out by the hub's own _board worktree
-	// (the repo-wide weft:main checkout), so switching this worktree onto literal "main" would
+	// A real hub's weft primary checks out the suffixed branch (fabricengine.RecordsBranchName("main")), never bare "main".
+	// "main" itself is already checked out by the hub's own _board worktree (the repo-wide weft:main checkout), so switching this worktree onto literal "main" would
 	// collide with that second worktree rather than reaching the primary's own mainline.
-	mainlineBranch := fabricengine.WeftBranchName("main")
+	mainlineBranch := fabricengine.RecordsBranchName("main")
 	warpSHAMainline, _ := commitWeftTagged(t, f, warpPath, weftFixture.PrimeRecords(), "mainline tagged", "raddle")
 
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "checkout", "-b", "side")

@@ -690,7 +690,7 @@ func cleanupCase() VerbCase {
 			// now neither the checked-out weft worktree's own branch nor named by any live pair --
 			// exactly the condition that makes Cleanup's primaryWeft carve-out load-bearing.
 			mustGit(h.PrimeWorktree(), "checkout", "-b", "verb-cleanup-alt")
-			mustGit(h.PrimeRecords(), "checkout", "-b", fabricengine.WeftBranchName("verb-cleanup-alt"))
+			mustGit(h.PrimeRecords(), "checkout", "-b", fabricengine.RecordsBranchName("verb-cleanup-alt"))
 
 			return VerbFixture{
 				Slug:           slug,
@@ -711,7 +711,7 @@ func cleanupCase() VerbCase {
 				Kind: KindProceeds,
 				Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 					tb.Helper()
-					orphan := fabricengine.WeftBranchName(f.Slug)
+					orphan := fabricengine.RecordsBranchName(f.Slug)
 					if gitkit.BranchExists(tb, h.PrimeRecords(), orphan) {
 						tb.Errorf("Cleanup left orphan branch %q behind", orphan)
 					}
@@ -719,7 +719,7 @@ func cleanupCase() VerbCase {
 					// branch intact." Arrange moved the prime pair off f.OriginalBranch precisely so
 					// this assertion is independently provable here rather than only in
 					// fabricengine_test's hermetic TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout.
-					primary := fabricengine.WeftBranchName(f.OriginalBranch)
+					primary := fabricengine.RecordsBranchName(f.OriginalBranch)
 					if !gitkit.BranchExists(tb, h.PrimeRecords(), primary) {
 						tb.Errorf("Cleanup deleted the primary weft branch %q", primary)
 					}
@@ -778,8 +778,8 @@ func checkoutCase() VerbCase {
 						if got := gitkit.CurrentBranch(tb, h.PrimeWorktree()); got != f.OriginalBranch {
 							tb.Errorf("prime warp branch after refused Checkout = %q; want unchanged %q", got, f.OriginalBranch)
 						}
-						if got := gitkit.CurrentBranch(tb, h.PrimeRecords()); got != fabricengine.WeftBranchName(f.OriginalBranch) {
-							tb.Errorf("prime weft branch after refused Checkout = %q; want unchanged %q", got, fabricengine.WeftBranchName(f.OriginalBranch))
+						if got := gitkit.CurrentBranch(tb, h.PrimeRecords()); got != fabricengine.RecordsBranchName(f.OriginalBranch) {
+							tb.Errorf("prime weft branch after refused Checkout = %q; want unchanged %q", got, fabricengine.RecordsBranchName(f.OriginalBranch))
 						}
 					},
 				}
@@ -797,7 +797,7 @@ func checkoutCase() VerbCase {
 						warpBranch := gitkit.CurrentBranch(tb, h.PrimeWorktree())
 						weftBranch := gitkit.CurrentBranch(tb, h.PrimeRecords())
 						switched := warpBranch == f.CheckoutBranch
-						weftSwitched := weftBranch == fabricengine.WeftBranchName(f.CheckoutBranch)
+						weftSwitched := weftBranch == fabricengine.RecordsBranchName(f.CheckoutBranch)
 						if switched != weftSwitched {
 							tb.Errorf("Checkout left the pair half-switched: warp branch = %q, weft branch = %q", warpBranch, weftBranch)
 						}
@@ -819,7 +819,7 @@ func checkoutCase() VerbCase {
 						if got := gitkit.CurrentBranch(tb, h.PrimeWorktree()); got != f.CheckoutBranch {
 							tb.Errorf("prime warp branch after Checkout = %q; want %q", got, f.CheckoutBranch)
 						}
-						wantWeft := fabricengine.WeftBranchName(f.CheckoutBranch)
+						wantWeft := fabricengine.RecordsBranchName(f.CheckoutBranch)
 						if got := gitkit.CurrentBranch(tb, h.PrimeRecords()); got != wantWeft {
 							tb.Errorf("prime weft branch after Checkout = %q; want %q", got, wantWeft)
 						}

@@ -170,9 +170,9 @@ func IsPrimeWorktree(l *lyxcwd.Location) (bool, error) {
 	return prime == l.WorktreeName, nil
 }
 
-// WeftRepoRoot returns the path to the weft prime worktree (the git -C target for weft worktree
+// RecordsRepoRoot returns the path to the weft prime worktree (the git -C target for weft worktree
 // add/remove), resolved via PrimeName.
-func WeftRepoRoot(l *lyxcwd.Location) (string, error) {
+func RecordsRepoRoot(l *lyxcwd.Location) (string, error) {
 	primeName, err := PrimeName(l)
 	if err != nil {
 		return "", err

@@ -29,7 +29,7 @@ type mergeSources struct {
 }
 
 // resolveMergeSources resolves the SHA each side of f actually merges, applying the freshness rule
-// independently per side: warp resolves source itself, weft resolves WeftBranchName(source) — the
+// independently per side: warp resolves source itself, weft resolves RecordsBranchName(source) — the
 // sole "-weft" composition (branchname.go).
 // Both sides run a best-effort Fetch() first — a fetch failure is tolerated and logged via
 // logger.Warn, never fatal (millhouse's fetch-then-prefer-origin rule) — then resolve the local
@@ -50,7 +50,7 @@ type mergeSources struct {
 // mergeReasonSourceNotFound rather than disclosing that two subjects were checked.
 func resolveMergeSources(f *Fabric, source string) (mergeSources, []string) {
 	var reasons []string
-	weftBranch := WeftBranchName(source)
+	weftBranch := RecordsBranchName(source)
 
 	if err := f.warp.Fetch(); err != nil {
 		logger.Warn("fabricengine: best-effort fetch before merge source resolution failed", "side", "warp", "error", err)

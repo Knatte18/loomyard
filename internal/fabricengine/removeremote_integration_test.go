@@ -31,7 +31,7 @@ func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 	const slug = "remove-remote-both"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -69,7 +69,7 @@ func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 	const slug = "remove-remote-off"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -109,7 +109,7 @@ func TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact(t *testing.T)
 		t.Fatalf("Remove(%q, remote=true) = nil error; want the archive push failure against the unreachable origin", slug)
 	}
 
-	weftTarget := fabricengine.WeftWorktreePath(l, slug)
+	weftTarget := fabricengine.RecordsWorktreePath(l, slug)
 	if _, statErr := os.Stat(weftTarget); statErr != nil {
 		t.Errorf("weft worktree missing at %s; want the pair left intact by the failed archive: %v", weftTarget, statErr)
 	}
@@ -143,7 +143,7 @@ func TestRemove_NoOriginUnderRemoteReportsSkipReasonAndCompletesTeardown(t *test
 		t.Errorf("RemoteBranchError = %q; want empty when the pre-check itself skipped", res.RemoteBranchError)
 	}
 
-	weftTarget := fabricengine.WeftWorktreePath(l, slug)
+	weftTarget := fabricengine.RecordsWorktreePath(l, slug)
 	if _, statErr := os.Stat(weftTarget); statErr == nil {
 		t.Errorf("weft worktree still exists at %s; want the teardown to have completed", weftTarget)
 	}

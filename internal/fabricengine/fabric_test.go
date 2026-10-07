@@ -54,13 +54,13 @@ func TestOpen(t *testing.T) {
 				}
 			}
 			if tt.mkWeft {
-				if err := os.Mkdir(fabricengine.WeftWorktree(l), 0755); err != nil {
+				if err := os.Mkdir(fabricengine.RecordsWorktree(l), 0755); err != nil {
 					t.Fatalf("mkdir weft sibling: %v", err)
 				}
 			}
 			wantMissing := l.WorktreePath()
 			if tt.mkWarp {
-				wantMissing = fabricengine.WeftWorktree(l)
+				wantMissing = fabricengine.RecordsWorktree(l)
 			}
 
 			f, err := fabricengine.Open(l)

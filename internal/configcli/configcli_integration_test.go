@@ -28,7 +28,7 @@ import (
 func TestConfigOverRealHub(t *testing.T) {
 	const slug = "config-hub-test"
 
-	// fabriccli.CloneAndWire has already materialized every registered module's config plus the repo-wide fabric.yaml at BoardDir, and the records-side primary already sits on its WeftBranchName-suffixed branch.
+	// fabriccli.CloneAndWire has already materialized every registered module's config plus the repo-wide fabric.yaml at BoardDir, and the records-side primary already sits on its RecordsBranchName-suffixed branch.
 	h := hubforge.NewHub(t, ".")
 
 	// Topology.Add wires the new pair's junctions itself, reading the wired name-set from the real repo-wide fabric.yaml.
@@ -37,7 +37,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		t.Fatalf("Topology.Add(%q): %v", slug, err)
 	}
 	codeWorktreePath := fabricengine.WorktreePath(h.Location, slug)
-	fabricWorktreePath := fabricengine.WeftWorktreePath(h.Location, slug)
+	fabricWorktreePath := fabricengine.RecordsWorktreePath(h.Location, slug)
 	boardDir := fabricengine.BoardDir(h.Location.HubPath)
 
 	// Explicitly clear WEFT_SKIP_GIT and WEFT_SKIP_PUSH so the commits are not silent no-ops.

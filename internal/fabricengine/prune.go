@@ -106,7 +106,7 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult
 		warpPath = filepath.Clean(warpPath)
 		slug := filepath.Base(warpPath)
 
-		weftPath := WeftWorktreePath(l, slug)
+		weftPath := RecordsWorktreePath(l, slug)
 
 		_, warpStatErr := os.Stat(warpPath)
 		warpMissing := warpStatErr != nil
@@ -192,7 +192,7 @@ func applyStalePairOwnership(l *lyxcwd.Location, weftPath string, pe *PruneEntry
 		return
 	}
 
-	weftRepoRoot, err := WeftRepoRoot(l)
+	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		pe.Unowned = true
 		pe.Error = fmt.Sprintf("cannot resolve this hub's weft repo to confirm %q is one of its worktrees (%v); refusing to remove it", weftPath, err)
@@ -256,7 +256,7 @@ func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
 // junction and launcher directory before anything had established the entry was fabric's at all.
 // rec is the calling verb's own recorder, threaded through every gate call this helper makes.
 func removeStalePair(rec *Mutations, l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) bool {
-	weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
+	weftRepoRoot, weftRepoRootErr := RecordsRepoRoot(l)
 	if weftRepoRootErr != nil {
 		pe.Error = fmt.Sprintf("resolve weft repo root: %v", weftRepoRootErr)
 		return false

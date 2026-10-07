@@ -18,7 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// fakeLayout returns a lyxcwd.Location that resolves fabricengine.WeftWorktree() without spawning git.
+// fakeLayout returns a lyxcwd.Location that resolves fabricengine.RecordsWorktree() without spawning git.
 func fakeLayout() *lyxcwd.Location {
 	return &lyxcwd.Location{HubPath: "/hub", WorktreeName: filepath.Base("/hub/master-builder")}
 }
@@ -37,7 +37,7 @@ func fakeLayout() *lyxcwd.Location {
 func TestRefScannerMatches(t *testing.T) {
 	layout := fakeLayout()
 	fabricRef := fabricengine.NewRefScanner(layout)
-	fabricWorktree := fabricengine.WeftWorktree(layout)
+	fabricWorktree := fabricengine.RecordsWorktree(layout)
 
 	tests := []struct {
 		name string
@@ -118,7 +118,7 @@ func cleanForkReport(path string) shuttleengine.ForkReport {
 func TestCheckFork(t *testing.T) {
 	layout := fakeLayout()
 	fabricRef := fabricengine.NewRefScanner(layout)
-	fabricWorktree := fabricengine.WeftWorktree(layout)
+	fabricWorktree := fabricengine.RecordsWorktree(layout)
 
 	tests := []struct {
 		name string
@@ -330,7 +330,7 @@ func TestCheckFork(t *testing.T) {
 func TestCheckParent(t *testing.T) {
 	layout := fakeLayout()
 	fabricRef := fabricengine.NewRefScanner(layout)
-	fabricWorktree := fabricengine.WeftWorktree(layout)
+	fabricWorktree := fabricengine.RecordsWorktree(layout)
 
 	const outcomePath = "/hub/master-builder/_lyx/webster/outcome.yaml"
 	const summaryPath = "/hub/master-builder/_lyx/webster/summary.md"

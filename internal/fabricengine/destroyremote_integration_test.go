@@ -29,11 +29,11 @@ func TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.NewHub(t, ".")
-	weftRoot, err := fabricengine.WeftRepoRoot(h.Location)
+	weftRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 	if err != nil {
-		t.Fatalf("WeftRepoRoot: %v", err)
+		t.Fatalf("RecordsRepoRoot: %v", err)
 	}
-	primary := fabricengine.WeftBranchName("main")
+	primary := fabricengine.RecordsBranchName("main")
 
 	err = fabricengine.CheckRemoteBranchRequestForTest(h.Location, weftRoot, "origin", primary, "")
 	if !RefusedByGate(err, fabricengine.CheckOwnership) {
@@ -60,11 +60,11 @@ func TestDeleteRemoteBranchGate_CheckedOutBranchRefused(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	hubforge.AddPair(t, h, slug)
 
-	weftRoot, err := fabricengine.WeftRepoRoot(h.Location)
+	weftRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 	if err != nil {
-		t.Fatalf("WeftRepoRoot: %v", err)
+		t.Fatalf("RecordsRepoRoot: %v", err)
 	}
-	checkedOut := fabricengine.WeftBranchName(slug)
+	checkedOut := fabricengine.RecordsBranchName(slug)
 
 	err = fabricengine.CheckRemoteBranchRequestForTest(h.Location, weftRoot, "origin", checkedOut, "")
 	if !RefusedByGate(err, fabricengine.CheckOwnership) {
@@ -78,11 +78,11 @@ func archivedDeleteFixture(t *testing.T, slug string) (*hubforge.Hub, string, st
 
 	h := hubforge.NewHub(t, ".")
 	hubforge.AddPair(t, h, slug)
-	weftRoot, err := fabricengine.WeftRepoRoot(h.Location)
+	weftRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 	if err != nil {
-		t.Fatalf("WeftRepoRoot: %v", err)
+		t.Fatalf("RecordsRepoRoot: %v", err)
 	}
-	branch := fabricengine.WeftBranchName(slug)
+	branch := fabricengine.RecordsBranchName(slug)
 	tip := gitkit.RevParse(t, h.RecordsBare, branch)
 	if tip == "" {
 		t.Fatalf("weft branch %s is not on origin after Add", branch)
@@ -118,7 +118,7 @@ func TestDeleteArchivedWeftBranch_PrimaryRefused(t *testing.T) {
 	t.Parallel()
 
 	h, weftRoot, _, _ := archivedDeleteFixture(t, "archprimary")
-	primary := fabricengine.WeftBranchName("main")
+	primary := fabricengine.RecordsBranchName("main")
 	tip := gitkit.RevParse(t, weftRoot, primary)
 	onOriginBefore := gitkit.BranchExists(t, h.RecordsBare, primary)
 

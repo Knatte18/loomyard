@@ -129,7 +129,7 @@ func TestRemove_MissingWeftWorktreeRecreatesNothing(t *testing.T) {
 		t.Fatalf("setup Add(%q): %v", slug, err)
 	}
 
-	weftPath := fabricengine.WeftWorktreePath(l, slug)
+	weftPath := fabricengine.RecordsWorktreePath(l, slug)
 	if err := os.RemoveAll(weftPath); err != nil {
 		t.Fatalf("remove weft worktree: %v", err)
 	}

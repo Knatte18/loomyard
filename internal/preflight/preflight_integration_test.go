@@ -368,7 +368,7 @@ func TestCheckResolved_Failures(t *testing.T) {
 	}{
 		{
 			name:    "Lyx",
-			linkFor: func(h *hubforge.Hub, slug string) string { return fabricengine.WarpLyxLink(h.Location, slug) },
+			linkFor: func(h *hubforge.Hub, slug string) string { return fabricengine.CodeLyxLink(h.Location, slug) },
 		},
 		{
 			name: "Extra",

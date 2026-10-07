@@ -30,7 +30,7 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 	weftRoot := mustWeftRepoRoot(t, l)
 	tips := make(map[string]string, len(slugs))
 	for _, slug := range slugs {
-		branch := fabricengine.WeftBranchName(slug)
+		branch := fabricengine.RecordsBranchName(slug)
 		mustCreateOrphanWeftBranch(t, weftRoot, branch)
 		tips[slug] = gitkit.RevParse(t, weftRoot, branch)
 	}
@@ -41,7 +41,7 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 	}
 
 	for _, slug := range slugs {
-		branch := fabricengine.WeftBranchName(slug)
+		branch := fabricengine.RecordsBranchName(slug)
 		wantTag := wantArchiveTag(slug, tips[slug])
 		entry := findCleanupEntry(t, res.Entries, branch)
 		if !entry.Deleted || entry.ArchiveTag != wantTag {

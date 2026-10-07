@@ -303,8 +303,8 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 	if !fileExistsInWorktree(t, sourceWarpDir, "conflict.txt") {
 		t.Errorf("source warp worktree %s was torn down by the refused Remove", sourceWarpDir)
 	}
-	if !gitkit.BranchExists(t, h.PrimeRecords(), fabricengine.WeftBranchName(sourceBranch)) {
-		t.Errorf("weft branch %q was deleted by the refused Remove; want it intact", fabricengine.WeftBranchName(sourceBranch))
+	if !gitkit.BranchExists(t, h.PrimeRecords(), fabricengine.RecordsBranchName(sourceBranch)) {
+		t.Errorf("weft branch %q was deleted by the refused Remove; want it intact", fabricengine.RecordsBranchName(sourceBranch))
 	}
 
 	// force answers dirtiness only, never a live merge record.
@@ -820,8 +820,8 @@ func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testi
 	if !fileExistsInWorktree(t, sourceWarpDir, "conflict.txt") {
 		t.Errorf("source warp worktree %s was torn down by the refused Remove", sourceWarpDir)
 	}
-	if !gitkit.BranchExists(t, h.PrimeRecords(), fabricengine.WeftBranchName(sourceBranch)) {
-		t.Errorf("weft branch %q was deleted by the refused Remove; want it intact", fabricengine.WeftBranchName(sourceBranch))
+	if !gitkit.BranchExists(t, h.PrimeRecords(), fabricengine.RecordsBranchName(sourceBranch)) {
+		t.Errorf("weft branch %q was deleted by the refused Remove; want it intact", fabricengine.RecordsBranchName(sourceBranch))
 	}
 
 	// force answers dirtiness only, never a live merge record — the same rule as the prime-pair case.

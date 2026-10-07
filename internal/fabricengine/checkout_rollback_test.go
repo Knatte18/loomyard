@@ -46,10 +46,10 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
+	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.RecordsBranchName(targetBranch))
 
 	originalWarpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
-	originalWeftBranch := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l))
+	originalWeftBranch := gitkit.CurrentBranch(t, fabricengine.RecordsWorktree(l))
 
 	// Corrupt the warp _lyx into a real directory: WireJunctions -> seedLyxJunction
 	// refuses a real (non-link) _lyx, so Checkout's step 5 fails after step 4 has
@@ -72,14 +72,14 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	if got := gitkit.CurrentBranch(t, l.WorktreePath()); got != originalWarpBranch {
 		t.Errorf("warp branch after failed Checkout = %q; want %q (original)", got, originalWarpBranch)
 	}
-	if got := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l)); got != originalWeftBranch {
+	if got := gitkit.CurrentBranch(t, fabricengine.RecordsWorktree(l)); got != originalWeftBranch {
 		t.Errorf("weft branch after failed Checkout = %q; want %q (original) — half-switched pair", got, originalWeftBranch)
 	}
 
 	// The target weft branch pre-existed this Checkout (adopted, not forked), so
 	// the rollback must NOT have deleted it.
-	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), fabricengine.WeftBranchName(targetBranch)) {
-		t.Errorf("pre-existing weft branch %q deleted by rollback; want it untouched", fabricengine.WeftBranchName(targetBranch))
+	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), fabricengine.RecordsBranchName(targetBranch)) {
+		t.Errorf("pre-existing weft branch %q deleted by rollback; want it untouched", fabricengine.RecordsBranchName(targetBranch))
 	}
 }
 
@@ -105,7 +105,7 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 
 	originalWarpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
-	originalWeftBranch := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l))
+	originalWeftBranch := gitkit.CurrentBranch(t, fabricengine.RecordsWorktree(l))
 
 	// Corrupt the warp _lyx into a real directory so step 5 fails after the fork.
 	warpLyx := fabricengine.WarpLyxLinkHere(l)
@@ -124,13 +124,13 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	if got := gitkit.CurrentBranch(t, l.WorktreePath()); got != originalWarpBranch {
 		t.Errorf("warp branch after failed Checkout = %q; want %q (original)", got, originalWarpBranch)
 	}
-	if got := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l)); got != originalWeftBranch {
+	if got := gitkit.CurrentBranch(t, fabricengine.RecordsWorktree(l)); got != originalWeftBranch {
 		t.Errorf("weft branch after failed Checkout = %q; want %q (original) — half-switched pair", got, originalWeftBranch)
 	}
 
 	// The branch step 4 forked must be gone: the rolled-back Checkout tears down
 	// exactly what it created.
-	forked := fabricengine.WeftBranchName(targetBranch)
+	forked := fabricengine.RecordsBranchName(targetBranch)
 	if gitkit.BranchExists(t, mustWeftRepoRoot(t, l), forked) {
 		t.Errorf("forked weft branch %q survived the rollback; want it deleted (orphan branch stranded by fabric's own failed operation)", forked)
 	}
@@ -161,7 +161,7 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 		}},
 		// An untracked file at the path the origin branch tracks passes the pre-switch tracked-dirty check and makes git refuse the switch.
 		{"weft switch fails", func(t *testing.T, l *lyxcwd.Location) {
-			path := filepath.Join(fabricengine.WeftWorktree(l), markerRel)
+			path := filepath.Join(fabricengine.RecordsWorktree(l), markerRel)
 			if err := os.WriteFile(path, []byte("untracked\n"), 0o644); err != nil {
 				t.Fatalf("write untracked file: %v", err)
 			}
@@ -176,7 +176,7 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 			l := h.Location
 
 			const targetBranch = "checkout-rollback-origin"
-			weftBranch := fabricengine.WeftBranchName(targetBranch)
+			weftBranch := fabricengine.RecordsBranchName(targetBranch)
 
 			slug := filepath.Base(l.WorktreePath())
 			if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
@@ -192,7 +192,7 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 			originTip := gitkit.RevParse(t, h.RecordsBare, "refs/heads/"+weftBranch)
 
 			originalWarpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
-			originalWeftBranch := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l))
+			originalWeftBranch := gitkit.CurrentBranch(t, fabricengine.RecordsWorktree(l))
 
 			tc.inject(t, l)
 
@@ -204,7 +204,7 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 			if got := gitkit.CurrentBranch(t, l.WorktreePath()); got != originalWarpBranch {
 				t.Errorf("warp branch after failed Checkout = %q; want %q (original)", got, originalWarpBranch)
 			}
-			if got := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l)); got != originalWeftBranch {
+			if got := gitkit.CurrentBranch(t, fabricengine.RecordsWorktree(l)); got != originalWeftBranch {
 				t.Errorf("weft branch after failed Checkout = %q; want %q (original)", got, originalWeftBranch)
 			}
 			if gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {

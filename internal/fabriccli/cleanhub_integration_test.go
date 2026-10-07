@@ -46,7 +46,7 @@ func perWorktreeModuleNames() []string {
 }
 
 // hubRelativeWeftTarget returns the hub-relative, slash-separated path fabricengine.Mutations.Append
-// would have recorded for h's weft prime worktree, matching the conversion CommitWeftPaths's own
+// would have recorded for h's weft prime worktree, matching the conversion CommitRecordsPaths's own
 // recording site performs.
 func hubRelativeWeftTarget(t *testing.T, h *hubforge.Hub) string {
 	t.Helper()

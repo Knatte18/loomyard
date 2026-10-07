@@ -70,7 +70,7 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 	pairWeftBranch := gitkit.CurrentBranch(t, weftDir)
 
 	setupConflictingDivergence(t, warpDir, "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, weftDir, fabricengine.WeftBranchName("feature"))
+	branchAtCurrentHEAD(t, weftDir, fabricengine.RecordsBranchName("feature"))
 
 	preWarpSHA := fabricengine.CurrentSHAForTest(t, warpDir)
 	preWeftSHA := fabricengine.CurrentSHAForTest(t, weftDir)

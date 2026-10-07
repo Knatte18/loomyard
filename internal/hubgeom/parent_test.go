@@ -125,7 +125,7 @@ func hubWithOrigin(t *testing.T, record string) *lyxcwd.Location {
 	// The record is written by hand: WriteOrigin seeds git excludes, which spawns git, and this file is untagged.
 	// ReadOriginFor requires the records worktree's lock directory beside the record.
 	recordPath := fabricengine.OriginRecordPathFor(l, l.WorktreeName)
-	for _, dir := range []string{filepath.Dir(recordPath), filepath.Join(fabricengine.WeftWorktreePath(l, l.WorktreeName), ".weft")} {
+	for _, dir := range []string{filepath.Dir(recordPath), filepath.Join(fabricengine.RecordsWorktreePath(l, l.WorktreeName), ".weft")} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("MkdirAll %s: %v", dir, err)
 		}

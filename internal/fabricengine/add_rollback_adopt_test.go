@@ -31,16 +31,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// mustWeftRepoRoot resolves fabricengine.WeftRepoRoot(l), failing the test on
+// mustWeftRepoRoot resolves fabricengine.RecordsRepoRoot(l), failing the test on
 // any error — the shared test-package helper for the many call sites across
 // this package's tests that need the weft prime worktree path, now that it is
 // a fabricengine-owned resolution rather than a Layout method.
 func mustWeftRepoRoot(t *testing.T, l *lyxcwd.Location) string {
 	t.Helper()
 
-	root, err := fabricengine.WeftRepoRoot(l)
+	root, err := fabricengine.RecordsRepoRoot(l)
 	if err != nil {
-		t.Fatalf("WeftRepoRoot: %v", err)
+		t.Fatalf("RecordsRepoRoot: %v", err)
 	}
 	return root
 }
@@ -60,13 +60,13 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	// scaffolding is seeded by hand any more.
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	// Pre-create the weft branch with a unique commit that predates the Add —
 	// the history the rollback must not destroy. The seeding worktree is
 	// removed again so the branch is free for Add to adopt.
 	seedDir := filepath.Join(t.TempDir(), "seed")
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
 	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
@@ -98,8 +98,8 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 
 	// Everything Add itself created is rolled back: no weft worktree dir, no
 	// warp worktree dir, no warp branch.
-	if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
-		t.Errorf("weft worktree dir still exists at %s", fabricengine.WeftWorktreePath(l, slug))
+	if _, err := os.Stat(fabricengine.RecordsWorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("weft worktree dir still exists at %s", fabricengine.RecordsWorktreePath(l, slug))
 	}
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("warp worktree dir still exists at %s", fabricengine.WorktreePath(l, slug))
@@ -132,7 +132,7 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 			}
 			h := hubforge.NewHub(t, ".")
 			l := h.Location
-			weftBranch := fabricengine.WeftBranchName(slug)
+			weftBranch := fabricengine.RecordsBranchName(slug)
 			weftRoot := mustWeftRepoRoot(t, l)
 
 			clone := t.TempDir()
@@ -173,8 +173,8 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 					t.Errorf("local weft branch = %s; want origin's tip %s", got, originTip)
 				}
 			}
-			if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
-				t.Errorf("weft worktree dir still exists at %s", fabricengine.WeftWorktreePath(l, slug))
+			if _, err := os.Stat(fabricengine.RecordsWorktreePath(l, slug)); !os.IsNotExist(err) {
+				t.Errorf("weft worktree dir still exists at %s", fabricengine.RecordsWorktreePath(l, slug))
 			}
 		})
 	}
@@ -209,8 +209,8 @@ func TestAddRollback_WarpBranchDeletedUnderEmptyPrefix(t *testing.T) {
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("warp worktree dir still exists at %s after rollback", fabricengine.WorktreePath(l, slug))
 	}
-	if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
-		t.Errorf("weft worktree dir still exists at %s after rollback", fabricengine.WeftWorktreePath(l, slug))
+	if _, err := os.Stat(fabricengine.RecordsWorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("weft worktree dir still exists at %s after rollback", fabricengine.RecordsWorktreePath(l, slug))
 	}
 
 	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
@@ -267,7 +267,7 @@ func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
 	h := removedPair(t, slug)
 	l := h.Location
 	// A weft branch on origin that moved past its archive tag makes the pair live, so Add adopts both branches from origin.
-	pushCommitToOrigin(t, h.RecordsBare, fabricengine.WeftBranchName(slug))
+	pushCommitToOrigin(t, h.RecordsBare, fabricengine.RecordsBranchName(slug))
 	originTip := gitkit.RevParse(t, h.CodeBare, slug)
 
 	portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
@@ -316,8 +316,8 @@ func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 		link   string
 		target string
 	}{
-		{"_lyx", fabricengine.WarpLyxLink(l, slug), fabricengine.WeftLyxDirFor(l, slug)},
-		{"_extra", filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra"), filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, "_extra")},
+		{"_lyx", fabricengine.CodeLyxLink(l, slug), fabricengine.WeftLyxDirFor(l, slug)},
+		{"_extra", filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra"), filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, "_extra")},
 	} {
 		isLink, err := fslink.IsLink(tc.link)
 		if err != nil || !isLink {
@@ -353,12 +353,12 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	// already produces the real-hub shape this fixture used to hand-assemble.
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	// Pre-create the weft branch with a unique commit that predates the Add,
 	// exactly as TestAddRollback_AdoptedWeftBranchSurvives does.
 	seedDir := filepath.Join(t.TempDir(), "seed")
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
 	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
@@ -384,7 +384,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 		name string
 		link string
 	}{
-		{"_lyx", fabricengine.WarpLyxLink(l, slug)},
+		{"_lyx", fabricengine.CodeLyxLink(l, slug)},
 		{"_extra", filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra")},
 	} {
 		if _, err := os.Lstat(tc.link); !os.IsNotExist(err) {
@@ -404,8 +404,8 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 
 	// Everything Add itself created is rolled back: no weft worktree dir, no
 	// warp worktree dir, no warp branch.
-	if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
-		t.Errorf("weft worktree dir still exists at %s", fabricengine.WeftWorktreePath(l, slug))
+	if _, err := os.Stat(fabricengine.RecordsWorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("weft worktree dir still exists at %s", fabricengine.RecordsWorktreePath(l, slug))
 	}
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("warp worktree dir still exists at %s", fabricengine.WorktreePath(l, slug))

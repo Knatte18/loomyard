@@ -719,10 +719,9 @@
 // See `PATTERN-fabric-destruction-chokepoint` for the rules;
 // this section is the rationale the invariant deliberately omits.
 //
-// **The pair-scoped reset.**
-// `ResetPairWarp(rec, sha, parentBranch, ownPaths, opts)` resets a task pair's warp checkout through `resetHardTo`, beside `ResetHard`, which refuses on any tracked dirt and accepts the prime checkout.
+// **The pair-scoped reset.** `ResetPairCode(rec, sha, parentBranch, ownPaths, opts)` resets a task pair's warp checkout through `resetHardTo`, beside `ResetHard`, which refuses on any tracked dirt and accepts the prime checkout.
 // Its request declares the hub as container and the warp worktree as target;
-// ownership `ownedPairWarpCheckout`, a registered linked worktree that is not on `parentBranch` and whose weft checkout has `WeftBranchName` of the same branch checked out, a detached HEAD refusing;
+// ownership `ownedPairWarpCheckout`, a registered linked worktree that is not on `parentBranch` and whose weft checkout has `RecordsBranchName` of the same branch checked out, a detached HEAD refusing;
 // dirtiness `dirtyTrackedExcept(ownPaths)`, so a tracked change refuses unless its worktree-relative, slash-separated path is one the caller names, and the refusal names each other path;
 // and force always false.
 // Untracked files are left alone, the weft is never touched, and a refusal records nothing.

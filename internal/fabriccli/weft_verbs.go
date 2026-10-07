@@ -327,7 +327,7 @@ Related commands:
 			if isPrime {
 				warpWorktree = ""
 			}
-			weftWorktree := fabricengine.WeftWorktree(l)
+			weftWorktree := fabricengine.RecordsWorktree(l)
 			if err := spawnPush(warpWorktree, weftWorktree); err != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil

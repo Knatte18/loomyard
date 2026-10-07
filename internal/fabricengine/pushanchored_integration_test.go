@@ -65,7 +65,7 @@ func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 			if _, err := fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded); err != nil {
 				t.Fatalf("PushAnchored() priming push error = %v; want nil", err)
 			}
-			bareHeadBefore := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, fabricengine.WeftBranchName("main"))
+			bareHeadBefore := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, fabricengine.RecordsBranchName("main"))
 			gitkit.CommitFile(t, h.PrimeRecords(), "weft-file.txt", "weft change never pushed", "weft change never pushed")
 
 			res, err := fabricengine.PushAnchored(h.Location, tt.opts, fabricengine.LockWaitUnbounded)
@@ -76,7 +76,7 @@ func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 				t.Errorf("PushAnchored() record = %+v; want empty", res.Mutated().Entries())
 			}
 
-			if got := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, fabricengine.WeftBranchName("main")); got != bareHeadBefore {
+			if got := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, fabricengine.RecordsBranchName("main")); got != bareHeadBefore {
 				t.Errorf("weft bare = %q; want it unadvanced at %q", got, bareHeadBefore)
 			}
 		})
@@ -106,7 +106,7 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 		t.Errorf("warp bare = %q; want it unmoved at %q (PushAnchored pushes the records side only)", got, warpBareBefore)
 	}
 
-	if got := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, fabricengine.WeftBranchName("main")); got != weftSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, fabricengine.RecordsBranchName("main")); got != weftSHA {
 		t.Errorf("weft bare = %q; want it advanced to local HEAD %q", got, weftSHA)
 	}
 
@@ -146,7 +146,7 @@ func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped(t *test
 		t.Fatalf("PushAnchored() priming push error = %v; want nil", err)
 	}
 
-	weftClone2 := cloneBareForTest(t, h.RecordsBare, fabricengine.WeftBranchName("main"))
+	weftClone2 := cloneBareForTest(t, h.RecordsBare, fabricengine.RecordsBranchName("main"))
 	gitkit.CommitFile(t, weftClone2, "other.txt", "from second weft clone", "from second weft clone")
 	gitkit.MustRun(t, weftClone2, "git", "push")
 
@@ -206,7 +206,7 @@ func newPushPair(t *testing.T) pushPair {
 		warpPath:   h.PairCodeWorktree("pushpair"),
 		weftPath:   h.PairRecordsSibling("pushpair"),
 		warpBranch: added.Branch,
-		weftBranch: fabricengine.WeftBranchName(added.Branch),
+		weftBranch: fabricengine.RecordsBranchName(added.Branch),
 	}
 }
 

@@ -204,7 +204,7 @@ func seedAndCommitStatus(t *testing.T, loc *lyxcwd.Location, slug string) {
 		t.Fatalf("loomshed.Seed: %v", err)
 	}
 	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{smokeStatusRel(loc)}, "smoke: seed status", fabricengine.EnvSyncOptions()); err != nil {
+	if _, _, err := fabricengine.CommitRecordsPaths(rec, fabricengine.RecordsWorktree(loc), loc.AnchorRel, []string{smokeStatusRel(loc)}, "smoke: seed status", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit seed: %v", err)
 	}
 }

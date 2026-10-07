@@ -34,7 +34,7 @@ import (
 // This is a read-only probe, so it returns no result type and embeds no MutationRecord, per the
 // Mutation Record Invariant's "a read-only one must not" clause.
 func MergeStateActive(l *lyxcwd.Location) (bool, error) {
-	repo := gitrepo.New(WeftWorktree(l))
+	repo := gitrepo.New(RecordsWorktree(l))
 
 	mergeHeadPresent, err := repo.MergeHeadPresent()
 	if err != nil {

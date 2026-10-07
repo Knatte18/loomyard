@@ -57,7 +57,7 @@ func requireNothingCreated(t *testing.T, h *hubforge.Hub, slug string) {
 	l := h.Location
 	for _, p := range []string{
 		fabricengine.WorktreePath(l, slug),
-		fabricengine.WeftWorktreePath(l, slug),
+		fabricengine.RecordsWorktreePath(l, slug),
 		fabricengine.PortalLink(l, slug),
 		fabricengine.LauncherDir(l, slug),
 	} {
@@ -68,8 +68,8 @@ func requireNothingCreated(t *testing.T, h *hubforge.Hub, slug string) {
 	if gitkit.BranchExists(t, h.PrimeWorktree(), slug) {
 		t.Errorf("local warp branch %q exists after a refused Add", slug)
 	}
-	if gitkit.BranchExists(t, h.PrimeRecords(), fabricengine.WeftBranchName(slug)) {
-		t.Errorf("local weft branch %q exists after a refused Add", fabricengine.WeftBranchName(slug))
+	if gitkit.BranchExists(t, h.PrimeRecords(), fabricengine.RecordsBranchName(slug)) {
+		t.Errorf("local weft branch %q exists after a refused Add", fabricengine.RecordsBranchName(slug))
 	}
 }
 
@@ -92,7 +92,7 @@ func TestAdd_OriginOnlyWeftAdopted(t *testing.T) {
 	t.Parallel()
 
 	const slug = "leftover-unarchived"
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 	h := removedPair(t, slug)
 	pushCommitToOrigin(t, h.RecordsBare, weftBranch)
 	pushedTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
@@ -101,7 +101,7 @@ func TestAdd_OriginOnlyWeftAdopted(t *testing.T) {
 		t.Fatalf("Add: %v", err)
 	}
 
-	weft := fabricengine.WeftWorktreePath(h.Location, slug)
+	weft := fabricengine.RecordsWorktreePath(h.Location, slug)
 	if got := gitkit.Git(t, weft, "rev-parse", "--abbrev-ref", weftBranch+"@{upstream}"); got != "origin/"+weftBranch {
 		t.Errorf("upstream of %s = %q; want origin/%s", weftBranch, got, weftBranch)
 	}
@@ -134,7 +134,7 @@ func TestAdd_LiveLocalWeftAgainstOrigin(t *testing.T) {
 			t.Parallel()
 
 			const slug = "leftover-adopt"
-			weftBranch := fabricengine.WeftBranchName(slug)
+			weftBranch := fabricengine.RecordsBranchName(slug)
 			h := hubforge.NewHub(t, ".")
 			topology := h.Topology
 			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -171,7 +171,7 @@ func TestAdd_LiveLocalWeftAgainstOrigin(t *testing.T) {
 				t.Fatalf("Add: %v", err)
 			}
 
-			weft := fabricengine.WeftWorktreePath(h.Location, slug)
+			weft := fabricengine.RecordsWorktreePath(h.Location, slug)
 			if !strings.Contains(strings.Join(gitkit.LsFiles(t, weft), "\n"), "leftover.txt") {
 				t.Errorf("adopted weft worktree does not carry origin's leftover.txt")
 			}
@@ -193,7 +193,7 @@ func TestAdd_LiveLocalWeftAdoptsDivergedWarpFromOrigin(t *testing.T) {
 	t.Parallel()
 
 	const slug = "leftover-live-warp"
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 	h := hubforge.NewHub(t, ".")
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -287,7 +287,7 @@ func TestAdd_SkipPushSkipsLeftoverProbes(t *testing.T) {
 	t.Parallel()
 
 	const slug = "leftover-skippush"
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 	h := removedPair(t, slug)
 	pushCommitToOrigin(t, h.RecordsBare, weftBranch)
 	weftBefore := gitkit.RevParse(t, h.RecordsBare, weftBranch)
@@ -300,7 +300,7 @@ func TestAdd_SkipPushSkipsLeftoverProbes(t *testing.T) {
 	if got := gitkit.RevParse(t, h.CodeBare, slug); got != warpBefore {
 		t.Errorf("origin warp branch moved %s -> %s", warpBefore, got)
 	}
-	weft := fabricengine.WeftWorktreePath(h.Location, slug)
+	weft := fabricengine.RecordsWorktreePath(h.Location, slug)
 	if strings.Contains(strings.Join(gitkit.LsFiles(t, weft), "\n"), "leftover.txt") {
 		t.Errorf("weft worktree carries origin's leftover.txt; want a fork that never consulted origin")
 	}
@@ -330,12 +330,12 @@ func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
 	t.Parallel()
 
 	const slug = "leftover-diverged"
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 	h := hubforge.NewHub(t, ".")
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	gitkit.CommitFile(t, fabricengine.WeftWorktreePath(h.Location, slug), "extra.txt", "extra.txt\n", "extra weft work")
-	mustGit(fabricengine.WeftWorktreePath(h.Location, slug), "push", "--quiet", "origin", weftBranch)
+	gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(h.Location, slug), "extra.txt", "extra.txt\n", "extra weft work")
+	mustGit(fabricengine.RecordsWorktreePath(h.Location, slug), "push", "--quiet", "origin", weftBranch)
 	oldTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
 	if _, err := topology.Remove(h.Location, slug, false, false); err != nil {
 		t.Fatalf("setup Remove: %v", err)
@@ -345,7 +345,7 @@ func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-Add: %v", err)
 	}
-	newTip := gitkit.RevParse(t, fabricengine.WeftWorktreePath(h.Location, slug), "HEAD")
+	newTip := gitkit.RevParse(t, fabricengine.RecordsWorktreePath(h.Location, slug), "HEAD")
 	if got := gitkit.RevParse(t, h.RecordsBare, weftBranch); got != newTip {
 		t.Errorf("origin weft branch = %s; want new local weft tip %s", got, newTip)
 	}
@@ -370,12 +370,12 @@ func TestAdd_ArchivedAncestorWeftLeftoverReplaced(t *testing.T) {
 	t.Parallel()
 
 	const slug = "leftover-ancestor"
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 	h := hubforge.NewHub(t, ".")
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	oldTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
-	gitkit.CommitFile(t, fabricengine.WeftWorktreePath(h.Location, slug), "unpushed.txt", "unpushed.txt\n", "extra weft work")
+	gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(h.Location, slug), "unpushed.txt", "unpushed.txt\n", "extra weft work")
 	if _, err := topology.Remove(h.Location, slug, false, false); err != nil {
 		t.Fatalf("setup Remove: %v", err)
 	}
@@ -384,7 +384,7 @@ func TestAdd_ArchivedAncestorWeftLeftoverReplaced(t *testing.T) {
 	if _, err := topology.Add(h.Location, slug, fabricengine.AddOptions{}); err != nil {
 		t.Fatalf("re-Add: %v", err)
 	}
-	newTip := gitkit.RevParse(t, fabricengine.WeftWorktreePath(h.Location, slug), "HEAD")
+	newTip := gitkit.RevParse(t, fabricengine.RecordsWorktreePath(h.Location, slug), "HEAD")
 	if got := gitkit.RevParse(t, h.RecordsBare, weftBranch); got != newTip {
 		t.Errorf("origin weft branch = %s; want new local weft tip %s", got, newTip)
 	}
@@ -395,7 +395,7 @@ func TestAdd_ArchivedAncestorWeftLeftoverReplaced(t *testing.T) {
 func TestAdd_WeftReplaceLeaseRaceRefused(t *testing.T) {
 	// Serial: SetAddBeforeWeftReplaceHookForTest sets the package-level addBeforeWeftReplaceHook.
 	const slug = "leftover-race"
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 	h := removedPair(t, slug)
 
 	var moved string
@@ -412,7 +412,7 @@ func TestAdd_WeftReplaceLeaseRaceRefused(t *testing.T) {
 	if !strings.Contains(err.Error(), weftBranch) {
 		t.Errorf("message %q does not name branch %q", err.Error(), weftBranch)
 	}
-	if _, statErr := os.Lstat(fabricengine.WeftWorktreePath(h.Location, slug)); !os.IsNotExist(statErr) {
+	if _, statErr := os.Lstat(fabricengine.RecordsWorktreePath(h.Location, slug)); !os.IsNotExist(statErr) {
 		t.Errorf("weft worktree remains after the refused Add (stat err = %v)", statErr)
 	}
 	if moved == "" {

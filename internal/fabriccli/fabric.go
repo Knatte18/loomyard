@@ -10,7 +10,7 @@
 // tree combining warp↔weft topology verbs and weft content-sync verbs over the fabricengine
 // package.
 // fabric is the sole warp↔weft git-coordination module (see docs/overview.md).
-// Every fabric weft branch carries the uniform "-weft" suffix (fabricengine.WeftBranchName).
+// Every fabric weft branch carries the uniform "-weft" suffix (fabricengine.RecordsBranchName).
 package fabriccli
 
 import (
@@ -1099,7 +1099,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 	// produces exit 0 here exactly as it does from cleanup, and the identical configuration state
 	// never yields two different verdicts across the two verbs.
 	if r.RemoteBranchError != "" {
-		weftBranch := fabricengine.WeftBranchName(cfg.BranchPrefix + slug)
+		weftBranch := fabricengine.RecordsBranchName(cfg.BranchPrefix + slug)
 		// "origin" is hardcoded here rather than referencing fabricengine's own unexported
 		// originRemoteName, which stays unexported: exporting it just to spell this one error string
 		// would widen the engine's API for no caller that needs it.

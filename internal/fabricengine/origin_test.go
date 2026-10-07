@@ -57,7 +57,7 @@ func TestOrigin_JSONRoundTrip(t *testing.T) {
 }
 
 // TestOriginRecordPaths asserts that OriginRecordPath joins the anchor path with OriginRecordRel and
-// OriginRecordPathFor joins WeftWorktreePath with AnchorRel and OriginRecordRel, at both
+// OriginRecordPathFor joins RecordsWorktreePath with AnchorRel and OriginRecordRel, at both
 // AnchorRel == "." and a subpath anchor — proving the subpath case moves the record down by the
 // anchor, with the anchor segment present in OriginRecordPathFor — and that both end in
 // OriginRecordRel(), the anchor-relative form both accessors are built from.
@@ -90,7 +90,7 @@ func TestOriginRecordPaths(t *testing.T) {
 			}
 
 			gotFor := OriginRecordPathFor(l, slug)
-			wantFor := filepath.Join(WeftWorktreePath(l, slug), l.AnchorRel, rel)
+			wantFor := filepath.Join(RecordsWorktreePath(l, slug), l.AnchorRel, rel)
 			if gotFor != wantFor {
 				t.Errorf("OriginRecordPathFor(%q) = %q; want %q", slug, gotFor, wantFor)
 			}

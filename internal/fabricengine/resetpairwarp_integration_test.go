@@ -1,6 +1,6 @@
 //go:build integration
 
-// resetpairwarp_integration_test.go covers Fabric.ResetPairWarp, the gated reset of a task pair's warp checkout: a reset past later commits and own-path dirt that keeps untracked files, moves the remote task branch and records remote_branch_updated then worktree_reset, a refusal on dirt outside the own paths that precedes any fetch, the four ownership refusals, and the remote half's refusals, skips, stale lease and failed checkout rewrite.
+// resetpairwarp_integration_test.go covers Fabric.ResetPairCode, the gated reset of a task pair's warp checkout: a reset past later commits and own-path dirt that keeps untracked files, moves the remote task branch and records remote_branch_updated then worktree_reset, a refusal on dirt outside the own paths that precedes any fetch, the four ownership refusals, and the remote half's refusals, skips, stale lease and failed checkout rewrite.
 //
 // Every hub is built through hubforge.NewHub with an empty branch_prefix, so the pair's warp branch is the bare slug.
 //
@@ -45,7 +45,7 @@ func assertResetRefused(t *testing.T, err error, rec *fabricengine.Mutations, wa
 
 	refusal, ok := fabricengine.RefusalOf(err)
 	if !ok {
-		t.Fatalf("ResetPairWarp error = %v; want a gate refusal", err)
+		t.Fatalf("ResetPairCode error = %v; want a gate refusal", err)
 	}
 	if refusal.Check != want {
 		t.Errorf("refusal.Check = %s; want %s (reason %q)", refusal.Check, want, refusal.Reason)
@@ -77,8 +77,8 @@ func TestResetPairWarp_DiscardsCommitsAndOwnPathDirtKeepsUntracked(t *testing.T)
 	}
 
 	rec := fabricengine.NewMutations("")
-	if err := f.ResetPairWarp(rec, older, "main", []string{"own.txt"}, fabricengine.SyncOptions{}); err != nil {
-		t.Fatalf("ResetPairWarp: %v", err)
+	if err := f.ResetPairCode(rec, older, "main", []string{"own.txt"}, fabricengine.SyncOptions{}); err != nil {
+		t.Fatalf("ResetPairCode: %v", err)
 	}
 
 	if got := gitkit.RevParse(t, warp, "HEAD"); got != older {
@@ -131,7 +131,7 @@ func TestResetPairWarp_DirtyPathOutsideOwnPathsRefuses(t *testing.T) {
 	// An unreachable origin makes any fetch fail, so a gate refusal proves the local refusal came first.
 	gitkit.Git(t, warp, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone"))
 	rec := fabricengine.NewMutations("")
-	err := f.ResetPairWarp(rec, older, "main", []string{"own.txt"}, fabricengine.SyncOptions{})
+	err := f.ResetPairCode(rec, older, "main", []string{"own.txt"}, fabricengine.SyncOptions{})
 	gitkit.Git(t, warp, "remote", "set-url", "origin", originURL)
 	if got := remoteTip(t, warp, slug); got != head {
 		t.Errorf("remote %s = %q after a refused reset; want it untouched at %q", slug, got, head)
@@ -164,7 +164,7 @@ func TestResetPairWarp_OwnershipRefusals(t *testing.T) {
 		}
 		head := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 		rec := fabricengine.NewMutations("")
-		assertResetRefused(t, f.ResetPairWarp(rec, head, "other", nil, fabricengine.SyncOptions{}), rec, fabricengine.CheckOwnership)
+		assertResetRefused(t, f.ResetPairCode(rec, head, "other", nil, fabricengine.SyncOptions{}), rec, fabricengine.CheckOwnership)
 	})
 
 	t.Run("PairOnParentBranch", func(t *testing.T) {
@@ -174,7 +174,7 @@ func TestResetPairWarp_OwnershipRefusals(t *testing.T) {
 		f, warp := pairFabric(t, h, slug)
 		head := gitkit.RevParse(t, warp, "HEAD")
 		rec := fabricengine.NewMutations("")
-		assertResetRefused(t, f.ResetPairWarp(rec, head, slug, nil, fabricengine.SyncOptions{}), rec, fabricengine.CheckOwnership)
+		assertResetRefused(t, f.ResetPairCode(rec, head, slug, nil, fabricengine.SyncOptions{}), rec, fabricengine.CheckOwnership)
 	})
 
 	t.Run("WeftOnAnotherBranch", func(t *testing.T) {
@@ -185,7 +185,7 @@ func TestResetPairWarp_OwnershipRefusals(t *testing.T) {
 		gitkit.MustRun(t, h.PairRecordsSibling(slug), "git", "checkout", "-b", "some-other-branch")
 		head := gitkit.RevParse(t, warp, "HEAD")
 		rec := fabricengine.NewMutations("")
-		assertResetRefused(t, f.ResetPairWarp(rec, head, "main", nil, fabricengine.SyncOptions{}), rec, fabricengine.CheckOwnership)
+		assertResetRefused(t, f.ResetPairCode(rec, head, "main", nil, fabricengine.SyncOptions{}), rec, fabricengine.CheckOwnership)
 	})
 
 	t.Run("DetachedHead", func(t *testing.T) {
@@ -196,7 +196,7 @@ func TestResetPairWarp_OwnershipRefusals(t *testing.T) {
 		gitkit.MustRun(t, warp, "git", "checkout", "--detach")
 		head := gitkit.RevParse(t, warp, "HEAD")
 		rec := fabricengine.NewMutations("")
-		assertResetRefused(t, f.ResetPairWarp(rec, head, "main", nil, fabricengine.SyncOptions{}), rec, fabricengine.CheckOwnership)
+		assertResetRefused(t, f.ResetPairCode(rec, head, "main", nil, fabricengine.SyncOptions{}), rec, fabricengine.CheckOwnership)
 	})
 }
 
@@ -269,7 +269,7 @@ func (p *remoteHalfPair) pushRemoteOnlyCommit(t *testing.T) string {
 	return extra
 }
 
-// TestResetPairWarp_RemoteHalf covers every outcome of the remote half of ResetPairWarp other than the update itself:
+// TestResetPairWarp_RemoteHalf covers every outcome of the remote half of ResetPairCode other than the update itself:
 // the refusals, each leaving the remote and the checkout unchanged, and the cases that leave the remote alone.
 func TestResetPairWarp_RemoteHalf(t *testing.T) {
 	t.Parallel()
@@ -376,11 +376,11 @@ func TestResetPairWarp_RemoteHalf(t *testing.T) {
 			head := gitkit.RevParse(t, p.warp, "HEAD")
 
 			rec := fabricengine.NewMutations("")
-			err := p.f.ResetPairWarp(rec, sha, "main", nil, opts)
+			err := p.f.ResetPairCode(rec, sha, "main", nil, opts)
 
 			if len(tc.wantErr) == 0 {
 				if err != nil {
-					t.Fatalf("ResetPairWarp: %v", err)
+					t.Fatalf("ResetPairCode: %v", err)
 				}
 				if got := gitkit.RevParse(t, p.warp, "HEAD"); got != sha {
 					t.Errorf("HEAD = %s; want %s", got, sha)
@@ -388,7 +388,7 @@ func TestResetPairWarp_RemoteHalf(t *testing.T) {
 				wantKinds(t, rec, tc.wantKinds...)
 			} else {
 				if err == nil {
-					t.Fatalf("ResetPairWarp succeeded; want a refusal containing %q", tc.wantErr)
+					t.Fatalf("ResetPairCode succeeded; want a refusal containing %q", tc.wantErr)
 				}
 				for _, part := range tc.wantErr {
 					if !strings.Contains(err.Error(), part) {
@@ -417,14 +417,14 @@ func TestResetPairWarp_OursMergeThenRerunConverges(t *testing.T) {
 	p.pushRemoteOnlyCommit(t)
 
 	rec := fabricengine.NewMutations("")
-	if err := p.f.ResetPairWarp(rec, p.older, "main", nil, fabricengine.SyncOptions{}); err == nil {
-		t.Fatal("ResetPairWarp succeeded over a remote-only commit; want a refusal")
+	if err := p.f.ResetPairCode(rec, p.older, "main", nil, fabricengine.SyncOptions{}); err == nil {
+		t.Fatal("ResetPairCode succeeded over a remote-only commit; want a refusal")
 	}
 
 	gitkit.Git(t, p.warp, "merge", "--strategy", "ours", "--no-edit", "origin/"+p.slug)
 	rec = fabricengine.NewMutations("")
-	if err := p.f.ResetPairWarp(rec, p.older, "main", nil, fabricengine.SyncOptions{}); err != nil {
-		t.Fatalf("ResetPairWarp after the ours merge: %v", err)
+	if err := p.f.ResetPairCode(rec, p.older, "main", nil, fabricengine.SyncOptions{}); err != nil {
+		t.Fatalf("ResetPairCode after the ours merge: %v", err)
 	}
 	wantKinds(t, rec, fabricengine.KindRemoteBranchUpdated, fabricengine.KindWorktreeReset)
 	if got := gitkit.RevParse(t, p.warp, "HEAD"); got != p.older {
@@ -467,9 +467,9 @@ func TestResetPairWarp_CheckoutFailureAfterRemoteUpdateConverges(t *testing.T) {
 	}
 
 	rec := fabricengine.NewMutations("")
-	err := p.f.ResetPairWarp(rec, p.older, "main", nil, fabricengine.SyncOptions{})
+	err := p.f.ResetPairCode(rec, p.older, "main", nil, fabricengine.SyncOptions{})
 	if err == nil {
-		t.Fatal("ResetPairWarp succeeded with the index locked; want the checkout rewrite to fail")
+		t.Fatal("ResetPairCode succeeded with the index locked; want the checkout rewrite to fail")
 	}
 	for _, part := range []string{"remote task branch was already updated", "re-run this reset"} {
 		if !strings.Contains(err.Error(), part) {
@@ -485,7 +485,7 @@ func TestResetPairWarp_CheckoutFailureAfterRemoteUpdateConverges(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec = fabricengine.NewMutations("")
-	if err := p.f.ResetPairWarp(rec, p.older, "main", nil, fabricengine.SyncOptions{}); err != nil {
+	if err := p.f.ResetPairCode(rec, p.older, "main", nil, fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("re-run: %v", err)
 	}
 	wantKinds(t, rec, fabricengine.KindWorktreeReset)

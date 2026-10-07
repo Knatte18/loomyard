@@ -1,4 +1,4 @@
-// branchname_test.go — unit tests for WeftBranchName's uniform derivation.
+// branchname_test.go — unit tests for RecordsBranchName's uniform derivation.
 
 package fabricengine_test
 
@@ -24,22 +24,22 @@ func TestWeftBranchName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := fabricengine.WeftBranchName(tt.warpBranch)
+			got := fabricengine.RecordsBranchName(tt.warpBranch)
 			if got != tt.want {
-				t.Errorf("WeftBranchName(%q) = %q; want %q", tt.warpBranch, got, tt.want)
+				t.Errorf("RecordsBranchName(%q) = %q; want %q", tt.warpBranch, got, tt.want)
 			}
 		})
 	}
 }
 
 // TestWeftBranchName_RoundTripsWithWeftWarpSlug asserts that fabricengine.WeftWarpSlug, the
-// documented inverse, recovers the original warp branch from every WeftBranchName output.
+// documented inverse, recovers the original warp branch from every RecordsBranchName output.
 //
-//testtiming:keep WeftWarpSlug recovering the warp branch from every WeftBranchName output; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep WeftWarpSlug recovering the warp branch from every RecordsBranchName output; coverage of its blocks by other tests does not show an assertion of this
 func TestWeftBranchName_RoundTripsWithWeftWarpSlug(t *testing.T) {
 	warpBranches := []string{"main", "hanf/foo", "foo"}
 	for _, warp := range warpBranches {
-		weft := fabricengine.WeftBranchName(warp)
+		weft := fabricengine.RecordsBranchName(warp)
 		gotWarp, ok := fabricengine.WeftWarpSlug(weft)
 		if !ok {
 			t.Errorf("WeftWarpSlug(%q) ok = false; want true", weft)

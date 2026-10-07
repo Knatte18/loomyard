@@ -1,6 +1,6 @@
 // checkout.go implements the coordinated warp+weft branch switch with rollback.
 //
-// Checkout switches the warp worktree to branch and its weft sibling to WeftBranchName(branch) in
+// Checkout switches the warp worktree to branch and its weft sibling to RecordsBranchName(branch) in
 // an all-or-nothing operation.
 // Preconditions are checked first;
 // on any weft-side or junction-wiring failure both switches are rolled back to their original
@@ -27,13 +27,13 @@ import (
 type CheckoutResult struct {
 	MutationRecord
 	// Branch is the warp branch the warp worktree now points to (the weft
-	// worktree points to WeftBranchName(Branch)).
+	// worktree points to RecordsBranchName(Branch)).
 	Branch string `json:"branch"`
 	// WeftWorktree is the filesystem path to the weft sibling worktree.
 	WeftWorktree string `json:"weft_worktree"`
 }
 
-// Checkout switches the warp worktree to branch and its weft sibling to WeftBranchName(branch) in
+// Checkout switches the warp worktree to branch and its weft sibling to RecordsBranchName(branch) in
 // an all-or-nothing operation, refusing if the weft worktree has uncommitted changes, forking new
 // weft branches when their suffixed siblings don't exist, re-pointing junctions, and refreshing the
 // correspondence index — rolling back both sides on failure to preserve all-or-nothing semantics.
@@ -41,7 +41,7 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
-	weftWorktree := WeftWorktree(l)
+	weftWorktree := RecordsWorktree(l)
 
 	// A coordinated branch switch out of a half-merged pair is refused: record-only, since the
 	// foreign-state disposition belongs to Commit alone.
@@ -104,7 +104,7 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 	weftCreated, err := t.switchOrForkWeft(rec, l, branch)
 	createdWeftBranch := ""
 	if weftCreated {
-		createdWeftBranch = WeftBranchName(branch)
+		createdWeftBranch = RecordsBranchName(branch)
 	}
 	if err != nil {
 		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, createdWeftBranch)
@@ -141,8 +141,8 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 // it records KindWorktreeSwitched at the weft worktree root with the branch switched to as Detail on every path, and additionally records KindBranchCreated for a created branch: from the resolver when adopted from origin, here when forked, since `switch -c` creates it.
 // An unreachable origin is an error and forks nothing.
 func (t *Topology) switchOrForkWeft(rec *Mutations, l *lyxcwd.Location, branch string) (created bool, err error) {
-	weftWorktree := WeftWorktree(l)
-	weftBranch := WeftBranchName(branch)
+	weftWorktree := RecordsWorktree(l)
+	weftBranch := RecordsBranchName(branch)
 
 	exists, fromOrigin, err := resolveWeftBranch(rec, l, weftBranch, true)
 	if err != nil {
@@ -200,14 +200,14 @@ func (t *Topology) rollbackSwitch(rec *Mutations, l *lyxcwd.Location, originalBr
 		rec.Append(KindWorktreeSwitched, l.WorktreePath(), originalBranch)
 	}
 	if originalWeftBranch != "" {
-		if _, err := gitexec.Run([]string{"switch", originalWeftBranch}, WeftWorktree(l)); err == nil {
-			rec.Append(KindWorktreeSwitched, WeftWorktree(l), originalWeftBranch)
+		if _, err := gitexec.Run([]string{"switch", originalWeftBranch}, RecordsWorktree(l)); err == nil {
+			rec.Append(KindWorktreeSwitched, RecordsWorktree(l), originalWeftBranch)
 		}
 	}
 	if forkedWeftBranch != "" {
 		req := branchRequest{
 			what:      "delete forked weft branch",
-			repoDir:   WeftWorktree(l),
+			repoDir:   RecordsWorktree(l),
 			branch:    forkedWeftBranch,
 			ownership: ownedManagedBranch(l, t.cfg.BranchPrefix),
 			dirtiness: dirtyCheckedOutBranch(),

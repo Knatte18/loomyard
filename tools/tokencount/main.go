@@ -115,7 +115,7 @@ func run(args []string, stdout io.Writer) error {
 			if err != nil {
 				return err
 			}
-			*weft = fabricengine.WeftWorktree(loc)
+			*weft = fabricengine.RecordsWorktree(loc)
 		}
 		finished, err := finishedRuns(*weft)
 		if err != nil {

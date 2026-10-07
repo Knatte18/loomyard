@@ -117,18 +117,18 @@ func TestUnwire_PreservesWeftLyxAndOptionalContent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(weftLyxDir, "marker.txt"), []byte("lyx state"), 0o644); err != nil {
 		t.Fatalf("seed weft _lyx content: %v", err)
 	}
-	weftDotLyxDir := filepath.Join(fabricengine.WeftWorktreePath(warpLayout, slug), warpLayout.AnchorRel, lyxdirs.DotLyxDirName)
+	weftDotLyxDir := filepath.Join(fabricengine.RecordsWorktreePath(warpLayout, slug), warpLayout.AnchorRel, lyxdirs.DotLyxDirName)
 	dotLyxFile := filepath.Join(weftDotLyxDir, "scratch.txt")
 	if err := os.WriteFile(dotLyxFile, []byte("scratch state"), 0o644); err != nil {
 		t.Fatalf("seed weft .lyx content: %v", err)
 	}
-	weftExtraDir := filepath.Join(fabricengine.WeftWorktreePath(warpLayout, slug), warpLayout.AnchorRel, "_extra")
+	weftExtraDir := filepath.Join(fabricengine.RecordsWorktreePath(warpLayout, slug), warpLayout.AnchorRel, "_extra")
 	extraFile := filepath.Join(weftExtraDir, "notes.md")
 	if err := os.WriteFile(extraFile, []byte("# constraints\n"), 0o644); err != nil {
 		t.Fatalf("seed weft _extra content: %v", err)
 	}
 
-	weftWorktree := fabricengine.WeftWorktreePath(warpLayout, slug)
+	weftWorktree := fabricengine.RecordsWorktreePath(warpLayout, slug)
 	logBefore, _, exitCode, err := gitexec.RunGit([]string{"log", "--format=%s"}, weftWorktree)
 	if err != nil || exitCode != 0 {
 		t.Fatalf("git log (before Unwire) failed: %v (exit %d)", err, exitCode)

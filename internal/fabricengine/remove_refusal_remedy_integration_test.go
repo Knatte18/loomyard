@@ -90,7 +90,7 @@ func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 	for _, p := range []string{
 		fabricengine.PortalLink(l, slug),
 		fabricengine.LauncherDir(l, slug),
-		fabricengine.WeftWorktreePath(l, slug),
+		fabricengine.RecordsWorktreePath(l, slug),
 	} {
 		if _, statErr := os.Lstat(p); statErr != nil {
 			t.Errorf("%s missing after a refused Remove: %v", p, statErr)
@@ -106,7 +106,7 @@ func assertPairIntact(t *testing.T, l *lyxcwd.Location, slug string) {
 		fabricengine.PortalLink(l, slug),
 		fabricengine.LauncherDir(l, slug),
 		fabricengine.WorktreePath(l, slug),
-		fabricengine.WeftWorktreePath(l, slug),
+		fabricengine.RecordsWorktreePath(l, slug),
 	} {
 		if _, err := os.Lstat(p); err != nil {
 			t.Errorf("%s missing after a refused Remove: %v", p, err)
@@ -115,7 +115,7 @@ func assertPairIntact(t *testing.T, l *lyxcwd.Location, slug string) {
 	if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
 		t.Errorf("warp branch gone after a refused Remove")
 	}
-	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), fabricengine.WeftBranchName(slug)) {
+	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), fabricengine.RecordsBranchName(slug)) {
 		t.Errorf("weft branch gone after a refused Remove")
 	}
 }
@@ -145,7 +145,7 @@ func TestRemove_StatusFailureNamesPathAndCommandOnce(t *testing.T) {
 
 	// A plain directory inside the hub: the pair has something left, so Remove proceeds to its dirtiness probe, which fails because the directory is not a git repository at all.
 	const slug = "not-a-checkout"
-	notACheckout := fabricengine.WeftWorktreePath(l, slug)
+	notACheckout := fabricengine.RecordsWorktreePath(l, slug)
 	if err := os.MkdirAll(notACheckout, 0o755); err != nil {
 		t.Fatalf("create %s: %v", notACheckout, err)
 	}

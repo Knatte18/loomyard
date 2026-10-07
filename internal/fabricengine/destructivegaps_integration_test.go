@@ -574,7 +574,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	weftRoot := mustWeftRepoRoot(t, l)
-	primaryWeft := fabricengine.WeftBranchName("main")
+	primaryWeft := fabricengine.RecordsBranchName("main")
 
 	t.Run("RefusesPrimaryWeftBranch", func(t *testing.T) {
 		assertBranchGateRefusesBothForceModes(t, l, weftRoot, primaryWeft, "primary weft branch")
@@ -604,7 +604,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 		if _, err := topology.Add(cl, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 			t.Fatalf("setup Add: %v", err)
 		}
-		assertBranchGateRefusesBothForceModes(t, cl, cWeftRoot, fabricengine.WeftBranchName(slug), "checked out at")
+		assertBranchGateRefusesBothForceModes(t, cl, cWeftRoot, fabricengine.RecordsBranchName(slug), "checked out at")
 	})
 
 	t.Run("RefusesUnmanagedName", func(t *testing.T) {

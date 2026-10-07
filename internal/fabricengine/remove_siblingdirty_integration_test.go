@@ -28,7 +28,7 @@ func TestRemove_UntrackedDriveReportIsCommittedAndArchived(t *testing.T) {
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	reports := filepath.Join(fabricengine.WeftWorktreePath(l, slug), "_lyx", "shed", slug, "drive-reports")
+	reports := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), "_lyx", "shed", slug, "drive-reports")
 	if err := os.MkdirAll(reports, 0o755); err != nil {
 		t.Fatalf("create %s: %v", reports, err)
 	}

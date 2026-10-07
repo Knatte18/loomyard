@@ -1,4 +1,4 @@
-// commitweftpaths.go implements CommitWeftPaths, a narrow positive-pathspec, no-push weft-commit
+// commitweftpaths.go implements CommitRecordsPaths, a narrow positive-pathspec, no-push weft-commit
 // helper: the third weft-commit shape alongside commitWeft and commitWeftAt, added for callers
 // (Topology.Add, a later batch) that hold no *Fabric and must commit only a small, explicit set of
 // paths.
@@ -15,13 +15,13 @@ import (
 )
 
 // weftCommitPathspec returns the pathspec entries for relPaths, scoped under anchorRel.
-// It is the single place the anchor join happens for CommitWeftPaths, so no caller ever joins
+// It is the single place the anchor join happens for CommitRecordsPaths, so no caller ever joins
 // AnchorRel or names the durable lyx directory in a pathspec itself.
 func weftCommitPathspec(anchorRel string, relPaths []string) []string {
 	return ScopedPathspec(anchorRel, relPaths)
 }
 
-// CommitWeftPaths stages and commits exactly relPaths (scoped under anchorRel) in the weft
+// CommitRecordsPaths stages and commits exactly relPaths (scoped under anchorRel) in the weft
 // worktree at weftPath, taking the weft write lock itself and never pushing.
 //
 // Its body order is load-bearing:
@@ -54,7 +54,7 @@ func weftCommitPathspec(anchorRel string, relPaths []string) []string {
 // The lock is taken here rather than pushed onto callers, unlike commitWeftAt's
 // caller-responsible contract, because this helper has two independent callers who would
 // otherwise race on the git index lock.
-func CommitWeftPaths(rec *Mutations, weftPath, anchorRel string, relPaths []string, msg string, opts SyncOptions) (sha string, committed bool, err error) {
+func CommitRecordsPaths(rec *Mutations, weftPath, anchorRel string, relPaths []string, msg string, opts SyncOptions) (sha string, committed bool, err error) {
 	if opts.SkipGit {
 		return "", false, nil
 	}
@@ -82,7 +82,7 @@ func CommitWeftPaths(rec *Mutations, weftPath, anchorRel string, relPaths []stri
 	return sha, committed, nil
 }
 
-// CommitAnchoredPaths is CommitWeftPaths's fabric-vocabulary-neutral wrapper: it resolves the
+// CommitAnchoredPaths is CommitRecordsPaths's fabric-vocabulary-neutral wrapper: it resolves the
 // commit target from l itself, taking a Location in and handing no weft path back out, so a
 // caller outside the owner set -- internal/loomcli's session-bootstrap commit is the first one --
 // can reach this narrow, no-push, explicit-paths commit shape without ever naming a weft path,
@@ -91,5 +91,5 @@ func CommitWeftPaths(rec *Mutations, weftPath, anchorRel string, relPaths []stri
 // relPaths are anchor-relative, the same shape OriginRecordRel and LoomStatusRel already return,
 // so a caller building its commit path list never joins AnchorRel itself.
 func CommitAnchoredPaths(rec *Mutations, l *lyxcwd.Location, relPaths []string, msg string, opts SyncOptions) (sha string, committed bool, err error) {
-	return CommitWeftPaths(rec, WeftWorktree(l), l.AnchorRel, relPaths, msg, opts)
+	return CommitRecordsPaths(rec, RecordsWorktree(l), l.AnchorRel, relPaths, msg, opts)
 }

@@ -80,7 +80,7 @@ func pushRebaseFreeRetryingOnce(repo *gitrepo.Repo) error {
 }
 
 // PushAnchored pushes unpushed commits in l's weft sibling worktree rebase-free.
-// It resolves its target the same way CommitAnchoredPaths does, from l alone via WeftWorktree(l),
+// It resolves its target the same way CommitAnchoredPaths does, from l alone via RecordsWorktree(l),
 // so a caller outside the Fabric Vocabulary Invariant's owner set never learns the weft exists.
 // It pushes the records side only.
 //
@@ -98,7 +98,7 @@ func pushRebaseFreeRetryingOnce(repo *gitrepo.Repo) error {
 //
 // Returns (PushResult{}, nil) immediately, with no lock taken and nothing recorded, when opts.SkipGit or opts.SkipPush is true.
 func PushAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) (res PushResult, err error) {
-	target := WeftWorktree(l)
+	target := RecordsWorktree(l)
 	rec := NewMutations(filepath.Dir(target))
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -152,7 +152,7 @@ func PushPairAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Durati
 		return PushResult{}, err
 	}
 	warpPath := l.WorktreePath()
-	weftPath := WeftWorktree(l)
+	weftPath := RecordsWorktree(l)
 
 	held, err := acquirePushLock(weftPath, lockWait)
 	if err != nil {

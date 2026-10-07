@@ -77,7 +77,7 @@ type weftLeftover struct {
 // an origin tip covered by an archive/<slug>/* tag whose target equals or descends from it is a replaceable leftover (tip and tag),
 // and any other origin tip makes the pair live.
 func probeWeftLeftover(l *lyxcwd.Location, slug, weftBranch string, localExists bool) (weftLeftover, error) {
-	weftRoot, err := WeftRepoRoot(l)
+	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return weftLeftover{}, fmt.Errorf("resolve weft repo root: %w", err)
 	}

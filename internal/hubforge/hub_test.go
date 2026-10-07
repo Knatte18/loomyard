@@ -199,7 +199,7 @@ func TestNewHub(t *testing.T) {
 				}},
 				{"AddPairWith_SkipPushKeepsWeftBranchOffTheBare", func(t *testing.T) {
 					skipped := AddPairWith(t, h, "skipped", fabricengine.AddOptions{SkipPush: true})
-					skippedWeft := fabricengine.WeftBranchName(skipped.Branch)
+					skippedWeft := fabricengine.RecordsBranchName(skipped.Branch)
 					if skipped.Pushed {
 						t.Errorf("AddPairWith(SkipPush) Pushed = true; want false")
 					}
@@ -208,7 +208,7 @@ func TestNewHub(t *testing.T) {
 					}
 
 					pushed := AddPairWith(t, h, "pushed", fabricengine.AddOptions{})
-					pushedWeft := fabricengine.WeftBranchName(pushed.Branch)
+					pushedWeft := fabricengine.RecordsBranchName(pushed.Branch)
 					if !pushed.Pushed || !gitkit.BranchExists(t, h.RecordsBare, pushedWeft) {
 						t.Errorf("zero-options AddPairWith: Pushed = %v, weft branch on bare = %v; want both true", pushed.Pushed, gitkit.BranchExists(t, h.RecordsBare, pushedWeft))
 					}
@@ -399,14 +399,14 @@ func TestNewHub_TeardownRemovesJunctionsKeepsTargets(t *testing.T) {
 			t.Fatalf("lyxcwd.Resolve(%s): %v", res.PrimeCwd, err)
 		}
 		h := &Hub{
-			Path:      res.HubPath,
-			Anchor:    res.Anchor,
-			Location:  loc,
-			Topology:  fabricengine.NewTopology(fabricengine.Config{}),
-			CodeBare:  warpBare,
-			RecordsBare:  weftBare,
-			WeftBase:  res.WeftBase,
-			Container: container,
+			Path:        res.HubPath,
+			Anchor:      res.Anchor,
+			Location:    loc,
+			Topology:    fabricengine.NewTopology(fabricengine.Config{}),
+			CodeBare:    warpBare,
+			RecordsBare: weftBare,
+			WeftBase:    res.WeftBase,
+			Container:   container,
 		}
 
 		AddPair(t, h, "px")

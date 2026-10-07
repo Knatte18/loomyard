@@ -79,7 +79,7 @@ No other accessor, records path, junction path, or per-module subdirectory const
 
 Every per-module durable-storage subdirectory (`_lyx/plan`, `_lyx/webster`,
 and the rest) is now that module's own private relative-path constant, joined onto `AnchorPath()` directly by the module that owns it — never a `lyxcwd` function call.
-Records-sibling paths and junction construction (`WeftWorktree`, `WarpLyxLink`, the junction-set helpers, portal and launcher paths,
+Records-sibling paths and junction construction (`RecordsWorktree`, `CodeLyxLink`, the junction-set helpers, portal and launcher paths,
 and the `Prime`/sibling-worktree-list lookup they are built from) belong to `internal/fabricengine`.
 The records-backed junction name-set is injected from fabric config (`fabric.yaml`'s `pathspec`) — also `fabricengine`'s concern, never `lyxcwd`'s. See [PATTERN-cwd-resolution](../../pattern/PATTERN-cwd-resolution.md) for the full, current per-token ownership map.
 

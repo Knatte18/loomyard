@@ -510,13 +510,13 @@ func TestPull_WeftDivergedAndWarpFetchFails_PartialError(t *testing.T) {
 	weftFixture := hubforge.NewHub(t, ".")
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	// A real hub's weft primary checks out the suffixed branch (fabricengine.WeftBranchName("main")),
-	// never bare "main", and that suffixed branch carries no upstream at all until something pushes
+	// A real hub's weft primary checks out the suffixed branch (fabricengine.RecordsBranchName("main")), never bare "main", and that suffixed branch carries no upstream at all until something pushes
 	// it -- CloneAndWire never does, since a fresh hub's primary is local-only until the first real
-	// push. Establish that upstream explicitly here, or PullWeft finds nothing to track and
+	// push.
+	// Establish that upstream explicitly here, or PullWeft finds nothing to track and
 	// weftHasUpstream() reports false, skipping the pull as a vacuous success instead of the genuine
 	// divergence this test needs.
-	weftBranch := fabricengine.WeftBranchName("main")
+	weftBranch := fabricengine.RecordsBranchName("main")
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "push", "-u", "origin", weftBranch)
 
 	cloneB := filepath.Join(fixturesDir, "weft-cloneB")
@@ -558,7 +558,7 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
 
-	weftBranch := fabricengine.WeftBranchName("main")
+	weftBranch := fabricengine.RecordsBranchName("main")
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "push", "-u", "origin", weftBranch)
 
 	cloneB := filepath.Join(fixturesDir, "weft-diverge-cloneB")
@@ -604,7 +604,7 @@ func TestPull_HealthyPairBothSidesPullCleanly(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
 
-	weftBranch := fabricengine.WeftBranchName("main")
+	weftBranch := fabricengine.RecordsBranchName("main")
 	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "push", "-u", "origin", weftBranch)
 
 	cloneB := filepath.Join(fixturesDir, "weft-healthy-cloneB")

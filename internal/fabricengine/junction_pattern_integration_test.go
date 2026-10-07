@@ -101,7 +101,7 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 		t.Fatalf("weft target %s not materialised: stat err=%v", target, err)
 	}
 
-	link := fabricengine.WarpLyxLink(l, slug)
+	link := fabricengine.CodeLyxLink(l, slug)
 	isLink, err := fslink.IsLink(link)
 	if err != nil || !isLink {
 		t.Fatalf("junction at %s is not a link after WireJunctions: isLink=%v err=%v", link, isLink, err)
@@ -208,7 +208,7 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 		t.Error("ExcludeChanged = false; want true")
 	}
 
-	lyxLink := fabricengine.WarpLyxLink(l, slug)
+	lyxLink := fabricengine.CodeLyxLink(l, slug)
 	if _, statErr := os.Lstat(lyxLink); !os.IsNotExist(statErr) {
 		t.Errorf("junction %s still exists after UnwireJunctions", lyxLink)
 	}
@@ -497,7 +497,7 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 				return filepath.Join(l.WorktreePath(), l.AnchorRel, "_extra")
 			},
 			targetFor: func(l *lyxcwd.Location) string {
-				return filepath.Join(fabricengine.WeftWorktree(l), l.AnchorRel, "_extra")
+				return filepath.Join(fabricengine.RecordsWorktree(l), l.AnchorRel, "_extra")
 			},
 		},
 	}
@@ -577,7 +577,7 @@ func TestReconcile_RepairsOptionalJunctionOnlyDrift(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	weftPath := fabricengine.WeftWorktreePath(l, slug)
+	weftPath := fabricengine.RecordsWorktreePath(l, slug)
 	var found bool
 	for _, pair := range result.Pairs {
 		if pair.WeftWorktree != filepath.ToSlash(weftPath) {
@@ -692,7 +692,7 @@ func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 		t.Fatalf("remove _extra junction to simulate a worktree missing it: %v", err)
 	}
 
-	lyxLink := fabricengine.WarpLyxLink(l, slug)
+	lyxLink := fabricengine.CodeLyxLink(l, slug)
 	lyxResolvedBefore, err := fslink.PointsTo(lyxLink)
 	if err != nil {
 		t.Fatalf("PointsTo(%s) before upgrade: %v", lyxLink, err)

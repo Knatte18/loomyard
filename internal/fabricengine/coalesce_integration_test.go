@@ -79,7 +79,7 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 	if got := fabricengine.BareBranchSHAForTest(t, warpBare, "main"); got != warpSHA {
 		t.Errorf("warp bare main = %q; want it advanced to local HEAD %q", got, warpSHA)
 	}
-	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.RecordsBare, fabricengine.WeftBranchName("main")); got != weftSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.RecordsBare, fabricengine.RecordsBranchName("main")); got != weftSHA {
 		t.Errorf("weft bare main = %q; want it advanced to local HEAD %q", got, weftSHA)
 	}
 
@@ -176,7 +176,7 @@ func TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd(t *testing.
 		t.Fatalf("fabricengine.CoalescePushBothAt(\"\", ...) error = %v; want nil (empty warpPath must be a true no-op, not a cwd-relative git open)", err)
 	}
 
-	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.RecordsBare, fabricengine.WeftBranchName("main")); got != weftSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.RecordsBare, fabricengine.RecordsBranchName("main")); got != weftSHA {
 		t.Errorf("weft bare main = %q; want it advanced to local HEAD %q", got, weftSHA)
 	}
 }

@@ -108,11 +108,11 @@ func EnvSyncOptions() SyncOptions {
 	}
 }
 
-// WeftWorktree returns the path to the weft worktree paired with l's warp worktree.
+// RecordsWorktree returns the path to the weft worktree paired with l's warp worktree.
 // It is the read-only accessor every non-fabric caller that needs to know the weft sibling's
 // location goes through, closing the weft-visibility leak where those callers used to reach
 // lyxcwd.Location directly for a fabric-owned path.
-func WeftWorktree(l *lyxcwd.Location) string {
+func RecordsWorktree(l *lyxcwd.Location) string {
 	return weftname.SiblingPath(l.HubPath, filepath.Base(l.WorktreePath()))
 }
 
@@ -172,7 +172,7 @@ func RequireDrivableWorktree(l *lyxcwd.Location) error {
 // vocabulary -- not for a non-owner caller to repeat verbatim in its own operator-facing text, the
 // same restraint createRefusal already applies to Add's own errors.
 func PairComplete(l *lyxcwd.Location) (ok bool, reason string, err error) {
-	siblingPath := WeftWorktree(l)
+	siblingPath := RecordsWorktree(l)
 	if _, statErr := os.Stat(siblingPath); statErr != nil {
 		if os.IsNotExist(statErr) {
 			return false, "the pair's other-side worktree is missing", nil
@@ -196,12 +196,12 @@ func PairComplete(l *lyxcwd.Location) (ok bool, reason string, err error) {
 // WeftLyxDir returns the path to the _lyx directory in l's weft sibling worktree.
 // It is the junction target for lyx weft and the pathspec base for weft operations.
 func WeftLyxDir(l *lyxcwd.Location) string {
-	return filepath.Join(WeftWorktree(l), l.AnchorRel, lyxdirs.LyxDirName)
+	return filepath.Join(RecordsWorktree(l), l.AnchorRel, lyxdirs.LyxDirName)
 }
 
 // OriginURL returns f's warp side's configured "origin" remote URL.
 // This is the single-sided-op-callable-from-outside-the-package carve-out this file's own package
-// doc comment already states, the same carve-out WeftWorktree and the warp-only accessors named in
+// doc comment already states, the same carve-out RecordsWorktree and the warp-only accessors named in
 // that comment use — internal/loomcli needs the origin URL and is not a Fabric Vocabulary Invariant
 // owner.
 func (f *Fabric) OriginURL() (string, error) {

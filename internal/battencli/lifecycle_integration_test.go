@@ -392,7 +392,7 @@ func stepFourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T, h *hubforge.Hub)
 	// final removal, and nothing will ever re-adopt its records branch, so the remote copy must not
 	// linger where "lyx fabric cleanup" (its own enumeration is local-branches-only) can never reach
 	// it. See F-CLEANUP-REMOTE-ORPHAN.
-	recordsBranch := fabricengine.WeftBranchName(slug)
+	recordsBranch := fabricengine.RecordsBranchName(slug)
 	if err := exec.Command("git", "-C", h.RecordsBare, "rev-parse", "--verify", "refs/heads/"+recordsBranch).Run(); err == nil {
 		t.Errorf("records branch %q still present on the remote after teardown; want it deleted alongside the local copy", recordsBranch)
 	}
@@ -417,7 +417,7 @@ func stepTeardown_AlreadyGonePairFinishesItsBranchDeletion(t *testing.T, h *hubf
 		t.Run(tt.name, func(t *testing.T) {
 			slug := "batten-branch-left-" + tt.name
 			hubforge.AddPair(t, h, slug)
-			recordsBranch := fabricengine.WeftBranchName(slug)
+			recordsBranch := fabricengine.RecordsBranchName(slug)
 			if !remoteBranchExists(h.RecordsBare, recordsBranch) {
 				t.Fatalf("precondition: %q not on the remote after the create", recordsBranch)
 			}
@@ -426,7 +426,7 @@ func stepTeardown_AlreadyGonePairFinishesItsBranchDeletion(t *testing.T, h *hubf
 			if _, err := h.Topology.Remove(h.Location, slug, false, false); err != nil {
 				t.Fatalf("remove the pair without its remote copy: %v", err)
 			}
-			recordsRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
+			recordsRepoRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 			if err != nil {
 				t.Fatalf("resolve records repo root: %v", err)
 			}
@@ -480,7 +480,7 @@ func remoteArchiveTagExists(bareDir, slug string) bool {
 func stepTeardown_FailedRemoteDeletionHaltsResumably(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-remote-fails"
 	hubforge.AddPair(t, h, slug)
-	recordsBranch := fabricengine.WeftBranchName(slug)
+	recordsBranch := fabricengine.RecordsBranchName(slug)
 	restore := refuseRemoteBranchDeletions(t, h.RecordsBare)
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
@@ -513,8 +513,8 @@ func stepTeardown_FailedRemoteDeletionHaltsResumably(t *testing.T, h *hubforge.H
 func stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-remote-unreachable"
 	hubforge.AddPair(t, h, slug)
-	recordsBranch := fabricengine.WeftBranchName(slug)
-	recordsRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
+	recordsBranch := fabricengine.RecordsBranchName(slug)
+	recordsRepoRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 	if err != nil {
 		t.Fatalf("resolve records repo root: %v", err)
 	}
@@ -808,11 +808,11 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 
 	// Stands in for Add's own later steps -- the other side's worktree and the portal -- run
 	// directly rather than through Add so the junctions this test needs missing stay missing.
-	recordsRepoRoot, err := fabricengine.WeftRepoRoot(h.Location)
+	recordsRepoRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 	if err != nil {
 		t.Fatalf("resolve records repo root: %v", err)
 	}
-	gitkit.MustRun(t, recordsRepoRoot, "git", "worktree", "add", "-b", fabricengine.WeftBranchName(branch), h.PairRecordsSibling(slug))
+	gitkit.MustRun(t, recordsRepoRoot, "git", "worktree", "add", "-b", fabricengine.RecordsBranchName(branch), h.PairRecordsSibling(slug))
 	portal := fabricengine.PortalLink(h.Location, slug)
 	if err := os.MkdirAll(filepath.Dir(portal), 0o755); err != nil {
 		t.Fatalf("mkdir portals: %v", err)
@@ -1021,7 +1021,7 @@ func stepTeardown_ReEntryAfterCompletedRemovalIsDone(t *testing.T, h *hubforge.H
 func stepTeardown_SiblingDirtOutsideRecordPathsRefusesShutdown(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-sibling-dirt"
 	hubforge.AddPair(t, h, slug)
-	stray := filepath.Join(fabricengine.WeftWorktreePath(h.Location, slug), "stray.txt")
+	stray := filepath.Join(fabricengine.RecordsWorktreePath(h.Location, slug), "stray.txt")
 	if err := os.WriteFile(stray, []byte("not a record\n"), 0o644); err != nil {
 		t.Fatalf("write the out-of-pathspec file: %v", err)
 	}

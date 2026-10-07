@@ -86,7 +86,7 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
 		AnchorRel:    relPath,
 	}
 	code := layout.WorktreePath()
-	records := fabricengine.WeftWorktree(layout)
+	records := fabricengine.RecordsWorktree(layout)
 	for _, dir := range []string{code, records} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", dir, err)

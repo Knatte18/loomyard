@@ -1,5 +1,5 @@
 // destroy.go is the only file in package fabricengine permitted to perform a destructive primitive.
-// The primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch -D), deleting a branch on a remote (git push <remote> --delete), moving a branch on a remote (a leased force push, updateRemoteBranch), and resetting a warp checkout hard (ResetHard, and ResetPairWarp for a task pair's checkout, both through resetHardTo).
+// The primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch -D), deleting a branch on a remote (git push <remote> --delete), moving a branch on a remote (a leased force push, updateRemoteBranch), and resetting a warp checkout hard (ResetHard, and ResetPairCode for a task pair's checkout, both through resetHardTo).
 // Every one of them is reached only through one of this file's executors, and every executor runs the shared check pipeline before performing its act — the gate executes, it does not merely approve.
 //
 // The pipeline runs four checks, always in this fixed order, stopping at the first failure:
@@ -336,7 +336,7 @@ func ownedWarpCheckout(repoDir string) pathOwnership {
 
 // ownedPairWarpCheckout declares target as owned when it is a registered linked worktree of the warp repo at repoDir, never its main checkout;
 // its checked-out branch is not parentBranch (the ownedPairWarpBranch rule);
-// and the weft checkout at weftDir has WeftBranchName of that branch checked out, so the branch is the pair's own.
+// and the weft checkout at weftDir has RecordsBranchName of that branch checked out, so the branch is the pair's own.
 // A detached HEAD on either side fails the predicate.
 func ownedPairWarpCheckout(repoDir, weftDir, parentBranch string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipPairWarpCheckout, repoDir: repoDir, weftDir: weftDir, parentBranch: parentBranch}
@@ -429,7 +429,7 @@ func ownedPairWarpBranch(warpBranch, parentBranch string) branchOwnership {
 	return branchOwnership{kind: branchOwnershipPairWarp, warpBranch: warpBranch, parentBranch: parentBranch}
 }
 
-// ownedPairWeftBranch declares branch as owned when it is exactly WeftBranchName(warpBranch), is accepted by WeftWarpSlug, and is not l's primary weft branch.
+// ownedPairWeftBranch declares branch as owned when it is exactly RecordsBranchName(warpBranch), is accepted by WeftWarpSlug, and is not l's primary weft branch.
 // It deliberately has no checked-out test:
 // at Add's step 12 the same-named local branch is the replacement, checked out at the new weft worktree, which is exactly what ownedManagedBranch refuses.
 // An empty warpBranch matches nothing.
@@ -673,8 +673,8 @@ func resolvePairWarpCheckout(own pathOwnership, target string) (bool, string) {
 	if err != nil {
 		return false, fmt.Sprintf("cannot read the branch checked out at the pair's weft %s: %v", own.weftDir, err)
 	}
-	if weftBranch != WeftBranchName(branch) {
-		return false, fmt.Sprintf("the pair's weft %s has %q checked out, not %q, so %s is not the pair's own warp branch", own.weftDir, weftBranch, WeftBranchName(branch), branch)
+	if weftBranch != RecordsBranchName(branch) {
+		return false, fmt.Sprintf("the pair's weft %s has %q checked out, not %q, so %s is not the pair's own warp branch", own.weftDir, weftBranch, RecordsBranchName(branch), branch)
 	}
 	return true, ""
 }
@@ -769,7 +769,7 @@ func resolvePairWarpBranch(warpBranch, parentBranch, branch string) (bool, strin
 // The two pure name checks run first, so a mismatched name refuses without spawning git;
 // then branch must not be l's primary weft branch, failing closed when the primary cannot be read.
 func resolvePairWeftBranch(l *lyxcwd.Location, warpBranch, branch string) (bool, string) {
-	if warpBranch == "" || branch != WeftBranchName(warpBranch) {
+	if warpBranch == "" || branch != RecordsBranchName(warpBranch) {
 		return false, fmt.Sprintf("%s is not the pair's own weft branch for %q", branch, warpBranch)
 	}
 	if _, ok := WeftWarpSlug(branch); !ok {
@@ -1635,7 +1635,7 @@ func (f *Fabric) ResetHard(rec *Mutations, sha string) error {
 	return resetHardTo(rec, req, f.warp, sha)
 }
 
-// ResetPairWarp resets a task pair's warp checkout's HEAD, index and working tree to sha.
+// ResetPairCode resets a task pair's warp checkout's HEAD, index and working tree to sha.
 // It is the gated executor for the pair-scoped reset, beside ResetHard, which refuses on any tracked dirt and accepts the prime checkout.
 // The request is hardcoded: container is the hub (filepath.Dir(f.warpPath)), target is the warp worktree,
 // ownership is ownedPairWarpCheckout, so the prime checkout, a pair on parentBranch, a pair whose weft is on another branch and a detached HEAD all refuse,
@@ -1653,7 +1653,7 @@ func (f *Fabric) ResetHard(rec *Mutations, sha string) error {
 // A remote-only commit becomes reachable only through the `ours` merge the operator runs after reading the commits the refusal lists, which is the one judgment left to the operator.
 // If the checkout rewrite fails after the remote moved, the error says so; rec then holds the remote_branch_updated entry, and re-running converges.
 // rec is the caller's recorder; resetHardTo appends the resulting worktree_reset entry to it.
-func (f *Fabric) ResetPairWarp(rec *Mutations, sha, parentBranch string, ownPaths []string, opts SyncOptions) error {
+func (f *Fabric) ResetPairCode(rec *Mutations, sha, parentBranch string, ownPaths []string, opts SyncOptions) error {
 	req := pathRequest{
 		what:      "reset pair warp checkout",
 		container: filepath.Dir(f.warpPath),
@@ -1679,7 +1679,7 @@ func (f *Fabric) ResetPairWarp(rec *Mutations, sha, parentBranch string, ownPath
 	return nil
 }
 
-// moveRemoteTaskBranch is ResetPairWarp's remote half: it refuses on a remote task branch holding commits HEAD lacks, and otherwise moves the remote branch to sha through updateRemoteBranch, reporting whether it did.
+// moveRemoteTaskBranch is ResetPairCode's remote half: it refuses on a remote task branch holding commits HEAD lacks, and otherwise moves the remote branch to sha through updateRemoteBranch, reporting whether it did.
 func (f *Fabric) moveRemoteTaskBranch(rec *Mutations, req pathRequest, sha, parentBranch string, opts SyncOptions) (moved bool, err error) {
 	if opts.SkipPush {
 		return false, nil

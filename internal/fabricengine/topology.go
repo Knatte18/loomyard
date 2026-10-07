@@ -8,7 +8,7 @@
 // like Commit);
 // Topology is the hub-scoped holder that creates, removes, and reconciles the pairs themselves.
 // A pair does not exist yet when Topology.Add runs, so Topology cannot hold a *Fabric — it only
-// holds the Config needed to derive paths via lyxcwd and branch names via WeftBranchName (backed by
+// holds the Config needed to derive paths via lyxcwd and branch names via RecordsBranchName (backed by
 // internal/weftname).
 
 package fabricengine

@@ -155,7 +155,7 @@ type Hub struct {
 	// RecordsBare is this hub's own copy of the weft bare remote.
 	RecordsBare string
 	// WeftBase is the anchor-joined weft directory, populated verbatim from CloneResult.WeftBase —
-	// fabricengine's CloneHub computes it as filepath.Join(WeftWorktree(l), l.AnchorRel), never
+	// fabricengine's CloneHub computes it as filepath.Join(RecordsWorktree(l), l.AnchorRel), never
 	// re-derived here.
 	// It is deliberately not the same thing as PrimeRecords(), which returns the un-anchored weft
 	// worktree root: the two coincide at the "." anchor and diverge at "backend", where writing
@@ -183,7 +183,7 @@ func (h *Hub) PrimeWorktree() string {
 // at a non-"." anchor, writing to the path this method returns produces a file no module loader ever
 // reads, with no error at all.
 func (h *Hub) PrimeRecords() string {
-	return fabricengine.WeftWorktree(h.Location)
+	return fabricengine.RecordsWorktree(h.Location)
 }
 
 // BoardDir returns the path to this hub's _board data directory, the repo-wide weft:main checkout.
@@ -198,7 +198,7 @@ func (h *Hub) PairCodeWorktree(slug string) string {
 
 // PairRecordsSibling returns the path to slug's weft sibling worktree.
 func (h *Hub) PairRecordsSibling(slug string) string {
-	return fabricengine.WeftWorktreePath(h.Location, slug)
+	return fabricengine.RecordsWorktreePath(h.Location, slug)
 }
 
 // PairPortalLink returns the path to slug's mirrored portal junction link.
@@ -256,15 +256,15 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 	registerTeardown(tb, res.HubPath)
 
 	return &Hub{
-		Path:      res.HubPath,
-		Anchor:    res.Anchor,
-		Location:  loc,
-		Topology:  fabricengine.NewTopology(fabricengine.Config{}),
-		CodeBare:  warpBare,
-		RecordsBare:  weftBare,
-		WeftBase:  res.WeftBase,
-		Container: container,
-		Mutations: res.Mutated(),
+		Path:        res.HubPath,
+		Anchor:      res.Anchor,
+		Location:    loc,
+		Topology:    fabricengine.NewTopology(fabricengine.Config{}),
+		CodeBare:    warpBare,
+		RecordsBare: weftBare,
+		WeftBase:    res.WeftBase,
+		Container:   container,
+		Mutations:   res.Mutated(),
 	}
 }
 

@@ -44,7 +44,7 @@ type RefScanner struct {
 // NewRefScanner returns a RefScanner for l's worktree, compiling its regexes once so repeated
 // Matches calls (e.g. over every Bash command in a transcript) never recompile them.
 func NewRefScanner(l *lyxcwd.Location) *RefScanner {
-	weftPath := regexp.QuoteMeta(WeftWorktree(l))
+	weftPath := regexp.QuoteMeta(RecordsWorktree(l))
 	weftSuffix := regexp.QuoteMeta(weftname.Suffix)
 	// The suffix must end the name: `\b` alone would also match inside a slug that merely contains
 	// it, such as the task worktree `/hub/fabric-readd-weft-push`, since `-` is a word boundary.

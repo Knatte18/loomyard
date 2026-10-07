@@ -4,7 +4,7 @@
 // is never left behind.
 // The rollback also deletes the warp branch this Add created, under any branch_prefix, and on origin only the one ref this Add pushed — see rollbackAdd.
 // Whether the pair is live, which branches origin lends it and whether a leftover remote branch from a removed pair is replaceable are all decided at pre-flight, before the first mutation (see remoteleftover.go).
-// The weft side always uses the suffixed branch produced by WeftBranchName.
+// The weft side always uses the suffixed branch produced by RecordsBranchName.
 
 package fabricengine
 
@@ -94,7 +94,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 
 	warpBranch := t.cfg.BranchPrefix + slug
-	weftBranch := WeftBranchName(warpBranch)
+	weftBranch := RecordsBranchName(warpBranch)
 
 	// rev-parse --verify is a mixed probe: its exit path is an answer ("the branch does not
 	// exist"), recovered via errors.As, while its exec path returns a real error.
@@ -127,14 +127,14 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 
 	if !weftRepoExists(l) {
-		weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
+		weftRepoRoot, weftRepoRootErr := RecordsRepoRoot(l)
 		if weftRepoRootErr != nil {
 			return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 		}
 		return AddResult{}, fmt.Errorf("no weft repo at %s; create the hub with \"lyx fabric clone\" first", weftRepoRoot)
 	}
 
-	weftTarget := WeftWorktreePath(l, slug)
+	weftTarget := RecordsWorktreePath(l, slug)
 	if _, err := os.Stat(weftTarget); !os.IsNotExist(err) {
 		return AddResult{}, fmt.Errorf("weft worktree directory already exists: %s", weftTarget)
 	}
@@ -158,7 +158,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 		return AddResult{}, fmt.Errorf("cannot spawn weft branch: warp worktree is on a detached HEAD or unborn branch")
 	}
 	parentBranch := strings.TrimSpace(headStdout)
-	parentWeftBranch := WeftBranchName(parentBranch)
+	parentWeftBranch := RecordsBranchName(parentBranch)
 
 	// Probe both origins before the first mutation: decide whether the pair is live, and refuse an unreplaceable leftover here rather than at step 11 or 12's push.
 	// The weft answer is carried on: its fastForwardTo advances a behind local weft branch,
@@ -206,8 +206,8 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 		logger.Warn("fabricengine: post-checkout hook install failed (non-fatal)", "verb", "add", "slug", slug, "error", hookErr)
 	}
 
-	weftPath := WeftWorktreePath(l, slug)
-	weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
+	weftPath := RecordsWorktreePath(l, slug)
+	weftRepoRoot, weftRepoRootErr := RecordsRepoRoot(l)
 	if weftRepoRootErr != nil {
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 		return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
@@ -298,7 +298,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("record parent branch: %w", err)
 		}
-		// The commit's sha and committed returns are not read here: CommitWeftPaths records the
+		// The commit's sha and committed returns are not read here: CommitRecordsPaths records the
 		// KindCommitCreated entry itself, at its own success site, per the
 		// origin-record-records-both-its-write-and-its-commit decision.
 		// The run-records root joins the commit's paths only when the fork tracked it:
@@ -307,7 +307,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 		if runRecordsTracked {
 			commitPaths = append(commitPaths, shedrun.RunsRootRel())
 		}
-		if _, _, err := CommitWeftPaths(rec, weftPath, l.AnchorRel, commitPaths, "fabric: record parent branch for "+slug, opts); err != nil {
+		if _, _, err := CommitRecordsPaths(rec, weftPath, l.AnchorRel, commitPaths, "fabric: record parent branch for "+slug, opts); err != nil {
 			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("commit parent branch record: %w", err)
 		}

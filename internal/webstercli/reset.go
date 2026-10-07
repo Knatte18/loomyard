@@ -116,7 +116,7 @@ Example:
 				}
 			}
 			rec := fabricengine.NewMutations("")
-			if err := fab.ResetPairWarp(rec, plan.SHA, parent, plan.OwnPaths, fabricengine.EnvSyncOptions()); err != nil {
+			if err := fab.ResetPairCode(rec, plan.SHA, parent, plan.OwnPaths, fabricengine.EnvSyncOptions()); err != nil {
 				if remoteBranchMoved(rec) {
 					clihelp.SetExit(cmd.Context(), output.ErrFields(out, fmt.Sprintf("webster: reset --to %s moved the remote task branch but not the checkout: %v", target, err), map[string]any{
 						"mutations": rec.Entries(),

@@ -102,7 +102,7 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	weftPath := fabricengine.WeftWorktreePath(l, slug)
+	weftPath := fabricengine.RecordsWorktreePath(l, slug)
 	pair := findReconcilePair(t, result.Pairs, weftPath)
 	if pair.Error != "" {
 		t.Errorf("Error = %q; want empty", pair.Error)
@@ -167,7 +167,7 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	pair := findReconcilePair(t, result.Pairs, fabricengine.WeftWorktreePath(l, slug))
+	pair := findReconcilePair(t, result.Pairs, fabricengine.RecordsWorktreePath(l, slug))
 	if pair.Action != fabricengine.ReconcileActionAlreadyHealthy {
 		t.Errorf("Action = %q; want %q (fully correct pair, nothing to converge)", pair.Action, fabricengine.ReconcileActionAlreadyHealthy)
 	}
@@ -302,7 +302,7 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	pair := findReconcilePair(t, result.Pairs, fabricengine.WeftWorktreePath(l, slug))
+	pair := findReconcilePair(t, result.Pairs, fabricengine.RecordsWorktreePath(l, slug))
 	combined := pair.Detail + pair.Error
 	if !strings.Contains(combined, "fabric.yaml") {
 		t.Errorf("Detail=%q Error=%q; want the load failure recorded (fail-closed abort), not silently ignored", pair.Detail, pair.Error)
@@ -559,7 +559,7 @@ func TestReconcile_RefusedStaleRemovalReportsNothing(t *testing.T) {
 	// still resolves into weft (scanOnDiskJunctionNames keeps claiming it) but no longer matches its
 	// nominal weft target (ownedWiredJunction refuses removal).
 	otherLink := filepath.Join(warpLayout.WorktreePath(), warpLayout.AnchorRel, "_other")
-	weftDecoy := filepath.Join(fabricengine.WeftWorktreePath(l, slug), warpLayout.AnchorRel, "_decoy")
+	weftDecoy := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), warpLayout.AnchorRel, "_decoy")
 	if err := os.MkdirAll(weftDecoy, 0o755); err != nil {
 		t.Fatalf("create weft decoy dir: %v", err)
 	}
@@ -580,7 +580,7 @@ func TestReconcile_RefusedStaleRemovalReportsNothing(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	pair := findReconcilePair(t, result.Pairs, fabricengine.WeftWorktreePath(l, slug))
+	pair := findReconcilePair(t, result.Pairs, fabricengine.RecordsWorktreePath(l, slug))
 	if pair.Action == fabricengine.ReconcileActionStaleRemoved {
 		t.Errorf("Action = %q; a refused stale removal must not report stale_removed", pair.Action)
 	}

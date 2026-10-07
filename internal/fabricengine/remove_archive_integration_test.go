@@ -40,7 +40,7 @@ func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	tip := gitkit.CommitFile(t, fabricengine.WeftWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
+	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
 
 	res, err := topology.Remove(l, slug, false, false)
 	if err != nil {
@@ -68,7 +68,7 @@ func TestRemove_ReusesSameTipArchiveTag(t *testing.T) {
 	weftRoot := mustWeftRepoRoot(t, l)
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	tip := gitkit.CommitFile(t, fabricengine.WeftWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
+	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
 
 	// Plant the state an earlier archive leaves: a lightweight tag at the tip, as archiveWeftTip itself creates, pushed to the origin.
 	wantTag := "archive/" + slug + "/" + tip[:12]
@@ -101,7 +101,7 @@ func TestRemove_PendingRecordsAreCommittedAndArchivedOnce(t *testing.T) {
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
-	weftWorktree := fabricengine.WeftWorktreePath(l, slug)
+	weftWorktree := fabricengine.RecordsWorktreePath(l, slug)
 	dir := filepath.Join(weftWorktree, "_lyx")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", dir, err)
@@ -155,7 +155,7 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 
 	for _, p := range []string{
 		fabricengine.WorktreePath(l, slug),
-		fabricengine.WeftWorktreePath(l, slug),
+		fabricengine.RecordsWorktreePath(l, slug),
 		fabricengine.PortalLink(l, slug),
 		fabricengine.LauncherDir(l, slug),
 	} {
@@ -163,7 +163,7 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 			t.Errorf("%s missing after a failed archive: %v", p, err)
 		}
 	}
-	if !gitkit.BranchExists(t, weftRoot, fabricengine.WeftBranchName(slug)) {
+	if !gitkit.BranchExists(t, weftRoot, fabricengine.RecordsBranchName(slug)) {
 		t.Errorf("weft branch gone after a failed archive")
 	}
 	if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
@@ -180,7 +180,7 @@ func TestRemove_ForceStillArchives(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	tip := gitkit.CommitFile(t, fabricengine.WeftWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
+	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
 
 	res, err := topology.Remove(l, slug, true, false)
 	if err != nil {
@@ -204,7 +204,7 @@ func TestRemove_RemoteFalseStillPushesArchiveTag(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	tip := gitkit.CommitFile(t, fabricengine.WeftWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
+	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
 
 	res, err := topology.Remove(l, slug, false, false)
 	if err != nil {
@@ -238,7 +238,7 @@ func TestRemove_NoOriginSkipsArchiveAndCompletes(t *testing.T) {
 	if res.ArchiveTag != "" || res.ArchiveSkippedReason == "" {
 		t.Errorf("archive = (%q, %q); want no tag and a skip reason", res.ArchiveTag, res.ArchiveSkippedReason)
 	}
-	if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
+	if _, err := os.Stat(fabricengine.RecordsWorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("weft worktree still present after Remove")
 	}
 }

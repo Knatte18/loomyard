@@ -60,7 +60,7 @@ func requireOnOriginalBranches(t *testing.T, h *hubforge.Hub, slug string) {
 	if got := gitkit.CurrentBranch(t, h.PairCodeWorktree(slug)); got != slug {
 		t.Errorf("warp branch = %q; want %q (unchanged)", got, slug)
 	}
-	if got, want := gitkit.CurrentBranch(t, h.PairRecordsSibling(slug)), fabricengine.WeftBranchName(slug); got != want {
+	if got, want := gitkit.CurrentBranch(t, h.PairRecordsSibling(slug)), fabricengine.RecordsBranchName(slug); got != want {
 		t.Errorf("weft branch = %q; want %q (unchanged)", got, want)
 	}
 }
@@ -108,7 +108,7 @@ func requireAdoptedFromOrigin(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 
 	weft := h.PairRecordsSibling(slug)
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 	if got := gitkit.CurrentBranch(t, weft); got != weftBranch {
 		t.Errorf("weft branch = %q; want %q", got, weftBranch)
 	}
@@ -154,7 +154,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 				{"co-archived", "co-archived-b", true},
 			} {
 				addPairWithLocalWarpBranch(t, h, tc.slug, tc.branch)
-				weftBranch := fabricengine.WeftBranchName(tc.branch)
+				weftBranch := fabricengine.RecordsBranchName(tc.branch)
 				tip := pushOriginOnlyWeftBranch(t, h, tc.slug, weftBranch, tc.archiveTag)
 
 				if code, output := runFabric(t, h.PairCodeWorktree(tc.slug), "checkout", tc.branch); code != 0 {
@@ -193,8 +193,8 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 				t.Errorf("output %q does not name origin", output)
 			}
 			requireOnOriginalBranches(t, h, slug)
-			if gitkit.BranchExists(t, weftRepo, fabricengine.WeftBranchName(branch)) {
-				t.Errorf("local weft branch %q exists after the refused checkout; want none", fabricengine.WeftBranchName(branch))
+			if gitkit.BranchExists(t, weftRepo, fabricengine.RecordsBranchName(branch)) {
+				t.Errorf("local weft branch %q exists after the refused checkout; want none", fabricengine.RecordsBranchName(branch))
 			}
 		}},
 		{"ReconcileAdoptsOriginWeftForRawWarp", func(t *testing.T) {
@@ -207,7 +207,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 				{"rc-archived", true},
 			} {
 				addRawWarpWorktree(t, h, tc.slug, false)
-				pushOriginOnlyWeftBranch(t, h, tc.slug, fabricengine.WeftBranchName(tc.slug), tc.archiveTag)
+				pushOriginOnlyWeftBranch(t, h, tc.slug, fabricengine.RecordsBranchName(tc.slug), tc.archiveTag)
 
 				code, pair := reconcilePair(t, h, tc.slug)
 				if code != 0 {
@@ -225,7 +225,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			if code, output := runFabric(t, h.PrimeWorktree(), "add", slug); code != 0 {
 				t.Fatalf("add %s exit = %d; output: %s", slug, code, output)
 			}
-			weftBranch := fabricengine.WeftBranchName(slug)
+			weftBranch := fabricengine.RecordsBranchName(slug)
 			weftSibling := h.PairRecordsSibling(slug)
 			gitkit.MustRun(t, weftSibling, "git", "push", "--quiet", "origin", weftBranch)
 			gitkit.MustRun(t, h.PrimeRecords(), "git", "worktree", "remove", "--force", weftSibling)
@@ -268,7 +268,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			if reason, _ := pair["error"].(string); !strings.Contains(reason, "origin") {
 				t.Errorf("pair error = %q; want it to name origin", reason)
 			}
-			if gitkit.BranchExists(t, weftRepo, fabricengine.WeftBranchName(slug)) {
+			if gitkit.BranchExists(t, weftRepo, fabricengine.RecordsBranchName(slug)) {
 				t.Errorf("local weft branch exists after the refused reconcile; want none")
 			}
 		}},
@@ -278,7 +278,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			// origin keeps its tip.
 			const slug = "rc-rollback"
 			addRawWarpWorktree(t, h, slug, true)
-			weftBranch := fabricengine.WeftBranchName(slug)
+			weftBranch := fabricengine.RecordsBranchName(slug)
 			tip := pushOriginOnlyWeftBranch(t, h, slug, weftBranch, false)
 
 			blocker := h.PairRecordsSibling(slug)
@@ -306,7 +306,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			// and the hub has neither locally:
 			// add builds the pair on both origin tips and pushes only fast-forwards.
 			const slug = "add-live"
-			weftBranch := fabricengine.WeftBranchName(slug)
+			weftBranch := fabricengine.RecordsBranchName(slug)
 			runRecord := filepath.Join(h.Location.AnchorRel, shedrun.RunsRootRel(), "run-1", "note.txt")
 
 			warpClone := t.TempDir()
@@ -362,7 +362,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			if code, output := runFabric(t, h.PairCodeWorktree(slug), "checkout", branch); code != 0 {
 				t.Fatalf("checkout without an origin remote exit = %d; output: %s", code, output)
 			}
-			weftBranch := fabricengine.WeftBranchName(branch)
+			weftBranch := fabricengine.RecordsBranchName(branch)
 			if got := gitkit.CurrentBranch(t, h.PairRecordsSibling(slug)); got != weftBranch {
 				t.Errorf("weft branch = %q; want the forked %q", got, weftBranch)
 			}

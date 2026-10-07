@@ -169,7 +169,7 @@ func DeleteArchivedWeftBranchForTest(l *lyxcwd.Location, repoDir, warpBranch, br
 }
 
 // UpdateRemoteBranchWithLeaseForTest drives updateRemoteBranch over f's pair warp checkout with a caller-chosen lease SHA and a fresh recorder, returning the recorder's snapshot.
-// It serves package fabricengine_test tests that need a lease stale against the origin, since ResetPairWarp leaves no window between its fetch and its update.
+// It serves package fabricengine_test tests that need a lease stale against the origin, since ResetPairCode leaves no window between its fetch and its update.
 func UpdateRemoteBranchWithLeaseForTest(f *Fabric, sha, parentBranch, leaseSHA string) (Mutations, error) {
 	branch, err := f.warp.CurrentBranch()
 	if err != nil {

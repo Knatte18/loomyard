@@ -28,7 +28,7 @@ func resolveWeftBranch(rec *Mutations, l *lyxcwd.Location, weftBranch string, co
 		return false, false, nil
 	}
 
-	weftRepoRoot, err := WeftRepoRoot(l)
+	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return false, false, fmt.Errorf("resolve weft branch %q: resolve weft repo: %w", weftBranch, err)
 	}
