@@ -123,6 +123,8 @@ func TestResumeVerb(t *testing.T) {
 		directory fakeDriverDirectory
 		runLock   bool
 		marker    bool
+		// noScratch points the lock paths at a directory that does not exist after the status file is written, as on a pair re-created from its branch.
+		noScratch bool
 		merge     fabricengine.MidMergeState
 		wantOK    bool
 		// wantKind is the refusal's envelope kind;
@@ -138,6 +140,7 @@ func TestResumeVerb(t *testing.T) {
 		{name: "awaiting is refused", runState: shedengine.StateAwaiting, directory: liveDriver, marker: true, wantIn: []string{"lyx loom approve", "lyx loom reject", "lyx batten run"}},
 		{name: "running with a live driver is a no-op", runState: shedengine.StateRunning, directory: liveDriver, wantOK: true, wantIn: []string{"already running"}},
 		{name: "running with the run lock held is a no-op", runState: shedengine.StateRunning, directory: noDriver, runLock: true, wantOK: true, wantIn: []string{"already running"}},
+		{name: "running with the scratch directory absent answers from the run's state", runState: shedengine.StateRunning, directory: liveDriver, noScratch: true, wantOK: true, wantIn: []string{"already running"}},
 		{name: "running with no live driver is refused", runState: shedengine.StateRunning, directory: noDriver, wantIn: []string{"no live driver", `"lyx loom start"`}},
 		{name: "halted with the run lock held is refused", runState: shedengine.StateBlocked, directory: liveDriver, runLock: true, marker: true, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"post-run work", `"lyx loom resume"`}},
 		{name: "halted live driver without a marker is refused", runState: shedengine.StatePaused, directory: liveDriver, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"has not parked yet", "`lyx loom resume`"}},
@@ -158,6 +161,11 @@ func TestResumeVerb(t *testing.T) {
 			c.midMerge = func(*lyxcwd.Location) (fabricengine.MidMergeState, error) { return tt.merge, nil }
 			if tt.runState != "" {
 				writeTestRunState(t, c, tt.runState)
+			}
+			if tt.noScratch {
+				absentScratch := filepath.Join(filepath.Dir(c.shedPaths.StatusPath), "absent-scratch")
+				c.shedPaths.LockPath = filepath.Join(absentScratch, "run.lock")
+				c.shedPaths.StatusLockPath = filepath.Join(absentScratch, "status.json.lock")
 			}
 			if tt.runLock {
 				holdRunLock(t, c)

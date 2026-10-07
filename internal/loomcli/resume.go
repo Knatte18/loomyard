@@ -44,6 +44,11 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 		output.Ok(out, fields)
 	}
 
+	// The status lock lives in the ephemeral scratch directory, which a pair re-created from its branch lacks while the status file is there.
+	if err := os.MkdirAll(filepath.Dir(c.shedPaths.StatusLockPath), 0o755); err != nil {
+		refuse(resumeRefusal{message: err.Error()})
+		return
+	}
 	status, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if err != nil {
 		refuse(resumeRefusal{message: err.Error()})
@@ -118,7 +123,11 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 }
 
 // runLockHeld reports whether a driver holds the run's lock, probing it without keeping it.
+// The lock's directory is created first, since the lock opens with O_CREATE but never creates a parent.
 func (c *loomCLI) runLockHeld() (bool, error) {
+	if err := os.MkdirAll(filepath.Dir(c.shedPaths.LockPath), 0o755); err != nil {
+		return false, err
+	}
 	probe, free, err := lock.TryAcquireWriteLock(c.shedPaths.LockPath)
 	if err != nil {
 		return false, err
