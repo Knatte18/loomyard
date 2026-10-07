@@ -75,6 +75,16 @@ var LoomTemplateParentReviewBrief []byte
 //go:embed burler/burler-template-round-orchestrator.md
 var BurlerTemplateRoundOrchestrator []byte
 
+// BurlerTemplateReviewOrchestrator is burler's shipped-default reviewer orchestrator prompt.
+//
+//go:embed burler/burler-template-review-orchestrator.md
+var BurlerTemplateReviewOrchestrator []byte
+
+// BurlerTemplateFixOrchestrator is burler's shipped-default fixer orchestrator prompt.
+//
+//go:embed burler/burler-template-fix-orchestrator.md
+var BurlerTemplateFixOrchestrator []byte
+
 // BurlerStep1Explore is burler's shipped-default step-1 (explore) instruction prompt.
 //
 //go:embed burler/burler-step-1-explore.md
@@ -298,6 +308,8 @@ var entries = []registryEntry{
 	{"loom-template-parent-review-delivery", &LoomTemplateParentReviewDelivery},
 	{"loom-template-parent-review-brief", &LoomTemplateParentReviewBrief},
 	{"burler-template-round-orchestrator", &BurlerTemplateRoundOrchestrator},
+	{"burler-template-review-orchestrator", &BurlerTemplateReviewOrchestrator},
+	{"burler-template-fix-orchestrator", &BurlerTemplateFixOrchestrator},
 	{"burler-step-1-explore", &BurlerStep1Explore},
 	{"burler-step-2-review", &BurlerStep2Review},
 	{"burler-step-3-fix", &BurlerStep3Fix},
@@ -349,6 +361,8 @@ var roleOpeningStencils = map[string][]string{
 	"webster-master":    {"webster-template-master"},
 	"webster-recovery":  {"webster-prefix-recovery"},
 	"burler":            {"burler-template-round-orchestrator"},
+	"burler-review":     {"burler-template-review-orchestrator"},
+	"burler-fix":        {"burler-template-fix-orchestrator"},
 	"conflict":          {"landing-template-conflict"},
 	"bouncer-judge":     {"bouncer-template-judge"},
 	"bouncer-seed":      {"bouncer-template-seed"},
