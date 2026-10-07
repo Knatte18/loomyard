@@ -18,7 +18,8 @@ import (
 const dirtyPathsShown = 10
 
 // verifyGate holds the told command closure, the told wait-mark callback, the verify paths and the two verifytree seams.
-// The dirty, verify and now fields are in-package seams tests replace with fakes, so unit tests never spawn git or a shell and the mark's start time is fixed.
+// The dirty, verify and now fields are in-package seams tests replace with fakes,
+// so unit tests never spawn git or a shell and the mark's start time is fixed.
 // A zero dirty seam skips the clean-tree check, a nil command skips the verify and a nil waitMark marks nothing.
 type verifyGate struct {
 	command  func() (string, error)

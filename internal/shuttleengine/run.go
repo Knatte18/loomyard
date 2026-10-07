@@ -357,7 +357,8 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	}
 
 	// An ungated run's output files are its finished signal, so reed's resume drops a finished strand;
-	// a gated run's outputs existing does not mean the gate passed, so it carries no list and is relaunched.
+	// a gated run's outputs existing does not mean the gate passed,
+	// so it carries no list and is relaunched.
 	var doneWhen []string
 	if len(gate) == 0 {
 		doneWhen = spec.OutputFiles

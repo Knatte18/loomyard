@@ -34,7 +34,8 @@ func waitOrCancel(ctx context.Context, d time.Duration) {
 
 // spawnConfirmedFileSuffix is the fixed suffix of the marker a producer writes under its scratch
 // directory once its spawn has returned success, joined onto the producer's own name.
-// The marker holds the pid of the process that wrote it, so it confirms the spawn for that process only.
+// The marker holds the pid of the process that wrote it,
+// so it confirms the spawn for that process only.
 const spawnConfirmedFileSuffix = "-spawned"
 
 // SpawnConfirmedFile returns the path of the marker innerRunProducer writes under scratchDir once
@@ -46,7 +47,8 @@ func SpawnConfirmedFile(scratchDir, producer string) string {
 }
 
 // haltedWaitReason renders the stuck reason of a halted child's wait.
-// Nothing on the prime side resumes the child's own driver, so the reason names the operator's resume command and says this run keeps watching.
+// Nothing on the prime side resumes the child's own driver,
+// so the reason names the operator's resume command and says this run keeps watching.
 // startFallback adds `lyx loom start`, for a child with no driver strand to wake or whose revive failed.
 func haltedWaitReason(status shedengine.Status, startFallback bool) string {
 	resume := `run "lyx loom resume" in the task worktree to resume it`
@@ -203,7 +205,8 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // It reads the child's status before doing anything else.
 // It spawns only when that status is absent, or is still running with no spawn confirmed by this batten process and no driver at work.
 // The child's status file alone cannot say whether a spawn happened:
-// the child's bootstrap seeds it as running before it starts the driver, so a bootstrap that failed or was killed after seeding leaves a running status with no driver behind it.
+// the child's bootstrap seeds it as running before it starts the driver,
+// so a bootstrap that failed or was killed after seeding leaves a running status with no driver behind it.
 // The confirmation is a marker under scratchDir (SpawnConfirmedFile) holding the pid of the process that wrote it,
 // cleared before every spawn attempt and written only once deps.Spawn returns success;
 // a marker naming another pid, or in the old layout, reads as unconfirmed,
@@ -334,7 +337,8 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 	switch status.State {
 	case shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed, shedengine.StateAwaiting:
 	default:
-		// A child seen out of a halted or awaiting state ends the episode, so the next halt revives afresh.
+		// A child seen out of a halted or awaiting state ends the episode,
+		// so the next halt revives afresh.
 		if err := os.Remove(revivedFile(p.scratchDir, p.name)); err != nil && !os.IsNotExist(err) {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: clear revived marker: %w", p.name, err)
 		}

@@ -50,7 +50,8 @@ type driverPaneProbe interface {
 // driverDirectoryProbe reads the driver strand's row from reed's sessionless directory.
 type driverDirectoryProbe interface {
 	// DriverRow returns the first row loomengine.IsDriverStrand accepts, and false when the directory holds none.
-	// A session that died with the machine still lists its strands, dormant, so a dead driver is a row with Live false rather than an absent one.
+	// A session that died with the machine still lists its strands, dormant,
+	// so a dead driver is a row with Live false rather than an absent one.
 	DriverRow() (reedengine.DirectoryRow, bool, error)
 }
 

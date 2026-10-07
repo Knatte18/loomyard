@@ -156,13 +156,15 @@ type Deps struct {
 	// the gate never runs and nothing is logged.
 	// An empty returned string means the source carries no verify command, which skips the gate with a warning.
 	VerifyCommand func() (string, error)
-	// VerifyWaitMark sets or clears the pane mark of the run's driver strand around the post-merge verify, so the wait shows on screen.
+	// VerifyWaitMark sets or clears the pane mark of the run's driver strand around the post-merge verify,
+	// so the wait shows on screen.
 	// The gate clears the mark before each verify, sets it with the label `verify <producer>` and the verify's start time immediately before the verify runs,
 	// and clears it on every path out of the verify;
 	// an empty label clears.
 	// The mark is display only: a returned error is logged and changes no Stuck reason, error return or verify outcome.
 	//
-	// Nil means "no strand to mark", following CommitStatus's nil-is-absent convention, so a run with no driver strand gets the status note only.
+	// Nil means "no strand to mark", following CommitStatus's nil-is-absent convention,
+	// so a run with no driver strand gets the status note only.
 	// internal/loomcli's landingDeps fills it,
 	// and its drift guard keeps it filled.
 	VerifyWaitMark func(label string, start time.Time) error

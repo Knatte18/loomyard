@@ -61,7 +61,8 @@
 // and an empty ResumeSessionID mints a new session, so a caller that sets none of them sees no change.
 // A non-empty ResumeSessionID launches that existing session instead.
 //
-// An ungated run's strand is registered with its output files as reed's done-when list, so reed's resume drops a finished agent strand instead of reviving it;
+// An ungated run's strand is registered with its output files as reed's done-when list,
+// so reed's resume drops a finished agent strand instead of reviving it;
 // a gated run's strand carries none,
 // since its outputs existing does not mean its gate passed,
 // and the gate re-prompts the live agent.
@@ -148,7 +149,8 @@
 // ReadWaitMarker returns the first marker with a live pid among a run-directory root's runs, which is how `lyx loom status` reads it.
 // Both exist only for display and status: no shuttle decision reads either,
 // and a failure to write, remove, set or clear one is logged and changes no verdict, error return, re-prompt or gate outcome.
-// Wait clears the pane mark and removes the marker file on entry, so a mark a crashed step left behind is gone at the next touch, and again on every return.
+// Wait clears the pane mark and removes the marker file on entry,
+// so a mark a crashed step left behind is gone at the next touch, and again on every return.
 //
 // Start/StartGated/Run/RunGated run the startup probe (readiness plus dismissal of any one-time
 // startup gate, through the Engine seam's startup classification and trust-dismiss sequence) before

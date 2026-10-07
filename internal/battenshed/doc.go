@@ -17,15 +17,18 @@
 // Control flow is unchanged: a notice is informational, a Notify error is only warned about, and the outcomes, bounce budget, halts and waits are the same with or without it.
 // A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window; an operator attaches to the child's session to tell the cases apart.
 //
-// A running child whose spawn this batten process has not confirmed is spawned again, so a restarted batten brings a driverless child back up:
+// A running child whose spawn this batten process has not confirmed is spawned again,
+// so a restarted batten brings a driverless child back up:
 // the confirmation marker holds the pid of the process that wrote it,
 // and a marker from another pid or in the old layout reads as unconfirmed.
-// A child with a live or retiring driver strand in its reed state, or a held run lock, is adopted instead, with the confirmation recorded for this process, so a second driver is never stacked.
+// A child with a live or retiring driver strand in its reed state, or a held run lock, is adopted instead, with the confirmation recorded for this process,
+// so a second driver is never stacked.
 //
 // A child that halts (blocked, paused or failed) is a budget-exempt wait, not a failure of the Run-Shed row:
 // batten never spawns or resumes a halted child, logs one Warn per halt episode, and keeps polling every poll interval with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
 // A halted or awaiting child whose reed state holds a dead driver strand has its pair's strands revived through reed resume, once per halt episode per batten process;
-// the run stays halted and nothing is resumed, so the operator's "lyx loom resume" wakes the revived driver.
+// the run stays halted and nothing is resumed,
+// so the operator's "lyx loom resume" wakes the revived driver.
 // A retiring strand is not revived and a child with no driver strand has none to revive;
 // a revive that fails, and a child with no driver strand, make the reason also name "lyx loom start" in the task worktree.
 // The wait has no time limit and spends no bounce budget; "lyx batten pause" stops it, and the row reads the child as running again once the operator resumes it.

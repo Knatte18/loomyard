@@ -690,7 +690,8 @@ func (e *Engine) Resume() (ResumeResult, error) {
 		// (e.g. the kept sole dead pane) is not live and must be relaunched.
 		toLaunch, toDrop := planResumeLaunches(st.Strands, aliveIDSet(live), pathExists)
 
-		// A finished strand has no live pane, so dropping it kills nothing.
+		// A finished strand has no live pane,
+		// so dropping it kills nothing.
 		if len(toDrop) > 0 {
 			dropped = dropStrands(st, toDrop)
 			if err := SaveState(e.stateDir(), st); err != nil {

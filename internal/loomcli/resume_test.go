@@ -44,7 +44,8 @@ type resumeEnvelope struct {
 }
 
 // newResumeVerbReceiver builds a receiver for the resume verb over the shared temp-directory fixture, with the given driver strand and a clean merge probe.
-// c.reed stays nil, so a call into reed would panic: the verb must touch only its seams.
+// c.reed stays nil,
+// so a call into reed would panic: the verb must touch only its seams.
 func newResumeVerbReceiver(t *testing.T, sender *fakeDriverSender, directory fakeDriverDirectory) (*loomCLI, *fakeDriverStarter, *fakeDriverPaneProbeFull) {
 	t.Helper()
 	starter := &fakeDriverStarter{}

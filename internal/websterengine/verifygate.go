@@ -251,7 +251,8 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 		return parseVerifyFailures(output, false), nil
 	}
 
-	// failTimedOut fails the gate for a verify that outlived its timeout: a hang is not flakiness, so it is never rerun.
+	// failTimedOut fails the gate for a verify that outlived its timeout: a hang is not flakiness,
+	// so it is never rerun.
 	failTimedOut := func() (shuttleengine.GateResult, error) {
 		output, err := s.readLog()
 		if err != nil {

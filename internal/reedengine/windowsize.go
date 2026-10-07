@@ -138,14 +138,16 @@ func statusLeftLength(escaped string) int {
 // The status-line render is one call to e.StatusLineText().
 // On error it logs via logger.Warn naming the socket, the session and the error,
 // and skips the two text-derived options (status-left and status-left-length) while still issuing the other five status-line options —
-// a template that fails to render is already refused loudly at boot by ValidateStatusLine, so reaching here means a degraded path, not a normal one.
+// a template that fails to render is already refused loudly at boot by ValidateStatusLine,
+// so reaching here means a degraded path, not a normal one.
 // On success it escapes the rendered text with escapeStatusText (tmux expands "#{…}"/"#[…]" inside a status string) and issues, in order:
 // "status" "on"; "status-position" "bottom";
 // "status-left" <escaped, with the waits placeholder swapped for waitsSegmentFormat>; "status-right" "";
 // "status-left-length" <statusLeftLength(escaped without the placeholder) plus waitsSegmentLengthAllowance when the placeholder is present>;
 // and, window-targeted with -w, "window-status-format" "" and "window-status-current-format" "".
 // Suppressing the window-status segment is deliberate rather than left at tmux's default:
-// reed's session has exactly one window, so the default "0:bash*" segment beside the identity text names nothing the operator can act on and would shift position as the window's active pane name changes.
+// reed's session has exactly one window,
+// so the default "0:bash*" segment beside the identity text names nothing the operator can act on and would shift position as the window's active pane name changes.
 //
 // Every geometry pin — the status-line options and window-size — is session/window-targeted rather
 // than -g, because a session- or window-scoped value set from the operator's own ~/.tmux.conf silently

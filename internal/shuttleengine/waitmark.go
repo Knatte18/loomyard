@@ -25,7 +25,8 @@ const (
 	shellWaitLabel = "background shells"
 )
 
-// isAlive is the liveness seam over proc.IsAlive, so the marker tests stay tier 1.
+// isAlive is the liveness seam over proc.IsAlive,
+// so the marker tests stay tier 1.
 var isAlive = proc.IsAlive
 
 // WaitMarker is the file `lyx loom status` reads to see what a shuttle run waits on:
@@ -89,7 +90,8 @@ func (run *Run) waitMarkerPath() string {
 }
 
 // clearWait removes any wait marker file of the run and clears the strand's pane mark, whatever this process last showed.
-// Wait calls it on entry, so a mark a crashed step left behind is gone at the next touch.
+// Wait calls it on entry,
+// so a mark a crashed step left behind is gone at the next touch.
 func (run *Run) clearWait() {
 	run.wait = waitState{}
 	run.removeWaitMarker()
@@ -99,7 +101,8 @@ func (run *Run) clearWait() {
 }
 
 // endWait removes the wait marker file and clears the pane mark when this process has one on show.
-// Wait defers it, so every return leaves neither behind.
+// Wait defers it,
+// so every return leaves neither behind.
 func (run *Run) endWait() {
 	run.removeWaitMarker()
 	if run.wait.shown == "" {

@@ -47,10 +47,12 @@
 // EndSessionByName sits beside ReapSession as the engine-less session end for a pair whose worktree is gone, and kills the server when it ends the last session.
 //
 // Engine.SetWaitMark marks a strand's pane as waiting: it sets the pane user options @lyx_wait (the label) and @lyx_wait_start (epoch seconds), or unsets both on an empty label.
-// The mark is display only, so reed stores nothing for it and the options die with the pane;
+// The mark is display only,
+// so reed stores nothing for it and the options die with the pane;
 // the default status line renders it through its {{.waits}} token, as "<pane title> ⏳<label> <elapsed>m" per marked pane with tmux computing the elapsed minutes at each refresh,
 // and no Go decision reads it.
-// The token resolves to a placeholder that pinGeometryOptionsLocked swaps for the raw tmux format after escaping the rest of the line, so an unmarked session renders as before.
+// The token resolves to a placeholder that pinGeometryOptionsLocked swaps for the raw tmux format after escaping the rest of the line,
+// so an unmarked session renders as before.
 //
 // A second package-level invariant: every session also carries exactly one
 // additional, permanent pane beyond its strands — Selvage

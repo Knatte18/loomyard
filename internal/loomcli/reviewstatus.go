@@ -75,7 +75,8 @@ func verifyWaiting(markerPath string, now func() time.Time, next func(st shedeng
 
 // shuttleWaiting returns the Waiting hook that reports a shuttle wait from the marker readMarker finds, and falls through to next otherwise.
 // The note names the run's current producer and the wait's kind, with no detail clause.
-// readMarker returns false for a marker whose pid is dead, so a crashed wait never sticks in the status line.
+// readMarker returns false for a marker whose pid is dead,
+// so a crashed wait never sticks in the status line.
 func shuttleWaiting(readMarker func() (shuttleengine.WaitMarker, bool, error), now func() time.Time, next func(st shedengine.Status) (string, error)) func(st shedengine.Status) (string, error) {
 	return func(st shedengine.Status) (string, error) {
 		marker, live, err := readMarker()
