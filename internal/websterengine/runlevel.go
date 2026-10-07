@@ -794,8 +794,7 @@ func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summar
 		runResult.Outcome = outcomeStuck
 		runResult.StuckReason = verifyGateStuckReason(deps.Geom.ReportsDir, result.Gate, deps.reentryStep())
 	}
-	// Each shell the wait counted a turn end past is warned on every outcome that returns a RunResult,
-	// stating the outcome after the demotion.
+	// Each shell the wait counted a turn end past is warned on every outcome that returns a RunResult, stating the outcome after the demotion.
 	shellOutcome := finishedShellOutcome(runResult)
 	for _, label := range result.ExpiredShells {
 		runResult.Warnings = append(runResult.Warnings, expiredShellWarning(label, deps.ShuttleCfg.BackgroundShellWaitMin, shellOutcome))

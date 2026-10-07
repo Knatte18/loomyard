@@ -1234,8 +1234,7 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	}
 }
 
-// deleteReferencedBatches returns two batches, card 1 (json-flag) that deletes internal/foo#Gone and the unbegun card 2 (later) that edits internal/foo/user.go,
-// and writes both files into worktree: impl.go still declares Gone, and user.go calls it on line 4 when referenced is true.
+// deleteReferencedBatches returns two batches, card 1 (json-flag) that deletes internal/foo#Gone and the unbegun card 2 (later) that edits internal/foo/user.go, and writes both files into worktree: impl.go still declares Gone, and user.go calls it on line 4 when referenced is true.
 func deleteReferencedBatches(t *testing.T, worktree string, referenced bool) []batcher.Batch {
 	t.Helper()
 	writeWorktreeFile(t, worktree, "internal/foo/impl.go", "package foo\n\nfunc Gone() {}\n")
@@ -1255,8 +1254,7 @@ func deleteReferencedBatches(t *testing.T, worktree string, referenced bool) []b
 	return []batcher.Batch{{Cards: []planparser.Card{deleting}}, {Cards: []planparser.Card{later}}}
 }
 
-// TestRecordBatch_DeleteNotDoneNamesLaterCard proves a delete-not-done failure caused by an unbegun later card still referencing the target
-// names that card and the reference and moves the way forward to the plan edit, or to the --fresh steps when the record also lists uncheckable entries;
+// TestRecordBatch_DeleteNotDoneNamesLaterCard proves a delete-not-done failure caused by an unbegun later card still referencing the target names that card and the reference and moves the way forward to the plan edit, or to the --fresh steps when the record also lists uncheckable entries;
 // a delete-not-done with no later reference keeps recover-batch.
 func TestRecordBatch_DeleteNotDoneNamesLaterCard(t *testing.T) {
 	tests := []struct {

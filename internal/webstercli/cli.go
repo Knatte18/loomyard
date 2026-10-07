@@ -14,12 +14,7 @@
 // standalone has no fabric repo by construction, and the closure is never called during wiring in
 // either mode.
 //
-// websterCLI stores TWO adapted
-// views of the one constructed Runner: starter (websterengine.Starter, webster's own local copy of
-// the spawn seam, consumed by recover-batch's cold-strand spawn) and masterStarter
-// (websterengine.MasterStarter, behind the runnerMasterStarter adapter, consumed by run's Master
-// spawn) -- because the two verbs each need a distinct narrow seam onto the same underlying
-// *shuttleengine.Runner, neither of which the other exposes.
+// websterCLI stores TWO adapted views of the one constructed Runner: starter (websterengine.Starter, webster's own local copy of the spawn seam, consumed by recover-batch's cold-strand spawn) and masterStarter (websterengine.MasterStarter, behind the runnerMasterStarter adapter, consumed by run's Master spawn) -- because the two verbs each need a distinct narrow seam onto the same underlying *shuttleengine.Runner, neither of which the other exposes.
 package webstercli
 
 import (

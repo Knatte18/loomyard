@@ -1,11 +1,6 @@
 // destroy.go is the only file in package fabricengine permitted to perform a destructive primitive.
-// The primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git
-// worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch
-// -D), deleting a branch on a remote (git push <remote> --delete), moving a branch on a remote
-// (a leased force push, updateRemoteBranch), and resetting a warp checkout
-// hard (ResetHard, and ResetPairWarp for a task pair's checkout, both through resetHardTo). Every one of them is reached only through one of this file's executors, and
-// every executor runs the shared check pipeline before performing its act — the gate executes, it
-// does not merely approve.
+// The primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch -D), deleting a branch on a remote (git push <remote> --delete), moving a branch on a remote (a leased force push, updateRemoteBranch), and resetting a warp checkout hard (ResetHard, and ResetPairWarp for a task pair's checkout, both through resetHardTo).
+// Every one of them is reached only through one of this file's executors, and every executor runs the shared check pipeline before performing its act — the gate executes, it does not merely approve.
 //
 // The pipeline runs four checks, always in this fixed order, stopping at the first failure:
 // containment, ownership, dirtiness, force.
@@ -1299,9 +1294,7 @@ func deleteRemoteBranch(rec *Mutations, req remoteBranchRequest) (deleted bool, 
 	return deleted, err
 }
 
-// updateRemoteBranch is the executor for the leased force push that moves a task pair's own branch on a remote: it runs
-// checkPathRequest over req.pathReq, re-reads the checkout's branch so only the pair's own branch, never the parent branch, is moved,
-// then calls req.repo.UpdateRemoteBranchLeased(req.remote, req.branch, req.sha, req.leaseSHA).
+// updateRemoteBranch is the executor for the leased force push that moves a task pair's own branch on a remote: it runs checkPathRequest over req.pathReq, re-reads the checkout's branch so only the pair's own branch, never the parent branch, is moved, then calls req.repo.UpdateRemoteBranchLeased(req.remote, req.branch, req.sha, req.leaseSHA).
 // A lease that no longer holds returns the divergence refusal, since the remote tip moved after the caller read it and may now hold commits the checkout lacks;
 // any other push failure is wrapped with a way forward.
 // It appends KindRemoteBranchUpdated to rec via AppendRef only once the push succeeded: a remote ref carries no hub-relative conversion.
@@ -1614,14 +1607,11 @@ func (f *Fabric) ResetHard(rec *Mutations, sha string) error {
 // It also moves the pair's task branch on the origin remote to sha, so a later push is not rejected as diverged.
 // The order is: the gate checks; then, unless opts.SkipPush, a fetch and an ancestry read of the remote task branch against HEAD; then the leased remote update; then the checkout rewrite.
 // A refusal at any step before the remote update leaves the remote and the checkout unchanged, and the first refusal met is the local, cheap one.
-// The remote update is skipped, with no record entry, when the repository has no remote, the remote has no such branch,
-// or the remote tip already equals sha or is an ancestor of it.
+// The remote update is skipped, with no record entry, when the repository has no remote, the remote has no such branch, or the remote tip already equals sha or is an ancestor of it.
 // opts.SkipGit does not skip the fetch or the remote update; opts.SkipPush is the only bypass.
 //
-// The bound: the update rewrites only the pair's own task branch, only to sha, only when every commit it drops is reachable from HEAD,
-// and with a lease on the remote tip the ancestry read saw.
-// A remote-only commit becomes reachable only through the `ours` merge the operator runs after reading the commits the refusal lists,
-// which is the one judgment left to the operator.
+// The bound: the update rewrites only the pair's own task branch, only to sha, only when every commit it drops is reachable from HEAD, and with a lease on the remote tip the ancestry read saw.
+// A remote-only commit becomes reachable only through the `ours` merge the operator runs after reading the commits the refusal lists, which is the one judgment left to the operator.
 // If the checkout rewrite fails after the remote moved, the error says so; rec then holds the remote_branch_updated entry, and re-running converges.
 // rec is the caller's recorder; resetHardTo appends the resulting worktree_reset entry to it.
 func (f *Fabric) ResetPairWarp(rec *Mutations, sha, parentBranch string, ownPaths []string, opts SyncOptions) error {
@@ -1650,8 +1640,7 @@ func (f *Fabric) ResetPairWarp(rec *Mutations, sha, parentBranch string, ownPath
 	return nil
 }
 
-// moveRemoteTaskBranch is ResetPairWarp's remote half: it refuses on a remote task branch holding commits HEAD lacks,
-// and otherwise moves the remote branch to sha through updateRemoteBranch, reporting whether it did.
+// moveRemoteTaskBranch is ResetPairWarp's remote half: it refuses on a remote task branch holding commits HEAD lacks, and otherwise moves the remote branch to sha through updateRemoteBranch, reporting whether it did.
 func (f *Fabric) moveRemoteTaskBranch(rec *Mutations, req pathRequest, sha, parentBranch string, opts SyncOptions) (moved bool, err error) {
 	if opts.SkipPush {
 		return false, nil

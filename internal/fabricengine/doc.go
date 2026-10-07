@@ -569,10 +569,7 @@
 //
 // The accumulate-as-you-mutate rule is simple and has no exception: append an entry immediately
 // after a primitive observably changed state, never before, and never for a no-op or a refusal.
-// destroy.go's gate executors auto-record the kinds they perform this way, since every
-// one of them already funnels through the one chokepoint the Fabric Destruction Chokepoint
-// Invariant names; the remaining kinds have no such chokepoint and are hand-recorded at their own
-// success sites instead.
+// destroy.go's gate executors auto-record the kinds they perform this way, since every one of them already funnels through the one chokepoint the Fabric Destruction Chokepoint Invariant names; the remaining kinds have no such chokepoint and are hand-recorded at their own success sites instead.
 //
 // Every mutating entry point owns exactly one recorder: it constructs one via `NewMutations`,
 // threads it as a `*Mutations` parameter into everything the call performs (gate executors
@@ -676,10 +673,7 @@
 //
 // # The destruction chokepoint
 //
-// `destroy.go` is the one file in this package permitted to perform a destructive primitive —
-// `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, deleting a
-// branch on a remote (`git push <remote> --delete`), moving a task branch on a remote (a leased force push), and a warp checkout's `ResetHard` — and every
-// one of them runs its shared four-check pipeline first.
+// `destroy.go` is the one file in this package permitted to perform a destructive primitive — `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, deleting a branch on a remote (`git push <remote> --delete`), moving a task branch on a remote (a leased force push), and a warp checkout's `ResetHard` — and every one of them runs its shared four-check pipeline first.
 // See `PATTERN-fabric-destruction-chokepoint` for the rules;
 // this section is the rationale the invariant deliberately omits.
 //
@@ -711,15 +705,9 @@
 // it removes the freedom to skip one.
 //
 // **Why the gate executes rather than approves.**
-// A gate a caller consults and then acts on independently is advice, not enforcement — the
-// caller can still reach `os.RemoveAll` directly, and nothing distinguishes "checked, then
-// destroyed" from "destroyed". `destroy.go`'s executors (`removePath`, `removeGitWorktree`,
-// `removeLink`, `repointLink`, `deleteBranch`, `deleteRemoteBranch`, `updateRemoteBranch`, `resetHardTo`) run the
-// pipeline and then perform the primitive themselves, so the two can never come apart. This is
-// also what makes the bypass guard meaningful: a raw call to any of the primitives is
-// mechanically bannable everywhere
-// else in this package precisely because there is no legitimate reason for one to exist there —
-// the gate is not one way to destroy something, it is the only way.
+// A gate a caller consults and then acts on independently is advice, not enforcement — the caller can still reach `os.RemoveAll` directly, and nothing distinguishes "checked, then destroyed" from "destroyed".
+// `destroy.go`'s executors (`removePath`, `removeGitWorktree`, `removeLink`, `repointLink`, `deleteBranch`, `deleteRemoteBranch`, `updateRemoteBranch`, `resetHardTo`) run the pipeline and then perform the primitive themselves, so the two can never come apart.
+// This is also what makes the bypass guard meaningful: a raw call to any of the primitives is mechanically bannable everywhere else in this package precisely because there is no legitimate reason for one to exist there — the gate is not one way to destroy something, it is the only way.
 //
 // **Why ownership is a closed enum with no caller-supplied predicate.**
 // A `func() (bool, string)` ownership parameter would let a call site declare "trust me, this is

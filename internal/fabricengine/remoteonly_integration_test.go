@@ -13,8 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// TestFabricRemoteOnlyCommits covers the three answers over the prime warp worktree: a remote branch ahead of HEAD,
-// a remote branch at or behind HEAD, and no remote branch or no remote at all.
+// TestFabricRemoteOnlyCommits covers the three answers over the prime warp worktree: a remote branch ahead of HEAD, a remote branch at or behind HEAD, and no remote branch or no remote at all.
 func TestFabricRemoteOnlyCommits(t *testing.T) {
 	t.Parallel()
 

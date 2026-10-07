@@ -77,12 +77,10 @@ func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 // satisfied-by-another-card union would lose the Create and Rename destinations completed cards
 // contribute to still-pending ones.
 //
-// Once completed is non-empty, a Delete target of a pending card that is already gone is reported as the
-// informational delete-target-gone finding instead of the blocking path-missing or glyph-not-found one:
+// Once completed is non-empty, a Delete target of a pending card that is already gone is reported as the informational delete-target-gone finding instead of the blocking path-missing or glyph-not-found one:
 // the wanted end state is already the tree's state.
 // The same target under the card's own Edit, Uses or Rename old side keeps its blocking finding.
-// The downgrade does not check why the target is gone: it lets through a target removed by a card that edited
-// the wrong file, or one only a mid-run plan edit added.
+// The downgrade does not check why the target is gone: it lets through a target removed by a card that edited the wrong file, or one only a mid-run plan edit added.
 // The plan gate and `lyx webster validate` saw every target exist before the run started,
 // so only a target the run removed or a mid-run edit added reaches it, and the advisory names the target and the card.
 func ValidateDispatch(plan *planparser.Plan, worktreeRoot string, completed, forthcoming []planparser.Card) ([]Finding, error) {
@@ -104,9 +102,7 @@ func ValidateDispatch(plan *planparser.Plan, worktreeRoot string, completed, for
 	return findings, err
 }
 
-// downgradeGoneDeleteTargets replaces, in findings, every blocking path-missing or glyph-not-found finding
-// whose ref is a Delete target of its pending card, and not that card's Edit, Move, Prosa, Uses or Rename old side too,
-// with one informational delete-target-gone finding per card and ref, at the position of the first replaced finding.
+// downgradeGoneDeleteTargets replaces, in findings, every blocking path-missing or glyph-not-found finding whose ref is a Delete target of its pending card, and not that card's Edit, Move, Prosa, Uses or Rename old side too, with one informational delete-target-gone finding per card and ref, at the position of the first replaced finding.
 func downgradeGoneDeleteTargets(pending *planparser.Plan, findings []Finding) []Finding {
 	type cardRef struct{ card, ref string }
 	deleteOnly := make(map[cardRef]bool)

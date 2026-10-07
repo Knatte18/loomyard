@@ -54,13 +54,10 @@ type RebaselineResult struct {
 }
 
 // Rebaseline accepts the on-disk plan as the run's plan without discarding any batch record.
-// It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number,
-// or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only),
-// except that a card named in deps.Cards is accepted when its batch is terminal failed, dead or stuck.
+// It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number, or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only), except that a card named in deps.Cards is accepted when its batch is terminal failed, dead or stuck.
 // It also refuses when 00-overview.md changed, or a changed card file's number is not in deps.Cards, unless the state predates State.PlanFileHashes.
 // The start commit a refusal names is picked by git ancestry.
-// The bound on the accepted card edit: only cards named with --card, only in batches terminal failed, dead or stuck,
-// never a failed batch whose record lists Uncheckable entries, never a change to a batch's card-ID set, never 00-overview.md.
+// The bound on the accepted card edit: only cards named with --card, only in batches terminal failed, dead or stuck, never a failed batch whose record lists Uncheckable entries, never a change to a batch's card-ID set, never 00-overview.md.
 // A dead batch's strand, kept alive when classified dead, may still work on the old card;
 // the restamp stops no strand, and the next recover-batch stops it before it spawns and archives a late report from it.
 // Otherwise it restamps State.PlanFingerprint, State.PlanFileHashes and the CardHashes entry of each accepted card, and leaves every other field untouched.

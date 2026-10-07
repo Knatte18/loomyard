@@ -1,5 +1,4 @@
-// ancestry_test.go covers IsAncestor's and CommitsNotIn's argument-validation guard — pure string-matching logic that
-// must reject a malformed sha or a leading-dash ref before ever spawning git.
+// ancestry_test.go covers IsAncestor's and CommitsNotIn's argument-validation guard — pure string-matching logic that must reject a malformed sha or a leading-dash ref before ever spawning git.
 // It is deliberately untagged (no //go:build constraint) and in the internal package so it can
 // assert no git spawn happens on the rejected path, keeping it in Tier 1 alongside plain `go test`
 // per the Test Tier Purity Invariant.

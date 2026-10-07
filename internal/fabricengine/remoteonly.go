@@ -8,8 +8,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// RemoteOnlyCommits fetches the warp origin and returns the tip of the remote branch named like the warp checkout's current branch,
-// and the commits on it that HEAD lacks, newest first.
+// RemoteOnlyCommits fetches the warp origin and returns the tip of the remote branch named like the warp checkout's current branch, and the commits on it that HEAD lacks, newest first.
 // The tip and the commit list are both empty when the repository has no origin remote or the remote has no such branch;
 // a remote branch at or behind HEAD returns its tip and no commits.
 // A failed fetch or branch read returns the error, and the caller decides whether it refuses or degrades.

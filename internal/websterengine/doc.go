@@ -212,8 +212,7 @@
 // The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
 // A delete-not-done finding gets one more check, planglyph.LaterDeleteReferences over the batch's own cards and the cards of every batch with no record:
 // when an unbegun later card's Edit code still references the target, the failure's reasons name that card and the reference,
-// and the BatchFailedError's way forward is the plan edit (move the delete after that card, rebaseline, then recover-batch), or the `--fresh` steps when the record also lists uncheckable entries,
-// since recover-batch would repeat the same failure.
+// and the BatchFailedError's way forward is the plan edit (move the delete after that card, rebaseline, then recover-batch), or the `--fresh` steps when the record also lists uncheckable entries, since recover-batch would repeat the same failure.
 // PersistRecoveryTerminal fails a recovered batch the same way, and recover-batch runs the same check before spawning:
 // while it fires it refuses with ErrRecoveryDeleteReferenced, which the CLI maps to the `batch_failed` flag.
 // At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.
@@ -243,13 +242,9 @@
 //
 // # bracket verbs, not spawn/poll
 //
-// Because the fork runs inside Master's own session, there is nothing for
-// Go to spawn in the normal path — spawn-batch does not exist here. Go
-// provides thin bracket verbs Master calls around each fork: begin-batch
-// (pause/fingerprint checks, records the batch's start-SHA, renders and
-// writes the fork prompt) immediately before forking, and record-batch (incremental fork
-// audit, batch-report parsing, digest distillation, state update) once the
-// fork has delivered. The Agent-tool fork is a BACKGROUNDED agent: the fork
+// Because the fork runs inside Master's own session, there is nothing for Go to spawn in the normal path — spawn-batch does not exist here.
+// Go provides thin bracket verbs Master calls around each fork: begin-batch (pause/fingerprint checks, records the batch's start-SHA, renders and writes the fork prompt) immediately before forking, and record-batch (incremental fork audit, batch-report parsing, digest distillation, state update) once the fork has delivered.
+// The Agent-tool fork is a BACKGROUNDED agent: the fork
 // call returns immediately, before the batch is done, so Master ends its
 // turn right after spawning it and calls record-batch when the fork's
 // completion notification starts its next turn. That turn end does not end
@@ -286,9 +281,7 @@
 // Forks always inherit Master's current model — there is no per-fork model
 // override, so webster carries no implementer/implementer_oversized fork
 // roles at all; RoleMaster and RoleRecovery are its only two roles.
-// run launches Master with RoleMaster's model, and nothing in begin-batch
-// reads or changes it afterwards; a Master pane an operator moves with
-// /model stays there for the rest of the run.
+// run launches Master with RoleMaster's model, and nothing in begin-batch reads or changes it afterwards; a Master pane an operator moves with /model stays there for the rest of the run.
 //
 // # cold recovery is the only real model escalation
 //
@@ -358,16 +351,8 @@
 // first batch that has no terminal record. Every card an implementer
 // commits survives independently of Master's fate; only reports and state
 // are fabric-committed per batch, so nothing already recorded is ever lost.
-// One crash window needs a distinct resume move: a crash landing between a
-// fork's report and record-batch leaves the re-driven batch with a report
-// already on disk, which begin-batch refuses to overwrite when state.json records the batch — the resumed
-// Master consumes it with record-batch instead (its fork audit keys on the
-// bracket-opening session recorded in the batch state, never the current
-// Master session, so the crashed session's fork transcript — still on
-// disk — is found and policy-checked exactly as a late record would have),
-// or with recover-batch's attach path for a recovery batch (found live in
-// round fable-r3, where auditing the current session instead wedged that
-// resume across all three verbs). This crash window resumes on the SAME
+// One crash window needs a distinct resume move: a crash landing between a fork's report and record-batch leaves the re-driven batch with a report already on disk, which begin-batch refuses to overwrite when state.json records the batch — the resumed Master consumes it with record-batch instead (its fork audit keys on the bracket-opening session recorded in the batch state, never the current Master session, so the crashed session's fork transcript — still on disk — is found and policy-checked exactly as a late record would have), or with recover-batch's attach path for a recovery batch (found live in round fable-r3, where auditing the current session instead wedged that resume across all three verbs).
+// This crash window resumes on the SAME
 // machine only: fork transcripts live under the machine-local ~/.claude
 // projects directory, while state.json and the reports are fabric-synced —
 // a different machine sees the report with no transcript behind it, which

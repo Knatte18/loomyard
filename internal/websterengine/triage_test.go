@@ -75,8 +75,7 @@ func TestWriteTriageFrictionNote(t *testing.T) {
 	})
 }
 
-// TestBackgroundShellNoteAndWarning asserts the friction note and the warning for an expired shell state, per outcome,
-// the shell, the bound, the counted turn end, that lyx did not stop the shell, what ends it and the outcome, in the same words.
+// TestBackgroundShellNoteAndWarning asserts the friction note and the warning for an expired shell state, per outcome, the shell, the bound, the counted turn end, that lyx did not stop the shell, what ends it and the outcome, in the same words.
 func TestBackgroundShellNoteAndWarning(t *testing.T) {
 	const removal = "shuttle removes Master's strand when the run finishes"
 	const reclaim = "the next `lyx webster run` reclaims it at entry"

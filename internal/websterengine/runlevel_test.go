@@ -1465,8 +1465,7 @@ func TestRun_DoneOutcome(t *testing.T) {
 	}
 }
 
-// expiredShellRun drives fx's Run to a shuttle-done end whose Master result lists labels as expired shells,
-// with Master's last action writing outcomeYAML.
+// expiredShellRun drives fx's Run to a shuttle-done end whose Master result lists labels as expired shells, with Master's last action writing outcomeYAML.
 func expiredShellRun(t *testing.T, fx *runFixture, labels []string, outcomeYAML string) websterengine.RunResult {
 	t.Helper()
 	fx.Deps.ShuttleCfg.BackgroundShellWaitMin = 15

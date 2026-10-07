@@ -44,13 +44,11 @@ func writeTriageFrictionNote(frictionDir string, flaky []string) error {
 	return nil
 }
 
-// backgroundShellOutcome is how a run ended after Master's wait counted a turn end past a background shell,
-// and so what finally ends the shell.
+// backgroundShellOutcome is how a run ended after Master's wait counted a turn end past a background shell, and so what finally ends the shell.
 type backgroundShellOutcome struct {
 	// description is the run's outcome after the counted turn end.
 	description string
-	// strandReclaimed is true when Master's strand outlives the run until the next `lyx webster run` reclaims it,
-	// and false when shuttle removes the strand as the run finishes.
+	// strandReclaimed is true when Master's strand outlives the run until the next `lyx webster run` reclaims it, and false when shuttle removes the strand as the run finishes.
 	strandReclaimed bool
 }
 
@@ -68,8 +66,7 @@ func finishedShellOutcome(runResult RunResult) backgroundShellOutcome {
 }
 
 // errorShellOutcome describes a run that returned err.
-// strandReclaimed is true for an error that leaves Master's strand alive (asking, died, timeout),
-// and false for an error after a shuttle-done end, where shuttle still removes the strand.
+// strandReclaimed is true for an error that leaves Master's strand alive (asking, died, timeout), and false for an error after a shuttle-done end, where shuttle still removes the strand.
 func errorShellOutcome(err error, strandReclaimed bool) backgroundShellOutcome {
 	return backgroundShellOutcome{description: "error (" + err.Error() + ")", strandReclaimed: strandReclaimed}
 }

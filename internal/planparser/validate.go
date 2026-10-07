@@ -1,23 +1,6 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
 // (contracts/specs/loom-plan-spec.md), run in this fixed order.
-// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but
-// plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized),
-// plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved),
-// index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing),
-// card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel),
-// card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget),
-// directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed),
-// rename-format (checkRenameFormat), handle-dangling,
-// handle-collision, handle-unreferenced (all three checkHandleConsistency), handle-malformed
-// (checkHandleMalformed), rename-to-not-handle, rename-from-not-glyph (both
-// checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing),
-// card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty),
-// card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget),
-// containment-unit-overlap
-// (syntacticContainment, containment.go), impact-summary-multiline
-// (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering
-// (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch
-// (checkCommitSubjectMismatch).
+// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision, handle-unreferenced (all three checkHandleConsistency), handle-malformed (checkHandleMalformed), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), containment-unit-overlap (syntacticContainment, containment.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch (checkCommitSubjectMismatch).
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
 // No scheduler, dependency graph, or topological sort belongs in this file — the dependency graph
@@ -66,16 +49,12 @@ func cardID(c Card) string {
 	return fmt.Sprintf("%d-%s", c.Number, c.Slug)
 }
 
-// Validate runs every plan-format machine check against plan, including the plan-unapproved
-// approval gate, and returns every finding in fixed order: every check ID documented in this
-// file's package comment, with plan-unapproved at position three.
+// Validate runs every plan-format machine check against plan, including the plan-unapproved approval gate, and returns every finding in fixed order: every check ID documented in this file's package comment, with plan-unapproved at position three.
 func Validate(plan *Plan, worktreeRoot string) []ValidationError {
 	return validate(plan, worktreeRoot, true)
 }
 
-// ValidateFormat runs every plan-format machine check against plan except the plan-unapproved
-// approval gate, and returns every finding in fixed order: every check ID documented in this
-// file's package comment but plan-unapproved.
+// ValidateFormat runs every plan-format machine check against plan except the plan-unapproved approval gate, and returns every finding in fixed order: every check ID documented in this file's package comment but plan-unapproved.
 // Approval is deliberately not ValidateFormat's business: the approved: flag is written after the
 // review segment settles, so a pre-review caller must not be told the plan is unapproved.
 func ValidateFormat(plan *Plan, worktreeRoot string) []ValidationError {

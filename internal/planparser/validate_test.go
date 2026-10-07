@@ -1026,9 +1026,7 @@ func TestValidate_CardFieldOverlap(t *testing.T) {
 	})
 }
 
-// TestValidate_UsesLaterTarget covers uses-later-target: a card's Uses entry naming a target of a
-// card with a higher number is one finding attributed to the consumer, matched like the sequencer's
-// producer-before-consumer rule (exact string after trimming, empty entries ignored, any type label).
+// TestValidate_UsesLaterTarget covers uses-later-target: a card's Uses entry naming a target of a card with a higher number is one finding attributed to the consumer, matched like the sequencer's producer-before-consumer rule (exact string after trimming, empty entries ignored, any type label).
 func TestValidate_UsesLaterTarget(t *testing.T) {
 	t.Parallel()
 

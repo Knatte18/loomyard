@@ -136,17 +136,8 @@ func hasFileExtension(raw string) bool {
 // rewrite a bare directory path such as "internal/foo" into the perfectly valid unit self glyph
 // "internal/foo#", leaving directory-target nothing left to classify.
 //
-// The slash-free half is what keeps classifyRef's own rule 4 — the extensionless repository-root
-// filename ("LICENSE", "Makefile", "Dockerfile") — usable end to end. directory-target only ever
-// fires on a ref that CONTAINS a "/" (validate.go), so exempting the slash-free case from the
-// extension requirement costs that check nothing while removing the one ref class the classifier
-// admits and every glyph-backed layer downstream then chokes on: left as the bare token "LICENSE",
-// such a ref validates 100% clean through every pure check and is then handed verbatim
-// to quarry, which rejects it BEFORE resolution ("a glyph needs a \"#\"") — so
-// internal/planglyph's DoneChecks read the rejection as "not resolved" and reported a permanent,
-// unrecoverable create-not-done against a card that had in fact created the file, while
-// checkProsaSymbolTarget reported a false prosa-symbol-target for the very spelling rule 4 exists
-// to make legal (crucible round opus-high-r9, R9-1).
+// The slash-free half is what keeps classifyRef's own rule 4 — the extensionless repository-root filename ("LICENSE", "Makefile", "Dockerfile") — usable end to end.
+// directory-target only ever fires on a ref that CONTAINS a "/" (validate.go), so exempting the slash-free case from the extension requirement costs that check nothing while removing the one ref class the classifier admits and every glyph-backed layer downstream then chokes on: left as the bare token "LICENSE", such a ref validates 100% clean through every pure check and is then handed verbatim to quarry, which rejects it BEFORE resolution ("a glyph needs a \"#\"") — so internal/planglyph's DoneChecks read the rejection as "not resolved" and reported a permanent, unrecoverable create-not-done against a card that had in fact created the file, while checkProsaSymbolTarget reported a false prosa-symbol-target for the very spelling rule 4 exists to make legal (crucible round opus-high-r9, R9-1).
 // Canonicalized to "LICENSE#" the same ref resolves found, which is the spelling quarry's own
 // rejection message recommends.
 //

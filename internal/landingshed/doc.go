@@ -17,8 +17,7 @@
 // and a missing command logs a warning and proceeds.
 //
 // The push that follows is never retried when the remote rejects it, because the remote task branch moved and a repeat would be rejected again.
-// Publish reads the remote task branch's tip and the commits on it that the local branch lacks through Deps.RemoteOnlyCommits,
-// and stops Stuck with a reason stating that the merge-in already ran, the tip, the commit count, and the way forward:
+// Publish reads the remote task branch's tip and the commits on it that the local branch lacks through Deps.RemoteOnlyCommits, and stops Stuck with a reason stating that the merge-in already ran, the tip, the commit count, and the way forward:
 // merge `origin/<task-branch>` in the task worktree, then resume the run with `lyx loom start`, which re-runs Publish over the merged branch.
 // A failed read keeps the rejection and the way forward and names the cause.
 // A remote with no task branch, or a remote task branch that holds no commit the local branch lacks, is not cleared by a merge, so the reason names a remote rule as the cause and the way forward is to clear it, then resume.

@@ -210,9 +210,7 @@ func (fx *verbsFixture) initState(t *testing.T) *websterengine.State {
 	return seedRunState(t, fx.CLI)
 }
 
-// TestBeginBatchCmd_HappyPath proves the success envelope carries prompt_path/start_sha and no model key,
-// that begin-batch types nothing into Master's pane,
-// and that state.json was persisted with the new BatchState.
+// TestBeginBatchCmd_HappyPath proves the success envelope carries prompt_path/start_sha and no model key, that begin-batch types nothing into Master's pane, and that state.json was persisted with the new BatchState.
 func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
@@ -250,8 +248,7 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	}
 }
 
-// TestBeginBatchCmd_ReportOnDisk proves begin-batch archives a report that has no begin-batch record
-// and names the archive as archived_report, while a report over a recorded batch is refused with the record's state named.
+// TestBeginBatchCmd_ReportOnDisk proves begin-batch archives a report that has no begin-batch record and names the archive as archived_report, while a report over a recorded batch is refused with the record's state named.
 func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -557,8 +554,7 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 	}
 }
 
-// TestRecordBatchCmd_DeleteReferencedByLaterCard proves a batch whose Delete target an unbegun later card still references fails record-batch with batch_failed naming that card and the plan edit,
-// and that recover-batch over it then refuses before spawning with the same flag and way forward.
+// TestRecordBatchCmd_DeleteReferencedByLaterCard proves a batch whose Delete target an unbegun later card still references fails record-batch with batch_failed naming that card and the plan edit, and that recover-batch over it then refuses before spawning with the same flag and way forward.
 func TestRecordBatchCmd_DeleteReferencedByLaterCard(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
@@ -873,8 +869,7 @@ var (
 	_ websterengine.MasterHandle  = (*verbsDiedMaster)(nil)
 )
 
-// TestRunCmd_DiedMasterNotesExpiredShellOutcome drives `run` through its cobra command with a Master that dies after one background shell ran past the wait,
-// and asserts the friction note on disk states the error outcome and that the next run reclaims the strand.
+// TestRunCmd_DiedMasterNotesExpiredShellOutcome drives `run` through its cobra command with a Master that dies after one background shell ran past the wait, and asserts the friction note on disk states the error outcome and that the next run reclaims the strand.
 func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)

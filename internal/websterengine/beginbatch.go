@@ -1,6 +1,4 @@
-// beginbatch.go implements BeginBatch, the first of webster's two bracket verbs Master calls around
-// each in-session fork: the pause and fingerprint refusal gates, start-SHA capture, the previous
-// batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
+// beginbatch.go implements BeginBatch, the first of webster's two bracket verbs Master calls around each in-session fork: the pause and fingerprint refusal gates, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
 // BeginBatch never touches fabric (webster is fabric-blind throughout) and never persists deps.State
 // itself — the caller holds the state-mutation lease (AcquireStateMutation) across its whole
 // begin-batch call and saves state via SaveState once BeginBatch returns successfully, webster's
@@ -89,8 +87,7 @@ var ErrPlanDrifted = errors.New("webster: plan re-resolution at begin-batch repo
 // depends on Batches already being in that order;
 // State is the already-loaded run state BeginBatch reads and mutates;
 // Config is the loaded webster.yaml;
-// Reed is the live reed query surface the prior-recovery-strand reclaim consults (a dead-but-live
-// recovery record a fork batch is about to overwrite);
+// Reed is the live reed query surface the prior-recovery-strand reclaim consults (a dead-but-live recovery record a fork batch is about to overwrite);
 // Geom is the told Geometry BeginBatch reads every path from: WorktreeRoot is the repo checkout
 // HeadSHA is captured from and RenderForkPrompt's promptWorktreeRoot, WebsterDir and ReportsDir are
 // the reports directory, and PromptsDir and StencilsDir feed the prompt write and the fork
@@ -332,19 +329,15 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.Geom.ReportsDir, err)
 	}
 
-	// webster's own pre-existing-report guard, applied to the fork path: a
-	// batch whose report already landed is finished work — silently
-	// overwriting its BatchState (and letting a fresh fork overwrite the
-	// report) must never happen by accident. A no_report re-fork never
+	// webster's own pre-existing-report guard, applied to the fork path: a batch whose report already landed is finished work — silently overwriting its BatchState (and letting a fresh fork overwrite the report) must never happen by accident.
+	// A no_report re-fork never
 	// calls begin-batch again (the bracket is still open), with ONE
 	// exception: a run resumed after a crash that landed between the
 	// fork's report and record-batch re-drives a batch whose report IS on
 	// disk — that report is consumed by record-batch (the audit keys on
 	// the bracket-opening session, see RecordBatch), so the refusal
 	// message names that recourse alongside the stuck-batch one.
-	// Bound: only a batch with no record in state.json has its report archived and the
-	// begin proceeds, since such a report cannot be attributed to any begun batch and
-	// record-batch would only archive it and send the caller back here;
+	// Bound: only a batch with no record in state.json has its report archived and the begin proceeds, since such a report cannot be attributed to any begun batch and record-batch would only archive it and send the caller back here;
 	// a recorded batch's report is never archived by begin-batch.
 	existingReport := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
 	var archivedReport string

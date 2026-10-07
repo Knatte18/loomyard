@@ -1,10 +1,6 @@
-// beginbatch_test.go exercises BeginBatch end to end (Tier 1 — see
-// docs/benchmarks/running-tests.md): a temp directory backs
-// WorktreeRoot with a fakeGit answering the HeadSHA capture, while the reed query seam is a shuttlefake.Reed.
-// The plan itself is a minimal *planparser.Plan (Dir only — begin-batch never reads
-// Plan.Cards, only deps.Batches, the already-derived execution batches),
-// backed by a t.TempDir() seeded with a throwaway markdown file so the
-// fingerprint gate has something real to hash. There is no chain/restart
+// beginbatch_test.go exercises BeginBatch end to end (Tier 1 — see docs/benchmarks/running-tests.md): a temp directory backs WorktreeRoot with a fakeGit answering the HeadSHA capture, while the reed query seam is a shuttlefake.Reed.
+// The plan itself is a minimal *planparser.Plan (Dir only — begin-batch never reads Plan.Cards, only deps.Batches, the already-derived execution batches), backed by a t.TempDir() seeded with a throwaway markdown file so the fingerprint gate has something real to hash.
+// There is no chain/restart
 // path and no oversized role under the flat card-list model: this file's
 // own mustFingerprint helper duplicates fingerprint.go's pure hashing
 // algorithm rather than importing anything, since this file deliberately
@@ -160,9 +156,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	return &beginFixture{Deps: deps, Reed: reed, Git: git, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
 }
 
-// TestBeginBatch_Refusals proves each entry refusal names its way forward: a pause, a plan edited
-// after run init, and a report already on disk for a terminal record (left untouched) or for a begun
-// non-terminal record (left for record-batch), each message naming the record it saw.
+// TestBeginBatch_Refusals proves each entry refusal names its way forward: a pause, a plan edited after run init, and a report already on disk for a terminal record (left untouched) or for a begun non-terminal record (left for record-batch), each message naming the record it saw.
 func TestBeginBatch_Refusals(t *testing.T) {
 	t.Parallel()
 

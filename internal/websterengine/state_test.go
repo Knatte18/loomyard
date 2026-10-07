@@ -110,11 +110,7 @@ func TestState_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestLoadState_UnusualFiles pins LoadState on a state.json that is absent (nil, nil), corrupt
-// (a wrapped error, never a guessed value) or written before the integration stage was retired
-// (the retired integrationFix and assertedModel fields are ignored, every other field loads intact and
-// a save writes no assertedModel key, the reserved -1 batch record stays an ordinary entry, and the
-// audit-ledger fields it predates decode as nil).
+// TestLoadState_UnusualFiles pins LoadState on a state.json that is absent (nil, nil), corrupt (a wrapped error, never a guessed value) or written before the integration stage was retired (the retired integrationFix and assertedModel fields are ignored, every other field loads intact and a save writes no assertedModel key, the reserved -1 batch record stays an ordinary entry, and the audit-ledger fields it predates decode as nil).
 func TestLoadState_UnusualFiles(t *testing.T) {
 	t.Parallel()
 

@@ -294,8 +294,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 //  3. A not-ready start no longer leaks (shuttle tears the strand down) unless that teardown's own
 //     strand removal fails, which the returned error then states.
 //
-// Before spawning, it refuses with ErrRecoveryDeleteReferenced while an unbegun later card's Edit code still references a symbol the batch's own cards delete,
-// since a recovery cannot change the plan and would fail the same done-check again.
+// Before spawning, it refuses with ErrRecoveryDeleteReferenced while an unbegun later card's Edit code still references a symbol the batch's own cards delete, since a recovery cannot change the plan and would fail the same done-check again.
 // The bound: it refuses only while that check fires for the batch's own cards against the current plan and tree;
 // moving the delete and rebaselining clears it.
 func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *BatchState, spawned bool, err error) {

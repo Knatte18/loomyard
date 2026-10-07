@@ -1,9 +1,6 @@
 //go:build integration
 
-// resetpairwarp_integration_test.go covers Fabric.ResetPairWarp, the gated reset of a task pair's warp checkout:
-// a reset past later commits and own-path dirt that keeps untracked files, moves the remote task branch and records remote_branch_updated then worktree_reset,
-// a refusal on dirt outside the own paths that precedes any fetch, the four ownership refusals,
-// and the remote half's refusals, skips, stale lease and failed checkout rewrite.
+// resetpairwarp_integration_test.go covers Fabric.ResetPairWarp, the gated reset of a task pair's warp checkout: a reset past later commits and own-path dirt that keeps untracked files, moves the remote task branch and records remote_branch_updated then worktree_reset, a refusal on dirt outside the own paths that precedes any fetch, the four ownership refusals, and the remote half's refusals, skips, stale lease and failed checkout rewrite.
 //
 // Every hub is built through hubforge.NewHub with an empty branch_prefix, so the pair's warp branch is the bare slug.
 //

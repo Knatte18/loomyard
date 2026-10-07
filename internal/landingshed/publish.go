@@ -45,8 +45,7 @@ type Publish struct {
 
 var _ shedengine.ShedProducer = (*Publish)(nil)
 
-// NewPublish constructs a Publish from deps, rejecting a nil OpenFabric, PushBranch or RemoteOnlyCommits closure up
-// front with a distinct error each -- rather than nil-panicking at call time.
+// NewPublish constructs a Publish from deps, rejecting a nil OpenFabric, PushBranch or RemoteOnlyCommits closure up front with a distinct error each -- rather than nil-panicking at call time.
 //
 // It builds the resolver at construction time, opening deps.OpenFabric's lazily-opened handle and
 // calling mergeresolve.New with it alongside every other told value. Construction time is correct

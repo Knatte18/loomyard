@@ -1165,9 +1165,7 @@ func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
 	}
 }
 
-// TestRebaselineCmd_Refusals proves each refused rebaseline exits non-zero with its way forward and leaves state.json byte-identical:
-// an edited card the operator did not name (naming --card), a --card value that is not a positive integer (a usage error naming the value), a removed card whose batch was begun (naming --fresh),
-// and a named card of a done batch (naming that its work has landed, and --fresh).
+// TestRebaselineCmd_Refusals proves each refused rebaseline exits non-zero with its way forward and leaves state.json byte-identical: an edited card the operator did not name (naming --card), a --card value that is not a positive integer (a usage error naming the value), a removed card whose batch was begun (naming --fresh), and a named card of a done batch (naming that its work has landed, and --fresh).
 // It sets WEFT_SKIP_GIT, so it is not parallel.
 func TestRebaselineCmd_Refusals(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
