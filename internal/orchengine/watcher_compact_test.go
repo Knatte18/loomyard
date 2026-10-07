@@ -16,7 +16,7 @@ func newCompactEnv(t *testing.T) *watchEnv {
 	e.cfg.CycleMode = CycleCompact
 	e.cfg.SoftThresholdTokens = 5000
 	e.cfg.SoftIdleS = 60
-	e.s.boundary = map[string]time.Time{}
+	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{}
 	e.w = e.newWatcher()
 	return e
 }
@@ -48,9 +48,14 @@ func (e *watchEnv) reachCompacting() {
 	}
 }
 
-// landBoundary makes the transcript read through turn end "a" as a compaction boundary at, with tokens.
+// landBoundary makes the transcript of turn end "a" hold a compaction boundary at, with no turn end after it, and reads tokens through "a".
 func (e *watchEnv) landBoundary(at time.Time, tokens int) {
-	e.s.boundary["a"] = at
+	e.landBoundaryFollowedBy(at, tokens, 0)
+}
+
+// landBoundaryFollowedBy is landBoundary with turnEndsAfter turn ends after the boundary, "a" being the newest.
+func (e *watchEnv) landBoundaryFollowedBy(at time.Time, tokens, turnEndsAfter int) {
+	e.s.autoCompact["a"] = shuttleengine.CompactionBoundary{At: at, TurnEndsAfter: turnEndsAfter, ReadTurnEndAfter: turnEndsAfter > 0}
 	e.s.usage["a"] = tokens
 }
 
@@ -160,37 +165,52 @@ func TestCompact_RenderFailureAfterNoteChangesNothing(t *testing.T) {
 }
 
 func TestCompact_CompletesOnBoundaryAfterEntryAndIdle(t *testing.T) {
-	e := newCompactEnv(t)
-	e.reachCompacting()
-	entered := e.state().PhaseEnteredAt
+	t.Parallel()
 
-	e.landBoundary(entered.Add(-time.Second), 3000)
-	e.clock.advance(5 * time.Second)
-	e.tick()
-	if st := e.state(); st.Phase != PhaseCompacting || st.CycleCount != 0 {
-		t.Fatalf("a boundary before entry completed the phase: %+v", st)
-	}
+	for _, c := range []struct {
+		name          string
+		turnEndsAfter int
+	}{
+		{"no turn end after the boundary", 0},
+		{"a turn end answered after the boundary", 2},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newCompactEnv(t)
+			e.reachCompacting()
+			entered := e.state().PhaseEnteredAt
 
-	e.landBoundary(entered.Add(2*time.Second), 150)
-	e.s.idle = false
-	e.tick()
-	if st := e.state(); st.Phase != PhaseCompacting {
-		t.Fatalf("phase = %s, want compacting while the pane is not idle", st.Phase)
-	}
+			for _, at := range []time.Time{entered.Add(-time.Second), entered} {
+				e.landBoundaryFollowedBy(at, 3000, c.turnEndsAfter)
+				e.clock.advance(5 * time.Second)
+				e.tick()
+				if st := e.state(); st.Phase != PhaseCompacting || st.CycleCount != 0 {
+					t.Fatalf("a boundary at %v (entry %v) completed the phase: %+v", at, entered, st)
+				}
+			}
 
-	e.s.idle = true
-	e.tick()
-	st := e.state()
-	if st.Phase != PhaseResuming || st.CycleCount != 1 || st.LastContextTokens != 150 || !st.LastContextKnown {
-		t.Errorf("state = %+v", st)
+			e.landBoundaryFollowedBy(entered.Add(2*time.Second), 150, c.turnEndsAfter)
+			e.s.idle = false
+			e.tick()
+			if st := e.state(); st.Phase != PhaseCompacting {
+				t.Fatalf("phase = %s, want compacting while the pane is not idle", st.Phase)
+			}
+
+			e.s.idle = true
+			e.tick()
+			st := e.state()
+			if st.Phase != PhaseResuming || st.CycleCount != 1 || st.LastContextTokens != 150 || !st.LastContextKnown {
+				t.Errorf("state = %+v", st)
+			}
+			if !st.CompactionBaseline.Equal(entered.Add(2 * time.Second)) {
+				t.Errorf("CompactionBaseline = %v, want the handled boundary", st.CompactionBaseline)
+			}
+			if st.LastAbortReason != "" || st.LastHandoff == "" {
+				t.Errorf("completion recorded an abort or lost the note: %+v", st)
+			}
+			e.assertCompactCalls(1)
+		})
 	}
-	if !st.CompactionBaseline.Equal(entered.Add(2 * time.Second)) {
-		t.Errorf("CompactionBaseline = %v, want the handled boundary", st.CompactionBaseline)
-	}
-	if st.LastAbortReason != "" || st.LastHandoff == "" {
-		t.Errorf("completion recorded an abort or lost the note: %+v", st)
-	}
-	e.assertCompactCalls(1)
 }
 
 func TestCompact_CycleReloadsPluginsThenPointerNamingTheNote(t *testing.T) {
@@ -214,16 +234,6 @@ func TestCompact_CycleReloadsPluginsThenPointerNamingTheNote(t *testing.T) {
 	e.tick()
 	if e.s.count(reloadPluginsCall) != 1 {
 		t.Errorf("the compaction's own boundary reloaded again: %v", e.s.calls)
-	}
-}
-
-func TestCompact_BoundaryAtEntryCompletes(t *testing.T) {
-	e := newCompactEnv(t)
-	e.reachCompacting()
-	e.landBoundary(e.state().PhaseEnteredAt, 150)
-	e.tick()
-	if st := e.state(); st.Phase != PhaseResuming || st.CycleCount != 1 {
-		t.Errorf("state = %+v", st)
 	}
 }
 
@@ -342,21 +352,24 @@ func TestCompact_RestartWithBoundaryReadTypesNothing(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name      string
-		idle      bool
-		wantPhase Phase
+		name string
+		idle bool
+		// turnEndsAfter is the number of turn ends after the boundary in the transcript.
+		turnEndsAfter int
+		wantPhase     Phase
 		// wantCycles is the cycle count the restarted tick must have recorded.
 		wantCycles int
 	}{
-		{"idle pane completes without retyping", true, PhaseResuming, 1},
-		{"busy pane keeps compacting", false, PhaseCompacting, 0},
+		{"idle pane completes without retyping", true, 0, PhaseResuming, 1},
+		{"idle pane completes on a boundary followed by a turn end", true, 2, PhaseResuming, 1},
+		{"busy pane keeps compacting", false, 0, PhaseCompacting, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			e := newCompactEnv(t)
 			e.reachCompacting()
-			e.landBoundary(e.state().PhaseEnteredAt.Add(time.Second), 150)
+			e.landBoundaryFollowedBy(e.state().PhaseEnteredAt.Add(time.Second), 150, c.turnEndsAfter)
 
 			e.w = e.newWatcher()
 			e.s.idle = c.idle
@@ -421,7 +434,6 @@ func TestCycleRequest_ModeFollowsRequestNotConfig(t *testing.T) {
 	})
 	t.Run("compact request in clear config compacts", func(t *testing.T) {
 		e := newWatchEnv(t)
-		e.s.boundary = map[string]time.Time{}
 		e.s.usage["a"] = 10
 		e.s.events = []shuttleengine.Event{stop("a")}
 		if err := RequestCycle(e.paths, CycleCompact, e.clock.now); err != nil {

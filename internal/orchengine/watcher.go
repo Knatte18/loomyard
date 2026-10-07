@@ -855,19 +855,30 @@ func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
 	return w.startReload(st, now, true)
 }
 
-// tickCompacting re-reads the context through State.ReadingTurnEnd every tick, since a compaction ends without a turn end.
-// The phase completes on a compaction boundary at or after the phase was entered, once the idle probe passes; an earlier boundary never completes it.
+// tickCompacting searches the transcript State.ReadingTurnEnd names for a compaction boundary every tick, since a compaction ends without a turn end.
+// The boundary is searched for rather than read off the newest entry, because a message answered right after the boundary hides it there.
+// The phase completes on a boundary after the phase was entered, whatever follows it, once the idle probe passes; an earlier boundary never completes it.
 // Past the handoff timeout it returns to idle and holds the next automatic trigger for the soft idle, through LastDeferral.
-// An unconfirmed `/compact` is typed again only when the idle probe passes and no qualifying boundary has been read.
+// An unconfirmed `/compact` is typed again only when the idle probe passes and no qualifying boundary has been found.
 func (w *Watcher) tickCompacting(st State, now time.Time) error {
-	var reading shuttleengine.ContextReading
+	var boundary shuttleengine.CompactionBoundary
 	qualifying := false
 	if st.ReadingTurnEnd != nil {
 		var err error
-		if reading, err = w.session.ContextTokens(*st.ReadingTurnEnd); err != nil {
+		if boundary, qualifying, err = w.session.CompactedSince(*st.ReadingTurnEnd, st.PhaseEnteredAt); err != nil {
 			return err
 		}
-		qualifying = reading.Known && reading.Compacted && !reading.BoundaryAt.Before(st.PhaseEnteredAt)
+	}
+	storeCurrentReading := func() error {
+		if st.ReadingTurnEnd == nil {
+			return nil
+		}
+		reading, err := w.session.ContextTokens(*st.ReadingTurnEnd)
+		if err != nil {
+			return err
+		}
+		storeReading(&st, reading, *st.ReadingTurnEnd)
+		return nil
 	}
 
 	idleProbed, idle := false, false
@@ -888,15 +899,17 @@ func (w *Watcher) tickCompacting(st State, now time.Time) error {
 			return err
 		}
 		if idle {
-			storeReading(&st, reading, *st.ReadingTurnEnd)
+			if err := storeCurrentReading(); err != nil {
+				return err
+			}
 			st.CycleCount++
-			st.CompactionBaseline = reading.BoundaryAt
+			st.CompactionBaseline = boundary.At
 			return w.reloadAfterCompaction(st, now)
 		}
 	}
 	if now.Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout() {
-		if st.ReadingTurnEnd != nil {
-			storeReading(&st, reading, *st.ReadingTurnEnd)
+		if err := storeCurrentReading(); err != nil {
+			return err
 		}
 		st.LastDeferral = now
 		return w.toIdle(st, "compaction timed out")

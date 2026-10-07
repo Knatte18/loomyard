@@ -23,8 +23,7 @@ func (c *fakeClock) advance(d time.Duration) { c.now = c.now.Add(d) }
 type fakeSession struct {
 	alive      bool
 	events     []shuttleengine.Event
-	usage      map[string]int       // Turn-end message to tokens; a missing message is unknown.
-	boundary   map[string]time.Time // Turn-end message to a compaction boundary read through it; the boundary's tokens are usage's.
+	usage      map[string]int // Turn-end message to tokens; a missing message is unknown.
 	idle       bool
 	idleSeq    []bool // Consumed before idle.
 	tooShort   bool   // Reported with every probe that is not idle.
@@ -75,8 +74,7 @@ func (f *fakeSession) ReadEvents(_ string, offset int64) ([]shuttleengine.Event,
 func (f *fakeSession) ContextTokens(ev shuttleengine.Event) (shuttleengine.ContextReading, error) {
 	f.tokenAsks = append(f.tokenAsks, ev.Message)
 	n, ok := f.usage[ev.Message]
-	at, compacted := f.boundary[ev.Message]
-	return shuttleengine.ContextReading{Tokens: n, Known: ok, Compacted: compacted, BoundaryAt: at}, nil
+	return shuttleengine.ContextReading{Tokens: n, Known: ok}, nil
 }
 
 func (f *fakeSession) SessionIdle(string) (shuttleengine.IdleProbe, error) {
