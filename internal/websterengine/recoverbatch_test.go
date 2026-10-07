@@ -793,13 +793,14 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 	// Only a refusal over pathless fabric references names the accept-audit --batch route.
 	const acceptBatchStep = `"lyx webster accept-audit --batch 1" then "lyx webster recover-batch 1"`
 	// The route names both evidence: HEAD at the start commit, and a committed batch whose recorded commands are read-only.
+	const startRouteText = "when the worktree is clean and HEAD is the batch's start commit"
 	const committedRouteText = "or the batch's commits are kept and every recorded command is read-only"
 	fabricRefusalCheck := func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
 		fabricRefusalBase(t, fx, bs, spawned, err)
 		if err == nil {
 			return
 		}
-		for _, want := range []string{acceptBatchStep, committedRouteText} {
+		for _, want := range []string{acceptBatchStep, startRouteText, committedRouteText} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("error %q lacks %q", err, want)
 			}
