@@ -281,6 +281,17 @@ func TestPublish_StuckBeforePullRequest(t *testing.T) {
 			wantPushCalled:     true,
 		},
 		{
+			name:    "push rejected with no remote-only commit names a remote rule and no merge",
+			pushErr: gitrepo.ErrPushRejected,
+			mutate: func(d *Deps) {
+				d.RemoteOnlyCommits = func() (string, []string, error) { return "abc123", nil, nil }
+			},
+			resolved:           resolved,
+			wantReason:         "push rejected by the remote after the merge-in against parent branch \"main\"; the remote task branch holds no commit the local branch lacks, so a merge adds nothing and the remote rejected the push for its own rule, such as a hook; way forward: clear what the remote's rule objects to, then resume the run with `lyx loom start`",
+			wantResolverCalled: true,
+			wantPushCalled:     true,
+		},
+		{
 			name:    "push rejected with a failed remote read keeps the rejection and the way forward",
 			pushErr: gitrepo.ErrPushRejected,
 			mutate: func(d *Deps) {
