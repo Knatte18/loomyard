@@ -24,13 +24,9 @@
 // no-`fatal:`-leak surface forbids folding git's stderr into their
 // messages, which is what run's raw form lets them keep working around.
 // Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push, PushCoalesced, ResetHard, IsAncestor, CommitsNotIn, UpdateRemoteBranchLeased, and HasUnpushed (measured and reverted from a go-git ancestry walk; see HasUnpushed's own godoc in push.go for the reversal criterion) — sits on runChecked.
-// See PATTERN-gitrepo-client-boundary for the
-// enforced, exhaustive version of this split and the review obligation any
-// new CLI call inside this package carries. gitexec itself stays a
-// zero-dependency leaf regardless of which side of the boundary a gitrepo
-// method is on — it has roughly seventy non-test call sites across
-// gitrepo, fabricengine, fabriccli, lyxcwd, and websterengine, and gitrepo
-// remains one of its many consumers, not merged into it.
+// See PATTERN-gitrepo-client-boundary for the enforced, exhaustive version of this split and the review obligation any new CLI call inside this package carries.
+// gitexec itself stays a zero-dependency leaf regardless of which side of the boundary a gitrepo method is on — it has roughly seventy non-test call sites across gitrepo, fabricengine, fabriccli, lyxcwd, and websterengine,
+// and gitrepo remains one of its many consumers, not merged into it.
 //
 // Some outcome classification still matches git's own untranslated
 // (C/English locale) message text — but less of it than before this
