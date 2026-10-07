@@ -114,6 +114,77 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	}
 }
 
+// TestAddRollback_LiveWeftFromOrigin forces Add to fail after it took a live pair's weft branch from origin, and asserts the rollback leaves origin untouched:
+// a local branch Add created from origin is deleted,
+// and a pre-existing local branch Add fast-forwarded stays at origin's tip, not rewound.
+func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name           string
+		localBehind    bool
+		wantBranchGone bool
+	}{
+		{name: "origin-only branch created locally is deleted", wantBranchGone: true},
+		{name: "fast-forwarded local branch stays at origin's tip", localBehind: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			slug := "live-rollback-origin"
+			if tc.localBehind {
+				slug = "live-rollback-ff"
+			}
+			h := hubforge.NewHub(t, ".")
+			l := h.Location
+			weftBranch := fabricengine.WeftBranchName(slug)
+			weftRoot := mustWeftRepoRoot(t, l)
+
+			clone := t.TempDir()
+			gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.WeftBare, ".")
+			gitkit.MustRun(t, clone, "git", "checkout", "--quiet", "-b", weftBranch)
+			gitkit.CommitFile(t, clone, "first.txt", "first\n", "first origin work")
+			gitkit.MustRun(t, clone, "git", "push", "--quiet", "origin", weftBranch)
+			if tc.localBehind {
+				gitkit.MustRun(t, weftRoot, "git", "fetch", "--quiet", "origin", weftBranch)
+				gitkit.MustRun(t, weftRoot, "git", "branch", weftBranch, "FETCH_HEAD")
+				gitkit.CommitFile(t, clone, "second.txt", "second\n", "second origin work")
+				gitkit.MustRun(t, clone, "git", "push", "--quiet", "origin", weftBranch)
+			}
+			originTip := gitkit.RevParse(t, h.WeftBare, weftBranch)
+
+			// A blocker at the portal location fails Add at createPortal, after the weft branch is taken from origin.
+			portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
+			if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
+				t.Fatalf("mkdir portal parent: %v", err)
+			}
+			if err := os.WriteFile(portalLink, []byte("blocker"), 0o644); err != nil {
+				t.Fatalf("create blocker: %v", err)
+			}
+
+			if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
+				t.Fatalf("Add should have failed (portal blocker)")
+			}
+
+			if got := gitkit.RevParse(t, h.WeftBare, weftBranch); got != originTip {
+				t.Errorf("origin weft branch = %s; want unchanged %s", got, originTip)
+			}
+			exists := gitkit.BranchExists(t, weftRoot, weftBranch)
+			if exists == tc.wantBranchGone {
+				t.Errorf("local weft branch exists = %v; want %v", exists, !tc.wantBranchGone)
+			}
+			if exists {
+				if got := gitkit.RevParse(t, weftRoot, "refs/heads/"+weftBranch); got != originTip {
+					t.Errorf("local weft branch = %s; want origin's tip %s", got, originTip)
+				}
+			}
+			if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
+				t.Errorf("weft worktree dir still exists at %s", fabricengine.WeftWorktreePath(l, slug))
+			}
+		})
+	}
+}
+
 // TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix documents the F2 behaviour: under the DEFAULT
 // empty branch_prefix, the warp branch Add creates is a bare slug the gate cannot prove is fabric's,
 // so rollbackAdd's step-5 deletion is refused and the branch is left behind — while the worktree pair

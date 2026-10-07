@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/go-github/v75/github"
@@ -160,6 +161,11 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		}
 	}
 
+	// Step 1c: read the task's per-worktree config changes before any parent-side mutation,
+	// so the diff is taken against the parent as the task forked from it;
+	// the notice it yields is queued only at Done.
+	notice := fz.configChangeNotice()
+
 	// Step 2: catch the task worktree up with the parent branch.
 	if outcome, out, err, done := fz.mergeInStep(ctx); done {
 		return outcome, out, err
@@ -179,7 +185,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	_, mergeErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 	if mergeErr == nil {
 		fz.markTaskDone()
-		return fz.pushParent(ctx, parentHandle)
+		return fz.pushParent(ctx, parentHandle, notice)
 	}
 
 	// Step 5: on the merge-in-required error, re-run the resolver in the task worktree and retry
@@ -194,7 +200,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		_, retryErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 		if retryErr == nil {
 			fz.markTaskDone()
-			return fz.pushParent(ctx, parentHandle)
+			return fz.pushParent(ctx, parentHandle, notice)
 		}
 		mergeErr = retryErr
 	}
@@ -207,6 +213,30 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return fz.stuckOrCancelled(ctx, guardErr.Error())
 	}
 	return fz.stuckOrCancelled(ctx, fmt.Sprintf("parent-side merge failed: %v", mergeErr), "error", mergeErr)
+}
+
+// configChangeNotice composes the one-line notice about the task's per-worktree config changes, or "" when there is nothing to report or no seam is wired.
+// Finalize never carries those files to the parent,
+// so the notice tells the orchestrator to re-apply each change meant for the parent.
+// A read failure is logged and reported in the notice instead of stopping the landing.
+func (fz *Finalize) configChangeNotice() string {
+	if fz.deps.ConfigChanges == nil {
+		return ""
+	}
+	changes, err := fz.deps.ConfigChanges()
+	var line string
+	switch {
+	case err != nil:
+		logger.Warn("landingshed: read config changes failed", "producer", finalizeName, "cause", err)
+		line = fmt.Sprintf("loom: the config changes of task branch %q could not be read: %v; diff its config files against the parent branch %q by hand",
+			fz.deps.TaskBranch, err, fz.deps.ParentBranch)
+	case len(changes.Files) > 0:
+		line = fmt.Sprintf("loom: task branch %q changed per-worktree config files since it forked from %q: %s (base %s, tip %s); landing does not carry them to the parent branch, so re-apply each change meant for the parent on the parent's copy of the same file",
+			fz.deps.TaskBranch, fz.deps.ParentBranch, strings.Join(changes.Files, ", "), changes.Base, changes.Tip)
+	default:
+		return ""
+	}
+	return strings.Join(strings.Fields(line), " ")
 }
 
 // markTaskDone marks the task's board entry done right after a parent-side merge succeeds, ahead of
@@ -228,9 +258,12 @@ func (fz *Finalize) markTaskDone() {
 // Any other failed push is Stuck: the merge has already landed locally, so a human pushes (or reconciles a diverged remote) by hand.
 // Deps.PushSkipped suppresses the push, exactly as it does for the task branch.
 //
+// On its Done return only, a non-empty notice is queued through Deps.Notify;
+// a failure there is a logged warning and never changes the verdict.
+//
 // After a successful push into a parent that requires a pull request, the task's pull request is
 // closed best-effort (closePullRequest): the landing has already happened and is irreversible.
-func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, notice string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if _, err := parentHandle.PushBranch(fabricengine.SyncOptions{SkipPush: fz.deps.PushSkipped}); err != nil {
 		if terr := transientFailure(ctx, finalizeName, "push parent branch", err); terr != nil {
 			return "", shedengine.OutputPointer{}, terr
@@ -240,6 +273,11 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger) (
 	}
 	if !fz.deps.PushSkipped && contains(fz.deps.Config.RequirePRToBase, fz.deps.ParentBranch) {
 		fz.closePullRequest(ctx, parentHandle)
+	}
+	if notice != "" && fz.deps.Notify != nil {
+		if err := fz.deps.Notify(notice); err != nil {
+			logger.Warn("landingshed: queue config-change notice failed", "producer", finalizeName, "cause", err)
+		}
 	}
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
