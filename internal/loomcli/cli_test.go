@@ -72,8 +72,8 @@ func TestStartAliasCommand_StaysOneCommandWithSubtreeVerb(t *testing.T) {
 		t.Error("StartAliasCommand()'s --no-attach flag is not hidden")
 	}
 
-	// The start verb registered under the loom parent command, not just its bare-root alias, accepts
-	// --no-attach, hidden: it is the flag's primary home.
+	// The start verb registered under the loom parent command, not just its bare-root alias, accepts --no-attach, hidden:
+	// it is the flag's primary home.
 	var registered *cobra.Command
 	for _, sub := range Command().Commands() {
 		if sub.Name() == "start" {

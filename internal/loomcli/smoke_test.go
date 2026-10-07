@@ -637,12 +637,9 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		}
 	})
 
-	// `lyx loom start` against a MALFORMED-JSON status file proceeds to the success envelope exactly as
-	// the unknown-field shape does, rather than refusing on the envelope at the Seed step. This is a
-	// regression guard for a crucible finding, and the composed CLI-verb half its unit tests
-	// (loomshed.TestSeed_RefusesUndecodableFileAsExists, state.TestCorruptFile) cannot see: only the
-	// real `lyx loom start` binary exercises the whole Seed -> VerifySeedOwnership -> commit -> spawn ->
-	// handshake chain against a poisoned records-committed status file.
+	// `lyx loom start` against a MALFORMED-JSON status file proceeds to the success envelope exactly as the unknown-field shape does, rather than refusing on the envelope at the Seed step.
+	// This is a regression guard for a crucible finding, and the composed CLI-verb half its unit tests (loomshed.TestSeed_RefusesUndecodableFileAsExists, state.TestCorruptFile) cannot see:
+	// only the real `lyx loom start` binary exercises the whole Seed -> VerifySeedOwnership -> commit -> spawn -> handshake chain against a poisoned records-committed status file.
 	//
 	// Before the fix, loomshed.Seed returned the raw decode error (not ErrSeedExists) for malformed
 	// JSON, so step 2 of `lyx loom start` refused on the envelope before ever spawning a driver — the very

@@ -59,11 +59,9 @@ func recordHandoffVoucherFromStatus(path, lockPath, statusPath, statusLockPath s
 	recordHandoffVoucher(path, lockPath, len(st.History), st.State)
 }
 
-// consumeHandoffVoucher reads the handoff voucher, DELETES it, and returns what it read together with whether it
-// matches the observed history length and state. The delete is the point, not tidying: the voucher
-// is good for exactly one drive entry. Consuming it there means a driver that
-// resumes from a step handoff and then itself dies before appending any history -- an observation
-// otherwise identical to the handoff -- is correctly reported as a crash by the drive after it,
+// consumeHandoffVoucher reads the handoff voucher, DELETES it, and returns what it read together with whether it matches the observed history length and state.
+// The delete is the point, not tidying: the voucher is good for exactly one drive entry.
+// Consuming it there means a driver that resumes from a step handoff and then itself dies before appending any history -- an observation otherwise identical to the handoff -- is correctly reported as a crash by the drive after it,
 // instead of being suppressed forever by a voucher nothing invalidated.
 // A missing or unreadable voucher reports found false and no match;
 // a delete failure is warned and does not change the result,
