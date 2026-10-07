@@ -65,6 +65,33 @@ func driverAliveFrom(present bool, status func() (reedengine.StatusResult, error
 	return false, nil
 }
 
+// driverStrandFrom reports the child's driver strand from reed's sessionless directory, over an injected reader so its answers are testable without tmux.
+// An absent task worktree and a directory with no driver row are none; a live row is retiring when its Retiring is set and live otherwise; a row that is not live is dead.
+// A directory read error is returned unchanged.
+func driverStrandFrom(present bool, directory func() ([]reedengine.DirectoryRow, error)) (battenshed.ChildDriverStrand, error) {
+	if !present {
+		return battenshed.ChildDriverNone, nil
+	}
+	rows, err := directory()
+	if err != nil {
+		return battenshed.ChildDriverNone, err
+	}
+	for _, row := range rows {
+		if !loomengine.IsDriverStrand(row.Name) {
+			continue
+		}
+		switch {
+		case !row.Live:
+			return battenshed.ChildDriverDead, nil
+		case row.Retiring:
+			return battenshed.ChildDriverRetiring, nil
+		default:
+			return battenshed.ChildDriverLive, nil
+		}
+	}
+	return battenshed.ChildDriverNone, nil
+}
+
 // taskWorktreeLocation resolves the managed task worktree's own *lyxcwd.Location, for slug, from
 // the prime *lyxcwd.Location. It is the shared body every lazily-resolved seam below calls, so a
 // caller reading this file only once still sees every "resolved lazily" claim in one place.
@@ -482,6 +509,46 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					}
 					return reedengine.New(reedCfg, reedGeom).Status()
 				})
+			},
+			DriverStrand: func(ctx context.Context) (battenshed.ChildDriverStrand, error) {
+				present, err := taskWorktreePresent(location, slug)
+				if err != nil {
+					return battenshed.ChildDriverNone, err
+				}
+				return driverStrandFrom(present, func() ([]reedengine.DirectoryRow, error) {
+					taskLocation, err := taskWorktreeLocation(location, slug)
+					if err != nil {
+						return nil, err
+					}
+					reedCfg, err := reedengine.LoadConfig(taskLocation.AnchorPath(), "reed")
+					if err != nil {
+						return nil, err
+					}
+					reedGeom, err := hubgeom.ReedGeometry(taskLocation)
+					if err != nil {
+						return nil, err
+					}
+					return reedengine.New(reedCfg, reedGeom).Directory()
+				})
+			},
+			// ChildRunLockHeld probes the child's run lock without keeping it; the lock's directory is created first, since a child that never started has none.
+			ChildRunLockHeld: func() (bool, error) {
+				taskLocation, err := taskWorktreeLocation(location, slug)
+				if err != nil {
+					return false, err
+				}
+				lockPath := shedrun.RunLock(taskLocation, shedrun.SelfRunID)
+				if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+					return false, err
+				}
+				probe, free, err := lock.TryAcquireWriteLock(lockPath)
+				if err != nil {
+					return false, err
+				}
+				if free {
+					_ = probe.Release()
+				}
+				return !free, nil
 			},
 			// ResolveStatus also creates the child's ephemeral status-lock directory, since its
 			// caller reads through that lock next and nothing else on the Run-Shed path creates

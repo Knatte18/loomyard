@@ -34,6 +34,7 @@ func waitOrCancel(ctx context.Context, d time.Duration) {
 
 // spawnConfirmedFileSuffix is the fixed suffix of the marker a producer writes under its scratch
 // directory once its spawn has returned success, joined onto the producer's own name.
+// The marker holds the pid of the process that wrote it, so it confirms the spawn for that process only.
 const spawnConfirmedFileSuffix = "-spawned"
 
 // SpawnConfirmedFile returns the path of the marker innerRunProducer writes under scratchDir once
@@ -143,6 +144,7 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 //
 // A nil deps.Sleep resolves to waitOrCancel, and a nil deps.Now to time.Now, once here rather than on every Call, so a test's no-op sleep and fixed clock are the only values ever substituted.
 // A nil deps.Notify resolves to a no-op and switches the notice step off.
+// A nil deps.DriverStrand resolves to reporting no driver strand and a nil deps.ChildRunLockHeld to reporting no held lock.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
 	if deps.Sleep == nil {
 		deps.Sleep = waitOrCancel
@@ -160,6 +162,12 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	if deps.AttachDir == nil {
 		deps.AttachDir = func() (string, error) { return "", errors.New("no attach directory wired") }
 	}
+	if deps.DriverStrand == nil {
+		deps.DriverStrand = func(context.Context) (ChildDriverStrand, error) { return ChildDriverNone, nil }
+	}
+	if deps.ChildRunLockHeld == nil {
+		deps.ChildRunLockHeld = func() (bool, error) { return false, nil }
+	}
 	return &innerRunProducer{
 		name:         name,
 		slug:         slug,
@@ -176,13 +184,16 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // Call implements shedengine.ShedProducer.
 //
 // It reads the child's status before doing anything else, and spawns only when that status is
-// absent, or is still running with no spawn confirmed on this machine. The child's status file
-// alone cannot say whether a spawn happened: the child's bootstrap seeds it as running before it
+// absent, or is still running with no spawn confirmed by this batten process and no driver at work.
+// The child's status file alone cannot say whether a spawn happened: the child's bootstrap seeds it as running before it
 // starts the driver, so a bootstrap that failed or was killed after seeding leaves a running status
-// with no driver behind it. The confirmation is a marker under scratchDir (SpawnConfirmedFile),
-// cleared before every spawn attempt and written only once deps.Spawn returns success. Re-spawning a
-// running child is safe because the bootstrap it runs is idempotent against a driver that is
-// already alive. A halted or done child is never re-spawned, marker or not: the outer run watches
+// with no driver behind it. The confirmation is a marker under scratchDir (SpawnConfirmedFile) holding the pid of the process that wrote it,
+// cleared before every spawn attempt and written only once deps.Spawn returns success; a marker naming another pid, or in the old layout, reads as unconfirmed,
+// since batten's own run lock means a pid other than this process's is an earlier, dead batten process.
+// A running child with an unconfirmed spawn is adopted rather than spawned when deps.DriverStrand reports a live or retiring driver strand or deps.ChildRunLockHeld reports a held run lock:
+// the confirmation is recorded for this process and nothing is spawned.
+// Re-spawning a running child with neither is safe because the bootstrap it runs is idempotent against a driver that is
+// already alive, and it never stacks a second driver. A halted or done child is never re-spawned, marker or not: the outer run watches
 // the child's own run and never restarts it.
 //
 // The full disposition table, evaluated top to bottom: a spawn as above (logging both Live-Substrate
@@ -234,7 +245,20 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 	}
 
 	confirmedPath := SpawnConfirmedFile(p.scratchDir, p.name)
-	if !found || (status.State == shedengine.StateRunning && !spawnConfirmed(confirmedPath)) {
+	mustSpawn := !found
+	if found && status.State == shedengine.StateRunning && !spawnConfirmed(confirmedPath) {
+		driverAtWork, err := p.driverAtWork(ctx)
+		if err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+		if driverAtWork {
+			logger.Info("battenshed: adopting the running inner shed run; its driver is already at work", "producer", p.name, "slug", p.slug)
+			recordSpawnConfirmed(p.name, p.slug, p.scratchDir, confirmedPath)
+		} else {
+			mustSpawn = true
+		}
+	}
+	if mustSpawn {
 		if err := os.Remove(confirmedPath); err != nil && !os.IsNotExist(err) {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: clear spawn confirmation: %w", p.name, err)
 		}
@@ -311,6 +335,27 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 	default:
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: unrecognized status state %q", p.name, status.State)
 	}
+}
+
+// driverAtWork reports whether the child already has a driver at work: a live or retiring driver strand, or a held child run lock.
+// A retiring strand counts as live, since someone already asked to remove it and `lyx loom start` replaces it.
+// A read error from either seam is returned as a hard error, and the next Call retries.
+func (p *innerRunProducer) driverAtWork(ctx context.Context) (bool, error) {
+	strand, err := p.deps.DriverStrand(ctx)
+	if err != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return false, cerr
+		}
+		return false, fmt.Errorf("battenshed: %s: read child driver strand: %w", p.name, err)
+	}
+	held, err := p.deps.ChildRunLockHeld()
+	if err != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return false, cerr
+		}
+		return false, fmt.Errorf("battenshed: %s: read child run lock: %w", p.name, err)
+	}
+	return strand == ChildDriverLive || strand == ChildDriverRetiring || held, nil
 }
 
 // reviewWaitNote returns the child's reviewer-wait note, or empty when there is none or ReviewWait is nil.
@@ -495,23 +540,27 @@ func (p *innerRunProducer) openIDEOnce(ctx context.Context) {
 	}
 }
 
-// spawnConfirmed reports whether the spawn-confirmation marker at path exists. Any stat failure
-// other than "absent" also reports false: the cost of a wrong false is one idempotent re-spawn, the
-// cost of a wrong true is a driverless child watched as running for the whole bounce budget.
+// spawnConfirmed reports whether the spawn-confirmation marker at path names this process's own pid.
+// A marker from an earlier process, one in the old `spawned` layout and any read failure all report false: the cost of a wrong false is one idempotent re-spawn or adoption check,
+// the cost of a wrong true is a driverless child watched as running for the whole bounce budget.
 func spawnConfirmed(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	return err == nil && pid == os.Getpid()
 }
 
-// recordSpawnConfirmed writes the spawn-confirmation marker at path. A write failure is logged
+// recordSpawnConfirmed writes the spawn-confirmation marker at path, holding this process's pid. A write failure is logged
 // rather than escalated: the spawn itself succeeded, and a missing marker costs only one
-// idempotent re-spawn on the next Call.
+// idempotent re-spawn or adoption check on the next Call.
 func recordSpawnConfirmed(producer, slug, scratchDir, path string) {
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
 		logger.Warn("battenshed: create scratch directory for spawn confirmation failed", "producer", producer, "slug", slug, "scratchDir", scratchDir, "error", err)
 		return
 	}
-	if err := os.WriteFile(path, []byte("spawned\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o644); err != nil {
 		logger.Warn("battenshed: write spawn confirmation failed", "producer", producer, "slug", slug, "path", path, "error", err)
 	}
 }

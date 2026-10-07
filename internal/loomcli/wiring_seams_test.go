@@ -23,6 +23,8 @@ var intentionallyNil = map[string]string{
 	"InnerRun.ReadStatus":       "batten-only seam, filled by battencli",
 	"InnerRun.ReadDecision":     "batten-only seam, filled by battencli",
 	"InnerRun.DriverAlive":      "batten-only seam, filled by battencli",
+	"InnerRun.DriverStrand":     "batten-only seam, filled by battencli",
+	"InnerRun.ChildRunLockHeld": "batten-only seam, filled by battencli",
 	"SeedChild.ReadBoardType":   "batten-only seam, filled by battencli",
 	"SeedChild.ChildDriver":     "batten-only seam, filled by battencli",
 	"SeedChild.WriteSeed":       "batten-only seam, filled by battencli",

@@ -107,7 +107,7 @@ func TestInnerRun_ReHaltAfterObservedResumeWarnsAgainAtTheSameHistoryLength(t *t
 	_, _, deps := newInnerRunDeps(nil, nil, statuses, clock)
 	scratchDir := t.TempDir()
 	// The operator's resume ran the child's own driver, so a spawn is already confirmed.
-	if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), []byte("spawned\n"), 0o644); err != nil {
+	if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), pidMarker(os.Getpid()), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
@@ -132,7 +132,7 @@ func TestInnerRun_PausedThenRunningThenDoneReachesDone(t *testing.T) {
 	_, spawnCalls, deps := newInnerRunDeps(nil, nil, statuses, clock)
 	scratchDir := t.TempDir()
 	// The operator's resume ran the child's own driver, so a spawn is already confirmed.
-	if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), []byte("spawned\n"), 0o644); err != nil {
+	if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), pidMarker(os.Getpid()), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)

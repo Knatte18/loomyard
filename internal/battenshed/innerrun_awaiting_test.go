@@ -387,7 +387,7 @@ func TestInnerRun_StaleDoneSeenMarkerIsClearedWhileRunning(t *testing.T) {
 	clock := &fakeClock{}
 	statuses := []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}
 	_, _, deps := newInnerRunDeps(nil, nil, statuses, clock)
-	if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), []byte("spawned\n"), 0o644); err != nil {
+	if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), pidMarker(os.Getpid()), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	stale := clock.Now().Add(-2 * testGrace).Format(time.RFC3339)
