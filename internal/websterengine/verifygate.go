@@ -358,7 +358,7 @@ func readVerifyGateReport(path string) (VerifyGateReport, error) {
 
 // verifyGateStuckReason is the stuck reason of a done run whose verify gate did not pass.
 // A Terminal failure, the rejection of a fixer commit, names the gate's own reason and ends in the reset to the pre-fix head followed by reentry.
-// Otherwise it names the failing identities, or the dirty paths, the latest failed evaluation's report holds, and the attempts spent.
+// Otherwise it names the failing identities, the dirty paths or the verify timeout and its log the latest failed evaluation's report holds, and the attempts spent.
 func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, reentry string) string {
 	if gate.Reason != "" {
 		return "verify gate failed: " + oneLine(gate.Reason) + "; " + wayForwardSteps("lyx webster reset --to pre-fix", reentry)
@@ -373,6 +373,8 @@ func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, r
 		what = strings.Join(failureIDs(report.Failures), ", ")
 	case len(report.Dirty) > 0:
 		what = "uncommitted paths " + strings.Join(report.Dirty, ", ")
+	case report.TimedOut != "":
+		what = fmt.Sprintf("the verify command did not finish within %s and was killed, see %s", report.TimedOut, report.LogPath)
 	}
 	return fmt.Sprintf("verify gate failed after %d attempt(s) of %d: %s", report.Attempt, report.Cap, what)
 }

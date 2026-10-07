@@ -387,6 +387,23 @@ func TestVerifyGateStuckReason_TerminalRejectionEndsInResetToPreFix(t *testing.T
 	}
 }
 
+func TestVerifyGateStuckReason_TimedOutReportNamesTheTimeoutAndLog(t *testing.T) {
+	t.Parallel()
+
+	reportsDir := t.TempDir()
+	report := VerifyGateReport{Attempt: 2, Cap: 2, TimedOut: "1h0m0s", LogPath: "/wt/.lyx/verify/verify.log"}
+	if err := WriteVerifyGateReport(VerifyGateReportPath(reportsDir), report); err != nil {
+		t.Fatal(err)
+	}
+
+	got := verifyGateStuckReason(reportsDir, &shuttleengine.GateOutcome{}, "lyx webster run")
+
+	want := "verify gate failed after 2 attempt(s) of 2: the verify command did not finish within 1h0m0s and was killed, see /wt/.lyx/verify/verify.log"
+	if got != want {
+		t.Errorf("verifyGateStuckReason() = %q; want %q", got, want)
+	}
+}
+
 func TestReadModulePath(t *testing.T) {
 	dir := t.TempDir()
 	if got := readModulePath(dir); got != "" {
