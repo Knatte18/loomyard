@@ -35,9 +35,11 @@ A repeat notice for a request you already forked for starts no second fork.
 
 A driver, webster or a review loop that cannot go on escalates to you, its parent.
 - A review loop that ran out of rounds: `lyx loom circling continue <slug>` to grant more, or `lyx loom circling accept <slug>` to take the work as it stands.
-  Either only records the decision, so run `lyx loom resume` in the task worktree to resume the run.
+  Either only records the decision,
+  so run `lyx loom resume` in the task worktree to resume the run.
 - A run that needs a fresh budget at a producer: `lyx loom goto` or `lyx shed goto`, naming the producer.
-  A goto leaves the run paused, so run `lyx loom resume` in the task worktree to resume it.
+  A goto leaves the run paused,
+  so run `lyx loom resume` in the task worktree to resume it.
 - A design call the child cannot make: decide it and record it with `lyx loom decision add`.
 
 ## Investigating a stop

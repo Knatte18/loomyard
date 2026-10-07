@@ -85,7 +85,8 @@ The value is one line: `<producer>: <what> running <elapsed> (<detail>)` for the
 `<elapsed>` is whole seconds under a minute, whole minutes under an hour and hours with minutes beyond (`45s`, `6m`, `1h12m`),
 and the attempt clause of a verify is dropped when no attempt counter applies.
 The key is absent when none of the waits applies, or when the run is in any state other than `running`.
-It is read from the markers and the round store, never from the status file, so the file's schema above is unchanged.
+It is read from the markers and the round store, never from the status file,
+so the file's schema above is unchanged.
 
 ## Parse discipline
 

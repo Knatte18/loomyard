@@ -438,7 +438,7 @@ var wordingClaims = []stencilClaims{
 			{must: "marks the board task done, pushes main and closes the PR", why: "Finalize marks the task done, pushes and closes the PR"},
 			{must: "the driver's drive reports from the prime's own copies", why: "after landing the notes and reports are read from the prime"},
 			{must: "run `lyx loom resume` in the task worktree to resume the run", why: "a circling decision resumes nothing by itself"},
-			{must: "A goto leaves the run paused, so run `lyx loom resume`", why: "a goto leaves the run paused"},
+			{must: "A goto leaves the run paused,\n  so run `lyx loom resume`", why: "a goto leaves the run paused"},
 			{must: "resume it with `lyx loom resume` in the task worktree", why: "a halted child is resumed by waking its parked driver"},
 			{must: "its message names the way forward (`lyx batten run <slug>` to bring a dead driver back, or `lyx loom start`)", why: "a refused resume names its own way forward"},
 			{mustNot: "resume it with `lyx loom start`", why: "resume wakes the parked driver; start is only a refusal's way forward"},
