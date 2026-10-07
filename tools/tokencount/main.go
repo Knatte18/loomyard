@@ -15,7 +15,7 @@
 // Each argument is a task slug, read as the worktree <hub>/<slug>; -hub defaults to the
 // parent of the current directory, which is the hub when run from its prime.
 // With no slugs it counts the -last runs whose sessions changed most recently, leaving out
-// the prime (the current directory) and the weft.
+// the prime, the current directory.
 // Claude Code keeps a worktree's sessions in ~/.claude/projects/<encoded path>/, one
 // <session>.jsonl per session, and a session's sub-agents (the Webster master's forks)
 // in <session>/subagents/*.jsonl.
@@ -42,6 +42,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 func main() {
@@ -60,7 +62,7 @@ func run(args []string, stdout io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	wd, err := os.Getwd()
+	wd, err := lyxcwd.Getwd()
 	if err != nil {
 		return err
 	}
