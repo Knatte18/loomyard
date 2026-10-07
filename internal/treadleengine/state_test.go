@@ -61,7 +61,6 @@ func TestLoadOrInitState(t *testing.T) {
 					JudgePath:       "round-1-judge.md",
 					HandoffPath:     "round-1-handoff.md",
 					GatePath:        "round-1-gate.md",
-					TriagePath:      "",
 					SeedPath:        "round-1-seed.md",
 					JudgeVerdict:    "PROGRESSING",
 					GatePassed:      &gatePassed,
@@ -243,8 +242,8 @@ func TestMoveStaleArtifacts(t *testing.T) {
 		paths := artifactPaths(runDir, 3, 1)
 		writeFile(t, paths.Review, "stale review")
 		writeFile(t, paths.FixerReport, "stale fixer report")
-		// Judge/Gate/Triage are left absent, as a round without a judge/gate/
-		// triage step would leave them.
+		// Judge/Gate are left absent, as a round without a judge/gate
+		// step would leave them.
 
 		if err := moveStaleArtifacts("gate", runDir, 3, 1); err != nil {
 			t.Fatalf("moveStaleArtifacts() = %v; want nil", err)

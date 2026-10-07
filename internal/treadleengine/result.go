@@ -38,7 +38,6 @@ type RoundSummary struct {
 	FixerReportPath string
 	JudgePath       string
 	GatePath        string
-	TriagePath      string
 	JudgeVerdict    string
 	GatePassed      *bool
 }

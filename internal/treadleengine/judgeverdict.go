@@ -1,7 +1,7 @@
-// judgeverdict.go defines the two verdict-file contracts treadle's ephemeral LLM utilities read
-// back — JudgeVerdict (both progress-judge framings) and TriageVerdict (asking-triage) — plus the
-// strict parsers that turn a verdict file's raw bytes into those types.
-// Both files are YAML frontmatter over unconstrained prose, mirroring burlerengine.ParseReview's
+// judgeverdict.go defines the verdict-file contract treadle's progress judge reads back —
+// JudgeVerdict (both progress-judge framings) — plus the strict parser that turns a verdict
+// file's raw bytes into that type.
+// The file is YAML frontmatter over unconstrained prose, mirroring burlerengine.ParseReview's
 // contract and error posture: every rule below is enforced fail-loud with a "treadle: "-prefixed
 // error (these parsers are package-level pure functions with no calling-engine name in scope,
 // unlike the rest of this package's diagnostics — see the pinned parser-prefix resolution in the
@@ -31,16 +31,6 @@ const (
 	JudgeUncertain   JudgeVerdict = "UNCERTAIN"
 )
 
-// TriageVerdict is the asking-triage call's verdict, recorded in a triage verdict file's
-// frontmatter.
-type TriageVerdict string
-
-// The two legal TriageVerdict values.
-const (
-	TriageRetry  TriageVerdict = "RETRY"
-	TriageGiveUp TriageVerdict = "GIVE_UP"
-)
-
 // judgeFraming selects which of the two progress-judge prompt framings a
 // judge verdict file came from, and therefore which JudgeVerdict vocabulary
 // is legal for it.
@@ -51,7 +41,7 @@ const (
 	framingMilestone judgeFraming = "milestone"
 )
 
-// judgeHeader mirrors a judge or triage verdict file's YAML frontmatter
+// judgeHeader mirrors a judge verdict file's YAML frontmatter
 // shape. Unknown extra keys are tolerated (no KnownFields), matching
 // burlerengine's reviewHeader: agent-written metadata in the header is
 // harmless noise.
@@ -83,31 +73,6 @@ func ParseJudgeVerdict(content []byte, framing judgeFraming) (JudgeVerdict, stri
 
 	if strings.TrimSpace(parsed.Rationale) == "" {
 		return "", "", fmt.Errorf("treadle: judge verdict file is missing a non-empty rationale")
-	}
-
-	return verdict, parsed.Rationale, nil
-}
-
-// ParseTriageVerdict parses an asking-triage verdict file into a TriageVerdict and its rationale,
-// applying the same frontmatter and non-empty-rationale rules.
-func ParseTriageVerdict(content []byte) (TriageVerdict, string, error) {
-	header, err := splitFrontmatter(content, "verdict")
-	if err != nil {
-		return "", "", err
-	}
-
-	var parsed judgeHeader
-	if err := yaml.Unmarshal([]byte(header), &parsed); err != nil {
-		return "", "", fmt.Errorf("treadle: triage verdict file frontmatter is not valid YAML: %w", err)
-	}
-
-	verdict, err := parseTriageVerdict(parsed.Verdict)
-	if err != nil {
-		return "", "", err
-	}
-
-	if strings.TrimSpace(parsed.Rationale) == "" {
-		return "", "", fmt.Errorf("treadle: triage verdict file is missing a non-empty rationale")
 	}
 
 	return verdict, parsed.Rationale, nil
@@ -159,15 +124,5 @@ func parseJudgeVerdict(raw string, framing judgeFraming) (JudgeVerdict, error) {
 		}
 	default:
 		return "", fmt.Errorf("treadle: unknown judge framing %q", framing)
-	}
-}
-
-// parseTriageVerdict validates raw against the two legal spellings, case-sensitively.
-func parseTriageVerdict(raw string) (TriageVerdict, error) {
-	switch TriageVerdict(raw) {
-	case TriageRetry, TriageGiveUp:
-		return TriageVerdict(raw), nil
-	default:
-		return "", fmt.Errorf("treadle: triage verdict file verdict must be exactly %q or %q, got %q", TriageRetry, TriageGiveUp, raw)
 	}
 }

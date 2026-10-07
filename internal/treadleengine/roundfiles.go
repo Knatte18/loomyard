@@ -26,14 +26,13 @@ func roundToken(round, attempt int) string {
 
 // roundArtifactPaths is the set of file paths a single round/attempt may
 // produce. Not every field is written every round: Judge only when the judge
-// runs, Gate only when a command gate fails, Triage only when triage runs.
+// runs, Gate only when a command gate fails.
 type roundArtifactPaths struct {
 	Review      string
 	FixerReport string
 	Judge       string
 	Handoff     string
 	Gate        string
-	Triage      string
 	Seed        string
 }
 
@@ -46,7 +45,6 @@ func artifactPaths(runDir string, round, attempt int) roundArtifactPaths {
 		Judge:       filepath.Join(runDir, fmt.Sprintf("round-%s-judge.md", token)),
 		Handoff:     filepath.Join(runDir, fmt.Sprintf("round-%s-handoff.md", token)),
 		Gate:        filepath.Join(runDir, fmt.Sprintf("round-%s-gate.md", token)),
-		Triage:      filepath.Join(runDir, fmt.Sprintf("round-%s-triage.md", token)),
 		Seed:        filepath.Join(runDir, fmt.Sprintf("round-%s-seed.md", token)),
 	}
 }
