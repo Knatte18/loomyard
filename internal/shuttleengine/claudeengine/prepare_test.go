@@ -153,6 +153,7 @@ func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 		{name: "ttl_webster_gets_one_hour", spec: shuttleengine.Spec{Role: "webster"}, cfg: templateConfig(t), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("1h")}}},
 		{name: "ttl_unmapped_role_gets_default", spec: shuttleengine.Spec{Role: "orch"}, cfg: templateConfig(t), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("5m")}}},
 		{name: "ttl_empty_role_gets_default", spec: shuttleengine.Spec{}, cfg: templateConfig(t), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("5m")}}},
+		{name: "ttl_empty_role_ignores_empty_map_key", spec: shuttleengine.Spec{}, cfg: ttlConfig(t, "", map[string]string{"": "1h"}), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("5m")}}},
 		{name: "ttl_map_entry_overrides_default", spec: shuttleengine.Spec{Role: "orch"}, cfg: ttlConfig(t, "", map[string]string{"orch": "1h"}), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("1h")}}},
 		{name: "ttl_role_missing_from_map_gets_default", spec: shuttleengine.Spec{Role: "driver"}, cfg: ttlConfig(t, "", map[string]string{"webster": "1h"}), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("5m")}}},
 		{name: "ttl_default_one_hour_reaches_unmapped_role", spec: shuttleengine.Spec{Role: "orch"}, cfg: ttlConfig(t, "1h", nil), onBothLines: flagExpectation{present: []string{promptCacheTTLAssignment("1h")}}},

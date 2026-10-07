@@ -144,6 +144,9 @@ func resolvePromptCacheTTL(role string, cfg shuttleengine.Config) (string, error
 			return "", err
 		}
 	}
+	if role == "" {
+		return cfg.ClaudePromptCacheTTL, nil
+	}
 	if ttl, ok := cfg.ClaudePromptCacheTTLRoles[role]; ok {
 		return ttl, nil
 	}
