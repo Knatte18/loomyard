@@ -112,6 +112,18 @@ func TestBuildProfileReport(t *testing.T) {
 	record("broken", "brokenrec")
 	history.files["brokenrec:"+path.Join(websterengine.DirRel(), "state.json")] = "not json"
 
+	// A review file that does not parse leaves the findings not read, while the run's batches still count.
+	record("garbled", "garbledrec")
+	state("garbledrec", websterengine.State{
+		RunGUID:   "g",
+		Partition: []websterengine.PartitionBatch{{Cards: []string{"01-g"}, Profile: "noisy"}},
+	})
+	history.files["garbledrec:"+path.Join(loomengine.LoomReviewsDirRel(), "webster", "round-1-review.md")] = "not a review"
+
+	// No partition and no plan commit: the run has no batches to name, so it is marked.
+	record("orphan", "orphanrec")
+	state("orphanrec", websterengine.State{RunGUID: "g"})
+
 	forkOf := func(file string, usage Usage, peak int) ForkTally {
 		return ForkTally{File: file, Started: firstFork, Usage: usage, PeakContext: peak}
 	}
@@ -125,6 +137,8 @@ func TestBuildProfileReport(t *testing.T) {
 		{Slug: "plain", Forks: []ForkTally{forkOf("agent-1.jsonl", Usage{Input: 500_000}, 50_000)}},
 		{Slug: "fresh"},
 		{Slug: "broken"},
+		{Slug: "garbled"},
+		{Slug: "orphan", Forks: []ForkTally{forkOf("agent-1.jsonl", Usage{Input: 1}, 1)}},
 		{Slug: "unrecorded"},
 	}
 
@@ -138,6 +152,8 @@ func TestBuildProfileReport(t *testing.T) {
 		"cautious": {Profile: "cautious", Runs: 2, Batches: 2, Cards: 4, Weight: 3_000_000, FindingsRuns: 1, Findings: 1, FindingsCards: 2},
 		"identity": {Profile: "identity", Runs: 1, Batches: 2, Cards: 2, Weight: 500_000, Failed: 1},
 		"wide":     {Profile: "wide", Runs: 1, Batches: 1, Cards: 1, Weight: 2_000_000, Failed: 1, Recoveries: 1},
+		// The garbled run's batch counts here, its unread findings do not.
+		"noisy": {Profile: "noisy", Runs: 1, Batches: 1, Cards: 1},
 	}
 	if len(got.Profiles) != len(wantLines) {
 		t.Fatalf("profile lines = %+v; want %+v", got.Profiles, wantLines)
@@ -158,7 +174,10 @@ func TestBuildProfileReport(t *testing.T) {
 		"| plain | identity | 2 | 2 | 1 | 0 | not read | n/a | findings not read: no review files |",
 		"| fresh | n/a | n/a | n/a | n/a | n/a | n/a | n/a | marked: restarted with --fresh: its records carry 2 run guids |",
 		"| broken | n/a | n/a | n/a | n/a | n/a | n/a | n/a | marked: state at brokenrec unreadable: ",
+		"| garbled | noisy | 1 | 1 | 0 | 0 | not read | n/a | findings not read: round-1-review.md does not parse: ",
+		"| orphan | n/a | n/a | n/a | n/a | n/a | n/a | n/a | marked: no partition recorded and its plan is unreadable: no plan commit before the first fork |",
 		"| unrecorded | n/a | n/a | n/a | n/a | n/a | n/a | n/a | marked: no webster run record |",
+		"| noisy | 1 | 1 | 1 | 0.000M | 0 | 0 | n/a |",
 		"| cautious | 2 | 2 | 4 | 0.750M | 0 | 0 | 0.500 (1 runs) |",
 		"| identity | 1 | 2 | 2 | 0.250M | 1 | 0 | n/a |",
 		"| wide | 1 | 1 | 1 | 2.000M | 1 | 1 | n/a |",

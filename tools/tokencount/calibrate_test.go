@@ -291,6 +291,46 @@ func TestCalibrate(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("a fork with no estimated growth has no growth ratio and stays out of the growth fit", func(t *testing.T) {
+		t.Parallel()
+		// Card 1 edits an empty file, so the fit profile estimates its peak at the start alone.
+		flatHistory := fakeHistory{
+			commits: map[string][]gitrepo.SubjectCommit{planCommitSubjectPrefix + "gamma": {{SHA: "gammaplan", Committed: firstFork.Add(-time.Hour)}}},
+			files:   map[string]string{},
+		}
+		for name, data := range planWith(map[int]string{1: "internal/a/a.go", 2: "internal/b/b.go"}) {
+			flatHistory.files["gammaplan:"+planDir+name] = data
+		}
+		flatBase := fakeBase{
+			shas:  map[string]bool{"basegamma": true},
+			files: map[string]string{"basegamma:internal/a/a.go": "", "basegamma:internal/b/b.go": lines(50)},
+		}
+		flatRuns := []RunTally{{Slug: "gamma", BaseSHA: "basegamma", Forks: []ForkTally{
+			fork(firstFork, 10, 30, "01-c1"),
+			fork(firstFork.Add(time.Minute), 10, 90, "02-c2"),
+		}}}
+		flat, err := Calibrate(flatRuns, "fit", configDir, flatHistory, flatBase)
+		if err != nil {
+			t.Fatalf("Calibrate: %v", err)
+		}
+		if len(flat.Rows) != 2 || flat.Rows[0].HasGrowthRatio || !flat.Rows[1].HasGrowthRatio || !near(flat.Rows[1].GrowthRatio, 1.6) {
+			t.Fatalf("rows = %+v; want the empty-file fork without a growth ratio and the other with 1.6", flat.Rows)
+		}
+		if growth := GrowthFitOf(flat.Rows); growth.Forks != 1 || !near(growth.Median, 1.6) {
+			t.Errorf("growth fit = %+v; want only the fork with a growth ratio", growth)
+		}
+		var out bytes.Buffer
+		flat.WriteMarkdown(&out)
+		for _, want := range []string{
+			"| gamma | 01-c1 | 1 | 10 | 30 | 3.000 | 0 | 20 | n/a |",
+			"- gamma: 2 forks, median ratio 2.250, spread 1.400; growth: 1 forks, median ratio 1.600, spread 1.000",
+		} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("markdown lacks %q:\n%s", want, out.String())
+			}
+		}
+	})
 }
 
 // TestCalibrateStartFit asserts the start rows' positions restart in each webster session, and the least-squares fit of the start coefficients: exact on starts laid on a line, not fitted from a single position, and marked unusable when the growth comes out negative.
