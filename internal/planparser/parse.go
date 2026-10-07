@@ -206,6 +206,7 @@ func ParsePlanFrom(planDir string, read func(name string) ([]byte, error)) (*Pla
 		FirstCard:        firstCard,
 		FirstCardInvalid: firstCardInvalid,
 		Dir:              planDir,
+		OverviewText:     string(data),
 		Framing:          framing,
 		Cards:            cards,
 		Root:             root,
@@ -363,7 +364,8 @@ func parseCardFile(planDir string, entry cardIndexEntry, read func(name string) 
 		return Card{}, fmt.Errorf("planparser: read card file %s: %w", filePath, err)
 	}
 
-	lines := strings.Split(string(data), "\n")
+	card.Text = string(data)
+	lines := strings.Split(card.Text, "\n")
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
 		return Card{}, fmt.Errorf("planparser: card file %s: missing card heading", filePath)
 	}

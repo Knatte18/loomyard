@@ -570,6 +570,8 @@
 // `websterengine`'s audit asks "does this command reference fabric's two-checkout mechanism" without
 // ever holding the weft path or the command-spelling pattern itself — fabric owns every word in the
 // answer.
+// `ReferenceRule` (refscanner.go), constructed via `NewReferenceRule()`, is the location-free part of that answer.
+// Its `MatchPath` and `MatchSpelling` return the matched text without any worktree, so a plan check shares one rule with the audit.
 // `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to
 // substring-match, so a caller like `preflight.CheckResolved` switches on `HealthReason.Cause`
 // instead of parsing prose.

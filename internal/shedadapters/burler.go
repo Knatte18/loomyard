@@ -119,8 +119,7 @@ func NewBurlerProducer(name string, runner BurlerRunner, attach Shuttle, profile
 	}, nil
 }
 
-// roundReviewFilePrefix and roundReviewFileSuffix bound the exact filename shape
-// parseRoundReviewName recognizes -- the literal text either side of a round's decimal token.
+// roundReviewFilePrefix and roundReviewFileSuffix bound the exact filename shape ParseRoundReviewName recognizes -- the literal text either side of a round's decimal token.
 const (
 	roundReviewFilePrefix = "round-"
 	roundReviewFileSuffix = "-review.md"
@@ -152,13 +151,13 @@ func roundComplete(runDir string, n int) bool {
 	return true
 }
 
-// parseRoundReviewName reports whether name matches the exact round-<n>-review.md shape -- the
+// ParseRoundReviewName reports whether name matches the exact round-<n>-review.md shape -- the
 // literal prefix "round-", the literal suffix "-review.md", a non-empty run of decimal digits with
 // no leading zero in between, and a parsed value of at least 1 -- returning n and true on a match.
 // A stamped archive sibling (round-2-review-20260820T101500Z.md), an attempt-suffixed token
 // (round-3b-review.md), a zero-padded token, or any other unrelated name fails the match and is
 // ignored: never adopted, never deleted.
-func parseRoundReviewName(name string) (int, bool) {
+func ParseRoundReviewName(name string) (int, bool) {
 	if !strings.HasPrefix(name, roundReviewFilePrefix) || !strings.HasSuffix(name, roundReviewFileSuffix) {
 		return 0, false
 	}
@@ -181,8 +180,7 @@ func parseRoundReviewName(name string) (int, bool) {
 // highestCompleteRound scans runDir's directory entries and returns the highest n for which
 // roundComplete holds, returning 0 (and a nil error) when runDir is absent -- which is not an
 // error -- and wrapping any other os.ReadDir failure.
-// Its name-matching discipline is exact-shape via
-// parseRoundReviewName.
+// Its name-matching discipline is exact-shape via ParseRoundReviewName.
 // The completion predicate is the pair, never the review alone, and why: a producer process killed
 // in the phase-A-written/phase-B-pending window leaves a review with no fixer report beside it and
 // no exit path ever ran to clean it up, so under a review-only predicate the next call would
@@ -209,7 +207,7 @@ func highestCompleteRound(runDir string) (int, error) {
 		if entry.IsDir() {
 			continue
 		}
-		n, ok := parseRoundReviewName(entry.Name())
+		n, ok := ParseRoundReviewName(entry.Name())
 		if !ok {
 			continue
 		}
