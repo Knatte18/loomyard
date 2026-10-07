@@ -487,6 +487,8 @@ func TestWatcher_AskDuringHandoffAborts(t *testing.T) {
 }
 
 func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
+	t.Parallel()
+
 	e := newWatchEnv(t)
 	e.reachClearing()
 	handoff := e.state().PendingHandoff
@@ -509,6 +511,8 @@ func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
 }
 
 func TestWatcher_ClearingTimeoutNeverTypesWhileBusy(t *testing.T) {
+	t.Parallel()
+
 	e := newWatchEnv(t)
 	e.reachClearing()
 	e.s.idle = false
@@ -1166,6 +1170,8 @@ func TestWatcher_ReloadReadsAnUnreadableStepAsThePointer(t *testing.T) {
 }
 
 func TestWatcher_ReloadTypesNothingWhenIdleProbeFails(t *testing.T) {
+	t.Parallel()
+
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.reachClearing()
@@ -1235,6 +1241,8 @@ func TestWatcher_AutoCompactionBoundaryAtOrBeforeBaselineTriggersNothing(t *test
 }
 
 func TestWatcher_AutoCompactionWaitsForIdleProbe(t *testing.T) {
+	t.Parallel()
+
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(e.clock.now.Add(time.Second))}

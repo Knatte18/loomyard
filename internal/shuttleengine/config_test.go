@@ -40,6 +40,8 @@ func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 //
 //testtiming:keep pins every shipped template default, which the BackgroundShellWaitMin table does not assert
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 	// Seed the config file with the template itself: this is exactly the
 	// file "lyx config reconcile" would produce, so LoadConfig must accept

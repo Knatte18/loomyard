@@ -104,6 +104,8 @@ func TestRunner_ReadEvents(t *testing.T) {
 func ptrTo[T any](value T) *T { return &value }
 
 func TestRunner_SessionMethods_ErrorOnPlainEngine(t *testing.T) {
+	t.Parallel()
+
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	runner := newFixture(t, reed, &fakeEngine{}, withStrand("strand-1")).Runner
 

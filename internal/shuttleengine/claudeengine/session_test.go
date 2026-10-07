@@ -122,6 +122,8 @@ func TestPaneTooShort(t *testing.T) {
 }
 
 func TestCompactSessionSequence(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name  string
 		focus string
@@ -132,6 +134,8 @@ func TestCompactSessionSequence(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := New().CompactSessionSequence(tc.focus)
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("CompactSessionSequence(%q) = %#v; want %#v", tc.focus, got, tc.want)
@@ -151,6 +155,8 @@ func TestReloadPluginsSequence(t *testing.T) {
 }
 
 func TestClearSessionSequence(t *testing.T) {
+	t.Parallel()
+
 	got := New().ClearSessionSequence()
 	want := []shuttleengine.PaneInput{{Text: "/clear", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}
 	if !reflect.DeepEqual(got, want) {

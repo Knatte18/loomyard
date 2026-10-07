@@ -48,6 +48,8 @@ func stampedSiblingCount(t *testing.T, dir, base string) int {
 // --- BurlerProducer ---
 
 func TestBurlerProducer_AttachesToLiveRoundInsteadOfRespawning(t *testing.T) {
+	t.Parallel()
+
 	runDir := t.TempDir()
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
 	attach := &shedfake.Shuttle{

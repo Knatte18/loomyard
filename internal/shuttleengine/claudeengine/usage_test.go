@@ -135,6 +135,8 @@ const timedTranscript = `{"type":"assistant","isSidechain":false,"timestamp":"20
 `
 
 func TestCompactedSince_FindsNewestMainChainBoundaryAfterSince(t *testing.T) {
+	t.Parallel()
+
 	hour := func(h int) time.Time { return time.Date(2026, 3, 4, h, 0, 0, 0, time.UTC) }
 	data := []byte(timedTranscript)
 	cases := []struct {
