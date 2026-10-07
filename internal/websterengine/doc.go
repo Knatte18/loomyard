@@ -246,9 +246,8 @@
 // Because the fork runs inside Master's own session, there is nothing for
 // Go to spawn in the normal path — spawn-batch does not exist here. Go
 // provides thin bracket verbs Master calls around each fork: begin-batch
-// (pause/fingerprint checks, records the batch's start-SHA, idempotently
-// asserts Master's model for this batch, renders and writes the fork
-// prompt) immediately before forking, and record-batch (incremental fork
+// (pause/fingerprint checks, records the batch's start-SHA, renders and
+// writes the fork prompt) immediately before forking, and record-batch (incremental fork
 // audit, batch-report parsing, digest distillation, state update) once the
 // fork has delivered. The Agent-tool fork is a BACKGROUNDED agent: the fork
 // call returns immediately, before the batch is done, so Master ends its
