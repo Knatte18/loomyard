@@ -13,7 +13,7 @@ import (
 )
 
 // TestModelSwitchSequence_ShapeAndVerbatimModel proves the returned sequence is exactly ["/model <name>"+submit], for several model name shapes (including ones containing characters that must NOT be escaped or altered).
-// The expected step carries no Key, so the equality below also proves the sequence sends no key press (Escape included): it is injected mid-tool-call, where Escape interrupts the running tool and aborts the target session's turn — the W2b corruption mode webster's hardening round confirmed live.
+// The expected step carries no Key, so the equality below also proves the sequence sends no key press (Escape included): it is injected mid-tool-call, where Escape interrupts the running tool and aborts the target session's turn, a corruption mode confirmed live.
 func TestModelSwitchSequence_ShapeAndVerbatimModel(t *testing.T) {
 	t.Parallel()
 

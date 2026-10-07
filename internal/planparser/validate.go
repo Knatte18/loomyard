@@ -1,22 +1,6 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
 // (contracts/specs/loom-plan-spec.md), run in this fixed order.
-// ValidateFormat emits twenty-seven of the following distinct ValidationError.Check IDs, everything
-// but plan-unapproved; Validate emits all twenty-eight: format-unrecognized (checkFormatRecognized),
-// plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved),
-// index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing),
-// card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel),
-// card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget),
-// directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed),
-// rename-format (checkRenameFormat), handle-dangling,
-// handle-collision, handle-unreferenced (all three checkHandleConsistency), handle-malformed
-// (checkHandleMalformed), rename-to-not-handle, rename-from-not-glyph (both
-// checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing),
-// card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty),
-// card-field-overlap (checkCardFieldOverlap), containment-unit-overlap
-// (syntacticContainment, containment.go), impact-summary-multiline
-// (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering
-// (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch
-// (checkCommitSubjectMismatch).
+// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision, handle-unreferenced (all three checkHandleConsistency), handle-malformed (checkHandleMalformed), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), containment-unit-overlap (syntacticContainment, containment.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch (checkCommitSubjectMismatch).
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
 // No scheduler, dependency graph, or topological sort belongs in this file — the dependency graph
@@ -43,10 +27,12 @@ const RecognizedFormat = 5
 
 // ValidationError is one finding from Validate: which check tripped, which card it concerns, and a
 // human-readable detail.
+// Ref is the raw plan ref the finding reports, set by the checks that report one ref per finding and empty otherwise.
 type ValidationError struct {
 	Check  string
 	Card   string
 	Detail string
+	Ref    string
 }
 
 // Error implements the error interface, formatted as "check[/card]: detail".
@@ -63,16 +49,12 @@ func cardID(c Card) string {
 	return fmt.Sprintf("%d-%s", c.Number, c.Slug)
 }
 
-// Validate runs every plan-format machine check against plan, including the plan-unapproved
-// approval gate, and returns every finding in fixed order: all twenty-eight check IDs documented
-// in this file's package comment, with plan-unapproved at position three.
+// Validate runs every plan-format machine check against plan, including the plan-unapproved approval gate, and returns every finding in fixed order: every check ID documented in this file's package comment, with plan-unapproved at position three.
 func Validate(plan *Plan, worktreeRoot string) []ValidationError {
 	return validate(plan, worktreeRoot, true)
 }
 
-// ValidateFormat runs every plan-format machine check against plan except the plan-unapproved
-// approval gate, and returns every finding in fixed order: twenty-seven of the twenty-eight check
-// IDs documented in this file's package comment, everything but plan-unapproved.
+// ValidateFormat runs every plan-format machine check against plan except the plan-unapproved approval gate, and returns every finding in fixed order: every check ID documented in this file's package comment but plan-unapproved.
 // Approval is deliberately not ValidateFormat's business: the approved: flag is written after the
 // review segment settles, so a pre-review caller must not be told the plan is unapproved.
 func ValidateFormat(plan *Plan, worktreeRoot string) []ValidationError {
@@ -106,6 +88,7 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	findings = append(findings, checkCardMissingField(plan)...)
 	findings = append(findings, checkCardFieldEmpty(plan)...)
 	findings = append(findings, checkCardFieldOverlap(plan)...)
+	findings = append(findings, checkUsesLaterTarget(plan)...)
 	if lang, ok := planLanguage(plan); ok {
 		findings = append(findings, syntacticContainment(plan, lang)...)
 	}
@@ -960,6 +943,45 @@ func checkCardFieldOverlap(plan *Plan) []ValidationError {
 	return findings
 }
 
+// checkUsesLaterTarget implements uses-later-target: a card's Uses: entry that a card with a higher number lists among its targets.
+// A plan runs in card-number order, so such an entry is read before the card that produces it.
+// Entries match by exact string equality after trimming whitespace; an entry that trims to empty is ignored.
+func checkUsesLaterTarget(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, consumer := range plan.Cards {
+		for _, producer := range plan.Cards {
+			if producer.Number <= consumer.Number {
+				continue
+			}
+
+			targets := make(map[string]bool, len(producer.Targets))
+			for _, t := range producer.Targets {
+				targets[strings.TrimSpace(t)] = true
+			}
+
+			seen := make(map[string]bool)
+			for _, u := range consumer.Uses {
+				entry := strings.TrimSpace(u)
+				if entry == "" || !targets[entry] || seen[entry] {
+					continue
+				}
+				seen[entry] = true
+				findings = append(findings, ValidationError{
+					Check: "uses-later-target",
+					Card:  cardID(consumer),
+					Detail: fmt.Sprintf(
+						"card %d Uses %q, which card %d targets; a plan runs in card-number order, so move that work or reorder the cards so card %d's change comes before card %d",
+						consumer.Number, entry, producer.Number, producer.Number, consumer.Number,
+					),
+				})
+			}
+		}
+	}
+
+	return findings
+}
+
 // checkImpactSummaryMultiline implements impact-summary-multiline: an ImpactSummary: field followed by trailing lines is a defect, since ImpactSummary is required to stay a single line.
 func checkImpactSummaryMultiline(plan *Plan) []ValidationError {
 	var findings []ValidationError
@@ -1146,6 +1168,7 @@ func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
 				"card %d path %q does not exist on disk and is not a Create target or Rename destination of any card",
 				c.Number, raw,
 			),
+			Ref: raw,
 		})
 	}
 

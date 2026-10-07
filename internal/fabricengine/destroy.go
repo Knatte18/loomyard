@@ -1,10 +1,6 @@
 // destroy.go is the only file in package fabricengine permitted to perform a destructive primitive.
-// The six primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git
-// worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch
-// -D), deleting a branch on a remote (git push <remote> --delete), and resetting a warp checkout
-// hard (ResetHard, and ResetPairWarp for a task pair's checkout, both through resetHardTo). Every one of them is reached only through one of this file's executors, and
-// every executor runs the shared check pipeline before performing its act — the gate executes, it
-// does not merely approve.
+// The primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch -D), deleting a branch on a remote (git push <remote> --delete), moving a branch on a remote (a leased force push, updateRemoteBranch), and resetting a warp checkout hard (ResetHard, and ResetPairWarp for a task pair's checkout, both through resetHardTo).
+// Every one of them is reached only through one of this file's executors, and every executor runs the shared check pipeline before performing its act — the gate executes, it does not merely approve.
 //
 // The pipeline runs four checks, always in this fixed order, stopping at the first failure:
 // containment, ownership, dirtiness, force.
@@ -51,14 +47,10 @@
 // See PATTERN-fabric-destruction-chokepoint (added once this slice's guard test
 // lands) for the machine-enforced half of this rule.
 //
-// Recording contract: every one of the nine executors below takes a leading `rec *Mutations`
-// parameter and appends its own primitive's entry itself, after the primitive observably changed
-// state — never before, and never for a no-op. A refusal records nothing, since nothing happened;
-// removeGitWorktree, deleteBranch, and deleteRemoteBranch record only when the underlying git command
-// returned a nil error, since a non-nil error — whether git ran and rejected the command or could not
-// be run at all — would otherwise claim a destruction that never occurred; deleteRemoteBranch
-// additionally requires an observed deletion rather than a nil error alone, since its own
-// nil-error-plus-deleted==false case is the already-absent idempotent success.
+// Recording contract: every executor below takes a leading `rec *Mutations` parameter and appends its own primitive's entry itself, after the primitive observably changed state — never before, and never for a no-op.
+// A refusal records nothing, since nothing happened;
+// removeGitWorktree, deleteBranch, and deleteRemoteBranch record only when the underlying git command returned a nil error, since a non-nil error — whether git ran and rejected the command or could not be run at all — would otherwise claim a destruction that never occurred;
+// deleteRemoteBranch additionally requires an observed deletion rather than a nil error alone, since its own nil-error-plus-deleted==false case is the already-absent idempotent success.
 // The parameter is explicit, never a request-type field,
 // because a missing struct field is a silent zero value the compiler accepts while a missing
 // parameter does not compile — this slice exists because a record was silently dropped, so the
@@ -264,6 +256,25 @@ type remoteBranchRequest struct {
 	// today, exactly as branchRequest's own force field does, for the same reason — no call site's own
 	// gate currently answers to it.
 	force bool
+}
+
+// remoteBranchUpdateRequest is the gate's request shape for the leased push that moves a task pair's own branch on a remote.
+// It carries a pathRequest rather than a branch declaration: the push runs the same containment, ownership, dirtiness and force pipeline over the pair's warp checkout that the checkout rewrite it precedes runs.
+type remoteBranchUpdateRequest struct {
+	// pathReq is the pair-warp checkout request the pipeline runs before the push.
+	pathReq pathRequest
+	// repo is the pair's warp checkout, the repository the push runs from.
+	repo *gitrepo.Repo
+	// remote is the remote name whose branch is moved.
+	remote string
+	// branch is the pair's own task branch; it must still be the checkout's current branch at push time.
+	branch string
+	// parentBranch is the branch the pair is cut from, which is never moved.
+	parentBranch string
+	// sha is the commit the remote branch is moved to.
+	sha string
+	// leaseSHA is the remote tip the caller read; the push succeeds only while the remote branch still sits there.
+	leaseSHA string
 }
 
 // pathOwnershipKind enumerates the closed set of ownership predicates a pathRequest may declare.
@@ -1279,6 +1290,42 @@ func deleteRemoteBranch(rec *Mutations, req remoteBranchRequest) (deleted bool, 
 	return deleted, err
 }
 
+// updateRemoteBranch is the executor for the leased force push that moves a task pair's own branch on a remote: it runs checkPathRequest over req.pathReq, re-reads the checkout's branch so only the pair's own branch, never the parent branch, is moved, then calls req.repo.UpdateRemoteBranchLeased(req.remote, req.branch, req.sha, req.leaseSHA).
+// A lease that no longer holds returns the divergence refusal, since the remote tip moved after the caller read it and may now hold commits the checkout lacks;
+// any other push failure is wrapped with a way forward.
+// It appends KindRemoteBranchUpdated to rec via AppendRef only once the push succeeded: a remote ref carries no hub-relative conversion.
+func updateRemoteBranch(rec *Mutations, req remoteBranchUpdateRequest) error {
+	if err := checkPathRequest(req.pathReq); err != nil {
+		return err
+	}
+
+	current, err := req.repo.CurrentBranch()
+	if err != nil {
+		return &destructiveRefusal{Check: CheckOwnership, What: req.pathReq.what, Target: req.branch, Reason: fmt.Sprintf("cannot read the branch checked out at %s: %v", req.pathReq.target, err)}
+	}
+	if current != req.branch || current == req.parentBranch {
+		return &destructiveRefusal{Check: CheckOwnership, What: req.pathReq.what, Target: req.branch, Reason: fmt.Sprintf("%s has %q checked out, not the pair's own branch %q", req.pathReq.target, current, req.branch)}
+	}
+
+	err = req.repo.UpdateRemoteBranchLeased(req.remote, req.branch, req.sha, req.leaseSHA)
+	switch {
+	case errors.Is(err, gitrepo.ErrLeaseRejected):
+		return fmt.Errorf("the remote task branch %s moved while this reset ran, so it may now hold commits this checkout lacks; %s", req.branch, remoteDivergenceWayForward(req.remote, req.branch))
+	case err != nil:
+		return fmt.Errorf("moving the remote task branch %s to %s failed: %w; way forward: re-run this reset once the remote is reachable", req.branch, req.sha, err)
+	}
+	rec.AppendRef(KindRemoteBranchUpdated, req.remote+"/"+req.branch, req.sha)
+	return nil
+}
+
+// remoteDivergenceWayForward is the way forward every refusal over a remote task branch holding commits the checkout lacks names.
+// It offers the `ours` merge, which takes no content and cannot conflict, for the run's own abandoned commits, and no plain merge.
+func remoteDivergenceWayForward(remote, branch string) string {
+	return fmt.Sprintf("way forward: if those commits are this run's own abandoned work, run `git merge --strategy ours %s/%s` in the task worktree, "+
+		"which takes no content and cannot conflict, then re-run this reset, which rewinds both the checkout and the remote task branch and discards what the merge brought in; "+
+		"if they may be someone else's work, do not re-run this reset, which would discard them, and leave the rewind to the operator", remote, branch)
+}
+
 // createExclusiveDir creates path as a directory the gate can later authorise the removal of, and
 // returns the createdToken proving it.
 //
@@ -1552,8 +1599,18 @@ func (f *Fabric) ResetHard(rec *Mutations, sha string) error {
 // dirtiness is dirtyTrackedExcept(ownPaths), so uncommitted tracked changes are discarded only on the paths the caller names,
 // and force is always false.
 // Untracked files are left alone and the weft is never touched.
+//
+// It also moves the pair's task branch on the origin remote to sha, so a later push is not rejected as diverged.
+// The order is: the gate checks; then, unless opts.SkipPush, a fetch and an ancestry read of the remote task branch against HEAD; then the leased remote update; then the checkout rewrite.
+// A refusal at any step before the remote update leaves the remote and the checkout unchanged, and the first refusal met is the local, cheap one.
+// The remote update is skipped, with no record entry, when the repository has no remote, the remote has no such branch, or the remote tip already equals sha or is an ancestor of it.
+// opts.SkipGit does not skip the fetch or the remote update; opts.SkipPush is the only bypass.
+//
+// The bound: the update rewrites only the pair's own task branch, only to sha, only when every commit it drops is reachable from HEAD, and with a lease on the remote tip the ancestry read saw.
+// A remote-only commit becomes reachable only through the `ours` merge the operator runs after reading the commits the refusal lists, which is the one judgment left to the operator.
+// If the checkout rewrite fails after the remote moved, the error says so; rec then holds the remote_branch_updated entry, and re-running converges.
 // rec is the caller's recorder; resetHardTo appends the resulting worktree_reset entry to it.
-func (f *Fabric) ResetPairWarp(rec *Mutations, sha, parentBranch string, ownPaths []string) error {
+func (f *Fabric) ResetPairWarp(rec *Mutations, sha, parentBranch string, ownPaths []string, opts SyncOptions) error {
 	req := pathRequest{
 		what:      "reset pair warp checkout",
 		container: filepath.Dir(f.warpPath),
@@ -1562,7 +1619,74 @@ func (f *Fabric) ResetPairWarp(rec *Mutations, sha, parentBranch string, ownPath
 		dirtiness: dirtyTrackedExcept(ownPaths),
 		force:     false,
 	}
-	return resetHardTo(rec, req, f.warp, sha)
+	if err := checkPathRequest(req); err != nil {
+		return err
+	}
+
+	moved, err := f.moveRemoteTaskBranch(rec, req, sha, parentBranch, opts)
+	if err != nil {
+		return err
+	}
+	if err := resetHardTo(rec, req, f.warp, sha); err != nil {
+		if moved {
+			return fmt.Errorf("the remote task branch was already updated to %s, but rewriting the checkout failed: %w; way forward: re-run this reset, which converges", sha, err)
+		}
+		return err
+	}
+	return nil
+}
+
+// moveRemoteTaskBranch is ResetPairWarp's remote half: it refuses on a remote task branch holding commits HEAD lacks, and otherwise moves the remote branch to sha through updateRemoteBranch, reporting whether it did.
+func (f *Fabric) moveRemoteTaskBranch(rec *Mutations, req pathRequest, sha, parentBranch string, opts SyncOptions) (moved bool, err error) {
+	if opts.SkipPush {
+		return false, nil
+	}
+
+	tip, remoteOnly, err := f.RemoteOnlyCommits()
+	if err != nil {
+		return false, fmt.Errorf("cannot read the remote task branch: %w; way forward: re-run this reset once the remote is reachable", err)
+	}
+	if tip == "" {
+		return false, nil
+	}
+	branch, err := f.warp.CurrentBranch()
+	if err != nil {
+		return false, fmt.Errorf("cannot read the task branch: %w", err)
+	}
+	if len(remoteOnly) > 0 {
+		return false, fmt.Errorf("the remote task branch %s holds commits this checkout lacks:\n%s\n%s", branch, f.describeCommits(remoteOnly), remoteDivergenceWayForward(originRemoteName, branch))
+	}
+
+	beyondSHA, err := f.warp.CommitsNotIn(tip, sha)
+	if err != nil {
+		return false, fmt.Errorf("cannot compare the remote task branch with %s: %w", sha, err)
+	}
+	if len(beyondSHA) == 0 {
+		return false, nil
+	}
+
+	err = updateRemoteBranch(rec, remoteBranchUpdateRequest{
+		pathReq:      req,
+		repo:         f.warp,
+		remote:       originRemoteName,
+		branch:       branch,
+		parentBranch: parentBranch,
+		sha:          sha,
+		leaseSHA:     tip,
+	})
+	return err == nil, err
+}
+
+// describeCommits renders each commit as an indented `<short sha> <subject>` line, newest first as given.
+// A commit whose subject cannot be read is rendered as its bare SHA.
+func (f *Fabric) describeCommits(shas []string) string {
+	args := append([]string{"log", "--no-walk=unsorted", "--format=%h %s"}, shas...)
+	out, err := gitexec.Run(args, f.warpPath)
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if err != nil || len(lines) != len(shas) {
+		lines = shas
+	}
+	return "  " + strings.Join(lines, "\n  ")
 }
 
 // resetMergeSides is the gated reset abort and self-abort use to restore the warp checkout of a

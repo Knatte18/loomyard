@@ -88,6 +88,7 @@ func statusFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Fin
 					Card:     c.ID(),
 					Detail:   fmt.Sprintf("target %q is ambiguous among candidates: %s", r.Target, candidateList(r.Candidates)),
 					Severity: SeverityBlocking,
+					Ref:      r.Target,
 				})
 			}
 		case quarry.StatusNotFound:
@@ -103,6 +104,7 @@ func statusFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Fin
 					Card:     c.ID(),
 					Detail:   detail,
 					Severity: SeverityBlocking,
+					Ref:      r.Target,
 				})
 			}
 		default:
@@ -117,6 +119,7 @@ func statusFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Fin
 					Card:     c.ID(),
 					Detail:   unreadableStatusDetail("target", r.Target, r),
 					Severity: SeverityBlocking,
+					Ref:      r.Target,
 				})
 			}
 		}

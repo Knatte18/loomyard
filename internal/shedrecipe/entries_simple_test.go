@@ -29,17 +29,18 @@ func validLandingDeps(t *testing.T) landingshed.Deps {
 	t.Helper()
 	dir := t.TempDir()
 	return landingshed.Deps{
-		WorktreeRoot:     dir,
-		TaskBranch:       "task-branch",
-		ParentBranch:     "fixture-parent",
-		DescriptionPath:  summaryparser.Path(dir),
-		StencilsDir:      dir,
-		ScratchDir:       dir,
-		OriginURL:        "https://example.invalid/fixture/fixture.git",
-		PushBranch:       func() error { return nil },
-		OpenFabric:       nilFabricOpener,
-		OpenParentFabric: nilFabricOpener,
-		Shuttle:          &shedfake.MergeShuttle{},
+		WorktreeRoot:      dir,
+		TaskBranch:        "task-branch",
+		ParentBranch:      "fixture-parent",
+		DescriptionPath:   summaryparser.Path(dir),
+		StencilsDir:       dir,
+		ScratchDir:        dir,
+		OriginURL:         "https://example.invalid/fixture/fixture.git",
+		PushBranch:        func() error { return nil },
+		RemoteOnlyCommits: func() (string, []string, error) { return "", nil, nil },
+		OpenFabric:        nilFabricOpener,
+		OpenParentFabric:  nilFabricOpener,
+		Shuttle:           &shedfake.MergeShuttle{},
 	}
 }
 

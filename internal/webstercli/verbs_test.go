@@ -1,7 +1,7 @@
 //go:build integration
 
 // verbs_test.go covers webstercli's git-backed/spawn-backed verbs (begin-batch, record-batch, recover-batch, run) through the RunCLI seam:
-// a real scratch git repo backs WorktreeRoot, a real *shuttleengine.Runner wired over local fake shuttleengine.ReedOps/shuttleengine.Engine doubles is the starter/injector seam, webster's own fixture pattern — a fake struct alone cannot satisfy these interfaces, since a genuine *shuttleengine.Run's StrandGUID is only ever minted by a real Runner.Start), and run's own Master spawn is a local fake MasterStarter (mirroring websterengine's own runlevel_test.go runFakeStarter).
+// a real scratch git repo backs WorktreeRoot, a real *shuttleengine.Runner wired over local fake shuttleengine.ReedOps/shuttleengine.Engine doubles is the starter seam, webster's own fixture pattern — a fake struct alone cannot satisfy these interfaces, since a genuine *shuttleengine.Run's StrandGUID is only ever minted by a real Runner.Start), and run's own Master spawn is a local fake MasterStarter (mirroring websterengine's own runlevel_test.go runFakeStarter).
 // Most tests build a *websterCLI literal directly (bypassing Command()'s PersistentPreRunE) and drive one verb's cobra.Command through clihelp.Execute, webster's own package-local injection point for these tests; seedPersistentPreRunFixture and its tests are the deliberate exception, driving Command()'s real PersistentPreRunE through RunCLIIn.
 // WEFT_SKIP_GIT=1 is set on every test that reaches a fabricSync call, so no real records sibling worktree is needed; the one test that must PROVE fabricSync was never reached (ErrRunBusy) instead leaves WEFT_SKIP_GIT unset and asserts the envelope carries no fabric-sync or fabricengine error text -- the failure a reached fabricSync would stamp in this records-less geometry.
 
@@ -9,11 +9,13 @@ package webstercli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -28,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -136,7 +139,6 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	c := &websterCLI{
 		runner:     runner,
 		starter:    runner,
-		injector:   runner,
 		engine:     engine,
 		reed:       reed,
 		anchorRel:  layout.AnchorRel,
@@ -203,22 +205,16 @@ func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
 // on-disk plan) for fx's webster dir, standing in for the state "lyx
 // webster run" would have already created before Master ever calls
 // begin-batch/record-batch/recover-batch.
-func (fx *verbsFixture) initState(t *testing.T, assertedModel string) *websterengine.State {
+func (fx *verbsFixture) initState(t *testing.T) *websterengine.State {
 	t.Helper()
-	return seedRunState(t, fx.CLI, assertedModel)
+	return seedRunState(t, fx.CLI)
 }
 
-// TestBeginBatchCmd_HappyPath proves the success envelope carries prompt_path/start_sha/model,
-// and that state.json was persisted with the new BatchState.
+// TestBeginBatchCmd_HappyPath proves the success envelope carries prompt_path/start_sha and no model key, that begin-batch types nothing into Master's pane, and that state.json was persisted with the new BatchState.
 func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	// Pre-assert the master model so BeginBatch's idempotent model-switch
-	// check skips the Injector.Inject call entirely — this test is about
-	// the CLI's own envelope/state-save wiring, not the inject choreography
-	// itself (covered live by the sandbox suite, per shuttleengine's own
-	// Inject doc).
-	fx.initState(t, "master-model")
+	fx.initState(t)
 
 	var out strings.Builder
 	exitCode := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"})
@@ -227,10 +223,16 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 		t.Fatalf("begin-batch 1 = %d; want 0, output: %s", exitCode, out.String())
 	}
 	got := out.String()
-	for _, want := range []string{`"batch":"01-only"`, `"prompt_path"`, `"start_sha"`, `"model":"master-model"`} {
+	for _, want := range []string{`"batch":"01-only"`, `"prompt_path"`, `"start_sha"`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q; got %q", want, got)
 		}
+	}
+	if strings.Contains(got, `"model"`) {
+		t.Errorf("output = %q; want no model key", got)
+	}
+	if len(fx.Reed.SendTextCalls) != 0 || len(fx.Reed.SendKeyCalls) != 0 {
+		t.Errorf("reed received %d text and %d key inputs; want none, begin-batch types nothing into a pane", len(fx.Reed.SendTextCalls), len(fx.Reed.SendKeyCalls))
 	}
 
 	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
@@ -246,12 +248,114 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	}
 }
 
+// TestBeginBatchCmd_ReportOnDisk proves begin-batch archives a report that has no begin-batch record and names the archive as archived_report, while a report over a recorded batch is refused with the record's state named.
+func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
+	tests := []struct {
+		name         string
+		record       *websterengine.BatchState
+		wantExit     int
+		wantText     []string
+		wantArchived bool
+	}{
+		{name: "no begin-batch record is archived", wantExit: 0, wantText: []string{`"archived_report"`, `"batch":"01-only"`}, wantArchived: true},
+		{
+			name:     "a begun non-terminal record is refused",
+			record:   &websterengine.BatchState{Slug: "only", Kind: "fork"},
+			wantExit: 1,
+			wantText: []string{"begun and not terminal", "record-batch 1"},
+		},
+		{
+			name:     "a terminal record is refused",
+			record:   &websterengine.BatchState{Slug: "only", Kind: "fork", Terminal: true, Status: "done"},
+			wantExit: 1,
+			wantText: []string{"terminal with status done", "recover-batch 1"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("WEFT_SKIP_GIT", "1")
+			fx := newVerbsFixture(t)
+			st := fx.initState(t)
+			if tt.record != nil {
+				st.Batches[1] = tt.record
+				if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+					t.Fatalf("SaveState() error = %v", err)
+				}
+			}
+			if err := os.MkdirAll(fx.CLI.geom.ReportsDir, 0o755); err != nil {
+				t.Fatalf("mkdir reports dir: %v", err)
+			}
+			reportPath := filepath.Join(fx.CLI.geom.ReportsDir, websterengine.ReportFileName(1, "only"))
+			if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
+				t.Fatalf("seed report: %v", err)
+			}
+
+			var out strings.Builder
+			exitCode := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"})
+
+			if exitCode != tt.wantExit {
+				t.Fatalf("begin-batch 1 = %d; want %d, output: %s", exitCode, tt.wantExit, out.String())
+			}
+			for _, want := range tt.wantText {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("output missing %q; got %q", want, out.String())
+				}
+			}
+			_, statErr := os.Stat(reportPath)
+			if tt.wantArchived != os.IsNotExist(statErr) {
+				t.Errorf("stat(report) = %v; want the report moved away = %v", statErr, tt.wantArchived)
+			}
+		})
+	}
+}
+
+// TestBeginBatchCmd_DeleteTargetAlreadyGone proves begin-batch dispatches a card whose Delete target an earlier recorded batch already removed, and names the target as already deleted in the envelope's advisories.
+func TestBeginBatchCmd_DeleteTargetAlreadyGone(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	const target = "internal/gone/x.txt"
+	gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, target, "x", "add the target")
+	// The fixture's own single-card plan is replaced, so its card file goes too.
+	if err := os.Remove(filepath.Join(fx.CLI.geom.PlanDir, "01-only.md")); err != nil {
+		t.Fatalf("remove the fixture's card file: %v", err)
+	}
+	plankit.Write(t, fx.CLI.geom.PlanDir, plankit.Plan{
+		Approved: true,
+		Framing:  "Framing.",
+		Cards: []plankit.Card{
+			{Number: 1, Slug: "first", Summary: "removes the target", Groups: []plankit.Group{{Label: "Delete", Targets: []string{target}}}, Intent: "remove it.", ImpactSummary: "Removes the target."},
+			{Number: 2, Slug: "second", Summary: "also lists the target", Groups: []plankit.Group{{Label: "Delete", Targets: []string{target}}}, Intent: "remove it too.", ImpactSummary: "Removes the target."},
+		},
+	})
+	st := fx.initState(t)
+	if err := os.Remove(filepath.Join(fx.CLI.geom.WorktreeRoot, target)); err != nil {
+		t.Fatalf("remove the target batch 1 deleted: %v", err)
+	}
+	st.Batches[1] = &websterengine.BatchState{Slug: "first", Kind: "fork", Terminal: true, Status: "done"}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+
+	var out strings.Builder
+	exitCode := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"2"})
+
+	if exitCode != 0 {
+		t.Fatalf("begin-batch 2 = %d; want 0 -- a Delete target batch 1 already removed must not refuse the dispatch, output: %s", exitCode, out.String())
+	}
+	got := out.String()
+	for _, want := range []string{`"batch":"02-second"`, `"advisories"`, "delete-target-gone", target, "already deleted"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q; got %q", want, got)
+		}
+	}
+}
+
 // TestBeginBatchCmd_PausedEnvelope proves the pause refusal is an operational signal (exit 0,
 // {"paused": true}), never a hard error, and that state.json is left untouched.
 func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	fx.initState(t, "master-model")
+	fx.initState(t)
 	if err := websterengine.RequestPause(fx.CLI.geom.ScratchDir); err != nil {
 		t.Fatalf("RequestPause() error = %v", err)
 	}
@@ -282,7 +386,7 @@ func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 func TestPauseCmd_ResolvesSameFileAsBeginBatchGate(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	fx.initState(t, "master-model")
+	fx.initState(t)
 
 	var pauseOut strings.Builder
 	exitCode := clihelp.Execute(fx.CLI.pauseCmd(), &pauseOut, []string{})
@@ -342,7 +446,7 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("WEFT_SKIP_GIT", "1")
 			fx := newVerbsFixture(t)
-			st := fx.initState(t, "master-model")
+			st := fx.initState(t)
 			// DoneChecks resolves a card's Create target against
 			// deps.Geom.WorktreeRoot, which hubgeom.WebsterGeometry fills
 			// with layout.AnchorPath() (fx.Worktree + anchorRel), not
@@ -411,7 +515,7 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	st := fx.initState(t, "master-model")
+	st := fx.initState(t)
 	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
 	st.CurrentBatch = 1
@@ -450,11 +554,71 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 	}
 }
 
+// TestRecordBatchCmd_DeleteReferencedByLaterCard proves a batch whose Delete target an unbegun later card still references fails record-batch with batch_failed naming that card and the plan edit, and that recover-batch over it then refuses before spawning with the same flag and way forward.
+func TestRecordBatchCmd_DeleteReferencedByLaterCard(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	root := fx.CLI.geom.WorktreeRoot
+	// The fixture's own single-card plan is replaced, so its card file goes too.
+	if err := os.Remove(filepath.Join(fx.CLI.geom.PlanDir, "01-only.md")); err != nil {
+		t.Fatalf("remove the fixture's card file: %v", err)
+	}
+	plankit.Write(t, fx.CLI.geom.PlanDir, plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Framing:  "Framing.",
+		Cards: []plankit.Card{
+			{Number: 1, Slug: "first", Summary: "deletes Gone", Groups: []plankit.Group{{Label: "Delete", Targets: []string{"sub#Gone"}}}, Intent: "delete it.", ImpactSummary: "Removes sub#Gone."},
+			{Number: 2, Slug: "second", Summary: "edits the user of Gone", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"sub/user.go"}}}, Intent: "edit it.", ImpactSummary: "Edits the user."},
+		},
+	})
+	st := fx.initState(t)
+	startSHA := gitkit.CommitFile(t, root, "sub/a.go", "package sub\n\nfunc Gone() {}\n", "01.1: add the target")
+	headSHA := gitkit.CommitFile(t, root, "sub/user.go", "package sub\n\nfunc user() {\n\tGone()\n}\n", "01.2: add the user")
+	st.Batches[1] = &websterengine.BatchState{Slug: "first", StartSHA: startSHA, Kind: "fork"}
+	st.CurrentBatch = 1
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	fx.Engine.Audit = shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/fork1.jsonl", ReportReturned: true}}}
+	if err := os.MkdirAll(fx.CLI.geom.ReportsDir, 0o755); err != nil {
+		t.Fatalf("mkdir reports dir: %v", err)
+	}
+	report := &websterengine.Report{Status: websterengine.ReportStatusOK, HeadSHA: headSHA}
+	if err := websterengine.WriteReport(filepath.Join(fx.CLI.geom.ReportsDir, websterengine.ReportFileName(1, "first")), report); err != nil {
+		t.Fatalf("write batch report: %v", err)
+	}
+	wantInOutput := []string{`"batch_failed":true`, "2-second", "sub/user.go:4", "way forward: move the delete to a card after", "lyx webster rebaseline --card NN"}
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.recordBatchCmd(), &out, []string{"1"}); code == 0 {
+		t.Fatalf("record-batch 1 = 0; want non-zero, output: %s", out.String())
+	}
+	for _, want := range wantInOutput {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("record-batch output missing %q; got %q", want, out.String())
+		}
+	}
+
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code == 0 {
+		t.Fatalf("recover-batch 1 = 0; want non-zero, output: %s", out.String())
+	}
+	for _, want := range wantInOutput {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("recover-batch output missing %q; got %q", want, out.String())
+		}
+	}
+	if fx.Engine.PrepareCalls != 0 {
+		t.Errorf("Engine.PrepareCalls = %d; want no recovery strand started", fx.Engine.PrepareCalls)
+	}
+}
+
 // TestRecordBatchCmd_ReportArchivedEnvelope proves a report with no begin record is archived, the call exits non-zero with report_archived, and the report is gone from its live path.
 func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	fx.initState(t, "master-model")
+	fx.initState(t)
 	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
 	writeBatchReport(t, fx.CLI.geom.ReportsDir, startSHA)
 
@@ -480,7 +644,7 @@ func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	st := fx.initState(t, "master-model")
+	st := fx.initState(t)
 	st.Batches[1] = &websterengine.BatchState{
 		Slug: "only", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed,
 		Digest:      &websterengine.Digest{Batch: "01-only", Status: websterengine.DigestStatusFailed},
@@ -509,6 +673,59 @@ func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 	}
 }
 
+// TestRebaselineCmd_EditedCardOfFailedBatchThenRecover proves a one-card fix needs no reset:
+// `rebaseline --card 1` over a failed batch's edited card exits 0 and keeps the batch's start SHA,
+// and `recover-batch 1` then spawns with the edited card's gate in its prompt.
+func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	fx.initState(t)
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"}); code != 0 {
+		t.Fatalf("begin-batch 1 = %d; want 0, output: %s", code, out.String())
+	}
+	st, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || st == nil {
+		t.Fatalf("LoadState() = %v, %v; want a state, nil", st, err)
+	}
+	failed := st.Batches[1]
+	failed.Terminal = true
+	failed.Status = websterengine.DigestStatusFailed
+	failed.Digest = &websterengine.Digest{Batch: "01-only", Status: websterengine.DigestStatusFailed, Reasons: []string{"declared work missing"}}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	startSHA := failed.StartSHA
+
+	plankit.Write(t, fx.CLI.geom.PlanDir, onlyCreatePlan("", "internal/edited/new.go"))
+
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, []string{"--card", "1"}); code != 0 {
+		t.Fatalf("rebaseline --card 1 = %d; want 0, output: %s", code, out.String())
+	}
+	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() after rebaseline = %v, %v; want a state, nil", loaded, err)
+	}
+	if bs := loaded.Batches[1]; bs.StartSHA != startSHA || !bs.Terminal || bs.Status != websterengine.DigestStatusFailed {
+		t.Errorf("loaded.Batches[1] = %+v; want the failed record with start SHA %q kept", bs, startSHA)
+	}
+
+	var prompt string
+	fx.Engine.PrepareFn = func(_ string, spec shuttleengine.Spec, _ shuttleengine.Config) (shuttleengine.Launch, error) {
+		prompt = spec.Prompt
+		return shuttleengine.Launch{Cmd: "fake-launch-cmd", SessionID: "fake-session-recovery"}, nil
+	}
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code != 0 {
+		t.Fatalf("recover-batch 1 = %d; want 0, output: %s", code, out.String())
+	}
+	if !strings.Contains(prompt, "./internal/edited") {
+		t.Errorf("recovery prompt lacks the edited card's gate package ./internal/edited; got %q", prompt)
+	}
+}
+
 // TestRecoverBatchCmd_RunningThenTerminal drives recover-batch across two calls against the same
 // batch: the first call performs the spawn and returns a running snapshot (the strand has no report
 // yet), proving the running envelope touches neither status nor digest fields;
@@ -518,7 +735,7 @@ func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	fx.initState(t, "master-model")
+	fx.initState(t)
 
 	// First call: no prior record for batch 1, so RecoverBatch spawns a
 	// fresh recovery strand, then the bounded (near-zero) wait elapses with
@@ -628,6 +845,72 @@ func TestRunCmd_ErrRunBusySkipsRecordsBackstop(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "fabricengine:") {
 		t.Errorf("output carries a fabricengine error; ErrRunBusy must return before any fabric call: %q", out.String())
+	}
+}
+
+// verbsDiedMaster is a websterengine.MasterStarter double whose Master ends died with one expired background shell.
+type verbsDiedMaster struct {
+	strandGUID string
+	sessionID  string
+}
+
+func (m *verbsDiedMaster) StartMaster(shuttleengine.Spec, shuttleengine.GateSpec) (websterengine.MasterHandle, error) {
+	return m, nil
+}
+
+func (m *verbsDiedMaster) StrandGUID() string { return m.strandGUID }
+
+func (m *verbsDiedMaster) Wait() (shuttleengine.Result, error) {
+	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, SessionID: m.sessionID, ExpiredShells: []string{"sleep 9999"}}, nil
+}
+
+var (
+	_ websterengine.MasterStarter = (*verbsDiedMaster)(nil)
+	_ websterengine.MasterHandle  = (*verbsDiedMaster)(nil)
+)
+
+// TestRunCmd_DiedMasterNotesExpiredShellOutcome drives `run` through its cobra command with a Master that dies after one background shell ran past the wait, and asserts the friction note on disk states the error outcome and that the next run reclaims the strand.
+func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	fx.CLI.frictionDir = t.TempDir()
+	fx.CLI.shuttleCfg.BackgroundShellWaitMin = 15
+	fx.CLI.cfg.VerifyGateAttempts = 3
+	master := &verbsDiedMaster{strandGUID: "master-strand-died", sessionID: "master-session-died"}
+	fx.CLI.masterStarter = master
+
+	runDir := filepath.Join(fx.CLI.shuttleCfg.RunDir, "fake-run-"+master.strandGUID)
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatalf("mkdir run dir: %v", err)
+	}
+	runState, err := json.Marshal(shuttleengine.RunState{RunID: "fake-run-" + master.strandGUID, StrandGUID: master.strandGUID, SessionID: master.sessionID, CreatedAt: time.Now().UTC().Format(time.RFC3339)})
+	if err != nil {
+		t.Fatalf("marshal run state: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(runDir, "run.json"), runState, 0o644); err != nil {
+		t.Fatalf("write run.json: %v", err)
+	}
+
+	var out strings.Builder
+	exitCode := clihelp.Execute(fx.CLI.runCmd(), &out, []string{})
+
+	if exitCode != 1 {
+		t.Fatalf("run with a died Master = %d; want 1, output: %s", exitCode, out.String())
+	}
+	note, err := os.ReadFile(filepath.Join(fx.CLI.frictionDir, "webster-background-shell.md"))
+	if err != nil {
+		t.Fatalf("read friction note: %v", err)
+	}
+	for _, want := range []string{
+		"`sleep 9999`",
+		"`background_shell_wait_min` (15 minutes)",
+		"lyx did not stop the shell",
+		"the next `lyx webster run` reclaims it at entry",
+		"the run's outcome after that turn end: error (",
+	} {
+		if !strings.Contains(string(note), want) {
+			t.Errorf("friction note = %q; want it to contain %q", note, want)
+		}
 	}
 }
 
@@ -770,7 +1053,7 @@ func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
 func TestBeginBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
-	fx.initState(t, "master-model")
+	fx.initState(t)
 	fx.CLI.openFabric = failingFabricOpen
 
 	var out strings.Builder
@@ -795,7 +1078,7 @@ func TestBeginBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
-	st := fx.initState(t, "master-model")
+	st := fx.initState(t)
 	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
 	st.CurrentBatch = 1
@@ -825,7 +1108,7 @@ func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 func TestRecoverBatchCmd_FabricSyncAndReedBootWayForward(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
-	fx.initState(t, "master-model")
+	fx.initState(t)
 
 	fx.CLI.reedUp = func(context.Context, bool) error { return fmt.Errorf("tmux not ready (injected)") }
 	var out strings.Builder
@@ -874,7 +1157,7 @@ func TestBracketVerbs_NoRunInProgressWayForward(t *testing.T) {
 		}
 	}
 
-	fx.initState(t, "master-model")
+	fx.initState(t)
 	var out strings.Builder
 	if code := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"}); code != 0 {
 		t.Fatalf("begin-batch 1 once the run exists = %d; want 0, output: %s", code, out.String())

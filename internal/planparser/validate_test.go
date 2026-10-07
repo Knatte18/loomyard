@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -1023,6 +1024,90 @@ func TestValidate_CardFieldOverlap(t *testing.T) {
 			t.Errorf("countFor(findings, card-field-overlap) = %d; want 1", got)
 		}
 	})
+}
+
+// TestValidate_UsesLaterTarget covers uses-later-target: a card's Uses entry naming a target of a card with a higher number is one finding attributed to the consumer, matched like the sequencer's producer-before-consumer rule (exact string after trimming, empty entries ignored, any type label).
+func TestValidate_UsesLaterTarget(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		consumerUses []string
+		producer     func() planparser.Card
+		producerNum  int
+		wantDetails  []string
+	}{
+		{
+			name:         "a card 2 Uses naming a card 4 target",
+			consumerUses: []string{"pkg/card4.go"},
+			producerNum:  4,
+			wantDetails: []string{
+				`card 2 Uses "pkg/card4.go", which card 4 targets; a plan runs in card-number order, so move that work or reorder the cards so card 4's change comes before card 2`,
+			},
+		},
+		{
+			name:         "the same Uses naming an earlier card's target passes",
+			consumerUses: []string{"pkg/card1.go"},
+			producerNum:  1,
+		},
+		{
+			name:         "a Delete target of a later card matches",
+			consumerUses: []string{"pkg/card4.go"},
+			producerNum:  4,
+			producer: func() planparser.Card {
+				return cardOfType(4, "later", planparser.CardTypeDelete, []string{"pkg/card4.go"})
+			},
+			wantDetails: []string{
+				`card 2 Uses "pkg/card4.go", which card 4 targets; a plan runs in card-number order, so move that work or reorder the cards so card 4's change comes before card 2`,
+			},
+		},
+		{
+			name:         "whitespace padding is trimmed and an empty entry is ignored",
+			consumerUses: []string{"", "  pkg/card4.go  ", "   "},
+			producerNum:  4,
+			wantDetails: []string{
+				`card 2 Uses "pkg/card4.go", which card 4 targets; a plan runs in card-number order, so move that work or reorder the cards so card 4's change comes before card 2`,
+			},
+		},
+		{
+			name:         "a repeated entry yields one finding",
+			consumerUses: []string{"pkg/card4.go", "pkg/card4.go"},
+			producerNum:  4,
+			wantDetails: []string{
+				`card 2 Uses "pkg/card4.go", which card 4 targets; a plan runs in card-number order, so move that work or reorder the cards so card 4's change comes before card 2`,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			consumer := validCard(2, "consumer")
+			consumer.Uses = tc.consumerUses
+			producer := validCard(tc.producerNum, "producer")
+			if tc.producer != nil {
+				producer = tc.producer()
+			}
+			plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{consumer, producer}}
+			if tc.producerNum < 2 {
+				plan.Cards = []planparser.Card{producer, consumer}
+			}
+
+			var got []string
+			for _, f := range planparser.Validate(plan, t.TempDir()) {
+				if f.Check != "uses-later-target" {
+					continue
+				}
+				if f.Card != "2-consumer" {
+					t.Errorf("finding attributed to %q; want the consumer card %q", f.Card, "2-consumer")
+				}
+				got = append(got, f.Detail)
+			}
+			if !slices.Equal(got, tc.wantDetails) {
+				t.Errorf("uses-later-target details = %q; want %q", got, tc.wantDetails)
+			}
+		})
+	}
 }
 
 // TestValidate_ImpactSummaryMultiline covers impact-summary-multiline: a non-empty

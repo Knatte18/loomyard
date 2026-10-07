@@ -62,7 +62,9 @@ envelope, exactly like record-batch's own terminal envelope. A recovery
 the post-batch checks reject takes the batch terminal failed: the failed
 state and archived report are saved and committed, and the call exits
 non-zero with {"batch_failed": true, "batch": "NN-<slug>", "warnings": [...]};
-the error names "lyx webster recover-batch NN". If --wait
+the error names "lyx webster recover-batch NN" unless a later card still
+references a symbol the batch deletes: a call that finds that before spawning
+refuses with {"batch_failed": true} and the plan edit as its way forward. If --wait
 elapses first it returns {"batch": "NN-<slug>", "status": "running",
 "elapsed_s": N} instead, touching neither git nor the repo -- Master re-calls
 recover-batch again. A call that performs the spawn itself fabric-commits
@@ -173,6 +175,10 @@ Example:
 				mutateHeld = false
 				if errors.Is(err, websterengine.ErrRecoveryNeedsFresh) {
 					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"needs_fresh": true}))
+					return nil
+				}
+				if errors.Is(err, websterengine.ErrRecoveryDeleteReferenced) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"batch_failed": true}))
 					return nil
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))

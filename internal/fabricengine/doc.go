@@ -43,6 +43,12 @@
 // the full flow and the `*PartialPullError` warp-side-failure contract, whose `WeftPulled` field now
 // faithfully reports whether the weft arm completed rather than asserting it always did.
 //
+// `Fabric.RemoteOnlyCommits` (remoteonly.go) is the read of how far the warp origin's branch of the checkout's own name has run ahead of warp HEAD:
+// it returns that remote tip and the commits on it HEAD lacks, newest first.
+// An empty tip means the remote has no such branch or the repository has no origin remote, and a tip with no commits means the remote is at or behind HEAD.
+// A failed fetch returns the error, so each caller decides whether it refuses or degrades.
+// It mutates no ref other than the remote-tracking refs the fetch refreshes.
+//
 // fabric enforces one uniform branch-naming scheme, with no exceptions: a warp branch `<branch>` is
 // always paired with weft branch `<branch>-weft`, including the primary worktree (warp `main` ↔
 // weft `main-weft`).
@@ -589,20 +595,11 @@
 // returned"; it has never meant "nothing happened", and mixing the two up is what `mutations` and
 // `partial` exist to stop a consumer from doing by accident.
 //
-// The vocabulary is `Kind` (mutation.go's closed, string-backed enum — `path_removed`,
-// `worktree_removed`, `link_removed`, `branch_deleted`, `remote_branch_deleted`, `worktree_reset`,
-// `dir_created`, `worktree_created`, `branch_created`, `branch_pushed`, `commit_created`,
-// `link_created`, `file_written`, `push_spawned`, `worktree_switched`, `repo_advanced`,
-// `merge_staged`, `merge_resolved_staged`, `merge_committed`), a flat `Mutation` entry (kind,
-// target, optional detail), and `Mutations`, the ordered accumulator a verb call threads through
-// everything it performs.
+// The vocabulary is `Kind` (mutation.go's closed, string-backed enum — `path_removed`, `worktree_removed`, `link_removed`, `branch_deleted`, `remote_branch_deleted`, `remote_branch_updated`, `worktree_reset`, `dir_created`, `worktree_created`, `branch_created`, `branch_pushed`, `commit_created`, `link_created`, `file_written`, `push_spawned`, `worktree_switched`, `repo_advanced`, `merge_staged`, `merge_resolved_staged`, `merge_committed`), a flat `Mutation` entry (kind, target, optional detail), and `Mutations`, the ordered accumulator a verb call threads through everything it performs.
 //
 // The accumulate-as-you-mutate rule is simple and has no exception: append an entry immediately
 // after a primitive observably changed state, never before, and never for a no-op or a refusal.
-// destroy.go's nine gate executors auto-record eight of the nineteen kinds this way, since every
-// one of them already funnels through the one chokepoint the Fabric Destruction Chokepoint
-// Invariant names; the remaining kinds have no such chokepoint and are hand-recorded at their own
-// success sites instead.
+// destroy.go's gate executors auto-record the kinds they perform this way, since every one of them already funnels through the one chokepoint the Fabric Destruction Chokepoint Invariant names; the remaining kinds have no such chokepoint and are hand-recorded at their own success sites instead.
 //
 // Every mutating entry point owns exactly one recorder: it constructs one via `NewMutations`,
 // threads it as a `*Mutations` parameter into everything the call performs (gate executors
@@ -706,21 +703,25 @@
 //
 // # The destruction chokepoint
 //
-// `destroy.go` is the one file in this package permitted to perform a destructive primitive —
-// `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, deleting a
-// branch on a remote (`git push <remote> --delete`), and a warp checkout's `ResetHard` — and every
-// one of them runs its shared four-check pipeline first.
+// `destroy.go` is the one file in this package permitted to perform a destructive primitive — `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, deleting a branch on a remote (`git push <remote> --delete`), moving a task branch on a remote (a leased force push), and a warp checkout's `ResetHard` — and every one of them runs its shared four-check pipeline first.
 // See `PATTERN-fabric-destruction-chokepoint` for the rules;
 // this section is the rationale the invariant deliberately omits.
 //
 // **The pair-scoped reset.**
-// `ResetPairWarp(rec, sha, parentBranch, ownPaths)` resets a task pair's warp checkout through `resetHardTo`, beside `ResetHard`,
-// which refuses on any tracked dirt and accepts the prime checkout.
+// `ResetPairWarp(rec, sha, parentBranch, ownPaths, opts)` resets a task pair's warp checkout through `resetHardTo`, beside `ResetHard`, which refuses on any tracked dirt and accepts the prime checkout.
 // Its request declares the hub as container and the warp worktree as target;
 // ownership `ownedPairWarpCheckout`, a registered linked worktree that is not on `parentBranch` and whose weft checkout has `WeftBranchName` of the same branch checked out, a detached HEAD refusing;
 // dirtiness `dirtyTrackedExcept(ownPaths)`, so a tracked change refuses unless its worktree-relative, slash-separated path is one the caller names, and the refusal names each other path;
 // and force always false.
 // Untracked files are left alone, the weft is never touched, and a refusal records nothing.
+// It also moves the pair's task branch on the origin remote to `sha`, through the `updateRemoteBranch` executor, so a later push is not rejected as diverged.
+// The order is the gate checks, then a fetch and an ancestry read through `RemoteOnlyCommits`, then the leased remote update, then the checkout rewrite;
+// a refusal before the remote update leaves the remote and the checkout unchanged.
+// A remote task branch holding commits the checkout lacks refuses, listing them and naming the `git merge --strategy ours` way forward for the run's own abandoned commits;
+// an unreachable remote, a failed update and a lease that no longer holds refuse too, and the update is skipped (no record entry) when there is no remote, no such remote branch, or the remote tip is at or behind `sha`.
+// The update appends `remote_branch_updated`, and a checkout rewrite that fails after it says the remote was already updated, leaving the entry in `rec`.
+// `opts.SkipPush` skips the remote half; `opts.SkipGit` does not, so the remote update is the one push-shaped step that ignores `SkipGit`.
+// The bound is that it rewrites only the pair's own task branch, only to `sha`, only when every commit it drops is reachable from HEAD, and under a lease on the tip the ancestry read saw.
 //
 // **Why a chokepoint at all.**
 // Eight data-loss defects across five review rounds were one shape, not eight mistakes: a
@@ -733,15 +734,9 @@
 // it removes the freedom to skip one.
 //
 // **Why the gate executes rather than approves.**
-// A gate a caller consults and then acts on independently is advice, not enforcement — the
-// caller can still reach `os.RemoveAll` directly, and nothing distinguishes "checked, then
-// destroyed" from "destroyed". `destroy.go`'s executors (`removePath`, `removeGitWorktree`,
-// `removeLink`, `repointLink`, `deleteBranch`, `deleteRemoteBranch`, `resetHardTo`) run the
-// pipeline and then perform the primitive themselves, so the two can never come apart. This is
-// also what makes the bypass guard meaningful: a raw call to any of the six primitives is
-// mechanically bannable everywhere
-// else in this package precisely because there is no legitimate reason for one to exist there —
-// the gate is not one way to destroy something, it is the only way.
+// A gate a caller consults and then acts on independently is advice, not enforcement — the caller can still reach `os.RemoveAll` directly, and nothing distinguishes "checked, then destroyed" from "destroyed".
+// `destroy.go`'s executors (`removePath`, `removeGitWorktree`, `removeLink`, `repointLink`, `deleteBranch`, `deleteRemoteBranch`, `updateRemoteBranch`, `resetHardTo`) run the pipeline and then perform the primitive themselves, so the two can never come apart.
+// This is also what makes the bypass guard meaningful: a raw call to any of the primitives is mechanically bannable everywhere else in this package precisely because there is no legitimate reason for one to exist there — the gate is not one way to destroy something, it is the only way.
 //
 // **Why ownership is a closed enum with no caller-supplied predicate.**
 // A `func() (bool, string)` ownership parameter would let a call site declare "trust me, this is

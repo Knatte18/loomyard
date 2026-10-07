@@ -162,11 +162,14 @@
 // a card an earlier untracked rewrite already moved keeps its old hash and stays refused.
 // Each restamp site runs after a foreign-edit check passed in the same call, so an edit on disk when the call starts is refused, never adopted.
 // The check precedes the rewrite rather than being atomic with the restamp, so an edit landing between the two in one call is adopted with the rewrite.
-// `rebaseline` accepts an operator's edit, so it never moves a begun card's hash.
+// `rebaseline` accepts an operator's edit, so it never moves a begun card's hash, except for a card the operator names with --card whose batch is terminal failed, dead or stuck.
 //
 // A foreign edit an operator means to keep has its own way forward:
 // `lyx webster rebaseline --card NN` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record, provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
 // The operator names every card the edit changed with --card: State.PlanFileHashes records a hash of every plan file, and a changed card file whose number is not named is refused.
+// A named card of a batch that is terminal failed, dead or stuck is accepted even though that batch was begun:
+// Rebaseline restamps that card's CardHashes entry and keeps the rest of the batch record, so a one-card fix needs no reset and no fresh run.
+// A done batch, an unfinished batch and a failed batch whose record lists Uncheckable entries still refuse, each with its own way forward.
 // An edit to 00-overview.md, which carries the plan's integration verify, is never accepted; the way forward is to restore it or to run `lyx webster reset --to start` and then `lyx webster run --fresh`.
 // The fingerprint refusals in begin-batch and run name it.
 //
@@ -207,6 +210,11 @@
 // It audits nothing while a later fork batch of the session is open or the verify-gate report exists, since an unseen transcript may then be that fork's.
 // A report that cannot be attributed to a begun batch, or to any fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
 // The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
+// A delete-not-done finding gets one more check, planglyph.LaterDeleteReferences over the batch's own cards and the cards of every batch with no record:
+// when an unbegun later card's Edit code still references the target, the failure's reasons name that card and the reference,
+// and the BatchFailedError's way forward is the plan edit (move the delete after that card, rebaseline, then recover-batch), or the `--fresh` steps when the record also lists uncheckable entries, since recover-batch would repeat the same failure.
+// PersistRecoveryTerminal fails a recovered batch the same way, and recover-batch runs the same check before spawning:
+// while it fires it refuses with ErrRecoveryDeleteReferenced, which the CLI maps to the `batch_failed` flag.
 // At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.
 // A correctness finding stays pending in state.json until `lyx webster accept-audit` clears it, and run entry refuses with ErrPendingAuditFindings meanwhile.
 // accept-audit needs evidence: it checks every suspect path against the last batch head (a plan file against the run's recorded plan hashes) and refuses with ErrAuditNotAcceptable while any path differs, cannot be checked, or a finding names no path;
@@ -234,30 +242,18 @@
 //
 // # bracket verbs, not spawn/poll
 //
-// Because the fork runs inside Master's own session, there is nothing for
-// Go to spawn in the normal path — spawn-batch does not exist here. Go
-// provides thin bracket verbs Master calls around each fork: begin-batch
-// (pause/fingerprint checks, records the batch's start-SHA, idempotently
-// asserts Master's model for this batch, renders and writes the fork
-// prompt) immediately before forking, and record-batch (incremental fork
-// audit, batch-report parsing, digest distillation, state update) once the
-// fork has delivered. The Agent-tool fork is a BACKGROUNDED agent: the fork
-// call returns immediately, before the batch is done, so Master ends its
-// turn right after spawning it and calls record-batch when the fork's
-// completion notification starts its next turn. That turn end does not end
-// the run: shuttle reads a turn that ends with a background agent still
-// running as EventWaiting, which its wait loop treats as still running,
-// so Master spends no turns while a fork works. await-batch (a stateless,
-// bounded wait on a batch's report path) remains as a verb an operator can
-// call, but no longer sits in Master's loop. Go's
-// gates only run when Master actually calls them — the fork itself is
-// Master's own un-gateable act, so enforcement is two-layer: template
-// discipline (the master template pins the begin -> fork -> notification ->
-// record sequence, property-tested) plus fail-loud detection after the fact
+// Because the fork runs inside Master's own session, there is nothing for Go to spawn in the normal path — spawn-batch does not exist here.
+// Go provides thin bracket verbs Master calls around each fork: begin-batch (pause/fingerprint checks, records the batch's start-SHA, renders and writes the fork prompt) immediately before forking, and record-batch (incremental fork audit, batch-report parsing, digest distillation, state update) once the fork has delivered.
+// The Agent-tool fork is a BACKGROUNDED agent: the fork call returns immediately, before the batch is done,
+// so Master ends its turn right after spawning it and calls record-batch when the fork's completion notification starts its next turn.
+// That turn end does not end the run: shuttle reads a turn that ends with a background agent still running as EventWaiting, which its wait loop treats as still running,
+// so Master spends no turns while a fork works.
+// await-batch (a stateless, bounded wait on a batch's report path) remains as a verb an operator can call, but no longer sits in Master's loop.
+// Go's gates only run when Master actually calls them — the fork itself is Master's own un-gateable act,
+// so enforcement is two-layer: template discipline (the master template pins the begin -> fork -> notification -> record sequence, property-tested) plus fail-loud detection after the fact
 // (record-batch archives the report and refuses when a batch has no begin-batch record, naming begin-batch as the way forward;
-// the audit cross-checks fork-transcript count against begun-batch count). This
-// is a steering guard, not a security boundary, the same class as burler's
-// nested-Agent ban.
+// the audit cross-checks fork-transcript count against begun-batch count).
+// This is a steering guard, not a security boundary, the same class as burler's nested-Agent ban.
 //
 // A third, deterministic layer closes the fork-loop deadlock: because a fork
 // inherits Master's whole prompt (the batch loop included), a fork that
@@ -273,24 +269,12 @@
 // cold recovery strand is a separate, non-fork-authorized session and never
 // sees the hook.
 //
-// # idempotent per-batch model assertion
+// # one model per run
 //
 // Forks always inherit Master's current model — there is no per-fork model
 // override, so webster carries no implementer/implementer_oversized fork
 // roles at all; RoleMaster and RoleRecovery are its only two roles.
-// begin-batch synchronously injects RoleMaster into Master's pane via
-// shuttleengine's Runner.Inject before returning its envelope, asserting
-// the correct model for THIS batch rather than assuming the previous
-// batch's state. There is nothing to forget on a failure path that skips
-// record-batch: the next batch's begin-batch call asserts afresh
-// regardless of what the prior batch left behind. Note that the injection
-// itself is DORMANT in the shipped flow: run launches Master with
-// RoleMaster's model AND baselines State.AssertedModel to that same value
-// at every entry, and begin-batch's only target is RoleMaster, so the
-// idempotency check never finds a divergence without manual state
-// tampering — the mechanism is the seam a future per-batch model policy
-// plugs into, and its live timing is exercised only by the sandbox
-// suite's tamper-armed W2 scenario.
+// run launches Master with RoleMaster's model, and nothing in begin-batch reads or changes it afterwards; a Master pane an operator moves with /model stays there for the rest of the run.
 //
 // # cold recovery is the only real model escalation
 //
@@ -365,21 +349,12 @@
 // first batch that has no terminal record. Every card an implementer
 // commits survives independently of Master's fate; only reports and state
 // are fabric-committed per batch, so nothing already recorded is ever lost.
-// One crash window needs a distinct resume move: a crash landing between a
-// fork's report and record-batch leaves the re-driven batch with a report
-// already on disk, which begin-batch refuses to overwrite — the resumed
-// Master consumes it with record-batch instead (its fork audit keys on the
-// bracket-opening session recorded in the batch state, never the current
-// Master session, so the crashed session's fork transcript — still on
-// disk — is found and policy-checked exactly as a late record would have),
-// or with recover-batch's attach path for a recovery batch (found live in
-// round fable-r3, where auditing the current session instead wedged that
-// resume across all three verbs). This crash window resumes on the SAME
-// machine only: fork transcripts live under the machine-local ~/.claude
-// projects directory, while state.json and the reports are fabric-synced —
-// a different machine sees the report with no transcript behind it, which
-// record-batch treats exactly as it treats a forged report:
+// One crash window needs a distinct resume move: a crash landing between a fork's report and record-batch leaves the re-driven batch with a report already on disk, which begin-batch refuses to overwrite when state.json records the batch — the resumed Master consumes it with record-batch instead (its fork audit keys on the bracket-opening session recorded in the batch state, never the current Master session, so the crashed session's fork transcript — still on disk — is found and policy-checked exactly as a late record would have), or with recover-batch's attach path for a recovery batch (found live in round fable-r3, where auditing the current session instead wedged that resume across all three verbs).
+// This crash window resumes on the SAME machine only: fork transcripts live under the machine-local ~/.claude projects directory, while state.json and the reports are fabric-synced —
+// a different machine sees the report with no transcript behind it, which record-batch treats exactly as it treats a forged report:
 // it archives the report and returns a *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
+// A report with no begin-batch record is archived by begin-batch itself, which proceeds and returns the archive path as BeginResult.ArchivedReport;
+// only a batch with no record is archived this way, and a recorded batch's report is never archived by begin-batch.
 //
 // # The verify-gate fixer fork
 //
@@ -419,10 +394,15 @@
 // Master's spawn declares one awaited shell prefix, `masterAwaitedShellPrefix` (the backgrounded recovery verb of the failure ladder);
 // recovery_timeout_min already bounds that verb, so shuttle's turn-end wait treats it like a fork.
 // Every other background shell is waited out after `background_shell_wait_min`, and the labels come back on shuttle's `Result.ExpiredShells`.
-// Whatever the outcome, Run writes those labels into one best-effort `webster-background-shell` friction note.
-// On a done outcome each label is also a `RunResult.Warnings` entry ("turn end counted after background shell `<label>` ran past `background_shell_wait_min`; ...")
-// and a bullet in summary.md's "Background shells waited out" section (AppendBackgroundShells).
-// A non-done outcome keeps its own error or stuck reason.
+// lyx does not stop such a shell: the wait only stops waiting and counts Master's turn end.
+// What ends it follows the run's outcome.
+// When Master's turn ends shuttle-done (a webster done, Master's own stuck or paused, the verify gate's demotion, or a mapping error after that end), shuttle removes Master's strand as the run finishes, and the session and the shell end with it.
+// When the run returns an asking, died or timeout error, Master's strand stays alive until the next `lyx webster run` reclaims it at entry.
+// Run writes one best-effort `webster-background-shell` friction note once the outcome is known, on every outcome.
+// For each label the note states the bound, that the turn end was counted, that lyx did not stop the shell, what ends it and the run's outcome after that turn end.
+// Each label is also a `RunResult.Warnings` entry with the same wording on every outcome that returns a `RunResult` (done, stuck and paused), after the verify-gate demotion, so the warning and the note cannot drift;
+// an error outcome returns no `RunResult`, so the note alone carries it.
+// summary.md's "Background shells waited out" section (AppendBackgroundShells) stays done-only.
 //
 // # Planning a reset
 //
@@ -443,12 +423,16 @@
 // resets the pair's code checkout through fabricengine's pair-checkout reset with the plan's SHA, the parent branch from the origin record and the own paths,
 // clears State.PreFixHead, saves, and fabric-syncs state.json.
 // It changes no other webster state; `run --fresh` or a plain `run` does the rest, as the way-forward texts order them.
-// The bound: it can discard only commits above a run-recorded commit on the task's own branch and uncommitted tracked changes to paths the run itself wrote.
+// The reset also moves the task branch on the remote to the same commit, so a later push is not rejected as diverged; `WEFT_SKIP_PUSH=1` skips that half.
+// The bound: it can discard only commits above a run-recorded commit on the task's own branch, on the checkout and on the remote, and uncommitted tracked changes to paths the run itself wrote.
+// The remote update is made only when every commit it drops is reachable from the task worktree's HEAD and under a lease on the remote tip it read;
+// a remote-only commit becomes reachable only through the `git merge --strategy ours` the operator runs after reading the commits the refusal lists.
 // It cannot move another branch, take a raw SHA, touch the parent branch, the records side or untracked files, and it has no `--force`.
-// Fabric's own refusal (ownership, dirtiness) is surfaced as the verb's error with fabric's reason.
+// Fabric's own refusal (ownership, dirtiness, remote divergence, an unreachable remote) is surfaced as the verb's error with fabric's reason.
 // In standalone mode the verb plans, then refuses naming `git reset --keep <sha>`, since standalone has no pair for the fabric gate to guard.
-// The envelope carries `target`, `sha`, `mutations` (the `worktree_reset` entry) and `partial`, always false.
-// A refusal before the reset is a bare error envelope.
+// The envelope carries `target`, `sha`, `mutations` (the `worktree_reset` entry, and `remote_branch_updated` when the remote moved) and `partial`, false on success.
+// A refusal before the remote update is a bare error envelope.
+// A checkout rewrite that fails after the remote moved is an error envelope carrying `mutations` and `partial: true`, and re-running the reset converges.
 // Each refusal has a row in contracts/specs/refusal-spec.md.
 //
 // # The verify-gate report and findings

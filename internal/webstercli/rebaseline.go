@@ -26,6 +26,11 @@ batch the run already begun (a begun card's content counts, not only its id),
 or removes such a batch; the way forward then is
 to restore those cards, or to run "lyx webster reset --to start" and then
 "lyx webster run --fresh".
+A named card of a batch that is failed, dead or stuck is the exception: its
+edit is accepted, and "lyx webster recover-batch NN" then runs on the edited
+card. An edited card of a done batch is refused, and one of an unfinished
+batch is refused until "lyx webster record-batch NN" or "lyx webster
+recover-batch NN" has finished it.
 The operator names every card the edit changed with --card (repeatable);
 an edited card that is not named is refused, and 00-overview.md, which
 carries the plan's integration verify, is never accepted.

@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -45,7 +46,6 @@ func TestState_RoundTrip(t *testing.T) {
 		CurrentBatch:    2,
 		MasterStrand:    "master-strand-1",
 		MasterSessionID: "session-1",
-		AssertedModel:   "opus",
 		PreFixHead:      "cafef00d",
 		Batches: map[int]*websterengine.BatchState{
 			1: {
@@ -110,15 +110,14 @@ func TestState_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestLoadState_UnusualFiles pins LoadState on a state.json that is absent (nil, nil), corrupt
-// (a wrapped error, never a guessed value) or written before the integration stage was retired
-// (the retired integrationFix field is ignored, the reserved -1 batch record stays an ordinary entry,
-// and the audit-ledger fields it predates decode as nil).
+// TestLoadState_UnusualFiles pins LoadState on a state.json that is absent (nil, nil), corrupt (a wrapped error, never a guessed value) or written before the integration stage was retired (the retired integrationFix and assertedModel fields are ignored, every other field loads intact and a save writes no assertedModel key, the reserved -1 batch record stays an ordinary entry, and the audit-ledger fields it predates decode as nil).
 func TestLoadState_UnusualFiles(t *testing.T) {
 	t.Parallel()
 
 	const legacy = `{
   "runGuid": "g",
+  "masterStrand": "master-strand-1",
+  "assertedModel": "opus",
   "batches": {
     "1": {"slug": "alpha", "kind": "fork", "terminal": true, "status": "done"},
     "-1": {"terminal": true, "status": "stuck"}
@@ -176,6 +175,19 @@ func TestLoadState_UnusualFiles(t *testing.T) {
 			}
 			if got.AuditDispositions != nil || got.AuditWarnings != nil || got.Batches[1].AuditWarnings != nil {
 				t.Errorf("LoadState = %+v; want the audit-ledger fields nil", got)
+			}
+			if got.RunGUID != "g" || got.MasterStrand != "master-strand-1" {
+				t.Errorf("LoadState = %+v; want RunGUID %q and MasterStrand %q intact beside the retired assertedModel", got, "g", "master-strand-1")
+			}
+			if err := websterengine.SaveState(websterDir, scratchDir, got); err != nil {
+				t.Fatalf("SaveState error = %v; want nil", err)
+			}
+			saved, err := os.ReadFile(filepath.Join(websterDir, "state.json"))
+			if err != nil {
+				t.Fatalf("read saved state.json: %v", err)
+			}
+			if strings.Contains(string(saved), "assertedModel") {
+				t.Errorf("saved state.json = %s; want no assertedModel key", saved)
 			}
 		})
 	}

@@ -46,11 +46,13 @@ const (
 // Finding is this package's own finding type: the same Check, Card and Detail fields
 // planparser.ValidationError carries, plus a Severity every converted planparser finding is
 // stamped with by fromValidationError.
+// Ref is the raw plan ref a per-ref finding reports, empty for a finding that is not about one ref.
 type Finding struct {
 	Check    string
 	Card     string
 	Detail   string
 	Severity Severity
+	Ref      string
 }
 
 // Error implements the error interface, formatted as "check[/card]: detail", exactly as
@@ -68,7 +70,7 @@ func (f Finding) Error() string {
 // fromValidationError converts v into a Finding stamped SeverityBlocking — the severity every
 // planparser check reports today, per the plan's blocking-policy Shared Decision.
 func fromValidationError(v planparser.ValidationError) Finding {
-	return Finding{Check: v.Check, Card: v.Card, Detail: v.Detail, Severity: SeverityBlocking}
+	return Finding{Check: v.Check, Card: v.Card, Detail: v.Detail, Severity: SeverityBlocking, Ref: v.Ref}
 }
 
 // openRepo opens a quarry.Repo rooted at worktreeRoot, wrapping any error with ErrQuarryUnavailable

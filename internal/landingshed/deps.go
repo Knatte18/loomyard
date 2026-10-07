@@ -69,6 +69,11 @@ type Deps struct {
 	// package may not write in any identifier, so the verb is named inside internal/fabricengine's
 	// Fabric.PushBranch, never by this package or its caller -- this package only calls the closure.
 	PushBranch func() error
+	// RemoteOnlyCommits is the injected remote read Publish calls after a rejected push:
+	// it returns the remote task branch's tip and the commits on it that the local branch lacks.
+	// The read is git, so it lives in internal/fabricengine and this package only calls the closure.
+	// An empty tip means the remote has no such branch.
+	RemoteOnlyCommits func() (tip string, commits []string, err error)
 
 	// OpenFabric and OpenParentFabric are the two lazy opener closures Publish and Finalize hold,
 	// respectively -- Publish's over the task worktree's own pair, Finalize's over the parent

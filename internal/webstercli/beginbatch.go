@@ -38,11 +38,11 @@ func (c *websterCLI) beginBatchCmd() *cobra.Command {
 		Short: "Master's bracket call immediately before forking one batch's implementer",
 		Long: `begin-batch <NN> checks the webster pause flag (refusing with a
 "paused": true envelope if "lyx webster pause" was called), refuses loud
-when the batch's report file already exists (finished work is never
-silently overwritten -- a stuck batch escalates via recover-batch), records
-the batch's start-SHA in state.json, idempotently asserts Master's model for
-this batch (a repeated call for the same batch never re-injects a switch
-Master's pane is already running), renders and writes that batch's fork
+when the batch's report file already exists for a batch state.json records
+(finished work is never silently overwritten -- a stuck batch escalates via
+recover-batch), archives a report that has no begin-batch record and goes on
+(the envelope's archived_report names it), records
+the batch's start-SHA in state.json, renders and writes that batch's fork
 prompt (carrying the previous batch's own persisted digest), and returns the
 prompt path Master forwards to its Agent-tool fork call verbatim.
 
@@ -101,10 +101,7 @@ Example:
 				Plan:        plan,
 				Batches:     batches,
 				State:       st,
-				Roles:       c.roles,
 				Config:      c.cfg,
-				Engine:      c.engine,
-				Injector:    c.injector,
 				Reed:        c.reed,
 				Geom:        c.geom,
 				FrictionDir: c.frictionDir,
@@ -152,19 +149,24 @@ Example:
 			_ = mutateLock.Release()
 			mutateHeld = false
 
+			// The sync commits the scoped _lyx pathspec, which holds the reports directory,
+			// so an archived report's rename is committed with the state.
 			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("begin-batch %s", result.BatchName)); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s begun but the fabric sync failed: %v; %s", result.BatchName, syncErr, fabricSyncWayForward)))
 				return nil
 			}
 
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
+			envelope := map[string]any{
 				"batch":       result.BatchName,
 				"prompt_path": result.PromptPath,
 				"start_sha":   result.StartSHA,
-				"model":       result.AssertedModel,
 				"warnings":    ownerlessRunWarnings(c.geom.ScratchDir, nil),
 				"advisories":  result.Advisories,
-			}))
+			}
+			if result.ArchivedReport != "" {
+				envelope["archived_report"] = result.ArchivedReport
+			}
+			clihelp.SetExit(cmd.Context(), output.Ok(out, envelope))
 			return nil
 		},
 	}

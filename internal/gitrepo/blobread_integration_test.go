@@ -1,18 +1,19 @@
 //go:build integration
 
-// blobread_integration_test.go covers the history reads — FileAtRevision, PathRevisions and IsAncestor's real-git reachability — against one real git repository with two commits built under t.TempDir(), reusing gitrepo_test.go's newRepo, writeFile, and commitAll fixture helpers.
+// blobread_integration_test.go covers the history reads — FileAtRevision, PathRevisions, CommitsNotIn and IsAncestor's real-git reachability — against one real git repository with three commits built under t.TempDir(), reusing gitrepo_test.go's newRepo, writeFile, and commitAll fixture helpers.
 // IsAncestor's argument-validation guard lives in the untagged ancestry_test.go, because a //go:build constraint applies per file, not per function.
 
 package gitrepo_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
-// TestHistoryReads drives the history reads over one repository: commit A writes a.txt as "version one" and commit B rewrites it as "version two".
+// TestHistoryReads drives the history reads over one repository: commit A writes a.txt as "version one", commit B rewrites it as "version two" and commit C adds an unrelated file.
 // Every step only reads, so the steps run serially in one order over the shared repository and depend on nothing an earlier step does.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestHistoryReads(t *testing.T) {
@@ -25,6 +26,9 @@ func TestHistoryReads(t *testing.T) {
 	writeFile(t, dir, "a.txt", "version two")
 	commitAll(t, dir, "commit B")
 	shaB := requireCurrentSHA(t, repo)
+	writeFile(t, dir, "other.txt", "unrelated")
+	commitAll(t, dir, "commit C")
+	shaC := requireCurrentSHA(t, repo)
 
 	steps := []struct {
 		name string
@@ -51,6 +55,33 @@ func TestHistoryReads(t *testing.T) {
 			const absentSHA = "0123456789abcdef0123456789abcdef01234567"
 			if _, err := repo.IsAncestor(absentSHA, shaB); err == nil {
 				t.Fatal("IsAncestor(absent SHA, B) error = nil; want an error (merge-base cannot classify an unknown commit)")
+			}
+		}},
+		// CommitsNotIn lists the commits past the base newest first, nothing when the tip is behind the base, and errors on an unknown object.
+		{"CommitsNotIn lists the commits past a base newest first", func(t *testing.T) {
+			got, err := repo.CommitsNotIn(shaC, shaA)
+			if err != nil {
+				t.Fatalf("CommitsNotIn(C, A) error = %v; want nil", err)
+			}
+			if want := []string{shaC, shaB}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+				t.Errorf("CommitsNotIn(C, A) = %v; want %v (newest first)", got, want)
+			}
+
+			got, err = repo.CommitsNotIn(shaA, shaC)
+			if err != nil {
+				t.Fatalf("CommitsNotIn(A, C) error = %v; want nil", err)
+			}
+			if len(got) != 0 {
+				t.Errorf("CommitsNotIn(A, C) = %v; want none (A is an ancestor of C)", got)
+			}
+
+			const absentSHA = "0123456789abcdef0123456789abcdef01234567"
+			_, err = repo.CommitsNotIn(absentSHA, shaA)
+			if err == nil {
+				t.Fatal("CommitsNotIn(absent SHA, A) error = nil; want an error")
+			}
+			if !strings.Contains(err.Error(), absentSHA) {
+				t.Errorf("CommitsNotIn(absent SHA, A) error = %v; want it to name %s", err, absentSHA)
 			}
 		}},
 		// FileAtRevision returns a file's exact stored bytes at an older commit, unaffected by a later change to the working-tree copy.
