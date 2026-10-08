@@ -517,7 +517,7 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 	fx := newVerbsFixture(t)
 	st := fx.initState(t)
 	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
-	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
+	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork", AmendedCards: []websterengine.AmendedCard{{Card: "01-only"}}}
 	st.CurrentBatch = 1
 	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
@@ -538,7 +538,7 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 		t.Fatalf("record-batch 1 = 0; want non-zero, output: %s", out.String())
 	}
 	got := out.String()
-	for _, want := range []string{`"batch_failed":true`, `"batch":"01-only"`, `lyx webster recover-batch`} {
+	for _, want := range []string{`"batch_failed":true`, `"card_amended":true`, `"batch":"01-only"`, `lyx webster recover-batch`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q; got %q", want, got)
 		}
@@ -598,6 +598,9 @@ func TestRecordBatchCmd_DeleteReferencedByLaterCard(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("record-batch output missing %q; got %q", want, out.String())
 		}
+	}
+	if strings.Contains(out.String(), "card_amended") {
+		t.Errorf("record-batch output carries card_amended without an amendment: %q", out.String())
 	}
 
 	out.Reset()
@@ -785,7 +788,28 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	head := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: land the card's Create target")
 	writeBatchReport(t, fx.CLI.geom.ReportsDir, head)
 
-	// Second call: ATTACH (Kind == recovery, non-terminal, StrandGUID set)
+	// A card of the batch is amended while that recovery runs, which forces its done report failed.
+	// The envelope carries card_amended, and the call after it spawns again with the entry rendered.
+	loaded.Batches[1].AmendedCards = []websterengine.AmendedCard{{Card: "01-only"}}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, loaded); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	var outForced strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outForced, []string{"1", "--wait", "1ns"}); code == 0 {
+		t.Fatalf("recover-batch 1 over an amended card = 0; want non-zero, output: %s", outForced.String())
+	}
+	for _, want := range []string{`"batch_failed":true`, `"card_amended":true`, `"batch":"01-only"`} {
+		if !strings.Contains(outForced.String(), want) {
+			t.Errorf("forced-failure output missing %q; got %q", want, outForced.String())
+		}
+	}
+	var outRespawn strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outRespawn, []string{"1", "--wait", "1ns"}); code != 0 || !strings.Contains(outRespawn.String(), `"status":"running"`) {
+		t.Fatalf("recover-batch 1 after the forced failure = %d, output: %s; want a running respawn", code, outRespawn.String())
+	}
+	writeBatchReport(t, fx.CLI.geom.ReportsDir, head)
+
+	// Last call: ATTACH (Kind == recovery, non-terminal, StrandGUID set)
 	// -- recoverSpawn/archiveStaleReport never runs again, so the report
 	// just written survives and the very first gather sees it -- terminal.
 	var out2 strings.Builder
@@ -799,8 +823,11 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 			t.Errorf("second call output missing %q; got %q", want, got2)
 		}
 	}
-	if fx.Engine.PrepareCalls != 1 {
-		t.Errorf("Engine.prepareCalls after attach call = %d; want still exactly 1 (no re-spawn)", fx.Engine.PrepareCalls)
+	if strings.Contains(got2, "card_amended") {
+		t.Errorf("done call output carries card_amended: %q", got2)
+	}
+	if fx.Engine.PrepareCalls != 2 {
+		t.Errorf("Engine.prepareCalls after attach call = %d; want still exactly 2 (no re-spawn)", fx.Engine.PrepareCalls)
 	}
 
 	loaded, err = websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)

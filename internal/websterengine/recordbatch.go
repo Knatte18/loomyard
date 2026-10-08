@@ -477,6 +477,25 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return &RecordResult{Digest: bs.Digest, Failed: true, Warnings: warnings}, bfe
 	}
 
+	// An amendment accepted while this attempt ran means the attempt built the old card, so the batch fails whatever the report says and recovery re-runs it.
+	if len(amendedReasons(bs)) > 0 {
+		bfe, ferr := failBatch(failBatchInput{
+			State:        deps.State,
+			Batch:        bs,
+			Number:       number,
+			Slug:         slug,
+			ReportsDir:   deps.Geom.ReportsDir,
+			WorktreeRoot: deps.Geom.WorktreeRoot,
+			Git:          deps.Geom.Git,
+			HeadSHA:      report.HeadSHA,
+			Now:          time.Now,
+		})
+		if ferr != nil {
+			return nil, ferr
+		}
+		return &RecordResult{Digest: bs.Digest, Failed: true, Warnings: warnings}, bfe
+	}
+
 	digest := distill(report)
 	digest.Batch = polledID
 

@@ -688,6 +688,28 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 			},
 		},
 		{
+			name:   "a done report over an unrendered amendment fails the batch with card_amended",
+			audits: oneFork,
+			prepare: func(t *testing.T, fx *recordFixture) {
+				fx.Deps.State.Batches[1].AmendedCards = []websterengine.AmendedCard{{Card: "01-json-flag"}}
+			},
+			report:     okReport,
+			wantFailed: true,
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				var failed *websterengine.BatchFailedError
+				if !errors.As(err, &failed) || !failed.CardAmended {
+					t.Errorf("err = %v; want a BatchFailedError with CardAmended", err)
+				}
+				if !warningsContain(result.Digest.Reasons, "card 01-json-flag was amended after this attempt began") {
+					t.Errorf("Reasons = %v; want the amended card named", result.Digest.Reasons)
+				}
+				if got := fx.Deps.State.Batches[1].Uncheckable; len(got) != 0 {
+					t.Errorf("Uncheckable = %v; want empty", got)
+				}
+				archived(t, fx, 1)
+			},
+		},
+		{
 			name:       "a Master write to a tracked file fails the batch yet stays checkable by recovery",
 			audits:     oneFork,
 			prepare:    parentWrite(trackedFile),

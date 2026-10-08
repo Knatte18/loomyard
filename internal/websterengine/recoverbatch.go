@@ -147,17 +147,25 @@ func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prio
 	return nil
 }
 
-// failureDigestBlock renders a failed prior record's digest for the recovery prompt: the reasons, which failBatch already ends with the suspect paths.
-// It returns "" when prior is not a failed batch.
+// failureDigestBlock renders a prior record's failure for the recovery prompt.
+// It lists the reasons of a failed digest, which failBatch already ends with the suspect paths.
+// It then adds one instruction per card in the prior record's AmendedCards to re-read the card and bring the committed work in line with it.
+// The amended instructions come from AmendedCards, not from the reasons, so a stuck, dead or failed recovery does not erase them.
+// It returns "" when prior is neither a failed batch nor holds an amended card.
 func failureDigestBlock(prior *BatchState) string {
-	if prior == nil || prior.Status != DigestStatusFailed || prior.Digest == nil || len(prior.Digest.Reasons) == 0 {
+	if prior == nil {
 		return ""
 	}
-	var b strings.Builder
-	for _, r := range prior.Digest.Reasons {
-		fmt.Fprintf(&b, "- %s\n", r)
+	var lines []string
+	if prior.Status == DigestStatusFailed && prior.Digest != nil {
+		for _, r := range prior.Digest.Reasons {
+			lines = append(lines, "- "+r)
+		}
 	}
-	return strings.TrimRight(b.String(), "\n")
+	for _, a := range prior.AmendedCards {
+		lines = append(lines, fmt.Sprintf("- card %s was amended after the previous attempt began: re-read the card file and bring the work already committed in line with it", a.Card))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // uncommittedPathsBlock renders the worktree's uncommitted paths for the recovery prompt, grouped by whether some session of the run wrote them.
@@ -307,7 +315,12 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	var priorWarnings []AuditWarning
 	var priorSuspects []SuspectPath
 	var priorTranscripts []string
+	// The prompt above rendered every amended card, so the fresh record carries the entries as rendered: only an edit made after this spawn forces it failed.
+	var amended []AmendedCard
 	if prior != nil {
+		for _, a := range prior.AmendedCards {
+			amended = append(amended, AmendedCard{Card: a.Card, Rendered: true})
+		}
 		priorWarnings = prior.AuditWarnings
 		priorSuspects = prior.SuspectPaths
 		priorTranscripts = prior.ForkTranscripts
@@ -317,6 +330,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		Slug:            slug,
 		Cards:           batchCardIDs(batch),
 		CardHashes:      cardHashes,
+		AmendedCards:    amended,
 		StartSHA:        start,
 		AuditWarnings:   priorWarnings,
 		SuspectPaths:    priorSuspects,
@@ -559,9 +573,32 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		return warnings, bfe
 	}
 
+	// An amendment accepted while this recovery ran fails it whatever its report says, so the next recover-batch re-runs the batch on the amended card.
+	if len(amendedReasons(bs)) > 0 {
+		bfe, ferr := failBatch(failBatchInput{
+			State:        st,
+			Batch:        bs,
+			Number:       number,
+			Slug:         slug,
+			ReportsDir:   deps.Geom.ReportsDir,
+			WorktreeRoot: deps.Geom.WorktreeRoot,
+			Git:          deps.Geom.Git,
+			HeadSHA:      head,
+			Now:          time.Now,
+		})
+		if ferr != nil {
+			return warnings, ferr
+		}
+		return warnings, bfe
+	}
+
 	bs.Digest = digest
 	bs.Terminal = true
 	bs.Status = digest.Status
+	// A recovery recorded done has built every amended card, so none stays to be rendered again.
+	if digest.Status == DigestStatusDone {
+		bs.AmendedCards = nil
+	}
 	// Record CardSHAs like record-batch does, so the verify gate's card hint has no gaps.
 	if digest.HeadSHA != "" {
 		bs.CardSHAs = []string{digest.HeadSHA}

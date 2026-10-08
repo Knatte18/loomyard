@@ -702,6 +702,71 @@ func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing
 	}
 }
 
+// TestRecoverBatch_AmendedCards walks one batch's amendment through its recoveries.
+// A spawn renders the amended card into the prompt and carries the entry as rendered, so the rendering recovery's own stuck record is not forced failed.
+// A re-edit during a recovery forces that recovery's done report failed with card_amended.
+// A stuck recovery keeps the entry for the next spawn, and a done recovery clears it.
+func TestRecoverBatch_AmendedCards(t *testing.T) {
+	fx := newRecoverFixture(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+	const amendedLine = "card 01-json-flag was amended after the previous attempt began"
+
+	spawnRendering := func(step string) {
+		t.Helper()
+		prompts := fx.Engine.PrepareCalls
+		res, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+		if err != nil || !res.Spawned || !res.Running {
+			t.Fatalf("%s: spawn = %+v, %v; want a running spawned recovery", step, res, err)
+		}
+		if fx.Engine.PrepareCalls != prompts+1 || !strings.Contains(fx.Engine.LastPrompt, amendedLine) {
+			t.Fatalf("%s: prompt does not carry the amended card instruction %q", step, amendedLine)
+		}
+		if got := fx.Deps.State.Batches[1].AmendedCards; len(got) != 1 || got[0].Card != "01-json-flag" || !got[0].Rendered {
+			t.Fatalf("%s: AmendedCards = %+v; want the entry carried as rendered", step, got)
+		}
+	}
+
+	// A fork attempt failed on a different reason while its card was amended, so the failure carries both.
+	prior := failedRecord("an earlier reason")
+	prior.AmendedCards = []websterengine.AmendedCard{{Card: "01-json-flag"}}
+	fx.Deps.State.Batches[1] = prior
+
+	spawnRendering("first spawn")
+	head := fx.Git.head
+
+	// An amendment accepted while that recovery runs forces its done report failed, whatever the report says.
+	fx.Deps.State.Batches[1].AmendedCards[0].Rendered = false
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
+	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	var failed *websterengine.BatchFailedError
+	if !errors.As(err, &failed) || !failed.CardAmended {
+		t.Fatalf("done report over a re-edited card: err = %v; want a BatchFailedError with CardAmended", err)
+	}
+	if bs := fx.Deps.State.Batches[1]; !bs.Terminal || bs.Status != websterengine.DigestStatusFailed || len(bs.AmendedCards) != 1 || bs.AmendedCards[0].Rendered {
+		t.Fatalf("record after the forced failure = %+v; want terminal failed with the entry still unrendered", bs)
+	}
+
+	// The next spawn renders it again, and the recovery ending stuck keeps the entry.
+	spawnRendering("second spawn")
+	writeRecoverReport(t, fx.ReportsDir, "status: FAILED\nhead_sha: "+head+"\n")
+	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
+		t.Fatalf("stuck recovery over a rendered amendment: err = %v; want it recorded, not forced failed", err)
+	}
+	if bs := fx.Deps.State.Batches[1]; bs.Status != websterengine.DigestStatusStuck || len(bs.AmendedCards) != 1 {
+		t.Fatalf("record after the stuck recovery = status %q, AmendedCards %+v; want stuck with the entry kept", bs.Status, bs.AmendedCards)
+	}
+
+	// A stuck prior is no failed digest, yet its kept entry is rendered into the next spawn, and a done recovery clears it.
+	spawnRendering("third spawn")
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
+	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
+		t.Fatalf("done recovery over a rendered amendment: err = %v; want it recorded done", err)
+	}
+	if bs := fx.Deps.State.Batches[1]; bs.Status != websterengine.DigestStatusDone || len(bs.AmendedCards) != 0 {
+		t.Fatalf("record after the done recovery = status %q, AmendedCards %+v; want done with the entries cleared", bs.Status, bs.AmendedCards)
+	}
+}
+
 // failedRecord builds the record RecordBatch leaves behind for a batch it failed on its merits:
 // terminal, status failed, reasons ending with the suspect paths.
 func failedRecord(reasons ...string) *websterengine.BatchState {

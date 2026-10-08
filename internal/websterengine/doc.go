@@ -179,6 +179,16 @@
 // A named card of an in-flight batch, begun and not terminal, is accepted the same way and is also recorded in the batch's AmendedCards (AmendedCard) with Rendered false;
 // a card already there has its mark set back to false, and RebaselineResult.CardsAmended reports the accepted ones as `cards_amended`.
 // The fork or recovery strand running then keeps working on the old text and nothing is stopped; recovery re-runs the batch on the edited cards.
+// That re-run is forced.
+// When record-batch records a fork's report, or recover-batch records a recovery's terminal digest, and the batch holds an AmendedCards entry with Rendered false, the batch first runs every normal check.
+// It is then recorded failed through failBatch, whatever the report's status.
+// failBatch adds a reason per unrendered entry to any failure and sets BatchFailedError.CardAmended, which both verbs' batch_failed envelopes carry as `card_amended`;
+// the reason is recoverable, never an Uncheckable entry, so recover-batch never answers needs_fresh for it.
+// Every recovery spawn lists each AmendedCards entry of the record it replaces in the prompt's failure digest, with an instruction to re-read the card and bring the committed work in line with it,
+// and carries the entries onto the fresh record with Rendered true, so that recovery's own report is not forced failed.
+// A recovery recorded done clears the entries; one that ends stuck, dead or failed keeps them, so the next spawn renders them again.
+// Each amendment thus forces at most one failed record and so at most one extra recover-batch;
+// Master's template re-runs recover-batch on a `card_amended` refusal even after a failed recovery.
 // A done batch and a failed batch whose record lists Uncheckable entries still refuse, each with its own way forward.
 // An edit to 00-overview.md, which carries the plan's integration verify, is never accepted; the way forward is to restore it or to run `lyx webster reset --to start` and then `lyx webster run`.
 // The fingerprint refusals in begin-batch and run name it.
