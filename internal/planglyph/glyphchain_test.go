@@ -657,6 +657,9 @@ func deleteWithEdit(deleted, edited []string) string {
 	return "**Delete:**\n" + bullets(deleted) + "\n**Edit:**\n" + bullets(edited) + "\n**Intent:** delete\n\n**ImpactSummary:** none\n"
 }
 
+// skippedCaller is a Go file that calls callees.Target, written under a directory the reference scan skips.
+const skippedCaller = "package caller\n\nimport \"example.com/glyphchain/callees\"\n\nfunc use() { callees.Target() }\n"
+
 // TestGlyphChain_CallerCoverage pins caller-uncovered over the callees fixture: a deleted or re-signed member whose references no admissible card covers is reported per file, blocking for a package-level member and informational for a method, at the plan gate and never by ValidateDispatch.
 func TestGlyphChain_CallerCoverage(t *testing.T) {
 	t.Parallel()
@@ -671,6 +674,8 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 		name     string
 		cards    []string
 		sections []plankit.Section
+		// files are extra Go files, by fixture-relative path, written into the fixture copy.
+		files map[string]string
 		// subject is the card that deletes or re-signs the member, 1-card1 when empty.
 		subject string
 		// want lists "<severity> <file>" for every caller-uncovered finding, sorted.
@@ -705,6 +710,17 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 		{
 			name:  "re-sign with the covers on its own card",
 			cards: []string{editWithResign("callees#Target", resignHead, append(slices.Clone(covers), "callers#UseTarget")...)},
+		},
+		{
+			name:  "callers under directories the go tool ignores are not seen",
+			cards: []string{deleteWithEdit([]string{"callees#Target"}, append(slices.Clone(covers), "callers#UseTarget"))},
+			files: map[string]string{
+				"testdata/caller.go":      skippedCaller,
+				"vendor/caller.go":        skippedCaller,
+				".hidden/caller.go":       skippedCaller,
+				"_ignored/caller.go":      skippedCaller,
+				"callers/testdata/use.go": skippedCaller,
+			},
 		},
 		{
 			name:  "delete of a member called in its own file",
@@ -750,6 +766,15 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
+			for file, source := range tc.files {
+				target := filepath.Join(root, filepath.FromSlash(file))
+				if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+					t.Fatalf("MkdirAll(%q) failed: %v", filepath.Dir(target), err)
+				}
+				if err := os.WriteFile(target, []byte(source), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) failed: %v", target, err)
+				}
+			}
 			_, plan := writeGlyphPlan(t, tc.cards, tc.sections...)
 
 			findings, err := ValidateFormat(plan, root)
