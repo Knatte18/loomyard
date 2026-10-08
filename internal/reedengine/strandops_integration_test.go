@@ -76,8 +76,8 @@ func TestStrandOps_RealTmux(t *testing.T) {
 		for _, p := range live {
 			if p.ID == after.Strands[0].PaneID {
 				sawTop = true
-				if p.Height != e.cfg.CollapsedRows {
-					t.Errorf("replacement pane height = %d, want %d (cfg.CollapsedRows)", p.Height, e.cfg.CollapsedRows)
+				if wantHeight := e.cfg.CollapsedRows - 1; p.Height != wantHeight {
+					t.Errorf("replacement pane height = %d, want %d (cfg.CollapsedRows minus the title row)", p.Height, wantHeight)
 				}
 			}
 			if p.ID == added[0].PaneID {

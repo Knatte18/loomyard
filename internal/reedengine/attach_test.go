@@ -254,10 +254,6 @@ func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 //testtiming:keep pins one known-good AttachArgv call issuing every geometry pin itself, the status-line pin before the #{status} readback and the set-hook clear after list-panes, no pane-set mutation, reed.json left untouched, and a failing set-hook leaving the chained argv unchanged; its covering tests run this code without asserting it
 func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	e, fake := newAttachTestEngine(t, goodAttachStrands())
-	// newTestEngine's Geometry leaves WorktreeName unset; the default status-line template's
-	// {{.worktree}} marker requires it, so this case sets it so StatusLineText() succeeds and all
-	// eight set-option calls (not the six-call degraded shape) are issued.
-	e.geom.WorktreeName = "test-worktree"
 	fake.mustNotCall("select-layout", "select-pane", "kill-pane", "split-window")
 
 	stateBefore, err := LoadState(e.stateDir())
@@ -270,8 +266,8 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 		t.Fatalf("AttachArgv() = %v, want the 10-element chained argv on this known-good script", want)
 	}
 
-	// The seven status-line options plus the pre-existing window-size pin, the window marker and the strand pane's two options.
-	const wantSetOptionCalls = 11
+	// The six bar and border pins plus the pre-existing window-size pin, the window marker and the strand pane's two options.
+	const wantSetOptionCalls = 10
 	if setOptions := fake.ArgvFor("set-option"); len(setOptions) != wantSetOptionCalls {
 		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(setOptions), wantSetOptionCalls, setOptions)
 	}

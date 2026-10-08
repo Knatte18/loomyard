@@ -13,12 +13,10 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
-	"github.com/Knatte18/loomyard/internal/tokenvocab"
 )
 
 //testtiming:keep pins the window-size parser: a well-formed pair with trailing newline or extra whitespace parses, and an empty, one-field, three-field, non-numeric, zero or negative answer is rejected; its covering tests run this code without asserting it
@@ -135,65 +133,6 @@ func TestWindowSizeAllowsChain(t *testing.T) {
 	}
 }
 
-// TestEscapeStatusText covers the pure doubling rule: every "#" becomes "##", regardless of position.
-//
-//testtiming:keep pins the doubling rule: every "#" becomes "##" at any position; its covering tests run this code without asserting it
-func TestEscapeStatusText(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{"NoHash", "plain text", "plain text"},
-		{"OneHash", "a#b", "a##b"},
-		{"SeveralHashes", "#a#b#c", "##a##b##c"},
-		{"HashAtEachEnd", "#middle#", "##middle##"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := escapeStatusText(tt.in); got != tt.want {
-				t.Errorf("escapeStatusText(%q) = %q, want %q", tt.in, got, tt.want)
-			}
-		})
-	}
-}
-
-// TestStatusLeftLength covers the rune-counted floor-at-10 rule, including a multi-byte string whose
-// rune count differs materially from its byte count — statusLeftLength must report the rune count, not
-// the byte count.
-//
-//testtiming:keep pins the rune-counted floor-at-10 status-left length, a multi-byte string counted by runes not bytes, and escaping before measuring yielding a larger length; its covering tests run this code without asserting it
-func TestStatusLeftLength(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want int
-	}{
-		{"ShorterThanFloor", "short", 10},
-		{"ExactlyTen", "1234567890", 10},
-		{"LongerThanFloor", "this is a long status line", 26},
-		// 12 runes, 36 bytes (3 bytes per hiragana character): a byte-counting implementation would
-		// wrongly answer 36 here.
-		{"MultiByteRuneCountDiffersFromByteCount", "あいうえおかきくけこさし", 12},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := statusLeftLength(tt.in); got != tt.want {
-				t.Errorf("statusLeftLength(%q) = %d, want %d", tt.in, got, tt.want)
-			}
-		})
-	}
-
-	// Measuring a string before escapeStatusText doubles its "#" characters can under-report the length tmux will actually receive:
-	// "######" is 6 runes unescaped (floored to 10), but "############" once escaped is 12 runes, over the floor, so escaping first must yield a strictly larger answer.
-	const s = "######"
-	before := statusLeftLength(s)
-	after := statusLeftLength(escapeStatusText(s))
-	if after <= before {
-		t.Errorf("statusLeftLength(escapeStatusText(%q)) = %d, want it to exceed statusLeftLength(%q) = %d — measuring the pre-escape string would truncate a hub path containing '#'", s, after, s, before)
-	}
-}
-
 // TestReadbacksLocked pins the two single-value tmux readbacks: the status row count (on reserves one row) and the window-size latest check,
 // each answering from a scripted display-message and degrading on a round-trip error.
 //
@@ -252,89 +191,38 @@ func TestReadbacksLocked(t *testing.T) {
 	}
 }
 
-// TestPinGeometryOptionsLocked drives pinGeometryOptionsLocked against the fake tmux,
-// recording every set-option argv issued. It asserts the seven status-line options plus the
-// pre-existing window-size pin are all issued with the expected target/value, that status-left carries
-// the escaped rendered text, that a StatusLineText render error skips only status-left and
-// status-left-length while the other six calls (five status-line options plus window-size) still
-// happen, and that no call's failure stops the calls after it.
+// TestPinGeometryOptionsLocked drives pinGeometryOptionsLocked against the fake tmux, recording every set-option argv issued.
+// It asserts the two-line bar's pins plus the pre-existing window-size pin are all issued with the expected target and value:
+// both status formats global, status 2 and status-position on the session, the pane-border status and format on the strand window only.
+// that no call's failure stops the calls after it,
+// and that the window-resized hook lifecycle is left to unset the hook and clean the signal file when the watchdog is off.
 //
-//testtiming:keep pins the set-option calls issued to pin the geometry: the seven status-line options plus window-size with the escaped rendered text, only status-left and status-left-length skipped when the render errors, no failure stopping the calls after it, and the window-resized hook lifecycle left to unset and clean the signal file when the watchdog is off; its covering tests run this code without asserting it
+//testtiming:keep pins the set-option calls issued to pin the geometry: the two global status formats, status 2 and the position on the session, the border status and format on the strand window and window-size, no failure stopping the calls after it, and the window-resized hook lifecycle left to unset and clean the signal file when the watchdog is off; its covering tests run this code without asserting it
 func TestPinGeometryOptionsLocked(t *testing.T) {
-	t.Run("AllOptionsIssuedWithEscapedText", func(t *testing.T) {
+	t.Run("AllOptionsIssued", func(t *testing.T) {
 		e := newTestEngine(t)
-		// newTestEngine's Geometry leaves WorktreeName unset; the default status-line template's
-		// {{.worktree}} marker requires it, so this case sets it so StatusLineText() succeeds.
-		e.geom.WorktreeName = "test-worktree"
-		// A "#" in the hub path proves the identity text is escaped while the waits segment stays raw.
-		e.geom.HubPath = "/hub/a#b"
 		fake := installFakeTmux(t, e)
-
-		wantText, err := e.StatusLineText()
-		if err != nil {
-			t.Fatalf("StatusLineText() unexpected error: %v", err)
-		}
-		wantEscaped := escapeStatusText(strings.TrimRight(wantText, "\r\n"))
-		if !strings.Contains(wantEscaped, "a##b") {
-			t.Fatalf("escaped status text = %q; want the hub path's # doubled", wantEscaped)
-		}
-		wantStatusLeft := strings.ReplaceAll(wantEscaped, tokenvocab.WaitsPlaceholder, waitsSegmentFormat)
-		wantLength := statusLeftLength(strings.ReplaceAll(wantEscaped, tokenvocab.WaitsPlaceholder, "")) + waitsSegmentLengthAllowance
-
-		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
-		calls := fake.ArgvFor("set-option")
 
 		target := exactSessionWindowTarget(e.SessionName())
-		wantOptions := [][]string{
-			{"set-option", "-t", target, "status", "on"},
-			{"set-option", "-t", target, "status-position", "bottom"},
-			{"set-option", "-t", target, "status-left", wantStatusLeft},
-			{"set-option", "-t", target, "status-right", ""},
-			{"set-option", "-t", target, "status-left-length", strconv.Itoa(wantLength)},
-			{"set-option", "-w", "-t", target, "window-status-format", ""},
-			{"set-option", "-w", "-t", target, "window-status-current-format", ""},
-			{"set-option", "-w", "-t", target, "window-size", "latest"},
-		}
-
-		if len(calls) != len(wantOptions) {
-			t.Fatalf("pinGeometryOptionsLocked issued %d set-option calls, want %d: %v", len(calls), len(wantOptions), calls)
-		}
-		for i, want := range wantOptions {
-			if len(calls[i]) != len(want) {
-				t.Fatalf("call[%d] = %v, want %v", i, calls[i], want)
-			}
-			for j := range want {
-				if calls[i][j] != want[j] {
-					t.Errorf("call[%d][%d] = %q, want %q (full call %v, want %v)", i, j, calls[i][j], want[j], calls[i], want)
-				}
-			}
-		}
-	})
-
-	t.Run("StatusLineTextErrorSkipsOnlyTheTwoTextDerivedOptions", func(t *testing.T) {
-		e := newTestEngine(t)
-		// An unknown top-level token forces StatusLineText() to error, the same shape
-		// TestValidateStatusLine_UnknownTopLevelTokenErrors pins.
-		e.cfg.StatusLine.Template = "{{.slug}}"
-		fake := installFakeTmux(t, e)
-
-		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
+		e.pinGeometryOptionsLocked(target)
 		calls := fake.ArgvFor("set-option")
 
-		for _, c := range calls {
-			if containsArg(c, "status-left") || containsArg(c, "status-left-length") {
-				t.Errorf("calls = %v, want no status-left or status-left-length call when StatusLineText errors", calls)
-			}
+		wantOptions := [][]string{
+			{"set-option", "-g", "status-format[0]", statusFormatButtons},
+			{"set-option", "-g", "status-format[1]", statusFormatSessions},
+			{"set-option", "-t", target, "status", "2"},
+			{"set-option", "-t", target, "status-position", "bottom"},
+			{"set-option", "-w", "-t", target, "pane-border-status", "top"},
+			{"set-option", "-w", "-t", target, "pane-border-format", paneBorderFormat},
+			{"set-option", "-w", "-t", target, "window-size", "latest"},
 		}
-		const wantCalls = 6 // status, status-position, status-right, window-status-format, window-status-current-format, window-size
-		if len(calls) != wantCalls {
-			t.Fatalf("pinGeometryOptionsLocked issued %d set-option calls on a StatusLineText error, want %d: %v", len(calls), wantCalls, calls)
+		if !slices.EqualFunc(calls, wantOptions, slices.Equal[[]string]) {
+			t.Errorf("pinGeometryOptionsLocked set-option calls = %v, want %v", calls, wantOptions)
 		}
 	})
 
 	t.Run("OneOptionFailureDoesNotStopTheRest", func(t *testing.T) {
 		e := newTestEngine(t)
-		e.geom.WorktreeName = "test-worktree"
 		fake := installFakeTmux(t, e)
 		fake.answerFunc("set-option", func([]string) (string, error) {
 			if fake.Count("set-option") == 1 {
@@ -346,14 +234,13 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
 		calls := fake.ArgvFor("set-option")
 
-		const wantCalls = 8
+		const wantCalls = 7
 		if len(calls) != wantCalls {
 			t.Fatalf("pinGeometryOptionsLocked issued %d set-option calls despite one erroring, want all %d still attempted: %v", len(calls), wantCalls, calls)
 		}
 	})
 	t.Run("WatchdogOnPinsGeometryOptionsOnly", func(t *testing.T) {
 		e := newTestEngine(t)
-		e.geom.WorktreeName = "test-worktree"
 		e.cfg.Watchdog = "on"
 		fake := installFakeTmux(t, e)
 
@@ -379,8 +266,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 				setOptionCalls++
 			}
 		}
-		if setOptionCalls != 8 {
-			t.Errorf("pinGeometryOptionsLocked calls = %v, want 8 set-option calls (the seven status-line options and window-size)", calls)
+		if setOptionCalls != 7 {
+			t.Errorf("pinGeometryOptionsLocked calls = %v, want 7 set-option calls (the six bar and border options and window-size)", calls)
 		}
 	})
 
@@ -435,15 +322,14 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 
 	t.Run("SetHookErrorIsNonFatalWhenWatchdogOff", func(t *testing.T) {
 		e := newTestEngine(t)
-		e.geom.WorktreeName = "test-worktree"
 		e.cfg.Watchdog = "off"
 		fake := installFakeTmux(t, e)
 		fake.answer("set-hook", "", errors.New("boom"))
 
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
 
-		if setOptionCalls := fake.Count("set-option"); setOptionCalls != 8 {
-			t.Errorf("set-option calls = %d, want 8 (all preceding pins still attempted despite the later set-hook error)", setOptionCalls)
+		if setOptionCalls := fake.Count("set-option"); setOptionCalls != 7 {
+			t.Errorf("set-option calls = %d, want 7 (all preceding pins still attempted despite the later set-hook error)", setOptionCalls)
 		}
 		if setHookErrors := fake.Count("set-hook"); setHookErrors != 1 {
 			t.Errorf("set-hook errors = %d, want 1", setHookErrors)

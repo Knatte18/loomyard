@@ -213,10 +213,10 @@ func TestAttachGeometry_ExactLayoutAndRowBudgets(t *testing.T) {
 	if gotW != cols {
 		t.Errorf("#{window_width} after attach = %d, want %d (the client's told cols)", gotW, cols)
 	}
-	// The status-line pins now leave "status" on, which reserves one row, so the live window settles
-	// at rows-1 rather than the client's full told rows.
-	if gotH != rows-1 {
-		t.Errorf("#{window_height} after attach = %d, want exactly %d (status is on, reserving one row)", gotH, rows-1)
+	// The status-bar pins leave "status" at 2, which reserves two rows, so the live window settles
+	// at rows-2 rather than the client's full told rows.
+	if gotH != rows-2 {
+		t.Errorf("#{window_height} after attach = %d, want exactly %d (status is 2, reserving two rows)", gotH, rows-2)
 	}
 	if gotLayout := windowLayoutNow(t, e); gotLayout != wantLayout {
 		t.Errorf("#{window_layout} after attach = %q, want %q byte for byte — a mismatch here means tmux rescaled the planned string instead of applying it verbatim", gotLayout, wantLayout)
@@ -247,8 +247,8 @@ func TestAttachGeometry_ExactLayoutAndRowBudgets(t *testing.T) {
 			}
 		case parentPaneID:
 			sawParent = true
-			if p.Height != e.cfg.CollapsedRows {
-				t.Errorf("collapsed parent pane %s height = %d, want %d (cfg.CollapsedRows)", p.ID, p.Height, e.cfg.CollapsedRows)
+			if wantHeight := e.cfg.CollapsedRows - 1; p.Height != wantHeight {
+				t.Errorf("collapsed parent pane %s height = %d, want %d (cfg.CollapsedRows minus the title row)", p.ID, p.Height, wantHeight)
 			}
 		}
 	}
@@ -366,8 +366,8 @@ func assertAttachGeometryRowBudgets(t *testing.T, e *Engine, selvagePaneID, pare
 			}
 		case parentPaneID:
 			sawParent = true
-			if p.Height != e.cfg.CollapsedRows {
-				t.Errorf("(%s) collapsed parent pane %s height = %d, want %d (cfg.CollapsedRows)", step, p.ID, p.Height, e.cfg.CollapsedRows)
+			if wantHeight := e.cfg.CollapsedRows - 1; p.Height != wantHeight {
+				t.Errorf("(%s) collapsed parent pane %s height = %d, want %d (cfg.CollapsedRows minus the title row)", step, p.ID, p.Height, wantHeight)
 			}
 		}
 	}
@@ -420,11 +420,11 @@ func TestAttachGeometry_ResizeAfterAttachHoldsRowBudgets(t *testing.T) {
 	if err := unix.IoctlSetWinsize(int(pty.master.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: uint16(resizedCols), Row: uint16(resizedRows)}); err != nil {
 		t.Fatalf("TIOCSWINSZ (%dx%d): %v", resizedCols, resizedRows, err)
 	}
-	// With "status" pinned on, tmux's content window settles at resizedRows-1, not resizedRows — the
-	// status-line's own row is not part of the window tmux reports here.
+	// With "status" pinned to 2, tmux's content window settles at resizedRows-2, not resizedRows.
+	// The status bar's own two rows are not part of the window tmux reports here.
 	waitUntil(t, 15*time.Second, "window never reported the resized height", func() bool {
 		_, h := windowSizeNow(t, e)
-		return h == resizedRows-1
+		return h == resizedRows-2
 	})
 
 	assertAttachGeometryRowBudgets(t, e, selvagePaneID, parentPaneID, "after resize")
@@ -513,10 +513,10 @@ func TestAttachGeometry_DeadStripPinDoesNotBreakSelvagePin(t *testing.T) {
 	if err := unix.IoctlSetWinsize(int(pty.master.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: uint16(resizedCols), Row: uint16(resizedRows)}); err != nil {
 		t.Fatalf("TIOCSWINSZ (%dx%d): %v", resizedCols, resizedRows, err)
 	}
-	// With "status" pinned on, tmux's content window settles at resizedRows-1, not resizedRows.
+	// With "status" pinned to 2, tmux's content window settles at resizedRows-2, not resizedRows.
 	waitUntil(t, 15*time.Second, "window never reported the resized height", func() bool {
 		_, h := windowSizeNow(t, e)
-		return h == resizedRows-1
+		return h == resizedRows-2
 	})
 
 	live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))

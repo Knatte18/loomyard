@@ -1,12 +1,9 @@
-// windowsize.go owns the live-window-size query and its fallback, the geometry option pins (the
-// rendered status-line and window-size latest), the two effective-value readbacks the attach path
-// (batch 2) gates the chain on, and the whole write side of the `window-resized` hook array — both the
-// resize-pane pins and the watchdog's own resize-signal entry, which are one array and are therefore
-// installed by one function (installResizePinsLocked). The array's READ side is reapply.go's
-// hookInstalledLocked.
-// Every tmux interaction here is non-fatal, per the Shared Decision
-// geometry-tmux-failures-are-non-fatal-everywhere: a failure is logged via logger.Warn and answered
-// with a safe fallback, never returned as an error.
+// windowsize.go owns the live-window-size query and its fallback and the geometry option pins (the two-line status bar, the pane-border title and window-size latest).
+// It also owns the two effective-value readbacks the attach path gates the chain on,
+// and the whole write side of the `window-resized` hook array: both the resize-pane pins and the watchdog's own resize-signal entry, which are one array and are therefore installed by one function (installResizePinsLocked).
+// The array's READ side is reapply.go's hookInstalledLocked.
+// Every tmux interaction here is non-fatal, per the Shared Decision geometry-tmux-failures-are-non-fatal-everywhere:
+// a failure is logged via logger.Warn and answered with a safe fallback, never returned as an error.
 
 package reedengine
 
@@ -18,23 +15,11 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
-	"github.com/Knatte18/loomyard/internal/tokenvocab"
 )
-
-// waitsSegmentFormat is the raw tmux format that stands in for the "waits" token in status-left.
-// For every pane of every window whose @lyx_wait option is set it expands to "<pane title> ⏳<label> <minutes>m ",
-// the minutes being the status refresh's own strftime epoch (%s) minus @lyx_wait_start;
-// an unmarked pane expands to nothing.
-// It is substituted only after escapeStatusText has run, which would otherwise double every "#" of it.
-const waitsSegmentFormat = "#{W:#{P:#{?@lyx_wait,#{pane_title} ⏳#{@lyx_wait} #{e|/:#{e|-:%s,#{@lyx_wait_start}},60}m ,}}}"
-
-// waitsSegmentLengthAllowance is the status-left-length reserved for the waits segment, which the format string's own length does not measure.
-const waitsSegmentLengthAllowance = 120
 
 // parseWindowSize parses a `display-message -p '#{window_width} #{window_height}'` answer into a
 // width/height pair.
@@ -106,57 +91,20 @@ func windowSizeAllowsChain(raw string) bool {
 	return strings.ToLower(strings.TrimSpace(raw)) == "latest"
 }
 
-// escapeStatusText returns s with every "#" doubled to "##". tmux expands "#{…}" and "#[…]" inside a
-// status string, so a hub path or repo name carrying a "#" would otherwise be interpreted as a format
-// directive rather than displayed verbatim. No I/O.
-func escapeStatusText(s string) string {
-	return strings.ReplaceAll(s, "#", "##")
-}
-
-// statusLeftLength returns the status-left-length value for escaped, an already-escaped status-left
-// string: max(10, utf8.RuneCountInString(escaped)). The count is measured in runes, not bytes, because
-// tmux's status-left-length limit counts characters rather than bytes, and it is floored at 10 because
-// that is tmux's own default, which would truncate a shorter explicit value down to nothing gained.
-//
-// escaped MUST already have passed through escapeStatusText: this order is load-bearing rather than
-// stylistic, because a hub path carrying "#" grows by one character per occurrence once escaped, so
-// measuring the pre-escape string here would truncate exactly the lines that need the escaping most.
-// No I/O.
-func statusLeftLength(escaped string) int {
-	n := utf8.RuneCountInString(escaped)
-	if n < 10 {
-		return 10
-	}
-	return n
-}
-
-// pinGeometryOptionsLocked renders this hub's status-line text into tmux's status-line and pins this
+// pinGeometryOptionsLocked pins the two-line status bar and the strand pane-border title (bar.go), pins this
 // session's window to "window-size latest", and owns the UNSET half of the window-resized hook's
 // lifecycle — the install half belongs to installResizePinsLocked at the bottom of this file, which
 // rebuilds the whole array (pins plus the watchdog's signal entry) from scratch on every successful
 // apply.
 //
-// The status-line render is one call to e.StatusLineText().
-// On error it logs via logger.Warn naming the socket, the session and the error,
-// and skips the two text-derived options (status-left and status-left-length) while still issuing the other five status-line options —
-// a template that fails to render is already refused loudly at boot by ValidateStatusLine,
-// so reaching here means a degraded path, not a normal one.
-// On success it escapes the rendered text with escapeStatusText (tmux expands "#{…}"/"#[…]" inside a status string) and issues, in order:
-// "status" "on"; "status-position" "bottom";
-// "status-left" <escaped, with the waits placeholder swapped for waitsSegmentFormat>; "status-right" "";
-// "status-left-length" <statusLeftLength(escaped without the placeholder) plus waitsSegmentLengthAllowance when the placeholder is present>;
-// and, window-targeted with -w, "window-status-format" "" and "window-status-current-format" "".
-// Suppressing the window-status segment is deliberate rather than left at tmux's default:
-// reed's strands share one window,
-// so the default "0:bash*" segment beside the identity text names nothing the operator can act on and would shift position as the window's active pane name changes.
+// It issues, in order: "status-format[0]" and "status-format[1]" with -g, because tmux's status formats are one array and a per-session index would drop the global lines for that session;
+// "status" "2" and "status-position" "bottom" on the session;
+// and, window-targeted with -w on the strands' window only, "pane-border-status" "top" and "pane-border-format", so a batten window gets no border title.
+// The reserved status rows are read back by readStatusRowsLocked, so the layout box shrinks by two rows with no planner change.
 //
-// Every geometry pin — the status-line options and window-size — is session/window-targeted rather
-// than -g, because a session- or window-scoped value set from the operator's own ~/.tmux.conf silently
-// wins over a global set while set-option still exits 0 — verified live. Each call's error is logged
-// via logger.Warn and then ignored; every later step, including the hook block, is attempted even when
-// an earlier one failed, per the Shared Decision geometry-tmux-failures-are-non-fatal-everywhere.
-//
-// No runtime.GOOS == "windows" branch guards any of the eight set-option calls above: per the Shared
+// Each call's error is logged via logger.Warn and then ignored.
+// Every later step, including the hook block, is attempted even when an earlier one failed, per the Shared Decision geometry-tmux-failures-are-non-fatal-everywhere.
+// No runtime.GOOS == "windows" branch guards any of the set-option calls: per the Shared
 // Decision windows-status-line-is-an-unbranched-accepted-degrade they are attempted on every platform,
 // and psmux may refuse some or all of them.
 //
@@ -174,45 +122,21 @@ func statusLeftLength(escaped string) int {
 // the session-wide options ride the window's session.
 // Assumes the op lock is already held.
 func (e *Engine) pinGeometryOptionsLocked(target string) {
-	text, textErr := e.StatusLineText()
-	haveText := textErr == nil
-	var escaped string
-	if !haveText {
-		logger.Warn("reed: failed to render status-line text, skipping status-left and status-left-length", "socket", e.Socket(), "session", e.SessionName(), "err", textErr)
-	} else {
-		escaped = escapeStatusText(strings.TrimRight(text, "\r\n"))
+	pins := []struct {
+		option string
+		argv   []string
+	}{
+		{"status-format[0]", []string{"set-option", "-g", "status-format[0]", statusFormatButtons}},
+		{"status-format[1]", []string{"set-option", "-g", "status-format[1]", statusFormatSessions}},
+		{"status", []string{"set-option", "-t", target, "status", "2"}},
+		{"status-position", []string{"set-option", "-t", target, "status-position", "bottom"}},
+		{"pane-border-status", []string{"set-option", "-w", "-t", target, "pane-border-status", "top"}},
+		{"pane-border-format", []string{"set-option", "-w", "-t", target, "pane-border-format", paneBorderFormat}},
 	}
-	statusLeft, statusLeftLen := escaped, statusLeftLength(escaped)
-	if strings.Contains(escaped, tokenvocab.WaitsPlaceholder) {
-		withoutSegment := strings.ReplaceAll(escaped, tokenvocab.WaitsPlaceholder, "")
-		statusLeft = strings.ReplaceAll(escaped, tokenvocab.WaitsPlaceholder, waitsSegmentFormat)
-		statusLeftLen = statusLeftLength(withoutSegment) + waitsSegmentLengthAllowance
-	}
-
-	if err := e.tmux.run("set-option", "-t", target, "status", "on"); err != nil {
-		logger.Warn("reed: failed to pin status on", "socket", e.Socket(), "session", e.SessionName(), "option", "status", "err", err)
-	}
-	if err := e.tmux.run("set-option", "-t", target, "status-position", "bottom"); err != nil {
-		logger.Warn("reed: failed to pin status-position bottom", "socket", e.Socket(), "session", e.SessionName(), "option", "status-position", "err", err)
-	}
-	if haveText {
-		if err := e.tmux.run("set-option", "-t", target, "status-left", statusLeft); err != nil {
-			logger.Warn("reed: failed to pin status-left", "socket", e.Socket(), "session", e.SessionName(), "option", "status-left", "err", err)
+	for _, pin := range pins {
+		if err := e.tmux.run(pin.argv...); err != nil {
+			logger.Warn("reed: failed to pin a status bar option", "socket", e.Socket(), "session", e.SessionName(), "option", pin.option, "err", err)
 		}
-	}
-	if err := e.tmux.run("set-option", "-t", target, "status-right", ""); err != nil {
-		logger.Warn("reed: failed to pin status-right empty", "socket", e.Socket(), "session", e.SessionName(), "option", "status-right", "err", err)
-	}
-	if haveText {
-		if err := e.tmux.run("set-option", "-t", target, "status-left-length", strconv.Itoa(statusLeftLen)); err != nil {
-			logger.Warn("reed: failed to pin status-left-length", "socket", e.Socket(), "session", e.SessionName(), "option", "status-left-length", "err", err)
-		}
-	}
-	if err := e.tmux.run("set-option", "-w", "-t", target, "window-status-format", ""); err != nil {
-		logger.Warn("reed: failed to pin window-status-format empty", "socket", e.Socket(), "session", e.SessionName(), "option", "window-status-format", "err", err)
-	}
-	if err := e.tmux.run("set-option", "-w", "-t", target, "window-status-current-format", ""); err != nil {
-		logger.Warn("reed: failed to pin window-status-current-format empty", "socket", e.Socket(), "session", e.SessionName(), "option", "window-status-current-format", "err", err)
 	}
 
 	if err := e.tmux.run("set-option", "-w", "-t", target, "window-size", "latest"); err != nil {

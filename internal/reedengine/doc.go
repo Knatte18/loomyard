@@ -49,10 +49,8 @@
 // Engine.SetWaitMark marks a strand's pane as waiting: it sets the pane user options @lyx_wait (the label) and @lyx_wait_start (epoch seconds), or unsets both on an empty label.
 // The mark is display only,
 // so reed stores nothing for it and the options die with the pane;
-// the default status line renders it through its {{.waits}} token, as "<pane title> ⏳<label> <elapsed>m" per marked pane with tmux computing the elapsed minutes at each refresh,
+// the status bar renders it on the strand's own button, as " ⏳<label> <elapsed>m" appended to the strand's name with tmux computing the elapsed minutes at each refresh,
 // and no Go decision reads it.
-// The token resolves to a placeholder that pinGeometryOptionsLocked swaps for the raw tmux format after escaping the rest of the line,
-// so an unmarked session renders as before.
 //
 // Segment colors are read from reed.yaml's segment_colors block, resolved only through Engine.segmentColor, and refused only at boot.
 //
@@ -705,13 +703,15 @@
 //     the layout (exit 1, "have 3 panes but need 2") and destroys nothing;
 //     when the count still matches but membership shifted, cells apply
 //     positionally, so a strand ends up mis-sized rather than lost.
-//   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins seven status-line options — "status" "on"; "status-position" "bottom"; "status-left" <rendered text>; "status-right" ""; "status-left-length" <computed>; and, window-targeted with -w, "window-status-format" "" and "window-status-current-format" "" — plus "window-size" "latest", all targeted at the strand window (-t <strand window>, and -w for window-size, per the Strand window and Session targeting grammar above) both at boot and again in AttachArgv's pre-flight.
+//   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins the two-line status bar and the strand pane-border title, whose format strings bar.go declares: "status-format[0]" (the VIEW, strand and window buttons) and "status-format[1]" (the session buttons and the time), both with -g since tmux's status formats are one array; "status" "2" and "status-position" "bottom" on the session; and, window-targeted with -w on the strand window only, "pane-border-status" "top" and "pane-border-format", so a batten window gets no border title — plus "window-size" "latest" (-w).
+//     The window-targeted pins are targeted at the strand window (-t <strand window>, per the Strand window and Session targeting grammar above), both at boot and again in AttachArgv's pre-flight.
+//     The bar reads strands only through the @strand and @strand_color pane options and the @lyx_strands window option, never through the current window.
 //     Their EFFECTIVE values are read
 //     back with display-message rather than trusted from set-option's exit status, because a -g pin
 //     plus exit 0 is not proof the option took — verified live, tmux 3.6: a session-scoped "status on"
 //     survives a global "set-option -g status off" with exit 0, and a window-scoped "window-size
 //     manual" survives the global "latest" pin the same way. "#{status}" feeds the reserved-row count
-//     reserved for the status line ("off" -> 0, "on" -> 1, a numeric N -> N); a "#{window-size}" other
+//     reserved for the status bar ("off" -> 0, "on" -> 1, a numeric N -> N, so the pinned "2" reserves two rows); a "#{window-size}" other
 //     than "latest", or either readback erroring or answering an unrecognised value, suppresses the
 //     chain rather than risking a wrong-height string. Unlike the remain-on-exit/mouse pins beside
 //     them, every pin and both readbacks here are NON-FATAL: those two are correctness dependencies,
