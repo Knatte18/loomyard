@@ -177,6 +177,21 @@ func TestCountRun(t *testing.T) {
 		launch("2026-01-02T02:00:00Z", "/p/prompt.md"),
 		assistant("t1", "opus", 1, 100),
 	)
+	// A launch line typed as a text item of list content measures as string content does.
+	writeLines(t, filepath.Join(merriams, "m-list.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:merriams:webster"}`,
+		`{"type":"user","timestamp":"2026-01-02T03:00:00Z","message":{"role":"user","content":[{"type":"text","text":"Read /p/list.md in full first; it is your complete, authoritative instructions."}]}}`,
+		readUse("u1", "list", "/p/list.md", 100),
+		toolResultFor("list", "2026-01-02T03:00:01Z", jsonString(t, "prompt")),
+		assistant("u2", "opus", 1, 500),
+	)
+	// A transcript that ends at the prompt Read's result has nothing to measure.
+	writeLines(t, filepath.Join(merriams, "b-ends.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:merriams:webster"}`,
+		launch("2026-01-02T04:00:00Z", "/p/prompt.md"),
+		readUse("v1", "ends", "/p/prompt.md", 100),
+		toolResultFor("ends", "2026-01-02T04:00:01Z", jsonString(t, "prompt")),
+	)
 	withMerriams, err := CountRun(merriams, "merriams")
 	if err != nil {
 		t.Fatal(err)
@@ -184,6 +199,8 @@ func TestCountRun(t *testing.T) {
 	wantMerriams := []MerriamStart{
 		{Session: "z-first.jsonl", Started: time.Date(2026, 1, 2, 1, 0, 0, 0, time.UTC), StartContext: 301},
 		{Session: "a-second.jsonl", Started: time.Date(2026, 1, 2, 2, 0, 0, 0, time.UTC), NoStart: "no Read of the prompt file /p/prompt.md"},
+		{Session: "m-list.jsonl", Started: time.Date(2026, 1, 2, 3, 0, 0, 0, time.UTC), StartContext: 501},
+		{Session: "b-ends.jsonl", Started: time.Date(2026, 1, 2, 4, 0, 0, 0, time.UTC), NoStart: "no assistant message after the prompt Read's result"},
 	}
 	if !slices.EqualFunc(withMerriams.Merriams, wantMerriams, func(got, want MerriamStart) bool {
 		return got.Session == want.Session && got.Started.Equal(want.Started) && got.StartContext == want.StartContext && got.NoStart == want.NoStart
