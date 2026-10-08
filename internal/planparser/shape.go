@@ -90,6 +90,8 @@ const (
 	gateProsaPathOnly refGate = "prosa-path-only"
 	// gateRedundantTarget is redundancyOwnerOf's (redundancy.go) policy: a glyph- or handle-shaped target can belong to a package; a path- or symbol-shaped one is skipped.
 	gateRedundantTarget refGate = "redundant-target"
+	// gateResignTarget is checkResignNotMember's (validate.go) policy: a glyph-shaped re-sign target is kept for a member check; a path-, symbol- or handle-shaped one is the resign-not-member finding, since it names no member with a prior signature.
+	gateResignTarget refGate = "resign-target"
 )
 
 // allRefKinds is the canonical, complete list of every refKind classify.go's enum declares. The
@@ -180,6 +182,12 @@ var ledger = map[refGate]map[refKind]disposition{
 		refKindSymbol: dispSkip,
 		refKindGlyph:  dispKeep,
 		refKindHandle: dispKeep,
+	},
+	gateResignTarget: {
+		refKindPath:   dispFinding,
+		refKindSymbol: dispFinding,
+		refKindGlyph:  dispKeep,
+		refKindHandle: dispFinding,
 	},
 }
 

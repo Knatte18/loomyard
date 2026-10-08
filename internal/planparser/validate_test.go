@@ -1186,6 +1186,52 @@ func TestValidate_RedundantPackageTarget(t *testing.T) {
 	}
 }
 
+// TestValidate_ResignNotMember covers resign-not-member: an Edit re-sign arrow is clean on a member glyph and a finding, with Ref the target, on a file path, a file or package self glyph, a bare symbol or a handle; a malformed glyph is left to glyph-malformed, and nothing is reported under language: none.
+func TestValidate_ResignNotMember(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		language string
+		target   string
+		want     bool
+	}{
+		{name: "member glyph", target: "pkg/a#Thing"},
+		{name: "method glyph", target: "pkg/a#Owner.Method"},
+		{name: "file path", target: "pkg/a/file.go", want: true},
+		{name: "file self glyph", target: "pkg/a/file.go#", want: true},
+		{name: "package self glyph", target: "pkg/a#", want: true},
+		{name: "handle", target: "plan:pkg/a#Thing", want: true},
+		{name: "bare symbol", target: "a.Thing", want: true},
+		{name: "glyph that fails to parse", target: "pkg/a##Thing"},
+		{name: "language none", language: "none", target: "pkg/a/file.go"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			card := cardOfType(1, "resigner", planparser.CardTypeEdit, []string{tc.target})
+			card.Resigns = []planparser.CardResign{{Target: tc.target, Decl: "func Thing(count int)"}}
+			card.TargetGroups[0].Resigns = card.Resigns
+			plan := &planparser.Plan{Format: 5, Approved: true, Language: tc.language, Cards: []planparser.Card{card}}
+
+			var got []string
+			for _, f := range planparser.Validate(plan, t.TempDir()) {
+				if f.Check == "resign-not-member" {
+					got = append(got, f.Ref)
+				}
+			}
+			var want []string
+			if tc.want {
+				want = []string{tc.target}
+			}
+			if !slices.Equal(got, want) {
+				t.Errorf("resign-not-member refs = %q; want %q", got, want)
+			}
+		})
+	}
+}
+
 // TestValidate_ImpactSummaryMultiline covers impact-summary-multiline: a non-empty
 // ImpactSummaryTrailing is a defect, since ImpactSummary is required to stay a single line.
 func TestValidate_ImpactSummaryMultiline(t *testing.T) {

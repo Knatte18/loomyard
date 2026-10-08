@@ -1,6 +1,6 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
 // (contracts/specs/loom-plan-spec.md), run in this fixed order.
-// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision (both checkHandleConsistency), handle-malformed (checkHandleMalformed), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), redundant-package-target (checkRedundantPackageTarget, redundancy.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch (checkCommitSubjectMismatch).
+// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision (both checkHandleConsistency), handle-malformed (checkHandleMalformed), resign-not-member (checkResignNotMember), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), redundant-package-target (checkRedundantPackageTarget, redundancy.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch (checkCommitSubjectMismatch).
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
 // No scheduler, dependency graph, or topological sort belongs in this file — the dependency graph
@@ -82,6 +82,7 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	findings = append(findings, checkRenameFormat(plan)...)
 	findings = append(findings, checkHandleConsistency(plan)...)
 	findings = append(findings, checkHandleMalformed(plan)...)
+	findings = append(findings, checkResignNotMember(plan)...)
 	findings = append(findings, checkRenamePairShape(plan)...)
 	findings = append(findings, checkRenameMechanicMissing(plan)...)
 	findings = append(findings, checkCardMissingField(plan)...)
@@ -653,6 +654,55 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 	}
 
 	return findings
+}
+
+// checkResignNotMember implements resign-not-member: an Edit re-sign arrow whose target is not a member glyph.
+// A path, a bare symbol or a plan: handle is the finding, and so is a file or package self glyph, since none of them has a prior signature to re-sign.
+// A glyph that glyph.Parse rejects is left to glyph-malformed.
+// Skipped entirely when plan.Language does not enable the glyph alphabet.
+func checkResignNotMember(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	lang, ok := planLanguage(plan)
+	if !ok {
+		return findings
+	}
+
+	for _, c := range plan.Cards {
+		for _, r := range c.Resigns {
+			shape, bad := resignTargetShape(lang, r.Target)
+			if !bad {
+				continue
+			}
+			findings = append(findings, ValidationError{
+				Check: "resign-not-member",
+				Card:  cardID(c),
+				Detail: fmt.Sprintf(
+					"card %d re-sign arrow target %q is %s, not a member glyph; put the arrow on the member glyph whose signature changes, since a file, a package or a handle has no prior signature to re-sign",
+					c.Number, r.Target, shape,
+				),
+				Ref: r.Target,
+			})
+		}
+	}
+
+	return findings
+}
+
+// resignTargetShape names the shape of a re-sign arrow's target and reports whether that shape is a finding.
+func resignTargetShape(lang glyph.Language, target string) (shape string, bad bool) {
+	kind, disp := lookup(gateResignTarget, target)
+	if disp == dispFinding {
+		return refKindName(kind), true
+	}
+	g, err := parseGlyph(lang, target)
+	if err != nil || !g.IsSelf() {
+		return "", false
+	}
+	if unitPath, ok := g.UnitPath(); ok && !hasFileExtension(unitPath) {
+		return "a package self glyph", true
+	}
+	return "a file self glyph", true
 }
 
 // isFileRenamePair reports whether p is a file-rename pair under lang: both p.Old and p.New

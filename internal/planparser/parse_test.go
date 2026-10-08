@@ -575,6 +575,41 @@ Framing paragraph.
 			},
 		},
 		{
+			name: "Edit grammar: re-sign arrow lands in Resigns, Refs and Targets",
+			body: "# Card 1 — resign\n\n**Edit:**\n" +
+				"- `internal/foo#Thing` -> `func Thing(count int) *Thing`\n" +
+				"- `internal/foo#Other`\n" +
+				"**Intent:** placeholder.\n",
+			check: func(t *testing.T, card planparser.Card) {
+				wantResigns := []planparser.CardResign{{Target: "internal/foo#Thing", Decl: "func Thing(count int) *Thing"}}
+				if !slices.Equal(card.Resigns, wantResigns) {
+					t.Errorf("card.Resigns = %+v; want %+v", card.Resigns, wantResigns)
+				}
+				wantRefs := []string{"internal/foo#Thing", "internal/foo#Other"}
+				if !slices.Equal(card.Targets, wantRefs) {
+					t.Errorf("card.Targets = %v; want %v", card.Targets, wantRefs)
+				}
+				if len(card.TargetGroups) != 1 {
+					t.Fatalf("len(card.TargetGroups) = %d; want 1", len(card.TargetGroups))
+				}
+				if !slices.Equal(card.TargetGroups[0].Refs, wantRefs) {
+					t.Errorf("card.TargetGroups[0].Refs = %v; want %v", card.TargetGroups[0].Refs, wantRefs)
+				}
+				if !slices.Equal(card.TargetGroups[0].Resigns, wantResigns) {
+					t.Errorf("card.TargetGroups[0].Resigns = %+v; want %+v", card.TargetGroups[0].Resigns, wantResigns)
+				}
+			},
+		},
+		{
+			name: "Edit grammar: a plain bullet alone carries no resign",
+			body: "# Card 1 — plain\n\n**Edit:**\n- `internal/foo#Other`\n**Intent:** placeholder.\n",
+			check: func(t *testing.T, card planparser.Card) {
+				if len(card.Resigns) != 0 {
+					t.Errorf("card.Resigns = %+v; want none", card.Resigns)
+				}
+			},
+		},
+		{
 			name:     "handle-shaped Create target never picks up a root: prefix",
 			overview: rootedOverview,
 			body: "# Card 1 — create handle\n\n**Create:**\n" +
