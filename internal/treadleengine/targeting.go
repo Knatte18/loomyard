@@ -15,12 +15,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // targetingRole is the agent-name role this module's targeting spawn carries.
+// The spawn names the review segment.
 const targetingRole = "targeting"
 
 // targetingSkills are the skills the targeting spawn loads before its prompt.
@@ -62,6 +64,7 @@ func runTargeting(stencilsDir, parentName string, sh Shuttle, name string, round
 		Model:       model,
 		Effort:      effort,
 		Role:        targetingRole,
+		Segment:     segmentcolor.Review,
 		Skills:      targetingSkills,
 		Round:       strconv.Itoa(round),
 	}

@@ -29,15 +29,10 @@ type Config struct {
 
 	Watchdog string `yaml:"watchdog"`
 
-	StatusLine StatusLineConfig `yaml:"status_line"`
-	Selvage    SelvageConfig    `yaml:"selvage"`
-}
+	Selvage SelvageConfig `yaml:"selvage"`
 
-// StatusLineConfig configures the tmux status-line's rendered text.
-// This is a distinct mechanism from SelvageConfig: text in a tmux option, versus a row budget for a
-// pane -- one block holding both would be misleading.
-type StatusLineConfig struct {
-	Template string `yaml:"template"`
+	// SegmentColors maps a loom segment key to a palette color name.
+	SegmentColors map[string]string `yaml:"segment_colors"`
 }
 
 // SelvageConfig configures the Selvage pane's fixed row budget.

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -54,6 +55,8 @@ const reportNamePrefix = "conflict-resolution-r"
 // buildConflictSpec also creates ScratchDir with os.MkdirAll before returning, on this write path,
 // since a told directory may not exist yet — creating a told directory is legal under the
 // Told-Geometry Invariant, deriving one would not be.
+//
+// Segment is the landing segment, because the conflict session resolves a merge while the run lands.
 func buildConflictSpec(deps Deps, paths []string, attempt int) (shuttleengine.Spec, error) {
 	parsed, err := modelspec.Parse(deps.ConflictSpec)
 	if err != nil {
@@ -96,6 +99,7 @@ func buildConflictSpec(deps Deps, paths []string, attempt int) (shuttleengine.Sp
 		Version:     resolved.Params["version"],
 		Interactive: false,
 		Role:        conflictRole,
+		Segment:     segmentcolor.Landing,
 		Skills:      conflictSkills,
 		Timeout:     deps.Timeout,
 	}, nil

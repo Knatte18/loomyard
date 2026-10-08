@@ -42,6 +42,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
@@ -1011,6 +1012,9 @@ func TestRun_MasterSpawn(t *testing.T) {
 				spec := fx.Starter.startCalls[0]
 				if spec.Role != websterengine.MerriamStrandRole || spec.Role == string(websterengine.RoleMaster) {
 					t.Errorf("Spec.Role = %q; want %q, distinct from RoleMaster", spec.Role, websterengine.MerriamStrandRole)
+				}
+				if spec.Segment != segmentcolor.Webster {
+					t.Errorf("Spec.Segment = %q; want %q", spec.Segment, segmentcolor.Webster)
 				}
 				if want := fx.Deps.Roles[websterengine.RoleMaster].Model; spec.Model != want {
 					t.Errorf("Spec.Model = %q; want %q (RoleMaster's resolved model)", spec.Model, want)

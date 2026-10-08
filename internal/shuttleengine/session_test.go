@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
 // cyclerEngine is a fakeEngine that also implements SessionCycler with scripted answers.
@@ -190,6 +192,30 @@ func TestRunner_ReloadPlugins_PlaysSequenceOnALiveShuttleStrand(t *testing.T) {
 	refused := newFixture(t, refusedReed, &cyclerEngine{}, withStrand("strand-1")).Runner
 	if err := refused.ReloadPlugins("nope"); err == nil {
 		t.Error("ReloadPlugins(unknown guid) = nil error")
+	}
+	if len(refusedReed.CallLog) != 0 {
+		t.Errorf("reed touched: %v", refusedReed.CallLog)
+	}
+}
+
+func TestRunner_TypeColor_PlaysTheEngineSequenceOnALiveShuttleStrand(t *testing.T) {
+	t.Parallel()
+
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
+	runner := newFixture(t, reed, &fakeEngine{}, withStrand("strand-1")).Runner
+
+	if err := runner.TypeColor("strand-1", segmentcolor.Green); err != nil {
+		t.Fatalf("TypeColor: %v", err)
+	}
+	want := []string{"Status", "SendText:COLOR:green"}
+	if !reflect.DeepEqual(reed.CallLog, want) {
+		t.Errorf("CallLog = %v, want %v", reed.CallLog, want)
+	}
+
+	refusedReed := &fakeReed{StatusQueue: liveStrandStatus(true)}
+	refused := newFixture(t, refusedReed, &fakeEngine{}, withStrand("strand-1")).Runner
+	if err := refused.TypeColor("nope", segmentcolor.Green); err == nil {
+		t.Error("TypeColor(unknown guid) = nil error")
 	}
 	if len(refusedReed.CallLog) != 0 {
 		t.Errorf("reed touched: %v", refusedReed.CallLog)

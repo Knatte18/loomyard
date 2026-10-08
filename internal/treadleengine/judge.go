@@ -15,12 +15,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // judgeRole is the agent-name role this module's judge spawn carries.
+// The spawn names the review segment.
 const judgeRole = "judge"
 
 // judgeSkills are the skills the judge spawns load before their prompt.
@@ -139,6 +141,7 @@ func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]st
 		Model:       model,
 		Effort:      effort,
 		Role:        judgeRole,
+		Segment:     segmentcolor.Review,
 		Skills:      judgeSkills,
 		Round:       strconv.Itoa(round),
 	}

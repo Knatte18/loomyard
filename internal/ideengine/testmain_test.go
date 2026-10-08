@@ -2,20 +2,31 @@
 // gitkit.HermeticGitEnv() runs once before any test, so ideengine's git-spawning fixtures never
 // inherit the operator's global gitconfig (see
 // PATTERN-test-isolation).
-// The binary also runs under tmux isolation through tmuxkit.Main.
+// The binary also runs under tmux isolation through tmuxkit.Main, and never writes the operator's VS Code keybindings.json.
 
 package ideengine
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
-// TestMain runs HermeticGitEnv before spawning git tests, then runs the tests under tmuxkit.Main.
+// TestMain runs HermeticGitEnv before spawning git tests, points KeybindingsPath at a temporary directory for the whole package run, then runs the tests under tmuxkit.Main.
+// KeybindingsPath is process-global state, so no test writes the operator's real keybindings.json.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
-	os.Exit(tmuxkit.Main(m))
+	dir, err := os.MkdirTemp("", "keybindings-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "create keybindings dir:", err)
+		os.Exit(1)
+	}
+	KeybindingsPath = func() (string, error) { return filepath.Join(dir, "keybindings.json"), nil }
+	code := tmuxkit.Main(m)
+	os.RemoveAll(dir)
+	os.Exit(code)
 }

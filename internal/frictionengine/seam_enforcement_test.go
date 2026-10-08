@@ -20,11 +20,13 @@ import (
 // may use: internal/friction (ReportFileName and EnsureDir), the model-spec package (resolving the
 // reflection session's model), the shuttle engine (the reflection session's seam), the stencil store
 // (reading the reflection prompt off disk), the stencil filler (rendering it), and the logger.
+// The segment vocabulary names the reflection session's segment.
 var frictionengineAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/friction",
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/modelspec",
 	"github.com/Knatte18/loomyard/internal/parentdirective",
+	"github.com/Knatte18/loomyard/internal/segmentcolor",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
 	"github.com/Knatte18/loomyard/internal/stencil",
 	"github.com/Knatte18/loomyard/internal/stencilstore",

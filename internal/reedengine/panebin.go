@@ -1,6 +1,7 @@
 // panebin.go owns the whole pane-binary seam: composing the shell prelude that resolves `lyx` to the binary that spawned every strand pane, the one function (composePaneLaunchLine) that joins it onto a strand's launch command, and the one (composeWindowCommand) that joins it onto a detached window's `lyx` command.
 // The composition lives in this one file, reached from two chokepoints, launchStrandLocked in spawn.go for strand panes and OpenWindow in window.go for detached windows,
 // so the property "every pane reed creates for a `lyx` command resolves lyx to its spawning binary" holds by construction rather than by every pane-creating call site remembering to apply it.
+// It also composes the session-switch command the Alt-key bindings run, from the same executablePath chokepoint.
 // The same composition exports LYX_STRAND_NAME (the strand's full name) and LYX_PARENT (the worktree's parent, when told) beside LYX_BIN.
 // The file also owns the per-strand launch script the composed line is written to,
 // so the pane types a short source statement instead of the full line.
@@ -86,6 +87,31 @@ func composeWindowCommand(sh shell.Shell, lyxArgs []string) string {
 		words = append(words, sh.Quote(arg))
 	}
 	return sh.Chain(prelude, strings.Join(words, " "))
+}
+
+// composeSwitchCommand returns the shell line a key binding's run-shell runs to move the client one session along: the absolute path of this binary, then `reed switch` with the told socket and tmux paths and the key-press client, on sh's dialect.
+// It reads the running process's own path via executablePath, so the binding names the `lyx` that pinned it, never the one PATH resolves.
+// Every pinned token is quoted once and then has each # doubled, because run-shell format-expands its whole command at key press;
+// #{q:client_name} is the one value left for that expansion, as its own unquoted word.
+// An unresolvable executable path logs a named logger.Warn and returns false, so the caller pins no switch binding.
+func composeSwitchCommand(sh shell.Shell, next bool, socketPath, tmuxPath string) (string, bool) {
+	exe, err := executablePath()
+	if err != nil {
+		logger.Warn("reed: could not resolve this binary, pinning no session-switch binding", "err", err)
+		return "", false
+	}
+	direction := "--prev"
+	if next {
+		direction = "--next"
+	}
+	pinned := func(token string) string { return strings.ReplaceAll(token, "#", "##") }
+	words := []string{
+		pinned(sh.Invoke(exe)), "reed", "switch", direction,
+		"--socket", pinned(sh.Quote(socketPath)),
+		"--client", "#{q:client_name}",
+		"--tmux", pinned(sh.Quote(tmuxPath)),
+	}
+	return strings.Join(words, " "), true
 }
 
 // launchScriptReedSegment and launchScriptLaunchSegment are reed's own relative subpath under the state dir for per-strand launch scripts.

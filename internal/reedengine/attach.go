@@ -34,9 +34,12 @@ func bareAttachArgv(socket, session string) []string {
 	return []string{"-L", socket, "attach-session", "-t", exactSessionTarget(session)}
 }
 
-// chainedAttachArgv returns the ten-element argv that chains a client-sized select-layout onto the
-// bare attach: the five elements of bareAttachArgv, then the literal one-character element ";", then
-// "select-layout", "-t", the strands' window target, and layout.
+// chainedAttachArgv returns the argv that chains a client-sized select-layout onto the bare attach:
+// the five elements of bareAttachArgv, then the literal one-character element ";" and the zoom record entry (zoomRecordChainArgv).
+// Then ";" again, and "select-layout", "-t", the strands' window target and layout.
+// Each pin then appends ";", "resize-pane", "-t", its pane id, "-y" and its height, and the zoom restore entry (zoomRestoreChainArgv) ends the chain.
+// That makes the heights hold from the first frame and not only after the next resize fires the hook.
+// A zoomed strand is unzoomed for the layout and zoomed again behind the pins.
 //
 // The separator is a literal single-character ";" argv element, never "\\;" — exec.Command passes
 // argv directly and never sees a shell, so a backslash would be passed through as a literal
@@ -45,11 +48,18 @@ func bareAttachArgv(socket, session string) []string {
 // The chained select-layout carries its own explicit -t window target rather than relying on
 // whichever window the new client lands in, matching the exact-target discipline every other reed
 // call site follows.
-func chainedAttachArgv(socket, session, windowTarget, layout string) []string {
+func chainedAttachArgv(socket, session, windowTarget, layout string, pins []render.Pin) []string {
 	bare := bareAttachArgv(socket, session)
-	out := make([]string, 0, len(bare)+5)
+	out := make([]string, 0, len(bare)+19+6*len(pins))
 	out = append(out, bare...)
+	out = append(out, ";")
+	out = append(out, zoomRecordChainArgv(windowTarget)...)
 	out = append(out, ";", "select-layout", "-t", windowTarget, layout)
+	for _, pin := range pins {
+		out = append(out, ";", "resize-pane", "-t", pin.PaneID, "-y", strconv.Itoa(pin.Height))
+	}
+	out = append(out, ";")
+	out = append(out, zoomRestoreChainArgv(windowTarget)...)
 	return out
 }
 
@@ -70,7 +80,7 @@ func chainedAttachArgv(socket, session, windowTarget, layout string) []string {
 // taking the lock.
 //
 // The pre-flight also refreshes the session's window-resized resize-pin hook, computed against the
-// same told box the chained layout is. This is what corrects a later client resize, and — on a
+// same told box the chained layout is, and the chain carries the same pins after its select-layout. This is what corrects a later client resize, and — on a
 // session whose earlier apply already installed the hook — a degraded bare attach too. A degrade
 // return installs nothing: the uncovered window is a session between "up" and its first placed
 // strand, which has nothing to pin anyway because a lone Selvage pane takes render.Rules' sole-cell
@@ -84,7 +94,7 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 	}
 
 	var chained []string
-	err := e.withOpLock(func() error {
+	err := e.withOpLockKeepingZoom(func() error {
 		if err := e.requireSessionLocked(); err != nil {
 			return err
 		}
@@ -99,6 +109,15 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 		windowTarget, err := e.strandWindowTargetFor(st)
 		if err != nil {
 			return err
+		}
+
+		// Strands and sessions spawned by an older lyx get their display options at the next attach.
+		// This runs before any guard that suppresses the chain.
+		e.markStrandWindowLocked(windowTarget)
+		if windowPanes, err := e.tmux.listPanes(windowTarget); err != nil {
+			logger.Warn("reed: could not list the strand window's panes to re-assert strand options", "window", windowTarget, "err", err)
+		} else {
+			e.reassertStrandPaneOptionsLocked(st, windowPanes)
 		}
 
 		// The pins are made here, by the builder itself, not by a second exported call a CLI must
@@ -156,9 +175,10 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 			return err
 		}
 
-		e.installResizePinsLocked(windowTarget, e.fixedHeightPins(st, live, box))
+		pins := e.contentPinsLocked(windowTarget, st, live, box)
+		e.installResizePinsLocked(windowTarget, pins)
 
-		chained = chainedAttachArgv(e.Socket(), e.SessionName(), windowTarget, layout)
+		chained = chainedAttachArgv(e.Socket(), e.SessionName(), windowTarget, layout, pins)
 		return nil
 	})
 	if err != nil {

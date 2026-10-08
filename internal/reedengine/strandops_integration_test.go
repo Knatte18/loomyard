@@ -73,11 +73,16 @@ func TestStrandOps_RealTmux(t *testing.T) {
 			t.Fatalf("listPanes: %v", err)
 		}
 		var sawTop bool
+		windowRowZeroPane := paneIDsByTop(live)[0]
 		for _, p := range live {
 			if p.ID == after.Strands[0].PaneID {
 				sawTop = true
-				if p.Height != e.cfg.CollapsedRows {
-					t.Errorf("replacement pane height = %d, want %d (cfg.CollapsedRows)", p.Height, e.cfg.CollapsedRows)
+				wantHeight := e.cfg.CollapsedRows
+				if p.ID == windowRowZeroPane {
+					wantHeight-- // the title row takes one row of the cell at window row 0
+				}
+				if p.Height != wantHeight {
+					t.Errorf("replacement pane height = %d, want %d (cfg.CollapsedRows, less the title row when it sits at window row 0)", p.Height, wantHeight)
 				}
 			}
 			if p.ID == added[0].PaneID {

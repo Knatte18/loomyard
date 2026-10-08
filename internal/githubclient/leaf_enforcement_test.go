@@ -2,7 +2,7 @@
 // internal/githubclient imports ONLY the standard library, go-github, golang.org/x/sys, and
 // internal/proc -- never internal/output, cobra, internal/gitexec, internal/gitrepo, or
 // golang.org/x/oauth2.
-// Like modelspec's and tokenvocab's leaf_enforcement_test.go, this check is an ALLOWLIST: any
+// Like modelspec's leaf_enforcement_test.go, this check is an ALLOWLIST: any
 // import outside the allowed set fails the test, so a future stray dependency is caught with no
 // list maintenance required.
 

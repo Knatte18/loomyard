@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -208,6 +209,9 @@ func TestReflect_OneNote_SpawnsAndArchives(t *testing.T) {
 	}
 	if spec.Role != "friction" {
 		t.Errorf("Spec.Role = %q; want %q", spec.Role, "friction")
+	}
+	if spec.Segment != segmentcolor.Landing {
+		t.Errorf("Spec.Segment = %q; want %q", spec.Segment, segmentcolor.Landing)
 	}
 	if len(spec.OutputFiles) == 0 {
 		t.Error("Spec.OutputFiles is empty; want at least one entry")
