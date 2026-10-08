@@ -9,12 +9,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // noticeHarness drives producers whose status, driver liveness, stop report and orch strand a test sets between and during Calls.
@@ -785,4 +787,66 @@ func TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps(t *testi
 			t.Errorf("notified = %v; want the unsent notice sent by the restarted producer", h.notified)
 		}
 	})
+}
+
+// TestNotice_LogsEachRunsSessionStateAtAQuietOrAPIErrorFinding drives a quiet and an API-error finding over two live runs,
+// and again with the runs' session state fields empty:
+// both runs log the finding's condition with the run's state, cause and since, a run with no finding logs none, and the notices sent are the same either way.
+// The log is captured process-wide, so the test does not run in parallel.
+func TestNotice_LogsEachRunsSessionStateAtAQuietOrAPIErrorFinding(t *testing.T) {
+	tests := []struct {
+		name          string
+		advance       time.Duration
+		apiError      bool
+		wantCondition string
+	}{
+		{name: "a quiet finding", advance: 2 * 45 * time.Minute, wantCondition: noticeQuiet},
+		{name: "an API-error finding", advance: noticeAPIErrorIdle, apiError: true, wantCondition: noticeAPIError},
+		{name: "no finding", advance: time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			drive := func(withState bool) (notified []string, log string) {
+				buf := logcapture.CaptureVerbose(t)
+				h := newNoticeHarness(t)
+				p := h.producer()
+				runs := []AgentActivity{
+					{Producer: "t:task:impl", LastActivity: h.clock.Now(), APIError: tt.apiError, APIErrorText: "overloaded"},
+					{Producer: "t:task:review", LastActivity: h.clock.Now()},
+				}
+				if withState {
+					runs[0].SessionState, runs[0].SessionCause, runs[0].SessionSince = "idle-stalled", "api-error", "2026-01-01T10:00:00Z"
+					runs[1].SessionState, runs[1].SessionCause, runs[1].SessionSince = "busy", "turn", "2026-01-01T09:00:00Z"
+				}
+				h.runs = runs
+				h.clock.advance(tt.advance)
+				h.call(p)
+				return h.notified, buf.String()
+			}
+
+			withState, withStateLog := drive(true)
+			withoutState, withoutStateLog := drive(false)
+			if !slices.Equal(withState, withoutState) {
+				t.Errorf("notices with the state fields = %q, without = %q", withState, withoutState)
+			}
+			if tt.wantCondition == "" {
+				if strings.Contains(withStateLog, "session state at notice") {
+					t.Errorf("a call with no finding logged a session state: %q", withStateLog)
+				}
+				return
+			}
+			for _, want := range []string{
+				"producer=t:task:impl", "state=idle-stalled cause=api-error since=2026-01-01T10:00:00Z",
+				"producer=t:task:review", "state=busy cause=turn since=2026-01-01T09:00:00Z",
+				"condition=" + tt.wantCondition,
+			} {
+				if !strings.Contains(withStateLog, want) {
+					t.Errorf("log lacks %q: %q", want, withStateLog)
+				}
+			}
+			if got, want := strings.Count(withoutStateLog, "session state at notice"), strings.Count(withStateLog, "session state at notice"); got != want || got == 0 {
+				t.Errorf("session state lines without the state fields = %d, with = %d, want equal and nonzero", got, want)
+			}
+		})
+	}
 }

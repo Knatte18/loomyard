@@ -3,6 +3,9 @@
 // appends one JSON line the instant an AskUserQuestion tool call opens;
 // this file turns that raw byte stream into the shuttleengine.Events the run loop classifies
 // outcomes from.
+// The UserPromptSubmit, StopFailure, Notification and SessionEnd hooks append to the same file for ParseSessionSignals (signals.go),
+// and every recording hook writes a stamp line before its payload;
+// ParseEvents skips all of them, since none yields an event.
 // A Stop line whose turn ended with background work outstanding becomes EventWaiting rather than
 // EventStop; background.go decides that from the Stop payload and the transcript it points at.
 // All Claude payload-shape knowledge (hook_event_name, tool_name, tool_input, the literal

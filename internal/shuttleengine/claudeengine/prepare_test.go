@@ -188,24 +188,26 @@ func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 	for _, denyAgent := range []bool{false, true} {
 		for _, denyAsk := range []bool{false, true} {
-			for _, interactive := range []bool{false, true} {
-				for _, fork := range []bool{false, true} {
-					cfg := templateConfig(t)
-					cfg.ClaudeDenyAgentTool, cfg.ClaudeDenyAskUserQuestion = denyAgent, denyAsk
-					spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: interactive, ForkSubagents: fork}
-					notice := buildDenyNotice(interactive, cfg, fork, false)
+			for _, denyPython := range []bool{false, true} {
+				for _, interactive := range []bool{false, true} {
+					for _, fork := range []bool{false, true} {
+						cfg := templateConfig(t)
+						cfg.ClaudeDenyAgentTool, cfg.ClaudeDenyAskUserQuestion, cfg.ClaudeDenyPython = denyAgent, denyAsk, denyPython
+						spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: interactive, ForkSubagents: fork}
+						notice := buildDenyNotice(interactive, cfg, fork, false)
 
-					launch, err := New().Prepare(t.TempDir(), spec, cfg)
-					if err != nil {
-						t.Fatalf("Prepare(agent=%v ask=%v interactive=%v fork=%v) error: %v", denyAgent, denyAsk, interactive, fork, err)
-					}
-					for name, cmd := range map[string]string{"Cmd": launch.Cmd, "ResumeCmd": launch.ResumeCmd} {
-						has := strings.Contains(cmd, "--append-system-prompt")
-						if has != (notice != "") {
-							t.Errorf("agent=%v ask=%v interactive=%v fork=%v: %s = %q; --append-system-prompt present=%v, notice non-empty=%v", denyAgent, denyAsk, interactive, fork, name, cmd, has, notice != "")
+						launch, err := New().Prepare(t.TempDir(), spec, cfg)
+						if err != nil {
+							t.Fatalf("Prepare(agent=%v ask=%v python=%v interactive=%v fork=%v) error: %v", denyAgent, denyAsk, denyPython, interactive, fork, err)
 						}
-						if notice != "" && !strings.Contains(cmd, notice) {
-							t.Errorf("agent=%v ask=%v interactive=%v fork=%v: %s = %q; want it to carry the notice %q", denyAgent, denyAsk, interactive, fork, name, cmd, notice)
+						for name, cmd := range map[string]string{"Cmd": launch.Cmd, "ResumeCmd": launch.ResumeCmd} {
+							has := strings.Contains(cmd, "--append-system-prompt")
+							if has != (notice != "") {
+								t.Errorf("agent=%v ask=%v python=%v interactive=%v fork=%v: %s = %q; --append-system-prompt present=%v, notice non-empty=%v", denyAgent, denyAsk, denyPython, interactive, fork, name, cmd, has, notice != "")
+							}
+							if notice != "" && !strings.Contains(cmd, notice) {
+								t.Errorf("agent=%v ask=%v python=%v interactive=%v fork=%v: %s = %q; want it to carry the notice %q", denyAgent, denyAsk, denyPython, interactive, fork, name, cmd, notice)
+							}
 						}
 					}
 				}

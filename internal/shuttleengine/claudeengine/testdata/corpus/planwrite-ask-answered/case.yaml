@@ -22,3 +22,5 @@ turn_ends:
   - reading: held
     outputs_exist: false
     old_reading: asking, which finalized the run
+states:
+  - {state: idle-stalled, cause: no-output}

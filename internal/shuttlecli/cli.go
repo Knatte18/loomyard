@@ -2,8 +2,9 @@
 // into the standard io.Writer-based call contract.
 // The parent "shuttle" command carries a PersistentPreRunE that resolves cwd -> layout -> shuttle
 // config -> reed config -> reed engine -> claude engine -> shuttleengine.Runner exactly once per
-// invocation, into a receiver every verb (run.go, interrupt.go, send.go) closes over, so no
+// invocation, into a receiver every verb (run.go, interrupt.go, send.go, state.go) closes over, so no
 // subcommand re-resolves geometry, config, or engine construction itself.
+// The verbs are run, interrupt, send and the read-only state, which lists the session state of each running run.
 
 package shuttlecli
 
@@ -21,9 +22,13 @@ import (
 )
 
 // shuttleCLI is the receiver every shuttle verb hangs off of;
-// runner is populated by PersistentPreRunE.
+// runner, cfg, anchorPath and engine are populated by PersistentPreRunE.
+// The read-only verbs read through cfg, anchorPath and engine directly.
 type shuttleCLI struct {
-	runner *shuttleengine.Runner
+	runner     *shuttleengine.Runner
+	cfg        shuttleengine.Config
+	anchorPath string
+	engine     shuttleengine.Engine
 }
 
 // Command returns the cobra command tree for the shuttle module.
@@ -97,12 +102,13 @@ provider specifics.`,
 				return nil
 			}
 			reedEngine := reedengine.New(reedCfg, reedGeom)
-			c.runner = shuttleengine.NewRunner(reedEngine, claudeengine.NewFromConfig(shuttleCfg), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+			c.cfg, c.anchorPath, c.engine = shuttleCfg, reedGeom.AnchorPath, claudeengine.NewFromConfig(shuttleCfg)
+			c.runner = shuttleengine.NewRunner(reedEngine, c.engine, c.anchorPath, reedGeom.WorktreeRoot, c.cfg)
 			return nil
 		},
 	}
 
-	parent.AddCommand(c.runCmd(), c.interruptCmd(), c.sendCmd())
+	parent.AddCommand(c.runCmd(), c.interruptCmd(), c.sendCmd(), c.stateCmd())
 
 	return parent
 }

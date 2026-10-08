@@ -444,7 +444,8 @@ func readStopReport(taskLocation *lyxcwd.Location) (path string, at time.Time, f
 }
 
 // readAgentActivity reads the live agent runs of the task worktree through the shuttle config and a Claude engine, mapped onto battenshed's neutral type,
-// and reports whether a Go-side wait is live: a running verify, or a shuttle wait.
+// and reports whether a Go-side wait is live: a running verify, or a shuttle wait that is not a held turn end.
+// A held run is idle at its turn end, so it does not suppress the quiet notice.
 // Both waits are read from their marker files, never from the pane options that display them.
 func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentActivity, waitLive bool, err error) {
 	anchor := taskLocation.AnchorPath()
@@ -452,12 +453,21 @@ func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentAc
 	if err != nil {
 		return nil, false, err
 	}
-	readings, err := shuttleengine.ReadAgentActivity(cfg, anchor, claudeengine.NewFromConfig(cfg))
+	engine := claudeengine.NewFromConfig(cfg)
+	readings, err := shuttleengine.ReadAgentActivity(cfg, anchor, engine)
 	if err != nil {
 		return nil, false, err
 	}
+	states := readSessionStatesByStrand(cfg, anchor, engine)
 	for _, reading := range readings {
-		runs = append(runs, battenshed.AgentActivity{Producer: reading.StrandName, LastActivity: reading.LastActivity, APIError: reading.APIError, APIErrorText: reading.APIErrorText})
+		run := battenshed.AgentActivity{Producer: reading.StrandName, LastActivity: reading.LastActivity, APIError: reading.APIError, APIErrorText: reading.APIErrorText}
+		if state, ok := states[reading.StrandName]; ok {
+			run.SessionState, run.SessionCause = string(state.Name), state.Cause
+			if !state.Since.IsZero() {
+				run.SessionSince = state.Since.Format(time.RFC3339)
+			}
+		}
+		runs = append(runs, run)
 	}
 	_, verifyLive, err := verifytree.ReadMarker(verifytree.NewPaths(taskLocation.WorktreePath(), verifytree.Dir(anchor)).Marker)
 	if err != nil {
@@ -466,11 +476,31 @@ func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentAc
 	if verifyLive {
 		return runs, true, nil
 	}
-	_, shuttleLive, err := shuttleengine.ReadWaitMarker(cfg, anchor)
+	markers, err := shuttleengine.ReadWaitMarkers(cfg, anchor)
 	if err != nil {
 		return nil, false, err
 	}
-	return runs, shuttleLive, nil
+	for _, marker := range markers {
+		if !marker.Held() {
+			return runs, true, nil
+		}
+	}
+	return runs, false, nil
+}
+
+// readSessionStatesByStrand reads the session state of every running shuttle run under anchor, keyed by strand name.
+// The states are only logged beside batten's notices, so a failed read is logged at Warn once and yields none.
+func readSessionStatesByStrand(cfg shuttleengine.Config, anchor string, engine shuttleengine.Engine) map[string]shuttleengine.SessionState {
+	readings, err := shuttleengine.ReadSessionStates(cfg, anchor, engine, time.Now())
+	if err != nil {
+		logger.Warn("batten: session states unreadable; the notice logs carry none", "anchor", anchor, "cause", err)
+		return nil
+	}
+	states := make(map[string]shuttleengine.SessionState, len(readings))
+	for _, reading := range readings {
+		states[reading.StrandName] = reading.State
+	}
+	return states
 }
 
 // markBattenWatched writes the batten-watched marker of the task worktree's run, holding this process's pid, while noticesReachDriversParent holds, and removes it otherwise.

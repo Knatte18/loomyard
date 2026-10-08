@@ -96,6 +96,9 @@ func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 	if ptr.Path != "" || ptr.Reason != "cards ran out" {
 		t.Errorf("Call() pointer = %+v; want empty Path and Reason %q", ptr, "cards ran out")
 	}
+	if strings.Contains(strings.ToLower(ptr.Reason), "question") {
+		t.Errorf("Call() pointer reason %q names a question; a stuck outcome is never reported as one", ptr.Reason)
+	}
 }
 
 func TestWebsterProducer_OutcomePaused(t *testing.T) {

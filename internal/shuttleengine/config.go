@@ -25,7 +25,7 @@ type Config struct {
 
 	StartupTimeoutS int `yaml:"startup_timeout_s"` // Startup probe timeout; 0 fast-fails as died and zeroes orphan sweep's protection window.
 
-	BackgroundShellWaitMin int `yaml:"background_shell_wait_min"` // Minutes a turn end waits on an outstanding background shell; LoadConfig refuses non-positive.
+	BackgroundShellWaitMin int `yaml:"background_shell_wait_min"` // Minutes a turn end waits on an outstanding transcript-reported background shell; a shell the turn-end payload reports never expires. LoadConfig refuses non-positive.
 
 	SubmitSettleMS int `yaml:"submit_settle_ms"` // Pause between typed text and its submitting Enter; LoadConfig refuses negative.
 
@@ -34,6 +34,7 @@ type Config struct {
 	Claude                    string `yaml:"claude"`
 	ClaudeDenyAgentTool       bool   `yaml:"claude_deny_agent_tool"`
 	ClaudeDenyAskUserQuestion bool   `yaml:"claude_deny_ask_user_question"`
+	ClaudeDenyPython          bool   `yaml:"claude_deny_python"`
 
 	// ClaudePromptCacheTTL is Claude Code's prompt-cache TTL for a role without a map entry; the claude engine validates it, not LoadConfig.
 	ClaudePromptCacheTTL string `yaml:"claude_prompt_cache_ttl"`

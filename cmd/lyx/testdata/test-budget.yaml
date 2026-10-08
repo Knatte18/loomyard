@@ -9,7 +9,7 @@ internal/agentname: 7
 internal/batcher: 8
 internal/battencli: 56
 internal/battenrecipe: 8
-internal/battenshed: 89
+internal/battenshed: 90
 internal/boardcli: 12
 internal/boardengine: 73
 internal/boardengine/boardtest: 3
@@ -54,7 +54,7 @@ internal/lyxcwd: 23
 internal/mergeresolve: 17
 internal/modelspec: 11
 internal/orchcli: 24
-internal/orchengine: 122
+internal/orchengine: 123
 internal/output: 4
 internal/pairteardown: 4
 internal/parentdirective: 4
@@ -81,9 +81,9 @@ internal/shedrun: 22
 internal/shedtransient: 2
 internal/shedverbs: 65
 internal/shell: 11
-internal/shuttlecli: 19
-internal/shuttleengine: 143
-internal/shuttleengine/claudeengine: 91
+internal/shuttlecli: 21
+internal/shuttleengine: 148
+internal/shuttleengine/claudeengine: 96
 internal/standalonegeom: 7
 internal/standalonestate: 6
 internal/state: 8

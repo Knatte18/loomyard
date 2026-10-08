@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -20,6 +21,29 @@ type activityEngine struct {
 
 func (e *activityEngine) TurnEndActivity(turnEnd Event) TurnEndActivity {
 	return e.byMessage[turnEnd.Message]
+}
+
+// signalActivityEngine is an activityEngine that also reads session signals:
+// STOP: and ASK: lines are unstamped Stop and ask records, SIG-STOP@<time> is a stamped Stop record and SIG-IDLE@<time> a stamped idle notice, which is not a record.
+type signalActivityEngine struct {
+	*activityEngine
+}
+
+func (e signalActivityEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
+	var signals []SessionSignal
+	for _, line := range strings.Split(string(data), "\n") {
+		switch {
+		case strings.HasPrefix(line, "STOP:"), strings.HasPrefix(line, "ASK:"):
+			signals = append(signals, SessionSignal{Kind: SessionSignalTurnEnd, Event: true})
+		case strings.HasPrefix(line, "SIG-STOP@"):
+			at, _ := time.Parse(time.RFC3339, strings.TrimPrefix(line, "SIG-STOP@"))
+			signals = append(signals, SessionSignal{Kind: SessionSignalTurnEnd, At: at, Event: true})
+		case strings.HasPrefix(line, "SIG-IDLE@"):
+			at, _ := time.Parse(time.RFC3339, strings.TrimPrefix(line, "SIG-IDLE@"))
+			signals = append(signals, SessionSignal{Kind: SessionSignalIdleNotice, At: at})
+		}
+	}
+	return signals, len(data)
 }
 
 // activityRun describes one run directory under the run-directory root.
@@ -49,8 +73,34 @@ func TestReadAgentActivity(t *testing.T) {
 		runs map[string]activityRun
 		// transcript answers the engine's transcript reading by turn-end message; nil runs the plain engine with no ActivityReader.
 		transcript map[string]TurnEndActivity
-		want       []AgentActivity
+		// signals gives the engine a session-signal parser.
+		signals bool
+		want    []AgentActivity
 	}{
+		{
+			name:    "a stamped stop followed by an idle notice reads the stop's stamp, not the file's write time",
+			runs:    map[string]activityRun{"run-a": {outcome: runOutcomeRunning, pid: livePID, strandName: "hub:task:driver", events: "SIG-STOP@2026-10-07T09:05:00Z\nSIG-IDLE@2026-10-07T09:15:00Z\n"}},
+			signals: true,
+			want:    []AgentActivity{{StrandName: "hub:task:driver", LastActivity: created.Add(5 * time.Minute)}},
+		},
+		{
+			name:    "an unstamped stop reads the file's write time as before",
+			runs:    map[string]activityRun{"run-a": live},
+			signals: true,
+			want:    []AgentActivity{{StrandName: "hub:task:driver", LastActivity: eventsWritten}},
+		},
+		{
+			name:    "a file with only an idle notice reads no events activity",
+			runs:    map[string]activityRun{"run-a": {outcome: runOutcomeRunning, pid: livePID, strandName: "hub:task:driver", events: "SIG-IDLE@2026-10-07T09:15:00Z\n"}},
+			signals: true,
+			want:    []AgentActivity{{StrandName: "hub:task:driver", LastActivity: created}},
+		},
+		{
+			name:    "a stop before the prompt offset still counts when none follows it",
+			runs:    map[string]activityRun{"run-a": {outcome: runOutcomeRunning, pid: livePID, strandName: "hub:task:driver", events: "SIG-STOP@2026-10-07T09:05:00Z\nSIG-IDLE@2026-10-07T09:15:00Z\n", promptOffset: int64(len("SIG-STOP@2026-10-07T09:05:00Z\n"))}},
+			signals: true,
+			want:    []AgentActivity{{StrandName: "hub:task:driver", LastActivity: created.Add(5 * time.Minute)}},
+		},
 		{
 			name:       "transcript newer than the events file reports the transcript time",
 			runs:       map[string]activityRun{"run-a": live},
@@ -122,8 +172,11 @@ func TestReadAgentActivity(t *testing.T) {
 				writeActivityRun(t, root, name, run, created, eventsWritten)
 			}
 			var engine Engine = &fakeEngine{}
-			if tt.transcript != nil {
+			if tt.transcript != nil || tt.signals {
 				engine = &activityEngine{fakeEngine: &fakeEngine{}, byMessage: tt.transcript}
+			}
+			if tt.signals {
+				engine = signalActivityEngine{engine.(*activityEngine)}
 			}
 
 			got, err := ReadAgentActivity(Config{RunDir: root}, t.TempDir(), engine)

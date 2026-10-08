@@ -38,3 +38,9 @@ turn_ends:
     tasks:
       - {kind: shell, id: bm80315xg, signal: payload}
     old_reading: waiting on the shell, then asking once the shell expired
+states:
+  - {state: busy, cause: background}
+  - {state: busy, cause: background}
+  - {state: busy, cause: background}
+  - {state: busy, cause: background}
+  - {state: busy, cause: background}

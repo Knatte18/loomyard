@@ -22,12 +22,14 @@ import (
 )
 
 // deniedRecoveryForms is the closed list of commands the agents' settings deny today, each as its token sequence.
-// `agent-permission-setup` owns the real permission set and updates this list when the set changes.
+// claudeengine's deny table in settings.go owns lyx's own denies, and the operator's permission set the rest; this list follows both.
 var deniedRecoveryForms = [][]string{
 	{"git", "reset", "--hard"},
 	{"git", "push", "--force"},
 	{"git", "push", "-f"},
 	{"rm", "-rf"},
+	{"python"},
+	{"python3"},
 }
 
 // deniedRecoveryTokenPattern splits a line into command tokens.
@@ -209,6 +211,7 @@ func TestNoDeniedRecovery_ScanSelfCheck(t *testing.T) {
 		{"short force flag", "way forward: git push -f origin main", 1},
 		{"rm -rf", "way forward: rm -rf .lyx/webster", 1},
 		{"plain rm", "way forward: rm outcome.yaml", 0},
+		{"python3 as a step", "way forward: run python3 fix.py", 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

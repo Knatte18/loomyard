@@ -45,6 +45,11 @@ func (s runnerSession) SessionIdle(guid string) (shuttleengine.IdleProbe, error)
 	return s.runner.SessionIdle(guid)
 }
 
+// SessionState delegates to Runner.SessionState, which reads the run's files only.
+func (s runnerSession) SessionState(guid string) (shuttleengine.RunSessionState, error) {
+	return s.runner.SessionState(guid)
+}
+
 // Send delegates to Runner.Send, which types into the pane through tmux.
 func (s runnerSession) Send(guid, text string) error {
 	logger.Debug("orch: send to session", "strandGUID", guid)

@@ -75,7 +75,7 @@ func TestWriteTriageFrictionNote(t *testing.T) {
 	})
 }
 
-// TestBackgroundShellNoteAndWarning asserts the friction note and the warning for an expired shell state, per outcome, the shell, the bound, that the wait stopped waiting on it at a turn end, that lyx did not stop the shell, what ends it and the final outcome, in the same words.
+// TestBackgroundShellNoteAndWarning asserts the friction note and the warning for an expired shell state, per outcome, the shell, that it was still running when the wait counted Master's turn end, the bound, that the wait stopped waiting on it at a turn end, that lyx did not stop the shell, what ends it and the final outcome, in the same words.
 func TestBackgroundShellNoteAndWarning(t *testing.T) {
 	const removal = "shuttle removes Master's strand when the run finishes"
 	const reclaim = "the next `lyx webster run` reclaims it at entry"
@@ -109,6 +109,7 @@ func TestBackgroundShellNoteAndWarning(t *testing.T) {
 			}
 			for _, want := range []string{
 				"`sleep 9999`",
+				"was still running when the wait counted Master's turn end",
 				"`background_shell_wait_min` (15 minutes)",
 				"stopped waiting on the shell at a turn end, which finished the run when Master's output files existed and otherwise held it for the parent",
 				"lyx did not stop the shell",

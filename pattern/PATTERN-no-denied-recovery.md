@@ -4,8 +4,8 @@ A way forward is performed by the agent that receives the refusal, and that agen
 A refusal, stencil, spec or skill that offers one of them as a step strands the agent: it either breaks its settings or stops.
 When a recovery needs a denied step, lyx performs the step itself behind a guarded verb, such as `lyx webster reset --to start|pre-fix`, and the text names that verb.
 
-- The closed list of denied forms is `git reset --hard`, `git push --force`, `git push -f` and `rm -rf`, the global deny list today.
-  `agent-permission-setup` owns the real permission set and updates the list in `cmd/lyx/norecoverydeny_test.go` when the set changes.
+- The closed list of denied forms is `git reset --hard`, `git push --force`, `git push -f`, `rm -rf`, `python` and `python3`, the deny set today.
+  `claudeengine`'s deny table in `internal/shuttleengine/claudeengine/settings.go` owns lyx's own denies, and the operator's permission set owns the rest; the list in `cmd/lyx/norecoverydeny_test.go` follows both.
 - A form matches only as a whole command token sequence, so `git push --force-with-lease` is not `git push --force`.
 - The scanned surface is `contracts/specs/`, `contracts/stencils/`, `plugins/ly/skills/` and the string literals of the non-test Go files under `internal/webster*`, `internal/shed*` and `internal/loom*`, the modules with a refusal-spec section.
   `pattern/` itself is unscanned, because these background files name the denied forms to explain the rule.

@@ -1,5 +1,5 @@
 // activity.go declares the provider-neutral reading of what a worktree's live shuttle runs have been doing:
-// when each last wrote anything, and whether its newest turn end is an API error.
+// when each last showed activity, and whether its newest turn end is an API error.
 // A caller that judges a run quiet, or stalled on an API error, reads it through ReadAgentActivity.
 // Like ReadWaitMarker it reads files only, so any process may call it.
 
@@ -35,8 +35,9 @@ type TurnEndActivity struct {
 type AgentActivity struct {
 	// StrandName is the run's strand name, the strand guid for a record that predates the name.
 	StrandName string
-	// LastActivity is the newer of the transcript's last write and the events file's last write.
-	// It is the run's creation time when neither can be read.
+	// LastActivity is the newer of the transcript's last write and the time of the events file's newest Stop or ask line.
+	// A Stop or ask line with no time, an engine without a SessionSignalParser and a file yielding no signals count the events file's last write instead.
+	// It is the run's creation time when none of these can be read.
 	LastActivity time.Time
 	// APIError is true when the run's newest turn end is an API error.
 	APIError bool
@@ -92,10 +93,10 @@ func readRunActivity(rs RunState, engine Engine, reader ActivityReader) AgentAct
 		reading.StrandName = rs.StrandGUID
 	}
 
-	var eventsModTime time.Time
+	var eventsActivity time.Time
 	var turnEnd *Event
 	if info, err := os.Stat(rs.EventsPath); err == nil {
-		eventsModTime = info.ModTime()
+		eventsActivity = eventsFileActivity(rs, engine, info.ModTime())
 		turnEnd = newestTurnEnd(rs, engine)
 	}
 
@@ -106,8 +107,8 @@ func readRunActivity(rs RunState, engine Engine, reader ActivityReader) AgentAct
 	reading.APIError, reading.APIErrorText = activity.APIError, activity.APIErrorText
 
 	reading.LastActivity = activity.TranscriptModTime
-	if eventsModTime.After(reading.LastActivity) {
-		reading.LastActivity = eventsModTime
+	if eventsActivity.After(reading.LastActivity) {
+		reading.LastActivity = eventsActivity
 	}
 	if reading.LastActivity.IsZero() {
 		if createdAt, err := time.Parse(time.RFC3339, rs.CreatedAt); err == nil {
@@ -115,6 +116,41 @@ func readRunActivity(rs RunState, engine Engine, reader ActivityReader) AgentAct
 		}
 	}
 	return reading
+}
+
+// eventsFileActivity returns the events file's part of a run's last activity.
+// An engine with a SessionSignalParser reads the time of the newest Stop or ask line, so an idle notice, a prompt submission or a stamp line never moves it;
+// the line's own time stands in as mtime only when the line carries none.
+// The lines past the prompt offset are read first, and the whole file when none of them is a Stop or ask line.
+// A file whose lines yield signals but no Stop or ask line reads as no activity.
+// An engine without the parser, or a file that yields no signals at all, reads modTime.
+func eventsFileActivity(rs RunState, engine Engine, modTime time.Time) time.Time {
+	parser, ok := engine.(SessionSignalParser)
+	if !ok {
+		return modTime
+	}
+	data, err := os.ReadFile(rs.EventsPath)
+	if err != nil {
+		return modTime
+	}
+	anySignal := false
+	for _, from := range []int64{max(0, min(rs.PromptOffset, int64(len(data)))), 0} {
+		signals, _ := parser.ParseSessionSignals(data[from:])
+		anySignal = anySignal || len(signals) > 0
+		for i := len(signals) - 1; i >= 0; i-- {
+			if !signals[i].Event {
+				continue
+			}
+			if signals[i].At.IsZero() {
+				return modTime
+			}
+			return signals[i].At
+		}
+	}
+	if anySignal {
+		return time.Time{}
+	}
+	return modTime
 }
 
 // newestTurnEnd returns the newest turn end in the run's events file past its prompt offset, or nil when there is none or the file cannot be parsed.

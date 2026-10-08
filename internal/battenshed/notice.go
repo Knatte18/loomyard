@@ -317,14 +317,24 @@ func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (notic
 	for _, run := range reading.runs {
 		if run.APIError && now.Sub(run.LastActivity) >= noticeAPIErrorIdle {
 			text := fmt.Sprintf("agent %s hit an API error: %s", run.Producer, oneLine(run.APIErrorText, noticeErrorMax))
+			p.logSessionStatesAtNotice(reading.runs, noticeAPIError)
 			return noticeFinding{condition: noticeAPIError, stamp: stamp.nanos, text: text}, stamp
 		}
 	}
 	if p.noticeQuiet > 0 && !reading.waitLive && now.Sub(newest) >= p.noticeQuiet {
 		text := fmt.Sprintf("agents idle for %s while the child is running", now.Sub(newest).Round(time.Second))
+		p.logSessionStatesAtNotice(reading.runs, noticeQuiet)
 		return noticeFinding{condition: noticeQuiet, stamp: stamp.nanos, text: text}, stamp
 	}
 	return noticeFinding{}, stamp
+}
+
+// logSessionStatesAtNotice logs at Info the session state of every run in runs beside the condition a finding returned for them, so each notice can be checked against the state.
+// It is shadow logging: no notice, stamp or finding depends on the state fields.
+func (p *innerRunProducer) logSessionStatesAtNotice(runs []AgentActivity, condition string) {
+	for _, run := range runs {
+		logger.Info("battenshed: session state at notice", "producer", run.Producer, "slug", p.slug, "condition", condition, "state", run.SessionState, "cause", run.SessionCause, "since", run.SessionSince)
+	}
 }
 
 // stateChangeReady decides whether the state-changed notice may go now, and returns its report clause.
