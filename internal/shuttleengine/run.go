@@ -1132,8 +1132,11 @@ func sendVerified(sc sendContext, text string) error {
 			sc.clock.Sleep(sendVerifyInterval)
 		}
 	}
+	if !typed {
+		return withPaneTail(fmt.Errorf("%w: the submit window, cut to the send's deadline, had closed before typing began; nothing was typed", ErrSubmissionNotLanded), "", sc)
+	}
 	err := fmt.Errorf("%w: sent text never appeared in the pane after %d attempt(s) — the provider TUI likely swallowed the input; the send was NOT delivered", ErrSubmissionNotLanded, 1+sendReplays)
-	if !readsBox || !typed {
+	if !readsBox {
 		return withPaneTail(err, "", sc)
 	}
 	return failUnlanded(sc, reader, normalized, needle, err)

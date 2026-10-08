@@ -1058,6 +1058,8 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		startOnEnter bool
 		// frozen gives the run a clock that never advances, so only the window's attempt count can end the send.
 		frozen bool
+		// pastDeadline sends through the gate's sendWithin with the run deadline already passed.
+		pastDeadline bool
 		wantErr      string
 		wantAbsent   string
 		wantNotLand  bool
@@ -1125,6 +1127,12 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			boxes:    join(settled(shortText), []inputBoxAnswer{box(shortText)}),
 			wantErr:  "after 6 Enter(s)", wantNotLand: true,
 			wantKeys: keys("Escape", "Enter", "Enter", "Enter", "Enter", "Enter", "Enter"),
+		},
+		{
+			name: "a send whose window closed before typing began says nothing was typed", text: shortText,
+			pastDeadline: true,
+			boxes:        []inputBoxAnswer{box("")},
+			wantErr:      "had closed before typing began", wantNotLand: true, wantAbsent: "never appeared",
 		},
 		{
 			name: "a turn start past the pre-send offset confirms despite an ambiguous box", text: shortText,
@@ -1256,9 +1264,17 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			if tt.frozen {
 				runClock = &frozenClock{now: clock.Now()}
 			}
-			run = newFixture(t, reed, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(""), withRunClock(runClock, clock.Now().Add(time.Hour)))
+			deadline := clock.Now().Add(time.Hour)
+			if tt.pastDeadline {
+				deadline = clock.Now().Add(-time.Second)
+			}
+			run = newFixture(t, reed, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(""), withRunClock(runClock, deadline))
 
-			err := run.Send(tt.text)
+			send := run.Send
+			if tt.pastDeadline {
+				send = run.sendWithin
+			}
+			err := send(tt.text)
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("Send() error: %v, want the send confirmed", err)
