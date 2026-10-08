@@ -85,6 +85,16 @@
 // The resume check refuses a session whose registry entry names a live pid, unless the live process's start time differs from the entry's `procStart`, which proves the pid was reused.
 // An unreadable start time, or an entry without `procStart`, still refuses and says the pid could not be proven reused.
 //
+// The session prober (SessionProber) reads process liveness from the same registry.
+// A session is alive when an entry names it and the live pid's start time equals `procStart`.
+// It is dead only for an entry whose pid is gone.
+// It is unproven when no entry names it, the registry or an entry is unreadable, the start time is unreadable or the pid was reused.
+// A session Claude Code exited normally has no entry left, so it reads unproven.
+// The resume check and the prober share one reader of registry entries.
+// The prober also reads the interrupt marker.
+// The newest main-chain entry of the transcript a turn start's `transcript_path` names is the user's `[Request interrupted by user` entry, and its own timestamp is the interrupt's time.
+// Any later main-chain entry, a missing path or an unreadable transcript reads as no interrupt.
+//
 // Beside the clear sequence (`/clear`) and the compact sequence (`/compact`), the engine realizes skill loading, in skillload.go.
 // A spec that names skills starts on an empty input box: the launch line carries no prompt pointer, and the pointer comes back as Launch.PromptLine for shuttle to send after the skills.
 //

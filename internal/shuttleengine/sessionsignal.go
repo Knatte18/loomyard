@@ -56,3 +56,14 @@ type SessionSignalParser interface {
 	// It is lenient: malformed or unrecognized lines are skipped.
 	ParseSessionSignals(data []byte) (signals []SessionSignal, consumed int)
 }
+
+// SessionProber is an optional capability beside Engine: the provider-specific facts a session state needs that no hook line carries.
+// An Engine without it leaves liveness unproven and reads no interrupt.
+type SessionProber interface {
+	// ProcessLiveness reports whether the process driving sessionID is alive, dead or unproven.
+	// Dead needs positive evidence that the session's process is gone; every doubt reads unproven.
+	ProcessLiveness(sessionID string) Liveness
+	// TurnStartInterrupt reports whether the user interrupted the turn that turnStart began, with the interrupt's own time.
+	// It reads the provider's transcript, and any failure to read it reads as not interrupted.
+	TurnStartInterrupt(turnStart SessionSignal) (at time.Time, interrupted bool)
+}
