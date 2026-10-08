@@ -44,7 +44,7 @@ const planOverviewFile = "00-overview.md"
 // a state without PlanFileHashes names rebaseline without card numbers, and a changedPlanFiles error falls back to the generic text.
 // An overview change confined to the Card Index names rebaseline with the changed and added cards, and any other overview change names the follow-up card landing.
 // The reset route it names ends in reentry.
-func fingerprintMismatchWayForward(st *State, planDir, reentry string) string {
+func fingerprintMismatchWayForward(st *State, planDir, websterDir, reentry string) string {
 	fresh := freshRestartSteps(reentry)
 	const restore = `or restore the plan the run recorded with "lyx webster restore-plan", `
 	if len(st.PlanFileHashes) == 0 {
@@ -58,12 +58,16 @@ func fingerprintMismatchWayForward(st *State, planDir, reentry string) string {
 	indexChanged := false
 	for _, name := range changed {
 		if name == planOverviewFile {
-			indexOnly, err := overviewIndexOnly(st, planDir)
+			recorded, err := recordedOverviewFrame(st, websterDir)
+			indexOnly := false
+			if err == nil {
+				indexOnly, err = overviewIndexOnly(recorded, planDir)
+			}
 			if err != nil {
 				return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
 			}
 			if !indexOnly {
-				if st.PlanOverviewFrameHash == "" {
+				if recorded == "" {
 					return "way forward: " + planOverviewFile + " changed and is never rebaselined; restore it with \"lyx webster restore-plan\", or " + fresh
 				}
 				return "way forward: " + planOverviewFile + " changed outside its Card Index; restore it with \"lyx webster restore-plan\", or " + followUpCardLanding + ", or " + fresh
@@ -318,7 +322,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, ErrPaused
 	}
 
-	if err := PlanEditError(deps.State, deps.Plan.Dir); err != nil {
+	if err := PlanEditError(deps.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil {
 		return nil, err
 	}
 

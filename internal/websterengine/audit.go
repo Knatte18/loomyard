@@ -138,6 +138,20 @@ func (v AuditViolation) Error() string {
 	return fmt.Sprintf("webster: %s violation in %q: %s", v.Class, v.TranscriptPath, v.Detail)
 }
 
+// isOwnReportWrite reports whether write, resolved against workdir, is ownReport: equal to its cleaned path, or canonicalizing to the same path.
+func isOwnReportWrite(workdir, write, ownReport string) bool {
+	resolved := resolveWritePath(workdir, write)
+	if resolved == filepath.Clean(ownReport) {
+		return true
+	}
+	canonOwn, err := canonicalPath(ownReport)
+	if err != nil {
+		return false
+	}
+	canonWrite, err := canonicalPath(resolved)
+	return err == nil && canonWrite == canonOwn
+}
+
 // CheckFork evaluates one fork's transcript facts against webster's implementer policy: Write/Edit
 // and repo-native git are explicitly allowed.
 // It bans five hard violations: any attempted Agent call, any write to the two contract files (outcomePath or summaryPath), any write under the plan directory, any write under webster's run directory other than the fork's own report, and any Bash command referencing the fabric repo.
@@ -168,8 +182,6 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 	contractWrites := 0
 	planWrites := 0
 	stateWrites := 0
-	cleanOwn := filepath.Clean(ownReport)
-	canonOwn, ownErr := canonicalPath(ownReport)
 	for _, w := range f.WritePaths {
 		cw := resolveWritePath(workdir, w)
 		if cw == cleanOutcome || cw == cleanSummary {
@@ -196,10 +208,7 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 				break
 			}
 		}
-		if cw == cleanOwn {
-			continue
-		}
-		if canonW, err := canonicalPath(cw); err == nil && ownErr == nil && canonW == canonOwn {
+		if isOwnReportWrite(workdir, w, ownReport) {
 			continue
 		}
 		for _, dir := range websterDirs {
@@ -485,7 +494,7 @@ func ForkWarnings(f shuttleengine.ForkReport) []string {
 	return nil
 }
 
-// ErrNoForkTranscripts is the sentinel ClassifyAttribution's zero-new-transcript case wraps.
+// ErrNoForkTranscripts is the sentinel ClassifyAttribution's zero-counted-transcript case wraps.
 // record-batch's caller (batch 5) issues this as its own hard error AFTER SettleRetry's settle
 // window is exhausted — never on the first miss, since a fork's transcript file may not have
 // flushed to disk yet the instant the Agent tool call returns (the discussion's "first miss is
@@ -495,7 +504,7 @@ func ForkWarnings(f shuttleengine.ForkReport) []string {
 // check exists to catch (pinned check order: transcript count is decided BEFORE report presence).
 // A report on disk with no fork transcript is a state a forged report produces, but ALSO a legitimate cross-machine resume of the report-landed-before-record-batch crash window, since fork transcripts live under the machine-local ~/.claude projects dir while state.json and reports are fabric-synced (found live in crucible round fable-r1).
 // RecordBatch does not leave the batch wedged on it: it archives the report, keeps the batch record begun, and returns a *ReportArchivedError whose way forward is `begin-batch`, which re-drives the batch with the report path free.
-var ErrNoForkTranscripts = errors.New("zero new fork transcripts since the previous batch boundary — the batch was never forked (or its transcript is not on this machine: fork transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report)")
+var ErrNoForkTranscripts = errors.New("no counted fork transcript in the batch's current bracket (none new since the previous batch boundary, and none of the bracket's own that wrote the batch's report) — the batch was never forked (or its transcript is not on this machine: fork transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report)")
 
 // DefaultSettleWindow is SettleRetry's recommended total wait budget before its caller gives up and
 // treats a zero-transcript result as final: a few seconds is enough slack for Claude Code to flush
@@ -578,16 +587,16 @@ func SettleRetry(
 }
 
 // ClassifyAttribution pins the fork-audit-policy decision's check order over
-// newReports, the transcripts SettleRetry (or a direct NewTranscripts call)
-// determined are new since the previous batch boundary:
+// newReports, the counted transcripts: those SettleRetry (or a direct NewTranscripts call)
+// determined are new since the previous batch boundary, plus the bracket's own that wrote the report:
 //
-//  1. Zero new transcripts: hard error (ErrNoForkTranscripts), REGARDLESS of
+//  1. Zero counted transcripts: hard error (ErrNoForkTranscripts), REGARDLESS of
 //     whether a batch report file exists — a report with no fork behind it means
 //     Master wrote it itself. Transcript-count-before-report-presence is what
 //     makes that defect unfakeable; the caller must check this BEFORE it even
 //     looks for a report file.
-//  2. Exactly one new transcript: clean — the normal case. Returns ("", nil).
-//  3. More than one new transcript: warning only, never hard — a fork whose
+//  2. Exactly one counted transcript: clean — the normal case. Returns ("", nil).
+//  3. More than one counted transcript: warning only, never hard — a fork whose
 //     Agent call errored mid-flight followed by a direct re-fork, with no
 //     record-batch call in between, is legitimate retry behavior, not a defect.
 func ClassifyAttribution(newReports []shuttleengine.ForkReport) (warning string, err error) {
@@ -598,7 +607,7 @@ func ClassifyAttribution(newReports []shuttleengine.ForkReport) (warning string,
 		return "", nil
 	default:
 		return fmt.Sprintf(
-			"%d new fork transcripts since the previous batch boundary — expected exactly one; treating as a fork-error-then-re-fork with no intervening record-batch call",
+			"%d fork transcripts count toward the batch — expected exactly one; treating as a fork-error-then-re-fork with no intervening record-batch call",
 			len(newReports),
 		), nil
 	}

@@ -91,18 +91,25 @@ const (
 	templateLines = 5
 )
 
+// directiveStencil is the orchestrator directive stencil of a based run: a banner, a line before and after the PATTERN overview marker.
+const directiveStencil = "<!-- banner -->\n\nhead\n{{.pattern_overview}}\ntail\n"
+
+// renderedDirective is directiveStencil filled with the PATTERN.md of a based run: the wrapper's lines around the overview.
+func renderedDirective() string { return "head\n" + lines(patternLines) + "\ntail\n" }
+
 // withBaseFiles adds the files a run's Merriam base is computed from to the base tree at sha:
-// CLAUDE.md, PATTERN.md and the Master template.
+// CLAUDE.md, PATTERN.md, the orchestrator directive stencil and the Master template.
 func withBaseFiles(files map[string]string, sha string) {
 	files[sha+":CLAUDE.md"] = lines(claudeLines)
 	files[sha+":PATTERN.md"] = lines(patternLines)
+	files[sha+":"+directiveStencilPath] = directiveStencil
 	files[sha+":"+masterTemplatePath] = lines(templateLines)
 }
 
 // knownBaseContext is the context the seeded profiles (a context_per_line of 1) price for a based run whose plan renders overview:
-// the lines of the overview and the three base files, plus the fixed system-prompt context.
+// the lines of the overview, CLAUDE.md, the rendered directive and the Master template, plus the fixed system-prompt context.
 func knownBaseContext(overview string) float64 {
-	base := websterengine.MerriamBaseOf(overview, lines(claudeLines), lines(patternLines), lines(templateLines))
+	base := websterengine.MerriamBaseOf(overview, lines(claudeLines), renderedDirective(), lines(templateLines))
 	return float64(base.Lines) + base.Fixed
 }
 
@@ -352,6 +359,70 @@ func TestCalibrate(t *testing.T) {
 		// The peak adds the base to the card's 100 lines and the orientation of 10, and the in-fork growth is unchanged: the same base comes off the estimated start.
 		if len(based.Rows) != 1 || !near(based.Rows[0].Estimate, baseContext+110) || !near(based.Rows[0].EstimatedGrowth, 100) || !near(based.Rows[0].MeasuredGrowth, 210) {
 			t.Errorf("rows = %+v; want one row with estimate %v, estimated growth 100 and measured growth 210", based.Rows, baseContext+110)
+		}
+	})
+
+	t.Run("a Merriam session measured at its prompt Read writes the fixed-context section", func(t *testing.T) {
+		t.Parallel()
+		basedHistory, basedBase, _ := basedRunFixture("eps", map[int]string{1: "internal/a/a.go"}, firstFork)
+		runs := []RunTally{{Slug: "eps", BaseSHA: "baseeps", Merriams: []MerriamStart{
+			{Session: "m1.jsonl", Started: firstFork, StartContext: 20000},
+			{Session: "m2.jsonl", Started: firstFork.Add(time.Hour), StartContext: 19000},
+		}}}
+
+		measured, err := Calibrate(runs, "fit", configDir, basedHistory, basedBase)
+		if err != nil {
+			t.Fatalf("Calibrate: %v", err)
+		}
+		// The measured lines are CLAUDE.md, the Master template and the directive with its wrapper, not the raw PATTERN.md.
+		wantLines := claudeLines + templateLines + strings.Count(renderedDirective(), "\n")
+		wantRows := []FixedRow{{Run: "eps", Session: "m1.jsonl", Measured: 20000, Lines: wantLines, Fixed: float64(20000 - wantLines)}}
+		if !slices.Equal(measured.Fixed.Rows, wantRows) {
+			t.Errorf("fixed rows = %+v; want %+v", measured.Fixed.Rows, wantRows)
+		}
+		wantSkips := []CalibrationSkip{{Run: "eps", Card: "m2.jsonl", Reason: "starts with prior conversation or a compaction summary in context"}}
+		if !slices.Equal(measured.Fixed.Skips, wantSkips) {
+			t.Errorf("fixed skips = %+v; want %+v", measured.Fixed.Skips, wantSkips)
+		}
+		current := websterengine.MerriamBaseOf().Fixed
+		if measured.Fixed.Fit.Forks != 1 || !near(measured.Fixed.Fit.Median, float64(20000-wantLines)) || measured.Fixed.Current != current {
+			t.Errorf("fixed fit = %+v, current = %v; want one row, median %d and the live constant %v", measured.Fixed.Fit, measured.Fixed.Current, 20000-wantLines, current)
+		}
+		var out bytes.Buffer
+		measured.WriteMarkdown(&out)
+		for _, want := range []string{
+			"Merriam fixed context:",
+			fmt.Sprintf("| eps | m1.jsonl | 20000 | %d | %d |", wantLines, 20000-wantLines),
+			fmt.Sprintf("Fixed over 1 runs: median %d, 25th percentile %d, 75th percentile %d; current constant %.0f.", 20000-wantLines, 20000-wantLines, 20000-wantLines, current),
+			"- eps m2.jsonl: starts with prior conversation or a compaction summary in context",
+		} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("markdown lacks %q:\n%s", want, out.String())
+			}
+		}
+	})
+
+	t.Run("a run with PATTERN.md but no directive stencil is a skip in both sections", func(t *testing.T) {
+		t.Parallel()
+		unstencilledHistory, unstencilledBase, _ := basedRunFixture("zeta", map[int]string{1: "internal/a/a.go"}, firstFork)
+		delete(unstencilledBase.files, "basezeta:"+directiveStencilPath)
+		runs := []RunTally{{
+			Slug: "zeta", BaseSHA: "basezeta",
+			Forks:    []ForkTally{fork(firstFork, 100, 200, "01-c1")},
+			Merriams: []MerriamStart{{Session: "m1.jsonl", Started: firstFork, StartContext: 20000}},
+		}}
+
+		unstencilled, err := Calibrate(runs, "fit", configDir, unstencilledHistory, unstencilledBase)
+		if err != nil {
+			t.Fatalf("Calibrate: %v", err)
+		}
+		const reason = "no orchestrator directive stencil at base basezeta"
+		if len(unstencilled.Starts) != 1 || unstencilled.Starts[0].HasBase || unstencilled.Starts[0].NoBase != reason {
+			t.Errorf("starts = %+v; want one row without a base, reason %q", unstencilled.Starts, reason)
+		}
+		wantSkips := []CalibrationSkip{{Run: "zeta", Card: "m1.jsonl", Reason: reason}}
+		if len(unstencilled.Fixed.Rows) != 0 || !slices.Equal(unstencilled.Fixed.Skips, wantSkips) {
+			t.Errorf("fixed rows = %+v, skips = %+v; want no rows and skips %+v", unstencilled.Fixed.Rows, unstencilled.Fixed.Skips, wantSkips)
 		}
 	})
 

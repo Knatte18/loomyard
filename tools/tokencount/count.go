@@ -64,11 +64,26 @@ type ForkTally struct {
 	Started time.Time
 }
 
+// MerriamStart is the start of one Merriam (webster-role) session.
+type MerriamStart struct {
+	// Session is the session transcript's file name.
+	Session string
+	// Started is the timestamp of the transcript's first line that carries one.
+	Started time.Time
+	// StartContext is the input + cache write + cache read of the first assistant message with usage after the line holding the result of Merriam's Read of its prompt file;
+	// 0 when no start was measured.
+	StartContext int
+	// NoStart says why no start was measured, empty when StartContext was measured.
+	NoStart string
+}
+
 // RunTally is one task run's usage, split by role.
 type RunTally struct {
-	Slug       string
-	Roles      map[string]*RoleTally
-	Forks      []ForkTally
+	Slug  string
+	Roles map[string]*RoleTally
+	Forks []ForkTally
+	// Merriams holds one start per webster-role session, ordered by Started.
+	Merriams   []MerriamStart
 	Duplicates int // transcript lines skipped as a repeat of a message already counted
 	// BaseSHA is the start_sha of the earliest successful begin-batch result in the run's webster sessions, the HEAD before its first batch forked;
 	// empty when there is none.
@@ -227,6 +242,116 @@ func (run *RunTally) recordBase(path string) error {
 	})
 }
 
+// launchPointerLine matches the launch line lyx types into a Merriam session, capturing the prompt file's path.
+var launchPointerLine = regexp.MustCompile(`(?m)^Read (.+) in full first; it is your complete, authoritative instructions\.\s*$`)
+
+// userTexts returns the text of a user message's content, which is a string or a list of items, the text items of which count.
+func userTexts(content json.RawMessage) []string {
+	var text string
+	if json.Unmarshal(content, &text) == nil {
+		return []string{text}
+	}
+	var items []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(content, &items) != nil {
+		return nil
+	}
+	var texts []string
+	for _, item := range items {
+		if item.Type == "text" {
+			texts = append(texts, item.Text)
+		}
+	}
+	return texts
+}
+
+// readToolUseIDs returns the id of every Read tool use in an assistant message's content, keyed by the file path it reads.
+func readToolUseIDs(content json.RawMessage) map[string]string {
+	var items []struct {
+		Type  string `json:"type"`
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Input struct {
+			FilePath string `json:"file_path"`
+		} `json:"input"`
+	}
+	if json.Unmarshal(content, &items) != nil {
+		return nil
+	}
+	ids := map[string]string{}
+	for _, item := range items {
+		if item.Type == "tool_use" && item.Name == "Read" {
+			if _, seen := ids[item.Input.FilePath]; !seen {
+				ids[item.Input.FilePath] = item.ID
+			}
+		}
+	}
+	return ids
+}
+
+// readMerriamStart measures one Merriam session's start in the transcript at path.
+// The prompt path comes from the first user message holding the launch line;
+// the start is the context of the first assistant message with usage after the result of the first Read of that path.
+func readMerriamStart(path string) (MerriamStart, error) {
+	start := MerriamStart{Session: filepath.Base(path)}
+	var promptPath, readUseID string
+	resultSeen, measured := false, false
+	err := eachLine(path, func(l line) {
+		if start.Started.IsZero() && l.Timestamp != "" {
+			if t, err := time.Parse(time.RFC3339Nano, l.Timestamp); err == nil {
+				start.Started = t
+			}
+		}
+		if measured || l.Message == nil {
+			return
+		}
+		switch l.Type {
+		case "user":
+			if promptPath == "" {
+				for _, text := range userTexts(l.Message.Content) {
+					if m := launchPointerLine.FindStringSubmatch(text); m != nil {
+						promptPath = m[1]
+						return
+					}
+				}
+				return
+			}
+			if readUseID == "" || resultSeen {
+				return
+			}
+			for _, item := range toolResultItems(l.Message.Content) {
+				if item.UseID == readUseID {
+					resultSeen = true
+				}
+			}
+		case "assistant":
+			if promptPath != "" && readUseID == "" {
+				readUseID = readToolUseIDs(l.Message.Content)[promptPath]
+				return
+			}
+			if resultSeen && l.Message.Usage != nil {
+				u := l.Message.Usage
+				start.StartContext = u.Input + u.CacheCreate + u.CacheRead
+				measured = true
+			}
+		}
+	})
+	if err != nil {
+		return MerriamStart{}, err
+	}
+	switch {
+	case promptPath == "":
+		start.NoStart = "no launch line"
+	case readUseID == "":
+		start.NoStart = "no Read of the prompt file " + promptPath
+	case !measured:
+		start.NoStart = "no assistant message after the prompt Read's result"
+	}
+	return start, nil
+}
+
 var nonAlnum = regexp.MustCompile(`[^A-Za-z0-9]`)
 
 // projectDir is the directory Claude Code keeps a worktree's sessions in: the absolute path
@@ -335,6 +460,11 @@ func CountRun(dir, slug string) (RunTally, error) {
 			if err := run.recordBase(session); err != nil {
 				return RunTally{}, err
 			}
+			merriam, err := readMerriamStart(session)
+			if err != nil {
+				return RunTally{}, err
+			}
+			run.Merriams = append(run.Merriams, merriam)
 		}
 		subs, err := filepath.Glob(filepath.Join(strings.TrimSuffix(session, ".jsonl"), "subagents", "*.jsonl"))
 		if err != nil {
@@ -355,6 +485,7 @@ func CountRun(dir, slug string) (RunTally, error) {
 		}
 	}
 	sort.SliceStable(run.Forks, func(i, j int) bool { return run.Forks[i].Started.Before(run.Forks[j].Started) })
+	sort.SliceStable(run.Merriams, func(i, j int) bool { return run.Merriams[i].Started.Before(run.Merriams[j].Started) })
 	return run, nil
 }
 

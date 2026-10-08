@@ -26,6 +26,8 @@ type Git interface {
 	MergeRejection(worktree, commit string, parents []string, parentBranch ParentBranchFunc) string
 	// SHAExists reports whether sha names a commit in the worktree's repository.
 	SHAExists(worktree, sha string) bool
+	// CommitsNamedBy returns, sorted, the full SHA of every commit whose object name starts with prefix, empty when none does.
+	CommitsNamedBy(worktree, prefix string) ([]string, error)
 	// IsAncestor reports whether sha is an ancestor of ref.
 	IsAncestor(worktree, sha, ref string) (bool, error)
 	// IgnoredPath reports whether git ignores path in the worktree.
@@ -64,6 +66,10 @@ func (realGit) MergeRejection(worktree, commit string, parents []string, parentB
 }
 
 func (realGit) SHAExists(worktree, sha string) bool { return shaExists(worktree, sha) }
+
+func (realGit) CommitsNamedBy(worktree, prefix string) ([]string, error) {
+	return commitsNamedBy(worktree, prefix)
+}
 
 func (realGit) IsAncestor(worktree, sha, ref string) (bool, error) {
 	return isAncestor(worktree, sha, ref)

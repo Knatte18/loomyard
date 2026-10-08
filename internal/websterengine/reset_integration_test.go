@@ -244,6 +244,9 @@ func TestPlanReset(t *testing.T) {
 		writeReport(fx.head)
 		fx.wantPlanSHA(t, ResetToReportHead, 1, fx.head)
 
+		writeReport(fx.head[:9])
+		fx.wantPlanSHA(t, ResetToReportHead, 1, fx.head)
+
 		gitkit.Git(t, fx.root, "checkout", "-b", "report-side", fx.first)
 		side := gitkit.CommitFile(t, fx.root, "d.txt", "side", "side")
 		gitkit.Git(t, fx.root, "checkout", "task")

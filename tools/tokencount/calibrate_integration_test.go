@@ -52,6 +52,7 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	// The base tree also holds the files a run's Merriam base is computed from.
 	write("CLAUDE.md", lines(claudeLines))
 	write("PATTERN.md", lines(patternLines))
+	write(directiveStencilPath, directiveStencil)
 	write(masterTemplatePath, lines(templateLines))
 	gitkit.Git(t, dir, "add", ".")
 	gitkit.Git(t, dir, "commit", "-m", "base")
@@ -81,7 +82,10 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	started := time.Now().Add(time.Hour)
 	transcript := fork(started, 10, 220, "01-c1")
 	transcript.File = "agent-1.jsonl"
-	runs := []RunTally{{Slug: "alpha", BaseSHA: baseSHA, Forks: []ForkTally{transcript}}}
+	runs := []RunTally{{
+		Slug: "alpha", BaseSHA: baseSHA, Forks: []ForkTally{transcript},
+		Merriams: []MerriamStart{{Session: "w.jsonl", Started: started, StartContext: 20000}},
+	}}
 
 	got, err := Calibrate(runs, "fit", configDir, repo, repo)
 	if err != nil {
@@ -115,6 +119,9 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	}
 	if len(got.Starts) != 1 || got.Starts[0] != want.Starts[0] || !got.Starts[0].HasBase || got.Starts[0].Base != baseContext {
 		t.Errorf("git-backed start rows = %+v; want the in-memory %+v with base %v", got.Starts, want.Starts, baseContext)
+	}
+	if len(want.Fixed.Rows) != 1 || !reflect.DeepEqual(got.Fixed, want.Fixed) {
+		t.Errorf("git-backed fixed context = %+v; want the in-memory %+v with one row", got.Fixed, want.Fixed)
 	}
 	if len(got.Rows) != 1 || got.Rows[0] != want.Rows[0] || len(got.Skips) != 0 {
 		t.Errorf("git-backed calibration rows = %+v, skips = %+v; want rows %+v and no skips", got.Rows, got.Skips, want.Rows)

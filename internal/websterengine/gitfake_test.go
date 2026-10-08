@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -128,9 +129,11 @@ func newFakeGit() *fakeGit {
 }
 
 // mint returns a fresh 40-hex SHA no commit holds yet.
+// The SHA is the SHA-1 of the counter, so the leading digits differ between commits and a short prefix of one commit names it alone.
 func (g *fakeGit) mint() string {
 	g.registered++
-	return fmt.Sprintf("%040x", g.registered)
+	sum := sha1.Sum([]byte(fmt.Sprint(g.registered)))
+	return hex.EncodeToString(sum[:])
 }
 
 // commit registers a new commit on top of the current head, makes it the head, and returns its SHA.
@@ -183,6 +186,17 @@ func (g *fakeGit) MergeRejection(_, commit string, _ []string, parentBranch webs
 func (g *fakeGit) SHAExists(_, sha string) bool {
 	_, ok := g.parents[sha]
 	return ok
+}
+
+func (g *fakeGit) CommitsNamedBy(_, prefix string) ([]string, error) {
+	var named []string
+	for sha := range g.parents {
+		if strings.HasPrefix(sha, prefix) {
+			named = append(named, sha)
+		}
+	}
+	sort.Strings(named)
+	return named, nil
 }
 
 func (g *fakeGit) IsAncestor(_, sha, ref string) (bool, error) {

@@ -124,9 +124,20 @@ func Directive(worktreeRoot, stencilsDir string, role Role) (string, error) {
 		// house prefix, not the stencil name a second time.
 		return "", fmt.Errorf("pattern: directive stencil: %w", err)
 	}
-	filled, err := stencil.Fill([]byte(stencil.StripLeadingComment(string(content))), map[string]string{overviewMarker: overview})
+	return FillDirective(name, string(content), overview)
+}
+
+// FillDirective renders a directive from stencil text and PATTERN overview text already in hand:
+// it strips the stencil's leading banner and fills its overview marker with the overview.
+// A whitespace-only overview is an inactive PATTERN and returns ("", nil).
+// A fill failure is returned wrapped with stencilName, which appears only in that error text.
+func FillDirective(stencilName, stencilText, overview string) (string, error) {
+	if strings.TrimSpace(overview) == "" {
+		return "", nil
+	}
+	filled, err := stencil.Fill([]byte(stencil.StripLeadingComment(stencilText)), map[string]string{overviewMarker: overview})
 	if err != nil {
-		return "", fmt.Errorf("pattern: fill directive stencil %q: %w", name, err)
+		return "", fmt.Errorf("pattern: fill directive stencil %q: %w", stencilName, err)
 	}
 	return string(filled), nil
 }

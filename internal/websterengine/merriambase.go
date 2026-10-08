@@ -15,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
-// merriamFixedContext is the context, in tokens, of Merriam's system prompt and tools.
+// merriamFixedContext is the context, in tokens, of Merriam's system prompt, tools and the skills loaded at launch.
+// tools/tokencount's Merriam fixed-context calibration section re-measures it from real runs; the value changes only when the operator updates it from that report.
 // It is 20600, the measured Merriam session start, minus the computed size of the texts the base covers at the commit the constant was taken at:
 // 392 lines (CLAUDE.md 59, the Master stencil 229 and its inlined PATTERN overview 104) at the template's context_per_line of 12, so the computed base reproduces the measured start over that tree.
 const merriamFixedContext = 20600 - 392*12

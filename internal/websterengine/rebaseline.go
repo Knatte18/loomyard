@@ -6,6 +6,8 @@ package websterengine
 import (
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"slices"
 	"sort"
 	"strconv"
@@ -22,22 +24,48 @@ var ErrRebaselineCardSetChanged = errors.New("webster: the edited plan changes t
 // It carries no "way forward: " prefix.
 const followUpCardLanding = "add a follow-up card after the last begun batch that carries the decision, with its Card Index line in " + planOverviewFile + ", then run `lyx webster rebaseline --card NN` naming it"
 
-// overviewIndexOnly reports whether 00-overview.md differs from the run's record only inside its Card Index: the state records an overview frame hash and the file's frame hash still equals it.
-// A state without the hash reports false.
-func overviewIndexOnly(st *State, planDir string) (bool, error) {
-	if st.PlanOverviewFrameHash == "" {
+// recordedOverviewFrame returns the overview frame hash the run recorded.
+// A state without State.PlanOverviewFrameHash takes the frame of the stored baseline copy of its recorded 00-overview.md, under websterDir.
+// It returns "" when the run has no recorded frame: no overview hash recorded, the copy absent, or a copy without a parseable Card Index.
+// A read failure other than an absent copy is returned.
+func recordedOverviewFrame(st *State, websterDir string) (string, error) {
+	if st.PlanOverviewFrameHash != "" {
+		return st.PlanOverviewFrameHash, nil
+	}
+	hash := st.PlanFileHashes[planOverviewFile]
+	if hash == "" {
+		return "", nil
+	}
+	data, err := os.ReadFile(planBaselinePath(websterDir, hash))
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("websterengine: recorded overview frame: read plan baseline copy %s: %w", hash, err)
+	}
+	frame, err := overviewFrameHashOf(data)
+	if err != nil {
+		return "", nil
+	}
+	return frame, nil
+}
+
+// overviewIndexOnly reports whether 00-overview.md differs from the run's record only inside its Card Index: recorded is the run's overview frame hash and the file's frame hash still equals it.
+// An empty recorded frame reports false.
+func overviewIndexOnly(recorded, planDir string) (bool, error) {
+	if recorded == "" {
 		return false, nil
 	}
 	now, err := overviewFrameHash(planDir)
 	if err != nil {
 		return false, err
 	}
-	return now == st.PlanOverviewFrameHash, nil
+	return now == recorded, nil
 }
 
-// overviewRefusal is the refusal for a 00-overview.md change Rebaseline cannot accept: one outside the Card Index, or any change in a state that recorded no overview frame.
-func overviewRefusal(st *State) error {
-	if st.PlanOverviewFrameHash == "" {
+// overviewRefusal is the refusal for a 00-overview.md change Rebaseline cannot accept: one outside the Card Index, or any change in a run whose recorded frame is empty.
+func overviewRefusal(recorded string) error {
+	if recorded == "" {
 		return fmt.Errorf("%w: %s changed and this run recorded no overview frame, so the change cannot be confined to its Card Index; it carries the plan's integration verify and is never rebaselined; way forward: restore %s, or %s", ErrRebaselineCardSetChanged, planOverviewFile, planOverviewFile, freshRestartSteps(stepRun))
 	}
 	return fmt.Errorf("%w: %s changed outside its Card Index; it carries the plan's integration verify and only its Card Index is rebaselined; way forward: restore %s, or %s", ErrRebaselineCardSetChanged, planOverviewFile, planOverviewFile, followUpCardLanding)
@@ -142,9 +170,9 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 // cards added, removed or reordered after the last begun batch are accepted.
 // It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number, or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only), except that a card named in deps.Cards is accepted when its batch is in flight or terminal failed, dead or stuck.
 // It also refuses when a changed card file's number is not in deps.Cards, unless the state predates State.PlanFileHashes.
-// A change to 00-overview.md is accepted only when it is confined to the Card Index: the state records State.PlanOverviewFrameHash and the file's frame hash still equals it.
+// A change to 00-overview.md is accepted only when it is confined to the Card Index: the run's recorded overview frame, State.PlanOverviewFrameHash or else the frame of the stored baseline copy, still equals the file's frame hash.
 // The index change is then held to the same card-set rule, so only cards after the last begun batch can be added, removed or reordered.
-// A change outside the Card Index, and any overview change in a state without the frame hash, is refused.
+// A change outside the Card Index, and any overview change in a run with no recorded frame, is refused.
 // The start commit a refusal names is picked by git ancestry.
 // The bound on the accepted card edit: only cards named with --card, only in batches in flight or terminal failed, dead or stuck, never a failed batch whose record lists Uncheckable entries, never a change to a batch's card-ID set, never 00-overview.md outside its Card Index.
 // A begun card's reworded one-line intent in the Card Index passes, since the card file stays pinned by its recorded hash.
@@ -177,12 +205,16 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		var unnamed []string
 		for _, name := range changedFiles {
 			if name == planOverviewFile {
-				indexOnly, overviewErr := overviewIndexOnly(deps.State, deps.Plan.Dir)
+				recorded, overviewErr := recordedOverviewFrame(deps.State, deps.Geom.WebsterDir)
+				indexOnly := false
+				if overviewErr == nil {
+					indexOnly, overviewErr = overviewIndexOnly(recorded, deps.Plan.Dir)
+				}
 				if overviewErr != nil {
 					return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster rebaseline` with the same `--card` flags", overviewErr)
 				}
 				if !indexOnly {
-					return nil, overviewRefusal(deps.State)
+					return nil, overviewRefusal(recorded)
 				}
 				continue
 			}

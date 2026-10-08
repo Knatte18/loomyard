@@ -559,10 +559,38 @@ func TestRebaseline_EditedPlan(t *testing.T) {
 			wantText: []string{"batch 1 recorded [01-json-flag]", "[01-renamed]"},
 		},
 		{
-			name: "a state without the overview frame hash refuses any overview change",
+			name: "a state without the overview frame hash derives it from the baseline copy and accepts a Card-Index-only change",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				beginAndFinishBatchOne(t, fx)
 				fx.Deps.State.PlanOverviewFrameHash = ""
+				writePlanFile(t, fx, "03-third.md", "# Card 3 — third\n\n**Intent:** new.\n")
+				editOverview(t, fx, func(text string) string { return text + "3 — third — the follow-up card\n" })
+			},
+			cards: []int{3},
+			check: func(t *testing.T, fx *beginFixture, before websterengine.BatchState, res *websterengine.RebaselineResult) {
+				if fx.Deps.State.PlanOverviewFrameHash == "" {
+					t.Error("PlanOverviewFrameHash is empty; want the restamp to record the accepted overview's frame hash")
+				}
+			},
+		},
+		{
+			name: "a state without the overview frame hash refuses a change outside the Card Index with the follow-up card way forward",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				fx.Deps.State.PlanOverviewFrameHash = ""
+				editOverview(t, fx, func(text string) string { return strings.Replace(text, "approved: true", "approved: false", 1) })
+			},
+			wantText:    []string{"00-overview.md", "outside its Card Index", followUpWayForward},
+			wantNotText: []string{"recorded no overview frame"},
+		},
+		{
+			name: "a state without the overview frame hash and without the baseline copy refuses any overview change",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				fx.Deps.State.PlanOverviewFrameHash = ""
+				if err := os.RemoveAll(filepath.Join(fx.Deps.Geom.WebsterDir, "plan-baseline")); err != nil {
+					t.Fatalf("remove the plan baseline store: %v", err)
+				}
 				editOverview(t, fx, func(text string) string {
 					return strings.Replace(text, "add the json flag", "add the json flag, reworded", 1)
 				})

@@ -53,6 +53,7 @@
 // strips the leading banner with stencil.StripLeadingComment, fills the overview marker with stencil.Fill,
 // and returns an error rather than an empty string when an active PATTERN's stencil cannot be read or filled.
 // The read is lazy: no stencil read is attempted on an empty root, an inactive PATTERN, or an unknown role.
+// A caller that already holds the stencil's bytes and the overview's bytes, from somewhere other than disk, renders the same text with FillDirective.
 //
 // # The PATTERN format
 //

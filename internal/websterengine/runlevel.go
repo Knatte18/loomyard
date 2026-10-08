@@ -477,7 +477,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	case st.PlanFingerprint != fingerprint, freshDrop:
 		if !opts.Fresh {
-			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint, fingerprintMismatchWayForward(st, deps.Geom.PlanDir, deps.reentryStep()))
+			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint, fingerprintMismatchWayForward(st, deps.Geom.PlanDir, deps.Geom.WebsterDir, deps.reentryStep()))
 		}
 
 		batches, err = newPartition()

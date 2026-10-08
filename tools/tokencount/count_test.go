@@ -150,6 +150,64 @@ func TestCountRun(t *testing.T) {
 		t.Errorf("BaseSHA = %q, want empty for a run with no successful begin-batch pair", bare.BaseSHA)
 	}
 
+	// Two Merriam sessions, the earlier-started one in the file that sorts last.
+	// The first holds the skill-load turn and its assistant messages before the launch line, then the prompt Read.
+	merriams := projectDir(projects, "/hub/merriams")
+	launch := func(ts, path string) string {
+		return `{"type":"user","timestamp":"` + ts + `","message":{"role":"user","content":"Read ` + path + ` in full first; it is your complete, authoritative instructions."}}`
+	}
+	readUse := func(id, useID, path string, cacheRead int) string {
+		return `{"type":"assistant","message":{"id":"` + id + `","content":[{"type":"tool_use","id":"` + useID + `","name":"Read","input":{"file_path":"` + path + `"}}],` +
+			`"usage":{"input_tokens":1,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":` + strconv.Itoa(cacheRead) + `}}}`
+	}
+	writeLines(t, filepath.Join(merriams, "z-first.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:merriams:webster"}`,
+		`{"type":"user","timestamp":"2026-01-02T01:00:00Z","message":{"role":"user","content":[{"type":"text","text":"load the skills"}]}}`,
+		assistant("s1", "opus", 1, 100),
+		launch("2026-01-02T01:00:05Z", "/p/prompt.md"),
+		readUse("s2", "other", "/p/other.md", 150),
+		toolResultFor("other", "2026-01-02T01:00:06Z", jsonString(t, "other")),
+		readUse("s3", "prompt", "/p/prompt.md", 200),
+		toolResultFor("prompt", "2026-01-02T01:00:07Z", jsonString(t, "prompt")),
+		assistant("s4", "opus", 1, 300),
+		assistant("s5", "opus", 1, 400),
+	)
+	writeLines(t, filepath.Join(merriams, "a-second.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:merriams:webster"}`,
+		launch("2026-01-02T02:00:00Z", "/p/prompt.md"),
+		assistant("t1", "opus", 1, 100),
+	)
+	// A launch line typed as a text item of list content measures as string content does.
+	writeLines(t, filepath.Join(merriams, "m-list.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:merriams:webster"}`,
+		`{"type":"user","timestamp":"2026-01-02T03:00:00Z","message":{"role":"user","content":[{"type":"text","text":"Read /p/list.md in full first; it is your complete, authoritative instructions."}]}}`,
+		readUse("u1", "list", "/p/list.md", 100),
+		toolResultFor("list", "2026-01-02T03:00:01Z", jsonString(t, "prompt")),
+		assistant("u2", "opus", 1, 500),
+	)
+	// A transcript that ends at the prompt Read's result has nothing to measure.
+	writeLines(t, filepath.Join(merriams, "b-ends.jsonl"),
+		`{"type":"custom-title","customTitle":"ly:merriams:webster"}`,
+		launch("2026-01-02T04:00:00Z", "/p/prompt.md"),
+		readUse("v1", "ends", "/p/prompt.md", 100),
+		toolResultFor("ends", "2026-01-02T04:00:01Z", jsonString(t, "prompt")),
+	)
+	withMerriams, err := CountRun(merriams, "merriams")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantMerriams := []MerriamStart{
+		{Session: "z-first.jsonl", Started: time.Date(2026, 1, 2, 1, 0, 0, 0, time.UTC), StartContext: 301},
+		{Session: "a-second.jsonl", Started: time.Date(2026, 1, 2, 2, 0, 0, 0, time.UTC), NoStart: "no Read of the prompt file /p/prompt.md"},
+		{Session: "m-list.jsonl", Started: time.Date(2026, 1, 2, 3, 0, 0, 0, time.UTC), StartContext: 501},
+		{Session: "b-ends.jsonl", Started: time.Date(2026, 1, 2, 4, 0, 0, 0, time.UTC), NoStart: "no assistant message after the prompt Read's result"},
+	}
+	if !slices.EqualFunc(withMerriams.Merriams, wantMerriams, func(got, want MerriamStart) bool {
+		return got.Session == want.Session && got.Started.Equal(want.Started) && got.StartContext == want.StartContext && got.NoStart == want.NoStart
+	}) {
+		t.Errorf("Merriams = %+v, want %+v", withMerriams.Merriams, wantMerriams)
+	}
+
 	wantForks := []ForkTally{
 		{
 			Slug: "my-task", File: "agent-1.jsonl", Cards: []string{"01-alpha", "02-beta"},

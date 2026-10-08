@@ -289,8 +289,8 @@ func TestRestamp(t *testing.T) {
 	}
 }
 
-// editFixture writes a two-file plan, restamps a state over it, and returns the state and the batch holding card 01-a.
-func editFixture(t *testing.T) (*State, *BatchState, batcher.Batch, string) {
+// editFixture writes a two-file plan, restamps a state over it, and returns the state, the batch holding card 01-a, the plan directory and the webster directory holding the plan's baseline copies.
+func editFixture(t *testing.T) (*State, *BatchState, batcher.Batch, string, string) {
 	t.Helper()
 	planDir := t.TempDir()
 	fingerprintWriteFiles(t, planDir, map[string]string{
@@ -298,7 +298,8 @@ func editFixture(t *testing.T) (*State, *BatchState, batcher.Batch, string) {
 		"01-a.md":        "card a\n",
 	})
 	st := &State{}
-	if err := restampFingerprint(st, planDir, t.TempDir()); err != nil {
+	websterDir := t.TempDir()
+	if err := restampFingerprint(st, planDir, websterDir); err != nil {
 		t.Fatalf("restampFingerprint() error = %v", err)
 	}
 	b := batcher.Batch{Cards: []planparser.Card{{Number: 1, Slug: "a"}}}
@@ -306,7 +307,7 @@ func editFixture(t *testing.T) (*State, *BatchState, batcher.Batch, string) {
 	if err != nil {
 		t.Fatalf("batchCardHashes() error = %v", err)
 	}
-	return st, &BatchState{CardHashes: hashes}, b, planDir
+	return st, &BatchState{CardHashes: hashes}, b, planDir, websterDir
 }
 
 // TestPlanEditErrors proves an unchanged plan passes both guards, a card edit makes PlanEditError wrap ErrFingerprintMismatch naming rebaseline and restore-plan,
@@ -317,14 +318,14 @@ func TestPlanEditErrors(t *testing.T) {
 	t.Run("PlanEditError is nil on an unchanged plan and names the way forward after an edit", func(t *testing.T) {
 		t.Parallel()
 
-		st, _, _, planDir := editFixture(t)
+		st, _, _, planDir, websterDir := editFixture(t)
 
-		if err := PlanEditError(st, planDir); err != nil {
+		if err := PlanEditError(st, planDir, websterDir); err != nil {
 			t.Fatalf("PlanEditError() on an unchanged plan = %v; want nil", err)
 		}
 
 		fingerprintWriteFiles(t, planDir, map[string]string{"01-a.md": "card a, edited\n"})
-		err := PlanEditError(st, planDir)
+		err := PlanEditError(st, planDir, websterDir)
 		if !errors.Is(err, ErrFingerprintMismatch) {
 			t.Fatalf("PlanEditError() after a card edit = %v; want ErrFingerprintMismatch", err)
 		}
@@ -335,17 +336,33 @@ func TestPlanEditErrors(t *testing.T) {
 		}
 	})
 
+	t.Run("PlanEditError offers rebaseline for a Card-Index-only change in a state without a frame hash", func(t *testing.T) {
+		t.Parallel()
+
+		st, _, _, planDir, websterDir := editFixture(t)
+		st.PlanOverviewFrameHash = ""
+
+		fingerprintWriteFiles(t, planDir, map[string]string{"00-overview.md": overviewWithIndex("1 — a — card a\n2 — b — card b")})
+		err := PlanEditError(st, planDir, websterDir)
+		if !errors.Is(err, ErrFingerprintMismatch) {
+			t.Fatalf("PlanEditError() after a Card Index edit = %v; want ErrFingerprintMismatch", err)
+		}
+		if want := "run `lyx webster rebaseline` to accept it"; !strings.Contains(err.Error(), want) {
+			t.Errorf("PlanEditError() = %q; want it to offer %q", err, want)
+		}
+	})
+
 	t.Run("batchCardEditError names the edited begun card", func(t *testing.T) {
 		t.Parallel()
 
-		st, bs, b, planDir := editFixture(t)
+		st, bs, b, planDir, websterDir := editFixture(t)
 
-		if err := batchCardEditError(st, bs, b, planDir); err != nil {
+		if err := batchCardEditError(st, bs, b, planDir, websterDir); err != nil {
 			t.Fatalf("batchCardEditError() on unedited cards = %v; want nil", err)
 		}
 
 		fingerprintWriteFiles(t, planDir, map[string]string{"01-a.md": "card a, edited\n"})
-		err := batchCardEditError(st, bs, b, planDir)
+		err := batchCardEditError(st, bs, b, planDir, websterDir)
 		if !errors.Is(err, ErrFingerprintMismatch) {
 			t.Fatalf("batchCardEditError() after a card edit = %v; want ErrFingerprintMismatch", err)
 		}
@@ -356,7 +373,7 @@ func TestPlanEditErrors(t *testing.T) {
 			t.Errorf("batchCardEditError() = %q; want the restore-plan way forward", err)
 		}
 
-		if err := batchCardEditError(st, &BatchState{}, b, planDir); err != nil {
+		if err := batchCardEditError(st, &BatchState{}, b, planDir, websterDir); err != nil {
 			t.Errorf("batchCardEditError() on a record without card hashes = %v; want nil", err)
 		}
 	})
