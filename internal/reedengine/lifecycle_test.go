@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
 func guids(strands []Strand) []string {
@@ -82,6 +83,37 @@ func TestUp_BootValidation(t *testing.T) {
 				t.Errorf("Up() error = %q, want the check to pass", err)
 			}
 		})
+	}
+}
+
+// TestStatus_ReportsSegmentColor pins that Status carries each strand's resolved segment color, and none for a strand recorded without a segment.
+func TestStatus_ReportsSegmentColor(t *testing.T) {
+	e := newTestEngine(t)
+	fake := installFakeTmux(t, e)
+	fake.answer("display-message", "$0|4321|1787000000", nil)
+	fake.answer("list-sessions", "worktree\n", nil)
+	fake.answer("list-panes", "%1 0 0 100 3 4322\n%2 0 3 100 20 4323\n", nil)
+	st := &ReedState{
+		SelvagePaneID:  "%1",
+		PaneGeneration: PaneGeneration{SessionName: "worktree", TmuxSessionID: "$0", ServerPID: "4321", Created: "1787000000"},
+		Strands: []Strand{
+			{GUID: "colored", Name: "colored", PaneID: "%2", Segment: "review"},
+			{GUID: "plain", Name: "plain"},
+		},
+	}
+	if err := SaveState(e.stateDir(), st); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	result, err := e.Status()
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if got := result.Strands[0].Color; got != segmentcolor.Orange {
+		t.Errorf("Status color of the review strand = %q, want orange", got)
+	}
+	if got := result.Strands[1].Color; got != "" {
+		t.Errorf("Status color of the strand without a segment = %q, want none", got)
 	}
 }
 

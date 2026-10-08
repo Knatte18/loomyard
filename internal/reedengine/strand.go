@@ -44,6 +44,8 @@ type AddSpec struct {
 	IfAbsent bool
 	// DoneWhen is copied verbatim onto the new strand's DoneWhen.
 	DoneWhen []string
+	// Segment is stamped verbatim onto the new strand's Segment.
+	Segment string
 }
 
 // Removed reports every strand RemoveStrand deleted: the target plus its whole cascaded descendant
@@ -340,6 +342,7 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 		SessionID: spec.SessionID,
 		Display:   spec.Display,
 		DoneWhen:  spec.DoneWhen,
+		Segment:   spec.Segment,
 	})
 	strand := &st.Strands[len(st.Strands)-1]
 
@@ -587,7 +590,7 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 		result, _ = strandByGUID(st.Strands, strand.GUID)
 		return nil
 	})
-	return result, skipped, err
+	return e.withColor(result), skipped, err
 }
 
 // UpdateStrand mutates guid's display settings, then reconciles and re-applies the layout.

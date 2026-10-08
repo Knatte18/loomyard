@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
 // stateDir returns the path to the worktree-level ephemeral tree holding reed.json and reed.lock.
@@ -68,6 +69,8 @@ type StrandStatus struct {
 	Live   bool
 	// Retiring mirrors Strand.Retiring.
 	Retiring bool
+	// Color is the palette color the strand's segment resolves to, empty when it has none.
+	Color segmentcolor.Color
 }
 
 // StatusResult reports this session's tracked strands and their live/dead state.
@@ -579,6 +582,7 @@ func (e *Engine) upLocked() (UpResult, bool, error) {
 	if err := e.ensureSelvagePaneLocked(st); err != nil {
 		return result, booted, err
 	}
+	e.markResolvedStrandWindowLocked(st)
 
 	if _, err := e.reconcileApplyPersistLocked(st); err != nil {
 		return result, booted, err
@@ -677,6 +681,7 @@ func (e *Engine) Resume() (ResumeResult, error) {
 		if err := e.ensureSelvagePaneLocked(st); err != nil {
 			return err
 		}
+		e.markResolvedStrandWindowLocked(st)
 
 		live, err := e.listStrandPanes(st)
 		if err != nil {
@@ -1166,7 +1171,7 @@ func (e *Engine) Status() (StatusResult, error) {
 		// must not "fix" a missing Selvage row by appending one here.
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
-			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID], Retiring: s.Retiring}
+			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID], Retiring: s.Retiring, Color: e.withColor(s).Color}
 		}
 
 		result = StatusResult{Session: session, Socket: e.Socket(), Strands: strands}

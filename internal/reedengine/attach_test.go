@@ -192,6 +192,7 @@ func TestAttachArgv_ChainGate(t *testing.T) {
 
 			got := e.AttachArgv(cols, rows)
 
+			assertStrandOptionsReasserted(t, fake)
 			if tt.wantBare {
 				assertBareArgv(t, e, got)
 				return
@@ -269,11 +270,13 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 		t.Fatalf("AttachArgv() = %v, want the 10-element chained argv on this known-good script", want)
 	}
 
-	// The seven status-line options plus the pre-existing window-size pin.
-	const wantSetOptionCalls = 8
+	// The seven status-line options plus the pre-existing window-size pin, the window marker and the strand pane's two options.
+	const wantSetOptionCalls = 11
 	if setOptions := fake.ArgvFor("set-option"); len(setOptions) != wantSetOptionCalls {
 		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(setOptions), wantSetOptionCalls, setOptions)
 	}
+
+	assertStrandOptionsReasserted(t, fake)
 
 	calls := fake.Calls()
 	statusPinIdx, statusReadbackIdx, listPanesIdx, firstSetHookIdx := -1, -1, -1, -1
@@ -319,6 +322,26 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	}
 	if len(fake.ArgvFor("set-hook")) == hooksBefore {
 		t.Error("no set-hook call recorded despite the failing hook, want the install statement still attempted")
+	}
+}
+
+// assertStrandOptionsReasserted asserts the pre-flight marked the strand window and set the pane options on the live bound pane %1, and none on the unbound pane %2.
+func assertStrandOptionsReasserted(t *testing.T, fake *fakeTmux) {
+	t.Helper()
+	var marked, labeled bool
+	for _, argv := range fake.ArgvFor("set-option") {
+		switch {
+		case containsArg(argv, "@lyx_strands"):
+			marked = true
+		case containsArg(argv, "@strand"):
+			labeled = true
+			if !containsArg(argv, "%1") {
+				t.Errorf("@strand set with %v, want it on the bound pane %%1 only", argv)
+			}
+		}
+	}
+	if !marked || !labeled {
+		t.Errorf("set-option calls = %v, want the window marked (%v) and the bound pane labeled (%v)", fake.ArgvFor("set-option"), marked, labeled)
 	}
 }
 

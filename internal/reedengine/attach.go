@@ -101,6 +101,15 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 			return err
 		}
 
+		// Strands and sessions spawned by an older lyx get their display options at the next attach.
+		// This runs before any guard that suppresses the chain.
+		e.markStrandWindowLocked(windowTarget)
+		if windowPanes, err := e.tmux.listPanes(windowTarget); err != nil {
+			logger.Warn("reed: could not list the strand window's panes to re-assert strand options", "window", windowTarget, "err", err)
+		} else {
+			e.reassertStrandPaneOptionsLocked(st, windowPanes)
+		}
+
 		// The pins are made here, by the builder itself, not by a second exported call a CLI must
 		// remember. The ordering is still load-bearing, but for the opposite reason it used to be: the
 		// told box is only correct once the status-line pins have landed AND been read back, because

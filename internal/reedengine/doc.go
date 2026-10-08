@@ -56,6 +56,12 @@
 //
 // Segment colors are read from reed.yaml's segment_colors block, resolved only through Engine.segmentColor, and refused only at boot.
 //
+// Every strand pane carries the user options @strand (the role segment of its name, or the full name when it does not parse) and @strand_color (the tmux color of its segment, unset when it has none),
+// and the strand window carries @lyx_strands.
+// Launch sets the pane options; boot and every attach pre-flight re-assert all three, so a session or strand spawned by an older lyx gets them at its next attach.
+// They are display only: the status bar and the key bindings read them, no Go decision does, and Selvage never gets either pane option.
+// A strand's Segment is an opaque field its spawner names through AddSpec.Segment; reed reads it only to look up the segment's color, which the strand an add or replace returns and Status carry as Color.
+//
 // A second package-level invariant: every session also carries exactly one
 // additional, permanent pane beyond its strands — Selvage
 // (ReedState.SelvagePaneID). It is a first-class construct, deliberately

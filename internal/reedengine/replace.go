@@ -99,5 +99,5 @@ func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 		result, _ = strandByGUID(st.Strands, strand.GUID)
 		return nil
 	})
-	return result, err
+	return e.withColor(result), err
 }

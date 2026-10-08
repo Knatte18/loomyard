@@ -67,6 +67,8 @@ func newTestEngine(t *testing.T) *Engine {
 		// what it actually asserts. A test that wants an invalid value
 		// overrides e.cfg.Watchdog itself.
 		Watchdog: "on",
+		// Two configured segments; any other segment key resolves to no color.
+		SegmentColors: map[string]string{"review": "orange", "plan": "cyan"},
 	}
 	return New(cfg, geom)
 }
