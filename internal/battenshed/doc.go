@@ -34,6 +34,9 @@
 // Bound: the report wait delays a notice by at most three minutes, and the relay wait by at most ten minutes after the report; neither loses it, and there is one notice per episode.
 // A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window, or by an API-error notice when the stall is one; an operator attaches to the child's session to tell the cases apart.
 //
+// A batten run starts with "lyx batten run <slug>" in a terminal, or with "--window" in its own tmux window of the orch's reed session, which returns at once.
+// The flag only chooses where the same run executes: the window lives as long as the reed session, and a second batten for the slug is refused by the run's own lock inside the window, in batten's own log.
+//
 // The InnerRun row waits on its child inside its call rather than returning once per poll.
 // Every poll_interval_s it stats the child's status file, and decodes it when its modification time differs from the last decode or notice_probe_s has passed.
 // It returns a budget-exempt Stuck only when something is worth a history entry:

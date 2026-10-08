@@ -7,7 +7,7 @@ contracts/specs: 3
 contracts/stencils: 14
 internal/agentname: 7
 internal/batcher: 8
-internal/battencli: 54
+internal/battencli: 56
 internal/battenrecipe: 8
 internal/battenshed: 89
 internal/boardcli: 12
