@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
 // newGlyphChainRepo returns a delta fixture repository holding a copy of the committed fixture module, and the SHA of the commit that adds it.
@@ -190,5 +192,68 @@ func TestGlyphChain_ReworkGenerations(t *testing.T) {
 		if finding.Severity == SeverityBlocking {
 			t.Errorf("ValidateDispatch reported blocking finding %+v; want none", finding)
 		}
+	}
+}
+
+// TestGlyphChain_RedundantPackage pins redundant-package-target across the plan gate and dispatch: a package self glyph beside a handle of that package is flagged both before and after card 1's handle is bound, and a rename's to-side handle belongs to the old glyph's package, not the package its draft spelling names.
+func TestGlyphChain_RedundantPackage(t *testing.T) {
+	t.Parallel()
+
+	redundant := []findingKey{{"redundant-package-target", "2-card2", SeverityBlocking}}
+
+	tests := []struct {
+		name      string
+		cards     []string
+		sections  []plankit.Section
+		edits     []codeEdit
+		wantGate  []findingKey
+		wantBound []findingKey
+	}{
+		{
+			name:      "create handle beside its package self glyph",
+			cards:     []string{createCard(&createLeg{"plan:shapes#Fresh", "func Fresh() int", ""}), editCard("shapes#", "plan:shapes#Fresh")},
+			edits:     []codeEdit{appendText(shapesFile, "\nfunc Fresh() int { return 1 }\n")},
+			wantGate:  redundant,
+			wantBound: redundant,
+		},
+		{
+			name:     "rename to-side handle beside the draft unit's package self glyph",
+			cards:    []string{renameCard("shapes#Func", "plan:dirname#FuncMoved"), editCard("dirname#", "plan:dirname#FuncMoved")},
+			sections: []plankit.Section{renameMechanic},
+			edits:    []codeEdit{replaceText(shapesFile, "func Func() int", "func FuncMoved() int")},
+		},
+		{
+			name:      "rename to-side handle beside the old unit's package self glyph",
+			cards:     []string{renameCard("shapes#Func", "plan:dirname#FuncMoved"), editCard("shapes#", "plan:dirname#FuncMoved")},
+			sections:  []plankit.Section{renameMechanic},
+			edits:     []codeEdit{replaceText(shapesFile, "func Func() int", "func FuncMoved() int")},
+			wantGate:  redundant,
+			wantBound: redundant,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f, base := newGlyphChainRepo(t)
+			dir, plan := writeGlyphPlan(t, tc.cards, tc.sections...)
+			assertPlanGate(t, plan, f.root, tc.wantGate)
+
+			bound := bindCardOne(t, f, dir, base, f.commitEdits(tc.edits))
+
+			findings, err := ValidateDispatch(bound, f.root, bound.Cards[:1], nil)
+			if err != nil {
+				t.Fatalf("ValidateDispatch(...) returned error: %v", err)
+			}
+			var got []findingKey
+			for _, finding := range findings {
+				if finding.Severity == SeverityBlocking {
+					got = append(got, findingKey{finding.Check, finding.Card, finding.Severity})
+				}
+			}
+			if !slices.Equal(got, tc.wantBound) {
+				t.Errorf("ValidateDispatch blocking findings = %+v; want %+v", got, tc.wantBound)
+			}
+		})
 	}
 }

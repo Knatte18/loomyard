@@ -1096,6 +1096,96 @@ func TestValidate_UsesLaterTarget(t *testing.T) {
 	}
 }
 
+// TestValidate_RedundantPackageTarget covers redundant-package-target: a package self glyph listed on one card beside a member, a file self glyph or a handle of that package is one finding per contained target, attributed to the card with Ref the contained target.
+func TestValidate_RedundantPackageTarget(t *testing.T) {
+	t.Parallel()
+
+	renameCard := func(number int, old, new string) planparser.Card {
+		card := cardOfType(number, "renamer", planparser.CardTypeRename, []string{old, new})
+		card.Pairs = []planparser.MovePair{{Old: old, New: new}}
+		card.TargetGroups[0].Pairs = card.Pairs
+		return card
+	}
+	edit := func(number int, refs ...string) planparser.Card {
+		return cardOfType(number, "editor", planparser.CardTypeEdit, refs)
+	}
+
+	tests := []struct {
+		name     string
+		language string
+		cards    []planparser.Card
+		wantRefs []string
+	}{
+		{
+			name:     "a package self glyph beside a member of that package",
+			cards:    []planparser.Card{edit(1, "pkg/a#", "pkg/a#Thing")},
+			wantRefs: []string{"pkg/a#Thing"},
+		},
+		{
+			name:     "a package self glyph beside a file of that package",
+			cards:    []planparser.Card{edit(1, "pkg/a#", "pkg/a/file.go#")},
+			wantRefs: []string{"pkg/a/file.go#"},
+		},
+		{
+			name:     "a package self glyph beside a handle of that package",
+			cards:    []planparser.Card{edit(1, "pkg/a#", "plan:pkg/a#Fresh")},
+			wantRefs: []string{"plan:pkg/a#Fresh"},
+		},
+		{
+			name:     "each contained target is its own finding",
+			cards:    []planparser.Card{edit(1, "pkg/a#", "pkg/a#One", "pkg/a#Two", "pkg/a#One")},
+			wantRefs: []string{"pkg/a#One", "pkg/a#Two"},
+		},
+		{
+			name:  "a member of another unit is clean",
+			cards: []planparser.Card{edit(1, "pkg/a#", "pkg/b#Thing", "pkg/a/sub/file.go#")},
+		},
+		{
+			name:  "the member on a different card is clean",
+			cards: []planparser.Card{edit(1, "pkg/a#"), edit(2, "pkg/a#Thing")},
+		},
+		{
+			name:  "a path beside a package self glyph is clean",
+			cards: []planparser.Card{edit(1, "pkg/a#", "pkg/a/file.go")},
+		},
+		{
+			name:     "a rename to-side handle belongs to the old glyph's unit: the old unit is flagged",
+			cards:    []planparser.Card{renameCard(1, "pkg/a#Old", "plan:pkg/b#Moved"), edit(2, "pkg/a#", "plan:pkg/b#Moved")},
+			wantRefs: []string{"plan:pkg/b#Moved"},
+		},
+		{
+			name:  "a rename to-side handle belongs to the old glyph's unit: the draft unit is clean",
+			cards: []planparser.Card{renameCard(1, "pkg/a#Old", "plan:pkg/b#Moved"), edit(2, "pkg/b#", "plan:pkg/b#Moved")},
+		},
+		{
+			name:     "language none reports nothing",
+			language: "none",
+			cards:    []planparser.Card{edit(1, "pkg/a#", "pkg/a#Thing")},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			plan := &planparser.Plan{Format: 5, Approved: true, Language: tc.language, Cards: tc.cards}
+
+			var gotRefs []string
+			for _, f := range planparser.Validate(plan, t.TempDir()) {
+				if f.Check != "redundant-package-target" {
+					continue
+				}
+				if !strings.HasSuffix(f.Card, "-editor") {
+					t.Errorf("finding attributed to %q; want an editor card", f.Card)
+				}
+				gotRefs = append(gotRefs, f.Ref)
+			}
+			if !slices.Equal(gotRefs, tc.wantRefs) {
+				t.Errorf("redundant-package-target refs = %q; want %q", gotRefs, tc.wantRefs)
+			}
+		})
+	}
+}
+
 // TestValidate_ImpactSummaryMultiline covers impact-summary-multiline: a non-empty
 // ImpactSummaryTrailing is a defect, since ImpactSummary is required to stay a single line.
 func TestValidate_ImpactSummaryMultiline(t *testing.T) {

@@ -88,6 +88,8 @@ const (
 	// path-shaped ref is kept; a symbol-, glyph-, or handle-shaped ref is the prosa-symbol-target
 	// finding.
 	gateProsaPathOnly refGate = "prosa-path-only"
+	// gateRedundantTarget is redundancyOwnerOf's (redundancy.go) policy: a glyph- or handle-shaped target can belong to a package; a path- or symbol-shaped one is skipped.
+	gateRedundantTarget refGate = "redundant-target"
 )
 
 // allRefKinds is the canonical, complete list of every refKind classify.go's enum declares. The
@@ -172,6 +174,12 @@ var ledger = map[refGate]map[refKind]disposition{
 		refKindSymbol: dispFinding,
 		refKindGlyph:  dispFinding,
 		refKindHandle: dispFinding,
+	},
+	gateRedundantTarget: {
+		refKindPath:   dispSkip,
+		refKindSymbol: dispSkip,
+		refKindGlyph:  dispKeep,
+		refKindHandle: dispKeep,
 	},
 }
 
