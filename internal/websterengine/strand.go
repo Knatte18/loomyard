@@ -12,6 +12,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -111,6 +112,14 @@ type StrandStopper interface {
 	StopStrand(guid string) error
 }
 
+// stopLeftoverStrand stops guid through stopper, logging a Warn first because a live leftover strand is a real agent killed mid-work.
+// The Warn reaches the detached driver's own log, which carries Warn and above:
+// re-invoking an interrupted Webster step kills its in-flight Master and restarts the batch run from state.json, a cost the operator can accept only when told of it.
+func stopLeftoverStrand(stopper StrandStopper, guid string) error {
+	logger.Warn("websterengine: stopping a leftover strand before respawning it; if it is still live, an in-flight batch run restarts from state.json rather than resuming", "strandGUID", guid)
+	return stopper.StopStrand(guid)
+}
+
 // RemoveRecoveryStrands stops every live recovery strand the state records, in batch-number order.
 // Only a batch of Kind "recovery" with a StrandGUID names one;
 // implementer forks and the Master have no recorded strand.
@@ -130,7 +139,7 @@ func RemoveRecoveryStrands(stopper StrandStopper, st *State) error {
 		if bs == nil || bs.Kind != "recovery" || bs.StrandGUID == "" {
 			continue
 		}
-		if err := stopper.StopStrand(bs.StrandGUID); err != nil {
+		if err := stopLeftoverStrand(stopper, bs.StrandGUID); err != nil {
 			return &RecoveryStrandRemoveError{GUID: bs.StrandGUID, Err: err}
 		}
 	}

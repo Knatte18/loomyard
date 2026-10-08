@@ -391,7 +391,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// first.
 	// A plain fork batch's record has an empty StrandGUID, which the reclaim skips.
 	if prior, ok := deps.State.Batches[number]; ok && prior != nil && prior.StrandGUID != "" {
-		if err := deps.Stopper.StopStrand(prior.StrandGUID); err != nil {
+		if err := stopLeftoverStrand(deps.Stopper, prior.StrandGUID); err != nil {
 			return nil, fmt.Errorf("websterengine: stop prior recovery strand %s before respawn: %w", prior.StrandGUID, err)
 		}
 	}

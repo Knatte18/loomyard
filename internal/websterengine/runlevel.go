@@ -290,14 +290,14 @@ func reclaimEntryTimeStrands(stopper StrandStopper, st *State) error {
 	}
 
 	if st.MasterStrand != "" {
-		if err := stopper.StopStrand(st.MasterStrand); err != nil {
+		if err := stopLeftoverStrand(stopper, st.MasterStrand); err != nil {
 			return fmt.Errorf("websterengine: stop leftover master strand %s before respawn: %w", st.MasterStrand, err)
 		}
 	}
 
 	for _, bs := range st.Batches {
 		if bs != nil && bs.Kind == "recovery" && !bs.Terminal {
-			if err := stopper.StopStrand(bs.StrandGUID); err != nil {
+			if err := stopLeftoverStrand(stopper, bs.StrandGUID); err != nil {
 				return fmt.Errorf("websterengine: stop leftover recovery strand %s before respawn: %w", bs.StrandGUID, err)
 			}
 		}
