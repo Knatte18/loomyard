@@ -209,6 +209,12 @@
 // the optional ActivityReader gives the API-error marker of the newest turn end; the caller's clock gives the reading time.
 // ReadSessionStates returns one RunSessionState per run under a run-directory root whose record reads running, whether or not its waiting process is alive, and Runner.SessionState reads the one run a guid names.
 // Both read the signals past the prompt offset and write nothing; an engine without the parser reads unknown with cause unsupported.
+// The wait loop folds the same signals on a cursor of its own: it starts at the prompt offset on every path, never at the loop's event offset, and stops before an unpaired trailing stamp, so the stamp is read again with its payload.
+// Each tick, and once more just before a classified outcome is finalized, it logs every state change at Info as `shuttle: session state` with the loop's classification: running, waiting, held, done or died.
+// It logs `shuttle: session state disagrees` at Warn once per disagreement, again only after either side changed, when the pair is outside the fixed mapping:
+// waiting and running read busy, held reads idle-stalled or asking, done reads idle-done, died reads dead.
+// Three pairings are expected and log nothing: a gate wait with every output present beside idle-done, a held turn end after transcript-reported shells expired beside busy on background work, and done beside busy on background work.
+// The loop never branches on the state; an engine without the parser, an unreadable events file or a failed fact read logs once at Debug and changes no verdict, notice, wait mark or return.
 //
 // Start/StartGated/Run/RunGated run the startup probe (readiness plus dismissal of any one-time
 // startup gate, through the Engine seam's startup classification and trust-dismiss sequence) before

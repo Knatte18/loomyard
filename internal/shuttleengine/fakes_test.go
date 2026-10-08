@@ -506,3 +506,46 @@ func (r *skillReed) CapturePane(guid string) (string, error) {
 }
 
 var _ ReedOps = (*skillReed)(nil)
+
+// sessionFakeEngine is waitingEngine plus the opt-in SessionSignalParser and SessionProber capabilities.
+// ParseSessionSignals reads "START" as a turn start, "STOP:<message>" as a turn end and "WAIT:<message>" as a turn end carrying outstanding.
+// Every signal names session-1, and the read consumes through the last complete line.
+// ProcessLiveness answers liveness for any session id, and TurnStartInterrupt reads as not interrupted.
+type sessionFakeEngine struct {
+	waitingEngine
+
+	liveness Liveness
+}
+
+func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
+	end := strings.LastIndexByte(string(data), '\n') + 1
+	var signals []SessionSignal
+	for _, line := range strings.Split(string(data[:end]), "\n") {
+		trimmed := strings.TrimSpace(line)
+		signal := SessionSignal{SessionID: "session-1", Raw: []byte(trimmed)}
+		switch {
+		case trimmed == "START":
+			signal.Kind = SessionSignalTurnStart
+		case strings.HasPrefix(trimmed, "STOP:"):
+			signal.Kind = SessionSignalTurnEnd
+		case strings.HasPrefix(trimmed, "WAIT:"):
+			signal.Kind = SessionSignalTurnEnd
+			signal.Outstanding = e.outstanding
+		default:
+			continue
+		}
+		signals = append(signals, signal)
+	}
+	return signals, end
+}
+
+func (e *sessionFakeEngine) ProcessLiveness(string) Liveness { return e.liveness }
+
+func (e *sessionFakeEngine) TurnStartInterrupt(SessionSignal) (time.Time, bool) {
+	return time.Time{}, false
+}
+
+var (
+	_ SessionSignalParser = (*sessionFakeEngine)(nil)
+	_ SessionProber       = (*sessionFakeEngine)(nil)
+)

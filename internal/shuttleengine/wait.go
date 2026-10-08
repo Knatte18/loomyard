@@ -236,6 +236,10 @@ func (run *Run) Wait() (Result, error) {
 	run.clearWait()
 	defer run.endWait()
 
+	// The signal cursor starts at the prompt offset on every path, never at run.offset, which an attach may start later.
+	run.shadow = sessionShadow{active: true, cursor: run.state.PromptOffset}
+	defer func() { run.shadow.active = false }()
+
 	for tick := 1; ; tick++ {
 		outcome, held, err := run.pollEventsTick()
 		run.syncShellWait()
@@ -276,6 +280,8 @@ func (run *Run) Wait() (Result, error) {
 				}
 			}
 		}
+
+		run.logSessionState("", tick%livenessEvery == 0)
 
 		if tick%livenessEvery == 0 {
 			livenessOutcome, err := run.checkLivenessTick(&started, startupDeadline)
@@ -1161,6 +1167,7 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 // same reason — a teardown that did not confirm clean is exactly what that level is for, and the
 // bare log package they used before never reaches the trace sink at all.
 func (run *Run) finalize(outcome Outcome) (Result, error) {
+	run.logSessionState(outcome, true)
 	result := Result{
 		Outcome:       outcome,
 		SessionID:     run.state.SessionID,
