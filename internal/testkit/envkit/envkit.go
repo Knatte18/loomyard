@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -56,6 +57,7 @@ var nilLegal = map[string]bool{
 	"InnerRun.AttachDir":                               true,
 	"PrimeLock.Sleep":                                  true,
 	"SegmentBounces":                                   true,
+	"RowReviewModels":                                  true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
@@ -160,6 +162,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		CommitPlan:        func() error { return nil },
 		ApprovePlan:       func() error { return nil },
 		SkipPlanReview:    func() (bool, error) { return false, nil },
+		CarryOver:         func(discussionparser.CarryOver) error { return nil },
 		ReflectFriction:   func() string { return "skipped" },
 		ReworkSpec: func(loomshed.ReworkTold) (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
@@ -171,7 +174,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		PlanIndex: noFindingsIndex{},
 
 		Slug:                     "test-slug",
-		ReviewMaxBounces:         5,
+		ReviewMaxBounces:         3,
 		ReviewCirclingCheckpoint: 3,
 
 		ScratchDir:     mustMkdir(t, filepath.Join(dir, "scratch")),

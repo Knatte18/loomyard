@@ -1,6 +1,6 @@
 // circling.go implements the `circling` loom subtree: the two verbs through which the operator settles a review segment's escalation.
 // `accept` ends the review loop on the current round and lets the run proceed; `continue` runs another round.
-// Each records a decision file in the Bouncer's run directory and nothing else: neither resumes the run, so the operator runs `lyx loom start` afterwards, like `lyx loom approve`.
+// Each records a decision file in the Bouncer's run directory and nothing else: neither resumes the run, so the operator runs `lyx loom resume` afterwards.
 //
 // The group carries its own PersistentPreRunE, and the loom parent's pre-run skips it, for the reason review.go gives.
 // It resolves the target worktree through the same resolver the review group uses.
@@ -38,7 +38,7 @@ const (
 	circlingWayNotAtHalt = `way forward: "lyx loom status <slug>" shows where the run is; the verbs apply only while the run is awaiting at a review segment's Bouncer row after an escalation`
 	circlingWayNot       = `way forward: "lyx loom status <slug>" shows the run's state; the verbs apply only to a round the Bouncer escalated (a CIRCLING judgement or a spent review budget), and a plain CONTINUE round below the budget needs no decision`
 	circlingWayMalformed = `way forward: fix or delete the named escalation file, then run "lyx loom start", which re-escalates the round, and re-run the verb`
-	circlingWayDecided   = `way forward: the decision for this round is recorded and stays; run "lyx loom start" in the task worktree to resume the run`
+	circlingWayDecided   = `way forward: the decision for this round is recorded and stays; run "lyx loom resume" in the task worktree to resume the run`
 	circlingWayRetry     = `way forward: re-run the verb; if the failure persists, fix the file or directory the message names`
 	circlingWayRecipe    = `way forward: the embedded loom recipe failed to parse, so this lyx build is broken; rebuild or reinstall lyx, then re-run the verb`
 )
@@ -94,7 +94,7 @@ func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedad
 		"decision": verb,
 		"round":    round,
 		"cause":    string(cause),
-		"resume":   "lyx loom start",
+		"resume":   "lyx loom resume",
 	})
 }
 
@@ -178,7 +178,7 @@ because the review budget was spent without convergence.
 Each verb takes an optional slug naming the task worktree. A task worktree
 addresses itself; from the prime the slug is required. A verb records the
 decision for the escalated round, with the escalation's cause, and nothing
-else: run "lyx loom start" in the task worktree afterwards to resume the run.
+else: run "lyx loom resume" in the task worktree afterwards to resume the run.
 The verbs check no caller identity; a second decision for the same round is
 refused.
 
@@ -208,7 +208,7 @@ Example:
 	accept := verb(shedadapters.CirclingAccept, "accept the escalated review loop as it stands and let the run proceed", `accept records the operator's acceptance of the round the Bouncer escalated,
 whether it judged the rounds circling or spent the review budget. On resume
 the Bouncer settles the segment as approved and the run proceeds to the next
-row. It resumes nothing itself: run "lyx loom start" in the task worktree.
+row. It resumes nothing itself: run "lyx loom resume" in the task worktree.
 
 Example:
   lyx loom circling accept <slug>`)
@@ -217,7 +217,7 @@ Example:
 escalated a round, whether it judged the rounds circling or spent the review
 budget. On resume the Bouncer sends the segment back for another round; after
 a budget escalation that grants exactly one more round. It resumes nothing
-itself: run "lyx loom start" in the task worktree.
+itself: run "lyx loom resume" in the task worktree.
 
 Example:
   lyx loom circling continue <slug>`)

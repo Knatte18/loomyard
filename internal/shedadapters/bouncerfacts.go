@@ -52,21 +52,40 @@ type recurringKey struct {
 }
 
 // roundFacts is everything the facts file for Round records.
+// EarlierOpen lists every key open in at least one ledger before Round, with the ledger rounds it was open in,
+// and EarlierLedgerErrs names each earlier ledger that is missing or fails to parse, so a degraded read never empties the list silently.
 type roundFacts struct {
-	Round     int
-	Rows      []roundFactsRow
-	Recurring []recurringKey
+	Round             int
+	Rows              []roundFactsRow
+	Recurring         []recurringKey
+	EarlierOpen       []recurringKey
+	EarlierLedgerErrs []string
 }
 
 // computeRoundFacts reads rounds 1..round's review files and rounds 1..round-1's ledgers inside runDir.
 // A review that is missing or fails to parse yields a row carrying the error text,
-// and a ledger that fails to parse is skipped, so the function never fails.
+// and a ledger that fails to parse is skipped from the key lists and named in EarlierLedgerErrs, so the function never fails.
 func computeRoundFacts(runDir string, round int, reportName func(int) string) roundFacts {
 	facts := roundFacts{Round: round}
 	for n := 1; n <= round; n++ {
 		facts.Rows = append(facts.Rows, reviewFactsRow(runDir, n, reportName))
 	}
 	facts.Recurring = recurringKeys(runDir, round-1)
+	for key, h := range ledgerHistories(runDir, round-1) {
+		if len(h.openRounds) > 0 {
+			facts.EarlierOpen = append(facts.EarlierOpen, recurringKey{Key: key, Rounds: h.openRounds, Reopened: h.reopened})
+		}
+	}
+	sort.Slice(facts.EarlierOpen, func(i, j int) bool { return facts.EarlierOpen[i].Key < facts.EarlierOpen[j].Key })
+	for n := 1; n < round; n++ {
+		raw, err := os.ReadFile(ledgerPath(runDir, n))
+		if err == nil {
+			_, err = parseLedger(raw)
+		}
+		if err != nil {
+			facts.EarlierLedgerErrs = append(facts.EarlierLedgerErrs, fmt.Sprintf("ledger round %d: %s", n, escapeCell(err.Error())))
+		}
+	}
 	return facts
 }
 
@@ -197,7 +216,7 @@ func circlingEvidence(runDir string, round int) []string {
 	return out
 }
 
-// renderRoundFacts renders f as deterministic Markdown: a heading, one table with a row per round, and the recurring-keys list.
+// renderRoundFacts renders f as deterministic Markdown: a heading, one table with a row per round, the recurring-keys list, and the list of keys open in an earlier round with a parse-error line per unreadable earlier ledger.
 // Severities and classes appear in their constant order and keys sorted, so two renders of the same facts are byte-identical.
 func renderRoundFacts(f roundFacts) []byte {
 	var b strings.Builder
@@ -259,6 +278,21 @@ func renderRoundFacts(f roundFacts) []byte {
 			b.WriteString(" (reopened)")
 		}
 		b.WriteString("\n")
+	}
+
+	b.WriteString("\n## Keys open in an earlier round (ledger rounds each key was open in)\n\n")
+	if len(f.EarlierOpen) == 0 {
+		b.WriteString("No ledger key was open in an earlier round.\n")
+	}
+	for _, k := range f.EarlierOpen {
+		rounds := make([]string, len(k.Rounds))
+		for i, r := range k.Rounds {
+			rounds[i] = fmt.Sprint(r)
+		}
+		fmt.Fprintf(&b, "- `%s`: rounds %s\n", k.Key, strings.Join(rounds, ", "))
+	}
+	for _, errLine := range f.EarlierLedgerErrs {
+		fmt.Fprintf(&b, "- parse error: %s\n", errLine)
 	}
 	return []byte(b.String())
 }

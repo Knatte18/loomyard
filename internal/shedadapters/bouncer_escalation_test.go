@@ -97,7 +97,7 @@ func TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched(t *testing.T
 			if want := ledgerPath(cfg.RunDir, 2); ptr.Path != want {
 				t.Errorf("Call() pointer = %q; want %q", ptr.Path, want)
 			}
-			requireReasonContains(t, ptr.Reason, "round 2", "cause: "+string(tt.wantCause), escalationPath(cfg.RunDir, 2), "lyx loom circling accept my-task", "lyx loom circling continue my-task", "lyx loom start")
+			requireReasonContains(t, ptr.Reason, "round 2", "cause: "+string(tt.wantCause), escalationPath(cfg.RunDir, 2), "lyx loom circling accept my-task", "lyx loom circling continue my-task", "lyx loom resume")
 			notice := requireEscalation(t, cfg, tt.wantCause)
 			if notice == "" || ptr.ParentNotice != notice {
 				t.Errorf("ParentNotice = %q, notice file = %q; want them equal and non-empty", ptr.ParentNotice, notice)
@@ -220,7 +220,7 @@ func TestBouncer_Escalation_MissingStencilStillAwaitsWithThePlainReason(t *testi
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
 	requireEscalation(t, cfg, EscalationBudget)
-	requireReasonContains(t, ptr.Reason, "round 2", "cause: budget", "lyx loom circling accept my-task", "lyx loom start")
+	requireReasonContains(t, ptr.Reason, "round 2", "cause: budget", "lyx loom circling accept my-task", "lyx loom resume")
 	if strings.Contains(ptr.Reason, "brief at") {
 		t.Errorf("Reason = %q; want no brief path when the render failed", ptr.Reason)
 	}

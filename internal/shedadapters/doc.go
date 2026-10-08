@@ -60,7 +60,11 @@
 //     A parsed CONTINUE verdict maps to Stuck on harvest or on a CONTINUE replay,
 //     and a parsed CIRCLING verdict maps to Awaiting on harvest or on a replay without spawning anything (see Escalation below),
 //     all three reporting the round's ledger path as the pointer.
-//     Checkpoint judging: the judge prompt's decision rule is held in Go (decisionRuleMarker) and offers CIRCLING only from BouncerConfig.CirclingCheckpoint on.
+//     Checkpoint judging: the judge prompt's decision rule is held in Go (decisionRuleMarker), depends on the round, and offers CIRCLING only from BouncerConfig.CirclingCheckpoint on.
+//     Round 1 rules CONTINUE over any BLOCKING finding or any gating-class finding at MEDIUM or worse.
+//     From round 2 on only a BLOCKING finding, or a gating-class finding at MEDIUM or worse on a key the facts file lists as open in an earlier round, rules CONTINUE;
+//     a gating finding on a key first raised in the latest round converges and is carried into the decision record's `## Open risks` through the CarryOver seam.
+//     A parse-error line in the facts file's earlier-open list, from a missing or unparseable earlier ledger, sends the judge back to round 1's rule.
 //     A Go guard backs the prompt: a CIRCLING verdict with no decision file recorded for its round is read as CONTINUE, with a warning,
 //     when the round is below the checkpoint or when no gating finding is open in this round's ledger and an earlier one (circlingEvidence).
 //     The guard only narrows CIRCLING to CONTINUE, reads only on-disk state, and leaves a round that already has a decision file as recorded.
@@ -73,7 +77,7 @@
 //     cause circling holds for a guarded CIRCLING below the budget.
 //     The Bouncer renders the bouncer-template-escalation brief and the bouncer-template-parent-notice line,
 //     writes them with the Go-owned cause frontmatter as round-<N>-escalation.md and round-<N>-parent-notice.md,
-//     and returns Awaiting with the ledger path, a Reason naming the segment, round, cause, brief and the `lyx loom circling` verbs with the `lyx loom start` resume,
+//     and returns Awaiting with the ledger path, a Reason naming the segment, round, cause, brief and the `lyx loom circling` verbs with the `lyx loom resume` resume,
 //     and the notice as OutputPointer.ParentNotice, which Shed carries as parent_notice.
 //     A failed render warns and degrades to the plain Reason with no notice, the record frontmatter still written.
 //     A re-call over an existing record rewrites nothing and returns the same Awaiting.
@@ -81,6 +85,17 @@
 //     A recorded decision is acted on first, whatever the budget:
 //     a continue maps to Stuck, marked BudgetExempt exactly when the escalation's cause is budget, so a continue after a budget escalation spends no budget;
 //     a pending accept settles its record and maps to Done after Approve and Commit, for either cause.
+//     Carry-over: a Bouncer told a CarryOver seam, with the Segment its entry is filed under and the AnchorPath its paths are relative to, calls it on every Done that settles a judged round.
+//     The seam is called with discussionparser.CarryOverConverged before Approve on a CONVERGED settle,
+//     and with CarryOverAccepted before the settle write of a pending accept, so a failed write leaves the accept pending and its re-call retries.
+//     The entry lists the round ledger's open findings at MEDIUM or worse and the open ones missing a class or severity (labelled `unlabelled`),
+//     sorted by key, each with the ledger rounds its key was open in and never the judge-written rounds list,
+//     and the review and fixer-report paths relative to the anchor.
+//     A round with no such finding calls the seam with an empty list, which removes the segment's entry.
+//     The skip seam never calls it, since no round ran and the last reviewed generation's entry still describes the artifact.
+//     The seam only writes the segment's `## Open risks` entry: it approves nothing and skips no seam,
+//     and a failure is returned as the settle's own error with a way forward, so neither Approve nor Commit runs.
+//     A nil seam leaves every path as before.
 //     The exemption covers only the Bouncer's Stuck; each further round past the budget needs its own decision, and `lyx loom goto` grants a fresh budget.
 //     Every other path -- the seed call, the re-bounce, the clear itself, every degraded path -- reports an empty Path,
 //     with the re-bounce and degraded paths carrying their cause on Reason.

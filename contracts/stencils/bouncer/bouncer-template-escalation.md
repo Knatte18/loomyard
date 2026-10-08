@@ -33,7 +33,7 @@ When you can:
    - `lyx loom circling accept {{.slug}}` ends the segment unconverged on this round.
      The segment passes with its open findings, recorded as unconverged.
    - `lyx loom circling continue {{.slug}}` runs one more round.
-3. Resume the run with `lyx loom start` in `{{.worktree}}`.
+3. Resume the run with `lyx loom resume` in `{{.worktree}}`.
 
 When you cannot settle the question, record nothing and report back to your parent session, which asks the operator.
 The run stays `awaiting`.

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -192,6 +193,30 @@ func writeBouncerStencils(t *testing.T, dir string, files map[string]string) {
 		if err := os.WriteFile(absPath, content, 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", absPath, err)
 		}
+	}
+}
+
+// carryOverRecorder is a CarryOver seam fake: it records every entry it is called with, appends "carry-over" to log when one is set, calls onCall first, and fails with err when set.
+type carryOverRecorder struct {
+	log     *seamLog
+	entries []discussionparser.CarryOver
+	err     error
+	onCall  func()
+}
+
+// install sets the three carry-over fields on cfg, anchoring entry paths at the parent of RunDir.
+func (r *carryOverRecorder) install(cfg *BouncerConfig) {
+	cfg.Segment = "Plan-Review"
+	cfg.AnchorPath = filepath.Dir(cfg.RunDir)
+	cfg.CarryOver = func(entry discussionparser.CarryOver) error {
+		if r.onCall != nil {
+			r.onCall()
+		}
+		if r.log != nil {
+			r.log.calls = append(r.log.calls, "carry-over")
+		}
+		r.entries = append(r.entries, entry)
+		return r.err
 	}
 }
 

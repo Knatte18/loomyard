@@ -65,6 +65,7 @@ Do not flag any of the following as a finding:
   Every Decision and every Constraint in `_lyx/discussion/decision-record.md` is carried by some card, and no card introduces scope the answer key does not license.
   That path is anchor-relative: it resolves from this session's own working directory, and it is deliberately not the absolute form the artifact list uses.
   The answer key is the measuring stick and never the subject — every finding is raised against the plan, never against the decision record or a findings file.
+  An entry between `<!-- lyx:carry-over … -->` marker lines in the decision record's `## Open risks` is not part of the answer key, and it licenses no card's scope.
   In a rework generation the live generation's `findings.md` joins the decision record as the answer key:
   every finding in it is covered by some card, and every card's scope is licensed by the decision record or by a finding.
   The live generation's round is, among `_lyx/loom/rework/round-<N>/` directories, the highest `N` whose `record.json` carries a `class` and whose `first_card` equals the `first_card` in `_lyx/plan/00-overview.md`'s frontmatter (absent means `1`).

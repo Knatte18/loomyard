@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -207,6 +208,51 @@ func TestReadCirclingDecision(t *testing.T) {
 			}
 			if got != tt.wantDecision || cause != tt.wantCause {
 				t.Errorf("readCirclingDecision = (%q, %q); want (%q, %q)", got, cause, tt.wantDecision, tt.wantCause)
+			}
+		})
+	}
+}
+
+func TestPendingCirclingDecision(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		// decisionFile is the round-1 decision file's content; empty leaves it absent.
+		decisionFile string
+		// noRound leaves the run directory without any round.
+		noRound     bool
+		want        bool
+		wantErrPath bool
+	}{
+		{name: "no round", noRound: true},
+		{name: "no decision file"},
+		{name: "pending accept", decisionFile: "---\nround: 1\ndecision: accept\ncause: circling\nsettled: false\n---\n", want: true},
+		{name: "pending continue", decisionFile: "---\nround: 1\ndecision: continue\ncause: budget\nsettled: false\n---\n", want: true},
+		{name: "settled accept", decisionFile: "---\nround: 1\ndecision: accept\ncause: circling\nsettled: true\n---\n"},
+		{name: "malformed decision file names its path", decisionFile: "accept\n", wantErrPath: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			if !tt.noRound {
+				layoutCirclingRun(t, dir, 1, "CIRCLING")
+			}
+			if tt.decisionFile != "" {
+				if err := os.WriteFile(circlingDecisionPath(dir, 1), []byte(tt.decisionFile), 0o644); err != nil {
+					t.Fatalf("WriteFile = %v; want nil", err)
+				}
+			}
+
+			got, err := PendingCirclingDecision(dir)
+			if tt.wantErrPath {
+				if err == nil || !strings.Contains(err.Error(), circlingDecisionPath(dir, 1)) {
+					t.Fatalf("PendingCirclingDecision error = %v; want one naming %s", err, circlingDecisionPath(dir, 1))
+				}
+				return
+			}
+			if err != nil || got != tt.want {
+				t.Errorf("PendingCirclingDecision = (%v, %v); want (%v, nil)", got, err, tt.want)
 			}
 		})
 	}

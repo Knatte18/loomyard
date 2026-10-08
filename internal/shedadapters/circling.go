@@ -1,5 +1,5 @@
 // circling.go defines the operator's recorded decision on an escalated round:
-// a small file the `lyx loom circling` verbs write and the Bouncer reads.
+// a small file the `lyx loom circling` verbs write and the Bouncer reads, and `lyx loom resume` checks for a pending one through PendingCirclingDecision.
 // The writer owns the mechanical precondition (the latest round is escalated, and no decision exists for it yet);
 // the run-state half (the run is awaiting at a Bouncer row) belongs to the verbs.
 
@@ -87,6 +87,27 @@ func RecordCirclingDecision(runDir string, d CirclingDecision) (int, EscalationC
 		return 0, "", fmt.Errorf("shedadapters: write circling decision %s: %w", path, err)
 	}
 	return round, cause, nil
+}
+
+// PendingCirclingDecision reports whether the run directory's latest round carries a circling decision file that is not settled.
+// The round resolves as RecordCirclingDecision resolves it; a run directory with no round has no pending decision.
+// Every error names the path it concerns: the run directory or report file, or the decision file.
+func PendingCirclingDecision(runDir string) (bool, error) {
+	round, err := ResolveRound(runDir, func(n int) string { return filepath.Base(roundReviewPath(runDir, n)) })
+	if err != nil {
+		return false, err
+	}
+	if round == 0 {
+		return false, nil
+	}
+	_, _, settled, exists, err := readCirclingDecision(runDir, round)
+	if err != nil {
+		if exists {
+			return false, fmt.Errorf("shedadapters: circling decision %s: %w", circlingDecisionPath(runDir, round), err)
+		}
+		return false, err
+	}
+	return exists && !settled, nil
 }
 
 // readCirclingDecision reads round's decision file, returning the decision, its escalation cause, whether it is settled, and whether a file exists.

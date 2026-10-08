@@ -8,6 +8,7 @@ package loomengine
 
 import (
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +21,16 @@ import (
 // TestResolveReview verifies ResolveReview returns the expected model/effort/version triple and
 // timeout for the embedded template's own review values.
 func TestResolveReview(t *testing.T) {
-	cfg := Config{Review: ModelSpecList{"opus[effort=high]", "sonnet[medium]"}, Fix: ModelSpecList{"opus[effort=low]"}, ReviewTimeoutMin: 240}
+	cfg := Config{
+		Review:           ModelSpecList{"opus[effort=high]", "sonnet[medium]"},
+		Fix:              ModelSpecList{"opus[effort=low]"},
+		ReviewTimeoutMin: 240,
+		// Discussion sets its fix list only, Plan its review list only, and Webster leaves both unset (one empty entry, as the template loads).
+		DiscussionFix: ModelSpecList{"sonnet[effort=high]"},
+		PlanReview:    ModelSpecList{"sonnet[effort=low]", "opus[effort=high]"},
+		WebsterReview: ModelSpecList{""},
+		WebsterFix:    ModelSpecList{""},
+	}
 
 	reg, err := modelspec.LoadRegistry(t.TempDir())
 	if err != nil {
@@ -42,6 +52,16 @@ func TestResolveReview(t *testing.T) {
 	}
 	if settings.Models.Fix[0].Effort != "low" {
 		t.Errorf("ResolveReview(...).Models.Fix[0].Effort = %q; want %q", settings.Models.Fix[0].Effort, "low")
+	}
+	// A set segment key replaces the run-wide list, review and fix falling back independently; an unset one takes the run-wide list.
+	if got := settings.Discussion; !reflect.DeepEqual(got.Review, settings.Models.Review) || len(got.Fix) != 1 || got.Fix[0].Effort != "high" {
+		t.Errorf("ResolveReview(...).Discussion = %+v; want the run-wide review list and a fix list of one high-effort entry", got)
+	}
+	if got := settings.Plan; len(got.Review) != 2 || got.Review[0].Effort != "low" || got.Review[1].Effort != "high" || !reflect.DeepEqual(got.Fix, settings.Models.Fix) {
+		t.Errorf("ResolveReview(...).Plan = %+v; want a two-entry review list (low, high) and the run-wide fix list", got)
+	}
+	if !reflect.DeepEqual(settings.Webster, settings.Models) {
+		t.Errorf("ResolveReview(...).Webster = %+v; want the run-wide %+v", settings.Webster, settings.Models)
 	}
 	wantTimeout := 240 * time.Minute
 	if settings.Timeout != wantTimeout {

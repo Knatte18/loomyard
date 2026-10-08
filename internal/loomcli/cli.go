@@ -123,6 +123,9 @@ type loomCLI struct {
 	driverPaneProbe driverPaneProbe
 	// driverDirectory is the seam through which `resume` reads the driver strand from reed's sessionless directory, wrapping the same *reedengine.Engine c.reed already carries.
 	driverDirectory driverDirectoryProbe
+	// bouncerSubdir is the seam through which `resume` tells whether the row a run awaits at is a review segment's Bouncer row, and the run subdirectory it records its decision in.
+	// It is loomrecipe.BouncerRunSubdir in production and a test substitutes a canned answer.
+	bouncerSubdir func(row string) (subdir string, isBouncer bool, err error)
 	// reflectionShuttle is the frictionengine.Shuttle every friction reflection goes through, wired to the shuttle runner in production.
 	// It is the seam tests fake the reflection agent, and so its filing, through.
 	// It stays nil on the lightweight wiring path, which frictionengine.Reflect's Deps validation reports as failed.
@@ -389,7 +392,7 @@ the prime). They never collide with PR-Gate's "approve" and "reject".
 "circling" is the subtree through which the operator resolves a review segment's
 circling halt: "circling accept" ends the loop and lets the run proceed, "circling
 continue" runs another round. Each takes an optional task slug (required from the
-prime), and "lyx loom start" then resumes the run.
+prime), and "lyx loom resume" then resumes the run.
 "decision add" appends one design call made after the Discussion to the decision
 record and commits it; it takes an optional task slug (required from the prime) and
 resumes nothing.

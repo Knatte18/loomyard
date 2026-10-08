@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,10 +18,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // fakeDriverDirectory answers DriverRow with a canned row.
@@ -54,7 +57,37 @@ func newResumeVerbReceiver(t *testing.T, sender *fakeDriverSender, directory fak
 	c.driverSender = sender
 	c.driverResumeWait = func() {}
 	c.driverDirectory = directory
+	c.bouncerSubdir = fakeBouncerSubdir
 	return c, starter, probe
+}
+
+// resumeBouncerSubdir is the run subdirectory fakeBouncerSubdir reports for the Plan-Bouncer row.
+const resumeBouncerSubdir = "plan-review-test"
+
+// fakeBouncerSubdir reports the Plan-Bouncer row as a Bouncer with resumeBouncerSubdir and every other row as no Bouncer.
+func fakeBouncerSubdir(row string) (string, bool, error) {
+	if row == loomshed.NamePlanBouncer {
+		return resumeBouncerSubdir, true, nil
+	}
+	return "", false, nil
+}
+
+// layoutResumeBouncerRun creates the Plan-Bouncer run directory with one reviewed round and, when decision is not empty, that round's circling decision file with decision as its content.
+func layoutResumeBouncerRun(t *testing.T, c *loomCLI, decision string) {
+	t.Helper()
+	runDir := filepath.Join(loomengine.LoomReviewsDir(c.location), resumeBouncerSubdir)
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(runDir, "round-1-review.md"), []byte("review\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if decision == "" {
+		return
+	}
+	if err := os.WriteFile(filepath.Join(runDir, "round-1-circling-decision.md"), []byte(decision), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // invokeResume runs the verb and returns its decoded envelope and exit code, reporting a failure as an error so a goroutine can call it.
@@ -105,6 +138,9 @@ func putParkMarker(t *testing.T, c *loomCLI) string {
 	return marker
 }
 
+// pendingAcceptDecision is a circling decision file for round 1 that is recorded and not yet settled.
+const pendingAcceptDecision = "---\nround: 1\ndecision: accept\ncause: circling\nsettled: false\n---\n"
+
 // TestResumeVerb reaches every outcome of `lyx loom resume` and asserts for each the envelope, the exit code, that nothing was spawned, added or removed,
 // that a resume line was typed only when a parked driver was woken, and that no message names `lyx loom start` as the retry of resume.
 func TestResumeVerb(t *testing.T) {
@@ -120,7 +156,17 @@ func TestResumeVerb(t *testing.T) {
 		name string
 		// runState is the persisted run state;
 		// empty writes no status file.
-		runState  shedengine.State
+		runState shedengine.State
+		// producer is the row the persisted status names as current;
+		// empty leaves it unset.
+		producer string
+		// decision is the content of the Plan-Bouncer run's circling decision file;
+		// empty lays out no Plan-Bouncer run directory at all unless bouncerRun is set.
+		decision string
+		// bouncerRun lays out the Plan-Bouncer run directory with one reviewed round, and the decision file when decision is set.
+		bouncerRun bool
+		// lookupErr makes the Bouncer-row lookup fail.
+		lookupErr error
 		directory fakeDriverDirectory
 		runLock   bool
 		marker    bool
@@ -138,7 +184,12 @@ func TestResumeVerb(t *testing.T) {
 	}{
 		{name: "no status file", wantIn: []string{`"lyx loom start"`, "task worktree"}},
 		{name: "done is a no-op success", runState: shedengine.StateDone, directory: noDriver, wantOK: true, wantIn: []string{"done"}},
-		{name: "awaiting is refused", runState: shedengine.StateAwaiting, directory: liveDriver, marker: true, wantIn: []string{"lyx loom approve", "lyx loom reject", "lyx batten run"}},
+		{name: "awaiting at PR-Gate is refused", runState: shedengine.StateAwaiting, producer: loomshed.NamePRGate, directory: liveDriver, marker: true, wantIn: []string{"lyx loom approve", "lyx loom reject", "lyx batten run"}},
+		{name: "awaiting at a Bouncer row with a pending decision wakes the parked driver", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, bouncerRun: true, decision: pendingAcceptDecision, directory: liveDriver, marker: true, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
+		{name: "awaiting at a Bouncer row with a pending decision and no park marker is refused", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, bouncerRun: true, decision: pendingAcceptDecision, directory: liveDriver, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"has not parked yet"}},
+		{name: "awaiting at a Bouncer row with no decision names the circling verbs and resume", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, bouncerRun: true, directory: liveDriver, marker: true, wantIn: []string{"lyx loom circling accept <slug>", "lyx loom circling continue <slug>", `"lyx loom resume"`}},
+		{name: "awaiting at a Bouncer row with a malformed decision file names the file and its way forward", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, bouncerRun: true, decision: "accept\n", directory: liveDriver, marker: true, wantIn: []string{"round-1-circling-decision.md", "delete it", "lyx loom circling accept <slug>", `re-run "lyx loom resume"`}},
+		{name: "awaiting with a failing recipe lookup names the rebuild", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, lookupErr: errors.New("loomrecipe: parse failed"), directory: liveDriver, marker: true, wantIn: []string{"loomrecipe: parse failed", "rebuild or reinstall lyx", `re-run "lyx loom resume"`}},
 		{name: "running with a live driver is a no-op", runState: shedengine.StateRunning, directory: liveDriver, wantOK: true, wantIn: []string{"already running"}},
 		{name: "running with the run lock held is a no-op", runState: shedengine.StateRunning, directory: noDriver, runLock: true, wantOK: true, wantIn: []string{"already running"}},
 		{name: "running with the scratch directory absent answers from the run's state", runState: shedengine.StateRunning, directory: liveDriver, noScratch: true, wantOK: true, wantIn: []string{"already running"}},
@@ -160,8 +211,18 @@ func TestResumeVerb(t *testing.T) {
 			sender := &fakeDriverSender{}
 			c, starter, probe := newResumeVerbReceiver(t, sender, tt.directory)
 			c.midMerge = func(*lyxcwd.Location) (fabricengine.MidMergeState, error) { return tt.merge, nil }
-			if tt.runState != "" {
+			if tt.producer != "" {
+				if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, shedengine.Status{State: tt.runState, CurrentProducer: tt.producer}); err != nil {
+					t.Fatalf("write status: %v", err)
+				}
+			} else if tt.runState != "" {
 				writeTestRunState(t, c, tt.runState)
+			}
+			if tt.bouncerRun {
+				layoutResumeBouncerRun(t, c, tt.decision)
+			}
+			if tt.lookupErr != nil {
+				c.bouncerSubdir = func(string) (string, bool, error) { return "", false, tt.lookupErr }
 			}
 			if tt.noScratch {
 				absentScratch := filepath.Join(filepath.Dir(c.shedPaths.StatusPath), "absent-scratch")

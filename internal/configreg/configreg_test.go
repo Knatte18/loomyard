@@ -87,7 +87,7 @@ func TestLookup(t *testing.T) {
 	}{
 		{"batcher", true, []string{"profiles"}},
 		{"board", true, []string{"types", "labels"}},
-		{"loom", true, []string{"review", "fix"}},
+		{"loom", true, []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix"}},
 		{"shuttle", true, []string{"claude_prompt_cache_ttl_roles"}},
 		{"bogus", false, nil},
 	}

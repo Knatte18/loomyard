@@ -110,12 +110,25 @@ func TestComputeRoundFacts_CountsAndRecurringKeys(t *testing.T) {
 		t.Errorf("beta = %+v; want not reopened with rounds [1 2 3]", beta)
 	}
 
+	if len(facts.EarlierOpen) != 3 || len(facts.EarlierLedgerErrs) != 0 {
+		t.Fatalf("earlier-open = %+v, ledger errors = %v; want alpha, beta and gamma with no errors", facts.EarlierOpen, facts.EarlierLedgerErrs)
+	}
+	for i, want := range []struct{ key, rounds string }{{"alpha", "[1 3]"}, {"beta", "[1 2 3]"}, {"gamma", "[3]"}} {
+		if got := facts.EarlierOpen[i]; got.Key != want.key || fmt.Sprint(got.Rounds) != want.rounds {
+			t.Errorf("earlier-open[%d] = %+v; want %s with rounds %s", i, got, want.key, want.rounds)
+		}
+	}
+
 	out := string(renderRoundFacts(facts))
+	if !strings.Contains(out, "## Keys open in an earlier round") || !strings.Contains(out, "- `gamma`: rounds 3\n") {
+		t.Errorf("render = %q; want the earlier-open section listing gamma", out)
+	}
 	if !strings.HasPrefix(out, "# Round 4 facts\n") {
 		t.Errorf("render heading = %q; want it to name round 4", strings.SplitN(out, "\n", 2)[0])
 	}
-	if !strings.Contains(out, "- `alpha`: rounds 1, 3 (reopened)") || strings.Contains(out, "gamma") {
-		t.Errorf("render = %q; want alpha listed as reopened and gamma absent", out)
+	recurringSection, _, _ := strings.Cut(out, "## Keys open in an earlier round")
+	if !strings.Contains(out, "- `alpha`: rounds 1, 3 (reopened)") || strings.Contains(recurringSection, "gamma") {
+		t.Errorf("render = %q; want alpha listed as reopened and gamma absent from the recurring keys", out)
 	}
 }
 
@@ -144,13 +157,25 @@ func TestComputeRoundFacts_ClasslessReviewIsAParseErrorRow(t *testing.T) {
 	}
 }
 
+// TestComputeRoundFacts_MissingReviewIsAParseErrorRow also covers a missing and an unparseable earlier ledger, each of which becomes a parse-error line in the earlier-open section.
 func TestComputeRoundFacts_MissingReviewIsAParseErrorRow(t *testing.T) {
 	dir := t.TempDir()
-	writeFactsReview(t, dir, 2)
+	writeFactsReview(t, dir, 3)
+	if err := os.WriteFile(ledgerPath(dir, 2), []byte("not a ledger"), 0o644); err != nil {
+		t.Fatalf("WriteFile ledger round 2 = %v; want nil", err)
+	}
 
-	facts := computeRoundFacts(dir, 2, reportName)
+	facts := computeRoundFacts(dir, 3, reportName)
 	if facts.Rows[0].Err == "" {
 		t.Errorf("round 1 row = %+v; want an error for the missing review", facts.Rows[0])
+	}
+	if len(facts.EarlierLedgerErrs) != 2 || !strings.HasPrefix(facts.EarlierLedgerErrs[0], "ledger round 1: ") || !strings.HasPrefix(facts.EarlierLedgerErrs[1], "ledger round 2: ") {
+		t.Fatalf("earlier ledger errors = %v; want one line for the missing round 1 ledger and one for the unparseable round 2 ledger", facts.EarlierLedgerErrs)
+	}
+	out := string(renderRoundFacts(facts))
+	_, earlier, _ := strings.Cut(out, "## Keys open in an earlier round")
+	if strings.Count(earlier, "- parse error: ledger round ") != 2 {
+		t.Errorf("render earlier-open section = %q; want two parse-error lines", earlier)
 	}
 }
 
@@ -209,6 +234,12 @@ func TestWriteRoundFacts_IsDeterministic(t *testing.T) {
 	}
 	if !strings.Contains(string(first), "No ledger key recurs across rounds.") {
 		t.Errorf("facts file = %q; want the no-recurring-keys line", first)
+	}
+	if !strings.Contains(string(first), "- `j`: rounds 1\n- `k`: rounds 1\n") {
+		t.Errorf("facts file = %q; want the keys open in round 1 only, sorted, in the earlier-open section", first)
+	}
+	if round1 := string(renderRoundFacts(computeRoundFacts(dir, 1, reportName))); !strings.Contains(round1, "No ledger key was open in an earlier round.") {
+		t.Errorf("round 1 facts = %q; want the empty earlier-open line", round1)
 	}
 	if err := writeRoundFacts(dir, 2, reportName); err != nil {
 		t.Fatalf("writeRoundFacts second = %v; want nil", err)

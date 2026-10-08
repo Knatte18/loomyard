@@ -3,13 +3,20 @@ discussion_timeout_min: 480  # minutes the discussion agent's shuttle run is all
 discussion_interactive: false  # true runs the discussion-phase agent as an interview in its pane and requires an operator to be present; false, the default, is today's autonomous behaviour, because a task spawned unattended must not silently wait for a human
 plan: opus[medium]  # model-spec for the plan-phase producer agent (see contracts/specs/llm-model-spec.md)
 plan_timeout_min: 120  # minutes the plan agent's shuttle run is allowed to run (a shorter ceiling than the discussion run)
-review: sonnet[medium]  # model-spec for the reviewer of every review segment round (see contracts/specs/llm-model-spec.md); a YAML list sets one model per round, with the last entry for every later round
+review: opus[medium]  # model-spec for the reviewer of every review segment round (see contracts/specs/llm-model-spec.md); a YAML list sets one model per round, with the last entry for every later round
 fix: opus[medium]  # model-spec for the fixer of every review segment round (see contracts/specs/llm-model-spec.md); a YAML list sets one model per round, with the last entry for every later round
+discussion_review: ""  # model-spec for the Discussion-Review reviewer; empty takes the run-wide review list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
+discussion_fix: ""  # model-spec for the Discussion-Review fixer; empty takes the run-wide fix list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
+plan_review: ""  # model-spec for the Plan-Review reviewer; empty takes the run-wide review list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
+plan_fix: ""  # model-spec for the Plan-Review fixer; empty takes the run-wide fix list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
+webster_review: sonnet[high]  # model-spec for the Webster-Review reviewer; empty takes the run-wide review list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
+webster_fix: ""  # model-spec for the Webster-Review fixer; empty takes the run-wide fix list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
 judge: sonnet[medium]  # model-spec for every Bouncer row's seed and judge passes (see contracts/specs/llm-model-spec.md)
 review_timeout_min: 240  # minutes one review round's shuttle run is allowed to run
 friction: sonnet[medium]  # model-spec for the Tier 2 friction-reflection producer (see contracts/specs/llm-model-spec.md); empty turns Tier 2 self-reporting off
 friction_timeout_min: 30  # minutes the friction-reflection agent's shuttle run is allowed to run
 driver: sonnet[medium]  # model-spec for the model that runs an llm-driven run's loom driver session (see contracts/specs/llm-model-spec.md); empty defers to the provider default
 parent_review_wait_min: 60  # minutes Discussion-Write's gate waits for the parent's verdict before passing with a Warn
-review_circling_checkpoint: 3  # first judged round from which a review segment's judge may rule CIRCLING; a value above review_max_bounces means a run never rules CIRCLING and reaches the budget escalation instead
-review_max_bounces: 5  # bounce budget of every Bouncer review segment's rows (Discussion-Review, Plan-Review, Webster-Review); a spent budget escalates to the parent
+review_circling_checkpoint: 3  # first judged round from which a review segment's judge may rule CIRCLING; with review_max_bounces also 3 a run reaches the budget escalation at round 3 before a CIRCLING verdict could change the outcome, so lower this for an earlier circling escalation; a value above review_max_bounces means a run never rules CIRCLING and reaches the budget escalation instead
+review_max_bounces: 3  # bounce budget of every Bouncer review segment's rows (Discussion-Review, Plan-Review, Webster-Review); a spent budget escalates to the parent; with review_circling_checkpoint also 3 the budget escalation at round 3 comes before a CIRCLING verdict could change the outcome, and lowering the checkpoint gives an earlier circling escalation
+fix_start: parallel  # when a review segment round's fixer starts: parallel, the default, starts it with the reviewer and it waits for the ready marker; after-review starts it only once the review is accepted

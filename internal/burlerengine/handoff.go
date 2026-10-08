@@ -1,4 +1,4 @@
-// handoff.go joins a round's two halves: reviewReady turns the reviewer's done outcome into the ready marker that releases the fixer, and join waits on both halves and decides the round's one Result.
+// handoff.go joins a round's two halves: reviewReady turns the reviewer's done outcome into the ready marker that releases the fixer, join waits on both halves started in parallel, and decideRound decides the round's one Result from the halves' ends, whichever start order produced them.
 
 package burlerengine
 
@@ -111,7 +111,7 @@ func (e *Engine) stopHalf(handle Handle) error {
 	return nil
 }
 
-// join waits on both started halves and decides the round.
+// join waits on both halves started in parallel and decides the round through decideRound.
 // The reviewer's goroutine runs reviewReady once its run is done;
 // the fixer's goroutine just waits.
 // The first half to end decides which rules apply:
@@ -131,12 +131,7 @@ func (e *Engine) join(p *Profile, opts RunOpts, review, fix Handle) (Result, err
 	fixCh := make(chan fixerEnd, 1)
 
 	go func() {
-		var end reviewerEnd
-		end.result, end.waitErr = review.Wait()
-		if end.waitErr == nil && end.result.Outcome == shuttleengine.OutcomeDone {
-			end.handoff, end.handoffErr = reviewReady(p, end.result, &markerReleased)
-		}
-		reviewCh <- end
+		reviewCh <- awaitReview(p, review, &markerReleased)
 	}()
 	go func() {
 		var end fixerEnd
@@ -173,12 +168,35 @@ func (e *Engine) join(p *Profile, opts RunOpts, review, fix Handle) (Result, err
 		}
 	}
 
+	return e.decideRound(p, opts, review, fix, reviewEnd, fixEnd, fixerDecided, skippedHandoff, stopErr)
+}
+
+// awaitReview waits on the reviewer and, once its run is done, runs reviewReady, setting released as the marker write begins.
+func awaitReview(p *Profile, review Handle, released *atomic.Bool) reviewerEnd {
+	var end reviewerEnd
+	end.result, end.waitErr = review.Wait()
+	if end.waitErr == nil && end.result.Outcome == shuttleengine.OutcomeDone {
+		end.handoff, end.handoffErr = reviewReady(p, end.result, released)
+	}
+	return end
+}
+
+// decideRound stops a timed-out or failed half and decides the round's one Result from the two halves' ends.
+// stopErr is the stop error the caller already hit, which is returned with the result and stops nothing further.
+// fixerDecided and skippedHandoff are the flags of join's first-to-end select.
+// A fixer that was never started is a nil fix with a zero fixEnd; it is neither stopped nor read, and its Half is empty.
+func (e *Engine) decideRound(p *Profile, opts RunOpts, review, fix Handle, reviewEnd reviewerEnd, fixEnd fixerEnd, fixerDecided, skippedHandoff bool, stopErr error) (Result, error) {
 	// Shuttle keeps a timed-out run's strand, and a half whose wait failed may still be running, so both are stopped too, or a retry or an archive would run beside them.
-	for _, half := range []struct {
+	type startedHalf struct {
 		handle  Handle
 		result  shuttleengine.Result
 		waitErr error
-	}{{review, reviewEnd.result, reviewEnd.waitErr}, {fix, fixEnd.result, fixEnd.err}} {
+	}
+	halves := []startedHalf{{review, reviewEnd.result, reviewEnd.waitErr}}
+	if fix != nil {
+		halves = append(halves, startedHalf{fix, fixEnd.result, fixEnd.err})
+	}
+	for _, half := range halves {
 		if stopErr == nil && (half.waitErr != nil || half.result.Outcome == shuttleengine.OutcomeTimeout) {
 			stopErr = e.stopHalf(half.handle)
 		}
@@ -190,7 +208,9 @@ func (e *Engine) join(p *Profile, opts RunOpts, review, fix Handle) (Result, err
 		ReviewPath:      p.ReviewPath,
 		FixerReportPath: p.FixerReportPath,
 		Review:          halfOf(review, reviewEnd.result),
-		Fix:             halfOf(fix, fixEnd.result),
+	}
+	if fix != nil {
+		result.Fix = halfOf(fix, fixEnd.result)
 	}
 	if stopErr != nil {
 		return result, stopErr
