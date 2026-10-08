@@ -78,7 +78,10 @@ func renameSignature(signature, oldName, newName string) (string, bool) {
 // a Rename keeps its symbol in the same package — never the draft handle's own unit half, so a
 // draft that misspells the unit is corrected by canonicalization rather than propagated. Only the
 // identifier is taken from the draft handle, never its glyph spelling — the spelling is what
-// quarry.Name computes. It reports ok false, with a rename-old-unresolved Finding, when Old did not
+// quarry.Name computes.
+// An interface method's signature is its bare method spec, with no "func" and no receiver, which quarry.Name rejects;
+// the declaration is then derived as a method on the symbol's owner, "func (Owner) Spec".
+// It reports ok false, with a rename-old-unresolved Finding, when Old did not
 // resolve found, when Old resolved found but carries no symbol declaration (a self glyph's answer —
 // a file or unit, not a symbol), when the new-side handle carries no member name, or when Old's own
 // signature carries no occurrence of the identifier it is supposed to declare.
@@ -124,7 +127,11 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 	}
 
 	sym := r.Symbols[0]
-	decl, renamed := renameSignature(sym.Signature, sym.Glyph.Name, identifier)
+	signature := sym.Signature
+	if sym.Kind == quarry.KindMethod && !strings.HasPrefix(signature, "func") {
+		signature = "func (" + strings.Join(sym.Glyph.Owner, ".") + ") " + signature
+	}
+	decl, renamed := renameSignature(signature, sym.Glyph.Name, identifier)
 	if !renamed {
 		return declSource{}, Finding{
 			Check:    "rename-old-unresolved",

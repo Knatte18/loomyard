@@ -134,10 +134,10 @@ func shapeRows() []shapeRow {
 			gap:          "quarry indexes no struct fields; shapes#Struct.Field resolves not_found",
 		},
 		{
-			// The renames of an interface method and of a multi-name spec fail today; cards 3 and 4 add those legs with their fixes.
 			glyph:       "shapes#Iface.IfaceMethod",
 			create:      &createLeg{"plan:shapes#Iface.draft", "func (i Iface) NewIfaceMethod() int", "plan:shapes#Iface.NewIfaceMethod"},
 			createEdits: []codeEdit{replaceText(shapesFile, "IfaceMethod() int\n}", "IfaceMethod() int\n\tNewIfaceMethod() int\n}")},
+			renameEdits: []codeEdit{replaceText(shapesFile, "IfaceMethod() int\n}", "IfaceMethodRenamed() int\n}")},
 			deleteEdits: []codeEdit{replaceText(shapesFile, "\tIfaceMethod() int\n", "")},
 		},
 		{
@@ -224,6 +224,7 @@ func shapeRows() []shapeRow {
 		r := &rows[i]
 		r.name = r.glyph
 		switch {
+		case r.rename != nil:
 		case r.glyph == "dirname#DirDiffers":
 			r.rename = newRenameLeg(r.glyph, "shapes")
 		case r.renameEdits != nil:
