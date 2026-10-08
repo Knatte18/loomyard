@@ -21,8 +21,9 @@ import (
 // It also reports caller-uncovered: a deleted or re-signed member that Go code still references, with no admissible card's target covering that code.
 // A member that resolves not_found, ambiguous or unreadably is skipped, since the status policy already reports it.
 // Under a non-glyph language it returns nothing and opens no repository.
-// An infrastructure error is wrapped in ErrQuarryUnavailable.
-func planGatePass(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
+// An infrastructure error is wrapped in ErrQuarryUnavailable; a failed type load is not one, since caller-uncovered then answers from its scan.
+// loader supplies the type information caller-uncovered resolves references with.
+func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader) ([]Finding, error) {
 	lang, ok := plan.GlyphLanguage()
 	if !ok {
 		return nil, nil
@@ -98,7 +99,7 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string) ([]Finding, error)
 		}
 	}
 
-	coverage, err := callerCoverageFindings(plan, lang, worktreeRoot, answers)
+	coverage, err := callerCoverageFindings(plan, lang, worktreeRoot, answers, loader)
 	return append(findings, coverage...), err
 }
 

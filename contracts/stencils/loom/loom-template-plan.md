@@ -169,6 +169,7 @@ Every `Verify:`/`verify:` value — a card's optional `**Verify:**` and the plan
 the plan-level `## verify:` is the single integration check run once at the end of the whole plan.
 A per-card `**Verify:**` is exceptional rather than routine, written only for what a package-scoped automatic test run cannot catch on its own — the plan-level `## verify:` section is the single integration check for the whole plan.
 The plan-level `## verify:` section must cover every package any card targets, running each package's tests including its hermetic build-tagged tests (for example `-tags integration`), either by naming each package or by a pattern that covers them (`./...`).
+A nested module's packages are tested with `go -C <module>` and module-relative package paths; `verify-nested-module` in `{{.specs_dir}}/loom/loom-plan-spec.md` names the form the gate refuses.
 The `llm` tag, which gates tests that spawn a real LLM, is compiled rather than run (for example `go vet -tags llm <packages>`).
 A plan's `## verify:` runs, in this order, `go build ./...`, `go vet` under each of `-tags integration`, `-tags tmux` and `-tags llm`, the untagged tier (`go test`), then the `integration` tier (`go test -tags integration`).
 The `tmux` tier is compiled by `go vet -tags tmux` and never run by the plan, since Publish runs it through landing config's `publish_verify`.

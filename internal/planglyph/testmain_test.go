@@ -8,15 +8,26 @@
 package planglyph
 
 import (
+	"errors"
 	"os"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
+	"golang.org/x/tools/go/packages"
 )
 
+// failingTypesLoader is the untagged tier's typesLoader: it fails without spawning, so every plan gate answers caller-uncovered from its scan.
+type failingTypesLoader struct{}
+
+func (failingTypesLoader) load(string, []string) ([]*packages.Package, error) {
+	return nil, errors.New("type load disabled in the untagged tier")
+}
+
 // TestMain runs hermetic git environment setup before tests, then runs them under tmuxkit.Main.
+// It replaces defaultTypesLoader, process-global state, before any test runs, so an untagged test never spawns go list.
 func TestMain(m *testing.M) {
 	gitkit.HermeticGitEnv()
+	defaultTypesLoader = failingTypesLoader{}
 	os.Exit(tmuxkit.Main(m))
 }

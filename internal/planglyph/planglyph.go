@@ -33,7 +33,7 @@ func ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, erro
 	if err != nil {
 		return findings, err
 	}
-	gateFindings, err := planGatePass(plan, worktreeRoot)
+	gateFindings, err := planGatePass(plan, worktreeRoot, defaultTypesLoader)
 	return append(findings, gateFindings...), err
 }
 
@@ -51,7 +51,7 @@ func ValidateFormatAfter(plan *planparser.Plan, worktreeRoot string, done []plan
 	if err != nil {
 		return findings, err
 	}
-	gateFindings, err := planGatePass(PendingPlan(plan, done), worktreeRoot)
+	gateFindings, err := planGatePass(PendingPlan(plan, done), worktreeRoot, defaultTypesLoader)
 	return append(findings, gateFindings...), err
 }
 
@@ -73,7 +73,7 @@ func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 	if err != nil {
 		return findings, err
 	}
-	gateFindings, err := planGatePass(plan, worktreeRoot)
+	gateFindings, err := planGatePass(plan, worktreeRoot, defaultTypesLoader)
 	return append(findings, gateFindings...), err
 }
 

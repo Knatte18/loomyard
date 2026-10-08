@@ -41,6 +41,10 @@ Headless use is moving off subscription coverage onto API billing, so every agen
 A task that adds a module, changes observable CLI behavior or adds cross-cutting infrastructure updates, in the same commit: the module doc in the package's `doc.go`, `docs/overview.md` if the module table or execution stack changes, and `PATTERN.md` for a new invariant.
 An unbuilt design lives in its board entry's body, and a built design lives in its package's `doc.go`: a design whose code has landed moves from the board entry into `doc.go`.
 
+## Test budget
+
+A card whose new top-level tests push a package past its row in `cmd/lyx/testdata/test-budget.yaml` lists that file under `Edit:`.
+
 ## Markdown: semantic line breaks
 
 One sentence per line, never fixed-column wrapping, in every `.md` file; see `scribe:prose`.

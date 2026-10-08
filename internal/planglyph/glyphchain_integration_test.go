@@ -6,15 +6,18 @@
 package planglyph
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"golang.org/x/tools/go/packages"
 )
 
 // newGlyphChainRepo returns a delta fixture repository holding a copy of the committed fixture module, and the SHA of the commit that adds it.
@@ -259,6 +262,164 @@ func TestGlyphChain_RedundantPackage(t *testing.T) {
 			}
 			if !slices.Equal(got, tc.wantBound) {
 				t.Errorf("ValidateDispatch blocking findings = %+v; want %+v", got, tc.wantBound)
+			}
+		})
+	}
+}
+
+// fatalTypesLoader fails the test when planGatePass calls it.
+type fatalTypesLoader struct{ t *testing.T }
+
+func (l fatalTypesLoader) load(string, []string) ([]*packages.Package, error) {
+	l.t.Error("typesLoader called; want the load skipped")
+	return nil, errors.New("unexpected load")
+}
+
+// TestGlyphChain_CallerCoverageTyped pins caller-uncovered with a real go list load: type information tells receivers apart, and the import-path scan answers where the load has none.
+func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
+	t.Parallel()
+
+	const (
+		methodDecl  = "package callers\n\ntype Other struct{}\n\nfunc (Other) Method() int { return 0 }\n\nfunc useOther(u Other) int { return u.Method() }\n"
+		methodCover = "callers#UseMethod"
+	)
+	covers := []string{"callees/local.go", "callees/callees_external_test.go"}
+	threeLines := "package broken\n\nimport \"example.com/glyphchain/callees\"\n\ntype other struct{}\n\nfunc (other) Method() int { return 0 }\n\n" +
+		"func f(t callees.Thing, u other) {\n" +
+		"\tundefined().Method()\n" +
+		"\tundefined().Method(); _ = t.Method()\n" +
+		"\tu.Method()\n" +
+		"}\n"
+
+	cases := []struct {
+		name  string
+		cards []string
+		files map[string]string
+		// dropRootModule removes the fixture's root go.mod, which skips the load.
+		dropRootModule bool
+		// want lists "<severity> <file>" for every caller-uncovered finding, sorted.
+		want []string
+		// wantDetails are substrings some caller-uncovered finding's detail holds.
+		wantDetails []string
+	}{
+		{
+			name:  "a same-named method on another type is not a reference",
+			cards: []string{deleteCard("callees#Thing.Method")},
+			files: map[string]string{"callers/other.go": methodDecl},
+			want:  []string{"blocking callers/callers.go"},
+		},
+		{
+			name:  "a package-qualified function of the same name is not a reference",
+			cards: []string{deleteCard("callees#Thing.Method")},
+			files: map[string]string{
+				"other/method.go":     "package other\n\nfunc Method() int { return 0 }\n",
+				"callers/useother.go": "package callers\n\nimport \"example.com/glyphchain/other\"\n\nfunc useOther() int { return other.Method() }\n",
+			},
+			want: []string{"blocking callers/callers.go"},
+		},
+		{
+			name:  "a promoted call and a method value are blocking",
+			cards: []string{deleteWithEdit([]string{"callees#Thing.Method"}, []string{methodCover})},
+			files: map[string]string{
+				"callers/promoted.go": "package callers\n\nimport \"example.com/glyphchain/callees\"\n\ntype Embeds struct{ callees.Thing }\n\nfunc promoted(e Embeds) int { return e.Method() }\n",
+				"callers/value.go":    "package callers\n\nimport \"example.com/glyphchain/callees\"\n\nfunc value(t callees.Thing) func() int { return t.Method }\n",
+			},
+			want: []string{"blocking callers/promoted.go", "blocking callers/value.go"},
+		},
+		{
+			name:  "a call through an interface holding the method is not a reference",
+			cards: []string{deleteWithEdit([]string{"callees#Thing.Method"}, []string{methodCover})},
+			files: map[string]string{
+				"callers/iface.go": "package callers\n\ntype Methoder interface{ Method() int }\n\nfunc viaInterface(m Methoder) int { return m.Method() }\n",
+			},
+		},
+		{
+			name:  "an aliased importer is blocking through types",
+			cards: []string{coveredTargetCard(covers)},
+			files: map[string]string{"callers/aliased.go": aliasedImporter},
+			want:  []string{"blocking callers/aliased.go"},
+		},
+		{
+			name:  "a dot importer is blocking through types",
+			cards: []string{coveredTargetCard(covers)},
+			files: map[string]string{"dotted/dotted.go": dotImporter},
+			want:  []string{"blocking dotted/dotted.go"},
+		},
+		{
+			name:  "a file for another GOOS is answered by the scan",
+			cards: []string{deleteWithEdit([]string{"callees#Target", "callees#Thing.Method"}, append(slices.Clone(covers), "callers#"))},
+			files: map[string]string{
+				"tagged/plan9.go": "//go:build plan9\n\npackage tagged\n\nimport \"example.com/glyphchain/callees\"\n\nfunc plan9(t callees.Thing) int { callees.Target(); return t.Method() }\n",
+			},
+			want:        []string{"blocking tagged/plan9.go", "informational tagged/plan9.go"},
+			wantDetails: []string{"the receiver could not be resolved"},
+		},
+		{
+			name:  "a nested module leaves the typed verdicts of the root files intact",
+			cards: []string{deleteCard("callees#Thing.Method")},
+			files: map[string]string{
+				"callers/other.go": methodDecl,
+				"nested/go.mod":    nestedModuleFile,
+				"nested/use.go":    "package nested\n\nimport \"example.com/glyphchain/callees\"\n\nfunc use(t callees.Thing) int { return t.Method() }\n",
+			},
+			want: []string{"blocking callers/callers.go", "informational nested/use.go"},
+		},
+		{
+			name:  "an identifier without type information goes to the scan on its own line",
+			cards: []string{deleteWithEdit([]string{"callees#Thing.Method"}, []string{methodCover})},
+			files: map[string]string{"broken/broken.go": threeLines},
+			want:  []string{"blocking broken/broken.go", "informational broken/broken.go"},
+			// Lines 10 and 11 hold the undefined receivers; line 11 also holds the typed call.
+			wantDetails: []string{"broken/broken.go at line 10 ", "broken/broken.go references it at line 11 "},
+		},
+		{
+			name:  "a file that does not parse is answered by the scan",
+			cards: []string{deleteCard("callees#Target")},
+			// The parser drops everything after the bad operand, so the call on line 7 is missing from the file's syntax.
+			files: map[string]string{"broken/broken.go": "package broken\n\nimport \"example.com/glyphchain/callees\"\n\nfunc f() {\n\tx := )\n\tcallees.Target()\n}\n"},
+			want:  []string{"blocking broken/broken.go", "blocking callees/callees_external_test.go", "blocking callees/local.go", "blocking callers/callers.go"},
+		},
+		{
+			name:           "a root without go.mod skips the load and is answered by the scan",
+			cards:          []string{deleteCard("callees#Target")},
+			dropRootModule: true,
+			want:           []string{"blocking callees/callees_external_test.go", "blocking callees/local.go", "blocking callers/callers.go"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := copyGlyphChainFixture(t)
+			writeFixtureFiles(t, root, tc.files)
+			var loader typesLoader = goListLoader{timeout: time.Minute}
+			if tc.dropRootModule {
+				if err := os.Remove(filepath.Join(root, "go.mod")); err != nil {
+					t.Fatalf("Remove(go.mod) failed: %v", err)
+				}
+				loader = fatalTypesLoader{t}
+			}
+			_, plan := writeGlyphPlan(t, tc.cards)
+
+			findings, err := planGatePass(plan, root, loader)
+			if err != nil {
+				t.Fatalf("planGatePass(...) returned error: %v", err)
+			}
+			var got, details []string
+			for _, f := range findings {
+				if f.Check == "caller-uncovered" {
+					got = append(got, fmt.Sprintf("%s %s", f.Severity, coverageFileOf(f.Detail)))
+					details = append(details, f.Detail)
+				}
+			}
+			slices.Sort(got)
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("caller-uncovered findings = %q; want %q", got, tc.want)
+			}
+			for _, want := range tc.wantDetails {
+				if !slices.ContainsFunc(details, func(detail string) bool { return strings.Contains(detail, want) }) {
+					t.Errorf("no caller-uncovered detail holds %q; details = %q", want, details)
+				}
 			}
 		})
 	}

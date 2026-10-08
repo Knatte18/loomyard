@@ -15,23 +15,45 @@ import (
 
 // cardGateCommand returns the gate command for card: build and test everything, then the integration-tagged tests of each package directory the card's targets live in, then the comment line-break lint.
 // A directory drops out when every target in it is a Delete, or when it neither names Go source nor holds a .go file in worktree, so a stencil or doc folder never reaches `go test`.
-// The integration step is omitted when no directory survives; the lint step is always last.
+// A directory inside a nested module, as the plan stands once card has run, is tested by `go -C <module> test` with a module-relative argument, one step per module in first-seen order after the root-module step.
+// An integration step is omitted when no directory survives for it; the lint step is always last.
 func cardGateCommand(plan *planparser.Plan, card planparser.Card, worktree string) string {
 	command := "go build ./... && go test ./..."
-	var dirs []string
+	modules := planparser.NestedModules(plan, card.Number, worktree)
+	var rootDirs, moduleOrder []string
+	moduleDirs := map[string][]string{}
 	for _, td := range planparser.CardTargetDirs(plan, card) {
 		if td.DeleteOnly || !(td.NamesGo || holdsGoFile(filepath.Join(worktree, filepath.FromSlash(td.Dir)))) {
 			continue
 		}
-		dirs = append(dirs, packageArg(td.Dir))
+		module := planparser.ModuleOf(modules, td.Dir)
+		if module == "." {
+			rootDirs = append(rootDirs, packageArg(td.Dir))
+			continue
+		}
+		if _, seen := moduleDirs[module]; !seen {
+			moduleOrder = append(moduleOrder, module)
+		}
+		moduleDirs[module] = append(moduleDirs[module], packageArg(moduleRelative(module, td.Dir)))
 	}
-	if len(dirs) > 0 {
-		command += " && go test -tags integration " + strings.Join(dirs, " ")
+	if len(rootDirs) > 0 {
+		command += " && go test -tags integration " + strings.Join(rootDirs, " ")
+	}
+	for _, module := range moduleOrder {
+		command += " && go -C " + module + " test -tags integration " + strings.Join(moduleDirs[module], " ")
 	}
 	return command + " && lyx loom lint-comments"
 }
 
-// packageArg spells a worktree-relative directory as a `go test` package argument.
+// moduleRelative returns dir relative to module, "." for the module directory itself.
+func moduleRelative(module, dir string) string {
+	if dir == module {
+		return "."
+	}
+	return strings.TrimPrefix(dir, module+"/")
+}
+
+// packageArg spells a directory as a `go test` package argument.
 func packageArg(dir string) string {
 	if dir == "." {
 		return "."

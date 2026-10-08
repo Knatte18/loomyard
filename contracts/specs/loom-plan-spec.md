@@ -120,8 +120,8 @@ A symbol no card in the plan touches needs no edge — its state never changes d
 | Type | Target list holds | Mechanical check | `ImpactSummary` |
 |---|---|---|---|
 | Create | new symbol(s)/file(s) | none — check nothing equivalent exists first | not required |
-| Edit | existing symbol(s) | impact/blast-radius on the symbol being changed; `caller-uncovered` for a re-signed member | required |
-| Delete | existing symbol(s) OR whole file(s) | assert-no-callers (necessary, not sufficient), mechanically `caller-uncovered` for a member | required |
+| Edit | existing symbol(s) | impact/blast-radius on the symbol being changed; `caller-uncovered` for a re-signed member, resolved by type where a type load answers and by import path elsewhere | required |
+| Delete | existing symbol(s) OR whole file(s) | assert-no-callers (necessary, not sufficient), mechanically `caller-uncovered` for a member, resolved by type where a type load answers and by import path elsewhere | required |
 | Rename | existing symbol(s), `old -> new` pairs | AST-aware script + grep verify, never text/regex replace | not required |
 | Move | existing symbol relocated to a file, OR a whole file relocated | `git mv` + import fixup; destination stated in `Intent`, not the target list | not required |
 | Prosa | file(s), no symbol target | none | not required |
@@ -288,6 +288,7 @@ The three tiers match this repo's own test-tier discipline — `internal/planpar
 
 - **Tier 1 (per card, automatic, no author action).**
   Implemented as the Go-derived per-card gate: `go build ./...`, the whole untagged test suite, and the integration-tagged tests of the card's own package directories.
+  A package directory inside a nested module is tested inside that module with `go -C <module>` and module-relative paths.
   Untagged tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
   Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
 - **Tier 2 (per card for its own packages, plan-level for the whole suite).**
@@ -417,30 +418,47 @@ The rows below stay in one fixed order regardless of which entry point runs them
     A `Rename` group's own `Pairs.Old` entries are checked instead of its `Refs`, and its `Pairs.New` side is never checked.
     `Custom` stays exempt on its own targets — and from the `prosa-symbol-target` rule above, restated in group terms: a `Custom` group's own targets are exempt from both rules — and from nothing else, since every other group and every card-generic check still binds it.
 29. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix. Card-generic.
-30. `resign-head-mismatch` — an `Edit` re-sign arrow whose head `quarry.Name` cannot name, or names as a member other than the arrow's own glyph; a changed receiver type names another member, while a value-to-pointer receiver change keeps the member path and matches.
+30. `verify-nested-module` — a `go` command in a card's `**Verify:**` value or the overview's `## verify:` section whose relative package argument lies in a nested module other than the one the command runs in, so the go tool cannot resolve it from there.
+    It splits a chain at `&&` and `;`, follows a literal `cd <dir>` and a `go -C <dir>`, and ends the scan of a chain at a `cd` or `-C` to an absolute path or out of the worktree root.
+    A field after the subcommand that opens with `-` is a flag, taking the next field when the flag takes a value; a package argument is `.`, `..` or a field opening with `./` or `../`, with a trailing `/...` dropped.
+    A nested module is a directory below the root holding a `go.mod`, on disk or created by a card's `Create` (or the New side of a `Rename`) at or below the card, minus those a `Delete` or a `Rename` Old side removes; the overview's line is judged against the whole plan.
+    So `./...` from the root, which the go tool limits to the root module, is silent.
+    One finding per command, attributed to the card, or empty for the overview; its way forward is to run the command as `go -C <module>` with module-relative package paths.
+    Runs under any `language:`, since it reads `go` commands rather than glyphs; reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
+    It only refuses and removes no guard: it misses a command built from a variable, inside `bash -c`, after a subshell, or with an import-path package argument, and webster's gates still catch those at run time.
+    A `Move` of a `go.mod` is not counted, so its verdict on a later card can differ between the plan gate and dispatch.
+31. `resign-head-mismatch` — an `Edit` re-sign arrow whose head `quarry.Name` cannot name, or names as a member other than the arrow's own glyph; a changed receiver type names another member, while a value-to-pointer receiver change keeps the member path and matches.
     The finding names the head, the glyph and what `Name` answered; the way forward is to write the member's new declaration head, receiver included for a method.
     Emitted by `internal/planglyph`'s resolve pass at every gate, `ValidateDispatch` included, since it reads plan text alone; skipped entirely under `language: "none"`.
-31. `delete-before-reference` — a `Delete:` target that is a member glyph or a package self glyph, while a card with a higher number still references it in its `Edit:` code (a member glyph's resolved span, or the whole file of a path or file self glyph).
+32. `delete-before-reference` — a `Delete:` target that is a member glyph or a package self glyph, while a card with a higher number still references it in its `Edit:` code (a member glyph's resolved span, or the whole file of a path or file self glyph).
     Emitted by `internal/planglyph`'s resolve pass, not by `internal/planparser`, at `ValidateFormat`, `Validate`, `ValidateRework` and `ValidateDispatch`, and never under `language: "none"`.
     The match is textual, and the finding is attributed to the deleting card; the fix is to move the delete to a card after the editing one.
-32. `redundant-file-target` — a card's own target list holds a file self glyph beside a member glyph that resolves into that file; one finding per file and member, attributed to the card, with `Ref` the member.
+33. `redundant-file-target` — a card's own target list holds a file self glyph beside a member glyph that resolves into that file; one finding per file and member, attributed to the card, with `Ref` the member.
     A member that resolves `not_found`, ambiguous or unreadably is skipped, since the resolve status policy already reports it.
     The way forward is to keep the member glyphs and drop the file, or keep the file when the card changes the whole file.
     Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch` and never under `language: "none"`: the verdict depends on a member's resolved file, which the run itself changes once record-batch binds a handle into a member glyph.
-33. `resign-interface-method` — an `Edit` re-sign arrow on a member glyph that resolves to a method whose signature does not open with `func`, which is how an interface method answers; its own spec is no declaration a head can re-sign.
+34. `resign-interface-method` — an `Edit` re-sign arrow on a member glyph that resolves to a method whose signature does not open with `func`, which is how an interface method answers; its own spec is no declaration a head can re-sign.
     Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch`, because it reads the tree; the way forward is to drop the arrow and state the signature change in the card's `Intent`.
-34. `caller-uncovered` — a member a card deletes (a `Delete:` group's member glyph) or re-signs (an `Edit:` arrow's target) that Go code still references, where no admissible card's target covers the reference.
-    A reference is found by tokenizing every `.go` file under the worktree root, `_test.go` and build-tagged files included, and skipping directories named `testdata` or `vendor` and directories whose name starts with `.` or `_`; comments and string literals never match.
-    A package-level member is referenced inside its own package (the files of its declaring file's directory sharing its package clause) by its bare identifier not preceded by `.`, and elsewhere, an external test package of that directory included, as the declaring package clause, a `.` and the identifier; a method is referenced by `.` and its identifier anywhere; an occurrence inside the member's own resolved span is its declaration.
+35. `caller-uncovered` — a member a card deletes (a `Delete:` group's member glyph) or re-signs (an `Edit:` arrow's target) that Go code still references, where no admissible card's target covers the reference.
+    A reference is resolved by type where a load of the root module's packages answers: `go/packages` over the directories holding a file that names the member, run offline (`GOPROXY=off`, `-mod=readonly`) with test variants and the `integration`, `tmux` and `llm` tags, under a timeout, and logged.
+    A typed reference is an identifier whose used object is the member, so a call on another type, through an interface or on a same-named function of another package is no reference, and a promoted call or a method value is.
+    The load is skipped when the worktree root holds no `go.mod`, and covers no directory inside a nested module; a failed or timed-out load is logged and leaves every file to the scan below, never an error.
+    The scan tokenizes every `.go` file under the worktree root, `_test.go` and build-tagged files included, and skipping directories named `testdata` or `vendor` and directories whose name starts with `.` or `_`; comments and string literals never match.
+    It runs over every file the load did not check (a nested module, a file built only for another GOOS, a file that does not parse, a file in a directory the load did not reach) and, in a checked file, only on lines where an identifier named like the member has no type information.
+    A package-level member is referenced inside its own package (the files of its declaring file's directory sharing its package clause) by its bare identifier not preceded by `.`, and elsewhere, an external test package of that directory and every nested module included, by an import of the member's import path (from the `go.mod` covering its directory) under the name that import binds, a `.` and the identifier, or by the bare identifier when the import is a dot import; an import's name is its alias, else the package clause or the last path element without a `/vN` suffix.
+    A method is referenced by `.` and its identifier anywhere, except when the identifier left of the `.` is a name the file imports; that exclusion also drops a method call on a local variable or parameter that shadows an imported package's name, which is then not matched even informationally; the bound holds for the scan only, since a type-checked call resolves through its receiver's type.
+    An occurrence inside the member's own resolved span is its declaration.
     A reference is covered by a target of an admissible card: the file's self glyph, a package self glyph for the file's directory, or a member glyph whose resolved span holds the line.
     A re-signed member admits only its own card, and a deleted member its own card and every earlier one; a deleted member's reference inside a later card's `Edit:` code is `delete-before-reference`'s alone, while a re-signed member's is reported here.
-    One finding per subject and file, attributed to the subject's card, with `Ref` the member and the file and its lines named; its way forward is to list the file, or the member glyph whose body holds the reference, on that card, or for a deleted member on an earlier card.
-    Blocking for a package-level member, informational for a method, since a name-based scan cannot tell receivers apart.
-    Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch`, because the reference set shrinks as earlier cards land; the scan misses a caller that imports the package under an alias or with a dot import, and a caller in a file an earlier card creates, which webster's per-card build and test gate catches.
-35. `delete-target-gone` (informational) — a `Delete:` target of a card that has not begun, already absent from the tree.
+    A resolved reference, package-level or method, gets one blocking finding per subject and file, attributed to the subject's card, with `Ref` the member and the file and its lines named; its way forward is to list the file, or the member glyph whose body holds the reference, on that card, or for a deleted member on an earlier card.
+    A method's uncovered name-only matches collapse into one informational finding per subject, naming every file with its lines and stating that the receiver could not be resolved; its way forward is the same.
+    Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch`, because the reference set shrinks as earlier cards land; the scan misses a caller in a file an earlier card creates, which webster's per-card build and test gate catches.
+    Bound: a call through an interface whose method set holds the method is no longer reported, where it was an informational name match before; a re-signed method that stops satisfying an interface breaks compilation at assignment sites this check does not see, which the card gate's root build catches in untagged root-module code, its integration step only in the card's own directories, the plan-level verify in tagged files, and no gate for a file built only for another GOOS or in a nested module unless a command runs inside it.
+    Without type information the check is never weaker than the import-path scan.
+36. `delete-target-gone` (informational) — a `Delete:` target of a card that has not begun, already absent from the tree.
     Emitted by `internal/planglyph` at `ValidateDispatch` only, once at least one batch is begun, in place of the blocking `path-missing` or `glyph-not-found` finding for that target; `ValidateFormat`, `Validate` and `ValidateRework` keep refusing a missing `Delete:` target.
     The same target under the card's own `Edit:`, `Uses:` or `Rename` old side keeps its blocking finding.
-36. `card-fabric-reference` — a command in the plan that reaches the fabric repo: a sibling worktree path (a name ending in the fabric suffix) or a command spelling that drives the fabric repo.
+37. `card-fabric-reference` — a command in the plan that reaches the fabric repo: a sibling worktree path (a name ending in the fabric suffix) or a command spelling that drives the fabric repo.
     It scans a card's `**Verify:**` value and the overview's `## verify:` section body with both rules, every fenced code block of every plan file with both rules, and every inline code span of every plan file with the path rule only, because a span documenting a command opens with the spelling.
     Prose outside code is never scanned.
     Each span is matched on its own, with the same rule the implementer audit uses.
