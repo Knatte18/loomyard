@@ -27,6 +27,10 @@ It exposes `Channel` and `IsDev()` only.
 Imports only the standard library.
 It never resolves a working directory, and `Derive` creates nothing on disk.
 
+## `internal/segmentcolor`
+
+Imports only the standard library.
+
 ## `internal/pattern`
 
 Imports only the standard library, `lyxdirs`, `stencilstore` and `stencil`.

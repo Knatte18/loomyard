@@ -69,6 +69,7 @@ internal/quarrycli: 7
 internal/reedcli: 35
 internal/reedengine: 216
 internal/reedengine/render: 12
+internal/segmentcolor: 4
 internal/selfreportcli: 3
 internal/selfreportengine: 11
 internal/shedadapters: 151
