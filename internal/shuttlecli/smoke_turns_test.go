@@ -375,7 +375,7 @@ func TestSmokeTurnsCompact(t *testing.T) {
 	w.finishDone()
 }
 
-// TestSmokeTurnsSessionHooks pins card 3's parse of the hook payloads Claude Code really writes for a prompt, a turn end, an idle notice and a session end:
+// TestSmokeTurnsSessionHooks pins ParseSessionSignals over the hook payloads Claude Code really writes for a prompt, a turn end, an idle notice and a session end:
 // an interactive run that replies without writing its output file holds, reads asking once the idle notice lands, and reads dead with the session end's reason after /exit.
 // The fold is read directly for the last step, because the run's record stops reading running once its pane is gone.
 func TestSmokeTurnsSessionHooks(t *testing.T) {

@@ -1,6 +1,6 @@
 // signals.go implements ParseSessionSignals, the lenient reader over a run's events.jsonl that turns Claude's hook lines into provider-neutral session signals.
 // Each recording hook writes a time-stamp line before its payload line; the parser pairs the two so a signal carries the hook-side time.
-// All Claude payload-shape knowledge the signals need (hook names, notification types, session-end reasons, the stamp format) lives only in this file and events.go, per the provider-seam containment decision.
+// All Claude payload-shape knowledge the signals need (hook names, notification types, session-end reasons, the stamp format) lives only in this file and events.go, per PATTERN-shuttle-provider-seam.
 
 package claudeengine
 
