@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -246,6 +247,17 @@ func taskWorktreeComplete(prime *lyxcwd.Location, slug string) (present, complet
 // The task branch is named with fabric's branch prefix, since Add refuses a leftover one.
 func incompletePairRemedy(slug, branch string) string {
 	return fmt.Sprintf("remove it by hand from here (\"lyx fabric remove --force %s\"), then, only if its branch %s is still present afterwards, delete that branch too (\"git branch -D %s\")", slug, branch, branch)
+}
+
+// reconcileTaskPair reconciles and commits the config of the task pair for slug, whatever the hub's build stamp says.
+// The pair forked the prime's records branch, which an earlier walk may have skipped as mid-merge or another holder's walk may not have committed yet.
+// A repository outside a hub has nothing to reconcile.
+func reconcileTaskPair(prime *lyxcwd.Location, slug string) error {
+	geometry, inHub := hubgeom.ReconcileGeometry(prime)
+	if !inHub {
+		return nil
+	}
+	return hubreconcile.Ensure(geometry, hubreconcile.Options{Pair: fabricengine.WorktreePath(prime, slug)})
 }
 
 // createRefusal rewords the one create refusal whose fabric remedy is wrong from prime, and passes
@@ -585,7 +597,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			}
 			if complete {
 				logger.Info("battencli: create worktree skipped, the task worktree is already present", "slug", slug)
-				return nil
+				return reconcileTaskPair(location, slug)
 			}
 			if present {
 				// A worktree exists but Add never finished it -- see taskWorktreeComplete's own doc
@@ -600,7 +612,10 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			top := fabricengine.NewTopology(cfg)
 			res, err := top.Add(location, slug, fabricengine.AddOptions{})
 			logger.Info("battencli: create worktree", "slug", slug, "mutations", res.Mutated())
-			return createRefusal(err)
+			if err != nil {
+				return createRefusal(err)
+			}
+			return reconcileTaskPair(location, slug)
 		},
 		// Both teardown halves go through the pair-teardown composite and are idempotent against their shared post-condition, "the pair is gone".
 		// shedengine persists the row's transition only after the producer returns, so a process killed right after Remove succeeded re-enters this row with no pair on disk.
