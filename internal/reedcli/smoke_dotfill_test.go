@@ -479,7 +479,8 @@ func TestSmokeDotFill(t *testing.T) {
 		}
 
 		// Both attaches complete before anything else.
-		// The toucher pane is about 12 rows: after the two status rows and one title row per pane, each strand keeps about two content rows, enough for the first strand's marker but not every strand's output, so both attaches wait on the first strand's marker.
+		// The toucher pane is about 12 rows: two status rows, then three title rows and seven content rows, about two of them the first strand's.
+		// Those two rows show the first strand's marker, so both attaches wait on it as proof the attach has rendered.
 		h.attachIn(t, observedPane, "DOTFILL-MARKER-ALPHA")
 		h.attachIn(t, toucherPane, "DOTFILL-MARKER-ALPHA")
 
