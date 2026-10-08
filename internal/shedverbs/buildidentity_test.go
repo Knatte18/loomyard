@@ -15,12 +15,12 @@ func TestBinaryChanged(t *testing.T) {
 		running, recorded buildvcs.Identity
 		want              bool
 	}{
-		{"equal pairs", buildvcs.Identity{"abc", false}, buildvcs.Identity{"abc", false}, false},
-		{"differing revisions", buildvcs.Identity{"abc", false}, buildvcs.Identity{"def", false}, true},
-		{"flipped modified flag", buildvcs.Identity{"abc", true}, buildvcs.Identity{"abc", false}, true},
-		{"empty recorded revision", buildvcs.Identity{"abc", false}, buildvcs.Identity{"", true}, false},
-		{"empty running revision", buildvcs.Identity{"", false}, buildvcs.Identity{"abc", true}, false},
-		{"both empty", buildvcs.Identity{"", true}, buildvcs.Identity{"", false}, false},
+		{"equal pairs", buildvcs.Identity{Revision: "abc"}, buildvcs.Identity{Revision: "abc"}, false},
+		{"differing revisions", buildvcs.Identity{Revision: "abc"}, buildvcs.Identity{Revision: "def"}, true},
+		{"flipped modified flag", buildvcs.Identity{Revision: "abc", Modified: true}, buildvcs.Identity{Revision: "abc"}, true},
+		{"empty recorded revision", buildvcs.Identity{Revision: "abc"}, buildvcs.Identity{Modified: true}, false},
+		{"empty running revision", buildvcs.Identity{}, buildvcs.Identity{Revision: "abc", Modified: true}, false},
+		{"both empty", buildvcs.Identity{Modified: true}, buildvcs.Identity{}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
