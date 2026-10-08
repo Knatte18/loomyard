@@ -490,6 +490,7 @@ func TestBurlerProducer_Call_DoneReturnsStuckNeverDone(t *testing.T) {
 }
 
 func TestBurlerProducer_Call_WritesRoundUsageRecord(t *testing.T) {
+	t.Parallel()
 	started := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
 	ended := started.Add(90 * time.Second)
 	models := burlerengine.RoundModels{
@@ -566,6 +567,7 @@ func TestBurlerProducer_Call_WritesRoundUsageRecord(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			runDir := t.TempDir()
 			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{tt.result}}
 			profile := simpleBurlerProfile()
@@ -591,6 +593,7 @@ func TestBurlerProducer_Call_WritesRoundUsageRecord(t *testing.T) {
 	}
 
 	t.Run("unwritable record leaves the Stuck hand-off unchanged", func(t *testing.T) {
+		t.Parallel()
 		runDir := t.TempDir()
 		if err := os.MkdirAll(roundUsagePath(runDir, 1), 0o755); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
@@ -678,6 +681,7 @@ func TestBurlerProducer_Call_ProfileCarriesDerivedFields(t *testing.T) {
 }
 
 // TestBurlerProducer_Call_ClusterExclusions covers the exclusions a round's profile carries: the union of the eligible focus-file excludes of rounds 2 to N, the held set of rounds 2 to N-1, and the warning for each kind of drop.
+// It runs serially because logcapture redirects the process-global logger.
 func TestBurlerProducer_Call_ClusterExclusions(t *testing.T) {
 	const (
 		fanlessWarning = "shedadapters: focus file names cluster excludes but this round's profile has no cluster fan; dropping them"

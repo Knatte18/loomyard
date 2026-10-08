@@ -269,6 +269,7 @@ func TestFactsPath_IsNotAJudgeOutput(t *testing.T) {
 
 // TestWriteRoundFacts_LensSection pins the lens section of a fanned segment's facts file.
 func TestWriteRoundFacts_LensSection(t *testing.T) {
+	t.Parallel()
 	const review = `---
 verdict: APPROVED
 findings:
@@ -317,6 +318,7 @@ prose
 	}
 
 	t.Run("lens rows, handler row, no-origin row and excluded lenses", func(t *testing.T) {
+		t.Parallel()
 		dir := t.TempDir()
 		writeReview(t, dir)
 		if err := writeRoundUsage(dir, 1, roundUsage{Fan: "fanX", Lenses: []string{"alpha", "beta", "gamma"}}); err != nil {
@@ -348,6 +350,7 @@ prose
 	})
 
 	t.Run("missing usage record renders a line saying so", func(t *testing.T) {
+		t.Parallel()
 		dir := t.TempDir()
 		writeReview(t, dir)
 

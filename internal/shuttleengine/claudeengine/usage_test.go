@@ -252,6 +252,7 @@ func assistantLine(id string, sidechain bool, input, cacheCreation, cacheRead, o
 }
 
 // TestSessionUsage_SumsParentAndForks covers the session-usage reading over fixture transcripts: a message repeated across lines counts once and sidechain and malformed lines are skipped, forks are summed into the totals and broken out, a session without a subagents directory has zero forks, and a missing transcript reads unknown.
+// It runs serially because it sets the process-global HOME.
 func TestSessionUsage_SumsParentAndForks(t *testing.T) {
 	const workdir = "/home/op/usage"
 	const sessionID = "sess-usage"
