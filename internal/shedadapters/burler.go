@@ -498,6 +498,10 @@ func (p *BurlerProducer) doneExit(ctx context.Context, round int, result burlere
 	if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
+	review, fix := p.models.Pick(round)
+	if err := writeRoundUsage(p.runDir, round, newRoundUsage(p.profile.ClusterFan, review, fix, result)); err != nil {
+		logger.Warn("shedadapters: burler round's usage record was not written", "producer", p.name, "engine", burlerEngineLabel, "round", round, "error", err)
+	}
 	return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, round), GateAttempts: gateAttemptsPointer(result.Gate), BudgetExempt: p.roundBudgetExempt(round)}, nil
 }
 

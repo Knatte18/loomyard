@@ -174,6 +174,9 @@
 // Bouncer archives the whole generation aside and re-judges from a fresh round 1 instead. Both rows'
 // artifacts move together in that archive, because BurlerProducer would otherwise resume at round
 // N+1, hydrating from a generation the Bouncer had already discarded.
+// Every completed round, solo and fanned, also leaves round-<N>-usage.yaml beside them:
+// the fan and lenses the round ran, and each half's model, run times, wall time and tokens, forks included, with an unknown reading left unknown rather than zero.
+// A gate-failed round is archived and writes none, and a failed write is a warning that never changes the round's outcome.
 // The told run directory's whole content and every timestamped archive the adapters write -- per-file siblings inside the run directory and whole-generation siblings of the run directory beside it (archiveRunDir) alike -- are durable record the wiring layer commits, so the adapters write nothing there that is not meant for git.
 //
 // # Shared cancellation rule

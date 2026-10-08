@@ -489,6 +489,122 @@ func TestBurlerProducer_Call_DoneReturnsStuckNeverDone(t *testing.T) {
 	}
 }
 
+func TestBurlerProducer_Call_WritesRoundUsageRecord(t *testing.T) {
+	started := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	ended := started.Add(90 * time.Second)
+	models := burlerengine.RoundModels{
+		Review: []burlerengine.ModelChoice{{Model: "reviewer-model", Effort: "high"}},
+		Fix:    []burlerengine.ModelChoice{{Model: "fixer-model", Effort: "low"}},
+	}
+	knownReviewer := burlerengine.Half{
+		StartedAt: started,
+		EndedAt:   ended,
+		Usage:     shuttleengine.SessionUsage{Known: true, Fresh: 1000, CacheRead: 5000, Forks: 3, ForkFresh: 600, ForkCacheRead: 4000},
+	}
+	knownFixer := burlerengine.Half{
+		StartedAt: started,
+		EndedAt:   ended.Add(time.Minute),
+		Usage:     shuttleengine.SessionUsage{Known: true, Fresh: 200, CacheRead: 300},
+	}
+	tests := []struct {
+		name   string
+		fan    string
+		result burlerengine.Result
+		check  func(t *testing.T, got roundUsage)
+		wantNo bool
+	}{
+		{
+			name:   "fanned round records fan, models and lenses",
+			fan:    "discussion",
+			result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Lenses: []string{"a", "b"}, Review: knownReviewer, Fix: knownFixer},
+			check: func(t *testing.T, got roundUsage) {
+				if got.Fan != "discussion" || !stringSlicesEqual(got.Lenses, []string{"a", "b"}) {
+					t.Errorf("fan, lenses = %q, %v; want discussion, [a b]", got.Fan, got.Lenses)
+				}
+				if got.Review.Model != "reviewer-model" || got.Review.Effort != "high" || got.Fix.Model != "fixer-model" || got.Fix.Effort != "low" {
+					t.Errorf("models = %+v / %+v; want the round's picks", got.Review, got.Fix)
+				}
+				if got.Review.WallSeconds == nil || *got.Review.WallSeconds != 90 {
+					t.Errorf("review wall = %v; want 90", got.Review.WallSeconds)
+				}
+				if !got.Review.TokensKnown || *got.Review.FreshTokens != 1000 || *got.Review.CacheReadTokens != 5000 {
+					t.Errorf("review tokens = %+v; want 1000 fresh, 5000 cache-read", got.Review)
+				}
+				if *got.Review.Forks != 3 || *got.Review.ForkFreshTokens != 600 || *got.Review.ForkCacheReadTokens != 4000 || *got.Review.ForkFreshShare != 0.6 {
+					t.Errorf("review forks = %+v; want 3 forks, 600 fresh, 4000 cache-read, share 0.6", got.Review)
+				}
+				if got.Fix.Forks != nil {
+					t.Errorf("fix forks = %v; want none recorded", got.Fix.Forks)
+				}
+			},
+		},
+		{
+			name:   "solo round records an empty fan and nil lenses",
+			result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Review: knownReviewer, Fix: knownFixer},
+			check: func(t *testing.T, got roundUsage) {
+				if got.Fan != "" || got.Lenses != nil {
+					t.Errorf("fan, lenses = %q, %v; want empty, nil", got.Fan, got.Lenses)
+				}
+			},
+		},
+		{
+			name:   "unknown reading and zero times render as unknown, not zero",
+			result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone},
+			check: func(t *testing.T, got roundUsage) {
+				for label, half := range map[string]halfUsage{"review": got.Review, "fix": got.Fix} {
+					if half.TokensKnown || half.FreshTokens != nil || half.CacheReadTokens != nil || half.WallSeconds != nil || half.Forks != nil {
+						t.Errorf("%s half = %+v; want tokens, wall time and forks unknown", label, half)
+					}
+				}
+			},
+		},
+		{
+			name:   "gate-failed round leaves no record",
+			result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: false}},
+			wantNo: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{tt.result}}
+			profile := simpleBurlerProfile()
+			profile.ClusterFan = tt.fan
+			p := newBurlerProducer(t, runDir, runner, withBurlerProfile(profile), withBurlerModels(models))
+
+			shedfake.RequireOutcome(t, p, shedengine.Stuck)
+			got, err := readRoundUsage(runDir, 1)
+			if tt.wantNo {
+				if _, statErr := os.Stat(roundUsagePath(runDir, 1)); !os.IsNotExist(statErr) {
+					t.Errorf("usage record exists after a gate-failed round (stat err %v); want none", statErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("readRoundUsage() error = %v; want nil", err)
+			}
+			if got.Round != 1 {
+				t.Errorf("record round = %d; want 1", got.Round)
+			}
+			tt.check(t, got)
+		})
+	}
+
+	t.Run("unwritable record leaves the Stuck hand-off unchanged", func(t *testing.T) {
+		runDir := t.TempDir()
+		if err := os.MkdirAll(roundUsagePath(runDir, 1), 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+		p := newBurlerProducer(t, runDir, runner)
+
+		ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
+		if want := roundReviewPath(runDir, 1); ptr.Path != want || ptr.Reason != "" {
+			t.Errorf("pointer = %+v; want path %q and no reason", ptr, want)
+		}
+	})
+}
+
 func TestBurlerProducer_Call_BudgetExemptAfterBudgetContinue(t *testing.T) {
 	tests := []struct {
 		name       string
