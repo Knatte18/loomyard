@@ -1144,6 +1144,7 @@ func (r *brokenRunRecordReed) SendText(guid, text string, submit bool) error {
 // the error wraps ErrNotStarted and the send's own sentinel, the strand is removed and the record reads died.
 // A prompt that fails ErrSubmissionNotLanded while a turn start lands past the pre-send offset landed late, and start returns the run.
 func TestStartup_SendFailuresTearDown(t *testing.T) {
+	t.Parallel()
 	const prompt = "do the task"
 	tests := []struct {
 		name  string
@@ -1168,6 +1169,7 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			base := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: liveStrandStatus(true)}
 			engine := &startSendEngine{
 				skillFakeEngine: &skillFakeEngine{

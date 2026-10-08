@@ -1064,6 +1064,7 @@ func (r *enterHookReed) SendKey(guid, key string) error {
 // An extra Enter goes only while the box holds the sent text and the window is open.
 // A send that did not land clears its own text only for an engine with the idle reading and InputBoxClearer.
 func TestRun_Send_ConfirmsSubmission(t *testing.T) {
+	t.Parallel()
 	const shortText = "run the suite"
 	const longText = "please review the whole change set carefully and report every finding you can substantiate"
 	const placeholder = "[Pasted text #1 +4 lines]"
@@ -1281,6 +1282,7 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			captures := tt.captures
 			if captures == nil {
 				prefix := "❯ "
