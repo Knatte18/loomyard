@@ -400,10 +400,10 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 
 	// A plan edited since the run recorded it, or a begun card edited since its batch began, is refused before anything mutates or any card verify runs:
 	// every restamp further down exists to adopt webster's own rewrites, so a difference seen here is someone else's edit.
-	if err := PlanEditError(deps.State, deps.Geom.PlanDir); err != nil {
+	if err := PlanEditError(deps.State, deps.Geom.PlanDir, deps.Geom.WebsterDir); err != nil {
 		return nil, err
 	}
-	if err := batchCardEditError(deps.State, bs, batch, deps.Geom.PlanDir); err != nil {
+	if err := batchCardEditError(deps.State, bs, batch, deps.Geom.PlanDir, deps.Geom.WebsterDir); err != nil {
 		return nil, err
 	}
 

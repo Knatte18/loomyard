@@ -202,7 +202,8 @@
 // When the overview is among the changed plan files, Rebaseline accepts it if the state carries that hash and the file's frame hash still equals it, so the change is confined to the Card Index.
 // The index change is then held to the card-set rule, which compares NN-slug ids: only cards after the last begun batch can be added, removed or reordered, and a begun card's index line keeps its number and slug.
 // What passes besides is a reworded one-line intent of a begun card in a later Master render, while that card's file stays pinned by its recorded hash.
-// A state without the frame hash refuses any overview change, and a change outside the Card Index refuses naming the overview outside its Card Index.
+// A state without the frame hash takes the recorded frame from the stored baseline copy of the overview until the first restamp.
+// A run with neither refuses any overview change, and a change outside the Card Index refuses naming the overview outside its Card Index.
 // A done batch's card and a changed frame refuse with the follow-up card landing as their way forward:
 // add a follow-up card after the last begun batch that carries the decision, with its Card Index line, then `lyx webster rebaseline --card NN` naming it.
 // The fingerprint refusals in begin-batch and run name the landing too, and for an index-only change name rebaseline with the added cards' flags.

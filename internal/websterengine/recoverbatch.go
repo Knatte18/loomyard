@@ -535,10 +535,10 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 	}
 
 	// The pass below restamps the plan hashes, so a plan edited since the run recorded it or since this batch was begun is refused first.
-	if err := PlanEditError(st, deps.Geom.PlanDir); err != nil {
+	if err := PlanEditError(st, deps.Geom.PlanDir, deps.Geom.WebsterDir); err != nil {
 		return nil, err
 	}
-	if err := batchCardEditError(st, bs, batch, deps.Geom.PlanDir); err != nil {
+	if err := batchCardEditError(st, bs, batch, deps.Geom.PlanDir, deps.Geom.WebsterDir); err != nil {
 		return nil, err
 	}
 
