@@ -929,6 +929,11 @@ func (e *inputBoxEngine) InputBoxText(string) (string, bool) {
 
 func (e *inputBoxEngine) SubmitSettle() time.Duration { return e.settle }
 
+func (e *inputBoxEngine) TypeSequence(text string) []PaneInput {
+	composed := e.ComposeSend(text)
+	return composed[:len(composed)-1]
+}
+
 // TestRun_Send_ConfirmsSubmission drives Send's submission confirmation through an engine with the InputBoxReader capability.
 // The box is read only after a settle,
 // an extra Enter goes out only while the box holds the sent text,

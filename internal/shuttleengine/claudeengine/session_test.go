@@ -154,6 +154,42 @@ func TestReloadPluginsSequence(t *testing.T) {
 	}
 }
 
+func TestClearInputSequence(t *testing.T) {
+	t.Parallel()
+
+	got := New().ClearInputSequence()
+	want := []shuttleengine.PaneInput{{Key: "C-u"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ClearInputSequence = %#v; want %#v", got, want)
+	}
+}
+
+func TestPastePlaceholder(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		box  string
+		want bool
+	}{
+		{"bare placeholder", "[Pasted text #1]", true},
+		{"placeholder with line count", "[Pasted text #12 +40 lines]", true},
+		{"placeholder with surrounding space", "  [Pasted text #3 +2 lines] ", true},
+		{"draft quoting the placeholder", "see [Pasted text #1] above", false},
+		{"typed text", "hello", false},
+		{"empty reading", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := New().PastePlaceholder(tt.box); got != tt.want {
+				t.Errorf("PastePlaceholder(%q) = %v; want %v", tt.box, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestClearSessionSequence(t *testing.T) {
 	t.Parallel()
 

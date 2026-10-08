@@ -212,6 +212,19 @@ type InputBoxReader interface {
 	// SubmitSettle is how long after an Enter the box needs to be redrawn before it is read,
 	// so a send whose Enter landed is not read as still pending.
 	SubmitSettle() time.Duration
+	// TypeSequence returns the key choreography that types text as the next turn without submitting it.
+	// The caller submits with its own Enter once the box has settled, so an engine that reads its box separates typing from submitting.
+	TypeSequence(text string) []PaneInput
+}
+
+// InputBoxClearer is an optional capability beside Engine: the provider's way of emptying its input box and recognising a collapsed paste.
+// The caller sends the clear only into a box it has just read as holding its own text,
+// and the choreography never uses a key that interrupts a running turn.
+type InputBoxClearer interface {
+	// ClearInputSequence returns the key choreography that empties the input box without interrupting a running turn.
+	ClearInputSequence() []PaneInput
+	// PastePlaceholder reports whether boxText, an input-box reading, is the provider's collapsed paste placeholder.
+	PastePlaceholder(boxText string) bool
 }
 
 // ContextReading is a provider-neutral reading of how much context a live session holds.

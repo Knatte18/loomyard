@@ -351,6 +351,15 @@ func (c *Claude) ComposeSend(text string) []shuttleengine.PaneInput {
 	}
 }
 
+// TypeSequence returns the key choreography that types text as claude's next turn without submitting it.
+// It opens with the same Escape and settle pause as ComposeSend, and ends with the text: the caller sends the Enter itself once the input box has settled.
+func (c *Claude) TypeSequence(text string) []shuttleengine.PaneInput {
+	return []shuttleengine.PaneInput{
+		{Key: "Escape", SettleMS: composeSendSettleMS},
+		{Text: text},
+	}
+}
+
 // ModelSwitchSequence returns the key choreography that switches a live claude session's model: the
 // `/model <name>` slash command.
 // It sends NO leading Escape (injected mid-tool-call, Escape there interrupts the tool and aborts the turn).
