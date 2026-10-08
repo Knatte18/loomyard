@@ -38,7 +38,7 @@ internal/gitkit: 8
 internal/gitrepo: 35
 internal/gitrepo/internal/gitoracle: 1
 internal/hubforge: 5
-internal/hubgeom: 8
+internal/hubgeom: 10
 internal/idecli: 2
 internal/ideengine: 4
 internal/impactset: 5
@@ -67,7 +67,7 @@ internal/preflightshed: 5
 internal/proc: 12
 internal/quarrycli: 7
 internal/reedcli: 36
-internal/reedengine: 235
+internal/reedengine: 239
 internal/reedengine/render: 12
 internal/segmentcolor: 4
 internal/selfreportcli: 3

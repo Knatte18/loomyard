@@ -321,6 +321,12 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		_ = e.tmux.run("kill-session", "-t", exactSessionTarget(session))
 	}
 
+	// This worktree's recorded session is gone with the server: the earlier worktrees revive theirs first,
+	// so the session ids follow spawn order again. Nothing is created yet.
+	if !up && e.reviveDueLocked() {
+		return false, nil, errReviveFirst
+	}
+
 	// A stale socket-holder wedges a fresh boot: on Windows, psmux's internal
 	// "__warm__" helper can outlive a kill-server and sit on the -L socket
 	// without ever hosting a session, so a new-session spawned against it
@@ -595,7 +601,7 @@ func (e *Engine) upLocked() (UpResult, bool, error) {
 // Resume rebuilds content after a server restart.
 func (e *Engine) Up() (UpResult, error) {
 	var result UpResult
-	err := e.withBootOpLockKeepingZoom(func() error {
+	err := e.withRevivalFirst(e.withBootOpLockKeepingZoom, func() error {
 		var err error
 		result, _, err = e.upLocked()
 		return err
@@ -632,7 +638,7 @@ func (e *Engine) ensureSessionLocked() (bool, error) {
 // It raises no state-level refusal on the warm path, since the only state it reads is the zoom bracket's, which swallows its errors, so a caller needing reed's state-level refusals must
 // still make its own Status call.
 func (e *Engine) EnsureSession() (booted bool, err error) {
-	err = e.withOpLockKeepingZoom(func() error {
+	err = e.withRevivalFirst(e.withOpLockKeepingZoom, func() error {
 		var innerErr error
 		booted, innerErr = e.ensureSessionLocked()
 		return innerErr
@@ -644,7 +650,7 @@ func (e *Engine) EnsureSession() (booted bool, err error) {
 // drops non-live strands whose done-when paths all exist, relaunches the other non-live strands, and re-applies the layout.
 func (e *Engine) Resume() (ResumeResult, error) {
 	var result ResumeResult
-	err := e.withBootOpLockKeepingZoom(func() error {
+	err := e.withRevivalFirst(e.withBootOpLockKeepingZoom, func() error {
 		dropped := 0
 		booted, stripped, err := e.ensureServerAndSessionLocked()
 		if err != nil {

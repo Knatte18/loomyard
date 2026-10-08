@@ -34,6 +34,8 @@ type Engine struct {
 	cfg  Config
 	geom Geometry
 	tmux TmuxCmd
+	// skipRevival is set, under the op lock, while a step runs after the earlier worktrees were revived (revive.go).
+	skipRevival bool
 }
 
 // New builds an Engine for the given Config and Geometry.

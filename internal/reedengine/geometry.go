@@ -55,4 +55,15 @@ type Geometry struct {
 	// empty when none is recorded.
 	// It is unrelated to Strand.Parent, which is a layout guid.
 	ParentName string
+	// SpawnOrder lists the hub's worktrees in spawn order, for the revival of a restarted server's sessions (revive.go).
+	// It is nil in standalone mode, and called only when a revival is due, so building an engine costs nothing.
+	SpawnOrder func() ([]ReviveEntry, error)
+}
+
+// ReviveEntry is one worktree of a Geometry.SpawnOrder list.
+type ReviveEntry struct {
+	// Worktree names the worktree; the entry whose Worktree equals Geometry.WorktreeName is the booter's own.
+	Worktree string
+	// Revive brings that worktree's recorded session back when it is not live, and reports whether it did.
+	Revive func() (revived bool, err error)
 }

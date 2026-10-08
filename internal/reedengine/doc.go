@@ -85,6 +85,19 @@
 // the window-resized hook array, when it holds any pin, starts with an entry that records a zoomed window in the window option @lyx_rezoom and unzooms it, and ends its pins with an entry that zooms the active pane again and clears the record, ahead of the watchdog's signal entry;
 // the attach chain runs the same two entries around its select-layout and pins, each naming the strands' window, since the chain runs in the client's context.
 //
+// A restarted server's sessions come back in spawn order (revive.go).
+// The teller tells Geometry.SpawnOrder, a lazy list of ReviveEntry for the hub's worktrees in spawn order, nil in standalone mode; reedengine sorts nothing and reads no loom or fabric record.
+// The revival predicate is one test a worktree evaluates only on its own state under its own op lock: its reed.json records a session, and that session is not live.
+// A downed worktree has no such record, so it is never revived, and a first boot has none either.
+// The steps that can create the session (Up, EnsureSession, Resume, AddStrandUnless) run through withRevivalFirst.
+// At the point where the booter would create its session, with the skip unset, a spawn order told and the predicate holding, the boot returns a sentinel having created nothing.
+// The lock is then released, each entry before the booter's own in the list runs its Revive in list order, sequentially and outside the booter's lock,
+// and the whole step runs again from its start under the lock with the skip set, so a session another booter created meanwhile is used as found and the trigger is evaluated once.
+// No two op locks are ever held at once.
+// Engine.Revive runs this worktree's ordinary up (session and Selvage, no strand relaunch) with the skip set when the predicate holds, and reports whether it did.
+// Bound: the step runs only for a revival of the booter's own recorded session, never for a first boot; it starts no strand and never recurses, since every nested up carries the skip;
+// an entry whose Revive or whose list fails is logged and skipped, and the boot goes on; a later-position session that is still live is not reordered, since session ids cannot change without killing live sessions.
+//
 // A second package-level invariant: every session also carries exactly one
 // additional, permanent pane beyond its strands — Selvage
 // (ReedState.SelvagePaneID). It is a first-class construct, deliberately

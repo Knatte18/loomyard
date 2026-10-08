@@ -23,6 +23,7 @@ import (
 // The prime leaves NameSlug and ParentName empty;
 // a task worktree sets NameSlug to its raw worktree name and ParentName to what ResolveParent returns, the orch name of the worktree the pair was created from.
 // An unresolvable parent logs a warning and leaves ParentName empty, since the parent is an optional escalation channel.
+// SpawnOrder is told as a lazy closure over l (spawnorder.go), so building the geometry reads and spawns nothing.
 // Failing to tell the prime from a task worktree is the one error:
 // telling a task worktree a prime's geometry would give its strands the prime's names for life.
 func ReedGeometry(l *lyxcwd.Location) (reedengine.Geometry, error) {
@@ -71,6 +72,7 @@ func reedGeometry(l *lyxcwd.Location, prime bool) reedengine.Geometry {
 		parent = parentNameOrEmpty(l, "strands")
 	}
 	return reedengine.Geometry{
+		SpawnOrder:    spawnOrder(l),
 		SocketKey:     reedengine.ServerName(l.HubPath),
 		SessionName:   reedengine.SessionName(l.WorktreePath()),
 		AnchorPath:    l.AnchorPath(),

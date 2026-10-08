@@ -53,6 +53,10 @@ func TestReedGeometry(t *testing.T) {
 
 			got := reedGeometry(l, tt.isPrime)
 
+			if got.SpawnOrder == nil {
+				t.Error("ReedGeometry(l).SpawnOrder = nil, want the hub's spawn-order teller")
+			}
+
 			if got.NameSlug != tt.wantSlug {
 				t.Errorf("ReedGeometry(l).NameSlug = %q; want %q", got.NameSlug, tt.wantSlug)
 			}

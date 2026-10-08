@@ -471,7 +471,7 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool, error) {
 	var result Strand
 	var skipped bool
-	err := e.withOpLock(func() error {
+	err := e.withRevivalFirst(e.withOpLock, func() error {
 		// The --if-absent name requirement is a pure config error, unrelated to session/state, so
 		// it must surface before the session pre-flight below — a rejected call must never deposit
 		// a spawned tmux server as residue over what is actually a missing --name.

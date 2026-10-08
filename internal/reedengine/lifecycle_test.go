@@ -8,6 +8,7 @@
 package reedengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -416,5 +417,44 @@ func TestDown_ListsEveryWindowsPanesOverACorruptState(t *testing.T) {
 	}
 	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
 		t.Errorf("stat %s error = %v; want the state file deleted", statePath, err)
+	}
+}
+
+// TestWithRevivalFirst_RevivesEarlierWorktreesThenRerunsTheStep pins the revival helper's sequence for a told list of fake revive functions:
+// the predecessors run in list order, the booter's own entry and later entries are never called, a failing predecessor is skipped, and the step runs again once with the skip set.
+func TestWithRevivalFirst_RevivesEarlierWorktreesThenRerunsTheStep(t *testing.T) {
+	e := newTestEngine(t)
+	e.geom.WorktreeName = "booter"
+	var revived []string
+	entry := func(name string, err error) ReviveEntry {
+		return ReviveEntry{Worktree: name, Revive: func() (bool, error) {
+			revived = append(revived, name)
+			return err == nil, err
+		}}
+	}
+	e.geom.SpawnOrder = func() ([]ReviveEntry, error) {
+		return []ReviveEntry{entry("first", nil), entry("broken", errors.New("boom")), entry("second", nil), entry(e.geom.WorktreeName, nil), entry("later", nil)}, nil
+	}
+
+	var skipsSeen []bool
+	err := e.withRevivalFirst(e.withOpLock, func() error {
+		skipsSeen = append(skipsSeen, e.skipRevival)
+		if e.skipRevival {
+			return nil
+		}
+		return errReviveFirst
+	})
+
+	if err != nil {
+		t.Fatalf("withRevivalFirst() = %v, want nil", err)
+	}
+	if want := []string{"first", "broken", "second"}; !slices.Equal(revived, want) {
+		t.Errorf("revived = %v, want %v", revived, want)
+	}
+	if want := []bool{false, true}; !slices.Equal(skipsSeen, want) {
+		t.Errorf("step ran with skips %v, want %v", skipsSeen, want)
+	}
+	if e.skipRevival {
+		t.Error("the skip is still set after the step, want it cleared")
 	}
 }
