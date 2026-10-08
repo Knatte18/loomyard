@@ -142,11 +142,12 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 		if weights == nil || weights.Kind != yaml.MappingNode {
 			continue
 		}
+		// The lowest index across the drops is the one the second drop leaves valid.
 		insertAt := -1
 		for _, retired := range []string{"master_base", "startup_context"} {
 			if index, removed := dropKey(weights, retired); removed {
 				rewrites = append(rewrites, "profiles."+name+".weights."+retired+": removed")
-				if insertAt < 0 {
+				if insertAt < 0 || index < insertAt {
 					insertAt = index
 				}
 			}
