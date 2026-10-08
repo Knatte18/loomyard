@@ -7,6 +7,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -48,6 +49,10 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	// A real run's base tree carries no plan, so the base commit drops it as the in-memory base does.
 	gitkit.Git(t, dir, "rm", "-r", "-q", "_lyx/plan")
 	write("internal/a/a.go", lines(100))
+	// The base tree also holds the files a run's Merriam base is computed from.
+	write("CLAUDE.md", lines(claudeLines))
+	write("PATTERN.md", lines(patternLines))
+	write(masterTemplatePath, lines(templateLines))
 	gitkit.Git(t, dir, "add", ".")
 	gitkit.Git(t, dir, "commit", "-m", "base")
 	repo := gitrepo.New(dir)
@@ -96,13 +101,20 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 		shas:  map[string]bool{baseSHA: true},
 		files: map[string]string{baseSHA + ":internal/a/a.go": lines(100)},
 	}
+	withBaseFiles(memBase.files, baseSHA)
 	want, err := Calibrate(runs, "fit", configDir, memHistory, memBase)
 	if err != nil {
 		t.Fatalf("Calibrate in memory: %v", err)
 	}
 
-	if len(want.Rows) != 1 || want.Rows[0].Estimate != 110 || want.Rows[0].Ratio != 2 {
-		t.Fatalf("in-memory rows = %+v; want one row, estimate 110, ratio 2", want.Rows)
+	// The card's 100 lines and the orientation of 10 come on top of the run's computed Merriam base.
+	baseContext := knownBaseContext(plan["00-overview.md"])
+	wantEstimate := baseContext + 110
+	if len(want.Rows) != 1 || want.Rows[0].Estimate != wantEstimate || want.Rows[0].Ratio != 220/wantEstimate {
+		t.Fatalf("in-memory rows = %+v; want one row, estimate %v, ratio %v", want.Rows, wantEstimate, 220/wantEstimate)
+	}
+	if len(got.Starts) != 1 || got.Starts[0] != want.Starts[0] || !got.Starts[0].HasBase || got.Starts[0].Base != baseContext {
+		t.Errorf("git-backed start rows = %+v; want the in-memory %+v with base %v", got.Starts, want.Starts, baseContext)
 	}
 	if len(got.Rows) != 1 || got.Rows[0] != want.Rows[0] || len(got.Skips) != 0 {
 		t.Errorf("git-backed calibration rows = %+v, skips = %+v; want rows %+v and no skips", got.Rows, got.Skips, want.Rows)
@@ -147,7 +159,8 @@ func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
 	if err := run(args, &report); err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	for _, wantLine := range []string{"## Calibration (fit)", "| alpha | 01-c1 | 1 | 110 | 220 | 2.000 | 100 | 210 | 2.100 |", "## Profiles", "| fit | 1 | 1 | 1 |"} {
+	peakLine := fmt.Sprintf("| alpha | 01-c1 | 1 | %.0f | 220 | %.3f | 100 | 210 | 2.100 |", wantEstimate, 220/wantEstimate)
+	for _, wantLine := range []string{"## Calibration (fit)", peakLine, "## Profiles", "| fit | 1 | 1 | 1 |"} {
 		if !strings.Contains(report.String(), wantLine) {
 			t.Errorf("report lacks %q:\n%s", wantLine, report.String())
 		}

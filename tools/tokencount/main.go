@@ -45,16 +45,18 @@
 // The code repository is the current directory.
 //
 // A fork's position is one plus the card-naming forks before it in the same Merriam session, by start time, so a resumed session restarts its positions at 1.
-// The start table gives each fork's measured start context beside the start the profile estimates for its position, orientation + (position - 1) x batch_growth.
-// It needs only the transcripts, so a run left out of the peak table for its plan or base still contributes its start rows.
-// Below it the section prints the least-squares fit of master_base and batch_growth, the measured start over position - 1 across all those forks, beside the profile's values, with its residual spread: the 75th over the 25th percentile of each fork's measured start over its fitted start.
-// With fewer than two distinct positions it prints "not fitted" with that reason, and a negative fitted coefficient is printed and marked unusable, since batcher.yaml refuses a negative weight.
+// The start table gives each fork's measured start context beside the run's computed Merriam base and the start the profile estimates for its position, base + orientation + (position - 1) x batch_growth.
+// A run's base is websterengine.MerriamBaseOf over CLAUDE.md, PATTERN.md and the repository's copy of the Master template at the run's base commit and the run's 00-overview.md from its plan commit, priced at the profile's context_per_line.
+// A run whose plan or base commit cannot be read keeps its rows, listed with the reason it has no base.
+// Below it the section prints the least-squares fit of orientation and batch_growth, the measured start minus the base over position - 1 across the forks of the runs that have a base, beside the profile's values, with its residual spread: the 75th over the 25th percentile of each fork's measured start over its fitted start.
+// With fewer than two distinct positions among those forks it prints "not fitted" with that reason, and a negative fitted coefficient is printed and marked unusable, since batcher.yaml refuses a negative weight.
 // The fit is a report; nothing consumes it and the tool never edits batcher.yaml.
 //
 // The peak table gives, for every fork whose cards are all cards of the run's plan, one-card and multi-card alike, batcher.PeakContext of the fork's cards at its position beside the fork's measured peak context and their ratio, measured over estimate.
 // A run's plan is read from the newest "loom: plan artifacts for <slug>" commit in the repository committed before the run's first Webster fork started.
 // The estimate's tree is the run's base: the start_sha of the earliest successful begin-batch result in the run's webster session transcripts, the HEAD before the first batch forked, read from the code repository.
 // The card's own text is not in the base tree, so the estimate leaves it out.
+// The estimate starts from the run's computed Merriam base, so the peak table and the start table agree; a run without one is priced without it.
 // Each row also gives the fork's in-fork growth: its measured peak minus its measured start, against its estimated peak minus the estimated start of its position, and the growth ratio of the two, "n/a" when the estimated growth is not positive.
 // The section lists the runs, forks and cards it left out, each with its reason:
 //   - a run: "no webster fork"; "no plan commit before the first fork"; "plan at <sha> does not parse: <error>"; "no base: no begin-batch result in its webster sessions"; "base <sha> is not in the repository";
