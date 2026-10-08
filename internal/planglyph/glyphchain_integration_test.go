@@ -152,7 +152,7 @@ func TestGlyphChain_Delta(t *testing.T) {
 	}
 }
 
-// TestGlyphChain_ReworkGenerations pins the rework-generations scenario as it stands: three cards share a file, validate clean at the plan gate, and once card 1's code is bound a dispatch with card 1 completed reports the blocking containment-file-overlap card 5 removes.
+// TestGlyphChain_ReworkGenerations pins the rework-generations scenario: three cards share a file and validate clean at the plan gate, and once card 1's code is bound a dispatch with card 1 completed reports no blocking finding.
 func TestGlyphChain_ReworkGenerations(t *testing.T) {
 	t.Parallel()
 
@@ -170,12 +170,9 @@ func TestGlyphChain_ReworkGenerations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateDispatch(...) returned error: %v", err)
 	}
-	var got []findingKey
 	for _, finding := range findings {
-		got = append(got, findingKey{finding.Check, finding.Card, finding.Severity})
-	}
-	want := []findingKey{{"containment-file-overlap", "2-card2", SeverityBlocking}}
-	if fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Errorf("ValidateDispatch findings = %+v; want %+v", got, want)
+		if finding.Severity == SeverityBlocking {
+			t.Errorf("ValidateDispatch reported blocking finding %+v; want none", finding)
+		}
 	}
 }

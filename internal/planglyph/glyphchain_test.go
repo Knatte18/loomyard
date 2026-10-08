@@ -399,7 +399,7 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 	}
 }
 
-// TestGlyphChain_CrossCard pins the cross-card refusals as they stand: a member and its file, or either and its package self glyph, on two cards, and a Create handle no other card references.
+// TestGlyphChain_CrossCard pins the cross-card verdicts: a member and its file, or either and its package self glyph, or one file, on different cards validate clean, and a Create handle no other card references is refused.
 func TestGlyphChain_CrossCard(t *testing.T) {
 	t.Parallel()
 
@@ -411,17 +411,14 @@ func TestGlyphChain_CrossCard(t *testing.T) {
 		{
 			name:  "member on one card and its file on another",
 			cards: []string{editCard("shapes#Func"), editCard("shapes/shapes.go")},
-			want:  []findingKey{{"containment-file-overlap", "1-card1", SeverityBlocking}},
 		},
 		{
 			name:  "member on one card and its package self glyph on another",
 			cards: []string{editCard("shapes#Func"), editCard("shapes#")},
-			want:  []findingKey{{"containment-unit-overlap", "1-card1", SeverityBlocking}},
 		},
 		{
 			name:  "file on one card and its package self glyph on another",
 			cards: []string{editCard("shapes/shapes.go"), editCard("shapes#")},
-			want:  []findingKey{{"containment-unit-overlap", "1-card1", SeverityBlocking}},
 		},
 		{
 			name:  "same file on two cards",

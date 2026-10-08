@@ -58,10 +58,6 @@ const (
 	// gateHandleMalformed is checkHandleMalformed's (validate.go) policy: only a handle-shaped ref
 	// is checked against the handle grammar; every other kind is skipped.
 	gateHandleMalformed refGate = "handle-malformed"
-	// gateSyntacticContainment is syntacticContainment's (containment.go) policy: only a
-	// glyph-shaped ref is a candidate for cross-granularity containment; every other kind is
-	// skipped.
-	gateSyntacticContainment refGate = "syntactic-containment"
 	// gateHandleClaims is handleClaims' (handle.go) policy: only a handle-shaped Rename New side
 	// is a claim on that handle; every other kind is skipped.
 	gateHandleClaims refGate = "handle-claims"
@@ -101,7 +97,7 @@ const (
 var allRefKinds = []refKind{refKindPath, refKindSymbol, refKindGlyph, refKindHandle}
 
 // ledger is the package-level registry of every gate's policy: one map[refKind]disposition per
-// refGate, covering exactly the thirteen policies declared in this file's refGate constants. A
+// refGate, covering exactly the policies declared in this file's refGate constants. A
 // refGate absent from ledger, or a refKind absent from one of ledger's policy maps, both yield the
 // disposition zero value at lookup -- undeclared, and therefore fail-closed.
 var ledger = map[refGate]map[refKind]disposition{
@@ -128,12 +124,6 @@ var ledger = map[refGate]map[refKind]disposition{
 		refKindSymbol: dispSkip,
 		refKindGlyph:  dispSkip,
 		refKindHandle: dispKeep,
-	},
-	gateSyntacticContainment: {
-		refKindPath:   dispSkip,
-		refKindSymbol: dispSkip,
-		refKindGlyph:  dispKeep,
-		refKindHandle: dispSkip,
 	},
 	gateHandleClaims: {
 		refKindPath:   dispSkip,

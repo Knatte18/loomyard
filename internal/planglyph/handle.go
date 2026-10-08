@@ -314,7 +314,7 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 // Rename-only card fell into before this fix (crucible round sonnet-xhigh-r8, PG-2): a card
 // carrying no Create group has an empty Declarations, so a BindHandles keyed on Declarations alone
 // skipped it entirely, and its own New-side handle never lost its "plan:" prefix — permanently
-// invisible to collectGlyphTargets and both containment tiers, which exclude anything plan:-prefixed
+// invisible to collectGlyphTargets, which excludes anything plan:-prefixed
 // by construction, for every later card that legitimately referenced the renamed symbol.
 func cardOwnHandles(c planparser.Card) []string {
 	handles := make([]string, 0, len(c.Declarations)+len(c.Pairs))

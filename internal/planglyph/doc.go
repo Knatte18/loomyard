@@ -36,19 +36,14 @@
 //     own path-missing rule that never checks Pairs.New). glyph-rejected is additionally the
 //     Create inversion's own fail-closed arm (create.go), since a Create target is excluded from
 //     the status policy above and would otherwise have no reader at all for an answer neither
-//     policy understands. FOUR passes raise glyph-rejected in total — resolve.go, create.go,
-//     containment.go and donecheck.go — one per fail-closed status policy in the package; each is
-//     named at its own bullet below, and the double report one anomalous target can produce across
-//     two of them is accepted by design.
+//     policy understands. The passes that raise glyph-rejected are resolve.go, create.go and
+//     donecheck.go — one per fail-closed status policy in the package; each is named at its own
+//     bullet, and the double report one anomalous target can produce across two of them is
+//     accepted by design.
 //   - create-already-exists (blocking), create-new-unit (informational) — the Create inversion
 //     (create.go), over every Create group's own targets, handle-shaped or glyph-shaped alike.
 //     create-already-exists covers found, multipart and ambiguous alike: all three mean a
 //     declaration already occupies the name the card is creating.
-//   - containment-file-overlap (blocking) — the resolve-backed containment tier (containment.go),
-//     the member-vs-file overlap the syntactic tier cannot see. glyph-rejected is additionally this
-//     tier's own fail-closed arm, for a member target whose answer is outside quarry's four-value
-//     vocabulary: dropping such a target from the containment index instead would silently exempt it
-//     from the overlap check.
 //   - delete-before-reference (blocking) — LaterDeleteReferences (deleteorder.go), a card that deletes a symbol whose reference a later card's Edit code still holds, so the delete must move after that card.
 //   - delete-target-gone (informational) — downgradeGoneDeleteTargets (planglyph.go), a Delete target of a pending card that is already absent, reported by ValidateDispatch alone once a batch is begun instead of the blocking path-missing or glyph-not-found finding for it.
 //   - handle-name-failed, handle-canonical-collision (both blocking) — CanonicalizeHandles

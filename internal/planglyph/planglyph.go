@@ -69,8 +69,8 @@ func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 // Its Delete and Edit targets add nothing.
 //
 // The two halves are scoped differently, deliberately. The resolve-backed pass runs over the pending
-// cards ALONE, so a completed card's targets are never resolved and never paired against a pending
-// card for containment — there is no race left to prevent with work that already landed. The pure
+// cards ALONE, so a completed card's targets are never resolved against a tree it deliberately changed.
+// The pure
 // pass runs over the WHOLE plan and has only its card-scoped findings dropped, because several pure
 // checks are plan-level and would misreport against a filtered plan: index-file-mismatch would see
 // every completed card's file as orphaned, card-numbering would see gaps, and path-missing's
@@ -228,11 +228,9 @@ func convertAll(errs []planparser.ValidationError) []Finding {
 // returns nil findings and a nil error immediately, opening no repository at all — language: none
 // degrades to today's path-only behaviour, with no quarry call whatsoever.
 //
-// Otherwise it canonicalizes every draft plan: handle first (card 19's CanonicalizeHandles), so the
-// later passes — the resolve status policy (card 17's statusFindings), the Create inversion (card
-// 18's createFindings), and the resolve-backed containment tier (card 20's resolveContainment) —
-// see the canonical spellings rather than the draft ones, over the single batched Resolve call
-// every one of those passes shares.
+// Otherwise it canonicalizes every draft plan: handle first (card 19's CanonicalizeHandles).
+// Two passes follow: the resolve status policy (card 17's statusFindings) and the Create inversion (card 18's createFindings).
+// Both see the canonical spellings rather than the draft ones, over the single batched Resolve call they share.
 //
 // Its second return is a non-nil error whenever the pass could not reach a verdict at all — a
 // category distinct from every per-target verdict those passes report, so an outage is never
@@ -347,7 +345,6 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 
 	findings = append(findings, statusFindings(current, nonCreateResults)...)
 	findings = append(findings, createFindings(current, createIndex)...)
-	findings = append(findings, resolveContainment(current, results)...)
 
 	deleteOrderFindings, err := LaterDeleteReferences(plan, current.Cards, current.Cards, worktreeRoot)
 	findings = append(findings, deleteOrderFindings...)

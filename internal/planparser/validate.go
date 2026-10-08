@@ -1,6 +1,6 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
 // (contracts/specs/loom-plan-spec.md), run in this fixed order.
-// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision, handle-unreferenced (all three checkHandleConsistency), handle-malformed (checkHandleMalformed), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), containment-unit-overlap (syntacticContainment, containment.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch (checkCommitSubjectMismatch).
+// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision, handle-unreferenced (all three checkHandleConsistency), handle-malformed (checkHandleMalformed), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch (checkCommitSubjectMismatch).
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
 // No scheduler, dependency graph, or topological sort belongs in this file — the dependency graph
@@ -89,9 +89,6 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	findings = append(findings, checkCardFieldEmpty(plan)...)
 	findings = append(findings, checkCardFieldOverlap(plan)...)
 	findings = append(findings, checkUsesLaterTarget(plan)...)
-	if lang, ok := planLanguage(plan); ok {
-		findings = append(findings, syntacticContainment(plan, lang)...)
-	}
 	findings = append(findings, checkImpactSummaryMultiline(plan)...)
 	findings = append(findings, checkProsaSymbolTarget(plan)...)
 	findings = append(findings, checkCardNumbering(plan)...)
@@ -469,7 +466,7 @@ func checkDirectoryTarget(plan *Plan) []ValidationError {
 // to refKindGlyph on shape alone and never calls glyph.Parse itself (by design -- see classify.go's
 // own doc comment), bare-symbol-target/directory-target skip it (wrong shape),
 // card-path-malformed/path-missing skip it (diskPathForRef returns not-ok on a parse error),
-// containment-unit-overlap skips it the same way, and internal/planglyph's collectGlyphTargets
+// and internal/planglyph's collectGlyphTargets
 // silently drops it before it ever enters the batched Resolve call -- so it never even reaches a
 // glyph-not-found/glyph-ambiguous/glyph-rejected verdict either. The plan would validate 100% clean
 // while carrying a target no execution engine can ever act on, discovered only deep into a batch's

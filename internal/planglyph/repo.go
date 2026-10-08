@@ -52,8 +52,7 @@ func openRepo(worktreeRoot string) (*quarry.Repo, error) {
 // resolveTargets resolves every entry of targets against repo, positionally, wrapping any error
 // with ErrQuarryUnavailable for the same reason openRepo does. It is this package's one call to
 // (*quarry.Repo).Resolve, which is exactly why the coverage guard lives here and nowhere else:
-// every consumer of a batched Resolve answer — statusFindings, createFindings, resolveContainment,
-// DetectDrift's post-repair revalidation, DoneChecks — either iterates the RESULTS slice or looks
+// every consumer of a batched Resolve answer (statusFindings, createFindings, DetectDrift's post-repair revalidation, DoneChecks) either iterates the RESULTS slice or looks
 // results up by key with a silent skip on a miss, so an answer covering fewer targets than asked
 // would silently exempt the uncovered targets from the whole resolve-backed pass and the plan
 // would read cleaner than it is. The package already guards its two other batched quarry
