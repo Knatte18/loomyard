@@ -5,6 +5,7 @@
      {{.park_command}} the command a parking driver runs after its stop report,
      {{.teardown_command}} the end-of-session command run at done and at busy,
      {{.parent_directive}} the shared parent directive rendered by internal/parentdirective,
+     {{.edit_directive}} the shared edit directive rendered by internal/editdirective,
      and {{.parent_notify}} the parent-notification rule, whichever of the shed-template-driver-notify stencils fits the run.
      The body is recipe-blind: it names no recipe, no state-directory path and no recipe-owned command, which arrive only through the markers.
      Refusal text and its ways forward live in contracts/specs/refusal-spec.md and are pointed at, never restated. -->
@@ -12,6 +13,7 @@
 # Driver for run `{{.run_id}}`
 
 {{.parent_directive}}
+{{.edit_directive}}
 
 ## What it does
 
