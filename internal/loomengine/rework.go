@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -57,6 +58,11 @@ func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, firstCard 
 
 	friction.WarnIfMarkerAbsent(template, reworkStencilName, frictionDirective)
 
+	editDirective, err := editdirective.Directive(stencilsDir)
+	if err != nil {
+		return nil, fmt.Errorf("loom: compose rework prompt: %w", err)
+	}
+
 	values := map[string]string{
 		"rejection_path":           p.rejection,
 		"plan_dir":                 p.planDir,
@@ -70,6 +76,7 @@ func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, firstCard 
 		"pattern_directive":        patternDirective,
 		friction.MarkerName:        frictionDirective,
 		parentdirective.MarkerName: parentDirective,
+		editdirective.MarkerName:   editDirective,
 	}
 
 	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName})

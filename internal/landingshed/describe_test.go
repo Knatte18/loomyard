@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-const describeStencilFixture = "{{.parent_directive}}\nslug={{.slug}}\ndecision={{.decision_record_path}}\nrun={{.run_record_paths}}\n" +
+const describeStencilFixture = "{{.parent_directive}}\n{{.edit_directive}}\nslug={{.slug}}\ndecision={{.decision_record_path}}\nrun={{.run_record_paths}}\n" +
 	"out={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\n"
 
 func newDescribeInputs(t *testing.T) DescribeInputs {
@@ -96,6 +96,9 @@ func TestDescribeSpec_SkillsAndParentDirective(t *testing.T) {
 			}
 			if !strings.Contains(spec.Prompt, tt.want) {
 				t.Errorf("prompt %q does not contain %q", spec.Prompt, tt.want)
+			}
+			if !strings.Contains(spec.Prompt, "Edit or Write") {
+				t.Errorf("prompt %q does not contain the edit directive's \"Edit or Write\" sentence", spec.Prompt)
 			}
 			if tt.parentName == "" && strings.Contains(spec.Prompt, "Your parent is") {
 				t.Errorf("prompt %q carries the parent variant; want the no-parent variant", spec.Prompt)

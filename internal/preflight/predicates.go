@@ -75,16 +75,16 @@ func HubPresent(cwd string) (*lyxcwd.Location, bool) {
 	if err != nil {
 		return nil, false
 	}
-	if !boardLyxPresent(l) {
+	if !BoardLyxPresent(l) {
 		return nil, false
 	}
 	return l, true
 }
 
-// boardLyxPresent reports whether l's hub carries a board-level lyx directory
+// BoardLyxPresent reports whether l's hub carries a board-level lyx directory
 // (<hub>/_board/_lyx). It is the single implementation of that stat, shared by HubPresent and
 // ResolveMode, so the two never drift into two copies of the same check.
-func boardLyxPresent(l *lyxcwd.Location) bool {
+func BoardLyxPresent(l *lyxcwd.Location) bool {
 	_, err := os.Stat(filepath.Join(fabricengine.BoardDir(l.HubPath), lyxdirs.LyxDirName))
 	return err == nil
 }
@@ -110,7 +110,7 @@ func boardLyxPresent(l *lyxcwd.Location) bool {
 func ResolveMode(cwd string) (*lyxcwd.Location, Mode, error) {
 	l, err := lyxcwd.Resolve(cwd)
 	if err == nil {
-		if boardLyxPresent(l) {
+		if BoardLyxPresent(l) {
 			return l, ModeHub, nil
 		}
 		return nil, ModeStandalone, nil
@@ -121,7 +121,7 @@ func ResolveMode(cwd string) (*lyxcwd.Location, Mode, error) {
 	}
 
 	if errors.Is(err, lyxcwd.ErrCwdOutsideAnchor) {
-		if wl, wErr := lyxcwd.ResolveWorktree(cwd); wErr == nil && boardLyxPresent(wl) {
+		if wl, wErr := lyxcwd.ResolveWorktree(cwd); wErr == nil && BoardLyxPresent(wl) {
 			// A wired hub worktree's subdirectory: return the original gated error,
 			// never the second probe's, so the operator sees the message naming both
 			// the anchored directory and the marker file.

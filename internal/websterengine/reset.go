@@ -366,6 +366,15 @@ func reportHeadSHA(geom Geometry, st *State, batch int) (string, error) {
 			wayForwardSteps(fmt.Sprintf("wait for the fork's report, or run `lyx webster recover-batch %02d`", batch)))
 	}
 	git := geom.git()
+	reportPath := filepath.Join(geom.ReportsDir, ReportFileName(batch, bs.Slug))
+	headSHA, err := resolveReportHead(git, geom.WorktreeRoot, reportPath, report.HeadSHA)
+	if errors.Is(err, ErrHeadSHAUnresolved) {
+		return "", fmt.Errorf("webster: reset --to %s refused: %w", to, err)
+	}
+	if err != nil {
+		return "", err
+	}
+	report.HeadSHA = headSHA
 	if !git.SHAExists(geom.WorktreeRoot, report.HeadSHA) {
 		return "", fmt.Errorf("webster: reset --to %s refused: %s", to, missingCommitsClause([]string{report.HeadSHA}))
 	}

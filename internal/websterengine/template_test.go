@@ -259,6 +259,7 @@ func masterTemplateMarkerValues() map[string]string {
 		"pattern_directive":      "## Constraints — do this before you fork anything\n\n- Read the overview.",
 		"friction_directive":     "## Friction note — optional, only if something went wrong\n\nWrite it to /lyx/webster/friction/webster-master.md.",
 		"parent_directive":       "## Your parent\n\nNo parent is recorded for this run.",
+		"edit_directive":         "## Editing files\n\nChange files only with Edit or Write.",
 	}
 }
 
@@ -293,6 +294,7 @@ func recoveryTemplateMarkerValues() map[string]string {
 	values := forkTemplateMarkerValues()
 	values["pattern_directive"] = "## Constraints — do this before you write any code\n\n- Read the overview."
 	values["parent_directive"] = "## Your parent\n\nNo parent is recorded for this run."
+	values["edit_directive"] = "## Editing files\n\nChange files only with Edit or Write."
 	return values
 }
 
@@ -453,7 +455,7 @@ func TestTemplates_FillRequiresEveryRequiredMarker(t *testing.T) {
 			template: mustMasterTemplate,
 			values:   masterTemplateMarkerValues,
 			optional: []string{"pattern_directive", "friction_directive", "parent_directive"},
-			required: []string{"batch_index", "progress", "outcome_path", "summary_path", "verify_fix_prompt_path", "plan_dir", "self_fix_cap"},
+			required: []string{"batch_index", "progress", "outcome_path", "summary_path", "verify_fix_prompt_path", "plan_dir", "self_fix_cap", "edit_directive"},
 		},
 		{
 			name:     "fork",
@@ -467,7 +469,7 @@ func TestTemplates_FillRequiresEveryRequiredMarker(t *testing.T) {
 			template: mustRecoveryTemplate,
 			values:   recoveryTemplateMarkerValues,
 			optional: []string{"pattern_directive", "failure_digest", "uncommitted_paths", "friction_directive", "parent_directive"},
-			required: []string{"card_pointers", "card_gates", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir"},
+			required: []string{"card_pointers", "card_gates", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "edit_directive"},
 		},
 	}
 	for _, tc := range cases {
@@ -906,6 +908,8 @@ func TestRenderPrompts_ParentDirective(t *testing.T) {
 		}
 		requireNotContains(t, withParent, "No parent is recorded")
 		requireContains(t, without, "No parent is recorded")
+		requireContains(t, withParent, "Edit or Write")
+		requireContains(t, without, "Edit or Write")
 		requireNotContains(t, without, "Your parent is")
 		if strings.Contains(withParent, "{{") || strings.Contains(without, "{{") {
 			t.Errorf("%s prompt contains a leftover {{ marker", name)

@@ -66,7 +66,7 @@ const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 func seedHubStencils(t *testing.T, hub string) string {
 	t.Helper()
 	baseDir := fabricengine.StencilsDir(hub)
-	if _, err := stencilstore.Reconcile(baseDir, stencils.Registry(), stencilstore.ModeProduction, ""); err != nil {
+	if _, err := stencilstore.Reconcile(baseDir, stencils.Registry(), stencilstore.ModeProduction, stencilstore.Source{}); err != nil {
 		t.Fatalf("stencilstore.Reconcile(%q) = %v; want nil error", baseDir, err)
 	}
 	return baseDir

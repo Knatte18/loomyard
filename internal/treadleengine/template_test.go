@@ -69,6 +69,7 @@ func judgeCirclingMarkerValues() map[string]string {
 		"previous_handoff": "/run/round-1-handoff.md",
 		"handoff_path":     "/run/round-3-handoff.md",
 		"parent_directive": "the parent directive",
+		"edit_directive":   "the edit directive",
 	}
 }
 
@@ -81,6 +82,7 @@ func judgeMilestoneMarkerValues() map[string]string {
 		"previous_handoff": "/run/round-3-handoff.md",
 		"handoff_path":     "/run/round-5-handoff.md",
 		"parent_directive": "the parent directive",
+		"edit_directive":   "the edit directive",
 	}
 }
 
@@ -93,6 +95,7 @@ func targetingMarkerValues() map[string]string {
 		"previous_handoff": "/run/round-2-handoff.md",
 		"seed_path":        "/run/round-3-seed.md",
 		"parent_directive": "the parent directive",
+		"edit_directive":   "the edit directive",
 	}
 }
 

@@ -45,6 +45,7 @@ func TestDriverPrompt(t *testing.T) {
 				"park command":      driverParkCommand(reportPath),
 				"teardown command":  driverTeardownCommand,
 				"parent name":       "hub:orch",
+				"edit directive":    "Edit or Write",
 				"literal teardown":  "lyx loom commit-records; lyx reed remove --name driver --detach",
 				"literal park mark": `lyx loom commit-records --park "` + reportPath + `"`,
 			},

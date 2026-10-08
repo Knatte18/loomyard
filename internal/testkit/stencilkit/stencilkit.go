@@ -25,7 +25,7 @@ func Seed(t testing.TB) string {
 // SeedInto seeds every registry stencil into dir.
 func SeedInto(t testing.TB, dir string) {
 	t.Helper()
-	if _, err := stencilstore.Reconcile(dir, stencils.Registry(), stencilstore.ModeProduction, ""); err != nil {
+	if _, err := stencilstore.Reconcile(dir, stencils.Registry(), stencilstore.ModeProduction, stencilstore.Source{}); err != nil {
 		t.Fatalf("stencilkit: seed %s: %v", dir, err)
 	}
 }

@@ -4,6 +4,7 @@
 // added/removed keys and applying changes when requested.
 // ReconcileAll covers the per-worktree modules at a worktree's anchor;
 // ReconcileHubWideAt covers the hub-wide modules at the board dir.
+// Their failures are *FileError values naming the file that failed.
 
 package configsync
 
@@ -99,6 +100,26 @@ func legacyConfig(module, baseDir string) (existing []byte, migratedFrom []strin
 	return existing, migratedFrom
 }
 
+// FileError is a reconcile failure for one module, naming the config file it is about.
+type FileError struct {
+	// Module is the config module whose reconcile failed.
+	Module string
+	// Path is the absolute path of the file that failed to read, parse, write or remove.
+	Path string
+	// Err is the underlying failure.
+	Err error
+}
+
+// Error renders the path followed by the underlying failure.
+func (e *FileError) Error() string {
+	return e.Path + ": " + e.Err.Error()
+}
+
+// Unwrap returns the underlying failure.
+func (e *FileError) Unwrap() error {
+	return e.Err
+}
+
 // leafValues flattens a decoded YAML document into dotted key path to leaf value.
 // Maps are descended, an empty map contributes nothing, and a list is one leaf compared whole.
 func leafValues(prefix string, node any, into map[string]any) {
@@ -117,10 +138,10 @@ func leafValues(prefix string, node any, into map[string]any) {
 }
 
 // decodeLeafValues reads a YAML file into its leaf values.
-func decodeLeafValues(data []byte, path string) (map[string]any, error) {
+func decodeLeafValues(data []byte) (map[string]any, error) {
 	var document map[string]any
 	if err := yaml.Unmarshal(data, &document); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+		return nil, fmt.Errorf("parse: %w", err)
 	}
 	leaves := map[string]any{}
 	for key, child := range document {
@@ -142,7 +163,7 @@ func retireHubWideCopy(module, baseDir, boardDir string, apply bool) (Result, er
 		return result, nil
 	}
 	if err != nil {
-		return Result{}, fmt.Errorf("read config for %s: %w", module, err)
+		return Result{}, &FileError{Module: module, Path: copyPath, Err: fmt.Errorf("read config for %s: %w", module, err)}
 	}
 
 	hubPath := configengine.ConfigFile(boardDir, module)
@@ -151,16 +172,16 @@ func retireHubWideCopy(module, baseDir, boardDir string, apply bool) (Result, er
 		return result, nil
 	}
 	if err != nil {
-		return Result{}, fmt.Errorf("read hub config for %s: %w", module, err)
+		return Result{}, &FileError{Module: module, Path: hubPath, Err: fmt.Errorf("read hub config for %s: %w", module, err)}
 	}
 
-	copyLeaves, err := decodeLeafValues(copyData, copyPath)
+	copyLeaves, err := decodeLeafValues(copyData)
 	if err != nil {
-		return Result{}, err
+		return Result{}, &FileError{Module: module, Path: copyPath, Err: err}
 	}
-	hubLeaves, err := decodeLeafValues(hubData, hubPath)
+	hubLeaves, err := decodeLeafValues(hubData)
 	if err != nil {
-		return Result{}, err
+		return Result{}, &FileError{Module: module, Path: hubPath, Err: err}
 	}
 
 	for path, value := range copyLeaves {
@@ -176,7 +197,7 @@ func retireHubWideCopy(module, baseDir, boardDir string, apply bool) (Result, er
 	result.Retired = true
 	if apply {
 		if err := os.Remove(copyPath); err != nil && !os.IsNotExist(err) {
-			return Result{}, fmt.Errorf("remove retired config for %s: %w", module, err)
+			return Result{}, &FileError{Module: module, Path: copyPath, Err: fmt.Errorf("remove retired config for %s: %w", module, err)}
 		}
 		result.Applied = true
 	}
@@ -209,7 +230,7 @@ func ReconcileAll(baseDir, boardDir string, apply bool) ([]Result, error) {
 		existing, err := os.ReadFile(cfgPath)
 		fileAbsent := os.IsNotExist(err)
 		if err != nil && !os.IsNotExist(err) {
-			return nil, fmt.Errorf("read config for %s: %w", m.Name, err)
+			return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("read config for %s: %w", m.Name, err)}
 		}
 		if fileAbsent {
 			existing = []byte{}
@@ -224,13 +245,13 @@ func ReconcileAll(baseDir, boardDir string, apply bool) ([]Result, error) {
 			}
 			added, err := yamlengine.MissingKeys([]byte(m.Template()), nil)
 			if err != nil {
-				return nil, fmt.Errorf("reconcile %s: %w", m.Name, err)
+				return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, err)}
 			}
 
 			result := Result{Module: m.Name, Added: added, Applied: false}
 			if apply {
 				if err := fsx.AtomicWriteBytes(cfgPath, []byte(m.Template())); err != nil {
-					return nil, fmt.Errorf("write config for %s: %w", m.Name, err)
+					return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("write config for %s: %w", m.Name, err)}
 				}
 				result.Applied = true
 			}
@@ -242,13 +263,13 @@ func ReconcileAll(baseDir, boardDir string, apply bool) ([]Result, error) {
 		if m.Migrate != nil && !fileAbsent {
 			existing, migrated, err = m.Migrate(existing)
 			if err != nil {
-				return nil, fmt.Errorf("migrate %s: %w", m.Name, err)
+				return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("migrate %s: %w", m.Name, err)}
 			}
 		}
 
 		merged, added, removed, err := yamlengine.Reconcile([]byte(m.Template()), existing, m.OpenMaps...)
 		if err != nil {
-			return nil, fmt.Errorf("reconcile %s: %w", m.Name, err)
+			return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, err)}
 		}
 
 		result := Result{
@@ -264,13 +285,13 @@ func ReconcileAll(baseDir, boardDir string, apply bool) ([]Result, error) {
 
 		if apply && (fileAbsent || hasChanges) {
 			if err := fsx.AtomicWriteBytes(cfgPath, merged); err != nil {
-				return nil, fmt.Errorf("write config for %s: %w", m.Name, err)
+				return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("write config for %s: %w", m.Name, err)}
 			}
 			result.Applied = true
 			for _, legacy := range migratedFrom {
 				legacyPath := configengine.ConfigFile(baseDir, legacy)
 				if err := os.Remove(legacyPath); err != nil && !os.IsNotExist(err) {
-					return nil, fmt.Errorf("remove migrated legacy config %s: %w", legacy, err)
+					return nil, &FileError{Module: m.Name, Path: legacyPath, Err: fmt.Errorf("remove migrated legacy config %s: %w", legacy, err)}
 				}
 			}
 		}
@@ -321,7 +342,7 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, apply bool) ([]Result, er
 		existing, err := os.ReadFile(cfgPath)
 		fileAbsent := os.IsNotExist(err)
 		if err != nil && !fileAbsent {
-			return nil, fmt.Errorf("read config for %s: %w", m.Name, err)
+			return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("read config for %s: %w", m.Name, err)}
 		}
 
 		seed := SeedHub
@@ -346,7 +367,7 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, apply bool) ([]Result, er
 
 		merged, added, removed, err := yamlengine.Reconcile([]byte(m.Template()), existing, m.OpenMaps...)
 		if err != nil {
-			return nil, fmt.Errorf("reconcile %s: %w", m.Name, err)
+			return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, err)}
 		}
 
 		result := Result{
@@ -359,16 +380,17 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, apply bool) ([]Result, er
 
 		if apply && (fileAbsent || len(added)+len(removed) > 0) {
 			if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-				return nil, fmt.Errorf("mkdir config dir for %s: %w", m.Name, err)
+				return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("mkdir config dir for %s: %w", m.Name, err)}
 			}
 			if err := fsx.AtomicWriteBytes(cfgPath, merged); err != nil {
-				return nil, fmt.Errorf("write config for %s: %w", m.Name, err)
+				return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("write config for %s: %w", m.Name, err)}
 			}
 			result.Applied = true
 
 			for _, legacy := range migratedFrom {
-				if err := os.Remove(configengine.ConfigFile(boardDir, legacy)); err != nil && !os.IsNotExist(err) {
-					return nil, fmt.Errorf("remove migrated legacy config %s: %w", legacy, err)
+				legacyPath := configengine.ConfigFile(boardDir, legacy)
+				if err := os.Remove(legacyPath); err != nil && !os.IsNotExist(err) {
+					return nil, &FileError{Module: m.Name, Path: legacyPath, Err: fmt.Errorf("remove migrated legacy config %s: %w", legacy, err)}
 				}
 			}
 		}

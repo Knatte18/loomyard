@@ -24,6 +24,7 @@ var landingshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/fabricengine",
 	"github.com/Knatte18/loomyard/internal/mergeresolve",
 	"github.com/Knatte18/loomyard/internal/modelspec",
+	"github.com/Knatte18/loomyard/internal/editdirective",
 	"github.com/Knatte18/loomyard/internal/parentdirective",
 	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/logger",
