@@ -122,8 +122,9 @@ You never read raw fork output beyond its own turn, and you never open a file to
   When the refusal's message names a plan edit as its way forward (a later card still references a symbol the batch deletes), that edit is not Master's to make: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop without calling `recover-batch`.
 - `record-batch` refuses with `{"report_archived": true}` → the report could not be attributed and was archived: call `lyx webster begin-batch <NN>` and re-fork that batch from its fresh prompt.
 - `begin-batch <NN>` refuses because the batch **already has a report** (a resumed run found a crashed session's leftover) → do NOT fork;
-  call `lyx webster record-batch <NN>` to consume that report.
-  If record-batch refuses because the batch is a recovery batch, run `lyx webster recover-batch <NN>` backgrounded instead.
+  the refusal names the batch's recorded state and the one remedy that state calls for, and you follow exactly that remedy:
+  `record-batch` or `recover-batch` for the batch (the latter backgrounded, per the rung above), or, for a finished batch, beginning the next one.
+  A batch whose recovery is exhausted ends the run: write `outcome: stuck` naming the batch, as the dead rung above does.
   Then continue the loop from the next batch.
 - Any verb refuses with `{"config_invalid": true}` → a config file under `_lyx/config` has broken content, and the operator's fix is not Master's to make.
   Write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop without calling another verb.

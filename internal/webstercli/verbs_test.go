@@ -248,7 +248,7 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	}
 }
 
-// TestBeginBatchCmd_ReportOnDisk proves begin-batch archives a report that has no begin-batch record and names the archive as archived_report, while a report over a recorded batch is refused with the record's state named.
+// TestBeginBatchCmd_ReportOnDisk proves begin-batch archives a report that has no begin-batch record and names the archive as archived_report, while a report over a recorded batch is refused with the record's state and its one remedy named.
 func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -268,7 +268,7 @@ func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
 			name:     "a terminal record is refused",
 			record:   &websterengine.BatchState{Slug: "only", Kind: "fork", Terminal: true, Status: "done"},
 			wantExit: 1,
-			wantText: []string{"terminal with status done", "recover-batch 1"},
+			wantText: []string{"terminal with status done", "begin the next batch"},
 		},
 	}
 	for _, tt := range tests {

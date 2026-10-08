@@ -227,6 +227,24 @@ func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) 
 	return digestSummaryLine(prev.Digest)
 }
 
+// existingReportRemedy names the one step the recorded state of batch number calls for when begin-batch finds the batch's report already on disk.
+func existingReportRemedy(number int, recorded *BatchState) string {
+	if !recorded.Terminal {
+		if recorded.Kind == "recovery" {
+			return fmt.Sprintf("`lyx webster recover-batch %d`", number)
+		}
+		return fmt.Sprintf("`lyx webster record-batch %d`, after fixing whatever its last refusal named", number)
+	}
+	switch recorded.Status {
+	case DigestStatusDone:
+		return "the batch is finished, so begin the next batch"
+	case DigestStatusDead:
+		return fmt.Sprintf("the recovery of batch %d is exhausted, so end the run stuck naming the batch", number)
+	default:
+		return fmt.Sprintf("`lyx webster recover-batch %d`", number)
+	}
+}
+
 // BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the pause gate, the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
 // The caller holds the state-mutation lease across this whole call and is responsible for
 // persisting deps.State via SaveState once BeginBatch returns successfully — BeginBatch itself
@@ -321,7 +339,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// webster's own pre-existing-report guard, applied to the fork path: a batch whose report already landed is finished work — silently overwriting its BatchState (and letting a fresh fork overwrite the report) must never happen by accident.
 	// A no_report re-fork never calls begin-batch again (the bracket is still open), with ONE exception:
 	// a run resumed after a crash that landed between the fork's report and record-batch re-drives a batch whose report IS on disk — that report is consumed by record-batch (the audit keys on the bracket-opening session, see RecordBatch),
-	// so the refusal message names that recourse alongside the stuck-batch one.
+	// so the refusal message names the one remedy the recorded state calls for.
 	// Bound: only a batch with no record in state.json has its report archived and the begin proceeds, since such a report cannot be attributed to any begun batch and record-batch would only archive it and send the caller back here;
 	// a recorded batch's report is never archived by begin-batch.
 	existingReport := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
@@ -338,7 +356,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 			if recorded.Terminal {
 				seen = "terminal with status " + recorded.Status
 			}
-			return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s and state.json records the batch as %s — begin-batch never overwrites finished work; a report left behind by a crashed session is consumed by `lyx webster record-batch %d` (or `lyx webster recover-batch %d` for a recovery batch), and a stuck batch escalates via `lyx webster recover-batch %d` (which archives the report)", number, slug, existingReport, seen, number, number, number)
+			return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s and state.json records the batch as %s — begin-batch never overwrites finished work; way forward: %s", number, slug, existingReport, seen, existingReportRemedy(number, recorded))
 		}
 	} else if !os.IsNotExist(statErr) {
 		return nil, fmt.Errorf("webster: stat batch report %s: %w", existingReport, statErr)
