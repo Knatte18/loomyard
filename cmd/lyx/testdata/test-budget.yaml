@@ -109,7 +109,7 @@ internal/testkit/tmuxkit: 9
 internal/treadleengine: 34
 internal/verifyrun: 4
 internal/verifytree: 5
-internal/vscode: 9
+internal/vscode: 12
 internal/webstercli: 81
 internal/websterengine: 184
 internal/weftname: 1

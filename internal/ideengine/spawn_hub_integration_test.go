@@ -64,7 +64,7 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	prime := primeOf(t, h)
 	launched := recordLauncher(t)
 
-	if err := Spawn(l, prime); err != nil {
+	if _, err := Spawn(l, prime); err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
 
@@ -115,7 +115,7 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	launched := recordLauncher(t)
 	hubforge.AddPair(t, h, slug)
 
-	if err := Spawn(l, slug); err != nil {
+	if _, err := Spawn(l, slug); err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
 
@@ -137,14 +137,14 @@ func checkPrimeSplicesSettingsAndRegenerates(t *testing.T, h *hubforge.Hub) {
 	wsPath := fabricengine.HubWorkspacePath(l, prime)
 	settingsPath := primeSettingsPath(h, prime)
 
-	if err := Spawn(l, prime); err != nil {
+	if _, err := Spawn(l, prime); err != nil {
 		t.Fatalf("first Spawn: %v", err)
 	}
 	jsonc := "{\n  // keep me\n  \"editor.tabSize\": 2,\n}"
 	if err := os.WriteFile(settingsPath, []byte(jsonc), 0o644); err != nil {
 		t.Fatalf("write settings: %v", err)
 	}
-	if err := Spawn(l, prime); err != nil {
+	if _, err := Spawn(l, prime); err != nil {
 		t.Fatalf("Spawn with JSONC settings: %v", err)
 	}
 	first, err := os.ReadFile(wsPath)
@@ -155,7 +155,7 @@ func checkPrimeSplicesSettingsAndRegenerates(t *testing.T, h *hubforge.Hub) {
 		t.Fatalf("workspace file does not carry the JSONC settings verbatim:\n%s", first)
 	}
 
-	if err := Spawn(l, prime); err != nil {
+	if _, err := Spawn(l, prime); err != nil {
 		t.Fatalf("unchanged Spawn: %v", err)
 	}
 	again, _ := os.ReadFile(wsPath)
@@ -167,7 +167,7 @@ func checkPrimeSplicesSettingsAndRegenerates(t *testing.T, h *hubforge.Hub) {
 	if err := os.WriteFile(settingsPath, []byte(changed), 0o644); err != nil {
 		t.Fatalf("rewrite settings: %v", err)
 	}
-	if err := Spawn(l, prime); err != nil {
+	if _, err := Spawn(l, prime); err != nil {
 		t.Fatalf("Spawn after settings change: %v", err)
 	}
 	got, _ := os.ReadFile(wsPath)
@@ -178,7 +178,7 @@ func checkPrimeSplicesSettingsAndRegenerates(t *testing.T, h *hubforge.Hub) {
 	if err := os.WriteFile(wsPath, []byte("hand edit"), 0o644); err != nil {
 		t.Fatalf("hand edit: %v", err)
 	}
-	if err := Spawn(l, prime); err != nil {
+	if _, err := Spawn(l, prime); err != nil {
 		t.Fatalf("Spawn after hand edit: %v", err)
 	}
 	restored, _ := os.ReadFile(wsPath)
@@ -197,7 +197,7 @@ func checkPrimeSettingsReadFailure(t *testing.T, h *hubforge.Hub) {
 		t.Fatalf("plant directory: %v", err)
 	}
 
-	err := Spawn(l, prime)
+	_, err := Spawn(l, prime)
 	if err == nil || !strings.Contains(err.Error(), "read prime settings") {
 		t.Fatalf("Spawn error = %v, want the read cause", err)
 	}
@@ -217,7 +217,7 @@ func checkPrimeWorkspaceSurvivesTopologyVerbs(t *testing.T, h *hubforge.Hub, slu
 	recordLauncher(t)
 	hubforge.AddPair(t, h, slug)
 
-	if err := Spawn(l, prime); err != nil {
+	if _, err := Spawn(l, prime); err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
 	wsPath := fabricengine.HubWorkspacePath(l, prime)
