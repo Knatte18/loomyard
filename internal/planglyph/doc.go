@@ -55,7 +55,10 @@
 //   - resign-interface-method (blocking) — planGatePass (plangate.go), an Edit re-sign arrow on a member that resolves to an interface method, whose own spec is no declaration.
 //     It reads the tree, so like redundant-file-target it runs at the plan gates only.
 //   - caller-uncovered (blocking for a package-level member, informational for a method) — callerCoverageFindings (callercoverage.go), reached through planGatePass: a deleted or re-signed member that Go code still references with no admissible card's target covering that code.
-//     It walks every Go file under the worktree root by token, so it runs only when a subject exists and at the plan gates only.
+//     It walks every Go file under the worktree root by token, nested modules included, so it runs only when a subject exists and at the plan gates only.
+//     A package-level member is resolved by import path: a reference is its bare identifier inside the declaring package, and elsewhere an import of the member's import path (aliased or dotted included) followed by the identifier.
+//     A method is matched by name alone, except after an imported package's name, and a subject's name-only matches collapse into one informational finding naming every file.
+//     The import-name exclusion also drops a method call on a local variable that shadows an imported package's name.
 //     A re-signed member admits its own card's targets; a deleted member admits its own card and every earlier one, and its reference inside a later card's Edit code stays delete-before-reference's.
 //   - delete-target-gone (informational) — downgradeGoneDeleteTargets (planglyph.go), a Delete target of a pending card that is already absent, reported by ValidateDispatch alone, and so by ValidateFormatAfter, once a batch is begun or done instead of the blocking path-missing or glyph-not-found finding for it.
 //   - handle-name-failed, handle-canonical-collision (both blocking) — CanonicalizeHandles

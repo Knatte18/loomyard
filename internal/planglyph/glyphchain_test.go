@@ -642,8 +642,21 @@ var coverageFiles = []string{
 	"callees/callees.go",
 	"callees/callees_external_test.go",
 	"callees/local.go",
+	"callers/aliased.go",
 	"callers/callers.go",
+	"callers/nested.go",
+	"callers/more.go",
+	"dotted/dotted.go",
+	"nested/use.go",
 	"other/holder.go",
+}
+
+// nestedModuleFile is the go.mod of a nested module that replaces the fixture module with the checkout above it.
+const nestedModuleFile = "module example.com/nested\n\ngo 1.26\n\nrequire example.com/glyphchain v0.0.0\n\nreplace example.com/glyphchain => ../\n"
+
+// coveredTargetCard deletes callees#Target with every fixture caller of it covered, so a row's extra files are the only references left.
+func coveredTargetCard(covers []string) string {
+	return deleteWithEdit([]string{"callees#Target"}, append(slices.Clone(covers), "callers#UseTarget"))
 }
 
 // editWithResign is an Edit card whose bullets are the arrow for glyph and then the plain targets.
@@ -731,9 +744,65 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			cards: []string{deleteWithEdit([]string{"callees#Helper"}, []string{"callees#UsesHelper"})},
 		},
 		{
-			name:  "delete of a method",
+			name:  "delete of a method collapses its name matches into one informational finding",
 			cards: []string{deleteCard("callees#Thing.Method")},
-			want:  []string{"informational callers/callers.go"},
+			files: map[string]string{
+				"callers/more.go": "package callers\n\nimport \"example.com/glyphchain/callees\"\n\nfunc more(t callees.Thing) int { return t.Method() }\n",
+			},
+			want: []string{"informational callers/callers.go, callers/more.go"},
+		},
+		{
+			name:  "a selector on an imported package that declares the same name is no method match",
+			cards: []string{deleteCard("callees#Thing.Method")},
+			files: map[string]string{
+				"other/method.go":     "package other\n\nfunc Method() int { return 0 }\n",
+				"callers/useother.go": "package callers\n\nimport \"example.com/glyphchain/other\"\n\nfunc useOther() int { return other.Method() }\n",
+			},
+			want: []string{"informational callers/callers.go"},
+		},
+		{
+			name:  "an aliased importer is a blocking caller",
+			cards: []string{coveredTargetCard(covers)},
+			files: map[string]string{
+				"callers/aliased.go": "package callers\n\nimport c \"example.com/glyphchain/callees\"\n\nfunc aliased() int { return c.Target() }\n",
+			},
+			want: []string{"blocking callers/aliased.go"},
+		},
+		{
+			name:  "a dot importer is a blocking caller",
+			cards: []string{coveredTargetCard(covers)},
+			files: map[string]string{
+				"dotted/dotted.go": "package dotted\n\nimport . \"example.com/glyphchain/callees\"\n\nfunc dotted() int { return Target() }\n",
+			},
+			want: []string{"blocking dotted/dotted.go"},
+		},
+		{
+			name:  "a nested module's file calling a root member is a blocking caller",
+			cards: []string{coveredTargetCard(covers)},
+			files: map[string]string{
+				"nested/go.mod": nestedModuleFile,
+				"nested/use.go": "package nested\n\nimport \"example.com/glyphchain/callees\"\n\nfunc use() int { return callees.Target() }\n",
+			},
+			want: []string{"blocking nested/use.go"},
+		},
+		{
+			name:  "a nested module's method call folds into the informational finding",
+			cards: []string{deleteCard("callees#Thing.Method")},
+			files: map[string]string{
+				"nested/go.mod": nestedModuleFile,
+				"nested/use.go": "package nested\n\nimport \"example.com/glyphchain/callees\"\n\nfunc use(t callees.Thing) int { return t.Method() }\n",
+			},
+			want: []string{"informational callers/callers.go, nested/use.go"},
+		},
+		{
+			name:  "a member declared in a nested module is found by that module's import path",
+			cards: []string{deleteCard("nested/lib#Func")},
+			files: map[string]string{
+				"nested/go.mod":     nestedModuleFile,
+				"nested/lib/lib.go": "package lib\n\nfunc Func() int { return 1 }\n",
+				"callers/nested.go": "package callers\n\nimport \"example.com/nested/lib\"\n\nfunc nested() int { return lib.Func() }\n",
+			},
+			want: []string{"blocking callers/nested.go"},
 		},
 		{
 			name:     "rename is not a subject",
@@ -814,12 +883,13 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 	}
 }
 
-// coverageFileOf returns the first coverage fixture file detail names, or "" when it names none.
+// coverageFileOf returns every coverage fixture file detail names, comma-separated in coverageFiles order, or "" when it names none.
 func coverageFileOf(detail string) string {
+	var named []string
 	for _, file := range coverageFiles {
 		if strings.Contains(detail, file) {
-			return file
+			named = append(named, file)
 		}
 	}
-	return ""
+	return strings.Join(named, ", ")
 }
