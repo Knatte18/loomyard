@@ -682,7 +682,9 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 }
 
 // TestWire_ReviewKeysReachTheEnv verifies the loom.yaml keys that tune a review round reach the Env:
-// plan_review lands in the Plan-Burler row's RowReviewModels entry alone, the other two BurlerRound rows keeping the run-wide models, and fix_start lands in Env.FixStart.
+// plan_review lands in the Plan-Burler row's RowReviewModels entry alone, and the Discussion-Burler row keeps the run-wide models.
+// The Webster-Burler row takes the template's webster_review (one sonnet entry of effort high) with the run-wide fix models.
+// fix_start lands in Env.FixStart.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	t.Parallel()
 
@@ -701,10 +703,15 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if !reflect.DeepEqual(plan.Fix, c.env.ReviewModels.Fix) {
 		t.Errorf("RowReviewModels[%q].Fix = %+v; want the run-wide %+v", loomshed.NamePlanBurler, plan.Fix, c.env.ReviewModels.Fix)
 	}
-	for _, row := range []string{loomshed.NameDiscussionBurler, loomshed.NameWebsterBurler} {
-		if got := c.env.RowReviewModels[row]; !reflect.DeepEqual(got, c.env.ReviewModels) {
-			t.Errorf("RowReviewModels[%q] = %+v; want the run-wide %+v", row, got, c.env.ReviewModels)
-		}
+	if got := c.env.RowReviewModels[loomshed.NameDiscussionBurler]; !reflect.DeepEqual(got, c.env.ReviewModels) {
+		t.Errorf("RowReviewModels[%q] = %+v; want the run-wide %+v", loomshed.NameDiscussionBurler, got, c.env.ReviewModels)
+	}
+	webster := c.env.RowReviewModels[loomshed.NameWebsterBurler]
+	if len(webster.Review) != 1 || webster.Review[0].Model != "sonnet" || webster.Review[0].Effort != "high" {
+		t.Errorf("RowReviewModels[%q].Review = %+v; want one sonnet entry of effort high", loomshed.NameWebsterBurler, webster.Review)
+	}
+	if !reflect.DeepEqual(webster.Fix, c.env.ReviewModels.Fix) {
+		t.Errorf("RowReviewModels[%q].Fix = %+v; want the run-wide %+v", loomshed.NameWebsterBurler, webster.Fix, c.env.ReviewModels.Fix)
 	}
 	if c.env.FixStart != burlerengine.FixStartAfterReview {
 		t.Errorf("c.env.FixStart = %q; want %q", c.env.FixStart, burlerengine.FixStartAfterReview)
