@@ -50,6 +50,8 @@ type ResetDeps struct {
 	ParentBranch ParentBranchFunc
 	// Branch returns the branch checked out in the task worktree as fabric reads it, and errors on a detached HEAD or a branch that is not the pair's own.
 	Branch func() (string, error)
+	// Standalone is set when the run has no task pair: git's keep form performs the move and guards the uncommitted changes, so the foreign-dirty-path refusal is skipped.
+	Standalone bool
 }
 
 // ResetPlan is what a reset may do.
@@ -220,6 +222,9 @@ func PlanReset(deps ResetDeps, to ResetTarget, batch int) (ResetPlan, error) {
 	own, err := ownTrackedPaths(deps)
 	if err != nil {
 		return ResetPlan{}, err
+	}
+	if deps.Standalone {
+		return ResetPlan{Target: to, SHA: sha, OwnPaths: own}, nil
 	}
 	dirty, err := dirtyTrackedPaths(geom.WorktreeRoot)
 	if err != nil {

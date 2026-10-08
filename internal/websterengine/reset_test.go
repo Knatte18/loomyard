@@ -66,6 +66,8 @@ type resolutionFixture struct {
 	state *websterengine.State
 	reed  *shuttlefake.Reed
 	geom  websterengine.Geometry
+	// standalone makes the deps those of a run with no task pair.
+	standalone bool
 	// root is the run's start commit, batch1Head the head batch 1 recorded and batch2Head the head batch 2's report names.
 	root, batch1Head, batch2Head string
 }
@@ -104,11 +106,16 @@ func (fx *resolutionFixture) deps() websterengine.ResetDeps {
 		Reed:         fx.reed,
 		ParentBranch: func() (string, error) { return "main", nil },
 		Branch:       func() (string, error) { return "task", nil },
+		Standalone:   fx.standalone,
 	}
 }
 
 // archiveOnlyPlan leads a TestPlanReset_Resolution row's wanted parts when the row expects an archive-only plan, whose reason carries the rest.
-const archiveOnlyPlan = "<archive-only plan>"
+// movingPlan leads a row that expects a plan moving to the run's start commit.
+const (
+	archiveOnlyPlan = "<archive-only plan>"
+	movingPlan      = "<moving plan>"
+)
 
 // TestPlanReset_Resolution pins each refusal PlanReset reaches from state, report files, the reed seam and a fake Git alone,
 // and the archive-only plan a reset to start returns for a start it cannot move to:
@@ -156,6 +163,10 @@ func TestPlanReset_Resolution(t *testing.T) {
 		}, []string{"share no single latest commit", "run `lyx webster reset --to start`"}},
 		{"batch-start of a batch with no start", websterengine.ResetToBatchStart, 3, nil, []string{"batch 3 recorded no start commit", "run `lyx webster reset --to start`"}},
 		{"batch-start with a later recorded start", websterengine.ResetToBatchStart, 1, nil, []string{"batch 1 is not the run's last begun batch", "commits of batch 2", "run `lyx webster reset --to start`"}},
+		// A pair's reset reads the dirty tracked paths with real git here; standalone leaves them to git's keep form, so the plan comes back without that read.
+		{"standalone skips the foreign-dirty-path refusal", websterengine.ResetToStart, 0, func(fx *resolutionFixture) {
+			fx.standalone = true
+		}, []string{movingPlan}},
 		{"start with no recorded start archives without moving", websterengine.ResetToStart, 0, func(fx *resolutionFixture) {
 			fx.state.Batches[1].StartSHA, fx.state.Batches[2].StartSHA = "", ""
 		}, []string{archiveOnlyPlan, "no batch recorded a start commit"}},
@@ -180,13 +191,19 @@ func TestPlanReset_Resolution(t *testing.T) {
 
 			// text is what the parts are looked for in: the refusal, or an archive-only plan's reason.
 			text, parts := "", tt.want
-			if archiveOnly := tt.want[0] == archiveOnlyPlan; archiveOnly {
+			switch tt.want[0] {
+			case archiveOnlyPlan:
 				parts = tt.want[1:]
 				if err != nil || !plan.ArchiveOnly || plan.SHA != "" {
 					t.Fatalf("PlanReset(%s, %d) = %+v, %v; want an archive-only plan", tt.to, tt.batch, plan, err)
 				}
 				text = plan.Reason
-			} else {
+			case movingPlan:
+				parts = nil
+				if err != nil || plan.ArchiveOnly || plan.SHA != fx.root {
+					t.Fatalf("PlanReset(%s, %d) = %+v, %v; want a plan moving to %s", tt.to, tt.batch, plan, err, fx.root)
+				}
+			default:
 				if err == nil {
 					t.Fatalf("PlanReset(%s, %d) error = nil, want a refusal", tt.to, tt.batch)
 				}

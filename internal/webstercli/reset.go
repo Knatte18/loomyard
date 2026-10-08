@@ -1,5 +1,5 @@
 // reset.go implements the `reset` webster verb: the guarded way to move the task branch back to a commit the run recorded.
-// It plans the reset with websterengine.PlanReset, performs it through fabricengine's pair-checkout reset, clears the persisted pre-fix head and fabric-syncs state.json.
+// It plans the reset with websterengine.PlanReset, performs it through fabricengine's pair-checkout reset (in standalone mode, with gitrepo's keep-reset), clears the persisted pre-fix head and fabric-syncs state.json.
 // A reset to start ends by archiving the run record, or archives alone when the start cannot be moved to.
 // The verb runs no git of its own, so an agent that is denied `git reset --hard` still has a way to recover.
 package webstercli
@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
@@ -59,7 +60,11 @@ wrote last, a plan path that differs from the recorded plan, or a suspect path
 that differs from HEAD, each naming its clearing step; re-running the reset
 then converges. Every other pending finding is dropped with a warning.
 Otherwise run what the refusal that sent you here says.
-In standalone mode it refuses and names the git reset --keep command to run.
+In standalone mode there is no task pair, so it moves HEAD with git's keep form
+instead, touching no remote: an uncommitted change is carried across, and when
+the move would overwrite one the reset refuses, changing nothing, and names each
+such path with the step that clears it; a tracked change outside the run's own
+writes does not refuse there, since keep guards it.
 On success the envelope carries target, sha, mutations (the worktree_reset
 entry, and a remote_branch_updated entry when the remote moved) and partial
 (false). --to start also carries moved (false when the start could not be moved
@@ -124,17 +129,14 @@ Example:
 				Reed:         c.reed,
 				ParentBranch: c.parentBranch,
 				Branch:       branch,
+				Standalone:   fab == nil,
 			}, target, batch)
 			if err != nil {
 				return fail(err.Error())
 			}
-			if fab == nil && !plan.ArchiveOnly {
-				return fail(fmt.Sprintf("webster: reset --to %s refused: standalone mode has no task pair for the reset to guard; way forward: run `git reset --keep %s` in the task worktree, which keeps uncommitted changes",
-					target, plan.SHA))
-			}
 
 			var parent string
-			if !plan.ArchiveOnly {
+			if !plan.ArchiveOnly && fab != nil {
 				if parent, err = c.parentBranch(); err != nil {
 					return fail(fmt.Sprintf("webster: reset --to %s refused: the parent branch is unknown (%v); way forward: run `lyx fabric reconcile` to repair the pair, then re-run `lyx webster reset --to %s`", target, err, target))
 				}
@@ -147,7 +149,11 @@ Example:
 			}
 			rec := fabricengine.NewMutations("")
 			if !plan.ArchiveOnly {
-				if err := fab.ResetPairCode(rec, plan.SHA, parent, plan.OwnPaths, fabricengine.EnvSyncOptions()); err != nil {
+				if fab == nil {
+					if err := c.standaloneKeepReset(plan); err != nil {
+						return fail(err.Error())
+					}
+				} else if err := fab.ResetPairCode(rec, plan.SHA, parent, plan.OwnPaths, fabricengine.EnvSyncOptions()); err != nil {
 					if remoteBranchMoved(rec) {
 						clihelp.SetExit(cmd.Context(), output.ErrFields(out, fmt.Sprintf("webster: reset --to %s moved the remote task branch but not the checkout: %v", target, err), map[string]any{
 							"mutations": rec.Entries(),
@@ -221,8 +227,31 @@ func remoteBranchMoved(rec *fabricengine.Mutations) bool {
 	return false
 }
 
+// standaloneKeepReset performs the planned branch move in standalone mode with git's keep form, touching no remote.
+// Keep carries every uncommitted change across and refuses, changing nothing, over one the move would overwrite;
+// that refusal comes back as websterengine.KeepResetRefusal, naming each such path and its way forward.
+func (c *websterCLI) standaloneKeepReset(plan websterengine.ResetPlan) error {
+	repo := gitrepo.New(c.geom.WorktreeRoot)
+	cause := repo.ResetKeep(plan.SHA)
+	if cause == nil {
+		return nil
+	}
+	var overwritten []string
+	changed, changedErr := repo.WorktreeChangedFiles()
+	moved, movedErr := repo.ChangedFilesSince(plan.SHA)
+	if changedErr == nil && movedErr == nil {
+		for _, path := range changed {
+			if slices.Contains(moved, path) {
+				overwritten = append(overwritten, path)
+			}
+		}
+		slices.Sort(overwritten)
+	}
+	return websterengine.KeepResetRefusal(plan, cause, overwritten)
+}
+
 // standaloneBranch is the branch probe PlanReset gets in standalone mode, where no fabric handle names the task branch.
-// Standalone has no pair and no recorded parent branch, so there is no foreign branch to refuse; the verb refuses the whole reset after planning it.
+// Standalone has no pair and no recorded parent branch, so there is no foreign branch to refuse.
 func standaloneBranch() (string, error) {
 	return "", nil
 }

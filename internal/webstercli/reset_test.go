@@ -391,6 +391,33 @@ func TestResetCmd(t *testing.T) {
 		return
 	}
 
+	if !t.Run("standalone start moves HEAD with git's keep form and lists what it left", func(t *testing.T) {
+		fx := newResetFixture(t, h, "rst-standalone")
+		fx.saveState(t, startedAt(fx.base))
+		fx.cli.openFabric = nil
+		fx.cli.parentBranch = nil
+		untracked := filepath.Join(fx.checkout, "untracked.txt")
+		if err := os.WriteFile(untracked, []byte("keep"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		code, envelope := fx.reset(t, "--to", "start")
+		if code != 0 || envelope["ok"] != true || envelope["moved"] != true || envelope["sha"] != fx.base {
+			t.Fatalf("standalone reset --to start = %d, %v; want ok, moved at %s", code, envelope, fx.base)
+		}
+		if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != fx.base {
+			t.Errorf("HEAD = %s; want %s", got, fx.base)
+		}
+		if got, _ := envelope["uncommitted"].([]any); len(got) != 1 || got[0] != "untracked.txt" {
+			t.Errorf("uncommitted = %v; want only untracked.txt", envelope["uncommitted"])
+		}
+		if got := mutationKinds(envelope["mutations"]); len(got) != 0 {
+			t.Errorf("mutation kinds = %v; want none, the keep-reset touches no pair", got)
+		}
+	}) {
+		return
+	}
+
 	if !t.Run("start resolves the octopus merge base of diverging starts", func(t *testing.T) {
 		fx := newResetFixture(t, h, "rst-octopus")
 		gitkit.Git(t, fx.checkout, "checkout", "-b", "rst-octopus-s1", fx.base)
@@ -582,13 +609,26 @@ func TestResetCmd(t *testing.T) {
 			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"reset --to start refused", "remote-only commit", "git merge --strategy ours origin/"}}},
 		},
 		{
-			name: "standalone names git reset keep",
+			name: "standalone keep over uncommitted paths the move would overwrite",
 			arrange: func(t *testing.T, fx *resetFixture) {
 				fx.saveState(t, startedAt(fx.base))
 				fx.cli.openFabric = nil
 				fx.cli.parentBranch = nil
+				// own.txt is a path the run wrote and other.txt one it did not; both differ between HEAD and the start, and both are dirty.
+				gitkit.CommitFile(t, fx.checkout, "own.txt", "v2", "own.txt v2")
+				gitkit.CommitFile(t, fx.checkout, "other.txt", "other", "other.txt")
+				for _, name := range []string{"own.txt", "other.txt"} {
+					if err := os.WriteFile(filepath.Join(fx.checkout, name), []byte("dirty"), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
 			},
-			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{"standalone", "git reset --keep {base}"}}},
+			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{
+				"git's keep form would overwrite uncommitted changes",
+				"run `git checkout -- own.txt` to drop the run's own change",
+				"commit other.txt, or restore it yourself",
+				"re-run `lyx webster reset --to start`",
+			}}},
 		},
 	}
 	for i, tc := range refusals {

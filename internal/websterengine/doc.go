@@ -475,7 +475,12 @@
 // a remote-only commit becomes reachable only through the `git merge --strategy ours` the operator runs after reading the commits the refusal lists.
 // It cannot move another branch, take a raw SHA, touch the parent branch, the records side or untracked files, and it has no `--force`.
 // Fabric's own refusal (ownership, dirtiness, remote divergence, an unreachable remote) is surfaced as the verb's error with fabric's reason.
-// In standalone mode the verb plans, then refuses naming `git reset --keep <sha>`, since standalone has no pair for the fabric gate to guard.
+// In standalone mode, with no task pair, the verb performs the planned move itself with gitrepo's keep-reset (`git reset --keep`), touching no remote.
+// The call sits in internal/webstercli, since webster's engine runs no mutating git.
+// PlanReset skips its foreign-dirty-path refusal there (ResetDeps.Standalone), because keep is the guard: it carries an uncommitted change across and refuses, changing nothing, over one the move would overwrite, so it never discards one.
+// A standalone reset therefore leaves foreign tracked changes the move does not touch in the tree, and every other PlanReset refusal still applies.
+// KeepResetRefusal builds the keep refusal: git's message and, per overwritten path, `git checkout -- <path>` for a path the run wrote or commit-or-restore for any other, then the re-run.
+// A standalone reset keeps every change git carries across, the run's own included, so its `uncommitted` list holds all of them.
 // The envelope carries `target`, `sha`, `mutations` (the `worktree_reset` entry, and `remote_branch_updated` when the remote moved) and `partial`, false on success.
 // A reset to start also carries `moved`, `uncommitted` (UncommittedPaths, read after the move), `warnings` (the findings the archive dropped) and, when `moved` is false, `reason`, with no `sha`.
 // A refusal before the remote update is a bare error envelope.
