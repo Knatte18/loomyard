@@ -253,6 +253,11 @@
 // a differing plan path whose recorded copy is missing is dropped with the archived state,
 // and its warning says so.
 // Every way forward for a differing plan path names restore-plan or `rebaseline --card`, never a git checkout.
+// The archive `run --fresh` performs is one function (archiveRunInPlace): state.json and the reports dir renamed with a stamp, the rendered prompts cleared.
+// ArchiveRunAfterReset is the reset's entry to it, behind the same pending-findings checks (checkPendingFindings) judged against the worktree's HEAD in place of the recorded start.
+// After a moving reset HEAD is the start, so the checks are the ones `run --fresh` runs there; on an archive-only reset the recorded start may be missing or not an ancestor of HEAD, and the tree the next run starts from is HEAD's.
+// A HEAD-relative guard therefore never refuses toward a verb that cannot clear the state: it refuses only on an uncleared contract file, a plan path differing from the recorded plan and a suspect path differing from HEAD, each naming its clearing step and then the reset, and drops every other pending finding with a warning.
+// A branch rewritten under the run passes, and the dropped findings stay readable in the archived state.
 //
 // Every refusal this package can return, and the way forward from it, is tabulated in contracts/specs/refusal-spec.md;
 // this documentation links that table rather than restating its rows.

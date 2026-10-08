@@ -18,7 +18,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -471,19 +470,13 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		if err != nil {
 			return RunResult{}, err
 		}
-		if _, err := archiveStateFile(deps.Geom.WebsterDir, time.Now); err != nil {
+		if err := archiveRunInPlace(deps.Geom, time.Now); err != nil {
 			return RunResult{}, err
 		}
-		// The drop is committed once the state is archived.
+		// The drop is committed once the run record is archived.
 		// Only a done outcome carries RunResult.Warnings, so each drop is logged here too, where every later refusal, Master outcome and error still leaves it on record.
 		for _, w := range freshWarnings {
 			logger.Warn("websterengine: --fresh dropped a pending audit finding", "warning", w)
-		}
-		if err := archiveReportsDir(deps.Geom.ReportsDir, time.Now); err != nil {
-			return RunResult{}, err
-		}
-		if err := clearRenderedPrompts(deps.Geom.PromptsDir); err != nil {
-			return RunResult{}, err
 		}
 
 		guid, err := newRunGUID()
@@ -1152,6 +1145,7 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 // a plan path differs from the plan the run recorded and restore-plan can undo that, either because the store holds the recorded copy or because the file was never recorded.
 // The start commit is picked by git ancestry,
 // and a recorded commit missing from the repository refuses with the fetch way forward.
+// The HEAD refusal comes before the path checks, which checkPendingFindings runs against the start commit.
 // When no batch recorded a start, the worktree's HEAD stands in for it.
 // When starts are recorded but none is an ancestor of all the others, HEAD stands in only while it is an ancestor of every recorded start (headBeforeEveryStart).
 // An unverifiable path, a pathless finding and a differing plan path whose recorded copy is missing from the store are dropped with the archived state,
@@ -1160,17 +1154,7 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 // A batch record with Uncheckable entries counts as a pending finding: its SuspectPaths join the path check,
 // and it adds its own drop warning.
 func freshPendingDrop(engine shuttleengine.Engine, geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
-	if !opts.Fresh || st == nil {
-		return false, nil, nil
-	}
-	var uncheckableBatches []int
-	for n, bs := range st.Batches {
-		if bs != nil && len(bs.Uncheckable) > 0 {
-			uncheckableBatches = append(uncheckableBatches, n)
-		}
-	}
-	sort.Ints(uncheckableBatches)
-	if len(st.PendingAuditFindings) == 0 && len(uncheckableBatches) == 0 {
+	if !opts.Fresh || st == nil || !hasPendingFindings(st) {
 		return false, nil, nil
 	}
 	bases, err := runEvidenceBases(geom, st)
@@ -1191,93 +1175,12 @@ func freshPendingDrop(engine shuttleengine.Engine, geom Geometry, st *State, opt
 		}
 		base = head
 	}
-	var allPaths []string
-	seen := map[string]bool{}
-	for _, f := range st.PendingAuditFindings {
-		for _, p := range f.Paths {
-			if !seen[p] {
-				seen[p] = true
-				allPaths = append(allPaths, p)
-			}
-		}
-	}
-	for _, n := range uncheckableBatches {
-		for _, sp := range st.Batches[n].SuspectPaths {
-			if !seen[sp.Path] {
-				seen[sp.Path] = true
-				allPaths = append(allPaths, sp.Path)
-			}
-		}
-	}
-	writes, err := contractWritesFor(engine, st, geom, allPaths)
-	if err != nil {
-		return false, nil, err
-	}
-	contracts, err := splitContractPaths(geom, writes, allPaths)
-	if err != nil {
-		return false, nil, err
-	}
-	if len(contracts.Uncleared) > 0 {
-		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while %s", ErrPendingAuditFindings, contractDeleteClause(contracts.Uncleared, "lyx webster run --fresh"))
-	}
-	planPaths, paths, err := splitPlanPaths(geom, contracts.Rest)
-	if err != nil {
-		return false, nil, err
-	}
-	differing, _, err := checkSuspectPaths(geom, st, base, paths)
-	if err != nil {
-		return false, nil, err
-	}
-	if len(differing) > 0 {
-		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while their suspect paths still differ from the run's start commit %s: %s; %s", ErrPendingAuditFindings, base, strings.Join(differing, ", "), resetToStartSteps(stepRunFresh))
-	}
 	if head != base {
 		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while HEAD %s is not the run's start commit %s; %s", ErrPendingAuditFindings, head, base, resetToStartSteps(stepRunFresh))
 	}
-	planDiffering, _, err := checkSuspectPaths(geom, st, base, planPaths)
+	warnings, err = checkPendingFindings(engine, geom, st, base, freshPendingGuard())
 	if err != nil {
 		return false, nil, err
-	}
-	var restorable []string
-	noCopy := map[string]bool{}
-	for _, p := range planDiffering {
-		name, err := planFileName(geom, p)
-		if err != nil {
-			return false, nil, err
-		}
-		hash, recorded := st.PlanFileHashes[name]
-		if !recorded {
-			restorable = append(restorable, p)
-			continue
-		}
-		has, err := planBaselineHas(geom.WebsterDir, hash)
-		if err != nil {
-			return false, nil, err
-		}
-		if has {
-			restorable = append(restorable, p)
-		} else {
-			noCopy[p] = true
-		}
-	}
-	if len(restorable) > 0 {
-		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while plan file(s) differ from the plan the run recorded: %s; way forward: %s", ErrPendingAuditFindings, strings.Join(restorable, ", "), planPathClause("\"lyx webster run --fresh\""))
-	}
-	for _, f := range st.PendingAuditFindings {
-		w := fmt.Sprintf("--fresh dropped pending audit finding %s: %s", f.ID, f.Detail)
-		var lost []string
-		for _, p := range f.Paths {
-			if noCopy[p] {
-				lost = append(lost, p)
-			}
-		}
-		if len(lost) > 0 {
-			w += fmt.Sprintf("; plan file(s) %s differ from the recorded plan and their recorded copy is missing from the plan baseline store, so no verb could restore them", strings.Join(lost, ", "))
-		}
-		warnings = append(warnings, w)
-	}
-	for _, n := range uncheckableBatches {
-		warnings = append(warnings, fmt.Sprintf("--fresh dropped batch %02d's uncheckable findings: %s", n, strings.Join(st.Batches[n].Uncheckable, ", ")))
 	}
 	return true, warnings, nil
 }

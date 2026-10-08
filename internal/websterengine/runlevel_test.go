@@ -2212,7 +2212,6 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		tracked := filepath.Join(fx.Worktree, "base.txt")
 		start := seedFreshPendingState(t, fx, tracked)
-		fx.Git.commit()
 		fx.Git.differing[tracked] = true
 		marker := plantReportsMarker(t, fx)
 
