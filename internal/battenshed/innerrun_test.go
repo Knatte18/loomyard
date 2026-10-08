@@ -423,8 +423,8 @@ func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) 
 // TestInnerRun_RunningArmReviewWaitNote pins the running arm's reason with a reviewer note, without one, when ReviewWait fails, and that a changed note rewrites the reason once.
 // The wait reads the note on every probe check, and the reason is written at entry and only when it changes.
 func TestInnerRun_RunningArmReviewWaitNote(t *testing.T) {
-	plain := "inner shed run still running; sleeping 5s before the next bounce"
-	hub := "inner shed run waiting: parent review: waiting on the hub; sleeping 5s before the next bounce"
+	plain := "inner shed run still running; checking it every 5s"
+	hub := "inner shed run waiting: parent review: waiting on the hub; checking it every 5s"
 	script := func(notes ...string) func() (string, error) {
 		calls := 0
 		return func() (string, error) {

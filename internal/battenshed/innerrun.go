@@ -620,9 +620,9 @@ func (p *innerRunProducer) runningStep(ctx context.Context, w *childWait) *waitE
 	if w.probeDue {
 		w.reviewNote = p.reviewWaitNote()
 	}
-	reason := fmt.Sprintf("inner shed run still running; sleeping %s before the next bounce", p.pollInterval)
+	reason := fmt.Sprintf("inner shed run still running; checking it every %s", p.pollInterval)
 	if w.reviewNote != "" {
-		reason = fmt.Sprintf("inner shed run waiting: %s; sleeping %s before the next bounce", w.reviewNote, p.pollInterval)
+		reason = fmt.Sprintf("inner shed run waiting: %s; checking it every %s", w.reviewNote, p.pollInterval)
 	}
 	p.report(w, reason)
 	return nil
