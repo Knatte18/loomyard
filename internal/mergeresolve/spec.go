@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -81,10 +82,15 @@ func buildConflictSpec(deps Deps, paths []string, attempt int) (shuttleengine.Sp
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("mergeresolve: buildConflictSpec: %w", err)
 	}
+	editDirective, err := editdirective.Directive(deps.StencilsDir)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("mergeresolve: buildConflictSpec: %w", err)
+	}
 	values := map[string]string{
 		"conflicted_paths":         renderConflictedPaths(paths),
 		"report_path":              reportPath,
 		parentdirective.MarkerName: directive,
+		editdirective.MarkerName:   editDirective,
 	}
 	prompt, err := stencil.Fill(template, values)
 	if err != nil {

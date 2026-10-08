@@ -11,6 +11,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -165,4 +166,84 @@ func TestOpenParent_ResolveFailureNamesBranchAndPath(t *testing.T) {
 	if !strings.Contains(err.Error(), res.Path) {
 		t.Errorf("OpenParent() error = %q; want substring %q (resolved path)", err.Error(), res.Path)
 	}
+}
+
+// TestCodeWorktrees_ListOpenAndPairComplete pins the path-based reads a told-geometry caller walks a hub with, on a root-anchored and a subpath-anchored hub:
+// the listing from either pair names the prime first and both pairs with their anchors, a pair whose directory is deleted by hand drops out and reads as missing,
+// and a pair whose warp `_lyx` junction is removed is listed but not complete.
+func TestCodeWorktrees_ListOpenAndPairComplete(t *testing.T) {
+	t.Parallel()
+
+	for _, anchor := range []string{".", "backend"} {
+		t.Run("anchor "+anchor, func(t *testing.T) {
+			t.Parallel()
+
+			h := hubforge.NewHub(t, anchor)
+			kept := hubforge.AddPair(t, h, "kept")
+			gone := hubforge.AddPair(t, h, "gone")
+			anchorOf := func(worktree string) string { return filepath.Join(worktree, h.Location.AnchorRel) }
+
+			want := []fabricengine.CodeWorktree{
+				{Path: h.PrimeWorktree(), Anchor: h.Location.AnchorPath(), Main: true},
+				{Path: kept.Path, Anchor: anchorOf(kept.Path)},
+				{Path: gone.Path, Anchor: anchorOf(gone.Path)},
+			}
+			for _, from := range []string{kept.Path, gone.Path} {
+				got, err := fabricengine.CodeWorktrees(from)
+				if err != nil {
+					t.Fatalf("CodeWorktrees(%q) error = %v", from, err)
+				}
+				if !sameCodeWorktrees(got, want) {
+					t.Errorf("CodeWorktrees(%q) = %+v; want %+v", from, got, want)
+				}
+			}
+			if want[1].Path != fabricengine.WorktreePath(h.Location, "kept") {
+				t.Errorf("listed pair path %q; want WorktreePath %q", want[1].Path, fabricengine.WorktreePath(h.Location, "kept"))
+			}
+
+			if err := os.RemoveAll(gone.Path); err != nil {
+				t.Fatalf("RemoveAll(%q): %v", gone.Path, err)
+			}
+			got, err := fabricengine.CodeWorktrees(kept.Path)
+			if err != nil {
+				t.Fatalf("CodeWorktrees after delete error = %v", err)
+			}
+			if !sameCodeWorktrees(got, want[:2]) {
+				t.Errorf("CodeWorktrees after delete = %+v; want %+v", got, want[:2])
+			}
+
+			if _, err := fabricengine.OpenCodeWorktree(kept.Path); err != nil {
+				t.Errorf("OpenCodeWorktree(kept) error = %v", err)
+			}
+			var missing *fabricengine.ErrMissingPath
+			if _, err := fabricengine.OpenCodeWorktree(gone.Path); !errors.As(err, &missing) || missing.Path != gone.Path {
+				t.Errorf("OpenCodeWorktree(gone) error = %v; want *ErrMissingPath naming %q", err, gone.Path)
+			}
+
+			if ok, reason, err := fabricengine.PairCompleteAt(kept.Path); err != nil || !ok {
+				t.Errorf("PairCompleteAt(kept) = %v, %q, %v; want complete", ok, reason, err)
+			}
+			if err := os.Remove(fabricengine.CodeLyxLink(h.Location, "kept")); err != nil {
+				t.Fatalf("remove warp _lyx junction: %v", err)
+			}
+			if ok, _, err := fabricengine.PairCompleteAt(kept.Path); err != nil || ok {
+				t.Errorf("PairCompleteAt(kept) without its _lyx junction = %v, %v; want not complete", ok, err)
+			}
+			if _, _, err := fabricengine.PairCompleteAt(gone.Path); !errors.As(err, &missing) || missing.Path != gone.Path {
+				t.Errorf("PairCompleteAt(gone) error = %v; want *ErrMissingPath naming %q", err, gone.Path)
+			}
+		})
+	}
+}
+
+// sameCodeWorktrees reports whether got is want's main worktree first followed by the same pairs in any order.
+func sameCodeWorktrees(got, want []fabricengine.CodeWorktree) bool {
+	if len(got) != len(want) || len(got) == 0 || got[0] != want[0] || !got[0].Main {
+		return false
+	}
+	byPath := func(a, b fabricengine.CodeWorktree) int { return strings.Compare(a.Path, b.Path) }
+	gotPairs, wantPairs := slices.Clone(got[1:]), slices.Clone(want[1:])
+	slices.SortFunc(gotPairs, byPath)
+	slices.SortFunc(wantPairs, byPath)
+	return slices.Equal(gotPairs, wantPairs)
 }

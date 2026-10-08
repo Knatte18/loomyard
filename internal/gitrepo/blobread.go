@@ -1,4 +1,4 @@
-// blobread.go adds the read-only, go-git-only primitives diff-base recovery and history lookups build on: FileAtRevision reads one path's blob contents as of a given revision, FilesInDirAtRevision lists the files directly in one directory as of a revision, PathRevisions walks the commits that touched a path, and CommitsWithSubject finds the commits carrying one subject line.
+// blobread.go adds the read-only, go-git-only primitives diff-base recovery and history lookups build on: FileAtRevision reads one path's blob contents as of a given revision, FilesInDirAtRevision lists the files directly in one directory as of a revision, PathRevisions walks the commits that touched a path, CommitsWithSubject finds the commits carrying one subject line, and HeadContains asks whether HEAD's history holds a commit.
 // No method calls r.run or r.runChecked — all resolve state that is already on disk, which is go-git's side of the package's Client Boundary Invariant.
 
 package gitrepo
@@ -57,6 +57,58 @@ func (r *Repo) FileAtRevision(rev, relPath string) ([]byte, error) {
 		return nil, fmt.Errorf("gitrepo: read %s at %s: %w", relPath, rev, err)
 	}
 	return []byte(contents), nil
+}
+
+// HeadContains reports whether sha names HEAD's commit or one of its ancestors.
+// An unborn HEAD, and a sha whose commit is absent from the local object store, report false with no error;
+// an invalid sha is ErrInvalidSHA.
+// It reads the object store through go-git and never runs git.
+func (r *Repo) HeadContains(sha string) (bool, error) {
+	if !validSHA(sha) {
+		return false, ErrInvalidSHA
+	}
+
+	repo, err := r.goGit()
+	if err != nil {
+		return false, err
+	}
+
+	target, err := lookupObjectRetrying(r, repo, func() (*object.Commit, error) {
+		return commitByHash(repo, sha)
+	})
+	if err != nil {
+		if errors.Is(err, plumbing.ErrObjectNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("gitrepo: resolve commit %s: %w", sha, err)
+	}
+
+	r.goGitMu.RLock()
+	defer r.goGitMu.RUnlock()
+
+	head, err := repo.Head()
+	if err != nil {
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("gitrepo: read HEAD: %w", err)
+	}
+	commitIter, err := repo.Log(&git.LogOptions{From: head.Hash()})
+	if err != nil {
+		return false, fmt.Errorf("gitrepo: log from HEAD: %w", err)
+	}
+	found := false
+	err = commitIter.ForEach(func(commit *object.Commit) error {
+		if commit.Hash == target.Hash {
+			found = true
+			return storer.ErrStop
+		}
+		return nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("gitrepo: walk HEAD's history: %w", err)
+	}
+	return found, nil
 }
 
 // PathRevisions returns the SHAs of the commits that touched relPath, newest first, capped at limit

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -45,11 +46,17 @@ func runTargeting(stencilsDir, parentName string, sh Shuttle, name string, round
 		logger.Warn(name+": targeting judge parent directive unreadable, round runs without a seed", "round", round, "cause", err)
 		return "", false
 	}
+	editDirective, err := editdirective.Directive(stencilsDir)
+	if err != nil {
+		logger.Warn(name+": targeting judge edit directive unreadable, round runs without a seed", "round", round, "cause", err)
+		return "", false
+	}
 	values := map[string]string{
 		"round":                    strconv.Itoa(round),
 		"previous_handoff":         previousHandoffMarker(previousHandoffPath),
 		"seed_path":                seedPath,
 		parentdirective.MarkerName: directive,
+		editdirective.MarkerName:   editDirective,
 	}
 
 	prompt, err := stencil.Fill(targetingTemplate, values)

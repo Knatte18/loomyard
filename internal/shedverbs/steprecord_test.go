@@ -16,6 +16,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -321,14 +322,14 @@ func TestStatusCmd_LastStep(t *testing.T) {
 //testtiming:keep pins binary_changed for a different identity and a legacy record without identity fields, which its covering tests do not
 func TestLastStepOf_BuildIdentity(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "steps")
-	built := BuildIdentity{Revision: "abc", Modified: true}
+	built := buildvcs.Identity{Revision: "abc", Modified: true}
 	newStepRecorder(dir, "aaaa", built).begin()
 
 	same := lastStepOf(dir, built)
 	if same == nil || same.VCSRevision != "abc" || !same.VCSModified || same.BinaryChanged {
 		t.Errorf("same identity: last step = %+v; want abc/modified, binary_changed false", same)
 	}
-	other := lastStepOf(dir, BuildIdentity{Revision: "def"})
+	other := lastStepOf(dir, buildvcs.Identity{Revision: "def"})
 	if other == nil || other.VCSRevision != "abc" || !other.BinaryChanged {
 		t.Errorf("different identity: last step = %+v; want binary_changed true", other)
 	}

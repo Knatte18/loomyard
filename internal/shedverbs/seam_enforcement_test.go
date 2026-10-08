@@ -25,6 +25,7 @@ import (
 // logger is admitted for step-boundary logging and for logger.TraceFile/logger.TraceDir, the only
 // path sources admitted into this package, each returning the logger's own sink location verbatim.
 var shedverbsAllowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/buildvcs",
 	"github.com/Knatte18/loomyard/internal/clihelp",
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/output",
