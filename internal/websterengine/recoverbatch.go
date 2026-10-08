@@ -684,8 +684,11 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 		return nil, err
 	}
 
-	// Cross-check report's head_sha against worktree's actual HEAD under RecordBatch's merge-only rule.
+	// An abbreviated head_sha is resolved to the full SHA the run record holds, then cross-checked against worktree's actual HEAD under RecordBatch's merge-only rule.
 	if digest.HeadSHA != "" {
+		if digest.HeadSHA, err = resolveReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, reportPath, digest.HeadSHA); err != nil {
+			return nil, err
+		}
 		moved, err := reconcileReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, digest.HeadSHA, fmt.Sprintf("recovery report for batch %02d-%s", number, slug), deps.ParentBranch, number)
 		if err != nil {
 			return nil, err

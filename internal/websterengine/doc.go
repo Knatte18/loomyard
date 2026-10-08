@@ -477,7 +477,7 @@
 // `pre-fix` (ResetToPreFix) is state.json's `PreFixHead`;
 // `last-batch-head` (ResetToLastBatchHead) is the last recorded batch head, the commit accept-audit picks by git ancestry.
 // `batch-start` (ResetToBatchStart) takes `--batch NN` and is batch NN's recorded start commit, refused when a later batch in the partition's order recorded a start.
-// `report-head` (ResetToReportHead) takes `--batch NN` and is the `head_sha` of batch NN's report.
+// `report-head` (ResetToReportHead) takes `--batch NN` and is the `head_sha` of batch NN's report, an abbreviated one resolved to the commit it names as record-batch does.
 // It is accepted only for a begun, non-terminal batch whose report parses and whose head descends from or equals the batch's start, with no later batch begun and no live recovery strand of the batch in reed.
 // It is the one target allowed while the run lock is held, because Master runs it inside its run between a fork's report and record-batch.
 // Its bound is that those checks rule out every writer lyx can see; a Master that spawned an in-session fork out of order stays unseen.
