@@ -160,7 +160,10 @@ func TestGlyphChain_UnreferencedHandle(t *testing.T) {
 
 	f, base := newGlyphChainRepo(t)
 	dir, plan := writeGlyphPlan(t, []string{createCard(&createLeg{"plan:shapes#draft", "func NewFunc() int", ""})})
-	assertPlanGate(t, plan, f.root, nil)
+	// The plan gate's own verdict is TestGlyphChain_CrossCard's; here it only canonicalizes the draft handle the bind matches.
+	if _, err := ValidateFormat(plan, f.root); err != nil {
+		t.Fatalf("ValidateFormat(...) returned error: %v", err)
+	}
 
 	bound := bindCardOne(t, f, dir, base, f.commitEdits([]codeEdit{appendText(shapesFile, "\nfunc NewFunc() int { return 1 }\n")}))
 
