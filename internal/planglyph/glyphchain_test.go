@@ -645,9 +645,11 @@ var coverageFiles = []string{
 	"callees/local.go",
 	"callers/aliased.go",
 	"callers/callers.go",
+	"callers/clause.go",
 	"callers/nested.go",
 	"callers/more.go",
 	"callers/promoted.go",
+	"callers/usev2.go",
 	"callers/value.go",
 	"dotted/dotted.go",
 	"nested/use.go",
@@ -784,6 +786,22 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 				"callers/useother.go": "package callers\n\nimport \"example.com/glyphchain/other\"\n\nfunc useOther() int { return other.Method() }\n",
 			},
 			want: []string{"informational callers/callers.go"},
+		},
+		{
+			name:  "an import binds its last path element without a major-version suffix",
+			cards: []string{deleteCard("callees#Thing.Method")},
+			files: map[string]string{
+				"callers/usev2.go": "package callers\n\nimport \"example.com/other/v2\"\n\nfunc useV2() int { return other.Method() }\n",
+			},
+			want: []string{"informational callers/callers.go"},
+		},
+		{
+			name:  "an import of a subject's package binds its package clause",
+			cards: []string{deleteCard("dirname#DirDiffers")},
+			files: map[string]string{
+				"callers/clause.go": "package callers\n\nimport \"example.com/glyphchain/dirname\"\n\nfunc clause() { clausename.DirDiffers() }\n",
+			},
+			want: []string{"blocking callers/clause.go"},
 		},
 		{
 			name:  "an aliased importer is a blocking caller",
