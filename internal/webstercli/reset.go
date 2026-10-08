@@ -67,11 +67,12 @@ such path with the step that clears it; a tracked change outside the run's own
 writes does not refuse there, since keep guards it.
 On success the envelope carries target, sha, mutations (the worktree_reset
 entry, and a remote_branch_updated entry when the remote moved) and partial
-(false). --to start also carries moved (false when the start could not be moved
-to and the record was only archived, with the reason key naming why), uncommitted
-(the worktree paths left uncommitted outside the run's own state, which the next
-run starts over; absent when git status fails) and warnings (the findings the
-archive dropped, and the git status failure).
+(false). --to start, and every standalone reset, also carries uncommitted (the
+worktree paths left uncommitted outside the run's own state; absent when git
+status fails) and warnings (the findings the
+archive dropped, and the git status failure). --to start also carries moved
+(false when the start could not be moved to and the record was only archived,
+with the reason key naming why).
 When the checkout rewrite fails after the remote moved, the error
 envelope carries mutations and partial true; re-running the reset converges.
 
@@ -197,15 +198,18 @@ Example:
 			if !plan.ArchiveOnly {
 				fields["sha"] = plan.SHA
 			}
-			if target == websterengine.ResetToStart {
+			// A standalone reset keeps every change git carries across, so it lists what it left whatever the target.
+			if target == websterengine.ResetToStart || fab == nil {
 				// The reset is done by now, so a failed listing is reported beside it rather than as a refusal.
 				if uncommitted, err := websterengine.UncommittedPaths(c.geom); err != nil {
 					warnings = append(warnings, fmt.Sprintf("the uncommitted paths could not be read: %v; `git status` in the task worktree lists them", err))
 				} else {
 					fields["uncommitted"] = append([]string{}, uncommitted...)
 				}
-				fields["moved"] = !plan.ArchiveOnly
 				fields["warnings"] = warnings
+			}
+			if target == websterengine.ResetToStart {
+				fields["moved"] = !plan.ArchiveOnly
 				if plan.ArchiveOnly {
 					fields["reason"] = plan.Reason
 				}

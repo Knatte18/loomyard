@@ -391,9 +391,13 @@ func TestResetCmd(t *testing.T) {
 		return
 	}
 
-	if !t.Run("standalone start moves HEAD with git's keep form and lists what it left", func(t *testing.T) {
+	if !t.Run("standalone resets move HEAD with git's keep form and list what they left", func(t *testing.T) {
 		fx := newResetFixture(t, h, "rst-standalone")
-		fx.saveState(t, startedAt(fx.base))
+		preFix := gitkit.RevParse(t, fx.checkout, "HEAD")
+		gitkit.CommitFile(t, fx.checkout, "fix.txt", "fix", "fix commit")
+		st := startedAt(fx.base)
+		st.PreFixHead = preFix
+		fx.saveState(t, st)
 		fx.cli.openFabric = nil
 		fx.cli.parentBranch = nil
 		untracked := filepath.Join(fx.checkout, "untracked.txt")
@@ -401,7 +405,18 @@ func TestResetCmd(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		code, envelope := fx.reset(t, "--to", "start")
+		code, envelope := fx.reset(t, "--to", "pre-fix")
+		if code != 0 || envelope["ok"] != true || envelope["sha"] != preFix {
+			t.Fatalf("standalone reset --to pre-fix = %d, %v; want ok at %s", code, envelope, preFix)
+		}
+		if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != preFix {
+			t.Errorf("HEAD = %s; want %s", got, preFix)
+		}
+		if got, _ := envelope["uncommitted"].([]any); len(got) != 1 || got[0] != "untracked.txt" {
+			t.Errorf("pre-fix uncommitted = %v; want only untracked.txt", envelope["uncommitted"])
+		}
+
+		code, envelope = fx.reset(t, "--to", "start")
 		if code != 0 || envelope["ok"] != true || envelope["moved"] != true || envelope["sha"] != fx.base {
 			t.Fatalf("standalone reset --to start = %d, %v; want ok, moved at %s", code, envelope, fx.base)
 		}
