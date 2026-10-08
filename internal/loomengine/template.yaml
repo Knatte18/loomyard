@@ -5,6 +5,12 @@ plan: opus[medium]  # model-spec for the plan-phase producer agent (see contract
 plan_timeout_min: 120  # minutes the plan agent's shuttle run is allowed to run (a shorter ceiling than the discussion run)
 review: sonnet[medium]  # model-spec for the reviewer of every review segment round (see contracts/specs/llm-model-spec.md); a YAML list sets one model per round, with the last entry for every later round
 fix: opus[medium]  # model-spec for the fixer of every review segment round (see contracts/specs/llm-model-spec.md); a YAML list sets one model per round, with the last entry for every later round
+discussion_review: ""  # model-spec for the Discussion-Review reviewer; empty takes the run-wide review list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
+discussion_fix: ""  # model-spec for the Discussion-Review fixer; empty takes the run-wide fix list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
+plan_review: ""  # model-spec for the Plan-Review reviewer; empty takes the run-wide review list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
+plan_fix: ""  # model-spec for the Plan-Review fixer; empty takes the run-wide fix list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
+webster_review: ""  # model-spec for the Webster-Review reviewer; empty takes the run-wide review list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
+webster_fix: ""  # model-spec for the Webster-Review fixer; empty takes the run-wide fix list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
 judge: sonnet[medium]  # model-spec for every Bouncer row's seed and judge passes (see contracts/specs/llm-model-spec.md)
 review_timeout_min: 240  # minutes one review round's shuttle run is allowed to run
 friction: sonnet[medium]  # model-spec for the Tier 2 friction-reflection producer (see contracts/specs/llm-model-spec.md); empty turns Tier 2 self-reporting off

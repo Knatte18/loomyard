@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -651,5 +652,52 @@ func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 				t.Errorf("c.env.WebsterDeps.FrictionDir = %q; want %q", c.env.WebsterDeps.FrictionDir, want)
 			}
 		})
+	}
+}
+
+// seedLoomConfigWithKey overwrites <anchorPath>/_lyx/config/loom.yaml with the embedded template, its key line's value replaced by value.
+func seedLoomConfigWithKey(t *testing.T, anchorPath, key, value string) {
+	t.Helper()
+	var contents strings.Builder
+	replaced := false
+	for _, line := range strings.Split(loomengine.ConfigTemplate(), "\n") {
+		if strings.HasPrefix(line, key+":") {
+			line = key + ": " + value
+			replaced = true
+		}
+		contents.WriteString(line + "\n")
+	}
+	if !replaced {
+		t.Fatalf("key %q not present in loomengine.ConfigTemplate(); the fixture would silently test nothing", key)
+	}
+	cfgPath := filepath.Join(anchorPath, "_lyx", "config", "loom.yaml")
+	if err := os.WriteFile(cfgPath, []byte(contents.String()), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
+	}
+}
+
+// TestWire_PlanReviewReachesOnlyThePlanBurlerRow verifies a loom.yaml setting plan_review lands in the Plan-Burler row's RowReviewModels entry alone, the other two BurlerRound rows keeping the run-wide models.
+func TestWire_PlanReviewReachesOnlyThePlanBurlerRow(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "pair", ".")
+	seedLoomConfigWithKey(t, loc.AnchorPath(), "plan_review", "opus[effort=low]")
+
+	c := &loomCLI{runID: shedrun.SelfRunID}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	plan := c.env.RowReviewModels[loomshed.NamePlanBurler]
+	if len(plan.Review) != 1 || plan.Review[0].Effort != "low" {
+		t.Errorf("RowReviewModels[%q].Review = %+v; want one opus entry of effort low", loomshed.NamePlanBurler, plan.Review)
+	}
+	if !reflect.DeepEqual(plan.Fix, c.env.ReviewModels.Fix) {
+		t.Errorf("RowReviewModels[%q].Fix = %+v; want the run-wide %+v", loomshed.NamePlanBurler, plan.Fix, c.env.ReviewModels.Fix)
+	}
+	for _, row := range []string{loomshed.NameDiscussionBurler, loomshed.NameWebsterBurler} {
+		if got := c.env.RowReviewModels[row]; !reflect.DeepEqual(got, c.env.ReviewModels) {
+			t.Errorf("RowReviewModels[%q] = %+v; want the run-wide %+v", row, got, c.env.ReviewModels)
+		}
 	}
 }

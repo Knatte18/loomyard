@@ -285,6 +285,33 @@ func TestBurlerRoundEntry_EnvReviewFallback(t *testing.T) {
 		}
 	})
 
+	t.Run("RowMapEntryReplacesEnvModelsForItsOwnRowOnly", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.ReviewModels = burlerengine.RoundModels{
+			Review: []burlerengine.ModelChoice{{Model: "env-model"}},
+			Fix:    []burlerengine.ModelChoice{{Model: "env-fix-model"}},
+		}
+		env.RowReviewModels = map[string]burlerengine.RoundModels{
+			"review-round": {
+				Review: []burlerengine.ModelChoice{{Model: "row-model"}},
+				Fix:    []burlerengine.ModelChoice{{Model: "row-fix-model"}},
+			},
+		}
+		cfg := minimalBurlerConfig()
+
+		_, opts := callAndCaptureProfile(t, "review-round", cfg, env)
+		if opts.Review.Model != "row-model" || opts.Fix.Model != "row-fix-model" {
+			t.Errorf("opts models = (%+v, %+v); want the row's own entry (row-model, row-fix-model)", opts.Review, opts.Fix)
+		}
+
+		otherEnv := newTestEnv(t)
+		otherEnv.ReviewModels, otherEnv.RowReviewModels = env.ReviewModels, env.RowReviewModels
+		_, other := callAndCaptureProfile(t, "other-round", cfg, otherEnv)
+		if other.Review.Model != "env-model" || other.Fix.Model != "env-fix-model" {
+			t.Errorf("other row's models = (%+v, %+v); want Env.ReviewModels (env-model, env-fix-model)", other.Review, other.Fix)
+		}
+	})
+
 	t.Run("RowSetsOverridesEnvValues", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.ReviewTimeout = 45 * time.Second

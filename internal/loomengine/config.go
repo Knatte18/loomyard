@@ -1,7 +1,7 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1,
+// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
@@ -304,6 +304,12 @@ type Config struct {
 	PlanTimeoutMin        int           `yaml:"plan_timeout_min"`
 	Review                ModelSpecList `yaml:"review"`
 	Fix                   ModelSpecList `yaml:"fix"`
+	DiscussionReview      ModelSpecList `yaml:"discussion_review"`
+	DiscussionFix         ModelSpecList `yaml:"discussion_fix"`
+	PlanReview            ModelSpecList `yaml:"plan_review"`
+	PlanFix               ModelSpecList `yaml:"plan_fix"`
+	WebsterReview         ModelSpecList `yaml:"webster_review"`
+	WebsterFix            ModelSpecList `yaml:"webster_fix"`
 	Judge                 string        `yaml:"judge"`
 	ReviewTimeoutMin      int           `yaml:"review_timeout_min"`
 	Friction              string        `yaml:"friction"`
@@ -355,7 +361,30 @@ func (l *ModelSpecList) UnmarshalYAML(node *yaml.Node) error {
 
 // ConfigOpenMaps returns the loom.yaml keys whose value is a scalar or a per-round list, which configengine carries whole through reconcile and --set.
 func ConfigOpenMaps() []string {
-	return []string{"review", "fix"}
+	return []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix"}
+}
+
+// segmentModelList is one per-segment reviewer or fixer model-spec list with the loom.yaml key it came from.
+type segmentModelList struct {
+	key   string
+	specs ModelSpecList
+}
+
+// segmentModelKeys returns the per-segment reviewer and fixer model-spec lists of cfg, each optional.
+func segmentModelKeys(cfg Config) []segmentModelList {
+	return []segmentModelList{
+		{"discussion_review", cfg.DiscussionReview},
+		{"discussion_fix", cfg.DiscussionFix},
+		{"plan_review", cfg.PlanReview},
+		{"plan_fix", cfg.PlanFix},
+		{"webster_review", cfg.WebsterReview},
+		{"webster_fix", cfg.WebsterFix},
+	}
+}
+
+// isUnsetModelSpecList reports whether specs is empty or a single empty string, which a per-segment key reads as "take the run-wide list".
+func isUnsetModelSpecList(specs ModelSpecList) bool {
+	return len(specs) == 0 || (len(specs) == 1 && specs[0] == "")
 }
 
 // keyAtLine returns the top-level key of contents whose entry spans line, or "" when none does.
@@ -422,6 +451,15 @@ func LoadConfig(baseDir, module string) (Config, error) {
 
 	if err := validateModelSpecList("fix", cfg.Fix); err != nil {
 		return Config{}, err
+	}
+
+	for _, segment := range segmentModelKeys(cfg) {
+		if isUnsetModelSpecList(segment.specs) {
+			continue
+		}
+		if err := validateModelSpecList(segment.key, segment.specs); err != nil {
+			return Config{}, err
+		}
 	}
 
 	if _, err := modelspec.Parse(cfg.Judge); err != nil {

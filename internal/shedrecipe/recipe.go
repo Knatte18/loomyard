@@ -77,6 +77,9 @@ type Env struct {
 	// Both are legal on Env at all because Env carries roots and run-wide values only, and one review model list shared by every review segment is exactly such a value.
 	ReviewModels  burlerengine.RoundModels
 	ReviewTimeout time.Duration
+	// RowReviewModels holds a BurlerRound row's own reviewer and fixer model lists, keyed by row name like SegmentBounces.
+	// A row with no entry, and a nil map, take ReviewModels.
+	RowReviewModels map[string]burlerengine.RoundModels
 
 	// ReviewMaxBounces is the run-wide bounce budget of every review segment, read by loomrecipe alone.
 	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.
