@@ -429,7 +429,11 @@ func validateModelSpecList(key string, specs ModelSpecList) error {
 
 // validateFanKeys resolves each non-empty fan key of cfg through burler.yaml, which falls back per name to the embedded template.
 // A fan that does not resolve is refused naming the key, the unknown name and the fans that exist.
+// With both fan keys empty, burler.yaml is never read.
 func validateFanKeys(baseDir string, cfg Config) error {
+	if cfg.DiscussionFan == "" && cfg.PlanFan == "" {
+		return nil
+	}
 	burlerCfg, err := burlerengine.LoadConfig(baseDir)
 	if err != nil {
 		return err
