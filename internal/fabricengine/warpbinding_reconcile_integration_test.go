@@ -32,10 +32,10 @@ import (
 // prime warp worktree's layout, a ready-to-use Topology, and the two bare remote paths the tests need
 // to author expected binding content and to sever/restore the warp side's origin.
 type clonedHubFixture struct {
-	Result   fabricengine.CloneResult
-	Layout   *lyxcwd.Location
-	Topology *fabricengine.Topology
-	CodeBare string
+	Result      fabricengine.CloneResult
+	Layout      *lyxcwd.Location
+	Topology    *fabricengine.Topology
+	CodeBare    string
 	RecordsBare string
 }
 
@@ -88,10 +88,10 @@ func newClonedHubFixture(t *testing.T) clonedHubFixture {
 	}
 
 	return clonedHubFixture{
-		Result:   res,
-		Layout:   l,
-		Topology: top,
-		CodeBare: warpBare,
+		Result:      res,
+		Layout:      l,
+		Topology:    top,
+		CodeBare:    warpBare,
 		RecordsBare: weftBare,
 	}
 }
