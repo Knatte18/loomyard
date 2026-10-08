@@ -1084,11 +1084,12 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 }
 
 // TestRecoverSpawnOrAttach_StartFailures asserts a transient failure before the recovery strand is recorded refuses with the transient re-run as the way forward, records no batch state, and spawns no strand, after which re-running the verb once the failure clears spawns it.
-// The failures are a not-ready start (shuttle's Start returning ErrNotStarted after tearing its own strand down, a strand that must never be persisted as this batch's recovery record) and a git status that cannot list the worktree's uncommitted paths for the recovery prompt.
+// The failures are a not-ready start (shuttle's Start returning ErrNotStarted after tearing its own strand down, a strand that must never be persisted as this batch's recovery record) and, for the recovery prompt's uncommitted paths, a git status that cannot list them or an audit of the run's sessions that cannot tell which of them the run wrote.
 func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 	t.Parallel()
 
 	statusErr := errors.New("git status failed")
+	auditErr := errors.New("transcript unreadable")
 	tests := []struct {
 		name    string
 		fail    func(fx *recoverFixture) (restore func())
@@ -1110,6 +1111,16 @@ func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 				return func() { fx.Git.dirtyPathsErr = nil }
 			},
 			wantErr: statusErr,
+		},
+		{
+			name: "a failed audit of the run's writes to the uncommitted paths",
+			fail: func(fx *recoverFixture) func() {
+				fx.Git.dirtyPaths = []string{"base.txt"}
+				fx.Deps.State.MasterSessionID = "s1"
+				fx.Engine.AuditErr = auditErr
+				return func() { fx.Engine.AuditErr = nil }
+			},
+			wantErr: auditErr,
 		},
 	}
 	for _, tt := range tests {
