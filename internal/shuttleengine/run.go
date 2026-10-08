@@ -252,6 +252,8 @@ type Run struct {
 	expiredLabels []string
 	// wait is the wait marker and pane mark this run has on show, display only.
 	wait waitState
+	// eventsRead is true when the latest pollEventsTick parsed at least one event, which ends a held wait.
+	eventsRead bool
 
 	// gate is the GateSpec this run was told, empty for an ungated run — the same zero value Run/Attach's own RunGated(spec, GateSpec{})/AttachGated(spec, GateSpec{}) delegation passes, so an ungated run behaves byte-for-byte as it did before the gate existed.
 	gate GateSpec

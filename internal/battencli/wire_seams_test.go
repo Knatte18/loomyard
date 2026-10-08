@@ -246,8 +246,22 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 		t.Fatalf("readAgentActivity() = %+v, %v, %v; want the live run hub:task:impl last active at %s, no wait", runs, waitLive, err, activeAt)
 	}
 
-	marker := fmt.Sprintf("kind: background shells\nstarted: 2026-01-01T10:00:00Z\npid: %d\n", livePID)
-	if err := os.WriteFile(filepath.Join(liveDir, "wait.yaml"), []byte(marker), 0o644); err != nil {
+	writeMarker := func(dir, kind string) {
+		marker := fmt.Sprintf("kind: %s\nstarted: 2026-01-01T10:00:00Z\npid: %d\n", kind, livePID)
+		if err := os.WriteFile(filepath.Join(dir, "wait.yaml"), []byte(marker), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeMarker(liveDir, "held")
+	if _, waitLive, err := readAgentActivity(taskLocation); err != nil || waitLive {
+		t.Errorf("readAgentActivity() waitLive = %v, error = %v with only a held marker; want false, nil", waitLive, err)
+	}
+	writeMarker(filepath.Join(runsRoot, "ended"), "background shells")
+	if _, waitLive, err := readAgentActivity(taskLocation); err != nil || !waitLive {
+		t.Errorf("readAgentActivity() waitLive = %v, error = %v with a held marker beside a live background-shell marker; want true, nil", waitLive, err)
+	}
+	writeMarker(liveDir, "background shells")
+	if err := os.Remove(filepath.Join(runsRoot, "ended", "wait.yaml")); err != nil {
 		t.Fatal(err)
 	}
 	if _, waitLive, err := readAgentActivity(taskLocation); err != nil || !waitLive {

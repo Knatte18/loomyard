@@ -168,10 +168,13 @@
 // A shell once waited out stays expired for the rest of the run, so a later turn end listing it again ends at once.
 // Result.ExpiredShells names the waited-out shells' labels in expiry order, and each expiry is logged as a warning.
 //
-// Wait shows its two Go-side waits, a gate entry's closure (`gate <entry name>`) and the background-shell wait above (`background shells`), in two places:
+// Wait shows its three Go-side waits, a gate entry's closure (`gate <entry name>`), the background-shell wait above (`background shells`) and a held turn end (`held`), in two places:
 // a WaitMarker file, `wait.yaml` in the run's own directory, carrying the label, the start time and the pid of the process running Wait,
 // and a pane mark that ReedOps.SetWaitMark puts on the run's strand.
+// A running gate entry ranks first, then the background-shell wait, then the held wait.
+// The held wait starts at a held turn end, stamped with the run clock's time, and the next tick that reads a new event clears it, so the following turn start, turn end or ask ends it.
 // ReadWaitMarker returns the first marker with a live pid among a run-directory root's runs, which is how `lyx loom status` reads it.
+// ReadWaitMarkers returns every such marker, and WaitMarker.Held tells the held label, so batten's wait reading can skip a held wait: a held run is idle, and its quiet notice still fires.
 // Both exist only for display and status: no shuttle decision reads either,
 // and a failure to write, remove, set or clear one is logged and changes no verdict, error return, re-prompt or gate outcome.
 // Wait clears the pane mark and removes the marker file on entry,

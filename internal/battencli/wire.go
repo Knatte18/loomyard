@@ -444,7 +444,8 @@ func readStopReport(taskLocation *lyxcwd.Location) (path string, at time.Time, f
 }
 
 // readAgentActivity reads the live agent runs of the task worktree through the shuttle config and a Claude engine, mapped onto battenshed's neutral type,
-// and reports whether a Go-side wait is live: a running verify, or a shuttle wait.
+// and reports whether a Go-side wait is live: a running verify, or a shuttle wait that is not a held turn end.
+// A held run is idle at its turn end, so it does not suppress the quiet notice.
 // Both waits are read from their marker files, never from the pane options that display them.
 func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentActivity, waitLive bool, err error) {
 	anchor := taskLocation.AnchorPath()
@@ -466,11 +467,16 @@ func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentAc
 	if verifyLive {
 		return runs, true, nil
 	}
-	_, shuttleLive, err := shuttleengine.ReadWaitMarker(cfg, anchor)
+	markers, err := shuttleengine.ReadWaitMarkers(cfg, anchor)
 	if err != nil {
 		return nil, false, err
 	}
-	return runs, shuttleLive, nil
+	for _, marker := range markers {
+		if !marker.Held() {
+			return runs, true, nil
+		}
+	}
+	return runs, false, nil
 }
 
 // markBattenWatched writes the batten-watched marker of the task worktree's run, holding this process's pid, while noticesReachDriversParent holds, and removes it otherwise.

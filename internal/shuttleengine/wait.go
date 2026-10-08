@@ -236,6 +236,9 @@ func (run *Run) Wait() (Result, error) {
 	for tick := 1; ; tick++ {
 		outcome, held, err := run.pollEventsTick()
 		run.syncShellWait()
+		if err == nil && run.eventsRead {
+			run.endHeldWait()
+		}
 		if err != nil {
 			eventsFailures++
 			if eventsFailures >= maxEventsReadRetries {
@@ -252,6 +255,7 @@ func (run *Run) Wait() (Result, error) {
 				// A turn end without every output file never ends the run.
 				// Log it so the durable trace records each one, and keep polling the same agent.
 				logger.Info("shuttle: turn end held, output files missing", "strandGUID", run.state.StrandGUID, "offset", held.offset, "outstanding", len(held.tasks), "lastAssistantMessage", held.message)
+				run.beginHeldWait()
 				run.notifyHeld(held)
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
 				// Not a gated Done: finalize exactly as this branch always has.
@@ -575,6 +579,7 @@ func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
 // A hold never extends run.deadline, so a held run is bounded by its caller's own deadline and by the liveness check.
 // Returns outcome == "" and a nil held turn end when there is nothing new to classify yet.
 func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
+	run.eventsRead = false
 	startOffset := run.offset
 	data, newOffset, err := readEventsFrom(run.state.EventsPath, startOffset)
 	if err != nil {
@@ -596,6 +601,7 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 		return run.expiredTurnEnd()
 	}
 
+	run.eventsRead = true
 	last := events[len(events)-1]
 	turnEndOffset := offsetPastEvent(data, startOffset, newOffset, last)
 	if last.Kind == EventWaiting {
