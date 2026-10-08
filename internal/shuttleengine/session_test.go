@@ -290,6 +290,7 @@ func TestRunner_LoadSkillsAndClassifySkillLoad_ErrorOnPlainEngine(t *testing.T) 
 
 // TestRunner_SessionState covers the state read of one run by guid: the found run reads at the runner's clock, and an unknown guid is an error.
 func TestRunner_SessionState(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC)
 	runner := newFixture(t, &fakeReed{}, &fakeEngine{}, withStrand("strand-1"), withClock(&frozenClock{now: now})).Runner
 
