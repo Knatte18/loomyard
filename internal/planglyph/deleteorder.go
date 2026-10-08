@@ -78,7 +78,7 @@ type editRegion struct {
 	end   int
 }
 
-// editTarget is one member glyph or file an Edit group of card targets.
+// editTarget is one Edit-group ref of a card that is a member glyph or a file, with its shape and disk path.
 type editTarget struct {
 	card  planparser.Card
 	ref   string
