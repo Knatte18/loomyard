@@ -273,10 +273,11 @@ func TestCompact_CycleReloadsPluginsThenPointerNamingTheNote(t *testing.T) {
 	e.withSkills()
 	e.reachCompacting()
 	e.landBoundary(e.state().PhaseEnteredAt.Add(time.Second), 150)
-	e.tick() // boundary read and the pane idle: the plugins reloaded
-	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPointer || !st.ReloadSkipsSkills {
+	e.tick() // boundary read and the pane idle: the color typed
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPlugins || !st.ReloadSkipsSkills {
 		t.Fatalf("state = %+v", st)
 	}
+	e.tick() // the plugins reloaded
 	e.tick() // the pointer
 	e.endTurn("resumed")
 	e.assertReload("compact:", e.state().LastHandoff, false)
