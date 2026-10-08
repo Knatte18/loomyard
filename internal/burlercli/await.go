@@ -22,8 +22,9 @@ const awaitReviewVerb = "await-review"
 // awaitPollInterval is the fixed pause between two stats of the marker.
 const awaitPollInterval = 200 * time.Millisecond
 
-// defaultAwaitCap is the --cap default: below an agent's default two-minute Bash tool timeout, so the call returns before the tool kills it.
-const defaultAwaitCap = 100 * time.Second
+// defaultAwaitCap is the --cap default: under the 5-minute prompt-cache TTL, so every re-run keeps the fixer's cache warm.
+// The fixer runs the command with a Bash tool timeout above the cap (300000 ms), as its stencil tells it.
+const defaultAwaitCap = 250 * time.Second
 
 // awaitReviewCmd builds `lyx burler await-review <marker-path>`.
 // It prints ok with ready true and the absolute marker path as soon as the marker exists,
