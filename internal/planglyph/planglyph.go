@@ -21,6 +21,8 @@ import (
 // report as a gate/infrastructure failure rather than as a plan finding so nobody mistakes "quarry
 // broke" for "the plan is wrong".
 //
+// After resolvePass it appends planGatePass's findings, skipping that pass when resolvePass failed.
+//
 // This is the WHOLE-plan form, correct before execution starts (both plan gate sites -- Plan-Write's
 // and Plan-Burler's own gates -- and the standalone verbs). Once execution is under way, use
 // ValidateDispatch instead.
@@ -28,7 +30,11 @@ func ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, erro
 	findings := convertAll(planparser.ValidateFormat(plan, worktreeRoot))
 	resolveFindings, err := resolvePass(plan, worktreeRoot, nil, nil)
 	findings = append(findings, resolveFindings...)
-	return findings, err
+	if err != nil {
+		return findings, err
+	}
+	gateFindings, err := planGatePass(plan, worktreeRoot)
+	return append(findings, gateFindings...), err
 }
 
 // ValidateRework is the rework gate's check set: ValidateFormat's findings, then planparser.CheckFirstCard's finding when plan's first_card differs from told, the card number Go told the rework session to start at.
@@ -46,12 +52,16 @@ func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 	findings := convertAll(planparser.Validate(plan, worktreeRoot))
 	resolveFindings, err := resolvePass(plan, worktreeRoot, nil, nil)
 	findings = append(findings, resolveFindings...)
-	return findings, err
+	if err != nil {
+		return findings, err
+	}
+	gateFindings, err := planGatePass(plan, worktreeRoot)
+	return append(findings, gateFindings...), err
 }
 
 // ValidateDispatch is ValidateFormat's mid-execution form: the same check set, scoped to the cards
-// whose work has NOT landed yet. completed names every card already built, and a caller with none
-// gets exactly ValidateFormat's answer.
+// whose work has NOT landed yet.
+// completed names every card already built, and a caller with none gets ValidateFormat's answer less planGatePass's findings, a pass that runs at the plan gates only.
 //
 // The scoping is not an optimisation, it is correctness. A plan describes intended change, so a card
 // whose work already landed necessarily contradicts the tree it is re-resolved against: a completed
@@ -68,14 +78,10 @@ func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 // a pending card's Uses or target of one is excluded from the status check rather than resolved, because the destination may legitimately not exist on disk yet.
 // Its Delete and Edit targets add nothing.
 //
-// The two halves are scoped differently, deliberately. The resolve-backed pass runs over the pending
-// cards ALONE, so a completed card's targets are never resolved and never paired against a pending
-// card for containment — there is no race left to prevent with work that already landed. The pure
-// pass runs over the WHOLE plan and has only its card-scoped findings dropped, because several pure
-// checks are plan-level and would misreport against a filtered plan: index-file-mismatch would see
-// every completed card's file as orphaned, card-numbering would see gaps, and path-missing's
-// satisfied-by-another-card union would lose the Create and Rename destinations completed cards
-// contribute to still-pending ones.
+// The two halves are scoped differently, deliberately.
+// The resolve-backed pass runs over the pending cards ALONE, so a completed card's targets are never resolved against a tree it deliberately changed.
+// The pure pass runs over the WHOLE plan and has only its card-scoped findings dropped, because several pure checks are plan-level and would misreport against a filtered plan:
+// index-file-mismatch would see every completed card's file as orphaned, card-numbering would see gaps, and path-missing's satisfied-by-another-card union would lose the Create and Rename destinations completed cards contribute to still-pending ones.
 //
 // Once completed is non-empty, a Delete target of a pending card that is already gone is reported as the informational delete-target-gone finding instead of the blocking path-missing or glyph-not-found one:
 // the wanted end state is already the tree's state.
@@ -228,11 +234,9 @@ func convertAll(errs []planparser.ValidationError) []Finding {
 // returns nil findings and a nil error immediately, opening no repository at all — language: none
 // degrades to today's path-only behaviour, with no quarry call whatsoever.
 //
-// Otherwise it canonicalizes every draft plan: handle first (card 19's CanonicalizeHandles), so the
-// later passes — the resolve status policy (card 17's statusFindings), the Create inversion (card
-// 18's createFindings), and the resolve-backed containment tier (card 20's resolveContainment) —
-// see the canonical spellings rather than the draft ones, over the single batched Resolve call
-// every one of those passes shares.
+// Otherwise it canonicalizes every draft plan: handle first (card 19's CanonicalizeHandles).
+// Two passes follow: the resolve status policy (card 17's statusFindings) and the Create inversion (card 18's createFindings).
+// Both see the canonical spellings rather than the draft ones, over the single batched Resolve call they share.
 //
 // Its second return is a non-nil error whenever the pass could not reach a verdict at all — a
 // category distinct from every per-target verdict those passes report, so an outage is never
@@ -347,7 +351,6 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 
 	findings = append(findings, statusFindings(current, nonCreateResults)...)
 	findings = append(findings, createFindings(current, createIndex)...)
-	findings = append(findings, resolveContainment(current, results)...)
 
 	deleteOrderFindings, err := LaterDeleteReferences(plan, current.Cards, current.Cards, worktreeRoot)
 	findings = append(findings, deleteOrderFindings...)

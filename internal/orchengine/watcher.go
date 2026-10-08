@@ -39,6 +39,8 @@ type Session interface {
 	ContextTokens(turnEnd shuttleengine.Event) (shuttleengine.ContextReading, error)
 	// SessionIdle probes whether the session shows an empty input box with no turn in progress, and whether the pane is too short to tell.
 	SessionIdle(guid string) (shuttleengine.IdleProbe, error)
+	// SessionState returns the session's state as read from the run's files; the watcher only logs it.
+	SessionState(guid string) (shuttleengine.RunSessionState, error)
 	// Send types text into the session as a new turn.
 	Send(guid, text string) error
 	// ClearSession types the provider's clear command into the session.
@@ -94,6 +96,18 @@ type Watcher struct {
 	newestRead time.Time            // When newest was first read.
 
 	seen phaseEvents // What the current non-idle phase has read so far.
+
+	// idleDisagreement is the pair last logged as a disagreement between the idle probe and the session state, valid while hasIdleDisagreement.
+	// It is memory only, and binding to another strand clears it.
+	idleDisagreement    idleStatePair
+	hasIdleDisagreement bool
+}
+
+// idleStatePair is one idle probe answer beside the session state it disagreed with.
+type idleStatePair struct {
+	idle  bool
+	state shuttleengine.SessionStateName
+	cause string
 }
 
 // phaseEvents records what the current non-idle phase has observed, which the cursor has moved past and a later tick must still know.
@@ -305,6 +319,7 @@ func (w *Watcher) initCursor(st State) (State, error) {
 	w.newest, w.seen, w.replaying = nil, phaseEvents{}, false
 	w.compactedAt = time.Time{}
 	w.colorPending = true
+	w.idleDisagreement, w.hasIdleDisagreement = idleStatePair{}, false
 	switch {
 	case st.Phase == PhaseIdle:
 		w.cursor = st.LastInjectionOffset
@@ -376,6 +391,7 @@ func (w *Watcher) probeIdle(st *State) (shuttleengine.IdleProbe, error) {
 	if err != nil {
 		return probe, err
 	}
+	w.logIdleStateDisagreement(st.Strand, probe)
 	switch {
 	case probe.TooShort && st.Stuck != paneTooShortReason:
 		logger.Warn("orch: pane too short for the idle probe", "phase", string(st.Phase), "strandGUID", st.Strand)
@@ -386,6 +402,37 @@ func (w *Watcher) probeIdle(st *State) (shuttleengine.IdleProbe, error) {
 		return probe, w.save(*st)
 	}
 	return probe, nil
+}
+
+// logIdleStateDisagreement warns once when probe reads idle beside the state busy, or not idle beside idle-done, idle-stalled or asking, and again only after either side changes.
+// A probe that reports the pane too short says nothing and is not compared.
+// A state that cannot be read is logged at Debug, and nothing the watcher decides depends on the state.
+func (w *Watcher) logIdleStateDisagreement(strand string, probe shuttleengine.IdleProbe) {
+	if probe.TooShort {
+		return
+	}
+	reading, err := w.session.SessionState(strand)
+	if err != nil {
+		logger.Debug("orch: session state unreadable", "strandGUID", strand, "cause", err)
+		return
+	}
+	state := reading.State
+	var disagrees bool
+	if probe.Idle {
+		disagrees = state.Name == shuttleengine.SessionBusy
+	} else {
+		disagrees = state.Name == shuttleengine.SessionIdleDone || state.Name == shuttleengine.SessionIdleStalled || state.Name == shuttleengine.SessionAsking
+	}
+	if !disagrees {
+		w.hasIdleDisagreement = false
+		return
+	}
+	pair := idleStatePair{idle: probe.Idle, state: state.Name, cause: state.Cause}
+	if w.hasIdleDisagreement && w.idleDisagreement == pair {
+		return
+	}
+	w.idleDisagreement, w.hasIdleDisagreement = pair, true
+	logger.Warn("orch: session state disagrees with the idle probe", "strandGUID", strand, "idle", probe.Idle, "state", string(state.Name), "cause", state.Cause, "since", state.Since)
 }
 
 // storeReading records reading in st, taken through turnEnd; an unknown reading is stored as zero tokens.

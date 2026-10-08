@@ -18,3 +18,5 @@ turn_ends:
   - reading: done
     outputs_exist: true
     old_reading: waiting on shell bn68egcp9, forever
+states:
+  - {state: idle-done, cause: done}

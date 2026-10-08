@@ -238,6 +238,25 @@ Restore the original `created` value to make the binding usable again (`lyx reed
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### S8 -- Session state of a running agent
+
+**Covers:** shuttle
+
+**Goal:** "Start an interactive shuttle agent, read what `lyx shuttle state` says its session is doing while it works and after it asks its question, narrow the list to the one run, and confirm every printed state matches what the pane shows."
+
+**Watch:** Start the S2 run (`lyx shuttle run --prompt "before writing decision.md, stop and ask me which of two options you should pick — do not guess" --output-file decision.md --interactive`).
+From a second terminal, `lyx shuttle state` prints one JSON envelope whose `runs` lists the run with its `strand`, `guid`, `state`, `cause`, `detail`, `outstanding`, `since` and `history`.
+While the pane shows the agent working, the run reads `busy` with cause `turn`.
+After the agent ends its turn with its question, the run reads `asking` with cause `awaiting-input`, because the run is interactive and `decision.md` does not exist yet, and `since` is the time the turn ended.
+`lyx shuttle state --strand <strand name or guid>` lists only that run, and `--strand no-such-strand` prints an empty `runs` list with `"ok":true`.
+Reading the state changes nothing: the pane, the run and `lyx reed status` are the same before and after.
+A state the pane contradicts (for instance `idle-done` while the agent still works) is a real failure here.
+The state model is in shadow mode, so a mismatch is a finding about the reading, never a reason the run itself misbehaved.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -249,6 +268,7 @@ Binary fingerprint: <copy from the header above>
 S1: <OK|WARN|FAIL> -- <one-line note if not OK>
 S2: <OK|WARN|FAIL> -- <one-line note if not OK>
 S3: <OK|WARN|FAIL> -- <one-line note if not OK>
+S8: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

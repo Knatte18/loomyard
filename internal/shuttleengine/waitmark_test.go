@@ -7,6 +7,7 @@ package shuttleengine
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -32,11 +33,14 @@ func TestReadWaitMarker(t *testing.T) {
 	started := time.Date(2026, 10, 3, 9, 15, 0, 0, time.UTC)
 	liveBody := "kind: gate review\nstarted: 2026-10-03T09:15:00Z\npid: 4242\n"
 	deadBody := "kind: background shells\nstarted: 2026-10-03T09:00:00Z\npid: 4343\n"
+	heldBody := "kind: held\nstarted: 2026-10-03T09:10:00Z\npid: 4242\n"
 	tests := []struct {
 		name  string
 		runs  map[string]string
 		want  WaitMarker
 		found bool
+		// kinds is the kind of every live marker ReadWaitMarkers returns, in directory order.
+		kinds []string
 	}{
 		{name: "no runs"},
 		{name: "a run directory with no marker", runs: map[string]string{"run-a": ""}},
@@ -45,12 +49,14 @@ func TestReadWaitMarker(t *testing.T) {
 			runs:  map[string]string{"run-a": liveBody},
 			want:  WaitMarker{Kind: "gate review", Started: started, PID: livePID},
 			found: true,
+			kinds: []string{"gate review"},
 		},
 		{
 			name:  "a dead-pid marker is skipped in favour of a live one in another run",
 			runs:  map[string]string{"run-a": deadBody, "run-b": liveBody},
 			want:  WaitMarker{Kind: "gate review", Started: started, PID: livePID},
 			found: true,
+			kinds: []string{"gate review"},
 		},
 		{name: "only a dead-pid marker reads as absent", runs: map[string]string{"run-a": deadBody}},
 		{
@@ -58,6 +64,14 @@ func TestReadWaitMarker(t *testing.T) {
 			runs:  map[string]string{"run-a": "kind: [unterminated", "run-b": liveBody},
 			want:  WaitMarker{Kind: "gate review", Started: started, PID: livePID},
 			found: true,
+			kinds: []string{"gate review"},
+		},
+		{
+			name:  "every live marker is returned, the first as the single reading, and only the held label is held",
+			runs:  map[string]string{"run-a": heldBody, "run-b": deadBody, "run-c": liveBody},
+			want:  WaitMarker{Kind: "held", Started: started.Add(-5 * time.Minute), PID: livePID},
+			found: true,
+			kinds: []string{"held", "gate review"},
 		},
 	}
 	for _, tt := range tests {
@@ -80,6 +94,21 @@ func TestReadWaitMarker(t *testing.T) {
 			}
 			if found && (got.Kind != tt.want.Kind || !got.Started.Equal(tt.want.Started) || got.PID != tt.want.PID) {
 				t.Errorf("ReadWaitMarker = %+v; want %+v", got, tt.want)
+			}
+
+			all, err := ReadWaitMarkers(Config{RunDir: root}, t.TempDir())
+			if err != nil {
+				t.Fatalf("ReadWaitMarkers: %v", err)
+			}
+			var kinds []string
+			for _, marker := range all {
+				kinds = append(kinds, marker.Kind)
+				if marker.Held() != (marker.Kind == "held") {
+					t.Errorf("Held() of %q = %v; want true only for the held label", marker.Kind, marker.Held())
+				}
+			}
+			if !reflect.DeepEqual(kinds, tt.kinds) {
+				t.Errorf("ReadWaitMarkers kinds = %v; want %v", kinds, tt.kinds)
 			}
 		})
 	}

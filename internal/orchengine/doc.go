@@ -125,6 +125,11 @@
 // A probe that reports the pane too short to draw an input box records `orch pane too short for the idle probe; resize or use the larger client` in State.Stuck, saved and logged once, and holds cycles and notice delivery like any failing probe.
 // The next probe that does not report it clears that reason and only that reason, so `lyx orch status` shows the hold in the idle phase too.
 //
+// Session.SessionState reads the orch session's state from its shuttle run record, which is interactive with a never-written sentinel output, so its turn ends read `asking`.
+// The watcher only logs it: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled` or `asking`, logs `orch: session state disagrees with the idle probe` at Warn.
+// A disagreement is logged once and again only after either side changes, the last pair being watcher memory and not State.
+// A state that cannot be read is logged at Debug, and no probe result, cycle, delivery or State write depends on the state.
+//
 // A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace, and adds one:
 // State.LastDeferral is zero or at least `soft_idle_s` before now.
 // In compact mode a hard trigger is held by the same rule after a failed compaction, and a requested cycle never is.

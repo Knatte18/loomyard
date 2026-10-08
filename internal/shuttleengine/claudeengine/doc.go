@@ -64,6 +64,23 @@
 // a boundary reading carries its `postTokens` and timestamp and is marked compacted.
 // Every failure degrades to an unknown reading.
 //
+// The session-signal parse (SessionSignalParser) reads the same events file as ParseEvents but yields a separate stream, in signals.go, and leaves ParseEvents unchanged.
+// A `Stop` line is a turn end with its outstanding tasks read exactly as ParseEvents reads them, a `StopFailure` an API-error turn end, a `UserPromptSubmit` a turn start, a `PreToolUse` for `AskUserQuestion` an ask, a `Notification` of type permission prompt or elicitation dialog an ask and `idle_prompt` an idle notice (any other type is skipped), and a `SessionEnd` a session end with its reason.
+// A `SessionEnd` reason of `logout`, `prompt_input_exit` or `other` ends the process; `clear`, `resume` and an unknown reason do not.
+// A recording hook writes a stamp line `{"lyx_stamp":"<hook>","lyx_at":"<RFC 3339 UTC>"}` before its payload, and the parser gives a payload the time of the nearest preceding untaken stamp naming its hook.
+// A payload with no such stamp, or whose stamp's time is empty or malformed, reads a zero time.
+// The count the parser reports as consumed stops before the trailing run of stamp lines with no payload after them, so an incremental reader sees each stamp with its payload at its next read.
+// A transcript-fallback turn end's tasks are read from the transcript at parse time, so the same line parsed again later can read fewer.
+//
+// The events file holds, per recording hook (Stop, UserPromptSubmit, StopFailure, Notification, SessionEnd and, in an interactive run, the AskUserQuestion record), a stamp line and then the hook's payload line.
+// The hook command is plain POSIX `sh`, `date`, `cat` and `printf`: one `printf` writes the stamp, `;` joins it to the unchanged payload append so a failed stamp never blocks the payload, and the four newer hooks end in `; true` so they exit 0 whatever the append does.
+// A failed `date` leaves the stamp's time empty, which the parser reads as no time.
+// No recording hook prints to standard output.
+// Two accepted races follow from the append order.
+// Hooks that fire at once can interleave their stamps ahead of both payloads, which the pairing by hook name absorbs;
+// and a reader can see a payload without its newline, or a stamp without its payload, which the parser leaves unconsumed until the line completes.
+// The stamp's time is taken when the hook starts, so it can precede the payload's append by the length of the hook's own run.
+//
 // The activity reading (ActivityReader) takes the transcript's last write time and walks it backwards for the newest main-chain assistant entry that ends a turn or carries Claude Code's `isApiErrorMessage` marker.
 // A session whose newest such entry carries the marker stands on an API error, and the entry's final text is the error's text;
 // a sidechain entry never counts, and a later normal turn end clears the error.
@@ -71,6 +88,16 @@
 //
 // The resume check refuses a session whose registry entry names a live pid, unless the live process's start time differs from the entry's `procStart`, which proves the pid was reused.
 // An unreadable start time, or an entry without `procStart`, still refuses and says the pid could not be proven reused.
+//
+// The session prober (SessionProber) reads process liveness from the same registry.
+// A session is alive when an entry names it and the live pid's start time equals `procStart`.
+// It is dead only for an entry whose pid is gone.
+// It is unproven when no entry names it, the registry or an entry is unreadable, the start time is unreadable or the pid was reused.
+// A session Claude Code exited normally has no entry left, so it reads unproven.
+// The resume check and the prober share one reader of registry entries.
+// The prober also reads the interrupt marker.
+// The newest main-chain entry of the transcript a turn start's `transcript_path` names is the user's `[Request interrupted by user` entry, and its own timestamp is the interrupt's time.
+// Any later main-chain entry, a missing path or an unreadable transcript reads as no interrupt.
 //
 // Beside the clear sequence (`/clear`) and the compact sequence (`/compact`), the engine realizes skill loading, in skillload.go.
 // A spec that names skills starts on an empty input box: the launch line carries no prompt pointer, and the pointer comes back as Launch.PromptLine for shuttle to send after the skills.
@@ -82,8 +109,12 @@
 // A missing transcript_path, an unreadable file, a transcript with no matching message or one with no skill listing degrades to an unverified report.
 //
 // The engine also announces each standing tool deny to the session through --append-system-prompt, on both the launch and the resume line.
-// The notice is built from the same inputs as the PreToolUse hooks, so the two cannot drift.
-// The webster fork guard is not announced.
+// Both the hooks and the notice are built from one deny table in settings.go, so the two cannot drift:
+// each row names its tool matcher, hook command, notice sentence and the run inputs that install it.
+// The webster fork guard has no notice sentence and is not announced.
+// The python row denies a Bash command that runs `python`, `python3` or `python3.<minor>` in command position, in every run mode;
+// `shuttle.yaml`'s `claude_deny_python` switches it off for a Python target repo.
+// It is a guardrail, not a barrier: its hook greps the payload, so a quoted argument or heredoc body can trip it falsely, and python behind `bash -c`, `eval` or a launcher passes.
 //
 // A replay corpus of real turn ends lives under testdata/corpus, one directory per case:
 // transcript.jsonl holds the source transcript's lines the parsers read, trimmed to the fields they read;

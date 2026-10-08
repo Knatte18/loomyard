@@ -83,10 +83,8 @@ type Spec struct {
 	// interactive runs do not.
 	// Whether the launch carries --dangerously-skip-permissions follows the resolved PermissionMode,
 	// whose empty default skips in an autonomous run and prompts in an interactive one.
-	// The Agent tool deny is included
-	// in both modes (each deny still individually toggleable via the
-	// shuttle config's claude_deny_agent_tool / claude_deny_ask_user_question
-	// keys).
+	// The Agent tool deny and the python deny are included in both modes.
+	// Each deny is still individually toggleable via the shuttle config's claude_deny_agent_tool, claude_deny_ask_user_question and claude_deny_python keys.
 	Interactive bool
 	// Segment is the loom segment the spawning module names for its role.
 	// It is forwarded to reed, which resolves the segment's palette color for the strand's bar button and border,

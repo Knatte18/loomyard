@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -40,6 +41,16 @@ type fakeSession struct {
 
 	skillLoads  map[string]shuttleengine.SkillLoadReport    // Turn-end message to the report ClassifySkillLoad answers, else a report with every skill loaded.
 	autoCompact map[string]shuttleengine.CompactionBoundary // Turn-end message to a main-chain compaction boundary CompactedSince finds through it.
+
+	sessionState    shuttleengine.SessionState // Answered by SessionState while stateErr is nil.
+	sessionStateErr error                      // Returned by every SessionState while set.
+}
+
+func (f *fakeSession) SessionState(string) (shuttleengine.RunSessionState, error) {
+	if f.sessionStateErr != nil {
+		return shuttleengine.RunSessionState{}, f.sessionStateErr
+	}
+	return shuttleengine.RunSessionState{State: f.sessionState}, nil
 }
 
 func (f *fakeSession) LoadSkills(_ string, skills []string) error {
@@ -2082,5 +2093,66 @@ func TestWatcher_RestartMidColorStepTypesItOnceWhenIdle(t *testing.T) {
 	}
 	if st := e.state(); st.ReloadStep != ReloadStepPlugins {
 		t.Errorf("state = %+v, want the move to the plugins step", st)
+	}
+}
+
+// TestWatcher_LogsDisagreementBetweenIdleProbeAndSessionState drives notice deliveries, whose idle probe is the one door every probe goes through.
+// Each row logs its Warn count once per disagreement, and the same ticks with the state unreadable change neither the saved State, the session calls nor the queue.
+// The log is captured process-wide, so the test does not run in parallel.
+func TestWatcher_LogsDisagreementBetweenIdleProbeAndSessionState(t *testing.T) {
+	tests := []struct {
+		name     string
+		idleSeq  []bool
+		tooShort bool
+		state    shuttleengine.SessionStateName
+		notices  int
+		wantWarn int
+	}{
+		{name: "an idle probe beside busy warns once across two ticks", idleSeq: []bool{true, true}, state: shuttleengine.SessionBusy, notices: 2, wantWarn: 1},
+		{name: "a not-idle probe beside asking warns once across two ticks", idleSeq: []bool{false, false}, state: shuttleengine.SessionAsking, notices: 2, wantWarn: 1},
+		{name: "a not-idle probe beside idle-done warns", idleSeq: []bool{false}, state: shuttleengine.SessionIdleDone, notices: 1, wantWarn: 1},
+		{name: "a not-idle probe beside idle-stalled warns", idleSeq: []bool{false}, state: shuttleengine.SessionIdleStalled, notices: 1, wantWarn: 1},
+		{name: "an idle probe beside idle-done agrees", idleSeq: []bool{true}, state: shuttleengine.SessionIdleDone, notices: 1},
+		{name: "a not-idle probe beside busy agrees", idleSeq: []bool{false}, state: shuttleengine.SessionBusy, notices: 1},
+		{name: "a too-short pane is not compared", idleSeq: []bool{false}, tooShort: true, state: shuttleengine.SessionIdleStalled, notices: 1},
+		{name: "a disagreement warns again after an agreement between", idleSeq: []bool{true, false, true}, state: shuttleengine.SessionBusy, notices: 3, wantWarn: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			type outcome struct {
+				state  State
+				calls  []string
+				queue  []string
+				warned int
+			}
+			drive := func(stateErr error) outcome {
+				buf := logcapture.CaptureVerbose(t)
+				e := newWatchEnv(t)
+				// The start color takes the first idle probe, so it is typed before the probe sequence is scripted.
+				e.tick()
+				e.s.idleSeq, e.s.tooShort = slices.Clone(tt.idleSeq), tt.tooShort
+				e.s.sessionState, e.s.sessionStateErr = shuttleengine.SessionState{Name: tt.state, Cause: "turn"}, stateErr
+				for i := range tt.notices {
+					e.queue("notice " + string(rune('a'+i)))
+				}
+				for range len(tt.idleSeq) {
+					e.tick()
+				}
+				return outcome{e.state(), e.s.calls, e.noticeLines(), strings.Count(buf.String(), "orch: session state disagrees with the idle probe")}
+			}
+
+			read := drive(nil)
+			unreadable := drive(errBoom)
+			if read.warned != tt.wantWarn {
+				t.Errorf("disagreement warnings = %d, want %d", read.warned, tt.wantWarn)
+			}
+			if unreadable.warned != 0 {
+				t.Errorf("an unreadable state warned %d times, want none", unreadable.warned)
+			}
+			if !reflect.DeepEqual(read.state, unreadable.state) || !slices.Equal(read.calls, unreadable.calls) || !slices.Equal(read.queue, unreadable.queue) {
+				t.Errorf("an unreadable state changed the outcome: state %+v vs %+v, calls %q vs %q, queue %q vs %q",
+					read.state, unreadable.state, read.calls, unreadable.calls, read.queue, unreadable.queue)
+			}
+		})
 	}
 }

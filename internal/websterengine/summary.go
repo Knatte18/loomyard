@@ -78,7 +78,7 @@ func AppendBackgroundShells(websterDir string, labels []string) error {
 		return nil
 	}
 	var b strings.Builder
-	b.WriteString("\n\n## Background shells waited out\n\nMaster's turn end was counted after these background shells ran past `background_shell_wait_min`; they may still be running in the session.\n\n")
+	b.WriteString("\n\n## Background shells waited out\n\nMaster's turn end was counted while these background shells were still running, which comes after `background_shell_wait_min` for a shell only the transcript reports and at once for one the Stop payload reports when Master's output files exist; they may still be running in the session.\n\n")
 	for _, l := range labels {
 		fmt.Fprintf(&b, "- `%s`\n", l)
 	}

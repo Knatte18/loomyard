@@ -124,14 +124,14 @@ func reviewAsNext(s parentreview.Store) func(shedengine.Status) (string, error) 
 	return func(shedengine.Status) (string, error) { return note() }
 }
 
-// writeShuttleMarker writes a wait marker held by pid into a run directory under runRoot.
-func writeShuttleMarker(t *testing.T, runRoot string, pid int) {
+// writeShuttleMarker writes a wait marker of the given kind held by pid into a run directory under runRoot.
+func writeShuttleMarker(t *testing.T, runRoot, kind string, pid int) {
 	t.Helper()
 	runDir := filepath.Join(runRoot, "run-1")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := "kind: gate validate-plan\nstarted: 2026-10-03T09:15:00Z\npid: " + strconv.Itoa(pid) + "\n"
+	body := "kind: " + kind + "\nstarted: 2026-10-03T09:15:00Z\npid: " + strconv.Itoa(pid) + "\n"
 	if err := os.WriteFile(filepath.Join(runDir, "wait.yaml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -145,6 +145,7 @@ func TestShuttleWaiting(t *testing.T) {
 
 	tests := []struct {
 		name         string
+		kind         string
 		shuttlePID   int
 		verifyMarker func(t *testing.T) string
 		want         string
@@ -152,18 +153,28 @@ func TestShuttleWaiting(t *testing.T) {
 	}{
 		{
 			name:         "live shuttle marker when no verify runs",
+			kind:         "gate validate-plan",
 			shuttlePID:   os.Getpid(),
 			verifyMarker: func(t *testing.T) string { return filepath.Join(t.TempDir(), "absent.yaml") },
 			want:         "Plan-Write: gate validate-plan running 6m",
 		},
 		{
+			name:         "live held marker names its label",
+			kind:         "held",
+			shuttlePID:   os.Getpid(),
+			verifyMarker: func(t *testing.T) string { return filepath.Join(t.TempDir(), "absent.yaml") },
+			want:         "Plan-Write: held running 6m",
+		},
+		{
 			name:         "live verify marker ahead of the shuttle marker",
+			kind:         "gate validate-plan",
 			shuttlePID:   os.Getpid(),
 			verifyMarker: func(t *testing.T) string { return writeVerifyMarker(t, os.Getpid(), 0) },
 			want:         "Plan-Write: verify running 6m (go test ./...)",
 		},
 		{
 			name:         "dead shuttle marker falls to review",
+			kind:         "gate validate-plan",
 			shuttlePID:   2147483646,
 			verifyMarker: func(t *testing.T) string { return filepath.Join(t.TempDir(), "absent.yaml") },
 			wantReview:   true,
@@ -172,7 +183,7 @@ func TestShuttleWaiting(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			runRoot := t.TempDir()
-			writeShuttleMarker(t, runRoot, tt.shuttlePID)
+			writeShuttleMarker(t, runRoot, tt.kind, tt.shuttlePID)
 			s := reviewStore(t)
 			openReview(t, s)
 			started := time.Date(2026, 10, 3, 9, 15, 0, 0, time.UTC)

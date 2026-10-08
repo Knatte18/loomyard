@@ -57,26 +57,21 @@ func checkResumable(sessionID, projectDir, registryDir string, alive func(pid in
 		return "", fmt.Errorf("claudeengine: cannot stat the transcript of session %s: %w", sessionID, err)
 	}
 
-	entries, err := os.ReadDir(registryDir)
+	records, err := readRegistry(registryDir)
 	if err != nil {
 		return fmt.Sprintf("claudeengine: could not read session registry %s (%v); a live holder of session %s could not be ruled out", registryDir, err, sessionID), nil
 	}
 
-	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+	for _, record := range records {
+		if record.ReadErr != nil {
+			warning = fmt.Sprintf("claudeengine: could not read session registry entry %s (%v); a live holder of session %s could not be ruled out", record.Path, record.ReadErr, sessionID)
 			continue
 		}
-		path := filepath.Join(registryDir, e.Name())
-		data, err := os.ReadFile(path)
-		if err != nil {
-			warning = fmt.Sprintf("claudeengine: could not read session registry entry %s (%v); a live holder of session %s could not be ruled out", path, err, sessionID)
+		if record.DecodeErr != nil {
+			warning = fmt.Sprintf("claudeengine: could not decode session registry entry %s (%v); a live holder of session %s could not be ruled out", record.Path, record.DecodeErr, sessionID)
 			continue
 		}
-		var entry registryEntry
-		if err := json.Unmarshal(data, &entry); err != nil {
-			warning = fmt.Sprintf("claudeengine: could not decode session registry entry %s (%v); a live holder of session %s could not be ruled out", path, err, sessionID)
-			continue
-		}
+		entry := record.Entry
 		if entry.SessionID != sessionID || !alive(entry.PID) {
 			continue
 		}
@@ -85,9 +80,40 @@ func checkResumable(sessionID, projectDir, registryDir string, alive func(pid in
 			if live != entry.ProcStart {
 				continue
 			}
-			return "", fmt.Errorf("claudeengine: session %s is held by live process %d (%s); exit that session first, then resume", sessionID, entry.PID, path)
+			return "", fmt.Errorf("claudeengine: session %s is held by live process %d (%s); exit that session first, then resume", sessionID, entry.PID, record.Path)
 		}
-		return "", fmt.Errorf("claudeengine: session %s is held by live process %d (%s), and the pid could not be proven reused; exit that session first, then resume", sessionID, entry.PID, path)
+		return "", fmt.Errorf("claudeengine: session %s is held by live process %d (%s), and the pid could not be proven reused; exit that session first, then resume", sessionID, entry.PID, record.Path)
 	}
 	return warning, nil
+}
+
+// registryRecord is one session-registry file as read: its decoded entry, or the error that stopped it being read or decoded.
+type registryRecord struct {
+	Path      string
+	Entry     registryEntry
+	ReadErr   error
+	DecodeErr error
+}
+
+// readRegistry reads every .json file in registryDir, in directory order, and returns an error only when the directory itself cannot be read.
+func readRegistry(registryDir string) ([]registryRecord, error) {
+	dirEntries, err := os.ReadDir(registryDir)
+	if err != nil {
+		return nil, err
+	}
+	var records []registryRecord
+	for _, e := range dirEntries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+			continue
+		}
+		record := registryRecord{Path: filepath.Join(registryDir, e.Name())}
+		data, err := os.ReadFile(record.Path)
+		if err != nil {
+			record.ReadErr = err
+		} else {
+			record.DecodeErr = json.Unmarshal(data, &record.Entry)
+		}
+		records = append(records, record)
+	}
+	return records, nil
 }
