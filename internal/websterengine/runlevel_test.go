@@ -1533,7 +1533,7 @@ func expiredShellRun(t *testing.T, fx *runFixture, labels []string, outcomeYAML 
 
 // The parts of the sentence the friction note and the warning share for the shell `sleep 9999` under a 15-minute bound.
 const (
-	shellSentenceHead    = "background shell `sleep 9999` ran past `background_shell_wait_min` (15 minutes): the wait stopped waiting on the shell at a turn end, which finished the run when Master's output files existed and otherwise held it for the parent, and lyx did not stop the shell; "
+	shellSentenceHead    = "background shell `sleep 9999` was still running when the wait counted Master's turn end, which comes after `background_shell_wait_min` (15 minutes) for a shell only the transcript reports and at once for one the Stop payload reports when Master's output files exist: the wait stopped waiting on the shell at a turn end, which finished the run when Master's output files existed and otherwise held it for the parent, and lyx did not stop the shell; "
 	shellStrandRemoved   = "shuttle removes Master's strand when the run finishes, which ends the session and the shell with it; "
 	shellStrandReclaimed = "Master's strand stays alive until the next `lyx webster run` reclaims it at entry, which ends the session and the shell with it; "
 )
