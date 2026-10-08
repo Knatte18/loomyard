@@ -199,6 +199,11 @@ type AgentActivity struct {
 	APIError bool
 	// APIErrorText is the error's text; empty unless APIError is true.
 	APIErrorText string
+	// SessionState, SessionCause and SessionSince are the run's session state, its cause and the RFC 3339 time it began, empty when unread.
+	// They are only logged where a notice is decided, and no decision reads them.
+	SessionState string
+	SessionCause string
+	SessionSince string
 }
 
 // ChildDriverStrand is the state of a child's driver strand in its reed state.

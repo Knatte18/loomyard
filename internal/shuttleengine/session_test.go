@@ -287,3 +287,22 @@ func TestRunner_LoadSkillsAndClassifySkillLoad_ErrorOnPlainEngine(t *testing.T) 
 		t.Errorf("ClassifySkillLoad error = %v; want one naming SkillLoader", err)
 	}
 }
+
+// TestRunner_SessionState covers the state read of one run by guid: the found run reads at the runner's clock, and an unknown guid is an error.
+func TestRunner_SessionState(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC)
+	runner := newFixture(t, &fakeReed{}, &fakeEngine{}, withStrand("strand-1"), withClock(&frozenClock{now: now})).Runner
+
+	got, err := runner.SessionState("strand-1")
+	if err != nil {
+		t.Fatalf("SessionState(found guid): %v", err)
+	}
+	if got.StrandGUID != "strand-1" || got.StrandName != "strand-1" || got.State.Name != SessionUnknown || got.State.Cause != SessionCauseUnsupported || !got.State.Since.Equal(now) {
+		t.Errorf("SessionState = %+v; want strand-1 unknown/unsupported since %v", got, now)
+	}
+
+	if _, err := runner.SessionState("nope"); err == nil {
+		t.Error("SessionState(unknown guid) = nil error")
+	}
+}

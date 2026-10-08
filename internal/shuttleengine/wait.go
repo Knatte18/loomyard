@@ -21,6 +21,9 @@
 // this interview waiting for me, or is it wedged?" reads the trace sink.
 // A hold never extends run.deadline: a held run is bounded by its caller's own Spec.Timeout (run_timeout_min only where that is zero),
 // and by the liveness check, which still classifies a dead pane.
+// A turn end that leaves a payload-reported background shell outstanding is a wait, never a held stop: the shell is live work the provider itself reported, so it never expires into a hold or a notice.
+// It is bounded only by the run's own deadline and the liveness check, so a shell that never ends ends the run OutcomeTimeout, and lyx reaps no shell.
+// A gated run whose output files all exist and whose outstanding tasks are all unawaited payload-reported shells finishes Done at once, through the gate, with those shells in Result.ExpiredShells.
 //
 // The events-tick Done branch splits in two, on whether run.gate is empty:
 // an ungated run's Done finalizes exactly as before the gate existed, unaware the gate exists at all.
@@ -233,9 +236,16 @@ func (run *Run) Wait() (Result, error) {
 	run.clearWait()
 	defer run.endWait()
 
+	// The signal cursor starts at the prompt offset on every path, never at run.offset, which an attach may start later.
+	run.shadow = sessionShadow{active: true, cursor: run.state.PromptOffset}
+	defer func() { run.shadow.active = false }()
+
 	for tick := 1; ; tick++ {
 		outcome, held, err := run.pollEventsTick()
 		run.syncShellWait()
+		if err == nil && run.eventsRead {
+			run.endHeldWait()
+		}
 		if err != nil {
 			eventsFailures++
 			if eventsFailures >= maxEventsReadRetries {
@@ -252,6 +262,7 @@ func (run *Run) Wait() (Result, error) {
 				// A turn end without every output file never ends the run.
 				// Log it so the durable trace records each one, and keep polling the same agent.
 				logger.Info("shuttle: turn end held, output files missing", "strandGUID", run.state.StrandGUID, "offset", held.offset, "outstanding", len(held.tasks), "lastAssistantMessage", held.message)
+				run.beginHeldWait()
 				run.notifyHeld(held)
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
 				// Not a gated Done: finalize exactly as this branch always has.
@@ -269,6 +280,8 @@ func (run *Run) Wait() (Result, error) {
 				}
 			}
 		}
+
+		run.logSessionState("", tick%livenessEvery == 0)
 
 		if tick%livenessEvery == 0 {
 			livenessOutcome, err := run.checkLivenessTick(&started, startupDeadline)
@@ -570,11 +583,15 @@ func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
 // and the next real turn end is the boundary.
 // The deferral holds only while the session is live.
 // The run deadline and the liveness checks still classify Done from the files and evaluate the gate one final time.
-// A waiting turn end that leaves only background shells outstanding is the one case that does not wait forever:
+// A waiting turn end that leaves only transcript-reported background shells outstanding is the one case that does not wait forever:
 // on every tick, with or without new bytes, expiredTurnEnd counts it as a turn end once each non-awaited shell has been outstanding for background_shell_wait_min.
+// A shell the turn-end payload itself reported is live work and never expires: the turn keeps waiting, never held and never notified.
+// It is bounded only by the run's own deadline and the liveness check, so a shell that never ends ends the run OutcomeTimeout, and lyx reaps no shell.
+// A gated run whose output files all exist and whose outstanding tasks are all unawaited payload-reported shells finishes Done at once instead, so its gate runs, with those shells listed in Result.ExpiredShells.
 // A hold never extends run.deadline, so a held run is bounded by its caller's own deadline and by the liveness check.
 // Returns outcome == "" and a nil held turn end when there is nothing new to classify yet.
 func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
+	run.eventsRead = false
 	startOffset := run.offset
 	data, newOffset, err := readEventsFrom(run.state.EventsPath, startOffset)
 	if err != nil {
@@ -596,6 +613,7 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 		return run.expiredTurnEnd()
 	}
 
+	run.eventsRead = true
 	last := events[len(events)-1]
 	turnEndOffset := offsetPastEvent(data, startOffset, newOffset, last)
 	if last.Kind == EventWaiting {
@@ -689,8 +707,17 @@ func (run *Run) awaitedShell(task BackgroundTask) bool {
 	return false
 }
 
+// payloadShell reports whether the task is a background shell the provider's turn-end payload reported, which is live work and never expires.
+func payloadShell(task BackgroundTask) bool {
+	return task.Kind == BackgroundShell && task.Signal == SignalPayload
+}
+
 // expiredTurnEnd counts the recorded waiting turn end as a turn end once every outstanding task is a non-awaited shell that is already expired or has been outstanding for the bound.
 // A fork, or an awaited shell, keeps the turn waiting.
+// A payload-reported shell never expires, so it keeps the turn waiting however long it has been outstanding, bounded only by the run's own deadline and the liveness check;
+// once it has been outstanding for the bound, the first tick logs that once, and the log changes no decision.
+// The one exception is a gated run whose output files all exist and whose outstanding tasks are all payload-reported shells: the turn end is a Done at once,
+// so the gate runs, and those shells are logged as waited out and listed in Result.ExpiredShells.
 // It marks each newly expired shell, logs it and clears the waiting list, then classifies as a Stop would:
 // OutcomeDone when every output file exists, otherwise a held turn end carrying the waiting event's message, the expired shells and the offset the waiting turn end was recorded with.
 // Returns outcome == "" and a nil held turn end while the turn keeps waiting.
@@ -700,10 +727,20 @@ func (run *Run) expiredTurnEnd() (Outcome, *heldTurnEnd, error) {
 	}
 	now := run.clock.Now()
 	bound := run.shellWaitBound()
+	filesExist := allOutputFilesExist(run.spec.OutputFiles)
 	var newlyExpired []BackgroundTask
+	payloadShells := 0
 	for _, task := range run.waitingTasks {
 		if task.Kind != BackgroundShell || run.awaitedShell(task) {
 			return "", nil, nil
+		}
+		if payloadShell(task) {
+			payloadShells++
+			run.logPayloadShellPastBound(task, now.Sub(run.shellFirstSeen[task.ID]), bound)
+			if !run.expiredShells[task.ID] {
+				newlyExpired = append(newlyExpired, task)
+			}
+			continue
 		}
 		if run.expiredShells[task.ID] {
 			continue
@@ -712,6 +749,9 @@ func (run *Run) expiredTurnEnd() (Outcome, *heldTurnEnd, error) {
 			return "", nil, nil
 		}
 		newlyExpired = append(newlyExpired, task)
+	}
+	if payloadShells > 0 && (payloadShells != len(run.waitingTasks) || len(run.gate) == 0 || !filesExist) {
+		return "", nil, nil
 	}
 	for _, task := range newlyExpired {
 		if run.expiredShells == nil {
@@ -723,10 +763,23 @@ func (run *Run) expiredTurnEnd() (Outcome, *heldTurnEnd, error) {
 	}
 	held := &heldTurnEnd{message: run.waitingMessage, tasks: run.waitingTasks, offset: run.waitingOffset}
 	run.waitingTasks = nil
-	if allOutputFilesExist(run.spec.OutputFiles) {
+	if filesExist {
 		return OutcomeDone, nil, nil
 	}
 	return "", held, nil
+}
+
+// logPayloadShellPastBound logs at Info, once per shell id, that a payload-reported shell has been outstanding for at least the bound.
+// It names the run and the shell's label and changes no decision.
+func (run *Run) logPayloadShellPastBound(task BackgroundTask, outstanding, bound time.Duration) {
+	if outstanding < bound || run.payloadShellLogged[task.ID] {
+		return
+	}
+	if run.payloadShellLogged == nil {
+		run.payloadShellLogged = map[string]bool{}
+	}
+	run.payloadShellLogged[task.ID] = true
+	logger.Info("shuttle: background shell past wait min", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "shell", task.Label)
 }
 
 // readEventsFrom reads path from byte offset onward, returning bytes up to
@@ -1114,6 +1167,7 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 // same reason — a teardown that did not confirm clean is exactly what that level is for, and the
 // bare log package they used before never reaches the trace sink at all.
 func (run *Run) finalize(outcome Outcome) (Result, error) {
+	run.logSessionState(outcome, true)
 	result := Result{
 		Outcome:       outcome,
 		SessionID:     run.state.SessionID,

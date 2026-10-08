@@ -506,3 +506,58 @@ func (r *skillReed) CapturePane(guid string) (string, error) {
 }
 
 var _ ReedOps = (*skillReed)(nil)
+
+// sessionFakeEngine is waitingEngine plus the opt-in SessionSignalParser, SessionProber and ActivityReader capabilities.
+// ParseSessionSignals reads "START" as a turn start, "STOP:<message>" as a turn end and "WAIT:<message>" as a turn end carrying outstanding.
+// Every signal names session-1, and the read consumes through the last complete line.
+// ProcessLiveness answers liveness for any session id, and TurnStartInterrupt answers interrupted and interruptAt for any turn start.
+// TurnEndActivity marks a turn end as an API error when its line is apiErrorLine.
+type sessionFakeEngine struct {
+	waitingEngine
+
+	liveness     Liveness
+	interrupted  bool
+	interruptAt  time.Time
+	apiErrorLine string
+}
+
+func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
+	end := strings.LastIndexByte(string(data), '\n') + 1
+	var signals []SessionSignal
+	for _, line := range strings.Split(string(data[:end]), "\n") {
+		trimmed := strings.TrimSpace(line)
+		signal := SessionSignal{SessionID: "session-1", Raw: []byte(trimmed)}
+		switch {
+		case trimmed == "START":
+			signal.Kind = SessionSignalTurnStart
+		case strings.HasPrefix(trimmed, "STOP:"):
+			signal.Kind = SessionSignalTurnEnd
+		case strings.HasPrefix(trimmed, "WAIT:"):
+			signal.Kind = SessionSignalTurnEnd
+			signal.Outstanding = e.outstanding
+		default:
+			continue
+		}
+		signals = append(signals, signal)
+	}
+	return signals, end
+}
+
+func (e *sessionFakeEngine) ProcessLiveness(string) Liveness { return e.liveness }
+
+func (e *sessionFakeEngine) TurnStartInterrupt(SessionSignal) (time.Time, bool) {
+	return e.interruptAt, e.interrupted
+}
+
+func (e *sessionFakeEngine) TurnEndActivity(turnEnd Event) TurnEndActivity {
+	if e.apiErrorLine == "" || string(turnEnd.Raw) != e.apiErrorLine {
+		return TurnEndActivity{}
+	}
+	return TurnEndActivity{APIError: true, APIErrorText: "overloaded"}
+}
+
+var (
+	_ SessionSignalParser = (*sessionFakeEngine)(nil)
+	_ SessionProber       = (*sessionFakeEngine)(nil)
+	_ ActivityReader      = (*sessionFakeEngine)(nil)
+)
