@@ -215,6 +215,8 @@ func shapeRows() []shapeRow {
 			glyph:       "shapes#PairB",
 			create:      &createLeg{"plan:shapes#draft", "var NewPairB int", "plan:shapes#NewPairB"},
 			createEdits: []codeEdit{replaceText(shapesFile, "PairA, PairB = 4, 5\n)", "PairA, PairB = 4, 5\n\tNewPairB int\n)")},
+			rename:      &renameLeg{"plan:dirname#PairRenamed", "plan:shapes#PairRenamed"},
+			renameEdits: []codeEdit{replaceText(shapesFile, "PairA, PairB = 4, 5", "PairA, PairRenamed = 4, 5")},
 			deleteEdits: []codeEdit{replaceText(shapesFile, "PairA, PairB = 4, 5", "PairA = 4")},
 		},
 	}

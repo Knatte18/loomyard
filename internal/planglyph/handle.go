@@ -79,6 +79,8 @@ func renameSignature(signature, oldName, newName string) (string, bool) {
 // draft that misspells the unit is corrected by canonicalization rather than propagated. Only the
 // identifier is taken from the draft handle, never its glyph spelling — the spelling is what
 // quarry.Name computes.
+// A var or const carries its whole spec as its signature, which can declare several names and which quarry.Name rejects then;
+// its declaration is derived as a one-name spec from the kind and the new identifier alone, since the declaration only feeds quarry.Name's glyph prediction.
 // An interface method's signature is its bare method spec, with no "func" and no receiver, which quarry.Name rejects;
 // the declaration is then derived as a method on the symbol's owner, "func (Owner) Spec".
 // It reports ok false, with a rename-old-unresolved Finding, when Old did not
@@ -127,6 +129,12 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 	}
 
 	sym := r.Symbols[0]
+	switch sym.Kind {
+	case quarry.KindVar:
+		return declSource{handle: newHandle, decl: quarry.Declaration{Unit: sym.Glyph.Unit, Decl: "var " + identifier + " int"}}, Finding{}, true
+	case quarry.KindConst:
+		return declSource{handle: newHandle, decl: quarry.Declaration{Unit: sym.Glyph.Unit, Decl: "const " + identifier + " = 0"}}, Finding{}, true
+	}
 	signature := sym.Signature
 	if sym.Kind == quarry.KindMethod && !strings.HasPrefix(signature, "func") {
 		signature = "func (" + strings.Join(sym.Glyph.Owner, ".") + ") " + signature
