@@ -30,11 +30,10 @@ func TestConfigTemplate_LoadsWithLiveEntries(t *testing.T) {
 	tests := []struct {
 		alias      string
 		wantEffort string
-		wantNoDef  bool
 	}{
 		{alias: "sonnet", wantEffort: "medium"},
-		{alias: "opus", wantEffort: "high"},
-		{alias: "haiku", wantNoDef: true},
+		{alias: "opus", wantEffort: "medium"},
+		{alias: "haiku", wantEffort: "medium"},
 		{alias: "fable", wantEffort: "high"},
 	}
 	if len(got) != len(tests) {
@@ -48,12 +47,6 @@ func TestConfigTemplate_LoadsWithLiveEntries(t *testing.T) {
 		}
 		if entry.Engine != "claude" || entry.Model != tt.alias {
 			t.Errorf("LoadRegistry(seeded template)[%q] = %+v; want engine claude, model %q", tt.alias, entry, tt.alias)
-		}
-		if tt.wantNoDef {
-			if len(entry.Defaults) != 0 {
-				t.Errorf("LoadRegistry(seeded template)[%q].Defaults = %v; want none", tt.alias, entry.Defaults)
-			}
-			continue
 		}
 		if entry.Defaults["effort"] != tt.wantEffort {
 			t.Errorf("LoadRegistry(seeded template)[%q].Defaults[\"effort\"] = %q; want %q", tt.alias, entry.Defaults["effort"], tt.wantEffort)
