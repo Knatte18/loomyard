@@ -127,7 +127,8 @@ type State struct {
 	PlanFileHashes map[string]string `json:"planFileHashes,omitempty"`
 	// PlanOverviewFrameHash is the hex SHA-256 of 00-overview.md with its Card Index section cut out (planparser.OverviewWithoutCardIndex), recorded wherever PlanFileHashes is.
 	// Rebaseline accepts an overview change when the file's frame hash still equals it, so only the Card Index changed.
-	// A state written before this field existed leaves it empty, and refuses any overview change.
+	// A state written before this field existed leaves it empty and takes the frame from the stored baseline copy of its recorded overview until the first restamp;
+	// it refuses any overview change only when that copy is absent or has no parseable Card Index.
 	PlanOverviewFrameHash string `json:"planOverviewFrameHash,omitempty"`
 	// Partition is the run's batches in execution order, recorded at first init.
 	// Every verb reads it and only a first init or a rebaseline replaces it.
@@ -257,6 +258,9 @@ type BatchState struct {
 	// ForkTranscripts is the set of subagent transcript filenames already
 	// attributed to this specific batch (a subset of State.SeenForkTranscripts).
 	ForkTranscripts []string `json:"forkTranscripts,omitempty"`
+	// BracketTranscripts is the subset of ForkTranscripts record-batch attributed to this batch during its current bracket.
+	// begin-batch and recover-batch build a fresh record and do not carry it, so every begin-batch, a re-begin of a non-terminal batch included, and every recovery spawn opens an empty list.
+	BracketTranscripts []string `json:"bracketTranscripts,omitempty"`
 	// AuditWarnings is every warning recorded against this batch, each added once per finding identity.
 	// A re-begin and a recovery carry it onto their fresh record, because the identity stays dispositioned in State.AuditDispositions and no later call records the warning again.
 	AuditWarnings []AuditWarning `json:"auditWarnings,omitempty"`

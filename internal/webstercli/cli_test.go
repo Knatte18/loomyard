@@ -1148,7 +1148,7 @@ func TestValidateCmd_RefusesOverviewEditWithoutRestamp(t *testing.T) {
 		t.Errorf("PlanFileHashes = %v; want %v unchanged", after.PlanFileHashes, before.PlanFileHashes)
 	}
 	// Run's entry check is this same fingerprint comparison, so the edit is still refused there.
-	if err := websterengine.PlanEditError(after, c.geom.PlanDir); !errors.Is(err, websterengine.ErrFingerprintMismatch) {
+	if err := websterengine.PlanEditError(after, c.geom.PlanDir, c.geom.WebsterDir); !errors.Is(err, websterengine.ErrFingerprintMismatch) {
 		t.Errorf("PlanEditError() after validate = %v; want ErrFingerprintMismatch", err)
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -61,6 +62,8 @@ type recordAudit struct {
 	// instead of the script — the missing-transcript failure double for the
 	// cross-machine resume path.
 	auditErr error
+	// seen records the seen set handed to every call.
+	seen []map[string]bool
 }
 
 func (a *recordAudit) engine() *shuttlefake.Engine {
@@ -70,6 +73,7 @@ func (a *recordAudit) engine() *shuttlefake.Engine {
 func (a *recordAudit) audit(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
 	a.callCount++
 	a.sessions = append(a.sessions, sessionID)
+	a.seen = append(a.seen, maps.Clone(seenTranscripts))
 	if a.auditErr != nil {
 		return shuttleengine.ForkAudit{}, a.auditErr
 	}
@@ -353,12 +357,12 @@ func TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors(t *testing.T) {
 	}
 	found := false
 	for _, w := range result.Warnings {
-		if strings.Contains(w, "2 new fork transcripts") {
+		if strings.Contains(w, "2 fork transcripts count toward the batch") {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("RecordResult.Warnings = %v; want one naming 2 new fork transcripts", result.Warnings)
+		t.Errorf("RecordResult.Warnings = %v; want one naming 2 counted fork transcripts", result.Warnings)
 	}
 }
 
@@ -455,6 +459,16 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 	parentWrite := func(path func(fx *recordFixture) string) func(t *testing.T, fx *recordFixture) {
 		return func(t *testing.T, fx *recordFixture) { fx.Audit.scripted[0].ParentWrites = []string{path(fx)} }
 	}
+	requireFullHeadSHA := func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+		t.Helper()
+		requireDone(t, result)
+		if result.Digest.HeadSHA != fx.HeadSHA {
+			t.Errorf("Digest.HeadSHA = %q; want the full SHA %q", result.Digest.HeadSHA, fx.HeadSHA)
+		}
+		if got := fx.Deps.State.Batches[1].CardSHAs; len(got) != 1 || got[0] != fx.HeadSHA {
+			t.Errorf("CardSHAs = %v; want [%s]", got, fx.HeadSHA)
+		}
+	}
 	trackedFile := func(fx *recordFixture) string { return filepath.Join(fx.Worktree, "internal", "foo", "impl.go") }
 	oneFork := func() []shuttleengine.ForkAudit { return []shuttleengine.ForkAudit{oneForkAudit()} }
 
@@ -468,6 +482,45 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 		wantFailed bool
 		check      func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error)
 	}{
+		{
+			name:   "a lowercase abbreviation of HEAD records the full SHA",
+			audits: oneFork,
+			report: func(fx *recordFixture) string { return validReport(fx.HeadSHA[:9]) },
+			check:  requireFullHeadSHA,
+		},
+		{
+			name:   "an uppercase abbreviation of HEAD records the full lowercase SHA",
+			audits: oneFork,
+			report: func(fx *recordFixture) string { return validReport(strings.ToUpper(fx.HeadSHA[:9])) },
+			check:  requireFullHeadSHA,
+		},
+		{
+			name:       "a correctness finding fails with the full SHA when head_sha abbreviates HEAD",
+			audits:     forkWithCommand("cat FABRICREF/webster/state.json"),
+			prepare:    func(t *testing.T, fx *recordFixture) { fx.Deps.RefMatcher = fabricMatcher{} },
+			report:     func(fx *recordFixture) string { return validReport(fx.HeadSHA[:9]) },
+			wantFailed: true,
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				if result.Digest.HeadSHA != fx.HeadSHA {
+					t.Errorf("failed Digest.HeadSHA = %q; want the full SHA %q", result.Digest.HeadSHA, fx.HeadSHA)
+				}
+			},
+		},
+		{
+			name:       "a correctness finding wins over a head_sha naming no commit",
+			audits:     forkWithCommand("cat FABRICREF/webster/state.json"),
+			prepare:    func(t *testing.T, fx *recordFixture) { fx.Deps.RefMatcher = fabricMatcher{} },
+			report:     func(fx *recordFixture) string { return validReport("abcdef123") },
+			wantFailed: true,
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				if result.Digest.HeadSHA != "" {
+					t.Errorf("failed Digest.HeadSHA = %q; want empty", result.Digest.HeadSHA)
+				}
+				if errors.Is(err, websterengine.ErrHeadSHAUnresolved) {
+					t.Errorf("error = %v; want the correctness failure, not ErrHeadSHAUnresolved", err)
+				}
+			},
+		},
 		{
 			// A resumed run's fresh Master must be able to consume a report whose fork transcript
 			// lives under the crashed session's own subagents directory.
@@ -943,6 +996,160 @@ func TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew(t *testing.
 	}
 }
 
+// TestRecordBatch_ResumedForkAcrossNoReportCall proves a fork stopped and resumed across a no-report call is attributed on the next call:
+// the bracket's own transcript counts when it wrote the batch's report and is re-audited in full, its earlier findings are not reported again,
+// and a bracket whose transcripts never wrote the report still meets ErrNoForkTranscripts.
+// Every attributed transcript is held once in the seen set, the batch's fork transcripts and its bracket transcripts, so no other claim path takes it.
+func TestRecordBatch_ResumedForkAcrossNoReportCall(t *testing.T) {
+	t.Parallel()
+
+	const f1, f2 = "subagents/f1.jsonl", "subagents/f2.jsonl"
+	ownReportWrite := func(fx *recordFixture) []string {
+		return []string{filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))}
+	}
+	// audits builds the scripted audits from fx, so a row can name the batch's report path.
+	cases := []struct {
+		name   string
+		audits func(fx *recordFixture) []shuttleengine.ForkAudit
+		// prepare edits the state before the first call.
+		prepare func(fx *recordFixture)
+		// skipFirst starts at the second call, as after a re-begin.
+		skipFirst bool
+		check     func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error)
+	}{
+		{
+			name: "a resumed fork's report is recorded and the bracket transcript re-read in full",
+			audits: func(fx *recordFixture) []shuttleengine.ForkAudit {
+				return []shuttleengine.ForkAudit{
+					{Forks: []shuttleengine.ForkReport{{TranscriptPath: f1}}},
+					{Forks: []shuttleengine.ForkReport{{TranscriptPath: f1, WritePaths: ownReportWrite(fx), ReportReturned: true}}},
+				}
+			},
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				if err != nil || result.Digest == nil || !fx.Deps.State.Batches[1].Terminal {
+					t.Fatalf("RecordBatch() = %+v, %v; want the batch recorded", result, err)
+				}
+				// Call 0 is the first record-batch call; the second call's first fetch is call 1.
+				if fx.Audit.seen[0][f1] || fx.Audit.seen[1][f1] {
+					t.Errorf("seen sets handed to the engine = %v; want the bracket's transcript excluded", fx.Audit.seen)
+				}
+				if got := fx.Deps.State.SeenForkTranscripts; !slices.Equal(got, []string{f1}) {
+					t.Errorf("SeenForkTranscripts = %v; want [%s] once", got, f1)
+				}
+			},
+		},
+		{
+			name: "a later policy finding is reported and an earlier dispositioned one is not",
+			audits: func(fx *recordFixture) []shuttleengine.ForkAudit {
+				return []shuttleengine.ForkAudit{
+					{Forks: []shuttleengine.ForkReport{{TranscriptPath: f1, AgentCalls: 1}}},
+					{Forks: []shuttleengine.ForkReport{{TranscriptPath: f1, AgentCalls: 1, WritePaths: ownReportWrite(fx), ReportReturned: true}}},
+				}
+			},
+			prepare: func(fx *recordFixture) { setCardVerify(fx, "exit 0") },
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				if err != nil || result.Digest == nil {
+					t.Fatalf("RecordBatch() = %+v, %v; want the batch recorded", result, err)
+				}
+				if warningsContain(result.Warnings, "nested-agent") {
+					t.Errorf("second call Warnings = %v; want the first call's nested-agent finding not reported again", result.Warnings)
+				}
+				if got := fx.Deps.State.Batches[1].AuditWarnings; len(got) != 1 {
+					t.Errorf("AuditWarnings = %v; want the finding held once", got)
+				}
+			},
+		},
+		{
+			name: "a policy finding from the transcript's later part is reported",
+			audits: func(fx *recordFixture) []shuttleengine.ForkAudit {
+				return []shuttleengine.ForkAudit{
+					{Forks: []shuttleengine.ForkReport{{TranscriptPath: f1}}},
+					{Forks: []shuttleengine.ForkReport{{TranscriptPath: f1, AgentCalls: 1, WritePaths: ownReportWrite(fx), ReportReturned: true}}},
+				}
+			},
+			prepare: func(fx *recordFixture) { setCardVerify(fx, "exit 0") },
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				if err != nil || !warningsContain(result.Warnings, "nested-agent") {
+					t.Errorf("RecordBatch() warnings = %v, err = %v; want the later nested-agent finding reported", result.Warnings, err)
+				}
+			},
+		},
+		{
+			name: "a bracket transcript that never wrote the report is archived as unattributable",
+			audits: func(fx *recordFixture) []shuttleengine.ForkAudit {
+				return []shuttleengine.ForkAudit{
+					{Forks: []shuttleengine.ForkReport{{TranscriptPath: f1}}},
+					{Forks: []shuttleengine.ForkReport{{TranscriptPath: f1, WritePaths: []string{"/elsewhere/notes.md"}, ReportReturned: true}}},
+				}
+			},
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				if !errors.Is(err, websterengine.ErrNoForkTranscripts) || !errors.Is(err, websterengine.ErrReportArchived) {
+					t.Errorf("RecordBatch() error = %v; want ErrReportArchived wrapping ErrNoForkTranscripts", err)
+				}
+			},
+		},
+		{
+			name: "a bracket transcript of an earlier bracket does not count after a re-begin",
+			audits: func(fx *recordFixture) []shuttleengine.ForkAudit {
+				return []shuttleengine.ForkAudit{{Forks: []shuttleengine.ForkReport{{TranscriptPath: f1, WritePaths: ownReportWrite(fx), ReportReturned: true}}}}
+			},
+			prepare: func(fx *recordFixture) {
+				fx.Deps.State.SeenForkTranscripts = []string{f1}
+				fx.Deps.State.Batches[1].ForkTranscripts = []string{f1}
+			},
+			skipFirst: true,
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				if !errors.Is(err, websterengine.ErrNoForkTranscripts) {
+					t.Errorf("RecordBatch() error = %v; want ErrNoForkTranscripts", err)
+				}
+			},
+		},
+		{
+			name: "a fork re-launched in the open bracket is attributed within the settle window",
+			audits: func(fx *recordFixture) []shuttleengine.ForkAudit {
+				return []shuttleengine.ForkAudit{
+					{Forks: []shuttleengine.ForkReport{{TranscriptPath: f1}}},
+					{Forks: []shuttleengine.ForkReport{{TranscriptPath: f1}}},
+					{Forks: []shuttleengine.ForkReport{{TranscriptPath: f1}, {TranscriptPath: f2, WritePaths: ownReportWrite(fx), ReportReturned: true}}},
+				}
+			},
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				if err != nil || len(result.Warnings) != 0 || !fx.Deps.State.Batches[1].Terminal {
+					t.Fatalf("RecordBatch() = %+v, %v; want the batch recorded cleanly on f2 alone", result, err)
+				}
+				want := []string{f1, f2}
+				bs := fx.Deps.State.Batches[1]
+				if !slices.Equal(fx.Deps.State.SeenForkTranscripts, want) || !slices.Equal(bs.ForkTranscripts, want) || !slices.Equal(bs.BracketTranscripts, want) {
+					t.Errorf("Seen = %v, ForkTranscripts = %v, BracketTranscripts = %v; want each %v with no duplicate", fx.Deps.State.SeenForkTranscripts, bs.ForkTranscripts, bs.BracketTranscripts, want)
+				}
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newRecordFixture(t, nil)
+			fx.Audit.scripted = tc.audits(fx)
+			if tc.prepare != nil {
+				tc.prepare(fx)
+			}
+			if !tc.skipFirst {
+				result, err := websterengine.RecordBatch(fx.Deps, 1)
+				if err != nil || !result.NoReport {
+					t.Fatalf("first RecordBatch() = %+v, %v; want a no-report call", result, err)
+				}
+				bs := fx.Deps.State.Batches[1]
+				if !slices.Equal(fx.Deps.State.SeenForkTranscripts, []string{f1}) || !slices.Equal(bs.ForkTranscripts, []string{f1}) || !slices.Equal(bs.BracketTranscripts, []string{f1}) {
+					t.Fatalf("after the no-report call Seen = %v, ForkTranscripts = %v, BracketTranscripts = %v; want each [%s]", fx.Deps.State.SeenForkTranscripts, bs.ForkTranscripts, bs.BracketTranscripts, f1)
+				}
+			}
+			writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+			result, err := websterengine.RecordBatch(fx.Deps, 1)
+			tc.check(t, fx, result, err)
+		})
+	}
+}
+
 // TestRecordBatch_RetryNeverDuplicatesWarning proves a finding first seen on a no-report call is warned once:
 // the later OK report re-runs the verify and records done without a second warning.
 //
@@ -1159,11 +1366,78 @@ func TestRecordBatch_HeadSHAMismatchErrors(t *testing.T) {
 		t.Errorf("RecordBatch() error = %q; want it to name the worktree's actual HEAD %q", err.Error(), fx.HeadSHA)
 	}
 
+	// A value that is not hex is no abbreviation, so it meets the mismatch refusal too.
+	writeReport(t, fx.ReportsDir, validReport("main"))
+	restore()
+	if _, err := websterengine.RecordBatch(fx.Deps, 1); err == nil || errors.Is(err, websterengine.ErrHeadSHAUnresolved) || !strings.Contains(err.Error(), fx.HeadSHA) {
+		t.Errorf("RecordBatch() with head_sha main error = %v; want the mismatch refusal naming %q", err, fx.HeadSHA)
+	}
+
 	// Taking the way forward: the report names the worktree's actual HEAD, and the same call records.
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 	restore()
 	if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
 		t.Fatalf("RecordBatch() with a corrected head_sha error = %v; want nil", err)
+	}
+}
+
+// TestRecordBatch_UnresolvableHeadSHARefused proves an abbreviated head_sha naming no commit, or several, is refused with ErrHeadSHAUnresolved and the git rev-parse way forward, never a reset.
+// The batch stays non-terminal with the report in place, and the same call records once the report names the full HEAD.
+func TestRecordBatch_UnresolvableHeadSHARefused(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		// headSHA is the report's head_sha and prepare registers any extra commit it needs.
+		headSHA func(fx *recordFixture) string
+		prepare func(fx *recordFixture)
+		want    string
+	}{
+		{
+			name:    "no commit",
+			headSHA: func(*recordFixture) string { return "abcdef123" },
+			want:    "names no commit",
+		},
+		{
+			name:    "two commits",
+			headSHA: func(fx *recordFixture) string { return fx.HeadSHA[:9] },
+			prepare: func(fx *recordFixture) { fx.Git.parents[fx.HeadSHA[:9]+strings.Repeat("0", 31)] = nil },
+			want:    "names 2 commits",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newRecordFixture(t, []shuttleengine.ForkAudit{oneForkAudit()})
+			if tc.prepare != nil {
+				tc.prepare(fx)
+			}
+			writeReport(t, fx.ReportsDir, validReport(tc.headSHA(fx)))
+			restore := snapshotRecordState(fx)
+
+			_, err := websterengine.RecordBatch(fx.Deps, 1)
+			if !errors.Is(err, websterengine.ErrHeadSHAUnresolved) {
+				t.Fatalf("RecordBatch() error = %v; want ErrHeadSHAUnresolved", err)
+			}
+			for _, want := range []string{tc.want, "`git rev-parse HEAD`"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q missing %q", err.Error(), want)
+				}
+			}
+			if strings.Contains(err.Error(), "reset") {
+				t.Errorf("error %q names a reset; want only the git rev-parse way forward", err.Error())
+			}
+			assertBatchOpen(t, fx)
+			if got := archivedReports(t, fx.ReportsDir); len(got) != 0 {
+				t.Errorf("archived reports = %v; want the report left in place", got)
+			}
+
+			writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+			restore()
+			if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
+				t.Fatalf("RecordBatch() with the full head_sha error = %v; want nil", err)
+			}
+		})
 	}
 }
 
@@ -1593,6 +1867,21 @@ func TestRecordBatch_ParentMovedHead(t *testing.T) {
 					if !strings.Contains(result.Warnings[0], want) {
 						t.Errorf("warning %q missing %q", result.Warnings[0], want)
 					}
+				}
+			},
+		},
+		{
+			name: "an abbreviation a parent merge sits above is accepted with the full SHA in the warning",
+			move: func(fx *recordFixture) []string {
+				path := filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
+				if err := os.WriteFile(path, []byte(validReport(fx.HeadSHA[:9])), 0o644); err != nil {
+					panic(err)
+				}
+				return []string{parentMerge(fx)}
+			},
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, merges []string) {
+				if !fx.Deps.State.Batches[1].Terminal || len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], `head_sha "`+fx.HeadSHA+`"`) {
+					t.Errorf("Warnings = %v, terminal = %v; want a recorded batch with one warning naming the full SHA %s", result.Warnings, fx.Deps.State.Batches[1].Terminal, fx.HeadSHA)
 				}
 			},
 		},

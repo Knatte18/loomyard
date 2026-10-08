@@ -453,3 +453,72 @@ func gitExitCode(err error) (int, bool) {
 	}
 	return 0, false
 }
+
+// ErrHeadSHAUnresolved is the sentinel resolveReportHead wraps when a report's abbreviated head_sha names no commit or more than one.
+var ErrHeadSHAUnresolved = errors.New("webster: report head_sha unresolved")
+
+// commitsNamedBy returns, sorted, the full SHA of every commit in worktree's repository whose object name starts with prefix, and an empty slice when none does.
+// Only object names match, never ref names.
+// `git rev-parse --disambiguate` lists every object the prefix names and prints nothing, exiting 0, for a prefix that names none;
+// each listed object is kept only when `git cat-file -t` answers commit.
+func commitsNamedBy(worktree, prefix string) ([]string, error) {
+	stdout, err := gitexec.Run([]string{"rev-parse", "--disambiguate=" + prefix}, worktree)
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: git rev-parse --disambiguate=%s in %s: %w", prefix, worktree, err)
+	}
+	var commits []string
+	for _, sha := range strings.Fields(stdout) {
+		kind, err := gitexec.Run([]string{"cat-file", "-t", sha}, worktree)
+		if err != nil {
+			return nil, fmt.Errorf("websterengine: git cat-file -t %s in %s: %w", sha, worktree, err)
+		}
+		if strings.TrimSpace(kind) == "commit" {
+			commits = append(commits, sha)
+		}
+	}
+	sort.Strings(commits)
+	return commits, nil
+}
+
+// minAbbreviatedSHA is git's minimum abbreviation length, the shortest head_sha resolveReportHead resolves.
+const minAbbreviatedSHA = 4
+
+// fullSHALength is the length of a full SHA-1 commit id in hex digits.
+const fullSHALength = 40
+
+// resolveReportHead resolves a report's head_sha to the one full commit SHA it names.
+// A value of exactly 40 hex digits returns unchanged with no git call.
+// A hex value of 4 to 39 digits, of either case, is lowercased and resolved through git.CommitsNamedBy;
+// no commit or more than one is an error wrapping ErrHeadSHAUnresolved that names reportPath and the way forward.
+// Any other value returns unchanged, so it meets the refusal at its consume site.
+// A git failure is returned as an error that does not wrap ErrHeadSHAUnresolved.
+func resolveReportHead(git Git, worktree, reportPath, headSHA string) (string, error) {
+	if len(headSHA) < minAbbreviatedSHA || len(headSHA) >= fullSHALength || !isHex(headSHA) {
+		return headSHA, nil
+	}
+	prefix := strings.ToLower(headSHA)
+	commits, err := git.CommitsNamedBy(worktree, prefix)
+	if err != nil {
+		return "", err
+	}
+	if len(commits) == 1 {
+		return commits[0], nil
+	}
+	named := "names no commit"
+	if len(commits) > 1 {
+		named = fmt.Sprintf("names %d commits", len(commits))
+	}
+	return "", fmt.Errorf("%w: head_sha %q in %s %s; "+
+		"way forward: have the fork rewrite head_sha in %s as the output of `git rev-parse HEAD`, then re-run this verb",
+		ErrHeadSHAUnresolved, headSHA, reportPath, named, reportPath)
+}
+
+// isHex reports whether s is non-empty and holds only hex digits of either case.
+func isHex(s string) bool {
+	for _, r := range s {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
+			return false
+		}
+	}
+	return s != ""
+}

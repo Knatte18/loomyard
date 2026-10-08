@@ -154,6 +154,16 @@ func TestPlanReset_Resolution(t *testing.T) {
 		{"report-head missing from the repository", websterengine.ResetToReportHead, 2, func(fx *resolutionFixture) {
 			fx.writeReport(2, "two", strings.Repeat("ab", 20))
 		}, []string{strings.Repeat("ab", 20), "not in this repository"}},
+		{"report-head with an abbreviation naming no commit", websterengine.ResetToReportHead, 2, func(fx *resolutionFixture) {
+			fx.writeReport(2, "two", "abcdef123")
+		}, []string{"report head_sha unresolved", "names no commit", "have the fork rewrite head_sha", "`git rev-parse HEAD`"}},
+		{"report-head with an abbreviation naming two commits", websterengine.ResetToReportHead, 2, func(fx *resolutionFixture) {
+			fx.git.parents[fx.root[:9]+strings.Repeat("0", 31)] = nil
+			fx.writeReport(2, "two", fx.root[:9])
+		}, []string{"report head_sha unresolved", "names 2 commits", "`git rev-parse HEAD`"}},
+		{"report-head with a non-hex head_sha", websterengine.ResetToReportHead, 2, func(fx *resolutionFixture) {
+			fx.writeReport(2, "two", "main")
+		}, []string{"main", "not in this repository"}},
 		{"last-batch-head with no recorded head", websterengine.ResetToLastBatchHead, 0, func(fx *resolutionFixture) {
 			fx.state.Batches[1].Digest = nil
 		}, []string{"no batch recorded a head commit", "run `lyx webster reset --to start`"}},

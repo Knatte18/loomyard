@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -43,6 +44,9 @@ type BaseTrees interface {
 
 // masterTemplatePath is the repository's copy of the Master template, which Merriam loads at start.
 const masterTemplatePath = "contracts/stencils/webster/webster-template-master.md"
+
+// directiveStencilPath is the repository's copy of the orchestrator PATTERN directive stencil, which the Master template inlines with PATTERN.md.
+const directiveStencilPath = "contracts/stencils/pattern/pattern-directive-orchestrator.md"
 
 // StartRow is one card-naming fork's measured start context beside the start the profile estimates for its position.
 type StartRow struct {
@@ -103,6 +107,29 @@ type CalibrationSkip struct {
 	Run, Card, Reason string
 }
 
+// FixedRow is one run's measured Merriam start beside the lines of the texts MerriamBase counts.
+type FixedRow struct {
+	Run string
+	// Session is the file name of the Merriam session measured.
+	Session string
+	// Measured is the session's StartContext.
+	Measured float64
+	// Lines is the summed line count of the run's merriamTexts.
+	Lines int
+	// Fixed is Measured minus Lines at the profile's context_per_line.
+	Fixed float64
+}
+
+// FixedContext is the Merriam fixed-context section: what the system prompt, tools and launch-time skills weigh, derived per run from its measured start.
+type FixedContext struct {
+	Rows  []FixedRow
+	Skips []CalibrationSkip
+	// Fit summarizes the rows' Fixed: its median and the 25th and 75th percentiles.
+	Fit Fit
+	// Current is the fixed context the live Merriam base uses.
+	Current float64
+}
+
 // Calibration is the estimator run on past plans beside the measured forks.
 type Calibration struct {
 	Profile string
@@ -112,6 +139,7 @@ type Calibration struct {
 	StartFit StartFit
 	Rows     []CalibrationRow
 	Skips    []CalibrationSkip
+	Fixed    FixedContext
 
 	// bases is each run's computed Merriam base by run slug.
 	bases map[string]runStartBase
@@ -199,7 +227,11 @@ func Calibrate(runs []RunTally, profile, configDir string, history PlanHistory, 
 		if err := calibration.addStarts(run, history, base); err != nil {
 			return Calibration{}, err
 		}
+		if err := calibration.addFixed(run, base); err != nil {
+			return Calibration{}, err
+		}
 	}
+	calibration.Fixed.summarize()
 	calibration.StartFit = fitStart(calibration.Starts)
 	for _, run := range runs {
 		if err := calibration.addRun(run, history, base); err != nil {
@@ -266,43 +298,129 @@ func (c *Calibration) addStarts(run RunTally, history PlanHistory, base BaseTree
 	return nil
 }
 
-// readRunStartBase reconstructs the Merriam base of run: websterengine.MerriamBaseOf over CLAUDE.md, PATTERN.md and the Master template at the run's base commit and the plan's 00-overview.md.
+// fileAtBase reads name at run's base commit; found is false when the path is absent there.
+func fileAtBase(trees BaseTrees, run RunTally, name string) (data []byte, found bool, err error) {
+	data, err = trees.FileAtRevision(run.BaseSHA, name)
+	if errors.Is(err, gitrepo.ErrPathNotAtRevision) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("read %s of %s at %s: %w", name, run.Slug, run.BaseSHA, err)
+	}
+	return data, true, nil
+}
+
+// merriamTexts reconstructs, at run's base commit, the texts websterengine.MerriamBase counts but the plan's 00-overview.md:
+// CLAUDE.md, the Master template and the orchestrator PATTERN directive rendered from the directive stencil and PATTERN.md.
 // A CLAUDE.md or PATTERN.md absent at the base commit adds nothing, as it does for a live run.
-// A run whose plan, base commit or Master template cannot be found has a reason instead of a base.
+// CLAUDE.local.md, which MerriamBase also counts, is untracked and cannot be reconstructed; the derivation assumes the run's worktree had none, as a lyx-created worktree has none.
+// A run without a base, whose base commit is not in the repository, or whose Master template or directive stencil is absent there has a reason instead of texts;
+// a failed read or render is an error.
+func merriamTexts(run RunTally, trees BaseTrees) ([]string, string, error) {
+	switch {
+	case run.BaseSHA == "":
+		return nil, "no base: no begin-batch result in its webster sessions", nil
+	case !trees.SHAExists(run.BaseSHA):
+		return nil, fmt.Sprintf("base %s is not in the repository", run.BaseSHA), nil
+	}
+
+	var texts []string
+	claude, found, err := fileAtBase(trees, run, "CLAUDE.md")
+	if err != nil {
+		return nil, "", err
+	}
+	if found {
+		texts = append(texts, string(claude))
+	}
+	template, found, err := fileAtBase(trees, run, masterTemplatePath)
+	if err != nil {
+		return nil, "", err
+	}
+	if !found {
+		return nil, fmt.Sprintf("no Master template at base %s", run.BaseSHA), nil
+	}
+	texts = append(texts, string(template))
+
+	patternText, found, err := fileAtBase(trees, run, "PATTERN.md")
+	if err != nil {
+		return nil, "", err
+	}
+	if found {
+		stencil, found, err := fileAtBase(trees, run, directiveStencilPath)
+		if err != nil {
+			return nil, "", err
+		}
+		if !found {
+			return nil, fmt.Sprintf("no orchestrator directive stencil at base %s", run.BaseSHA), nil
+		}
+		directive, err := pattern.FillDirective(directiveStencilPath, string(stencil), string(patternText))
+		if err != nil {
+			return nil, "", fmt.Errorf("render the orchestrator directive of %s at %s: %w", run.Slug, run.BaseSHA, err)
+		}
+		texts = append(texts, directive)
+	}
+	return texts, "", nil
+}
+
+// readRunStartBase reconstructs the Merriam base of run: websterengine.MerriamBaseOf over merriamTexts and the plan's 00-overview.md.
+// A run whose plan, base commit, Master template or directive stencil cannot be found has a reason instead of a base.
 func readRunStartBase(run RunTally, history PlanHistory, trees BaseTrees) (runStartBase, error) {
 	plan, reason, err := readRunPlan(run, history)
 	if err != nil {
 		return runStartBase{}, err
 	}
-	switch {
-	case plan == nil:
+	if plan == nil {
 		return runStartBase{reason: reason}, nil
-	case run.BaseSHA == "":
-		return runStartBase{reason: "no base: no begin-batch result in its webster sessions"}, nil
-	case !trees.SHAExists(run.BaseSHA):
-		return runStartBase{reason: fmt.Sprintf("base %s is not in the repository", run.BaseSHA)}, nil
 	}
-
-	texts := []string{plan.OverviewText}
-	for _, name := range []string{"CLAUDE.md", "PATTERN.md"} {
-		data, err := trees.FileAtRevision(run.BaseSHA, name)
-		if errors.Is(err, gitrepo.ErrPathNotAtRevision) {
-			continue
-		}
-		if err != nil {
-			return runStartBase{}, fmt.Errorf("read %s of %s at %s: %w", name, run.Slug, run.BaseSHA, err)
-		}
-		texts = append(texts, string(data))
-	}
-	template, err := trees.FileAtRevision(run.BaseSHA, masterTemplatePath)
-	if errors.Is(err, gitrepo.ErrPathNotAtRevision) {
-		return runStartBase{reason: fmt.Sprintf("no Master template at base %s", run.BaseSHA)}, nil
-	}
+	texts, reason, err := merriamTexts(run, trees)
 	if err != nil {
-		return runStartBase{}, fmt.Errorf("read the Master template of %s at %s: %w", run.Slug, run.BaseSHA, err)
+		return runStartBase{}, err
 	}
-	texts = append(texts, string(template))
-	return runStartBase{base: websterengine.MerriamBaseOf(texts...)}, nil
+	if reason != "" {
+		return runStartBase{reason: reason}, nil
+	}
+	return runStartBase{base: websterengine.MerriamBaseOf(append(texts, plan.OverviewText)...)}, nil
+}
+
+// addFixed adds the Merriam fixed-context row of run's first Merriam session, by start time, and a skip for each session it cannot measure.
+// A session with no measured start, and any session of a run whose merriamTexts gives a reason, is a skip with that reason;
+// every later session of the run starts with prior conversation or a compaction summary in context, and is a skip for that.
+func (c *Calibration) addFixed(run RunTally, trees BaseTrees) error {
+	texts, reason, err := merriamTexts(run, trees)
+	if err != nil {
+		return err
+	}
+	lines := websterengine.MerriamBaseOf(texts...).Lines
+	for i, merriam := range run.Merriams {
+		skip := func(reason string) {
+			c.Fixed.Skips = append(c.Fixed.Skips, CalibrationSkip{Run: run.Slug, Card: merriam.Session, Reason: reason})
+		}
+		switch {
+		case i > 0:
+			skip("starts with prior conversation or a compaction summary in context")
+		case merriam.NoStart != "":
+			skip(merriam.NoStart)
+		case reason != "":
+			skip(reason)
+		default:
+			measured := float64(merriam.StartContext)
+			c.Fixed.Rows = append(c.Fixed.Rows, FixedRow{
+				Run: run.Slug, Session: merriam.Session, Measured: measured, Lines: lines,
+				Fixed: measured - float64(lines)*c.Weights.ContextPerLine,
+			})
+		}
+	}
+	return nil
+}
+
+// summarize sets the median and spread of the rows' Fixed and the current constant.
+func (f *FixedContext) summarize() {
+	fixed := make([]float64, 0, len(f.Rows))
+	for _, row := range f.Rows {
+		fixed = append(fixed, row.Fixed)
+	}
+	f.Fit = fitOfRatios(fixed)
+	f.Current = websterengine.MerriamBaseOf().Fixed
 }
 
 // fitStart fits Orientation and BatchGrowth by least squares of the measured start minus the run's base over position - 1, over the rows that carry a base.
@@ -569,6 +687,33 @@ func (c Calibration) WriteMarkdown(w io.Writer) {
 	}
 	writeFit(w, "overall", c.Rows)
 	fmt.Fprintln(w)
+
+	c.Fixed.write(w)
+}
+
+// write prints the Merriam fixed-context table, its median and spread beside the current constant, and the sessions left out with their reasons.
+func (f FixedContext) write(w io.Writer) {
+	fmt.Fprintln(w, "Merriam fixed context:")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "| run | session | measured start | lines | fixed |")
+	fmt.Fprintln(w, "|---|---|---|---|---|")
+	for _, row := range f.Rows {
+		fmt.Fprintf(w, "| %s | %s | %.0f | %d | %.0f |\n", row.Run, row.Session, row.Measured, row.Lines, row.Fixed)
+	}
+	fmt.Fprintln(w)
+	if f.Fit.Forks == 0 {
+		fmt.Fprintf(w, "Fixed: no run measured; current constant %.0f.\n\n", f.Current)
+	} else {
+		fmt.Fprintf(w, "Fixed over %d runs: median %.0f, 25th percentile %.0f, 75th percentile %.0f; current constant %.0f.\n\n", f.Fit.Forks, f.Fit.Median, f.Fit.P25, f.Fit.P75, f.Current)
+	}
+	if len(f.Skips) > 0 {
+		fmt.Fprintln(w, "Skipped:")
+		fmt.Fprintln(w)
+		for _, skip := range f.Skips {
+			fmt.Fprintf(w, "- %s %s: %s\n", skip.Run, skip.Card, skip.Reason)
+		}
+		fmt.Fprintln(w)
+	}
 }
 
 // write prints the fitted start coefficients beside the profile's, or why there is no fit.

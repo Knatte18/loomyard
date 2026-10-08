@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -282,9 +283,12 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	}
 	number, slug := batchIdentity(batch)
 
+	// The bracket's own transcripts are left out of the seen set, so the engine re-reads them in full.
 	seenSet := make(map[string]bool, len(deps.State.SeenForkTranscripts))
 	for _, p := range deps.State.SeenForkTranscripts {
-		seenSet[p] = true
+		if !slices.Contains(bs.BracketTranscripts, p) {
+			seenSet[p] = true
+		}
 	}
 
 	// Audit the session that opened this batch's bracket (bs.SessionID),
@@ -304,8 +308,23 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, err
 	}
 
+	ownReport := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
+
+	// A transcript the bracket attributed earlier counts only when it wrote this batch's report;
+	// a fork stopped and resumed across a no-report call appends to such a transcript, so the next call sees nothing new.
+	var bracketForks, counted []shuttleengine.ForkReport
+	for _, f := range audit.Forks {
+		if slices.Contains(bs.BracketTranscripts, f.TranscriptPath) {
+			bracketForks = append(bracketForks, f)
+			if slices.ContainsFunc(f.WritePaths, func(w string) bool { return isOwnReportWrite(deps.Geom.WorktreeRoot, w, ownReport) }) {
+				counted = append(counted, f)
+			}
+		}
+	}
+	counted = append(counted, newReports...)
+
 	// Check transcripts before report presence so a fake (unfakeable) report is caught.
-	warning, err := ClassifyAttribution(newReports)
+	warning, err := ClassifyAttribution(counted)
 	if err != nil {
 		return archiveUnattributable(deps, number, slug, err)
 	}
@@ -326,10 +345,9 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	ownReport := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
 	var candidates []AuditViolation
 	candidates = append(candidates, CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
-	for _, f := range newReports {
+	for _, f := range append(slices.Clone(newReports), bracketForks...) {
 		candidates = append(candidates, CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, planDirs, websterDirs, ownReport, deps.RefMatcher)...)
 		forkWarnings = append(forkWarnings, ForkWarnings(f)...)
 	}
@@ -369,23 +387,39 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		all := append(append([]classifiedFinding(nil), correctness...), policy...)
 		headSHA := ""
 		if r, perr := ParseReport(reportPath); perr == nil {
-			headSHA = r.HeadSHA
+			resolved, rerr := resolveReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, reportPath, r.HeadSHA)
+			switch {
+			case rerr == nil:
+				headSHA = resolved
+			case !errors.Is(rerr, ErrHeadSHAUnresolved):
+				return nil, rerr
+			}
 		}
 		return failOnCorrectness(deps, bs, number, slug, headSHA, all, correctness, newPaths, warnings)
 	}
 
 	// A plan edited since the run recorded it, or a begun card edited since its batch began, is refused before anything mutates or any card verify runs:
 	// every restamp further down exists to adopt webster's own rewrites, so a difference seen here is someone else's edit.
-	if err := PlanEditError(deps.State, deps.Geom.PlanDir); err != nil {
+	if err := PlanEditError(deps.State, deps.Geom.PlanDir, deps.Geom.WebsterDir); err != nil {
 		return nil, err
 	}
-	if err := batchCardEditError(deps.State, bs, batch, deps.Geom.PlanDir); err != nil {
+	if err := batchCardEditError(deps.State, bs, batch, deps.Geom.PlanDir, deps.Geom.WebsterDir); err != nil {
 		return nil, err
 	}
 
 	// Attribution advances before report-presence check so a retry sees only its own new transcript.
-	deps.State.SeenForkTranscripts = append(deps.State.SeenForkTranscripts, newPaths...)
-	bs.ForkTranscripts = append(bs.ForkTranscripts, newPaths...)
+	// Each list advances by the new transcripts only, without duplicates.
+	for _, p := range newPaths {
+		if !slices.Contains(deps.State.SeenForkTranscripts, p) {
+			deps.State.SeenForkTranscripts = append(deps.State.SeenForkTranscripts, p)
+		}
+		if !slices.Contains(bs.ForkTranscripts, p) {
+			bs.ForkTranscripts = append(bs.ForkTranscripts, p)
+		}
+		if !slices.Contains(bs.BracketTranscripts, p) {
+			bs.BracketTranscripts = append(bs.BracketTranscripts, p)
+		}
+	}
 
 	if _, statErr := os.Stat(reportPath); statErr != nil {
 		if os.IsNotExist(statErr) {
@@ -402,6 +436,11 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	report, err := ParseReport(reportPath)
 	if err != nil {
 		return nil, fmt.Errorf("%w; way forward: `lyx webster recover-batch %d` archives the malformed report and re-drives the batch", err, number)
+	}
+
+	// The run record holds full SHAs only, so an abbreviated head_sha is resolved before its first use.
+	if report.HeadSHA, err = resolveReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, reportPath, report.HeadSHA); err != nil {
+		return nil, err
 	}
 
 	// A merge in progress leaves the batch non-terminal and retryable.

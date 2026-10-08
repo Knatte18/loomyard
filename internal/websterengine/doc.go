@@ -87,6 +87,8 @@
 // because the audited delta ends at `head_sha` and such a merge's own content would bypass it.
 // The batch is recorded at the report's `head_sha` (CardSHAs and the delta's end), while the done-checks and drift detection read the merged tree as it stands,
 // and a warning names the walked merge SHAs.
+// A `head_sha` may be an abbreviation of 4 to 39 hex digits, resolved to the one commit it names before any comparison,
+// and an abbreviation naming no commit or several is refused with ErrHeadSHAUnresolved.
 // Any non-merge movement — a plain commit, a fast-forward onto non-merge commits — is refused,
 // and so is any call made while a git merge is in progress, leaving the batch non-terminal and retryable.
 //
@@ -197,10 +199,11 @@
 //
 // 00-overview.md carries the plan's integration verify, and only its Card Index section is rebaselined.
 // State.PlanOverviewFrameHash is the hash of planparser.OverviewWithoutCardIndex over the overview, recorded wherever State.PlanFileHashes is.
-// When the overview is among the changed plan files, Rebaseline accepts it if the state carries that hash and the file's frame hash still equals it, so the change is confined to the Card Index.
+// When the overview is among the changed plan files, Rebaseline accepts it if the file's frame hash still equals the run's recorded overview frame, so the change is confined to the Card Index.
 // The index change is then held to the card-set rule, which compares NN-slug ids: only cards after the last begun batch can be added, removed or reordered, and a begun card's index line keeps its number and slug.
 // What passes besides is a reworded one-line intent of a begun card in a later Master render, while that card's file stays pinned by its recorded hash.
-// A state without the frame hash refuses any overview change, and a change outside the Card Index refuses naming the overview outside its Card Index.
+// A state without the frame hash takes the recorded frame from the stored baseline copy of the overview until the first restamp.
+// A run with neither refuses any overview change, and a change outside the Card Index refuses naming the overview outside its Card Index.
 // A done batch's card and a changed frame refuse with the follow-up card landing as their way forward:
 // add a follow-up card after the last begun batch that carries the decision, with its Card Index line, then `lyx webster rebaseline --card NN` naming it.
 // The fingerprint refusals in begin-batch and run name the landing too, and for an index-only change name rebaseline with the added cards' flags.
@@ -253,7 +256,10 @@
 // an undispositioned correctness finding (a fork that marked its own batch done by writing state.json) replaces the terminal record with a failed one,
 // and otherwise the "already terminal" refusal stands.
 // It audits nothing while a later fork batch of the session is open or the verify-gate report exists, since an unseen transcript may then be that fork's.
-// A report that cannot be attributed to a begun batch, or to any fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
+// A batch's own bracket transcripts, the ones record-batch attributed to it since its begin-batch, count toward attribution when one of their writes is the batch's report,
+// and every one of them is re-audited in full on each call, so a fork stopped and resumed across a no-report call is attributed on the next.
+// begin-batch and recover-batch open an empty bracket list, so a transcript of an earlier bracket never counts.
+// A report that cannot be attributed to a begun batch, or to any counted fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
 // The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
 // A delete-not-done finding gets one more check, planindex.Index.LaterDeleteReferences over the batch's own cards and the cards of every batch with no record:
 // when an unbegun later card's Edit code still references the target, the failure's reasons name that card and the reference,
@@ -475,7 +481,7 @@
 // `pre-fix` (ResetToPreFix) is state.json's `PreFixHead`;
 // `last-batch-head` (ResetToLastBatchHead) is the last recorded batch head, the commit accept-audit picks by git ancestry.
 // `batch-start` (ResetToBatchStart) takes `--batch NN` and is batch NN's recorded start commit, refused when a later batch in the partition's order recorded a start.
-// `report-head` (ResetToReportHead) takes `--batch NN` and is the `head_sha` of batch NN's report.
+// `report-head` (ResetToReportHead) takes `--batch NN` and is the `head_sha` of batch NN's report, an abbreviated one resolved to the commit it names as record-batch does.
 // It is accepted only for a begun, non-terminal batch whose report parses and whose head descends from or equals the batch's start, with no later batch begun and no live recovery strand of the batch in reed.
 // It is the one target allowed while the run lock is held, because Master runs it inside its run between a fork's report and record-batch.
 // Its bound is that those checks rule out every writer lyx can see; a Master that spawned an in-session fork out of order stays unseen.
