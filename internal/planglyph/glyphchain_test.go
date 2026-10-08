@@ -35,6 +35,17 @@ type renameLeg struct {
 	canonical string
 }
 
+// codeEdit is one textual change to a fixture file: old is replaced by new, and an empty old appends new to the file.
+type codeEdit struct {
+	path string
+	old  string
+	new  string
+}
+
+func appendText(path, text string) codeEdit { return codeEdit{path: path, new: text} }
+
+func replaceText(path, old, new string) codeEdit { return codeEdit{path: path, old: old, new: new} }
+
 // shapeRow is one member shape class and the legs the chain runs on it; a nil leg is not run for the row.
 type shapeRow struct {
 	name  string
@@ -45,6 +56,10 @@ type shapeRow struct {
 	rename       *renameLeg
 	// deleteGlyphs are the targets of the Delete leg's one card.
 	deleteGlyphs []string
+	// createEdits, renameEdits and deleteEdits are the code change each leg's card describes, applied to a fixture copy by the legs that need a real commit.
+	createEdits []codeEdit
+	renameEdits []codeEdit
+	deleteEdits []codeEdit
 	// gap names a known defect the row's assertions record rather than fix.
 	gap string
 }
@@ -58,51 +73,167 @@ func newRenameLeg(glyph, wrongUnit string) *renameLeg {
 	}
 }
 
+const (
+	shapesFile       = "shapes/shapes.go"
+	shapesTestFile   = "shapes/shapes_test.go"
+	externalTestFile = "shapes/external_test.go"
+	taggedFile       = "shapes/tagged.go"
+	clauseFile       = "dirname/clause.go"
+	mainFile         = "cmd/tool/main.go"
+)
+
 // shapeRows lists one row per member shape class real plans name.
 func shapeRows() []shapeRow {
-	row := func(glyph string, create *createLeg, renames bool) shapeRow {
-		r := shapeRow{name: glyph, glyph: glyph, create: create, deleteGlyphs: []string{glyph}}
-		if renames {
-			r.rename = newRenameLeg(glyph, "dirname")
+	rows := []shapeRow{
+		{
+			glyph:       "shapes#Func",
+			create:      &createLeg{"plan:shapes#draft", "func NewFunc() int", "plan:shapes#NewFunc"},
+			createEdits: []codeEdit{appendText(shapesFile, "\nfunc NewFunc() int { return 1 }\n")},
+			renameEdits: []codeEdit{replaceText(shapesFile, "func Func() int", "func FuncRenamed() int")},
+			deleteEdits: []codeEdit{replaceText(shapesFile, "func Func() int { return 0 }\n", "")},
+		},
+		{
+			glyph:       "shapes#Plain",
+			create:      &createLeg{"plan:shapes#draft", "type NewPlain struct{}", "plan:shapes#NewPlain"},
+			createEdits: []codeEdit{appendText(shapesFile, "\ntype NewPlain struct{}\n")},
+			renameEdits: []codeEdit{replaceText(shapesFile, "type Plain struct{}", "type PlainRenamed struct{}")},
+			deleteEdits: []codeEdit{replaceText(shapesFile, "type Plain struct{}\n", "")},
+		},
+		{
+			glyph:       "shapes#Var",
+			create:      &createLeg{"plan:shapes#draft", "var NewVar = 1", "plan:shapes#NewVar"},
+			createEdits: []codeEdit{appendText(shapesFile, "\nvar NewVar = 1\n")},
+			renameEdits: []codeEdit{replaceText(shapesFile, "var Var = 1", "var VarRenamed = 1")},
+			deleteEdits: []codeEdit{replaceText(shapesFile, "var Var = 1\n", "")},
+		},
+		{
+			glyph:       "shapes#Const",
+			create:      &createLeg{"plan:shapes#draft", "const NewConst = 2", "plan:shapes#NewConst"},
+			createEdits: []codeEdit{appendText(shapesFile, "\nconst NewConst = 2\n")},
+			renameEdits: []codeEdit{replaceText(shapesFile, "const Const = 2", "const ConstRenamed = 2")},
+			deleteEdits: []codeEdit{replaceText(shapesFile, "const Const = 2\n", "")},
+		},
+		{
+			glyph:       "shapes#Struct.ValueMethod",
+			create:      &createLeg{"plan:shapes#Struct.draft", "func (s Struct) NewValueMethod() int", "plan:shapes#Struct.NewValueMethod"},
+			createEdits: []codeEdit{appendText(shapesFile, "\nfunc (s Struct) NewValueMethod() int { return 1 }\n")},
+			renameEdits: []codeEdit{replaceText(shapesFile, "ValueMethod() int", "ValueMethodRenamed() int")},
+			deleteEdits: []codeEdit{replaceText(shapesFile, "func (s Struct) ValueMethod() int { return s.Field }\n", "")},
+		},
+		{
+			glyph:       "shapes#Struct.PointerMethod",
+			create:      &createLeg{"plan:shapes#Struct.draft", "func (s *Struct) NewPointerMethod()", "plan:shapes#Struct.NewPointerMethod"},
+			createEdits: []codeEdit{appendText(shapesFile, "\nfunc (s *Struct) NewPointerMethod() {}\n")},
+			renameEdits: []codeEdit{replaceText(shapesFile, "PointerMethod() {", "PointerMethodRenamed() {")},
+			deleteEdits: []codeEdit{replaceText(shapesFile, "func (s *Struct) PointerMethod() { s.Field++ }\n", "")},
+		},
+		{
+			glyph: "shapes#Struct.Field",
+			// quarry indexes no struct fields, so a field glyph never resolves.
+			editFindings: []findingKey{{"glyph-not-found", "1-card1", SeverityBlocking}},
+			gap:          "quarry indexes no struct fields; shapes#Struct.Field resolves not_found",
+		},
+		{
+			// The renames of an interface method and of a multi-name spec fail today; cards 3 and 4 add those legs with their fixes.
+			glyph:       "shapes#Iface.IfaceMethod",
+			create:      &createLeg{"plan:shapes#Iface.draft", "func (i Iface) NewIfaceMethod() int", "plan:shapes#Iface.NewIfaceMethod"},
+			createEdits: []codeEdit{replaceText(shapesFile, "IfaceMethod() int\n}", "IfaceMethod() int\n\tNewIfaceMethod() int\n}")},
+			deleteEdits: []codeEdit{replaceText(shapesFile, "\tIfaceMethod() int\n", "")},
+		},
+		{
+			// The method cannot outlive its receiver type, so the Delete leg's card deletes both, and the rename carries the method's receiver along.
+			glyph:       "shapes#Generic",
+			create:      &createLeg{"plan:shapes#draft", "type NewGeneric[E any] struct{}", "plan:shapes#NewGeneric"},
+			createEdits: []codeEdit{appendText(shapesFile, "\ntype NewGeneric[E any] struct{}\n")},
+			renameEdits: []codeEdit{
+				replaceText(shapesFile, "type Generic[E any]", "type GenericRenamed[E any]"),
+				replaceText(shapesFile, "func (g *Generic[E])", "func (g *GenericRenamed[E])"),
+			},
+			deleteGlyphs: []string{"shapes#Generic", "shapes#Generic.GenericMethod"},
+			deleteEdits: []codeEdit{
+				replaceText(shapesFile, "type Generic[E any] struct{ value E }\n", ""),
+				replaceText(shapesFile, "func (g *Generic[E]) GenericMethod() E { return g.value }\n", ""),
+			},
+		},
+		{
+			glyph:       "shapes#Generic.GenericMethod",
+			create:      &createLeg{"plan:shapes#Generic.draft", "func (g *Generic[E]) NewGenericMethod() E", "plan:shapes#Generic.NewGenericMethod"},
+			createEdits: []codeEdit{appendText(shapesFile, "\nfunc (g *Generic[E]) NewGenericMethod() E { return g.value }\n")},
+			renameEdits: []codeEdit{replaceText(shapesFile, "GenericMethod() E", "GenericMethodRenamed() E")},
+			deleteEdits: []codeEdit{replaceText(shapesFile, "func (g *Generic[E]) GenericMethod() E { return g.value }\n", "")},
+		},
+		{
+			glyph:       "shapes#testHelper",
+			create:      &createLeg{"plan:shapes#draft", "func newTestHelper() int", "plan:shapes#newTestHelper"},
+			createEdits: []codeEdit{appendText(shapesTestFile, "\nfunc newTestHelper() int { return 0 }\n")},
+			renameEdits: []codeEdit{replaceText(shapesTestFile, "func testHelper()", "func testHelperRenamed()")},
+			deleteEdits: []codeEdit{replaceText(shapesTestFile, "func testHelper() int { return 0 }\n", "")},
+		},
+		{
+			glyph:       "shapes_test#TestExternal",
+			create:      &createLeg{"plan:shapes_test#draft", "func TestNewExternal(t *testing.T)", "plan:shapes_test#TestNewExternal"},
+			createEdits: []codeEdit{appendText(externalTestFile, "\nfunc TestNewExternal(t *testing.T) {}\n")},
+			renameEdits: []codeEdit{replaceText(externalTestFile, "func TestExternal(", "func TestExternalRenamed(")},
+			deleteEdits: []codeEdit{replaceText(externalTestFile, "func TestExternal(t *testing.T) {}\n", "")},
+		},
+		{
+			glyph:       "shapes#Tagged",
+			create:      &createLeg{"plan:shapes#draft", "func NewTagged()", "plan:shapes#NewTagged"},
+			createEdits: []codeEdit{appendText(taggedFile, "\nfunc NewTagged() {}\n")},
+			renameEdits: []codeEdit{replaceText(taggedFile, "func Tagged()", "func TaggedRenamed()")},
+			deleteEdits: []codeEdit{replaceText(taggedFile, "func Tagged() {}\n", "")},
+		},
+		{
+			glyph:       "dirname#DirDiffers",
+			create:      &createLeg{"plan:dirname#draft", "func NewDirDiffers()", "plan:dirname#NewDirDiffers"},
+			createEdits: []codeEdit{appendText(clauseFile, "\nfunc NewDirDiffers() {}\n")},
+			renameEdits: []codeEdit{replaceText(clauseFile, "func DirDiffers()", "func DirDiffersRenamed()")},
+			deleteEdits: []codeEdit{replaceText(clauseFile, "func DirDiffers() {}\n", "")},
+		},
+		{
+			glyph:       "cmd/tool#run",
+			create:      &createLeg{"plan:cmd/tool#draft", "func newRun()", "plan:cmd/tool#newRun"},
+			createEdits: []codeEdit{appendText(mainFile, "\nfunc newRun() {}\n")},
+			renameEdits: []codeEdit{replaceText(mainFile, "func run()", "func runRenamed()")},
+			deleteEdits: []codeEdit{replaceText(mainFile, "func run() {}\n", "")},
+		},
+		{
+			glyph:       "shapes#BlockVar",
+			create:      &createLeg{"plan:shapes#draft", "var NewBlockVar = 6", "plan:shapes#NewBlockVar"},
+			createEdits: []codeEdit{replaceText(shapesFile, "\tBlockVar     = 3\n", "\tBlockVar     = 3\n\tNewBlockVar  = 6\n")},
+			renameEdits: []codeEdit{replaceText(shapesFile, "\tBlockVar     = 3\n", "\tBlockVarRenamed = 3\n")},
+			deleteEdits: []codeEdit{replaceText(shapesFile, "\tBlockVar     = 3\n", "")},
+		},
+		{
+			glyph:       "shapes#NextConst",
+			create:      &createLeg{"plan:shapes#draft", "const NewNextConst = 7", "plan:shapes#NewNextConst"},
+			createEdits: []codeEdit{replaceText(shapesFile, "\tNextConst\n)", "\tNextConst\n\tNewNextConst = 7\n)")},
+			renameEdits: []codeEdit{replaceText(shapesFile, "\tNextConst\n)", "\tNextConstRenamed\n)")},
+			deleteEdits: []codeEdit{replaceText(shapesFile, "\tNextConst\n)", ")")},
+		},
+		{
+			glyph:       "shapes#PairB",
+			create:      &createLeg{"plan:shapes#draft", "var NewPairB int", "plan:shapes#NewPairB"},
+			createEdits: []codeEdit{replaceText(shapesFile, "PairA, PairB = 4, 5\n)", "PairA, PairB = 4, 5\n\tNewPairB int\n)")},
+			deleteEdits: []codeEdit{replaceText(shapesFile, "PairA, PairB = 4, 5", "PairA = 4")},
+		},
+	}
+
+	// Fill the fields every row derives from its glyph and legs.
+	for i := range rows {
+		r := &rows[i]
+		r.name = r.glyph
+		switch {
+		case r.glyph == "dirname#DirDiffers":
+			r.rename = newRenameLeg(r.glyph, "shapes")
+		case r.renameEdits != nil:
+			r.rename = newRenameLeg(r.glyph, "dirname")
 		}
-		return r
+		if r.deleteEdits != nil && r.deleteGlyphs == nil {
+			r.deleteGlyphs = []string{r.glyph}
+		}
 	}
-
-	generic := row("shapes#Generic", &createLeg{"plan:shapes#draft", "type NewGeneric[E any] struct{}", "plan:shapes#NewGeneric"}, true)
-	// The method cannot outlive its receiver type, so the card deletes both.
-	generic.deleteGlyphs = []string{"shapes#Generic", "shapes#Generic.GenericMethod"}
-
-	field := shapeRow{
-		name:  "shapes#Struct.Field",
-		glyph: "shapes#Struct.Field",
-		// quarry indexes no struct fields, so a field glyph never resolves.
-		editFindings: []findingKey{{"glyph-not-found", "1-card1", SeverityBlocking}},
-		gap:          "quarry indexes no struct fields; shapes#Struct.Field resolves not_found",
-	}
-
-	dirDiffers := row("dirname#DirDiffers", &createLeg{"plan:dirname#draft", "func NewDirDiffers()", "plan:dirname#NewDirDiffers"}, false)
-	dirDiffers.rename = newRenameLeg("dirname#DirDiffers", "shapes")
-
-	return []shapeRow{
-		row("shapes#Func", &createLeg{"plan:shapes#draft", "func NewFunc() int", "plan:shapes#NewFunc"}, true),
-		row("shapes#Plain", &createLeg{"plan:shapes#draft", "type NewPlain struct{}", "plan:shapes#NewPlain"}, true),
-		row("shapes#Var", &createLeg{"plan:shapes#draft", "var NewVar = 1", "plan:shapes#NewVar"}, true),
-		row("shapes#Const", &createLeg{"plan:shapes#draft", "const NewConst = 2", "plan:shapes#NewConst"}, true),
-		row("shapes#Struct.ValueMethod", &createLeg{"plan:shapes#Struct.draft", "func (s Struct) NewValueMethod() int", "plan:shapes#Struct.NewValueMethod"}, true),
-		row("shapes#Struct.PointerMethod", &createLeg{"plan:shapes#Struct.draft", "func (s *Struct) NewPointerMethod()", "plan:shapes#Struct.NewPointerMethod"}, true),
-		field,
-		row("shapes#Iface.IfaceMethod", &createLeg{"plan:shapes#Iface.draft", "func (i Iface) NewIfaceMethod() int", "plan:shapes#Iface.NewIfaceMethod"}, false),
-		generic,
-		row("shapes#Generic.GenericMethod", &createLeg{"plan:shapes#Generic.draft", "func (g *Generic[E]) NewGenericMethod() E", "plan:shapes#Generic.NewGenericMethod"}, true),
-		row("shapes#testHelper", &createLeg{"plan:shapes#draft", "func newTestHelper() int", "plan:shapes#newTestHelper"}, true),
-		row("shapes_test#TestExternal", &createLeg{"plan:shapes_test#draft", "func TestNewExternal(t *testing.T)", "plan:shapes_test#TestNewExternal"}, true),
-		row("shapes#Tagged", &createLeg{"plan:shapes#draft", "func NewTagged()", "plan:shapes#NewTagged"}, true),
-		dirDiffers,
-		row("cmd/tool#run", &createLeg{"plan:cmd/tool#draft", "func newRun()", "plan:cmd/tool#newRun"}, true),
-		row("shapes#BlockVar", &createLeg{"plan:shapes#draft", "var NewBlockVar = 6", "plan:shapes#NewBlockVar"}, true),
-		row("shapes#NextConst", &createLeg{"plan:shapes#draft", "const NewNextConst = 7", "plan:shapes#NewNextConst"}, true),
-		row("shapes#PairB", &createLeg{"plan:shapes#draft", "var NewPairB int", "plan:shapes#NewPairB"}, false),
-	}
+	return rows
 }
 
 // copyGlyphChainFixture copies the committed fixture module into a fresh temporary directory and returns it, so no leg touches the committed tree or another leg's copy.
