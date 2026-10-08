@@ -52,6 +52,9 @@
 //     The rule the pass exists for: a check whose verdict depends on state the run itself changes runs at the plan gates only, because dispatch re-validates a plan against a tree the run has already changed.
 //   - resign-interface-method (blocking) — planGatePass (plangate.go), an Edit re-sign arrow on a member that resolves to an interface method, whose own spec is no declaration.
 //     It reads the tree, so like redundant-file-target it runs at the plan gates only.
+//   - caller-uncovered (blocking for a package-level member, informational for a method) — callerCoverageFindings (callercoverage.go), reached through planGatePass: a deleted or re-signed member that Go code still references with no admissible card's target covering that code.
+//     It walks every Go file under the worktree root by token, so it runs only when a subject exists and at the plan gates only.
+//     A re-signed member admits its own card's targets; a deleted member admits its own card and every earlier one, and its reference inside a later card's Edit code stays delete-before-reference's.
 //   - delete-target-gone (informational) — downgradeGoneDeleteTargets (planglyph.go), a Delete target of a pending card that is already absent, reported by ValidateDispatch alone once a batch is begun instead of the blocking path-missing or glyph-not-found finding for it.
 //   - handle-name-failed, handle-canonical-collision (both blocking) — CanonicalizeHandles
 //     (handle.go), a declaration that fails to parse or two draft handles that canonicalize to the

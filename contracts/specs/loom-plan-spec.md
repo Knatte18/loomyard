@@ -120,8 +120,8 @@ A symbol no card in the plan touches needs no edge — its state never changes d
 | Type | Target list holds | Mechanical check | `ImpactSummary` |
 |---|---|---|---|
 | Create | new symbol(s)/file(s) | none — check nothing equivalent exists first | not required |
-| Edit | existing symbol(s) | impact/blast-radius on the symbol being changed | required |
-| Delete | existing symbol(s) OR whole file(s) | assert-no-callers (necessary, not sufficient) | required |
+| Edit | existing symbol(s) | impact/blast-radius on the symbol being changed; `caller-uncovered` for a re-signed member | required |
+| Delete | existing symbol(s) OR whole file(s) | assert-no-callers (necessary, not sufficient), mechanically `caller-uncovered` for a member | required |
 | Rename | existing symbol(s), `old -> new` pairs | AST-aware script + grep verify, never text/regex replace | not required |
 | Move | existing symbol relocated to a file, OR a whole file relocated | `git mv` + import fixup; destination stated in `Intent`, not the target list | not required |
 | Prosa | file(s), no symbol target | none | not required |
@@ -424,10 +424,18 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch` and never under `language: "none"`: the verdict depends on a member's resolved file, which the run itself changes once record-batch binds a handle into a member glyph.
 33. `resign-interface-method` — an `Edit` re-sign arrow on a member glyph that resolves to a method whose signature does not open with `func`, which is how an interface method answers; its own spec is no declaration a head can re-sign.
     Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch`, because it reads the tree; the way forward is to drop the arrow and state the signature change in the card's `Intent`.
-34. `delete-target-gone` (informational) — a `Delete:` target of a card that has not begun, already absent from the tree.
+34. `caller-uncovered` — a member a card deletes (a `Delete:` group's member glyph) or re-signs (an `Edit:` arrow's target) that Go code still references, where no admissible card's target covers the reference.
+    A reference is found by tokenizing every `.go` file under the worktree root, `_test.go` and build-tagged files included, and skipping directories named `testdata` or `vendor` and directories whose name starts with `.` or `_`; comments and string literals never match.
+    A package-level member is referenced inside its own package (the files of its declaring file's directory sharing its package clause) by its bare identifier not preceded by `.`, and elsewhere, an external test package of that directory included, as the declaring package clause, a `.` and the identifier; a method is referenced by `.` and its identifier anywhere; an occurrence inside the member's own resolved span is its declaration.
+    A reference is covered by a target of an admissible card: the file's self glyph, a package self glyph for the file's directory, or a member glyph whose resolved span holds the line.
+    A re-signed member admits only its own card, and a deleted member its own card and every earlier one; a deleted member's reference inside a later card's `Edit:` code is `delete-before-reference`'s alone, while a re-signed member's is reported here.
+    One finding per subject and file, attributed to the subject's card, with `Ref` the member and the file and its lines named; its way forward is to list the file, or the member glyph whose body holds the reference, on that card, or for a deleted member on an earlier card.
+    Blocking for a package-level member, informational for a method, since a name-based scan cannot tell receivers apart.
+    Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch`, because the reference set shrinks as earlier cards land; the scan misses a caller that imports the package under an alias or with a dot import, and a caller in a file an earlier card creates, which webster's per-card build and test gate catches.
+35. `delete-target-gone` (informational) — a `Delete:` target of a card that has not begun, already absent from the tree.
     Emitted by `internal/planglyph` at `ValidateDispatch` only, once at least one batch is begun, in place of the blocking `path-missing` or `glyph-not-found` finding for that target; `ValidateFormat`, `Validate` and `ValidateRework` keep refusing a missing `Delete:` target.
     The same target under the card's own `Edit:`, `Uses:` or `Rename` old side keeps its blocking finding.
-35. `card-fabric-reference` — a command in the plan that reaches the fabric repo: a sibling worktree path (a name ending in the fabric suffix) or a command spelling that drives the fabric repo.
+36. `card-fabric-reference` — a command in the plan that reaches the fabric repo: a sibling worktree path (a name ending in the fabric suffix) or a command spelling that drives the fabric repo.
     It scans a card's `**Verify:**` value and the overview's `## verify:` section body with both rules, every fenced code block of every plan file with both rules, and every inline code span of every plan file with the path rule only, because a span documenting a command opens with the spelling.
     Prose outside code is never scanned.
     Each span is matched on its own, with the same rule the implementer audit uses.

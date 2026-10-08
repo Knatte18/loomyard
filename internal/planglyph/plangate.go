@@ -18,6 +18,7 @@ import (
 // planGatePass reports redundant-file-target: a card listing a file self glyph and a member glyph that resolves into that file.
 // One finding per file and member, attributed to the card, with Ref the member.
 // It also reports resign-interface-method: a re-sign arrow whose member resolves to an interface method.
+// It also reports caller-uncovered: a deleted or re-signed member that Go code still references, with no admissible card's target covering that code.
 // A member that resolves not_found, ambiguous or unreadably is skipped, since the status policy already reports it.
 // Under a non-glyph language it returns nothing and opens no repository.
 // An infrastructure error is wrapped in ErrQuarryUnavailable.
@@ -94,7 +95,9 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string) ([]Finding, error)
 			})
 		}
 	}
-	return findings, nil
+
+	coverage, err := callerCoverageFindings(plan, lang, worktreeRoot, answers)
+	return append(findings, coverage...), err
 }
 
 // isInterfaceMethod reports whether s is a method whose signature does not open with func, quarry's answer for an interface method.

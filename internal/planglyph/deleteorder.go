@@ -78,6 +78,55 @@ type editRegion struct {
 	end   int
 }
 
+// editTarget is one member glyph or file an Edit group of card targets.
+type editTarget struct {
+	card  planparser.Card
+	ref   string
+	shape refShape
+	path  string
+}
+
+// collectEditTargets returns, in card and body order, every Edit-group target of cards that is a member glyph or a file.
+func collectEditTargets(lang glyph.Language, cards []planparser.Card) []editTarget {
+	var edits []editTarget
+	for _, c := range cards {
+		for _, group := range c.TargetGroups {
+			if group.Type != planparser.CardTypeEdit {
+				continue
+			}
+			for _, ref := range group.Refs {
+				shape, _, refPath := classifyDeleteOrderRef(lang, ref)
+				if shape == shapeMember || shape == shapeFile {
+					edits = append(edits, editTarget{card: c, ref: ref, shape: shape, path: refPath})
+				}
+			}
+		}
+	}
+	return edits
+}
+
+// buildEditRegions returns the code each of edits covers: the whole file for a file target, and each resolved span for a member glyph answered in index.
+// A member whose answer cannot be read adds a glyph-rejected finding instead of a region.
+func buildEditRegions(edits []editTarget, index map[string]quarry.ResolveResult) ([]editRegion, []Finding) {
+	var regions []editRegion
+	var findings []Finding
+	for _, e := range edits {
+		if e.shape == shapeFile {
+			regions = append(regions, editRegion{card: e.card, file: e.path})
+			continue
+		}
+		answered, readable := answerSymbols(index[e.ref])
+		if !readable {
+			findings = append(findings, unreadableAnswerFinding(e.card, "Edit target", e.ref, index[e.ref]))
+			continue
+		}
+		for _, s := range answered {
+			regions = append(regions, editRegion{card: e.card, file: s.File, start: s.Start, end: s.End})
+		}
+	}
+	return regions, findings
+}
+
 // LaterDeleteReferences reports, as blocking delete-before-reference findings, every place a card in later numbered above a card in deleting still references a symbol that card deletes.
 // The deleting card's Delete targets that are member glyphs or package self glyphs are looked up; a file-path Delete target, and a member target that no longer resolves found, are not checked.
 // The searched code is each later card's Edit targets: a member glyph's resolved span, or the whole file for a file path or file self glyph; any other Edit target shape is not searched.
@@ -99,13 +148,6 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 		g     glyph.Glyph
 		path  string
 	}
-	type pendingEdit struct {
-		card  planparser.Card
-		ref   string
-		shape refShape
-		path  string
-	}
-
 	var deletes []pendingDelete
 	for _, c := range sortedCards(deleting) {
 		for _, group := range c.TargetGroups {
@@ -120,20 +162,7 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 			}
 		}
 	}
-	var edits []pendingEdit
-	for _, c := range sortedCards(later) {
-		for _, group := range c.TargetGroups {
-			if group.Type != planparser.CardTypeEdit {
-				continue
-			}
-			for _, ref := range group.Refs {
-				shape, _, refPath := classifyDeleteOrderRef(lang, ref)
-				if shape == shapeMember || shape == shapeFile {
-					edits = append(edits, pendingEdit{card: c, ref: ref, shape: shape, path: refPath})
-				}
-			}
-		}
-	}
+	edits := collectEditTargets(lang, sortedCards(later))
 	if len(deletes) == 0 || len(edits) == 0 {
 		return nil, nil
 	}
@@ -206,21 +235,8 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 		})
 	}
 
-	var regions []editRegion
-	for _, e := range edits {
-		if e.shape == shapeFile {
-			regions = append(regions, editRegion{card: e.card, file: e.path})
-			continue
-		}
-		answered, readable := answerSymbols(index[e.ref])
-		if !readable {
-			findings = append(findings, unreadableAnswerFinding(e.card, "Edit target", e.ref, index[e.ref]))
-			continue
-		}
-		for _, s := range answered {
-			regions = append(regions, editRegion{card: e.card, file: s.File, start: s.Start, end: s.End})
-		}
-	}
+	regions, regionFindings := buildEditRegions(edits, index)
+	findings = append(findings, regionFindings...)
 
 	linesOf := make(map[string][]string)
 	readLines := func(file string) ([]string, error) {

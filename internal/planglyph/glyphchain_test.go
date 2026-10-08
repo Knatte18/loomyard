@@ -4,6 +4,7 @@
 package planglyph
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -599,4 +600,161 @@ func TestGlyphChain_ResignScenarios(t *testing.T) {
 			}
 		}
 	})
+}
+
+// coverageFiles are the fixture files the caller-coverage rows can report.
+var coverageFiles = []string{
+	"callees/callees.go",
+	"callees/callees_external_test.go",
+	"callees/local.go",
+	"callers/callers.go",
+	"other/holder.go",
+}
+
+// editWithResign is an Edit card whose bullets are the arrow for glyph and then the plain targets.
+func editWithResign(glyphID, head string, targets ...string) string {
+	return fmt.Sprintf("**Edit:**\n- `%s` -> `%s`\n%s\n**Intent:** resign\n\n**ImpactSummary:** none\n", glyphID, head, bullets(targets))
+}
+
+// deleteWithEdit is a card with a Delete group and an Edit group.
+func deleteWithEdit(deleted, edited []string) string {
+	return "**Delete:**\n" + bullets(deleted) + "\n**Edit:**\n" + bullets(edited) + "\n**Intent:** delete\n\n**ImpactSummary:** none\n"
+}
+
+// TestGlyphChain_CallerCoverage pins caller-uncovered over the callees fixture: a deleted or re-signed member whose references no admissible card covers is reported per file, blocking for a package-level member and informational for a method, at the plan gate and never by ValidateDispatch.
+func TestGlyphChain_CallerCoverage(t *testing.T) {
+	t.Parallel()
+
+	const (
+		resignHead = "func Target(count int) int"
+		tests      = "callees/callees_external_test.go"
+	)
+	covers := []string{"callees/local.go", tests}
+
+	cases := []struct {
+		name     string
+		cards    []string
+		sections []plankit.Section
+		// subject is the card that deletes or re-signs the member, 1-card1 when empty.
+		subject string
+		// want lists "<severity> <file>" for every caller-uncovered finding, sorted.
+		want []string
+		// wantDeleteOrder names the file a delete-before-reference finding must report, when any.
+		wantDeleteOrder string
+	}{
+		{
+			name:  "delete with no covers",
+			cards: []string{deleteCard("callees#Target")},
+			want:  []string{"blocking callees/callees_external_test.go", "blocking callees/local.go", "blocking callers/callers.go"},
+		},
+		{
+			name:  "delete with the covers on its own card",
+			cards: []string{deleteWithEdit([]string{"callees#Target"}, append(slices.Clone(covers), "callers#UseTarget"))},
+		},
+		{
+			name:  "delete with the covers on an earlier card",
+			cards: []string{editCard(append(slices.Clone(covers), "callers#")...), deleteCard("callees#Target")},
+		},
+		{
+			name:    "re-sign with the covers only on an earlier card",
+			cards:   []string{editCard(append(slices.Clone(covers), "callers#")...), editWithResign("callees#Target", resignHead)},
+			subject: "2-card2",
+			want:    []string{"blocking callees/callees_external_test.go", "blocking callees/local.go", "blocking callers/callers.go"},
+		},
+		{
+			name:  "re-sign with the covers on its own card",
+			cards: []string{editWithResign("callees#Target", resignHead, append(slices.Clone(covers), "callers#UseTarget")...)},
+		},
+		{
+			name:  "delete of a member called in its own file",
+			cards: []string{deleteCard("callees#Helper")},
+			want:  []string{"blocking callees/callees.go"},
+		},
+		{
+			name:  "delete of a member with its caller on the same card",
+			cards: []string{deleteWithEdit([]string{"callees#Helper"}, []string{"callees#UsesHelper"})},
+		},
+		{
+			name:  "delete of a method",
+			cards: []string{deleteCard("callees#Thing.Method")},
+			want:  []string{"informational callers/callers.go"},
+		},
+		{
+			name:     "rename is not a subject",
+			cards:    []string{renameCard("callees#Target", "plan:callees#Moved")},
+			sections: []plankit.Section{renameMechanic},
+		},
+		{
+			name:  "delete of a file is not a subject",
+			cards: []string{deleteCard("callees/callees.go")},
+		},
+		{
+			name:  "delete of a package is not a subject",
+			cards: []string{deleteCard("callees#")},
+		},
+		{
+			name:            "delete with a later card editing a caller is delete-before-reference's alone",
+			cards:           []string{deleteCard("callees#Target"), editCard("callers/callers.go")},
+			want:            []string{"blocking callees/callees_external_test.go", "blocking callees/local.go"},
+			wantDeleteOrder: "callers/callers.go",
+		},
+		{
+			name:  "re-sign with a later card editing a caller",
+			cards: []string{editWithResign("callees#Target", resignHead), editCard("callers/callers.go")},
+			want:  []string{"blocking callees/callees_external_test.go", "blocking callees/local.go", "blocking callers/callers.go"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := copyGlyphChainFixture(t)
+			_, plan := writeGlyphPlan(t, tc.cards, tc.sections...)
+
+			findings, err := ValidateFormat(plan, root)
+			if err != nil {
+				t.Fatalf("ValidateFormat(...) returned error: %v", err)
+			}
+			var got []string
+			deleteOrderFile := ""
+			for _, f := range findings {
+				switch f.Check {
+				case "caller-uncovered":
+					if want := cmp.Or(tc.subject, "1-card1"); f.Card != want {
+						t.Errorf("caller-uncovered attributed to %q; want the subject's card %s", f.Card, want)
+					}
+					got = append(got, fmt.Sprintf("%s %s", f.Severity, coverageFileOf(f.Detail)))
+				case "delete-before-reference":
+					deleteOrderFile = coverageFileOf(f.Detail)
+				}
+			}
+			slices.Sort(got)
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("caller-uncovered findings = %q; want %q", got, tc.want)
+			}
+			if deleteOrderFile != tc.wantDeleteOrder {
+				t.Errorf("delete-before-reference file = %q; want %q", deleteOrderFile, tc.wantDeleteOrder)
+			}
+
+			dispatch, err := ValidateDispatch(plan, root, nil, nil)
+			if err != nil {
+				t.Fatalf("ValidateDispatch(...) returned error: %v", err)
+			}
+			for _, f := range dispatch {
+				if f.Check == "caller-uncovered" {
+					t.Errorf("ValidateDispatch reported %+v; want the plan-gate pass skipped", f)
+				}
+			}
+		})
+	}
+}
+
+// coverageFileOf returns the first coverage fixture file detail names, or "" when it names none.
+func coverageFileOf(detail string) string {
+	for _, file := range coverageFiles {
+		if strings.Contains(detail, file) {
+			return file
+		}
+	}
+	return ""
 }
