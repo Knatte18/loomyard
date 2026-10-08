@@ -351,7 +351,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	}
 	gitkit.MustRun(t, p.warpPath, "git", "checkout", "-q", "-f", p.warpBranch)
 
-	// A diverged code side: reported against the warp side, the records side still pushes.
+	// A diverged code side: reported against the code side, the records side still pushes.
 	warpClone := cloneBareForTest(t, p.hub.CodeBare, p.warpBranch)
 	remoteSHA := gitkit.CommitFile(t, warpClone, "other.txt", "from second warp clone", "from second warp clone")
 	gitkit.MustRun(t, warpClone, "git", "push")
