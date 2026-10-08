@@ -42,7 +42,7 @@
 // # Completion Signal Invariant
 //
 // Any code path in this package that finalizes a NEGATIVE answer to "did this run finish" -- an
-// OutcomeDied, an OutcomeTimeout, a mechanism-failure error, or a verdictRespawnEligible -- must
+// OutcomeDied, an OutcomeTimeout, a runOutcomeStopped record, a mechanism-failure error, or a verdictRespawnEligible -- must
 // first consult allOutputFilesExist over the run's OutputFiles, directly or through one of the three
 // helpers that own the check: classifyDeadlineExpiry, finishedDespiteMechanismFailure (both here),
 // or soleFinishedCandidate (attach.go). The startup step (awaitStartup, abandonStartup) honours the
@@ -932,8 +932,11 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 		// like every other mid-run persistence in this package (finalize's Outcome write) — a save
 		// failure here costs a future re-attach one extra startup probe, never this run's own
 		// correctness.
+		run.recordMu.Lock()
 		run.state.Started = true
-		if err := saveRunState(run.runDir, run.state); err != nil {
+		err := run.saveState()
+		run.recordMu.Unlock()
+		if err != nil {
 			logger.Warn("shuttle: persist run started failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "error", err)
 		}
 		return "", nil
@@ -1218,9 +1221,16 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 		result.Gate = gateOutcome
 	}
 
-	run.state.Outcome = string(outcome)
-	if err := saveRunState(run.runDir, run.state); err != nil {
-		logger.Warn("shuttle: persist run outcome failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome), "error", err)
+	run.recordMu.Lock()
+	recorded := string(outcome)
+	if run.stopMarked {
+		recorded = stopOutcome(recorded, run.spec.OutputFiles)
+	}
+	run.state.Outcome = recorded
+	saveErr := run.saveState()
+	run.recordMu.Unlock()
+	if saveErr != nil {
+		logger.Warn("shuttle: persist run outcome failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", recorded, "error", saveErr)
 	}
 
 	if outcome == OutcomeDone && run.spec.ForkSubagents {

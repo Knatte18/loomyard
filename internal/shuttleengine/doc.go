@@ -72,6 +72,20 @@
 // A batch of several new events is classified by its last event, so only its last held turn end is notified.
 // It stays provider-invariant, per the Shuttle Provider-Seam Invariant.
 //
+// # Stop verb
+//
+// Run.Stop and Runner.StopStrand (the guid form, for a caller holding no handle) end a run's strand after recording the stop in run.json.
+// The record reads "stopped", a record-only terminal outcome that is never a Result.Outcome;
+// a record already terminal keeps its outcome, and one still reading running whose output files all exist keeps running, so a stop never turns finished work into a stopped record.
+// The record is written first: a failed write returns its error with the strand untouched, and a failed removal leaves the terminal record over a live strand, which Attach reads as respawn-eligible and stops as superseded.
+// A guid with no run record is stopped by removing its strand alone.
+// Attach's removal of a superseded run's strand goes through the same record-then-remove step.
+// A Wait on a stopped handle finalizes with the stop mark and records "stopped" unless the files show the run done.
+// A Wait in another process may overwrite "stopped" with its own terminal outcome, and either answer is terminal.
+//
+// A Run's record lock guards the stop mark, RunState.Outcome and every save of run.state, so a stop from another goroutine never interleaves with Wait's own record writes.
+// Shuttle's teardowns inside the run lifecycle (finalize's cleanup, abandonStartup) write the record themselves and do not go through the verb.
+//
 // Spec.PermissionMode, Spec.AllowAgentTool and Spec.ResumeSessionID are caller-owned engine vocabulary, like Spec.Effort: Spec.validate never inspects them,
 // and the engine is the sole validator and realizer.
 // Empty PermissionMode keeps the run mode's default, AllowAgentTool left false keeps shuttle's config-driven Agent deny,

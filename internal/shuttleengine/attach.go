@@ -208,7 +208,7 @@ func (r *Runner) removeSupersededStrands(candidates []attachCandidate, strands [
 			continue
 		}
 		logger.Warn("shuttle: attach: removing the live strand of a superseded run before a fresh run", "runDir", c.runDir, "strandGUID", c.state.StrandGUID)
-		if _, err := r.reed.RemoveStrand(c.state.StrandGUID, false); err != nil {
+		if err := r.stopRecorded(c.runDir, c.state.StrandGUID); err != nil {
 			return fmt.Errorf("shuttle: attach: could not remove the superseded strand %s of run %s: %w; way forward: run \"lyx reed remove %s\", then re-step the row", c.state.StrandGUID, c.runDir, err, c.state.StrandGUID)
 		}
 	}
@@ -566,11 +566,11 @@ func leftoverThenAgeVerdict(c attachCandidate, spec Spec, minAge time.Duration, 
 // Nothing writes it now, and Attach reads it only to attach a record whose strand is live.
 const legacyAskingOutcome = "asking"
 
-// isTerminalOutcome reports whether outcome is one of the values finalize ever wrote to RunState.Outcome: done, died, timeout, or the legacy asking.
+// isTerminalOutcome reports whether outcome is a terminal value a run record holds: done, died, timeout, stopped, or the legacy asking.
 // It is false for the empty string (a legacy pre-Outcome-field record, or a run.json Start has not yet finalized), for runOutcomeRunning, and for any value this package does not recognize.
 func isTerminalOutcome(outcome string) bool {
 	switch outcome {
-	case string(OutcomeDone), legacyAskingOutcome, string(OutcomeDied), string(OutcomeTimeout):
+	case string(OutcomeDone), legacyAskingOutcome, string(OutcomeDied), string(OutcomeTimeout), runOutcomeStopped:
 		return true
 	default:
 		return false

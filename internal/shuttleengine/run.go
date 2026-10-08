@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -225,6 +226,10 @@ type Run struct {
 	spec   Spec
 	runDir string
 	state  RunState
+	// recordMu guards stopMarked, state.Outcome and every save of state, so a stop from another goroutine never interleaves with Wait's record writes.
+	recordMu sync.Mutex
+	// stopMarked reports that Stop recorded a stop on this handle, which makes finalize store the stop outcome instead of the classified one.
+	stopMarked bool
 
 	// offset is the byte offset already consumed from state.EventsPath.
 	offset int64
@@ -528,8 +533,11 @@ func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 	if run.offset > 0 {
 		// Persisted before the prompt is sent, so a reader of the events file that never Waits on this Run
 		// (an Attach, webster's recovery classification) starts past the load turns too.
+		run.recordMu.Lock()
 		run.state.PromptOffset = run.offset
-		if err := saveRunState(run.runDir, run.state); err != nil {
+		err := run.saveState()
+		run.recordMu.Unlock()
+		if err != nil {
 			return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: persist the prompt offset after loading skills: %w", err))
 		}
 	}
