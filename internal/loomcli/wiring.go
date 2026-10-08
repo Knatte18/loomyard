@@ -451,7 +451,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},
-		Reed:       reedEngine,
+		Stopper:    runner,
 		Engine:     claudeEngine,
 		ShuttleCfg: shuttleCfg,
 		Roles:      roles,

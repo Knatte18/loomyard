@@ -217,8 +217,8 @@ func TestMergeShuttle_RunFnReplacesScriptedAnswer(t *testing.T) {
 
 func TestWebsterSeams_FieldsNonNil(t *testing.T) {
 	deps := WebsterSeams()
-	if deps.Starter == nil || deps.Reed == nil || deps.Engine == nil || deps.RefMatcher == nil {
-		t.Errorf("WebsterSeams() = %+v; want Starter, Reed, Engine and RefMatcher non-nil", deps)
+	if deps.Starter == nil || deps.Stopper == nil || deps.Engine == nil || deps.RefMatcher == nil {
+		t.Errorf("WebsterSeams() = %+v; want Starter, Stopper, Engine and RefMatcher non-nil", deps)
 	}
 }
 

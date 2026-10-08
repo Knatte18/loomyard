@@ -110,12 +110,18 @@ func (e *RecoveryStrandRemoveError) Error() string {
 
 func (e *RecoveryStrandRemoveError) Unwrap() error { return e.Err }
 
-// RemoveRecoveryStrands removes every live recovery strand the state records, in batch-number order.
+// StrandStopper is the seam a leftover strand is stopped through by guid.
+// StopStrand records the stop on the strand's run, then ends the strand when it is live, and is a no-op for a strand that is not.
+type StrandStopper interface {
+	StopStrand(guid string) error
+}
+
+// RemoveRecoveryStrands stops every live recovery strand the state records, in batch-number order.
 // Only a batch of Kind "recovery" with a StrandGUID names one;
 // implementer forks and the Master have no recorded strand.
 // The first failure returns a *RecoveryStrandRemoveError naming the strand guid.
-// A nil state removes nothing.
-func RemoveRecoveryStrands(reed shuttleengine.ReedOps, st *State) error {
+// A nil state stops nothing.
+func RemoveRecoveryStrands(stopper StrandStopper, st *State) error {
 	if st == nil {
 		return nil
 	}
@@ -129,7 +135,7 @@ func RemoveRecoveryStrands(reed shuttleengine.ReedOps, st *State) error {
 		if bs == nil || bs.Kind != "recovery" || bs.StrandGUID == "" {
 			continue
 		}
-		if err := removeStrandIfLive(reed, bs.StrandGUID); err != nil {
+		if err := stopper.StopStrand(bs.StrandGUID); err != nil {
 			return &RecoveryStrandRemoveError{GUID: bs.StrandGUID, Err: err}
 		}
 	}

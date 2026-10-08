@@ -27,7 +27,7 @@ var intentionallyNil = map[string]string{
 	"Burler":                    "loom-only seam, batten runs no review round",
 	"WebsterRun":                "loom-only seam, batten runs no webster",
 	"WebsterDeps.Starter":       "loom-only seam, batten runs no webster",
-	"WebsterDeps.Reed":          "loom-only seam, batten runs no webster",
+	"WebsterDeps.Stopper":       "loom-only seam, batten runs no webster",
 	"WebsterDeps.Engine":        "loom-only seam, batten runs no webster",
 	"WebsterDeps.RefMatcher":    "loom-only seam, batten runs no webster",
 	"WebsterDeps.Geom.Index":    "loom-only seam, batten runs no webster",

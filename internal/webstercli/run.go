@@ -23,7 +23,7 @@ import (
 func (c *websterCLI) runDeps() websterengine.RunDeps {
 	return websterengine.RunDeps{
 		Starter:      c.masterStarter,
-		Reed:         c.reed,
+		Stopper:      c.runner,
 		Engine:       c.engine,
 		ShuttleCfg:   c.shuttleCfg,
 		Roles:        c.roles,
