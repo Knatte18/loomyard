@@ -280,7 +280,8 @@ var wordingClaims = []stencilClaims{
 	}, focusEntryClaims()...)},
 	{"bouncer-template-escalation.md", BouncerTemplateEscalation, joinClaims(
 		wantAll("the brief tells the fork to record design calls and the decision and to resume the run",
-			"lyx loom decision add", "lyx loom circling accept", "lyx loom circling continue", "lyx loom start"),
+			"lyx loom decision add", "lyx loom circling accept", "lyx loom circling continue", "lyx loom resume"),
+		wantNone("the brief resumes through resume, since start is only a halted run's way forward", "lyx loom start"),
 		wantAll("the brief names both causes", "`circling`", "`budget`"),
 		wantAll("the brief says accept passes the segment unconverged", "recorded as unconverged"),
 		wantAll("a fork that cannot settle the question records nothing and reports back", "record nothing", "The run stays `awaiting`"),

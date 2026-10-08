@@ -799,7 +799,7 @@ func (b *Bouncer) escalationReason(round int, cause EscalationCause, briefPath s
 	if briefPath != "" {
 		reason += fmt.Sprintf("; brief at %s", briefPath)
 	}
-	return reason + fmt.Sprintf("; decide with `lyx loom circling accept%s` or `lyx loom circling continue%s`, then run `lyx loom start` in the task worktree to resume", verbSuffix, verbSuffix)
+	return reason + fmt.Sprintf("; decide with `lyx loom circling accept%s` or `lyx loom circling continue%s`, then run `lyx loom resume` in the task worktree to resume", verbSuffix, verbSuffix)
 }
 
 // seedCall runs the Bouncer's seed pass for round 1: archive round 1's stale focus file, attempt

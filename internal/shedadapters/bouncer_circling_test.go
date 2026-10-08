@@ -93,7 +93,7 @@ func TestBouncer_Circling_NoDecisionAwaitsNamingBothVerbs(t *testing.T) {
 		{
 			name:      "a slug is named in both verbs",
 			slug:      "my-task",
-			wantReasn: []string{"round 2", "lyx loom circling accept my-task", "lyx loom circling continue my-task", "lyx loom start"},
+			wantReasn: []string{"round 2", "lyx loom circling accept my-task", "lyx loom circling continue my-task", "lyx loom resume"},
 		},
 		{
 			name:      "an empty slug omits the argument",

@@ -764,6 +764,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.driverResumeWait = func() { time.Sleep(driverResumeSendInterval) }
 	c.driverPaneProbe = newReedDriverPaneProbe(reedEngine)
 	c.driverDirectory = newReedDriverDirectory(reedEngine)
+	c.bouncerSubdir = loomrecipe.BouncerRunSubdir
 	return nil
 }
 

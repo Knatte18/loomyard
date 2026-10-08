@@ -77,7 +77,7 @@
 //     cause circling holds for a guarded CIRCLING below the budget.
 //     The Bouncer renders the bouncer-template-escalation brief and the bouncer-template-parent-notice line,
 //     writes them with the Go-owned cause frontmatter as round-<N>-escalation.md and round-<N>-parent-notice.md,
-//     and returns Awaiting with the ledger path, a Reason naming the segment, round, cause, brief and the `lyx loom circling` verbs with the `lyx loom start` resume,
+//     and returns Awaiting with the ledger path, a Reason naming the segment, round, cause, brief and the `lyx loom circling` verbs with the `lyx loom resume` resume,
 //     and the notice as OutputPointer.ParentNotice, which Shed carries as parent_notice.
 //     A failed render warns and degrades to the plain Reason with no notice, the record frontmatter still written.
 //     A re-call over an existing record rewrites nothing and returns the same Awaiting.

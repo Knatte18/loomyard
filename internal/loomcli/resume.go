@@ -1,4 +1,5 @@
 // resume.go implements the `resume` loom verb: wake a halted run's live, parked driver with the resume line, and refuse everything else with a way forward.
+// A run awaiting at a review segment's Bouncer row with a pending circling decision takes the halted path, since its driver's step re-calls the Bouncer, which acts on the decision.
 // It spawns no driver, adds no strand, never brings reed up and never switches a tmux client.
 
 package loomcli
@@ -17,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -65,8 +67,10 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 		succeed(map[string]any{"run_id": runID, "state": string(status.State), "message": "the run is done; there is nothing to resume"})
 		return
 	case shedengine.StateAwaiting:
-		refuse(resumeRefusal{message: `loom resume: the run is awaiting a decision, which resume does not give; run "lyx loom approve" or "lyx loom reject" in the task worktree, after which a batten run watching the child resumes it on the recorded decision, or run "lyx batten run <slug>" from the prime when no batten run watches it`})
-		return
+		if refusal, resumable := c.awaitingResumability(status.CurrentProducer); !resumable {
+			refuse(refusal)
+			return
+		}
 	}
 
 	runLockHeld, err := c.runLockHeld()
@@ -122,6 +126,26 @@ func (c *loomCLI) resumeFromRunState(ctx context.Context, out io.Writer, bootstr
 	succeed(map[string]any{"run_id": runID, "state": string(status.State), "message": "the parked driver was woken", "stop_report": reportPath})
 }
 
+// awaitingResumability decides whether a run awaiting at row may take the halted path: it may only when row is a review segment's Bouncer row whose latest round carries a pending circling decision.
+// Otherwise it returns the refusal to report.
+func (c *loomCLI) awaitingResumability(row string) (resumeRefusal, bool) {
+	subdir, isBouncer, err := c.bouncerSubdir(row)
+	if err != nil {
+		return resumeRefusal{message: "loom resume: " + err.Error() + `; the embedded loom recipe failed to parse, so this lyx build is broken; rebuild or reinstall lyx, then re-run "` + retryResume + `"`}, false
+	}
+	if !isBouncer {
+		return resumeRefusal{message: `loom resume: the run is awaiting a decision, which resume does not give; run "lyx loom approve" or "lyx loom reject" in the task worktree, after which a batten run watching the child resumes it on the recorded decision, or run "lyx batten run <slug>" from the prime when no batten run watches it`}, false
+	}
+	pending, err := shedadapters.PendingCirclingDecision(filepath.Join(loomengine.LoomReviewsDir(c.location), subdir))
+	if err != nil {
+		return resumeRefusal{message: "loom resume: " + err.Error() + `; fix the file or directory the message names, and for a malformed decision file delete it and record the decision again with "lyx loom circling accept <slug>" or "lyx loom circling continue <slug>", then re-run "` + retryResume + `"`}, false
+	}
+	if !pending {
+		return resumeRefusal{message: "loom resume: the run is awaiting at " + row + ", a review segment's Bouncer row, with no circling decision recorded; " + `run "lyx loom circling accept <slug>" or "lyx loom circling continue <slug>", then "` + retryResume + `"`}, false
+	}
+	return resumeRefusal{}, true
+}
+
 // runLockHeld reports whether a driver holds the run's lock, probing it without keeping it.
 // The lock's directory is created first, since the lock opens with O_CREATE but never creates a parent.
 func (c *loomCLI) runLockHeld() (bool, error) {
@@ -167,10 +191,20 @@ and decides by the run's state first:
 
   no status file    refused; "lyx loom start" in the task worktree begins the run
   done              a no-op success saying the run is done
-  awaiting          refused; "lyx loom approve" or "lyx loom reject" in the task
+  awaiting, at a review segment's Bouncer row, a circling decision recorded
+                    taken as a halted run is below: a live, parked driver is
+                    woken and its step acts on the decision
+  awaiting, at a Bouncer row, no decision recorded
+                    refused; "lyx loom circling accept <slug>" or "lyx loom
+                    circling continue <slug>", then "lyx loom resume"
+  awaiting, at a Bouncer row, the decision unreadable
+                    refused naming the file; fix it, or delete it and record the
+                    decision again, then "lyx loom resume"
+  awaiting, at any other row
+                    refused; "lyx loom approve" or "lyx loom reject" in the task
                     worktree, after which a batten run watching the child resumes
                     it, or "lyx batten run <slug>" from the prime when none does
-  running           a no-op success when the driver is live or holds the run
+  running          a no-op success when the driver is live or holds the run
                     lock; refused as below when neither
   halted, run lock held
                     refused with the kind "driver_not_parked": the driver is
