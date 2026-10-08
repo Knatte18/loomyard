@@ -158,8 +158,13 @@
 // the wait loop sends the entry's carried text once, keeps polling, and re-evaluates on poll ticks while the writer is idle.
 // The deadline and liveness checks keep running, and a deadline or liveness finalize evaluates each entry's optional Final closure in place of Gate, reporting the entry waiting.
 //
-// A turn end that leaves background work outstanding (EventWaiting) keeps the run waiting, with one bound.
-// Once every outstanding task is a background shell and each has been outstanding for Config.BackgroundShellWaitMin minutes (stamped when first seen, kept across ticks),
+// A turn end that leaves background work outstanding (EventWaiting) keeps the run waiting, with one bound for transcript-reported shells.
+// A shell the turn-end payload itself reported (SignalPayload) is live work and never expires: it keeps the turn waiting, never held and never notified, bounded only by the run's own Timeout and the liveness check, and lyx reaps no shell.
+// Once it has been outstanding for Config.BackgroundShellWaitMin minutes the wait logs that once at Info, which changes no decision.
+// A gated run whose output files all exist and whose outstanding tasks are all unawaited payload-reported shells finishes Done at once, through the gate, with those shells in Result.ExpiredShells;
+// an outstanding fork or awaited shell keeps even that run waiting.
+// An ungated run with every output file present finishes Done at any turn end, whatever is outstanding.
+// For any other shell, those the transcript fallback reported or a record with no signal, once every outstanding task is a background shell and each has been outstanding for Config.BackgroundShellWaitMin minutes (stamped when first seen, kept across ticks),
 // the wait loop counts the turn end as a Stop would: OutcomeDone when every output file exists, otherwise a held turn end naming the expired shells.
 // A gated run reaches its gate through the Done branch, so the expiry is an arrival.
 // A fork in the list keeps the turn waiting however long it runs, as does a shell whose label starts with one of Spec.AwaitedShellPrefixes;

@@ -169,7 +169,7 @@ func (run *Run) syncShellWait() {
 	run.showWait()
 }
 
-// shellWaitActive reports whether the recorded waiting turn end holds only non-awaited background shells, not all waited out.
+// shellWaitActive reports whether the recorded waiting turn end holds only non-awaited background shells, at least one a payload-reported shell or not yet waited out.
 func (run *Run) shellWaitActive() bool {
 	if len(run.waitingTasks) == 0 {
 		return false
@@ -179,7 +179,7 @@ func (run *Run) shellWaitActive() bool {
 		if task.Kind != BackgroundShell || run.awaitedShell(task) {
 			return false
 		}
-		if !run.expiredShells[task.ID] {
+		if payloadShell(task) || !run.expiredShells[task.ID] {
 			pending = true
 		}
 	}
