@@ -174,6 +174,11 @@
 // Bouncer archives the whole generation aside and re-judges from a fresh round 1 instead. Both rows'
 // artifacts move together in that archive, because BurlerProducer would otherwise resume at round
 // N+1, hydrating from a generation the Bouncer had already discarded.
+// A fanned round's exclusions accumulate across the generation, held in Go:
+// the round's ClusterExclude is the union of the eligible exclude_lenses of focus files 2 through the round, and ClusterExcludeHeld the union through the round before.
+// An entry in round k's focus file is eligible only when round k-1's usage record names the same fan and lists the lens among those it ran,
+// so a missing record, a switch from solo or from another fan, or a lens already excluded drops it, with a warning for the round's own file.
+// Round 1 runs the whole fan and drops a focus file's excludes, and an excluded lens returns only with a new generation, since an archived generation moves the whole run directory aside.
 // Every completed round, solo and fanned, also leaves round-<N>-usage.yaml beside them:
 // the fan and lenses the round ran, and each half's model, run times, wall time and tokens, forks included, with an unknown reading left unknown rather than zero.
 // A gate-failed round is archived and writes none, and a failed write is a warning that never changes the round's outcome.

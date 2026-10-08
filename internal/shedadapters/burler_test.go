@@ -651,7 +651,6 @@ func TestBurlerProducer_Call_BudgetExemptAfterBudgetContinue(t *testing.T) {
 func TestBurlerProducer_Call_ProfileCarriesDerivedFields(t *testing.T) {
 	runDir := t.TempDir()
 	writeJudgedRound(t, runDir, 1)
-	writeFocusFile(t, runDir, 2, focusFile{Round: 2, ExcludeLenses: []string{"lensA"}})
 	profile := simpleBurlerProfile()
 	profile.ClusterFan = "fanX"
 	runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
@@ -669,9 +668,6 @@ func TestBurlerProducer_Call_ProfileCarriesDerivedFields(t *testing.T) {
 	if !stringSlicesEqual(got.PriorReviews, wantReviews) {
 		t.Errorf("PriorReviews = %v; want %v", got.PriorReviews, wantReviews)
 	}
-	if !stringSlicesEqual(got.ClusterExclude, []string{"lensA"}) {
-		t.Errorf("ClusterExclude = %v; want %v", got.ClusterExclude, []string{"lensA"})
-	}
 	wantMarker, err := burlermarker.Path(filepath.Dir(runDir), filepath.Dir(runDir), roundReviewPath(runDir, 2))
 	if err != nil {
 		t.Fatalf("burlermarker.Path() = %v; want nil", err)
@@ -681,39 +677,115 @@ func TestBurlerProducer_Call_ProfileCarriesDerivedFields(t *testing.T) {
 	}
 }
 
-func TestBurlerProducer_Call_ClusterExcludeDropWarning(t *testing.T) {
-	const dropWarning = "shedadapters: focus file names cluster excludes but this round's profile has no cluster fan; dropping them"
+// TestBurlerProducer_Call_ClusterExclusions covers the exclusions a round's profile carries: the union of the eligible focus-file excludes of rounds 2 to N, the held set of rounds 2 to N-1, and the warning for each kind of drop.
+func TestBurlerProducer_Call_ClusterExclusions(t *testing.T) {
+	const (
+		fanlessWarning = "shedadapters: focus file names cluster excludes but this round's profile has no cluster fan; dropping them"
+		roundOneWarn   = "shedadapters: round 1 focus file names cluster excludes but the whole fan runs in round 1; dropping them"
+		ineligibleWarn = "shedadapters: focus file excludes lenses the previous round did not run under this fan; dropping them"
+	)
+	usageOf := func(fan string, lenses ...string) *roundUsage { return &roundUsage{Fan: fan, Lenses: lenses} }
 
-	// Raw frontmatter rather than writeFocusFile: renderFocus always writes both list keys, and the
-	// first case needs the file a judge not told ClusterExcludes writes, with focus alone.
-	// wantHydrated proves that file parsed: a rejected file would also produce no drop WARN.
+	// judged rounds 1..judged are on disk and the call is round judged+1.
+	// excludes and usage are keyed by round; a round with no usage entry has no record.
+	// Raw frontmatter in rawFocus replaces the written file of round 2: renderFocus always writes both list keys, and the first row needs the file a judge not told ClusterExcludes writes.
+	// wantHydrated proves that file parsed: a rejected file would also produce no drop warning.
 	tests := []struct {
 		name         string
-		focus        string
-		wantWarning  bool
+		fan          string
+		judged       int
+		excludes     map[int][]string
+		usage        map[int]*roundUsage
+		rawFocus     string
+		wantExclude  []string
+		wantHeld     []string
+		wantWarning  string
 		wantHydrated bool
 	}{
-		{"NoExcludeLensesKey", "---\nround: 2\nfocus:\n  - look at the seam\n---\n", false, true},
-		{"ExcludesOnFanlessProfile", "---\nround: 2\nexclude_lenses:\n  - lensA\nfocus: []\n---\n", true, false},
+		{name: "fan-less profile without an excludes key", judged: 1, rawFocus: "---\nround: 2\nfocus:\n  - look at the seam\n---\n", wantHydrated: true},
+		{name: "fan-less profile drops excludes", judged: 1, rawFocus: "---\nround: 2\nexclude_lenses:\n  - lensA\nfocus: []\n---\n", wantWarning: fanlessWarning},
+		{name: "round 1 drops a focus file's excludes", fan: "fanX", excludes: map[int][]string{1: {"a"}}, wantWarning: roundOneWarn},
+		{
+			name:        "union of rounds 2 to N with the held set",
+			fan:         "fanX",
+			judged:      3,
+			excludes:    map[int][]string{2: {"a"}, 3: {"b"}, 4: {"c"}},
+			usage:       map[int]*roundUsage{1: usageOf("fanX", "a", "b", "c", "d"), 2: usageOf("fanX", "b", "c", "d"), 3: usageOf("fanX", "c", "d")},
+			wantExclude: []string{"a", "b", "c"},
+			wantHeld:    []string{"a", "b"},
+		},
+		{
+			name:        "a record naming another fan drops the newest excludes",
+			fan:         "fanX",
+			judged:      1,
+			excludes:    map[int][]string{2: {"a"}},
+			usage:       map[int]*roundUsage{1: usageOf("other", "a", "b")},
+			wantWarning: ineligibleWarn,
+		},
+		{
+			name:        "a solo record drops the newest excludes",
+			fan:         "fanX",
+			judged:      1,
+			excludes:    map[int][]string{2: {"a"}},
+			usage:       map[int]*roundUsage{1: usageOf("")},
+			wantWarning: ineligibleWarn,
+		},
+		{
+			name:        "a lens the latest round did not run is dropped",
+			fan:         "fanX",
+			judged:      2,
+			excludes:    map[int][]string{2: {"a"}, 3: {"a", "b"}},
+			usage:       map[int]*roundUsage{1: usageOf("fanX", "a", "b", "c"), 2: usageOf("fanX", "b", "c")},
+			wantExclude: []string{"a", "b"},
+			wantHeld:    []string{"a"},
+			wantWarning: ineligibleWarn,
+		},
+		{
+			name:        "a missing usage record makes the previous round's entries ineligible",
+			fan:         "fanX",
+			judged:      1,
+			excludes:    map[int][]string{2: {"a"}},
+			wantWarning: ineligibleWarn,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			buf := logcapture.Capture(t)
 			runDir := t.TempDir()
-			writeJudgedRound(t, runDir, 1)
-			writeFocusFileRaw(t, runDir, 2, tt.focus)
+			for n := 1; n <= tt.judged; n++ {
+				writeJudgedRound(t, runDir, n)
+			}
+			for n, u := range tt.usage {
+				if err := writeRoundUsage(runDir, n, *u); err != nil {
+					t.Fatalf("writeRoundUsage(round %d): %v", n, err)
+				}
+			}
+			for n, lenses := range tt.excludes {
+				writeFocusFile(t, runDir, n, focusFile{Round: n, ExcludeLenses: lenses})
+			}
+			if tt.rawFocus != "" {
+				writeFocusFileRaw(t, runDir, 2, tt.rawFocus)
+			}
+			profile := simpleBurlerProfile()
+			profile.ClusterFan = tt.fan
 			runner := &shedfake.BurlerRunner{Results: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
-			p := newBurlerProducer(t, runDir, runner)
+			p := newBurlerProducer(t, runDir, runner, withBurlerProfile(profile))
 
 			shedfake.CallOK(t, p)
-			if got := runner.GotProfiles[0].ClusterExclude; got != nil {
-				t.Errorf("ClusterExclude = %v; want nil on a fan-less profile", got)
+			got := runner.GotProfiles[0]
+			if !stringSlicesEqual(got.ClusterExclude, tt.wantExclude) {
+				t.Errorf("ClusterExclude = %v; want %v", got.ClusterExclude, tt.wantExclude)
 			}
-			if delivered := runner.GotProfiles[0].FocusDirective == focusPath(runDir, 2); delivered != tt.wantHydrated {
-				t.Errorf("focus file delivered = %v; want %v; FocusDirective = %q", delivered, tt.wantHydrated, runner.GotProfiles[0].FocusDirective)
+			if !stringSlicesEqual(got.ClusterExcludeHeld, tt.wantHeld) {
+				t.Errorf("ClusterExcludeHeld = %v; want %v", got.ClusterExcludeHeld, tt.wantHeld)
 			}
-			if has := strings.Contains(buf.String(), dropWarning); has != tt.wantWarning {
-				t.Errorf("log contains drop warning = %v; want %v; log:\n%s", has, tt.wantWarning, buf.String())
+			if delivered := got.FocusDirective == focusPath(runDir, tt.judged+1); delivered != tt.wantHydrated {
+				t.Errorf("focus file delivered = %v; want %v; FocusDirective = %q", delivered, tt.wantHydrated, got.FocusDirective)
+			}
+			for _, warning := range []string{fanlessWarning, roundOneWarn, ineligibleWarn} {
+				if has := strings.Contains(buf.String(), warning); has != (warning == tt.wantWarning) {
+					t.Errorf("log contains %q = %v; want %v; log:\n%s", warning, has, warning == tt.wantWarning, buf.String())
+				}
 			}
 		})
 	}
