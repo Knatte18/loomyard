@@ -17,6 +17,8 @@
 // The retired keys are alone_above, and master_base and startup_context in weights:;
 // a retired-key error wraps ErrRetiredKey and ends with the way forward, running "lyx config reconcile --apply", which migrates the profile.
 // Every load error is marked configengine.ErrInvalid, so a caller tells a file's content from an unreadable file.
+// MigrateConfig is that migration: a pure rewrite of a batcher.yaml document that drops the retired keys from every profile and adds weights.orientation at the template's value where a retired weights key stood and the profile had none.
+// It touches only those keys, carries every other entry and comment through yaml node editing, and is never called by the loader.
 // The template ships active: cautious, so a fresh repo groups cards with the cost batchifier without configuring it;
 // across 14 measured runs, card batching cost about 60% less Webster weight per card than identity.
 // An operator who wants one card per batch sets active: to identity or to an empty value.

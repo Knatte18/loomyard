@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -318,6 +319,99 @@ func TestProfileWeights(t *testing.T) {
 		}
 		if got.Orientation != 31400 || got.BatchGrowth != 7000 || got.RetiredMasterBase != 0 || got.RetiredStartupContext != 0 {
 			t.Errorf("template cautious start = orientation %v, batch_growth %v, master_base %v, startup_context %v; want 31400, 7000, 0, 0", got.Orientation, got.BatchGrowth, got.RetiredMasterBase, got.RetiredStartupContext)
+		}
+	})
+}
+
+// TestMigrateConfig pins the retired-key rewrite: each retired key goes, orientation is added at the template's value only where a retired weights key stood and none existed, everything else is carried, and the result loads through Active where the input carried only retired keys.
+func TestMigrateConfig(t *testing.T) {
+	t.Parallel()
+	const costProfile = "    batchifier: cost\n    max_cards: 6\n    budget: 450000\n"
+	const weightsTail = "      batch_growth: 7000\n      fork_messages: 4\n      message_context: 300\n      target_messages: 6\n      test_file_messages: 0.5\n      uses_messages: 2\n      context_per_line: 12\n      package_context: 2000\n      write_per_card_line: 12\n"
+	document := func(profileHead, weightsHead string) string {
+		return "active: \"cautious\"\nprofiles:\n  cautious:\n" + profileHead + costProfile + "    weights:\n" + weightsHead + weightsTail
+	}
+	tests := []struct {
+		name         string
+		input        string
+		want         string
+		wantRewrites []string
+		// wantLoads asserts the output loads through Active.
+		wantLoads bool
+	}{
+		{
+			name:         "master_base is replaced by the template orientation",
+			input:        document("", "      master_base: 52000\n"),
+			want:         document("", "      orientation: 31400\n"),
+			wantRewrites: []string{"profiles.cautious.weights.master_base: removed", "profiles.cautious.weights.orientation: added 31400"},
+			wantLoads:    true,
+		},
+		{
+			name:         "an operator orientation is kept",
+			input:        document("", "      master_base: 52000\n      orientation: 20000\n"),
+			want:         document("", "      orientation: 20000\n"),
+			wantRewrites: []string{"profiles.cautious.weights.master_base: removed"},
+			wantLoads:    true,
+		},
+		{
+			name:         "startup_context is replaced by the template orientation",
+			input:        document("", "      startup_context: 60000\n"),
+			want:         document("", "      orientation: 31400\n"),
+			wantRewrites: []string{"profiles.cautious.weights.orientation: added 31400", "profiles.cautious.weights.startup_context: removed"},
+			wantLoads:    true,
+		},
+		{
+			name:         "alone_above is dropped without adding orientation",
+			input:        document("    alone_above: 1200000\n", "      orientation: 100\n"),
+			want:         document("", "      orientation: 100\n"),
+			wantRewrites: []string{"profiles.cautious.alone_above: removed"},
+			wantLoads:    true,
+		},
+		{
+			name:         "an operator profile's other keys are carried whole",
+			input:        "# mine\nnotes: keep\nprofiles:\n  mine:\n    batchifier: identity\n    extra: [1, 2]\n    weights:\n      master_base: 1\n      custom: 2\n",
+			want:         "# mine\nnotes: keep\nprofiles:\n  mine:\n    batchifier: identity\n    extra: [1, 2]\n    weights:\n      orientation: 31400\n      custom: 2\n",
+			wantRewrites: []string{"profiles.mine.weights.master_base: removed", "profiles.mine.weights.orientation: added 31400"},
+		},
+		{
+			name:  "a clean document comes back unchanged",
+			input: document("", "      orientation: 31400\n"),
+			want:  document("", "      orientation: 31400\n"),
+		},
+		{
+			name:  "an empty document comes back unchanged",
+			input: "",
+			want:  "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, rewrites, err := batcher.MigrateConfig([]byte(tt.input))
+			if err != nil {
+				t.Fatalf("MigrateConfig = _, _, %v; want nil error", err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("MigrateConfig output:\n%s\nwant:\n%s", got, tt.want)
+			}
+			if !slices.Equal(rewrites, tt.wantRewrites) {
+				t.Errorf("MigrateConfig rewrites = %q; want %q", rewrites, tt.wantRewrites)
+			}
+			if tt.wantLoads {
+				baseDir := t.TempDir()
+				seedConfig(t, baseDir, "batcher", string(got))
+				if _, err := batcher.Active(baseDir); err != nil {
+					t.Errorf("Active on the migrated document = %v; want nil error", err)
+				}
+			}
+		})
+	}
+
+	t.Run("a document that does not parse is invalid", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := batcher.MigrateConfig([]byte("profiles: [unclosed\n"))
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Errorf("MigrateConfig error = %v; want it marked configengine.ErrInvalid", err)
 		}
 	})
 }
