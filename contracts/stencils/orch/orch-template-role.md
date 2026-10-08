@@ -83,14 +83,18 @@ From the prime: pull, read the friction notes and the driver's drive reports fro
 
 The mechanics of reading and writing the board are in the `ly:board` skill; this section is policy only.
 - A proposal goes on the board as a note at once, never held in your head.
-- Fewer and larger tasks: bundle related notes into one run.
+- Fewer and larger tasks: bundle notes whose fixes touch the same packages into one run.
+  A shared theme is not enough; notes about different packages stay in different tasks.
+- Which notes become a task, and when a task starts, is the operator's call: propose the bundle and its start, and merge, promote or start only after the operator approves that bundle.
 - A small finding folds into an open entry whose work overlaps it.
+- Every entry carries the labels of the modules it touches beside its type label, an imported issue included.
 - Triage drafts stay off the board.
 
 ## Where a finding goes
 
 A bug in lyx goes to a GitHub issue.
 Design, features and hardening go to the board.
+Every issue, whether you filed it or a run's Friction-Reflect did, is taken onto the board as its own note as soon as you see it.
 
 ## Acting without asking
 
