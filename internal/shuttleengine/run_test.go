@@ -875,14 +875,17 @@ func TestRun_Send_DeliveryVerification(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			stubInputSleep(t)
 			reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: tt.captures}
-			run := newFixture(t, reed, readyAgentEngine(), withConfig(Config{})).newRun(Spec{})
+			clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
+			run := newFixture(t, reed, readyAgentEngine(), withConfig(Config{})).newRun(Spec{}, withRunClock(clock, clock.Now().Add(time.Hour)))
 
 			err := run.Send(tt.text)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("Send() = nil error, want a delivery failure")
+				}
+				if !errors.Is(err, ErrSubmissionNotLanded) {
+					t.Errorf("Send() error = %v, want it to wrap ErrSubmissionNotLanded", err)
 				}
 				if !strings.Contains(err.Error(), tt.wantErrIn) {
 					t.Errorf("Send() error = %q, want it to name %q", err, tt.wantErrIn)
@@ -930,105 +933,294 @@ func (e *inputBoxEngine) InputBoxText(string) (string, bool) {
 func (e *inputBoxEngine) SubmitSettle() time.Duration { return e.settle }
 
 func (e *inputBoxEngine) TypeSequence(text string) []PaneInput {
-	composed := e.ComposeSend(text)
-	return composed[:len(composed)-1]
+	return []PaneInput{{Key: "Escape"}, {Text: text}}
 }
 
-// TestRun_Send_ConfirmsSubmission drives Send's submission confirmation through an engine with the InputBoxReader capability.
-// The box is read only after a settle,
-// an extra Enter goes out only while the box holds the sent text,
-// and at most sendExtraEnters of them.
-// It is not parallel: each row replaces the package-level inputSleep.
+// boxTestClock is a fakeClock that records every Sleep, so a row can pin the settle and confirm intervals.
+type boxTestClock struct {
+	*fakeClock
+	sleeps []time.Duration
+}
+
+func (c *boxTestClock) Sleep(d time.Duration) {
+	c.sleeps = append(c.sleeps, d)
+	c.fakeClock.Sleep(d)
+}
+
+// clearableBoxEngine is inputBoxEngine plus the idle reading, session signals and a scripted InputBoxClearer:
+// a capture is idle when it starts with "IDLE", "START" is a turn start, and a box reading starting with "[Pasted" is a placeholder.
+type clearableBoxEngine struct {
+	*inputBoxEngine
+}
+
+func (e *clearableBoxEngine) ContextTokens(Event) ContextReading { return ContextReading{} }
+func (e *clearableBoxEngine) CompactedSince(Event, time.Time) (CompactionBoundary, bool) {
+	return CompactionBoundary{}, false
+}
+func (e *clearableBoxEngine) IdleSession(capture string) bool {
+	return strings.HasPrefix(capture, "IDLE")
+}
+func (e *clearableBoxEngine) PaneTooShort(string) bool { return false }
+func (e *clearableBoxEngine) ClearSessionSequence() []PaneInput {
+	return nil
+}
+func (e *clearableBoxEngine) ReloadPluginsSequence() []PaneInput { return nil }
+func (e *clearableBoxEngine) CompactSessionSequence(string) []PaneInput {
+	return nil
+}
+func (e *clearableBoxEngine) ClearInputSequence() []PaneInput { return []PaneInput{{Key: "C-u"}} }
+func (e *clearableBoxEngine) PastePlaceholder(box string) bool {
+	return strings.HasPrefix(box, "[Pasted")
+}
+func (e *clearableBoxEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
+	var signals []SessionSignal
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == "START" {
+			signals = append(signals, SessionSignal{Kind: SessionSignalTurnStart})
+		}
+	}
+	return signals, len(data)
+}
+
+var (
+	_ SessionCycler       = (*clearableBoxEngine)(nil)
+	_ InputBoxClearer     = (*clearableBoxEngine)(nil)
+	_ SessionSignalParser = (*clearableBoxEngine)(nil)
+)
+
+// enterHookReed is a fakeReed that runs onEnter after every Enter key.
+type enterHookReed struct {
+	*fakeReed
+	onEnter func()
+}
+
+func (r *enterHookReed) SendKey(guid, key string) error {
+	err := r.fakeReed.SendKey(guid, key)
+	if key == "Enter" && r.onEnter != nil {
+		r.onEnter()
+	}
+	return err
+}
+
+// TestRun_Send_ConfirmsSubmission drives Send's settle, submit window and clear through an engine with the InputBoxReader capability on a fake clock.
+// No Enter goes out until two box reads agree.
+// Every Enter is followed by one box read at a doubling interval.
+// An extra Enter goes only while the box holds the sent text and the window is open.
+// A send that did not land clears its own text only for an engine with the idle reading and InputBoxClearer.
 func TestRun_Send_ConfirmsSubmission(t *testing.T) {
-	const settle = 300 * time.Millisecond
 	const shortText = "run the suite"
 	const longText = "please review the whole change set carefully and report every finding you can substantiate"
-	const sleepLine = "Sleep:300ms"
-	prefix := func(text string) []string {
-		return []string{"Status", "CapturePane", "CapturePane", "SendKey:Escape", "SendText:" + text, "CapturePane"}
-	}
-	read := []string{sleepLine, "CapturePane"}
-	enterThenRead := []string{"SendKey:Enter", sleepLine, "CapturePane"}
-	join := func(parts ...[]string) []string {
-		var out []string
+	const placeholder = "[Pasted text #1 +4 lines]"
+	ms := func(n int) time.Duration { return time.Duration(n) * time.Millisecond }
+	box := func(text string) inputBoxAnswer { return inputBoxAnswer{text, true} }
+	// settled is the two agreeing reads before the first Enter.
+	settled := func(text string) []inputBoxAnswer { return []inputBoxAnswer{box(text), box(text)} }
+	join := func(parts ...[]inputBoxAnswer) []inputBoxAnswer {
+		var out []inputBoxAnswer
 		for _, part := range parts {
 			out = append(out, part...)
 		}
 		return out
 	}
+	keys := func(names ...string) []string { return names }
+	// tallFrame is twenty numbered rows with a blank row after each, taller than the pane tail a failure carries.
+	var tallFrame string
+	for row := 1; row <= 20; row++ {
+		tallFrame += fmt.Sprintf("row-%02d\n\n", row)
+	}
 
 	tests := []struct {
-		name    string
-		text    string
-		boxes   []inputBoxAnswer
-		wantErr string
-		// wantTail is the CallLog after the appearance check.
-		wantTail []string
+		name string
+		text string
+		// idle gives the engine the idle reading and InputBoxClearer.
+		idle bool
+		// settleMS and confirmS override the 100 ms settle interval and the 30 s window.
+		settleMS, confirmS int
+		// captures replaces the pane captures; the last sticks.
+		captures []string
+		// boxes are the input-box answers from the first settle read on; the last sticks.
+		boxes []inputBoxAnswer
+		// startOnEnter appends a turn start to the events file after every Enter.
+		startOnEnter bool
+		wantErr      string
+		wantAbsent   string
+		wantNotLand  bool
+		wantKeys     []string
+		// wantSleeps, when set, is every clock sleep of the send.
+		wantSleeps []time.Duration
 	}{
 		{
-			// Also the empty box under a running turn: nothing pending,
-			// so no Enter.
-			name:     "box clears at once",
-			text:     shortText,
-			boxes:    []inputBoxAnswer{{"", true}},
-			wantTail: read,
+			// Also the empty box under a running turn: nothing pending.
+			name: "box clears at once", text: shortText,
+			boxes:    join(settled(shortText), []inputBoxAnswer{box("")}),
+			wantKeys: keys("Escape", "Enter"), wantSleeps: []time.Duration{ms(100), ms(300)},
 		},
 		{
-			name:     "box holds the text once then clears",
-			text:     shortText,
-			boxes:    []inputBoxAnswer{{shortText, true}, {"", true}},
-			wantTail: join(read, enterThenRead),
+			name: "box holds the text once then clears", text: shortText,
+			boxes:    join(settled(shortText), []inputBoxAnswer{box(shortText), box("")}),
+			wantKeys: keys("Escape", "Enter", "Enter"), wantSleeps: []time.Duration{ms(100), ms(300), ms(600)},
 		},
 		{
-			name:     "box holds a long text's wrapped draft once then clears",
-			text:     longText,
-			boxes:    []inputBoxAnswer{{"please review the whole change set carefully and report every finding you can substantiate", true}, {"", true}},
-			wantTail: join(read, enterThenRead),
+			name: "box holds a long text's wrapped draft once then clears", text: longText,
+			boxes:    join(settled(longText), []inputBoxAnswer{box(longText), box("")}),
+			wantKeys: keys("Escape", "Enter", "Enter"),
 		},
 		{
-			name:     "box never clears",
-			text:     shortText,
-			boxes:    []inputBoxAnswer{{shortText, true}},
-			wantErr:  "still pending in the input box after 2 extra Enter(s)",
-			wantTail: join(read, enterThenRead, enterThenRead),
+			name: "box changes between reads and gets no Enter until two reads agree", text: shortText,
+			boxes:    []inputBoxAnswer{box("r"), box("run"), box(shortText), box(shortText), box("")},
+			wantKeys: keys("Escape", "Enter"), wantSleeps: []time.Duration{ms(100), ms(100), ms(100), ms(300)},
 		},
 		{
-			name:     "box holds a draft of other text",
-			text:     shortText,
-			boxes:    []inputBoxAnswer{{"something else entirely", true}},
-			wantTail: read,
+			name: "box that never settles fails with no Enter", text: shortText,
+			settleMS: 400, confirmS: 1,
+			boxes:   []inputBoxAnswer{box("a"), box("b"), box("c"), box("d")},
+			wantErr: "still changing", wantNotLand: true,
+			wantKeys: keys("Escape"), wantSleeps: []time.Duration{ms(400), ms(400), ms(400)},
 		},
 		{
-			name:     "box holds a longer draft containing the short sent text",
-			text:     shortText,
-			boxes:    []inputBoxAnswer{{"run the suite and then deploy", true}},
-			wantTail: read,
+			name: "Enters at a growing interval until the window closes", text: shortText,
+			boxes:   join(settled(shortText), []inputBoxAnswer{box(shortText)}),
+			wantErr: "still pending in the input box", wantNotLand: true,
+			wantKeys: keys("Escape", "Enter", "Enter", "Enter", "Enter", "Enter", "Enter", "Enter", "Enter", "Enter", "Enter"),
+			wantSleeps: []time.Duration{
+				ms(100), ms(300), ms(600), ms(1200), ms(2400), ms(4800),
+				confirmBackoffCap, confirmBackoffCap, confirmBackoffCap, confirmBackoffCap, ms(600),
+			},
 		},
 		{
-			name:     "box holds a collapsed paste placeholder",
-			text:     longText,
-			boxes:    []inputBoxAnswer{{"[Pasted text #1 +4 lines]", true}},
-			wantTail: read,
+			name: "an Enter at the window's close is followed by one read and no further Enter", text: shortText,
+			confirmS: 1,
+			boxes:    join(settled(shortText), []inputBoxAnswer{box(shortText)}),
+			wantErr:  "still pending in the input box", wantNotLand: true,
+			wantKeys: keys("Escape", "Enter", "Enter"), wantSleeps: []time.Duration{ms(100), ms(300), ms(600)},
 		},
 		{
-			name:     "no readable box",
-			text:     shortText,
+			name: "a turn start past the pre-send offset confirms despite an ambiguous box", text: shortText,
+			idle: true, startOnEnter: true,
+			boxes:    join(settled(shortText), []inputBoxAnswer{box(shortText)}),
+			wantKeys: keys("Escape", "Enter"), wantSleeps: []time.Duration{ms(100), ms(300)},
+		},
+		{
+			name: "box holds a draft of other text", text: shortText,
+			boxes:    join(settled(shortText), []inputBoxAnswer{box("something else entirely")}),
+			wantKeys: keys("Escape", "Enter"),
+		},
+		{
+			name: "box holds a longer draft containing the short sent text", text: shortText,
+			boxes:    join(settled(shortText), []inputBoxAnswer{box("run the suite and then deploy")}),
+			wantKeys: keys("Escape", "Enter"),
+		},
+		{
+			name: "box holds a collapsed paste placeholder", text: longText,
+			boxes:    join(settled(longText), []inputBoxAnswer{box(placeholder)}),
+			wantKeys: keys("Escape", "Enter"),
+		},
+		{
+			name: "no readable box", text: shortText,
 			boxes:    []inputBoxAnswer{{"", false}},
-			wantTail: read,
+			wantKeys: keys("Escape", "Enter"),
+		},
+		{
+			name: "an empty box before the clear means the submission landed late", text: shortText,
+			idle: true, confirmS: 1,
+			boxes:    join(settled(shortText), []inputBoxAnswer{box(shortText), box(shortText), box("")}),
+			wantKeys: keys("Escape", "Enter", "Enter"),
+		},
+		{
+			name: "a doubled copy is cleared to empty", text: longText,
+			idle: true, confirmS: 1,
+			boxes:   join(settled(longText), []inputBoxAnswer{box(longText + " " + longText), box(longText + " " + longText), box(longText + " " + longText), box("")}),
+			wantErr: "was cleared", wantNotLand: true,
+			wantKeys: keys("Escape", "Enter", "Enter", "C-u"),
+		},
+		{
+			name: "a needle-long prefix is cleared to empty", text: longText,
+			idle: true, confirmS: 1,
+			boxes:   join(settled(longText), []inputBoxAnswer{box(longText[:70]), box(longText[:70]), box(longText[:70]), box("")}),
+			wantErr: "was cleared", wantNotLand: true,
+			wantKeys: keys("Escape", "Enter", "Enter", "C-u"),
+		},
+		{
+			name: "a paste placeholder is cleared to empty", text: longText,
+			idle: true, captures: []string{"IDLE"},
+			boxes:   []inputBoxAnswer{box(placeholder), box("")},
+			wantErr: "never appeared", wantNotLand: true,
+			wantKeys: keys("Escape", "Escape", "C-u"),
+		},
+		{
+			name: "a foreign draft gets no clear key", text: shortText,
+			idle: true, captures: []string{"IDLE"},
+			boxes:   []inputBoxAnswer{box("somebody else's draft")},
+			wantErr: "not this send's", wantNotLand: true,
+			wantKeys: keys("Escape", "Escape"),
+		},
+		{
+			name: "an empty box after a never-appeared text means the submission landed late", text: shortText,
+			idle: true, captures: []string{"IDLE"},
+			boxes:    []inputBoxAnswer{box("")},
+			wantKeys: keys("Escape", "Escape"),
+		},
+		{
+			name: "an engine without the idle reading gets no clear", text: shortText,
+			captures: []string{"❯ "},
+			boxes:    []inputBoxAnswer{box(shortText)},
+			wantErr:  "never appeared", wantNotLand: true,
+			wantKeys: keys("Escape", "Escape"),
+		},
+		{
+			name: "a box the clear did not empty is named in the error", text: shortText,
+			idle: true, captures: []string{"IDLE"},
+			boxes:   []inputBoxAnswer{box(shortText)},
+			wantErr: "after the clear", wantNotLand: true,
+			wantKeys: keys("Escape", "Escape", "C-u"),
+		},
+		{
+			name: "the error ends with the pane's last 15 non-blank lines", text: shortText,
+			captures: []string{tallFrame},
+			boxes:    []inputBoxAnswer{box("unrelated")},
+			wantErr:  "row-20", wantNotLand: true, wantAbsent: "row-05",
+			wantKeys: keys("Escape", "Escape"),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ ", "❯ " + tt.text}}
-			orig := inputSleep
-			inputSleep = func(d time.Duration) {
-				reed.mu.Lock()
-				defer reed.mu.Unlock()
-				reed.CallLog = append(reed.CallLog, "Sleep:"+d.String())
+			captures := tt.captures
+			if captures == nil {
+				prefix := "❯ "
+				if tt.idle {
+					prefix = "IDLE "
+				}
+				captures = []string{strings.TrimSpace(prefix), strings.TrimSpace(prefix), prefix + tt.text}
 			}
-			t.Cleanup(func() { inputSleep = orig })
-			engine := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: tt.boxes, settle: settle}
-			run := newFixture(t, reed, engine, withConfig(Config{})).newRun(Spec{})
+			var run *Run
+			reed := &enterHookReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: captures}}
+			if tt.startOnEnter {
+				reed.onEnter = func() {
+					f, err := os.OpenFile(run.state.EventsPath, os.O_APPEND|os.O_WRONLY, 0o644)
+					if err != nil {
+						t.Errorf("open events: %v", err)
+						return
+					}
+					defer f.Close()
+					if _, err := f.WriteString("START\n"); err != nil {
+						t.Errorf("append turn start: %v", err)
+					}
+				}
+			}
+			base := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: tt.boxes, settle: ms(300)}
+			var engine Engine = base
+			if tt.idle {
+				engine = &clearableBoxEngine{inputBoxEngine: base}
+			}
+			cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30}
+			if tt.settleMS != 0 {
+				cfg.SubmitSettleMS = tt.settleMS
+			}
+			if tt.confirmS != 0 {
+				cfg.SubmitConfirmTimeoutS = tt.confirmS
+			}
+			clock := &boxTestClock{fakeClock: newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))}
+			run = newFixture(t, reed, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(""), withRunClock(clock, clock.Now().Add(time.Hour)))
 
 			err := run.Send(tt.text)
 			if tt.wantErr == "" {
@@ -1038,8 +1230,24 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			} else if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("Send() error = %v, want it to name %q", err, tt.wantErr)
 			}
-			if want := join(prefix(tt.text), tt.wantTail); !reflect.DeepEqual(reed.CallLog, want) {
-				t.Errorf("call order = %v, want %v", reed.CallLog, want)
+			if got := errors.Is(err, ErrSubmissionNotLanded); got != tt.wantNotLand {
+				t.Errorf("errors.Is(err, ErrSubmissionNotLanded) = %v, want %v (err %v)", got, tt.wantNotLand, err)
+			}
+			var gotKeys []string
+			for _, call := range reed.SendKeyCalls {
+				gotKeys = append(gotKeys, call.Key)
+			}
+			if !reflect.DeepEqual(gotKeys, tt.wantKeys) {
+				t.Errorf("keys = %v, want %v", gotKeys, tt.wantKeys)
+			}
+			if tt.wantSleeps != nil && !reflect.DeepEqual(clock.sleeps, tt.wantSleeps) {
+				t.Errorf("sleeps = %v, want %v", clock.sleeps, tt.wantSleeps)
+			}
+			if tt.wantErr != "" && !strings.Contains(err.Error(), "The pane's last lines:") {
+				t.Errorf("error %q does not end with the pane's last lines", err)
+			}
+			if tt.wantAbsent != "" && strings.Contains(err.Error(), tt.wantAbsent) {
+				t.Errorf("error %q names %q, want only the pane's last 15 non-blank lines", err, tt.wantAbsent)
 			}
 		})
 	}

@@ -821,8 +821,6 @@ const (
 	sendVerifyAttempts = 20
 	sendVerifyInterval = 250 * time.Millisecond
 	sendReplays        = 1
-	// sendExtraEnters bounds the Enters a verified send adds when the provider's input box still holds the sent text.
-	sendExtraEnters = 2
 	// sendNeedleRunes is the length of the leading slice of a sent text that identifies it in a pane.
 	sendNeedleRunes = 48
 )
@@ -1046,14 +1044,13 @@ func deliveredBelowBaseline(current, baseline paneNeedleScan) bool {
 // is itself evicted between two polls, no viewport-only check can see it at all. That window is far
 // narrower than the one closed here and cannot be closed without scrollback.
 //
-// When engine also implements InputBoxReader, an accepted delivery is then confirmed submitted:
-// after the provider's SubmitSettle the input box is read,
-// and while it holds the sent text one extra Enter is sent,
-// at most sendExtraEnters times, before the send fails naming the pending input.
-// An extra Enter is sent only when the provider reports the box holding the sent text,
-// so it never lands on an empty box, a running turn or a draft lacking the needle;
+// An engine that implements InputBoxReader types without submitting and then submits itself, inside a window of submitConfirmTimeout from the moment typing begins (cut to the send's deadline):
+// once the text has appeared, awaitSettledBox waits for the input box to stop changing,
+// and confirmSubmitted sends the Enter, then reads the box at a growing interval and sends one more Enter while the box still holds the sent text.
+// An Enter goes only into a box holding the sent text, so it never lands on an empty box, a running turn or a draft lacking the needle;
 // a draft containing the needle of a text of sendNeedleRunes or more characters is indistinguishable from the sent text and is submitted by the Enter.
-// An engine without the capability keeps the appearance-only check,
+// A send that does not land fails with ErrSubmissionNotLanded, after clearUnlandedText has emptied the box of this send's own text where the engine can.
+// An engine without the capability plays ComposeSend and keeps the appearance-only check with no window,
 // so a text that collapses into a paste placeholder is never confirmed there and relies on the engine's own pacing.
 //
 // Before anything is typed, awaitIdleSession waits for the session to be idle, so a busy session fails the send with ErrSessionBusy.
@@ -1062,6 +1059,18 @@ func sendVerified(sc sendContext, text string) error {
 		return err
 	}
 	reed, engine, guid := sc.reed, sc.engine, sc.guid
+	reader, readsBox := engine.(InputBoxReader)
+	typing := engine.ComposeSend
+	var closeAt time.Time
+	sentAt := eventsSize(sc.eventsPath)
+	if readsBox {
+		typing = reader.TypeSequence
+		closeAt = sc.clock.Now().Add(submitConfirmTimeout(sc.cfg))
+		if !sc.deadline.IsZero() && sc.deadline.Before(closeAt) {
+			closeAt = sc.deadline
+		}
+	}
+
 	normalized := normalizePaneText(text)
 	needle := normalized
 	if runes := []rune(needle); len(runes) > sendNeedleRunes {
@@ -1073,51 +1082,38 @@ func sendVerified(sc sendContext, text string) error {
 		baseline = scanPaneForNeedle(capture, needle)
 	}
 
+	typed := false
 	for try := 0; try <= sendReplays; try++ {
-		if err := playInputs(reed, guid, engine.ComposeSend(text)); err != nil {
+		if windowClosed(sc.clock, closeAt) {
+			break
+		}
+		if err := playInputs(reed, guid, typing(text)); err != nil {
 			return err
 		}
-		for attempt := 0; attempt < sendVerifyAttempts; attempt++ {
+		typed = true
+		for attempt := 0; attempt < sendVerifyAttempts && !windowClosed(sc.clock, closeAt); attempt++ {
 			capture, err := reed.CapturePane(guid)
 			if err == nil {
 				switch current := scanPaneForNeedle(capture, needle); {
-				case current.count > baseline.count:
-					return confirmSubmitted(reed, engine, guid, normalized, needle)
-				case deliveredBelowBaseline(current, baseline):
-					return confirmSubmitted(reed, engine, guid, normalized, needle)
+				case current.count > baseline.count, deliveredBelowBaseline(current, baseline):
+					if !readsBox {
+						return nil
+					}
+					return settleAndConfirm(sc, reader, normalized, needle, sentAt, closeAt)
 				case current.count < baseline.count:
 					// The viewport scrolled past an occurrence the baseline counted. Track the
 					// pane's reality rather than holding a threshold it can no longer reach.
 					baseline = current
 				}
 			}
-			inputSleep(sendVerifyInterval)
+			sc.clock.Sleep(sendVerifyInterval)
 		}
 	}
-	return fmt.Errorf("shuttle: Send: sent text never appeared in the pane after %d attempt(s) — the provider TUI likely swallowed the input; the send was NOT delivered", 1+sendReplays)
-}
-
-// confirmSubmitted reads the provider's input box after each settle and sends one extra Enter while the box still holds the sent text, at most sendExtraEnters times.
-// normalized is the whole sent text normalized by normalizePaneText and needle its leading sendNeedleRunes characters.
-// It returns nil at once for an engine that cannot read its input box.
-func confirmSubmitted(reed ReedOps, engine Engine, guid, normalized, needle string) error {
-	reader, ok := engine.(InputBoxReader)
-	if !ok {
-		return nil
+	err := fmt.Errorf("%w: sent text never appeared in the pane after %d attempt(s) — the provider TUI likely swallowed the input; the send was NOT delivered", ErrSubmissionNotLanded, 1+sendReplays)
+	if !readsBox || !typed {
+		return withPaneTail(err, "", sc)
 	}
-	settle := reader.SubmitSettle()
-	for extraEnters := 0; ; extraEnters++ {
-		inputSleep(settle)
-		if !inputBoxHoldsSentText(reed, reader, guid, normalized, needle) {
-			return nil
-		}
-		if extraEnters == sendExtraEnters {
-			return fmt.Errorf("shuttle: Send: the sent text is still pending in the input box after %d extra Enter(s); the submission did not land", sendExtraEnters)
-		}
-		if err := reed.SendKey(guid, "Enter"); err != nil {
-			return err
-		}
-	}
+	return failUnlanded(sc, reader, normalized, needle, err)
 }
 
 // inputBoxHoldsSentText reports whether the pane's input box holds the sent text.

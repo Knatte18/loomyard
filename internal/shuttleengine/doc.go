@@ -145,9 +145,15 @@
 // an unmatched turn start releases after the pane has read idle for ten seconds, or at once when the engine reports that turn interrupted.
 // A session that stays busy fails the send with ErrSessionBusy, naming the reading and ending with the pane's last lines.
 // An engine without the idle reading keeps the not-ready refusal alone.
-// That path confirms a send is submitted, not only that its text appeared in the pane, for an engine that implements the optional InputBoxReader capability:
-// after the provider's settle it reads the input box,
-// and while the box still holds the sent text it sends one extra Enter, at most two per send, before failing the send as pending.
+// That path confirms a send is submitted, not only that its text appeared in the pane, for an engine that implements the optional InputBoxReader capability, inside a window of `submit_confirm_timeout_s` from the moment typing begins.
+// The text is typed without its Enter, and once it has appeared shuttle reads the input box every `submit_settle_ms` until two reads agree, so no Enter lands inside a typing burst.
+// It then sends the Enter and reads the box at an interval that starts at `submit_redraw_settle_ms` and doubles up to five seconds.
+// While the box still holds the sent text and the window is open, each read is followed by one more Enter.
+// The submission is confirmed when the box no longer holds the sent text, or when the engine's session signals show a turn start past the file's size before the send.
+// A send that does not land fails with ErrSubmissionNotLanded, naming why and ending with the pane's last lines.
+// An empty box then means the submission landed late and the send succeeds;
+// otherwise, for an engine with both the idle reading and the optional InputBoxClearer capability, a box that shows this send's own text, or the provider's collapsed paste placeholder, is cleared and read again;
+// a box holding anything else gets no key, and a box the clear did not empty is named in the error.
 // An engine without the capability keeps the appearance-only check.
 // The run's events offset ends past every load turn end, the retry's included,
 // so Wait never reads one as a held turn end.

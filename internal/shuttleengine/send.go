@@ -214,3 +214,186 @@ func paneTail(reed ReedOps, guid string) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// ErrSubmissionNotLanded marks a verified send whose text was typed but never seen to be submitted: it did not appear, its input box did not settle, or the box still held it when the submit window closed.
+// The send clears its own text from the box where the engine can, so the caller may retry.
+var ErrSubmissionNotLanded = errors.New("shuttle: Send: the send did not land")
+
+const (
+	// defaultSubmitConfirmTimeoutS is the template.yaml default submit window in seconds.
+	defaultSubmitConfirmTimeoutS = 30
+
+	// confirmBackoffCap is the longest interval between two input-box reads after an Enter.
+	confirmBackoffCap = 5 * time.Second
+)
+
+// submitConfirmTimeout returns the window a send has to land once typing begins.
+// A non-positive value in a hand-built Config is floored to the template default.
+func submitConfirmTimeout(cfg Config) time.Duration {
+	if cfg.SubmitConfirmTimeoutS <= 0 {
+		return defaultSubmitConfirmTimeoutS * time.Second
+	}
+	return time.Duration(cfg.SubmitConfirmTimeoutS) * time.Second
+}
+
+// windowClosed reports whether closeAt, the end of the submit window, has been reached; a zero closeAt is no window.
+func windowClosed(clock Clock, closeAt time.Time) bool {
+	return !closeAt.IsZero() && !clock.Now().Before(closeAt)
+}
+
+// settleAndConfirm runs the box path of a delivered send: wait for the input box to settle, send the Enter and confirm the submission.
+// A send that did not land is handed to failUnlanded, which returns nil when the submission landed late.
+func settleAndConfirm(sc sendContext, reader InputBoxReader, normalized, needle string, sentAt int64, closeAt time.Time) error {
+	err := awaitSettledBox(sc, reader, closeAt)
+	if err == nil {
+		err = confirmSubmitted(sc, reader, normalized, needle, sentAt, closeAt)
+	}
+	if errors.Is(err, ErrSubmissionNotLanded) {
+		return failUnlanded(sc, reader, normalized, needle, err)
+	}
+	return err
+}
+
+// failUnlanded turns an ErrSubmissionNotLanded reason into the send's result.
+// An empty box means the submission landed late and the send succeeds;
+// otherwise the error carries clearUnlandedText's note and ends with the pane's last lines.
+func failUnlanded(sc sendContext, reader InputBoxReader, normalized, needle string, reason error) error {
+	landed, note := clearUnlandedText(sc, reader, normalized, needle)
+	if landed {
+		return nil
+	}
+	return withPaneTail(reason, note, sc)
+}
+
+// withPaneTail returns err extended with note, when non-empty, and the pane's last lines; it still wraps err.
+func withPaneTail(err error, note string, sc sendContext) error {
+	if note != "" {
+		note = "; " + note
+	}
+	return fmt.Errorf("%w%s. The pane's last lines:\n%s", err, note, paneTail(sc.reed, sc.guid))
+}
+
+// awaitSettledBox reads the input box every Config.SubmitSettleMS until two consecutive reads agree, so no Enter lands inside a typing burst.
+// A collapsed paste placeholder is content like any other, and two reads that both show no readable box agree.
+// A box that has not settled when closeAt arrives fails with ErrSubmissionNotLanded.
+func awaitSettledBox(sc sendContext, reader InputBoxReader, closeAt time.Time) error {
+	interval := time.Duration(sc.cfg.SubmitSettleMS) * time.Millisecond
+	previousText, previousOK := readInputBox(sc, reader)
+	for {
+		if windowClosed(sc.clock, closeAt) {
+			return fmt.Errorf("%w: the input box was still changing when the %s submit window closed; no Enter was sent", ErrSubmissionNotLanded, submitConfirmTimeout(sc.cfg))
+		}
+		sc.clock.Sleep(interval)
+		text, ok := readInputBox(sc, reader)
+		if text == previousText && ok == previousOK {
+			return nil
+		}
+		previousText, previousOK = text, ok
+	}
+}
+
+// confirmSubmitted sends the first Enter and then reads the input box at an interval that starts at reader.SubmitSettle() and doubles up to confirmBackoffCap.
+// An interval that would end past closeAt is cut to end at it, but a read never comes sooner than SubmitSettle() after its Enter.
+// A read taken while the window is open that shows the box still holding the sent text sends one more Enter;
+// a read at or after closeAt sends none and ends the loop, so every Enter is followed by exactly one read.
+// The submission is confirmed when the box no longer holds the sent text, or when the engine's session signals show a turn start past offset sentAt.
+// normalized is the whole sent text normalized by normalizePaneText and needle its leading sendNeedleRunes characters.
+func confirmSubmitted(sc sendContext, reader InputBoxReader, normalized, needle string, sentAt int64, closeAt time.Time) error {
+	settle := reader.SubmitSettle()
+	interval := settle
+	for {
+		if err := sc.reed.SendKey(sc.guid, "Enter"); err != nil {
+			return err
+		}
+		wait := min(interval, closeAt.Sub(sc.clock.Now()))
+		sc.clock.Sleep(max(wait, settle))
+		if turnStartedSince(sc.engine, sc.eventsPath, sentAt) || !inputBoxHoldsSentText(sc.reed, reader, sc.guid, normalized, needle) {
+			return nil
+		}
+		if windowClosed(sc.clock, closeAt) {
+			return fmt.Errorf("%w: the sent text is still pending in the input box and the %s submit window closed", ErrSubmissionNotLanded, submitConfirmTimeout(sc.cfg))
+		}
+		interval = min(max(2*interval, idlePollInitial), confirmBackoffCap)
+	}
+}
+
+// clearUnlandedText looks at the input box once after a send that did not land.
+// An empty box means the submission landed late, so landed is true.
+// For an engine with both the idle reading and InputBoxClearer, a box that shows this send's own text is cleared and read again;
+// a box holding anything else gets no key.
+// note says what was found or done, and names a box the clear did not empty.
+func clearUnlandedText(sc sendContext, reader InputBoxReader, normalized, needle string) (landed bool, note string) {
+	boxText, ok := readInputBox(sc, reader)
+	if !ok {
+		return false, ""
+	}
+	box := normalizePaneText(boxText)
+	if box == "" {
+		return true, ""
+	}
+	_, idleReading := sc.engine.(SessionCycler)
+	clearer, canClear := sc.engine.(InputBoxClearer)
+	if !idleReading || !canClear {
+		return false, ""
+	}
+	if !isOwnText(box, normalized, needle) && !clearer.PastePlaceholder(boxText) {
+		return false, "the input box holds text that is not this send's, left in place"
+	}
+	if err := playInputs(sc.reed, sc.guid, clearer.ClearInputSequence()); err != nil {
+		return false, fmt.Sprintf("clearing the unlanded text failed: %v", err)
+	}
+	if after, afterOK := readInputBox(sc, reader); !afterOK || normalizePaneText(after) != "" {
+		return false, fmt.Sprintf("the input box still holds %q after the clear", after)
+	}
+	return false, "the unlanded text was cleared from the input box"
+}
+
+// isOwnText reports whether box, a normalized input-box reading, is one or more copies of the normalized sent text, the last of which may be a prefix at least as long as needle.
+func isOwnText(box, normalized, needle string) bool {
+	for box != "" {
+		rest, found := strings.CutPrefix(box, normalized)
+		if !found {
+			return len([]rune(box)) >= len([]rune(needle)) && strings.HasPrefix(normalized, box)
+		}
+		box = rest
+	}
+	return true
+}
+
+// readInputBox returns the engine's reading of the strand's input box; ok is false when the capture failed or shows no readable box.
+func readInputBox(sc sendContext, reader InputBoxReader) (text string, ok bool) {
+	capture, err := sc.reed.CapturePane(sc.guid)
+	if err != nil {
+		return "", false
+	}
+	return reader.InputBoxText(capture)
+}
+
+// eventsSize returns the byte size of the events file, or 0 when it cannot be read.
+func eventsSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+// turnStartedSince reports whether the events file holds a turn_start past byte offset.
+// An engine without SessionSignalParser and an unreadable file read as no.
+func turnStartedSince(engine Engine, eventsPath string, offset int64) bool {
+	parser, ok := engine.(SessionSignalParser)
+	if !ok {
+		return false
+	}
+	data, err := os.ReadFile(eventsPath)
+	if err != nil || offset > int64(len(data)) {
+		return false
+	}
+	signals, _ := parser.ParseSessionSignals(data[offset:])
+	for _, signal := range signals {
+		if signal.Kind == SessionSignalTurnStart {
+			return true
+		}
+	}
+	return false
+}
