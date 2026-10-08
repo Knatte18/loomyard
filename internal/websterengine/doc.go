@@ -199,7 +199,7 @@
 //
 // 00-overview.md carries the plan's integration verify, and only its Card Index section is rebaselined.
 // State.PlanOverviewFrameHash is the hash of planparser.OverviewWithoutCardIndex over the overview, recorded wherever State.PlanFileHashes is.
-// When the overview is among the changed plan files, Rebaseline accepts it if the state carries that hash and the file's frame hash still equals it, so the change is confined to the Card Index.
+// When the overview is among the changed plan files, Rebaseline accepts it if the file's frame hash still equals the run's recorded overview frame, so the change is confined to the Card Index.
 // The index change is then held to the card-set rule, which compares NN-slug ids: only cards after the last begun batch can be added, removed or reordered, and a begun card's index line keeps its number and slug.
 // What passes besides is a reworded one-line intent of a begun card in a later Master render, while that card's file stays pinned by its recorded hash.
 // A state without the frame hash takes the recorded frame from the stored baseline copy of the overview until the first restamp.

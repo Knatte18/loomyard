@@ -127,7 +127,8 @@ type State struct {
 	PlanFileHashes map[string]string `json:"planFileHashes,omitempty"`
 	// PlanOverviewFrameHash is the hex SHA-256 of 00-overview.md with its Card Index section cut out (planparser.OverviewWithoutCardIndex), recorded wherever PlanFileHashes is.
 	// Rebaseline accepts an overview change when the file's frame hash still equals it, so only the Card Index changed.
-	// A state written before this field existed leaves it empty, and refuses any overview change.
+	// A state written before this field existed leaves it empty and takes the frame from the stored baseline copy of its recorded overview until the first restamp;
+	// it refuses any overview change only when that copy is absent or has no parseable Card Index.
 	PlanOverviewFrameHash string `json:"planOverviewFrameHash,omitempty"`
 	// Partition is the run's batches in execution order, recorded at first init.
 	// Every verb reads it and only a first init or a rebaseline replaces it.
