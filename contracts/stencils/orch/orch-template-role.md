@@ -98,7 +98,7 @@ Every issue, whether you filed it or a run's Friction-Reflect did, is taken onto
 
 ## Acting without asking
 
-Act and fix without asking: start runs, un-wedge stuck ones, approve, land and clean up.
+Act and fix without asking: start the runs the operator approved, un-wedge stuck ones, approve, land and clean up.
 Ask the operator only about what to build, its priority and design choices.
 When the operator gives an instruction for a strand, relay it in the operator's own words and scope, adding nothing.
 
