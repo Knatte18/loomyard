@@ -30,7 +30,6 @@ var burlerSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testi
 // and Profile.ClusterFan against cfg's lens/fan library.
 type Engine struct {
 	shuttle     Shuttle
-	remover     StrandRemover
 	geom        Geometry
 	cfg         Config
 	stencilsDir string
@@ -40,7 +39,6 @@ type Engine struct {
 // New returns an Engine ready to run rounds against shuttle, resolving relative Profile paths
 // against geom.WorktreeRoot and any Profile.ClusterFan against cfg (the burler.yaml lens/fan
 // library, loaded via LoadConfig).
-// remover is the told seam the engine stops a half with.
 // geom is the told geometry the caller supplies (hubgeom.BurlerGeometry in hub mode).
 // stencilsDir is the absolute stencils directory (see fabricengine.StencilsDir) composePrompt reads
 // burler's round prompts from at call time via stencilstore.Read.
@@ -48,8 +46,8 @@ type Engine struct {
 // burlerengine.Geometry is internal/hubgeom's/internal/standalonegeom's to construct under the
 // Told-Geometry Invariant, so an explicit constructor parameter is the remaining told seam. An empty
 // value means Tier 2 is off for this engine.
-func New(shuttle Shuttle, remover StrandRemover, geom Geometry, cfg Config, stencilsDir, frictionDir string) *Engine {
-	return &Engine{shuttle: shuttle, remover: remover, geom: geom, cfg: cfg, stencilsDir: stencilsDir, frictionDir: frictionDir}
+func New(shuttle Shuttle, geom Geometry, cfg Config, stencilsDir, frictionDir string) *Engine {
+	return &Engine{shuttle: shuttle, geom: geom, cfg: cfg, stencilsDir: stencilsDir, frictionDir: frictionDir}
 }
 
 // Half is one half of a round: the identities, last message and kept run directory a caller needs to act on a non-done outcome further.

@@ -50,6 +50,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -601,11 +602,15 @@ func TestReedUpSeam_WatcherLifecycle(t *testing.T) {
 // diedShuttle is a burlerengine.Shuttle double whose started halves all report died at once, so a round driven through it ends at once with the reviewer's died outcome; it records every spec it starts.
 type diedShuttle struct {
 	specs []shuttleengine.Spec
+	// mu guards stopped, which both halves' goroutines append to.
+	mu sync.Mutex
+	// stopped holds the strand guid of every Stop call.
+	stopped []string
 }
 
 func (s *diedShuttle) StartGated(spec shuttleengine.Spec, _ shuttleengine.GateSpec) (burlerengine.Handle, error) {
 	s.specs = append(s.specs, spec)
-	return diedHandle{role: spec.Role}, nil
+	return diedHandle{role: spec.Role, shuttle: s}, nil
 }
 
 // ProbeGated finds no live run, since a diedShuttle only starts halves.
@@ -614,7 +619,10 @@ func (s *diedShuttle) ProbeGated(shuttleengine.Spec, shuttleengine.GateSpec) (bu
 }
 
 // diedHandle is the started half of a diedShuttle.
-type diedHandle struct{ role string }
+type diedHandle struct {
+	role    string
+	shuttle *diedShuttle
+}
 
 func (h diedHandle) StrandGUID() string { return h.role + "-guid" }
 
@@ -624,10 +632,13 @@ func (h diedHandle) Wait() (shuttleengine.Result, error) {
 	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, nil
 }
 
-// noStrandRemover is a burlerengine.StrandRemover that stops nothing, since a diedShuttle's halves are already over.
-type noStrandRemover struct{}
-
-func (noStrandRemover) RemoveStrandIfLive(string) error { return nil }
+// Stop records the call; the half is already over.
+func (h diedHandle) Stop() error {
+	h.shuttle.mu.Lock()
+	defer h.shuttle.mu.Unlock()
+	h.shuttle.stopped = append(h.shuttle.stopped, h.StrandGUID())
+	return nil
+}
 
 // TestRunCmd drives burler's run verb through its own RunE with seams in place of the live substrate.
 // One row proves it calls c.reedUp with watch: true, through a recording fake that fails, so the call ends right after the reedUp check and c.engine stays nil.
@@ -663,7 +674,7 @@ fixer-report-path: reviews/fixer-report.md
 			t.Fatalf("write profile: %v", err)
 		}
 		shuttle = &diedShuttle{}
-		engine := burlerengine.New(shuttle, noStrandRemover{}, burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root}, burlerengine.Config{}, stencilkit.Seed(t), "")
+		engine := burlerengine.New(shuttle, burlerengine.Geometry{WorktreeRoot: root, AnchorPath: root}, burlerengine.Config{}, stencilkit.Seed(t), "")
 		c = &burlerCLI{cwd: root, engine: engine, mode: "standalone", markerRoot: root, markerBase: markerBase}
 		return c, shuttle, profilePath, root, markerBase
 	}

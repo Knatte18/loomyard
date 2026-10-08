@@ -93,7 +93,7 @@
 //     A failing fixer gate returns the fixer's Gate with Verdict and Findings empty.
 //     A done fixer with a passing or absent gate compares the review file with the parsed bytes before Verdict and Findings are set.
 //
-// A half is stopped through the told StrandRemover (RemoveStrandIfLive on its strand guid).
+// A half is stopped through its handle's Stop, which records the stop in the half's run record before it removes the strand, so a later attach probe reads the half as stopped and never halts on it.
 // The round returns the failing half's outcome, never the stopped half's consequential died outcome.
 // A failed stop is ErrHalfNotStopped, never retried or archived over, whose message ends with the way forward (run "lyx reed remove <guid>", then re-step the row).
 // A half that timed out is stopped as well, since shuttle keeps a timed-out run's strand live and a retry would otherwise run beside it, and so is a half whose wait returned an error, since it may still be running.
@@ -112,7 +112,7 @@
 // The LiveRound it returns carries each half's state and, for a live half, its Handle, whose strand guid is what a caller stops the half by.
 // Resume attaches to a round whose halves are both live: it starts nothing, removes the ready marker it finds (a finished reviewer's run is never live, so a marker is stale),
 // and hands both handles to join, so a resumed round ends exactly as a fresh one does.
-// Any other combination is the caller's to settle by stopping what is live through the same StrandRemover and running a fresh round;
+// Any other combination is the caller's to settle by stopping what is live through the handles' Stop and running a fresh round;
 // Resume refuses it, since a round never ends with one half live and a live half is never started a second time.
 //
 // Every recorded finding is fixed by the fixer, all severities including LOW and NIT.

@@ -101,11 +101,11 @@ func halfOf(handle Handle, result shuttleengine.Result) Half {
 	return half
 }
 
-// stopHalf stops handle's strand through the engine's remover.
+// stopHalf stops handle through its Stop, which records the stop before it removes the strand.
 // A failed stop returns an error wrapping ErrHalfNotStopped whose message ends with the way forward.
 func (e *Engine) stopHalf(handle Handle) error {
 	guid := handle.StrandGUID()
-	if err := e.remover.RemoveStrandIfLive(guid); err != nil {
+	if err := handle.Stop(); err != nil {
 		return fmt.Errorf("%w: strand %s: %v; way forward: run \"lyx reed remove %s\", then re-step the row", ErrHalfNotStopped, guid, err, guid)
 	}
 	return nil

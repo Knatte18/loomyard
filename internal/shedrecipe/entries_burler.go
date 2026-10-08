@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, resolves the row's "gates" Config key through resolveGateSpec into the RunOpts.Gate it builds, joins and creates the run directory this row's segment shares with its Bouncer row, and returns shedadapters.NewBurlerProducer(name, shedadapters.BurlerDeps{Runner: env.Burler, Remover: env.BurlerRemover, Models: env.ReviewModels, AnchorPath: env.AnchorPath}, profile, opts, runDir, env.Now).
+// burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, resolves the row's "gates" Config key through resolveGateSpec into the RunOpts.Gate it builds, joins and creates the run directory this row's segment shares with its Bouncer row, and returns shedadapters.NewBurlerProducer(name, shedadapters.BurlerDeps{Runner: env.Burler, Models: env.ReviewModels, AnchorPath: env.AnchorPath}, profile, opts, runDir, env.Now).
 //
 // All three burler rows (Discussion-Burler, Plan-Burler, Webster-Burler) share this one constructor, which is why the validator is selected by the "gates" key rather than implied by the constructor:
 // the Webster round names the "verify" gate, so a round that changed code ends with a passing plan verify, and the two review rounds name their own validators.
@@ -67,11 +67,6 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 	if err := requireSeam("BurlerRound", "Burler", env.Burler); err != nil {
 		return nil, err
 	}
-	// The remover is required rather than optional: without it a resumed run could not stop the one live half of a round,
-	// and respawning beside it would produce two agents writing one file -- and on a fix-scope: source row, two agents committing to one branch.
-	if err := requireSeam("BurlerRound", "BurlerRemover", env.BurlerRemover); err != nil {
-		return nil, err
-	}
 
 	runDir, err := resolveUnderRoot("BurlerRound", "run_subdir", env.RunRoot, runSubdir)
 	if err != nil {
@@ -84,7 +79,7 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, fmt.Errorf("shedrecipe: BurlerRound: create run dir %q: %w", runDir, err)
 	}
 
-	producer, err := shedadapters.NewBurlerProducer(name, shedadapters.BurlerDeps{Runner: env.Burler, Remover: env.BurlerRemover, Models: env.ReviewModels, AnchorPath: env.AnchorPath}, profile, opts, runDir, env.Now)
+	producer, err := shedadapters.NewBurlerProducer(name, shedadapters.BurlerDeps{Runner: env.Burler, Models: env.ReviewModels, AnchorPath: env.AnchorPath}, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerRound: %w", err)
 	}
