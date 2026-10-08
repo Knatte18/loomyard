@@ -1083,10 +1083,8 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 	}
 }
 
-// TestRecoverSpawnOrAttach_StartFailures asserts a transient failure before the recovery strand is recorded refuses with the transient re-run as the way forward,
-// records no batch state, and spawns no strand, after which re-running the verb once the failure clears spawns it.
-// The failures are a not-ready start (shuttle's Start returning ErrNotStarted after tearing its own strand down, a strand that must never be persisted as this batch's recovery record)
-// and a git status that cannot list the worktree's uncommitted paths for the recovery prompt.
+// TestRecoverSpawnOrAttach_StartFailures asserts a transient failure before the recovery strand is recorded refuses with the transient re-run as the way forward, records no batch state, and spawns no strand, after which re-running the verb once the failure clears spawns it.
+// The failures are a not-ready start (shuttle's Start returning ErrNotStarted after tearing its own strand down, a strand that must never be persisted as this batch's recovery record) and a git status that cannot list the worktree's uncommitted paths for the recovery prompt.
 func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 	t.Parallel()
 
