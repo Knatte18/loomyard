@@ -125,6 +125,9 @@ You never read raw fork output beyond its own turn, and you never open a file to
   call `lyx webster record-batch <NN>` to consume that report.
   If record-batch refuses because the batch is a recovery batch, run `lyx webster recover-batch <NN>` backgrounded instead.
   Then continue the loop from the next batch.
+- Any verb refuses with `{"config_invalid": true}` → a config file under `_lyx/config` has broken content, and the operator's fix is not Master's to make.
+  Write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop without calling another verb.
+  A refusal that says a config file could not be read carries no `config_invalid` and is transient: re-run the verb.
 
 ## After every batch: the verify gate
 

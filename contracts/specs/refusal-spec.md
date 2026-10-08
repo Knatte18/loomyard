@@ -43,7 +43,8 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 
 | Refusal | Trigger | Class | Way forward |
 |---|---|---|---|
-| batcher.yaml did not load | a verb's prologue finds `batcher.yaml` does not load: `active:` names no profile, or a profile has an unknown kind or a missing or invalid parameter | correctness halt | fix `batcher.yaml` under `_lyx/config`, then re-run the verb |
+| config file content invalid | a verb's prologue finds `batcher.yaml` or `webster.yaml` present with content that does not parse or validate, such as an `active:` naming no profile, a profile with an unknown kind, a missing or invalid parameter or a retired key, or a role spec or numeric knob that fails; the refusal carries `config_invalid: true` and Master stops the run on it | correctness halt | fix the named file under `_lyx/config`, or for a retired `batcher.yaml` key run `lyx config reconcile --apply`, then re-run the verb |
+| config file unreadable | a verb's prologue finds `batcher.yaml` or `webster.yaml` present but cannot read it; the refusal carries no `config_invalid` | transient | re-run the verb |
 | unknown batch | a batch verb names a number the plan's execution batches do not contain | correctness halt | `lyx webster status` lists the run's batches, name one of those |
 | plan drifted | begin-batch's re-resolution of the plan against the tree finds a blocking defect | correctness halt | edit the plan so the named cards match the tree, run `lyx webster rebaseline --card NN` naming each edited card, then begin-batch again |
 | rebaseline card set changed | `lyx webster rebaseline` finds a begun batch's cards removed or regrouped, a plan that gained, lost or reordered a card at or before the last begun batch's last card, or a begun card whose content changed in a batch that is not failed, dead or stuck | correctness halt | restore those cards in the plan, or `1) lyx webster reset --to start; 2) lyx webster run --fresh` |

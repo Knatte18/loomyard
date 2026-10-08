@@ -401,6 +401,13 @@
 //
 // After the wait, a done run whose gate did not pass ends stuck, with a reason naming the failing identities and the attempts spent, or the `Terminal` failure's own reason.
 //
+// # A broken config stops Master
+//
+// A verb whose `webster.yaml` or `batcher.yaml` is present with content that fails to parse or validate refuses in the CLI's pre-run, before its body, with `config_invalid: true`;
+// `LoadConfig` marks those failures `configengine.ErrInvalid`, and the refusal changes no state, report or plan.
+// Master's failure ladder has a rung for it: a refusal carrying `config_invalid` from any verb ends the run with `outcome: stuck` quoting the refusal, without calling another verb.
+// A config file that exists but cannot be read refuses with no `config_invalid` and a transient way forward, so it never stops a run through that rung.
+//
 // # Background shells in Master's wait
 //
 // Master's spawn declares one awaited shell prefix, `masterAwaitedShellPrefix` (the backgrounded recovery verb of the failure ladder);

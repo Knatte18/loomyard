@@ -18,7 +18,9 @@
 package webstercli
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -187,11 +189,31 @@ func (c *websterCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) 
 	}
 
 	if err := c.wire(loc, mode, cwd, c.stencilsDirFlag, c.planDirFlag, c.targetDirFlag); err != nil {
+		var refusal configLoadRefusal
+		if errors.As(err, &refusal) {
+			c.refuseConfigLoad(cmd, args, refusal)
+			return nil
+		}
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
 		return nil
 	}
 	return nil
+}
+
+// refuseConfigLoad prints refusal as an error envelope, carrying config_invalid: true for a content failure and nothing extra for an unreadable file, and aborts before the verb's body.
+// It writes the refusal's friction note itself, since a pre-run refusal never reaches the noteRefusals tee.
+func (c *websterCLI) refuseConfigLoad(cmd *cobra.Command, args []string, refusal configLoadRefusal) {
+	var fields map[string]any
+	if refusal.invalid {
+		fields = map[string]any{"config_invalid": true}
+	}
+	var captured bytes.Buffer
+	code := output.ErrFields(io.MultiWriter(cmd.OutOrStdout(), &captured), refusal.Error(), fields)
+	clihelp.Abort(cmd.Context(), code)
+	if c.frictionDir != "" {
+		c.noteEnvelope(cmd, args, captured.Bytes())
+	}
 }
 
 // Command returns the cobra command tree for the webster module.
