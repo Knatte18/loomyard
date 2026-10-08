@@ -5,8 +5,12 @@ package preflightshed
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -61,6 +65,7 @@ func wayForward(report preflight.Report) string {
 type preflightProducer struct {
 	name string
 	cwd  string
+	opts hubreconcile.Options
 }
 
 var _ shedengine.ShedProducer = (*preflightProducer)(nil)
@@ -71,7 +76,49 @@ var _ shedengine.ShedProducer = (*preflightProducer)(nil)
 // Per internal/shedadapters' own package doc, the name is used only as a log field and in error
 // text -- never compared, parsed, or used for control flow.
 func NewPreflight(name, cwd string) shedengine.ShedProducer {
-	return &preflightProducer{name: name, cwd: cwd}
+	return newPreflightWith(name, cwd, hubreconcile.Options{})
+}
+
+// newPreflightWith is NewPreflight with told options for the hub config reconcile that runs ahead of the check.
+func newPreflightWith(name, cwd string, opts hubreconcile.Options) shedengine.ShedProducer {
+	return &preflightProducer{name: name, cwd: cwd, opts: opts}
+}
+
+// reconcileHub reconciles the hub's config when the build stamp is stale, and does nothing for a repository outside a hub.
+func (p *preflightProducer) reconcileHub() error {
+	location, inHub := preflight.HubPresent(p.cwd)
+	if !inHub {
+		return nil
+	}
+	geometry, inHub := hubgeom.ReconcileGeometry(location)
+	if !inHub {
+		return nil
+	}
+	return hubreconcile.Ensure(geometry, p.opts)
+}
+
+// reconcileRefusal renders a reconcile failure as the row's Stuck reason, ending with a way forward that names the loom verb to re-enter with.
+func reconcileRefusal(err error) string {
+	const resume = `run "lyx loom resume" in the task worktree`
+
+	var worktreeErr *hubreconcile.WorktreeError
+	if errors.As(err, &worktreeErr) {
+		switch {
+		case worktreeErr.File == "":
+			return fmt.Sprintf("hub config reconcile failed in %s: %v; way forward: fix the cause named above, then %s", worktreeErr.Worktree, worktreeErr.Err, resume)
+		case worktreeErr.Module == "":
+			return fmt.Sprintf("hub config reconcile failed in %s: %s: %v; way forward: fix %s, then %s", worktreeErr.Worktree, worktreeErr.File, worktreeErr.Err, worktreeErr.File, resume)
+		default:
+			return fmt.Sprintf("hub config reconcile failed in %s: %s: %v; way forward: fix %s (or run \"lyx config %s\" on it), then %s", worktreeErr.Worktree, worktreeErr.File, worktreeErr.Err, worktreeErr.File, worktreeErr.Module, resume)
+		}
+	}
+
+	var lockErr *hubreconcile.LockTimeoutError
+	if errors.As(err, &lockErr) {
+		return fmt.Sprintf("another lyx command holds the hub's reconcile lock %s; way forward: %s once the other reconcile ends", lockErr.Path, resume)
+	}
+
+	return fmt.Sprintf("hub config reconcile failed: %v; way forward: fix the cause named above, then %s", err, resume)
 }
 
 // Call implements shedengine.ShedProducer: it invokes preflight.Check(p.cwd) and maps its result --
@@ -84,6 +131,15 @@ func NewPreflight(name, cwd string) shedengine.ShedProducer {
 func (p *preflightProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
+	}
+
+	// The reconcile runs before the check so its committed config leaves the tree clean for the worktree-clean check.
+	if err := p.reconcileHub(); err != nil {
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		logger.Warn("preflightshed: hub config reconcile failed", "producer", p.name, "cwd", p.cwd, "error", err)
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reconcileRefusal(err)}, nil
 	}
 
 	report, _, err := preflight.Check(p.cwd)
