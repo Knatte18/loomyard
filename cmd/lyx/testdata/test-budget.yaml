@@ -24,7 +24,7 @@ internal/commentlint: 3
 internal/configcli: 10
 internal/configengine: 13
 internal/configreg: 7
-internal/configsync: 5
+internal/configsync: 6
 internal/discussionparser: 16
 internal/envsource: 3
 internal/fabriccli: 20

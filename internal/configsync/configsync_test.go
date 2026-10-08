@@ -3,6 +3,7 @@
 package configsync
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -615,6 +616,73 @@ func TestReconcileAll_HubWideCopy(t *testing.T) {
 			}
 			check(false)
 			check(true)
+		})
+	}
+}
+
+// TestReconcile_FailureNamesItsFile pins that a reconcile failure is a *FileError naming the module and the absolute path of the file that failed, with the path leading its message.
+func TestReconcile_FailureNamesItsFile(t *testing.T) {
+	t.Parallel()
+	const unparseable = "key: [unclosed\n"
+	tests := []struct {
+		name       string
+		run        func(baseDir, boardDir string) error
+		module     string
+		wantInBase bool
+		hubFile    string
+	}{
+		{
+			name: "ReconcileAll on an unparseable per-worktree file",
+			run: func(baseDir, boardDir string) error {
+				_, err := ReconcileAll(baseDir, boardDir, false)
+				return err
+			},
+			module:     "batcher",
+			wantInBase: true,
+		},
+		{
+			name: "ReconcileHubWideAt on an unparseable hub file",
+			run: func(baseDir, boardDir string) error {
+				_, err := ReconcileHubWideAt(boardDir, "", false)
+				return err
+			},
+			module: "fabric",
+		},
+		{
+			name: "ReconcileAll retiring an unparseable hub-wide copy",
+			run: func(baseDir, boardDir string) error {
+				_, err := ReconcileAll(baseDir, boardDir, false)
+				return err
+			},
+			module:     "board",
+			wantInBase: true,
+			hubFile:    "readme: README.md\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			baseDir, boardDir := t.TempDir(), t.TempDir()
+			fileDir := boardDir
+			if tt.wantInBase {
+				fileDir = baseDir
+			}
+			writeModuleFile(t, fileDir, tt.module, unparseable)
+			writeModuleFile(t, boardDir, tt.module, tt.hubFile)
+
+			err := tt.run(baseDir, boardDir)
+
+			var fileErr *FileError
+			if !errors.As(err, &fileErr) {
+				t.Fatalf("error = %v, want a *FileError", err)
+			}
+			wantPath := configengine.ConfigFile(fileDir, tt.module)
+			if fileErr.Module != tt.module || fileErr.Path != wantPath {
+				t.Errorf("FileError{Module: %q, Path: %q}, want module %q path %q", fileErr.Module, fileErr.Path, tt.module, wantPath)
+			}
+			if !strings.HasPrefix(err.Error(), wantPath+": ") {
+				t.Errorf("message = %q, want it to start with %q", err.Error(), wantPath+": ")
+			}
 		})
 	}
 }
