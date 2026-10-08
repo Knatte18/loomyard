@@ -1232,9 +1232,8 @@ func stepStopReport_ReadsTheParkMarkersContentAndTime(t *testing.T, h *hubforge.
 	}
 }
 
-// stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution drives the seams Run-Shed's wait reads on every poll check over a real pair:
-// once one has resolved the task worktree, they keep answering after git can no longer resolve it, so no check spawns git,
-// while a pair gone from disk is still refused by name.
+// stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution drives the seams Run-Shed's wait reads on every poll check over a real pair.
+// Once one has resolved the task worktree, they keep answering after git can no longer resolve it, so no check spawns git, while a pair gone from disk is still refused by name.
 func stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-locate-once"
 	hubforge.AddPair(t, h, slug)
