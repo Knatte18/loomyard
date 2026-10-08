@@ -510,6 +510,7 @@
 // A standalone reset keeps every change git carries across, the run's own included, so its `uncommitted` list holds all of them.
 // The envelope carries `target`, `sha`, `mutations` (the `worktree_reset` entry, and `remote_branch_updated` when the remote moved) and `partial`, false on success.
 // A reset to start also carries `moved`, `uncommitted` (UncommittedPaths, read after the move), `warnings` (the findings the archive dropped) and, when `moved` is false, `reason`, with no `sha`.
+// A failed UncommittedPaths read leaves `uncommitted` out and adds a warning, since the reset and the archive are already done.
 // A refusal before the remote update is a bare error envelope.
 // A checkout rewrite that fails after the remote moved is an error envelope carrying `mutations` and `partial: true`, and re-running the reset converges.
 // Each refusal has a row in contracts/specs/refusal-spec.md.

@@ -214,7 +214,7 @@ func restampBaseline(st *State, planDir, websterDir string) error {
 	}
 	frame, err := overviewFrameHash(planDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w; way forward: transient, re-run the verb", err)
 	}
 	if err := storePlanBaseline(websterDir, planDir, hashes); err != nil {
 		return err

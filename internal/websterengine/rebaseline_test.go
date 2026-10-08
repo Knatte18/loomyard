@@ -636,6 +636,43 @@ func TestRebaseline_EditedPlan(t *testing.T) {
 	}
 }
 
+// TestRebaseline_OverviewFrameUnreadable proves an overview that loses its Card Index after the verb parsed the plan refuses as transient, naming the re-run:
+// through the index-only check when the state records plan-file hashes, and through the restamp when it records none.
+func TestRebaseline_OverviewFrameUnreadable(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		clearHashes bool
+		wantText    string
+	}{
+		{name: "a state with plan-file hashes", wantText: "way forward: transient, re-run `lyx webster rebaseline`"},
+		{name: "a state without plan-file hashes", clearHashes: true, wantText: "way forward: transient, re-run the verb"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fx := newBeginFixture(t)
+			beginAndFinishBatchOne(t, fx)
+			if tt.clearHashes {
+				fx.Deps.State.PlanFileHashes = nil
+			}
+			fingerprint := fx.Deps.State.PlanFingerprint
+			deps := rebaselineFixtureDeps(t, fx)
+			editOverview(t, fx, func(text string) string { return strings.Replace(text, "## Card Index", "## Cards", 1) })
+
+			_, err := websterengine.Rebaseline(deps)
+			if err == nil || !strings.Contains(err.Error(), `missing "## Card Index" heading`) || !strings.HasSuffix(err.Error(), tt.wantText) {
+				t.Fatalf("Rebaseline() error = %v; want the missing Card Index ending in %q", err, tt.wantText)
+			}
+			if fx.Deps.State.PlanFingerprint != fingerprint {
+				t.Errorf("PlanFingerprint = %q; want it unchanged on refusal", fx.Deps.State.PlanFingerprint)
+			}
+		})
+	}
+}
+
 // setBatchOneState rewrites batch 1's record after begin to the given terminal state, with one audit warning to prove a restamp keeps it.
 func setBatchOneState(fx *beginFixture, terminal bool, status string, uncheckable []string) {
 	rec := fx.Deps.State.Batches[1]

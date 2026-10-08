@@ -384,7 +384,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	}
 	frameHash, err := overviewFrameHash(deps.Geom.PlanDir)
 	if err != nil {
-		return RunResult{}, err
+		return RunResult{}, fmt.Errorf("%w; way forward: transient, re-run `lyx webster run`", err)
 	}
 
 	// Serialize the whole state phase — load, entry-time reclaim, fresh

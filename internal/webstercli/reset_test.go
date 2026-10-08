@@ -418,6 +418,31 @@ func TestResetCmd(t *testing.T) {
 		return
 	}
 
+	if !t.Run("standalone archive-only start reports the archive when the uncommitted paths cannot be read", func(t *testing.T) {
+		fx := newResetFixture(t, h, "rst-status-fails")
+		fx.saveState(t, &websterengine.State{MasterSessionID: "master-session"})
+		fx.cli.openFabric = nil
+		fx.cli.parentBranch = nil
+		fx.cli.geom.Git = statusFailingGit{}
+
+		code, envelope := fx.reset(t, "--to", "start")
+		if code != 0 || envelope["ok"] != true || envelope["moved"] != false {
+			t.Fatalf("reset --to start = %d, %v; want ok with moved false", code, envelope)
+		}
+		if _, has := envelope["uncommitted"]; has {
+			t.Errorf("envelope carries uncommitted %v; want none when git status fails", envelope["uncommitted"])
+		}
+		warnings, _ := envelope["warnings"].([]any)
+		if len(warnings) != 1 || !strings.Contains(warnings[0].(string), "the uncommitted paths could not be read: git status failed") {
+			t.Errorf("warnings = %v; want the one git status warning", envelope["warnings"])
+		}
+		if loaded, err := websterengine.LoadState(fx.cli.geom.WebsterDir, fx.cli.geom.ScratchDir); loaded != nil || err != nil {
+			t.Errorf("LoadState after the reset = %+v, %v; want the run record archived", loaded, err)
+		}
+	}) {
+		return
+	}
+
 	if !t.Run("start resolves the octopus merge base of diverging starts", func(t *testing.T) {
 		fx := newResetFixture(t, h, "rst-octopus")
 		gitkit.Git(t, fx.checkout, "checkout", "-b", "rst-octopus-s1", fx.base)
@@ -668,6 +693,18 @@ func mutationKinds(mutations any) []string {
 		kinds = append(kinds, kind)
 	}
 	return kinds
+}
+
+// statusFailingGit is a websterengine.Git that finds no merge in progress and fails every git status read.
+// An archive-only reset to start of a state recording no start reaches no other method, so any other call panics on the nil embedded Git.
+type statusFailingGit struct {
+	websterengine.Git
+}
+
+func (statusFailingGit) MergeInProgress(string) (bool, error) { return false, nil }
+
+func (statusFailingGit) DirtyPaths(string) ([]string, error) {
+	return nil, errors.New("git status failed")
 }
 
 // refusalAttempt is one reset invocation and the parts its refusal must carry.

@@ -70,7 +70,8 @@ entry, and a remote_branch_updated entry when the remote moved) and partial
 (false). --to start also carries moved (false when the start could not be moved
 to and the record was only archived, with the reason key naming why), uncommitted
 (the worktree paths left uncommitted outside the run's own state, which the next
-run starts over) and warnings (the findings the archive dropped).
+run starts over; absent when git status fails) and warnings (the findings the
+archive dropped, and the git status failure).
 When the checkout rewrite fails after the remote moved, the error
 envelope carries mutations and partial true; re-running the reset converges.
 
@@ -197,12 +198,13 @@ Example:
 				fields["sha"] = plan.SHA
 			}
 			if target == websterengine.ResetToStart {
-				uncommitted, err := websterengine.UncommittedPaths(c.geom)
-				if err != nil {
-					return fail(fmt.Sprintf("webster: the run record was archived but the uncommitted paths could not be read: %v", err))
+				// The reset is done by now, so a failed listing is reported beside it rather than as a refusal.
+				if uncommitted, err := websterengine.UncommittedPaths(c.geom); err != nil {
+					warnings = append(warnings, fmt.Sprintf("the uncommitted paths could not be read: %v; `git status` in the task worktree lists them", err))
+				} else {
+					fields["uncommitted"] = append([]string{}, uncommitted...)
 				}
 				fields["moved"] = !plan.ArchiveOnly
-				fields["uncommitted"] = append([]string{}, uncommitted...)
 				fields["warnings"] = warnings
 				if plan.ArchiveOnly {
 					fields["reason"] = plan.Reason
