@@ -117,7 +117,7 @@ type InnerRunDeps struct {
 	// PauseRequested reports whether batten's own status carries pause_requested, which ends the wait within one check.
 	// A nil PauseRequested resolves to reporting false in NewInnerRun; an error is warned about and reads as not paused.
 	PauseRequested func() (bool, error)
-	// NoticeProbe is how rarely the wait does anything costing a process or a multiplexer round trip: the driver and review reads, the forced status decode, the not-parked resume retry and the notice step.
+	// NoticeProbe is how rarely the wait does anything costing a process or a multiplexer round trip: the driver, review and agent-activity reads, the forced status decode, the not-parked resume retry, the watched-marker refresh and a notice's delivery.
 	// Zero makes every check a probe.
 	NoticeProbe time.Duration
 	// ReadDecision reads whichever operator record the child's run holds, an approval or a rejection, reporting found == false when neither exists.

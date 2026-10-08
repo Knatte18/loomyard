@@ -44,7 +44,8 @@
 // batten's own status carries pause_requested;
 // or the status file cannot be stat'ed.
 // An arm's own event ends it too: an awaiting child's decision is acted on and then waited out, and a done child's driver ending or its grace elapsing returns Done.
-// File stats and small file reads run on every check; anything costing a process or a multiplexer round trip (the driver and review reads, the forced decode, a not-parked resume retry, the notice step) runs at most once per notice_probe_s.
+// File stats and small file reads run on every check, the notice step's own reads (the decision record, the stop report) included;
+// anything costing a process or a multiplexer round trip (the driver, review and agent-activity reads, the forced decode, a not-parked resume retry, the watched-marker refresh, a notice's delivery) runs at most once per notice_probe_s.
 // Bound: a running child is waited on without a time limit, bounded by "lyx batten pause" (honoured within one check), cancellation and the notices;
 // a running child whose driver is dead and whose status file does not change returns nothing from the wait, the driver-dead notice being the only signal.
 //

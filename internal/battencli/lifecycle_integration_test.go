@@ -226,6 +226,7 @@ func TestBattenIntegration_Rows(t *testing.T) {
 		{"RealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug", stepRealReadStatus_IgnoresPrimesCommittedStatusForTheSameSlug},
 		{"MarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent", stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent},
 		{"StopReport_ReadsTheParkMarkersContentAndTime", stepStopReport_ReadsTheParkMarkersContentAndTime},
+		{"TaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution", stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution},
 		{"DirtyPrime_CreateRowBlocksBeforeAnythingCreated", stepDirtyPrime_CreateRowBlocksBeforeAnythingCreated},
 	}
 	for _, step := range steps {
@@ -1228,5 +1229,51 @@ func stepStopReport_ReadsTheParkMarkersContentAndTime(t *testing.T, h *hubforge.
 	path, at, found, err := c.env.InnerRun.StopReport()
 	if err != nil || !found || path != "/wt/_lyx/drive-reports/drive-1.md" || !at.Equal(parkedAt) {
 		t.Errorf("StopReport() = %q, %s, found=%v, %v; want the marker's path and file time", path, at, found, err)
+	}
+}
+
+// stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution drives the seams Run-Shed's wait reads on every poll check over a real pair:
+// once one has resolved the task worktree, they keep answering after git can no longer resolve it, so no check spawns git,
+// while a pair gone from disk is still refused by name.
+func stepTaskWorktreeSeams_RunGitOnlyUntilTheFirstResolution(t *testing.T, h *hubforge.Hub) {
+	slug := "batten-locate-once"
+	hubforge.AddPair(t, h, slug)
+	c := wireForHub(t, h, slug, nil)
+
+	wantDir, err := c.env.InnerRun.AttachDir()
+	if err != nil {
+		t.Fatalf("AttachDir() error = %v; want nil", err)
+	}
+
+	worktreePath := fabricengine.WorktreePath(h.Location, slug)
+	gitFile := filepath.Join(worktreePath, ".git")
+	if err := os.Rename(gitFile, gitFile+".hidden"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := taskWorktreeLocation(h.Location, slug); err == nil {
+		t.Fatal("taskWorktreeLocation() with the pair's .git hidden = nil error; want git's resolution to fail")
+	}
+	if got, err := c.env.InnerRun.AttachDir(); err != nil || got != wantDir {
+		t.Errorf("AttachDir() = %q, %v with git unable to resolve the pair; want %q from the first resolution", got, err, wantDir)
+	}
+	if _, found, err := c.env.InnerRun.ReadDecision(); err != nil || found {
+		t.Errorf("ReadDecision() found=%v, %v with git unable to resolve the pair; want none, nil", found, err)
+	}
+	if _, _, found, err := c.env.InnerRun.StopReport(); err != nil || found {
+		t.Errorf("StopReport() found=%v, %v with git unable to resolve the pair; want none, nil", found, err)
+	}
+	if err := os.Rename(gitFile+".hidden", gitFile); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Rename(worktreePath, worktreePath+".moved"); err != nil {
+		t.Fatal(err)
+	}
+	_, absentErr := c.env.InnerRun.AttachDir()
+	if err := os.Rename(worktreePath+".moved", worktreePath); err != nil {
+		t.Fatal(err)
+	}
+	if absentErr == nil || !strings.Contains(absentErr.Error(), "is not present at") {
+		t.Errorf("AttachDir() error = %v with the pair gone from disk; want the absent-worktree refusal", absentErr)
 	}
 }
