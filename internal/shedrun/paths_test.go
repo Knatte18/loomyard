@@ -50,6 +50,8 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "status.json.lock") }},
 		{"LastCommitMarker", func(l *lyxcwd.Location) string { return LastCommitMarker(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "last-commit") }},
+		{"BattenWatchedMarker", func(l *lyxcwd.Location) string { return BattenWatchedMarker(l, "self") },
+			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), BattenWatchedFileName) }},
 		{"DriveReportsDir", func(l *lyxcwd.Location) string { return DriveReportsDir(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "drive-reports") }},
 		{"PrimeRunLock", PrimeRunLock,

@@ -7,9 +7,9 @@ contracts/specs: 3
 contracts/stencils: 14
 internal/agentname: 7
 internal/batcher: 8
-internal/battencli: 50
+internal/battencli: 56
 internal/battenrecipe: 8
-internal/battenshed: 81
+internal/battenshed: 89
 internal/boardcli: 12
 internal/boardengine: 73
 internal/boardengine/boardtest: 3
@@ -46,7 +46,7 @@ internal/landingshed: 65
 internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
-internal/loomcli: 176
+internal/loomcli: 178
 internal/loomengine: 39
 internal/loomrecipe: 44
 internal/loomshed: 68
@@ -54,7 +54,7 @@ internal/lyxcwd: 23
 internal/mergeresolve: 17
 internal/modelspec: 11
 internal/orchcli: 24
-internal/orchengine: 121
+internal/orchengine: 122
 internal/output: 4
 internal/pairteardown: 4
 internal/parentdirective: 4
@@ -67,7 +67,7 @@ internal/preflightshed: 5
 internal/proc: 12
 internal/quarrycli: 7
 internal/reedcli: 35
-internal/reedengine: 211
+internal/reedengine: 216
 internal/reedengine/render: 12
 internal/selfreportcli: 3
 internal/selfreportengine: 11
@@ -76,14 +76,14 @@ internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
 internal/shedengine: 130
-internal/shedrecipe: 95
+internal/shedrecipe: 96
 internal/shedrun: 22
 internal/shedtransient: 2
 internal/shedverbs: 65
 internal/shell: 11
 internal/shuttlecli: 19
-internal/shuttleengine: 142
-internal/shuttleengine/claudeengine: 90
+internal/shuttleengine: 143
+internal/shuttleengine/claudeengine: 91
 internal/standalonegeom: 7
 internal/standalonestate: 6
 internal/state: 8

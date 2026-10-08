@@ -54,7 +54,7 @@ func mustUseLLMDriverArm(driver string) bool {
 // path and create its parent directory unconditionally with a mkdir-all immediately before composing
 // the spec -- this arm's own mkdir, rather than leaning on step 4's, since whether that mkdir's
 // parent covers this directory too is a premise this task would otherwise inherit unverified; compose
-// the prompt and the spec; and start the run through the starter seam.
+// the prompt and the spec, the prompt's parent-notification rule being the watched one when the run's batten-watched marker names a live pid; and start the run through the starter seam.
 //
 // It returns the started run's handle for the caller to log -- StartDriver already guarantees
 // readiness, so a not-ready driver surfaces as StartDriver's own error, which
@@ -88,7 +88,8 @@ func (c *loomCLI) startLLMDriverArm(driverAction driverStrandAction, driverGUID 
 		return nil, err
 	}
 
-	prompt, err := driverPrompt(c.runDeps.Geom.StencilsDir, c.parentName, resolvedRunID, reportPath)
+	watched := driverWatched(shedrun.BattenWatchedMarker(c.location, resolvedRunID), proc.IsAlive)
+	prompt, err := driverPrompt(c.runDeps.Geom.StencilsDir, c.parentName, resolvedRunID, reportPath, watched)
 	if err != nil {
 		return nil, err
 	}

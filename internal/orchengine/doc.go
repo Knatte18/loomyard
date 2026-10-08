@@ -99,6 +99,14 @@
 // The time is on disk, so this covers a request whose idle probe never passes and a marker a dead watcher left, across watcher restarts.
 // State records the cycle's mode as CycleMode and the request time as CycleRequestedAt, zero for an automatic trigger.
 //
+// A cycle start clears the request pending at that moment, so a request found later was made after the cycle started.
+// A same-mode request made during a cycle is satisfied by it:
+// the compact cycle removes a pending compact request made no later than the boundary when the compaction completes,
+// and the clear cycle removes a pending clear request when its `/clear` is confirmed typed; each logs the mode and request time.
+// A request of the other mode, and a compact request made after the boundary, stay pending for the idle phase.
+// Bound: it removes only a request made after the cycle started and before its action took effect, for the same thing the action did;
+// the request time is CLI-written and the boundary time is the transcript's, both wall clock on one host.
+//
 // A hard or requested cycle acts only when all of these hold:
 //
 //   - The newest event it has read is a turn end, EventStop or EventWaiting.
@@ -166,18 +174,19 @@
 // The focus tells the summary to keep runs in flight, open parent-review forks, operator requests and decisions pending, and work half done.
 // Nothing is typed unless the idle probe passed on the same tick.
 //
-// A compaction ends without a turn end, so the compacting phase re-reads the context every tick through State.ReadingTurnEnd, the turn end the current reading was taken through, which every stored reading records.
-// The phase completes when the reading is a compaction boundary stamped at or after the phase was entered and the idle probe passes on that tick:
-// the boundary's tokens become the reading, `cycle_count` increments, State.CompactionBaseline moves to the boundary,
+// A compaction ends without a turn end, so the compacting phase searches the transcript of State.ReadingTurnEnd, the turn end the current reading was taken through, which every stored reading records, for a compaction boundary every tick.
+// The boundary is searched for rather than read off the newest entry, because a message answered right after the boundary hides it there.
+// The phase completes when a boundary after the phase was entered is found, whatever turn ends follow it, and the idle probe passes on that tick:
+// the transcript's newest reading becomes the reading, `cycle_count` increments, State.CompactionBaseline moves to the boundary,
 // and the watcher renders the role file and the resume pointer naming the cycle's note and enters the reload sequence.
 // A stencil failure there returns to idle with the reason.
-// An earlier boundary never completes it.
+// A boundary at or before the phase entry never completes it.
 // Past the handoff timeout the phase returns to idle with the abort reason `compaction timed out`, re-reads the reading, and records the time in State.LastDeferral,
 // which holds the next hard or soft trigger for `soft_idle_s`; a requested cycle is not held.
 // That hold delays a hard trigger by at most `soft_idle_s` per failed compaction.
 //
-// Restart: an unconfirmed `/compact` is typed again only when the idle probe passes and no qualifying boundary has been read.
-// A qualifying boundary read after a restart completes the phase without typing anything.
+// Restart: an unconfirmed `/compact` is typed again only when the idle probe passes and no qualifying boundary has been found.
+// A qualifying boundary found after a restart completes the phase without typing anything.
 //
 // A soft compact cycle keeps the `DEFER` handshake, so a session with a background task in flight can decline before `/compact`.
 //

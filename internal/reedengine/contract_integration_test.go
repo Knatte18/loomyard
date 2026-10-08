@@ -146,7 +146,7 @@ func TestMultiplexerContract(t *testing.T) {
 
 	// listPanes (overlay.go) must agree with the raw parse above — it is a
 	// thin wrapper around the same format string and parser.
-	viaListPanes, err := reed.listPanes(session)
+	viaListPanes, err := reed.listPanes(exactSessionWindowTarget(session))
 	if err != nil {
 		t.Fatalf("listPanes: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Fatalf("resize-window -t %q -x 80 -y 60: %v", windowTarget, err)
 	}
 	waitUntil(t, 10*time.Second, "listPanes never reported the window fully laid out at 60 rows", func() bool {
-		live, err := reed.listPanes(session)
+		live, err := reed.listPanes(exactSessionWindowTarget(session))
 		if err != nil {
 			return false
 		}
@@ -276,7 +276,7 @@ func TestMultiplexerContract(t *testing.T) {
 		}
 		return maxBottom == 60
 	})
-	afterResizeLive, err := reed.listPanes(session)
+	afterResizeLive, err := reed.listPanes(exactSessionWindowTarget(session))
 	if err != nil {
 		t.Fatalf("listPanes after resize-window: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestMultiplexerContract(t *testing.T) {
 		t.Fatalf("send-keys Enter: %v", err)
 	}
 	waitUntil(t, 10*time.Second, "second pane never reported dead under remain-on-exit", func() bool {
-		live, err := reed.listPanes(session)
+		live, err := reed.listPanes(exactSessionWindowTarget(session))
 		if err != nil {
 			return false
 		}
@@ -355,7 +355,7 @@ func TestMultiplexerContract(t *testing.T) {
 	if err := reed.run("kill-pane", "-t", secondPaneID); err != nil {
 		t.Fatalf("kill-pane: %v", err)
 	}
-	live, err := reed.listPanes(session)
+	live, err := reed.listPanes(exactSessionWindowTarget(session))
 	if err != nil {
 		t.Fatalf("list panes after kill-pane: %v", err)
 	}
@@ -417,7 +417,7 @@ func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
 	if up, err := reed.hasSession(session); err != nil || !up {
 		t.Fatalf("hasSession(%q) = (%v, %v), want (true, nil) while it exists", session, up, err)
 	}
-	if _, err := reed.listPanes(session); err != nil {
+	if _, err := reed.listPanes(exactSessionWindowTarget(session)); err != nil {
 		t.Fatalf("listPanes(%q) via exact window target: %v", session, err)
 	}
 	if _, err := reed.output("display-message", "-p", "-t", exactSessionWindowTarget(session), "#{pid}"); err != nil {
@@ -437,7 +437,7 @@ func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
 	if up, err := reed.hasSession(session); err != nil || up {
 		t.Fatalf("hasSession(%q) = (%v, %v) with only %q present, want (false, nil) — a true result means the target prefix-matched the sibling", session, up, err, sibling)
 	}
-	if _, err := reed.listPanes(session); err == nil {
+	if _, err := reed.listPanes(exactSessionWindowTarget(session)); err == nil {
 		t.Fatalf("listPanes(%q) succeeded with only %q present, want an error — success means the window target prefix-matched the sibling", session, sibling)
 	}
 	// The idempotent-down shape: a second kill-session against the gone
@@ -707,7 +707,7 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	if err != nil || !up {
 		t.Fatalf("hasSession after removing the sole strand = (%v, %v), want (true, nil) — Selvage must keep the session alive", up, err)
 	}
-	live, err := e.tmux.listPanes(e.SessionName())
+	live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
 		t.Fatalf("listPanes after removing the sole strand: %v", err)
 	}
@@ -786,7 +786,7 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	// #{pane_pid} is how a real shell death looks to tmux. remain-on-exit
 	// then corpses the pane (pane_dead=1); the flip is asynchronous, so
 	// poll.
-	live, err := e.tmux.listPanes(e.SessionName())
+	live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
 		t.Fatalf("listPanes before Selvage kill: %v", err)
 	}
@@ -802,7 +802,7 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 		}
 	}
 	waitUntil(t, 10*time.Second, "Selvage pane never reported dead", func() bool {
-		live, err := e.tmux.listPanes(e.SessionName())
+		live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 		if err != nil {
 			return false
 		}
@@ -820,7 +820,7 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	if _, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}}); err != nil {
 		t.Fatalf("AddStrand with dead Selvage: %v", err)
 	}
-	live, err = e.tmux.listPanes(e.SessionName())
+	live, err = e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
 		t.Fatalf("listPanes after add-with-dead-Selvage: %v", err)
 	}
@@ -852,7 +852,7 @@ func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	if st.SelvagePaneID == deadSelvageID {
 		t.Fatalf("SelvagePaneID still names the corpse %s after the healing Up", deadSelvageID)
 	}
-	live, err = e.tmux.listPanes(e.SessionName())
+	live, err = e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
 		t.Fatalf("listPanes after healing Up: %v", err)
 	}
@@ -920,7 +920,7 @@ func TestSelvageNeverGetsZeroHeightLayoutCell(t *testing.T) {
 	}
 	selvagePaneID := strings.TrimSpace(selvageOut)
 
-	live, err := reed.listPanes(session)
+	live, err := reed.listPanes(exactSessionWindowTarget(session))
 	if err != nil {
 		t.Fatalf("list panes: %v", err)
 	}
@@ -957,7 +957,7 @@ func TestSelvageNeverGetsZeroHeightLayoutCell(t *testing.T) {
 		t.Fatalf("select-layout %q: %v (a real multiplexer rejecting this layout means clampBandHeight's floor no longer matches what select-layout accepts)", layout, err)
 	}
 
-	live, err = reed.listPanes(session)
+	live, err = reed.listPanes(exactSessionWindowTarget(session))
 	if err != nil {
 		t.Fatalf("list panes after select-layout: %v", err)
 	}
@@ -969,4 +969,79 @@ func TestSelvageNeverGetsZeroHeightLayoutCell(t *testing.T) {
 			t.Errorf("pane %s top+height = %d+%d = %d after select-layout %q, want <= window height %d (the off-by-one overflow a bare H=0 Selvage cell used to cause)", p.ID, p.Top, p.Height, p.Top+p.Height, layout, windowRows)
 		}
 	}
+}
+
+// TestStrandOpsIgnoreASecondCurrentWindow pins the window seam against a real multiplexer:
+// with another window made current in the session, the seam still resolves the window holding the strands.
+// A layout-and-enumeration op (AddStrand) then lands the new strand in that window and leaves the other window's pane unreaped, and the session-scoped pane-generation read still answers.
+func TestStrandOpsIgnoreASecondCurrentWindow(t *testing.T) {
+	e := newColdScratchEngine(t)
+	if _, err := e.Up(); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	first, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}})
+	if err != nil {
+		t.Fatalf("AddStrand (first): %v", err)
+	}
+	st, err := LoadState(e.stateDir())
+	if err != nil || st == nil {
+		t.Fatalf("LoadState = (%+v, %v), want a readable state", st, err)
+	}
+	strandWindow := windowOfPane(t, e, st.SelvagePaneID)
+
+	otherPane, err := e.tmux.output("new-window", "-P", "-F", "#{pane_id}", "-t", exactSessionWindowTarget(e.SessionName()), "-n", "other", "sleep 300")
+	if err != nil {
+		t.Fatalf("new-window: %v", err)
+	}
+	otherPane = strings.TrimSpace(otherPane)
+	otherWindow := windowOfPane(t, e, otherPane)
+	if otherWindow == strandWindow {
+		t.Fatalf("second window id = %q, want it apart from the strand window %q", otherWindow, strandWindow)
+	}
+
+	target, err := e.storedStrandWindowTarget()
+	if err != nil {
+		t.Fatalf("storedStrandWindowTarget: %v", err)
+	}
+	if target != strandWindow {
+		t.Errorf("strand window target = %q with %q current, want the strand window %q", target, otherWindow, strandWindow)
+	}
+
+	second, err := e.AddStrand(AddSpec{Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorBelowParent}})
+	if err != nil {
+		t.Fatalf("AddStrand (second) with another window current: %v", err)
+	}
+	for _, guid := range []string{first.GUID, second.GUID} {
+		after, err := LoadState(e.stateDir())
+		if err != nil || after == nil {
+			t.Fatalf("LoadState = (%+v, %v), want a readable state", after, err)
+		}
+		idx := slices.IndexFunc(after.Strands, func(s Strand) bool { return s.GUID == guid })
+		if idx == -1 {
+			t.Fatalf("strand %q missing from state %+v", guid, after.Strands)
+		}
+		if got := windowOfPane(t, e, after.Strands[idx].PaneID); got != strandWindow {
+			t.Errorf("strand %q pane is in window %q, want the strand window %q", guid, got, strandWindow)
+		}
+	}
+	if got := windowOfPane(t, e, otherPane); got != otherWindow {
+		t.Errorf("the other window's pane is in window %q, want it left in %q", got, otherWindow)
+	}
+
+	if err := e.withOpLock(func() error {
+		_, err := e.paneGenerationLocked(e.SessionName())
+		return err
+	}); err != nil {
+		t.Errorf("pane-generation read with another window current: %v", err)
+	}
+}
+
+// windowOfPane returns the id of the window holding paneID, failing the test when tmux cannot say.
+func windowOfPane(t *testing.T, e *Engine, paneID string) string {
+	t.Helper()
+	out, err := e.tmux.output("display-message", "-p", "-t", paneID, "#{window_id}")
+	if err != nil {
+		t.Fatalf("window of pane %q: %v", paneID, err)
+	}
+	return strings.TrimSpace(out)
 }

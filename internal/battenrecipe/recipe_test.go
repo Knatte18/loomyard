@@ -1,6 +1,6 @@
 // recipe_test.go builds through New and asserts the shape the batten recipe's four rows must
 // carry: their names, the OnDone chain, the load-bearing empty/self-route OnStuck edges and empty
-// terminal OnDone edge, Run-Shed's own bounce budget, the absence of any Segment, and that the
+// terminal OnDone edge, Run-Shed's in-call wait configuration, the absence of any Segment, and that the
 // returned *shedengine.Shed carries ShedPaths' five values verbatim. It also asserts RecipeEngines()'s
 // own shape, since a silently empty return would disable the cross-consumer coverage guard rather
 // than fail it.
@@ -9,18 +9,9 @@ package battenrecipe
 
 import (
 	"testing"
-	"time"
-)
 
-// wantRunShedMaxBounces and wantRunShedPollIntervalS are Run-Shed's own pinned bounce budget: 1440
-// bounces at 30 seconds encodes a 12-hour watch window, the same wall clock the retired Go
-// constants once expressed as an attempt count. Asserting against the wall clock they encode,
-// rather than as bare numbers, is what catches a value drifted to encode a different window instead
-// of a silently dropped budget.
-const (
-	wantRunShedMaxBounces    = 1440
-	wantRunShedPollIntervalS = 30
-	wantRunShedWatchWindow   = 12 * time.Hour
+	"github.com/Knatte18/loomyard/contracts/recipes"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
 // TestNew_RowNamesMatchTheDurableIdentityConstants asserts New assembles exactly four rows, named
@@ -90,31 +81,27 @@ func TestNew_OnDoneChainAndLoadBearingEdges(t *testing.T) {
 	}
 }
 
-// TestNew_RunShedBounceBudgetEncodesTheTwelveHourWindow pins Run-Shed's own MaxBounces and its
-// config's poll_interval_s together, asserted against the 12-hour wall clock they encode rather
-// than as bare numbers -- a dropped max_bounces would silently inherit the engine's default budget
-// of ten bounces and turn every long child run into a spurious StateBlocked, the
-// highest-consequence, lowest-visibility failure this recipe can carry.
-func TestNew_RunShedBounceBudgetEncodesTheTwelveHourWindow(t *testing.T) {
-	env, paths := testEnv(t)
-	shed, err := New(env, paths)
+// TestNew_RunShedWaitsInCallWithoutACountedBudget pins Run-Shed's wait in the recipe: a short check interval and a notice probe in its config, and no max_bounces.
+// Every Stuck the row returns is budget-exempt, so a counted budget would only be a limit nothing spends; a recipe that reintroduced one would read as a time limit on a running child that the producer no longer has.
+func TestNew_RunShedWaitsInCallWithoutACountedBudget(t *testing.T) {
+	recipe, err := shedbuild.Parse(recipes.BattenRecipe)
 	if err != nil {
-		t.Fatalf("New() error = %v, want nil", err)
+		t.Fatalf("Parse() error = %v, want nil", err)
+	}
+	var row shedbuild.Row
+	for _, r := range recipe.Producers {
+		if r.Name == NameRunShed {
+			row = r
+		}
 	}
 
-	byName := make(map[string]int, len(shed.Producers))
-	for i, p := range shed.Producers {
-		byName[p.Name] = i
+	if row.MaxBounces != 0 {
+		t.Errorf("Run-Shed max_bounces = %d; want it absent", row.MaxBounces)
 	}
-	row := shed.Producers[byName[NameRunShed]]
-
-	if row.MaxBounces != wantRunShedMaxBounces {
-		t.Errorf("Run-Shed MaxBounces = %d; want %d", row.MaxBounces, wantRunShedMaxBounces)
-	}
-
-	gotWindow := time.Duration(wantRunShedMaxBounces) * time.Duration(wantRunShedPollIntervalS) * time.Second
-	if gotWindow != wantRunShedWatchWindow {
-		t.Errorf("Run-Shed's pinned max_bounces (%d) * poll_interval_s (%ds) = %s; want the 12-hour watch window %s", wantRunShedMaxBounces, wantRunShedPollIntervalS, gotWindow, wantRunShedWatchWindow)
+	for key, want := range map[string]int{"poll_interval_s": 2, "notice_probe_s": 30} {
+		if got := row.Config[key]; got != want {
+			t.Errorf("Run-Shed config %s = %v; want %d", key, got, want)
+		}
 	}
 }
 

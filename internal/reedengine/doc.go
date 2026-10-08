@@ -115,10 +115,7 @@
 // TOLD its box as an explicit render.Box parameter and queries nothing of
 // its own — that separation is what lets its two callers disagree about
 // where the box comes from without planLayout itself needing to know.
-// applyLayoutLocked (apply.go) resolves the live box with
-// liveBoxLocked (windowsize.go) — `display-message -p -t '=<session>:'
-// '#{window_width} #{window_height}'` — and falls back to the configured
-// cfg.Width/cfg.Height pair on any round-trip error or malformed answer.
+// applyLayoutLocked (apply.go) resolves the live box with liveBoxLocked (windowsize.go), `display-message -p -t <strand window> '#{window_width} #{window_height}'`, and falls back to the configured cfg.Width/cfg.Height pair on any round-trip error or malformed answer.
 // AttachArgv (attach.go) passes the attaching client's own told cols/rows
 // and never calls liveBoxLocked, because at argv-build time the live window
 // is still the PRE-attach size — querying it there would reintroduce the
@@ -168,7 +165,7 @@
 //
 // Pane enumeration: listPanes (overlay.go) always runs
 //
-//	list-panes -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}"
+//	list-panes -t <strand window> -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}"
 //
 // and parsePaneList (parse.go) parses each output line's first six whitespace-separated fields positionally, in that exact order, into a LivePane;
 // everything after the sixth field is LivePane.Title, so a title holding spaces survives.
@@ -176,6 +173,24 @@
 // #{pane_dead} is reported as the string "1" or "0";
 // parsePaneList keys a dead pane on the literal value "1", never a numeric
 // or boolean comparison.
+//
+// Strand window: the strands live in one window of the session, and every op that enumerates, lays out or measures them addresses that window by its id ("@<n>"), never by the session's current window.
+// A second window in the session is therefore never read as the strands' window.
+// The one seam, windowtarget.go's TmuxCmd.strandWindowTarget, lists the session's own panes across all its windows (`list-panes -s -t '=<session>' -F "#{pane_id} #{window_id}"`).
+// It resolves the window of the recorded Selvage pane (alive, or a dead corpse), else of any present recorded strand pane, else the current-window target "=<session>:", which only the seam keeps.
+// A session reap (Down, and the engine-less ReapSession) ends every window, so it lists the panes of all of them (`list-panes -s`) and reads no reed state.
+// A recorded pane id counts as present only when that session-scoped listing carries it, since pane ids are server-wide and a stale id can name another session's pane.
+// With a present Selvage or strand pane a batten window, current or not, is never read as the strands' window and its pane is never reaped as untracked.
+// A session's first up has neither, so it falls back to the current window, and the Selvage pane created there defines the strand window from then on.
+// The pane-generation read (generation.go) stays session-scoped and outside the seam: it reads session fields only, so it keeps the "=<session>:" form, which expands them, where the bare "=<session>" form expands every session field to empty (verified live, tmux 3.6).
+//
+// Detached windows: OpenWindow (window.go) opens a detached, named window in the worktree's reed session running a `lyx` command, for a caller that wants a long-running command visible in the session's window list.
+// One multiplexer invocation runs `new-window -d -P -F '#{window_id}' -t '=<session>:' -n <name> <command>` chained with `set-option -w -t '=<session>:=<name>' remain-on-exit off`.
+// The window is detached and never selected, so it takes no focus, and the option is chained by exact name because one chained after a detached new-window without a target lands on the current window, the strands' window, whose remain-on-exit must stay on.
+// The op reads remain-on-exit back from the new window by the printed id, and a window that does not read off (two concurrent calls sharing a name, where the chained option landed on the older window) is killed by that id with ErrWindowReadBack.
+// A window of the same name whose pane is live is returned as existing and nothing is started; one whose pane is dead is killed and replaced.
+// The command line is composed in panebin.go from the pane-binary prelude, so `lyx` resolves to the spawning binary.
+// Bound: the op only chooses where a command runs; the window lives as long as the reed session, and the session's other windows keep remain-on-exit on.
 //
 // Session targeting: every -t argument that names a SESSION is passed in
 // an exact-match form — "=<name>" for session targets (has-session,
@@ -195,7 +210,7 @@
 // Pane-id (-t %N) targets are already exact and stay bare.
 //
 // Subcommand set: the engine's correctness depends on new-session,
-// has-session, split-window, select-layout, select-pane, send-keys,
+// has-session, split-window, new-window, select-layout, select-pane, send-keys,
 // capture-pane, list-panes, list-sessions, display-message,
 // set-option -g remain-on-exit, set-option -g mouse, kill-pane,
 // kill-session, and kill-server all behaving per tmux's own documented
@@ -664,11 +679,8 @@
 //     implement would have made the hook entry a server-fired no-op, the same outcome as the
 //     mitigation not helping. Adding either would make a multiplexer that runs reed perfectly well
 //     today fail at boot over a cosmetic feature.
-//   - The chained attach (attach.go): AttachArgv's argv is
-//     "attach-session … ; select-layout -t '=<session>:' <layout>", with the
-//     separator a literal one-character ";" argv element — never "\;",
-//     since exec.Command passes argv directly to the child and no shell ever
-//     sees it to unescape. The chained select-layout runs only after the
+//   - The chained attach (attach.go): AttachArgv's argv is "attach-session … ; select-layout -t <strand window> <layout>", with the separator a literal one-character ";" argv element — never "\;", since exec.Command passes argv directly to the child and no shell ever sees it to unescape.
+//     The chained select-layout runs only after the
 //     client has attached and tmux has already resized the window to it, so
 //     the layout string lands verbatim with no rescale — but only until the
 //     next window resize; see the resize round-robin bullet above for what
@@ -682,12 +694,8 @@
 //     the layout (exit 1, "have 3 panes but need 2") and destroys nothing;
 //     when the count still matches but membership shifted, cells apply
 //     positionally, so a strand ends up mis-sized rather than lost.
-//   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins seven status-line
-//     options — "status" "on"; "status-position" "bottom"; "status-left" <rendered text>;
-//     "status-right" ""; "status-left-length" <computed>; and, window-targeted with -w,
-//     "window-status-format" "" and "window-status-current-format" "" — plus "window-size" "latest",
-//     all session/window-targeted (-t '=<session>:', and -w for window-size, per the Session targeting
-//     grammar above) both at boot and again in AttachArgv's pre-flight. Their EFFECTIVE values are read
+//   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins seven status-line options — "status" "on"; "status-position" "bottom"; "status-left" <rendered text>; "status-right" ""; "status-left-length" <computed>; and, window-targeted with -w, "window-status-format" "" and "window-status-current-format" "" — plus "window-size" "latest", all targeted at the strand window (-t <strand window>, and -w for window-size, per the Strand window and Session targeting grammar above) both at boot and again in AttachArgv's pre-flight.
+//     Their EFFECTIVE values are read
 //     back with display-message rather than trusted from set-option's exit status, because a -g pin
 //     plus exit 0 is not proof the option took — verified live, tmux 3.6: a session-scoped "status on"
 //     survives a global "set-option -g status off" with exit 0, and a window-scoped "window-size

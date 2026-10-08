@@ -35,6 +35,9 @@ var _ shedengine.ShedProducer = (*seedChildProducer)(nil)
 // independently. slug is used only as a log field and in stuck-reason text -- never compared,
 // parsed, or used for control flow.
 func NewSeedChild(name, slug string, deps SeedChildDeps, scratchDir string) shedengine.ShedProducer {
+	if deps.MarkWatched == nil {
+		deps.MarkWatched = func(context.Context) (bool, error) { return false, nil }
+	}
 	return &seedChildProducer{
 		name:       name,
 		slug:       slug,
@@ -57,6 +60,8 @@ func NewSeedChild(name, slug string, deps SeedChildDeps, scratchDir string) shed
 // error-vs-verdict split; and a failed push warns via internal/logger and still returns Done,
 // because an offline machine must not halt a run and the next push on that pair catches the branch
 // up.
+// It then asks deps.MarkWatched to write or remove the batten-watched marker, so the child's first driver launch already renders the watched rule;
+// a failure there only warns.
 func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -109,6 +114,10 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 
 	if err := p.deps.PushSeed(ctx); err != nil {
 		logger.Warn("battenshed: push seed failed; the next push on this pair will catch the branch up", "producer", p.name, "slug", p.slug, "error", err)
+	}
+
+	if _, err := p.deps.MarkWatched(ctx); err != nil {
+		logger.Warn("battenshed: could not write or remove the batten-watched marker; the child's driver keeps its own parent notifications", "producer", p.name, "slug", p.slug, "error", err)
 	}
 
 	if cerr := cancelErr(ctx, p.name); cerr != nil {

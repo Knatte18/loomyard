@@ -12,10 +12,51 @@
 // fabric-internal side -- write "the task worktree" and "the pair" instead of naming either side
 // by name.
 //
-// The InnerRun row notices a child that left running, a driver strand found dead while the child runs, and a running child whose status file stays unchanged for the quiet window (notice_quiet_min) with its driver alive, and it notifies through the injected Notify seam (notice.go).
-// A notice is one line, sent once per episode; an episode ends when the child returns to running or the status file changes, and a marker under the row's scratch directory keeps a batten restart from notifying an episode already notified.
-// Control flow is unchanged: a notice is informational, a Notify error is only warned about, and the outcomes, bounce budget, halts and waits are the same with or without it.
-// A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window; an operator attaches to the child's session to tell the cases apart.
+// The InnerRun row notices a child that left running, a driver strand found dead while the child runs, an agent run of a running child stalled on an API error, and a running child whose agents are all idle for the quiet window (notice_quiet_min), and it notifies through the injected Notify seam (notice.go).
+// A notice is one line, sent once per episode, from inside the wait.
+// A state-changed and a driver-dead episode ends when the child's state changes, and the state's since is the status file's modification time at the first sight of the child in it:
+// a rewrite of the file in the same state does not move it, and only a batten start reads it from the file.
+// The api-error and quiet notices need a running child with a live driver strand, and read the agents through the injected Activity seam at most once per notice_probe_s; a failed read sends neither.
+// The api-error notice goes when the newest turn end of any live run is an API error and that run has not been active for two minutes since; it names the producer and the error text cut to one line, and takes precedence over quiet.
+// The quiet notice goes when every live run has been idle for the quiet window and no verify or shuttle wait marker is live, and says how long the agents have been idle;
+// with no live run found, it falls back to "no agent activity readable" counted from the later of the child's newest history entry and since.
+// Both episodes are keyed by the newest agent activity, so they end when an agent is active again, with `since` on the line as content only.
+// Limits: a run whose pid is dead is not read, a run that keeps writing or hangs in a live wait is never quiet, and both notices are informational.
+// A marker under the row's scratch directory records the notices sent, and only those queued, so a batten restart sends the notices not yet sent and never one already sent.
+// Every notice carries `since` and `history`, and a notice for a parked stop (blocked, paused, failed, awaiting) carries the driver's stop report, or `report none yet`.
+// A parked stop's notice waits for the driver's stop report, for the driver strand to end, or for three minutes after `since`, whichever comes first, and an older report never qualifies.
+// An awaiting child whose status carries a parent notice, while this batten holds the watched marker, is left to its driver's relay:
+// its notice goes when the driver strand has ended, or three minutes passed with no report, or ten minutes passed since the report with no decision record.
+// A done child's notice goes on the first check that sees it, and the Done return makes one last attempt of a notice still pending.
+// Delivery: the Notify seam reports whether the line was queued; with no orch strand recorded it is not called, one Warn is logged per episode and the strand is asked about again once per notice_probe_s;
+// a Notify error or an unqueued line is retried at most once per notice_probe_s and at most three times, then dropped with a Warn.
+// Control flow is unchanged: a notice is informational, a delivery failure is only warned about, and the outcomes, halts and waits are the same with or without it.
+// Bound: the report wait delays a notice by at most three minutes, and the relay wait by at most ten minutes after the report; neither loses it, and there is one notice per episode.
+// A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window, or by an API-error notice when the stall is one; an operator attaches to the child's session to tell the cases apart.
+//
+// A batten run starts with "lyx batten run <slug>" in a terminal, or with "--window" in its own tmux window of the orch's reed session, which returns at once.
+// The flag only chooses where the same run executes: the window lives as long as the reed session, and a second batten for the slug is refused by the run's own lock inside the window, in batten's own log.
+//
+// The InnerRun row waits on its child inside its call rather than returning once per poll.
+// Every poll_interval_s it stats the child's status file, and decodes it when its modification time differs from the last decode or notice_probe_s has passed.
+// It returns a budget-exempt Stuck only when something is worth a history entry:
+// the child's state changed, and the Stuck's Path and Reason name the change;
+// batten's own status carries pause_requested;
+// or the status file cannot be stat'ed.
+// An arm's own event ends it too: an awaiting child's decision is acted on and then waited out, and a done child's driver ending or its grace elapsing returns Done.
+// File stats and small file reads run on every check, the notice step's own reads (the decision record, the stop report) included;
+// anything costing a process or a multiplexer round trip (the driver, review and agent-activity reads, the forced decode, a not-parked resume retry, the watched-marker refresh, a notice's delivery) runs at most once per notice_probe_s.
+// Bound: a running child is waited on without a time limit, bounded by "lyx batten pause" (honoured within one check), cancellation and the notices;
+// a running child whose driver is dead and whose status file does not change returns nothing from the wait, the driver-dead notice being the only signal.
+//
+// Seed-Child and the InnerRun row also keep the batten-watched marker of the task worktree's run (MarkWatched), which holds this batten's pid while its notices have a destination that is also the child driver's parent.
+// Seed-Child asks once the seed is committed, so the child's first driver launch already renders the watched rule;
+// InnerRun asks at the start of every Call and once per notice_probe_s inside the wait.
+// A failure is a Warn, reads as not held, and never changes a verdict.
+// Bound: only the driver's "run stopped" message is removed, and only where a live batten with a notice destination replaces it at render time.
+// A driver launched unwatched and adopted later keeps its own rule, a duplicate and never a loss.
+// A driver launched watched keeps the silent rule whatever happens to batten afterwards,
+// so a batten that dies after the render, or an orch strand that disappears after it, leaves the run's stops unannounced until a batten runs again, which then sends the notices not yet sent.
 //
 // A running child whose spawn this batten process has not confirmed is spawned again,
 // so a restarted batten brings a driverless child back up:
@@ -25,13 +66,13 @@
 // so a second driver is never stacked.
 //
 // A child that halts (blocked, paused or failed) is a budget-exempt wait, not a failure of the Run-Shed row:
-// batten never spawns or resumes a halted child, logs one Warn per halt episode, and keeps polling every poll interval with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
+// batten never spawns or resumes a halted child, logs one Warn per halt episode, and keeps waiting with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
 // A halted or awaiting child whose reed state holds a dead driver strand has its pair's strands revived through reed resume, once per halt episode per batten process;
 // the run stays halted and nothing is resumed,
 // so the operator's "lyx loom resume" wakes the revived driver.
 // A retiring strand is not revived and a child with no driver strand has none to revive;
 // a revive that fails, and a child with no driver strand, make the reason also name "lyx loom start" in the task worktree.
-// The wait has no time limit and spends no bounce budget; "lyx batten pause" stops it, and the row reads the child as running again once the operator resumes it.
+// The wait has no time limit and spends no bounce budget; "lyx batten pause" stops it within one check, and the row reads the child as running again once the operator resumes it.
 //
 // Its counterpart is equally by design: a driver that finishes NORMALLY leaves its strand and its
 // run directory behind. Nothing here tears either down as part of a clean finish -- only the

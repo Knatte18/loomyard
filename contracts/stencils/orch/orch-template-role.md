@@ -11,8 +11,8 @@ When a message asks you to write the orch note, write it to the path the message
 
 ## The run loop
 
-1. Start the run from the prime with `lyx batten run <slug>`.
-   Detach it from your shell with `setsid nohup`, until `lyx batten start` exists.
+1. Start the run from the prime with `lyx batten run <slug> --window`.
+   It starts the batten run in its own tmux window of your reed session and returns at once, so the session's window list then names every run in flight.
    The batten run creates the task pair, drives the loom run inside it and tears the pair down after the run ends.
 2. A halted child (blocked, paused or failed) is a wait batten never resumes on its own: once its cause is known (see Investigating a stop), resume it with `lyx loom resume` in the task worktree.
    When `lyx loom resume` refuses, its message names the way forward (`lyx batten run <slug>` to bring a dead driver back, or `lyx loom start`),

@@ -445,6 +445,8 @@ var wordingClaims = []stencilClaims{
 		wantNone(orchNoScribeHandoffWhy, "scribe:handoff"),
 		[]claim{
 			{must: "creates the task pair, drives the loom run inside it and tears the pair down", why: "the batten run owns the pair's creation and teardown"},
+			{must: "`lyx batten run <slug> --window`", why: "a run is started in its own window of the orch's reed session"},
+			{mustNot: "setsid nohup", why: "the window, not a detached shell process, keeps a started run alive and listed"},
 			{must: "Batten reads the decision and resumes the child itself", why: "batten resumes the child after a PR-Gate decision"},
 			{must: "`lyx loom reject <review-file>`", why: "a reject names its review file"},
 			{must: "marks the board task done, pushes main and closes the PR", why: "Finalize marks the task done, pushes and closes the PR"},
@@ -498,10 +500,23 @@ var wordingClaims = []stencilClaims{
 		{mustNot: "lyx selfreport create", why: "the driver files no issue itself: the run's reflection is the one filer"},
 		{must: "friction: failed", why: "the parent is notified on a done stop whose envelope reports a failed reflection"},
 		{must: "`parent_notice`", why: "an awaiting stop's parent_notice is relayed to the parent"},
-		{must: `nothing more than the tail "` + shuttleengine.MessageTail + `"`, section: "## Notifying the parent", why: "the generic escalation line ends with the message tail, quoted literally because the driver has no other source for it"},
-		{must: "send that notice verbatim, followed by that tail", section: "## Notifying the parent", why: "a relayed parent_notice ends with the message tail"},
-		{must: "add nothing to it but that tail", section: "## Notifying the parent", why: "the verbatim notice rule permits the tail"},
-		{mustNot: "add nothing to it,", section: "## Notifying the parent", why: "a verbatim rule without the tail contradicts the tail statement"},
+		{must: "{{.parent_notify}}", section: "## Notifying the parent", why: "the parent-notification rule is rendered under its heading from one of the two notify stencils"},
+	}},
+	{"shed-template-driver-notify.md", ShedTemplateDriverNotify, []claim{
+		{must: `nothing more than the tail "` + shuttleengine.MessageTail + `"`, why: "the generic escalation line ends with the message tail, quoted literally because the driver has no other source for it"},
+		{must: "send that notice verbatim, followed by that tail", why: "a relayed parent_notice ends with the message tail"},
+		{must: "add nothing to it but that tail", why: "the verbatim notice rule permits the tail"},
+		{mustNot: "add nothing to it,", why: "a verbatim rule without the tail contradicts the tail statement"},
+		{must: "`friction: failed`", why: "a done stop whose reflection failed notifies the parent"},
+	}},
+	{"shed-template-driver-notify-watched.md", ShedTemplateDriverNotifyWatched, []claim{
+		{must: "`parent_notice`", why: "an awaiting stop's parent_notice is still relayed to the parent when a batten watches"},
+		{must: "send that notice verbatim, followed by the tail \"" + shuttleengine.MessageTail + "\"", why: "a relayed parent_notice ends with the message tail, quoted literally because the driver has no other source for it"},
+		{must: "a question you cannot settle yourself", why: "a stop report's question to the parent is still sent when a batten watches"},
+		{must: "`friction: failed`", why: "a done stop whose reflection failed notifies the parent even when a batten watches"},
+		{must: "Never message the parent that the run stopped, halted or finished", why: "a watching batten announces those stops, so the driver's own message would duplicate it"},
+		{mustNot: "At every escalation", why: "the generic escalation line is the unwatched rule's"},
+		{must: "record a failed send as a line in the report rather than retrying it", why: "a failed send is recorded, not retried, under both rules"},
 	}},
 }
 

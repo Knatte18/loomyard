@@ -60,6 +60,11 @@
 // a boundary reading carries its `postTokens` and timestamp and is marked compacted.
 // Every failure degrades to an unknown reading.
 //
+// The activity reading (ActivityReader) takes the transcript's last write time and walks it backwards for the newest main-chain assistant entry that ends a turn or carries Claude Code's `isApiErrorMessage` marker.
+// A session whose newest such entry carries the marker stands on an API error, and the entry's final text is the error's text;
+// a sidechain entry never counts, and a later normal turn end clears the error.
+// Every failure degrades to the zero reading.
+//
 // The resume check refuses a session whose registry entry names a live pid, unless the live process's start time differs from the entry's `procStart`, which proves the pid was reused.
 // An unreadable start time, or an entry without `procStart`, still refuses and says the pid could not be proven reused.
 //

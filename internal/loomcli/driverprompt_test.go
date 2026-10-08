@@ -58,13 +58,13 @@ func TestDriverPrompt(t *testing.T) {
 			dir := seededStencils(t)
 			if tc.removeStencil {
 				stencilkit.Remove(t, dir, driverStencilName)
-				if _, err := driverPrompt(dir, tc.parent, runID, reportPath); err == nil {
+				if _, err := driverPrompt(dir, tc.parent, runID, reportPath, false); err == nil {
 					t.Fatalf("driverPrompt() with %s missing from %s error = nil; want an error", driverStencilName, stencilstore.Path(dir, driverStencilName))
 				}
 				return
 			}
 
-			got, err := driverPrompt(dir, tc.parent, runID, reportPath)
+			got, err := driverPrompt(dir, tc.parent, runID, reportPath, false)
 			if err != nil {
 				t.Fatalf("driverPrompt() error = %v; want nil", err)
 			}
@@ -86,6 +86,87 @@ func TestDriverPrompt(t *testing.T) {
 		})
 	}
 }
+
+// TestDriverPrompt_ParentNotifyRuleFollowsWatched asserts a watched prompt tells the driver to message the parent only for a relay, a question or a failed friction and never that the run stopped, and an unwatched prompt keeps the generic escalation line.
+func TestDriverPrompt_ParentNotifyRuleFollowsWatched(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		watched bool
+		want    []string
+		wantNot []string
+	}{
+		{
+			name:    "watched",
+			watched: true,
+			want:    []string{"`parent_notice`", "a question you cannot settle yourself", "`friction: failed`", "Never message the parent that the run stopped, halted or finished"},
+			wantNot: []string{"At every escalation"},
+		},
+		{
+			name:    "unwatched",
+			watched: false,
+			want:    []string{"`parent_notice`", "`friction: failed`", "At every escalation"},
+			wantNot: []string{"Never message the parent that the run stopped"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := driverPrompt(seededStencils(t), "hub:orch", "operator-surface", "/hub/wt/report.md", tc.watched)
+			if err != nil {
+				t.Fatalf("driverPrompt() error = %v; want nil", err)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(got, want) {
+					t.Errorf("driverPrompt() does not carry %q", want)
+				}
+			}
+			for _, unwanted := range tc.wantNot {
+				if strings.Contains(got, unwanted) {
+					t.Errorf("driverPrompt() carries %q", unwanted)
+				}
+			}
+			if strings.Contains(got, "{{") {
+				t.Errorf("driverPrompt() left a marker unfilled")
+			}
+		})
+	}
+}
+
+// TestDriverWatched asserts a marker holding a live pid reads as watched, and an absent marker, a garbage one and a dead pid read as unwatched.
+func TestDriverWatched(t *testing.T) {
+	t.Parallel()
+
+	const livePID = 4242
+	isAlive := func(pid int) bool { return pid == livePID }
+	cases := []struct {
+		name    string
+		content *string
+		want    bool
+	}{
+		{"live pid", ptr("4242\n"), true},
+		{"dead pid", ptr("4243\n"), false},
+		{"garbage", ptr("not a pid\n"), false},
+		{"absent marker", nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			marker := filepath.Join(t.TempDir(), "batten-watched")
+			if tc.content != nil {
+				if err := os.WriteFile(marker, []byte(*tc.content), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := driverWatched(marker, isAlive); got != tc.want {
+				t.Errorf("driverWatched() = %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func ptr(s string) *string { return &s }
 
 // TestWriteParkMarker_CreatesDirAndHoldsReportPath asserts the marker is written under a not-yet-existing directory and holds the report path.
 func TestWriteParkMarker_CreatesDirAndHoldsReportPath(t *testing.T) {

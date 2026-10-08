@@ -120,6 +120,9 @@ type RunState struct {
 	// zero when Start loaded no skills or for a record that predates the field.
 	// Every reader that replays the events file from its start begins here instead, so a load turn's end is never read as the run's own.
 	PromptOffset int64 `json:"promptOffset,omitempty"`
+	// PID is the pid of the process that waits on the run: Start records the starting process, and an attach rewrites it to the attaching process.
+	// Zero for a record an older binary wrote, which therefore never counts as live.
+	PID int `json:"pid,omitempty"`
 }
 
 // createRunDir mints a fresh run id, creates <root>/<runID>, and returns

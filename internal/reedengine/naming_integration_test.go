@@ -33,7 +33,7 @@ func addEnvProbeStrand(t *testing.T, e *Engine, role string) (Strand, string) {
 // paneTitle returns the title list-panes reports for paneID.
 func paneTitle(t *testing.T, e *Engine, paneID string) string {
 	t.Helper()
-	live, err := e.tmux.listPanes(e.SessionName())
+	live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
 		t.Fatalf("listPanes: %v", err)
 	}

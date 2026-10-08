@@ -4,21 +4,19 @@
 # Name* constants by that package's coverage guard -- a rename here without a matching constant
 # rename breaks resume for any in-flight run.
 #
-# Run-Shed's on_stuck: Run-Shed self-route, paired with max_bounces: 1440 and config.poll_interval_s:
-# 30 (a 12-hour watch window -- 1440 bounces at 30 seconds, the same wall clock today's Go constants
-# once expressed, not the same attempt count), is what lets Run-Shed's producer re-check its child's
-# status once per bounce without looping internally. The 12-hour budget counts the running watch
-# only: the wait for an operator's approval of an awaiting child, the wait through a halted
-# (blocked, paused or failed) child until the operator resumes it, and the wait for a done child's
-# driver to finish its stop report are budget-exempt bounces, the last bounded by
-# config.driver_exit_grace_s instead and the halted wait by nothing but the operator's resume or
-# "lyx batten pause". It never routes to
+# Run-Shed's producer waits on its child inside its own call, checking every config.poll_interval_s
+# seconds, and returns only when something is worth a history entry: the child's state changed,
+# an awaiting child's decision arrived, batten was paused, or the child's status file could not be
+# stat'ed. Anything costing a process or a multiplexer round trip runs at most once per
+# config.notice_probe_s. Every Stuck it returns is budget-exempt and routes back through the
+# on_stuck: Run-Shed self-route to re-enter the producer for the next wait, so the row carries no
+# max_bounces and no running watch window: a running child is waited on without a time limit, bounded
+# only by "lyx batten pause", the notices, and the driver-exit grace for a done child
+# (config.driver_exit_grace_s). It never routes to
 # Worktree-Teardown: the destructive teardown row is unreachable from any failure path because
 # Run-Shed's own hard-error return -- not an empty on_stuck -- is what shedengine turns into
 # StateFailed at Run-Shed with the run halted; a halted child is no longer such a return, only a
-# mechanism failure is. A dropped max_bounces would silently inherit the
-# engine's default budget of ten bounces and turn every long child run into a spurious
-# StateBlocked.
+# mechanism failure is.
 #
 # Worktree-Teardown's empty on_done is likewise load-bearing and is what ends the run quietly.
 
@@ -40,9 +38,9 @@ producers:
     engine: InnerRun
     on_done: Worktree-Teardown
     on_stuck: Run-Shed
-    max_bounces: 1440
     config:
-      poll_interval_s: 30
+      poll_interval_s: 2
+      notice_probe_s: 30
       driver_exit_grace_s: 900
       notice_quiet_min: 45
 

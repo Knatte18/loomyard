@@ -148,8 +148,8 @@ func TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped(t 
 	if splitIdx == -1 {
 		t.Fatalf("verbs %v: expected a split-window, got none", verbs)
 	}
-	if verbs[0] != "list-panes" || splitIdx <= 0 {
-		t.Errorf("verbs %v: want the single list-panes to precede split-window", verbs)
+	if verbs[0] != sessionListVerb || verbs[1] != "list-panes" || splitIdx <= 1 {
+		t.Errorf("verbs %v: want the window resolution, then the single list-panes, to precede split-window", verbs)
 	}
 }
 

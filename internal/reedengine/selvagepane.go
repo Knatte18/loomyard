@@ -184,7 +184,7 @@ func clearSelvagePaneBinding(st *ReedState) {
 // split against the bottom pane can fail at all.
 func (e *Engine) ensureSelvagePaneLocked(st *ReedState) error {
 	session := e.SessionName()
-	live, err := e.tmux.listPanes(session)
+	live, err := e.listStrandPanes(st)
 	if err != nil {
 		return fmt.Errorf("list panes: %w", err)
 	}
@@ -219,7 +219,7 @@ func (e *Engine) ensureSelvagePaneLocked(st *ReedState) error {
 				return fmt.Errorf("kill dead Selvage pane %s: %w", corpseID, err)
 			}
 			corpseID = ""
-			live, err = e.tmux.listPanes(session)
+			live, err = e.listStrandPanes(st)
 			if err != nil {
 				return fmt.Errorf("list panes after killing dead Selvage: %w", err)
 			}
@@ -232,7 +232,7 @@ func (e *Engine) ensureSelvagePaneLocked(st *ReedState) error {
 	// Selvage's trailing split-window argument is e.cfg.Shell, the same way
 	// new-session already launches the session's first pane — an ordinary
 	// interactive shell, never a re-exec of lyx.
-	paneID, err := e.splitSelvagePaneAtBottomLocked(session, live, e.cfg.Shell)
+	paneID, err := e.splitSelvagePaneAtBottomLocked(st, live, e.cfg.Shell)
 	if err != nil {
 		return fmt.Errorf("split Selvage pane: %w", err)
 	}
@@ -299,18 +299,24 @@ func bottommostPaneID(live []LivePane) string {
 // On a failed retry the FIRST error is returned, not the retry's: it describes the state the
 // operator actually has, and the re-tile is an internal repair attempt rather than something they
 // asked for.
-func (e *Engine) splitSelvagePaneAtBottomLocked(session string, live []LivePane, launchCmd string) (string, error) {
+func (e *Engine) splitSelvagePaneAtBottomLocked(st *ReedState, live []LivePane, launchCmd string) (string, error) {
+	session := e.SessionName()
 	paneID, firstErr := e.splitPaneBelowLocked(bottommostPaneID(live), live, launchCmd)
 	if firstErr == nil {
 		return paneID, nil
 	}
 	logger.Warn("reed: failed to split Selvage pane, retrying behind an even-vertical re-tile", "socket", e.Socket(), "session", session, "err", firstErr)
 
-	if err := e.tmux.run("select-layout", "-t", exactSessionWindowTarget(session), "even-vertical"); err != nil {
+	windowTarget, err := e.strandWindowTargetFor(st)
+	if err != nil {
+		logger.Warn("reed: could not resolve the strand window for the even-vertical re-tile, Selvage split not retried", "socket", e.Socket(), "session", session, "err", err)
+		return "", firstErr
+	}
+	if err := e.tmux.run("select-layout", "-t", windowTarget, "even-vertical"); err != nil {
 		logger.Warn("reed: even-vertical re-tile failed, Selvage split not retried", "socket", e.Socket(), "session", session, "err", err)
 		return "", firstErr
 	}
-	retiled, err := e.tmux.listPanes(session)
+	retiled, err := e.listStrandPanes(st)
 	if err != nil || len(retiled) == 0 {
 		logger.Warn("reed: could not re-enumerate panes after the even-vertical re-tile", "socket", e.Socket(), "session", session, "err", err)
 		return "", firstErr
@@ -356,4 +362,21 @@ func (e *Engine) splitPaneBelowLocked(target string, preSplitLive []LivePane, la
 		return "", err
 	}
 	return paneID, nil
+}
+
+// recordedPaneIDs lists the pane ids st records, Selvage first, then the strands in order.
+func recordedPaneIDs(st *ReedState) []string {
+	if st == nil {
+		return nil
+	}
+	var ids []string
+	if st.SelvagePaneID != "" {
+		ids = append(ids, st.SelvagePaneID)
+	}
+	for _, s := range st.Strands {
+		if s.PaneID != "" {
+			ids = append(ids, s.PaneID)
+		}
+	}
+	return ids
 }

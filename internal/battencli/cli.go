@@ -10,11 +10,15 @@
 package battencli
 
 import (
+	"errors"
+	"fmt"
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -63,7 +67,14 @@ type battenCLI struct {
 	driverFlagSet bool
 	// childDriverFlagSet is driverFlagSet's sibling for --child-driver.
 	childDriverFlagSet bool
+	// windowFlag carries "run"'s own --window value.
+	windowFlag bool
+	// windowOpener, when non-nil, replaces the prime's reed engine as the thing the run verb's --window opens its window through, so the refusals are testable without tmux.
+	windowOpener func(name string, lyxArgs []string) (reedengine.WindowResult, error)
 }
+
+// windowNamePrefix starts the name of the window "lyx batten run <slug> --window" opens, ahead of the slug.
+const windowNamePrefix = "batten:"
 
 // battenVerbTexts carries batten's four shedverbs-driven verbs' Use/Short/Long text.
 // run's and status's are lifted verbatim from their original hand-written constructors (run.go,
@@ -91,8 +102,16 @@ The run-id positional is required in practice, even though cobra accepts
 its absence: prime hosts many slug-addressed batten runs, so an omitted
 run-id refuses by name rather than defaulting to "self".
 
+With --window, the same run starts in its own tmux window of the prime's reed
+session and the verb returns at once with the window's id and name. The flag only
+chooses where the same "lyx batten run" executes and never changes the run; the
+window lives as long as the reed session. A window of that name with a live run
+is reported and nothing is started; a second batten for the slug is refused by
+the run's own lock inside the window and read from batten's own log.
+
 Example:
-  lyx batten run some-slug`,
+  lyx batten run some-slug
+  lyx batten run some-slug --window`,
 	},
 	Status: shedverbs.VerbText{
 		Use:   "status [<run-id>]",
@@ -212,6 +231,14 @@ Example:
 	// here.
 	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
 	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverLLM, "the driver the task worktree's own inner run uses")
+	runVerb.Flags().BoolVar(&c.windowFlag, "window", false, "start the same run in its own tmux window of the prime's reed session and return at once; the flag only chooses where the run executes, and the window lives as long as the reed session")
+	originalRunE := runVerb.RunE
+	runVerb.RunE = func(cmd *cobra.Command, args []string) error {
+		if !c.windowFlag {
+			return originalRunE(cmd, args)
+		}
+		return c.runInWindow(cmd)
+	}
 	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
 	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", shedrun.DriverLLM, "the driver the task worktree's own inner run uses")
 
@@ -260,6 +287,70 @@ func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 	}
 	*c.spec = armed
 	return nil
+}
+
+// runInWindow is the run verb's body under --window: it opens the window "batten:<slug>" running "lyx batten run <slug>" (without --window, carrying an explicitly typed --driver or --child-driver through) and prints the window's id and name.
+// The envelope reports a started window only, never a started batten: a second batten for the slug is refused by the run's own lock inside the window.
+func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
+	if clihelp.ShouldAbort(cmd.Context()) {
+		return nil
+	}
+	ctx := cmd.Context()
+	out := cmd.OutOrStdout()
+
+	lyxArgs := []string{"batten", "run", c.slug}
+	if c.driverFlagSet {
+		lyxArgs = append(lyxArgs, "--driver", c.driverFlag)
+	}
+	if c.childDriverFlagSet {
+		lyxArgs = append(lyxArgs, "--child-driver", c.childDriverFlag)
+	}
+
+	open := c.windowOpener
+	if open == nil {
+		open = c.openWindowInPrimeSession
+	}
+	res, err := open(windowNamePrefix+c.slug, lyxArgs)
+	if err != nil {
+		clihelp.SetExit(ctx, output.Err(out, windowRefusal(err, c.slug).Error()))
+		return nil
+	}
+
+	fields := map[string]any{"window_id": res.WindowID, "window_name": res.Name, "existing": res.Existing}
+	if res.Existing {
+		fields["note"] = "already running; nothing started"
+	}
+	clihelp.SetExit(ctx, output.Ok(out, fields))
+	return nil
+}
+
+// openWindowInPrimeSession opens the window through the prime's own reed engine.
+func (c *battenCLI) openWindowInPrimeSession(name string, lyxArgs []string) (reedengine.WindowResult, error) {
+	reedCfg, err := reedengine.LoadConfig(c.location.AnchorPath(), "reed")
+	if err != nil {
+		return reedengine.WindowResult{}, err
+	}
+	reedGeom, err := hubgeom.ReedGeometry(c.location)
+	if err != nil {
+		return reedengine.WindowResult{}, err
+	}
+	return reedengine.New(reedCfg, reedGeom).OpenWindow(name, lyxArgs)
+}
+
+// windowRefusal words err from opening slug's window as a refusal that names its way forward.
+func windowRefusal(err error, slug string) error {
+	inTerminal := fmt.Sprintf("run \"lyx batten run %s\" in a terminal instead", slug)
+	var capabilityErr *reedengine.CapabilityError
+	switch {
+	case errors.Is(err, reedengine.ErrNoSession):
+		return fmt.Errorf("battencli: the prime has no reed session to open a window in: start the orch with \"lyx orch start\", or %s: %w", inTerminal, err)
+	case errors.As(err, &capabilityErr):
+		return fmt.Errorf("battencli: this multiplexer cannot open a window: %s: %w", inTerminal, err)
+	case errors.Is(err, reedengine.ErrWindowReadBack):
+		return fmt.Errorf("battencli: the window opened but did not read back as expected, so it was closed; the run may already be live from the call that kept the older window: check \"lyx batten status %s\", and only when that shows none, %s: %w", slug, inTerminal, err)
+	default:
+		return fmt.Errorf("battencli: could not open the window: %s: %w", inTerminal, err)
+	}
 }
 
 // RunCLI is the public seam for the batten module CLI.

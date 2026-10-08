@@ -8,6 +8,7 @@ package reedengine
 
 import (
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -113,10 +114,15 @@ func TestReapSessionKill(t *testing.T) {
 func TestReapSessionPanes(t *testing.T) {
 	t.Run("successful listing", func(t *testing.T) {
 		cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
-		installFakeTmuxOn(t, &cmd).answer("list-panes", "%1 0 0 80 24 4242\n", nil)
+		fake := installFakeTmuxOn(t, &cmd)
+		fake.answer("list-panes", "%1 0 0 80 24 4242\n", nil)
 		got, err := reapSessionPanes(cmd, "myworktree")
 		if err != nil {
 			t.Fatalf("reapSessionPanes() unexpected error: %v", err)
+		}
+		// Session-wide, so a kill-session's reap covers every window of the session.
+		if argv := fake.ArgvFor(sessionListVerb); len(argv) != 1 || !slices.Equal(argv[0][:4], []string{"list-panes", "-s", "-t", "=myworktree"}) {
+			t.Errorf("reapSessionPanes() listed with %v; want one session-wide list-panes -s -t =myworktree", argv)
 		}
 		want := []LivePane{{ID: "%1", Dead: false, Top: 0, Width: 80, Height: 24, PID: 4242}}
 		if len(got) != len(want) || got[0] != want[0] {
@@ -154,12 +160,12 @@ func TestReapSession_CallOrdering(t *testing.T) {
 		{
 			name:         "list-panes then kill-session",
 			panesOut:     unreachablePaneLine,
-			wantSequence: []string{"list-panes", "kill-session"},
+			wantSequence: []string{sessionListVerb, "kill-session"},
 		},
 		{
 			name:         "list-panes failure still reaches kill-session",
 			panesErr:     errors.New("no server running on socket"),
-			wantSequence: []string{"list-panes", "kill-session"},
+			wantSequence: []string{sessionListVerb, "kill-session"},
 		},
 	}
 

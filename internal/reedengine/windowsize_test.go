@@ -75,7 +75,7 @@ func TestLiveBoxLocked(t *testing.T) {
 			e.cfg.Width, e.cfg.Height = 999, 111
 			installFakeTmux(t, e).answer("display-message", tt.answer, tt.err)
 
-			got, ok := e.liveBoxLocked()
+			got, ok := e.liveBoxLocked(exactSessionWindowTarget(e.SessionName()))
 			want := render.Box{X: 0, Y: 0, W: tt.wantW, H: tt.wantH}
 			if got != want || ok != tt.wantOK {
 				t.Errorf("liveBoxLocked() = (%+v, %v), want (%+v, %v)", got, ok, want, tt.wantOK)
@@ -210,7 +210,7 @@ func TestReadbacksLocked(t *testing.T) {
 			name:   "StatusRowsScriptedAnswer",
 			answer: "on",
 			read: func(e *Engine) string {
-				rows, ok := e.readStatusRowsLocked()
+				rows, ok := e.readStatusRowsLocked(exactSessionWindowTarget(e.SessionName()))
 				return fmt.Sprintf("(%d, %v)", rows, ok)
 			},
 			want: "(1, true)",
@@ -219,7 +219,7 @@ func TestReadbacksLocked(t *testing.T) {
 			name: "StatusRowsRoundTripError",
 			err:  errors.New("boom"),
 			read: func(e *Engine) string {
-				rows, ok := e.readStatusRowsLocked()
+				rows, ok := e.readStatusRowsLocked(exactSessionWindowTarget(e.SessionName()))
 				return fmt.Sprintf("(%d, %v)", rows, ok)
 			},
 			want: "(0, false)",
@@ -227,13 +227,17 @@ func TestReadbacksLocked(t *testing.T) {
 		{
 			name:   "WindowSizeLatestScriptedAnswer",
 			answer: "latest",
-			read:   func(e *Engine) string { return strconv.FormatBool(e.readWindowSizeLatestLocked()) },
-			want:   "true",
+			read: func(e *Engine) string {
+				return strconv.FormatBool(e.readWindowSizeLatestLocked(exactSessionWindowTarget(e.SessionName())))
+			},
+			want: "true",
 		},
 		{
 			name: "WindowSizeLatestRoundTripError",
 			err:  errors.New("boom"),
-			read: func(e *Engine) string { return strconv.FormatBool(e.readWindowSizeLatestLocked()) },
+			read: func(e *Engine) string {
+				return strconv.FormatBool(e.readWindowSizeLatestLocked(exactSessionWindowTarget(e.SessionName())))
+			},
 			want: "false",
 		},
 	}
@@ -277,7 +281,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		wantStatusLeft := strings.ReplaceAll(wantEscaped, tokenvocab.WaitsPlaceholder, waitsSegmentFormat)
 		wantLength := statusLeftLength(strings.ReplaceAll(wantEscaped, tokenvocab.WaitsPlaceholder, "")) + waitsSegmentLengthAllowance
 
-		e.pinGeometryOptionsLocked()
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
 		calls := fake.ArgvFor("set-option")
 
 		target := exactSessionWindowTarget(e.SessionName())
@@ -314,7 +318,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		e.cfg.StatusLine.Template = "{{.slug}}"
 		fake := installFakeTmux(t, e)
 
-		e.pinGeometryOptionsLocked()
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
 		calls := fake.ArgvFor("set-option")
 
 		for _, c := range calls {
@@ -339,7 +343,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			return "", nil
 		})
 
-		e.pinGeometryOptionsLocked()
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
 		calls := fake.ArgvFor("set-option")
 
 		const wantCalls = 8
@@ -353,7 +357,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		e.cfg.Watchdog = "on"
 		fake := installFakeTmux(t, e)
 
-		e.pinGeometryOptionsLocked()
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
 		calls := fake.Calls()
 
 		// With the new resize-pin mechanism, pinGeometryOptionsLocked no longer installs the
@@ -393,7 +397,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 
 		fake := installFakeTmux(t, e)
 
-		e.pinGeometryOptionsLocked()
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
 		calls := fake.Calls()
 
 		wantTarget := exactSessionWindowTarget(e.SessionName())
@@ -426,7 +430,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		installFakeTmux(t, e)
 		// Must not panic and pinGeometryOptionsLocked returns nothing, so simply calling it and
 		// returning normally is the assertion.
-		e.pinGeometryOptionsLocked()
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
 	})
 
 	t.Run("SetHookErrorIsNonFatalWhenWatchdogOff", func(t *testing.T) {
@@ -436,7 +440,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		fake := installFakeTmux(t, e)
 		fake.answer("set-hook", "", errors.New("boom"))
 
-		e.pinGeometryOptionsLocked()
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
 
 		if setOptionCalls := fake.Count("set-option"); setOptionCalls != 8 {
 			t.Errorf("set-option calls = %d, want 8 (all preceding pins still attempted despite the later set-hook error)", setOptionCalls)
@@ -452,7 +456,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		installFakeTmux(t, e)
 		// The signal file's parent dir may not even exist yet; removeResizeSignalFileLocked must not
 		// panic or log anything above Warn-worthy for a genuinely absent file.
-		e.pinGeometryOptionsLocked()
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
 	})
 }
 
@@ -515,7 +519,7 @@ func TestResizePinHookArgvs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			argvs := resizePinHookArgvs(session, tt.pins, tt.signal)
+			argvs := resizePinHookArgvs(exactSessionWindowTarget(session), tt.pins, tt.signal)
 
 			assertResizePinHookArgvsWellFormed(t, argvs, target)
 			if len(argvs) != 1+len(tt.wantBodies) {
@@ -619,7 +623,7 @@ func TestInstallResizePinsLocked_IssuesTheSignalEntryLast(t *testing.T) {
 		e.cfg.Watchdog = "on"
 		fake := installFakeTmux(t, e)
 
-		e.installResizePinsLocked([]render.Pin{{PaneID: "%1", Height: 3}})
+		e.installResizePinsLocked(exactSessionWindowTarget(e.SessionName()), []render.Pin{{PaneID: "%1", Height: 3}})
 		calls := fake.Calls()
 
 		if len(calls) != 3 {
@@ -637,7 +641,7 @@ func TestInstallResizePinsLocked_IssuesTheSignalEntryLast(t *testing.T) {
 		e.cfg.Watchdog = "off"
 		fake := installFakeTmux(t, e)
 
-		e.installResizePinsLocked([]render.Pin{{PaneID: "%1", Height: 3}})
+		e.installResizePinsLocked(exactSessionWindowTarget(e.SessionName()), []render.Pin{{PaneID: "%1", Height: 3}})
 		calls := fake.Calls()
 
 		if len(calls) != 2 {
@@ -659,7 +663,7 @@ func TestInstallResizePinsLocked_IssuesTheSignalEntryLast(t *testing.T) {
 
 		// Every call errors; the contract is that each one is still attempted and nothing panics or
 		// propagates (Shared Decision hook-failure-is-non-fatal-everywhere).
-		e.installResizePinsLocked([]render.Pin{{PaneID: "%1", Height: 3}})
+		e.installResizePinsLocked(exactSessionWindowTarget(e.SessionName()), []render.Pin{{PaneID: "%1", Height: 3}})
 
 		if calls := fake.Calls(); len(calls) != 3 {
 			t.Fatalf("installResizePinsLocked calls = %v, want all 3 attempted despite every one erroring", calls)

@@ -32,17 +32,19 @@ func haltedStatus(state shedengine.State, historyLen int) statusResult {
 
 func TestInnerRun_HaltedStatesWaitExemptWithoutSpawning(t *testing.T) {
 	for _, state := range []shedengine.State{shedengine.StatePaused, shedengine.StateBlocked, shedengine.StateFailed} {
+		scratchDir := t.TempDir()
 		clock := &fakeClock{}
-		_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{haltedStatus(state, 2)}, clock)
+		_, spawnCalls, deps := newInnerRunDeps(t, nil, nil, []statusResult{haltedStatus(state, 2)}, clock)
+		clock.watchReason(scratchDir)
 
-		producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, t.TempDir(), testGrace)
+		producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 		outcome, ptr, err := producer.Call(context.Background())
 		if err != nil || outcome != shedengine.Stuck || !ptr.BudgetExempt {
 			t.Fatalf("state %q: Call() = %v %+v %v; want an exempt Stuck", state, outcome, ptr, err)
 		}
 		for _, want := range []string{string(state), "loom session halted", "loom-side-producer", "lyx loom resume", "lyx loom start"} {
-			if !strings.Contains(ptr.Reason, want) {
-				t.Errorf("state %q: Reason = %q; want substring %q", state, ptr.Reason, want)
+			if !strings.Contains(clock.lastReason(), want) {
+				t.Errorf("state %q: wait reason = %q; want substring %q", state, clock.lastReason(), want)
 			}
 		}
 		if clock.sleepCalls != 1 {
@@ -54,45 +56,42 @@ func TestInnerRun_HaltedStatesWaitExemptWithoutSpawning(t *testing.T) {
 	}
 }
 
+// TestInnerRun_HaltWarnsOncePerEpisode asserts the checks of one wait at one unchanged status Warn once, and that a longer history in the same state, written while the wait runs, starts a new episode.
 func TestInnerRun_HaltWarnsOncePerEpisode(t *testing.T) {
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
 	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
 
+	const warnText = "inner shed run halted"
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
-	statuses := []statusResult{haltedStatus(shedengine.StatePaused, 3)}
-	_, _, deps := newInnerRunDeps(nil, nil, statuses, clock)
-	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
-
-	for i := 0; i < 5; i++ {
-		if _, _, err := producer.Call(context.Background()); err != nil {
-			t.Fatalf("Call() %d error = %v", i, err)
+	statuses := []statusResult{haltedStatus(shedengine.StatePaused, 3), haltedStatus(shedengine.StatePaused, 5)}
+	_, _, deps := newInnerRunDeps(t, nil, nil, statuses, clock)
+	clock.pauseAtSleep = 5
+	var warnsBeforeRegrowth int
+	clock.onSleep = func(call int) {
+		if call == 4 {
+			warnsBeforeRegrowth = strings.Count(buf.String(), warnText)
+			clock.bumpStatus()
 		}
 	}
-	const warnText = "inner shed run halted"
-	if got := strings.Count(buf.String(), warnText); got != 1 {
-		t.Fatalf("Warn count after polls at one history length = %d; want 1\nlog: %s", got, buf.String())
+	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
+
+	if _, _, err := producer.Call(context.Background()); err != nil {
+		t.Fatalf("Call() error = %v", err)
+	}
+	if warnsBeforeRegrowth != 1 {
+		t.Fatalf("Warn count over three checks at one history length = %d; want 1\nlog: %s", warnsBeforeRegrowth, buf.String())
+	}
+	if got := strings.Count(buf.String(), warnText); got != 2 {
+		t.Errorf("Warn count after the history grew = %d; want 2", got)
 	}
 	raw, err := os.ReadFile(haltWarnedFile(scratchDir, "innerrun"))
 	if err != nil {
 		t.Fatalf("halt-warned marker: %v; want it written", err)
 	}
-	if got := strings.TrimSpace(string(raw)); got != "3" {
-		t.Errorf("halt-warned marker = %q; want %q", got, "3")
-	}
-
-	// A resume and re-halt grows the history, which starts a new episode.
-	_, _, regrown := newInnerRunDeps(nil, nil, []statusResult{haltedStatus(shedengine.StateBlocked, 5)}, clock)
-	regrown.Sleep = deps.Sleep
-	producer = NewInnerRun("innerrun", "myslug", regrown, time.Millisecond, scratchDir, testGrace)
-	for i := 0; i < 3; i++ {
-		if _, _, err := producer.Call(context.Background()); err != nil {
-			t.Fatalf("Call() after re-halt %d error = %v", i, err)
-		}
-	}
-	if got := strings.Count(buf.String(), warnText); got != 2 {
-		t.Errorf("Warn count after a longer history = %d; want 2", got)
+	if got := strings.TrimSpace(string(raw)); got != "5" {
+		t.Errorf("halt-warned marker = %q; want %q", got, "5")
 	}
 }
 
@@ -102,21 +101,32 @@ func TestInnerRun_ReHaltAfterObservedResumeWarnsAgainAtTheSameHistoryLength(t *t
 	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
 
 	// A failed child resumed and failing again on the same producer appends no history entry, so both halts read length 4.
-	statuses := []statusResult{
-		haltedStatus(shedengine.StateFailed, 4),
-		{status: shedengine.Status{State: shedengine.StateRunning, History: make([]shedengine.HistoryEntry, 4)}, found: true},
-		haltedStatus(shedengine.StateFailed, 4),
-	}
+	failed := haltedStatus(shedengine.StateFailed, 4).status
+	running := shedengine.Status{State: shedengine.StateRunning, History: make([]shedengine.HistoryEntry, 4)}
+	current := failed
 	clock := &fakeClock{}
-	_, _, deps := newInnerRunDeps(nil, nil, statuses, clock)
+	_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{{status: failed, found: true}}, clock)
+	deps.ReadStatus = func(string, string) (shedengine.Status, bool, error) { return current, true, nil }
 	scratchDir := t.TempDir()
 	// The operator's resume ran the child's own driver, so a spawn is already confirmed.
 	if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), pidMarker(os.Getpid()), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// The first Call sees the resume, the second the re-halt, and the third begins in the new episode.
+	clock.pauseAtSleep = 3
+	clock.onSleep = func(call int) {
+		switch call {
+		case 1:
+			current = running
+			clock.bumpStatus()
+		case 2:
+			current = failed
+			clock.bumpStatus()
+		}
+	}
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 
-	for i := 0; i < len(statuses); i++ {
+	for i := 0; i < 3; i++ {
 		if _, _, err := producer.Call(context.Background()); err != nil {
 			t.Fatalf("Call() %d error = %v", i, err)
 		}
@@ -128,12 +138,20 @@ func TestInnerRun_ReHaltAfterObservedResumeWarnsAgainAtTheSameHistoryLength(t *t
 
 func TestInnerRun_PausedThenRunningThenDoneReachesDone(t *testing.T) {
 	clock := &fakeClock{}
-	statuses := []statusResult{
-		haltedStatus(shedengine.StatePaused, 2),
-		{status: shedengine.Status{State: shedengine.StateRunning}, found: true},
-		{status: shedengine.Status{State: shedengine.StateDone}, found: true},
+	paused := haltedStatus(shedengine.StatePaused, 2).status
+	current := paused
+	_, spawnCalls, deps := newInnerRunDeps(t, nil, nil, []statusResult{{status: paused, found: true}}, clock)
+	deps.ReadStatus = func(string, string) (shedengine.Status, bool, error) { return current, true, nil }
+	clock.pauseAtSleep = 0
+	clock.onSleep = func(call int) {
+		switch call {
+		case 1:
+			current = shedengine.Status{State: shedengine.StateRunning}
+		case 2:
+			current = shedengine.Status{State: shedengine.StateDone}
+		}
+		clock.bumpStatus()
 	}
-	_, spawnCalls, deps := newInnerRunDeps(nil, nil, statuses, clock)
 	scratchDir := t.TempDir()
 	// The operator's resume ran the child's own driver, so a spawn is already confirmed.
 	if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), pidMarker(os.Getpid()), 0o644); err != nil {
@@ -142,12 +160,12 @@ func TestInnerRun_PausedThenRunningThenDoneReachesDone(t *testing.T) {
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 
 	outcome, ptr, err := producer.Call(context.Background())
-	if err != nil || outcome != shedengine.Stuck || !ptr.BudgetExempt {
-		t.Fatalf("paused Call() = %v %+v %v; want an exempt Stuck", outcome, ptr, err)
+	if err != nil || outcome != shedengine.Stuck || !ptr.BudgetExempt || ptr.Path != "child paused → running" {
+		t.Fatalf("paused Call() = %v %+v %v; want an exempt Stuck for the resume", outcome, ptr, err)
 	}
 	outcome, ptr, err = producer.Call(context.Background())
-	if err != nil || outcome != shedengine.Stuck || ptr.BudgetExempt {
-		t.Fatalf("running Call() = %v %+v %v; want a counted Stuck", outcome, ptr, err)
+	if err != nil || outcome != shedengine.Stuck || !ptr.BudgetExempt || ptr.Path != "child running → done" {
+		t.Fatalf("running Call() = %v %+v %v; want an exempt Stuck for the finish", outcome, ptr, err)
 	}
 	outcome, _, err = producer.Call(context.Background())
 	if err != nil || outcome != shedengine.Done {
@@ -214,7 +232,9 @@ func TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			_, spawnCalls, deps := newInnerRunDeps(nil, nil, []statusResult{haltedStatus(shedengine.StateBlocked, 2)}, &fakeClock{})
+			clock := &fakeClock{}
+			_, spawnCalls, deps := newInnerRunDeps(t, nil, nil, []statusResult{haltedStatus(shedengine.StateBlocked, 2)}, clock)
+			clock.watchReason(scratchDir)
 			revives := 0
 			deps.DriverStrand = driverStrandScript(tt.strands...)
 			deps.ReviveStrands = func(context.Context) error {
@@ -223,14 +243,13 @@ func TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode(t *testing.T) {
 			}
 			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 
-			var ptr shedengine.OutputPointer
 			for i := 0; i < 2; i++ {
 				outcome, got, err := producer.Call(context.Background())
 				if err != nil || outcome != shedengine.Stuck || !got.BudgetExempt {
 					t.Fatalf("Call() %d = %v %+v %v; want an exempt Stuck", i, outcome, got, err)
 				}
-				ptr = got
 			}
+			reason := clock.lastReason()
 
 			if revives != tt.wantRevives {
 				t.Errorf("revives across two Calls in one episode = %d; want %d", revives, tt.wantRevives)
@@ -241,11 +260,11 @@ func TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode(t *testing.T) {
 			if got := strings.Count(buf.String(), reviveFailedWarn); got != tt.wantWarns {
 				t.Errorf("revive warn count = %d; want %d\nlog: %s", got, tt.wantWarns, buf.String())
 			}
-			if !strings.Contains(ptr.Reason, `"lyx loom resume"`) {
-				t.Errorf("Reason = %q; want it to name lyx loom resume", ptr.Reason)
+			if !strings.Contains(reason, `"lyx loom resume"`) {
+				t.Errorf("wait reason = %q; want it to name lyx loom resume", reason)
 			}
-			if got := strings.Contains(ptr.Reason, `"lyx loom start"`); got != tt.wantStart {
-				t.Errorf("Reason = %q; names lyx loom start = %v, want %v", ptr.Reason, got, tt.wantStart)
+			if got := strings.Contains(reason, `"lyx loom start"`); got != tt.wantStart {
+				t.Errorf("wait reason = %q; names lyx loom start = %v, want %v", reason, got, tt.wantStart)
 			}
 			raw, err := os.ReadFile(revivedFile(scratchDir, "innerrun"))
 			if tt.wantMarkerAs == "" {
@@ -267,7 +286,7 @@ func TestInnerRun_StrandReadErrorSkipsTheReviveWithAWarn(t *testing.T) {
 	logger.SetOutput(&buf)
 	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
 
-	_, _, deps := newInnerRunDeps(nil, nil, []statusResult{haltedStatus(shedengine.StatePaused, 2)}, &fakeClock{})
+	_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{haltedStatus(shedengine.StatePaused, 2)}, &fakeClock{})
 	deps.DriverStrand = func(context.Context) (ChildDriverStrand, error) {
 		return ChildDriverNone, errors.New("directory unreadable")
 	}
@@ -296,7 +315,7 @@ func TestInnerRun_ARunningChildEndsTheReviveEpisode(t *testing.T) {
 		haltedStatus(shedengine.StateBlocked, 2),
 		{status: shedengine.Status{State: shedengine.StateRunning}, found: true},
 	}
-	_, _, deps := newInnerRunDeps(nil, nil, statuses, &fakeClock{})
+	_, _, deps := newInnerRunDeps(t, nil, nil, statuses, &fakeClock{})
 	deps.DriverStrand = driverStrandScript(ChildDriverDead, ChildDriverLive)
 	deps.ReviveStrands = func(context.Context) error { return nil }
 	if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), pidMarker(os.Getpid()), 0o644); err != nil {

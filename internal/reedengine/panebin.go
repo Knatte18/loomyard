@@ -1,9 +1,6 @@
-// panebin.go owns the whole pane-binary seam: composing the shell prelude that resolves `lyx` to the
-// binary that spawned every strand pane, and the one function (composePaneLaunchLine) that joins it
-// onto a strand's launch command. The composition lives in this one file, reached from the one
-// chokepoint (launchStrandLocked in spawn.go), so the property "every strand pane resolves lyx to its
-// spawning binary" holds by construction rather than by every strand-realizing call site remembering
-// to apply it.
+// panebin.go owns the whole pane-binary seam: composing the shell prelude that resolves `lyx` to the binary that spawned every strand pane, the one function (composePaneLaunchLine) that joins it onto a strand's launch command, and the one (composeWindowCommand) that joins it onto a detached window's `lyx` command.
+// The composition lives in this one file, reached from two chokepoints, launchStrandLocked in spawn.go for strand panes and OpenWindow in window.go for detached windows,
+// so the property "every pane reed creates for a `lyx` command resolves lyx to its spawning binary" holds by construction rather than by every pane-creating call site remembering to apply it.
 // The same composition exports LYX_STRAND_NAME (the strand's full name) and LYX_PARENT (the worktree's parent, when told) beside LYX_BIN.
 // The file also owns the per-strand launch script the composed line is written to,
 // so the pane types a short source statement instead of the full line.
@@ -13,6 +10,7 @@ package reedengine
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -69,6 +67,25 @@ func composePaneLaunchLine(sh shell.Shell, launchCmd, strandGUID, name, parent s
 		prelude = paneBinPrelude(sh, exe)
 	}
 	return sh.Chain(prelude, nameExports(sh, name, parent), launchCmd)
+}
+
+// composeWindowCommand returns the shell line a detached reed window runs: the pane-binary prelude, then `lyx` invoked with lyxArgs, each quoted, on sh's dialect.
+// No strand name exports, since a window is not a strand.
+// An unresolvable executable path logs a named logger.Warn and drops the prelude, as composePaneLaunchLine does.
+func composeWindowCommand(sh shell.Shell, lyxArgs []string) string {
+	prelude := ""
+	exe, err := executablePath()
+	if err != nil {
+		logger.Warn("reed: could not resolve this binary, opening window with no lyx-bin prelude", "err", err)
+	} else {
+		prelude = paneBinPrelude(sh, exe)
+	}
+	words := make([]string, 0, len(lyxArgs)+1)
+	words = append(words, sh.Invoke("lyx"))
+	for _, arg := range lyxArgs {
+		words = append(words, sh.Quote(arg))
+	}
+	return sh.Chain(prelude, strings.Join(words, " "))
 }
 
 // launchScriptReedSegment and launchScriptLaunchSegment are reed's own relative subpath under the state dir for per-strand launch scripts.

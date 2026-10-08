@@ -95,7 +95,7 @@ func (e *Engine) repairNames(namer SessionNamer) error {
 		if err != nil {
 			return err
 		}
-		live, err := e.tmux.listPanes(e.SessionName())
+		live, err := e.listStrandPanes(st)
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
 		}
