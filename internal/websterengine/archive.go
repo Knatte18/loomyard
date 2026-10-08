@@ -214,12 +214,13 @@ type pendingGuard struct {
 }
 
 // freshPendingGuard is the wording of `run --fresh`, where a differing suspect path is reset away with the branch.
+// The reset route ends in a plain run, since the reset archives the run record, while the steps that follow no reset rerun `--fresh`.
 func freshPendingGuard() pendingGuard {
 	return pendingGuard{
 		verb:              "--fresh",
-		rerun:             stepRunFresh,
+		rerun:             stepRun + " --fresh",
 		baseName:          "the run's start commit",
-		suspectWayForward: func(string, []string) string { return resetToStartSteps(stepRunFresh) },
+		suspectWayForward: func(string, []string) string { return resetToStartSteps(stepRun) },
 	}
 }
 

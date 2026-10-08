@@ -331,9 +331,9 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 			for _, p := range contracts.Uncleared {
 				what = append(what, fmt.Sprintf("%s (%s)", p, noteForkWroteLast))
 			}
-			wayForward := resetToStartSteps(stepRunFresh)
+			wayForward := resetToStartSteps(stepRun)
 			if len(contracts.Uncleared) == 0 && allPathlessFabricReference(contracts.Rest) {
-				wayForward = fmt.Sprintf("way forward: when the worktree is clean and HEAD is the batch's start commit (\"%s\" moves it there if the batch committed), or the batch's commits are kept and every recorded command is read-only, \"lyx webster accept-audit --batch %d\" then \"lyx webster recover-batch %d\"; otherwise %s", resetVerb(ResetToBatchStart, batchNumber), batchNumber, batchNumber, strings.TrimPrefix(resetToStartSteps(stepRunFresh), "way forward: "))
+				wayForward = fmt.Sprintf("way forward: when the worktree is clean and HEAD is the batch's start commit (\"%s\" moves it there if the batch committed), or the batch's commits are kept and every recorded command is read-only, \"lyx webster accept-audit --batch %d\" then \"lyx webster recover-batch %d\"; otherwise %s", resetVerb(ResetToBatchStart, batchNumber), batchNumber, batchNumber, freshRestartSteps(stepRun))
 			}
 			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; %s", batchNumber, strings.Join(what, ", "), wayForward)}
 		}

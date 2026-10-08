@@ -184,13 +184,13 @@ func AcceptPendingAudit(engine shuttleengine.Engine, st *State, geom Geometry, p
 		if pathless {
 			what = append(what, reasonNoPath)
 		}
-		parts = append(parts, fmt.Sprintf("%s; %s", strings.Join(what, "; "), resetToStartSteps(stepRunFresh)))
+		parts = append(parts, fmt.Sprintf("%s; %s", strings.Join(what, "; "), resetToStartSteps(stepRun)))
 	}
 	return nil, false, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, strings.Join(parts, "; "))
 }
 
 // AcceptBatchFabricReference clears the Uncheckable entries of failed batch n when every one is a pathless fabric-reference finding and the batch's evidence holds,
-// so `lyx webster recover-batch n` can proceed instead of refusing toward the `--fresh` route.
+// so `lyx webster recover-batch n` can proceed instead of refusing toward the reset-to-start route.
 // The evidence rule: the batch's recorded start commit is set and the worktree is clean apart from the run's own state, and one of two routes holds.
 // Either HEAD is that start, or the start is an ancestor of HEAD and every entry records a command that readOnly accepts.
 // A fabric reference stays correctness everywhere else: this clears it only on that evidence and only by the explicit `accept-audit --batch` call,
@@ -207,10 +207,10 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int, readOnly func(c
 		return nil, fmt.Errorf("%w: batch %02d is not a failed batch with uncheckable findings; accept-audit --batch accepts only those", ErrAuditNotAcceptable, n)
 	}
 	if !allPathlessFabricReference(bs.Uncheckable) {
-		return nil, fmt.Errorf("%w: batch %02d carries an uncheckable finding that is not a pathless fabric reference: %s; %s", ErrAuditNotAcceptable, n, strings.Join(bs.Uncheckable, ", "), resetToStartSteps(stepRunFresh))
+		return nil, fmt.Errorf("%w: batch %02d carries an uncheckable finding that is not a pathless fabric reference: %s; %s", ErrAuditNotAcceptable, n, strings.Join(bs.Uncheckable, ", "), resetToStartSteps(stepRun))
 	}
 	if bs.StartSHA == "" {
-		return nil, fmt.Errorf("%w: batch %02d recorded no start commit, so its tree cannot be shown unchanged; %s", ErrAuditNotAcceptable, n, resetToStartSteps(stepRunFresh))
+		return nil, fmt.Errorf("%w: batch %02d recorded no start commit, so its tree cannot be shown unchanged; %s", ErrAuditNotAcceptable, n, resetToStartSteps(stepRun))
 	}
 	head, err := geom.git().HeadSHA(geom.WorktreeRoot)
 	if err != nil {

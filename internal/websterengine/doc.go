@@ -177,7 +177,7 @@
 // A named card of a batch that is terminal failed, dead or stuck is accepted even though that batch was begun:
 // Rebaseline restamps that card's CardHashes entry and keeps the rest of the batch record, so a one-card fix needs no reset and no fresh run.
 // A done batch, an unfinished batch and a failed batch whose record lists Uncheckable entries still refuse, each with its own way forward.
-// An edit to 00-overview.md, which carries the plan's integration verify, is never accepted; the way forward is to restore it or to run `lyx webster reset --to start` and then `lyx webster run --fresh`.
+// An edit to 00-overview.md, which carries the plan's integration verify, is never accepted; the way forward is to restore it or to run `lyx webster reset --to start` and then `lyx webster run`.
 // The fingerprint refusals in begin-batch and run name it.
 //
 // validate, record-batch and recovery refuse a plan that changed before their own rewrites, instead of adopting it:
@@ -209,7 +209,7 @@
 // recover-batch proceeds from a failed batch and hands its strand the failure digest,
 // except a batch failed on a correctness finding the recovery check cannot verify (a finding with no path, or a path outside the tracked tree and the plan directory), which its record lists as Uncheckable:
 // recover-batch refuses it with ErrRecoveryNeedsFresh before spawning anything,
-// and the way forward is `lyx webster run --fresh` after resetting the branch to the run's start commit.
+// and the way forward is `lyx webster reset --to start`, which archives the run record, and then `lyx webster run`.
 // `run --fresh` drops such a batch under the same HEAD and path rules as a pending finding.
 // One narrow exception keeps the batches before it (AcceptBatchFabricReference, `lyx webster accept-audit --batch NN`):
 // when every Uncheckable entry is a pathless fabric reference, the batch recorded a start commit and the worktree is clean apart from the run's own state,
@@ -236,10 +236,10 @@
 // A correctness finding stays pending in state.json until `lyx webster accept-audit` clears it, and run entry refuses with ErrPendingAuditFindings meanwhile.
 // accept-audit needs evidence: it checks every suspect path against the last batch head (a plan file against the run's recorded plan hashes) and refuses with ErrAuditNotAcceptable while any path differs, cannot be checked, or a finding names no path;
 // the evidence covers HEAD too, so it also refuses while HEAD carries a commit past the last batch head other than a clean parent merge, and checks the paths against that reconciled HEAD;
-// the last two clear only through `lyx webster reset --to start` and then `lyx webster run --fresh`.
+// the last two clear only through `lyx webster reset --to start` and then `lyx webster run`.
 // The run-exit stuck reason and the pending-findings refusal name each finding once (findingsClause), an uncheckable path carrying its reason (uncheckableReason),
 // and end in one ordered list: the restores, then `lyx webster accept-audit`, then exactly one re-entry step, RunDeps.ReentryStep (`lyx webster run` when empty);
-// the reset route ends in `lyx webster run --fresh` instead, which the shed adapter never runs itself.
+// the reset route ends in that same re-entry step, since the reset archives the run record and a plain run starts over.
 // A suspect path that is one of the run's two contract files, outcome.yaml or summary.md, is the exception, since it lies outside the tracked tree and has no blob to compare:
 // contractFileStatus clears it on evidence, when the file is absent or the latest successful Master write to it (from RunWrites) is later than every fork write to it.
 // A Master write whose result failed is not evidence, and an acknowledgement never clears it.

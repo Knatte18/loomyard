@@ -640,7 +640,7 @@ func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 	}
 }
 
-// TestRecoverBatchCmd_NeedsFreshEnvelope proves recover-batch over a batch failed on an uncheckable finding exits non-zero with needs_fresh, names run --fresh, and spawns nothing.
+// TestRecoverBatchCmd_NeedsFreshEnvelope proves recover-batch over a batch failed on an uncheckable finding exits non-zero with needs_fresh, names the reset-to-start route, and spawns nothing.
 func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
@@ -659,7 +659,7 @@ func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 		t.Fatalf("recover-batch 1 = 0; want non-zero, output: %s", out.String())
 	}
 	got := out.String()
-	for _, want := range []string{`"needs_fresh":true`, `lyx webster run --fresh`} {
+	for _, want := range []string{`"needs_fresh":true`, `1) lyx webster reset --to start; 2) lyx webster run`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q; got %q", want, got)
 		}

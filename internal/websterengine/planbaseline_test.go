@@ -145,7 +145,7 @@ func TestRestorePlan(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			wantRefusal: []string{"01-first.md", "way forward:", "lyx webster run --fresh"},
+			wantRefusal: []string{"01-first.md", "way forward: 1) lyx webster reset --to start; 2) lyx webster run"},
 			wantFiles:   map[string]string{"02-second.md": "also edited"},
 		},
 		{

@@ -576,7 +576,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return nil
 			},
 			errIs:      websterengine.ErrFingerprintMismatch,
-			wayForward: []string{"lyx webster rebaseline", "lyx webster run --fresh"},
+			wayForward: []string{"lyx webster rebaseline", "2) lyx webster run"},
 			check: func(t *testing.T, fx *runFixture, err error) {
 				if !websterengine.PauseRequested(fx.Deps.Geom.ScratchDir) {
 					t.Error("pause flag cleared on a refused run; want it left intact")
@@ -592,7 +592,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return nil
 			},
 			errIs:      websterengine.ErrFingerprintMismatch,
-			wayForward: []string{"lyx webster rebaseline --card 02", "lyx webster run --fresh"},
+			wayForward: []string{"lyx webster rebaseline --card 02", "2) lyx webster run"},
 		},
 		{
 			name:  "an edited overview names no card to rebaseline",
@@ -610,7 +610,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return nil
 			},
 			errIs:          websterengine.ErrFingerprintMismatch,
-			wayForward:     []string{"--fresh"},
+			wayForward:     []string{"1) lyx webster reset --to start; 2) lyx webster run"},
 			msgNotContains: []string{"--card"},
 		},
 		{
@@ -1373,8 +1373,8 @@ func TestRun_DoneOutcome(t *testing.T) {
 					t.Errorf("PendingAuditFindings = %+v; want one fork-state-write finding", st.PendingAuditFindings)
 				}
 				_, way, _ := strings.Cut(result.StuckReason, "way forward:")
-				if !strings.Contains(way, "lyx webster run --fresh") || strings.Contains(way, "accept-audit") {
-					t.Errorf("StuckReason = %q; want the --fresh route without accept-audit", result.StuckReason)
+				if !strings.Contains(way, "1) lyx webster reset --to start; 2) lyx webster run") || strings.Contains(way, "accept-audit") {
+					t.Errorf("StuckReason = %q; want the reset-to-start route without accept-audit", result.StuckReason)
 				}
 			},
 		},
@@ -2234,7 +2234,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 		if !strings.Contains(err.Error(), "is not the run's start commit "+start) {
 			t.Errorf("Run() error = %q; want it to name the start commit %s", err, start)
 		}
-		requireWayForward(t, err, "1) lyx webster reset --to start", "2) lyx webster run --fresh")
+		requireWayForward(t, err, "1) lyx webster reset --to start", "2) lyx webster run")
 	})
 
 	t.Run("drops the finding once the branch is reset to the start commit", func(t *testing.T) {
@@ -2407,7 +2407,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 
 		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 		requireFreshRefusal(t, fx, err, "")
-		requireWayForward(t, err, "1) lyx webster reset --to start", "2) lyx webster run --fresh")
+		requireWayForward(t, err, "1) lyx webster reset --to start", "2) lyx webster run")
 		if strings.Contains(err.Error(), "merge-base --octopus") {
 			t.Errorf("Run() error = %q; want the reset verb, not a git merge-base command", err)
 		}

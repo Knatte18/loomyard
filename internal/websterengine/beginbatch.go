@@ -42,8 +42,9 @@ const planOverviewFile = "00-overview.md"
 // fingerprintMismatchWayForward is the trailing clause BeginBatch and Run put on an ErrFingerprintMismatch wrap.
 // It reads the changed plan files so the clause names the cards to pass to rebaseline;
 // a state without PlanFileHashes names rebaseline without card numbers, and a changedPlanFiles error falls back to the generic text.
-func fingerprintMismatchWayForward(st *State, planDir string) string {
-	fresh := freshRestartSteps
+// The reset route it names ends in reentry.
+func fingerprintMismatchWayForward(st *State, planDir, reentry string) string {
+	fresh := freshRestartSteps(reentry)
 	const restore = `or restore the plan the run recorded with "lyx webster restore-plan", `
 	if len(st.PlanFileHashes) == 0 {
 		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, " + restore + "otherwise " + fresh

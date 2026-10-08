@@ -94,7 +94,7 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 		offset = end
 	}
 	if len(changed) > 0 {
-		return nil, false, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or %s", ErrRebaselineCardSetChanged, strings.Join(changed, "; "), freshRestartSteps)
+		return nil, false, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or %s", ErrRebaselineCardSetChanged, strings.Join(changed, "; "), freshRestartSteps(stepRun))
 	}
 
 	if tail := plan.Cards[offset:]; len(tail) > 0 {
@@ -145,7 +145,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		var unnamed []string
 		for _, name := range changedFiles {
 			if name == planOverviewFile {
-				return nil, fmt.Errorf("%w: %s changed; it carries the plan's integration verify and is never rebaselined; way forward: restore %s, or %s", ErrRebaselineCardSetChanged, planOverviewFile, planOverviewFile, freshRestartSteps)
+				return nil, fmt.Errorf("%w: %s changed; it carries the plan's integration verify and is never rebaselined; way forward: restore %s, or %s", ErrRebaselineCardSetChanged, planOverviewFile, planOverviewFile, freshRestartSteps(stepRun))
 			}
 			n, convErr := strconv.Atoi(cardNumberOf(name))
 			if convErr != nil || !slices.Contains(deps.Cards, n) {
@@ -224,7 +224,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	}
 	if len(changed) > 0 {
 		reasons := append(changed, unfinished...)
-		return nil, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or %s", ErrRebaselineCardSetChanged, strings.Join(reasons, "; "), freshRestartSteps)
+		return nil, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or %s", ErrRebaselineCardSetChanged, strings.Join(reasons, "; "), freshRestartSteps(stepRun))
 	}
 	if len(unfinished) > 0 {
 		return nil, fmt.Errorf("%w: %s", ErrRebaselineCardSetChanged, strings.Join(unfinished, "; "))

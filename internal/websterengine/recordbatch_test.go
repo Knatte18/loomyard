@@ -827,9 +827,9 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 				failed := *fx.Deps.State.Batches[1]
 				rfx.Deps.State.Batches[1] = &failed
 				clk := &recoverFakeClock{now: time.Unix(0, 0)}
-				// A fabric reference has no path recovery could check, so recover-batch names run --fresh instead of spawning.
-				if _, spawned, err := websterengine.RecoverSpawnOrAttach(rfx.Deps, 1, clk); !errors.Is(err, websterengine.ErrRecoveryNeedsFresh) || spawned || !strings.Contains(err.Error(), "lyx webster run --fresh") {
-					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want ErrRecoveryNeedsFresh naming run --fresh", spawned, err)
+				// A fabric reference has no path recovery could check, so recover-batch names the reset-to-start route instead of spawning.
+				if _, spawned, err := websterengine.RecoverSpawnOrAttach(rfx.Deps, 1, clk); !errors.Is(err, websterengine.ErrRecoveryNeedsFresh) || spawned || !strings.Contains(err.Error(), "1) lyx webster reset --to start; 2) lyx webster run") {
+					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want ErrRecoveryNeedsFresh naming the reset-to-start route", spawned, err)
 				}
 			},
 		},
@@ -1277,7 +1277,7 @@ func TestRecordBatch_DeleteNotDoneNamesLaterCard(t *testing.T) {
 			name:        "an uncheckable record names the fresh restart",
 			referenced:  true,
 			uncheckable: []string{"fabric-reference: Bash command references the fabric"},
-			wantIn:      []string{"2-later", "internal/foo/user.go:4", "way forward: 1) lyx webster reset --to start; 2) lyx webster run --fresh"},
+			wantIn:      []string{"2-later", "internal/foo/user.go:4", "way forward: 1) lyx webster reset --to start; 2) lyx webster run"},
 			wantNotIn:   []string{"rebaseline"},
 		},
 		{

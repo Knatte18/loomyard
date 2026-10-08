@@ -722,7 +722,7 @@ var _ websterengine.Starter = erroringStarter{}
 
 // TestRecoverSpawnOrAttach asserts RecoverSpawnOrAttach's spawn-or-attach decision for the state a batch is in:
 // no record, a terminal prior or a failed batch spawns fresh, with the recorded card set, the original bracket's start commit, the failure digest and the execution predecessor's digest in the prompt, and any late or malformed report archived;
-// a recorded non-terminal recovery attaches; findings recovery cannot check are refused toward run --fresh; and a failed or not-ready start surfaces without recording a strand.
+// a recorded non-terminal recovery attaches; findings recovery cannot check are refused toward the reset-to-start route; and a failed or not-ready start surfaces without recording a strand.
 //
 //testtiming:keep pins the spawn-or-attach decision for every batch state, the prompt's card set, start commit and digests, the archived late report and the refusals; each covering test reaches one state
 func TestRecoverSpawnOrAttach(t *testing.T) {
@@ -774,7 +774,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			if spawned {
 				t.Error("spawned = true; want no strand")
 			}
-			for _, want := range append([]string{"lyx webster run --fresh", "batch 01"}, uncheckable...) {
+			for _, want := range append([]string{"1) lyx webster reset --to start; 2) lyx webster run", "batch 01"}, uncheckable...) {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q lacks %q", err, want)
 				}
@@ -898,14 +898,14 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			},
 		},
 		{
-			name: "a failed batch on a fabric reference recovery cannot check is refused toward run --fresh",
+			name: "a failed batch on a fabric reference recovery cannot check is refused toward the reset-to-start route",
 			setup: func(fx *recoverFixture) {
 				fabricRefusalSetup(fx)
 			},
 			check: fabricRefusalCheck,
 		},
 		{
-			name: "a failed batch on the scratch pause flag recovery cannot check is refused toward run --fresh",
+			name: "a failed batch on the scratch pause flag recovery cannot check is refused toward the reset-to-start route",
 			setup: func(fx *recoverFixture) {
 				pauseRefusalSetup(fx)
 			},

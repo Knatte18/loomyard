@@ -113,7 +113,7 @@ func PlanEditError(st *State, planDir string) error {
 		return err
 	}
 	if st.PlanFingerprint != fp {
-		return fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fp, st.PlanFingerprint, fingerprintMismatchWayForward(st, planDir))
+		return fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fp, st.PlanFingerprint, fingerprintMismatchWayForward(st, planDir, stepRun))
 	}
 	return nil
 }
@@ -138,7 +138,7 @@ func batchCardEditError(st *State, bs *BatchState, b batcher.Batch, planDir stri
 	if len(changed) == 0 {
 		return nil
 	}
-	return fmt.Errorf("%w: %s; %s", ErrFingerprintMismatch, strings.Join(changed, "; "), fingerprintMismatchWayForward(st, planDir))
+	return fmt.Errorf("%w: %s; %s", ErrFingerprintMismatch, strings.Join(changed, "; "), fingerprintMismatchWayForward(st, planDir, stepRun))
 }
 
 // Fingerprint is fingerprint's exported seam for a caller outside this package that needs to know
@@ -159,9 +159,8 @@ func Fingerprint(planDir string) (string, error) {
 // The staleness guard exists to catch a plan edited from OUTSIDE the run between two batches, and
 // it cannot tell that apart from webster's own sanctioned rewrites — handle canonicalization at
 // begin-batch, handle binding and exact-tier drift repair at record-batch — unless the run
-// re-baselines after making them. Without this, the first batch that bound a handle or repaired
-// drift made every later begin-batch fail ErrFingerprintMismatch, whose advised recourse
-// (`lyx webster run --fresh`) restarts the same plan into the same wall.
+// re-baselines after making them.
+// Without this, the first batch that bound a handle or repaired drift made every later begin-batch fail ErrFingerprintMismatch, whose advised recourse (the reset route, then a plain `lyx webster run`) restarts the same plan into the same wall.
 //
 // Re-baselining costs nothing the guard was actually providing: a foreign edit landing between this
 // call and the next begin-batch is still caught, which is the whole window the guard covers.

@@ -49,7 +49,7 @@ func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
 	if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
 		t.Fatalf("BeginBatch(2) error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
 	}
-	requireWayForward(t, err, "lyx webster rebaseline", "lyx webster run --fresh")
+	requireWayForward(t, err, "lyx webster rebaseline", "2) lyx webster run")
 
 	res, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: fx.Deps.Plan, Active: batcher.Identity(), State: fx.Deps.State, Geom: fx.Deps.Geom})
 	if err != nil {
@@ -267,7 +267,7 @@ func TestRebaseline_CardSet(t *testing.T) {
 				t.Fatalf("Rebaseline() error = %v; want errors.Is(err, %v)", err, tc.wantErr)
 			}
 			if tc.wantErr == websterengine.ErrRebaselineCardSetChanged {
-				for _, want := range []string{"batch 1", "01-json-flag", "or 1) lyx webster reset --to start; 2) lyx webster run --fresh"} {
+				for _, want := range []string{"batch 1", "01-json-flag", "or 1) lyx webster reset --to start; 2) lyx webster run"} {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("error %q lacks %q", err.Error(), want)
 					}
@@ -379,7 +379,7 @@ func TestRebaseline_EditedPlan(t *testing.T) {
 				writePlanFile(t, fx, "01-json-flag.md", "# Card 1 — json-flag\n\n**Prosa:**\n- `base.txt`\n\n**Intent:** placeholder card.\n\n**Verify:** true\n")
 			},
 			cards:    []int{1},
-			wantText: []string{"batch 1 card 01-json-flag changed since it was begun", "batch is done", "--fresh"},
+			wantText: []string{"batch 1 card 01-json-flag changed since it was begun", "batch is done", "1) lyx webster reset --to start; 2) lyx webster run"},
 		},
 		{
 			name: "a named card of a failed batch is accepted and restamped",
@@ -429,7 +429,7 @@ func TestRebaseline_EditedPlan(t *testing.T) {
 				editBegunCardOne(t, fx)
 			},
 			cards:    []int{1},
-			wantText: []string{"batch 1 card 01-json-flag changed since it was begun", "cannot check", "--fresh"},
+			wantText: []string{"batch 1 card 01-json-flag changed since it was begun", "cannot check", "1) lyx webster reset --to start; 2) lyx webster run"},
 		},
 		{
 			name: "an unnamed edited card of a failed batch still refuses as unnamed",
@@ -466,7 +466,7 @@ func TestRebaseline_EditedPlan(t *testing.T) {
 				writePlanFile(t, fx, "00-overview.md", "# plan, edited\n")
 			},
 			cards:    []int{1, 2},
-			wantText: []string{"00-overview.md", "--fresh"},
+			wantText: []string{"00-overview.md", "1) lyx webster reset --to start; 2) lyx webster run"},
 		},
 	}
 	for _, tt := range tests {

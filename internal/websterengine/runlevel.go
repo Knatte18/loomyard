@@ -155,14 +155,14 @@ type RunDeps struct {
 
 	// ReentryStep is the plain step that re-enters the run after accept-audit, closing every pending-findings and run-exit way forward.
 	// Empty means `lyx webster run`; the shed adapter sets "re-step the <row> row".
-	// The reset route ends in `lyx webster run --fresh` instead, which the shed adapter never runs itself.
+	// The reset route ends in it too, since the reset archives the run record and a plain run starts over.
 	ReentryStep string
 }
 
 // reentryStep returns the step that re-enters the run, defaulting to `lyx webster run`.
 func (d RunDeps) reentryStep() string {
 	if d.ReentryStep == "" {
-		return "lyx webster run"
+		return stepRun
 	}
 	return d.ReentryStep
 }
@@ -463,7 +463,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	case st.PlanFingerprint != fingerprint, freshDrop:
 		if !opts.Fresh {
-			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint, fingerprintMismatchWayForward(st, deps.Geom.PlanDir))
+			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint, fingerprintMismatchWayForward(st, deps.Geom.PlanDir, deps.reentryStep()))
 		}
 
 		batches, err = newPartition()
@@ -1074,8 +1074,8 @@ func pendingFindingsText(engine shuttleengine.Engine, st *State, geom Geometry, 
 }
 
 // pendingPathsWayForward returns the ordered steps that clear pending findings naming paths, and each path's note for the findings clause.
-// A finding with no path, or a path nothing the run recorded can check (see uncheckableReason) other than a cleared contract file, clears only through run --fresh,
-// so the steps are then the reset route, `lyx webster run --fresh` being the re-entry:
+// A finding with no path, or a path nothing the run recorded can check (see uncheckableReason) other than a cleared contract file, clears only through the reset route,
+// so the steps are then the reset to start, then reentry:
 // accept-audit refuses every finding while any one of them cannot be checked.
 // Otherwise the steps are the restores first (git checkout of the differing tracked paths to the last batch head, restore-plan for plan paths that differ, rm for a contract path a fork wrote last),
 // then accept-audit, then reentry.
@@ -1118,7 +1118,7 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 		unchecked = true
 	}
 	if unchecked {
-		return []string{stepResetToStart, stepRunFresh}, notes, nil
+		return []string{stepResetToStart, reentry}, notes, nil
 	}
 	if len(rest) > 0 {
 		differing, _, err := checkSuspectPaths(geom, st, bases.Last, rest)
@@ -1176,7 +1176,7 @@ func freshPendingDrop(engine shuttleengine.Engine, geom Geometry, st *State, opt
 		base = head
 	}
 	if head != base {
-		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while HEAD %s is not the run's start commit %s; %s", ErrPendingAuditFindings, head, base, resetToStartSteps(stepRunFresh))
+		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while HEAD %s is not the run's start commit %s; %s", ErrPendingAuditFindings, head, base, resetToStartSteps(stepRun))
 	}
 	warnings, err = checkPendingFindings(engine, geom, st, base, freshPendingGuard())
 	if err != nil {
@@ -1198,7 +1198,7 @@ func headBeforeEveryStart(git Git, worktree, head string, starts []string) error
 			return err
 		}
 		if !ok {
-			return fmt.Errorf("%w: --fresh would drop pending audit findings while the batches' recorded start commits %s share no single oldest commit and HEAD %s is not an ancestor of every one of them; %s", ErrPendingAuditFindings, strings.Join(starts, ", "), head, resetToStartSteps(stepRunFresh))
+			return fmt.Errorf("%w: --fresh would drop pending audit findings while the batches' recorded start commits %s share no single oldest commit and HEAD %s is not an ancestor of every one of them; %s", ErrPendingAuditFindings, strings.Join(starts, ", "), head, resetToStartSteps(stepRun))
 		}
 	}
 	return nil

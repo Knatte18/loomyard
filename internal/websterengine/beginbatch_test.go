@@ -183,12 +183,12 @@ func TestBeginBatch_Refusals(t *testing.T) {
 			wantIs: websterengine.ErrPaused,
 		},
 		{
-			name: "a plan edited after run init points at run --fresh",
+			name: "a plan edited after run init points at the reset-to-start route",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				fx.Deps.State.PlanFingerprint = "0000000000000000000000000000000000000000000000000000000000000000"
 			},
 			wantIs:   websterengine.ErrFingerprintMismatch,
-			wantText: []string{"--fresh"},
+			wantText: []string{"1) lyx webster reset --to start; 2) lyx webster run"},
 		},
 		{
 			name: "a report over a terminal done record says to begin the next batch and leaves the record untouched",

@@ -250,7 +250,7 @@ type BatchState struct {
 	SuspectPaths []SuspectPath `json:"suspectPaths,omitempty"`
 	// Uncheckable is one entry per correctness finding the recovery check cannot verify:
 	// the path, or "<class>: <detail>" for a finding with no path.
-	// recover-batch refuses a failed batch carrying any, toward run --fresh.
+	// recover-batch refuses a failed batch carrying any, toward the reset-to-start route.
 	Uncheckable []string `json:"uncheckable,omitempty"`
 
 	// The following three fields are populated only for a recovery batch

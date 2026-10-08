@@ -45,8 +45,9 @@ func (c *websterCLI) runCmd() *cobra.Command {
 		Short: "spawn or resume Master and block until the plan reaches a terminal outcome",
 		Long: `run takes the webster run-level lock, runs the automatic plan-validation
 gate (including the zero-batch pre-flight refusal), checks the on-disk
-plan's fingerprint against state.json's recorded one (refusing with a
-message naming "run --fresh" on a mismatch -- --fresh archives the stale
+plan's fingerprint against state.json's recorded one (refusing on a mismatch
+with a message naming its way forward: the reset-to-start route, or rebaseline
+for an edit it accepts -- --fresh archives the stale
 state and reports and starts over on that mismatch, or while audit findings
 are pending: it discards them, with a warning each, once their suspect paths
 match the run's start commit, and refuses while any differs, while HEAD is

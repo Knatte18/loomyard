@@ -47,7 +47,7 @@ func TestPendingFindingsText(t *testing.T) {
 					"2) fork-contract-write: fork wrote %q — a contract file (%s: cleared: absent, or Master wrote it last); "+
 					"3) parent-write: Master wrote %q — under the run state (%s: cannot be checked: under `%s`, outside the task worktree's tracked tree)",
 					outcome, outcome, summary, summary, state, state, lyxdirs.LyxDirName)
-				return engine, items, clause, "way forward: 1) lyx webster reset --to start; 2) lyx webster run --fresh"
+				return engine, items, clause, "way forward: 1) lyx webster reset --to start; 2) lyx webster run"
 			},
 		},
 		{
@@ -71,13 +71,13 @@ func TestPendingFindingsText(t *testing.T) {
 			},
 		},
 		{
-			name:    "a pathless finding takes the reset route",
-			reentry: "lyx webster run",
+			name:    "a pathless finding takes the reset route and ends in the re-entry step",
+			reentry: "re-step the loom row",
 			fixture: func(t *testing.T, geom Geometry) (shuttleengine.Engine, []findingItem, string, string) {
 				items := []findingItem{{Class: "fabric-reference", Detail: "ran lyx fabric"}}
 				return nil, items,
 					"1 correctness finding(s): 1) fabric-reference: ran lyx fabric (the finding names no path)",
-					"way forward: 1) lyx webster reset --to start; 2) lyx webster run --fresh"
+					"way forward: 1) lyx webster reset --to start; 2) re-step the loom row"
 			},
 		},
 	}

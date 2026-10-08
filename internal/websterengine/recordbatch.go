@@ -82,7 +82,7 @@ func unbegunCards(batches []batcher.Batch, st *State) []planparser.Card {
 // Recovery cannot change the plan, so the way forward edits it; a record recovery would refuse as uncheckable restarts the run instead.
 func deleteReferencedWayForward(number int, uncheckable bool) string {
 	if uncheckable {
-		return freshRestartSteps
+		return freshRestartSteps(stepRun)
 	}
 	return fmt.Sprintf("move the delete to a card after the one that still references it, run `lyx webster rebaseline --card NN` naming each card you edited, then `lyx webster recover-batch %02d`", number)
 }

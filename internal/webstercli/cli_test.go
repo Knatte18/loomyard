@@ -1311,7 +1311,7 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 				})
 				return []string{}
 			},
-			wantIn: []string{"--fresh"},
+			wantIn: []string{"1) lyx webster reset --to start; 2) lyx webster run"},
 		},
 		{
 			name: "named card of a done batch",
@@ -1330,7 +1330,7 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 				}
 				return []string{"--card", "1"}
 			},
-			wantIn: []string{"01-only changed since it was begun", "batch is done", "--fresh"},
+			wantIn: []string{"01-only changed since it was begun", "batch is done", "1) lyx webster reset --to start; 2) lyx webster run"},
 		},
 	}
 	for _, tc := range cases {

@@ -41,7 +41,7 @@ On success the envelope carries accepted, one entry per accepted finding with
 its class, detail and paths.
 
 With --batch NN it instead accepts failed batch NN's uncheckable findings,
-which otherwise make recover-batch refuse toward reset and run --fresh.
+which otherwise make recover-batch refuse toward "lyx webster reset --to start" and then "lyx webster run".
 It accepts only pathless fabric-reference findings, and only when the worktree
 is clean and either HEAD is the batch's start commit, or the start is an
 ancestor of HEAD, so the batch's commits are kept, and every finding's command
