@@ -137,6 +137,9 @@ var wordingClaims = []stencilClaims{
 		{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"},
 		{must: "## Finding class", why: "the rubric defines the finding classes for its segment"},
 		{must: "`design` means", why: "the rubric defines the gating class for its segment"},
+		{must: "only Go file paths of non-test files while its `Intent` names specific symbols", why: "an Edit card that names files while its Intent names symbols is a finding that names the member glyphs to list"},
+		{must: "without the re-sign arrow", why: "an Edit member glyph whose Intent changes its signature is a finding that names the arrow to add"},
+		{must: "never fires for an interface method or a struct field", why: "the re-sign finding exempts the two members that take no arrow"},
 	}, attackSurfaceClaims...)},
 	{"loom-rubric-webster-review.md", LoomRubricWebsterReview, []claim{
 		{must: "## Finding class", why: "the rubric defines the finding classes for its segment"},
@@ -184,6 +187,12 @@ var wordingClaims = []stencilClaims{
 			{must: "`go build ./...`, `go vet` under each of `-tags integration`, `-tags tmux` and `-tags llm`, the untagged tier (`go test`), then the `integration` tier (`go test -tags integration`)", why: "the plan template states the verify section's order: build, vet, untagged, integration"},
 			{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"},
 		},
+		wantAll("Edit lists the member glyphs a card changes, and the redundancy checks are pointed at rather than restated", "`**Edit:**` lists the member glyphs the card changes", "a file path only for a file with no symbol to name", "`redundant-package-target`", "`redundant-file-target`"),
+		wantAll("a signature change is written with the re-sign arrow, which an interface method or a struct field never takes", "the re-sign arrow, `` `<glyph>` -> `<new declaration head>` ``", "An interface method or a struct field takes no arrow"),
+		wantAll("a deleted or re-signed member's callers are listed, and the spec is pointed at for what counts", "lists every caller of it", "on the same or an earlier card for a delete", "`caller-uncovered`"),
+		wantAll("every new member is declared as a handle, referenced or not", "whether or not a later card references it"),
+		wantAll("the minimal skeleton shows member glyphs and an arrow head under Edit", "- `internal/boardcli#newListCmd`", "- `internal/boardcli#Row.Render` -> `func (r Row) Render(width int) string`", "- `path/to/list_test.go`"),
+		wantNone("a handle needs no later reference, so the old rule and its check leave the stencil", "handle-unreferenced", "used by at least one later card"),
 		attackSurfaceClaims,
 	)},
 	{"loom-template-prior-plan.md", LoomTemplatePriorPlan, []claim{

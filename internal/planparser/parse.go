@@ -608,6 +608,18 @@ func parseTypeLabelCase(card *Card, labelLine, label string, lines []string, sta
 		return next, err
 	}
 
+	if label == editLabel {
+		var refs []string
+		var resigns []CardResign
+		refs, resigns, next, err = parseEditField(labelLine, lines, start)
+		card.Targets = append(card.Targets, refs...)
+		card.Resigns = append(card.Resigns, resigns...)
+		group.Refs = refs
+		group.Resigns = resigns
+		card.TargetGroups = append(card.TargetGroups, group)
+		return next, err
+	}
+
 	var refs []string
 	refs, next, err = parseRefField(labelLine, label, lines, start)
 	card.Targets = append(card.Targets, refs...)
@@ -728,4 +740,37 @@ func parseCreateField(labelLine string, lines []string, start int) (refs []strin
 		i++
 	}
 	return refs, decls, raw, i, nil
+}
+
+// parseEditField parses an "**Edit:**" field's sub-bullets, recognizing the re-sign arrow grammar `<glyph>` -> `<new declaration head>` alongside the plain backtick-wrapped ref form.
+// A payload matching moveLineRe contributes a CardResign and its left token to refs, so the member stays an ordinary Edit target for every other consumer;
+// any other bullet, a malformed arrow included, parses as parseRefField would.
+// Like parseCreateField it matches the raw payload before stripBackticks, which would remove the outer backtick pair the arrow grammar needs intact.
+func parseEditField(labelLine string, lines []string, start int) (refs []string, resigns []CardResign, next int, err error) {
+	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, editLabel))
+	if rest != "" {
+		return nil, nil, start, fmt.Errorf("card field %s carries an inline value %q; plan-format admits only \"- `ref`\" sub-bullets on the following lines", editLabel, rest)
+	}
+
+	refs = []string{}
+	i := start
+	for i < len(lines) {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" {
+			i++
+			continue
+		}
+		if isCardLabelLine(lines[i]) || !strings.HasPrefix(trimmed, "- ") {
+			break
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
+		if m := moveLineRe.FindStringSubmatch(payload); m != nil {
+			resigns = append(resigns, CardResign{Target: m[1], Decl: m[2]})
+			refs = append(refs, m[1])
+		} else {
+			refs = append(refs, stripBackticks(payload))
+		}
+		i++
+	}
+	return refs, resigns, i, nil
 }

@@ -2,7 +2,6 @@
 
 **Edit:**
 - `internal/boardcli#newListCmd`
-- `list.go`
 
 **Create:**
 - `list_json_test.go`

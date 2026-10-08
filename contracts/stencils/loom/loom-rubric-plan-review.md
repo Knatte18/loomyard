@@ -49,6 +49,11 @@ Do not flag any of the following as a finding:
   A card that plans a new test function or file for behavior an existing test already covers, or one test per symbol, is a finding; `PATTERN-test-economy` holds the rule.
   The finding names the existing test that covers the behavior, or, for a per-symbol test, the public-surface test that covers the symbol;
   a vague "seems redundant" is not a finding.
+- **Member glyphs on an `Edit` card.**
+  An `Edit` card whose targets are only Go file paths of non-test files while its `Intent` names specific symbols is a finding; the finding names the member glyphs to list instead.
+- **The re-sign arrow.**
+  An `Edit` member glyph without the re-sign arrow, while the card's `Intent` changes that member's parameters, results, type parameters or receiver, is a finding; the finding names the arrow to add.
+  It never fires for an interface method or a struct field, which take no arrow.
 - **`ImpactSummary` carries a real conclusion.**
   A one-line blast-radius conclusion — "3 callers, all local to the billing package, no cross-module effects" — never a restatement of `Intent`.
 - **`Custom` is a last resort.**
