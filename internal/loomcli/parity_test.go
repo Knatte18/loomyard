@@ -204,14 +204,14 @@ func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *lo
 // fabricReferenceCommand is a command that reaches a sibling worktree of the fabric repo, the shape card-fabric-reference refuses in a plan's verify: section.
 var fabricReferenceCommand = "cat " + fabricengine.RecordsWorktree(&lyxcwd.Location{HubPath: "/hub", WorktreeName: "task"}) + "/_lyx/plan.md"
 
-// fabricReferencePlanFixture writes a language: none plan under <anchorPath>/_lyx/plan/ whose verify: section runs fabricReferenceCommand, and returns a *loomCLI wired with anchorPath and worktreeRoot.
-func fabricReferencePlanFixture(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+// verifySectionPlanFixture writes a language: none plan under <anchorPath>/_lyx/plan/ whose verify: section runs verifyBody, and returns a *loomCLI wired with anchorPath and worktreeRoot.
+func verifySectionPlanFixture(t *testing.T, anchorPath, worktreeRoot, verifyBody string) *loomCLI {
 	t.Helper()
 
 	plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
 		Approved: true,
 		Language: "none",
-		Sections: []plankit.Section{{Heading: "verify:", Body: fabricReferenceCommand}},
+		Sections: []plankit.Section{{Heading: "verify:", Body: verifyBody}},
 		Cards: []plankit.Card{{
 			Number:  1,
 			Slug:    "validate-fixture",
@@ -324,11 +324,22 @@ func TestGateParity_PlanGate(t *testing.T) {
 			// FabricReference puts a command that reaches the fabric repo in the verify: section: the gate and the verb both report card-fabric-reference.
 			name: "FabricReference",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
-				return fabricReferencePlanFixture(t, anchorPath, worktreeRoot)
+				return verifySectionPlanFixture(t, anchorPath, worktreeRoot, fabricReferenceCommand)
 			},
 			wantGate:    verdictStuck,
 			wantCLI:     verdictStuck,
 			wantFinding: "card-fabric-reference",
+		},
+		{
+			// VerifyNestedModule puts a command that tests a nested module's packages from the root in the verify: section: the gate and the verb both report verify-nested-module.
+			name: "VerifyNestedModule",
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				plankit.WriteTree(t, worktreeRoot, map[string]string{"nested/go.mod": "module nested\n"})
+				return verifySectionPlanFixture(t, anchorPath, worktreeRoot, "go test ./nested/...")
+			},
+			wantGate:    verdictStuck,
+			wantCLI:     verdictStuck,
+			wantFinding: "verify-nested-module",
 		},
 		{
 			// NoPlanDirectory is the one expected divergence the Gate Self-Check Parity Invariant's
