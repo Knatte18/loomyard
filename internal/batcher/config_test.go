@@ -367,6 +367,12 @@ func TestMigrateConfig(t *testing.T) {
 			wantRewrites: []string{"profiles.mine.weights.master_base: removed", "profiles.mine.weights.orientation: added 31400", "profiles.mine.weights.startup_context: removed"},
 		},
 		{
+			name:         "master_base before a trailing startup_context gets one orientation where master_base stood",
+			input:        "profiles:\n  mine:\n    batchifier: identity\n    weights:\n      master_base: 52000\n      custom: 2\n      startup_context: 60000\n",
+			want:         "profiles:\n  mine:\n    batchifier: identity\n    weights:\n      orientation: 31400\n      custom: 2\n",
+			wantRewrites: []string{"profiles.mine.weights.master_base: removed", "profiles.mine.weights.orientation: added 31400", "profiles.mine.weights.startup_context: removed"},
+		},
+		{
 			name:         "alone_above is dropped without adding orientation",
 			input:        document("    alone_above: 1200000\n", "      orientation: 100\n"),
 			want:         document("", "      orientation: 100\n"),
