@@ -1111,3 +1111,78 @@ func TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult(t *t
 		t.Errorf("logger output = %q; want the best-effort write failure logged", buf.String())
 	}
 }
+
+// usageEngine is a fakeEngine that also implements UsageReader with a scripted reading and records its calls.
+type usageEngine struct {
+	fakeEngine
+	reading SessionUsage
+	calls   []struct{ SessionID, Workdir string }
+}
+
+func (e *usageEngine) SessionUsage(sessionID, workdir string) SessionUsage {
+	e.calls = append(e.calls, struct{ SessionID, Workdir string }{sessionID, workdir})
+	return e.reading
+}
+
+// TestRun_Finalize_ReportsUsageAndTimes covers finalize's usage and time reporting: a done run on a UsageReader engine carries the reading read at the session and pane cwd, a died run and an engine without the capability leave Usage unknown, and every run carries its record's creation time and the clock's end time.
+//
+//testtiming:keep pins finalize's UsageReader wiring, which the Classification table covering its blocks does not assert
+func TestRun_Finalize_ReportsUsageAndTimes(t *testing.T) {
+	t.Parallel()
+
+	reading := SessionUsage{Known: true, Fresh: 100, CacheRead: 900, Forks: 2, ForkFresh: 60, ForkCacheRead: 500}
+	started := time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC)
+	ended := started.Add(7 * time.Minute)
+
+	tests := []struct {
+		name      string
+		reader    bool
+		outcome   Outcome
+		wantUsage SessionUsage
+	}{
+		{name: "done run on a reader engine carries the reading", reader: true, outcome: OutcomeDone, wantUsage: reading},
+		{name: "died run leaves usage unknown", reader: true, outcome: OutcomeDied},
+		{name: "engine without the capability leaves usage unknown", outcome: OutcomeDone},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			reed := &fakeReed{}
+			var engine Engine = &fakeEngine{}
+			usage := &usageEngine{reading: reading}
+			if tt.reader {
+				engine = usage
+			}
+			fx := newFixture(t, reed, engine, withConfig(fastConfig))
+			run := fx.newRun(Spec{Timeout: time.Minute},
+				withRunDir(t.TempDir()),
+				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", CreatedAt: started.Format(time.RFC3339)}),
+				withRunClock(newFakeClock(ended), ended.Add(time.Minute)))
+
+			result, err := run.finalize(tt.outcome)
+			if err != nil {
+				t.Fatalf("finalize(%s) error: %v", tt.outcome, err)
+			}
+
+			if result.Usage != tt.wantUsage {
+				t.Errorf("Result.Usage = %+v; want %+v", result.Usage, tt.wantUsage)
+			}
+			if !result.StartedAt.Equal(started) {
+				t.Errorf("Result.StartedAt = %v; want %v", result.StartedAt, started)
+			}
+			if !result.EndedAt.Equal(ended) {
+				t.Errorf("Result.EndedAt = %v; want %v", result.EndedAt, ended)
+			}
+			if tt.reader && tt.outcome == OutcomeDone {
+				want := []struct{ SessionID, Workdir string }{{"session-1", fx.Runner.paneCwd}}
+				if !reflect.DeepEqual(usage.calls, want) {
+					t.Errorf("SessionUsage calls = %v; want %v", usage.calls, want)
+				}
+			}
+			if tt.reader && tt.outcome != OutcomeDone && len(usage.calls) != 0 {
+				t.Errorf("SessionUsage calls = %v; want none for a %s run", usage.calls, tt.outcome)
+			}
+		})
+	}
+}

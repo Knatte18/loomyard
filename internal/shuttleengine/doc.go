@@ -127,6 +127,10 @@
 // Runner.AttachIfLive is the same probe with the removal off, for a caller that waits on a live run and starts nothing after a not-found answer.
 // Runner.ProbeGated is AttachGated's probe returning the reconstructed *Run unwaited, so a caller can hold two probed runs and wait on both concurrently.
 //
+// Session usage: the optional UsageReader capability reads a finished session's tokens, its forks included, as a provider-neutral SessionUsage.
+// Run.finalize fills Result.Usage from it for a done run, and Result.StartedAt and Result.EndedAt for every run;
+// an engine without the capability leaves Usage unknown, and nothing about the outcome changes.
+//
 // Segment color: Spec.Segment names the loom segment the spawning module gives its role, and Runner.start forwards it to reed, which resolves the segment's palette color on the strand it returns.
 // After startup confirms the provider ready and before the skill load, start plays Engine.ColorSequence for that color into the strand's pane;
 // an engine without a color command, a strand without a color and a spec with ColorByCaller type nothing.
