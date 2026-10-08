@@ -170,7 +170,11 @@ func reconcileHubWide(boardDir, primeAnchor, revision string) error {
 	bolt := fabricengine.NewBolt(boardDir)
 	var prior map[string][]byte
 	_, committed, err := bolt.CommitWritten("lyx: reconcile hub-wide config for build "+revision, func() ([]string, error) {
-		prior = snapshotConfig(boardDir)
+		var err error
+		prior, err = snapshotConfig(boardDir)
+		if err != nil {
+			return nil, err
+		}
 		results, err := configsync.ReconcileHubWideAt(boardDir, primeAnchor, true)
 		if err != nil {
 			return nil, err
@@ -229,7 +233,10 @@ func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision st
 		return true, nil
 	}
 
-	prior := snapshotConfig(w.Anchor)
+	prior, err := snapshotConfig(w.Anchor)
+	if err != nil {
+		return false, &WorktreeError{Worktree: w.Path, Err: err}
+	}
 	results, err := configsync.ReconcileAll(w.Anchor, boardDir, true)
 	if err != nil {
 		if _, statErr := os.Stat(w.Path); errors.Is(statErr, fs.ErrNotExist) {
@@ -313,28 +320,38 @@ func logResult(worktree string, result configsync.Result) {
 
 // snapshotConfig reads every file in anchor's config dir and every registry module's config file under anchor; an absent module file maps to nil.
 // The dir's own files cover a legacy file a migration removes.
-func snapshotConfig(anchor string) map[string][]byte {
+// Any read or list failure other than absence is returned naming the path, since a snapshot missing a file could not restore it.
+func snapshotConfig(anchor string) (map[string][]byte, error) {
 	prior := make(map[string][]byte)
-	entries, _ := os.ReadDir(configengine.ConfigDir(anchor))
+	configDir := configengine.ConfigDir(anchor)
+	entries, err := os.ReadDir(configDir)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("snapshot config dir %s: %w", configDir, err)
+	}
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
-		path := filepath.Join(configengine.ConfigDir(anchor), entry.Name())
-		if data, err := os.ReadFile(path); err == nil {
-			prior[path] = data
+		path := filepath.Join(configDir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("snapshot %s: %w", path, err)
 		}
+		prior[path] = data
 	}
 	for _, module := range configreg.Modules() {
 		path := configengine.ConfigFile(anchor, module.Name)
 		data, err := os.ReadFile(path)
-		if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
 			prior[path] = nil
 			continue
 		}
+		if err != nil {
+			return nil, fmt.Errorf("snapshot %s: %w", path, err)
+		}
 		prior[path] = data
 	}
-	return prior
+	return prior, nil
 }
 
 // restoreConfig puts every file of a snapshot back to its prior bytes, removing the files that were absent.

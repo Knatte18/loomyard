@@ -292,42 +292,107 @@ func TestEnsure_MergeBeginningBeforeCommitRestoresTheFiles(t *testing.T) {
 	}
 }
 
-func TestEnsure_UnparseablePairConfigNamesPairAndFile(t *testing.T) {
+// commitTemplate commits module's template as its config file in the records worktree at recordsRoot.
+func commitTemplate(t *testing.T, recordsRoot, module string) {
+	t.Helper()
+
+	m, _ := configreg.Lookup(module)
+	gitkit.CommitFile(t, recordsRoot, configengine.ConfigFileRel(module), m.Template(), "fixture: fixed "+module+".yaml")
+}
+
+func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 	t.Parallel()
 
-	h := newStaleHub(t, "pair-a")
-	geom := geometryOf(h)
-	pair := h.PairCodeWorktree("pair-a")
-	gitkit.CommitFile(t, h.PairRecordsSibling("pair-a"), configengine.ConfigFileRel("loom"), "a: [unclosed\n", "fixture: broken loom.yaml")
+	tests := []struct {
+		name string
+		// breakConfig breaks one config file of h and returns the worktree the walk fails in, the repo holding the file, and the file.
+		breakConfig func(t *testing.T, h *hubforge.Hub) (worktree, repo, file string)
+		// module is the module whose "lyx config" the message names; empty when the failure names no module.
+		module string
+		repair func(t *testing.T, h *hubforge.Hub)
+	}{
+		{
+			name: "unparseable pair config",
+			breakConfig: func(t *testing.T, h *hubforge.Hub) (string, string, string) {
+				gitkit.CommitFile(t, h.PairRecordsSibling("pair-a"), configengine.ConfigFileRel("loom"), "a: [unclosed\n", "fixture: broken loom.yaml")
+				pair := h.PairCodeWorktree("pair-a")
+				return pair, h.PairRecordsSibling("pair-a"), configengine.ConfigFile(pair, "loom")
+			},
+			module: "loom",
+			repair: func(t *testing.T, h *hubforge.Hub) { commitTemplate(t, h.PairRecordsSibling("pair-a"), "loom") },
+		},
+		{
+			name: "unreadable pair config",
+			breakConfig: func(t *testing.T, h *hubforge.Hub) (string, string, string) {
+				pair := h.PairCodeWorktree("pair-a")
+				path := configengine.ConfigFile(pair, "loom")
+				if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("remove loom.yaml: %v", err)
+				}
+				if err := os.Mkdir(path, 0o755); err != nil {
+					t.Fatalf("mkdir at loom.yaml: %v", err)
+				}
+				return pair, h.PairRecordsSibling("pair-a"), path
+			},
+			repair: func(t *testing.T, h *hubforge.Hub) {
+				if err := os.Remove(configengine.ConfigFile(h.PairCodeWorktree("pair-a"), "loom")); err != nil {
+					t.Fatalf("remove the directory at loom.yaml: %v", err)
+				}
+				commitTemplate(t, h.PairRecordsSibling("pair-a"), "loom")
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	err := hubreconcile.Ensure(geom, hubreconcile.Options{})
+			h := newStaleHub(t, "pair-a")
+			geom := geometryOf(h)
+			worktree, repo, file := tc.breakConfig(t, h)
+			statusBefore := gitkit.GitStatusPorcelain(t, repo)
 
-	var worktreeErr *hubreconcile.WorktreeError
-	if !errors.As(err, &worktreeErr) {
-		t.Fatalf("Ensure error = %v; want *WorktreeError", err)
-	}
-	if worktreeErr.Worktree != pair || worktreeErr.File != configengine.ConfigFile(pair, "loom") {
-		t.Errorf("WorktreeError names (%q, %q); want the pair and its loom.yaml", worktreeErr.Worktree, worktreeErr.File)
-	}
-	if !strings.Contains(err.Error(), "lyx config loom") {
-		t.Errorf("message %q does not name lyx config loom", err.Error())
-	}
-	if _, found := stampKey(t, geom); found {
-		t.Errorf("stamp written after a failed walk")
-	}
-	assertClean(t, h.PairRecordsSibling("pair-a"))
+			err := hubreconcile.Ensure(geom, hubreconcile.Options{})
 
-	module, _ := configreg.Lookup("loom")
-	gitkit.CommitFile(t, h.PairRecordsSibling("pair-a"), configengine.ConfigFileRel("loom"), module.Template(), "fixture: fixed loom.yaml")
-	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
-		t.Fatalf("Ensure after the fix: %v", err)
-	}
-	if _, found := stampKey(t, geom); !found {
-		t.Errorf("stamp absent after the fixed walk")
-	}
-	assertClean(t, h.PairRecordsSibling("pair-a"))
-	if retiredKeyPresent(t, pair) {
-		t.Errorf("retired key still present in the pair after the fixed walk")
+			var worktreeErr *hubreconcile.WorktreeError
+			if !errors.As(err, &worktreeErr) {
+				t.Fatalf("Ensure error = %v; want *WorktreeError", err)
+			}
+			if worktreeErr.Worktree != worktree {
+				t.Errorf("WorktreeError names worktree %q; want %q", worktreeErr.Worktree, worktree)
+			}
+			if !strings.Contains(err.Error(), file) {
+				t.Errorf("message %q does not name %s", err.Error(), file)
+			}
+			if tc.module != "" {
+				if worktreeErr.File != file {
+					t.Errorf("WorktreeError.File = %q; want %q", worktreeErr.File, file)
+				}
+				if !strings.Contains(err.Error(), "lyx config "+tc.module) {
+					t.Errorf("message %q does not name lyx config %s", err.Error(), tc.module)
+				}
+			}
+			if _, statErr := os.Stat(file); statErr != nil {
+				t.Errorf("the failed file is gone after the walk: %v", statErr)
+			}
+			if status := gitkit.GitStatusPorcelain(t, repo); status != statusBefore {
+				t.Errorf("%s status changed by the failed walk:\nbefore:\n%s\nafter:\n%s", repo, statusBefore, status)
+			}
+			if _, found := stampKey(t, geom); found {
+				t.Errorf("stamp written after a failed walk")
+			}
+
+			tc.repair(t, h)
+			if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+				t.Fatalf("Ensure after the repair: %v", err)
+			}
+			if _, found := stampKey(t, geom); !found {
+				t.Errorf("stamp absent after the repaired walk")
+			}
+			assertClean(t, repo)
+			if retiredKeyPresent(t, h.PairCodeWorktree("pair-a")) {
+				t.Errorf("retired key still present in the pair after the repaired walk")
+			}
+		})
 	}
 }
 
