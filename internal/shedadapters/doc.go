@@ -65,6 +65,9 @@
 //     From round 2 on only a BLOCKING finding, or a gating-class finding at MEDIUM or worse on a key the facts file lists as open in an earlier round, rules CONTINUE;
 //     a gating finding on a key first raised in the latest round converges and is carried into the decision record's `## Open risks` through the CarryOver seam.
 //     A parse-error line in the facts file's earlier-open list, from a missing or unparseable earlier ledger, sends the judge back to round 1's rule.
+//     A fanned segment's facts file (BouncerConfig.ClusterExcludes) also carries a `## Lenses` section:
+//     the fan and lenses the latest round ran, read from its usage record, the lenses already excluded, and the latest review's finding counts per `origin` by severity and class.
+//     A missing usage record or an unparseable review renders as a line saying so, and a solo segment's file carries no such section.
 //     A Go guard backs the prompt: a CIRCLING verdict with no decision file recorded for its round is read as CONTINUE, with a warning,
 //     when the round is below the checkpoint or when no gating finding is open in this round's ledger and an earlier one (circlingEvidence).
 //     The guard only narrows CIRCLING to CONTINUE, reads only on-disk state, and leaves a round that already has a decision file as recorded.

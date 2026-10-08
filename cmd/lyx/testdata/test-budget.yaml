@@ -72,7 +72,7 @@ internal/reedengine/render: 12
 internal/segmentcolor: 4
 internal/selfreportcli: 3
 internal/selfreportengine: 11
-internal/shedadapters: 154
+internal/shedadapters: 155
 internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17

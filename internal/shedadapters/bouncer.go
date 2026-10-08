@@ -976,7 +976,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 
 	// The facts file is regenerated on every judge call, including one that ends up attaching to a live judge, since the render is deterministic.
 	// A write failure degrades like an unreadable template, because the prompt would name a file that does not exist.
-	if err := writeRoundFacts(b.cfg.RunDir, n, b.cfg.ReportName); err != nil {
+	if err := writeRoundFacts(b.cfg.Name, b.cfg.RunDir, n, b.cfg.ReportName, b.cfg.ClusterExcludes); err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer facts file unwritable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
 
