@@ -18,6 +18,7 @@
 // It repeats until a listing finds no new pair, so a pair registered while the walk ran is walked before the stamp is written.
 // Each worktree's applied files are committed in that worktree, and the board commit's push failure is logged and never fatal.
 // Worktrees that committed before a failure keep their commits.
+// The failing worktree's, or the board's, config files are restored to their prior bytes, so a retry rewrites and commits them instead of finding them already current.
 //
 // # Skips
 //

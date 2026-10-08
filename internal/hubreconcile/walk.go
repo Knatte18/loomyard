@@ -165,10 +165,12 @@ func findPrime(worktrees []fabricengine.CodeWorktree) (fabricengine.CodeWorktree
 }
 
 // reconcileHubWide reconciles the hub-wide config at boardDir, seeded from the prime's anchor, and commits what it wrote on the board.
-// A push failure is logged and never fatal.
+// A reconcile or commit failure restores the board's config files to their prior bytes; a push failure is logged and never fatal.
 func reconcileHubWide(boardDir, primeAnchor, revision string) error {
 	bolt := fabricengine.NewBolt(boardDir)
+	var prior map[string][]byte
 	_, committed, err := bolt.CommitWritten("lyx: reconcile hub-wide config for build "+revision, func() ([]string, error) {
+		prior = snapshotConfig(boardDir)
 		results, err := configsync.ReconcileHubWideAt(boardDir, primeAnchor, true)
 		if err != nil {
 			return nil, err
@@ -187,7 +189,7 @@ func reconcileHubWide(boardDir, primeAnchor, revision string) error {
 		return written, nil
 	}, fabricengine.SyncOptions{})
 	if err != nil {
-		return worktreeErrorFor(boardDir, err)
+		return failRestoringConfig(prior, worktreeErrorFor(boardDir, err))
 	}
 	if !committed {
 		return nil
@@ -201,6 +203,7 @@ func reconcileHubWide(boardDir, primeAnchor, revision string) error {
 // reconcileWorktree reconciles and commits one code worktree's config.
 // It reports skipped when a mid-merge state keeps the worktree from being written or committed, which leaves the build stamp stale.
 // A pair that is incomplete or has been removed is passed over without being reported skipped.
+// A failure after the write restores the config files to their prior bytes, so nothing written is left uncommitted.
 func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision string, hooks walkHooks) (skipped bool, err error) {
 	if !w.Main {
 		complete, reason, err := fabricengine.PairCompleteAt(w.Path)
@@ -233,12 +236,12 @@ func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision st
 			logger.Info("hubreconcile: skipping a worktree removed during the walk", "worktree", w.Path)
 			return false, nil
 		}
-		return false, worktreeErrorFor(w.Path, err)
+		return false, failRestoringConfig(prior, worktreeErrorFor(w.Path, err))
 	}
 
 	anchorRel, err := filepath.Rel(w.Path, w.Anchor)
 	if err != nil {
-		return false, &WorktreeError{Worktree: w.Path, Err: err}
+		return false, failRestoringConfig(prior, &WorktreeError{Worktree: w.Path, Err: err})
 	}
 	var files []string
 	for _, result := range results {
@@ -268,9 +271,19 @@ func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision st
 			logger.Info("hubreconcile: a merge began before the commit, so the config was restored", "worktree", w.Path)
 			return true, nil
 		}
-		return false, &WorktreeError{Worktree: w.Path, Err: err}
+		return false, failRestoringConfig(prior, &WorktreeError{Worktree: w.Path, Err: err})
 	}
 	return false, nil
+}
+
+// failRestoringConfig puts a snapshot back after a failure that followed the config write, and returns failure.
+// A written file left uncommitted would match its template on the retry, so the retry would never commit it.
+// A failed restore is joined into failure's cause.
+func failRestoringConfig(prior map[string][]byte, failure *WorktreeError) *WorktreeError {
+	if err := restoreConfig(prior); err != nil {
+		failure.Err = errors.Join(failure.Err, fmt.Errorf("restore config: %w", err))
+	}
+	return failure
 }
 
 // passOverOrFail maps an error from opening a worktree: a path that no longer exists is passed over, anything else fails the walk.
@@ -298,9 +311,20 @@ func logResult(worktree string, result configsync.Result) {
 		"added", result.Added, "removed", result.Removed, "migrated", result.Migrated)
 }
 
-// snapshotConfig reads every registry module's config file under anchor; an absent file maps to nil.
+// snapshotConfig reads every file in anchor's config dir and every registry module's config file under anchor; an absent module file maps to nil.
+// The dir's own files cover a legacy file a migration removes.
 func snapshotConfig(anchor string) map[string][]byte {
 	prior := make(map[string][]byte)
+	entries, _ := os.ReadDir(configengine.ConfigDir(anchor))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(configengine.ConfigDir(anchor), entry.Name())
+		if data, err := os.ReadFile(path); err == nil {
+			prior[path] = data
+		}
+	}
 	for _, module := range configreg.Modules() {
 		path := configengine.ConfigFile(anchor, module.Name)
 		data, err := os.ReadFile(path)

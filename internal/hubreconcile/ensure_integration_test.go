@@ -315,6 +315,7 @@ func TestEnsure_UnparseablePairConfigNamesPairAndFile(t *testing.T) {
 	if _, found := stampKey(t, geom); found {
 		t.Errorf("stamp written after a failed walk")
 	}
+	assertClean(t, h.PairRecordsSibling("pair-a"))
 
 	module, _ := configreg.Lookup("loom")
 	gitkit.CommitFile(t, h.PairRecordsSibling("pair-a"), configengine.ConfigFileRel("loom"), module.Template(), "fixture: fixed loom.yaml")
@@ -323,6 +324,10 @@ func TestEnsure_UnparseablePairConfigNamesPairAndFile(t *testing.T) {
 	}
 	if _, found := stampKey(t, geom); !found {
 		t.Errorf("stamp absent after the fixed walk")
+	}
+	assertClean(t, h.PairRecordsSibling("pair-a"))
+	if retiredKeyPresent(t, pair) {
+		t.Errorf("retired key still present in the pair after the fixed walk")
 	}
 }
 
