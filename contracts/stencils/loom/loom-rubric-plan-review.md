@@ -78,12 +78,20 @@ Do not flag any of the following as a finding:
   The `llm` tag that the section compiles rather than runs (for example `go vet -tags llm <packages>`) is not a finding.
   A section that compiles the `tmux` tier (for example `go vet -tags tmux <packages>`) rather than running it is not a finding either; Publish runs that tier.
   A section out of the order the plan template states is a finding.
+  A nested module's packages count as covered by a command run inside that module (`go -C <module>`).
 - **The attack-surface question.**
   For every new verb, flag, escape hatch or routing edge, and every guard that is removed, downgraded or bypassable, the card that introduces the change states in its `**Intent:**` what it can now skip or let through and what bounds it.
   A card that introduces one with no stated bound is a finding.
 - **The writer/reviewer symmetry note.**
   The plan writer's own stencil is `{{.stencils_dir}}/loom/loom-template-plan.md`.
   Whatever it says not to write, this rubric must not flag as missing.
+
+## Proposed fixes
+
+A finding whose fix adds, drops, moves or pairs targets, or changes a verify command, proposes only a fix that every check in the validation-checks section of `{{.specs_dir}}/loom/loom-plan-spec.md` admits.
+When the reviewer sees no admissible fix, it still reports the defect and names the check that constrains the fix.
+The `**Fix:**` line is a proposal: the fixer may apply any other fix the checks admit, and when none exists it defers the finding with the constraining check as the reason.
+The rule narrows only which fix shapes a reviewer proposes; no defect becomes unreportable.
 
 ## Finding class
 
