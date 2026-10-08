@@ -114,7 +114,7 @@ func TestReapSessionPanes(t *testing.T) {
 	t.Run("successful listing", func(t *testing.T) {
 		cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
 		installFakeTmuxOn(t, &cmd).answer("list-panes", "%1 0 0 80 24 4242\n", nil)
-		got, err := reapSessionPanes(cmd, "myworktree")
+		got, err := reapSessionPanes(cmd, exactSessionWindowTarget("myworktree"))
 		if err != nil {
 			t.Fatalf("reapSessionPanes() unexpected error: %v", err)
 		}
@@ -128,7 +128,7 @@ func TestReapSessionPanes(t *testing.T) {
 		hookErr := errors.New("no server running on socket")
 		cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
 		installFakeTmuxOn(t, &cmd).answer("list-panes", "", hookErr)
-		_, err := reapSessionPanes(cmd, "myworktree")
+		_, err := reapSessionPanes(cmd, exactSessionWindowTarget("myworktree"))
 		if err == nil {
 			t.Fatalf("reapSessionPanes() error = nil, want non-nil")
 		}
@@ -172,7 +172,7 @@ func TestReapSession_CallOrdering(t *testing.T) {
 			// Step 1: reapSessionPanes, exactly as ReapSession calls it. A scripted listing
 			// failure is recorded but does not stop the reap — ReapSession logs and continues
 			// with a nil live.
-			live, panesErr := reapSessionPanes(cmd, "myworktree")
+			live, panesErr := reapSessionPanes(cmd, exactSessionWindowTarget("myworktree"))
 			if tt.panesErr != nil {
 				if panesErr == nil {
 					t.Fatalf("reapSessionPanes() error = nil, want non-nil")

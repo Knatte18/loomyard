@@ -6,9 +6,26 @@ package reedengine
 import (
 	"errors"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 )
+
+// sessionListVerb is the verb name the fake gives the session-wide pane listing (list-panes -s),
+// so the per-window list-panes calls stay countable apart from it.
+const sessionListVerb = "list-panes-session"
+
+// callVerb names the verb a call is scripted and counted under.
+func callVerb(args []string) string {
+	if args[0] == "list-panes" && containsArg(args, "-s") {
+		return sessionListVerb
+	}
+	return args[0]
+}
+
+// fakeStrandWindow is the window id the fake's derived session listing places every pane in,
+// and so the target the window seam resolves while the engine's state records a listed pane.
+const fakeStrandWindow = "@0"
 
 // liveBoxFormat is the display-message format the live window-size query spends.
 const liveBoxFormat = "#{window_width} #{window_height}"
@@ -20,6 +37,8 @@ type tmuxAnswer struct {
 
 // fakeTmux answers every tmux round trip from per-verb scripts and logs each call's argv.
 // An unscripted verb answers empty with no error.
+// The session-wide listing (list-panes -s) is its own verb, sessionListVerb:
+// unscripted, it lists every pane the plain list-panes script names as a member of window fakeStrandWindow.
 // It is safe for one goroutine to script and read it while another drives the engine.
 type fakeTmux struct {
 	t *testing.T
@@ -115,8 +134,8 @@ func (f *fakeTmux) Calls() [][]string {
 func (f *fakeTmux) Sequence(only ...string) []string {
 	var out []string
 	for _, c := range f.Calls() {
-		if len(only) == 0 || containsArg(only, c[0]) {
-			out = append(out, c[0])
+		if len(only) == 0 || containsArg(only, callVerb(c)) {
+			out = append(out, callVerb(c))
 		}
 	}
 	return out
@@ -126,7 +145,7 @@ func (f *fakeTmux) Sequence(only ...string) []string {
 func (f *fakeTmux) ArgvFor(verb string) [][]string {
 	var out [][]string
 	for _, c := range f.Calls() {
-		if c[0] == verb {
+		if callVerb(c) == verb {
 			out = append(out, c)
 		}
 	}
@@ -148,7 +167,7 @@ func (f *fakeTmux) CapturedFor(verb string) []bool {
 	defer f.mu.Unlock()
 	var out []bool
 	for i, c := range f.calls {
-		if c[0] == verb {
+		if callVerb(c) == verb {
 			out = append(out, f.captures[i])
 		}
 	}
@@ -161,7 +180,7 @@ func (f *fakeTmux) Count(verb string) int {
 }
 
 func (f *fakeTmux) exec(capture bool, args ...string) (string, error) {
-	verb := args[0]
+	verb := callVerb(args)
 	f.mu.Lock()
 	f.calls = append(f.calls, append([]string{}, args...))
 	f.captures = append(f.captures, capture)
@@ -169,6 +188,9 @@ func (f *fakeTmux) exec(capture bool, args ...string) (string, error) {
 	fn := f.funcs[verb]
 	real := f.real
 	ans, ok := f.verbs[verb]
+	if verb == sessionListVerb && !ok {
+		ans, ok = tmuxAnswer{out: sessionListingOf(f.verbs["list-panes"].out)}, true
+	}
 	if verb == "display-message" {
 		if byFormat, found := f.formats[args[len(args)-1]]; found {
 			ans, ok = byFormat, true
@@ -193,6 +215,17 @@ func (f *fakeTmux) exec(capture bool, args ...string) (string, error) {
 		return "", nil
 	}
 	return ans.out, ans.err
+}
+
+// sessionListingOf renders a per-window list-panes answer as the session-wide listing, placing every pane in window fakeStrandWindow.
+func sessionListingOf(windowListing string) string {
+	out := ""
+	for _, line := range strings.Split(windowListing, "\n") {
+		if fields := strings.Fields(line); len(fields) > 0 {
+			out += fields[0] + " " + fakeStrandWindow + "\n"
+		}
+	}
+	return out
 }
 
 // encodeLivePanes renders live back into list-panes' own six-field wire format, matching

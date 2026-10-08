@@ -70,7 +70,7 @@ func (e *Engine) resolvePaneInThisSessionLocked(st *ReedState, guid string) (str
 		return "", err
 	}
 
-	live, err := e.tmux.listPanes(e.SessionName())
+	live, err := e.listStrandPanes(st)
 	if err != nil {
 		return "", fmt.Errorf("list panes: %w", err)
 	}

@@ -92,7 +92,7 @@ func selvagePaneHeightNow(t *testing.T, e *Engine) (height int, ok bool) {
 	if err != nil || st == nil || st.SelvagePaneID == "" {
 		return 0, false
 	}
-	live, err := e.tmux.listPanes(e.SessionName())
+	live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
 		return 0, false
 	}
@@ -125,7 +125,7 @@ func expectedLayoutForCurrentBox(t *testing.T, e *Engine) (layout string, ok boo
 	if err != nil || st == nil {
 		return "", false
 	}
-	live, err := e.tmux.listPanes(e.SessionName())
+	live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
 		return "", false
 	}
@@ -379,7 +379,7 @@ func TestWatchdogSelfHeal_HookProbeMatchesLiveTmux(t *testing.T) {
 
 	var installed, known bool
 	if err := e.withOpLock(func() error {
-		installed, known = e.hookInstalledLocked()
+		installed, known = e.hookInstalledLocked(exactSessionWindowTarget(e.SessionName()))
 		return nil
 	}); err != nil {
 		t.Fatalf("withOpLock(hookInstalledLocked): %v", err)

@@ -227,7 +227,7 @@ func (e *Engine) sessionSubstrateLocked() (up bool, usable bool, err error) {
 	if !up {
 		return false, false, nil
 	}
-	live, err := e.tmux.listPanes(session)
+	live, err := e.listStoredStrandPanes()
 	if err != nil {
 		return true, false, fmt.Errorf("list panes: %w", err)
 	}
@@ -501,7 +501,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// already-up path returns early, above this block), which is why
 	// AttachArgv re-pins them in its own pre-flight rather than relying on
 	// this call.
-	e.pinGeometryOptionsLocked()
+	e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
 
 	return true, stripped, nil
 }
@@ -672,7 +672,7 @@ func (e *Engine) Resume() (ResumeResult, error) {
 			return err
 		}
 
-		live, err := e.tmux.listPanes(e.SessionName())
+		live, err := e.listStrandPanes(st)
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
 		}
@@ -681,7 +681,7 @@ func (e *Engine) Resume() (ResumeResult, error) {
 			return fmt.Errorf("reconcile: %w", err)
 		}
 		if len(killed) > 0 {
-			live, err = e.tmux.listPanes(e.SessionName())
+			live, err = e.listStrandPanes(st)
 			if err != nil {
 				return fmt.Errorf("list panes after reconcile: %w", err)
 			}
@@ -919,7 +919,7 @@ func (e *Engine) serverPIDLocked() int {
 // Returns nil on failure.
 // Must run before kill-session while panes exist.
 func (e *Engine) sessionReapRootsLocked() []int {
-	live, err := e.tmux.listPanes(e.SessionName())
+	live, err := e.listStoredStrandPanes()
 	if err != nil {
 		return nil
 	}
@@ -1142,7 +1142,7 @@ func (e *Engine) Status() (StatusResult, error) {
 			return err
 		}
 
-		live, err := e.tmux.listPanes(session)
+		live, err := e.listStrandPanes(st)
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
 		}

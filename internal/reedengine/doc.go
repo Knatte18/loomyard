@@ -116,8 +116,8 @@
 // its own — that separation is what lets its two callers disagree about
 // where the box comes from without planLayout itself needing to know.
 // applyLayoutLocked (apply.go) resolves the live box with
-// liveBoxLocked (windowsize.go) — `display-message -p -t '=<session>:'
-// '#{window_width} #{window_height}'` — and falls back to the configured
+// liveBoxLocked (windowsize.go), `display-message -p -t <strand window> '#{window_width} #{window_height}'`,
+// and falls back to the configured
 // cfg.Width/cfg.Height pair on any round-trip error or malformed answer.
 // AttachArgv (attach.go) passes the attaching client's own told cols/rows
 // and never calls liveBoxLocked, because at argv-build time the live window
@@ -168,7 +168,7 @@
 //
 // Pane enumeration: listPanes (overlay.go) always runs
 //
-//	list-panes -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}"
+//	list-panes -t <strand window> -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}"
 //
 // and parsePaneList (parse.go) parses each output line's first six whitespace-separated fields positionally, in that exact order, into a LivePane;
 // everything after the sixth field is LivePane.Title, so a title holding spaces survives.
@@ -176,6 +176,15 @@
 // #{pane_dead} is reported as the string "1" or "0";
 // parsePaneList keys a dead pane on the literal value "1", never a numeric
 // or boolean comparison.
+//
+// Strand window: the strands live in one window of the session, and every op that enumerates, lays out or measures them addresses that window by its id ("@<n>"), never by the session's current window.
+// A second window in the session is therefore never read as the strands' window.
+// The one seam, windowtarget.go's TmuxCmd.strandWindowTarget, lists the session's own panes across all its windows (`list-panes -s -t '=<session>' -F "#{pane_id} #{window_id}"`).
+// It resolves the window of the recorded Selvage pane (alive, or a dead corpse), else of any present recorded strand pane, else the current-window target "=<session>:", which only the seam and the engine-less reap helpers keep.
+// A recorded pane id counts as present only when that session-scoped listing carries it, since pane ids are server-wide and a stale id can name another session's pane.
+// With a present Selvage or strand pane a batten window, current or not, is never read as the strands' window and its pane is never reaped as untracked.
+// A session's first up has neither, so it falls back to the current window, and the Selvage pane created there defines the strand window from then on.
+// The pane-generation read (generation.go) stays session-scoped and outside the seam: it reads session fields only, so it keeps the "=<session>:" form, which expands them, where the bare "=<session>" form expands every session field to empty (verified live, tmux 3.6).
 //
 // Session targeting: every -t argument that names a SESSION is passed in
 // an exact-match form — "=<name>" for session targets (has-session,
@@ -665,7 +674,7 @@
 //     mitigation not helping. Adding either would make a multiplexer that runs reed perfectly well
 //     today fail at boot over a cosmetic feature.
 //   - The chained attach (attach.go): AttachArgv's argv is
-//     "attach-session … ; select-layout -t '=<session>:' <layout>", with the
+//     "attach-session … ; select-layout -t <strand window> <layout>", with the
 //     separator a literal one-character ";" argv element — never "\;",
 //     since exec.Command passes argv directly to the child and no shell ever
 //     sees it to unescape. The chained select-layout runs only after the
@@ -686,8 +695,8 @@
 //     options — "status" "on"; "status-position" "bottom"; "status-left" <rendered text>;
 //     "status-right" ""; "status-left-length" <computed>; and, window-targeted with -w,
 //     "window-status-format" "" and "window-status-current-format" "" — plus "window-size" "latest",
-//     all session/window-targeted (-t '=<session>:', and -w for window-size, per the Session targeting
-//     grammar above) both at boot and again in AttachArgv's pre-flight. Their EFFECTIVE values are read
+//     all targeted at the strand window (-t <strand window>, and -w for window-size, per the Strand
+//     window and Session targeting grammar above) both at boot and again in AttachArgv's pre-flight. Their EFFECTIVE values are read
 //     back with display-message rather than trusted from set-option's exit status, because a -g pin
 //     plus exit 0 is not proof the option took — verified live, tmux 3.6: a session-scoped "status on"
 //     survives a global "set-option -g status off" with exit 0, and a window-scoped "window-size

@@ -143,11 +143,11 @@ func listSessionsVia(cmd TmuxCmd) ([]string, error) {
 	return names, nil
 }
 
-// reapSessionPanes lists session's panes, split out from ReapSession so a test can drive the
+// reapSessionPanes lists the panes of windowTarget, split out from ReapSession so a test can drive the
 // pane-listing half through TmuxCmd's execHook seam directly, mirroring listSessionsVia's own
 // reason for existing.
-func reapSessionPanes(cmd TmuxCmd, session string) ([]LivePane, error) {
-	return cmd.listPanes(session)
+func reapSessionPanes(cmd TmuxCmd, windowTarget string) ([]LivePane, error) {
+	return cmd.listPanes(windowTarget)
 }
 
 // reapSessionKill kills session by exact-match target. The exactSessionTarget wrapper is
@@ -182,7 +182,7 @@ func reapSessionVia(cmd TmuxCmd, shellPath, socketKey, sessionName string, timeo
 	if timeout == 0 {
 		timeout = reapExitTimeout
 	}
-	live, err := reapSessionPanes(cmd, sessionName)
+	live, err := reapSessionPanes(cmd, exactSessionWindowTarget(sessionName))
 	if err != nil {
 		// A session whose panes cannot be listed is the one most worth killing, so a
 		// listing failure never skips the kill — it only loses the descendant closure.
@@ -266,9 +266,9 @@ func (p TmuxCmd) hasSession(name string) (bool, error) {
 	return false, err
 }
 
-// listPanes returns all panes in the session (by exact match).
-func (p TmuxCmd) listPanes(session string) ([]LivePane, error) {
-	out, err := p.output("list-panes", "-t", exactSessionWindowTarget(session), "-F", "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}")
+// listPanes returns all panes of the window windowTarget names.
+func (p TmuxCmd) listPanes(windowTarget string) ([]LivePane, error) {
+	out, err := p.output("list-panes", "-t", windowTarget, "-F", "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}")
 	if err != nil {
 		return nil, err
 	}
