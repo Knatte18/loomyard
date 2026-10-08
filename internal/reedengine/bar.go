@@ -15,6 +15,9 @@ const (
 	// listPrologueFormat opens a left-aligned scrolling list with the < and > markers.
 	listPrologueFormat = "#[list=on align=left]#[list=left-marker]<#[list=right-marker]>#[list=on]"
 
+	// statusBarStyle is the base style of the status bar, filling every gap between the buttons: white text on a grey a shade darker than unlitButtonStyle.
+	statusBarStyle = "bg=colour235,fg=white"
+
 	// unlitButtonStyle is the style of a button that is not the selected one: white text on dark grey.
 	unlitButtonStyle = "bg=colour236 fg=white"
 
