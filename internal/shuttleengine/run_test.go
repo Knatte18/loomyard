@@ -1208,6 +1208,14 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			wantKeys: keys("Escape", "Escape"),
 		},
 		{
+			// A 1 s window closes inside the first typing's polls, so there is no replay.
+			name: "a text that has not appeared when the window closes names the window and the one typing", text: shortText,
+			confirmS: 1, captures: []string{"❯ "},
+			boxes:    []inputBoxAnswer{box(shortText)},
+			wantErr:  "after 1 typing(s) — the 1s submit window, cut to the send's deadline, closed before it appeared", wantNotLand: true,
+			wantKeys: keys("Escape"),
+		},
+		{
 			name: "a box the clear did not empty is named in the error", text: shortText,
 			idle: true, captures: []string{"IDLE"},
 			boxes:   []inputBoxAnswer{box(shortText)},

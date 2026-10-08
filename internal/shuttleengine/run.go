@@ -1105,7 +1105,7 @@ func sendVerified(sc sendContext, text string) error {
 		baseline = scanPaneForNeedle(capture, needle)
 	}
 
-	typed := false
+	typings := 0
 	for try := 0; try <= sendReplays; try++ {
 		if windowClosed(sc.clock, closeAt) {
 			break
@@ -1113,7 +1113,7 @@ func sendVerified(sc sendContext, text string) error {
 		if err := playInputs(reed, guid, typing(text)); err != nil {
 			return err
 		}
-		typed = true
+		typings++
 		for attempt := 0; attempt < sendVerifyAttempts && !windowClosed(sc.clock, closeAt); attempt++ {
 			capture, err := reed.CapturePane(guid)
 			if err == nil {
@@ -1132,10 +1132,14 @@ func sendVerified(sc sendContext, text string) error {
 			sc.clock.Sleep(sendVerifyInterval)
 		}
 	}
-	if !typed {
+	if typings == 0 {
 		return withPaneTail(fmt.Errorf("%w: the submit window, cut to the send's deadline, had closed before typing began; nothing was typed", ErrSubmissionNotLanded), "", sc)
 	}
-	err := fmt.Errorf("%w: sent text never appeared in the pane after %d attempt(s) — the provider TUI likely swallowed the input; the send was NOT delivered", ErrSubmissionNotLanded, 1+sendReplays)
+	cause := "the provider TUI likely swallowed the input"
+	if windowClosed(sc.clock, closeAt) {
+		cause = fmt.Sprintf("the %s submit window, cut to the send's deadline, closed before it appeared", submitConfirmTimeout(sc.cfg))
+	}
+	err := fmt.Errorf("%w: sent text never appeared in the pane after %d typing(s) — %s; the send was NOT delivered", ErrSubmissionNotLanded, typings, cause)
 	if !readsBox {
 		return withPaneTail(err, "", sc)
 	}
