@@ -91,6 +91,9 @@ func halfOf(handle Handle, result shuttleengine.Result) Half {
 		StrandGUID:           result.StrandGUID,
 		LastAssistantMessage: result.LastAssistantMessage,
 		RunDir:               result.RunDir,
+		StartedAt:            result.StartedAt,
+		EndedAt:              result.EndedAt,
+		Usage:                result.Usage,
 	}
 	if half.StrandGUID == "" {
 		half.StrandGUID = handle.StrandGUID()
@@ -208,6 +211,9 @@ func (e *Engine) decideRound(p *Profile, opts RunOpts, review, fix Handle, revie
 		ReviewPath:      p.ReviewPath,
 		FixerReportPath: p.FixerReportPath,
 		Review:          halfOf(review, reviewEnd.result),
+	}
+	for _, lens := range p.clusterLenses {
+		result.Lenses = append(result.Lenses, lens.Name)
 	}
 	if fix != nil {
 		result.Fix = halfOf(fix, fixEnd.result)

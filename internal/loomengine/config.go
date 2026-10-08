@@ -2,7 +2,11 @@
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
 // then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1, and rejects a fix_start that is neither parallel nor after-review,
+// and every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
+// discussion_fan and plan_fan each name a fan from burler.yaml and turn the lens fan on for Discussion-Review and Plan-Review; empty, the default, runs that segment solo.
+// fan_review is the reviewer model-spec list of a fanned segment, and the forks' model too, since forks run on the reviewer session's model.
+// There is no webster_fan key: Webster-Review always runs solo.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
 // driver, and both must load cleanly, unlike the other role keys, which are always required.
@@ -311,6 +315,9 @@ type Config struct {
 	PlanFix               ModelSpecList `yaml:"plan_fix"`
 	WebsterReview         ModelSpecList `yaml:"webster_review"`
 	WebsterFix            ModelSpecList `yaml:"webster_fix"`
+	DiscussionFan         string        `yaml:"discussion_fan"`
+	PlanFan               string        `yaml:"plan_fan"`
+	FanReview             ModelSpecList `yaml:"fan_review"`
 	Judge                 string        `yaml:"judge"`
 	ReviewTimeoutMin      int           `yaml:"review_timeout_min"`
 	Friction              string        `yaml:"friction"`
@@ -364,7 +371,7 @@ func (l *ModelSpecList) UnmarshalYAML(node *yaml.Node) error {
 
 // ConfigOpenMaps returns the loom.yaml keys whose value is a scalar or a per-round list, which configengine carries whole through reconcile and --set.
 func ConfigOpenMaps() []string {
-	return []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix"}
+	return []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix", "fan_review"}
 }
 
 // segmentModelList is one per-segment reviewer or fixer model-spec list with the loom.yaml key it came from.
@@ -420,6 +427,36 @@ func validateModelSpecList(key string, specs ModelSpecList) error {
 	return nil
 }
 
+// validateFanKeys resolves each non-empty fan key of cfg through burler.yaml, which falls back per name to the embedded template.
+// A fan that does not resolve is refused naming the key, the unknown name and the fans that exist,
+// and an unreadable burler.yaml is refused naming the first set key.
+// With both fan keys empty, burler.yaml is never read.
+func validateFanKeys(baseDir string, cfg Config) error {
+	var burlerCfg *burlerengine.Config
+	for _, fan := range []struct {
+		key  string
+		name string
+	}{
+		{"discussion_fan", cfg.DiscussionFan},
+		{"plan_fan", cfg.PlanFan},
+	} {
+		if fan.name == "" {
+			continue
+		}
+		if burlerCfg == nil {
+			loaded, err := burlerengine.LoadConfig(baseDir)
+			if err != nil {
+				return fmt.Errorf("loom config key %q: %w; fix burler.yaml, or set the key to empty to run the segment solo", fan.key, err)
+			}
+			burlerCfg = &loaded
+		}
+		if _, err := burlerengine.ResolveFan(*burlerCfg, fan.name); err != nil {
+			return fmt.Errorf("loom config key %q: %w; set the key to one of those fans, or to empty to run the segment solo", fan.key, err)
+		}
+	}
+	return nil
+}
+
 // LoadConfig loads and unmarshals configuration for the loom module.
 // It validates model-spec grammar at load time.
 func LoadConfig(baseDir, module string) (Config, error) {
@@ -463,6 +500,14 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		if err := validateModelSpecList(segment.key, segment.specs); err != nil {
 			return Config{}, err
 		}
+	}
+
+	if err := validateModelSpecList("fan_review", cfg.FanReview); err != nil {
+		return Config{}, err
+	}
+
+	if err := validateFanKeys(baseDir, cfg); err != nil {
+		return Config{}, err
 	}
 
 	if _, err := modelspec.Parse(cfg.Judge); err != nil {

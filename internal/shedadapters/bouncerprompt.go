@@ -48,7 +48,7 @@ func decisionRuleMarker(round, checkpoint int) string {
 // conditional stencil could not hold the two variants safely.
 // Every value renders non-empty in both modes.
 //
-// With clusterExcludes true the values ask the judge for both exclude_lenses and focus;
+// With clusterExcludes true the values ask the judge for both exclude_lenses and focus, and state when a lens may be excluded;
 // with it false they ask for focus alone and name no exclude_lenses key anywhere, since a judge
 // invited to exclude lenses from a round with no cluster fan produces a breach the round can only drop.
 func focusSchemaMarkers(clusterExcludes bool) map[string]string {
@@ -58,7 +58,12 @@ func focusSchemaMarkers(clusterExcludes bool) map[string]string {
 			"focus_list_rules": "- `exclude_lenses` is a list of strings, possibly empty.\n" +
 				"- `focus` is a list of strings, possibly empty.\n" +
 				"- Both list keys are always present, even when empty -- never omit either key, and never write a\n" +
-				"  scalar where a list is required.",
+				"  scalar where a list is required.\n" +
+				"- An exclusion is permanent for the segment generation: an excluded lens never runs again.\n" +
+				"- Exclude a lens only when the latest round ran it (the facts file's `## Lenses` section lists them)\n" +
+				"  and its area is settled: the latest round's findings from it carry nothing at MEDIUM or worse,\n" +
+				"  and its area is not in the next round's `focus`.\n" +
+				"- Earlier exclusions are carried by Go: never restate them in `exclude_lenses`.",
 			"approved_focus_lists": "an empty `exclude_lenses` and an empty `focus`",
 		}
 	}

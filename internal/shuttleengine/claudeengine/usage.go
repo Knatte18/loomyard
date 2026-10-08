@@ -4,14 +4,17 @@
 // The reader walks the file from its end in growing chunks and stops at the latest qualifying entry,
 // either a main-chain assistant usage entry or a compaction boundary, so a long transcript costs one small read.
 // The reader degrades to "usage unknown" on every failure and never errors, since the transcript format is a Claude Code internal.
+// It also implements shuttleengine.UsageReader: SessionUsage sums a finished session's tokens from its transcript and its fork transcripts.
 // All payload and transcript shape knowledge stays in this file, per the Shuttle Provider-Seam Invariant.
 package claudeengine
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -261,4 +264,116 @@ func latestReading(data []byte) (shuttleengine.ContextReading, bool) {
 		}
 	}
 	return shuttleengine.ContextReading{}, false
+}
+
+var _ shuttleengine.UsageReader = (*Claude)(nil)
+
+// SessionUsage reads the tokens of session sessionID, recorded under the pane cwd workdir: the parent transcript <project dir>/<session id>.jsonl and every fork transcript under <project dir>/<session id>/subagents/.
+// The totals include the forks, which are also broken out as their count and their own sums.
+// A missing subagents directory is zero forks.
+// An unreadable parent or fork transcript makes the whole reading unknown, never an error, since the layout is a Claude Code internal.
+func (c *Claude) SessionUsage(sessionID, workdir string) shuttleengine.SessionUsage {
+	projectDir, err := claudeProjectDirFor(workdir)
+	if err != nil {
+		return shuttleengine.SessionUsage{}
+	}
+	parent, err := transcriptTokens(filepath.Join(projectDir, sessionID+".jsonl"), false, nil)
+	if err != nil {
+		return shuttleengine.SessionUsage{}
+	}
+
+	subagentsDir := filepath.Join(projectDir, sessionID, "subagents")
+	entries, err := os.ReadDir(subagentsDir)
+	if err != nil && !os.IsNotExist(err) {
+		return shuttleengine.SessionUsage{}
+	}
+
+	reading := shuttleengine.SessionUsage{Known: true, Fresh: int64(parent.fresh), CacheRead: int64(parent.cacheRead)}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
+			continue
+		}
+		fork, err := transcriptTokens(filepath.Join(subagentsDir, entry.Name()), true, parent.messageIDs)
+		if err != nil {
+			return shuttleengine.SessionUsage{}
+		}
+		reading.Forks++
+		reading.ForkFresh += int64(fork.fresh)
+		reading.ForkCacheRead += int64(fork.cacheRead)
+	}
+	reading.Fresh += reading.ForkFresh
+	reading.CacheRead += reading.ForkCacheRead
+	return reading
+}
+
+// tokenSum is the usage sum of one transcript with the ids of the messages it counted.
+type tokenSum struct {
+	fresh, cacheRead int
+	messageIDs       map[string]struct{}
+}
+
+// transcriptTokens sums the assistant usage of the transcript at path: fresh is input plus cache-creation plus output tokens, cacheRead is cache-read tokens.
+// Sidechain entries count only when includeSidechain is set, as a fork transcript needs.
+// Every message whose id is in skipIDs is skipped, since a fork transcript replays the parent's spawning message as its first entry.
+// A message counts once however many transcript lines carry it, its last line winning since it carries the final usage.
+// Malformed lines are skipped, and an unreadable file is an error.
+func transcriptTokens(path string, includeSidechain bool, skipIDs map[string]struct{}) (tokenSum, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return tokenSum{}, err
+	}
+	defer f.Close()
+
+	type messageUsage struct{ fresh, cacheRead int }
+	byID := map[string]messageUsage{}
+	var anonymous []messageUsage
+
+	reader := bufio.NewReader(f)
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if readErr != nil && readErr != io.EOF {
+			return tokenSum{}, readErr
+		}
+		var e struct {
+			Type        string `json:"type"`
+			IsSidechain bool   `json:"isSidechain"`
+			Message     struct {
+				ID    string `json:"id"`
+				Usage *struct {
+					Input         int `json:"input_tokens"`
+					CacheCreation int `json:"cache_creation_input_tokens"`
+					CacheRead     int `json:"cache_read_input_tokens"`
+					Output        int `json:"output_tokens"`
+				} `json:"usage"`
+			} `json:"message"`
+		}
+		if json.Unmarshal(bytes.TrimSpace(line), &e) == nil && e.Type == "assistant" && e.Message.Usage != nil && (includeSidechain || !e.IsSidechain) {
+			usage := messageUsage{
+				fresh:     e.Message.Usage.Input + e.Message.Usage.CacheCreation + e.Message.Usage.Output,
+				cacheRead: e.Message.Usage.CacheRead,
+			}
+			_, skipped := skipIDs[e.Message.ID]
+			switch {
+			case e.Message.ID == "":
+				anonymous = append(anonymous, usage)
+			case !skipped:
+				byID[e.Message.ID] = usage
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+	}
+
+	sum := tokenSum{messageIDs: make(map[string]struct{}, len(byID))}
+	for id, usage := range byID {
+		sum.messageIDs[id] = struct{}{}
+		sum.fresh += usage.fresh
+		sum.cacheRead += usage.cacheRead
+	}
+	for _, usage := range anonymous {
+		sum.fresh += usage.fresh
+		sum.cacheRead += usage.cacheRead
+	}
+	return sum, nil
 }

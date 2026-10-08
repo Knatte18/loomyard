@@ -488,9 +488,10 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 		name        string
 		clusterFan  string
 		wantReviews bool
+		wantLenses  []string
 	}{
-		{"cluster profile", "standard", true},
-		{"plain profile", "", false},
+		{"cluster profile", "standard", true, []string{"style"}},
+		{"plain profile", "", false, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -503,8 +504,12 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 			}
 			e, _ := newEngineWith(t, Geometry{WorktreeRoot: root, AnchorPath: root}, clusterTestConfig, shuttle)
 
-			if _, err := e.Run(p, RunOpts{}); err != nil {
+			got, err := e.Run(p, RunOpts{})
+			if err != nil {
 				t.Fatalf("Run() = %v; want nil error", err)
+			}
+			if !slices.Equal(got.Lenses, tt.wantLenses) {
+				t.Errorf("Result.Lenses = %v; want %v", got.Lenses, tt.wantLenses)
 			}
 			if got := shuttle.specs[reviewRole].ForkSubagents; got != tt.wantReviews {
 				t.Errorf("reviewer spec.ForkSubagents = %v; want %v", got, tt.wantReviews)
@@ -610,6 +615,8 @@ func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
 		errSubstr      string
 		wantVerdict    Verdict
 		wantFindingIDs []string
+		// fixerStopped marks a round whose fixer was stopped rather than ended, so it reports no terminal reading.
+		fixerStopped bool
 	}{
 		{
 			name: "reviewer died",
@@ -617,7 +624,8 @@ func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
 				review: halfScript{result: died},
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
-			wantOutcome: shuttleengine.OutcomeDied,
+			wantOutcome:  shuttleengine.OutcomeDied,
+			fixerStopped: true,
 		},
 		{
 			name: "reviewer timeout",
@@ -625,7 +633,8 @@ func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
 				review: halfScript{result: timeout},
 				fix:    halfScript{result: done, waitForMarker: true},
 			},
-			wantOutcome: shuttleengine.OutcomeTimeout,
+			wantOutcome:  shuttleengine.OutcomeTimeout,
+			fixerStopped: true,
 		},
 		{
 			name: "fixer died after the handoff",
@@ -687,6 +696,11 @@ func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
 			root, p := newEngineTestProfile(t)
 			tt.shuttle.review.result.RunDir = "/kept/review-run"
 			tt.shuttle.fix.result.RunDir = "/kept/fix-run"
+			reviewUsage := shuttleengine.SessionUsage{Known: true, Fresh: 11, CacheRead: 22, Forks: 1, ForkFresh: 5, ForkCacheRead: 6}
+			fixUsage := shuttleengine.SessionUsage{Known: true, Fresh: 33, CacheRead: 44}
+			started := time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC)
+			tt.shuttle.review.result.StartedAt, tt.shuttle.review.result.EndedAt, tt.shuttle.review.result.Usage = started, started.Add(time.Minute), reviewUsage
+			tt.shuttle.fix.result.StartedAt, tt.shuttle.fix.result.EndedAt, tt.shuttle.fix.result.Usage = started.Add(time.Second), started.Add(2*time.Minute), fixUsage
 			e, _ := newEngineForTest(t, root, tt.shuttle)
 
 			got, err := e.Run(p, RunOpts{})
@@ -725,6 +739,12 @@ func TestEngine_Run_ShuttleOutcomes(t *testing.T) {
 			}
 			if got.Review.RunDir != "/kept/review-run" {
 				t.Errorf("Result.Review.RunDir = %q; want %q", got.Review.RunDir, "/kept/review-run")
+			}
+			if !got.Review.StartedAt.Equal(started) || !got.Review.EndedAt.Equal(started.Add(time.Minute)) || got.Review.Usage != reviewUsage {
+				t.Errorf("Result.Review times and usage = (%v, %v, %+v); want the reviewer's scripted ones", got.Review.StartedAt, got.Review.EndedAt, got.Review.Usage)
+			}
+			if !tt.fixerStopped && (!got.Fix.StartedAt.Equal(started.Add(time.Second)) || !got.Fix.EndedAt.Equal(started.Add(2*time.Minute)) || got.Fix.Usage != fixUsage) {
+				t.Errorf("Result.Fix times and usage = (%v, %v, %+v); want the fixer's scripted ones", got.Fix.StartedAt, got.Fix.EndedAt, got.Fix.Usage)
 			}
 			if got.NotStarted {
 				t.Errorf("Result.NotStarted = true; want false for halves that started")

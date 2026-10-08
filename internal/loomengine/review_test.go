@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -30,6 +31,7 @@ func TestResolveReview(t *testing.T) {
 		PlanReview:    ModelSpecList{"sonnet[effort=low]", "opus[effort=high]"},
 		WebsterReview: ModelSpecList{""},
 		WebsterFix:    ModelSpecList{""},
+		FanReview:     ModelSpecList{"sonnet[effort=medium]", "opus[effort=low]"},
 	}
 
 	reg, err := modelspec.LoadRegistry(t.TempDir())
@@ -66,6 +68,33 @@ func TestResolveReview(t *testing.T) {
 	wantTimeout := 240 * time.Minute
 	if settings.Timeout != wantTimeout {
 		t.Errorf("ResolveReview(...).Timeout = %s; want %s", settings.Timeout, wantTimeout)
+	}
+
+	// A set fan key replaces the segment's reviewer list with fan_review, keeps its own fixer list, and leaves a solo segment and Webster unchanged.
+	cfg.DiscussionFan = "standard"
+	cfg.PlanFan = "full"
+	fanned, err := ResolveReview(cfg, reg)
+	if err != nil {
+		t.Fatalf("ResolveReview(fanned cfg) = _, %v; want nil error", err)
+	}
+	for name, got := range map[string]burlerengine.RoundModels{"Discussion": fanned.Discussion, "Plan": fanned.Plan} {
+		if len(got.Review) != 2 || got.Review[0].Effort != "medium" || got.Review[1].Effort != "low" {
+			t.Errorf("ResolveReview(fanned cfg).%s.Review = %+v; want the fan_review list (medium, low)", name, got.Review)
+		}
+	}
+	if got := fanned.Discussion.Fix; len(got) != 1 || got[0].Effort != "high" {
+		t.Errorf("ResolveReview(fanned cfg).Discussion.Fix = %+v; want its own high-effort fixer", got)
+	}
+	if !reflect.DeepEqual(fanned.Plan.Fix, settings.Models.Fix) {
+		t.Errorf("ResolveReview(fanned cfg).Plan.Fix = %+v; want the run-wide fix list", fanned.Plan.Fix)
+	}
+	if !reflect.DeepEqual(fanned.Webster, settings.Models) {
+		t.Errorf("ResolveReview(fanned cfg).Webster = %+v; want the run-wide %+v", fanned.Webster, settings.Models)
+	}
+
+	cfg.FanReview = ModelSpecList{"opus[effort"}
+	if _, err := ResolveReview(cfg, reg); err == nil || !strings.Contains(err.Error(), "fan_review entry 1") {
+		t.Errorf("ResolveReview(bad fan_review) error = %v; want it to name fan_review entry 1", err)
 	}
 }
 

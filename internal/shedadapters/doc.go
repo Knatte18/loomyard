@@ -65,6 +65,9 @@
 //     From round 2 on only a BLOCKING finding, or a gating-class finding at MEDIUM or worse on a key the facts file lists as open in an earlier round, rules CONTINUE;
 //     a gating finding on a key first raised in the latest round converges and is carried into the decision record's `## Open risks` through the CarryOver seam.
 //     A parse-error line in the facts file's earlier-open list, from a missing or unparseable earlier ledger, sends the judge back to round 1's rule.
+//     A fanned segment's facts file (BouncerConfig.ClusterExcludes) also carries a `## Lenses` section:
+//     the fan and lenses the latest round ran, read from its usage record, the lenses already excluded, and the latest review's finding counts per `origin` by severity and class.
+//     A missing usage record or an unparseable review renders as a line saying so, and a solo segment's file carries no such section.
 //     A Go guard backs the prompt: a CIRCLING verdict with no decision file recorded for its round is read as CONTINUE, with a warning,
 //     when the round is below the checkpoint or when no gating finding is open in this round's ledger and an earlier one (circlingEvidence).
 //     The guard only narrows CIRCLING to CONTINUE, reads only on-disk state, and leaves a round that already has a decision file as recorded.
@@ -162,9 +165,13 @@
 // through that same pair. The two sides once disagreed -- the writer emitted this .md file while the
 // reader opened a round-<N>-focus.json and strictly decoded JSON -- which silently emptied the
 // directive on every production read, so the agreement is pinned here rather than left implicit.
-// A Bouncer asks for exclude_lenses only when told ClusterExcludes, meaning its round runs a cluster
-// fan the excludes can trim; otherwise its prompts request focus alone, so the key may be absent
-// from a judge-written file.
+// Only the judge call asks for exclude_lenses, and only when told ClusterExcludes, meaning its round runs a cluster
+// fan the excludes can trim; the seed call and every other judge prompt request focus alone, so the key may be absent
+// from a written file.
+// The fanned judge prompt states three rules.
+// An exclusion is permanent for the segment generation.
+// A lens is excluded only when the latest round ran it and its area is settled, meaning nothing at MEDIUM or worse from it and not in the next round's focus.
+// Earlier exclusions are never restated.
 // Its exclude_lenses reach the round's ClusterExclude;
 // the file itself reaches the round profile's focus-directive field whenever it carries a directive at all,
 // and the explore step reads it there, which is how the judge's targeting reaches the fixer.
@@ -174,6 +181,14 @@
 // Bouncer archives the whole generation aside and re-judges from a fresh round 1 instead. Both rows'
 // artifacts move together in that archive, because BurlerProducer would otherwise resume at round
 // N+1, hydrating from a generation the Bouncer had already discarded.
+// A fanned round's exclusions accumulate across the generation, held in Go:
+// the round's ClusterExclude is the union of the eligible exclude_lenses of focus files 2 through the round, and ClusterExcludeHeld the union through the round before.
+// An entry in round k's focus file is eligible only when round k-1's usage record names the same fan and lists the lens among those it ran,
+// so a missing record, a switch from solo or from another fan, or a lens already excluded drops it, with a warning for the round's own file.
+// Round 1 runs the whole fan and drops a focus file's excludes, and an excluded lens returns only with a new generation, since an archived generation moves the whole run directory aside.
+// Every completed round, solo and fanned, also leaves round-<N>-usage.yaml beside them:
+// the fan and lenses the round ran, and each half's model, run times, wall time and tokens, forks included, with an unknown reading left unknown rather than zero.
+// A gate-failed round is archived and writes none, and a failed write is a warning that never changes the round's outcome.
 // The told run directory's whole content and every timestamped archive the adapters write -- per-file siblings inside the run directory and whole-generation siblings of the run directory beside it (archiveRunDir) alike -- are durable record the wiring layer commits, so the adapters write nothing there that is not meant for git.
 //
 // # Shared cancellation rule

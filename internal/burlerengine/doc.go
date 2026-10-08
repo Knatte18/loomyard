@@ -227,6 +227,8 @@
 // profile explicitly names a fan — and a fan longer than maxClusterN (16)
 // entries fails validate. There is deliberately no fan named "default":
 // every seeded fan is dormant until a profile names it.
+// Fan and lens names resolve against burler.yaml first and, per name, against the embedded template,
+// so an operator-defined name wins and an absent burler.yaml resolves wholly from the template.
 //
 // ClusterExclude names lenses to drop from the fan ClusterFan resolves to,
 // applied inside validate after ResolveFan, with the survivors stored in
@@ -239,10 +241,9 @@
 // no-op for that name with a warning, because an exclusion list is an
 // advisory, per-call directive over a config-owned fan an operator may edit
 // between rounds, so a stale name is stale rather than wrong; and an
-// exclusion that would empty the fan drops the whole exclusion and keeps the
-// fan intact, because dropping to zero lenses is never what "these found
-// nothing last round" meant and re-running the full fan costs tokens, never
-// correctness.
+// exclusion that would empty the fan falls back to ClusterExcludeHeld, the exclusions carried from earlier rounds of the generation.
+// When that would empty the fan too the whole fan runs, because dropping to zero lenses is never what "these found nothing last round" meant and running more lenses costs tokens, never correctness.
+// ClusterExcludeHeld set with an empty ClusterFan is a validate error too.
 //
 // A cluster round still runs its review as ONE shuttle session, the handler, in three phases.
 // (1) the handler explores the target in full; (2)
@@ -324,6 +325,7 @@
 // the caller judges progress across rounds holistically via its own verdict judge, not by tracking finding-key identity.
 // It also carries the resolved ReviewPath/FixerReportPath, and each half's SessionID/StrandGUID/LastAssistantMessage/RunDir (Result.Review and Result.Fix, with StartError set only on a half that never started).
 // Outcome is the deciding half's, the fixer's Gate is passed through, and ForkAudit and ClusterWarnings come from the reviewer.
+// Each Half also carries its run's StartedAt, EndedAt and session Usage (forks included) from its terminal shuttle Result, and Result.Lenses names the lenses the reviewer ran, nil for a solo round; no decision reads them.
 // Run returns a nil error for every shuttleengine outcome except a hard failure:
 // an invalid profile, a shuttle start failure, a half that cannot be stopped, a skipped handoff, a changed review,
 // or — deliberately loud — a verdict parse failure on a done review, since a defaulted verdict could silently terminate a caller's round loop on a malformed round.

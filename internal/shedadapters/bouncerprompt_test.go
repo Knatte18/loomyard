@@ -35,6 +35,11 @@ func assertExcludeLensesText(t *testing.T, prompt string, clusterExcludes bool) 
 	if !strings.Contains(prompt, excludeLensesRule) {
 		t.Errorf("key-on prompt lacks the %q rule", excludeLensesRule)
 	}
+	for _, rule := range []string{"An exclusion is permanent for the segment generation", "the latest round ran it", "never restate them"} {
+		if !strings.Contains(prompt, rule) {
+			t.Errorf("key-on prompt lacks the %q exclusion rule", rule)
+		}
+	}
 }
 
 // decisionRuleSection returns the part of a rendered judge prompt between its Decision rule and Output files headings.
@@ -143,7 +148,7 @@ func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
 			if !shuttle.Called {
 				t.Fatal("seed Call() did not invoke the shuttle seam")
 			}
-			assertExcludeLensesText(t, shuttle.GotSpec.Prompt, clusterExcludes)
+			assertExcludeLensesText(t, shuttle.GotSpec.Prompt, false)
 		})
 
 		t.Run(fmt.Sprintf("Judge_ClusterExcludes=%t", clusterExcludes), func(t *testing.T) {

@@ -716,4 +716,39 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if c.env.FixStart != burlerengine.FixStartAfterReview {
 		t.Errorf("c.env.FixStart = %q; want %q", c.env.FixStart, burlerengine.FixStartAfterReview)
 	}
+
+	// The template's empty fans leave every fan entry empty, and Webster rows never carry one.
+	for row, fan := range c.env.RowClusterFans {
+		if fan != "" {
+			t.Errorf("RowClusterFans[%q] = %q; want empty under the template's empty fans", row, fan)
+		}
+	}
+	for _, row := range []string{loomshed.NameWebsterBurler, loomshed.NameWebsterBouncer} {
+		if _, present := c.env.RowClusterFans[row]; present {
+			t.Errorf("RowClusterFans has an entry for %q; want none, Webster-Review stays solo", row)
+		}
+	}
+
+	// Both fan keys set reach all four rows of the two segments, whose fanned reviewer lists come from fan_review.
+	fannedLoc := hubLocation(t, "pair", ".")
+	seedLoomConfigWithKeys(t, fannedLoc.AnchorPath(), map[string]string{"discussion_fan": "standard", "plan_fan": "full", "fan_review": "opus[effort=low]"})
+	fanned := &loomCLI{runID: shedrun.SelfRunID}
+	if err := fanned.wire(fannedLoc, fannedLoc.AnchorPath()); err != nil {
+		t.Fatalf("wire() with fans = %v; want nil", err)
+	}
+	wantFans := map[string]string{
+		loomshed.NameDiscussionBouncer: "standard",
+		loomshed.NameDiscussionBurler:  "standard",
+		loomshed.NamePlanBouncer:       "full",
+		loomshed.NamePlanBurler:        "full",
+	}
+	if !reflect.DeepEqual(fanned.env.RowClusterFans, wantFans) {
+		t.Errorf("RowClusterFans = %v; want %v", fanned.env.RowClusterFans, wantFans)
+	}
+	for _, row := range []string{loomshed.NameDiscussionBurler, loomshed.NamePlanBurler} {
+		got := fanned.env.RowReviewModels[row].Review
+		if len(got) != 1 || got[0].Model != "opus" || got[0].Effort != "low" {
+			t.Errorf("RowReviewModels[%q].Review = %+v; want the fan_review entry, opus of effort low", row, got)
+		}
+	}
 }

@@ -727,6 +727,14 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			loomshed.NamePlanBurler:       reviewSettings.Plan,
 			loomshed.NameWebsterBurler:    reviewSettings.Webster,
 		},
+		// A segment's fan reaches both of its rows from one key, so its Bouncer and its round agree by construction.
+		// Webster-Review stays solo: its forks may run no git and its subject exists only through git.
+		RowClusterFans: map[string]string{
+			loomshed.NameDiscussionBouncer: loomCfg.DiscussionFan,
+			loomshed.NameDiscussionBurler:  loomCfg.DiscussionFan,
+			loomshed.NamePlanBouncer:       loomCfg.PlanFan,
+			loomshed.NamePlanBurler:        loomCfg.PlanFan,
+		},
 
 		JudgeModel:   judgeSettings.Model,
 		JudgeEffort:  judgeSettings.Effort,

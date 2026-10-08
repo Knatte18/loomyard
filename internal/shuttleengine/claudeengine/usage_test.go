@@ -244,3 +244,75 @@ func TestCompactedSince_CountsTurnEndsAfterTheBoundary(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+// assistantLine builds one transcript line of an assistant message carrying the given usage.
+func assistantLine(id string, sidechain bool, input, cacheCreation, cacheRead, output int) string {
+	return fmt.Sprintf(`{"type":"assistant","isSidechain":%t,"message":{"id":%q,"usage":{"input_tokens":%d,"cache_creation_input_tokens":%d,"cache_read_input_tokens":%d,"output_tokens":%d}}}`,
+		sidechain, id, input, cacheCreation, cacheRead, output)
+}
+
+// TestSessionUsage_SumsParentAndForks covers the session-usage reading over fixture transcripts: a message repeated across lines counts once and sidechain and malformed lines are skipped, forks are summed into the totals and broken out, a session without a subagents directory has zero forks, and a missing transcript reads unknown.
+// It runs serially because it sets the process-global HOME.
+func TestSessionUsage_SumsParentAndForks(t *testing.T) {
+	const workdir = "/home/op/usage"
+	const sessionID = "sess-usage"
+
+	parentLines := []string{
+		assistantLine("m1", false, 1, 10, 100, 5),
+		assistantLine("m1", false, 1, 10, 100, 5),
+		assistantLine("m2", false, 2, 20, 200, 7),
+		assistantLine("side", true, 999, 999, 999, 999),
+		`not json`,
+	}
+	forkLines := func(id string, input, cacheRead int) []string {
+		return []string{
+			assistantLine("m2", true, 2, 20, 200, 7),
+			assistantLine(id, true, input, 0, cacheRead, 1),
+		}
+	}
+
+	tests := []struct {
+		name         string
+		parent       []string
+		forks        map[string][]string
+		noTranscript bool
+		want         shuttleengine.SessionUsage
+	}{
+		{
+			name:   "repeated message lines count once",
+			parent: parentLines,
+			want:   shuttleengine.SessionUsage{Known: true, Fresh: 16 + 29, CacheRead: 300},
+		},
+		{
+			name:   "two forks are summed and broken out",
+			parent: parentLines,
+			forks:  map[string][]string{"a.jsonl": forkLines("f1", 4, 40), "b.jsonl": forkLines("f2", 6, 60)},
+			want: shuttleengine.SessionUsage{
+				Known: true, Fresh: 16 + 29 + 5 + 7, CacheRead: 300 + 100,
+				Forks: 2, ForkFresh: 12, ForkCacheRead: 100,
+			},
+		},
+		{
+			name:         "a missing transcript reads unknown",
+			noTranscript: true,
+			want:         shuttleengine.SessionUsage{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			projectDir := filepath.Join(home, ".claude", "projects", encodeForTest(workdir))
+			if !tt.noTranscript {
+				writeParentTranscript(t, projectDir, sessionID, tt.parent)
+			}
+			for name, lines := range tt.forks {
+				writeForkTranscript(t, filepath.Join(projectDir, sessionID, "subagents"), name, lines)
+			}
+
+			if got := New().SessionUsage(sessionID, workdir); got != tt.want {
+				t.Errorf("SessionUsage() = %+v; want %+v", got, tt.want)
+			}
+		})
+	}
+}

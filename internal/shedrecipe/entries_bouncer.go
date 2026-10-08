@@ -59,6 +59,8 @@ func bouncerEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err != nil {
 		return nil, err
 	}
+	// A fan the wiring names for this row asks the judge for exclude_lenses exactly as the row's own cluster_excludes key does.
+	clusterExcludes = clusterExcludes || env.RowClusterFans[name] != ""
 	// A row setting model/effort/version overrides the Env value; a row omitting it takes the Env
 	// value; both absent leaves the provider default. An empty Config value and an absent key are
 	// the same thing here -- configString with required false returns "" for both -- and that is

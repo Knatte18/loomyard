@@ -197,6 +197,8 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 			if got := stateChanges(plain.log); len(got) != 0 || strings.Contains(plain.log, "disagrees") {
 				t.Errorf("an engine without the parser logged session state: %q", plain.log)
 			}
+			// The two drives read the real clock at different instants.
+			shadowed.result.EndedAt, plain.result.EndedAt = time.Time{}, time.Time{}
 			if !reflect.DeepEqual(shadowed.result, plain.result) {
 				t.Errorf("result with the parser = %+v, without = %+v", shadowed.result, plain.result)
 			}

@@ -51,15 +51,92 @@ type recurringKey struct {
 	Reopened bool
 }
 
+// noOriginLabel is the label under which findings that carry no origin are counted in the lens section.
+const noOriginLabel = "(no origin)"
+
+// originCounts is the latest review's finding count for one origin value.
+type originCounts struct {
+	Origin   string
+	Findings int
+	Severity map[burlerengine.Severity]int
+	Class    map[burlerengine.Class]int
+}
+
+// lensFacts is the lens section of a fanned segment's facts file.
+// UsageErr is set when the round's usage record is missing or unreadable, leaving Fan, Lenses and Excluded empty;
+// ReviewErr is set when the latest review does not parse, leaving Origins empty.
+type lensFacts struct {
+	Fan       string
+	Lenses    []string
+	UsageErr  string
+	ReviewErr string
+	Origins   []originCounts
+	Excluded  []string
+}
+
 // roundFacts is everything the facts file for Round records.
 // EarlierOpen lists every key open in at least one ledger before Round, with the ledger rounds it was open in,
 // and EarlierLedgerErrs names each earlier ledger that is missing or fails to parse, so a degraded read never empties the list silently.
+// Lenses is set only for a fanned segment.
 type roundFacts struct {
 	Round             int
 	Rows              []roundFactsRow
 	Recurring         []recurringKey
 	EarlierOpen       []recurringKey
 	EarlierLedgerErrs []string
+	Lenses            *lensFacts
+}
+
+// computeLensFacts reads the fan and the lenses round ran from its usage record, counts round's review by origin through burlerengine.ParseReview,
+// and names the lenses already excluded for the round's next judgment.
+// A missing usage record or an unparseable review is recorded on the result and never fails the function.
+// Every lens the round ran has an origin row, even with no findings.
+func computeLensFacts(name, runDir string, round int, reportName func(int) string) lensFacts {
+	var facts lensFacts
+	usage, err := readRoundUsage(runDir, round)
+	if err != nil {
+		facts.UsageErr = escapeCell(err.Error())
+	} else {
+		facts.Fan = usage.Fan
+		facts.Lenses = usage.Lenses
+		facts.Excluded, _ = excludedLenses(name, runDir, round, usage.Fan)
+	}
+
+	byOrigin := map[string]*originCounts{}
+	countsFor := func(origin string) *originCounts {
+		if byOrigin[origin] == nil {
+			byOrigin[origin] = &originCounts{Origin: origin, Severity: map[burlerengine.Severity]int{}, Class: map[burlerengine.Class]int{}}
+		}
+		return byOrigin[origin]
+	}
+	for _, lens := range facts.Lenses {
+		countsFor("lens:" + lens)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(runDir, reportName(round)))
+	if err == nil {
+		var findings []burlerengine.Finding
+		_, findings, err = burlerengine.ParseReview(raw)
+		for _, f := range findings {
+			origin := f.Origin
+			if origin == "" {
+				origin = noOriginLabel
+			}
+			counts := countsFor(origin)
+			counts.Findings++
+			counts.Severity[f.Severity]++
+			counts.Class[f.Class]++
+		}
+	}
+	if err != nil {
+		facts.ReviewErr = escapeCell(err.Error())
+		return facts
+	}
+	for _, counts := range byOrigin {
+		facts.Origins = append(facts.Origins, *counts)
+	}
+	sort.Slice(facts.Origins, func(i, j int) bool { return facts.Origins[i].Origin < facts.Origins[j].Origin })
+	return facts
 }
 
 // computeRoundFacts reads rounds 1..round's review files and rounds 1..round-1's ledgers inside runDir.
@@ -294,7 +371,59 @@ func renderRoundFacts(f roundFacts) []byte {
 	for _, errLine := range f.EarlierLedgerErrs {
 		fmt.Fprintf(&b, "- parse error: %s\n", errLine)
 	}
+	if f.Lenses != nil {
+		renderLensFacts(&b, *f.Lenses)
+	}
 	return []byte(b.String())
+}
+
+// renderLensFacts writes the "## Lenses" section: the fan, the lenses run, the lenses already excluded and a table of the latest review's findings per origin.
+// A missing usage record or an unparseable review renders as one line saying so in place of what it would have supplied.
+func renderLensFacts(b *strings.Builder, l lensFacts) {
+	b.WriteString("\n## Lenses (the latest round's findings per origin)\n\n")
+	if l.UsageErr != "" {
+		fmt.Fprintf(b, "Usage record unreadable, so the fan and lenses run are unknown: %s\n", l.UsageErr)
+	} else {
+		fmt.Fprintf(b, "Fan: `%s`\n\n", l.Fan)
+		fmt.Fprintf(b, "Lenses run: %s\n\n", joinOrNone(l.Lenses))
+		fmt.Fprintf(b, "Lenses already excluded for the next round: %s\n", joinOrNone(l.Excluded))
+	}
+	if l.ReviewErr != "" {
+		fmt.Fprintf(b, "\nReview unparseable, so findings per origin are unknown: %s\n", l.ReviewErr)
+		return
+	}
+	b.WriteString("\n")
+	header := []string{"Origin", "Findings"}
+	for _, s := range severityOrder {
+		header = append(header, string(s))
+	}
+	for _, c := range classOrder {
+		header = append(header, string(c))
+	}
+	writeTableRow(b, header)
+	sep := make([]string, len(header))
+	for i := range sep {
+		sep[i] = "---"
+	}
+	writeTableRow(b, sep)
+	for _, o := range l.Origins {
+		cells := []string{"`" + o.Origin + "`", fmt.Sprint(o.Findings)}
+		for _, s := range severityOrder {
+			cells = append(cells, fmt.Sprint(o.Severity[s]))
+		}
+		for _, c := range classOrder {
+			cells = append(cells, fmt.Sprint(o.Class[c]))
+		}
+		writeTableRow(b, cells)
+	}
+}
+
+// joinOrNone joins names with ", " and renders none as "none".
+func joinOrNone(names []string) string {
+	if len(names) == 0 {
+		return "none"
+	}
+	return strings.Join(names, ", ")
 }
 
 // writeTableRow writes one Markdown table row.
@@ -312,8 +441,14 @@ func escapeCell(s string) string {
 }
 
 // writeRoundFacts computes and renders round's facts file and writes it at factsPath, overwriting any earlier render.
-func writeRoundFacts(runDir string, round int, reportName func(int) string) error {
-	content := renderRoundFacts(computeRoundFacts(runDir, round, reportName))
+// The lens section is computed, identifying itself as name in its warnings, only when clusterExcludes is true, so a solo segment's file carries none.
+func writeRoundFacts(name, runDir string, round int, reportName func(int) string, clusterExcludes bool) error {
+	facts := computeRoundFacts(runDir, round, reportName)
+	if clusterExcludes {
+		lenses := computeLensFacts(name, runDir, round, reportName)
+		facts.Lenses = &lenses
+	}
+	content := renderRoundFacts(facts)
 	path := factsPath(runDir, round)
 	if err := os.WriteFile(path, content, 0o644); err != nil {
 		return fmt.Errorf("bouncer: write facts file %s: %w", path, err)

@@ -87,3 +87,48 @@ func readRoundFocus(name, runDir string, round int) RoundFocus {
 	}
 	return focus
 }
+
+// excludedLenses returns the lenses of fan that rounds 2 through `through` of the generation in runDir exclude, and the entries of round `through`'s own focus file it refused.
+// A round k entry is eligible only when round k-1's usage record names fan as its fan and lists the lens among those it ran;
+// a missing or unreadable record makes every entry of that file ineligible.
+// excluded is the union of the eligible entries in first-seen order, and dropped the ineligible entries of round `through`'s file.
+func excludedLenses(name, runDir string, through int, fan string) (excluded, dropped []string) {
+	seen := map[string]bool{}
+	for round := 2; round <= through; round++ {
+		entries := readRoundFocus(name, runDir, round).ExcludeLenses
+		if len(entries) == 0 {
+			continue
+		}
+		ran := lensesRunUnderFan(name, runDir, round-1, fan)
+		for _, lens := range entries {
+			if !ran[lens] {
+				if round == through {
+					dropped = append(dropped, lens)
+				}
+				continue
+			}
+			if !seen[lens] {
+				seen[lens] = true
+				excluded = append(excluded, lens)
+			}
+		}
+	}
+	return excluded, dropped
+}
+
+// lensesRunUnderFan returns the set of lenses round's usage record lists as run, empty when the record is missing, unreadable or names a fan other than fan.
+func lensesRunUnderFan(name, runDir string, round int, fan string) map[string]bool {
+	usage, err := readRoundUsage(runDir, round)
+	if err != nil {
+		logger.Warn("shedadapters: usage record unreadable; the next round's lens exclusions are ineligible", "producer", name, "engine", burlerEngineLabel, "round", round, "error", err)
+		return nil
+	}
+	if usage.Fan != fan {
+		return nil
+	}
+	ran := make(map[string]bool, len(usage.Lenses))
+	for _, lens := range usage.Lenses {
+		ran[lens] = true
+	}
+	return ran
+}
