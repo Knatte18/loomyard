@@ -915,11 +915,12 @@ func (e *Engine) serverPIDLocked() int {
 }
 
 // sessionReapRootsLocked returns this session's safe descendant-closure reap roots — the
-// #{pane_pid} of every pane that is present AND still running (see safeReapRoot, strand.go).
+// #{pane_pid} of every pane, in any window of the session, that is present AND still running (see safeReapRoot, strand.go).
+// It reads no reed state, so Down reaps over a corrupt state file too.
 // Returns nil on failure.
 // Must run before kill-session while panes exist.
 func (e *Engine) sessionReapRootsLocked() []int {
-	live, err := e.listStoredStrandPanes()
+	live, err := reapSessionPanes(e.tmux, e.SessionName())
 	if err != nil {
 		return nil
 	}

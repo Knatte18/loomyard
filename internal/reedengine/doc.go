@@ -180,7 +180,8 @@
 // Strand window: the strands live in one window of the session, and every op that enumerates, lays out or measures them addresses that window by its id ("@<n>"), never by the session's current window.
 // A second window in the session is therefore never read as the strands' window.
 // The one seam, windowtarget.go's TmuxCmd.strandWindowTarget, lists the session's own panes across all its windows (`list-panes -s -t '=<session>' -F "#{pane_id} #{window_id}"`).
-// It resolves the window of the recorded Selvage pane (alive, or a dead corpse), else of any present recorded strand pane, else the current-window target "=<session>:", which only the seam and the engine-less reap helpers keep.
+// It resolves the window of the recorded Selvage pane (alive, or a dead corpse), else of any present recorded strand pane, else the current-window target "=<session>:", which only the seam keeps.
+// A session reap (Down, and the engine-less ReapSession) ends every window, so it lists the panes of all of them (`list-panes -s`) and reads no reed state.
 // A recorded pane id counts as present only when that session-scoped listing carries it, since pane ids are server-wide and a stale id can name another session's pane.
 // With a present Selvage or strand pane a batten window, current or not, is never read as the strands' window and its pane is never reaped as untracked.
 // A session's first up has neither, so it falls back to the current window, and the Selvage pane created there defines the strand window from then on.

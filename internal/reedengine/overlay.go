@@ -143,11 +143,10 @@ func listSessionsVia(cmd TmuxCmd) ([]string, error) {
 	return names, nil
 }
 
-// reapSessionPanes lists the panes of windowTarget, split out from ReapSession so a test can drive the
-// pane-listing half through TmuxCmd's execHook seam directly, mirroring listSessionsVia's own
-// reason for existing.
-func reapSessionPanes(cmd TmuxCmd, windowTarget string) ([]LivePane, error) {
-	return cmd.listPanes(windowTarget)
+// reapSessionPanes lists the panes of every window of session, the panes a kill-session ends, so a session reap covers a second window's process tree too and needs no reed state.
+// It is split out from ReapSession so a test can drive the pane-listing half through TmuxCmd's execHook seam directly, mirroring listSessionsVia's own reason for existing.
+func reapSessionPanes(cmd TmuxCmd, session string) ([]LivePane, error) {
+	return cmd.listSessionPanes(session)
 }
 
 // reapSessionKill kills session by exact-match target. The exactSessionTarget wrapper is
@@ -182,7 +181,7 @@ func reapSessionVia(cmd TmuxCmd, shellPath, socketKey, sessionName string, timeo
 	if timeout == 0 {
 		timeout = reapExitTimeout
 	}
-	live, err := reapSessionPanes(cmd, exactSessionWindowTarget(sessionName))
+	live, err := reapSessionPanes(cmd, sessionName)
 	if err != nil {
 		// A session whose panes cannot be listed is the one most worth killing, so a
 		// listing failure never skips the kill — it only loses the descendant closure.
@@ -266,9 +265,21 @@ func (p TmuxCmd) hasSession(name string) (bool, error) {
 	return false, err
 }
 
+// paneListFormat is the list-panes format parsePaneList reads.
+const paneListFormat = "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}"
+
 // listPanes returns all panes of the window windowTarget names.
 func (p TmuxCmd) listPanes(windowTarget string) ([]LivePane, error) {
-	out, err := p.output("list-panes", "-t", windowTarget, "-F", "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}")
+	out, err := p.output("list-panes", "-t", windowTarget, "-F", paneListFormat)
+	if err != nil {
+		return nil, err
+	}
+	return parsePaneList(out)
+}
+
+// listSessionPanes returns the panes of every window of session.
+func (p TmuxCmd) listSessionPanes(session string) ([]LivePane, error) {
+	out, err := p.output("list-panes", "-s", "-t", exactSessionTarget(session), "-F", paneListFormat)
 	if err != nil {
 		return nil, err
 	}

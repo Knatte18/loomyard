@@ -38,7 +38,7 @@ type tmuxAnswer struct {
 // fakeTmux answers every tmux round trip from per-verb scripts and logs each call's argv.
 // An unscripted verb answers empty with no error.
 // The session-wide listing (list-panes -s) is its own verb, sessionListVerb:
-// unscripted, it lists every pane the plain list-panes script names as a member of window fakeStrandWindow.
+// unscripted, it answers the plain list-panes script, rendered as each pane's membership of window fakeStrandWindow when it asks for sessionPaneWindowFormat.
 // It is safe for one goroutine to script and read it while another drives the engine.
 type fakeTmux struct {
 	t *testing.T
@@ -189,7 +189,10 @@ func (f *fakeTmux) exec(capture bool, args ...string) (string, error) {
 	real := f.real
 	ans, ok := f.verbs[verb]
 	if verb == sessionListVerb && !ok {
-		ans, ok = tmuxAnswer{out: sessionListingOf(f.verbs["list-panes"].out)}, true
+		ans, ok = f.verbs["list-panes"], true
+		if args[len(args)-1] == sessionPaneWindowFormat {
+			ans = tmuxAnswer{out: sessionListingOf(ans.out)}
+		}
 	}
 	if verb == "display-message" {
 		if byFormat, found := f.formats[args[len(args)-1]]; found {

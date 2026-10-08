@@ -359,3 +359,30 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 		})
 	}
 }
+
+// TestDown_ListsEveryWindowsPanesOverACorruptState pins that Down, the escape that works over a corrupt reed.json, still lists the session's panes in every window for its reap before killing the session, and deletes the state.
+func TestDown_ListsEveryWindowsPanesOverACorruptState(t *testing.T) {
+	e := newTestEngine(t)
+	statePath := filepath.Join(e.stateDir(), reedStateFileName)
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statePath, []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fake := installFakeTmux(t, e)
+	// A dead pane is listed but never reaped, so the test touches no real process.
+	fake.answer("list-panes", "%1 1 0 80 24 4242\n", nil)
+	// A sibling session keeps Down off the server teardown path.
+	fake.answer("list-sessions", "sibling-session\n", nil)
+
+	if _, err := e.Down(); err != nil {
+		t.Fatalf("Down() error = %v; want nil", err)
+	}
+	if got := fake.Sequence(sessionListVerb, "kill-session"); !slices.Equal(got, []string{sessionListVerb, "kill-session"}) {
+		t.Errorf("Down() tmux sequence = %v; want the session-wide pane listing, then kill-session", got)
+	}
+	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
+		t.Errorf("stat %s error = %v; want the state file deleted", statePath, err)
+	}
+}
