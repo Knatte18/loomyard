@@ -292,6 +292,11 @@ var ParentDirectiveOperatorBan []byte
 //go:embed parent/parent-directive-none.md
 var ParentDirectiveNone []byte
 
+// EditDirective is the shared edit directive's shipped default: the no-script edit rule every spawned role's opening stencil carries.
+//
+//go:embed edit/edit-directive.md
+var EditDirective []byte
+
 // registryEntry pairs one stencil's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -355,6 +360,7 @@ var entries = []registryEntry{
 	{"parent-directive-parent", &ParentDirectiveParent},
 	{"parent-directive-operator-ban", &ParentDirectiveOperatorBan},
 	{"parent-directive-none", &ParentDirectiveNone},
+	{"edit-directive", &EditDirective},
 }
 
 // roleOpeningStencils maps each spawned role other than the orch to the stencils that open its session.
