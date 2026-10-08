@@ -277,7 +277,7 @@ func (c *Claude) SessionUsage(sessionID, workdir string) shuttleengine.SessionUs
 	if err != nil {
 		return shuttleengine.SessionUsage{}
 	}
-	parent, err := sumTranscriptTokens(filepath.Join(projectDir, sessionID+".jsonl"), false, nil)
+	parent, err := transcriptTokens(filepath.Join(projectDir, sessionID+".jsonl"), false, nil)
 	if err != nil {
 		return shuttleengine.SessionUsage{}
 	}
@@ -293,7 +293,7 @@ func (c *Claude) SessionUsage(sessionID, workdir string) shuttleengine.SessionUs
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
 			continue
 		}
-		fork, err := sumTranscriptTokens(filepath.Join(subagentsDir, entry.Name()), true, parent.messageIDs)
+		fork, err := transcriptTokens(filepath.Join(subagentsDir, entry.Name()), true, parent.messageIDs)
 		if err != nil {
 			return shuttleengine.SessionUsage{}
 		}
@@ -306,23 +306,18 @@ func (c *Claude) SessionUsage(sessionID, workdir string) shuttleengine.SessionUs
 	return reading
 }
 
-// transcriptTokens sums the main-chain assistant usage of the transcript at path: fresh is input plus cache-creation plus output tokens, cacheRead is cache-read tokens.
-// A message counts once however many transcript lines carry it, malformed lines and sidechain entries are skipped, and an unreadable file is an error.
-func transcriptTokens(path string) (fresh, cacheRead int, err error) {
-	sum, err := sumTranscriptTokens(path, false, nil)
-	return sum.fresh, sum.cacheRead, err
-}
-
 // tokenSum is the usage sum of one transcript with the ids of the messages it counted.
 type tokenSum struct {
 	fresh, cacheRead int
 	messageIDs       map[string]struct{}
 }
 
-// sumTranscriptTokens is transcriptTokens that also counts sidechain entries when includeSidechain is set, as a fork transcript needs, and skips every message whose id is in skipIDs.
-// A fork transcript replays the parent's spawning message as its first entry, which skipIDs keeps from being counted twice.
-// A message's last line carries its final usage, so it wins over the message's earlier lines.
-func sumTranscriptTokens(path string, includeSidechain bool, skipIDs map[string]struct{}) (tokenSum, error) {
+// transcriptTokens sums the assistant usage of the transcript at path: fresh is input plus cache-creation plus output tokens, cacheRead is cache-read tokens.
+// Sidechain entries count only when includeSidechain is set, as a fork transcript needs.
+// Every message whose id is in skipIDs is skipped, since a fork transcript replays the parent's spawning message as its first entry.
+// A message counts once however many transcript lines carry it, its last line winning since it carries the final usage.
+// Malformed lines are skipped, and an unreadable file is an error.
+func transcriptTokens(path string, includeSidechain bool, skipIDs map[string]struct{}) (tokenSum, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return tokenSum{}, err
