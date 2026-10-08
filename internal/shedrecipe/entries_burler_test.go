@@ -304,6 +304,25 @@ func TestBurlerRoundEntry_EnvReviewFallback(t *testing.T) {
 		}
 	})
 
+	t.Run("RowClusterFansEntryReachesItsOwnRowOnly", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.RowClusterFans = map[string]string{"review-round": "env-fan"}
+
+		profile, _ := callAndCaptureProfile(t, "review-round", minimalBurlerConfig(), env)
+		if profile.ClusterFan != "env-fan" {
+			t.Errorf("profile.ClusterFan = %q; want the row's RowClusterFans entry env-fan", profile.ClusterFan)
+		}
+
+		otherEnv := newTestEnv(t)
+		otherEnv.RowClusterFans = env.RowClusterFans
+		cfg := minimalBurlerConfig()
+		cfg["profile"].(map[string]any)["cluster-fan"] = "recipe-fan"
+		other, _ := callAndCaptureProfile(t, "other-round", cfg, otherEnv)
+		if other.ClusterFan != "recipe-fan" {
+			t.Errorf("other row's ClusterFan = %q; want the recipe's recipe-fan, the map names another row", other.ClusterFan)
+		}
+	})
+
 	t.Run("RowSetsOverridesEnvValues", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.ReviewTimeout = 45 * time.Second
@@ -572,6 +591,17 @@ func TestBurlerRoundEntry_ConstructionFailures(t *testing.T) {
 		env.Burler = nil
 		_, err := burlerRoundEntry("review-round", cfg, env)
 		assertErrContains(t, err, "Burler")
+	})
+
+	t.Run("EnvFanBesideRecipeClusterFanNamesBoth", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.RowClusterFans = map[string]string{"review-round": "env-fan"}
+		cfg := minimalBurlerConfig()
+		cfg["profile"].(map[string]any)["cluster-fan"] = "recipe-fan"
+		_, err := burlerRoundEntry("review-round", cfg, env)
+		for _, want := range []string{"review-round", "env-fan", "recipe-fan", "loom.yaml", "remove cluster-fan"} {
+			assertErrContains(t, err, want)
+		}
 	})
 
 	t.Run("NilEnvNowConstructsSuccessfully", func(t *testing.T) {

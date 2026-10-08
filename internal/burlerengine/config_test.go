@@ -95,11 +95,11 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 
 	cfg := loadSeededConfig(t)
 
-	const wantLenses = 9
+	const wantLenses = 16
 	if len(cfg.Lenses) != wantLenses {
 		t.Errorf("seeded template has %d lenses; want %d", len(cfg.Lenses), wantLenses)
 	}
-	const wantFans = 2
+	const wantFans = 4
 	if len(cfg.Fans) != wantFans {
 		t.Errorf("seeded template has %d fans; want %d", len(cfg.Fans), wantFans)
 	}
@@ -110,7 +110,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 			}
 		}
 	}
-	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8} {
+	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5} {
 		entries, ok := cfg.Fans[fanName]
 		if !ok {
 			t.Errorf("seeded template is missing fan %q", fanName)
@@ -119,10 +119,29 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 			t.Errorf("fan %q has %d entries; want %d", fanName, len(entries), wantEntries)
 		}
 	}
+	wantOrders := map[string][]string{
+		"discussion": {"generic", "goal-scope", "pattern-fit", "scenarios", "leanness"},
+		"plan":       {"generic", "decision-coverage", "card-structure", "verify-tests", "pattern-fit"},
+	}
+	for fanName, wantOrder := range wantOrders {
+		lenses, err := ResolveFan(Config{}, fanName)
+		if err != nil {
+			t.Fatalf("ResolveFan(%s) returned unexpected error: %v", fanName, err)
+		}
+		for i, wantName := range wantOrder {
+			if lenses[i].Name != wantName {
+				t.Errorf("ResolveFan(%s)[%d].Name = %q; want %q", fanName, i, lenses[i].Name, wantName)
+			}
+		}
+	}
 
+	const emphasisLine = "Report anything else you notice too — emphasis, never exclusion."
 	for name, text := range cfg.Lenses {
 		if strings.TrimSpace(text) == "" {
 			t.Errorf("lens %q has empty text", name)
+		}
+		if name != "generic" && !strings.HasSuffix(strings.Join(strings.Fields(text), " "), emphasisLine) {
+			t.Errorf("lens %q text does not end with the emphasis line", name)
 		}
 		if strings.Contains(text, "ignore ") {
 			t.Errorf("lens %q text contains hard-exclusion phrasing (\"ignore \"): %q", name, text)
@@ -204,11 +223,45 @@ func TestResolveFan(t *testing.T) {
 		requireContains(t, err.Error(), "exceeding the maximum")
 	})
 
-	t.Run("zero-Config fan lookup mentions reconcile", func(t *testing.T) {
-		_, err := ResolveFan(Config{}, "standard")
-		if err == nil {
-			t.Fatal("ResolveFan(zero Config) returned nil error")
+	t.Run("zero Config resolves from the template", func(t *testing.T) {
+		lenses, err := ResolveFan(Config{}, "standard")
+		if err != nil {
+			t.Fatalf("ResolveFan(zero Config, standard) returned unexpected error: %v", err)
 		}
-		requireContains(t, err.Error(), "reconcile")
+		if want := len(seeded.Fans["standard"]); len(lenses) != want {
+			t.Errorf("ResolveFan(zero Config, standard) returned %d lenses; want %d", len(lenses), want)
+		}
+	})
+
+	t.Run("operator file without the fan resolves it from the template", func(t *testing.T) {
+		lenses, err := ResolveFan(custom, "standard")
+		if err != nil {
+			t.Fatalf("ResolveFan(custom, standard) returned unexpected error: %v", err)
+		}
+		if lenses[0].Text != seeded.Lenses[lenses[0].Name] {
+			t.Errorf("lens %q text does not come from the template", lenses[0].Name)
+		}
+	})
+
+	t.Run("operator-defined fan and lens win over the template", func(t *testing.T) {
+		operator := Config{
+			Lenses: map[string]string{"generic": "operator generic"},
+			Fans:   map[string][]string{"standard": {"generic"}},
+		}
+		lenses, err := ResolveFan(operator, "standard")
+		if err != nil {
+			t.Fatalf("ResolveFan(operator, standard) returned unexpected error: %v", err)
+		}
+		if len(lenses) != 1 || lenses[0].Text != "operator generic" {
+			t.Errorf("ResolveFan(operator, standard) = %+v; want the operator's single generic lens", lenses)
+		}
+	})
+
+	t.Run("fan undefined in both names the fan", func(t *testing.T) {
+		_, err := ResolveFan(Config{}, "nope")
+		if err == nil {
+			t.Fatal("ResolveFan(zero Config, nope) returned nil error")
+		}
+		requireContains(t, err.Error(), `"nope"`)
 	})
 }

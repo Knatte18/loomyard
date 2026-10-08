@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -28,7 +29,7 @@ const (
 const driverNotifyMarker = "parent_notify"
 
 // driverPrompt composes the driver session's launch prompt: the shed driver stencil, read from stencilsDir through stencilstore.Read and filled with the run-id, the report path the session writes at every stop,
-// driverParkCommand(reportPath), driverTeardownCommand and parentdirective.Directive(stencilsDir, parentName, false).
+// driverParkCommand(reportPath), driverTeardownCommand, parentdirective.Directive(stencilsDir, parentName, false) and editdirective.Directive(stencilsDir).
 // The marker for the parent-notification rule is filled with the watched stencil when watched is true and with the plain one otherwise.
 // The prompt is the driver's whole procedure, so the session depends on no installed skill.
 // At a done run or a busy refusal, as its last act after writing its stop report, the session runs driverTeardownCommand to end its own strand;
@@ -41,6 +42,10 @@ const driverNotifyMarker = "parent_notify"
 // This file composes prompt text alone and names no Claude flag and no command line: the Shuttle Provider-Seam Invariant keeps provider specifics under the claude engine package.
 func driverPrompt(stencilsDir, parentName, runID, reportPath string, watched bool) (string, error) {
 	directive, err := parentdirective.Directive(stencilsDir, parentName, false)
+	if err != nil {
+		return "", err
+	}
+	editDirective, err := editdirective.Directive(stencilsDir)
 	if err != nil {
 		return "", err
 	}
@@ -63,6 +68,7 @@ func driverPrompt(stencilsDir, parentName, runID, reportPath string, watched boo
 		"park_command":             driverParkCommand(reportPath),
 		"teardown_command":         driverTeardownCommand,
 		parentdirective.MarkerName: directive,
+		editdirective.MarkerName:   editDirective,
 		driverNotifyMarker:         notify,
 	})
 	if err != nil {

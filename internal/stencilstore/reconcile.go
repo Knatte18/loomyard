@@ -1,7 +1,8 @@
 // reconcile.go implements the runtime read path (Read), the once-per-process seed/refresh pass
 // (Reconcile, ForceRefresh), and the drift-notification warnings that accompany it.
-// Reconcile never blocks and never returns a non-zero-affecting error for a drift signal -- both
-// drift warnings it emits are logger.Warn lines only, per the seeding-trigger Shared Decision.
+// Reconcile never blocks and never returns a non-zero-affecting error for a drift signal.
+// Its drift notices are log lines only, per the seeding-trigger Shared Decision.
+// The Source it is given carries the worktree's stencil directory and, optionally, its build-ancestry read.
 
 package stencilstore
 
@@ -33,14 +34,35 @@ func Read(baseDir, name string) ([]byte, error) {
 	return content, nil
 }
 
+// BuildAncestry reports whether a worktree's HEAD holds the commit the running binary was built from.
+type BuildAncestry int
+
+const (
+	// BuildAncestryUnknown: the binary carries no VCS revision, or reading the ancestry failed.
+	BuildAncestryUnknown BuildAncestry = iota
+	// BuildInHead: the worktree's HEAD holds the binary's build commit.
+	BuildInHead BuildAncestry = 1
+	// BuildNotInHead: the worktree's HEAD lacks the binary's build commit.
+	BuildNotInHead BuildAncestry = 2
+)
+
+// Source names the worktree a seed pass compares the board copies against.
+// Dir is the worktree's stencil source tree; empty names none and keeps the drift warning silent.
+// Build reports the worktree's BuildAncestry; nil means unknown.
+// The store runs no git itself, so the caller supplies Build.
+type Source struct {
+	Dir   string
+	Build func() BuildAncestry
+}
+
 // Reconcile is the once-per-process seed/refresh pass: for every name in registry.Names() it reads
 // the on-disk file, classifies it against the registry's shipped default, and acts per the
 // edit-detection table (see Classify) and dev/prod Mode.
-// It also seeds baseDir/.gitattributes when absent, and, when sourceDir is non-empty, warns on any
-// board-copy-vs-worktree-source drift.
+// It also seeds baseDir/.gitattributes when absent, and, when source.Dir is non-empty, warns on any
+// board-copy-vs-worktree-source drift, consulting source.Build only for a stencil the source is ahead on.
 // It returns the baseDir-relative, slash-separated paths it actually wrote, in registry.Names()
 // order, and writes nothing at all when every file is already correct.
-func Reconcile(baseDir string, registry Registry, mode Mode, sourceDir string) ([]string, error) {
+func Reconcile(baseDir string, registry Registry, mode Mode, source Source) ([]string, error) {
 	var written []string
 
 	for _, name := range registry.Names() {
@@ -74,8 +96,8 @@ func Reconcile(baseDir string, registry Registry, mode Mode, sourceDir string) (
 		written = append(written, gitattributesName)
 	}
 
-	if sourceDir != "" {
-		warnPortBackDrift(baseDir, registry, sourceDir)
+	if source.Dir != "" {
+		warnPortBackDrift(baseDir, registry, source)
 	}
 
 	return written, nil
@@ -176,6 +198,8 @@ func (c driftClass) String() string {
 		return "source-ahead"
 	case driftBoth:
 		return "both"
+	case driftBehind:
+		return "behind"
 	default:
 		return "neither"
 	}
@@ -192,13 +216,18 @@ const (
 	// driftNeither: the board copy is untouched and the source equals the embedded bytes, so the
 	// board copy is merely older than what this binary carries.
 	driftNeither
+	// driftBehind: the board copy is untouched and the source differs from the embedded bytes.
+	// The worktree also lacks the build commit that deployed the board copy.
+	driftBehind driftClass = 4
 )
 
 // classifyPortBackDrift classifies a differing board copy on the two signals the warning turns on:
 // hand-edited (Classify reports StateEdited against the embedded bytes) and source-ahead (the source
 // body differs from the embedded body).
+// A source-ahead copy calls build, once, to tell a worktree behind the build from one genuinely ahead of the deployed binary.
+// A nil build counts as unknown.
 // It returns the class and the warning's message, which names the remedy that class allows.
-func classifyPortBackDrift(boardContent, sourceContent, embedded []byte) (driftClass, string) {
+func classifyPortBackDrift(boardContent, sourceContent, embedded []byte, build func() BuildAncestry) (driftClass, string) {
 	handEdited := Classify(boardContent, true, embedded) == StateEdited
 	sourceAhead := BodyHash(sourceContent) != BodyHash(embedded)
 
@@ -207,6 +236,8 @@ func classifyPortBackDrift(boardContent, sourceContent, embedded []byte) (driftC
 		return driftBoth, "stencilstore: board copy has drifted from worktree source; both sides changed and promote would overwrite the source's changes -- reconcile by hand"
 	case handEdited:
 		return driftHandEdited, "stencilstore: board copy has drifted from worktree source; it was hand-edited -- run \"lyx stencil promote <name>\" to port it back"
+	case sourceAhead && build != nil && build() == BuildNotInHead:
+		return driftBehind, "stencilstore: board copy has drifted from worktree source; this worktree is behind the build that deployed the board copy -- syncing this worktree with main resolves it"
 	case sourceAhead:
 		return driftSourceAhead, "stencilstore: board copy has drifted from worktree source; the board copy is untouched and a binary older than the source deployed it -- run a production deploy (update-plugins.sh)"
 	default:
@@ -214,12 +245,13 @@ func classifyPortBackDrift(boardContent, sourceContent, embedded []byte) (driftC
 	}
 }
 
-// warnPortBackDrift compares each registry name's on-disk board copy against sourceDir's worktree
-// copy and emits one logger.Warn per differing stencil, naming the stencil, its drift class and
+// warnPortBackDrift compares each registry name's on-disk board copy against source.Dir's worktree
+// copy and emits one log line per differing stencil, naming the stencil, its drift class and
 // the remedy that class allows (see classifyPortBackDrift).
+// A behind class logs at Info, since a sync clears it; every other class logs at Warn.
 // A missing source file is skipped silently; this comparison never returns an error and never
 // affects an exit code, per the drift-notification-is-logger-warn-and-never-blocks Shared Decision.
-func warnPortBackDrift(baseDir string, registry Registry, sourceDir string) {
+func warnPortBackDrift(baseDir string, registry Registry, source Source) {
 	for _, name := range registry.Names() {
 		boardPath := Path(baseDir, name)
 		boardContent, err := os.ReadFile(boardPath)
@@ -227,7 +259,7 @@ func warnPortBackDrift(baseDir string, registry Registry, sourceDir string) {
 			continue
 		}
 
-		sourcePath := filepath.Join(sourceDir, filepath.FromSlash(RelPath(name)))
+		sourcePath := filepath.Join(source.Dir, filepath.FromSlash(RelPath(name)))
 		sourceContent, err := os.ReadFile(sourcePath)
 		if err != nil {
 			continue
@@ -237,7 +269,11 @@ func warnPortBackDrift(baseDir string, registry Registry, sourceDir string) {
 		sourceBody := NormalizeLF([]byte(stencil.StripLeadingComment(string(sourceContent))))
 		if string(boardBody) != string(sourceBody) {
 			embedded, _ := registry.Default(name)
-			class, msg := classifyPortBackDrift(boardContent, sourceContent, embedded)
+			class, msg := classifyPortBackDrift(boardContent, sourceContent, embedded, source.Build)
+			if class == driftBehind {
+				logger.Info(msg, "stencil", name, "class", class.String())
+				continue
+			}
 			logger.Warn(msg, "stencil", name, "class", class.String())
 		}
 	}
@@ -246,6 +282,6 @@ func warnPortBackDrift(baseDir string, registry Registry, sourceDir string) {
 // ForceRefresh performs the refresh row even on a stencil a ModeDev pass would leave untouched.
 // It is the entry point `lyx stencil sync` calls, which is why an explicit sync refreshes even from
 // a -dev-stamped binary.
-func ForceRefresh(baseDir string, registry Registry, sourceDir string) ([]string, error) {
-	return Reconcile(baseDir, registry, ModeProduction, sourceDir)
+func ForceRefresh(baseDir string, registry Registry, source Source) ([]string, error) {
+	return Reconcile(baseDir, registry, ModeProduction, source)
 }

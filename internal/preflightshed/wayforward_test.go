@@ -1,15 +1,46 @@
-// wayforward_test.go covers wayForward's per-check mapping over in-memory Reports.
-// The rows reached from a real hub (a dirty task worktree, a `_lyx` checkout off its paired branch) belong to the integration suite;
+// wayforward_test.go covers wayForward's per-check mapping over in-memory Reports, and the reconcile Stuck reasons no real hub reaches cheaply.
+// The rows reached from a real hub (a dirty task worktree, a `_lyx` checkout off its paired branch, an unparseable config, a held hub lock) belong to the integration suite;
 // this file stays offline.
 
 package preflightshed
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/preflight"
 )
+
+func TestReconcileRefusal_NamesTheCauseAndLoomResume(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{
+			"CommitFailureNamesNoFile",
+			&hubreconcile.WorktreeError{Worktree: "/hub/pair-a", Err: errors.New("commit refused")},
+			`hub config reconcile failed in /hub/pair-a: commit refused; way forward: fix the cause named above, then run "lyx loom resume" in the task worktree`,
+		},
+		{
+			"OtherError",
+			errors.New("hubreconcile: list code worktrees: boom"),
+			`hub config reconcile failed: hubreconcile: list code worktrees: boom; way forward: fix the cause named above, then run "lyx loom resume" in the task worktree`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := reconcileRefusal(tt.err); got != tt.want {
+				t.Errorf("reconcileRefusal() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
 
 func TestWayForward(t *testing.T) {
 	for _, tt := range []struct {

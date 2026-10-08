@@ -5,4 +5,5 @@
 // It never derives that directory's geometry itself: baseDir always arrives fully resolved from the
 // caller (fabricengine.StencilsDir), which is what keeps this package's tests hermetic against a
 // bare t.TempDir() and keeps it free of the _board/_lyx literals those packages own.
+// The drift warning's build-ancestry input arrives the same way, told by the caller through Source, because stencilstore runs no git.
 package stencilstore

@@ -64,6 +64,12 @@
 // a boundary reading carries its `postTokens` and timestamp and is marked compacted.
 // Every failure degrades to an unknown reading.
 //
+// The session-usage reading (UsageReader) sums a finished session's tokens from its parent transcript and the fork transcripts under its `subagents/` directory.
+// Fresh tokens are input plus cache-creation plus output, and cache-read tokens count separately;
+// a message counts once however many transcript lines carry it, and the totals include the forks, which are also broken out.
+// A fork transcript's entries are all sidechain and count, except the parent's spawning message it replays as its first entry.
+// An unreadable transcript makes the whole reading unknown, and a missing `subagents/` directory is zero forks.
+//
 // The session-signal parse (SessionSignalParser) reads the same events file as ParseEvents but yields a separate stream, in signals.go, and leaves ParseEvents unchanged.
 // A `Stop` line is a turn end with its outstanding tasks read exactly as ParseEvents reads them, a `StopFailure` an API-error turn end, a `UserPromptSubmit` a turn start, a `PreToolUse` for `AskUserQuestion` an ask, a `Notification` of type permission prompt or elicitation dialog an ask and `idle_prompt` an idle notice (any other type is skipped), and a `SessionEnd` a session end with its reason.
 // A `SessionEnd` reason of `logout`, `prompt_input_exit` or `other` ends the process; `clear`, `resume` and an unknown reason do not.

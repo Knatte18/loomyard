@@ -15,6 +15,7 @@ A new cross-cutting invariant goes into PATTERN in the same commit as the code.
 
 `update-plugins.sh` (`.cmd` on Windows) is the only route to production: from a clean, pushed `main`, it deploys the plugins, builds `lyx` into the Go bin dir and moves `prod` to that commit.
 Never run it unasked, never move `prod` by hand, never install `lyx` elsewhere.
+The one standing exception is the hub orchestrator in the prime: it runs `update-plugins.sh` itself after a landing and after its own pushed fix, on a clean `main`, and says so in its report.
 For internal tests, `./deploy-dev` builds into `.dev-bin` instead.
 There is no versioning: plugins stay at `1.0.0`.
 
@@ -27,6 +28,7 @@ Put durable notes in this file, `_lyx/raddle/` or code comments.
 ## Worktrees
 
 - Push to `main` only from the worktree checked out on `main`; never from a task pair (`<hub>/<slug>`).
+- Push to `main` only after `go test ./...` and `go test -tags integration ./...` are green, the same tiers the verify gates run; code under `tools/` follows PATTERN and its scans like everything else.
 - Work only in your own worktree: never edit, commit or push in another, and never create one, unless the user says so for that case.
   If work belongs elsewhere, say so and ask.
 
@@ -52,6 +54,13 @@ These are conversational shorthands; never rename code, files or docs to them un
   its strand is named `<shortname>:<slug>:webster`.
 - **perch**: a `Bouncer` row in a `Shed` producer list whose `OnStuck` points at a `Burler`-round row, whose own `OnStuck` points back (see `internal/shedadapters` and `contracts/recipes/loom-recipe.yaml`).
   Each review segment wires its own pair; there is no perch type.
+- **board**: the task tracker, read and written only through `lyx board`; **Bolt** is the nickname of the records repository's `main` branch, the board's git home, never the tracker.
+
+## Watching runs
+
+The operator watches each run in its own terminal window, never in VS Code.
+After starting a run, the hub orchestrator opens one: `setsid -f konsole --workdir <pair> -p tabtitle=<slug> -e bash -lc "lyx reed attach; exec bash"`.
+VS Code opens only when the operator asks for it.
 
 ## Filesystem links
 

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -98,8 +99,8 @@ type BouncerConfig struct {
 	Now func() time.Time
 	// ClusterExcludes is a told value: true exactly when the BurlerRound row this Bouncer's OnStuck
 	// names runs a cluster fan the judge's exclude_lenses can trim.
-	// Only then do the seed and judge prompts ask for exclude_lenses; the zero value asks for focus
-	// alone.
+	// Only then does the judge prompt ask for exclude_lenses, and the seed prompt never does;
+	// the zero value asks the judge for focus alone.
 	ClusterExcludes bool
 	// Skip is the optional seam a caller tells this Bouncer when the artifact under review may need no review at all.
 	// True settles the segment as approved without a seed or judge spawn;
@@ -864,14 +865,22 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		return nil
 	}
 
+	editDirective, err := editdirective.Directive(b.cfg.StencilsDir)
+	if err != nil {
+		logger.Warn("shedadapters: bouncer edit directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
+		return nil
+	}
+
 	seedValues := map[string]string{
 		"rubric":                   rubric,
 		"artifacts":                strings.Join(b.cfg.ArtifactPaths, "\n"),
 		"round":                    "1",
 		"focus_path":               focusPathValue,
 		parentdirective.MarkerName: parentDirective,
+		editdirective.MarkerName:   editDirective,
 	}
-	maps.Copy(seedValues, focusSchemaMarkers(b.cfg.ClusterExcludes))
+	// The seed judges no round, so there is nothing settled for it to exclude; only the judge call is asked for exclude_lenses.
+	maps.Copy(seedValues, focusSchemaMarkers(false))
 	prompt, err := stencil.Fill(seedTemplate, seedValues)
 	if err != nil {
 		logger.Warn("shedadapters: bouncer seed prompt fill failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
@@ -969,6 +978,11 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		return b.degrade(ctx, "shedadapters: bouncer parent directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
 
+	editDirective, err := editdirective.Directive(b.cfg.StencilsDir)
+	if err != nil {
+		return b.degrade(ctx, "shedadapters: bouncer edit directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
+	}
+
 	// The output list is never conditional on the verdict:
 	// shuttleengine classifies a run complete only when every declared output file exists,
 	// so a third entry written only on CONTINUE would make every approval classify non-complete, degrade, and render shedengine.Done unreachable.
@@ -976,7 +990,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 
 	// The facts file is regenerated on every judge call, including one that ends up attaching to a live judge, since the render is deterministic.
 	// A write failure degrades like an unreadable template, because the prompt would name a file that does not exist.
-	if err := writeRoundFacts(b.cfg.RunDir, n, b.cfg.ReportName); err != nil {
+	if err := writeRoundFacts(b.cfg.Name, b.cfg.RunDir, n, b.cfg.ReportName, b.cfg.ClusterExcludes); err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer facts file unwritable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
 
@@ -993,6 +1007,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		"focus_path":      outputs[2],
 
 		parentdirective.MarkerName: parentDirective,
+		editdirective.MarkerName:   editDirective,
 	}
 	if patternDirective != "" {
 		judgeValues["pattern_directive"] = patternDirective

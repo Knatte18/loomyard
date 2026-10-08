@@ -125,7 +125,7 @@
 // # Skills and the parent directive
 //
 // The spawned roles (judge, targeting) each load `scribe:prose` through the spec's Skills before the prompt is delivered.
-// Each opening stencil carries `{{.parent_directive}}` near its top, filled with `parentdirective.Directive` from the told Options.ParentName.
+// Each opening stencil carries `{{.parent_directive}}` and `{{.edit_directive}}` near its top, filled with `parentdirective.Directive` from the told Options.ParentName and `editdirective.Directive` respectively.
 // An empty ParentName renders the no-parent variant;
 // a directive that cannot be rendered takes the same fail-safe path as an unreadable stencil.
 //

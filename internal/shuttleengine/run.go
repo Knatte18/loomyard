@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
 // Runner is the provider-invariant run loop: it drives one Engine implementation over the file
@@ -214,6 +215,13 @@ type Result struct {
 	// ExpiredShells holds the labels of the background shells the wait stopped waiting on, in order:
 	// transcript-reported shells it waited out past background_shell_wait_min, and payload-reported shells a gated run's turn end left behind at once.
 	ExpiredShells []string
+	// StartedAt is the run's creation time from its state, zero when the record's time does not parse.
+	StartedAt time.Time
+	// EndedAt is the run clock's time when the run was classified.
+	EndedAt time.Time
+	// Usage is the session's token reading, forks included.
+	// It is known only for an OutcomeDone run on an engine implementing UsageReader that could read the session.
+	Usage SessionUsage
 }
 
 // Run is the handle to one in-progress or completed shuttle run, returned by Start once its provider
@@ -491,7 +499,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	}
 	if strand.Color != "" && !spec.ColorByCaller {
 		// The color is display only, like the pane title, so a failed play never fails the launch.
-		if err := playInputs(r.reed, strand.GUID, r.engine.ColorSequence(strand.Color)); err != nil {
+		if err := typeColor(run.newSendContext(), strand.Color); err != nil {
 			logger.Warn("shuttle: could not type the segment color", "strandGUID", strand.GUID, "color", strand.Color, "error", err)
 		}
 	}
@@ -955,6 +963,64 @@ func playInputs(reed ReedOps, guid string, inputs []PaneInput) error {
 	return nil
 }
 
+const (
+	// colorSettleAttempts caps the pane reads typeColor makes while waiting for the color command to be consumed.
+	colorSettleAttempts = 12
+	// colorSettleInterval is the pause between two of those reads.
+	colorSettleInterval = 250 * time.Millisecond
+)
+
+// typeColor plays the engine's color command for color into sc's pane,
+// then waits, at most colorSettleAttempts reads, until the provider has consumed it:
+// the pane classifies StartupReady and the input box (for an engine that implements InputBoxReader) no longer holds the command.
+// A pane showing no readable box counts as not holding it, as in the verified send's confirmation.
+// Without the wait the command can still sit in the box when the next step demands an idle, input-ready provider.
+// A command still in the box after the last read is submitted through confirmSubmitted's Enters, within one submit window.
+// Only a failed play is returned: an unconsumed command is logged, since the color is display only.
+func typeColor(sc sendContext, color segmentcolor.Color) error {
+	reed, engine, guid := sc.reed, sc.engine, sc.guid
+	inputs := engine.ColorSequence(color)
+	if len(inputs) == 0 {
+		return nil
+	}
+	sentAt := eventsSize(sc.eventsPath)
+	if err := playInputs(reed, guid, inputs); err != nil {
+		return err
+	}
+	var command strings.Builder
+	for _, in := range inputs {
+		command.WriteString(in.Text)
+	}
+	normalized := normalizePaneText(command.String())
+	needle := sendNeedle(normalized)
+	reader, hasReader := engine.(InputBoxReader)
+	holding := false
+	for attempt := 0; attempt < colorSettleAttempts; attempt++ {
+		if attempt > 0 {
+			inputSleep(colorSettleInterval)
+		}
+		capture, err := reed.CapturePane(guid)
+		if err != nil {
+			continue
+		}
+		holding = hasReader && boxHoldsSentText(reader, capture, normalized, needle)
+		if !holding && engine.Startup(capture) == StartupReady {
+			return nil
+		}
+	}
+	if !holding {
+		logger.Warn("shuttle: the segment color command was not confirmed consumed", "strandGUID", guid, "color", color, "attempts", colorSettleAttempts)
+		return nil
+	}
+	closeAt := sc.clock.Now().Add(submitConfirmTimeout(sc.cfg))
+	if err := confirmSubmitted(sc, reader, normalized, needle, sentAt, closeAt); err != nil {
+		logger.Warn("shuttle: the segment color command stayed in the input box", "strandGUID", guid, "color", color, "error", err)
+		return nil
+	}
+	logger.Warn("shuttle: the segment color command lingered in the input box and was submitted again", "strandGUID", guid, "color", color, "attempts", colorSettleAttempts)
+	return nil
+}
+
 // sendVerifyPositionMarginLines is how much closer to the bottom of the capture an occurrence must
 // sit than every occurrence the baseline counted before it is read as newly delivered rather than as
 // one of them.
@@ -1102,10 +1168,7 @@ func sendVerified(sc sendContext, text string) error {
 	}
 
 	normalized := normalizePaneText(text)
-	needle := normalized
-	if runes := []rune(needle); len(runes) > sendNeedleRunes {
-		needle = string(runes[:sendNeedleRunes])
-	}
+	needle := sendNeedle(normalized)
 
 	baseline := paneNeedleScan{linesBelow: -1}
 	if capture, err := reed.CapturePane(guid); err == nil {
@@ -1160,6 +1223,11 @@ func inputBoxHoldsSentText(reed ReedOps, reader InputBoxReader, guid, normalized
 	if err != nil {
 		return false
 	}
+	return boxHoldsSentText(reader, capture, normalized, needle)
+}
+
+// boxHoldsSentText is inputBoxHoldsSentText over a capture already taken.
+func boxHoldsSentText(reader InputBoxReader, capture, normalized, needle string) bool {
 	boxText, ok := reader.InputBoxText(capture)
 	if !ok {
 		return false
@@ -1169,6 +1237,14 @@ func inputBoxHoldsSentText(reed ReedOps, reader InputBoxReader, guid, normalized
 		return box == normalized
 	}
 	return strings.Contains(box, needle)
+}
+
+// sendNeedle returns the leading sendNeedleRunes characters of normalized, the slice that identifies a sent text in a pane.
+func sendNeedle(normalized string) string {
+	if runes := []rune(normalized); len(runes) > sendNeedleRunes {
+		return string(runes[:sendNeedleRunes])
+	}
+	return normalized
 }
 
 // normalizePaneText lowercases s and strips whitespace for canonical matching.

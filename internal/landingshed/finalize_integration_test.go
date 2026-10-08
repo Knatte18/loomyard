@@ -39,7 +39,7 @@ import (
 // markers mergeresolve's own spec builder fills, mirroring mergeresolve_test.go's own fixture --
 // this package's own conflict-resolution session never spawns a real model, so the stencil's prose
 // content is irrelevant to this test, only its two placeholders.
-const finalizeConflictStencilFixture = "# Conflict\n\n{{.parent_directive}}\n\nPaths:\n{{.conflicted_paths}}\n\nReport: {{.report_path}}\n"
+const finalizeConflictStencilFixture = "# Conflict\n\n{{.parent_directive}}\n{{.edit_directive}}\n\nPaths:\n{{.conflicted_paths}}\n\nReport: {{.report_path}}\n"
 
 // seedConflictStencil writes finalizeConflictStencilFixture at the layout mergeresolve's spec
 // builder reads (stencilstore.Path's own baseDir/landing/<name>.md shape) and returns the baseDir a

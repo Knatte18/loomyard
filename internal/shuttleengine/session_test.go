@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // cyclerEngine is a fakeEngine that also implements SessionCycler with scripted answers.
@@ -198,18 +199,98 @@ func TestRunner_ReloadPlugins_PlaysSequenceOnALiveShuttleStrand(t *testing.T) {
 	}
 }
 
-func TestRunner_TypeColor_PlaysTheEngineSequenceOnALiveShuttleStrand(t *testing.T) {
-	t.Parallel()
-
-	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
-	runner := newFixture(t, reed, &fakeEngine{}, withStrand("strand-1")).Runner
-
-	if err := runner.TypeColor("strand-1", segmentcolor.Green); err != nil {
-		t.Fatalf("TypeColor: %v", err)
+// TestRunner_TypeColor_PlaysTheSequenceAndWaitsItOut plays the engine's color sequence into a live shuttle strand and drives the wait that follows through an engine with the InputBoxReader capability.
+// A box empty at once ends the wait on the first read,
+// a command lingering in the input box is waited out without an extra key,
+// and one that never leaves the box is submitted again by Enters each followed by one read until the submit window closes, and only logged, never failing the call.
+// Start's color step shares the same helper.
+// An unknown strand is refused before reed is touched.
+// It is not parallel: each row replaces the package-level inputSleep and captures the global logger.
+func TestRunner_TypeColor_PlaysTheSequenceAndWaitsItOut(t *testing.T) {
+	const command = "COLOR:green"
+	const settle = 300 * time.Millisecond
+	poll := []string{"Sleep:" + colorSettleInterval.String(), "CapturePane"}
+	enterThenRead := []string{"SendKey:Enter", "CapturePane"}
+	join := func(parts ...[]string) []string {
+		var out []string
+		for _, part := range parts {
+			out = append(out, part...)
+		}
+		return out
 	}
-	want := []string{"Status", "SendText:COLOR:green"}
-	if !reflect.DeepEqual(reed.CallLog, want) {
-		t.Errorf("CallLog = %v, want %v", reed.CallLog, want)
+	repeat := func(part []string, n int) []string {
+		var out []string
+		for range n {
+			out = append(out, part...)
+		}
+		return out
+	}
+	prefix := []string{"Status", "SendText:" + command, "CapturePane"}
+
+	tests := []struct {
+		name    string
+		boxes   []inputBoxAnswer
+		wantLog []string
+		// wantEnterReads is whether wantLog is followed by one or more enterThenRead pairs, their count set by the submit window.
+		wantEnterReads bool
+		wantWarn       string
+	}{
+		{
+			name:    "empty box ends the wait at once",
+			boxes:   []inputBoxAnswer{{"", true}},
+			wantLog: prefix,
+		},
+		{
+			name:    "lingering command is waited out",
+			boxes:   []inputBoxAnswer{{command, true}, {command, true}, {"", true}},
+			wantLog: join(prefix, poll, poll),
+		},
+		{
+			name:           "command that never leaves the box only logs",
+			boxes:          []inputBoxAnswer{{command, true}},
+			wantLog:        join(prefix, repeat(poll, colorSettleAttempts-1)),
+			wantEnterReads: true,
+			wantWarn:       "the segment color command stayed in the input box",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := logcapture.Capture(t)
+			reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
+			orig := inputSleep
+			inputSleep = func(d time.Duration) {
+				reed.mu.Lock()
+				defer reed.mu.Unlock()
+				reed.CallLog = append(reed.CallLog, "Sleep:"+d.String())
+			}
+			t.Cleanup(func() { inputSleep = orig })
+			engine := &inputBoxEngine{fakeEngine: readyAgentEngine(), boxes: tt.boxes, settle: settle}
+			runner := newFixture(t, reed, engine, withStrand("strand-1"), withClock(newFakeClock(time.Unix(0, 0)))).Runner
+
+			if err := runner.TypeColor("strand-1", segmentcolor.Green); err != nil {
+				t.Fatalf("TypeColor: %v, want nil since the color is display only", err)
+			}
+			gotLog := reed.CallLog
+			if tt.wantEnterReads && len(gotLog) > len(tt.wantLog) {
+				enterReads := gotLog[len(tt.wantLog):]
+				if len(enterReads)%len(enterThenRead) != 0 || !reflect.DeepEqual(enterReads, repeat(enterThenRead, len(enterReads)/len(enterThenRead))) {
+					t.Errorf("CallLog after the polls = %v, want only %v pairs", enterReads, enterThenRead)
+				}
+				gotLog = gotLog[:len(tt.wantLog)]
+			} else if tt.wantEnterReads {
+				t.Errorf("CallLog = %v, want %v followed by %v pairs", gotLog, tt.wantLog, enterThenRead)
+			}
+			if !reflect.DeepEqual(gotLog, tt.wantLog) {
+				t.Errorf("CallLog = %v, want %v", gotLog, tt.wantLog)
+			}
+			got := logs.String()
+			if tt.wantWarn == "" && strings.Contains(got, "segment color command") {
+				t.Errorf("log = %q, want no color warning", got)
+			}
+			if tt.wantWarn != "" && !strings.Contains(got, tt.wantWarn) {
+				t.Errorf("log = %q, want it to name %q", got, tt.wantWarn)
+			}
+		})
 	}
 
 	refusedReed := &fakeReed{StatusQueue: liveStrandStatus(true)}

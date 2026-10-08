@@ -189,6 +189,40 @@ func DispatchScope(batches []batcher.Batch, st *State) (begun, forthcoming []pla
 	return begun, forthcoming
 }
 
+// DoneCards returns the cards of plan, in plan order, that belong to a batch st records terminal with status done.
+// It reads the batch records alone, so it needs no batchifier: a record's own card ids name its cards, and a record written before those ids existed names the single card NN-<Slug>.
+// A recorded id the plan lacks is skipped, so a card renamed since its batch ran counts as not done.
+// A nil state returns nil.
+//
+// It is what the loom plan gate scopes its tree-dependent checks by: a done card's work is already in the tree, so it is history, not a target.
+func DoneCards(plan *planparser.Plan, st *State) []planparser.Card {
+	if st == nil {
+		return nil
+	}
+
+	done := make(map[string]bool)
+	for number, bs := range st.Batches {
+		if bs == nil || !bs.Terminal || bs.Status != DigestStatusDone {
+			continue
+		}
+		ids := bs.Cards
+		if len(ids) == 0 {
+			ids = []string{fmt.Sprintf("%02d-%s", number, bs.Slug)}
+		}
+		for _, id := range ids {
+			done[id] = true
+		}
+	}
+
+	var cards []planparser.Card
+	for _, c := range plan.Cards {
+		if done[cardID(c)] {
+			cards = append(cards, c)
+		}
+	}
+	return cards
+}
+
 // findBatch returns the batcher.Batch in batches whose identity matches number.
 func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
 	for _, b := range batches {

@@ -189,17 +189,19 @@ func (r *Runner) ReloadPlugins(guid string) error {
 
 // TypeColor plays the provider's color command for color into the live pane of the run identified by guid, for a caller that colors the session itself.
 // A provider with no color command, or none for color, types nothing.
+// Like start's color step it waits out the command before returning, and an unconfirmed color is only logged.
 func (r *Runner) TypeColor(guid string, color segmentcolor.Color) error {
 	if r.toldErr != nil {
 		return r.toldErr
 	}
-	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
 	if err := requireLiveStrand(r.reed, guid); err != nil {
 		return err
 	}
-	return playInputs(r.reed, guid, r.engine.ColorSequence(color))
+	return typeColor(r.newSendContext(state), color)
 }
 
 // CompactSession plays the provider's compact-session key choreography, keeping what focus names, into the live pane of the run identified by guid.

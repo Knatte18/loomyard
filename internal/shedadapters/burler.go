@@ -340,8 +340,16 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 	profile.PriorReviews = append(append([]string{}, p.profile.PriorReviews...), priorReviews...)
 	profile.PriorFixerReports = append(append([]string{}, p.profile.PriorFixerReports...), priorFixerReports...)
 	profile.ClusterExclude = nil
-	if p.profile.ClusterFan != "" {
-		profile.ClusterExclude = focus.ExcludeLenses
+	profile.ClusterExcludeHeld = nil
+	if p.profile.ClusterFan != "" && round >= 2 {
+		var dropped []string
+		profile.ClusterExclude, dropped = excludedLenses(p.name, p.runDir, round, p.profile.ClusterFan)
+		profile.ClusterExcludeHeld, _ = excludedLenses(p.name, p.runDir, round-1, p.profile.ClusterFan)
+		if len(dropped) > 0 {
+			logger.Warn("shedadapters: focus file excludes lenses the previous round did not run under this fan; dropping them", "producer", p.name, "engine", burlerEngineLabel, "round", round, "lenses", dropped)
+		}
+	} else if p.profile.ClusterFan != "" && len(focus.ExcludeLenses) > 0 {
+		logger.Warn("shedadapters: round 1 focus file names cluster excludes but the whole fan runs in round 1; dropping them", "producer", p.name, "engine", burlerEngineLabel, "round", round, "lenses", focus.ExcludeLenses)
 	} else if len(focus.ExcludeLenses) > 0 {
 		// The Bouncer only asks for excludes when its own cluster_excludes key says this round
 		// has a fan, so this branch fires only on a breach: a judge writing exclude_lenses
@@ -484,6 +492,10 @@ func (p *BurlerProducer) doneExit(ctx context.Context, round int, result burlere
 	}
 	if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
+	}
+	review, fix := p.models.Pick(round)
+	if err := writeRoundUsage(p.runDir, round, newRoundUsage(p.profile.ClusterFan, review, fix, result)); err != nil {
+		logger.Warn("shedadapters: burler round's usage record was not written", "producer", p.name, "engine", burlerEngineLabel, "round", round, "error", err)
 	}
 	return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, round), GateAttempts: gateAttemptsPointer(result.Gate), BudgetExempt: p.roundBudgetExempt(round)}, nil
 }

@@ -37,6 +37,24 @@ func ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, erro
 	return append(findings, gateFindings...), err
 }
 
+// ValidateFormatAfter is ValidateFormat for a plan some of whose cards webster already ran: done names the cards of the batches its run record holds done.
+// With no done card it is ValidateFormat.
+// Otherwise it is ValidateDispatch's check set with done as completed and nothing forthcoming, plus planGatePass over the cards not in done.
+// A done card's work is in the tree, so resolving it again reports its own landed work as create-already-exists, glyph-not-found, path-missing or caller-uncovered, defects no fixer can repair:
+// a run moved back to the plan review after Webster executed batches wedged its plan gate on exactly those.
+// It has ValidateFormat's error contract.
+func ValidateFormatAfter(plan *planparser.Plan, worktreeRoot string, done []planparser.Card) ([]Finding, error) {
+	if len(done) == 0 {
+		return ValidateFormat(plan, worktreeRoot)
+	}
+	findings, err := ValidateDispatch(plan, worktreeRoot, done, nil)
+	if err != nil {
+		return findings, err
+	}
+	gateFindings, err := planGatePass(PendingPlan(plan, done), worktreeRoot)
+	return append(findings, gateFindings...), err
+}
+
 // ValidateRework is the rework gate's check set: ValidateFormat's findings, then planparser.CheckFirstCard's finding when plan's first_card differs from told, the card number Go told the rework session to start at.
 // It has ValidateFormat's error contract.
 func ValidateRework(plan *planparser.Plan, worktreeRoot string, told int) ([]Finding, error) {
