@@ -304,14 +304,11 @@ func snapshotConfig(anchor string) map[string][]byte {
 	for _, module := range configreg.Modules() {
 		path := configengine.ConfigFile(anchor, module.Name)
 		data, err := os.ReadFile(path)
-		switch {
-		case err != nil:
+		if err != nil {
 			prior[path] = nil
-		case data == nil:
-			prior[path] = []byte{}
-		default:
-			prior[path] = data
+			continue
 		}
+		prior[path] = data
 	}
 	return prior
 }
