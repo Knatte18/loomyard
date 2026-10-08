@@ -28,6 +28,25 @@ func fakeFullCommandsOutput() string {
 	return b.String()
 }
 
+// commandsWithout returns a probe run that reports the healthy version and every required subcommand except missing,
+// so the missing-subcommand branch is the only failure hit.
+func commandsWithout(missing string) func(args ...string) (string, error) {
+	return func(args ...string) (string, error) {
+		if args[0] == "-V" {
+			return fakeVersionOutput, nil
+		}
+		var b strings.Builder
+		for _, name := range requiredSubcommands {
+			if name == missing {
+				continue
+			}
+			b.WriteString(name)
+			b.WriteString("               - description\n")
+		}
+		return b.String(), nil
+	}
+}
+
 //testtiming:keep pins the capability probe's three outcomes with a fake run: healthy, a version below the pin and a missing required subcommand, the last two as *CapabilityError; its covering tests run this code without asserting it
 func TestProbeCapability(t *testing.T) {
 	tests := []struct {
@@ -59,23 +78,14 @@ func TestProbeCapability(t *testing.T) {
 			wantCapErr: true,
 		},
 		{
-			name: "missing required subcommand",
-			run: func(args ...string) (string, error) {
-				if args[0] == "-V" {
-					return fakeVersionOutput, nil
-				}
-				// Emit every required subcommand except kill-server, so
-				// the missing-subcommand branch is the only failure hit.
-				var b strings.Builder
-				for _, name := range requiredSubcommands {
-					if name == "kill-server" {
-						continue
-					}
-					b.WriteString(name)
-					b.WriteString("               - description\n")
-				}
-				return b.String(), nil
-			},
+			name:       "missing required subcommand",
+			run:        commandsWithout("kill-server"),
+			wantErr:    true,
+			wantCapErr: true,
+		},
+		{
+			name:       "missing new-window",
+			run:        commandsWithout("new-window"),
 			wantErr:    true,
 			wantCapErr: true,
 		},

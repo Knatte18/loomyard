@@ -186,6 +186,14 @@
 // A session's first up has neither, so it falls back to the current window, and the Selvage pane created there defines the strand window from then on.
 // The pane-generation read (generation.go) stays session-scoped and outside the seam: it reads session fields only, so it keeps the "=<session>:" form, which expands them, where the bare "=<session>" form expands every session field to empty (verified live, tmux 3.6).
 //
+// Detached windows: OpenWindow (window.go) opens a detached, named window in the worktree's reed session running a `lyx` command, for a caller that wants a long-running command visible in the session's window list.
+// One multiplexer invocation runs `new-window -d -P -F '#{window_id}' -t '=<session>:' -n <name> <command>` chained with `set-option -w -t '=<session>:=<name>' remain-on-exit off`.
+// The window is detached and never selected, so it takes no focus, and the option is chained by exact name because one chained after a detached new-window without a target lands on the current window, the strands' window, whose remain-on-exit must stay on.
+// The op reads remain-on-exit back from the new window by the printed id, and a window that does not read off (two concurrent calls sharing a name, where the chained option landed on the older window) is killed by that id with ErrWindowReadBack.
+// A window of the same name whose pane is live is returned as existing and nothing is started; one whose pane is dead is killed and replaced.
+// The command line is composed in panebin.go from the pane-binary prelude, so `lyx` resolves to the spawning binary.
+// Bound: the op only chooses where a command runs; the window lives as long as the reed session, and the session's other windows keep remain-on-exit on.
+//
 // Session targeting: every -t argument that names a SESSION is passed in
 // an exact-match form — "=<name>" for session targets (has-session,
 // kill-session, attach-session) and "=<name>:" for window/pane targets
@@ -204,7 +212,7 @@
 // Pane-id (-t %N) targets are already exact and stay bare.
 //
 // Subcommand set: the engine's correctness depends on new-session,
-// has-session, split-window, select-layout, select-pane, send-keys,
+// has-session, split-window, new-window, select-layout, select-pane, send-keys,
 // capture-pane, list-panes, list-sessions, display-message,
 // set-option -g remain-on-exit, set-option -g mouse, kill-pane,
 // kill-session, and kill-server all behaving per tmux's own documented
