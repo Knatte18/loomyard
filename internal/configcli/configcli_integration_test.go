@@ -24,11 +24,11 @@ import (
 
 // TestConfigOverRealHub drives configuration edits through a real hub with one pair: a per-worktree module edit is synced into the pair's fabric worktree while the code side stays pristine, and a hub-wide module `--set` changes the hub file and commits it in _board with no per-worktree copy written.
 // Its steps run in this order on one hub and pair, so the scenario builds the hub once.
-// It does not call t.Parallel: it sets WEFT_SKIP_GIT and WEFT_SKIP_PUSH below, and t.Setenv panics under t.Parallel.
+// It does not call t.Parallel: it sets FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH below, and t.Setenv panics under t.Parallel.
 func TestConfigOverRealHub(t *testing.T) {
 	const slug = "config-hub-test"
 
-	// fabriccli.CloneAndWire has already materialized every registered module's config plus the repo-wide fabric.yaml at BoardDir, and the records-side primary already sits on its WeftBranchName-suffixed branch.
+	// fabriccli.CloneAndWire has already materialized every registered module's config plus the repo-wide fabric.yaml at BoardDir, and the records-side primary already sits on its RecordsBranchName-suffixed branch.
 	h := hubforge.NewHub(t, ".")
 
 	// Topology.Add wires the new pair's junctions itself, reading the wired name-set from the real repo-wide fabric.yaml.
@@ -37,12 +37,12 @@ func TestConfigOverRealHub(t *testing.T) {
 		t.Fatalf("Topology.Add(%q): %v", slug, err)
 	}
 	codeWorktreePath := fabricengine.WorktreePath(h.Location, slug)
-	fabricWorktreePath := fabricengine.WeftWorktreePath(h.Location, slug)
+	fabricWorktreePath := fabricengine.RecordsWorktreePath(h.Location, slug)
 	boardDir := fabricengine.BoardDir(h.Location.HubPath)
 
-	// Explicitly clear WEFT_SKIP_GIT and WEFT_SKIP_PUSH so the commits are not silent no-ops.
-	t.Setenv("WEFT_SKIP_GIT", "")
-	t.Setenv("WEFT_SKIP_PUSH", "")
+	// Explicitly clear FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH so the commits are not silent no-ops.
+	t.Setenv("FABRIC_SKIP_GIT", "")
+	t.Setenv("FABRIC_SKIP_PUSH", "")
 
 	if !t.Run("per-worktree edit is synced into the fabric worktree and the code side stays pristine", func(t *testing.T) {
 		codeLayout, err := lyxcwd.Resolve(codeWorktreePath)

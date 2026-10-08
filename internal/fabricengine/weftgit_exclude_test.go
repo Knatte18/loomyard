@@ -44,7 +44,7 @@ func newFabricPair(t *testing.T) (*fabricengine.Fabric, string) {
 	if err != nil {
 		t.Fatalf("fabricengine.Open: %v", err)
 	}
-	return f, h.PrimeWeft()
+	return f, h.PrimeRecords()
 }
 
 // writeWeftConfig overwrites the tracked _lyx/config.yaml file a real hub's weft worktree ships
@@ -212,7 +212,7 @@ func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing
 			if err != nil {
 				t.Fatalf("fabricengine.Open: %v", err)
 			}
-			weftPath := h.PrimeWeft()
+			weftPath := h.PrimeRecords()
 			anchorRel := filepath.FromSlash(anchor)
 
 			dotLyxDir := filepath.Join(weftPath, anchorRel, lyxdirs.DotLyxDirName)

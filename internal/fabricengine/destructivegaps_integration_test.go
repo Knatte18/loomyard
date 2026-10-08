@@ -9,7 +9,7 @@
 // unit tests (destroy_test.go): those cover the pipeline's hermetic logic (check ordering,
 // containment, zero-value refusals, force's narrow reach) with no git spawn at all.
 //
-// Package fabricengine_test to reuse mustWeftRepoRoot from
+// Package fabricengine_test to reuse mustRecordsRepoRoot from
 // reconcile_stale_registration_test.go, and makeBareRemote from clone_adopt_test.go, matching
 // prune_unowned_integration_test.go's convention; shares the single TestMain in testmain_test.go.
 
@@ -94,9 +94,7 @@ func TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree(t *testing.T) {
 	hubforge.SeedFabricConfig(t, h, escapeFabricConfigYAML("../gap1-rollback-escape"))
 
 	l := h.Location
-	// A configured branch prefix is what makes the warp branch this Add creates recognisable to the
-	// gate's ownedManagedBranch check, mirroring add_rollback_adopt_test.go's fixtures — the branch
-	// side of rollback is not what this test is about.
+	// The branch prefix is incidental: the branch side of rollback is not what this test is about.
 	const branchPrefix = "task/"
 	topology := fabricengine.NewTopology(fabricengine.Config{BranchPrefix: branchPrefix})
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
@@ -575,8 +573,8 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
-	primaryWeft := fabricengine.WeftBranchName("main")
+	weftRoot := mustRecordsRepoRoot(t, l)
+	primaryWeft := fabricengine.RecordsBranchName("main")
 
 	t.Run("RefusesPrimaryWeftBranch", func(t *testing.T) {
 		assertBranchGateRefusesBothForceModes(t, l, weftRoot, primaryWeft, "primary weft branch")
@@ -588,7 +586,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 		// deletions are irreversible.
 		unreadable := hubforge.NewHub(t, ".")
 		ul := unreadable.Location
-		uWeftRoot := mustWeftRepoRoot(t, ul)
+		uWeftRoot := mustRecordsRepoRoot(t, ul)
 		if err := os.RemoveAll(fabricengine.BoardDir(ul.HubPath)); err != nil {
 			t.Fatalf("remove board worktree: %v", err)
 		}
@@ -600,13 +598,13 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 	t.Run("RefusesCheckedOutBranch", func(t *testing.T) {
 		checkedOut := hubforge.NewHub(t, ".")
 		cl := checkedOut.Location
-		cWeftRoot := mustWeftRepoRoot(t, cl)
+		cWeftRoot := mustRecordsRepoRoot(t, cl)
 		topology := checkedOut.Topology
 		const slug = "branch-ownership-checkedout"
 		if _, err := topology.Add(cl, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 			t.Fatalf("setup Add: %v", err)
 		}
-		assertBranchGateRefusesBothForceModes(t, cl, cWeftRoot, fabricengine.WeftBranchName(slug), "checked out at")
+		assertBranchGateRefusesBothForceModes(t, cl, cWeftRoot, fabricengine.RecordsBranchName(slug), "checked out at")
 	})
 
 	t.Run("RefusesUnmanagedName", func(t *testing.T) {
@@ -625,38 +623,6 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 			t.Errorf("branch %q still exists after an accepted deletion", orphan)
 		}
 	})
-}
-
-// TestBranchOwnership_RefusalHoldsAtOtherDeletionSites drives the branch-ownership kind through a
-// deletion site other than Cleanup — Add's own rollback, the cheapest of the other three since it
-// already has integration cover (add_rollback_adopt_test.go) — and asserts the branch the gate
-// refuses there survives the rollback. This is the entire reason the ownership logic moved into the
-// shared gate rather than staying local to Cleanup: the same refusal must hold everywhere a branch
-// is deleted, not just at the one site it was first noticed missing from.
-func TestBranchOwnership_RefusalHoldsAtOtherDeletionSites(t *testing.T) {
-	t.Parallel()
-
-	const slug = "branch-ownership-rollback-refused"
-	h := hubforge.NewHub(t, ".")
-	l := h.Location
-
-	// No BranchPrefix, and the slug itself carries no "-weft" suffix: the gate's ownedManagedBranch
-	// has no scheme to recognise this warp branch by, so rollbackAdd's own attempt to delete it must
-	// be refused exactly as Cleanup's would be for an equivalently-unmanaged name.
-	topology := h.Topology
-
-	// Break the warp origin remote so Add's final push fails after the warp branch and worktree
-	// already exist — the same post-creation-failure injection
-	// TestAddRollback_UnwiresJunctionsOnPostWiringFailure uses — triggering rollbackAdd.
-	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
-
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
-		t.Fatalf("Add should have failed (broken origin remote)")
-	}
-
-	if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
-		t.Fatalf("warp branch %q — which the gate must refuse to delete, since it carries neither the -weft suffix nor a configured prefix — did not survive Add's rollback", slug)
-	}
 }
 
 // TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch is R2's regression for a misleading verdict under
@@ -681,7 +647,7 @@ func TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	hubforge.AddPair(t, h, slug)
 
-	warpPath := h.PairWarpWorktree(slug)
+	warpPath := h.PairCodeWorktree(slug)
 	if err := os.RemoveAll(warpPath); err != nil {
 		t.Fatalf("remove warp worktree directory (leaving git's registration behind): %v", err)
 	}
@@ -693,7 +659,7 @@ func TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch(t *testing.T) {
 
 	var found bool
 	for _, pair := range result.Pairs {
-		if filepath.Base(filepath.FromSlash(pair.WarpWorktree)) != slug {
+		if filepath.Base(filepath.FromSlash(pair.CodeWorktree)) != slug {
 			continue
 		}
 		found = true

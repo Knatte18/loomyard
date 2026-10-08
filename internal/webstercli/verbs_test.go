@@ -3,7 +3,7 @@
 // verbs_test.go covers webstercli's git-backed/spawn-backed verbs (begin-batch, record-batch, recover-batch, run) through the RunCLI seam:
 // a real scratch git repo backs WorktreeRoot, a real *shuttleengine.Runner wired over local fake shuttleengine.ReedOps/shuttleengine.Engine doubles is the starter seam, webster's own fixture pattern — a fake struct alone cannot satisfy these interfaces, since a genuine *shuttleengine.Run's StrandGUID is only ever minted by a real Runner.Start), and run's own Master spawn is a local fake MasterStarter (mirroring websterengine's own runlevel_test.go runFakeStarter).
 // Most tests build a *websterCLI literal directly (bypassing Command()'s PersistentPreRunE) and drive one verb's cobra.Command through clihelp.Execute, webster's own package-local injection point for these tests; seedPersistentPreRunFixture and its tests are the deliberate exception, driving Command()'s real PersistentPreRunE through RunCLIIn.
-// WEFT_SKIP_GIT=1 is set on every test that reaches a fabricSync call, so no real records sibling worktree is needed; the one test that must PROVE fabricSync was never reached (ErrRunBusy) instead leaves WEFT_SKIP_GIT unset and asserts the envelope carries no fabric-sync or fabricengine error text -- the failure a reached fabricSync would stamp in this records-less geometry.
+// FABRIC_SKIP_GIT=1 is set on every test that reaches a fabricSync call, so no real records sibling worktree is needed; the one test that must PROVE fabricSync was never reached (ErrRunBusy) instead leaves FABRIC_SKIP_GIT unset and asserts the envelope carries no fabric-sync or fabricengine error text -- the failure a reached fabricSync would stamp in this records-less geometry.
 
 package webstercli
 
@@ -211,7 +211,7 @@ func (fx *verbsFixture) initState(t *testing.T) *websterengine.State {
 
 // TestBeginBatchCmd_HappyPath proves the success envelope carries prompt_path/start_sha and no model key, that begin-batch types nothing into Master's pane, and that state.json was persisted with the new BatchState.
 func TestBeginBatchCmd_HappyPath(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.initState(t)
 
@@ -272,7 +272,7 @@ func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("WEFT_SKIP_GIT", "1")
+			t.Setenv("FABRIC_SKIP_GIT", "1")
 			fx := newVerbsFixture(t)
 			st := fx.initState(t)
 			if tt.record != nil {
@@ -310,7 +310,7 @@ func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
 
 // TestBeginBatchCmd_DeleteTargetAlreadyGone proves begin-batch dispatches a card whose Delete target an earlier recorded batch already removed, and names the target as already deleted in the envelope's advisories.
 func TestBeginBatchCmd_DeleteTargetAlreadyGone(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	const target = "internal/gone/x.txt"
 	gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, target, "x", "add the target")
@@ -352,7 +352,7 @@ func TestBeginBatchCmd_DeleteTargetAlreadyGone(t *testing.T) {
 // TestBeginBatchCmd_PausedEnvelope proves the pause refusal is an operational signal (exit 0,
 // {"paused": true}), never a hard error, and that state.json is left untouched.
 func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.initState(t)
 	if err := websterengine.RequestPause(fx.CLI.geom.ScratchDir); err != nil {
@@ -383,7 +383,7 @@ func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 // accessor twice, since a pause verb that still writes the durable dir while begin-batch reads the
 // scratch dir would leave pause silently non-functional with no test on either side alone failing.
 func TestPauseCmd_ResolvesSameFileAsBeginBatchGate(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.initState(t)
 
@@ -443,7 +443,7 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("WEFT_SKIP_GIT", "1")
+			t.Setenv("FABRIC_SKIP_GIT", "1")
 			fx := newVerbsFixture(t)
 			st := fx.initState(t)
 			// DoneChecks resolves a card's Create target against
@@ -512,7 +512,7 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 
 // TestRecordBatchCmd_FailedBatchEnvelope proves a fork writing a Master contract file exits non-zero with batch_failed, names recover-batch, and leaves the batch terminal failed in state.json.
 func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	st := fx.initState(t)
 	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
@@ -555,7 +555,7 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 
 // TestRecordBatchCmd_DeleteReferencedByLaterCard proves a batch whose Delete target an unbegun later card still references fails record-batch with batch_failed naming that card and the plan edit, and that recover-batch over it then refuses before spawning with the same flag and way forward.
 func TestRecordBatchCmd_DeleteReferencedByLaterCard(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	root := fx.CLI.geom.WorktreeRoot
 	// The fixture's own single-card plan is replaced, so its card file goes too.
@@ -615,7 +615,7 @@ func TestRecordBatchCmd_DeleteReferencedByLaterCard(t *testing.T) {
 
 // TestRecordBatchCmd_ReportArchivedEnvelope proves a report with no begin record is archived, the call exits non-zero with report_archived, and the report is gone from its live path.
 func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.initState(t)
 	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
@@ -641,7 +641,7 @@ func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 
 // TestRecoverBatchCmd_NeedsFreshEnvelope proves recover-batch over a batch failed on an uncheckable finding exits non-zero with needs_fresh, names run --fresh, and spawns nothing.
 func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	st := fx.initState(t)
 	st.Batches[1] = &websterengine.BatchState{
@@ -676,7 +676,7 @@ func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 // `rebaseline --card 1` over a failed batch's edited card exits 0 and keeps the batch's start SHA,
 // and `recover-batch 1` then spawns with the edited card's gate in its prompt.
 func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.initState(t)
 
@@ -732,7 +732,7 @@ func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 // between, classifies terminal, proving the digest envelope and that state.json/the report were
 // both committed to the records side by then.
 func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.initState(t)
 
@@ -802,7 +802,7 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 }
 
 // TestRunCmd_ErrRunBusySkipsRecordsBackstop proves the ErrRunBusy refusal never reaches Master's own
-// spawn and never runs the exit-time fabric backstop -- WEFT_SKIP_GIT is deliberately left UNSET here
+// spawn and never runs the exit-time fabric backstop -- FABRIC_SKIP_GIT is deliberately left UNSET here
 // so that an accidental fabricSync call would fail loudly: with no records sibling on disk,
 // fabricengine.Open's stat validation errors and run's envelope would carry "fabric sync failed" plus
 // fabricengine's missing-path text, both asserted absent below. (The pre-cutover evidence --
@@ -870,7 +870,7 @@ var (
 
 // TestRunCmd_DiedMasterNotesExpiredShellOutcome drives `run` through its cobra command with a Master that dies after one background shell ran past the wait, and asserts the friction note on disk states the error outcome and that the next run reclaims the strand.
 func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.CLI.frictionDir = t.TempDir()
 	fx.CLI.shuttleCfg.BackgroundShellWaitMin = 15
@@ -1055,7 +1055,7 @@ func TestPersistentPreRunE_PlanDirAnchoredAtSubpath(t *testing.T) {
 // so a sync after the failed one commits the state that the failure left behind.
 // The per-verb tests below reach each refusal through a failing opener, which needs no hub.
 func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "")
+	t.Setenv("FABRIC_SKIP_GIT", "")
 	h := hubforge.NewHub(t, ".")
 	geom := hubgeom.WebsterGeometry(h.Location)
 	st := &websterengine.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}
@@ -1085,7 +1085,7 @@ func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
 // It then re-runs the verb with no fabric opener, which skips the sync, to show the verb proceeds past the saved state;
 // TestFabricSyncWayForward_NextSyncCommitsSavedState is the proof that a working sync commits it.
 func TestBeginBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "")
+	t.Setenv("FABRIC_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
 	fx.initState(t)
 	fx.CLI.openFabric = failingFabricOpen
@@ -1110,7 +1110,7 @@ func TestBeginBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 // TestRecordBatchCmd_FabricSyncFailureWayForward is the record-batch twin of the begin-batch test:
 // the batch is terminal on disk despite the sync failure, which is what the way forward commits.
 func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "")
+	t.Setenv("FABRIC_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
 	st := fx.initState(t)
 	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
@@ -1140,7 +1140,7 @@ func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 // The final re-run has no fabric opener, which skips the sync, so it shows the verb proceeds;
 // TestFabricSyncWayForward_NextSyncCommitsSavedState is the proof that a working sync commits the saved state.
 func TestRecoverBatchCmd_FabricSyncAndReedBootWayForward(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "")
+	t.Setenv("FABRIC_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
 	fx.initState(t)
 
@@ -1170,7 +1170,7 @@ func TestRecoverBatchCmd_FabricSyncAndReedBootWayForward(t *testing.T) {
 // TestBracketVerbs_NoRunInProgressWayForward reaches the "no run in progress" refusal on each bracket verb, then takes its way forward:
 // once the run's state exists the same verb proceeds.
 func TestBracketVerbs_NoRunInProgressWayForward(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	verbs := map[string]*cobra.Command{
 		"begin-batch":   fx.CLI.beginBatchCmd(),

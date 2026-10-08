@@ -50,16 +50,16 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 	}
 
 	if st.WarpOutcome != mergeOutcomeFastForwarded && st.WarpOutcome != mergeOutcomeAlreadyUpToDate && st.WarpCommitted == "" {
-		sha, landed, err := sideConcludeAlreadyLanded(f.warp, st.WarpStart, st.WarpSource, st.Squash)
+		sha, landed, err := sideConcludeAlreadyLanded(f.code, st.WarpStart, st.WarpSource, st.Squash)
 		if err != nil {
 			return err
 		}
 		if !landed {
-			if err := f.warp.MergeConclude(effectiveMsg); err != nil {
+			if err := f.code.MergeConclude(effectiveMsg); err != nil {
 				logger.Warn("fabricengine: merge conclude failed", "side", "warp", "error", err)
 				return &ErrMergeIncomplete{}
 			}
-			sha, err = f.warp.CurrentSHA()
+			sha, err = f.code.CurrentSHA()
 			if err != nil {
 				logger.Warn("fabricengine: resolve warp HEAD after conclude failed", "error", err)
 				return &ErrMergeIncomplete{}
@@ -73,16 +73,16 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 	}
 
 	if st.WeftOutcome != mergeOutcomeFastForwarded && st.WeftOutcome != mergeOutcomeAlreadyUpToDate && st.WeftCommitted == "" {
-		sha, landed, err := sideConcludeAlreadyLanded(f.weft, st.WeftStart, st.WeftSource, st.Squash)
+		sha, landed, err := sideConcludeAlreadyLanded(f.records, st.WeftStart, st.WeftSource, st.Squash)
 		if err != nil {
 			return err
 		}
 		if !landed {
-			if err := f.weft.MergeConclude(effectiveMsg); err != nil {
+			if err := f.records.MergeConclude(effectiveMsg); err != nil {
 				logger.Warn("fabricengine: merge conclude failed", "side", "weft", "error", err)
 				return &ErrMergeIncomplete{}
 			}
-			sha, err = f.weft.CurrentSHA()
+			sha, err = f.records.CurrentSHA()
 			if err != nil {
 				logger.Warn("fabricengine: resolve weft HEAD after conclude failed", "error", err)
 				return &ErrMergeIncomplete{}
@@ -297,11 +297,11 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 		return MergeResult{}, f.mergeStateOrForeignErr()
 	}
 
-	warpConflicts, err := f.warp.ConflictedFiles()
+	warpConflicts, err := f.code.ConflictedFiles()
 	if err != nil {
 		return MergeResult{}, err
 	}
-	weftConflicts, err := f.weft.ConflictedFiles()
+	weftConflicts, err := f.records.ConflictedFiles()
 	if err != nil {
 		return MergeResult{}, err
 	}
@@ -325,11 +325,11 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 		return MergeResult{}, err
 	}
 
-	newWarpHEAD, err := f.warp.CurrentSHA()
+	newWarpHEAD, err := f.code.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD after merge: %w", err)
 	}
-	newWeftHEAD, err := f.weft.CurrentSHA()
+	newWeftHEAD, err := f.records.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD after merge: %w", err)
 	}

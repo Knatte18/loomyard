@@ -39,9 +39,9 @@ func newMergeSiblingsFixture(t *testing.T) (h *hubforge.Hub, f *fabricengine.Fab
 	hubforge.AddPair(t, h, slug)
 
 	var err error
-	l, err = lyxcwd.ResolveWorktree(h.PairWarpWorktree(slug))
+	l, err = lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 	if err != nil {
-		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", h.PairWarpWorktree(slug), err)
+		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", h.PairCodeWorktree(slug), err)
 	}
 	f, err = fabricengine.Open(l)
 	if err != nil {
@@ -60,8 +60,8 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 	t.Parallel()
 
 	h, f, l, slug := newMergeSiblingsFixture(t)
-	warpDir := h.PairWarpWorktree(slug)
-	weftDir := h.PairWeftSibling(slug)
+	warpDir := h.PairCodeWorktree(slug)
+	weftDir := h.PairRecordsSibling(slug)
 
 	// The pair's own branches — captured before MergeIn ever runs, since these (not the "feature"/
 	// "feature-weft" merge-source branches) are what Cleanup's existing liveWarpBranches skip
@@ -70,7 +70,7 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 	pairWeftBranch := gitkit.CurrentBranch(t, weftDir)
 
 	setupConflictingDivergence(t, warpDir, "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, weftDir, fabricengine.WeftBranchName("feature"))
+	branchAtCurrentHEAD(t, weftDir, fabricengine.RecordsBranchName("feature"))
 
 	preWarpSHA := fabricengine.CurrentSHAForTest(t, warpDir)
 	preWeftSHA := fabricengine.CurrentSHAForTest(t, weftDir)

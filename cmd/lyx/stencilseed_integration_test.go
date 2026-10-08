@@ -181,7 +181,7 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 		{
 			name: "WorktreeWithPairedSiblingRemoved",
 			cwd: func(t *testing.T) string {
-				if err := os.RemoveAll(hub.PrimeWeft()); err != nil {
+				if err := os.RemoveAll(hub.PrimeRecords()); err != nil {
 					t.Fatalf("remove paired-sibling worktree: %v", err)
 				}
 				return hub.PrimeWorktree()

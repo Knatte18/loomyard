@@ -52,11 +52,11 @@ func OriginRecordPath(l *lyxcwd.Location) string {
 }
 
 // OriginRecordPathFor returns the origin record's path for writing, in the weft worktree for slug.
-// It mirrors the existing WeftWorktree -> AnchorRel -> durable-dir shape, and exists because during
-// Add the new pair is not the acting worktree — a bare WeftWorktreePath(l, slug) root would be
+// It mirrors the existing RecordsWorktree -> AnchorRel -> durable-dir shape, and exists because during
+// Add the new pair is not the acting worktree — a bare RecordsWorktreePath(l, slug) root would be
 // wrong in any subpath-anchored hub.
 func OriginRecordPathFor(l *lyxcwd.Location, slug string) string {
-	return filepath.Join(WeftWorktreePath(l, slug), l.AnchorRel, OriginRecordRel())
+	return filepath.Join(RecordsWorktreePath(l, slug), l.AnchorRel, OriginRecordRel())
 }
 
 // originLockPath returns the origin record's lock file path within weftPath's .weft lock
@@ -80,7 +80,7 @@ func originLockPath(weftPath string) (string, error) {
 // A false second return means no record exists for this worktree — the legacy-worktree case — and
 // is not an error.
 func ReadOrigin(l *lyxcwd.Location) (Origin, bool, error) {
-	lockPath, err := originLockPath(WeftWorktree(l))
+	lockPath, err := originLockPath(RecordsWorktree(l))
 	if err != nil {
 		return Origin{}, false, err
 	}
@@ -95,7 +95,7 @@ func ReadOrigin(l *lyxcwd.Location) (Origin, bool, error) {
 // It creates no directory and seeds no exclude in the other pair's weft worktree,
 // so reading a half-present pair never recreates a weft path it has already lost.
 func ReadOriginFor(l *lyxcwd.Location, slug string) (Origin, bool, error) {
-	weftPath := WeftWorktreePath(l, slug)
+	weftPath := RecordsWorktreePath(l, slug)
 	path := OriginRecordPathFor(l, slug)
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
@@ -120,7 +120,7 @@ func ReadOriginFor(l *lyxcwd.Location, slug string) (Origin, bool, error) {
 // a caller repairing its own worktree passes that worktree's own name, which resolves to the same
 // file the read side reaches through the junction.
 func WriteOrigin(rec *Mutations, l *lyxcwd.Location, slug string, o Origin) error {
-	weftPath := WeftWorktreePath(l, slug)
+	weftPath := RecordsWorktreePath(l, slug)
 	lockPath, err := originLockPath(weftPath)
 	if err != nil {
 		return err

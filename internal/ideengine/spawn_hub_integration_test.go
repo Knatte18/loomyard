@@ -234,7 +234,7 @@ func checkPrimeWorkspaceSurvivesTopologyVerbs(t *testing.T, h *hubforge.Hub, slu
 		t.Fatalf("Prune: %v", err)
 	}
 	for _, e := range res.Entries {
-		if strings.Contains(e.WarpWorktree, ".code-workspace") || strings.Contains(e.WeftWorktree, ".code-workspace") {
+		if strings.Contains(e.CodeWorktree, ".code-workspace") || strings.Contains(e.RecordsWorktree, ".code-workspace") {
 			t.Errorf("Prune entry names the workspace file: %+v", e)
 		}
 	}

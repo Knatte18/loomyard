@@ -1,5 +1,5 @@
 // warpjunction_test.go covers the warp-side junction primitives relocated from internal/lyxcwd in
-// this batch — WarpLyxLink, WarpLyxLinkHere, WarpJunctions and WarpJunctionsHere, plus the
+// this batch — CodeLyxLink, WarpLyxLinkHere, WarpJunctions and WarpJunctionsHere, plus the
 // WarpJunction record shape — over synthetic *lyxcwd.Location literals rather than real fixtures,
 // the same table shapes lyxcwd's own tests used.
 // Every _extra row asserts against the generic config-driven junction join
@@ -16,18 +16,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestWarpLyxLinkMethods covers WarpLyxLink(l, slug) and WarpLyxLinkHere(l) with both AnchorRel "."
+// TestCodeLyxLinkMethods covers CodeLyxLink(l, slug) and WarpLyxLinkHere(l) with both AnchorRel "."
 // (root) and subpath cases, verifying AnchorRel-mirroring and junction pairing against the
 // weft-sibling worktree.
 //
-//testtiming:keep WarpLyxLink and WarpLyxLinkHere mirroring AnchorRel and pairing with the weft sibling; coverage of its blocks by other tests does not show an assertion of this
-func TestWarpLyxLinkMethods(t *testing.T) {
+//testtiming:keep CodeLyxLink and WarpLyxLinkHere mirroring AnchorRel and pairing with the weft sibling; coverage of its blocks by other tests does not show an assertion of this
+func TestCodeLyxLinkMethods(t *testing.T) {
 	tests := []struct {
 		name                string
 		hub                 string
 		slug                string
 		relPath             string
-		wantWarpLyxLink     string
+		wantCodeLyxLink     string
 		wantWarpLyxLinkHere string
 	}{
 		{
@@ -35,7 +35,7 @@ func TestWarpLyxLinkMethods(t *testing.T) {
 			hub:                 "/h",
 			slug:                "x",
 			relPath:             ".",
-			wantWarpLyxLink:     filepath.Join("/h", "x", "_lyx"),
+			wantCodeLyxLink:     filepath.Join("/h", "x", "_lyx"),
 			wantWarpLyxLinkHere: filepath.Join("/h", "feat", "_lyx"),
 		},
 		{
@@ -43,7 +43,7 @@ func TestWarpLyxLinkMethods(t *testing.T) {
 			hub:                 "/h",
 			slug:                "x",
 			relPath:             "sub",
-			wantWarpLyxLink:     filepath.Join("/h", "x", "sub", "_lyx"),
+			wantCodeLyxLink:     filepath.Join("/h", "x", "sub", "_lyx"),
 			wantWarpLyxLinkHere: filepath.Join("/h", "feat", "sub", "_lyx"),
 		},
 		{
@@ -51,7 +51,7 @@ func TestWarpLyxLinkMethods(t *testing.T) {
 			hub:                 "/h",
 			slug:                "y",
 			relPath:             "sub/dir",
-			wantWarpLyxLink:     filepath.Join("/h", "y", "sub/dir", "_lyx"),
+			wantCodeLyxLink:     filepath.Join("/h", "y", "sub/dir", "_lyx"),
 			wantWarpLyxLinkHere: filepath.Join("/h", "feat", "sub/dir", "_lyx"),
 		},
 	}
@@ -64,15 +64,15 @@ func TestWarpLyxLinkMethods(t *testing.T) {
 				AnchorRel:    tt.relPath,
 			}
 
-			if got := WarpLyxLink(loc, tt.slug); got != tt.wantWarpLyxLink {
-				t.Errorf("WarpLyxLink(l, %q) = %q; want %q", tt.slug, got, tt.wantWarpLyxLink)
+			if got := CodeLyxLink(loc, tt.slug); got != tt.wantCodeLyxLink {
+				t.Errorf("CodeLyxLink(l, %q) = %q; want %q", tt.slug, got, tt.wantCodeLyxLink)
 			}
 
 			if got := WarpLyxLinkHere(loc); got != tt.wantWarpLyxLinkHere {
 				t.Errorf("WarpLyxLinkHere(l) = %q; want %q", got, tt.wantWarpLyxLinkHere)
 			}
 
-			// Verify junction pairing: WarpLyxLink(l, slug) and the weft
+			// Verify junction pairing: CodeLyxLink(l, slug) and the weft
 			// sibling's _lyx directory are siblings differing only by the
 			// -weft suffix on the worktree dir.
 			warpWtName := filepath.Base(filepath.Join(loc.HubPath, tt.slug))
@@ -184,7 +184,7 @@ func TestWarpJunctions(t *testing.T) {
 				if got.Link != wantLink {
 					t.Errorf("WarpJunctions(l, %q, %v)[%d].Link = %q; want %q", tt.slug, tt.names, i, got.Link, wantLink)
 				}
-				wantTarget := filepath.Join(WeftWorktreePath(loc, tt.slug), loc.AnchorRel, wantName)
+				wantTarget := filepath.Join(RecordsWorktreePath(loc, tt.slug), loc.AnchorRel, wantName)
 				if got.Target != wantTarget {
 					t.Errorf("WarpJunctions(l, %q, %v)[%d].Target = %q; want %q", tt.slug, tt.names, i, got.Target, wantTarget)
 				}
@@ -234,7 +234,7 @@ func TestWarpJunctionsHere(t *testing.T) {
 
 		lyxJunction := junctions[0]
 		wantLyxLink := WarpLyxLinkHere(loc)
-		wantLyxTarget := filepath.Join(WeftWorktree(loc), loc.AnchorRel, "_lyx")
+		wantLyxTarget := filepath.Join(RecordsWorktree(loc), loc.AnchorRel, "_lyx")
 		if lyxJunction.Name != "_lyx" {
 			t.Errorf("WarpJunctionsHere()[0].Name = %q; want %q", lyxJunction.Name, "_lyx")
 		}
@@ -247,7 +247,7 @@ func TestWarpJunctionsHere(t *testing.T) {
 
 		extraJunction := junctions[1]
 		wantExtraLink := filepath.Join(loc.WorktreePath(), loc.AnchorRel, "_extra")
-		wantExtraTarget := filepath.Join(WeftWorktree(loc), loc.AnchorRel, "_extra")
+		wantExtraTarget := filepath.Join(RecordsWorktree(loc), loc.AnchorRel, "_extra")
 		if extraJunction.Name != "_extra" {
 			t.Errorf("WarpJunctionsHere()[1].Name = %q; want %q", extraJunction.Name, "_extra")
 		}
@@ -269,7 +269,7 @@ func TestWarpJunctionsHere(t *testing.T) {
 
 		lyxJunction := junctions[0]
 		wantLyxLink := WarpLyxLinkHere(loc)
-		wantLyxTarget := filepath.Join(WeftWorktree(loc), loc.AnchorRel, "_lyx")
+		wantLyxTarget := filepath.Join(RecordsWorktree(loc), loc.AnchorRel, "_lyx")
 		if lyxJunction.Link != wantLyxLink {
 			t.Errorf("WarpJunctionsHere()[0].Link = %q; want %q", lyxJunction.Link, wantLyxLink)
 		}
@@ -279,7 +279,7 @@ func TestWarpJunctionsHere(t *testing.T) {
 
 		extraJunction := junctions[1]
 		wantExtraLink := filepath.Join(loc.WorktreePath(), loc.AnchorRel, "_extra")
-		wantExtraTarget := filepath.Join(WeftWorktree(loc), loc.AnchorRel, "_extra")
+		wantExtraTarget := filepath.Join(RecordsWorktree(loc), loc.AnchorRel, "_extra")
 		if extraJunction.Link != wantExtraLink {
 			t.Errorf("WarpJunctionsHere()[1].Link = %q; want %q", extraJunction.Link, wantExtraLink)
 		}
@@ -337,7 +337,7 @@ func TestWarpJunctionsHere(t *testing.T) {
 					if got.Link != wantLink {
 						t.Errorf("WarpJunctionsHere(%v)[%d].Link = %q; want %q", rt.names, i, got.Link, wantLink)
 					}
-					wantTarget := filepath.Join(WeftWorktree(loc), loc.AnchorRel, wantName)
+					wantTarget := filepath.Join(RecordsWorktree(loc), loc.AnchorRel, wantName)
 					if got.Target != wantTarget {
 						t.Errorf("WarpJunctionsHere(%v)[%d].Target = %q; want %q", rt.names, i, got.Target, wantTarget)
 					}

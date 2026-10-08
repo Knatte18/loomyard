@@ -2,7 +2,7 @@
 
 // pairbranch_archive_integration_test.go covers the archive step of the verb that deletes an existing pair's weft branch besides Remove: Cleanup's apply loop tags the branch tip under archive/<slug>/ and pushes the tag to the weft origin before deleting the branch.
 //
-// Every hub is built through hubforge.NewHub, with the hub's WeftBare as the weft origin.
+// Every hub is built through hubforge.NewHub, with the hub's RecordsBare as the weft origin.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -27,10 +27,10 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 	slugs := []string{"cleanup-archive-a", "cleanup-archive-b"}
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	tips := make(map[string]string, len(slugs))
 	for _, slug := range slugs {
-		branch := fabricengine.WeftBranchName(slug)
+		branch := fabricengine.RecordsBranchName(slug)
 		mustCreateOrphanWeftBranch(t, weftRoot, branch)
 		tips[slug] = gitkit.RevParse(t, weftRoot, branch)
 	}
@@ -41,13 +41,13 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 	}
 
 	for _, slug := range slugs {
-		branch := fabricengine.WeftBranchName(slug)
+		branch := fabricengine.RecordsBranchName(slug)
 		wantTag := wantArchiveTag(slug, tips[slug])
 		entry := findCleanupEntry(t, res.Entries, branch)
 		if !entry.Deleted || entry.ArchiveTag != wantTag {
 			t.Errorf("entry %s = %+v; want Deleted with ArchiveTag %q", branch, *entry, wantTag)
 		}
-		if got := tagTargetAt(t, h.WeftBare, wantTag); got != tips[slug] {
+		if got := tagTargetAt(t, h.RecordsBare, wantTag); got != tips[slug] {
 			t.Errorf("origin tag %s = %q; want %s", wantTag, got, tips[slug])
 		}
 		if gitkit.BranchExists(t, weftRoot, branch) {
@@ -66,7 +66,7 @@ func TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep(t *testing.T) {
 	const branch = "cleanup-archive-fail-weft"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustBreakOrigin(t, weftRoot)
 
@@ -91,7 +91,7 @@ func TestCleanup_NoOriginDeletesAndReportsArchiveSkip(t *testing.T) {
 	const branch = "cleanup-archive-noorigin-weft"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustRemoveOrigin(t, weftRoot)
 

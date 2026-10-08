@@ -202,7 +202,7 @@ func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *lo
 }
 
 // fabricReferenceCommand is a command that reaches a sibling worktree of the fabric repo, the shape card-fabric-reference refuses in a plan's verify: section.
-var fabricReferenceCommand = "cat " + fabricengine.WeftWorktree(&lyxcwd.Location{HubPath: "/hub", WorktreeName: "task"}) + "/_lyx/plan.md"
+var fabricReferenceCommand = "cat " + fabricengine.RecordsWorktree(&lyxcwd.Location{HubPath: "/hub", WorktreeName: "task"}) + "/_lyx/plan.md"
 
 // fabricReferencePlanFixture writes a language: none plan under <anchorPath>/_lyx/plan/ whose verify: section runs fabricReferenceCommand, and returns a *loomCLI wired with anchorPath and worktreeRoot.
 func fabricReferencePlanFixture(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {

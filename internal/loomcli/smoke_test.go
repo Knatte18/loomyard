@@ -187,7 +187,7 @@ func poisonStatusFile(t *testing.T, loc *lyxcwd.Location) {
 	}
 
 	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{smokeStatusRel(loc)}, "smoke: poison status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
+	if _, _, err := fabricengine.CommitRecordsPaths(rec, fabricengine.RecordsWorktree(loc), loc.AnchorRel, []string{smokeStatusRel(loc)}, "smoke: poison status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit poisoned status: %v", err)
 	}
 }
@@ -206,7 +206,7 @@ func poisonStatusFileMalformed(t *testing.T, loc *lyxcwd.Location) {
 		t.Fatalf("write malformed status: %v", err)
 	}
 	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{smokeStatusRel(loc)}, "smoke: malformed status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
+	if _, _, err := fabricengine.CommitRecordsPaths(rec, fabricengine.RecordsWorktree(loc), loc.AnchorRel, []string{smokeStatusRel(loc)}, "smoke: malformed status file for driver-failure rig", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit malformed status: %v", err)
 	}
 }
@@ -543,7 +543,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 	// file already self-heals, rather than leaving it stranded as an untracked file that permanently fails
 	// fabricengine.Clean's own first Preflight precondition row.
 	t.Run("origin record self-heals after a crash between write and commit", func(t *testing.T) {
-		recordsDir := fabricengine.WeftWorktree(loc)
+		recordsDir := fabricengine.RecordsWorktree(loc)
 		originRel := filepath.Join(loc.AnchorRel, fabricengine.OriginRecordRel())
 
 		// Roll the pair back to a legacy shape: no origin record tracked at all, as if the pair had been
@@ -595,7 +595,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 	// The rig is the poisoned-status-file mechanism poisonStatusFile documents, applied after the earlier
 	// steps' genuine bootstraps so the pair already has a live reed substrate and the run lock has been
 	// observed free again. The bootstrap's own steps 1-4 use only the lenient read paths (ReadOrigin,
-	// Seed, CommitWeftPaths) that tolerate the poisoned field, so only the spawned CHILD's strict read
+	// Seed, CommitRecordsPaths) that tolerate the poisoned field, so only the spawned CHILD's strict read
 	// gate ever sees the failure.
 	t.Run("died driver proceeds to the success envelope and logs why", func(t *testing.T) {
 		killDriversAndClearLog(t)

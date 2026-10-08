@@ -33,7 +33,7 @@ func setupResolvedConflictedMergeIn(t *testing.T) (*hubforge.Hub, *fabricengine.
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -241,7 +241,7 @@ func TestMergeIn_StartsAreReReadUnderLock(t *testing.T) {
 	commitOnWeftBranch("feature-weft", "_lyx/clean.txt", "clean\n", "weft: clean branch")
 
 	warpBeforeWait := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftBeforeWait := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	weftBeforeWait := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
 	held, done := launchBlockedOnLock(t, f, func() error {
 		res, mergeErr := f.MergeIn("feature")
@@ -254,9 +254,9 @@ func TestMergeIn_StartsAreReReadUnderLock(t *testing.T) {
 	// The lock's holder lands a commit on each side's current branch — what a concurrent Commit does —
 	// before this MergeIn gets its turn.
 	gitkit.CommitFile(t, h.PrimeWorktree(), "landed-mid-wait.txt", "landed while merge-in waited\n", "concurrent commit")
-	gitkit.CommitFile(t, h.PrimeWeft(), "_lyx/landed-mid-wait.txt", "landed while merge-in waited\n", "concurrent weft commit")
+	gitkit.CommitFile(t, h.PrimeRecords(), "_lyx/landed-mid-wait.txt", "landed while merge-in waited\n", "concurrent weft commit")
 	landedWarpSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	landedWeftSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	landedWeftSHA := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
 	// Precondition, asserted rather than assumed: each side really did move while MergeIn waited, or
 	// the "re-read under the lock" and "read before the lock" answers would be indistinguishable and

@@ -24,7 +24,7 @@ func TestClean_ReasonWording(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	warpUntracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
-	weftUntracked := filepath.Join(h.PrimeWeft(), "untracked.txt")
+	weftUntracked := filepath.Join(h.PrimeRecords(), "untracked.txt")
 
 	// dirty writes an untracked file at each path and removes it when the step ends.
 	dirty := func(t *testing.T, paths ...string) {

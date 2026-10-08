@@ -15,7 +15,7 @@
 // ReedGeometry reads the worktree's .git entry to tell the prime from a task worktree, the hub's recorded shortname, and a task worktree's parent through ResolveParent.
 // BurlerGeometry and WebsterGeometry read the parent through ResolveParent too, as the name their spawned roles' parent directive renders.
 // ResolveParent reads the pair's origin record alone; an origin that names no parent worktree, or no origin record, yields no parent.
-// An origin record whose sibling worktree lacks its `.weft` lock directory is an error naming `lyx fabric reconcile`, never a silent "no parent".
+// An origin record whose sibling worktree lacks its lock directory is an error naming `lyx fabric reconcile`, never a silent "no parent".
 // A missing or unreadable .git entry is ReedGeometry's one error, and an unresolvable parent leaves ParentName empty with a warning in all three.
 // hubgeom is still the only reader — no engine resolves a parent, per the Told-Geometry Invariant.
 //

@@ -98,10 +98,10 @@ func TestMergeAbort_FreshHandle_RecoversConflictedRecord(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	warpStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	weftStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
 	if _, err := f.MergeIn("feature"); err != nil {
 		t.Fatalf("MergeIn(feature) error = %v", err)
@@ -115,7 +115,7 @@ func TestMergeAbort_FreshHandle_RecoversConflictedRecord(t *testing.T) {
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpStartSHA {
 		t.Errorf("warp HEAD after fresh-handle MergeAbort = %q; want %q", got, warpStartSHA)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftStartSHA {
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeRecords()); got != weftStartSHA {
 		t.Errorf("weft HEAD after fresh-handle MergeAbort = %q; want %q", got, weftStartSHA)
 	}
 }
@@ -130,10 +130,10 @@ func TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging(t *testing.T
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	warpStart := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftStart := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	weftStart := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
 	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
-	setupCleanNonFastForward(t, h.PrimeWeft(), "feature-weft", "weft-branch.txt", "weft-current.txt")
+	setupCleanNonFastForward(t, h.PrimeRecords(), "feature-weft", "weft-branch.txt", "weft-current.txt")
 
 	warpRepo := fabricengine.WarpForTest(f)
 	weftRepo := fabricengine.WeftForTest(f)
@@ -199,7 +199,7 @@ func TestMergeContinue_ConcludeFailureThenRetryConcludes(t *testing.T) {
 	// separately — a genuine (non-fast-forward) merge target, so the merge lands a real conclude
 	// commit rather than a fast-forward (which concludeMergeSides skips outright).
 	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	installFailingPreCommitHook(t, h.PrimeWorktree())
 
@@ -312,13 +312,13 @@ func TestMergeIn_Freshness_LocalBehindRemote(t *testing.T) {
 
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "feature")
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "push", "origin", "feature")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "branch", "feature-weft")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "push", "origin", "feature-weft")
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "branch", "feature-weft")
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "push", "origin", "feature-weft")
 
 	// Advance origin's copy of "feature" past the local branch, via a separate clone so the local
 	// "feature" ref itself never moves.
 	remoteClone := t.TempDir()
-	gitkit.MustRun(t, t.TempDir(), "git", "clone", h.WarpBare, remoteClone)
+	gitkit.MustRun(t, t.TempDir(), "git", "clone", h.CodeBare, remoteClone)
 	gitkit.Git(t, remoteClone, "config", "user.email", "test@test.com")
 	gitkit.Git(t, remoteClone, "config", "user.name", "Test")
 	gitkit.MustRun(t, remoteClone, "git", "checkout", "feature")
@@ -348,7 +348,7 @@ func TestMergeIn_Freshness_SourceOnlyRemote(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	pushDetachedContentAsRemoteBranch(t, h.PrimeWorktree(), "feature", "remote-only.txt", "remote only content\n", "warp: remote-only feature")
-	pushDetachedContentAsRemoteBranch(t, h.PrimeWeft(), "feature-weft", "remote-only-weft.txt", "remote only weft content\n", "weft: remote-only feature")
+	pushDetachedContentAsRemoteBranch(t, h.PrimeRecords(), "feature-weft", "remote-only-weft.txt", "remote only weft content\n", "weft: remote-only feature")
 
 	if gitkit.BranchExists(t, h.PrimeWorktree(), "feature") {
 		t.Fatal("test setup produced a local \"feature\" ref; want remote-only")
@@ -376,7 +376,7 @@ func TestMergeIn_Freshness_SourceResolvableNowhere(t *testing.T) {
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "branch", "feature-weft")
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "branch", "feature-weft")
 
 	_, err := f.MergeIn("feature")
 	var guardErr *fabricengine.MergeGuardError
@@ -405,7 +405,7 @@ func TestMergeIn_NoWeftCounterpart_NothingMutated(t *testing.T) {
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "feature")
 
 	warpBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -418,7 +418,7 @@ func TestMergeIn_NoWeftCounterpart_NothingMutated(t *testing.T) {
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpBefore {
 		t.Errorf("warp HEAD changed to %q; want unchanged %q", got, warpBefore)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftBefore {
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeRecords()); got != weftBefore {
 		t.Errorf("weft HEAD changed to %q; want unchanged %q", got, weftBefore)
 	}
 }
@@ -435,7 +435,7 @@ func TestMergeIn_DirtyWarpRefuses(t *testing.T) {
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "feature")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "branch", "feature-weft")
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "branch", "feature-weft")
 	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
 		t.Fatalf("write dirty.txt: %v", err)
 	}
@@ -462,11 +462,11 @@ func TestMergeIn_DirtyWeftDoesNotRefuse(t *testing.T) {
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "branch", "feature")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "branch", "feature-weft")
-	if err := os.WriteFile(filepath.Join(h.PrimeWeft(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "branch", "feature-weft")
+	if err := os.WriteFile(filepath.Join(h.PrimeRecords(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
 		t.Fatalf("write dirty.txt: %v", err)
 	}
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "add", "dirty.txt")
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "add", "dirty.txt")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -475,7 +475,7 @@ func TestMergeIn_DirtyWeftDoesNotRefuse(t *testing.T) {
 	if !res.AlreadyUpToDate {
 		t.Errorf("weft-dirty MergeIn().AlreadyUpToDate = false; want true — feature was branched at the current HEAD")
 	}
-	if out := gitkit.GitStatusPorcelain(t, h.PrimeWeft()); !strings.Contains(out, "dirty.txt") {
+	if out := gitkit.GitStatusPorcelain(t, h.PrimeRecords()); !strings.Contains(out, "dirty.txt") {
 		t.Errorf("weft git status --porcelain after MergeIn = %q; want it to still mention dirty.txt — MergeIn never touches the weft", out)
 	}
 }
@@ -505,7 +505,7 @@ func TestMergeIn_ConflictMarkers_NeverLeakWeftName(t *testing.T) {
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "marker-conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 	warpSourceSHA, err := fabricengine.WarpForTest(f).ResolveSHA("feature")
 	if err != nil {
 		t.Fatalf("ResolveSHA(feature) error = %v", err)
@@ -552,7 +552,7 @@ func TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking(t *testin
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -644,7 +644,7 @@ func TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted(t *testing.
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -709,7 +709,7 @@ func TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -778,7 +778,7 @@ func TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted(t *testing.T) 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	// A decoy branch off the current warp HEAD with one non-conflicting commit, so a plain merge of
 	// it onto the recorded start auto-concludes into a two-parent commit.
@@ -931,7 +931,7 @@ func setupWarpStagedPendingConclude(t *testing.T) (*hubforge.Hub, fabricengine.M
 	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
 
 	warpStart := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftStart := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	weftStart := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 	warpRepo := fabricengine.WarpForTest(f)
 	warpSourceSHA, err := warpRepo.ResolveSHA("feature")
 	if err != nil {
@@ -1205,7 +1205,7 @@ func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	// Sabotage the warp conclude so Merge stops with the record retained and warp_outcome staged —
 	// the state a crash between `git merge --squash` and the conclude commit leaves.
@@ -1280,7 +1280,7 @@ func TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHe
 	// The decoy is built first, off the pre-merge tip, so merging it later is a clean non-fast-forward.
 	commitOnWarpBranch("decoy", "decoy.txt", "the operator's own second merge\n", "decoy: unrelated branch")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -1328,7 +1328,7 @@ func TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHe
 	if mergeHeadPresentInCheckout(t, h.PrimeWorktree()) {
 		t.Error("warp checkout still carries a live MERGE_HEAD after MergeContinue returned without error; the pair is wedged — no fabric verb can clear it once the record is gone")
 	}
-	if mergeHeadPresentInCheckout(t, h.PrimeWeft()) {
+	if mergeHeadPresentInCheckout(t, h.PrimeRecords()) {
 		t.Error("weft checkout still carries a live MERGE_HEAD after MergeContinue returned without error")
 	}
 	if !gitkit.IsAncestor(t, h.PrimeWorktree(), st.WarpSource, fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())) {
@@ -1359,7 +1359,7 @@ func TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted(t *tes
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	// Sabotage the warp conclude so Merge stops with the record retained, squash recorded, and the
 	// warp side staged with no conclude SHA.
@@ -1438,7 +1438,7 @@ func TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate(t *testin
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	warpStart := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
-	weftStart := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	weftStart := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 	if err := fabricengine.SaveMergeStateForTest(f, fabricengine.MergeStateForTest{
 		Verb:        "merge-in",
 		Source:      "feature",
@@ -1571,7 +1571,7 @@ func TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses(t *testing.T) {
 			dir := h.PrimeWorktree()
 			branch, conflictPath := "other", "plain-conflict.txt"
 			if tt.onWeft {
-				dir = h.PrimeWeft()
+				dir = h.PrimeRecords()
 				branch, conflictPath = "other-weft", "_lyx/plain-conflict.txt"
 			}
 

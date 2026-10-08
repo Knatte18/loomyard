@@ -4,7 +4,7 @@
 // chain of an existing user hook, and correct weft-sibling branch resolution for
 // prime and child worktrees under fabric's suffixed branch-naming scheme.
 //
-// fabric's weft branch is always the warp branch plus WeftBranchName's "-weft"
+// fabric's weft branch is always the warp branch plus RecordsBranchName's "-weft"
 // suffix, never a literal warp/weft branch-name match, so each case additionally
 // asserts the in-sync (correctly suffixed) state produces no warning before
 // diverging it. The child-pair setup uses raw `git worktree add` rather than
@@ -154,7 +154,7 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 
 // TestInstallPostCheckoutHook_WeftResolution_Prime verifies that the hook script correctly resolves
 // the <PrimeName>-weft sibling for a prime (main) worktree under fabric's suffixed branch scheme:
-// the weft prime must sit on WeftBranchName(warpBranch) to be considered in sync, not on a literal
+// the weft prime must sit on RecordsBranchName(warpBranch) to be considered in sync, not on a literal
 // warp-branch-name match.
 // A real git checkout is performed for both the in-sync and diverged cases.
 //
@@ -165,19 +165,19 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	hub := h.PrimeWorktree()
-	weftPrime := h.PrimeWeft()
+	weftPrime := h.PrimeRecords()
 
 	// Install the hook in the shared repo.
 	if err := fabricengine.InstallPostCheckoutHook(l); err != nil {
 		t.Fatalf("InstallPostCheckoutHook: %v", err)
 	}
 
-	// A real hub's weft prime is already wired onto WeftBranchName("main") by CloneAndWire — the
+	// A real hub's weft prime is already wired onto RecordsBranchName("main") by CloneAndWire — the
 	// in-sync state — unlike the old paired-fixture template, which left weft prime on a literal
 	// "main" branch and required an explicit checkout to reach parity. Confirm the invariant rather
 	// than reconstructing it by hand.
-	if branch := gitkit.CurrentBranch(t, weftPrime); branch != fabricengine.WeftBranchName("main") {
-		t.Fatalf("weft prime branch = %q; want %q (already wired by CloneAndWire)", branch, fabricengine.WeftBranchName("main"))
+	if branch := gitkit.CurrentBranch(t, weftPrime); branch != fabricengine.RecordsBranchName("main") {
+		t.Fatalf("weft prime branch = %q; want %q (already wired by CloneAndWire)", branch, fabricengine.RecordsBranchName("main"))
 	}
 
 	// Create a scratch branch in the warp prime so we have something to switch
@@ -211,7 +211,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 // the <slug>-weft sibling for a child (non-prime) worktree under fabric's suffixed branch scheme.
 // The child worktree pair is created directly via `git worktree add` (fabricengine's own Add verb
 // lands in a later batch);
-// the weft child's branch is WeftBranchName(slug).
+// the weft child's branch is RecordsBranchName(slug).
 //
 // Note: git worktrees cannot check out a branch that is already checked out in another worktree.
 // To trigger the hook without hitting that constraint, we create an extra branch in the child warp
@@ -227,16 +227,16 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	hub := h.PrimeWorktree()
-	weftPrime := h.PrimeWeft()
+	weftPrime := h.PrimeRecords()
 
 	// Create a child worktree pair directly via git worktree add — fabricengine's
 	// own Add verb lands in a later batch; this test only needs a warp/weft
 	// worktree pair on disk to exercise the hook script itself.
-	childWarp := h.PairWarpWorktree(slug)
+	childWarp := h.PairCodeWorktree(slug)
 	gitkit.MustRun(t, hub, "git", "worktree", "add", childWarp, "-b", slug)
 
-	weftBranch := fabricengine.WeftBranchName(slug)
-	childWeft := h.PairWeftSibling(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
+	childWeft := h.PairRecordsSibling(slug)
 	gitkit.MustRun(t, weftPrime, "git", "worktree", "add", childWeft, "-b", weftBranch)
 
 	// Install the hook (affects the shared common .git/hooks for the warp repo,

@@ -151,10 +151,10 @@ func TestFinalize_OverRealHub(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	hubforge.AddPair(t, h, "task")
 	hubforge.AddPair(t, h, "parent")
-	parentCode, parentRecords := h.PairWarpWorktree("parent"), h.PairWeftSibling("parent")
+	parentCode, parentRecords := h.PairCodeWorktree("parent"), h.PairRecordsSibling("parent")
 
 	if !t.Run("resolves a conflict and squash merges into the parent", func(t *testing.T) {
-		taskCode, taskRecords := h.PairWarpWorktree("task"), h.PairWeftSibling("task")
+		taskCode, taskRecords := h.PairCodeWorktree("task"), h.PairRecordsSibling("task")
 
 		// The genuine code-side conflict: both branches add conflict.txt independently, off a common
 		// ancestor where it does not exist.
@@ -238,7 +238,7 @@ func TestFinalize_OverRealHub(t *testing.T) {
 	// Relies on the first step having landed into the parent pair, so this task's merge-in carries that landing in cleanly.
 	if !t.Run("an already landed parent is idempotent", func(t *testing.T) {
 		hubforge.AddPair(t, h, "second-task")
-		secondCode := h.PairWarpWorktree("second-task")
+		secondCode := h.PairCodeWorktree("second-task")
 		gitkit.CommitFile(t, secondCode, "feature.txt", "task feature\n", "task: add feature.txt")
 		commitTaskLoomConfig(t, h, "second-task")
 		parentConfigBefore := readParentLoomConfig(t, h)
@@ -265,7 +265,7 @@ func TestFinalize_OverRealHub(t *testing.T) {
 	// Lands a fresh task with squash off, after the idempotent step so the parent already carries the earlier landing.
 	t.Run("a non-squash landing reports the config change", func(t *testing.T) {
 		hubforge.AddPair(t, h, "third-task")
-		thirdCode := h.PairWarpWorktree("third-task")
+		thirdCode := h.PairCodeWorktree("third-task")
 		gitkit.CommitFile(t, thirdCode, "third.txt", "third feature\n", "task: add third.txt")
 		commitTaskLoomConfig(t, h, "third-task")
 		parentConfigBefore := readParentLoomConfig(t, h)
@@ -281,13 +281,13 @@ func TestFinalize_OverRealHub(t *testing.T) {
 // commitTaskLoomConfig commits a loom config change on the task pair's tracked side, which is the change Finalize reports and never carries.
 func commitTaskLoomConfig(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
-	gitkit.CommitFile(t, h.PairWeftSibling(slug), configengine.ConfigFileRel("loom"), "task_setting: "+slug+"\n", slug+": change loom config")
+	gitkit.CommitFile(t, h.PairRecordsSibling(slug), configengine.ConfigFileRel("loom"), "task_setting: "+slug+"\n", slug+": change loom config")
 }
 
 // readParentLoomConfig returns the parent pair's loom config file bytes, or nil when the parent has none.
 func readParentLoomConfig(t *testing.T, h *hubforge.Hub) []byte {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(h.PairWeftSibling("parent"), configengine.ConfigFileRel("loom")))
+	b, err := os.ReadFile(filepath.Join(h.PairRecordsSibling("parent"), configengine.ConfigFileRel("loom")))
 	if err != nil && !os.IsNotExist(err) {
 		t.Fatalf("read parent loom config: %v", err)
 	}

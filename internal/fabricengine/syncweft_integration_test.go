@@ -30,11 +30,11 @@ func TestRebuildIndex_EqualsIncrementallyBuiltIndex(t *testing.T) {
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	for i := 0; i < 3; i++ {
 		fabricengine.CommitWarpForTest(t, warpPath, fmt.Sprintf("warp round %d", i))
-		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), fmt.Sprintf("weft round %d", i))
+		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), fmt.Sprintf("weft round %d", i))
 		res, err := f.Commit([]string{"_lyx"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("Commit() round %d error = %v", i, err)
@@ -99,10 +99,10 @@ func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp change")
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "weft change")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change")
 
 	preAmendSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
@@ -125,14 +125,14 @@ func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
 	// parent, author, committer, and message; two amends within the same
 	// second can otherwise tie on every field), so this guarantees a
 	// genuinely new commit object while --no-edit preserves the trailer.
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "weft change, amended")
-	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "add", "-A")
-	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "commit", "--amend", "--no-edit")
-	postAmendSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change, amended")
+	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "add", "-A")
+	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "commit", "--amend", "--no-edit")
+	postAmendSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeRecords())
 	if postAmendSHA == preAmendSHA {
 		t.Fatalf("amend did not change the weft SHA")
 	}
-	expireAndPruneUnreachable(t, weftFixture.PrimeWeft())
+	expireAndPruneUnreachable(t, weftFixture.PrimeRecords())
 
 	got, err = f.WeftSHAForWarpSHA(warpSHA)
 	if err != nil {
@@ -154,12 +154,12 @@ func staleCorrespondenceFixture(t *testing.T) (f *fabricengine.Fabric, warpSHA s
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
-	f = fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
+	f = fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
-	baseWeftSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
+	baseWeftSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeRecords())
 
 	warpSHA = fabricengine.CommitWarpForTest(t, warpPath, "warp change")
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "weft change")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change")
 	weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v", err)
@@ -174,8 +174,8 @@ func staleCorrespondenceFixture(t *testing.T) (f *fabricengine.Fabric, warpSHA s
 	// Discard the trailer commit from history entirely, then force git to
 	// genuinely forget the orphaned object — RebuildIndex's scan will find
 	// no trailer naming warpSHA anywhere afterwards.
-	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "reset", "--hard", baseWeftSHA)
-	expireAndPruneUnreachable(t, weftFixture.PrimeWeft())
+	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "reset", "--hard", baseWeftSHA)
+	expireAndPruneUnreachable(t, weftFixture.PrimeRecords())
 
 	return f, warpSHA
 }

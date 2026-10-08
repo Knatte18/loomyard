@@ -287,8 +287,7 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 	assertBoardIsWeftWorktree(t, hubPath, weftPrime, "main")
 }
 
-// TestCloneHub_CreatesFreshWeftPrimaryBranch asserts that when the weft remote carries no existing
-// WeftBranchName-suffixed branch (a genuinely new hub — the non-adopt path), CloneHub creates the
+// TestCloneHub_CreatesFreshWeftPrimaryBranch asserts that when the weft remote carries no existing RecordsBranchName-suffixed branch (a genuinely new hub — the non-adopt path), CloneHub creates the
 // weft primary's suffixed branch fresh at the cloned HEAD rather than requiring a pre-existing
 // remote ref to adopt.
 func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
@@ -320,7 +319,7 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 	}
 
 	weftPrime := weftname.SiblingPath(hubPath, "fresh-warp")
-	want := fabricengine.WeftBranchName("main")
+	want := fabricengine.RecordsBranchName("main")
 	if got := gitkit.CurrentBranch(t, weftPrime); got != want {
 		t.Fatalf("weft prime branch = %q; want %q (freshly created, no remote suffixed branch to adopt)", got, want)
 	}

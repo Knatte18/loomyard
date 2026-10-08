@@ -46,7 +46,7 @@ func resolveStateTarget(t *testing.T, h *hubforge.Hub, stateName string) StateTa
 
 	target := StateTarget{
 		WarpCheckout: h.PrimeWorktree(),
-		WeftCheckout: h.PrimeWeft(),
+		WeftCheckout: h.PrimeRecords(),
 	}
 
 	switch stateName {
@@ -54,9 +54,9 @@ func resolveStateTarget(t *testing.T, h *hubforge.Hub, stateName string) StateTa
 		linkAbs, _ := firstWiredJunction(t, h)
 		target.StructuralPath = linkAbs
 	case "foreignDirAtFabricOwnedPath":
-		target.StructuralPath = h.PairWarpWorktree("states-foreign-owner")
+		target.StructuralPath = h.PairCodeWorktree("states-foreign-owner")
 	case "unrelatedGitCloneAtWeftNamedPath":
-		target.StructuralPath = h.PairWeftSibling("states-clone-owner")
+		target.StructuralPath = h.PairRecordsSibling("states-clone-owner")
 	}
 
 	return target
@@ -145,7 +145,7 @@ func assertCleanHubEstablished(t *testing.T, h *hubforge.Hub) {
 		}
 	}
 
-	weftStatus := gitkit.GitStatusPorcelain(t, h.PrimeWeft())
+	weftStatus := gitkit.GitStatusPorcelain(t, h.PrimeRecords())
 	if weftStatus == "" {
 		return
 	}
@@ -158,7 +158,7 @@ func assertCleanHubEstablished(t *testing.T, h *hubforge.Hub) {
 		if line == "" || line == allowed {
 			continue
 		}
-		t.Errorf("clean state failed to establish: %s carries unexpected dirt: %q (full status: %s)", h.PrimeWeft(), line, weftStatus)
+		t.Errorf("clean state failed to establish: %s carries unexpected dirt: %q (full status: %s)", h.PrimeRecords(), line, weftStatus)
 	}
 }
 

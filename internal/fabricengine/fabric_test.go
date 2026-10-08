@@ -54,13 +54,13 @@ func TestOpen(t *testing.T) {
 				}
 			}
 			if tt.mkWeft {
-				if err := os.Mkdir(fabricengine.WeftWorktree(l), 0755); err != nil {
+				if err := os.Mkdir(fabricengine.RecordsWorktree(l), 0755); err != nil {
 					t.Fatalf("mkdir weft sibling: %v", err)
 				}
 			}
 			wantMissing := l.WorktreePath()
 			if tt.mkWarp {
-				wantMissing = fabricengine.WeftWorktree(l)
+				wantMissing = fabricengine.RecordsWorktree(l)
 			}
 
 			f, err := fabricengine.Open(l)
@@ -114,7 +114,7 @@ func TestNew_HappyPath(t *testing.T) {
 	}
 }
 
-// TestEnvSyncOptions covers the WEFT_SKIP_GIT / WEFT_SKIP_PUSH mapping: unset, "1", and other
+// TestEnvSyncOptions covers the FABRIC_SKIP_GIT / FABRIC_SKIP_PUSH mapping: unset, "1", and other
 // values.
 func TestEnvSyncOptions(t *testing.T) {
 	tests := []struct {
@@ -133,14 +133,14 @@ func TestEnvSyncOptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.setSkipGit {
-				t.Setenv("WEFT_SKIP_GIT", tt.skipGitVal)
+				t.Setenv("FABRIC_SKIP_GIT", tt.skipGitVal)
 			} else {
-				t.Setenv("WEFT_SKIP_GIT", "")
+				t.Setenv("FABRIC_SKIP_GIT", "")
 			}
 			if tt.setSkipPush {
-				t.Setenv("WEFT_SKIP_PUSH", tt.skipPushVal)
+				t.Setenv("FABRIC_SKIP_PUSH", tt.skipPushVal)
 			} else {
-				t.Setenv("WEFT_SKIP_PUSH", "")
+				t.Setenv("FABRIC_SKIP_PUSH", "")
 			}
 
 			got := fabricengine.EnvSyncOptions()

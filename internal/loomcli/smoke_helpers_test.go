@@ -102,7 +102,7 @@ func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, w
 
 	slug = "loom-smoke-task"
 	hubforge.AddPair(t, h, slug)
-	worktree = h.PairWarpWorktree(slug)
+	worktree = h.PairCodeWorktree(slug)
 
 	var err error
 	loc, err = lyxcwd.Resolve(worktree)
@@ -204,7 +204,7 @@ func seedAndCommitStatus(t *testing.T, loc *lyxcwd.Location, slug string) {
 		t.Fatalf("loomshed.Seed: %v", err)
 	}
 	rec := fabricengine.NewMutations("")
-	if _, _, err := fabricengine.CommitWeftPaths(rec, fabricengine.WeftWorktree(loc), loc.AnchorRel, []string{smokeStatusRel(loc)}, "smoke: seed status", fabricengine.EnvSyncOptions()); err != nil {
+	if _, _, err := fabricengine.CommitRecordsPaths(rec, fabricengine.RecordsWorktree(loc), loc.AnchorRel, []string{smokeStatusRel(loc)}, "smoke: seed status", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit seed: %v", err)
 	}
 }
@@ -262,7 +262,7 @@ func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lyxcwd.Location)) 
 	})
 	const slug = "loom-smoke-task"
 	hubforge.AddPair(t, h, slug)
-	worktree := h.PairWarpWorktree(slug)
+	worktree := h.PairCodeWorktree(slug)
 	loc, err := lyxcwd.Resolve(worktree)
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%s): %v", worktree, err)

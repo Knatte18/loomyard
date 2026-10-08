@@ -68,7 +68,7 @@ func TestMergeStageResolved_ResolvedConflictsStageThenContinueSucceeds(t *testin
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -108,7 +108,7 @@ func TestMergeStageResolved_PathNotConflictedOnEitherSide(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	if _, err := f.MergeIn("feature"); err != nil {
 		t.Fatalf("MergeIn(feature) error = %v", err)
@@ -144,7 +144,7 @@ func TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion(t *testing.T)
 	commitOnBranchDeleting(t, warpDir, "feature", filename)
 	gitkit.CommitFile(t, warpDir, filename, "current content\n", "modify "+filename+" on current")
 
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {

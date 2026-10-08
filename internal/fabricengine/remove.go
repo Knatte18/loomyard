@@ -1,7 +1,7 @@
 // remove.go implements Remove: every refusal — slug, prime, target-exists, merge-in-progress and the no-force dirtiness checks with their status probes — runs first, through the read-only probe RemoveRefusal, and leaves the hub and the weft origin untouched.
 // Then the sibling's pending records are committed (commitPendingRecords) and the weft tip is archived,
 // and only then are the portal and launchers torn down, so a refused call never loses a launcher or pushes a tag that misses uncommitted records.
-// The weft branch it removes is WeftBranchName(warpBranch).
+// The weft branch it removes is RecordsBranchName(warpBranch).
 // After both worktrees are gone it also deletes the pair's local warp branch, but only when the
 // destructive gate proves no work is lost: every commit is on another ref or already landed on the
 // pair's recorded parent — see deleteWarpBranch. A branch that fails the gate is kept with a reason.
@@ -88,17 +88,17 @@ type RemoveResult struct {
 	// with remote, a weft repo with no origin remote configured;
 	// without remote, a sibling branch left only on origin, which is kept.
 	RemoteSkippedReason string `json:"remote_skipped_reason,omitempty"`
-	// WarpBranchDeleted reports whether the pair's local warp branch was deleted after the teardown.
-	WarpBranchDeleted bool `json:"warp_branch_deleted"`
-	// WarpBranchKeptReason is non-empty when the warp branch was left in place, naming why: the
+	// CodeBranchDeleted reports whether the pair's local warp branch was deleted after the teardown.
+	CodeBranchDeleted bool `json:"code_branch_deleted"`
+	// CodeBranchKeptReason is non-empty when the warp branch was left in place, naming why: the
 	// destructive gate's refusal, or a failure to delete it. A kept branch is not a failure of Remove.
-	WarpBranchKeptReason string `json:"warp_branch_kept_reason,omitempty"`
-	// RemoteWarpBranchDeleted reports whether the pair's task branch was observably removed from the warp repo's origin.
+	CodeBranchKeptReason string `json:"code_branch_kept_reason,omitempty"`
+	// RemoteCodeBranchDeleted reports whether the pair's task branch was observably removed from the warp repo's origin.
 	// It is true only with remote, when the branch's work was landed.
-	RemoteWarpBranchDeleted bool `json:"remote_warp_branch_deleted"`
-	// RemoteWarpBranchKeptReason is non-empty when remote was set and the task branch on origin was left in place, naming why: the gate's refusal or a failure to look it up or delete it.
+	RemoteCodeBranchDeleted bool `json:"remote_code_branch_deleted"`
+	// RemoteCodeBranchKeptReason is non-empty when remote was set and the task branch on origin was left in place, naming why: the gate's refusal or a failure to look it up or delete it.
 	// A kept branch is not a failure of Remove.
-	RemoteWarpBranchKeptReason string `json:"remote_warp_branch_kept_reason,omitempty"`
+	RemoteCodeBranchKeptReason string `json:"remote_code_branch_kept_reason,omitempty"`
 	// ArchiveTag names the archive/<slug>/<tip> tag pushed to the weft origin before the teardown;
 	// empty when none was pushed.
 	ArchiveTag string `json:"archive_tag,omitempty"`
@@ -127,10 +127,10 @@ type RemoveResult struct {
 // repo's origin remote; a remote deletion failure never makes Remove return a non-nil error.
 // Once both worktrees are removed, Remove deletes the local warp branch (BranchPrefix + slug) through
 // the destructive gate, which refuses unless the branch's work is on another ref or landed on the
-// parent recorded in the pair's origin record; a refusal fills WarpBranchKeptReason and Remove still
+// parent recorded in the pair's origin record; a refusal fills CodeBranchKeptReason and Remove still
 // succeeds. force never answers that check.
 // With remote, Remove then deletes the task branch on the warp repository's origin, through the same gate and a lease on the observed remote tip, when the tip's work is landed;
-// a refusal, a lost lease or a failed push fills RemoteWarpBranchKeptReason and Remove still succeeds.
+// a refusal, a lost lease or a failed push fills RemoteCodeBranchKeptReason and Remove still succeeds.
 // The recorded parent is read before any teardown, since the record lives in the weft worktree the
 // teardown deletes.
 // A pair whose task worktree is already gone is finished rather than refused: Remove performs whatever teardown remains, in the same order and through the same gates, and reports it in Steps with Finished set.
@@ -142,7 +142,7 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 	defer func() { res.Mutations = rec.Snapshot() }()
 
 	warpBranch := t.cfg.BranchPrefix + slug
-	weftBranch := WeftBranchName(warpBranch)
+	weftBranch := RecordsBranchName(warpBranch)
 
 	// Every refusal runs here, through the same probe a caller can ask without removing anything, so the two can never drift.
 	if err := t.RemoveRefusal(l, slug, force); err != nil {
@@ -258,11 +258,11 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 		RemoteBranchDeleted:  teardown.remoteBranchDeleted,
 		RemoteBranchError:    teardown.remoteBranchError,
 		RemoteSkippedReason:  teardown.remoteSkippedReason,
-		WarpBranchDeleted:    warpDeleted,
-		WarpBranchKeptReason: warpKeptReason,
+		CodeBranchDeleted:    warpDeleted,
+		CodeBranchKeptReason: warpKeptReason,
 
-		RemoteWarpBranchDeleted:    remoteWarpDeleted,
-		RemoteWarpBranchKeptReason: remoteWarpKeptReason,
+		RemoteCodeBranchDeleted:    remoteWarpDeleted,
+		RemoteCodeBranchKeptReason: remoteWarpKeptReason,
 		ArchiveTag:                 archiveTag,
 		ArchiveSkippedReason:       archiveSkippedReason,
 		Steps:                      steps,
@@ -278,7 +278,7 @@ func (t *Topology) removeSibling(rec *Mutations, l *lyxcwd.Location, slug, weftB
 	var steps []string
 
 	if !pair.siblingWorktree && !pair.siblingBranch {
-		weftRoot, err := WeftRepoRoot(l)
+		weftRoot, err := RecordsRepoRoot(l)
 		if err != nil {
 			return weftTeardownResult{}, nil, fmt.Errorf("resolve weft repo root: %w", err)
 		}
@@ -304,7 +304,7 @@ func (t *Topology) removeSibling(rec *Mutations, l *lyxcwd.Location, slug, weftB
 	}
 
 	if !pair.siblingWorktree {
-		if weftRoot, err := WeftRepoRoot(l); err == nil {
+		if weftRoot, err := RecordsRepoRoot(l); err == nil {
 			// Same reason as the task side's prune: a registration left by a hand-removed worktree blocks the branch deletion.
 			_, _ = gitexec.Run([]string{"worktree", "prune"}, weftRoot)
 		}
@@ -316,14 +316,14 @@ func (t *Topology) removeSibling(rec *Mutations, l *lyxcwd.Location, slug, weftB
 	// reads the error return alone, never the teardown struct: the remote outcome never affects it.
 	teardown, weftErr := removeWeftWorktree(rec, l, slug, weftBranch, force, true, remote, t.cfg.BranchPrefix)
 	if weftErr != nil {
-		weftTarget := WeftWorktreePath(l, slug)
+		weftTarget := RecordsWorktreePath(l, slug)
 		if _, statErr := os.Stat(weftTarget); statErr == nil {
 			return weftTeardownResult{}, nil, fmt.Errorf(
 				"warp worktree removed, but weft teardown failed and the weft worktree remains at %s: %w",
 				weftTarget, weftErr)
 		}
 	}
-	if pair.siblingWorktree && !pathPresent(WeftWorktreePath(l, slug)) {
+	if pair.siblingWorktree && !pathPresent(RecordsWorktreePath(l, slug)) {
 		steps = append(steps, RemoveStepSiblingWorktree)
 	}
 	if pair.siblingBranch && !weftBranchExists(l, weftBranch) {
@@ -360,7 +360,7 @@ func (t *Topology) inspectPair(l *lyxcwd.Location, slug string) (pairState, erro
 			s.strayPath = true
 		}
 	}
-	s.siblingWorktree = pathPresent(WeftWorktreePath(l, slug))
+	s.siblingWorktree = pathPresent(RecordsWorktreePath(l, slug))
 	s.portal = pathPresent(PortalLink(l, slug))
 	s.launchers = pathPresent(LauncherDir(l, slug))
 
@@ -369,7 +369,7 @@ func (t *Topology) inspectPair(l *lyxcwd.Location, slug string) (pairState, erro
 		return pairState{}, err
 	}
 	s.taskBranch = taskBranch
-	s.siblingBranch = weftBranchExists(l, WeftBranchName(t.cfg.BranchPrefix+slug))
+	s.siblingBranch = weftBranchExists(l, RecordsBranchName(t.cfg.BranchPrefix+slug))
 	return s, nil
 }
 
@@ -381,14 +381,14 @@ func (t *Topology) refuseWhenNothingRemains(l *lyxcwd.Location, slug string, s p
 		return nil
 	}
 
-	weftRoot, err := WeftRepoRoot(l)
+	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return fmt.Errorf("resolve weft repo root: %w", err)
 	}
 	warpBranch := t.cfg.BranchPrefix + slug
 	for _, side := range []struct{ repoDir, branch string }{
 		{l.WorktreePath(), warpBranch},
-		{weftRoot, WeftBranchName(warpBranch)},
+		{weftRoot, RecordsBranchName(warpBranch)},
 	} {
 		if _, urlErr := gitrepo.New(side.repoDir).RemoteURL(originRemoteName); urlErr != nil {
 			continue
@@ -522,7 +522,7 @@ func (t *Topology) RemoveRefusal(l *lyxcwd.Location, slug string, force bool) er
 	// Refuse before any teardown for the named pair: a mid-merge pair is not force's to override —
 	// force answers dirtiness only, never a live merge record.
 	// A gone task worktree makes the probe read false on its own, so the task side needs no skip.
-	blocked, err := mergeBlocksMutation(target, WeftWorktreePath(l, slug))
+	blocked, err := mergeBlocksMutation(target, RecordsWorktreePath(l, slug))
 	if err != nil {
 		return err
 	}
@@ -559,15 +559,15 @@ func (t *Topology) RemoveRefusal(l *lyxcwd.Location, slug string, force bool) er
 	if err != nil {
 		return fmt.Errorf("load the record pathspec: %w", err)
 	}
-	return refuseDirtyWeftWorktree(WeftWorktreePath(l, slug), l.AnchorRel, names)
+	return refuseDirtyWeftWorktree(RecordsWorktreePath(l, slug), l.AnchorRel, names)
 }
 
 // commitPendingRecords commits the pair's sibling worktree's uncommitted changes inside the record pathspec, so the archive tag that follows covers them.
-// It stages exactly the scoped pathspec `lyx fabric sync` uses, through CommitWeftPaths, with the fixed DefaultCommitMessage plus a Warp-SHA trailer naming the task worktree's HEAD, and pushes nothing.
+// It stages exactly the scoped pathspec `lyx fabric sync` uses, through CommitRecordsPaths, with the fixed DefaultCommitMessage plus a Warp-SHA trailer naming the task worktree's HEAD, and pushes nothing.
 // An absent sibling or an empty pathspec commits nothing; KindCommitCreated is recorded only when a commit landed, and committed reports it.
 // The trailer names the task worktree's HEAD while it is present, else the local task branch's tip, else the last Warp-SHA trailer recorded on the sibling branch; with none of those the commit carries no trailer.
 func commitPendingRecords(rec *Mutations, l *lyxcwd.Location, slug, warpBranch string) (committed bool, err error) {
-	weftTarget := WeftWorktreePath(l, slug)
+	weftTarget := RecordsWorktreePath(l, slug)
 	if _, statErr := os.Stat(weftTarget); os.IsNotExist(statErr) {
 		return false, nil
 	}
@@ -596,7 +596,7 @@ func commitPendingRecords(rec *Mutations, l *lyxcwd.Location, slug, warpBranch s
 	if warpSHA != "" {
 		msg = appendWarpSHATrailer(msg, warpSHA)
 	}
-	_, committed, err = CommitWeftPaths(rec, weftTarget, l.AnchorRel, present, msg, SyncOptions{})
+	_, committed, err = CommitRecordsPaths(rec, weftTarget, l.AnchorRel, present, msg, SyncOptions{})
 	if err != nil {
 		return false, fmt.Errorf("commit the pair's pending records: %w", err)
 	}

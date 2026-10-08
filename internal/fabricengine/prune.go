@@ -39,10 +39,10 @@ import (
 
 // PruneEntry describes one stale or orphaned pair that Prune has identified.
 type PruneEntry struct {
-	// WarpWorktree is the absolute path to the (missing or absent) warp worktree.
-	WarpWorktree string `json:"warp_worktree"`
-	// WeftWorktree is the absolute path to the weft worktree sibling.
-	WeftWorktree string `json:"weft_worktree"`
+	// CodeWorktree is the absolute path to the (missing or absent) warp worktree.
+	CodeWorktree string `json:"code_worktree"`
+	// RecordsWorktree is the absolute path to the weft worktree sibling.
+	RecordsWorktree string `json:"records_worktree"`
 	// Reason describes why this pair was flagged for pruning.
 	Reason string `json:"reason"`
 	// Removed reports whether the weft worktree was actually deleted.
@@ -106,16 +106,16 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult
 		warpPath = filepath.Clean(warpPath)
 		slug := filepath.Base(warpPath)
 
-		weftPath := WeftWorktreePath(l, slug)
+		weftPath := RecordsWorktreePath(l, slug)
 
 		_, warpStatErr := os.Stat(warpPath)
 		warpMissing := warpStatErr != nil
 
 		if warpMissing {
 			pe := PruneEntry{
-				WarpWorktree: filepath.ToSlash(warpPath),
-				WeftWorktree: filepath.ToSlash(weftPath),
-				Reason:       "warp worktree directory missing",
+				CodeWorktree:    filepath.ToSlash(warpPath),
+				RecordsWorktree: filepath.ToSlash(weftPath),
+				Reason:          "warp worktree directory missing",
 			}
 
 			applyStalePairOwnership(l, weftPath, &pe)
@@ -156,9 +156,9 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult
 		warpPath := filepath.Join(l.HubPath, warpSlug)
 
 		pe := PruneEntry{
-			WarpWorktree: filepath.ToSlash(warpPath),
-			WeftWorktree: filepath.ToSlash(weftPath),
-			Reason:       "weft worktree has no warp sibling",
+			CodeWorktree:    filepath.ToSlash(warpPath),
+			RecordsWorktree: filepath.ToSlash(weftPath),
+			Reason:          "weft worktree has no warp sibling",
 		}
 
 		applyStalePairOwnership(l, weftPath, &pe)
@@ -192,7 +192,7 @@ func applyStalePairOwnership(l *lyxcwd.Location, weftPath string, pe *PruneEntry
 		return
 	}
 
-	weftRepoRoot, err := WeftRepoRoot(l)
+	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		pe.Unowned = true
 		pe.Error = fmt.Sprintf("cannot resolve this hub's weft repo to confirm %q is one of its worktrees (%v); refusing to remove it", weftPath, err)
@@ -256,7 +256,7 @@ func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
 // junction and launcher directory before anything had established the entry was fabric's at all.
 // rec is the calling verb's own recorder, threaded through every gate call this helper makes.
 func removeStalePair(rec *Mutations, l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) bool {
-	weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
+	weftRepoRoot, weftRepoRootErr := RecordsRepoRoot(l)
 	if weftRepoRootErr != nil {
 		pe.Error = fmt.Sprintf("resolve weft repo root: %v", weftRepoRootErr)
 		return false

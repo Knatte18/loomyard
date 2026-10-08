@@ -47,7 +47,7 @@ func TestGeometryOverRealHub(t *testing.T) {
 		const slug = "webster-parent-task"
 		hubforge.AddPair(t, h, slug)
 
-		l, err := lyxcwd.ResolveWorktree(h.PairWarpWorktree(slug))
+		l, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 		if err != nil {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}
@@ -75,7 +75,7 @@ func TestGeometryOverRealHub(t *testing.T) {
 		const slug = "naming-task"
 		hubforge.AddPair(t, h, slug)
 
-		l, err := lyxcwd.ResolveWorktree(h.PairWarpWorktree(slug))
+		l, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 		if err != nil {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}
@@ -126,7 +126,7 @@ func TestGeometryOverRealHub(t *testing.T) {
 	if !t.Run("reconcile restores the lock directory of a recreated sibling worktree", func(t *testing.T) {
 		const slug = "recreated-task"
 		hubforge.AddPair(t, h, slug)
-		if err := os.RemoveAll(h.PairWeftSibling(slug)); err != nil {
+		if err := os.RemoveAll(h.PairRecordsSibling(slug)); err != nil {
 			t.Fatalf("hand-delete sibling worktree: %v", err)
 		}
 
@@ -141,21 +141,21 @@ func TestGeometryOverRealHub(t *testing.T) {
 	if !t.Run("reconcile heals a pair whose lock directory was deleted", func(t *testing.T) {
 		const slug = "lockless-task"
 		hubforge.AddPair(t, h, slug)
-		lockDir := filepath.Join(h.PairWeftSibling(slug), ".weft")
+		lockDir := fabricengine.RecordsLockDirPath(h.PairRecordsSibling(slug))
 		if info, err := os.Stat(lockDir); err != nil || !info.IsDir() {
-			t.Fatalf("freshly added pair has no .weft lock directory: %v", err)
+			t.Fatalf("freshly added pair has no lock directory: %v", err)
 		}
 		if err := os.RemoveAll(lockDir); err != nil {
 			t.Fatalf("delete lock directory: %v", err)
 		}
 
-		l, err := lyxcwd.ResolveWorktree(h.PairWarpWorktree(slug))
+		l, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 		if err != nil {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}
 		_, err = hubgeom.ResolveParent(l)
-		if err == nil || !strings.Contains(err.Error(), ".weft") || !strings.Contains(err.Error(), "lyx fabric reconcile") {
-			t.Fatalf("ResolveParent without the lock directory = %v; want an error naming .weft and `lyx fabric reconcile`", err)
+		if err == nil || !strings.Contains(err.Error(), filepath.Base(lockDir)) || !strings.Contains(err.Error(), "lyx fabric reconcile") {
+			t.Fatalf("ResolveParent without the lock directory = %v; want an error naming the lock directory and `lyx fabric reconcile`", err)
 		}
 
 		pair := reconcilePairFor(t, h, slug)
@@ -201,7 +201,7 @@ func reconcilePairFor(t *testing.T, h *hubforge.Hub, slug string) fabricengine.R
 		t.Fatalf("decode reconcile envelope: %v\noutput: %s", err, out.String())
 	}
 	for _, pair := range envelope.Pairs {
-		if filepath.Base(pair.WarpWorktree) == slug {
+		if filepath.Base(pair.CodeWorktree) == slug {
 			return pair
 		}
 	}
@@ -209,14 +209,14 @@ func reconcilePairFor(t *testing.T, h *hubforge.Hub, slug string) fabricengine.R
 	return fabricengine.ReconcilePairResult{}
 }
 
-// requireLockDirAndOrchParent asserts slug's sibling worktree has its .weft lock directory and its parent resolves to the prime's orch.
+// requireLockDirAndOrchParent asserts slug's sibling worktree has its lock directory and its parent resolves to the prime's orch.
 func requireLockDirAndOrchParent(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
 
-	if info, err := os.Stat(filepath.Join(h.PairWeftSibling(slug), ".weft")); err != nil || !info.IsDir() {
-		t.Errorf(".weft lock directory missing in %s: %v", h.PairWeftSibling(slug), err)
+	if info, err := os.Stat(fabricengine.RecordsLockDirPath(h.PairRecordsSibling(slug))); err != nil || !info.IsDir() {
+		t.Errorf("lock directory missing in %s: %v", h.PairRecordsSibling(slug), err)
 	}
-	l, err := lyxcwd.ResolveWorktree(h.PairWarpWorktree(slug))
+	l, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree: %v", err)
 	}

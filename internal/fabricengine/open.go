@@ -10,5 +10,5 @@ import "github.com/Knatte18/loomyard/internal/lyxcwd"
 // It is the only constructor any other package should call — see newPaired for the underlying stat
 // validation Open relies on.
 func Open(l *lyxcwd.Location) (*Fabric, error) {
-	return newPaired(l.WorktreePath(), WeftWorktree(l))
+	return newPaired(l.WorktreePath(), RecordsWorktree(l))
 }

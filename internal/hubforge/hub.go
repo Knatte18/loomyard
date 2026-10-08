@@ -150,14 +150,14 @@ type Hub struct {
 	Location *lyxcwd.Location
 	// Topology is the fabricengine.Topology handle every pair-creating verb call goes through.
 	Topology *fabricengine.Topology
-	// WarpBare is this hub's own copy of the warp bare remote.
-	WarpBare string
-	// WeftBare is this hub's own copy of the weft bare remote.
-	WeftBare string
+	// CodeBare is this hub's own copy of the warp bare remote.
+	CodeBare string
+	// RecordsBare is this hub's own copy of the weft bare remote.
+	RecordsBare string
 	// WeftBase is the anchor-joined weft directory, populated verbatim from CloneResult.WeftBase —
-	// fabricengine's CloneHub computes it as filepath.Join(WeftWorktree(l), l.AnchorRel), never
+	// fabricengine's CloneHub computes it as filepath.Join(RecordsWorktree(l), l.AnchorRel), never
 	// re-derived here.
-	// It is deliberately not the same thing as PrimeWeft(), which returns the un-anchored weft
+	// It is deliberately not the same thing as PrimeRecords(), which returns the un-anchored weft
 	// worktree root: the two coincide at the "." anchor and diverge at "backend", where writing
 	// config to the un-anchored path produces a file no module loader ever reads, with no error at
 	// all.
@@ -177,13 +177,13 @@ func (h *Hub) PrimeWorktree() string {
 	return h.Location.WorktreePath()
 }
 
-// PrimeWeft returns the path to the weft sibling paired with the prime warp worktree — the
+// PrimeRecords returns the path to the weft sibling paired with the prime warp worktree — the
 // un-anchored weft worktree root, not the anchor-joined path.
 // A caller reaching for this to seed config should use h.WeftBase and hubforge.SeedConfig instead:
 // at a non-"." anchor, writing to the path this method returns produces a file no module loader ever
 // reads, with no error at all.
-func (h *Hub) PrimeWeft() string {
-	return fabricengine.WeftWorktree(h.Location)
+func (h *Hub) PrimeRecords() string {
+	return fabricengine.RecordsWorktree(h.Location)
 }
 
 // BoardDir returns the path to this hub's _board data directory, the repo-wide weft:main checkout.
@@ -191,14 +191,14 @@ func (h *Hub) BoardDir() string {
 	return fabricengine.BoardDir(h.Path)
 }
 
-// PairWarpWorktree returns the path to slug's warp worktree.
-func (h *Hub) PairWarpWorktree(slug string) string {
+// PairCodeWorktree returns the path to slug's warp worktree.
+func (h *Hub) PairCodeWorktree(slug string) string {
 	return fabricengine.WorktreePath(h.Location, slug)
 }
 
-// PairWeftSibling returns the path to slug's weft sibling worktree.
-func (h *Hub) PairWeftSibling(slug string) string {
-	return fabricengine.WeftWorktreePath(h.Location, slug)
+// PairRecordsSibling returns the path to slug's weft sibling worktree.
+func (h *Hub) PairRecordsSibling(slug string) string {
+	return fabricengine.RecordsWorktreePath(h.Location, slug)
 }
 
 // PairPortalLink returns the path to slug's mirrored portal junction link.
@@ -256,15 +256,15 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 	registerTeardown(tb, res.HubPath)
 
 	return &Hub{
-		Path:      res.HubPath,
-		Anchor:    res.Anchor,
-		Location:  loc,
-		Topology:  fabricengine.NewTopology(fabricengine.Config{}),
-		WarpBare:  warpBare,
-		WeftBare:  weftBare,
-		WeftBase:  res.WeftBase,
-		Container: container,
-		Mutations: res.Mutated(),
+		Path:        res.HubPath,
+		Anchor:      res.Anchor,
+		Location:    loc,
+		Topology:    fabricengine.NewTopology(fabricengine.Config{}),
+		CodeBare:    warpBare,
+		RecordsBare: weftBare,
+		WeftBase:    res.WeftBase,
+		Container:   container,
+		Mutations:   res.Mutated(),
 	}
 }
 

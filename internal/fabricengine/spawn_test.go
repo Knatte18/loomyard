@@ -10,7 +10,7 @@ package fabricengine
 import "testing"
 
 // TestSpawnDetachedPush_SkipEnvAndEmptyPaths covers every case where SpawnDetachedPush must return
-// nil without forking a child: WEFT_SKIP_GIT set, WEFT_SKIP_PUSH set, and both paths empty (with
+// nil without forking a child: FABRIC_SKIP_GIT set, FABRIC_SKIP_PUSH set, and both paths empty (with
 // neither env var set).
 func TestSpawnDetachedPush_SkipEnvAndEmptyPaths(t *testing.T) {
 	tests := []struct {
@@ -19,8 +19,8 @@ func TestSpawnDetachedPush_SkipEnvAndEmptyPaths(t *testing.T) {
 		warpPath string
 		weftPath string
 	}{
-		{name: "SkipGit", envKey: "WEFT_SKIP_GIT", warpPath: "/warp", weftPath: "/weft"},
-		{name: "SkipPush", envKey: "WEFT_SKIP_PUSH", warpPath: "/warp", weftPath: "/weft"},
+		{name: "SkipGit", envKey: "FABRIC_SKIP_GIT", warpPath: "/warp", weftPath: "/weft"},
+		{name: "SkipPush", envKey: "FABRIC_SKIP_PUSH", warpPath: "/warp", weftPath: "/weft"},
 		{name: "BothPathsEmpty", warpPath: "", weftPath: ""},
 	}
 	for _, tt := range tests {

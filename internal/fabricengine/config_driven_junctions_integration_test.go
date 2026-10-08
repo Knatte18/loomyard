@@ -94,9 +94,8 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 // A pathspec naming neither structural directory is a legitimate, unenforced reality (doc.go's
 // narrow-pathspec asymmetry note), not a drift shape Healthy should flag.
 //
-// Healthy checks weft-branch correspondence (weftBranch == WeftBranchName(warpBranch),
-// drift.go:69-72) before the junction loop; hubforge.NewHub's CloneAndWire already checks the weft
-// primary out on the suffixed branch, so — unlike the raw local-worktree pair this test used to
+// Healthy checks weft-branch correspondence (weftBranch == RecordsBranchName(warpBranch), drift.go:69-72) before the junction loop;
+// hubforge.NewHub's CloneAndWire already checks the weft primary out on the suffixed branch, so — unlike the raw local-worktree pair this test used to
 // build by hand — no explicit checkout is needed here.
 //
 //testtiming:keep a redundant narrow pathspec reading healthy; coverage of its blocks by other tests does not show an assertion of this

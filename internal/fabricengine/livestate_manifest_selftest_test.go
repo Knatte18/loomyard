@@ -179,7 +179,7 @@ func TestManifestGitAllowlist(t *testing.T) {
 		const slug = "wtdereg"
 		hubforge.AddPair(t, h, slug)
 
-		registryDir := filepath.Join(h.PrimeWeft(), gitDirName, "worktrees")
+		registryDir := filepath.Join(h.PrimeRecords(), gitDirName, "worktrees")
 		entries, err := os.ReadDir(registryDir)
 		if err != nil {
 			t.Fatalf("os.ReadDir(%s): %v", registryDir, err)

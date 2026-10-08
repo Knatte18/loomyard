@@ -14,15 +14,15 @@ import (
 // A failed fetch or branch read returns the error, and the caller decides whether it refuses or degrades.
 // It mutates no ref other than the remote-tracking refs the fetch refreshes.
 func (f *Fabric) RemoteOnlyCommits() (tip string, commits []string, err error) {
-	if _, urlErr := f.warp.RemoteURL(originRemoteName); urlErr != nil {
+	if _, urlErr := f.code.RemoteURL(originRemoteName); urlErr != nil {
 		return "", nil, nil
 	}
 
-	branch, err := f.warp.CurrentBranch()
+	branch, err := f.code.CurrentBranch()
 	if err != nil {
 		return "", nil, fmt.Errorf("fabricengine: remote-only commits: %w", err)
 	}
-	head, err := f.warp.CurrentSHA()
+	head, err := f.code.CurrentSHA()
 	if err != nil {
 		return "", nil, fmt.Errorf("fabricengine: remote-only commits: %w", err)
 	}
@@ -42,7 +42,7 @@ func (f *Fabric) RemoteOnlyCommits() (tip string, commits []string, err error) {
 		return "", nil, fmt.Errorf("fabricengine: remote-only commits: fetch %q: %w", originRemoteName, err)
 	}
 
-	commits, err = f.warp.CommitsNotIn(tip, head)
+	commits, err = f.code.CommitsNotIn(tip, head)
 	if err != nil {
 		return "", nil, fmt.Errorf("fabricengine: remote-only commits: %w", err)
 	}

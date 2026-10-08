@@ -176,11 +176,11 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	// the degenerate no-op, mirroring Commit's own precedent. The HEAD read here serves this
 	// probe only; the record's starts are re-read under the lock below, where no concurrent writer
 	// can stale them.
-	warpStart, err := f.warp.CurrentSHA()
+	warpStart, err := f.code.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
-	warpUpToDate, err := f.warp.IsAncestor(sources.warpSHA, warpStart)
+	warpUpToDate, err := f.code.IsAncestor(sources.warpSHA, warpStart)
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: classify merge source: %w", err)
 	}
@@ -212,11 +212,11 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	// pre-lock SHA stale, and recording a stale start means MergeAbort would reset THROUGH that
 	// writer's landed commits. weftStart has no pre-lock read to discard — the weft is not a merge
 	// participant, so this is its only read.
-	warpStart, err = f.warp.CurrentSHA()
+	warpStart, err = f.code.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
-	weftStart, err := f.weft.CurrentSHA()
+	weftStart, err := f.records.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
@@ -243,7 +243,7 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 		return MergeResult{}, err
 	}
 
-	warpOutcome, err := f.warp.MergeStart(sources.warpSHA, false)
+	warpOutcome, err := f.code.MergeStart(sources.warpSHA, false)
 	if err != nil {
 		return MergeResult{}, f.selfAbortMergeAttempt(rec, st, "warp", err)
 	}
@@ -257,7 +257,7 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 
 	if warpOutcome == gitrepo.MergeConflicted {
 		var warpConflicts []string
-		warpConflicts, err = f.warp.ConflictedFiles()
+		warpConflicts, err = f.code.ConflictedFiles()
 		if err != nil {
 			return MergeResult{}, err
 		}
@@ -284,11 +284,11 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 		return MergeResult{}, err
 	}
 
-	newWarpHEAD, err := f.warp.CurrentSHA()
+	newWarpHEAD, err := f.code.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, err
 	}
-	newWeftHEAD, err := f.weft.CurrentSHA()
+	newWeftHEAD, err := f.records.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, err
 	}
@@ -419,22 +419,22 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	// wrapped: a caller matching *MergeGuardError must see the same error shape it would have seen had
 	// the pre-lock guard caught the same divergence, and prefixing it with a sync-step message would
 	// describe the step that DETECTED the problem instead of the precondition that failed.
-	if err := f.syncSideBeforeMerge(rec, f.warp, f.warpPath, "warp"); err != nil {
+	if err := f.syncSideBeforeMerge(rec, f.code, f.warpPath, "warp"); err != nil {
 		return MergeResult{}, wrapMergeSyncError(err)
 	}
 
 	// Post-sync already-up-to-date probe: no record written, empty mutation record beyond whatever
 	// the sync step itself just recorded — the sync's own advance is real upstream catch-up the merge
 	// did not cause, so it stays in the record even on this early-return path.
-	warpStart, err := f.warp.CurrentSHA()
+	warpStart, err := f.code.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
-	weftStart, err := f.weft.CurrentSHA()
+	weftStart, err := f.records.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve checkout HEAD: %w", err)
 	}
-	warpUpToDate, err := f.warp.IsAncestor(sources.warpSHA, warpStart)
+	warpUpToDate, err := f.code.IsAncestor(sources.warpSHA, warpStart)
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: classify merge source: %w", err)
 	}
@@ -462,7 +462,7 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 		return MergeResult{}, err
 	}
 
-	warpOutcome, err := f.warp.MergeStart(sources.warpSHA, opts.Squash)
+	warpOutcome, err := f.code.MergeStart(sources.warpSHA, opts.Squash)
 	if err != nil {
 		return MergeResult{}, f.selfAbortMergeAttempt(rec, st, "warp", err)
 	}
@@ -494,11 +494,11 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 		return MergeResult{}, err
 	}
 
-	newWarpHEAD, err := f.warp.CurrentSHA()
+	newWarpHEAD, err := f.code.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, err
 	}
-	newWeftHEAD, err := f.weft.CurrentSHA()
+	newWeftHEAD, err := f.records.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, err
 	}

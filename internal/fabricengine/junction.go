@@ -25,10 +25,10 @@ func WorktreePath(l *lyxcwd.Location, slug string) string {
 	return filepath.Join(l.HubPath, slug)
 }
 
-// WarpLyxLink returns the path to the _lyx junction link in a named slug's warp worktree.
+// CodeLyxLink returns the path to the _lyx junction link in a named slug's warp worktree.
 // It is the warp-side junction endpoint that points into the paired weft worktree via
 // WeftLyxDirFor(l, slug).
-func WarpLyxLink(l *lyxcwd.Location, slug string) string {
+func CodeLyxLink(l *lyxcwd.Location, slug string) string {
 	return filepath.Join(l.HubPath, slug, l.AnchorRel, lyxdirs.LyxDirName)
 }
 
@@ -49,7 +49,7 @@ type WarpJunction struct {
 // WarpJunctions returns the list of warp junctions for a given slug, one record per name in names,
 // in names's own order (no forced sort).
 // For each name, the record is {Name, Link, Target} where Link is HubPath/slug-anchored via
-// WorktreePath(l, slug) and Target is computed via WeftWorktreePath(l, slug) and AnchorRel.
+// WorktreePath(l, slug) and Target is computed via RecordsWorktreePath(l, slug) and AnchorRel.
 // WarpJunctions is HubPath/slug-anchored;
 // WarpJunctionsHere below is the Here-anchored counterpart.
 func WarpJunctions(l *lyxcwd.Location, slug string, names []string) []WarpJunction {
@@ -58,7 +58,7 @@ func WarpJunctions(l *lyxcwd.Location, slug string, names []string) []WarpJuncti
 		junctions = append(junctions, WarpJunction{
 			Name:   name,
 			Link:   filepath.Join(WorktreePath(l, slug), l.AnchorRel, name),
-			Target: filepath.Join(WeftWorktreePath(l, slug), l.AnchorRel, name),
+			Target: filepath.Join(RecordsWorktreePath(l, slug), l.AnchorRel, name),
 		})
 	}
 	return junctions
@@ -66,8 +66,8 @@ func WarpJunctions(l *lyxcwd.Location, slug string, names []string) []WarpJuncti
 
 // WarpJunctionsHere returns the same WarpJunction records as WarpJunctions(l, slug, names), but
 // resolved against the current worktree rather than a named slug: Link is built from
-// l.WorktreePath() and each Target from WeftWorktree(l).
-// This mirrors WarpLyxLinkHere(l)/WarpLyxLink(l, slug).
+// l.WorktreePath() and each Target from RecordsWorktree(l).
+// This mirrors WarpLyxLinkHere(l)/CodeLyxLink(l, slug).
 // It exists for health-check sites that are Here-anchored and have no slug available.
 func WarpJunctionsHere(l *lyxcwd.Location, names []string) []WarpJunction {
 	junctions := make([]WarpJunction, 0, len(names))
@@ -75,7 +75,7 @@ func WarpJunctionsHere(l *lyxcwd.Location, names []string) []WarpJunction {
 		junctions = append(junctions, WarpJunction{
 			Name:   name,
 			Link:   filepath.Join(l.WorktreePath(), l.AnchorRel, name),
-			Target: filepath.Join(WeftWorktree(l), l.AnchorRel, name),
+			Target: filepath.Join(RecordsWorktree(l), l.AnchorRel, name),
 		})
 	}
 	return junctions
@@ -103,11 +103,11 @@ func WireJunctionsWith(rec *Mutations, l *lyxcwd.Location, slug string, names []
 	// dirt and trips Remove's no-force dirty gate. ensureWeftLockDir keeps calling the
 	// same single owner as the self-healing path for machines that never re-wire — that
 	// call is not removed.
-	// Resolved via WeftWorktreePath(l, slug), the same base WarpJunctions computes its
+	// Resolved via RecordsWorktreePath(l, slug), the same base WarpJunctions computes its
 	// targets from — never derived from a junction record's Target parent, since Target
-	// is filepath.Join(WeftWorktreePath(l, slug), l.AnchorRel, name), whose parent is the
+	// is filepath.Join(RecordsWorktreePath(l, slug), l.AnchorRel, name), whose parent is the
 	// worktree root only when AnchorRel == "." and a subdirectory otherwise.
-	if err := seedWeftArtifactExcludes(WeftWorktreePath(l, slug)); err != nil {
+	if err := seedWeftArtifactExcludes(RecordsWorktreePath(l, slug)); err != nil {
 		return err
 	}
 

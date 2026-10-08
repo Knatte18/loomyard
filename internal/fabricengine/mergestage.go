@@ -69,11 +69,11 @@ func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error)
 		}
 	}
 
-	warpConflicts, err := f.warp.ConflictedFiles()
+	warpConflicts, err := f.code.ConflictedFiles()
 	if err != nil {
 		return StageResult{}, fmt.Errorf("fabricengine: read conflicted files: %w", err)
 	}
-	weftConflicts, err := f.weft.ConflictedFiles()
+	weftConflicts, err := f.records.ConflictedFiles()
 	if err != nil {
 		return StageResult{}, fmt.Errorf("fabricengine: read conflicted files: %w", err)
 	}
@@ -110,13 +110,13 @@ func (f *Fabric) MergeStageResolved(paths []string) (res StageResult, err error)
 
 	// Warp first, then weft, matching concludeMergeSides' fixed side ordering.
 	if len(warpBatch) > 0 {
-		if err := f.warp.StageResolved(warpBatch); err != nil {
+		if err := f.code.StageResolved(warpBatch); err != nil {
 			return StageResult{}, fmt.Errorf("fabricengine: stage resolved paths: %w", err)
 		}
 		rec.Append(KindMergeResolvedStaged, f.warpPath, "")
 	}
 	if len(weftBatch) > 0 {
-		if err := f.weft.StageResolved(weftBatch); err != nil {
+		if err := f.records.StageResolved(weftBatch); err != nil {
 			return StageResult{}, fmt.Errorf("fabricengine: stage resolved paths: %w", err)
 		}
 		rec.Append(KindMergeResolvedStaged, f.weftPath, "")
@@ -145,7 +145,7 @@ func (f *Fabric) MergeStageTracked() (res StageResult, err error) {
 		return StageResult{}, f.mergeStateOrForeignErr()
 	}
 
-	if err := f.warp.StageTrackedChanges(); err != nil {
+	if err := f.code.StageTrackedChanges(); err != nil {
 		return StageResult{}, fmt.Errorf("fabricengine: stage tracked changes: %w", err)
 	}
 	rec.Append(KindMergeTrackedStaged, f.warpPath, "")
@@ -158,7 +158,7 @@ func (f *Fabric) MergeStageTracked() (res StageResult, err error) {
 // Junctioned `_lyx` and `.lyx` sit in `.git/info/exclude`, so they never appear.
 // It returns an empty, never nil, slice when there are none.
 func (f *Fabric) MergeUntrackedFiles() ([]string, error) {
-	untracked, err := f.warp.UntrackedFiles()
+	untracked, err := f.code.UntrackedFiles()
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: list untracked files: %w", err)
 	}

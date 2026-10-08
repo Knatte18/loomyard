@@ -1,5 +1,5 @@
 // boardweft.go materializes <Hub>/_board as a second worktree of the weft repo on the warp
-// prime's unsuffixed branch, never the WeftBranchName-suffixed pairing every other weft worktree
+// prime's unsuffixed branch, never the RecordsBranchName-suffixed pairing every other weft worktree
 // uses.
 // It never derives a branch name itself (warpBranch always arrives pre-computed by CloneHub, which
 // read it from the warp prime's freshly-cloned checkout), mirroring weftwiring.go's own stated rule for

@@ -26,8 +26,8 @@ import (
 // The drop is an index manipulation on a worktree that never had the files, so it deletes nothing and stays outside the Fabric Destruction Chokepoint.
 // An index-only removal after a full checkout would not do: shedrun reads seeds from disk.
 func createWeftWorktreeDroppingRuns(rec *Mutations, l *lyxcwd.Location, slug, branch, startPoint string) (rootTracked bool, err error) {
-	weftPath := WeftWorktreePath(l, slug)
-	weftRepoRoot, err := WeftRepoRoot(l)
+	weftPath := RecordsWorktreePath(l, slug)
+	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return false, fmt.Errorf("resolve weft repo root: %w", err)
 	}
@@ -37,7 +37,7 @@ func createWeftWorktreeDroppingRuns(rec *Mutations, l *lyxcwd.Location, slug, br
 		return false, fmt.Errorf("create weft worktree %q for branch %q failed: %w", weftPath, branch, err)
 	}
 	rec.Append(KindWorktreeCreated, weftPath, "")
-	rec.AppendRef(KindBranchCreated, branch, refDetail("weft", weftRepoRoot, ""))
+	rec.AppendRef(KindBranchCreated, branch, refDetail("records", weftRepoRoot, ""))
 
 	root := ScopedPathspec(l.AnchorRel, []string{shedrun.RunsRootRel()})[0]
 	root = filepath.ToSlash(root)

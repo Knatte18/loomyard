@@ -33,7 +33,7 @@ func TestPrune_ProtectsDirtyWeftWorktreeUntilForced(t *testing.T) {
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	weftPath := fabricengine.WeftWorktreePath(l, slug)
+	weftPath := fabricengine.RecordsWorktreePath(l, slug)
 	tracked := filepath.Join(weftPath, "tracked.md")
 	gitkit.CommitFile(t, weftPath, "tracked.md", "committed\n", "seed tracked file")
 

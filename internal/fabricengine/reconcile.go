@@ -3,8 +3,7 @@
 // Reconcile walks all warp worktrees (never the branch namespace directly) and applies the minimal corrective action needed to restore a valid paired topology:
 // it recreates a missing weft worktree when the branch still exists locally or on origin, re-points a broken junction, adopts a raw (non-lyx) warp worktree by creating the weft side dormant, and reports (but does not touch) a warp worktree on an unmanaged branch.
 // An origin weft branch is adopted before a dormant one is forked, for a raw or an unmanaged warp worktree alike.
-// Wherever a warp branch name needs a weft counterpart, fabric derives it via
-// WeftBranchName(warpBranch).
+// Wherever a warp branch name needs a weft counterpart, fabric derives it via RecordsBranchName(warpBranch).
 //
 // readBranch and checkJunctionHealth are also used by Status;
 // they live here because Reconcile needs them first and both verbs share the same package.
@@ -119,10 +118,10 @@ const (
 
 // ReconcilePairResult describes the outcome for one warp↔weft pair.
 type ReconcilePairResult struct {
-	// WarpWorktree is the absolute path to the warp worktree.
-	WarpWorktree string `json:"warp_worktree"`
-	// WeftWorktree is the absolute path to the expected weft sibling.
-	WeftWorktree string `json:"weft_worktree"`
+	// CodeWorktree is the absolute path to the warp worktree.
+	CodeWorktree string `json:"code_worktree"`
+	// RecordsWorktree is the absolute path to the expected weft sibling.
+	RecordsWorktree string `json:"records_worktree"`
 	// Action is the corrective action taken (or reported).
 	Action ReconcileAction `json:"action"`
 	// Detail provides human-readable context for the action.
@@ -178,11 +177,11 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 		warpPath = filepath.Clean(warpPath)
 
 		slug := filepath.Base(warpPath)
-		weftPath := WeftWorktreePath(l, slug)
+		weftPath := RecordsWorktreePath(l, slug)
 
 		pr := ReconcilePairResult{
-			WarpWorktree: filepath.ToSlash(warpPath),
-			WeftWorktree: filepath.ToSlash(weftPath),
+			CodeWorktree:    filepath.ToSlash(warpPath),
+			RecordsWorktree: filepath.ToSlash(weftPath),
 		}
 
 		// The worktree list was read before this loop began, so a concurrent remove/prune can delete a
@@ -462,10 +461,10 @@ func (t *Topology) reconcileMissingWeft(
 	warpPath, weftPath, slug, warpBranch string,
 	pr *ReconcilePairResult,
 ) ReconcileAction {
-	weftBranch := WeftBranchName(warpBranch)
+	weftBranch := RecordsBranchName(warpBranch)
 
 	if !weftRepoExists(warpLayout) {
-		weftRepoRoot, weftRepoRootErr := WeftRepoRoot(warpLayout)
+		weftRepoRoot, weftRepoRootErr := RecordsRepoRoot(warpLayout)
 		if weftRepoRootErr != nil {
 			pr.Error = fmt.Sprintf("resolve weft repo root: %v", weftRepoRootErr)
 		} else {
@@ -480,7 +479,7 @@ func (t *Topology) reconcileMissingWeft(
 		return ReconcileActionWeftRecreated
 	}
 	if exists {
-		weftRepoRoot, weftRepoRootErr := WeftRepoRoot(warpLayout)
+		weftRepoRoot, weftRepoRootErr := RecordsRepoRoot(warpLayout)
 		if weftRepoRootErr == nil {
 			// Bookkeeping only: a failed prune leaves the stale registration the adopt below
 			// re-reports, and must not abort the repair.
@@ -547,7 +546,7 @@ func (t *Topology) deleteAdoptedWeftBranch(rec *Mutations, warpLayout *lyxcwd.Lo
 // adoptWeftWorktree creates a git worktree at weftPath for the existing branch in
 // the weft repo. The branch already exists, so no -b flag is used.
 func adoptWeftWorktree(warpLayout *lyxcwd.Location, weftPath, branch string) error {
-	weftRepoRoot, weftRepoRootErr := WeftRepoRoot(warpLayout)
+	weftRepoRoot, weftRepoRootErr := RecordsRepoRoot(warpLayout)
 	if weftRepoRootErr != nil {
 		return fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 	}
@@ -581,7 +580,7 @@ func isRawWarpWorktree(warpLayout *lyxcwd.Location) bool {
 // the current weft HEAD.
 // rec is Reconcile's own recorder, threaded through to createWeftWorktree.
 func createDormantWeftForRawWarp(rec *Mutations, warpLayout *lyxcwd.Location, slug, weftBranch string) error {
-	weftRoot, err := WeftRepoRoot(warpLayout)
+	weftRoot, err := RecordsRepoRoot(warpLayout)
 	if err != nil {
 		return fmt.Errorf("resolve weft repo root: %w", err)
 	}
@@ -803,7 +802,7 @@ func linkIsFabricOwned(l *lyxcwd.Location, slug, linkPath string) (bool, error) 
 	}
 	resolved = filepath.Clean(resolved)
 
-	root := WeftWorktreePath(l, slug)
+	root := RecordsWorktreePath(l, slug)
 	normalizedRoot, rootErr := filepath.EvalSymlinks(root)
 	if rootErr != nil {
 		return false, nil

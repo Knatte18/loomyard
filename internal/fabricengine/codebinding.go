@@ -1,4 +1,4 @@
-// warpbinding.go owns the .lyx-warp warp-URL binding: a plain single-line record kept at the board
+// codebinding.go owns the .lyx-warp warp-URL binding: a plain single-line record kept at the board
 // root, recorded once on weft:main beside .lyx-anchor.
 // It holds the warp URL only, never the subpath — the anchor already owns that.
 // The record is written to disk here but committed onto weft:main by the CLI layer through Bolt;

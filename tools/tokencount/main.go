@@ -139,7 +139,7 @@ func run(args []string, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
-		*weft = fabricengine.WeftWorktree(loc)
+		*weft = fabricengine.RecordsWorktree(loc)
 	}
 	if len(slugs) == 0 {
 		finished, err := finishedRuns(*weft)

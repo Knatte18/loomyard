@@ -2,7 +2,7 @@
 
 // reset_test.go covers the reset verb through its cobra.Command over one hubforge hub, each step on its own task pair.
 // Each success path checks the branch, the files and the mutation record; each refusal checks its way forward and that nothing moved.
-// WEFT_SKIP_GIT=1 is set for the whole scenario, so the closing fabric sync commits nothing and needs no records sibling beyond the pair's own.
+// FABRIC_SKIP_GIT=1 is set for the whole scenario, so the closing fabric sync commits nothing and needs no records sibling beyond the pair's own.
 // The reset's remote update ignores SkipGit, so the remote-branch steps run it under that setting.
 
 package webstercli
@@ -43,7 +43,7 @@ func newResetFixture(t *testing.T, h *hubforge.Hub, slug string) *resetFixture {
 	t.Helper()
 
 	hubforge.AddPair(t, h, slug)
-	checkout := h.PairWarpWorktree(slug)
+	checkout := h.PairCodeWorktree(slug)
 	loc, err := lyxcwd.ResolveWorktree(checkout)
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%s): %v", checkout, err)
@@ -150,9 +150,9 @@ func (fx *resetFixture) wantRefusal(t *testing.T, args []string, parts ...string
 }
 
 // TestResetCmd runs every reset case as a step over one hub, each step adding its own pair so no step relies on another's state.
-// It sets WEFT_SKIP_GIT, so it is not parallel.
+// It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestResetCmd(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	h := hubforge.NewHub(t, ".")
 
 	if !t.Run("start resets head and own dirt and keeps untracked", func(t *testing.T) {

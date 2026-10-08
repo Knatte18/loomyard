@@ -48,7 +48,7 @@ var ErrNoCorrespondence = errors.New("fabricengine: no recorded warp<->weft corr
 // it surfaces the typed error and leaves recovery to the caller.
 var ErrStaleSHA = errors.New("fabricengine: stale SHA in correspondence index")
 
-// weftGitDir resolves the git directory backing f.weft's worktree via
+// weftGitDir resolves the git directory backing f.records's worktree via
 // `git rev-parse --git-dir`, absolutized against the weft path when git
 // reports a relative one (the common case for a standard checkout). In a
 // linked worktree this names the per-worktree gitdir, not the shared common
@@ -138,7 +138,7 @@ func (f *Fabric) WeftSHAForWarpSHA(warpSHA string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("%w: warp SHA %s", ErrNoCorrespondence, warpSHA)
 	}
-	if f.weft.SHAExists(entry.WeftSHA) {
+	if f.records.SHAExists(entry.WeftSHA) {
 		return entry.WeftSHA, nil
 	}
 
@@ -154,7 +154,7 @@ func (f *Fabric) WeftSHAForWarpSHA(warpSHA string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if entry, ok = ix.exact(warpSHA); ok && f.weft.SHAExists(entry.WeftSHA) {
+	if entry, ok = ix.exact(warpSHA); ok && f.records.SHAExists(entry.WeftSHA) {
 		return entry.WeftSHA, nil
 	}
 
@@ -313,7 +313,7 @@ func refreshCorrIndexAfterSwitch(worktreeRoot, weftWorktree string) error {
 // RebuildIndex reconstructs the correspondence index from scratch by scanning the current weft
 // branch's Warp-SHA trailer history — the sole source of truth the index is a derived cache over —
 // and atomically replacing the on-disk index file with the result.
-// A trailer value that fails f.warp.SHAExists (the warp commit it names no longer exists) is still
+// A trailer value that fails f.code.SHAExists (the warp commit it names no longer exists) is still
 // recorded, per the stale-SHA handling decision: staleness surfaces at use (WeftSHAForWarpSHA,
 // resolveRevertTarget), never here at rebuild time.
 func (f *Fabric) RebuildIndex() error {
@@ -346,7 +346,7 @@ func (f *Fabric) RebuildIndex() error {
 	// commit's tree is identical to its parent's by construction, so
 	// bridging a diff anchor to it reaches the same weft tree the content
 	// commit produced; resolveRevertTarget uses the resolved weft SHA only
-	// as a validation/bridge target (f.weft.SHAExists) and does nothing else
+	// as a validation/bridge target (f.records.SHAExists) and does nothing else
 	// with it, so the overwrite changes no other observable behaviour. Two
 	// alternatives were rejected rather than merely unconsidered. Skipping
 	// RecordCorrespondence for empty
@@ -386,7 +386,7 @@ func (f *Fabric) RebuildIndex() error {
 			// The trailer names a warp SHA that no longer exists (history
 			// rewrite). Record the entry anyway with an unknown-position
 			// sentinel rather than dropping it — a caller resolving against
-			// this entry validates it with f.warp.SHAExists before ever
+			// this entry validates it with f.code.SHAExists before ever
 			// trusting it, so an imprecise sort position here cannot mask a
 			// real staleness bug; it only affects where an already-broken
 			// entry sits in the "nearest older" ordering.

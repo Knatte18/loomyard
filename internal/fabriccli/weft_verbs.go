@@ -11,7 +11,7 @@
 // directly in bypass mode. The merge verbs are registered in merge_verbs.go's addMergeVerbs, which
 // reaches the resolved Fabric handle through a getter closure over this file's fab local, since
 // PersistentPreRunE assigns it only at run time, after registration.
-// push and sync both push the warp side and the weft side:
+// push and sync both push the code side and the records side, except in the hub's prime, where they push the records side only:
 // push in-process through fabricengine.PushPairAnchored, sync through a detached child that re-enters bypass mode.
 
 package fabriccli
@@ -188,13 +188,16 @@ Related commands:
 	pushCmd := &cobra.Command{
 		Use:   "push",
 		Args:  cobra.NoArgs,
-		Short: "commit weft changes and push both sides",
+		Short: "commit weft changes and push both sides (records only in the prime)",
 		Long: `Commit weft changes exactly as "lyx fabric commit" does, then push the unpushed
 commits of both the warp branch and the weft branch in the same process.
 The push is plain and rebase-free, never a force, and waits for a push already
 running under fabric's push lock.
 A side the remote rejects is reported as an error naming that side, after the
 other side has been pushed.
+In the hub's prime only the records side is pushed, because the prime's code
+branch is the operator's parent branch: when it has unpushed commits the
+envelope carries code_push_skipped, naming the branch, and the operator pushes it.
 
 Related commands:
   lyx fabric commit — commit only
@@ -239,7 +242,11 @@ Related commands:
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), map[string]any{}))
+			fields := map[string]any{}
+			if pushRes.CodePushSkipped != "" {
+				fields["code_push_skipped"] = pushRes.CodePushSkipped
+			}
+			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), fields))
 			return nil
 		},
 	}
@@ -288,11 +295,13 @@ tracking ref:
 	syncCmd := &cobra.Command{
 		Use:   "sync",
 		Args:  cobra.NoArgs,
-		Short: "commit weft changes and async-push both sides",
+		Short: "commit weft changes and async-push both sides (records only in the prime)",
 		Long: `Commit weft changes exactly as "lyx fabric commit" does, then hand the push
 of both the warp branch and the weft branch to a detached child process and
 return immediately — the push happens in the background, coalesced under
 fabric's push lock.
+In the hub's prime only the weft branch is handed over, because the prime's
+code branch is the operator's parent branch to push.
 
 Related commands:
   lyx fabric commit — commit only
@@ -302,6 +311,11 @@ Related commands:
 				return nil
 			}
 			out := cmd.OutOrStdout()
+			isPrime, err := fabricengine.IsPrimeWorktree(l)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
 			rec := fabricengine.NewMutations(l.HubPath)
 			commitRes, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.EnvSyncOptions())
 			rec.Extend(commitRes.Mutated())
@@ -310,7 +324,10 @@ Related commands:
 				return nil
 			}
 			warpWorktree := l.WorktreePath()
-			weftWorktree := fabricengine.WeftWorktree(l)
+			if isPrime {
+				warpWorktree = ""
+			}
+			weftWorktree := fabricengine.RecordsWorktree(l)
 			if err := spawnPush(warpWorktree, weftWorktree); err != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
@@ -318,7 +335,9 @@ Related commands:
 			// The push happens in a detached child process after this one returns,
 			// so its outcome is unobservable here:
 			// record one KindPushSpawned entry per side handed to the child, never branch_pushed, which would assert an outcome this process did not observe.
-			rec.Append(fabricengine.KindPushSpawned, warpWorktree, "detached")
+			if warpWorktree != "" {
+				rec.Append(fabricengine.KindPushSpawned, warpWorktree, "detached")
+			}
 			rec.Append(fabricengine.KindPushSpawned, weftWorktree, "detached")
 			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), map[string]any{}))
 			return nil

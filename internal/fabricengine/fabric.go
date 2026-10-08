@@ -2,14 +2,14 @@
 // internal/gitrepo.Repo instances, plus the sync-options/pathspec plumbing its cross-repo
 // operations need.
 // Fabric holds its two gitrepo.Repo instances as UNEXPORTED fields, so anything repo-specific and
-// uncoordinated (f.warp.StageAndCommit(...), f.weft.ChangedFilesSince(...)) is reachable only from
+// uncoordinated (f.code.StageAndCommit(...), f.records.ChangedFilesSince(...)) is reachable only from
 // inside this package;
 // only the genuinely cross-repo operations (Commit, Pull, Diff, Status) get their own method on
 // Fabric.
 // A single-sided, uncoordinated op also earns a named Fabric method — rather than staying direct
 // field access — precisely when it must be callable from OUTSIDE this package, so the one-repo
 // illusion holds at the public API boundary;
-// f.warp/f.weft field access remains correct for uncoordinated ops used only inside
+// f.code/f.records field access remains correct for uncoordinated ops used only inside
 // internal/fabricengine.
 // See warpforward.go's CurrentBranch/ResetHard for the warp-only
 // examples of this carve-out.
@@ -47,13 +47,13 @@ func (e *ErrMissingPath) Error() string {
 }
 
 // Fabric is the cross-repo coordination handle over paired warp (warp) and weft checkouts.
-// warp and weft are unexported for uncoordinated, repo-specific operations reached only from
+// code and records are unexported for uncoordinated, repo-specific operations reached only from
 // inside this package;
 // cross-repo operations get their own Fabric methods, and a single-sided operation earns a named
 // Fabric method only when out-of-package callers need it.
 type Fabric struct {
-	warp *gitrepo.Repo
-	weft *gitrepo.Repo
+	code    *gitrepo.Repo
+	records *gitrepo.Repo
 
 	warpPath string
 	weftPath string
@@ -73,8 +73,8 @@ func newPaired(warpPath, weftPath string) (*Fabric, error) {
 	}
 
 	return &Fabric{
-		warp:     gitrepo.New(warpPath),
-		weft:     gitrepo.New(weftPath),
+		code:     gitrepo.New(warpPath),
+		records:  gitrepo.New(weftPath),
 		warpPath: warpPath,
 		weftPath: weftPath,
 	}, nil
@@ -99,20 +99,20 @@ type SyncOptions struct {
 	SkipPush bool // Skip push operations if true; affects push only.
 }
 
-// EnvSyncOptions reads the WEFT_SKIP_GIT and WEFT_SKIP_PUSH environment variables and returns the
+// EnvSyncOptions reads the FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH environment variables and returns the
 // SyncOptions they describe — the uniform test/CI bypass gate for every weft-touching operation.
 func EnvSyncOptions() SyncOptions {
 	return SyncOptions{
-		SkipGit:  os.Getenv("WEFT_SKIP_GIT") == "1",
-		SkipPush: os.Getenv("WEFT_SKIP_PUSH") == "1",
+		SkipGit:  os.Getenv("FABRIC_SKIP_GIT") == "1",
+		SkipPush: os.Getenv("FABRIC_SKIP_PUSH") == "1",
 	}
 }
 
-// WeftWorktree returns the path to the weft worktree paired with l's warp worktree.
+// RecordsWorktree returns the path to the weft worktree paired with l's warp worktree.
 // It is the read-only accessor every non-fabric caller that needs to know the weft sibling's
 // location goes through, closing the weft-visibility leak where those callers used to reach
 // lyxcwd.Location directly for a fabric-owned path.
-func WeftWorktree(l *lyxcwd.Location) string {
+func RecordsWorktree(l *lyxcwd.Location) string {
 	return weftname.SiblingPath(l.HubPath, filepath.Base(l.WorktreePath()))
 }
 
@@ -135,7 +135,7 @@ func RequireWarpWorktree(l *lyxcwd.Location) error {
 	name := filepath.Base(l.WorktreePath())
 
 	if strings.HasSuffix(name, weftname.Suffix) {
-		return fmt.Errorf("%w: %s is the weft sibling of a pair, not a warp worktree; run lyx from the paired warp worktree instead",
+		return fmt.Errorf("%w: %s is the records sibling of a pair, not a warp worktree; run lyx from the paired warp worktree instead",
 			ErrNotAWarpWorktree, l.WorktreePath())
 	}
 	if name == BoardDirName {
@@ -172,7 +172,7 @@ func RequireDrivableWorktree(l *lyxcwd.Location) error {
 // vocabulary -- not for a non-owner caller to repeat verbatim in its own operator-facing text, the
 // same restraint createRefusal already applies to Add's own errors.
 func PairComplete(l *lyxcwd.Location) (ok bool, reason string, err error) {
-	siblingPath := WeftWorktree(l)
+	siblingPath := RecordsWorktree(l)
 	if _, statErr := os.Stat(siblingPath); statErr != nil {
 		if os.IsNotExist(statErr) {
 			return false, "the pair's other-side worktree is missing", nil
@@ -196,16 +196,16 @@ func PairComplete(l *lyxcwd.Location) (ok bool, reason string, err error) {
 // WeftLyxDir returns the path to the _lyx directory in l's weft sibling worktree.
 // It is the junction target for lyx weft and the pathspec base for weft operations.
 func WeftLyxDir(l *lyxcwd.Location) string {
-	return filepath.Join(WeftWorktree(l), l.AnchorRel, lyxdirs.LyxDirName)
+	return filepath.Join(RecordsWorktree(l), l.AnchorRel, lyxdirs.LyxDirName)
 }
 
 // OriginURL returns f's warp side's configured "origin" remote URL.
 // This is the single-sided-op-callable-from-outside-the-package carve-out this file's own package
-// doc comment already states, the same carve-out WeftWorktree and the warp-only accessors named in
+// doc comment already states, the same carve-out RecordsWorktree and the warp-only accessors named in
 // that comment use — internal/loomcli needs the origin URL and is not a Fabric Vocabulary Invariant
 // owner.
 func (f *Fabric) OriginURL() (string, error) {
-	return f.warp.RemoteURL("origin")
+	return f.code.RemoteURL("origin")
 }
 
 // PushBranch pushes f's warp side via PushWarpRebaseFreeAt — the vocabulary-neutral spelling

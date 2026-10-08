@@ -43,7 +43,7 @@ func TestCorrespondenceIndex(t *testing.T) {
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := hubforge.NewHub(t, ".")
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	// weftGitDir returns a path genuinely inside the weft worktree's own .git directory — the
 	// per-worktree gitdir the correspondence index is deliberately scoped to.
@@ -52,7 +52,7 @@ func TestCorrespondenceIndex(t *testing.T) {
 		if err != nil {
 			t.Fatalf("weftGitDir() error = %v", err)
 		}
-		wantPrefix := filepath.Join(weftFixture.PrimeWeft(), ".git")
+		wantPrefix := filepath.Join(weftFixture.PrimeRecords(), ".git")
 		if !strings.HasPrefix(gitDir, wantPrefix) {
 			t.Errorf("weftGitDir() = %q; want it under %q", gitDir, wantPrefix)
 		}
@@ -71,7 +71,7 @@ func TestCorrespondenceIndex(t *testing.T) {
 	// computed from the warp repo's first-parent commit count.
 	t.Run("RecordAndLookupRoundTrip", func(t *testing.T) {
 		warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp change 1")
-		weftSHA := commitWeftWithTrailer(t, weftFixture.PrimeWeft(), "weft change 1", warpSHA)
+		weftSHA := commitWeftWithTrailer(t, weftFixture.PrimeRecords(), "weft change 1", warpSHA)
 
 		if err := f.RecordCorrespondence(warpSHA, weftSHA); err != nil {
 			t.Fatalf("RecordCorrespondence() error = %v", err)
@@ -91,9 +91,9 @@ func TestCorrespondenceIndex(t *testing.T) {
 	// have produced — never having called RecordCorrespondence for these commits itself.
 	t.Run("RebuildIndexReproducesTrailerHistory", func(t *testing.T) {
 		warpSHA1 := fabricengine.CommitWarpForTest(t, warpPath, "warp change 2")
-		weftSHA1 := commitWeftWithTrailer(t, weftFixture.PrimeWeft(), "weft change 2", warpSHA1)
+		weftSHA1 := commitWeftWithTrailer(t, weftFixture.PrimeRecords(), "weft change 2", warpSHA1)
 		warpSHA2 := fabricengine.CommitWarpForTest(t, warpPath, "warp change 3")
-		weftSHA2 := commitWeftWithTrailer(t, weftFixture.PrimeWeft(), "weft change 3", warpSHA2)
+		weftSHA2 := commitWeftWithTrailer(t, weftFixture.PrimeRecords(), "weft change 3", warpSHA2)
 
 		if err := f.RebuildIndex(); err != nil {
 			t.Fatalf("RebuildIndex() error = %v", err)

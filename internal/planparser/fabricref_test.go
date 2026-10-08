@@ -17,7 +17,7 @@ import (
 func TestCheckCardFabricReference(t *testing.T) {
 	t.Parallel()
 
-	siblingPath := fabricengine.WeftWorktree(&lyxcwd.Location{HubPath: "/hub", WorktreeName: "task"})
+	siblingPath := fabricengine.RecordsWorktree(&lyxcwd.Location{HubPath: "/hub", WorktreeName: "task"})
 	siblingName := "/" + filepath.Base(siblingPath)
 	pathCommand := "cat " + siblingPath + "/_lyx/plan.md"
 	spellingCommand := "lyx fabric sync"
@@ -64,7 +64,7 @@ func TestCheckCardFabricReference(t *testing.T) {
 		{"sibling path in an inline span", parsed("", "run `"+pathCommand+"` first", ""), []string{"card 1-alpha", siblingName}},
 		{"spelling in an inline span passes", parsed("", "run `"+spellingCommand+"` first", ""), nil},
 		{"spelling in prose passes", parsed("", "run "+spellingCommand+" later", ""), nil},
-		{"exempt spelling in a fenced block fails", parsed("", fenced("lyx.exe weft push"), ""), []string{"lyx.exe"}},
+		{"exempt spelling in a fenced block fails", parsed("", fenced("lyx.exe fabric push"), ""), []string{"lyx.exe"}},
 		{"quoted search pattern in a fenced block passes", parsed("", fenced(`grep -n "lyx fabric" docs/overview.md`), ""), nil},
 		{"plan without either passes", parsed("", fenced("go test ./..."), "go build ./..."), nil},
 	}

@@ -1,4 +1,4 @@
-// weftgit.go — the weft-git content-sync verbs on Fabric: commitWeft, PushWeft, PullWeft, plus the
+// recordsgit.go — the weft-git content-sync verbs on Fabric: commitWeft, PushWeft, PullWeft, plus the
 // package-level pushWeftAt and commitWeftAt for the detached-push child and board's warp-untethered
 // weft:main commit (via Bolt).
 // commitWeft's commit carries a Warp-SHA trailer and records the correspondence immediately —
@@ -48,10 +48,16 @@ func (f *Fabric) ensureWeftLockDir() (string, error) {
 	return ensureWeftLockDirAt(f.weftPath)
 }
 
+// RecordsLockDirPath returns the lock directory path inside the records worktree at recordsWorktreePath.
+// It only builds the path; ensureWeftLockDirAt is what creates the directory.
+func RecordsLockDirPath(recordsWorktreePath string) string {
+	return filepath.Join(recordsWorktreePath, weftLockDirName)
+}
+
 // ensureWeftLockDirAt is the no-Fabric form of ensureWeftLockDir for callers
 // without a Fabric instance.
 func ensureWeftLockDirAt(weftPath string) (string, error) {
-	dir := filepath.Join(weftPath, weftLockDirName)
+	dir := RecordsLockDirPath(weftPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("fabricengine: mkdir weft lock dir: %w", err)
 	}
@@ -110,7 +116,7 @@ func seedWeftArtifactExcludes(weftPath string) error {
 // warpHeadSHA returns the warp repo's HEAD SHA, or reports unborn=true for an
 // unborn HEAD (zero commits), preventing regression on first-run paths.
 func (f *Fabric) warpHeadSHA() (sha string, unborn bool, err error) {
-	sha, err = f.warp.CurrentSHA()
+	sha, err = f.code.CurrentSHA()
 	if err == nil {
 		return sha, false, nil
 	}
@@ -170,7 +176,7 @@ func entryMatchesWeft(weftPath, entry string) (bool, error) {
 // commitEmptySnapshot lands an empty weft commit with the given commitMessage
 // and records the correspondence via RecordCorrespondence.
 func (f *Fabric) commitEmptySnapshot(commitMessage, warpSHA string) (sha string, committed bool, err error) {
-	sha, err = f.weft.CommitEmpty(commitMessage)
+	sha, err = f.records.CommitEmpty(commitMessage)
 	if err != nil {
 		return "", false, err
 	}
@@ -214,7 +220,7 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOp
 		return "", false, nil
 	}
 
-	sha, committed, err = f.weft.StageAndCommit(commitMessage, filteredPathspec)
+	sha, committed, err = f.records.StageAndCommit(commitMessage, filteredPathspec)
 	if err != nil {
 		if strings.Contains(err.Error(), "did not match any files") {
 			if forceEmptyCommit {
@@ -270,8 +276,12 @@ func (f *Fabric) commitWeft(pathspec []string, message string, opts SyncOptions,
 // spelling ("all three push entry points — PushWeft, PushWarpAt, and CoalescePushBothAt") had
 // already gone stale twice by the time anyone read it, first for PushWarpRebaseFreeAt and then for
 // PushAnchored, because a list of call sites is maintenance a doc comment cannot win.
+//
+// CodePushSkipped is non-empty only when the push ran in the hub's prime and left the code side's unpushed commits alone:
+// it names the branch and says it was left for the operator to push.
 type PushResult struct {
 	MutationRecord
+	CodePushSkipped string `json:"code_push_skipped,omitempty"`
 }
 
 // recordPushIfAdvanced records KindBranchPushed for repo's current branch when hasUnpushedBefore and
@@ -315,11 +325,11 @@ func (f *Fabric) PushWeft(opts SyncOptions) (res PushResult, err error) {
 		return PushResult{}, nil
 	}
 
-	hadUnpushed, hadUnpushedErr := f.weft.HasUnpushed()
-	if err := f.weft.PushCoalesced(); err != nil {
+	hadUnpushed, hadUnpushedErr := f.records.HasUnpushed()
+	if err := f.records.PushCoalesced(); err != nil {
 		return PushResult{}, err
 	}
-	recordPushIfAdvanced(rec, f.weft, "weft", f.weftPath, hadUnpushed, hadUnpushedErr)
+	recordPushIfAdvanced(rec, f.records, "records", f.weftPath, hadUnpushed, hadUnpushedErr)
 
 	return PushResult{}, nil
 }
@@ -329,7 +339,7 @@ func (f *Fabric) PullWeft(opts SyncOptions) error {
 	if opts.SkipGit {
 		return nil
 	}
-	return f.weft.Pull()
+	return f.records.Pull()
 }
 
 // pushWeftAt pushes unpushed commits at weftPath with no Fabric instance,

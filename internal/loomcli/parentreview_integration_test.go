@@ -107,7 +107,7 @@ func newPRFixture(t *testing.T) *prFixture {
 	hub := hubforge.NewHub(t, ".")
 	const slug = "parentreview"
 	hubforge.AddPair(t, hub, slug)
-	location, err := lyxcwd.ResolveWorktree(hub.PairWarpWorktree(slug))
+	location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree = %v; want nil", err)
 	}
@@ -124,7 +124,7 @@ func newPRFixture(t *testing.T) *prFixture {
 	if err := c.wire(location, location.AnchorPath()); err != nil {
 		t.Fatalf("wire = %v; want nil", err)
 	}
-	f := &prFixture{t: t, hub: hub, slug: slug, location: location, records: hub.PairWeftSibling(slug), shuttle: &scriptedShuttle{}, store: reviewStoreFor(location)}
+	f := &prFixture{t: t, hub: hub, slug: slug, location: location, records: hub.PairRecordsSibling(slug), shuttle: &scriptedShuttle{}, store: reviewStoreFor(location)}
 
 	decision, support := loomengine.DiscussionDecisionRecord(location), loomengine.DiscussionSupportLog(location)
 	env := c.env

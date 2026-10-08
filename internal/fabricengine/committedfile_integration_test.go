@@ -38,7 +38,7 @@ func TestCommittedAnchoredFile(t *testing.T) {
 	// Commits an anchored file, edits the working-tree copy, and asserts the committed bytes come back.
 	t.Run("ReturnsCommittedBytes", func(t *testing.T) {
 		const rel = "_lyx/committedfile-probe.txt"
-		onDisk := filepath.Join(fabricengine.WeftWorktree(l), l.AnchorRel, rel)
+		onDisk := filepath.Join(fabricengine.RecordsWorktree(l), l.AnchorRel, rel)
 
 		if err := os.WriteFile(onDisk, []byte("committed"), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)

@@ -411,9 +411,9 @@ func TestRefDetail(t *testing.T) {
 		side, repo, remote string
 		want               string
 	}{
-		{"create empty remote", "warp", abs, "", "side=warp repo=" + filepath.ToSlash(abs)},
-		{"push with remote", "weft", abs, "origin", "side=weft repo=" + filepath.ToSlash(abs) + " remote=origin"},
-		{"relative repo made absolute", "warp", "rel", "", "side=warp repo=" + filepath.ToSlash(relative)},
+		{"create empty remote", "code", abs, "", "side=code repo=" + filepath.ToSlash(abs)},
+		{"push with remote", "records", abs, "origin", "side=records repo=" + filepath.ToSlash(abs) + " remote=origin"},
+		{"relative repo made absolute", "code", "rel", "", "side=code repo=" + filepath.ToSlash(relative)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

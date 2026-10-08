@@ -25,17 +25,17 @@ func TestRemoveFields(t *testing.T) {
 		wantKeyCount int
 	}{
 		{
-			name:       "WarpBranchDeleted",
-			result:     fabricengine.RemoveResult{Slug: "s", WarpBranchDeleted: true},
-			wantFields: map[string]any{"warp_branch_deleted": true},
-			wantAbsent: []string{"warp_branch_kept_reason"},
+			name:       "CodeBranchDeleted",
+			result:     fabricengine.RemoveResult{Slug: "s", CodeBranchDeleted: true},
+			wantFields: map[string]any{"code_branch_deleted": true},
+			wantAbsent: []string{"code_branch_kept_reason"},
 		},
 		{
 			name:   "WarpBranchKept",
-			result: fabricengine.RemoveResult{Slug: "s", WarpBranchKeptReason: "unmerged commits"},
+			result: fabricengine.RemoveResult{Slug: "s", CodeBranchKeptReason: "unmerged commits"},
 			wantFields: map[string]any{
-				"warp_branch_deleted":     false,
-				"warp_branch_kept_reason": "unmerged commits",
+				"code_branch_deleted":     false,
+				"code_branch_kept_reason": "unmerged commits",
 			},
 		},
 		{
@@ -64,15 +64,15 @@ func TestRemoveFields(t *testing.T) {
 				Steps:                      []string{"a", "b"},
 				Finished:                   true,
 				StrayPath:                  "/stray",
-				RemoteWarpBranchDeleted:    true,
-				RemoteWarpBranchKeptReason: "not landed",
+				RemoteCodeBranchDeleted:    true,
+				RemoteCodeBranchKeptReason: "not landed",
 			},
 			session: pairteardown.SessionResult{Ended: true, AbandonedSession: "other"},
 			wantFields: map[string]any{
 				"finished":                       true,
 				"stray_path":                     "/stray",
-				"remote_warp_branch_deleted":     true,
-				"remote_warp_branch_kept_reason": "not landed",
+				"remote_code_branch_deleted":     true,
+				"remote_code_branch_kept_reason": "not landed",
 				"session_ended":                  true,
 				"abandoned_session":              "other",
 			},
@@ -81,9 +81,9 @@ func TestRemoveFields(t *testing.T) {
 			name:   "ConditionalKeysAbsentWhenEmpty",
 			result: fabricengine.RemoveResult{Slug: "s"},
 			wantAbsent: []string{
-				"stray_path", "abandoned_session", "remote_warp_branch_kept_reason", "warp_branch_kept_reason",
+				"stray_path", "abandoned_session", "remote_code_branch_kept_reason", "code_branch_kept_reason",
 			},
-			// The always-present key set: the existing keys plus steps, finished, remote_warp_branch_deleted and session_ended.
+			// The always-present key set: the existing keys plus steps, finished, remote_code_branch_deleted and session_ended.
 			wantKeyCount: 7 + 4,
 		},
 	}

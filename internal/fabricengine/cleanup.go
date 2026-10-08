@@ -15,7 +15,7 @@
 // doc comment.
 //
 // A weft branch's warp sibling is recovered via WeftWarpSlug(branch) —
-// inverting WeftBranchName's suffix. The weft repo may also hold non-suffixed weft
+// inverting RecordsBranchName's suffix. The weft repo may also hold non-suffixed weft
 // branches inherited from history predating fabric's uniform naming scheme;
 // WeftWarpSlug rejects those (ok == false), and by definition a non-suffixed weft
 // branch is not fabric-managed — it is reported but never deleted, matching the
@@ -146,7 +146,7 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force, remote bool) (res C
 	remoteOK := false
 	var weftRepoRootForRemote string
 	if remote {
-		weftRepoRoot, weftRootErr := WeftRepoRoot(l)
+		weftRepoRoot, weftRootErr := RecordsRepoRoot(l)
 		if weftRootErr != nil {
 			result.RemoteSkippedReason = fmt.Sprintf(
 				"no remote deletion attempted: cannot resolve the weft repo root: %v", weftRootErr)
@@ -180,7 +180,7 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force, remote bool) (res C
 	for _, weftBranch := range weftBranches {
 		branch := weftBranch.Branch
 
-		// Recover the warp branch by inverting WeftBranchName's suffix.
+		// Recover the warp branch by inverting RecordsBranchName's suffix.
 		// Non-fabric-managed branches are reported but never deleted.
 		warpBranch, ok := WeftWarpSlug(branch)
 		if !ok {
@@ -270,7 +270,7 @@ func primaryWeftBranch(l *lyxcwd.Location) (string, error) {
 			"the %s worktree at %s is not on a named branch; refusing to enumerate orphan weft branches",
 			BoardDirName, boardDir)
 	}
-	return WeftBranchName(boardBranch), nil
+	return RecordsBranchName(boardBranch), nil
 }
 
 // weftBranchCheckout pairs a weft branch name with its checked-out worktree path if any.
@@ -281,7 +281,7 @@ type weftBranchCheckout struct {
 
 // listWeftBranches returns every branch in the weft repo with its checked-out worktree path if any.
 func listWeftBranches(l *lyxcwd.Location) ([]weftBranchCheckout, error) {
-	weftRepoRoot, err := WeftRepoRoot(l)
+	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return nil, fmt.Errorf("resolve weft repo root: %w", err)
 	}
@@ -319,7 +319,7 @@ func listWeftBranches(l *lyxcwd.Location) ([]weftBranchCheckout, error) {
 // check either way.
 // rec is the calling verb's own recorder, passed straight through to deleteBranch.
 func deleteWeftBranch(rec *Mutations, l *lyxcwd.Location, branch, branchPrefix string, entry *CleanupBranchEntry) bool {
-	weftRepoRoot, err := WeftRepoRoot(l)
+	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		entry.Error = fmt.Sprintf("resolve weft repo root: %v", err)
 		return false

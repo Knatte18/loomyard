@@ -95,7 +95,7 @@ type RefScanner struct {
 func NewRefScanner(l *lyxcwd.Location) *RefScanner {
 	return &RefScanner{
 		rule:         NewReferenceRule(),
-		exactPattern: regexp.MustCompile(regexp.QuoteMeta(WeftWorktree(l))),
+		exactPattern: regexp.MustCompile(regexp.QuoteMeta(RecordsWorktree(l))),
 	}
 }
 

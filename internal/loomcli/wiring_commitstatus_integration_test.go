@@ -34,7 +34,7 @@ func realSeamFixture(t *testing.T) (seam func(producer, state string) error, loc
 	hub := hubforge.NewHub(t, ".")
 	const slug = "commitstatus"
 	hubforge.AddPair(t, hub, slug)
-	codeWorktree := hub.PairWarpWorktree(slug)
+	codeWorktree := hub.PairCodeWorktree(slug)
 
 	location, err := lyxcwd.ResolveWorktree(codeWorktree)
 	if err != nil {
@@ -42,7 +42,7 @@ func realSeamFixture(t *testing.T) (seam func(producer, state string) error, loc
 	}
 	writeStatusFile(t, location, `{"current_producer":"seed","state":"running"}`)
 
-	return newCommitStatusSeam(loomCommitStatusDeps(location, shedrun.SelfRunID)), location, hub.PairWeftSibling(slug)
+	return newCommitStatusSeam(loomCommitStatusDeps(location, shedrun.SelfRunID)), location, hub.PairRecordsSibling(slug)
 }
 
 // realSeamStatusRel is the status file's relative path for the self run.

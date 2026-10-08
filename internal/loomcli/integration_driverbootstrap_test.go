@@ -128,7 +128,7 @@ func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.
 	})
 	const slug = "loom-integration-driver-task"
 	hubforge.AddPair(t, h, slug)
-	worktree := h.PairWarpWorktree(slug)
+	worktree := h.PairCodeWorktree(slug)
 
 	loc, err := lyxcwd.Resolve(worktree)
 	if err != nil {

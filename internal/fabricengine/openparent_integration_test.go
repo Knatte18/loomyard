@@ -54,7 +54,7 @@ func TestOpenParent_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("f.OriginURL() error = %v", err)
 	}
-	if want := filepath.ToSlash(h.WarpBare); origin != want {
+	if want := filepath.ToSlash(h.CodeBare); origin != want {
 		t.Errorf("f.OriginURL() = %q; want %q", origin, want)
 	}
 }
@@ -91,7 +91,7 @@ func TestOpenParent_ParentSiblingMissing(t *testing.T) {
 		t.Fatalf("ResolveWorktree(%q): %v", res.Path, err)
 	}
 
-	if err := os.RemoveAll(h.PrimeWeft()); err != nil {
+	if err := os.RemoveAll(h.PrimeRecords()); err != nil {
 		t.Fatalf("RemoveAll(hub weft sibling): %v", err)
 	}
 
@@ -103,8 +103,8 @@ func TestOpenParent_ParentSiblingMissing(t *testing.T) {
 	if !errors.As(err, &missingPath) {
 		t.Fatalf("OpenParent() error = %v; want *ErrMissingPath", err)
 	}
-	if missingPath.Path != h.PrimeWeft() {
-		t.Errorf("OpenParent() error path = %q; want %q", missingPath.Path, h.PrimeWeft())
+	if missingPath.Path != h.PrimeRecords() {
+		t.Errorf("OpenParent() error path = %q; want %q", missingPath.Path, h.PrimeRecords())
 	}
 }
 

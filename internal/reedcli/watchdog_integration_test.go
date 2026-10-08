@@ -132,7 +132,7 @@ func TestWatchdogDaemon(t *testing.T) {
 	const pairSlug = "watchdog-second"
 	hubforge.AddPair(t, h, pairSlug)
 	prime := h.PrimeWorktree()
-	pair := h.PairWarpWorktree(pairSlug)
+	pair := h.PairCodeWorktree(pairSlug)
 	socket := reedengine.ServerName(h.Path)
 	lockPath := filepath.Join(fabricengine.HubScratchDir(h.Path), watchdogLockFileName)
 

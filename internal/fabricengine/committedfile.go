@@ -21,7 +21,7 @@ import (
 // every other failure is an error.
 // It is read-only, so the Fabric Git Invariant exempts it from the commit seam.
 func CommittedAnchoredFile(l *lyxcwd.Location, relPath string) (data []byte, found bool, err error) {
-	repo := gitrepo.New(WeftWorktree(l))
+	repo := gitrepo.New(RecordsWorktree(l))
 	sha, err := repo.CurrentSHA()
 	if err != nil {
 		if errors.Is(err, gitrepo.ErrNoCommits) {

@@ -28,7 +28,7 @@ func TestWire_WebsterParentBranchReadsPairOrigin(t *testing.T) {
 	}
 
 	// The records sibling is a repository of its own, whose exclude file the origin read seeds.
-	records := fabricengine.WeftWorktree(loc)
+	records := fabricengine.RecordsWorktree(loc)
 	if err := os.MkdirAll(records, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v; want nil", records, err)
 	}

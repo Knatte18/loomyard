@@ -34,13 +34,13 @@ func ReadConfigChanges(l *lyxcwd.Location, taskBranch, parentBranch string, conf
 		return ConfigChanges{}, nil
 	}
 
-	weftRepoRoot, err := WeftRepoRoot(l)
+	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return ConfigChanges{}, fmt.Errorf("read config changes of %q against %q: %w", taskBranch, parentBranch, err)
 	}
 
-	taskWeft := WeftBranchName(taskBranch)
-	parentWeft := WeftBranchName(parentBranch)
+	taskWeft := RecordsBranchName(taskBranch)
+	parentWeft := RecordsBranchName(parentBranch)
 	fail := func(step string, err error) (ConfigChanges, error) {
 		return ConfigChanges{}, fmt.Errorf("read config changes of weft branch %q against %q: %s: %w", taskWeft, parentWeft, step, err)
 	}

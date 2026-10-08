@@ -93,8 +93,8 @@ func TestStrandNamingAndList(t *testing.T) {
 	hubforge.AddPair(t, h, listSlug)
 	hubforge.AddPair(t, h, namingSlug)
 	prime := h.PrimeWorktree()
-	listTask := h.PairWarpWorktree(listSlug)
-	namingTask := h.PairWarpWorktree(namingSlug)
+	listTask := h.PairCodeWorktree(listSlug)
+	namingTask := h.PairCodeWorktree(namingSlug)
 	for _, wt := range []string{prime, listTask, namingTask} {
 		t.Cleanup(func() {
 			var buf bytes.Buffer

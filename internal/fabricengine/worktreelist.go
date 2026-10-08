@@ -160,9 +160,19 @@ func PrimeName(l *lyxcwd.Location) (string, error) {
 	return "", fmt.Errorf("no main worktree found in %q", l.AnchorPath())
 }
 
-// WeftRepoRoot returns the path to the weft prime worktree (the git -C target for weft worktree
+// IsPrimeWorktree reports whether l is the hub's prime worktree: the one whose name PrimeName resolves.
+// A resolution failure is returned as PrimeName reports it.
+func IsPrimeWorktree(l *lyxcwd.Location) (bool, error) {
+	prime, err := PrimeName(l)
+	if err != nil {
+		return false, err
+	}
+	return prime == l.WorktreeName, nil
+}
+
+// RecordsRepoRoot returns the path to the weft prime worktree (the git -C target for weft worktree
 // add/remove), resolved via PrimeName.
-func WeftRepoRoot(l *lyxcwd.Location) (string, error) {
+func RecordsRepoRoot(l *lyxcwd.Location) (string, error) {
 	primeName, err := PrimeName(l)
 	if err != nil {
 		return "", err

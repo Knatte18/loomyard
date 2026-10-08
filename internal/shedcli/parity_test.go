@@ -95,7 +95,7 @@ func runBoth(t *testing.T, label string, moduleFn, shedFn func() (exitCode int, 
 // parityLoomRunNoStatusFile drives "lyx loom run" and "lyx shed run" over a fresh pair seeded at "self" for loom but with no loom status file, which refuses at the very first statement in loomPreRun -- well above reed.Up() and fabricengine.Open.
 func parityLoomRunNoStatusFile(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-run")
-	cwd := h.PairWarpWorktree("parity-run")
+	cwd := h.PairCodeWorktree("parity-run")
 	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
 
 	runBoth(t, "loom run (no status file)",
@@ -130,7 +130,7 @@ func readRecordedEnvelope(t *testing.T, label string, printed map[string]any) ma
 // parityLoomStepRunLockBusy drives "lyx loom step" and "lyx shed step" over a pair seeded at "self" for loom whose run lock is already held, which refuses at the early run-lock probe with kind: busy -- above seedAndCommitBootstrap and above reed Up.
 func parityLoomStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-step")
-	cwd := h.PairWarpWorktree("parity-step")
+	cwd := h.PairCodeWorktree("parity-step")
 	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
 
 	location, err := lyxcwdResolveWorktreeForTest(t, cwd)
@@ -254,7 +254,7 @@ func parityBattenStepRunLockBusy(t *testing.T, h *hubforge.Hub) {
 // parityLoomStatusSeeded drives "lyx loom status" and "lyx shed status" over a pair seeded at "self" for loom with a seeded status file, exercising the success envelope: status is read-only and lightweight-wired, and never reaches the substrate on any path.
 func parityLoomStatusSeeded(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-status")
-	cwd := h.PairWarpWorktree("parity-status")
+	cwd := h.PairCodeWorktree("parity-status")
 	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
 
 	seedLoomStatus(t, cwd, shedengine.Status{
@@ -280,7 +280,7 @@ func parityLoomStatusSeeded(t *testing.T, h *hubforge.Hub) {
 // parityLoomPauseSeeded drives "lyx loom pause" and "lyx shed pause" over a pair seeded at "self" for loom with a seeded status file, exercising the success envelope. pause mutates PauseRequested, but the mutation is idempotent and the envelope carries only status_file, so running both invocations sequentially over the same fixture does not disturb the comparison.
 func parityLoomPauseSeeded(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-pause")
-	cwd := h.PairWarpWorktree("parity-pause")
+	cwd := h.PairCodeWorktree("parity-pause")
 	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
 
 	seedLoomStatus(t, cwd, shedengine.Status{
@@ -341,7 +341,7 @@ func parityBattenRunStateDone(t *testing.T, h *hubforge.Hub) {
 // A verb-blind arming would silently reintroduce the exact hazard wireLightweight exists to avoid, on this path only.
 func parityLightweightWiringStatusSucceedsWhenRunRefuses(t *testing.T, h *hubforge.Hub) {
 	hubforge.AddPair(t, h, "parity-lightweight")
-	cwd := h.PairWarpWorktree("parity-lightweight")
+	cwd := h.PairCodeWorktree("parity-lightweight")
 	seedRunForTest(t, cwd, shedrun.SelfRunID, shedrun.RecipeLoom)
 
 	location, err := lyxcwdResolveWorktreeForTest(t, cwd)

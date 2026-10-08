@@ -30,7 +30,7 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 
 	exe := sharedLyxBinary(t)
 	hub, loc, worktree, slug := newWiredPairFixture(t)
-	recordsDir := fabricengine.WeftWorktree(loc)
+	recordsDir := fabricengine.RecordsWorktree(loc)
 
 	// The run verb on a never-seeded pair refuses on the envelope with a message naming the bootstrap verb, writes no driver log, and leaves the records worktree clean.
 	t.Run("run on a never-seeded pair refuses and writes nothing", func(t *testing.T) {
