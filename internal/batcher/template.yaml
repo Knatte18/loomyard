@@ -1,4 +1,4 @@
-active: ""  # name of the active profile under profiles: (internal/batcher.Active); empty (the default) resolves to the identity batchifier (one card, one batch)
+active: "cautious"  # name of the active profile under profiles: (internal/batcher.Active); the template default is the cautious profile, and an empty value resolves to the identity batchifier (one card, one batch)
 profiles:   # named batchifier settings, each chosen by active:; the operator may add profiles of their own
   identity:   # one card, one batch
     batchifier: identity

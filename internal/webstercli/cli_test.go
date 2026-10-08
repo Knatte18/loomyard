@@ -863,7 +863,7 @@ func testPlanFingerprint(t *testing.T, planDir string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// newRunTestCLI returns newTestCLI's CLI with the identity batcher selected -- what PersistentPreRunE would have resolved by default -- and the one-card plan seeded.
+// newRunTestCLI returns newTestCLI's CLI with the identity batcher selected -- what PersistentPreRunE resolves for an empty active: -- and the one-card plan seeded.
 func newRunTestCLI(t *testing.T) *websterCLI {
 	t.Helper()
 	identity := batcher.Identity()

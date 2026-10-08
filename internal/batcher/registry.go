@@ -5,7 +5,7 @@ package batcher
 
 import "fmt"
 
-// DefaultName is the profile an empty active: key resolves to.
+// DefaultName is the profile an empty active: key resolves to; the template's own active: names the cautious profile instead.
 const DefaultName = "identity"
 
 // constructors maps a profile's batchifier kind to the constructor that builds it, given the profile's name and settings.

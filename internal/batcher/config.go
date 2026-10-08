@@ -41,7 +41,7 @@ func ConfigOpenMaps() []string {
 // An empty active: and active: identity resolve to the identity batchifier even when no profile of that name is configured;
 // a configured profile named identity wins over that default.
 // An absent <baseDir>/_lyx/ directory or an absent batcher.yaml both resolve the embedded
-// ConfigTemplate() instead of erroring;
+// ConfigTemplate(), whose active: names the cautious profile, instead of erroring;
 // a config file that exists but is invalid still errors, and so does an active: naming no profile, a profile of an unknown batchifier kind, or a cost profile with a missing or invalid parameter or the retired alone_above or startup_context, each naming batcher.yaml.
 // baseDir must already be resolved by the caller — Active never resolves cwd itself (see
 // PATTERN-cwd-resolution).
