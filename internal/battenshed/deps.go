@@ -136,14 +136,10 @@ type InnerRunDeps struct {
 	// Now is the clock the driver-exit grace reads.
 	// A nil Now resolves to time.Now in NewInnerRun, the same way a nil Sleep resolves to waitOrCancel; a test replaces it to keep the grace out of real time.
 	Now func() time.Time
-	// OpenIDE opens an editor on the task worktree with the child's session attached.
-	// Call invokes it at most once per run, after a spawn that returned success; its error is only warned about and never changes the row's outcome.
-	// A nil OpenIDE resolves to a no-op returning nil in NewInnerRun, the same way a nil Sleep and Now resolve.
-	OpenIDE func(ctx context.Context) error
 	// Notify hands one run notice line to whoever tells the orch, queued behind a seam so this package never imports the orch, and reports whether the line was queued.
 	// A notice is recorded as sent only when it was queued.
 	// The wait invokes it once per condition per episode (see notice.go) and retries an error or an unqueued line at most once per notice probe and at most three times; its failure is only warned about and never changes the row's outcome.
-	// A nil Notify resolves to a no-op in NewInnerRun, the same way a nil OpenIDE resolves, and then no notice step runs at all.
+	// A nil Notify resolves to a no-op in NewInnerRun, the same way a nil Sleep resolves, and then no notice step runs at all.
 	Notify func(ctx context.Context, line string) (queued bool, err error)
 	// OrchStrandRecorded reports whether the orch the notices go to has a strand recorded to receive them.
 	// With none, the notice step does not call Notify, warns once per episode and asks again once per notice probe.
