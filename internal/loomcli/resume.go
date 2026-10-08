@@ -204,7 +204,7 @@ and decides by the run's state first:
                     refused; "lyx loom approve" or "lyx loom reject" in the task
                     worktree, after which a batten run watching the child resumes
                     it, or "lyx batten run <slug>" from the prime when none does
-  running          a no-op success when the driver is live or holds the run
+  running           a no-op success when the driver is live or holds the run
                     lock; refused as below when neither
   halted, run lock held
                     refused with the kind "driver_not_parked": the driver is
