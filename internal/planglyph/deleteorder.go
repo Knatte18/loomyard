@@ -78,7 +78,7 @@ type editRegion struct {
 	end   int
 }
 
-// editTarget is one Edit-group ref of a card that is a member glyph or a file, with its shape and disk path.
+// editTarget is one Edit-group ref of a card, a member glyph or a file, with its shape and disk path.
 type editTarget struct {
 	card  planparser.Card
 	ref   string
@@ -86,7 +86,7 @@ type editTarget struct {
 	path  string
 }
 
-// collectEditTargets returns, in card and body order, every Edit-group target of cards that is a member glyph or a file.
+// collectEditTargets returns, in card and body order, every Edit-group target of cards, limited to member glyphs and files.
 func collectEditTargets(lang glyph.Language, cards []planparser.Card) []editTarget {
 	var edits []editTarget
 	for _, c := range cards {
