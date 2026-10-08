@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/parentreview"
@@ -153,6 +154,9 @@ type Env struct {
 	// SkipPlanReview is the injected closure answering whether the live plan generation skips its Plan-Review judge, read by the Bouncer entry's skip_seam key.
 	// An error makes the Bouncer review for real.
 	SkipPlanReview func() (bool, error)
+	// CarryOver is the injected closure that writes and commits one review segment's carry-over entry into the decision record, read by the Bouncer entry's carry_over key.
+	// It is run-wide, and the entry the Bouncer passes names its own segment.
+	CarryOver func(discussionparser.CarryOver) error
 	// ReflectFriction is the injected closure the FrictionReflect entry's producer calls once per
 	// Call, returning the reflection's status string. It arrives as a closure, following
 	// CommitWebster/CommitDiscussion/ApprovePlan, because the reflection's dependencies are already

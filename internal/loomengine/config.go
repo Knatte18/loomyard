@@ -100,12 +100,18 @@ func LandingDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LandingDirRel())
 }
 
+// DiscussionDecisionRecordRel returns the worktree-anchor-relative form of DiscussionDecisionRecord's path.
+// It exists so a caller building a fabric commit pathspec for the record alone never has to name a segment loomengine owns.
+func DiscussionDecisionRecordRel() string {
+	return filepath.Join(DiscussionDirRel(), "decision-record.md")
+}
+
 // DiscussionDecisionRecord returns the path to the distilled decision record that is the Plan
 // producer's sole input from `_lyx/discussion/`.
 // It shares DiscussionDir's AnchorPath anchoring.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionDecisionRecord(l *lyxcwd.Location) string {
-	return filepath.Join(DiscussionDir(l), "decision-record.md")
+	return filepath.Join(l.AnchorPath(), DiscussionDecisionRecordRel())
 }
 
 // DiscussionSupportLog returns the path to the raw support log read by the Discussion-review gate

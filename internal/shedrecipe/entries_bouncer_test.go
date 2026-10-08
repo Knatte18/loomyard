@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -634,6 +636,65 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 		_, err := bouncerEntry("review-bounce", cfg, env)
 		assertErrContains(t, err, "skip_seam")
 		assertErrContains(t, err, "rework-exempt")
+	})
+}
+
+// TestBouncerEntry_CarryOver covers the carry_over key: absent leaves the seam unset, a present key with a nil env.CarryOver is a construction error,
+// and a present key reaches the Bouncer, which calls the seam on a CONVERGED settle with that segment and anchor-relative paths.
+func TestBouncerEntry_CarryOver(t *testing.T) {
+	driveConvergedSettle := func(t *testing.T, cfg Config, env Env) {
+		t.Helper()
+		env.Shuttle = judgeSeamShuttle()
+		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
+		layoutBouncerRound1Report(t, env)
+		producer, err := bouncerEntry("review-bounce", cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		if _, _, err := producer.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+	}
+
+	t.Run("AbsentLeavesSeamNil", func(t *testing.T) {
+		env := newTestEnv(t)
+		calls := 0
+		env.CarryOver = func(discussionparser.CarryOver) error { calls++; return nil }
+
+		driveConvergedSettle(t, minimalBouncerConfig(t, env), env)
+		if calls != 0 {
+			t.Errorf("CarryOver call count = %d; want 0", calls)
+		}
+	})
+
+	t.Run("PresentReachesTheBouncer", func(t *testing.T) {
+		env := newTestEnv(t)
+		var entries []discussionparser.CarryOver
+		env.CarryOver = func(entry discussionparser.CarryOver) error { entries = append(entries, entry); return nil }
+		cfg := minimalBouncerConfig(t, env)
+		cfg["carry_over"] = "Plan-Review"
+
+		driveConvergedSettle(t, cfg, env)
+		want := discussionparser.CarryOver{
+			Segment:         "Plan-Review",
+			Round:           1,
+			Closing:         discussionparser.CarryOverConverged,
+			ReviewPath:      "run-root/review-segment/round-1-review.md",
+			FixerReportPath: "run-root/review-segment/round-1-fixer-report.md",
+		}
+		if len(entries) != 1 || !reflect.DeepEqual(entries[0], want) {
+			t.Errorf("CarryOver entries = %+v; want [%+v]", entries, want)
+		}
+	})
+
+	t.Run("PresentButMissingEnvClosureIsConstructionError", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.CarryOver = nil
+		cfg := minimalBouncerConfig(t, env)
+		cfg["carry_over"] = "Plan-Review"
+
+		_, err := bouncerEntry("review-bounce", cfg, env)
+		assertErrContains(t, err, "CarryOver")
 	})
 }
 

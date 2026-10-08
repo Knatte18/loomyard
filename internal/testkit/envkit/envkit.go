@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -160,6 +161,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		CommitPlan:        func() error { return nil },
 		ApprovePlan:       func() error { return nil },
 		SkipPlanReview:    func() (bool, error) { return false, nil },
+		CarryOver:         func(discussionparser.CarryOver) error { return nil },
 		ReflectFriction:   func() string { return "skipped" },
 		ReworkSpec: func(loomshed.ReworkTold) (shuttleengine.Spec, error) {
 			return shuttleengine.Spec{
