@@ -68,6 +68,15 @@
 // The count the parser reports as consumed stops before the trailing run of stamp lines with no payload after them, so an incremental reader sees each stamp with its payload at its next read.
 // A transcript-fallback turn end's tasks are read from the transcript at parse time, so the same line parsed again later can read fewer.
 //
+// The events file holds, per recording hook (Stop, UserPromptSubmit, StopFailure, Notification, SessionEnd and, in an interactive run, the AskUserQuestion record), a stamp line and then the hook's payload line.
+// The hook command is plain POSIX `sh`, `date`, `cat` and `printf`: one `printf` writes the stamp, `;` joins it to the unchanged payload append so a failed stamp never blocks the payload, and the four newer hooks end in `; true` so they exit 0 whatever the append does.
+// A failed `date` leaves the stamp's time empty, which the parser reads as no time.
+// No recording hook prints to standard output.
+// Two accepted races follow from the append order.
+// Hooks that fire at once can interleave their stamps ahead of both payloads, which the pairing by hook name absorbs;
+// and a reader can see a payload without its newline, or a stamp without its payload, which the parser leaves unconsumed until the line completes.
+// The stamp's time is taken when the hook starts, so it can precede the payload's append by the length of the hook's own run.
+//
 // The activity reading (ActivityReader) takes the transcript's last write time and walks it backwards for the newest main-chain assistant entry that ends a turn or carries Claude Code's `isApiErrorMessage` marker.
 // A session whose newest such entry carries the marker stands on an API error, and the entry's final text is the error's text;
 // a sidechain entry never counts, and a later normal turn end clears the error.

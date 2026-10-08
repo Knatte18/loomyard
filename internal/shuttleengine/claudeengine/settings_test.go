@@ -63,20 +63,26 @@ func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
 	}
 }
 
-// TestBuildSettings_StopHook pins the one Stop hook every document carries: a single command entry with no tool matcher that appends the payload to the events path in its POSIX form, followed by a newline guarantee.
-// A run directory path containing a literal apostrophe (an unusual but legal Windows path character, e.g. a worktree named "operator's-box") must not break out of the hook's single-quoted shell argument: the embedded quote is escaped via the standard sh idiom rather than passed through raw.
+// stampPrintf is the stamp line command a recording hook runs for hookEventName before its payload, written out by hand so the test pins the line shape.
+func stampPrintf(hookEventName, quotedEventsPath string) string {
+	return `printf '{"lyx_stamp":"` + hookEventName + `","lyx_at":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ` + quotedEventsPath
+}
+
+// TestBuildSettings_RecordingHooks pins the recording hooks every document carries: one command entry per event with no tool matcher, each appending a stamp line and then the payload to the events path in its POSIX form.
+// Stop keeps the payload append's exit status, and the four other hooks end in `; true` so they exit 0 whatever the append does.
+// A run directory path containing a literal apostrophe (an unusual but legal Windows path character, e.g. a worktree named "operator's-box") must not break out of the hooks' single-quoted shell argument: the embedded quote is escaped via the standard sh idiom rather than passed through raw.
 //
-//testtiming:keep pins the Stop hook's exact command and its single-quote escaping, which its covering test does not assert
-func TestBuildSettings_StopHook(t *testing.T) {
+//testtiming:keep pins the recording hooks' exact commands and their single-quote escaping, which its covering test does not assert
+func TestBuildSettings_RecordingHooks(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		eventsPath  string
-		wantCommand string
+		name       string
+		eventsPath string
+		quoted     string
 	}{
-		{"plain_path", "/c/run/events.jsonl", `cat >> '/c/run/events.jsonl' && printf '\n' >> '/c/run/events.jsonl'`},
-		{"embedded_single_quote_escaped", `/c/run's dir/events.jsonl`, `cat >> '/c/run'\''s dir/events.jsonl' && printf '\n' >> '/c/run'\''s dir/events.jsonl'`},
+		{"plain_path", "/c/run/events.jsonl", `'/c/run/events.jsonl'`},
+		{"embedded_single_quote_escaped", `/c/run's dir/events.jsonl`, `'/c/run'\''s dir/events.jsonl'`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -86,24 +92,37 @@ func TestBuildSettings_StopHook(t *testing.T) {
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
-			stop := hooksFor(parseSettings(t, data), "Stop")
-			if len(stop) != 1 {
-				t.Fatalf("Stop hooks = %v; want exactly one entry", stop)
-			}
-			entry, _ := stop[0].(map[string]any)
-			if _, hasMatcher := entry["matcher"]; hasMatcher {
-				t.Errorf("Stop entry has a matcher field; want none (Stop carries no tool matcher): %v", entry)
-			}
-			innerHooks, _ := entry["hooks"].([]any)
-			if len(innerHooks) != 1 {
-				t.Fatalf("Stop hooks list = %v; want exactly one command", innerHooks)
-			}
-			cmd, _ := innerHooks[0].(map[string]any)
-			if cmd["type"] != "command" {
-				t.Errorf("Stop hook type = %v; want %q", cmd["type"], "command")
-			}
-			if command, _ := cmd["command"].(string); command != tt.wantCommand {
-				t.Errorf("Stop hook command = %q; want %q", command, tt.wantCommand)
+			doc := parseSettings(t, data)
+			payload := `cat >> ` + tt.quoted + ` && printf '\n' >> ` + tt.quoted
+			for _, hook := range []struct {
+				event   string
+				command string
+			}{
+				{"Stop", stampPrintf("Stop", tt.quoted) + "; " + payload},
+				{"UserPromptSubmit", stampPrintf("UserPromptSubmit", tt.quoted) + "; " + payload + "; true"},
+				{"StopFailure", stampPrintf("StopFailure", tt.quoted) + "; " + payload + "; true"},
+				{"Notification", stampPrintf("Notification", tt.quoted) + "; " + payload + "; true"},
+				{"SessionEnd", stampPrintf("SessionEnd", tt.quoted) + "; " + payload + "; true"},
+			} {
+				entries := hooksFor(doc, hook.event)
+				if len(entries) != 1 {
+					t.Fatalf("%s hooks = %v; want exactly one entry", hook.event, entries)
+				}
+				entry, _ := entries[0].(map[string]any)
+				if _, hasMatcher := entry["matcher"]; hasMatcher {
+					t.Errorf("%s entry has a matcher field; want none: %v", hook.event, entry)
+				}
+				innerHooks, _ := entry["hooks"].([]any)
+				if len(innerHooks) != 1 {
+					t.Fatalf("%s hooks list = %v; want exactly one command", hook.event, innerHooks)
+				}
+				cmd, _ := innerHooks[0].(map[string]any)
+				if cmd["type"] != "command" {
+					t.Errorf("%s hook type = %v; want %q", hook.event, cmd["type"], "command")
+				}
+				if command, _ := cmd["command"].(string); command != hook.command {
+					t.Errorf("%s hook command = %q; want %q", hook.event, command, hook.command)
+				}
 			}
 		})
 	}
@@ -180,7 +199,7 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			}
 			if present && tt.interactive {
 				// The interactive marker must be non-denying (no deny JSON)
-				// and must reuse the Stop hook's exact append command.
+				// and must be the Stop hook's command with its stamp naming PreToolUse.
 				if strings.Contains(command, "permissionDecision") {
 					t.Errorf("interactive AskUserQuestion command = %q; want no deny JSON", command)
 				}
@@ -188,9 +207,10 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 				stopEntry, _ := stop[0].(map[string]any)
 				stopHooks, _ := stopEntry["hooks"].([]any)
 				stopCmd, _ := stopHooks[0].(map[string]any)
-				wantCommand, _ := stopCmd["command"].(string)
+				stopCommand, _ := stopCmd["command"].(string)
+				wantCommand := strings.Replace(stopCommand, `"lyx_stamp":"Stop"`, `"lyx_stamp":"PreToolUse"`, 1)
 				if command != wantCommand {
-					t.Errorf("interactive AskUserQuestion command = %q; want it to equal the Stop hook command %q", command, wantCommand)
+					t.Errorf("interactive AskUserQuestion command = %q; want it to equal the Stop hook command with a PreToolUse stamp %q", command, wantCommand)
 				}
 			}
 			if present && !tt.interactive {

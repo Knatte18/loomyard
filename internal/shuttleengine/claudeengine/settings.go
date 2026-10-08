@@ -1,6 +1,8 @@
 // settings.go composes the Claude Code settings.json document Prepare writes for each run:
-// a Stop hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents reads),
-// and the PreToolUse guardrails that keep a run's work visible in its own pane —
+// a Stop hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents reads).
+// The UserPromptSubmit, StopFailure, Notification and SessionEnd hooks append their payloads to the same file for ParseSessionSignals.
+// Every recording hook writes a stamp line with the hook-side time before its payload, which ParseEvents skips.
+// The document also carries the PreToolUse guardrails that keep a run's work visible in its own pane —
 // denying the in-process Agent tool (or, in a fork-mode run, letting fork subagents through it while still denying every other subagent type; a run with Spec.AllowAgentTool set installs no Agent deny at all),
 // refusing `lyx webster` verbs from inside a fork in a fork-mode run (the fork-context deadlock guard),
 // denying AskUserQuestion in autonomous runs (where there is no operator present to answer it),
@@ -70,10 +72,15 @@ type hookEntry struct {
 }
 
 // settingsHooks is the "hooks" object of a Claude Code settings.json document.
-// PreToolUse is omitted when an autonomous run has both denies off; interactive runs always carry at least the AskUserQuestion marker.
+// Every event but PreToolUse is a recording hook installed for every session.
+// PreToolUse is omitted when an autonomous run has every deny off; interactive runs always carry at least the AskUserQuestion marker.
 type settingsHooks struct {
-	Stop       []hookEntry `json:"Stop"`
-	PreToolUse []hookEntry `json:"PreToolUse,omitempty"`
+	Stop             []hookEntry `json:"Stop"`
+	PreToolUse       []hookEntry `json:"PreToolUse,omitempty"`
+	UserPromptSubmit []hookEntry `json:"UserPromptSubmit"`
+	StopFailure      []hookEntry `json:"StopFailure"`
+	Notification     []hookEntry `json:"Notification"`
+	SessionEnd       []hookEntry `json:"SessionEnd"`
 }
 
 // settingsDoc is the Claude Code settings.json document Prepare writes.
@@ -184,19 +191,37 @@ func buildDenyNotice(interactive bool, cfg shuttleengine.Config, forkSubagents, 
 	return strings.Join(sentences, " ")
 }
 
-// buildSettings marshals settings.json: a Stop hook appending turn-end events to eventsPathPosix, and PreToolUse guardrails per cfg and interactive.
+// recordingCommand returns the hook command that appends one hook event to the events file at quotedEventsPath:
+// a stamp line naming hookEventName with the hook-side time, then the payload on standard input followed by a newline.
+// The two are joined by `;` so a failed stamp never blocks the payload, and the command's exit status is the payload append's.
+// A failed `date` leaves the stamp's time empty, which the parser reads as no time.
+func recordingCommand(hookEventName, quotedEventsPath string) string {
+	stamp := `printf '{"` + stampHookKey + `":"` + hookEventName + `","` + stampAtKey + `":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ` + quotedEventsPath
+	payload := "cat >> " + quotedEventsPath + " && printf '\\n' >> " + quotedEventsPath
+	return stamp + "; " + payload
+}
+
+// buildSettings marshals settings.json: a Stop hook and the other recording hooks appending their events to eventsPathPosix, and PreToolUse guardrails per cfg and interactive.
 // eventsPathPosix must be a git-bash POSIX path (from shuttleengine.PosixPath); it's embedded via shQuote to escape any apostrophes.
 // Agent-tool and AskUserQuestion denies are controlled by cfg; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard,
 // and allowAgentTool drops the Agent deny entirely while leaving the webster-verb guard keyed on forkSubagents alone.
 func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, forkSubagents, allowAgentTool bool) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
-	stopCmd := fmt.Sprintf("cat >> %s && printf '\\n' >> %s", quotedEventsPath, quotedEventsPath)
+	recordingHook := func(hookEventName string, alwaysSucceeds bool) []hookEntry {
+		command := recordingCommand(hookEventName, quotedEventsPath)
+		if alwaysSucceeds {
+			command += "; true"
+		}
+		return []hookEntry{{Hooks: []hookCommand{{Type: "command", Command: command}}}}
+	}
 
 	doc := settingsDoc{
 		Hooks: settingsHooks{
-			Stop: []hookEntry{
-				{Hooks: []hookCommand{{Type: "command", Command: stopCmd}}},
-			},
+			Stop:             recordingHook(hookEventStop, false),
+			UserPromptSubmit: recordingHook(hookEventUserPromptSubmit, true),
+			StopFailure:      recordingHook(hookEventStopFailure, true),
+			Notification:     recordingHook(hookEventNotification, true),
+			SessionEnd:       recordingHook(hookEventSessionEnd, true),
 		},
 	}
 
@@ -210,10 +235,10 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		}
 	}
 	if interactive {
-		// Record the live ask via the Stop hook's append command, allowing the tool call to proceed unhindered.
+		// Record the live ask like a turn end, allowing the tool call to proceed unhindered.
 		doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
 			Matcher: "AskUserQuestion",
-			Hooks:   []hookCommand{{Type: "command", Command: stopCmd}},
+			Hooks:   recordingHook(hookEventPreToolUse, false)[0].Hooks,
 		})
 	}
 
