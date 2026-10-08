@@ -34,7 +34,9 @@ type RebaselineDeps struct {
 	Plan   *planparser.Plan
 	Active batcher.Batcher
 	Sizes  batcher.SizeSource
-	State  *State
+	// Base is Merriam's start base the tail's batches are priced from.
+	Base  batcher.StartBase
+	State *State
 	// Cards are the card numbers the operator names as edited; a changed card file whose number is absent is refused.
 	Cards []int
 	// Geom locates the worktree whose history names the run's start commit.
@@ -64,7 +66,7 @@ type RebaselineResult struct {
 func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 	st, plan := deps.State, deps.Plan
 	if len(st.Partition) == 0 {
-		batches, err := formBatches(plan, batcher.Identity(), deps.Sizes, 0)
+		batches, err := formBatches(plan, batcher.Identity(), deps.Sizes, 0, deps.Base)
 		return batches, false, err
 	}
 
@@ -96,7 +98,7 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 	}
 
 	if tail := plan.Cards[offset:]; len(tail) > 0 {
-		tailBatches, err := batchCards(plan, tail, deps.Active, deps.Sizes, len(batches))
+		tailBatches, err := batchCards(plan, tail, deps.Active, deps.Sizes, len(batches), deps.Base)
 		if err != nil {
 			return nil, false, err
 		}

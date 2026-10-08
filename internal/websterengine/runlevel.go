@@ -424,7 +424,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	sizes := batcher.DiskSizes(deps.Geom.WorktreeRoot)
 	var batches []batcher.Batch
 	newPartition := func() ([]batcher.Batch, error) {
-		formed, err := formBatches(plan, deps.Batcher, sizes, 0)
+		base, err := MerriamBase(deps.Geom)
+		if err != nil {
+			return nil, err
+		}
+		formed, err := formBatches(plan, deps.Batcher, sizes, 0, base)
 		if err != nil {
 			return nil, err
 		}
@@ -501,7 +505,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 
 	default:
-		batches, err = ExecutionBatches(plan, st, deps.Batcher, sizes)
+		batches, err = ExecutionBatches(plan, st, deps.Batcher, sizes, batcher.StartBase{})
 		if err != nil {
 			return RunResult{}, err
 		}

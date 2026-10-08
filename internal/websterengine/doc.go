@@ -33,6 +33,13 @@
 // number, not card number: a grouping batchifier puts several cards in one
 // batch, and only under identity do the two numbers coincide.
 //
+// # Merriam's start base enters at partition time
+//
+// The batchifier prices each fork from Merriam's context at that point, whose start part is the start base this package computes in merriambase.go:
+// the line count of what Merriam loads at start (the worktree's CLAUDE.md and CLAUDE.local.md, the Master stencil with the orchestrator PATTERN directive, and the plan's 00-overview.md) plus a fixed system-prompt-and-tools context.
+// Run computes it where it forms a new partition (first init and `--fresh`), Rebaseline is told it when it batches the tail, and validate computes it for a run with no state;
+// a recorded partition keeps the estimates it was formed with, so the base never regroups a run.
+//
 // # Batches run in the batchifier's order, asserted not derived
 //
 // internal/batcher owns both grouping and order: a batchifier returns its batches in plan card order, and webster runs them in that order, never reordering them.

@@ -925,6 +925,8 @@ func seedPersistentPreRunFixture(t *testing.T, anchor, batcherConfig string) *hu
 	t.Helper()
 	h := hubforge.NewHub(t, anchor)
 	seedPersistentPreRunConfig(t, h, batcherConfig)
+	// validate with no run state computes Merriam's start base, which reads the Master stencil.
+	seedHubStencils(t, h.Path)
 	return h
 }
 

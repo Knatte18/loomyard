@@ -29,11 +29,11 @@ func cardID(c planparser.Card) string {
 	return fmt.Sprintf("%02d-%s", c.Number, c.Slug)
 }
 
-// formBatches batches the plan's whole card list with active, reading file sizes from sizes, and asserts the result runs in dependency order.
+// formBatches batches the plan's whole card list with active, reading file sizes from sizes and pricing Merriam's start at base, and asserts the result runs in dependency order.
 // A batchifier failure is refused as transient, naming the plan;
 // an order violation wraps ErrBatchOrder.
-func formBatches(plan *planparser.Plan, active batcher.Batcher, sizes batcher.SizeSource, before int) ([]batcher.Batch, error) {
-	batches, err := batchCards(plan, plan.Cards, active, sizes, before)
+func formBatches(plan *planparser.Plan, active batcher.Batcher, sizes batcher.SizeSource, before int, base batcher.StartBase) ([]batcher.Batch, error) {
+	batches, err := batchCards(plan, plan.Cards, active, sizes, before, base)
 	if err != nil {
 		return nil, err
 	}
@@ -43,10 +43,10 @@ func formBatches(plan *planparser.Plan, active batcher.Batcher, sizes batcher.Si
 	return batches, nil
 }
 
-// batchCards batches cards, a contiguous run of plan.Cards, with active, told that the run executes before batches ahead of them.
+// batchCards batches cards, a contiguous run of plan.Cards, with active, told that the run executes before batches ahead of them and that Merriam starts at base.
 // A batchifier failure is refused as transient, naming the plan.
-func batchCards(plan *planparser.Plan, cards []planparser.Card, active batcher.Batcher, sizes batcher.SizeSource, before int) ([]batcher.Batch, error) {
-	batches, err := active.Batch(plan, cards, sizes, before, batcher.StartBase{})
+func batchCards(plan *planparser.Plan, cards []planparser.Card, active batcher.Batcher, sizes batcher.SizeSource, before int, base batcher.StartBase) ([]batcher.Batch, error) {
+	batches, err := active.Batch(plan, cards, sizes, before, base)
 	if err != nil {
 		return nil, fmt.Errorf("webster: batch the cards of plan %s: %w; way forward: transient, re-run the verb", plan.Dir, err)
 	}
@@ -55,14 +55,14 @@ func batchCards(plan *planparser.Plan, cards []planparser.Card, active batcher.B
 
 // ExecutionBatches returns the batches every webster verb runs, in execution order, after asserting the order with CheckBatchOrder:
 //   - with no state, the active batchifier's grouping of the whole plan, the partition validate and first init compute;
-//   - with a recorded partition, its batches mapped onto the current plan's cards by id, each keeping its recorded profile and estimate, so a size source that changed since never regroups a run;
+//   - with a recorded partition, its batches mapped onto the current plan's cards by id, each keeping its recorded profile and estimate, so a size source or start base that changed since never regroups a run;
 //   - with a state that records no partition, the identity batchifier over the whole plan, whatever profile is active, so a run started before partitions were recorded runs on as it started.
-func ExecutionBatches(plan *planparser.Plan, st *State, active batcher.Batcher, sizes batcher.SizeSource) ([]batcher.Batch, error) {
+func ExecutionBatches(plan *planparser.Plan, st *State, active batcher.Batcher, sizes batcher.SizeSource, base batcher.StartBase) ([]batcher.Batch, error) {
 	switch {
 	case st == nil:
-		return formBatches(plan, active, sizes, 0)
+		return formBatches(plan, active, sizes, 0, base)
 	case len(st.Partition) == 0:
-		return formBatches(plan, batcher.Identity(), sizes, 0)
+		return formBatches(plan, batcher.Identity(), sizes, 0, base)
 	}
 
 	batches, err := mapPartition(plan, st.Partition)

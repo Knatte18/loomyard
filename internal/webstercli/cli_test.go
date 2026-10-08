@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
@@ -129,6 +130,8 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 		refMatcher: fabricengine.NewRefScanner(layout),
 		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) },
 	}
+	// A verb run with no state computes Merriam's start base, which reads the Master stencil.
+	stencilkit.SeedInto(t, c.geom.StencilsDir)
 	return c, hub
 }
 
@@ -374,6 +377,16 @@ func TestValidateCmd_BatchesFlag(t *testing.T) {
 			c, _ := newTestCLI(t)
 			c.batcher = cost
 			plankit.Write(t, c.geom.PlanDir, twoCardUsesPlan(2, 1))
+
+			// With no recorded state the partition is priced from Merriam's start base, and this profile's context_per_line is zero, so the base adds its fixed context alone.
+			if batches, ok := tc.want["batches"].([]any); ok {
+				base, err := websterengine.MerriamBase(c.geom)
+				if err != nil {
+					t.Fatalf("MerriamBase() error = %v", err)
+				}
+				batch := batches[0].(map[string]any)
+				batch["estimate"] = batch["estimate"].(float64) + base.Fixed
+			}
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(c.validateCmd(), &out, tc.args)

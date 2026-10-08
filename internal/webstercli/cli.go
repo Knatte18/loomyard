@@ -290,8 +290,17 @@ Example (standalone, outside any lyx hub):
 }
 
 // executionBatches returns the batches every verb runs for plan and the loaded state, sizing cards from the task worktree.
+// Merriam's start base is computed only for a nil state, the one case that forms a partition; a recorded partition is mapped without reading it.
 func (c *websterCLI) executionBatches(plan *planparser.Plan, st *websterengine.State) ([]batcher.Batch, error) {
-	return websterengine.ExecutionBatches(plan, st, c.batcher, batcher.DiskSizes(c.geom.WorktreeRoot))
+	var base batcher.StartBase
+	if st == nil {
+		var err error
+		base, err = websterengine.MerriamBase(c.geom)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return websterengine.ExecutionBatches(plan, st, c.batcher, batcher.DiskSizes(c.geom.WorktreeRoot), base)
 }
 
 // addVerbs registers every webster verb under parent.

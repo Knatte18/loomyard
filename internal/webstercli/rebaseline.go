@@ -88,7 +88,13 @@ Example:
 				return nil
 			}
 
-			result, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Active: c.batcher, Sizes: batcher.DiskSizes(c.geom.WorktreeRoot), State: st, Cards: cards, Geom: c.geom})
+			base, err := websterengine.MerriamBase(c.geom)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+
+			result, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Active: c.batcher, Sizes: batcher.DiskSizes(c.geom.WorktreeRoot), Base: base, State: st, Cards: cards, Geom: c.geom})
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil

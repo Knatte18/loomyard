@@ -127,6 +127,8 @@ func TestRebaseline_CardSet(t *testing.T) {
 		cards     []planparser.Card
 		partition []websterengine.PartitionBatch
 		active    batcher.Batcher
+		// base is the start base the call is told.
+		base batcher.StartBase
 		// edit adjusts the batch-1 record before the call.
 		edit func(rec *websterengine.BatchState)
 		// wantErr is the sentinel a refusal wraps;
@@ -151,6 +153,14 @@ func TestRebaseline_CardSet(t *testing.T) {
 			partition:     recorded,
 			active:        fixedBatcher{[]batcher.Batch{{Cards: []planparser.Card{card(2, "list-tests")}, Profile: "fixed", Estimate: 2}}},
 			wantPartition: []websterengine.PartitionBatch{recorded[0], {Cards: []string{"02-list-tests"}, Profile: "fixed", Estimate: 2}},
+		},
+		{
+			name:          "the tail is batched told the start base",
+			cards:         []planparser.Card{card(1, "json-flag"), card(2, "list-tests")},
+			partition:     recorded,
+			active:        baseBatcher{},
+			base:          batcher.StartBase{Lines: 120, Fixed: 15896},
+			wantPartition: []websterengine.PartitionBatch{recorded[0], {Cards: []string{"02-list-tests"}, Profile: "base-15896", Estimate: 120}},
 		},
 		{
 			name:          "a card added after the last begun card is grouped into the tail",
@@ -235,6 +245,7 @@ func TestRebaseline_CardSet(t *testing.T) {
 				tc.edit(rec)
 			}
 			deps := rebaselineDeps(t, tc.cards, tc.partition, tc.active, map[int]*websterengine.BatchState{1: rec})
+			deps.Base = tc.base
 			_, err := websterengine.Rebaseline(deps)
 			if tc.wantTailPosition > 0 {
 				if len(deps.State.Partition) < 2 || deps.State.Partition[1].Breakdown == nil || deps.State.Partition[1].Breakdown.Position != tc.wantTailPosition {
