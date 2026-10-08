@@ -206,7 +206,7 @@ func sanitizeCarryOverField(field string) string {
 }
 
 // openRisksSection is the line range of the `## Open risks` section.
-// head is the heading line, end the next H2 line or len(lines), and inFence marks the lines inside a fenced block.
+// head is the heading line, end the next H2 line or len(lines), and inFence marks the fence lines and the lines inside a fenced block.
 type openRisksSection struct {
 	head, end int
 	inFence   []bool
@@ -214,19 +214,12 @@ type openRisksSection struct {
 
 // locateOpenRisks finds the `## Open risks` section, reading headings and fences with the same rule as the `## Decisions` insertion.
 func locateOpenRisks(lines []string) (openRisksSection, error) {
-	section := openRisksSection{head: -1, end: len(lines), inFence: make([]bool, len(lines))}
-	inFence := false
+	section := openRisksSection{head: -1, end: len(lines), inFence: fencedLines(lines)}
 	for i, line := range lines {
+		if section.inFence[i] {
+			continue
+		}
 		trimmed := strings.TrimRight(line, " \t\r")
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			inFence = !inFence
-			section.inFence[i] = true
-			continue
-		}
-		section.inFence[i] = inFence
-		if inFence {
-			continue
-		}
 		if section.head < 0 {
 			if trimmed == openRisksHeading {
 				section.head = i
@@ -338,14 +331,10 @@ func checkCarryOverSplice(prior, next []string, priorStart, priorEnd, nextEnd in
 // h2Headings returns the H2 lines outside fenced blocks, in order.
 func h2Headings(lines []string) []string {
 	var headings []string
-	inFence := false
-	for _, line := range lines {
+	fenced := fencedLines(lines)
+	for i, line := range lines {
 		trimmed := strings.TrimRight(line, " \t\r")
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			inFence = !inFence
-			continue
-		}
-		if !inFence && strings.HasPrefix(trimmed, "## ") {
+		if !fenced[i] && strings.HasPrefix(trimmed, "## ") {
 			headings = append(headings, trimmed)
 		}
 	}

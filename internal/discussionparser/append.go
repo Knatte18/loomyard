@@ -104,16 +104,12 @@ func decisionsInsertOffset(content string) (int, error) {
 	}
 
 	head, end := -1, len(lines)
-	inFence := false
+	fenced := fencedLines(lines)
 	for i, line := range lines {
+		if fenced[i] {
+			continue
+		}
 		trimmed := strings.TrimRight(line, " \t\r")
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
-			continue
-		}
 		if head < 0 {
 			if trimmed == decisionsHeading {
 				head = i
@@ -136,4 +132,21 @@ func decisionsInsertOffset(content string) (int, error) {
 		return len(content), nil
 	}
 	return starts[end], nil
+}
+
+// fencedLines reports for each line whether it is a ``` or ~~~ fence line or lies inside a fenced block.
+// A heading or marker on such a line is ordinary text.
+func fencedLines(lines []string) []bool {
+	fenced := make([]bool, len(lines))
+	inFence := false
+	for i, line := range lines {
+		trimmed := strings.TrimRight(line, " \t\r")
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inFence = !inFence
+			fenced[i] = true
+			continue
+		}
+		fenced[i] = inFence
+	}
+	return fenced
 }
