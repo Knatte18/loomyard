@@ -33,12 +33,14 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 }
 
 // TestActive asserts Active resolves the configured profile from batcher.yaml:
-// the template verbatim (which must itself parse as plain YAML) resolves identity, an empty or identity active: resolves identity even without a profiles: block, active: cautious on the template builds a cost batcher named after the profile, an absent batcher.yaml or an absent _lyx/ degrades to the embedded template's batchifier rather than erroring, and every load error names batcher.yaml.
+// the template verbatim (which must itself parse as plain YAML) builds a cost batcher named after its cautious profile, an empty active: resolves identity both on the template's profiles and without a profiles: block, an identity active: resolves identity without a profiles: block, an absent batcher.yaml or an absent _lyx/ degrades to the embedded template's cautious batchifier rather than erroring, and every load error names batcher.yaml.
 // The no-such-profile row holds only an operator profile, so it fails only while profiles: is an open map that the template's profiles are not filled into.
 func TestActive(t *testing.T) {
 	t.Parallel()
 	template := batcher.ConfigTemplate()
-	cautious := strings.Replace(template, `active: ""`, `active: "cautious"`, 1)
+	if !strings.HasPrefix(template, `active: "cautious"`) {
+		t.Fatalf("ConfigTemplate() does not open with active: \"cautious\":\n%s", template)
+	}
 	tests := []struct {
 		name string
 		// seed prepares baseDir; a nil seed leaves it bare, with no _lyx/ at all.
@@ -47,13 +49,20 @@ func TestActive(t *testing.T) {
 		wantErrWith []string
 	}{
 		{
-			name: "templateDefaultResolvesIdentity",
+			name: "templateDefaultResolvesCautious",
 			seed: func(t *testing.T, baseDir string) {
 				var out map[string]any
 				if err := yaml.Unmarshal([]byte(template), &out); err != nil {
 					t.Fatalf("ConfigTemplate() does not parse as YAML: %v", err)
 				}
 				seedConfig(t, baseDir, "batcher", template)
+			},
+			wantName: "cautious",
+		},
+		{
+			name: "emptyActiveOnTemplateResolvesIdentity",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", strings.Replace(template, `active: "cautious"`, `active: ""`, 1))
 			},
 			wantName: batcher.DefaultName,
 		},
@@ -72,24 +81,17 @@ func TestActive(t *testing.T) {
 			wantName: "identity",
 		},
 		{
-			name: "cautiousOnTemplateResolvesCost",
-			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", cautious)
-			},
-			wantName: "cautious",
-		},
-		{
 			name: "absentConfigResolvesTemplate",
 			seed: func(t *testing.T, baseDir string) {
 				if err := os.MkdirAll(filepath.Join(baseDir, "_lyx"), 0o755); err != nil {
 					t.Fatalf("mkdir _lyx: %v", err)
 				}
 			},
-			wantName: batcher.DefaultName,
+			wantName: "cautious",
 		},
 		{
 			name:     "absentLyxDirResolvesTemplate",
-			wantName: batcher.DefaultName,
+			wantName: "cautious",
 		},
 		{
 			name: "noSuchProfileErrors",
@@ -108,28 +110,28 @@ func TestActive(t *testing.T) {
 		{
 			name: "missingThresholdErrors",
 			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", strings.Replace(cautious, "    budget: ", "    renamed_budget: ", 1))
+				seedConfig(t, baseDir, "batcher", strings.Replace(template, "    budget: ", "    renamed_budget: ", 1))
 			},
 			wantErrWith: []string{"batcher.yaml", "cautious", "budget"},
 		},
 		{
 			name: "nonPositiveBudgetErrors",
 			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", strings.Replace(cautious, "budget: 450000", "budget: 0", 1))
+				seedConfig(t, baseDir, "batcher", strings.Replace(template, "budget: 450000", "budget: 0", 1))
 			},
 			wantErrWith: []string{"batcher.yaml", "cautious", "budget"},
 		},
 		{
 			name: "retiredAloneAboveErrors",
 			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", strings.Replace(cautious, "    budget: ", "    alone_above: 1200000\n    budget: ", 1))
+				seedConfig(t, baseDir, "batcher", strings.Replace(template, "    budget: ", "    alone_above: 1200000\n    budget: ", 1))
 			},
 			wantErrWith: []string{"batcher.yaml", "cautious", "alone_above"},
 		},
 		{
 			name: "maxCardsBelowTwoErrors",
 			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", strings.Replace(cautious, "max_cards: 6", "max_cards: 1", 1))
+				seedConfig(t, baseDir, "batcher", strings.Replace(template, "max_cards: 6", "max_cards: 1", 1))
 			},
 			wantErrWith: []string{"batcher.yaml", "cautious", "max_cards"},
 		},
