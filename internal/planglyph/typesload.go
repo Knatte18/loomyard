@@ -104,7 +104,7 @@ func loadTypedReferences(plan *planparser.Plan, root string, subjects []coverage
 }
 
 // typedReferences walks the syntax of every loaded package that carries types info.
-// checked holds the worktree-relative files so walked.
+// checked holds the worktree-relative files so walked; a file with a parse error is not walked, since its syntax lacks what the parser dropped, so the scan decides it whole.
 // references holds, per subject, the lines of each checked file where an identifier's used object is the subject, deduplicated across a package and its test variant.
 // unresolved holds, per subject, the lines of a checked file where an identifier named like the subject has neither a used nor a defined object, so the scan must decide it.
 func typedReferences(pkgs []*packages.Package, root string, subjects []coverageSubject) (checked map[string]bool, references []map[string][]int, unresolved []map[string][]int) {
@@ -121,7 +121,11 @@ func typedReferences(pkgs []*packages.Package, root string, subjects []coverageS
 			continue
 		}
 		for _, syntax := range pkg.Syntax {
-			relative, err := filepath.Rel(root, pkg.Fset.Position(syntax.Package).Filename)
+			filename := pkg.Fset.Position(syntax.Package).Filename
+			if hasParseError(pkg, filename) {
+				continue
+			}
+			relative, err := filepath.Rel(root, filename)
 			if err != nil || strings.HasPrefix(relative, "..") {
 				continue
 			}
@@ -163,6 +167,13 @@ func typedReferences(pkgs []*packages.Package, root string, subjects []coverageS
 		}
 	}
 	return checked, references, unresolved
+}
+
+// hasParseError reports whether pkg records a parse error in filename.
+func hasParseError(pkg *packages.Package, filename string) bool {
+	return slices.ContainsFunc(pkg.Errors, func(e packages.Error) bool {
+		return e.Kind == packages.ParseError && strings.HasPrefix(e.Pos, filename+":")
+	})
 }
 
 // isSubjectObject reports whether obj is the member subject names.

@@ -373,6 +373,13 @@ func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 			wantDetails: []string{"broken/broken.go at line 10 ", "broken/broken.go references it at line 11 "},
 		},
 		{
+			name:  "a file that does not parse is answered by the scan",
+			cards: []string{deleteCard("callees#Target")},
+			// The parser drops everything after the bad operand, so the call on line 7 is missing from the file's syntax.
+			files: map[string]string{"broken/broken.go": "package broken\n\nimport \"example.com/glyphchain/callees\"\n\nfunc f() {\n\tx := )\n\tcallees.Target()\n}\n"},
+			want:  []string{"blocking broken/broken.go", "blocking callees/callees_external_test.go", "blocking callees/local.go", "blocking callers/callers.go"},
+		},
+		{
 			name:           "a root without go.mod skips the load and is answered by the scan",
 			cards:          []string{deleteCard("callees#Target")},
 			dropRootModule: true,
