@@ -10,7 +10,9 @@ package websterengine
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -83,6 +85,34 @@ func planFileHashes(planDir string) (map[string]string, error) {
 	return hashes, nil
 }
 
+// overviewFrameHash hashes planDir's 00-overview.md with its Card Index section cut out, as the hex SHA-256 State.PlanOverviewFrameHash records.
+// A plan directory without an overview has no frame and hashes to "", the value that makes Rebaseline refuse any overview change.
+func overviewFrameHash(planDir string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(planDir, planOverviewFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("websterengine: overview frame hash %s: read %s: %w", planDir, planOverviewFile, err)
+	}
+	hash, err := overviewFrameHashOf(data)
+	if err != nil {
+		return "", fmt.Errorf("websterengine: overview frame hash %s: %w", planDir, err)
+	}
+	return hash, nil
+}
+
+// overviewFrameHashOf hashes overview, the content of a 00-overview.md, with its Card Index section cut out, as the hex SHA-256 State.PlanOverviewFrameHash records.
+// It fails when overview has no Card Index or no well-formed frontmatter.
+func overviewFrameHashOf(overview []byte) (string, error) {
+	frame, err := planparser.OverviewWithoutCardIndex(overview)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(frame)
+	return hex.EncodeToString(sum[:]), nil
+}
+
 // changedPlanFiles returns the plan file names whose current hash differs from st.PlanFileHashes, plus files added or removed since, sorted.
 func changedPlanFiles(st *State, planDir string) ([]string, error) {
 	now, err := planFileHashes(planDir)
@@ -113,7 +143,7 @@ func PlanEditError(st *State, planDir string) error {
 		return err
 	}
 	if st.PlanFingerprint != fp {
-		return fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fp, st.PlanFingerprint, fingerprintMismatchWayForward(st, planDir))
+		return fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fp, st.PlanFingerprint, fingerprintMismatchWayForward(st, planDir, stepRun))
 	}
 	return nil
 }
@@ -138,7 +168,7 @@ func batchCardEditError(st *State, bs *BatchState, b batcher.Batch, planDir stri
 	if len(changed) == 0 {
 		return nil
 	}
-	return fmt.Errorf("%w: %s; %s", ErrFingerprintMismatch, strings.Join(changed, "; "), fingerprintMismatchWayForward(st, planDir))
+	return fmt.Errorf("%w: %s; %s", ErrFingerprintMismatch, strings.Join(changed, "; "), fingerprintMismatchWayForward(st, planDir, stepRun))
 }
 
 // Fingerprint is fingerprint's exported seam for a caller outside this package that needs to know
@@ -159,9 +189,8 @@ func Fingerprint(planDir string) (string, error) {
 // The staleness guard exists to catch a plan edited from OUTSIDE the run between two batches, and
 // it cannot tell that apart from webster's own sanctioned rewrites — handle canonicalization at
 // begin-batch, handle binding and exact-tier drift repair at record-batch — unless the run
-// re-baselines after making them. Without this, the first batch that bound a handle or repaired
-// drift made every later begin-batch fail ErrFingerprintMismatch, whose advised recourse
-// (`lyx webster run --fresh`) restarts the same plan into the same wall.
+// re-baselines after making them.
+// Without this, the first batch that bound a handle or repaired drift made every later begin-batch fail ErrFingerprintMismatch, whose advised recourse (the reset route, then a plain `lyx webster run`) restarts the same plan into the same wall.
 //
 // Re-baselining costs nothing the guard was actually providing: a foreign edit landing between this
 // call and the next begin-batch is still caught, which is the whole window the guard covers.
@@ -183,7 +212,7 @@ func restampFingerprint(st *State, planDir, websterDir string) error {
 	return nil
 }
 
-// restampBaseline records planDir's fingerprint, per-file hashes and stored baseline into st, and touches no batch record.
+// restampBaseline records planDir's fingerprint, per-file hashes, overview frame hash and stored baseline into st, and touches no batch record.
 func restampBaseline(st *State, planDir, websterDir string) error {
 	fp, err := fingerprint(planDir)
 	if err != nil {
@@ -193,11 +222,16 @@ func restampBaseline(st *State, planDir, websterDir string) error {
 	if err != nil {
 		return err
 	}
+	frame, err := overviewFrameHash(planDir)
+	if err != nil {
+		return fmt.Errorf("%w; way forward: transient, re-run the verb", err)
+	}
 	if err := storePlanBaseline(websterDir, planDir, hashes); err != nil {
 		return err
 	}
 	st.PlanFingerprint = fp
 	st.PlanFileHashes = hashes
+	st.PlanOverviewFrameHash = frame
 	return nil
 }
 

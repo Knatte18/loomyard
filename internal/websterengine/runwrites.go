@@ -1,11 +1,12 @@
 // runwrites.go reads the run's own write history: every Write, Edit or NotebookEdit a Master session
 // or one of its forks made, with each write's time and result.
-// It is the one reader behind the contract-file evidence and the own-path set of a reset.
+// It is the one reader behind the contract-file evidence, the own-path set of a reset and the uncommitted-path classing of a recovery prompt.
 
 package websterengine
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -38,6 +39,38 @@ func loadRunWrites(engine shuttleengine.Engine, st *State, worktree string) (Run
 		}
 	}
 	return writes, nil
+}
+
+// writtenWorktreePaths returns, sorted and deduplicated, the slash-separated paths relative to worktree that some session of the run wrote successfully.
+// Unlike the tracked own paths of a reset it keeps untracked files, and a failed write is not evidence.
+// A path outside the worktree is dropped, and the error is a link-resolution failure.
+func writtenWorktreePaths(writes RunWrites, worktree string) ([]string, error) {
+	root, err := canonicalPath(worktree)
+	if err != nil {
+		return nil, err
+	}
+	var written []string
+	for _, ev := range slices.Concat(writes.Master, writes.Forks) {
+		if !ev.Succeeded {
+			continue
+		}
+		canon, err := canonicalPath(resolveWritePath(worktree, ev.Path))
+		if err != nil {
+			return nil, err
+		}
+		if !pathWithin(root, canon) {
+			continue
+		}
+		rel, err := filepath.Rel(root, canon)
+		if err != nil {
+			return nil, fmt.Errorf("websterengine: relate %s to %s: %w", canon, root, err)
+		}
+		if rel = filepath.ToSlash(rel); rel != "." && !slices.Contains(written, rel) {
+			written = append(written, rel)
+		}
+	}
+	slices.Sort(written)
+	return written, nil
 }
 
 // recordedSessions lists the distinct non-empty Master session ids st records, in a stable order.

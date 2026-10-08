@@ -17,6 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
+// overviewWithIndex is a minimal valid 00-overview.md whose Card Index holds indexLines, for fixtures that restamp a plan directory.
+func overviewWithIndex(indexLines string) string {
+	return "---\nformat: 5\napproved: true\n---\n\n# Plan: fixture\n\nFraming.\n\n## Card Index\n\n" + indexLines + "\n\n## verify:\n\ngo test ./...\n"
+}
+
 // fingerprintWriteFiles writes every entry of files (keyed by relative
 // path) into dir, creating any needed subdirectories.
 func fingerprintWriteFiles(t *testing.T, dir string, files map[string]string) {
@@ -61,6 +66,30 @@ func TestFingerprint(t *testing.T) {
 
 		if fpA != fpB {
 			t.Errorf("fingerprint(dirA) = %q; fingerprint(dirB) = %q; want equal for identical content", fpA, fpB)
+		}
+	})
+
+	t.Run("the overview frame hash follows everything but the Card Index", func(t *testing.T) {
+		t.Parallel()
+
+		frameOf := func(overview string) string {
+			dir := t.TempDir()
+			fingerprintWriteFiles(t, dir, map[string]string{"00-overview.md": overview})
+			frame, err := overviewFrameHash(dir)
+			if err != nil {
+				t.Fatalf("overviewFrameHash() error = %v", err)
+			}
+			return frame
+		}
+		base := frameOf(overviewWithIndex("1 — a — card a"))
+		if got := frameOf(overviewWithIndex("1 — a — reworded\n2 — b — added")); got != base {
+			t.Errorf("frame hash moved with the Card Index: %q, want %q", got, base)
+		}
+		if got := frameOf(strings.Replace(overviewWithIndex("1 — a — card a"), "Framing.", "Reframed.", 1)); got == base {
+			t.Error("frame hash did not move with the framing")
+		}
+		if got, err := overviewFrameHash(t.TempDir()); err != nil || got != "" {
+			t.Errorf("frame hash of an absent overview = %q, %v; want empty and no error", got, err)
 		}
 	})
 
@@ -209,7 +238,7 @@ func TestRestamp(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			planDir := t.TempDir()
-			fingerprintWriteFiles(t, planDir, map[string]string{"00-overview.md": "overview\n", "01-a.md": "card a\n"})
+			fingerprintWriteFiles(t, planDir, map[string]string{"00-overview.md": overviewWithIndex("1 — a — card a"), "01-a.md": "card a\n"})
 			st := &State{}
 			if err := restampFingerprint(st, planDir, t.TempDir()); err != nil {
 				t.Fatalf("restampFingerprint() error = %v", err)
@@ -236,6 +265,10 @@ func TestRestamp(t *testing.T) {
 			if st.PlanFingerprint == original || st.PlanFingerprint != current {
 				t.Errorf("State.PlanFingerprint = %s; want the plan directory's current fingerprint %s", st.PlanFingerprint, current)
 			}
+			frame, err := overviewFrameHash(planDir)
+			if err != nil || frame == "" || st.PlanOverviewFrameHash != frame {
+				t.Errorf("State.PlanOverviewFrameHash = %q; want the overview's frame hash %q (err %v)", st.PlanOverviewFrameHash, frame, err)
+			}
 			stored, err := os.ReadDir(filepath.Join(websterDir, planBaselineDirName))
 			if err != nil {
 				t.Fatalf("read plan baseline store: %v", err)
@@ -261,7 +294,7 @@ func editFixture(t *testing.T) (*State, *BatchState, batcher.Batch, string) {
 	t.Helper()
 	planDir := t.TempDir()
 	fingerprintWriteFiles(t, planDir, map[string]string{
-		"00-overview.md": "overview\n",
+		"00-overview.md": overviewWithIndex("1 — a — card a"),
 		"01-a.md":        "card a\n",
 	})
 	st := &State{}

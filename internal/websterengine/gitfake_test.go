@@ -34,6 +34,8 @@ type fakeGit struct {
 	isDirty bool
 	// dirtyPaths is what DirtyPaths returns.
 	dirtyPaths []string
+	// dirtyPathsErr, when set, is the error DirtyPaths returns in place of dirtyPaths.
+	dirtyPathsErr error
 	// merging is what MergeInProgress returns.
 	merging bool
 	// parents maps each registered commit to its parent SHAs.
@@ -159,7 +161,7 @@ func (g *fakeGit) HeadSHA(string) (string, error) { return g.head, nil }
 
 func (g *fakeGit) Dirty(string) (bool, error) { return g.isDirty, nil }
 
-func (g *fakeGit) DirtyPaths(string) ([]string, error) { return g.dirtyPaths, nil }
+func (g *fakeGit) DirtyPaths(string) ([]string, error) { return g.dirtyPaths, g.dirtyPathsErr }
 
 func (g *fakeGit) MergeInProgress(string) (bool, error) { return g.merging, nil }
 

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -86,6 +87,7 @@ func newTestEnv(t *testing.T) Env {
 			}, nil
 		},
 		CommitPlan: func() error { return nil },
+		Rework:     loomshed.PRReworkDeps{ArchiveWebster: func(string) error { return nil }},
 		Slug:       "test-slug",
 		ScratchDir: mustMkdir("scratch"),
 

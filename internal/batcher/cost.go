@@ -48,6 +48,7 @@ type split struct {
 
 // Batch splits cards into the fewest contiguous batches, in card order.
 // The k-th batch of the result is the fork at position before + k, where before is the number of batches the run executes ahead of cards[0], and its start context grows with that position, so a segment's peak depends on the batch it forms.
+// base is part of every segment's start context.
 // A one-card segment is always feasible;
 // a longer segment needs at most MaxCards cards and a PeakContext at its own position within Budget.
 // Budget limits only segments of two or more cards, so a card whose own peak at its position exceeds it still runs alone, and nothing halts or warns;
@@ -56,7 +57,7 @@ type split struct {
 // a remaining tie goes to the split whose last batch is shortest.
 // Each returned Batch carries the profile name, its PeakContext at its own position as Estimate and the components behind it as Breakdown.
 // The search is a dynamic program over (batches so far, last card placed), O(cards² × MaxCards) in segment evaluations.
-func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes SizeSource, before int) ([]Batch, error) {
+func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes SizeSource, before int, base StartBase) ([]Batch, error) {
 	w := b.params.Weights
 	loads := make([]cardLoad, len(cards))
 	for i, card := range cards {
@@ -75,7 +76,7 @@ func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes
 	table[0][0] = split{found: true}
 	for end := 1; end <= len(cards); end++ {
 		var peak peakAccumulator
-		peak.start(w, before+1)
+		peak.start(w, base, before+1)
 		for begin := end - 1; begin >= 0; begin-- {
 			peak.add(loads[begin], w)
 			if end-begin > 1 && (end-begin > b.params.MaxCards || peak.value > b.params.Budget) {
@@ -109,7 +110,7 @@ func (b costBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes
 	batches := make([]Batch, count)
 	for end, k := len(cards), count; k > 0; k-- {
 		begin := table[k][end].start
-		breakdown := breakdownOf(cards[begin:end], loads[begin:end], w, before+k)
+		breakdown := breakdownOf(cards[begin:end], loads[begin:end], w, base, before+k)
 		batches[k-1] = Batch{Cards: cards[begin:end], Profile: b.name, Estimate: table[k][end].peak, Breakdown: &breakdown}
 		end = begin
 	}

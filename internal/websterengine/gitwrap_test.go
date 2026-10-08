@@ -124,7 +124,7 @@ func TestReconcileReportHead_EqualIsFastPath(t *testing.T) {
 	dir := gitwrapNewScratchRepo(t)
 	head := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 
-	warning, err := reconcileReportHead(realGit{}, dir, head, "batch report x", gitwrapParent)
+	warning, err := reconcileReportHead(realGit{}, dir, head, "batch report x", gitwrapParent, 1)
 	if err != nil || warning != "" {
 		t.Fatalf("reconcileReportHead() = (%q, %v); want (\"\", nil)", warning, err)
 	}
@@ -136,7 +136,7 @@ func TestReconcileReportHead_MergesOnTopAccepted(t *testing.T) {
 	report := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 	merge1, _ := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
-	warning, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent)
+	warning, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent, 1)
 	if err != nil {
 		t.Fatalf("one merge: error = %v; want nil", err)
 	}
@@ -147,7 +147,7 @@ func TestReconcileReportHead_MergesOnTopAccepted(t *testing.T) {
 	}
 
 	merge2, _ := gitwrapMergeSide(t, dir, gitwrapParentBranch)
-	warning, err = reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent)
+	warning, err = reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent, 1)
 	if err != nil {
 		t.Fatalf("two merges: error = %v; want nil", err)
 	}
@@ -164,7 +164,7 @@ func TestReconcileReportHead_ReportHeadIsMergeCommit(t *testing.T) {
 	report, _ := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 	merge2, _ := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
-	warning, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent)
+	warning, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent, 1)
 	if err != nil {
 		t.Fatalf("error = %v; want nil", err)
 	}
@@ -186,7 +186,7 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 		gitkit.Git(t, dir, "checkout", base)
 		gitkit.Git(t, dir, "merge", "--ff-only", "side")
 
-		if _, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent); err == nil {
+		if _, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent, 1); err == nil {
 			t.Fatal("error = nil; want refusal")
 		}
 	})
@@ -197,7 +197,7 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 		report := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 		head := gitkit.CommitFile(t, dir, "b.txt", "two", "second")
 
-		_, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent)
+		_, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent, 1)
 		if err == nil {
 			t.Fatal("error = nil; want refusal")
 		}
@@ -216,7 +216,7 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 		gitkit.CommitFile(t, dir, "b.txt", "two", "second")
 		head, _ := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
-		_, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent)
+		_, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent, 1)
 		if err == nil {
 			t.Fatal("error = nil; want refusal")
 		}
@@ -233,7 +233,7 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 		gitkit.CommitFile(t, dir, "a.txt", "one", "first")
 		_, sideTip := gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
-		if _, err := reconcileReportHead(realGit{}, dir, sideTip, "batch report x", gitwrapParent); err == nil {
+		if _, err := reconcileReportHead(realGit{}, dir, sideTip, "batch report x", gitwrapParent, 1); err == nil {
 			t.Fatal("error = nil; want refusal")
 		}
 	})
@@ -245,7 +245,7 @@ func TestReconcileReportHead_Refusals(t *testing.T) {
 		gitwrapMergeSide(t, dir, gitwrapParentBranch)
 
 		zero := strings.Repeat("0", 40)
-		if _, err := reconcileReportHead(realGit{}, dir, zero, "batch report x", gitwrapParent); err == nil {
+		if _, err := reconcileReportHead(realGit{}, dir, zero, "batch report x", gitwrapParent, 1); err == nil {
 			t.Fatal("error = nil; want refusal")
 		}
 	})
@@ -368,11 +368,11 @@ func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 				t.Fatal("move left HEAD at the report head")
 			}
 
-			_, err := reconcileReportHead(realGit{}, dir, report, "batch report x", tc.parent)
+			_, err := reconcileReportHead(realGit{}, dir, report, "batch report x", tc.parent, 1)
 			if err == nil {
 				t.Fatal("error = nil; want refusal")
 			}
-			for _, want := range []string{"does not match the worktree's actual HEAD", report, head, "merge commit " + head + " does not qualify", tc.wantReason, "way forward: 1) run `git reset --keep " + report + "` to move HEAD back"} {
+			for _, want := range []string{"does not match the worktree's actual HEAD", report, head, "merge commit " + head + " does not qualify", tc.wantReason, "way forward: 1) lyx webster reset --to report-head --batch 01"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q missing %q", err, want)
 				}
@@ -390,7 +390,7 @@ func TestReconcileReportHead_ParentOnlyOnOrigin(t *testing.T) {
 	gitkit.Git(t, dir, "update-ref", "refs/remotes/origin/"+gitwrapParentBranch, sideTip)
 	gitkit.Git(t, dir, "branch", "-D", gitwrapParentBranch)
 
-	warning, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent)
+	warning, err := reconcileReportHead(realGit{}, dir, report, "batch report x", gitwrapParent, 1)
 	if err != nil {
 		t.Fatalf("error = %v; want nil", err)
 	}

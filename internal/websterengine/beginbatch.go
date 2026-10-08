@@ -36,14 +36,16 @@ var ErrPaused = errors.New("webster: paused")
 // sentinel identity (webster-owns-its-own-domain-types).
 var ErrFingerprintMismatch = errors.New("webster: on-disk plan fingerprint does not match this run's recorded state")
 
-// planOverviewFile is the plan's overview file, which carries the integration verify and is never rebaselined.
+// planOverviewFile is the plan's overview file, which carries the integration verify; rebaseline accepts a change to its Card Index only.
 const planOverviewFile = "00-overview.md"
 
 // fingerprintMismatchWayForward is the trailing clause BeginBatch and Run put on an ErrFingerprintMismatch wrap.
 // It reads the changed plan files so the clause names the cards to pass to rebaseline;
 // a state without PlanFileHashes names rebaseline without card numbers, and a changedPlanFiles error falls back to the generic text.
-func fingerprintMismatchWayForward(st *State, planDir string) string {
-	fresh := freshRestartSteps
+// An overview change confined to the Card Index names rebaseline with the changed and added cards, and any other overview change names the follow-up card landing.
+// The reset route it names ends in reentry.
+func fingerprintMismatchWayForward(st *State, planDir, reentry string) string {
+	fresh := freshRestartSteps(reentry)
 	const restore = `or restore the plan the run recorded with "lyx webster restore-plan", `
 	if len(st.PlanFileHashes) == 0 {
 		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline` to accept it, " + restore + "otherwise " + fresh
@@ -53,13 +55,28 @@ func fingerprintMismatchWayForward(st *State, planDir string) string {
 		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
 	}
 	var flags []string
+	indexChanged := false
 	for _, name := range changed {
 		if name == planOverviewFile {
-			return "way forward: " + planOverviewFile + " changed and is never rebaselined; restore it with \"lyx webster restore-plan\", or " + fresh
+			indexOnly, err := overviewIndexOnly(st, planDir)
+			if err != nil {
+				return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
+			}
+			if !indexOnly {
+				if st.PlanOverviewFrameHash == "" {
+					return "way forward: " + planOverviewFile + " changed and is never rebaselined; restore it with \"lyx webster restore-plan\", or " + fresh
+				}
+				return "way forward: " + planOverviewFile + " changed outside its Card Index; restore it with \"lyx webster restore-plan\", or " + followUpCardLanding + ", or " + fresh
+			}
+			indexChanged = true
+			continue
 		}
 		flags = append(flags, "--card "+cardNumberOf(name))
 	}
 	if len(flags) == 0 {
+		if indexChanged {
+			return "way forward: only the Card Index of " + planOverviewFile + " changed; run `lyx webster rebaseline` to accept it, " + restore + "otherwise " + fresh
+		}
 		return "way forward: run `lyx webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
 	}
 	return "way forward: run `lyx webster rebaseline " + strings.Join(flags, " ") + "` to accept the edit, " + restore + "otherwise " + fresh
@@ -227,6 +244,24 @@ func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) 
 	return digestSummaryLine(prev.Digest)
 }
 
+// existingReportRemedy names the one step the recorded state of batch number calls for when begin-batch finds the batch's report already on disk.
+func existingReportRemedy(number int, recorded *BatchState) string {
+	if !recorded.Terminal {
+		if recorded.Kind == "recovery" {
+			return fmt.Sprintf("`lyx webster recover-batch %d`", number)
+		}
+		return fmt.Sprintf("`lyx webster record-batch %d`, after fixing whatever its last refusal named", number)
+	}
+	switch recorded.Status {
+	case DigestStatusDone:
+		return "the batch is finished, so begin the next batch"
+	case DigestStatusDead:
+		return fmt.Sprintf("the recovery of batch %d is exhausted, so end the run stuck naming the batch", number)
+	default:
+		return fmt.Sprintf("`lyx webster recover-batch %d`", number)
+	}
+}
+
 // BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the pause gate, the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
 // The caller holds the state-mutation lease across this whole call and is responsible for
 // persisting deps.State via SaveState once BeginBatch returns successfully — BeginBatch itself
@@ -317,7 +352,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// webster's own pre-existing-report guard, applied to the fork path: a batch whose report already landed is finished work — silently overwriting its BatchState (and letting a fresh fork overwrite the report) must never happen by accident.
 	// A no_report re-fork never calls begin-batch again (the bracket is still open), with ONE exception:
 	// a run resumed after a crash that landed between the fork's report and record-batch re-drives a batch whose report IS on disk — that report is consumed by record-batch (the audit keys on the bracket-opening session, see RecordBatch),
-	// so the refusal message names that recourse alongside the stuck-batch one.
+	// so the refusal message names the one remedy the recorded state calls for.
 	// Bound: only a batch with no record in state.json has its report archived and the begin proceeds, since such a report cannot be attributed to any begun batch and record-batch would only archive it and send the caller back here;
 	// a recorded batch's report is never archived by begin-batch.
 	existingReport := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
@@ -334,7 +369,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 			if recorded.Terminal {
 				seen = "terminal with status " + recorded.Status
 			}
-			return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s and state.json records the batch as %s — begin-batch never overwrites finished work; a report left behind by a crashed session is consumed by `lyx webster record-batch %d` (or `lyx webster recover-batch %d` for a recovery batch), and a stuck batch escalates via `lyx webster recover-batch %d` (which archives the report)", number, slug, existingReport, seen, number, number, number)
+			return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s and state.json records the batch as %s — begin-batch never overwrites finished work; way forward: %s", number, slug, existingReport, seen, existingReportRemedy(number, recorded))
 		}
 	} else if !os.IsNotExist(statErr) {
 		return nil, fmt.Errorf("webster: stat batch report %s: %w", existingReport, statErr)
