@@ -33,7 +33,7 @@ const (
 )
 
 // sendContext is what one verified send needs: the pane it types into, the run's events file, the config and the clock its timed waits read.
-// A zero deadline means none.
+// A zero deadline means none, and a nil hold starts the idle wait's turn-start hold afresh.
 type sendContext struct {
 	reed       ReedOps
 	engine     Engine
@@ -42,6 +42,7 @@ type sendContext struct {
 	cfg        Config
 	clock      Clock
 	deadline   time.Time
+	hold       *turnStartHold
 }
 
 // newSendContext returns the context of a verified send into run's own pane.
@@ -94,10 +95,13 @@ func awaitIdleSession(sc sendContext) error {
 	if !sc.deadline.IsZero() && sc.deadline.Before(limit) {
 		limit = sc.deadline
 	}
-	var hold turnStartHold
+	hold := sc.hold
+	if hold == nil {
+		hold = &turnStartHold{}
+	}
 	interval := idlePollInitial
 	for {
-		busy := busyReading(sc, cycler, &hold)
+		busy := busyReading(sc, cycler, hold)
 		if busy == "" {
 			return nil
 		}
@@ -163,30 +167,37 @@ type turnStartHold struct {
 	signal    SessionSignal
 	tracking  bool
 	idleSince time.Time
+	released  bool
 }
 
 // holds reports whether turnStart, the unmatched turn start, still holds the send at now.
 // It releases once the engine's SessionProber reports that turn interrupted,
 // or once paneIdle has been true on every poll since turnStartIdleOverride ago, logging one Warn naming the signal.
 // A poll with a busy pane resets the idle timer.
+// A turn start once released stays released for as long as it is the one asked about.
 func (h *turnStartHold) holds(engine Engine, turnStart SessionSignal, paneIdle bool, now time.Time) bool {
 	if !h.tracking || !sameSignal(h.signal, turnStart) {
-		h.signal, h.tracking, h.idleSince = turnStart, true, time.Time{}
+		h.signal, h.tracking, h.idleSince, h.released = turnStart, true, time.Time{}, false
+	}
+	if h.released {
+		return false
+	}
+	if prober, ok := engine.(SessionProber); ok {
+		if _, interrupted := prober.TurnStartInterrupt(turnStart); interrupted {
+			h.released = true
+			return false
+		}
 	}
 	if !paneIdle {
 		h.idleSince = time.Time{}
 		return true
-	}
-	if prober, ok := engine.(SessionProber); ok {
-		if _, interrupted := prober.TurnStartInterrupt(turnStart); interrupted {
-			return false
-		}
 	}
 	if h.idleSince.IsZero() {
 		h.idleSince = now
 	}
 	if now.Sub(h.idleSince) >= turnStartIdleOverride {
 		logger.Warn("shuttle: send released an unmatched turn start held against an idle pane", "turnStartAt", turnStart.At, "sessionID", turnStart.SessionID, "idleFor", now.Sub(h.idleSince))
+		h.released = true
 		return false
 	}
 	return true
@@ -396,4 +407,60 @@ func turnStartedSince(engine Engine, eventsPath string, offset int64) bool {
 		}
 	}
 	return false
+}
+
+// sendWithin is the gated wait loop's send: Run.Send's validation and sendVerified with the send's deadline set to the run's,
+// so the idle wait and the submit window both end by the run deadline.
+// The idle wait shares the loop's turn-start hold, so a turn start the loop already released does not hold the send again.
+func (run *Run) sendWithin(text string) error {
+	if err := validateSendText(text); err != nil {
+		return err
+	}
+	sc := run.newSendContext()
+	sc.deadline = run.deadline
+	sc.hold = &run.startHold
+	return sendVerified(sc, text)
+}
+
+// boundaryIdle confirms that the writer's turn boundary is idle in fact before the gate is evaluated for a send.
+// An engine lacking the SessionCycler idle reading or the session signal parser answers true at once.
+// Otherwise a turn start left unmatched by a later turn end means the writer began a new turn after the boundary:
+// the boundary and the unsent re-prompt mark are cleared, the cleared state is recorded for startHoldReleased, and the answer is false.
+func (run *Run) boundaryIdle() bool {
+	engine := run.runner.engine
+	if _, ok := engine.(SessionCycler); !ok {
+		return true
+	}
+	turnStart, found := unmatchedTurnStart(engine, run.state.EventsPath)
+	if !found {
+		return true
+	}
+	run.gateAtBoundary = false
+	run.unsentReprompt = false
+	run.startCleared = true
+	run.startHold = turnStartHold{}
+	logger.Info("shuttle: gate: a turn started after the boundary, holding the gate send", "strandGUID", run.state.StrandGUID, "turnStartAt", turnStart.At)
+	return false
+}
+
+// startHoldReleased reports whether a boundary cleared by an unmatched turn start is restored on this tick.
+// It reads the pane for the idle reading that times the hold, and restores the boundary once turnStartHold releases the turn start.
+// A turn start that a later turn end has since matched ends the cleared state without restoring the boundary.
+// That turn end is either a gated Done arrival or a held turn end with nothing to evaluate.
+func (run *Run) startHoldReleased() bool {
+	engine := run.runner.engine
+	cycler := engine.(SessionCycler)
+	turnStart, found := unmatchedTurnStart(engine, run.state.EventsPath)
+	if !found {
+		run.startCleared = false
+		return false
+	}
+	capture, err := run.runner.reed.CapturePane(run.state.StrandGUID)
+	paneIdle := err == nil && engine.Startup(capture) == StartupReady && cycler.IdleSession(capture)
+	if run.startHold.holds(engine, turnStart, paneIdle, run.clock.Now()) {
+		return false
+	}
+	run.startCleared = false
+	run.gateAtBoundary = true
+	return true
 }

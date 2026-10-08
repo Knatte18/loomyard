@@ -624,3 +624,82 @@ func (r *idleReed) CapturePane(guid string) (string, error) {
 }
 
 var _ ReedOps = (*idleReed)(nil)
+
+// tuiReed is a fakeReed standing in for a Claude pane over time on its clock.
+// The pane reads busy until busyUntil and "IDLE" after, then the history of submitted texts and the input box after a caret.
+// Typed text lands in the box, C-u empties it, and Enter submits the box into the history once swallowEnterUntil has passed.
+type tuiReed struct {
+	*fakeReed
+
+	clock             Clock
+	busyUntil         time.Time
+	swallowEnterUntil time.Time
+
+	box     string
+	history []string
+	// typedAt is the clock time of the first SendText; zero while nothing was typed.
+	typedAt time.Time
+	// clears counts the C-u keys played.
+	clears int
+}
+
+func (r *tuiReed) SendText(guid, text string, submit bool) error {
+	if r.typedAt.IsZero() {
+		r.typedAt = r.clock.Now()
+	}
+	r.box += text
+	if submit {
+		r.submitBox()
+	}
+	return r.fakeReed.SendText(guid, text, submit)
+}
+
+func (r *tuiReed) SendKey(guid, key string) error {
+	switch key {
+	case "C-u":
+		r.box = ""
+		r.clears++
+	case "Enter":
+		if !r.clock.Now().Before(r.swallowEnterUntil) {
+			r.submitBox()
+		}
+	}
+	return r.fakeReed.SendKey(guid, key)
+}
+
+func (r *tuiReed) submitBox() {
+	if r.box != "" {
+		r.history = append(r.history, r.box)
+		r.box = ""
+	}
+}
+
+func (r *tuiReed) CapturePane(guid string) (string, error) {
+	if _, err := r.fakeReed.CapturePane(guid); err != nil {
+		return "", err
+	}
+	if r.clock.Now().Before(r.busyUntil) {
+		return "working (esc to interrupt)\n❯ " + r.box, nil
+	}
+	return "IDLE\n" + strings.Join(r.history, "\n") + "\n❯ " + r.box, nil
+}
+
+var _ ReedOps = (*tuiReed)(nil)
+
+// tuiEngine is clearableBoxEngine reading its input box off the caret of a tuiReed capture.
+type tuiEngine struct {
+	*clearableBoxEngine
+}
+
+func (e *tuiEngine) InputBoxText(capture string) (string, bool) {
+	caret := strings.LastIndex(capture, "❯ ")
+	if caret < 0 {
+		return "", false
+	}
+	return strings.TrimSpace(capture[caret+len("❯ "):]), true
+}
+
+// newTUIEngine returns a tuiEngine whose pane starts ready and whose redraw settle is 100 ms.
+func newTUIEngine() *tuiEngine {
+	return &tuiEngine{&clearableBoxEngine{inputBoxEngine: &inputBoxEngine{fakeEngine: readyAgentEngine(), settle: 100 * time.Millisecond}}}
+}

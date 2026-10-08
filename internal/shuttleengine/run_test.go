@@ -947,10 +947,20 @@ func (c *boxTestClock) Sleep(d time.Duration) {
 	c.fakeClock.Sleep(d)
 }
 
-// clearableBoxEngine is inputBoxEngine plus the idle reading, session signals and a scripted InputBoxClearer:
-// a capture is idle when it starts with "IDLE", "START" is a turn start, and a box reading starting with "[Pasted" is a placeholder.
+// clearableBoxEngine is inputBoxEngine plus the idle reading, session signals, a session prober and a scripted InputBoxClearer:
+// A capture is idle when it starts with "IDLE".
+// "START" is a turn start and "STOP:<message>" a turn end.
+// Every turn start reads interrupted when interrupted is set.
+// A box reading starting with "[Pasted" is a placeholder.
 type clearableBoxEngine struct {
 	*inputBoxEngine
+
+	interrupted bool
+}
+
+func (e *clearableBoxEngine) ProcessLiveness(string) Liveness { return LivenessUnproven }
+func (e *clearableBoxEngine) TurnStartInterrupt(SessionSignal) (time.Time, bool) {
+	return time.Time{}, e.interrupted
 }
 
 func (e *clearableBoxEngine) ContextTokens(Event) ContextReading { return ContextReading{} }
@@ -975,14 +985,18 @@ func (e *clearableBoxEngine) PastePlaceholder(box string) bool {
 func (e *clearableBoxEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
 	var signals []SessionSignal
 	for _, line := range strings.Split(string(data), "\n") {
-		if strings.TrimSpace(line) == "START" {
+		switch trimmed := strings.TrimSpace(line); {
+		case trimmed == "START":
 			signals = append(signals, SessionSignal{Kind: SessionSignalTurnStart})
+		case strings.HasPrefix(trimmed, "STOP:"):
+			signals = append(signals, SessionSignal{Kind: SessionSignalTurnEnd})
 		}
 	}
 	return signals, len(data)
 }
 
 var (
+	_ SessionProber       = (*clearableBoxEngine)(nil)
 	_ SessionCycler       = (*clearableBoxEngine)(nil)
 	_ InputBoxClearer     = (*clearableBoxEngine)(nil)
 	_ SessionSignalParser = (*clearableBoxEngine)(nil)

@@ -289,6 +289,12 @@ type Run struct {
 	// It is false for a fresh run and for one AttachGated reconstructs, and becomes true at the first gated Done arrival;
 	// every gate send and every pending re-evaluation happens only while it is true.
 	gateAtBoundary bool
+	// startCleared reports that a turn start after the boundary cleared gateAtBoundary, and startHold times the release of that turn start against the pane's idle reading.
+	startCleared bool
+	startHold    turnStartHold
+	// unsentReprompt reports that the last re-prompt send failed busy or unlanded, so the loop re-sends it on a later tick with no new writer event.
+	// It is cleared by a successful re-prompt, a new arrival and a writer turn that starts meanwhile.
+	unsentReprompt bool
 
 	// resumeWarning is the non-empty warning SessionResumer.CheckResume returned when it could not confirm the session was resumable, empty otherwise.
 	resumeWarning string

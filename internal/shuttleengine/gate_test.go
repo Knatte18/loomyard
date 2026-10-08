@@ -612,3 +612,205 @@ func TestGate_WaitMarkAroundEntry(t *testing.T) {
 		})
 	}
 }
+
+// hookClock is a fakeClock that runs onSleep with the new time after every Sleep, so a test can move the writer between two ticks.
+type hookClock struct {
+	*fakeClock
+	onSleep func(now time.Time)
+}
+
+func (c *hookClock) Sleep(d time.Duration) {
+	c.fakeClock.Sleep(d)
+	if c.onSleep != nil {
+		c.onSleep(c.fakeClock.Now())
+	}
+}
+
+var _ Clock = (*hookClock)(nil)
+
+// gateRig is a gated run over a tuiReed and a tuiEngine whose events file starts as seeded.
+type gateRig struct {
+	run        *Run
+	reed       *tuiReed
+	engine     *tuiEngine
+	clock      *hookClock
+	start      time.Time
+	eventsPath string
+	findings   string
+	// gateCalls counts the gate closure's evaluations.
+	gateCalls int
+}
+
+// newGateRig builds the rig with a 30 s run deadline, one-second ticks and a gate that always fails with three attempts.
+// cfg supplies the send windows; the poll cadence and liveness are set here.
+func newGateRig(t *testing.T, cfg Config, events string) *gateRig {
+	t.Helper()
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, eventsFileName)
+	outputFile := filepath.Join(runDir, "out.md")
+	touchOutputFile(t, outputFile)
+	if err := os.WriteFile(eventsPath, []byte(events), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+	cfg.StartupTimeoutS, cfg.RunTimeoutMin, cfg.PollIntervalMS, cfg.LivenessEveryNPolls = 30, 5, 1000, 1_000_000
+	cfg.SubmitSettleMS = 100
+
+	rig := &gateRig{eventsPath: eventsPath, findings: filepath.Join(runDir, gateFindingsFileName)}
+	rig.clock = &hookClock{fakeClock: newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))}
+	rig.start = rig.clock.Now()
+	rig.reed = &tuiReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true)}, clock: rig.clock}
+	rig.engine = newTUIEngine()
+	gate := func() (GateResult, error) {
+		rig.gateCalls++
+		return GateResult{Passed: false, Findings: "bad"}, nil
+	}
+	rig.run = newFixture(t, rig.reed, rig.engine, withConfig(cfg)).newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(rig.clock, rig.start.Add(30*time.Second)),
+		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
+	return rig
+}
+
+// TestGate_WaitsForIdleWriter drives a gated Wait over a writer whose newest turn start no turn end has matched, as an AttachGated replay of a writer mid-turn would find it.
+// No gate send is typed until a turn end follows that turn start, the engine reports the turn interrupted, or the pane has read idle for turnStartIdleOverride;
+// the last two restore the boundary and evaluate the gate.
+func TestGate_WaitsForIdleWriter(t *testing.T) {
+	tests := []struct {
+		name        string
+		interrupted bool
+		// turnEndAt, when positive, is when the writer's turn end lands.
+		turnEndAt time.Duration
+		// wantTypedMin and wantTypedMax bound the first typed re-prompt from the start.
+		wantTypedMin, wantTypedMax time.Duration
+	}{
+		{name: "a turn end after the turn start releases the boundary", turnEndAt: 4 * time.Second, wantTypedMin: 4 * time.Second, wantTypedMax: 6 * time.Second},
+		{name: "an interrupt report restores the boundary at once", interrupted: true, wantTypedMax: 3 * time.Second},
+		{name: "ten seconds of idle pane restores the boundary", wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newGateRig(t, Config{}, "STOP:turn1\nSTART\n")
+			rig.engine.interrupted = tt.interrupted
+			if tt.turnEndAt > 0 {
+				appended := false
+				rig.clock.onSleep = func(now time.Time) {
+					if !appended && now.Sub(rig.start) >= tt.turnEndAt {
+						appended = true
+						appendEventsLine(t, rig.eventsPath, "STOP:turn2")
+					}
+				}
+			}
+
+			result, err := rig.run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if len(rig.reed.SendTextCalls) != 1 {
+				t.Fatalf("SendText calls = %+v, want exactly one re-prompt", rig.reed.SendTextCalls)
+			}
+			if typedAfter := rig.reed.typedAt.Sub(rig.start); typedAfter < tt.wantTypedMin || typedAfter > tt.wantTypedMax {
+				t.Errorf("re-prompt typed %v after the start, want within [%v, %v]", typedAfter, tt.wantTypedMin, tt.wantTypedMax)
+			}
+			if result.Gate == nil || result.Gate.Attempts != 1 {
+				t.Errorf("Gate = %+v, want one attempt spent", result.Gate)
+			}
+		})
+	}
+}
+
+// TestGate_UnsentRepromptRetries covers a re-prompt that cannot be delivered: busy or unlanded, it spends no attempt and is re-sent on a later tick, a writer turn that starts meanwhile cancels it, and its idle wait and submit window end by the run deadline.
+func TestGate_UnsentRepromptRetries(t *testing.T) {
+	const never = 24 * time.Hour
+	tests := []struct {
+		name string
+		cfg  Config
+		// busyFor and swallowEnterFor keep the pane busy, or swallow its Enters, for that long from the start.
+		busyFor, swallowEnterFor time.Duration
+		// startAt, when positive, is when the writer begins a new turn.
+		startAt time.Duration
+		// wantSends is the SendText count: -1 means more than one.
+		wantSends    int
+		wantAttempts int
+		// wantTypedMin bounds the first typed text from the start.
+		wantTypedMin time.Duration
+		wantClears   bool
+		// wantEndBy bounds the clock at the end, from the start; zero leaves it unchecked.
+		wantEndBy time.Duration
+		// wantNoEvalAfterStart pins that the gate was not evaluated after the writer's new turn, bar the deadline's final evaluation.
+		wantNoEvalAfterStart bool
+	}{
+		{
+			name: "a busy re-prompt is re-sent once the pane idles", cfg: Config{SendReadyTimeoutS: 1},
+			busyFor: 5 * time.Second, wantSends: 1, wantAttempts: 1, wantTypedMin: 5 * time.Second,
+		},
+		{
+			name: "an unlanded re-prompt is re-sent into the box its failed send cleared", cfg: Config{SubmitConfirmTimeoutS: 1},
+			swallowEnterFor: 8 * time.Second, wantSends: -1, wantAttempts: 1, wantClears: true,
+		},
+		{
+			name: "a writer turn starting meanwhile cancels the pending re-send", cfg: Config{SendReadyTimeoutS: 1},
+			busyFor: never, startAt: 4 * time.Second, wantSends: 0, wantAttempts: 0, wantNoEvalAfterStart: true,
+		},
+		{
+			name: "a re-prompt with little time left ends its idle wait by the run deadline", cfg: Config{SendReadyTimeoutS: 60},
+			busyFor: never, wantSends: 0, wantAttempts: 0, wantEndBy: 10 * time.Second,
+		},
+		{
+			name: "a re-prompt with little time left ends its submit window by the run deadline", cfg: Config{SubmitConfirmTimeoutS: 60},
+			swallowEnterFor: never, wantSends: 1, wantAttempts: 0, wantEndBy: 10 * time.Second,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newGateRig(t, tt.cfg, "STOP:turn1\n")
+			rig.reed.busyUntil = rig.start.Add(tt.busyFor)
+			rig.reed.swallowEnterUntil = rig.start.Add(tt.swallowEnterFor)
+			if tt.wantEndBy > 0 {
+				rig.run.deadline = rig.start.Add(3 * time.Second)
+			}
+			callsAtStart := -1
+			if tt.startAt > 0 {
+				rig.clock.onSleep = func(now time.Time) {
+					if callsAtStart < 0 && now.Sub(rig.start) >= tt.startAt {
+						callsAtStart = rig.gateCalls
+						appendEventsLine(t, rig.eventsPath, "START")
+					}
+				}
+			}
+
+			result, err := rig.run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			sends := len(rig.reed.SendTextCalls)
+			if tt.wantSends == -1 && sends < 2 || tt.wantSends >= 0 && sends != tt.wantSends {
+				t.Errorf("SendText calls = %d, want %d", sends, tt.wantSends)
+			}
+			if result.Gate == nil || result.Gate.Attempts != tt.wantAttempts {
+				t.Errorf("Gate = %+v, want %d attempts spent", result.Gate, tt.wantAttempts)
+			}
+			if tt.wantTypedMin > 0 && rig.reed.typedAt.Sub(rig.start) < tt.wantTypedMin {
+				t.Errorf("first text typed %v after the start, want at least %v", rig.reed.typedAt.Sub(rig.start), tt.wantTypedMin)
+			}
+			if tt.wantClears && rig.reed.clears == 0 {
+				t.Error("no C-u was played, want the unlanded text cleared from the box")
+			}
+			if tt.wantClears {
+				if len(rig.reed.history) != 1 || !strings.Contains(rig.reed.history[0], rig.findings) || rig.reed.box != "" {
+					t.Errorf("history %q and box %q, want the re-prompt submitted once into an otherwise empty box", rig.reed.history, rig.reed.box)
+				}
+			}
+			if tt.wantEndBy > 0 && rig.clock.Now().Sub(rig.start) > tt.wantEndBy {
+				t.Errorf("ended %v after the start, want by %v", rig.clock.Now().Sub(rig.start), tt.wantEndBy)
+			}
+			if tt.wantNoEvalAfterStart && rig.gateCalls != callsAtStart+1 {
+				t.Errorf("gate evaluated %d times, want %d: the calls up to the new turn plus the deadline's final evaluation", rig.gateCalls, callsAtStart+1)
+			}
+		})
+	}
+}
