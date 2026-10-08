@@ -76,7 +76,7 @@ func checkRedundantPackageTarget(plan *Plan) []ValidationError {
 	return findings
 }
 
-// renameToSideUnits maps every handle some Rename pair claims as its to-side to the unit of that pair's old glyph, the unit CanonicalizeHandles writes into the handle.
+// renameToSideUnits maps every handle some Rename pair claims as its to-side to the UnitPath of that pair's old glyph, whose unit CanonicalizeHandles writes into the handle.
 // A pair whose old side does not parse is skipped; glyph-malformed already reports it.
 func renameToSideUnits(lang glyph.Language, plan *Plan) map[string]string {
 	units := make(map[string]string)
@@ -89,8 +89,12 @@ func renameToSideUnits(lang glyph.Language, plan *Plan) map[string]string {
 			if err != nil {
 				continue
 			}
+			unitPath, ok := old.UnitPath()
+			if !ok {
+				continue
+			}
 			if _, claimed := units[p.New]; !claimed {
-				units[p.New] = old.Unit
+				units[p.New] = unitPath
 			}
 		}
 	}
@@ -98,34 +102,36 @@ func renameToSideUnits(lang glyph.Language, plan *Plan) map[string]string {
 }
 
 // redundancyOwnerOf classifies one target for redundant-package-target.
-// ok is false for a target that is neither glyph- nor handle-shaped, that fails to parse, or whose handle names no unit.
+// Every owner is keyed by a UnitPath result, so a member, a file and a package compare as paths.
+// ok is false for a target that is neither glyph- nor handle-shaped, that fails to parse, or whose handle body is not a member glyph.
 func redundancyOwnerOf(lang glyph.Language, renameUnits map[string]string, ref string) (redundancyOwner, bool) {
 	_, disp := lookup(gateRedundantTarget, ref)
 	if disp != dispKeep {
 		return redundancyOwner{}, false
 	}
 
-	if IsHandleRef(ref) {
-		if unit, claimed := renameUnits[ref]; claimed {
-			return redundancyOwner{unit: unit}, true
+	if body, isHandle := HandleBody(ref); isHandle {
+		if unitPath, claimed := renameUnits[ref]; claimed {
+			return redundancyOwner{unit: unitPath}, true
 		}
-		unit, ok := handleUnit(ref)
-		if !ok {
+		g, err := parseGlyph(lang, body)
+		if err != nil || g.IsSelf() {
 			return redundancyOwner{}, false
 		}
-		return redundancyOwner{unit: unit}, true
+		unitPath, ok := g.UnitPath()
+		return redundancyOwner{unit: unitPath}, ok
 	}
 
 	g, err := parseGlyph(lang, ref)
 	if err != nil {
 		return redundancyOwner{}, false
 	}
-	if !g.IsSelf() {
-		return redundancyOwner{unit: g.Unit}, true
-	}
 	unitPath, ok := g.UnitPath()
 	if !ok {
 		return redundancyOwner{}, false
+	}
+	if !g.IsSelf() {
+		return redundancyOwner{unit: unitPath}, true
 	}
 	if !hasFileExtension(unitPath) {
 		return redundancyOwner{unit: unitPath, container: true}, true
