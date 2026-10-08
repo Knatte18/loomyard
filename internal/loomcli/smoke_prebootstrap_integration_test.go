@@ -179,8 +179,10 @@ func hubStampPath(loc *lyxcwd.Location) string {
 	return hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(loc.HubPath)}.StampPath()
 }
 
-// TestLoomResumeReconcilesTheHubConfigBeforeArming asserts only a start verb reconciles a hub whose build has no stamp:
-// status leaves a retired key in a pair's committed batcher.yaml and writes no stamp, and resume removes the key, commits it and writes the stamp whatever its own exit.
+// TestLoomResumeReconcilesTheHubConfigBeforeArming asserts only a start verb reconciles a hub whose build has no stamp.
+// Status leaves a retired key in a pair's committed batcher.yaml and writes no stamp.
+// Resume on an unparseable loom.yaml refuses, naming the file and the way forward, and writes no stamp.
+// Resume after the fix removes the key, commits it and writes the stamp whatever its own exit.
 func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	t.Parallel()
 
@@ -202,6 +204,25 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	if _, err := os.Stat(hubStampPath(loc)); err == nil {
 		t.Fatalf("loom status wrote the build stamp; only a start verb reconciles")
 	}
+
+	loom, _ := configreg.Lookup("loom")
+	gitkit.CommitFile(t, recordsDir, configengine.ConfigFileRel("loom"), "a: [unclosed\n", "fixture: broken loom.yaml")
+	out, exit, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "resume")
+	if err != nil {
+		t.Fatalf("loom resume on a broken loom.yaml: %v; output: %s", err, out)
+	}
+	if exit != 1 {
+		t.Errorf("loom resume on a broken loom.yaml exit = %d; want 1; output: %s", exit, out)
+	}
+	for _, want := range []string{configengine.ConfigFile(worktree, "loom"), "lyx config loom", "re-run this command"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("loom resume refusal does not name %q; output: %s", want, out)
+		}
+	}
+	if _, err := os.Stat(hubStampPath(loc)); err == nil {
+		t.Fatalf("loom resume wrote the build stamp after a failed reconcile")
+	}
+	gitkit.CommitFile(t, recordsDir, configengine.ConfigFileRel("loom"), loom.Template(), "fixture: fixed loom.yaml")
 
 	if out, _, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "resume"); err != nil {
 		t.Fatalf("loom resume: %v; output: %s", err, out)
