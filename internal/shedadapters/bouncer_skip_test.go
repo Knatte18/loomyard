@@ -27,6 +27,8 @@ func TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit(t *testing.T) {
 		callLog = append(callLog, "commit")
 		return nil
 	}
+	recorder := carryOverRecorder{}
+	recorder.install(&cfg)
 	b, err := NewBouncer(cfg)
 	if err != nil {
 		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
@@ -44,6 +46,9 @@ func TestBouncer_Skip_TrueSpawnsNothingAndApprovesBeforeCommit(t *testing.T) {
 	}
 	if len(callLog) != 2 || callLog[0] != "approve" || callLog[1] != "commit" {
 		t.Errorf("callLog = %v; want [approve commit]", callLog)
+	}
+	if len(recorder.entries) != 0 {
+		t.Errorf("carry-over entries = %+v; want the seam uncalled when no round ran", recorder.entries)
 	}
 }
 

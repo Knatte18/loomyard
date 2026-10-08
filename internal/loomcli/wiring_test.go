@@ -16,10 +16,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -651,5 +653,67 @@ func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 				t.Errorf("c.env.WebsterDeps.FrictionDir = %q; want %q", c.env.WebsterDeps.FrictionDir, want)
 			}
 		})
+	}
+}
+
+// seedLoomConfigWithKeys overwrites <anchorPath>/_lyx/config/loom.yaml with the embedded template, each key line's value replaced by its entry in values.
+func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]string) {
+	t.Helper()
+	var contents strings.Builder
+	replaced := map[string]bool{}
+	for _, line := range strings.Split(loomengine.ConfigTemplate(), "\n") {
+		for key, value := range values {
+			if strings.HasPrefix(line, key+":") {
+				line = key + ": " + value
+				replaced[key] = true
+			}
+		}
+		contents.WriteString(line + "\n")
+	}
+	for key := range values {
+		if !replaced[key] {
+			t.Fatalf("key %q not present in loomengine.ConfigTemplate(); the fixture would silently test nothing", key)
+		}
+	}
+	cfgPath := filepath.Join(anchorPath, "_lyx", "config", "loom.yaml")
+	if err := os.WriteFile(cfgPath, []byte(contents.String()), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
+	}
+}
+
+// TestWire_ReviewKeysReachTheEnv verifies the loom.yaml keys that tune a review round reach the Env:
+// plan_review lands in the Plan-Burler row's RowReviewModels entry alone, and the Discussion-Burler row keeps the run-wide models.
+// The Webster-Burler row takes the template's webster_review (one sonnet entry of effort high) with the run-wide fix models.
+// fix_start lands in Env.FixStart.
+func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "pair", ".")
+	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"plan_review": "opus[effort=low]", "fix_start": "after-review"})
+
+	c := &loomCLI{runID: shedrun.SelfRunID}
+	if err := c.wire(loc, loc.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+
+	plan := c.env.RowReviewModels[loomshed.NamePlanBurler]
+	if len(plan.Review) != 1 || plan.Review[0].Effort != "low" {
+		t.Errorf("RowReviewModels[%q].Review = %+v; want one opus entry of effort low", loomshed.NamePlanBurler, plan.Review)
+	}
+	if !reflect.DeepEqual(plan.Fix, c.env.ReviewModels.Fix) {
+		t.Errorf("RowReviewModels[%q].Fix = %+v; want the run-wide %+v", loomshed.NamePlanBurler, plan.Fix, c.env.ReviewModels.Fix)
+	}
+	if got := c.env.RowReviewModels[loomshed.NameDiscussionBurler]; !reflect.DeepEqual(got, c.env.ReviewModels) {
+		t.Errorf("RowReviewModels[%q] = %+v; want the run-wide %+v", loomshed.NameDiscussionBurler, got, c.env.ReviewModels)
+	}
+	webster := c.env.RowReviewModels[loomshed.NameWebsterBurler]
+	if len(webster.Review) != 1 || webster.Review[0].Model != "sonnet" || webster.Review[0].Effort != "high" {
+		t.Errorf("RowReviewModels[%q].Review = %+v; want one sonnet entry of effort high", loomshed.NameWebsterBurler, webster.Review)
+	}
+	if !reflect.DeepEqual(webster.Fix, c.env.ReviewModels.Fix) {
+		t.Errorf("RowReviewModels[%q].Fix = %+v; want the run-wide %+v", loomshed.NameWebsterBurler, webster.Fix, c.env.ReviewModels.Fix)
+	}
+	if c.env.FixStart != burlerengine.FixStartAfterReview {
+		t.Errorf("c.env.FixStart = %q; want %q", c.env.FixStart, burlerengine.FixStartAfterReview)
 	}
 }

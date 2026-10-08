@@ -20,6 +20,9 @@ Read `{{.decision_record_path}}`.
 This is your **sole** input — never read the support log or the board.
 If the file is missing or empty, STOP and report that rather than inventing scope.
 
+An entry between `<!-- lyx:carry-over … -->` marker lines in `## Open risks` lists review findings whose fix in the record no fresh reviewer has seen.
+Check each one against the code while you explore, and never plan an entry as scope.
+
 A scope addition that arrives after the Discussion is a design call, so you record it before planning on it, with `lyx loom decision add --by <who> --title <title> --decision <what> --rationale <why>`.
 `--by` names the source of the addition: `operator` when the operator gave it, otherwise `parent`.
 Never write such an addition into the plan as an operator addition.

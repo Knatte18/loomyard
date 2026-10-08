@@ -60,7 +60,7 @@ func TestCirclingVerb_Records(t *testing.T) {
 				t.Fatalf("exit = %d, out %s; want 0", code, out.String())
 			}
 			data := envelope.RequireOK(t, out.String()).Raw
-			if data["slug"] != "task-a" || data["decision"] != string(d) || data["round"] != float64(3) || data["cause"] != "budget" || data["resume"] != "lyx loom start" {
+			if data["slug"] != "task-a" || data["decision"] != string(d) || data["round"] != float64(3) || data["cause"] != "budget" || data["resume"] != "lyx loom resume" {
 				t.Fatalf("envelope = %v; want slug, decision, round 3, cause budget and the resume hint", data)
 			}
 			if want := "plan:" + string(d); len(f.records) != 1 || f.records[0] != want {
@@ -84,7 +84,7 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 		{"awaiting at PR-Gate", circlingFake{status: awaitingAt(loomshed.NamePRGate), found: true}, "not a review segment's Bouncer row"},
 		{"latest round not escalated", circlingFake{status: awaitingAt(loomshed.NameWebsterBouncer), found: true, recordErr: shedadapters.ErrNotEscalated}, "is not escalated"},
 		{"malformed escalation record", circlingFake{status: awaitingAt(loomshed.NamePlanBouncer), found: true, recordErr: fmt.Errorf("%w: round-2-escalation.md: bad cause", shedadapters.ErrEscalationMalformed)}, "fix or delete the named escalation file"},
-		{"second decision", circlingFake{status: awaitingAt(loomshed.NameDiscussionBouncer), found: true, recordErr: shedadapters.ErrCirclingDecided}, "already recorded"},
+		{"second decision", circlingFake{status: awaitingAt(loomshed.NameDiscussionBouncer), found: true, recordErr: shedadapters.ErrCirclingDecided}, `already recorded for the escalated round at Discussion-Bouncer; way forward: the decision for this round is recorded and stays; run "lyx loom resume"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

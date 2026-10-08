@@ -55,6 +55,12 @@ func TestDiscussionPaths(t *testing.T) {
 			if filepath.IsAbs(DiscussionDirRel()) {
 				t.Errorf("DiscussionDirRel() = %q; want a relative path", DiscussionDirRel())
 			}
+			if got, want := DiscussionDecisionRecordRel(), filepath.Join(DiscussionDirRel(), "decision-record.md"); got != want {
+				t.Errorf("DiscussionDecisionRecordRel() = %q; want %q", got, want)
+			}
+			if got, want := DiscussionDecisionRecord(l), filepath.Join(l.AnchorPath(), DiscussionDecisionRecordRel()); got != want {
+				t.Errorf("DiscussionDecisionRecord() = %q; want the anchor joined with DiscussionDecisionRecordRel(), %q", got, want)
+			}
 		})
 	}
 }

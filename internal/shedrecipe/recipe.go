@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/parentreview"
@@ -76,6 +77,11 @@ type Env struct {
 	// Both are legal on Env at all because Env carries roots and run-wide values only, and one review model list shared by every review segment is exactly such a value.
 	ReviewModels  burlerengine.RoundModels
 	ReviewTimeout time.Duration
+	// RowReviewModels holds a BurlerRound row's own reviewer and fixer model lists, keyed by row name like SegmentBounces.
+	// A row with no entry, and a nil map, take ReviewModels.
+	RowReviewModels map[string]burlerengine.RoundModels
+	// FixStart is the run-wide start order of every BurlerRound row's fixer, set on each round's RunOpts; empty is parallel.
+	FixStart burlerengine.FixStart
 
 	// ReviewMaxBounces is the run-wide bounce budget of every review segment, read by loomrecipe alone.
 	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.
@@ -153,6 +159,9 @@ type Env struct {
 	// SkipPlanReview is the injected closure answering whether the live plan generation skips its Plan-Review judge, read by the Bouncer entry's skip_seam key.
 	// An error makes the Bouncer review for real.
 	SkipPlanReview func() (bool, error)
+	// CarryOver is the injected closure that writes and commits one review segment's carry-over entry into the decision record, read by the Bouncer entry's carry_over key.
+	// It is run-wide, and the entry the Bouncer passes names its own segment.
+	CarryOver func(discussionparser.CarryOver) error
 	// ReflectFriction is the injected closure the FrictionReflect entry's producer calls once per
 	// Call, returning the reflection's status string. It arrives as a closure, following
 	// CommitWebster/CommitDiscussion/ApprovePlan, because the reflection's dependencies are already

@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 )
 
 func TestNewBouncer_ValidationRules(t *testing.T) {
@@ -61,6 +63,23 @@ func TestNewBouncer_ValidationRules(t *testing.T) {
 			name:    "NilShuttle",
 			mutate:  func(cfg *BouncerConfig) { cfg.Shuttle = nil },
 			wantErr: "Shuttle",
+		},
+		{
+			name: "CarryOverWithEmptySegment",
+			mutate: func(cfg *BouncerConfig) {
+				cfg.CarryOver = func(discussionparser.CarryOver) error { return nil }
+				cfg.AnchorPath = filepath.Dir(cfg.RunDir)
+			},
+			wantErr: "Segment",
+		},
+		{
+			name: "CarryOverWithRelativeAnchorPath",
+			mutate: func(cfg *BouncerConfig) {
+				cfg.CarryOver = func(discussionparser.CarryOver) error { return nil }
+				cfg.Segment = "Plan-Review"
+				cfg.AnchorPath = "relative/anchor"
+			},
+			wantErr: "AnchorPath",
 		},
 	}
 

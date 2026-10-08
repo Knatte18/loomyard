@@ -43,6 +43,9 @@ This is the same shape `rubric_stencil` already has, naming a stencil rather tha
 A `Bouncer` row's optional `skip_seam` key takes one value, `rework-exempt`, resolving to `Env.SkipPlanReview`, a closure that tells the Bouncer to approve without a judge.
 It follows the same two rules as `commit_seam`: absent leaves the seam nil, and a present key naming a closure the `Env` does not carry is a construction error.
 An unknown value is a construction error naming `rework-exempt`.
+A `Bouncer` row's optional `carry_over` key is a scalar naming the row's own review segment, for example `Plan-Review`, and selects `Env.CarryOver`, the closure that writes and commits the segment's carry-over entry into the decision record.
+It follows the same two rules as `commit_seam` and `skip_seam`: absent leaves the seam nil, and a present key naming a closure the `Env` does not carry is a construction error.
+The value is the segment name the entry is filed under, so a recipe test pins it equal to the row's `segment`.
 
 A gate-capable row's `gates` key selects validators by name from a closed vocabulary, in order, each element carrying its own `attempts` budget (0 means off) and an optional `pass_on_cap`.
 An absent key is ungated, while an empty list, a duplicate name, or a negative budget is a construction error.

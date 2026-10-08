@@ -20,8 +20,14 @@ import (
 type ReviewSettings struct {
 	// Models holds the resolved review and fix model lists the burler round picks from per round.
 	Models burlerengine.RoundModels
+	// Discussion, Plan and Webster hold each review segment's resolved models: its own list where loom.yaml sets one, else the run-wide list in Models.
+	Discussion burlerengine.RoundModels
+	Plan       burlerengine.RoundModels
+	Webster    burlerengine.RoundModels
 	// Timeout is one review round's shuttle-run deadline, derived from cfg.ReviewTimeoutMin.
 	Timeout time.Duration
+	// FixStart is when every round's fixer starts, from cfg.FixStart.
+	FixStart burlerengine.FixStart
 }
 
 // JudgeSettings is the Bouncer rows' run-wide model settings, resolved once from Config and threaded onto shedrecipe.Env for every Bouncer row to fall back to.
@@ -53,7 +59,7 @@ func ResolveJudge(cfg Config, reg modelspec.Registry) (JudgeSettings, error) {
 	}, nil
 }
 
-// ResolveReview resolves every entry of the review and fix model-spec lists through reg,
+// ResolveReview resolves every entry of the review and fix model-spec lists and of each set per-segment list through reg,
 // and pairs them with the review round timeout, returning the ReviewSettings the caller threads onto shedrecipe.Env.
 // Every entry is resolved at run start, so a bad later-round entry fails before round 1.
 func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
@@ -66,10 +72,49 @@ func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
 		return ReviewSettings{}, err
 	}
 
+	runWide := burlerengine.RoundModels{Review: review, Fix: fix}
+
+	discussion, err := resolveSegmentModels("discussion", cfg.DiscussionReview, cfg.DiscussionFix, runWide, reg)
+	if err != nil {
+		return ReviewSettings{}, err
+	}
+	plan, err := resolveSegmentModels("plan", cfg.PlanReview, cfg.PlanFix, runWide, reg)
+	if err != nil {
+		return ReviewSettings{}, err
+	}
+	webster, err := resolveSegmentModels("webster", cfg.WebsterReview, cfg.WebsterFix, runWide, reg)
+	if err != nil {
+		return ReviewSettings{}, err
+	}
+
 	return ReviewSettings{
-		Models:  burlerengine.RoundModels{Review: review, Fix: fix},
-		Timeout: time.Duration(cfg.ReviewTimeoutMin) * time.Minute,
+		Models:     runWide,
+		Discussion: discussion,
+		Plan:       plan,
+		Webster:    webster,
+		Timeout:    time.Duration(cfg.ReviewTimeoutMin) * time.Minute,
+		FixStart:   burlerengine.FixStart(cfg.FixStart),
 	}, nil
+}
+
+// resolveSegmentModels resolves one review segment's reviewer and fixer lists, each falling back independently to runWide when its key is unset.
+func resolveSegmentModels(segment string, reviewSpecs, fixSpecs ModelSpecList, runWide burlerengine.RoundModels, reg modelspec.Registry) (burlerengine.RoundModels, error) {
+	models := runWide
+	if !isUnsetModelSpecList(reviewSpecs) {
+		review, err := resolveModelChoices(segment+"_review", reviewSpecs, reg)
+		if err != nil {
+			return burlerengine.RoundModels{}, err
+		}
+		models.Review = review
+	}
+	if !isUnsetModelSpecList(fixSpecs) {
+		fix, err := resolveModelChoices(segment+"_fix", fixSpecs, reg)
+		if err != nil {
+			return burlerengine.RoundModels{}, err
+		}
+		models.Fix = fix
+	}
+	return models, nil
 }
 
 // resolveModelChoices parses and resolves each entry of specs, naming key and the 1-based entry index in an error.
