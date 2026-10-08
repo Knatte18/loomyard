@@ -95,9 +95,19 @@ func overviewFrameHash(planDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("websterengine: overview frame hash %s: read %s: %w", planDir, planOverviewFile, err)
 	}
-	frame, err := planparser.OverviewWithoutCardIndex(data)
+	hash, err := overviewFrameHashOf(data)
 	if err != nil {
 		return "", fmt.Errorf("websterengine: overview frame hash %s: %w", planDir, err)
+	}
+	return hash, nil
+}
+
+// overviewFrameHashOf hashes overview, the content of a 00-overview.md, with its Card Index section cut out, as the hex SHA-256 State.PlanOverviewFrameHash records.
+// It fails when overview has no Card Index or no well-formed frontmatter.
+func overviewFrameHashOf(overview []byte) (string, error) {
+	frame, err := planparser.OverviewWithoutCardIndex(overview)
+	if err != nil {
+		return "", err
 	}
 	sum := sha256.Sum256(frame)
 	return hex.EncodeToString(sum[:]), nil

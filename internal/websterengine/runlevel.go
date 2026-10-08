@@ -353,7 +353,15 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	}
 	defer runLock.Release()
 
-	plan, err := planparser.ParsePlan(deps.Geom.PlanDir)
+	// The overview frame is hashed from the bytes this parse accepts, so a file changing after the parse cannot make the frame unreadable.
+	var overview []byte
+	plan, err := planparser.ParsePlanFrom(deps.Geom.PlanDir, func(name string) ([]byte, error) {
+		data, err := os.ReadFile(filepath.Join(deps.Geom.PlanDir, name))
+		if name == planOverviewFile {
+			overview = data
+		}
+		return data, err
+	})
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -382,9 +390,9 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err != nil {
 		return RunResult{}, err
 	}
-	frameHash, err := overviewFrameHash(deps.Geom.PlanDir)
+	frameHash, err := overviewFrameHashOf(overview)
 	if err != nil {
-		return RunResult{}, fmt.Errorf("%w; way forward: transient, re-run `lyx webster run`", err)
+		panic(fmt.Sprintf("websterengine: the overview planparser.ParsePlanFrom accepted has no frame: %v", err))
 	}
 
 	// Serialize the whole state phase — load, entry-time reclaim, fresh
