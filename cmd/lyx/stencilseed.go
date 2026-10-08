@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/specs"
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/buildinfo"
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -119,7 +120,7 @@ func seedStencilsAt(hub, worktree string) {
 
 	mode := stencilstore.ModeFor(buildinfo.IsDev())
 
-	seedSubtree(hub, fabricengine.StencilsDir(hub), fabricengine.StencilsSubtreeRel(), stencils.Registry(), mode, stencilstore.Source{Dir: sourceDir}, "stencils")
+	seedSubtree(hub, fabricengine.StencilsDir(hub), fabricengine.StencilsSubtreeRel(), stencils.Registry(), mode, fabricengine.StencilSource(worktree, sourceDir, buildvcs.Running().Revision), "stencils")
 
 	// sourceDir is deliberately empty here rather than derived from worktree: sourceDir exists only
 	// to drive the port-back drift warning, which serves an authoring workflow specs do not have --
