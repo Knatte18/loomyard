@@ -14,8 +14,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
 // Menu presents an interactive picker of active worktrees, allowing the user to open one via Spawn.
@@ -106,7 +108,11 @@ func Menu(l *lyxcwd.Location, in io.Reader, out io.Writer) error {
 
 	chosenSlug := slugs[num-1]
 
-	if err := Spawn(l, chosenSlug); err != nil {
+	keybindings, err := Spawn(l, chosenSlug)
+	if keybindings.Outcome == vscode.KeybindingsSkipped {
+		logger.Warn("keybindings block not seeded", "slug", chosenSlug, "reason", keybindings.Reason)
+	}
+	if err != nil {
 		return fmt.Errorf("spawn %s: %w", chosenSlug, err)
 	}
 

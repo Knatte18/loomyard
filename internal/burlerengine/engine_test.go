@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -457,6 +458,9 @@ func TestEngine_Run_SpecConstruction(t *testing.T) {
 			}
 			if spec.Role != tt.role {
 				t.Errorf("spec.Role = %q; want %q", spec.Role, tt.role)
+			}
+			if spec.Segment != segmentcolor.Review {
+				t.Errorf("spec.Segment = %q; want %q", spec.Segment, segmentcolor.Review)
 			}
 			if got, want := spec.Skills, []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}; !slices.Equal(got, want) {
 				t.Errorf("spec.Skills = %v; want %v", got, want)
@@ -977,6 +981,8 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 	tests := []struct {
 		name    string
 		shuttle *fakeShuttle
+		// fixStart is the round's RunOpts.FixStart; empty is the default.
+		fixStart FixStart
 		// stopErr makes a handle's Stop fail, for every handle or only that of stopErrGuid when it is set.
 		stopErr     error
 		stopErrGuid string
@@ -1003,6 +1009,121 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			wantStopped: []string{fixRole + "-guid"},
 			wantStarted: []string{reviewRole, fixRole},
 			noVerdict:   true,
+		},
+		{
+			name:     "an explicit parallel fix start behaves as the default",
+			fixStart: FixStartParallel,
+			shuttle: &fakeShuttle{
+				review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}},
+				fix:    halfScript{result: done, waitForMarker: true},
+			},
+			wantOutcome: shuttleengine.OutcomeDied,
+			wantStopped: []string{fixRole + "-guid"},
+			wantStarted: []string{reviewRole, fixRole},
+			noVerdict:   true,
+		},
+		{
+			name:     "an unknown fix start is refused before any half starts",
+			fixStart: "sideways",
+			shuttle: &fakeShuttle{
+				review: halfScript{result: done, writes: approvedReview},
+				fix:    halfScript{result: done, waitForMarker: true},
+			},
+			wantErrText: `unknown fix start "sideways"; set it to "parallel" or "after-review"`,
+		},
+		{
+			name:     "after-review: a reviewer that died starts no fixer and reports the reviewer's outcome",
+			fixStart: FixStartAfterReview,
+			shuttle: &fakeShuttle{
+				review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}},
+				fix:    halfScript{result: done, waitForMarker: true},
+			},
+			wantOutcome: shuttleengine.OutcomeDied,
+			wantStarted: []string{reviewRole},
+			noVerdict:   true,
+			check: func(t *testing.T, got Result) {
+				if got.Fix != (Half{}) {
+					t.Errorf("Result.Fix = %+v; want the empty half of a fixer that never started", got.Fix)
+				}
+			},
+		},
+		{
+			name:     "after-review: a reviewer that timed out starts no fixer and is stopped",
+			fixStart: FixStartAfterReview,
+			shuttle: &fakeShuttle{
+				review: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}},
+				fix:    halfScript{result: done, waitForMarker: true},
+			},
+			wantOutcome: shuttleengine.OutcomeTimeout,
+			wantStopped: []string{reviewRole + "-guid"},
+			wantStarted: []string{reviewRole},
+			noVerdict:   true,
+		},
+		{
+			name:     "after-review: an unparseable review starts no fixer and reports the strict parse error",
+			fixStart: FixStartAfterReview,
+			shuttle: &fakeShuttle{
+				review: halfScript{result: done, writes: malformedReview},
+				fix:    halfScript{result: done, waitForMarker: true},
+			},
+			wantErrText: "round reached done but its review file is invalid",
+			wantStarted: []string{reviewRole},
+		},
+		{
+			name:     "after-review: an accepted review starts the fixer with the marker already written",
+			fixStart: FixStartAfterReview,
+			shuttle: &fakeShuttle{
+				review: halfScript{result: done, writes: blockingReview},
+				fix:    halfScript{result: done, waitForMarker: true, writes: "nothing fixed"},
+			},
+			wantOutcome: shuttleengine.OutcomeDone,
+			wantVerdict: VerdictBlocking,
+			wantStarted: []string{reviewRole, fixRole},
+			check: func(t *testing.T, got Result) {
+				if got.Fix.StrandGUID != fixRole+"-guid" {
+					t.Errorf("Result.Fix.StrandGUID = %q; want %q", got.Fix.StrandGUID, fixRole+"-guid")
+				}
+			},
+		},
+		{
+			name:     "after-review: a fixer that timed out is stopped and its outcome reported",
+			fixStart: FixStartAfterReview,
+			shuttle: &fakeShuttle{
+				review: halfScript{result: done, writes: approvedReview},
+				fix:    halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}},
+			},
+			wantOutcome: shuttleengine.OutcomeTimeout,
+			wantStopped: []string{fixRole + "-guid"},
+			wantStarted: []string{reviewRole, fixRole},
+			noVerdict:   true,
+		},
+		{
+			name:     "after-review: a review changed by the fixer is an error",
+			fixStart: FixStartAfterReview,
+			shuttle: &fakeShuttle{
+				review: halfScript{result: done, writes: approvedReview},
+				fix:    halfScript{result: done, waitForMarker: true, writes: "nothing fixed"},
+			},
+			editReview:  blockingReview,
+			wantErrText: "changed after it was handed off",
+			wantStarted: []string{reviewRole, fixRole},
+		},
+		{
+			name:     "after-review: a fixer that never started reports it with the reviewer's identity",
+			fixStart: FixStartAfterReview,
+			shuttle: &fakeShuttle{
+				review: halfScript{result: done, writes: approvedReview},
+				fix:    halfScript{startErr: notStarted},
+			},
+			wantOutcome: shuttleengine.OutcomeDied,
+			wantStopped: []string{reviewRole + "-guid"},
+			wantStarted: []string{reviewRole, fixRole},
+			noVerdict:   true,
+			check: func(t *testing.T, got Result) {
+				if !got.NotStarted || got.Fix.StartError != notStarted.Error() || got.Review.StrandGUID != reviewRole+"-guid" {
+					t.Errorf("Result = %+v; want NotStarted, the fixer's StartError text and the reviewer's identity", got)
+				}
+			},
 		},
 		{
 			name: "a reviewer that timed out stops both halves, since shuttle keeps a timed-out strand live",
@@ -1187,8 +1308,12 @@ func TestEngine_Run_RoundFailureRules(t *testing.T) {
 			tt.shuttle.stopErr = tt.stopErr
 			tt.shuttle.stopErrGuid = tt.stopErrGuid
 
-			got, err := e.Run(p, RunOpts{})
+			got, err := e.Run(p, RunOpts{FixStart: tt.fixStart})
 
+			// Under after-review the fixer is released by an already-written marker, never started before it.
+			if tt.fixStart == FixStartAfterReview && slices.Contains(tt.shuttle.started, fixRole) && !tt.shuttle.markerAtStart[fixRole] {
+				t.Error("the ready marker did not exist when the fixer started; want the fixer started only after the marker was written")
+			}
 			wantErr := tt.wantErrIs != nil || tt.wantErrText != ""
 			if wantErr != (err != nil) {
 				t.Fatalf("Run() error = %v; wantErr %v", err, wantErr)

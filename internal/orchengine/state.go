@@ -90,7 +90,7 @@ type State struct {
 	// CompactionBaseline is the time of the newest compaction boundary already handled, or the launch time of the session;
 	// only a boundary after it triggers a reload.
 	CompactionBaseline time.Time `json:"compaction_baseline"`
-	// ReloadStep is the resuming phase's current step: ReloadStepPlugins, ReloadStepSkills, ReloadStepRetry, or any other value for the pointer step.
+	// ReloadStep is the resuming phase's current step: ReloadStepColor, ReloadStepPlugins, ReloadStepSkills, ReloadStepRetry, or any other value for the pointer step.
 	ReloadStep int `json:"reload_step"`
 	// ReloadTypedAt is when the current step was first typed; zero while it has not been.
 	ReloadTypedAt time.Time `json:"reload_typed_at"`
@@ -104,6 +104,7 @@ type State struct {
 // The resuming phase's steps, persisted in State.ReloadStep.
 // Any other persisted value, including a per-skill index written before the one-turn load, is read as the pointer step.
 const (
+	ReloadStepColor   = -3
 	ReloadStepPlugins = -2
 	ReloadStepSkills  = 0
 	ReloadStepRetry   = -1

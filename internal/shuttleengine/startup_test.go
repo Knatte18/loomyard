@@ -848,8 +848,14 @@ func TestStartup_FailedStartThenAttach_RespawnEligible(t *testing.T) {
 // It returns the started run (nil with the error on a refused start), the reed double and the virtual time Start took.
 func skillStartFixture(t *testing.T, spec Spec, reports []SkillLoadReport, hangs, dies []int) (*Run, *skillReed, time.Duration, error) {
 	t.Helper()
+	return skillStartFixtureWith(t, reedengine.Strand{GUID: "strand-1"}, spec, reports, hangs, dies, nil)
+}
+
+// skillStartFixtureWith is skillStartFixture over a reed that adds the given strand and, when configure is set, lets the test adjust the doubles before the start.
+func skillStartFixtureWith(t *testing.T, strand reedengine.Strand, spec Spec, reports []SkillLoadReport, hangs, dies []int, configure func(*skillReed, *skillFakeEngine)) (*Run, *skillReed, time.Duration, error) {
+	t.Helper()
 	base := &fakeReed{
-		AddStrandResult: reedengine.Strand{GUID: "strand-1"},
+		AddStrandResult: strand,
 		StatusQueue:     liveStrandStatus(true),
 	}
 	engine := &skillFakeEngine{
@@ -866,6 +872,9 @@ func skillStartFixture(t *testing.T, spec Spec, reports []SkillLoadReport, hangs
 	}
 	for _, turn := range dies {
 		reed.Dies[turn] = true
+	}
+	if configure != nil {
+		configure(reed, engine)
 	}
 	fc := newFakeClock(time.Now())
 	fx := newFixture(t, reed, engine, withConfig(fastConfig), withClock(fc))

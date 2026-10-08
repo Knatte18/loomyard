@@ -47,6 +47,10 @@
 // a child `bash` the agent starts does not re-run the file, and it grants or denies nothing, so the agents' permission rules are untouched.
 // A `CLAUDE_ENV_FILE` the operator's own environment exports is overridden for lyx-spawned sessions only.
 //
+// ColorSequence is the one place lyx's palette maps to Claude Code's `/color` names: the eight palette colors map to the same-named Claude Code colors,
+// and the sequence is `/color <name>` typed and submitted, with no leading Escape, the way ModelSwitchSequence submits `/model`.
+// A color outside the palette answers no inputs.
+//
 // Both lines carry `CLAUDE_CODE_PROMPT_CACHE_TTL`, so a session writes its prompt cache at the TTL its role needs rather than at Claude Code's subscription default.
 // Prepare resolves the value from `Spec.Role` through `shuttle.yaml`'s `claude_prompt_cache_ttl_roles` map, with `claude_prompt_cache_ttl` as the fallback for an empty or unmapped role,
 // and validates the whole configured set to `5m` or `1h` (exact, case-sensitive) before any artifact is written.

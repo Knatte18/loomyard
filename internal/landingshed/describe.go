@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -93,6 +94,7 @@ func runRecordBullets(in DescribeInputs) string {
 // error naming the field, so a mis-wired closure fails at spawn rather than rendering a blank path
 // into the prompt. The prompt is read from in.StencilsDir via stencilstore.Read and filled with
 // stencil.Fill, never composed from a Go string literal.
+// Segment is the describe segment, because the session writes the pull request description.
 func DescribeSpec(in DescribeInputs, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
 	required := []struct{ name, value string }{
 		{"StencilsDir", in.StencilsDir},
@@ -147,6 +149,7 @@ func DescribeSpec(in DescribeInputs, cfg Config, reg modelspec.Registry) (shuttl
 		Version:     resolved.Params["version"],
 		Interactive: false,
 		Role:        describeRole,
+		Segment:     segmentcolor.Describe,
 		Skills:      describeSkills,
 		Timeout:     time.Duration(cfg.DescribeTimeoutMin) * time.Minute,
 	}, nil

@@ -11,6 +11,13 @@
 // Later waves add their own siblings here rather than spawning per-engine packages or re-deriving the
 // construction inline at each call site.
 //
+// ReedGeometry also tells reed the hub's spawn order (spawnorder.go), as a lazy closure over the Location that does nothing until a revival is due:
+// it lists the hub's worktrees with fabricengine.List, skips prunable and unresolvable ones, and orders the prime first, then each pair by its run's start time, then pairs without one by name.
+// A pair's start time is the modification time of its own run seed, which is written once when the run is seeded.
+// The seed sits in the fabric-synced _lyx tree, so the order holds on the machine where each pair was seeded;
+// a checkout, rebase or re-materialized worktree that rewrites the file resets its modification time and sorts that pair as if its run started then, which can misorder that pair's revived session and nothing else.
+// Each entry's Revive builds that worktree's own reed engine from its reed.yaml and its own ReedGeometry.
+//
 // The tellers do I/O only for Board and run state that no Location carries, and spawn nothing.
 // ReedGeometry reads the worktree's .git entry to tell the prime from a task worktree, the hub's recorded shortname, and a task worktree's parent through ResolveParent.
 // BurlerGeometry and WebsterGeometry read the parent through ResolveParent too, as the name their spawned roles' parent directive renders.

@@ -103,6 +103,9 @@ producers:
       # and an overlay round runs no git at all, and nothing else in this segment commits, so without
       # the seam every approved fix would stay uncommitted in fabric's records working tree.
       commit_seam: discussion
+      # carry_over names this row's own segment: the Bouncer files the round's still-open findings
+      # under it in the decision record's Open risks section, and a test pins it equal to segment.
+      carry_over: Discussion-Review
       # No model/effort/version key: the absence is what makes this row take the run-wide
       # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
       # rebuild model.
@@ -188,6 +191,9 @@ producers:
       # working-tree cards, since a Plan-Burler fix lands only through the commit a skip runs.
       # Generation 0 never skips, and a seam error falls back to a real review.
       skip_seam: rework-exempt
+      # carry_over names this row's own segment: the Bouncer files the round's still-open findings
+      # under it in the decision record's Open risks section, and a test pins it equal to segment.
+      carry_over: Plan-Review
       # No model/effort/version key: the absence is what makes this row take the run-wide
       # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
       # rebuild model.
@@ -279,6 +285,9 @@ producers:
       # legitimate configuration and never an error. The segment's own round artifacts are
       # uncommitted by construction -- Env.RunRoot lands under the ephemeral .lyx tree, not the
       # durable _lyx one.
+      # carry_over names this row's own segment: the Bouncer files the round's still-open findings
+      # under it in the decision record's Open risks section, and a test pins it equal to segment.
+      carry_over: Webster-Review
       # No model/effort/version key: the absence is what makes this row take the run-wide
       # Env.Review* values loom.yaml supplies, rather than a recipe-literal, untunable-without-a-
       # rebuild model.

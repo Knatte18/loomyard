@@ -58,10 +58,6 @@ const (
 	// gateHandleMalformed is checkHandleMalformed's (validate.go) policy: only a handle-shaped ref
 	// is checked against the handle grammar; every other kind is skipped.
 	gateHandleMalformed refGate = "handle-malformed"
-	// gateSyntacticContainment is syntacticContainment's (containment.go) policy: only a
-	// glyph-shaped ref is a candidate for cross-granularity containment; every other kind is
-	// skipped.
-	gateSyntacticContainment refGate = "syntactic-containment"
 	// gateHandleClaims is handleClaims' (handle.go) policy: only a handle-shaped Rename New side
 	// is a claim on that handle; every other kind is skipped.
 	gateHandleClaims refGate = "handle-claims"
@@ -92,6 +88,10 @@ const (
 	// path-shaped ref is kept; a symbol-, glyph-, or handle-shaped ref is the prosa-symbol-target
 	// finding.
 	gateProsaPathOnly refGate = "prosa-path-only"
+	// gateRedundantTarget is redundancyOwnerOf's (redundancy.go) policy: a glyph- or handle-shaped target can belong to a package; a path- or symbol-shaped one is skipped.
+	gateRedundantTarget refGate = "redundant-target"
+	// gateResignTarget is checkResignNotMember's (validate.go) policy: a glyph-shaped re-sign target is kept for a member check; a path-, symbol- or handle-shaped one is the resign-not-member finding, since it names no member with a prior signature.
+	gateResignTarget refGate = "resign-target"
 )
 
 // allRefKinds is the canonical, complete list of every refKind classify.go's enum declares. The
@@ -100,10 +100,8 @@ const (
 // ledger policy's domain equals it exactly.
 var allRefKinds = []refKind{refKindPath, refKindSymbol, refKindGlyph, refKindHandle}
 
-// ledger is the package-level registry of every gate's policy: one map[refKind]disposition per
-// refGate, covering exactly the thirteen policies declared in this file's refGate constants. A
-// refGate absent from ledger, or a refKind absent from one of ledger's policy maps, both yield the
-// disposition zero value at lookup -- undeclared, and therefore fail-closed.
+// ledger is the package-level registry of every gate's policy: one map[refKind]disposition per refGate, covering exactly the policies declared in this file's refGate constants.
+// A refGate absent from ledger, or a refKind absent from one of ledger's policy maps, both yield the disposition zero value at lookup -- undeclared, and therefore fail-closed.
 var ledger = map[refGate]map[refKind]disposition{
 	gateBareSymbolTarget: {
 		refKindPath:   dispSkip,
@@ -128,12 +126,6 @@ var ledger = map[refGate]map[refKind]disposition{
 		refKindSymbol: dispSkip,
 		refKindGlyph:  dispSkip,
 		refKindHandle: dispKeep,
-	},
-	gateSyntacticContainment: {
-		refKindPath:   dispSkip,
-		refKindSymbol: dispSkip,
-		refKindGlyph:  dispKeep,
-		refKindHandle: dispSkip,
 	},
 	gateHandleClaims: {
 		refKindPath:   dispSkip,
@@ -181,6 +173,18 @@ var ledger = map[refGate]map[refKind]disposition{
 		refKindPath:   dispKeep,
 		refKindSymbol: dispFinding,
 		refKindGlyph:  dispFinding,
+		refKindHandle: dispFinding,
+	},
+	gateRedundantTarget: {
+		refKindPath:   dispSkip,
+		refKindSymbol: dispSkip,
+		refKindGlyph:  dispKeep,
+		refKindHandle: dispKeep,
+	},
+	gateResignTarget: {
+		refKindPath:   dispFinding,
+		refKindSymbol: dispFinding,
+		refKindGlyph:  dispKeep,
 		refKindHandle: dispFinding,
 	},
 }

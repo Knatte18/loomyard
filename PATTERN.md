@@ -51,7 +51,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-gate-self-check-parity` — Adding a mechanical gate: its closure and its CLI self-check verb call the same package function, and both land in one task. — [background](pattern/PATTERN-gate-self-check-parity.md)
 - `PATTERN-verified-tree` — Running a verify command: through `verifytree.Verify` only, never on a dirty tree, skipping only on a record of HEAD's tree. (test) — [background](pattern/PATTERN-verified-tree.md)
 - `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active profile's batchifier derives, its kind chosen by `internal/batcher`'s registry and the profile by `batcher.yaml`'s `active:`; the partition is recorded in `state.json` at first init, replaced only by a rebaseline.
-- `PATTERN-review-round` — Running a review and fix round: review on disk before any target is touched, every finding fixed or disputed by the fixer with evidence that its premise is false, converged only on a judge verdict. — [background](pattern/PATTERN-review-round.md)
+- `PATTERN-review-round` — Running a review and fix round: review on disk before any target is touched, every finding fixed or disputed with evidence its premise is false, converged only on a judge verdict, from round 2 on over a fresh-key fix carried to `## Open risks`. — [background](pattern/PATTERN-review-round.md)
 - `PATTERN-sole-parsers` — Reading or writing plan, discussion, summary or recipe files: only `planparser`, `discussionparser`, `summaryparser` and `shedbuild` parse them. (test) — [background](pattern/PATTERN-sole-parsers.md)
 
 ## Agents and prompts
@@ -65,15 +65,16 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-shuttle-stop` — Stopping the strand of a shuttle run from Go outside `internal/shuttleengine`: only through shuttle's stop verb, which settles the run's record before the strand is removed; no other package removes a shuttle run's strand, except `loomcli`'s removal of the loom driver's own strand.
 - `PATTERN-orch-pane-single-writer` — Typing into the orch session from Go: only the orch watcher does it, idle-gated; another module queues a notice through `orchengine` instead.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only through `internal/shell`, which imports the standard library alone.
-- `PATTERN-pane-binary-resolution` — Creating a strand pane or a detached `lyx` window in reed: it resolves `lyx` to the spawning binary through the one chokepoint in `panebin.go`. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
+- `PATTERN-pane-binary-resolution` — Creating a strand pane or a detached `lyx` window in reed, or pinning a key binding that runs `lyx`: it resolves `lyx` to the spawning binary through the one chokepoint in `panebin.go`. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading a skill into a spawned session: the spawning module names it on the launch spec and lyx types it; no stencil asks an agent to load a skill. (test)
 - `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive, and no stencil tells an agent to ask the operator; the discussion role's interactive questions come from the `{{.mode_rules}}` marker, not stencil text, and the orch stencils are outside the rule. (test)
+- `PATTERN-spawn-color` — Coloring a spawned session: its spawning module names a segment on the launch spec, reed tints its bar button and border, and lyx types the provider's color command; no stencil asks an agent to set a color.
 - `PATTERN-wait-mark-display-only` — Marking a wait on screen: the `@lyx_wait` and `@lyx_wait_start` pane options are set only through reed's `SetWaitMark`, by `shuttleengine` and the landing verify callback, and no Go decision reads them.
 - `PATTERN-spawn-observability` — Starting a real OS process from a `lyx` command: log the spawn, and the teardown where it waits, via `internal/logger`. — [background](pattern/PATTERN-spawn-observability.md)
 
 ## Packages
 
-- `PATTERN-leaf-packages` — Importing into `gitkit`, `modelspec`, `tokenvocab`, `buildinfo`, `standalonestate`, `pattern` or `friction`: each admits a closed import set. — [background](pattern/PATTERN-leaf-packages.md)
+- `PATTERN-leaf-packages` — Importing into `gitkit`, `modelspec`, `buildinfo`, `standalonestate`, `segmentcolor`, `pattern` or `friction`: each admits a closed import set. — [background](pattern/PATTERN-leaf-packages.md)
 
 ## Build and tooling
 
@@ -92,5 +93,5 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 ## Docs
 
 - `PATTERN-markdown-link-integrity` — Linking in a `.md` file under `docs/`: every inline link resolves, file part and `#anchor`. (test) — [background](pattern/PATTERN-markdown-link-integrity.md)
-- `PATTERN-comment-line-breaks` — Writing or changing a Go comment: semantic line breaks, one sentence per line, with no column limit, checked on new breaks by `lyx loom lint-comments`. (test) — [background](pattern/PATTERN-comment-line-breaks.md)
+- `PATTERN-comment-line-breaks` — Writing or changing a Go comment: semantic line breaks, one sentence per line, with no column limit, checked on new breaks by `lyx loom lint-comments` alone; a comment's line break is never a review finding. (test) — [background](pattern/PATTERN-comment-line-breaks.md)
 - `PATTERN-documentation-lifecycle` — Deciding which docs are kept or deleted: no design doc for unbuilt work is kept in the repo, and a built design lives in its package's `doc.go`, see [docs/overview.md#documentation-lifecycle](docs/overview.md#documentation-lifecycle).

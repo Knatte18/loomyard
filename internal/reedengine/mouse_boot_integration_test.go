@@ -54,7 +54,6 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 		PaneCwd:       worktreeDir,
 		WorktreeRoot:  worktreeDir,
 		LogsDir:       filepath.Join(hubDir, "logs"),
-		RepoName:      "test-repo",
 		HubPath:       hubDir,
 		WorktreeName:  filepath.Base(worktreeDir),
 		NameShortname: "tc",

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -38,6 +39,7 @@ func newReapplyTestEngine(t *testing.T) (*Engine, *ReedState) {
 //   - a live box equal to lastApplied issues no select-layout and reports Applied false, BoxIsLive true;
 //   - with display-message erroring, BoxIsLive is false whether or not the fallback box happens to equal lastApplied, and select-layout is still issued;
 //   - probeHook: true runs exactly one show-options even when the apply guards skip, probeHook: false asks nothing and reports HookKnown false;
+//   - a zoomed strand window is unzoomed before the layout is planned and zoomed again after it;
 //
 // and in every scenario reed.json is left byte-identical.
 //
@@ -51,6 +53,7 @@ func TestReapplyLayout(t *testing.T) {
 		boxErr           error
 		lastApplied      func(e *Engine) render.Box
 		probeHook        bool
+		zoomed           bool
 		wantApplied      bool
 		wantBoxIsLive    bool
 		wantHookKnown    bool
@@ -103,6 +106,16 @@ func TestReapplyLayout(t *testing.T) {
 			wantSelectLayout: true,
 		},
 		{
+			name:             "ZoomedWindowIsBracketedAroundTheApply",
+			live:             []LivePane{{ID: "%1"}, {ID: "%2"}},
+			box:              "80 24",
+			lastApplied:      func(*Engine) render.Box { return render.Box{X: 0, Y: 0, W: 100, H: 21} },
+			zoomed:           true,
+			wantApplied:      true,
+			wantBoxIsLive:    true,
+			wantSelectLayout: true,
+		},
+		{
 			// The probe must run even when the apply guard skips.
 			name:            "ProbeRunsOnceEvenWhenTheApplyGuardSkips",
 			live:            []LivePane{{ID: "%1"}},
@@ -129,6 +142,9 @@ func TestReapplyLayout(t *testing.T) {
 			fake := installFakeTmux(t, e)
 			fake.answerSession(tt.live, tt.box, tt.boxErr)
 			fake.mustNotCall("select-pane")
+			if tt.zoomed {
+				fake.answerFormat(zoomStateFormat, "1 %2", nil)
+			}
 			var lastApplied render.Box
 			if tt.lastApplied != nil {
 				lastApplied = tt.lastApplied(e)
@@ -152,6 +168,11 @@ func TestReapplyLayout(t *testing.T) {
 			}
 			if issued := fake.Count("select-layout") > 0; issued != tt.wantSelectLayout {
 				t.Errorf("select-layout issued = %v, want %v: %v", issued, tt.wantSelectLayout, fake.Sequence())
+			}
+			if tt.zoomed {
+				if seq := fake.Sequence("resize-pane", "select-layout"); !slices.Equal(seq, []string{"resize-pane", "select-layout", "resize-pane"}) {
+					t.Errorf("zoom bracket order = %v, want unzoom, select-layout, re-zoom", seq)
+				}
 			}
 			if count := fake.Count("show-options"); count != tt.wantShowOptions {
 				t.Errorf("show-options round trips = %d, want %d", count, tt.wantShowOptions)

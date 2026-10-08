@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -294,6 +295,17 @@ func discussionCommitPathspec(location *lyxcwd.Location) []string {
 // It is the body of the CommitDiscussion seam, shared with `lyx loom decision add`, which commits the record it appends to.
 func commitDiscussion(location *lyxcwd.Location) error {
 	_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, discussionCommitPathspec(location), fmt.Sprintf("loom: discussion artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+	return err
+}
+
+// writeCarryOver writes entry into the decision record of location's worktree and commits the record alone.
+// It is the body of the CarryOver seam.
+// An unchanged record commits nothing, and a write or commit error is returned as the seam's error.
+func writeCarryOver(location *lyxcwd.Location, entry discussionparser.CarryOver) error {
+	if err := discussionparser.WriteCarryOver(loomengine.DiscussionDecisionRecord(location), entry); err != nil {
+		return err
+	}
+	_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.DiscussionDecisionRecordRel()}, fmt.Sprintf("loom: review carry-over for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 	return err
 }
 
@@ -657,6 +669,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ApprovePlan: func() error {
 			return planparser.SetApproved(planparser.PlanDir(location.AnchorPath()))
 		},
+		// CarryOver files each review segment's still-open findings in the decision record and commits that record alone, so no other dirty file rides along.
+		CarryOver: func(entry discussionparser.CarryOver) error { return writeCarryOver(location, entry) },
 		// SkipPlanReview lets Plan-Bouncer approve an exempt rework generation without a judge; it reads committed state on demand and opens nothing at wire time.
 		SkipPlanReview: func() (bool, error) { return loomshed.PlanReviewSkippable(reworkDeps) },
 		// ReworkSpec is evaluated per Call like PlanSpec above, so the stencil is read at call time.
@@ -690,6 +704,12 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 		ReviewModels:  reviewSettings.Models,
 		ReviewTimeout: reviewSettings.Timeout,
+		FixStart:      reviewSettings.FixStart,
+		RowReviewModels: map[string]burlerengine.RoundModels{
+			loomshed.NameDiscussionBurler: reviewSettings.Discussion,
+			loomshed.NamePlanBurler:       reviewSettings.Plan,
+			loomshed.NameWebsterBurler:    reviewSettings.Webster,
+		},
 
 		JudgeModel:   judgeSettings.Model,
 		JudgeEffort:  judgeSettings.Effort,
@@ -741,6 +761,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.driverResumeWait = func() { time.Sleep(driverResumeSendInterval) }
 	c.driverPaneProbe = newReedDriverPaneProbe(reedEngine)
 	c.driverDirectory = newReedDriverDirectory(reedEngine)
+	c.bouncerSubdir = loomrecipe.BouncerRunSubdir
 	return nil
 }
 

@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -50,6 +51,9 @@ func TestBouncer_SeedCall_HappyPath(t *testing.T) {
 	}
 	if shuttle.GotSpec.Role != "bouncer-seed" {
 		t.Errorf("recorded spec.Role = %q; want %q", shuttle.GotSpec.Role, "bouncer-seed")
+	}
+	if shuttle.GotSpec.Segment != segmentcolor.Review {
+		t.Errorf("recorded spec.Segment = %q; want %q", shuttle.GotSpec.Segment, segmentcolor.Review)
 	}
 	if shuttle.GotSpec.Round != "1" {
 		t.Errorf("seed call spec.Round = %q; want %q", shuttle.GotSpec.Round, "1")

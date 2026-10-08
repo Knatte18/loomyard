@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
@@ -209,6 +210,7 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 		OutputFiles: []string{"out.md"},
 		Role:        "reviewer",
 		Round:       "1",
+		Segment:     segmentcolor.Review,
 		Parent:      "parent-guid",
 		Display:     render.Display{Anchor: render.AnchorBelowParent},
 	}
@@ -228,6 +230,7 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 		got := reed.AddStrandCalls[0]
 		want := reedengine.AddSpec{
 			Role:      "reviewer",
+			Segment:   "review",
 			Parent:    "parent-guid",
 			Cmd:       "launch-cmd",
 			ResumeCmd: "resume-cmd",
@@ -312,6 +315,45 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 			t.Errorf("RunDir() = %q, want it to name a directory Start actually created: %v", dir, err)
 		}
 	})
+}
+
+// TestRunner_Start_TypesTheSegmentColorAfterStartup pins the color step.
+// A colored strand gets the engine's color inputs after startup and before the skill-load message.
+// No color, a caller that colors itself and an engine without a color command type nothing, and a failing color play still starts the run.
+func TestRunner_Start_TypesTheSegmentColorAfterStartup(t *testing.T) {
+	loaded := []SkillLoadReport{{Verified: true, Loaded: []string{"a"}}}
+	tests := []struct {
+		name      string
+		color     segmentcolor.Color
+		byCaller  bool
+		noInputs  bool
+		colorErr  error
+		wantTyped string
+	}{
+		{name: "ColoredStrandIsColoredBeforeTheSkillLoad", color: segmentcolor.Orange, wantTyped: "COLOR:orange|LOAD:a|do the task"},
+		{name: "NoColorTypesNone", wantTyped: "LOAD:a|do the task"},
+		{name: "ColorByCallerTypesNone", color: segmentcolor.Orange, byCaller: true, wantTyped: "LOAD:a|do the task"},
+		{name: "EngineWithoutAColorCommandTypesNone", color: segmentcolor.Orange, noInputs: true, wantTyped: "LOAD:a|do the task"},
+		{name: "FailingColorPlayStillStartsTheRun", color: segmentcolor.Orange, colorErr: errors.New("boom"), wantTyped: "COLOR:orange|LOAD:a|do the task"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := Spec{Skills: []string{"a"}, ColorByCaller: tt.byCaller}
+			strand := reedengine.Strand{GUID: "strand-1", Color: tt.color}
+
+			run, reed, _, err := skillStartFixtureWith(t, strand, spec, loaded, nil, nil, func(reed *skillReed, engine *skillFakeEngine) {
+				reed.ColorErr = tt.colorErr
+				engine.NoColorInputs = tt.noInputs
+			})
+
+			if err != nil || run == nil {
+				t.Fatalf("Start() = (%v, %v), want a started run", run, err)
+			}
+			if got := strings.Join(typedTexts(reed), "|"); got != tt.wantTyped {
+				t.Errorf("typed = %q; want %q", got, tt.wantTyped)
+			}
+		})
+	}
 }
 
 func TestRunner_Start_ValidationFailure_ShortCircuitsBeforeReedCall(t *testing.T) {

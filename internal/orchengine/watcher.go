@@ -47,6 +47,8 @@ type Session interface {
 	ClearSession(guid string) error
 	// ReloadPlugins types the provider's plugin reload command into the session.
 	ReloadPlugins(guid string) error
+	// TypeColor types the provider's color command for the strand's palette color into the session; a strand with no color types nothing.
+	TypeColor(guid string) error
 	// CompactSession types the provider's compact command into the session, with focus as its single-line instruction.
 	CompactSession(guid, focus string) error
 	// LoadSkills types the provider's one-turn load message for skills into the session.
@@ -77,6 +79,10 @@ type Watcher struct {
 	// and binding to another strand clears it.
 	// It is memory only: a restarted watcher finds the boundary again at its next turn end, since the baseline has not moved.
 	compactedAt time.Time
+
+	// colorPending is true from binding to a strand until the first idle tick types the strand's color.
+	// It is memory only: a restarted watcher types the color again, which is harmless.
+	colorPending bool
 
 	started bool   // Whether the cursor has been initialised from state.
 	strand  string // Strand the cursor belongs to.
@@ -253,6 +259,10 @@ func (w *Watcher) tick() (done bool, err error) {
 		}
 	}
 
+	if err := w.typeStartColor(&st); err != nil {
+		return false, err
+	}
+
 	switch st.Phase {
 	case PhaseIdle:
 		if err := w.tickIdle(st, now); err != nil {
@@ -271,6 +281,36 @@ func (w *Watcher) tick() (done bool, err error) {
 	return false, fmt.Errorf("orch: unknown phase %q", st.Phase)
 }
 
+// typeStartColor types the strand's color on the first tick whose idle probe passes after binding, before anything else that tick types, then clears the mark.
+// A session resumed at the reload sequence's color step is left to that step.
+// A failed typing is logged and dropped, since the color is display only.
+func (w *Watcher) typeStartColor(st *State) error {
+	if !w.colorPending {
+		return nil
+	}
+	if st.Phase == PhaseResuming && w.reloadStep(*st) == ReloadStepColor {
+		w.colorPending = false
+		return nil
+	}
+	probe, err := w.probeIdle(st)
+	if err != nil {
+		return err
+	}
+	if !probe.Idle {
+		return nil
+	}
+	w.colorPending = false
+	w.typeColor(st.Strand)
+	return nil
+}
+
+// typeColor types the strand's color and logs a failure instead of returning it, so the color never wedges a start or a reload.
+func (w *Watcher) typeColor(strand string) {
+	if err := w.session.TypeColor(strand); err != nil {
+		logger.Warn("orch: typing the strand color failed", "strandGUID", strand, "cause", err)
+	}
+}
+
 // initCursor sets the read cursor from st on the watcher's first tick for a strand.
 // A phase belonging to another strand is reset to idle,
 // and a same-strand phase's injection is marked unconfirmed so the landed check runs again.
@@ -278,6 +318,7 @@ func (w *Watcher) initCursor(st State) (State, error) {
 	w.started, w.strand = true, st.Strand
 	w.newest, w.seen, w.replaying = nil, phaseEvents{}, false
 	w.compactedAt = time.Time{}
+	w.colorPending = true
 	w.idleDisagreement, w.hasIdleDisagreement = idleStatePair{}, false
 	switch {
 	case st.Phase == PhaseIdle:
@@ -707,11 +748,11 @@ func (w *Watcher) startAutoReload(st State, now time.Time) error {
 	return w.startReload(st, now, true)
 }
 
-// startReload enters the resuming phase at its plugins step and types it.
+// startReload enters the resuming phase at its color step and types it.
 // skipsSkills is true for a reload after a compaction, which keeps the session's skills, and false after `/clear`, which loses them.
 // The caller must have seen the session idle on this tick and set st.PendingResume to the pointer line.
 func (w *Watcher) startReload(st State, now time.Time, skipsSkills bool) error {
-	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry, st.ReloadSkipsSkills = ReloadStepPlugins, time.Time{}, nil, skipsSkills
+	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry, st.ReloadSkipsSkills = ReloadStepColor, time.Time{}, nil, skipsSkills
 	st, err := w.enter(st, PhaseResuming, now)
 	if err != nil {
 		return err
@@ -726,6 +767,8 @@ func (w *Watcher) startReload(st State, now time.Time, skipsSkills bool) error {
 // and any value that is none of these is the pointer step.
 func (w *Watcher) reloadStep(st State) int {
 	switch {
+	case st.ReloadStep == ReloadStepColor:
+		return ReloadStepColor
 	case st.ReloadStep == ReloadStepPlugins:
 		return ReloadStepPlugins
 	case st.ReloadStep == ReloadStepSkills && len(w.skills) > 0 && !st.ReloadSkipsSkills:
@@ -736,11 +779,11 @@ func (w *Watcher) reloadStep(st State) int {
 	return ReloadStepPointer
 }
 
-// typeReloadStep types the current step, the plugins reload, the skills load, the retry load or the pointer: the caller must have seen the session idle on this tick.
+// typeReloadStep types the current step, the color, the plugins reload, the skills load, the retry load or the pointer: the caller must have seen the session idle on this tick.
 // The first typing persists the step's time and events offset first, so a turn end read before it never confirms the step.
 // A re-typing after a restart keeps both, so the step's timeout never restarts.
-// The plugins step ends no turn,
-// so it persists the move to the next step itself and types nothing else on this tick.
+// The color and plugins steps end no turn,
+// so each persists the move to the next step itself and types nothing else on this tick.
 func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 	if st.ReloadTypedAt.IsZero() {
 		st.ReloadTypedAt = now
@@ -753,6 +796,13 @@ func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 	}
 	var err error
 	switch w.reloadStep(st) {
+	case ReloadStepColor:
+		w.typeColor(st.Strand)
+		st.ReloadStep, st.ReloadTypedAt = ReloadStepPlugins, time.Time{}
+		st.PhaseEventsOffset = w.cursor
+		st.PhaseInjected = false
+		w.seen = phaseEvents{}
+		return w.save(st)
 	case ReloadStepPlugins:
 		if err := w.session.ReloadPlugins(st.Strand); err != nil {
 			return err
@@ -821,8 +871,8 @@ func (w *Watcher) settleSkillTurn(st State, now time.Time, step int, skills []st
 	return w.advanceReload(st, now, ReloadStepPointer, nil)
 }
 
-// tickResuming walks the reload sequence: the plugins step, the skills step after `/clear`, the retry step when skills were left missing, then the pointer.
-// The plugins step has no confirmation and no timeout: it is typed again until the move off it is persisted.
+// tickResuming walks the reload sequence: the color step, the plugins step, the skills step after `/clear`, the retry step when skills were left missing, then the pointer.
+// The color and plugins steps have no confirmation and no timeout: each is typed again until the move off it is persisted.
 // A skills or retry step is confirmed by a turn end read after it was typed, and settled from that turn.
 // Past its timeout, from its first typing, every skill it loads is skipped with no retry.
 // The pointer step ends the phase at its first turn end and times out the same way.
@@ -831,7 +881,7 @@ func (w *Watcher) tickResuming(st State, now time.Time) error {
 	typed := !st.ReloadTypedAt.IsZero()
 	timedOut := typed && now.Sub(st.ReloadTypedAt) >= w.cfg.HandoffTimeout()
 	step := w.reloadStep(st)
-	if step == ReloadStepPlugins {
+	if step == ReloadStepColor || step == ReloadStepPlugins {
 		return w.typeReloadStepWhenIdle(st, now)
 	}
 	if step != ReloadStepPointer {

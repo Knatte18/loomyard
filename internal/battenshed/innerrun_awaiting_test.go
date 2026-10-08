@@ -45,7 +45,7 @@ func TestInnerRun_AwaitingWithoutApprovalWaitsExempt(t *testing.T) {
 	if outcome != shedengine.Stuck || !ptr.BudgetExempt {
 		t.Errorf("Call() = %v exempt=%v; want an exempt Stuck", outcome, ptr.BudgetExempt)
 	}
-	for _, want := range []string{"waiting on review", "lyx loom approve"} {
+	for _, want := range []string{"waiting on review", "lyx loom approve", "lyx loom resume"} {
 		if !strings.Contains(clock.lastReason(), want) {
 			t.Errorf("wait reason = %q; want substring %q", clock.lastReason(), want)
 		}
@@ -58,7 +58,7 @@ func TestInnerRun_AwaitingWithoutApprovalWaitsExempt(t *testing.T) {
 	}
 }
 
-// TestInnerRun_AwaitingRevivesADeadDriverAndKeepsItsHints asserts an awaiting child's dead driver strand is revived once, and that the hand-off hint keeps its verbs and never names `lyx loom resume`, which refuses an awaiting run.
+// TestInnerRun_AwaitingRevivesADeadDriverAndKeepsItsHints asserts an awaiting child's dead driver strand is revived once, and that the hand-off hint keeps naming both hand-offs.
 func TestInnerRun_AwaitingRevivesADeadDriverAndKeepsItsHints(t *testing.T) {
 	t.Parallel()
 
@@ -84,8 +84,8 @@ func TestInnerRun_AwaitingRevivesADeadDriverAndKeepsItsHints(t *testing.T) {
 	if *spawnCalls != 0 {
 		t.Errorf("Spawn calls = %d; want 0 without a decision", *spawnCalls)
 	}
-	if reason := clock.lastReason(); !strings.Contains(reason, "lyx loom approve") || strings.Contains(reason, "lyx loom resume") {
-		t.Errorf("wait reason = %q; want the approve hand-off hint and no lyx loom resume", reason)
+	if reason := clock.lastReason(); !strings.Contains(reason, "lyx loom approve") || !strings.Contains(reason, "lyx loom resume") {
+		t.Errorf("wait reason = %q; want the approve and the circling-then-resume hand-offs", reason)
 	}
 }
 
@@ -204,7 +204,7 @@ func TestInnerRun_AwaitingAgainAfterResumeGetsReapproveHint(t *testing.T) {
 	if *spawnCalls != 1 {
 		t.Errorf("Spawn calls = %d; want still 1", *spawnCalls)
 	}
-	for _, want := range []string{"already acted on", approval.At, "lyx loom approve"} {
+	for _, want := range []string{"already acted on", approval.At, "lyx loom approve", "lyx loom resume"} {
 		if !strings.Contains(clock.reasons[0], want) {
 			t.Errorf("wait reason at the check that saw the longer history = %q; want substring %q", clock.reasons[0], want)
 		}
@@ -229,8 +229,8 @@ func TestInnerRun_AwaitingOldLayoutMarkerGetsReapproveHint(t *testing.T) {
 	if *spawnCalls != 0 {
 		t.Errorf("Spawn calls = %d; want 0", *spawnCalls)
 	}
-	if !strings.Contains(clock.lastReason(), "lyx loom approve") {
-		t.Errorf("wait reason = %q; want the re-approve hint", clock.lastReason())
+	if reason := clock.lastReason(); !strings.Contains(reason, "lyx loom approve") || !strings.Contains(reason, "lyx loom resume") {
+		t.Errorf("wait reason = %q; want the decide-again hint naming both hand-offs", reason)
 	}
 }
 
@@ -257,7 +257,7 @@ func TestInnerRun_AwaitingResumesOnARejectionOnceAndAgainOnASameSecondApproval(t
 	if outcome, ptr, err := producer.Call(context.Background()); err != nil || outcome != shedengine.Stuck || !ptr.BudgetExempt {
 		t.Fatalf("Call() = %v %+v %v; want an exempt Stuck", outcome, ptr, err)
 	}
-	for _, want := range []string{"already acted on", "reject", decision.At} {
+	for _, want := range []string{"already acted on", "reject", decision.At, "lyx loom resume"} {
 		if !strings.Contains(clock.reasons[0], want) {
 			t.Errorf("wait reason after the same rejection = %q; want substring %q", clock.reasons[0], want)
 		}

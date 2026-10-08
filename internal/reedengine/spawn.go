@@ -140,6 +140,7 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	if err := e.tmux.run("select-pane", "-t", paneID, "-T", s.Name); err != nil {
 		logger.Warn("reed: could not set the pane title", "strand", s.GUID, "pane", paneID, "name", s.Name, "err", err)
 	}
+	e.setStrandPaneOptionsLocked(paneID, *s)
 	// composePaneLaunchLine joins the pane-binary prelude (panebin.go) onto launchCmd, on the same shell.ForGOOS() dialect the launch command itself was built with,
 	// so the two never disagree about which shell is typed into.
 	// stageLaunchScript writes that composed line to the strand's launch script and returns the dialect's source statement for it, which is what the pane shows;

@@ -156,6 +156,9 @@ type Card struct {
 	// `plan:<draft-handle>` -> `<declaration head>` arrow grammar.
 	Declarations []CardDeclaration
 
+	// Resigns is the flat union across every Edit group's own Resigns, in body order: one entry per "**Edit:**" sub-bullet written in the `<glyph>` -> `<new declaration head>` arrow grammar.
+	Resigns []CardResign
+
 	// CreateRaw is the flat union across every Create group's own CreateRaw, in body order: one
 	// entry per "**Create:**" sub-bullet whose payload carries the " -> " arrow but fails the
 	// two-field declaration grammar, named the way RenameRaw is named and read by
@@ -227,6 +230,11 @@ type TargetGroup struct {
 	// carries the " -> " arrow but fails the two-field declaration grammar. Populated when Type
 	// is CardTypeCreate only.
 	CreateRaw []string
+
+	// Resigns is every "**Edit:**" sub-bullet this group's own label carried in the `<glyph>` -> `<new declaration head>` arrow grammar.
+	// Populated when Type is CardTypeEdit only.
+	// The arrow's left token is also in Refs, so the member stays an ordinary Edit target.
+	Resigns []CardResign
 }
 
 // CardDeclaration is one "**Create:**" sub-bullet's handle and declaration head, both verbatim:
@@ -234,6 +242,12 @@ type TargetGroup struct {
 // head text right of it.
 type CardDeclaration struct {
 	Handle, Decl string
+}
+
+// CardResign is one "**Edit:**" sub-bullet's re-sign marker, both tokens verbatim:
+// Target is the token left of the arrow, which names the member whose signature changes, and Decl is the new declaration head text right of it.
+type CardResign struct {
+	Target, Decl string
 }
 
 // MovePair is one well-formed "old -> new" sub-bullet: a Rename card declaring that Old is
