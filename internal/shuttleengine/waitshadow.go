@@ -4,7 +4,6 @@
 package shuttleengine
 
 import (
-	"os"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -107,16 +106,16 @@ func (run *Run) logSessionState(outcome Outcome, refreshFacts bool) {
 		run.logSessionUnavailable("the engine cannot parse session signals", nil)
 		return
 	}
-	data, err := os.ReadFile(run.state.EventsPath)
+	data, _, err := readEventsFrom(run.state.EventsPath, shadow.cursor)
 	if err != nil {
 		run.logSessionUnavailable("the events file is unreadable", err)
 		return
 	}
 
 	var signals []SessionSignal
-	if shadow.cursor < int64(len(data)) {
+	if len(data) > 0 {
 		var consumed int
-		signals, consumed = parser.ParseSessionSignals(data[shadow.cursor:])
+		signals, consumed = parser.ParseSessionSignals(data)
 		shadow.cursor += int64(consumed)
 	}
 	for _, signal := range signals {
