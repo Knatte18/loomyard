@@ -1074,3 +1074,89 @@ func TestScanPaneForNeedle(t *testing.T) {
 		})
 	}
 }
+
+// TestSend_WaitsForIdleSession drives the idle wait of Run.Send, and of Runner.Send in one row, over an engine with the idle reading.
+// The pane turns idle at a fake-clock time, or never; an unmatched turn start in the events file holds a send against an idle pane until the override, an interrupt report or a later turn end releases it.
+// Nothing is typed before the wait ends, and a session that stays busy fails with ErrSessionBusy carrying the pane's last lines.
+//
+// It is not parallel: logcapture redirects the process-global logger.
+func TestSend_WaitsForIdleSession(t *testing.T) {
+	const never = 24 * time.Hour
+	tests := []struct {
+		name string
+		// idleAfter is when the pane turns idle, from the start; never keeps it busy.
+		idleAfter time.Duration
+		busyFrame string
+		// failCaptureAfter, when positive, fails every pane capture from that offset.
+		failCaptureAfter time.Duration
+		events           string
+		interrupted      bool
+		viaRunner        bool
+		// wantTypedBetween is the window the first typed key lands in; ignored when wantBusy is set.
+		wantTypedMin, wantTypedMax time.Duration
+		wantBusy                   []string
+		wantWarns                  int
+	}{
+		{name: "idle pane types at once", wantTypedMax: 0},
+		{name: "running turn turns idle then types", idleAfter: 3 * time.Second, busyFrame: "working (esc to interrupt)", wantTypedMin: 3 * time.Second, wantTypedMax: 5 * time.Second},
+		{name: "runner send waits as run send does", idleAfter: 3 * time.Second, busyFrame: "working (esc to interrupt)", viaRunner: true, wantTypedMin: 3 * time.Second, wantTypedMax: 5 * time.Second},
+		{name: "draft that never clears fails busy", idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the pane is not idle", "a half-typed draft"}},
+		{name: "failed final capture is said so", idleAfter: never, busyFrame: "working", failCaptureAfter: 59 * time.Second, wantBusy: []string{"the final pane capture failed"}},
+		{name: "unmatched turn start is released by the idle override", events: "START\n", wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
+		{name: "unmatched turn start is released by an interrupt report", events: "START\n", interrupted: true},
+		{name: "turn end after the turn start releases at once", events: "START\nSTOP:done\n"},
+		{name: "api error turn end counts as a turn end", events: "START\nAPIERR\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := logcapture.Capture(t)
+			clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
+			start := clock.Now()
+			reed := &idleReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true)}, clock: clock, busyFrame: tt.busyFrame}
+			if tt.idleAfter > 0 {
+				reed.idleAt = start.Add(tt.idleAfter)
+			}
+			if tt.failCaptureAfter > 0 {
+				reed.failAt = start.Add(tt.failCaptureAfter)
+			}
+			engine := &idleEngine{}
+			engine.StartupScript = []StartupState{StartupReady}
+			engine.interrupted = tt.interrupted
+			cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5, SendReadyTimeoutS: 60}
+
+			var err error
+			if tt.viaRunner {
+				fx := newFixture(t, reed, engine, withConfig(cfg), withClock(clock), withStrand("strand-1"))
+				err = fx.Runner.Send("strand-1", "hello")
+			} else {
+				run := newFixture(t, reed, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(tt.events), withRunClock(clock, start.Add(time.Hour)))
+				err = run.Send("hello")
+			}
+
+			if tt.wantBusy != nil {
+				if !errors.Is(err, ErrSessionBusy) {
+					t.Fatalf("Send error = %v, want ErrSessionBusy", err)
+				}
+				for _, want := range tt.wantBusy {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("Send error = %q, want it to contain %q", err, want)
+					}
+				}
+				if len(reed.SendKeyCalls)+len(reed.SendTextCalls) != 0 {
+					t.Errorf("typed keys %v and text %v into a busy session, want nothing", reed.SendKeyCalls, reed.SendTextCalls)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Send: %v", err)
+			}
+			typedAfter := reed.typedAt.Sub(start)
+			if typedAfter < tt.wantTypedMin || typedAfter > tt.wantTypedMax {
+				t.Errorf("first text typed %v after the start, want within [%v, %v]", typedAfter, tt.wantTypedMin, tt.wantTypedMax)
+			}
+			if got := strings.Count(buf.String(), "released an unmatched turn start"); got != tt.wantWarns {
+				t.Errorf("release warnings = %d, want %d; log: %s", got, tt.wantWarns, buf.String())
+			}
+		})
+	}
+}

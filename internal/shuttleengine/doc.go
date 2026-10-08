@@ -139,6 +139,12 @@
 // So a launch runs at most two load turns, each bounded by the timeout,
 // and a skipped skill never fails or hangs it.
 // Then PromptLine goes out through the verified send path.
+// Every verified send first waits for an idle session, for at most `send_ready_timeout_s` and never past the run's deadline, and types nothing until then.
+// For an engine with the optional SessionCycler idle reading the pane must classify ready and idle,
+// and for one that also parses session signals no turn start may be left unmatched by a later turn end;
+// an unmatched turn start releases after the pane has read idle for ten seconds, or at once when the engine reports that turn interrupted.
+// A session that stays busy fails the send with ErrSessionBusy, naming the reading and ending with the pane's last lines.
+// An engine without the idle reading keeps the not-ready refusal alone.
 // That path confirms a send is submitted, not only that its text appeared in the pane, for an engine that implements the optional InputBoxReader capability:
 // after the provider's settle it reads the input box,
 // and while the box still holds the sent text it sends one extra Enter, at most two per send, before failing the send as pending.

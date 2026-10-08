@@ -30,7 +30,7 @@ func (r *Runner) skillLoader() (SkillLoader, error) {
 }
 
 // LoadSkills types the provider's one-turn load message for skills into the live pane of the run identified by guid, through the verified send path.
-// Like ClearSession it has no idle precondition of its own, since the caller has already probed idleness.
+// Like every verified send it waits for an idle session first and fails with ErrSessionBusy if it stays busy.
 func (r *Runner) LoadSkills(guid string, skills []string) error {
 	if r.toldErr != nil {
 		return r.toldErr
@@ -39,13 +39,11 @@ func (r *Runner) LoadSkills(guid string, skills []string) error {
 	if err != nil {
 		return err
 	}
-	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	if err := requireLiveStrand(r.reed, guid); err != nil {
-		return err
-	}
-	return sendVerified(r.reed, r.engine, guid, loader.SkillLoadMessage(skills))
+	return sendVerified(r.newSendContext(state), loader.SkillLoadMessage(skills))
 }
 
 // ClassifySkillLoad returns the engine's classification of the load turn of skills that turnEnd ended.

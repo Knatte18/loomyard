@@ -530,6 +530,8 @@ func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, i
 		switch {
 		case trimmed == "START":
 			signal.Kind = SessionSignalTurnStart
+		case trimmed == "APIERR":
+			signal.Kind = SessionSignalAPIErrorTurnEnd
 		case strings.HasPrefix(trimmed, "STOP:"):
 			signal.Kind = SessionSignalTurnEnd
 		case strings.HasPrefix(trimmed, "WAIT:"):
@@ -561,3 +563,64 @@ var (
 	_ SessionProber       = (*sessionFakeEngine)(nil)
 	_ ActivityReader      = (*sessionFakeEngine)(nil)
 )
+
+// idleEngine is sessionFakeEngine plus the SessionCycler idle reading: a capture is idle when it starts with "IDLE".
+// Only IdleSession is scripted; the other SessionCycler methods answer empty.
+// A test sets StartupScript to StartupReady for the pane to classify ready.
+type idleEngine struct {
+	sessionFakeEngine
+}
+
+func (e *idleEngine) ContextTokens(Event) ContextReading { return ContextReading{} }
+func (e *idleEngine) CompactedSince(Event, time.Time) (CompactionBoundary, bool) {
+	return CompactionBoundary{}, false
+}
+func (e *idleEngine) IdleSession(capture string) bool           { return strings.HasPrefix(capture, "IDLE") }
+func (e *idleEngine) PaneTooShort(string) bool                  { return false }
+func (e *idleEngine) ClearSessionSequence() []PaneInput         { return nil }
+func (e *idleEngine) ReloadPluginsSequence() []PaneInput        { return nil }
+func (e *idleEngine) CompactSessionSequence(string) []PaneInput { return nil }
+
+var _ SessionCycler = (*idleEngine)(nil)
+
+// idleReed is a fakeReed whose pane reads busyFrame until idleAt on its clock and "IDLE" after, followed by the last text typed.
+// A zero idleAt reads idle at once, and a zero failAt never fails a capture.
+// From failAt on, every capture fails.
+type idleReed struct {
+	*fakeReed
+
+	clock     Clock
+	idleAt    time.Time
+	busyFrame string
+	failAt    time.Time
+	// typedAt is the clock time of the first SendText; zero while nothing was typed.
+	typedAt time.Time
+}
+
+func (r *idleReed) SendText(guid, text string, submit bool) error {
+	if r.typedAt.IsZero() {
+		r.typedAt = r.clock.Now()
+	}
+	return r.fakeReed.SendText(guid, text, submit)
+}
+
+func (r *idleReed) CapturePane(guid string) (string, error) {
+	r.fakeReed.mu.Lock()
+	r.CallLog = append(r.CallLog, "CapturePane")
+	typed := ""
+	if n := len(r.SendTextCalls); n > 0 {
+		typed = r.SendTextCalls[n-1].Text
+	}
+	r.fakeReed.mu.Unlock()
+
+	now := r.clock.Now()
+	if !r.failAt.IsZero() && !now.Before(r.failAt) {
+		return "", fmt.Errorf("pane gone")
+	}
+	if now.Before(r.idleAt) {
+		return r.busyFrame, nil
+	}
+	return "IDLE\n" + typed, nil
+}
+
+var _ ReedOps = (*idleReed)(nil)

@@ -262,9 +262,9 @@ func TestRunner_LoadSkills_GuardStrands(t *testing.T) {
 
 func TestRunner_LoadSkillsAndClassifySkillLoad_DriveTheEngine(t *testing.T) {
 	t.Parallel()
-	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ LOAD:a,b"}}
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ ", "❯ LOAD:a,b"}}
 	want := SkillLoadReport{Verified: true, Loaded: []string{"a"}, Missing: []string{"b"}}
-	engine := &skillFakeEngine{fakeEngine: &fakeEngine{}, Reports: []SkillLoadReport{want}}
+	engine := &skillFakeEngine{fakeEngine: readyAgentEngine(), Reports: []SkillLoadReport{want}}
 	runner := newFixture(t, reed, engine, withStrand("strand-1")).Runner
 	if err := runner.LoadSkills("strand-1", []string{"a", "b"}); err != nil {
 		t.Fatalf("LoadSkills: %v", err)

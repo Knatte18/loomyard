@@ -494,7 +494,6 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 // so Wait never reads one as a held turn end of the run's own.
 // A pane that dies meanwhile is a died startup.
 func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
-	guid := run.state.StrandGUID
 	if len(run.spec.Skills) > 0 {
 		loader, err := run.runner.skillLoader()
 		if err != nil {
@@ -523,7 +522,7 @@ func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 			return run.identity(), fmt.Errorf("shuttle: persist the prompt offset after loading skills: %w", err)
 		}
 	}
-	if err := sendVerified(run.runner.reed, run.runner.engine, guid, promptLine); err != nil {
+	if err := sendVerified(run.newSendContext(), promptLine); err != nil {
 		return run.identity(), fmt.Errorf("shuttle: deliver the prompt after loading skills: %w", err)
 	}
 	return Result{}, nil
@@ -570,7 +569,7 @@ func (run *Run) settleLoadTurn(loader SkillLoader, skills []string, timeout time
 func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.Duration) (turnEnd Event, ended, died bool, err error) {
 	reed := run.runner.reed
 	guid := run.state.StrandGUID
-	if err := sendVerified(reed, run.runner.engine, guid, loader.SkillLoadMessage(skills)); err != nil {
+	if err := sendVerified(run.newSendContext(), loader.SkillLoadMessage(skills)); err != nil {
 		return Event{}, false, false, fmt.Errorf("shuttle: load skills %v: %w", skills, err)
 	}
 	deadline := run.clock.Now().Add(timeout)
@@ -743,15 +742,13 @@ func (run *Run) Interrupt() error {
 // Send types text as run's next turn.
 // Text must be a single, non-empty line.
 // Verifies delivery by observing the text in the pane capture, replaying once if it never appears.
+// Waits for an idle session first and fails with ErrSessionBusy if it stays busy.
 // Safe to call concurrently with a blocked Wait.
 func (run *Run) Send(text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
 	}
-	if err := requireReadyAgentPane(run.runner.reed, run.runner.engine, run.state.StrandGUID); err != nil {
-		return err
-	}
-	return sendVerified(run.runner.reed, run.runner.engine, run.state.StrandGUID, text)
+	return sendVerified(run.newSendContext(), text)
 }
 
 // validateSendText rejects multiline text, empty text, or whitespace-only text
@@ -792,13 +789,11 @@ func (r *Runner) Send(guid, text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
 	}
-	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	if err := requireReadyAgentPane(r.reed, r.engine, guid); err != nil {
-		return err
-	}
-	return sendVerified(r.reed, r.engine, guid, text)
+	return sendVerified(r.newSendContext(state), text)
 }
 
 // Inject plays inputs into the live pane of the run identified by guid, without needing an
@@ -1060,7 +1055,13 @@ func deliveredBelowBaseline(current, baseline paneNeedleScan) bool {
 // a draft containing the needle of a text of sendNeedleRunes or more characters is indistinguishable from the sent text and is submitted by the Enter.
 // An engine without the capability keeps the appearance-only check,
 // so a text that collapses into a paste placeholder is never confirmed there and relies on the engine's own pacing.
-func sendVerified(reed ReedOps, engine Engine, guid, text string) error {
+//
+// Before anything is typed, awaitIdleSession waits for the session to be idle, so a busy session fails the send with ErrSessionBusy.
+func sendVerified(sc sendContext, text string) error {
+	if err := awaitIdleSession(sc); err != nil {
+		return err
+	}
+	reed, engine, guid := sc.reed, sc.engine, sc.guid
 	normalized := normalizePaneText(text)
 	needle := normalized
 	if runes := []rune(needle); len(runes) > sendNeedleRunes {
