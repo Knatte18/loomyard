@@ -28,8 +28,8 @@ func TestOrchIntegration_Refusals(t *testing.T) {
 
 	if !t.Run("prime-only", func(t *testing.T) {
 		cases := map[string]string{
-			"task worktree": h.PairWarpWorktree("orch-task"),
-			"records prime": h.PrimeWeft(),
+			"task worktree": h.PairCodeWorktree("orch-task"),
+			"records prime": h.PrimeRecords(),
 		}
 		for name, cwd := range cases {
 			for _, verb := range []string{"status", "start"} {

@@ -185,9 +185,9 @@ func TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 
-	weftWorktree := fabricengine.WeftWorktree(l)
+	weftWorktree := fabricengine.RecordsWorktree(l)
 	warpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
-	weftBranch := fabricengine.WeftBranchName(warpBranch)
+	weftBranch := fabricengine.RecordsBranchName(warpBranch)
 
 	// Re-create the pair's weft branch as an orphan so it carries no commits at all — exactly the
 	// shape suffixWeftPrimaryBranch leaves behind on a clone against an empty remote.

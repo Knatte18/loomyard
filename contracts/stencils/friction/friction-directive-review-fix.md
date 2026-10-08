@@ -1,6 +1,6 @@
 <!-- This is the RoleReviewFix friction directive: the variant internal/friction.Directive renders
-     for the Burler round's combined review-then-fix agent.
-     Its consuming call site is the burler round's instruction 1 (internal/burlerengine/prompt.go),
+     for the Burler round's fixer, the round's only note writer.
+     Its consuming call site is the fixer's instruction 1 (internal/burlerengine/prompt.go),
      filled through the same stencil.FillOptional call that also carries pattern_directive.
      internal/friction.Directive reads this file through stencilstore.Read, strips this banner with
      stencil.StripLeadingComment, and substitutes the literal "{{.note_path}}" token below with the
@@ -16,10 +16,10 @@
 Writing this note is **optional**. An absent note is the normal outcome and never an error — most
 rounds produce nothing here and that is correct.
 
-Write a note **only when something actually went wrong**, whether in the review phase or the fix
-phase of this round: a rubric item that was ambiguous, a finding you couldn't reach agreement with
-yourself on, a fix that fought the codebase harder than it should have, or anything else that cost
-you real time or nearly derailed either phase.
+Write a note **only when something actually went wrong**, whether while orienting, validating the
+findings or fixing them: a rubric item that was ambiguous, a finding you couldn't reach agreement
+with yourself on, a fix that fought the codebase harder than it should have, or anything else that
+cost you real time or nearly derailed the work.
 
 If you decide to write one, put a title line naming what you were reviewing or fixing, followed by
 one or two short paragraphs of freeform markdown describing the friction. There is no schema to

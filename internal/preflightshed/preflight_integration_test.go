@@ -57,8 +57,8 @@ func setupPreflightWrapperFixture(t *testing.T) *hubforge.Hub {
 	// junction target materializes as an empty directory git does not track -- so this pair becomes
 	// a no-op that must be allowed to succeed rather than deleted, because deleting it would silently
 	// drop the guarantee if a future fixture change reintroduces untracked records content.
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "add", "-A")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "--allow-empty", "-m", "seed junctions")
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "add", "-A")
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "commit", "--allow-empty", "-m", "seed junctions")
 
 	return h
 }

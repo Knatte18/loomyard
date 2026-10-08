@@ -72,7 +72,7 @@ func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
 // so a test pins the grouping Rebaseline compares the run's begun batches against.
 type fixedBatcher struct{ batches []batcher.Batch }
 
-func (f fixedBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource) ([]batcher.Batch, error) {
+func (f fixedBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource, int) ([]batcher.Batch, error) {
 	return f.batches, nil
 }
 
@@ -121,6 +121,7 @@ func TestRebaseline_CardSet(t *testing.T) {
 		{Cards: []planparser.Card{{Number: 2, Slug: "list-tests", Uses: []string{"x.go"}}}},
 		{Cards: []planparser.Card{{Number: 3, Slug: "added", Targets: []string{"x.go"}}}},
 	}}
+	positioned := batcher.NewCost("positioned", batcher.CostParams{Budget: 1e9, MaxCards: 2, Weights: batcher.Weights{MasterBase: 100, BatchGrowth: 10}})
 	cases := []struct {
 		name      string
 		cards     []planparser.Card
@@ -134,7 +135,16 @@ func TestRebaseline_CardSet(t *testing.T) {
 		// wantPartition is State.Partition after the call;
 		// a refusal expects the partition it began with.
 		wantPartition []websterengine.PartitionBatch
+		// wantTailPosition, when set, is the position the regrouped tail's first batch records in its Breakdown, and wantPartition is not compared.
+		wantTailPosition int
 	}{
+		{
+			name:             "a tail regrouped by a cost profile is priced after the kept batches",
+			cards:            []planparser.Card{card(1, "json-flag"), card(2, "list-tests"), card(3, "added")},
+			partition:        recorded,
+			active:           positioned,
+			wantTailPosition: 2,
+		},
 		{
 			name:          "a plan that still holds the kept cards keeps the recorded grouping",
 			cards:         []planparser.Card{card(1, "json-flag"), card(2, "list-tests")},
@@ -226,7 +236,11 @@ func TestRebaseline_CardSet(t *testing.T) {
 			}
 			deps := rebaselineDeps(t, tc.cards, tc.partition, tc.active, map[int]*websterengine.BatchState{1: rec})
 			_, err := websterengine.Rebaseline(deps)
-			if !reflect.DeepEqual(deps.State.Partition, tc.wantPartition) && len(deps.State.Partition)+len(tc.wantPartition) > 0 {
+			if tc.wantTailPosition > 0 {
+				if len(deps.State.Partition) < 2 || deps.State.Partition[1].Breakdown == nil || deps.State.Partition[1].Breakdown.Position != tc.wantTailPosition {
+					t.Errorf("Partition = %+v; want the tail's first batch recorded at position %d", deps.State.Partition, tc.wantTailPosition)
+				}
+			} else if !reflect.DeepEqual(deps.State.Partition, tc.wantPartition) && len(deps.State.Partition)+len(tc.wantPartition) > 0 {
 				t.Errorf("Partition = %+v; want %+v", deps.State.Partition, tc.wantPartition)
 			}
 			if tc.wantErr == nil {

@@ -54,7 +54,7 @@ func TestRemove_CommitsPendingRecordsIntoArchiveTag(t *testing.T) {
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
-	weftWorktree := fabricengine.WeftWorktreePath(l, slug)
+	weftWorktree := fabricengine.RecordsWorktreePath(l, slug)
 	rel := "_lyx/shed/" + slug + "/drive-reports/stop.md"
 	writeFile(t, filepath.Join(weftWorktree, filepath.FromSlash(rel)), "stopped\n")
 	warpTip := gitkit.RevParse(t, fabricengine.WorktreePath(l, slug), "HEAD")
@@ -66,11 +66,11 @@ func TestRemove_CommitsPendingRecordsIntoArchiveTag(t *testing.T) {
 	if res.ArchiveTag == "" {
 		t.Fatalf("ArchiveTag is empty; want the archive tag covering the committed record")
 	}
-	if got := showAtTag(t, h.WeftBare, res.ArchiveTag, rel); got != "stopped\n" {
+	if got := showAtTag(t, h.RecordsBare, res.ArchiveTag, rel); got != "stopped\n" {
 		t.Errorf("archived %s = %q; want the committed report", rel, got)
 	}
-	tagTip := tagTargetAt(t, h.WeftBare, res.ArchiveTag)
-	msg, err := gitexec.Run([]string{"log", "-1", "--format=%B", tagTip}, h.WeftBare)
+	tagTip := tagTargetAt(t, h.RecordsBare, res.ArchiveTag)
+	msg, err := gitexec.Run([]string{"log", "-1", "--format=%B", tagTip}, h.RecordsBare)
 	if err != nil {
 		t.Fatalf("read the archived tip's message: %v", err)
 	}
@@ -90,10 +90,10 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 	const slug = "records-stray"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
-	weftWorktree := fabricengine.WeftWorktreePath(l, slug)
+	weftWorktree := fabricengine.RecordsWorktreePath(l, slug)
 	writeFile(t, filepath.Join(weftWorktree, "stray.txt"), "not a record\n")
 	writeFile(t, filepath.Join(weftWorktree, "_lyx", "record.txt"), "a record\n")
 	tipBefore := gitkit.RevParse(t, weftWorktree, "HEAD")
@@ -114,10 +114,10 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 	if n := res.Mutated().Len(); n != 0 {
 		t.Errorf("refused Remove recorded %d mutations; want 0", n)
 	}
-	if tags := archiveTagsAt(t, h.WeftBare); len(tags) != 0 {
+	if tags := archiveTagsAt(t, h.RecordsBare); len(tags) != 0 {
 		t.Errorf("origin archive tags after a refused Remove = %v; want none", tags)
 	}
-	if tipAfter := gitkit.RevParse(t, weftRoot, fabricengine.WeftBranchName(slug)); tipAfter != tipBefore {
+	if tipAfter := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(slug)); tipAfter != tipBefore {
 		t.Errorf("sibling branch tip = %s after a refused Remove; want unchanged %s", tipAfter, tipBefore)
 	}
 
@@ -128,7 +128,7 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 	if forced.ArchiveTag == "" {
 		t.Errorf("forced Remove ArchiveTag is empty; want the archive to run")
 	}
-	if got := showAtTag(t, h.WeftBare, forced.ArchiveTag, "_lyx/record.txt"); got != "a record\n" {
+	if got := showAtTag(t, h.RecordsBare, forced.ArchiveTag, "_lyx/record.txt"); got != "a record\n" {
 		t.Errorf("forced Remove archived _lyx/record.txt = %q; want the committed record", got)
 	}
 }
@@ -141,7 +141,7 @@ func TestCommitPendingRecords_NothingPresentCommitsNothingWithoutGit(t *testing.
 	const slug = "records-plain-sibling"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	if err := os.MkdirAll(fabricengine.WeftWorktreePath(l, slug), 0o755); err != nil {
+	if err := os.MkdirAll(fabricengine.RecordsWorktreePath(l, slug), 0o755); err != nil {
 		t.Fatalf("create the plain sibling directory: %v", err)
 	}
 
@@ -161,16 +161,16 @@ func TestRemoveRefusal_ProbeLeavesPairUntouched(t *testing.T) {
 	const slug = "records-probe"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	warpPath := fabricengine.WorktreePath(l, slug)
-	weftWorktree := fabricengine.WeftWorktreePath(l, slug)
+	weftWorktree := fabricengine.RecordsWorktreePath(l, slug)
 
 	assertUntouched := func(t *testing.T) {
 		t.Helper()
 
-		if tags := archiveTagsAt(t, h.WeftBare); len(tags) != 0 {
+		if tags := archiveTagsAt(t, h.RecordsBare); len(tags) != 0 {
 			t.Errorf("origin archive tags after RemoveRefusal = %v; want none", tags)
 		}
 		if tags := archiveTagsAt(t, weftRoot); len(tags) != 0 {
@@ -189,7 +189,7 @@ func TestRemoveRefusal_ProbeLeavesPairUntouched(t *testing.T) {
 		if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
 			t.Errorf("warp branch gone after RemoveRefusal")
 		}
-		if !gitkit.BranchExists(t, weftRoot, fabricengine.WeftBranchName(slug)) {
+		if !gitkit.BranchExists(t, weftRoot, fabricengine.RecordsBranchName(slug)) {
 			t.Errorf("weft branch gone after RemoveRefusal")
 		}
 	}
@@ -239,7 +239,7 @@ func TestRemoveRefusal_ProbeLeavesPairUntouched(t *testing.T) {
 	}
 
 	assertUntouched(t)
-	if got := gitkit.RevParse(t, weftWorktree, "HEAD"); got != gitkit.RevParse(t, weftRoot, fabricengine.WeftBranchName(slug)) {
+	if got := gitkit.RevParse(t, weftWorktree, "HEAD"); got != gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(slug)) {
 		t.Errorf("sibling HEAD and branch disagree after the probe")
 	}
 }

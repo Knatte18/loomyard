@@ -86,7 +86,7 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
 		AnchorRel:    relPath,
 	}
 	code := layout.WorktreePath()
-	records := fabricengine.WeftWorktree(layout)
+	records := fabricengine.RecordsWorktree(layout)
 	for _, dir := range []string{code, records} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", dir, err)
@@ -94,6 +94,10 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
 		gitkit.Git(t, dir, "init")
 		gitkit.Git(t, dir, "config", "user.name", "Test User")
 		gitkit.Git(t, dir, "config", "user.email", "test@example.com")
+	}
+	// Resolving the prime runs git in the anchor directory, which must exist in the code worktree.
+	if err := os.MkdirAll(filepath.Join(code, relPath), 0o755); err != nil {
+		t.Fatalf("mkdir anchor in code worktree: %v", err)
 	}
 	gitkit.CommitFile(t, code, "base.txt", "base", "code base commit")
 	gitkit.CommitFile(t, records, "base.txt", "base", "records base commit")
@@ -153,8 +157,8 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
 // fabricSync must report (true, err) -- the commit is real, and Fabric.Commit's contract says the
 // caller gets to know that alongside the error.
 func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "")
-	t.Setenv("WEFT_SKIP_PUSH", "")
+	t.Setenv("FABRIC_SKIP_GIT", "")
+	t.Setenv("FABRIC_SKIP_PUSH", "")
 	layout, records := newPairFixture(t)
 
 	// A directory where RecordCorrespondence expects its index file makes
@@ -193,7 +197,7 @@ func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 // Each excluded artifact is asserted both absent from the commit AND still untracked via `git
 // ls-files` -- proving it never reached the pathspec at all, not merely an already-tracked file
 // happening to be omitted from this one commit.
-// WEFT_SKIP_PUSH is set because the scratch records repo has no remote;
+// FABRIC_SKIP_PUSH is set because the scratch records repo has no remote;
 // the commit half is what is under test.
 func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 	tests := []struct {
@@ -208,8 +212,8 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("WEFT_SKIP_GIT", "")
-			t.Setenv("WEFT_SKIP_PUSH", "1")
+			t.Setenv("FABRIC_SKIP_GIT", "")
+			t.Setenv("FABRIC_SKIP_PUSH", "1")
 			layout, records := newPairFixtureAt(t, tt.relPath)
 			open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
 

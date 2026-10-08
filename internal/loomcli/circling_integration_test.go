@@ -27,7 +27,7 @@ func TestCirclingCLI_PreRunResolvesTarget(t *testing.T) {
 	}
 
 	t.Run("task worktree without a slug", func(t *testing.T) {
-		code, out := run(hub.PairWarpWorktree(slug), "circling", "accept")
+		code, out := run(hub.PairCodeWorktree(slug), "circling", "accept")
 		if code != 1 {
 			t.Fatalf("exit = %d, out %s; want 1", code, out)
 		}

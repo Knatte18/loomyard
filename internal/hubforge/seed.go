@@ -13,10 +13,10 @@ import (
 )
 
 // SeedConfig writes an override for one or more modules' config into h's weft side and commits it.
-// It writes to h.WeftBase — the anchor-joined weft directory, never h.PrimeWeft() — because at a
+// It writes to h.WeftBase — the anchor-joined weft directory, never h.PrimeRecords() — because at a
 // non-"." anchor h.WeftBase is a subdirectory of the weft worktree root, and every module loader
 // reads from the anchored path.
-// The commit itself runs at the weft worktree root h.PrimeWeft(), not at h.WeftBase, because
+// The commit itself runs at the weft worktree root h.PrimeRecords(), not at h.WeftBase, because
 // h.WeftBase can be a subdirectory of the worktree that "git add ." must be run above to stage.
 //
 // A single seeding entry point that infers its base from h is deliberate: it is exactly what makes
@@ -47,8 +47,8 @@ func SeedConfig(tb testing.TB, h *Hub, configByModule map[string]string) {
 		}
 	}
 
-	gitkit.MustRun(tb, h.PrimeWeft(), "git", "add", ".")
-	gitkit.MustRun(tb, h.PrimeWeft(), "git", "commit", "--allow-empty", "-m", "hubforge: seed config")
+	gitkit.MustRun(tb, h.PrimeRecords(), "git", "add", ".")
+	gitkit.MustRun(tb, h.PrimeRecords(), "git", "commit", "--allow-empty", "-m", "hubforge: seed config")
 }
 
 // SeedFabricConfig writes an override for the repo-wide fabric.yaml into h's board and commits it

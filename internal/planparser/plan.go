@@ -90,6 +90,9 @@ type Plan struct {
 	// RenameMechanic is the raw body text of the overview's optional "## Rename mechanic" section.
 	RenameMechanic string
 
+	// OverviewText is the raw text of 00-overview.md, read only by CheckCardFabricReference.
+	OverviewText string
+
 	// Verify is the overview's optional "## verify:" section as one shell command line:
 	// the section's non-blank lines, in order, chained with " && ".
 	Verify string
@@ -104,6 +107,9 @@ type Card struct {
 
 	// Slug is the card's segment, taken from the Card Index entry.
 	Slug string
+
+	// Text is the raw text of the card's file, read only by CheckCardFabricReference.
+	Text string
 
 	// Title is the card file's "# Card N — <name>" heading's trailing name text.
 	Title string

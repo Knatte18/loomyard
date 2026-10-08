@@ -292,7 +292,7 @@ func TestRun_Wait_Classification(t *testing.T) {
 				touchOutputFile(t, outputFile)
 			}
 			cfg := tt.cfg
-			if cfg == (Config{}) {
+			if reflect.DeepEqual(cfg, Config{}) {
 				cfg = fastConfig
 			}
 			timeout := tt.timeout

@@ -29,13 +29,13 @@ var NewPairedFromPathsForTest = newPaired
 // WarpForTest returns f's private warp field, for package fabricengine_test files that need
 // warp-side gitrepo.Repo access no other exported accessor provides.
 func WarpForTest(f *Fabric) *gitrepo.Repo {
-	return f.warp
+	return f.code
 }
 
 // WeftForTest returns f's private weft field, for package fabricengine_test files that need
 // weft-side gitrepo.Repo access no other exported accessor provides.
 func WeftForTest(f *Fabric) *gitrepo.Repo {
-	return f.weft
+	return f.records
 }
 
 // WarpProbeDirPrefixForTest re-exports warpProbeDirPrefix for package fabricengine_test files that
@@ -169,9 +169,9 @@ func DeleteArchivedWeftBranchForTest(l *lyxcwd.Location, repoDir, warpBranch, br
 }
 
 // UpdateRemoteBranchWithLeaseForTest drives updateRemoteBranch over f's pair warp checkout with a caller-chosen lease SHA and a fresh recorder, returning the recorder's snapshot.
-// It serves package fabricengine_test tests that need a lease stale against the origin, since ResetPairWarp leaves no window between its fetch and its update.
+// It serves package fabricengine_test tests that need a lease stale against the origin, since ResetPairCode leaves no window between its fetch and its update.
 func UpdateRemoteBranchWithLeaseForTest(f *Fabric, sha, parentBranch, leaseSHA string) (Mutations, error) {
-	branch, err := f.warp.CurrentBranch()
+	branch, err := f.code.CurrentBranch()
 	if err != nil {
 		return Mutations{}, err
 	}
@@ -185,7 +185,7 @@ func UpdateRemoteBranchWithLeaseForTest(f *Fabric, sha, parentBranch, leaseSHA s
 			dirtiness: dirtyTrackedExcept(nil),
 			force:     false,
 		},
-		repo:         f.warp,
+		repo:         f.code,
 		remote:       originRemoteName,
 		branch:       branch,
 		parentBranch: parentBranch,
@@ -362,7 +362,7 @@ func CorrIndexPathForTest(f *Fabric) (string, error) {
 	return f.corrIndexPath()
 }
 
-// CommitWeftForTest re-exports f.commitWeft (production plumbing: weftgit.go), for the several
+// CommitWeftForTest re-exports f.commitWeft (production plumbing: recordsgit.go), for the several
 // relocating files that drive the weft-only commit path directly rather than through Fabric.Commit,
 // whose own classify-and-dispatch step would never reach it in isolation.
 func CommitWeftForTest(f *Fabric, pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
@@ -395,7 +395,7 @@ var AppendSnapshotTrailersForTest = appendSnapshotTrailers
 // commit_integration_test.go's assertions on a landed commit's Warp-SHA trailer.
 var ParseWarpSHATrailerForTest = parseWarpSHATrailer
 
-// WeftLockDirNameForTest re-exports weftLockDirName (production plumbing: weftgit.go), for
+// WeftLockDirNameForTest re-exports weftLockDirName (production plumbing: recordsgit.go), for
 // diff_integration_test.go's assertion that Status never surfaces fabric's own git-excluded lock
 // directory.
 const WeftLockDirNameForTest = weftLockDirName
@@ -582,4 +582,11 @@ func CommitPendingRecordsForTest(l *lyxcwd.Location, slug, warpBranch string) (c
 // so an integration test can move a branch tip after it was observed and prove the lease holds.
 func CleanupRemoteWarpWithHookForTest(t *Topology, l *lyxcwd.Location, apply bool, openPRHeads map[string]bool, afterEnumerate func()) (RemoteWarpCleanupResult, error) {
 	return t.cleanupRemoteWarp(l, apply, openPRHeads, afterEnumerate)
+}
+
+// SetPushSeamForTest makes t's Add pushes run through run and wait through sleep instead of the production runner and a real sleep.
+// A nil argument keeps the production behaviour for that part.
+// It sets the seam on the one Topology, so parallel tests inject per instance.
+func SetPushSeamForTest(t *Topology, run func(args []string, cwd string) (string, error), sleep func(delay time.Duration)) {
+	t.push = pushSeam{run: run, sleep: sleep}
 }

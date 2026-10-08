@@ -35,7 +35,7 @@ type PullResult struct {
 	// does not stop the call: Fabric.Pull's weft arm is non-fatal, and the
 	// warp fetch/reconcile below runs regardless of this field's value.
 	WeftPulled bool
-	// WarpFetched reports whether the warp fetch (f.warp.Fetch) ran and
+	// WarpFetched reports whether the warp fetch (f.code.Fetch) ran and
 	// succeeded.
 	WarpFetched bool
 	// WarpAdvanced reports whether the warp branch pointer actually moved,
@@ -154,7 +154,7 @@ func (f *Fabric) warpWorktreeDirty() (bool, error) {
 // ("", nil) — mirroring coalesce.go's headOrEmpty, the in-repo precedent for this exact tolerance,
 // adapted to a repo handle already in hand rather than a path.
 func weftSHAOrEmpty(f *Fabric) (string, error) {
-	sha, err := f.weft.CurrentSHA()
+	sha, err := f.records.CurrentSHA()
 	if err == nil {
 		return sha, nil
 	}
@@ -173,7 +173,7 @@ func weftSHAOrEmpty(f *Fabric) (string, error) {
 // If the after-sample errors, nothing is recorded and the error is not propagated: a failure to
 // observe is not a failure to advance.
 func (f *Fabric) recordWarpAdvance(rec *Mutations, before string) {
-	after, err := f.warp.CurrentSHA()
+	after, err := f.code.CurrentSHA()
 	if err != nil || after == before {
 		return
 	}
@@ -182,7 +182,7 @@ func (f *Fabric) recordWarpAdvance(rec *Mutations, before string) {
 
 // warpUpstreamSHA resolves the warp repo's already-fetched upstream tracking
 // ref (`@{u}`) to a plain hex SHA, via `git rev-parse @{u}` in f.warpPath.
-// Fabric.Pull calls this AFTER f.warp.Fetch has refreshed the remote-tracking
+// Fabric.Pull calls this AFTER f.code.Fetch has refreshed the remote-tracking
 // ref, so the SHA it returns is the freshly fetched upstream tip — usable
 // directly by ResetHard and IsAncestor, which both require a plain commit
 // SHA rather than symbolic revision syntax.
@@ -236,7 +236,7 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 		logger.Warn("fabricengine: weft pull: resolve upstream failed, continuing to warp", "weft", f.weftPath, "err", err)
 	} else if weftHasUpstream {
 		// Sample the weft SHA before and after the pull, and record KindRepoAdvanced only on a
-		// change — PullWeft's own f.weft.Pull() also returns nil when the weft is already up to
+		// change — PullWeft's own f.records.Pull() also returns nil when the weft is already up to
 		// date, so an unconditional entry would fabricate a mutation on that no-op path.
 		// This is load-bearing: PullWeft can succeed (result.WeftPulled = true below) and Pull can
 		// then still return a *PartialPullError on the warp side with no commit ever created and no
@@ -262,12 +262,12 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	} else {
 		result.WeftPulled = true
 	}
-	hadUnpushed, err := f.warp.HasUnpushed()
+	hadUnpushed, err := f.code.HasUnpushed()
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "unpushed-check", Err: err}
 	}
 
-	if err := f.warp.Fetch(); err != nil {
+	if err := f.code.Fetch(); err != nil {
 		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "fetch", Err: err}
 	}
 	result.WarpFetched = true
@@ -276,7 +276,7 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "resolve", Err: err}
 	}
-	localHEAD, err := f.warp.CurrentSHA()
+	localHEAD, err := f.code.CurrentSHA()
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "resolve", Err: err}
 	}
@@ -295,7 +295,7 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 		return result, ErrWarpDirty
 	}
 
-	isFF, err := f.warp.IsAncestor(localHEAD, upstreamSHA)
+	isFF, err := f.code.IsAncestor(localHEAD, upstreamSHA)
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "classify", Err: err}
 	}
@@ -346,7 +346,7 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	}
 
 	anchor, found, err := reachableAnchor(entries, func(sha string) (bool, error) {
-		return f.warp.IsAncestor(sha, upstreamSHA)
+		return f.code.IsAncestor(sha, upstreamSHA)
 	})
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: result.WeftPulled, Stage: "anchor-walk", Err: err}

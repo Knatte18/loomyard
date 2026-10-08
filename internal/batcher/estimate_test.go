@@ -30,7 +30,8 @@ func (f fakeSizes) TestFiles(dir string) ([]string, error) {
 
 // testWeights are distinct round coefficients, so a hand-computed peak pins each one entering once.
 var testWeights = batcher.Weights{
-	StartupContext:   10,
+	MasterBase:       10,
+	BatchGrowth:      6,
 	ForkMessages:     2,
 	MessageContext:   1,
 	TargetMessages:   3,
@@ -69,7 +70,7 @@ func TestPeakContext(t *testing.T) {
 			"internal/a": {"internal/a/a_test.go", "internal/a/b_test.go"},
 		},
 	}
-	// Every peak below starts from the startup context 10 plus 2 fork messages at 1 each.
+	// Every peak below is at position 1 and starts from the master base 10 plus 2 fork messages at 1 each.
 	const startup = 12
 
 	withText := editCard(1, []string{"internal/s/s.go"})
@@ -126,7 +127,7 @@ func TestPeakContext(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := batcher.PeakContext(plan, tt.cards, sizes, testWeights)
+			got, err := batcher.PeakContext(plan, tt.cards, sizes, testWeights, 1)
 			if err != nil {
 				t.Fatalf("PeakContext: %v", err)
 			}
@@ -135,6 +136,24 @@ func TestPeakContext(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a later position adds the batch growth per position", func(t *testing.T) {
+		t.Parallel()
+		cards := []planparser.Card{editCard(1, []string{"internal/a/a.go"}, "internal/b/b.go")}
+		first, err := batcher.PeakContext(plan, cards, sizes, testWeights, 1)
+		if err != nil {
+			t.Fatalf("PeakContext: %v", err)
+		}
+		for position := 2; position <= 4; position++ {
+			got, err := batcher.PeakContext(plan, cards, sizes, testWeights, position)
+			if err != nil {
+				t.Fatalf("PeakContext: %v", err)
+			}
+			if want := first + float64(position-1)*testWeights.BatchGrowth; got != want {
+				t.Errorf("PeakContext at position %d = %v; want %v", position, got, want)
+			}
+		}
+	})
 
 	t.Run("adding a card never lowers the peak", func(t *testing.T) {
 		t.Parallel()
@@ -145,7 +164,7 @@ func TestPeakContext(t *testing.T) {
 		}
 		previous := 0.0
 		for n := 1; n <= len(cards); n++ {
-			peak, err := batcher.PeakContext(plan, cards[:n], sizes, testWeights)
+			peak, err := batcher.PeakContext(plan, cards[:n], sizes, testWeights, 1)
 			if err != nil {
 				t.Fatalf("PeakContext: %v", err)
 			}

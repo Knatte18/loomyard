@@ -53,7 +53,7 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 
 	// The drift injection: delete the weft worktree directory out from under
 	// git, exactly as a stray rm would — the registration and branch survive.
-	weftPath := fabricengine.WeftWorktreePath(l, slug)
+	weftPath := fabricengine.RecordsWorktreePath(l, slug)
 	if err := os.RemoveAll(weftPath); err != nil {
 		t.Fatalf("hand-delete weft worktree: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 	// emitted forward-slashed, so normalize the expectation the same way.
 	var found bool
 	for _, pair := range result.Pairs {
-		if pair.WeftWorktree != filepath.ToSlash(weftPath) {
+		if pair.RecordsWorktree != filepath.ToSlash(weftPath) {
 			continue
 		}
 		found = true
@@ -86,7 +86,7 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 	if info, err := os.Stat(weftPath); err != nil || !info.IsDir() {
 		t.Fatalf("weft worktree not recreated at %s: %v", weftPath, err)
 	}
-	if got, want := gitkit.CurrentBranch(t, weftPath), fabricengine.WeftBranchName(slug); got != want {
+	if got, want := gitkit.CurrentBranch(t, weftPath), fabricengine.RecordsBranchName(slug); got != want {
 		t.Errorf("recreated weft worktree branch = %q; want %q", got, want)
 	}
 }
@@ -100,7 +100,7 @@ func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 
-	if err := os.RemoveAll(h.PrimeWeft()); err != nil {
+	if err := os.RemoveAll(h.PrimeRecords()); err != nil {
 		t.Fatalf("remove weft prime: %v", err)
 	}
 
@@ -152,7 +152,7 @@ func seedRepoWideFabricConfig(t testing.TB, hub string) {
 func findPruneEntryByWeftPath(t *testing.T, entries []fabricengine.PruneEntry, weftPath string) *fabricengine.PruneEntry {
 	t.Helper()
 	for i := range entries {
-		if filepath.Clean(entries[i].WeftWorktree) == filepath.Clean(weftPath) {
+		if filepath.Clean(entries[i].RecordsWorktree) == filepath.Clean(weftPath) {
 			return &entries[i]
 		}
 	}
@@ -164,7 +164,7 @@ func findPruneEntryByWeftPath(t *testing.T, entries []fabricengine.PruneEntry, w
 func countPruneEntriesForWeft(entries []fabricengine.PruneEntry, weftPath string) int {
 	n := 0
 	for i := range entries {
-		if filepath.Clean(entries[i].WeftWorktree) == filepath.Clean(weftPath) {
+		if filepath.Clean(entries[i].RecordsWorktree) == filepath.Clean(weftPath) {
 			n++
 		}
 	}
@@ -221,7 +221,7 @@ func TestPrune_ApplyRemovesPortalAndLaunchers(t *testing.T) {
 		t.Fatalf("Prune(apply=true): %v", err)
 	}
 
-	weftPath := fabricengine.WeftWorktreePath(l, slug)
+	weftPath := fabricengine.RecordsWorktreePath(l, slug)
 	entry := findPruneEntryByWeftPath(t, res.Entries, weftPath)
 	if !entry.Removed {
 		t.Errorf("Removed = false after apply; want true (error=%q)", entry.Error)
@@ -250,7 +250,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 		topology := h.Topology
 		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 		warpPath := fabricengine.WorktreePath(l, slug)
-		weftPath := fabricengine.WeftWorktreePath(l, slug)
+		weftPath := fabricengine.RecordsWorktreePath(l, slug)
 
 		// Bare removal of the warp directory leaves the git worktree
 		// registration stale (unlike `git worktree remove`), so both prune
@@ -291,7 +291,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 		topology := h.Topology
 		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 		warpPath := fabricengine.WorktreePath(l, slug)
-		weftPath := fabricengine.WeftWorktreePath(l, slug)
+		weftPath := fabricengine.RecordsWorktreePath(l, slug)
 
 		// Bare-remove BOTH sides, leaving both registrations stale. With the
 		// weft directory gone, Pass 1's removeStalePair has nothing to
@@ -330,8 +330,8 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 	l := h.Location
 	topology := h.Topology
 
-	mainWeft := fabricengine.WeftBranchName("main")
-	weftPrime := fabricengine.WeftWorktree(l)
+	mainWeft := fabricengine.RecordsBranchName("main")
+	weftPrime := fabricengine.RecordsWorktree(l)
 
 	// Move the weft primary off main-weft so main-weft is not the
 	// checked-out branch.
@@ -347,7 +347,7 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 			t.Errorf("Cleanup reported/handled primary weft branch %q; want not reported (live pair)", mainWeft)
 		}
 	}
-	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), mainWeft) {
+	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), mainWeft) {
 		t.Errorf("main-weft branch deleted after force Cleanup with primary parked elsewhere; want intact (F1 regression)")
 	}
 }
@@ -363,7 +363,7 @@ func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	topology := h.Topology
 
 	const warpManagedBranch = "cleanup-warp-owned"
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", warpManagedBranch, fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "branch", warpManagedBranch, fabricengine.RecordsBranchName("main"))
 
 	res, err := topology.Cleanup(l, true, true, false)
 	if err != nil {
@@ -377,7 +377,7 @@ func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	if entry.Deleted {
 		t.Errorf("Deleted = true for non-suffixed branch %q; want false even under force", warpManagedBranch)
 	}
-	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), warpManagedBranch) {
+	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), warpManagedBranch) {
 		t.Errorf("non-suffixed branch %q deleted; want intact", warpManagedBranch)
 	}
 }
@@ -403,7 +403,7 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	warpPath := fabricengine.WorktreePath(l, slug)
 	gitkit.MustRun(t, warpPath, "git", "checkout", "--detach")
 
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	// Dry-run must already report the branch protected, so dry-run and apply
 	// agree about its fate.
@@ -427,7 +427,7 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	if forcedEntry.Error != "" {
 		t.Errorf("apply+force entry Error = %q; want empty (no doomed delete attempt)", forcedEntry.Error)
 	}
-	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
+	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), weftBranch) {
 		t.Errorf("checked-out weft branch %q deleted; want intact", weftBranch)
 	}
 }
@@ -481,8 +481,8 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 // warp junctions pointing at directories that vanished with it, so the pair stayed unhealthy — with
 // a raw EvalSymlinks error as its reported reason — until a SECOND reconcile ran.
 func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "reconcile-recreated-pair"
 	h := hubforge.NewHub(t, ".")
@@ -495,11 +495,11 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
 	}
 
-	weftRepoRoot, err := fabricengine.WeftRepoRoot(l)
+	weftRepoRoot, err := fabricengine.RecordsRepoRoot(l)
 	if err != nil {
-		t.Fatalf("WeftRepoRoot: %v", err)
+		t.Fatalf("RecordsRepoRoot: %v", err)
 	}
-	weftPath := fabricengine.WeftWorktreePath(l, slug)
+	weftPath := fabricengine.RecordsWorktreePath(l, slug)
 	gitkit.MustRun(t, weftRepoRoot, "git", "worktree", "remove", "--force", weftPath)
 
 	result, err := topology.Reconcile(l)
@@ -529,8 +529,8 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 // the dry run and the apply, and --apply alone (no --force) actually deletes it — an orphan weft
 // branch is deletable under --apply alone, with no fold-back gate standing between it and deletion.
 func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "cleanup-dryrun-parity"
 	h := hubforge.NewHub(t, ".")
@@ -543,11 +543,11 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 
 	// Remove deletes the pair's weft branch, so re-create an orphaned one by hand: a weft branch
 	// whose paired warp branch no warp worktree is on.
-	weftRepoRoot, err := fabricengine.WeftRepoRoot(l)
+	weftRepoRoot, err := fabricengine.RecordsRepoRoot(l)
 	if err != nil {
-		t.Fatalf("WeftRepoRoot: %v", err)
+		t.Fatalf("RecordsRepoRoot: %v", err)
 	}
-	orphan := fabricengine.WeftBranchName(slug)
+	orphan := fabricengine.RecordsBranchName(slug)
 	gitkit.MustRun(t, weftRepoRoot, "git", "branch", orphan)
 
 	findEntry := func(t *testing.T, entries []fabricengine.CleanupBranchEntry) fabricengine.CleanupBranchEntry {
@@ -596,8 +596,8 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 // branch beside a genuine orphan, so both a protected and an unprotected verdict are in the
 // comparison — and then confirms the apply pass with force=true deletes exactly the orphan.
 func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "cleanup-force-reserved"
 	h := hubforge.NewHub(t, ".")
@@ -608,11 +608,11 @@ func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
 		t.Fatalf("Remove: %v", err)
 	}
 
-	weftRepoRoot, err := fabricengine.WeftRepoRoot(l)
+	weftRepoRoot, err := fabricengine.RecordsRepoRoot(l)
 	if err != nil {
-		t.Fatalf("WeftRepoRoot: %v", err)
+		t.Fatalf("RecordsRepoRoot: %v", err)
 	}
-	orphan := fabricengine.WeftBranchName(slug)
+	orphan := fabricengine.RecordsBranchName(slug)
 	gitkit.MustRun(t, weftRepoRoot, "git", "branch", orphan)
 	const unmanaged = "legacy-notes"
 	gitkit.MustRun(t, weftRepoRoot, "git", "branch", unmanaged)
@@ -688,7 +688,7 @@ func TestReconcile_RestoresDeletedPortalAndLaunchers(t *testing.T) {
 
 	var repaired *fabricengine.ReconcilePairResult
 	for i := range result.Pairs {
-		if filepath.Base(result.Pairs[i].WarpWorktree) == slug {
+		if filepath.Base(result.Pairs[i].CodeWorktree) == slug {
 			repaired = &result.Pairs[i]
 		}
 	}

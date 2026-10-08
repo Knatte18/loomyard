@@ -65,8 +65,8 @@ func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 			if _, err := fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded); err != nil {
 				t.Fatalf("PushAnchored() priming push error = %v; want nil", err)
 			}
-			bareHeadBefore := fabricengine.BareBranchSHAForTest(t, h.WeftBare, fabricengine.WeftBranchName("main"))
-			gitkit.CommitFile(t, h.PrimeWeft(), "weft-file.txt", "weft change never pushed", "weft change never pushed")
+			bareHeadBefore := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, fabricengine.RecordsBranchName("main"))
+			gitkit.CommitFile(t, h.PrimeRecords(), "weft-file.txt", "weft change never pushed", "weft change never pushed")
 
 			res, err := fabricengine.PushAnchored(h.Location, tt.opts, fabricengine.LockWaitUnbounded)
 			if err != nil {
@@ -76,7 +76,7 @@ func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 				t.Errorf("PushAnchored() record = %+v; want empty", res.Mutated().Entries())
 			}
 
-			if got := fabricengine.BareBranchSHAForTest(t, h.WeftBare, fabricengine.WeftBranchName("main")); got != bareHeadBefore {
+			if got := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, fabricengine.RecordsBranchName("main")); got != bareHeadBefore {
 				t.Errorf("weft bare = %q; want it unadvanced at %q", got, bareHeadBefore)
 			}
 		})
@@ -92,9 +92,9 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 	t.Parallel()
 
 	h := hubforge.NewHub(t, ".")
-	weftSHA := gitkit.CommitFile(t, h.PrimeWeft(), "weft-file.txt", "weft change", "weft change")
+	weftSHA := gitkit.CommitFile(t, h.PrimeRecords(), "weft-file.txt", "weft change", "weft change")
 	warpBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
-	warpBareBefore := fabricengine.BareBranchSHAForTest(t, h.WarpBare, warpBranch)
+	warpBareBefore := fabricengine.BareBranchSHAForTest(t, h.CodeBare, warpBranch)
 	gitkit.CommitFile(t, h.PrimeWorktree(), "warp-file.txt", "warp change never pushed", "warp change never pushed")
 
 	res, err := fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
@@ -102,11 +102,11 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 		t.Fatalf("PushAnchored() error = %v; want nil", err)
 	}
 
-	if got := fabricengine.BareBranchSHAForTest(t, h.WarpBare, warpBranch); got != warpBareBefore {
+	if got := fabricengine.BareBranchSHAForTest(t, h.CodeBare, warpBranch); got != warpBareBefore {
 		t.Errorf("warp bare = %q; want it unmoved at %q (PushAnchored pushes the records side only)", got, warpBareBefore)
 	}
 
-	if got := fabricengine.BareBranchSHAForTest(t, h.WeftBare, fabricengine.WeftBranchName("main")); got != weftSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, fabricengine.RecordsBranchName("main")); got != weftSHA {
 		t.Errorf("weft bare = %q; want it advanced to local HEAD %q", got, weftSHA)
 	}
 
@@ -122,8 +122,8 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 	if found != 1 {
 		t.Fatalf("PushAnchored() record = %+v; want exactly one KindBranchPushed entry, got %d", entries, found)
 	}
-	if !strings.HasPrefix(pushed.Detail, "side=weft repo=") || !strings.Contains(pushed.Detail, " remote=") {
-		t.Errorf("KindBranchPushed Detail = %q; want prefix %q and a %q part", pushed.Detail, "side=weft repo=", " remote=")
+	if !strings.HasPrefix(pushed.Detail, "side=records repo=") || !strings.Contains(pushed.Detail, " remote=") {
+		t.Errorf("KindBranchPushed Detail = %q; want prefix %q and a %q part", pushed.Detail, "side=records repo=", " remote=")
 	}
 }
 
@@ -146,11 +146,11 @@ func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejectedUnwrapped(t *test
 		t.Fatalf("PushAnchored() priming push error = %v; want nil", err)
 	}
 
-	weftClone2 := cloneBareForTest(t, h.WeftBare, fabricengine.WeftBranchName("main"))
+	weftClone2 := cloneBareForTest(t, h.RecordsBare, fabricengine.RecordsBranchName("main"))
 	gitkit.CommitFile(t, weftClone2, "other.txt", "from second weft clone", "from second weft clone")
 	gitkit.MustRun(t, weftClone2, "git", "push")
 
-	gitkit.CommitFile(t, h.PrimeWeft(), "weft-file.txt", "weft change that will be rejected", "weft change that will be rejected")
+	gitkit.CommitFile(t, h.PrimeRecords(), "weft-file.txt", "weft change that will be rejected", "weft change that will be rejected")
 
 	_, err := fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
 	if err == nil {
@@ -168,8 +168,8 @@ func TestPushAnchored_OtherPushErrorKind_DoesNotMatchErrPushRejected(t *testing.
 	t.Parallel()
 
 	h := hubforge.NewHub(t, ".")
-	gitkit.CommitFile(t, h.PrimeWeft(), "weft-file.txt", "weft change", "weft change")
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "remote", "remove", "origin")
+	gitkit.CommitFile(t, h.PrimeRecords(), "weft-file.txt", "weft change", "weft change")
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "remote", "remove", "origin")
 
 	_, err := fabricengine.PushAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
 	if err == nil {
@@ -196,17 +196,17 @@ func newPushPair(t *testing.T) pushPair {
 
 	h := hubforge.NewHub(t, ".")
 	added := hubforge.AddPair(t, h, "pushpair")
-	loc, err := lyxcwd.ResolveWorktree(h.PairWarpWorktree("pushpair"))
+	loc, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("pushpair"))
 	if err != nil {
 		t.Fatalf("ResolveWorktree: %v", err)
 	}
 	return pushPair{
 		hub:        h,
 		location:   loc,
-		warpPath:   h.PairWarpWorktree("pushpair"),
-		weftPath:   h.PairWeftSibling("pushpair"),
+		warpPath:   h.PairCodeWorktree("pushpair"),
+		weftPath:   h.PairRecordsSibling("pushpair"),
 		warpBranch: added.Branch,
-		weftBranch: fabricengine.WeftBranchName(added.Branch),
+		weftBranch: fabricengine.RecordsBranchName(added.Branch),
 	}
 }
 
@@ -249,6 +249,7 @@ func countBranchPushed(res fabricengine.PushResult, detailPrefix string) int {
 
 // TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide walks one pair through the behaviors of PushPairAnchored in order:
 // both sides pushed and recorded, a remote that declines once retried to success on both entries, a rejection whose fetch then fails returned without a retry, a remote that keeps declining reported as a bare rejection, an unborn code side skipped while the records side still pushes, a diverged code side reported while the records side still pushes, and both sides failing reported together.
+// Two subtests then run on hubs of their own: the prime pushes its records side only and reports the skipped code push, and a prime that cannot be resolved fails the call with nothing pushed.
 func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T) {
 	t.Parallel()
 
@@ -262,42 +263,42 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	if err != nil {
 		t.Fatalf("PushPairAnchored() error = %v; want nil", err)
 	}
-	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch); got != warpSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != warpSHA {
 		t.Errorf("warp bare = %q; want local HEAD %q", got, warpSHA)
 	}
-	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WeftBare, p.weftBranch); got != weftSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != weftSHA {
 		t.Errorf("weft bare = %q; want local HEAD %q", got, weftSHA)
 	}
-	if got := countBranchPushed(res, "side=warp repo="); got != 1 {
+	if got := countBranchPushed(res, "side=code repo="); got != 1 {
 		t.Errorf("PushPairAnchored() record = %+v; want exactly one warp KindBranchPushed entry, got %d", res.Mutated().Entries(), got)
 	}
-	if got := countBranchPushed(res, "side=weft repo="); got != 1 {
+	if got := countBranchPushed(res, "side=records repo="); got != 1 {
 		t.Errorf("PushPairAnchored() record = %+v; want exactly one weft KindBranchPushed entry, got %d", res.Mutated().Entries(), got)
 	}
 
 	// A remote that declines once: the stale-ref rejection is retried and succeeds, on both entries.
-	declineOncePreReceive(t, p.hub.WarpBare)
+	declineOncePreReceive(t, p.hub.CodeBare)
 	warpSHA = gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp change 2", "warp change 2")
 	if _, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded); err != nil {
 		t.Fatalf("PushPairAnchored() against a remote declining once error = %v; want nil after the retry", err)
 	}
-	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch); got != warpSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != warpSHA {
 		t.Errorf("warp bare = %q; want local HEAD %q after the retry", got, warpSHA)
 	}
-	declineOncePreReceive(t, p.hub.WeftBare)
+	declineOncePreReceive(t, p.hub.RecordsBare)
 	weftSHA = gitkit.CommitFile(t, p.weftPath, "weft-file.txt", "weft change 2", "weft change 2")
 	if _, err := fabricengine.PushAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded); err != nil {
 		t.Fatalf("PushAnchored() against a records remote declining once error = %v; want nil after the retry", err)
 	}
-	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WeftBare, p.weftBranch); got != weftSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != weftSHA {
 		t.Errorf("weft bare = %q; want local HEAD %q after the retry", got, weftSHA)
 	}
 
 	// A rejection whose fetch then fails is not retried:
 	// the code side pushes to its real bare but fetches from a missing path,
 	// and a remote that declines once would accept a retry.
-	warpBareBeforeFetchFailure := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch)
-	if err := os.Remove(filepath.Join(p.hub.WarpBare, "declined-once")); err != nil {
+	warpBareBeforeFetchFailure := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch)
+	if err := os.Remove(filepath.Join(p.hub.CodeBare, "declined-once")); err != nil {
 		t.Fatalf("reset decline-once marker: %v", err)
 	}
 	gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp change fetch failure", "warp change fetch failure")
@@ -308,7 +309,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	if !fabricengine.IsPushRejected(err) {
 		t.Errorf("PushPairAnchored() with a rejected push and a failing fetch error = %v; want the bare rejection", err)
 	}
-	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch); got != warpBareBeforeFetchFailure {
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != warpBareBeforeFetchFailure {
 		t.Errorf("warp bare = %q; want it unmoved at %q (no retry after a failed fetch)", got, warpBareBeforeFetchFailure)
 	}
 	gitkit.MustRun(t, p.warpPath, "git", "config", "remote.origin.url", warpFetchURL)
@@ -316,22 +317,22 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 
 	// A remote that keeps declining: the one retry is rejected too,
 	// so the bare rejection surfaces and nothing local moves.
-	installPreReceive(t, p.hub.WarpBare, "#!/bin/sh\necho 'declined always' >&2\nexit 1\n")
+	installPreReceive(t, p.hub.CodeBare, "#!/bin/sh\necho 'declined always' >&2\nexit 1\n")
 	gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp change declined", "warp change declined")
-	declinedWarpBare := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch)
+	declinedWarpBare := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch)
 	declinedWarpHead := head(p.warpPath)
 	_, err = fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
 	if !fabricengine.IsPushRejected(err) {
 		t.Errorf("PushPairAnchored() against a remote that keeps declining error = %v; want IsPushRejected after the one retry", err)
 	}
-	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch); got != declinedWarpBare {
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != declinedWarpBare {
 		t.Errorf("warp bare = %q; want it unmoved at %q", got, declinedWarpBare)
 	}
 	if got := head(p.warpPath); got != declinedWarpHead {
 		t.Errorf("local warp HEAD = %q; want unchanged %q", got, declinedWarpHead)
 	}
 
-	if err := os.Remove(preReceiveHookPath(p.hub.WarpBare)); err != nil {
+	if err := os.Remove(preReceiveHookPath(p.hub.CodeBare)); err != nil {
 		t.Fatalf("remove always-declining hook: %v", err)
 	}
 
@@ -342,16 +343,16 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	if _, err := fabricengine.PushPairAnchored(p.location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded); err != nil {
 		t.Fatalf("PushPairAnchored() with an unborn code side error = %v; want nil", err)
 	}
-	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WeftBare, p.weftBranch); got != weftSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != weftSHA {
 		t.Errorf("weft bare = %q; want local HEAD %q with the code side unborn", got, weftSHA)
 	}
-	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch); got != declinedWarpBare {
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != declinedWarpBare {
 		t.Errorf("warp bare = %q; want it unmoved at %q", got, declinedWarpBare)
 	}
 	gitkit.MustRun(t, p.warpPath, "git", "checkout", "-q", "-f", p.warpBranch)
 
-	// A diverged code side: reported against the warp side, the records side still pushes.
-	warpClone := cloneBareForTest(t, p.hub.WarpBare, p.warpBranch)
+	// A diverged code side: reported against the code side, the records side still pushes.
+	warpClone := cloneBareForTest(t, p.hub.CodeBare, p.warpBranch)
 	remoteSHA := gitkit.CommitFile(t, warpClone, "other.txt", "from second warp clone", "from second warp clone")
 	gitkit.MustRun(t, warpClone, "git", "push")
 	gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp change 3", "warp change 3")
@@ -364,16 +365,16 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	if !errors.Is(err, gitrepo.ErrPushRejected) || !fabricengine.IsPushRejected(err) {
 		t.Errorf("PushPairAnchored() error = %v; want it to satisfy errors.Is(err, gitrepo.ErrPushRejected) and IsPushRejected", err)
 	}
-	if want := "push warp side at " + p.warpPath; !strings.Contains(err.Error(), want) {
+	if want := "push code side at " + p.warpPath; !strings.Contains(err.Error(), want) {
 		t.Errorf("PushPairAnchored() error = %q; want it to contain %q", err, want)
 	}
-	if strings.Contains(err.Error(), "push weft side") {
+	if strings.Contains(err.Error(), "push records side") {
 		t.Errorf("PushPairAnchored() error = %q; want the records side absent from it", err)
 	}
-	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch); got != remoteSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != remoteSHA {
 		t.Errorf("warp bare = %q; want it left at the diverging commit %q", got, remoteSHA)
 	}
-	if got := fabricengine.BareBranchSHAForTest(t, p.hub.WeftBare, p.weftBranch); got != weftSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != weftSHA {
 		t.Errorf("weft bare = %q; want the records side pushed to %q despite the code side failing", got, weftSHA)
 	}
 	if head(p.warpPath) != warpHead || head(p.weftPath) != weftHead {
@@ -392,11 +393,54 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 	if !errors.Is(err, gitrepo.ErrPushRejected) {
 		t.Errorf("PushPairAnchored() error = %v; want it to satisfy errors.Is(err, gitrepo.ErrPushRejected) through the code side", err)
 	}
-	for _, want := range []string{"push warp side at " + p.warpPath, "push weft side at " + p.weftPath} {
+	for _, want := range []string{"push code side at " + p.warpPath, "push records side at " + p.weftPath} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("PushPairAnchored() error = %q; want it to contain %q", err, want)
 		}
 	}
+
+	// The prime pushes the records side only and reports its unpushed code branch.
+	t.Run("PrimePushesRecordsSideOnly", func(t *testing.T) {
+		h := hubforge.NewHub(t, ".")
+		codeBranch := gitkit.CurrentBranch(t, h.PrimeWorktree())
+		recordsBranch := gitkit.CurrentBranch(t, h.PrimeRecords())
+		codeBefore := fabricengine.BareBranchSHAForTest(t, h.CodeBare, codeBranch)
+		gitkit.CommitFile(t, h.PrimeWorktree(), "code-file.txt", "code change", "code change")
+		recordsSHA := gitkit.CommitFile(t, h.PrimeRecords(), "records-file.txt", "records change", "records change")
+
+		res, err := fabricengine.PushPairAnchored(h.Location, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
+
+		if err != nil {
+			t.Fatalf("PushPairAnchored() in the prime error = %v; want nil", err)
+		}
+		if got := fabricengine.BareBranchSHAForTest(t, h.CodeBare, codeBranch); got != codeBefore {
+			t.Errorf("code bare = %q; want it unchanged at %q", got, codeBefore)
+		}
+		if got := fabricengine.BareBranchSHAForTest(t, h.RecordsBare, recordsBranch); got != recordsSHA {
+			t.Errorf("records bare = %q; want local HEAD %q", got, recordsSHA)
+		}
+		if !strings.Contains(res.CodePushSkipped, codeBranch) {
+			t.Errorf("CodePushSkipped = %q; want it to name branch %q", res.CodePushSkipped, codeBranch)
+		}
+	})
+
+	// A prime that cannot be resolved fails the call with nothing pushed.
+	t.Run("UnresolvablePrimePushesNothing", func(t *testing.T) {
+		h := hubforge.NewHub(t, ".")
+		recordsBranch := gitkit.CurrentBranch(t, h.PrimeRecords())
+		gitkit.CommitFile(t, h.PrimeRecords(), "records-file.txt", "records change", "records change")
+		unresolvable := *h.Location
+		unresolvable.AnchorRel = "absent/subdir"
+
+		_, err := fabricengine.PushPairAnchored(&unresolvable, fabricengine.SyncOptions{}, fabricengine.LockWaitUnbounded)
+
+		if err == nil || !strings.Contains(err.Error(), "resolve main worktree") {
+			t.Fatalf("PushPairAnchored() error = %v; want one carrying %q", err, "resolve main worktree")
+		}
+		if gitkit.BranchExists(t, h.RecordsBare, recordsBranch) {
+			t.Errorf("records bare holds %q; want nothing pushed", recordsBranch)
+		}
+	})
 }
 
 // TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks covers the push lock both entries take:
@@ -433,8 +477,8 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 			t.Parallel()
 
 			p := newPushPair(t)
-			warpBefore := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch)
-			weftBefore := fabricengine.BareBranchSHAForTest(t, p.hub.WeftBare, p.weftBranch)
+			warpBefore := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch)
+			weftBefore := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch)
 			warpSHA := gitkit.CommitFile(t, p.warpPath, "warp-file.txt", "warp change", "warp change")
 			weftSHA := gitkit.CommitFile(t, p.weftPath, "weft-file.txt", "weft change", "weft change")
 
@@ -453,15 +497,15 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 			if !errors.Is(err, fabricengine.ErrPushLockBusy) {
 				t.Fatalf("bounded push under a held lock error = %v; want it to satisfy errors.Is(err, ErrPushLockBusy)", err)
 			}
-			for _, side := range []string{"push warp side", "push weft side"} {
+			for _, side := range []string{"push code side", "push records side"} {
 				if strings.Contains(err.Error(), side) {
 					t.Errorf("bounded push error = %q; want it to name neither side, found %q", err, side)
 				}
 			}
-			if got := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch); got != warpBefore {
+			if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != warpBefore {
 				t.Errorf("warp bare = %q; want it unmoved at %q", got, warpBefore)
 			}
-			if got := fabricengine.BareBranchSHAForTest(t, p.hub.WeftBare, p.weftBranch); got != weftBefore {
+			if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != weftBefore {
 				t.Errorf("weft bare = %q; want it unmoved at %q", got, weftBefore)
 			}
 
@@ -491,14 +535,14 @@ func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
 				t.Fatal("unbounded push still blocked 30s after the lock was released")
 			}
 
-			if got := fabricengine.BareBranchSHAForTest(t, p.hub.WeftBare, p.weftBranch); got != weftSHA {
+			if got := fabricengine.BareBranchSHAForTest(t, p.hub.RecordsBare, p.weftBranch); got != weftSHA {
 				t.Errorf("weft bare = %q; want it pushed to %q after the release", got, weftSHA)
 			}
 			wantWarp := warpBefore
 			if tt.pushesWarp {
 				wantWarp = warpSHA
 			}
-			if got := fabricengine.BareBranchSHAForTest(t, p.hub.WarpBare, p.warpBranch); got != wantWarp {
+			if got := fabricengine.BareBranchSHAForTest(t, p.hub.CodeBare, p.warpBranch); got != wantWarp {
 				t.Errorf("warp bare = %q; want %q after the release", got, wantWarp)
 			}
 		})

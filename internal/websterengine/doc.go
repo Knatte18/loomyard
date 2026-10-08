@@ -206,10 +206,15 @@
 // and the way forward is `lyx webster run --fresh` after resetting the branch to the run's start commit.
 // `run --fresh` drops such a batch under the same HEAD and path rules as a pending finding.
 // One narrow exception keeps the batches before it (AcceptBatchFabricReference, `lyx webster accept-audit --batch NN`):
-// when every Uncheckable entry is a pathless fabric reference, the batch recorded a start commit, HEAD is that start (a batch that committed qualifies after `git reset --keep <start>`) and the worktree is clean apart from the run's own state,
+// when every Uncheckable entry is a pathless fabric reference, the batch recorded a start commit and the worktree is clean apart from the run's own state,
 // the explicit call clears the entries and records each as a batch audit warning, and recover-batch then proceeds;
 // the refusal names that route only for such a record.
-// The evidence shows the task tree unchanged; the fabric repo's own state it cannot show, and the caller vouches for it by running the verb.
+// It has two routes.
+// Either HEAD is that start, so the batch changed nothing (a batch that committed qualifies after `git reset --keep <start>`),
+// or the start is an ancestor of HEAD and every entry's recorded command is read-only (`fabricengine.IsReadOnlyCommand`), so the batch's commits are kept.
+// An entry that is not read-only, or records no command, refuses the whole call with the reset-to-start and fresh-run steps.
+// The evidence shows the start still lies in HEAD's history, nothing uncommitted, and no listed reader able to write; it does not inspect the batch's commits.
+// The fabric repo's own state it cannot show, and the caller vouches for it by running the verb.
 // record-batch on a batch already terminal as a fork batch first audits the fork transcripts it has not consumed, once and without the settle wait:
 // an undispositioned correctness finding (a fork that marked its own batch done by writing state.json) replaces the terminal record with a failed one,
 // and otherwise the "already terminal" refusal stands.
@@ -432,7 +437,7 @@
 // resets the pair's code checkout through fabricengine's pair-checkout reset with the plan's SHA, the parent branch from the origin record and the own paths,
 // clears State.PreFixHead, saves, and fabric-syncs state.json.
 // It changes no other webster state; `run --fresh` or a plain `run` does the rest, as the way-forward texts order them.
-// The reset also moves the task branch on the remote to the same commit, so a later push is not rejected as diverged; `WEFT_SKIP_PUSH=1` skips that half.
+// The reset also moves the task branch on the remote to the same commit, so a later push is not rejected as diverged; `FABRIC_SKIP_PUSH=1` skips that half.
 // The bound: it can discard only commits above a run-recorded commit on the task's own branch, on the checkout and on the remote, and uncommitted tracked changes to paths the run itself wrote.
 // The remote update is made only when every commit it drops is reachable from the task worktree's HEAD and under a lease on the remote tip it read;
 // a remote-only commit becomes reachable only through the `git merge --strategy ours` the operator runs after reading the commits the refusal lists.

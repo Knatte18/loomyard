@@ -36,7 +36,7 @@ func archiveWeftTip(rec *Mutations, l *lyxcwd.Location, slug, weftBranch string)
 		}
 	}()
 
-	weftRoot, err := WeftRepoRoot(l)
+	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return "", "", fmt.Errorf("archive weft tip of %q: resolve weft repo: %w", weftBranch, err)
 	}

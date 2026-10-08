@@ -13,7 +13,7 @@
 // Active resolves the active profile at config-load time and builds it through the registry.
 // An empty active: and active: identity resolve to the identity batcher even when no profile of that name is configured, so a batcher.yaml without profiles: keeps working;
 // a configured profile named identity wins over that default.
-// A load error names batcher.yaml and the offending profile or key: an active: naming no profile, an unknown batchifier kind, or a cost profile with a missing or non-positive budget, a max_cards below 2, the retired alone_above, or a missing, negative or unknown weights coefficient.
+// A load error names batcher.yaml and the offending profile or key: an active: naming no profile, an unknown batchifier kind, or a cost profile with a missing or non-positive budget, a max_cards below 2, the retired alone_above, a weights: map still carrying the retired startup_context, or a missing, negative or unknown weights coefficient.
 // The template ships active: empty, so no run groups cards until the operator names the cautious profile.
 //
 // The identity batcher (identity.go) — one card, one batch — is one library entry among future
@@ -29,26 +29,30 @@
 // A card's read set holds one entry per target and Uses ref that planparser.RefFile maps to an existing file, weighing its lines times context_per_line, a package entry and a tests entry for each directory the card's targets live in, each weighing package_context, and the card's own text, its lines times context_per_line.
 // A card's messages are target_messages per target (a Rename pair counts once), test_file_messages per test file in its target directories and uses_messages per Uses entry;
 // its write allowance is its messages times message_context, the tool calls and output they add, plus its card-text lines times write_per_card_line, the code the card carries that the fork writes back out.
-// PeakContext of a segment is startup_context, plus fork_messages times message_context, plus the weight of the distinct read-set entries of all its cards, plus every card's write allowance.
+// PeakContext of a segment at a 1-based batch position is master_base plus (position - 1) times batch_growth, plus fork_messages times message_context, plus the weight of the distinct read-set entries of all its cards, plus every card's write allowance.
+// A fork inherits the orchestrating session's context, which is master_base when the first fork spawns and grows by batch_growth for every batch that finished before it, so a later batch starts deeper.
 // Context only grows within a fork, so that is the context after its last card, its largest;
 // a file two cards share counts once, and adding a card never lowers the peak.
 // A card's own estimate is the PeakContext of its one-card segment.
 // The coefficients are a Weights value, read by ProfileWeights from a profile's weights: map in batcher.yaml.
 //
-// The template's cautious coefficients are a first fit, not a measurement of every term.
-// tools/tokencount's calibration set each one-card estimate beside the measured peak context of the fork that ran the card (the largest input plus cache tokens of any of its messages) over 173 one-card forks of past runs, whose peaks had a median of 138k and a 75th percentile of 210k.
-// A grid over startup_context, message_context and test_file_messages chose 60000, 300 and 0.5, at a median measured-over-estimate ratio of 1.01 and a spread (75th over 25th percentile ratio) of 1.57;
-// the earlier summed-cost model had a spread of 4.45.
-// The other coefficients keep their first guesses: the card text is not in a run's base tree, so write_per_card_line and the card-text read are unfitted.
+// The template's cautious start coefficients are measured, the in-fork coefficients are not.
+// master_base is 52000, the mean measured first-fork start (50.3K to 53.5K), and batch_growth is 7000, the mean growth per batch (2.5K to 13.0K), over three cautious runs and twelve forks with each start measured, one of them in a resumed Merriam session.
+// Growth counts batches, not cards: Merriam gains context per fork it spawns and records, whatever the fork's size.
+// The in-fork coefficients were fitted under the old constant start of 60000, and await a re-fit against the position model.
+// That fit came from tools/tokencount's calibration, which set each one-card estimate beside the measured peak context of the fork that ran the card (the largest input plus cache tokens of any of its messages) over 173 one-card forks of past runs;
+// the card text is not in a run's base tree, so write_per_card_line and the card-text read are unfitted.
 // Each batch records its estimate's components (Breakdown), which webster keeps in state.json, so later runs can fit them all.
 //
 // The cost-model batchifier (cost.go), built by NewCost from CostParams, splits the card sequence into the fewest contiguous batches that fit.
 // Cards share a fork only inside a contiguous segment of the given order, so card order and every forward dependency are kept.
 // A one-card segment is always feasible;
-// a segment of two or more cards is feasible only when it holds at most MaxCards cards and its PeakContext stays within Budget.
-// A card over Budget therefore runs alone, as under identity, and no threshold value makes the split infeasible.
+// a segment of two or more cards is feasible only when it holds at most MaxCards cards and its PeakContext at its own batch position stays within Budget.
+// A card over Budget at its position therefore runs alone, as under identity, with nothing halting or warning, and no threshold value makes the split infeasible;
+// the recorded Estimate and Position show it.
 // Among the splits with the fewest batches it takes the one whose largest batch peaks lowest, so batches come out balanced;
 // a remaining tie leaves the last batch shortest.
-// An exact dynamic program over the segments ending at each card finds it in O(cards x MaxCards) segment evaluations, growing each segment's peak one card at a time.
-// Each batch carries the profile name, its PeakContext as its estimate and the estimate's Breakdown.
+// Batch is told how many batches the run executes ahead of its cards, so the k-th batch of the result is at position before + k, and a segment's peak depends on the batch it forms.
+// An exact dynamic program over (batches so far, last card placed) finds the split in O(cards² x MaxCards) segment evaluations, accumulating each segment's position-independent peak one card at a time and adding the position term per batch count.
+// Each batch carries the profile name, its PeakContext at its own position as its estimate and the estimate's Breakdown, which records that position.
 package batcher

@@ -37,6 +37,7 @@
 // The pure, hermetic half derives nothing and spawns nothing: the config module (shuttle.yaml), the
 // run Spec and its validation, the run directory / run.json state and its age-guarded orphan sweep,
 // and the Windows-to-POSIX path helper the engine layer needs for hook commands.
+// shuttle.yaml carries the provider's prompt-cache TTL default and per-role map, which shuttleengine passes through to the engine uninterpreted.
 // The run-loop half — Runner/Run in run.go, Wait in wait.go, and Attach in attach.go — drives a
 // LIVE agent through the ReedOps seam: it registers and removes strands, polls a real pane's capture
 // through the engine's Startup classifier, plays key choreography into that pane for
@@ -124,6 +125,7 @@
 // and a probe that attaches or refuses removes nothing.
 // A strand that cannot be removed comes back as an error naming `lyx reed remove <guid>`, never as a not-found answer.
 // Runner.AttachIfLive is the same probe with the removal off, for a caller that waits on a live run and starts nothing after a not-found answer.
+// Runner.ProbeGated is AttachGated's probe returning the reconstructed *Run unwaited, so a caller can hold two probed runs and wait on both concurrently.
 //
 // Skill loading: Spec.Skills names provider-neutral skills that shuttle loads into a fresh session, all in one turn, before the prompt.
 // It needs the optional SkillLoader capability, and a spec that names skills on an engine without it is refused before any run directory exists.

@@ -465,7 +465,7 @@ func TestSmokeOrch_Adopt(t *testing.T) {
 	})
 	const slug = "orch-adopt-task"
 	hubforge.AddPair(t, f.hub, slug)
-	worktree := f.hub.PairWarpWorktree(slug)
+	worktree := f.hub.PairCodeWorktree(slug)
 	t.Cleanup(func() { killTreeProcs(f.hub.Location.HubPath) })
 
 	codeword := fmt.Sprintf("kestrel-%d", time.Now().UnixNano()%100000)

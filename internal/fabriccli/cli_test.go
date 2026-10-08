@@ -153,8 +153,8 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	// onto weft:main (the board worktree), not merely present on disk. This
 	// checks tracked-ness directly (git ls-files) rather than a blanket
 	// `git status --porcelain` cleanliness assertion: CommitWeftAt/PushWeftAt
-	// bypass ensureWeftLockDir's exclude-seeding (by design — see
-	// weftgit.go's CommitWeftAt doc comment), so gitrepo's own
+	// bypass ensureWeftLockDir's exclude-seeding (by design — see recordsgit.go's CommitWeftAt doc comment),
+	// so gitrepo's own
 	// .gitrepo-push.lock can legitimately surface as untracked dirt on the
 	// board worktree; that is a pre-existing gap in boardengine.Sync's own
 	// identical CommitWeftAt/PushWeftAt pairing, not something this batch's

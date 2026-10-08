@@ -151,10 +151,12 @@ seam failing loudly if it is ever wired nil. With --rework, it runs the
 check set PR-Rework's own gate runs: the format-only set over the whole
 new plan, plus a check that its first_card equals the card number the
 rework session was told to start at -- the mode the rework session calls
-before handoff. The two flags are mutually exclusive. Every
-mode reports the result as one JSON envelope, carrying any informational
-findings under their own envelope key even on the success path. It takes
-no arguments.
+before handoff. The default and --rework modes include the
+card-fabric-reference check, which refuses a command in the plan that
+reaches the fabric repo; --require-approved leaves it out. The two flags
+are mutually exclusive. Every mode reports the result as one JSON
+envelope, carrying any informational findings under their own envelope
+key even on the success path. It takes no arguments.
 
 Example:
   lyx loom validate-plan

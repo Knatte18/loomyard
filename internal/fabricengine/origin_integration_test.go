@@ -5,8 +5,8 @@
 // adopted-weft-branch paths, its mutation-record entries (including the exemption the git-state
 // commit kind carries), and the run launcher that lands alongside it in the same batch.
 //
-// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helpers
-// (mustWeftRepoRoot); shares the single TestMain in testmain_test.go.
+// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helpers (mustRecordsRepoRoot);
+// shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -40,10 +40,10 @@ func gitShow(t *testing.T, dir, rev, path string) string {
 // merely sitting on disk in the working copy;
 // Add records the acting worktree's name as parent_worktree, the prime's name for a pair added from
 // the prime and the first pair's slug for a pair added from inside that pair;
-// two concurrent CommitWeftPaths calls against the same weft worktree serialize on the weft write
+// two concurrent CommitRecordsPaths calls against the same weft worktree serialize on the weft write
 // lock rather than racing unlocked: both land, neither corrupts the other's index, and the resulting
 // weft history is linear — driven the way TestCommitLock_WarpOnlySerializesConcurrentCommits drives
-// its own contention case, since CommitWeftPaths and ensureWeftLockDirAt's lock path are unexported
+// its own contention case, since CommitRecordsPaths and ensureWeftLockDirAt's lock path are unexported
 // and this package cannot import hubforge from inside package fabricengine to reuse that test's own
 // fixture directly;
 // and Add records the acting warp worktree's actual current branch as parent_branch, not always the
@@ -60,8 +60,8 @@ func TestAdd_OriginRecord(t *testing.T) {
 
 		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-		weftBranch := fabricengine.WeftBranchName(slug)
-		weftPath := fabricengine.WeftWorktreePath(l, slug)
+		weftBranch := fabricengine.RecordsBranchName(slug)
+		weftPath := fabricengine.RecordsWorktreePath(l, slug)
 		gitRelPath := filepath.ToSlash(filepath.Join(l.AnchorRel, fabricengine.OriginRecordRel()))
 
 		shown := gitShow(t, weftPath, weftBranch, gitRelPath)
@@ -101,11 +101,11 @@ func TestAdd_OriginRecord(t *testing.T) {
 		}
 	})
 
-	t.Run("concurrent CommitWeftPaths calls serialize", func(t *testing.T) {
+	t.Run("concurrent CommitRecordsPaths calls serialize", func(t *testing.T) {
 		const slug = "commit-lock-race"
 
 		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
-		weftPath := fabricengine.WeftWorktreePath(l, slug)
+		weftPath := fabricengine.RecordsWorktreePath(l, slug)
 		before := gitkit.RevListCount(t, weftPath, "HEAD")
 
 		names := [2]string{"race-a.txt", "race-b.txt"}
@@ -124,7 +124,7 @@ func TestAdd_OriginRecord(t *testing.T) {
 			name := name
 			go func() {
 				rec := fabricengine.NewMutations(l.HubPath)
-				_, committed, err := fabricengine.CommitWeftPaths(rec, weftPath, l.AnchorRel, []string{name}, "concurrent commit "+name, fabricengine.SyncOptions{})
+				_, committed, err := fabricengine.CommitRecordsPaths(rec, weftPath, l.AnchorRel, []string{name}, "concurrent commit "+name, fabricengine.SyncOptions{})
 				outcomes <- outcome{committed: committed, err: err}
 			}()
 		}
@@ -133,14 +133,14 @@ func TestAdd_OriginRecord(t *testing.T) {
 		for range names {
 			got := <-outcomes
 			if got.err != nil {
-				t.Fatalf("CommitWeftPaths() error = %v", got.err)
+				t.Fatalf("CommitRecordsPaths() error = %v", got.err)
 			}
 			if got.committed {
 				landed++
 			}
 		}
 		if landed != len(names) {
-			t.Errorf("landed commit count = %d; want %d (both concurrent CommitWeftPaths calls should land, serialized rather than raced away)", landed, len(names))
+			t.Errorf("landed commit count = %d; want %d (both concurrent CommitRecordsPaths calls should land, serialized rather than raced away)", landed, len(names))
 		}
 
 		after := gitkit.RevListCount(t, weftPath, "HEAD")
@@ -149,7 +149,7 @@ func TestAdd_OriginRecord(t *testing.T) {
 		}
 		merges := gitkit.RevListCount(t, weftPath, "--merges", "HEAD")
 		if merges != 0 {
-			t.Errorf("weft merge commit count = %d; want 0 (concurrent CommitWeftPaths calls should serialize into a linear history, never race into a merge)", merges)
+			t.Errorf("weft merge commit count = %d; want 0 (concurrent CommitRecordsPaths calls should serialize into a linear history, never race into a merge)", merges)
 		}
 	})
 
@@ -160,7 +160,7 @@ func TestAdd_OriginRecord(t *testing.T) {
 		// Give the weft side a branch to fork from before the warp side ever leaves "main": the weft-side
 		// branch existing is what createWeftWorktree's fork-from-parent-weft-branch step needs, and
 		// creating it here (rather than via a checkout) needs no worktree of its own.
-		gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(parentBranch), fabricengine.WeftBranchName("main"))
+		gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "branch", fabricengine.RecordsBranchName(parentBranch), fabricengine.RecordsBranchName("main"))
 
 		// Move the prime warp worktree onto the non-default branch Add will read via rev-parse
 		// --abbrev-ref HEAD.
@@ -201,12 +201,12 @@ func TestAdd_RecordsParentBranch_SubpathAnchoredHub(t *testing.T) {
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	wantPath := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, fabricengine.OriginRecordRel())
+	wantPath := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, fabricengine.OriginRecordRel())
 	if _, err := os.Stat(wantPath); err != nil {
 		t.Fatalf("origin record missing at the anchor-relative path %s: %v", wantPath, err)
 	}
 
-	rootPath := filepath.Join(fabricengine.WeftWorktreePath(l, slug), fabricengine.OriginRecordRel())
+	rootPath := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), fabricengine.OriginRecordRel())
 	if _, err := os.Stat(rootPath); err == nil {
 		t.Errorf("origin record also landed at the weft worktree root %s; want it only at the anchor-relative path", rootPath)
 	}
@@ -237,7 +237,7 @@ func TestAddRollback_CreatedPathLeavesNoOriginRecord(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	const slug = "created-path-no-record"
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
 
@@ -251,11 +251,11 @@ func TestAddRollback_CreatedPathLeavesNoOriginRecord(t *testing.T) {
 		t.Fatalf("Add(%q) error = %v; want the step-11 push failure, so rollback runs after the record step", slug, err)
 	}
 
-	if gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
+	if gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), weftBranch) {
 		t.Errorf("weft branch %q survived rollback on the created-branch path; want it (and the record commit it carried) removed", weftBranch)
 	}
-	if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
-		t.Errorf("weft worktree dir still exists at %s after rollback", fabricengine.WeftWorktreePath(l, slug))
+	if _, err := os.Stat(fabricengine.RecordsWorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("weft worktree dir still exists at %s after rollback", fabricengine.RecordsWorktreePath(l, slug))
 	}
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("warp worktree dir still exists at %s after rollback", fabricengine.WorktreePath(l, slug))
@@ -272,15 +272,15 @@ func TestAddRollback_AdoptedPathPreservesOriginRecordCommit(t *testing.T) {
 	const slug = "adopted-path-keeps-record"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	// Pre-create the weft branch with a unique commit that predates the Add, exactly as
 	// TestAddRollback_AdoptedWeftBranchSurvives does.
 	seedDir := filepath.Join(t.TempDir(), "seed")
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
 	gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
 	preciousSHA := gitkit.RevParse(t, seedDir, "HEAD")
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Break the warp origin remote so the push (the nearest step after the record's write-and-commit
 	// step) fails, triggering rollbackAdd — the same injection
@@ -294,7 +294,7 @@ func TestAddRollback_AdoptedPathPreservesOriginRecordCommit(t *testing.T) {
 		t.Fatalf("Add(%q) should have failed (broken origin remote)", slug)
 	}
 
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	if !gitkit.BranchExists(t, weftRoot, weftBranch) {
 		t.Fatalf("adopted weft branch %q was deleted by Add's rollback; want it preserved", weftBranch)
 	}
@@ -331,14 +331,14 @@ func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
 	const slug = "moved-pair"
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	recordedTip := gitkit.RevParse(t, mustWeftRepoRoot(t, l), "refs/remotes/origin/"+weftBranch)
+	recordedTip := gitkit.RevParse(t, mustRecordsRepoRoot(t, l), "refs/remotes/origin/"+weftBranch)
 	if _, err := h.Topology.Remove(l, slug, false, false); err != nil {
 		t.Fatalf("setup Remove(%q): %v", slug, err)
 	}
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", weftBranch, recordedTip)
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "branch", weftBranch, recordedTip)
 	gitkit.MustRun(t, l.WorktreePath(), "git", "checkout", "-b", "another-parent")
 
 	res, err := h.Topology.Add(l, slug, fabricengine.AddOptions{})
@@ -357,10 +357,10 @@ func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
 	if origin.ParentBranch != "main" {
 		t.Errorf("ReadOrigin().ParentBranch = %q; want the recorded %q, not the acting worktree's branch", origin.ParentBranch, "main")
 	}
-	if got := gitkit.RevParse(t, fabricengine.WeftWorktreePath(l, slug), "HEAD"); got != recordedTip {
+	if got := gitkit.RevParse(t, fabricengine.RecordsWorktreePath(l, slug), "HEAD"); got != recordedTip {
 		t.Errorf("adopted weft HEAD = %s; want the recorded tip %s (no record commit)", got, recordedTip)
 	}
-	if _, err := os.Stat(filepath.Join(fabricengine.WeftWorktreePath(l, slug), ".weft")); err != nil {
+	if _, err := os.Stat(filepath.Join(fabricengine.RecordsWorktreePath(l, slug), ".weft")); err != nil {
 		t.Errorf("adopted weft worktree lacks its .weft lock directory: %v", err)
 	}
 	recordPath := fabricengine.OriginRecordPathFor(l, slug)
@@ -390,8 +390,8 @@ func TestAdd_OriginRecordMutationEntries(t *testing.T) {
 	}
 
 	recordPath := fabricengine.OriginRecordPathFor(l, slug)
-	weftPath := fabricengine.WeftWorktreePath(l, slug)
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftPath := fabricengine.RecordsWorktreePath(l, slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 	wantSHA := gitkit.RevParse(t, weftPath, "refs/heads/"+weftBranch)
 
 	var fileWrittenCount, commitCreatedCount int
@@ -454,7 +454,7 @@ func TestAdd_SkipGitWritesRecordWithoutCommit(t *testing.T) {
 		t.Errorf("KindFileWritten entries naming the origin record = %d; want exactly 1 even under SkipGit", fileWrittenCount)
 	}
 	if commitCreatedCount != 0 {
-		t.Errorf("KindCommitCreated entries = %d; want 0 under SkipGit (CommitWeftPaths must return before staging or recording anything)", commitCreatedCount)
+		t.Errorf("KindCommitCreated entries = %d; want 0 under SkipGit (CommitRecordsPaths must return before staging or recording anything)", commitCreatedCount)
 	}
 }
 

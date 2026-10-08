@@ -83,7 +83,7 @@ func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 		t.Fatalf("WarpJunctions(%v) has no %q entry: %+v", names, lyxdirs.DotLyxDirName, junctions)
 	}
 
-	wantTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
+	wantTarget := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
 	if dotLyx.Target != wantTarget {
 		t.Errorf("WarpJunction(.lyx).Target = %q; want %q", dotLyx.Target, wantTarget)
 	}
@@ -109,7 +109,7 @@ func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 		t.Fatalf("warp .git/info/exclude does not contain %q after WireJunctions: %v", warpPattern, lines)
 	}
 
-	weftPath := fabricengine.WeftWorktreePath(l, slug)
+	weftPath := fabricengine.RecordsWorktreePath(l, slug)
 	if lines := gitkit.ExcludeLines(t, weftPath); !containsLine(lines, lyxdirs.DotLyxDirName+"/") {
 		t.Fatalf("weft .git/info/exclude does not contain %q after WireJunctions: %v", lyxdirs.DotLyxDirName+"/", lines)
 	}
@@ -160,7 +160,7 @@ func TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
 		t.Fatalf("write into warp .lyx: %v", err)
 	}
 
-	weftPath := fabricengine.WeftWorktreePath(l, slug)
+	weftPath := fabricengine.RecordsWorktreePath(l, slug)
 	status := gitkit.GitStatusPorcelain(t, weftPath)
 	if strings.Contains(status, lyxdirs.DotLyxDirName) {
 		t.Errorf("git status --porcelain in weft worktree = %q; want no %q entry (the .lyx exclude must exist before any write)", status, lyxdirs.DotLyxDirName)
@@ -198,7 +198,7 @@ func TestDotLyxJunction_AdoptsPreExistingRealDotLyx(t *testing.T) {
 		t.Fatalf(".lyx at %s is not a junction after adoption: isLink=%v err=%v", warpDotLyx, isLink, err)
 	}
 
-	weftDotLyx := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
+	weftDotLyx := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
 	adopted := filepath.Join(weftDotLyx, "webster", "state.json.lock")
 	content, err := os.ReadFile(adopted)
 	if err != nil {
@@ -245,7 +245,7 @@ func TestDotLyxJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched(t *te
 
 	// Materialise the weft target ahead of time with a same-named entry — the
 	// "an earlier adoption already ran" shape.
-	weftDotLyx := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
+	weftDotLyx := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
 	if err := os.MkdirAll(weftDotLyx, 0o755); err != nil {
 		t.Fatalf("mkdir weft target: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestDotLyxJunction_AdoptionMergesADirectoryPresentOnBothSides(t *testing.T)
 	names := []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName}
 
 	warpDotLyx := resetDotLyxJunction(t, l, slug)
-	weftDotLyx := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
+	weftDotLyx := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
 
 	// The exact shape the residual produces: `logs` on both sides, each holding a distinctly-named
 	// trace file, plus a nested subdirectory present on both sides so the merge is proven recursive

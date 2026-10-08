@@ -2,7 +2,7 @@
 
 // configchanges_integration_test.go proves ReadConfigChanges reports a task's changes to the per-worktree config files it is told about, read from the task's weft branch since its fork point.
 //
-// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helper mustWeftRepoRoot;
+// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helper mustRecordsRepoRoot;
 // it shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -104,12 +104,12 @@ func TestReadConfigChanges(t *testing.T) {
 			const slug = "feature"
 			h := hubforge.NewHub(t, tc.anchor)
 			l := h.Location
-			weftRoot := mustWeftRepoRoot(t, l)
-			forkPoint := gitkit.RevParse(t, weftRoot, fabricengine.WeftBranchName("main"))
+			weftRoot := mustRecordsRepoRoot(t, l)
+			forkPoint := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName("main"))
 
 			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-			pairWeft := h.PairWeftSibling(slug)
+			pairWeft := h.PairRecordsSibling(slug)
 			for _, rel := range tc.taskFiles {
 				gitkit.CommitFile(t, pairWeft, filepath.Join(l.AnchorRel, rel), "task change", "task change")
 			}
@@ -125,7 +125,7 @@ func TestReadConfigChanges(t *testing.T) {
 				if err == nil {
 					t.Fatalf("ReadConfigChanges() = %+v, nil; want an error", got)
 				}
-				for _, branch := range []string{fabricengine.WeftBranchName(slug), fabricengine.WeftBranchName(tc.parentBranch)} {
+				for _, branch := range []string{fabricengine.RecordsBranchName(slug), fabricengine.RecordsBranchName(tc.parentBranch)} {
 					if !strings.Contains(err.Error(), branch) {
 						t.Errorf("ReadConfigChanges() error = %q; want it to name %q", err, branch)
 					}
@@ -153,7 +153,7 @@ func TestReadConfigChanges(t *testing.T) {
 			if got.Base != forkPoint {
 				t.Errorf("Base = %s; want the fork point %s", got.Base, forkPoint)
 			}
-			if wantTip := gitkit.RevParse(t, weftRoot, fabricengine.WeftBranchName(slug)); got.Tip != wantTip {
+			if wantTip := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(slug)); got.Tip != wantTip {
 				t.Errorf("Tip = %s; want the task branch tip %s", got.Tip, wantTip)
 			}
 		})

@@ -424,7 +424,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	sizes := batcher.DiskSizes(deps.Geom.WorktreeRoot)
 	var batches []batcher.Batch
 	newPartition := func() ([]batcher.Batch, error) {
-		formed, err := formBatches(plan, deps.Batcher, sizes)
+		formed, err := formBatches(plan, deps.Batcher, sizes, 0)
 		if err != nil {
 			return nil, err
 		}

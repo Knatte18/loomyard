@@ -5,7 +5,7 @@
 // non-fatal remote-failure partial-teardown guarantee, and the once-per-verb no-origin pre-check
 // shared with Cleanup.
 //
-// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant, using the hub's own WeftBare field as the weft remote to assert against.
+// Every hub here is built through hubforge.NewHub per the hubforge Fabric-Fixture Invariant, using the hub's own RecordsBare field as the weft remote to assert against.
 // mustBreakOrigin/mustRemoveOrigin are shared with cleanupremote_integration_test.go
 // and reconcile_stale_registration_test.go — every assertion here goes through exported API.
 //
@@ -31,7 +31,7 @@ func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 	const slug = "remove-remote-both"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -46,7 +46,7 @@ func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 	if res.RemoteBranchError != "" {
 		t.Errorf("RemoteBranchError = %q; want empty", res.RemoteBranchError)
 	}
-	if gitkit.BranchExists(t, h.WeftBare, weftBranch) {
+	if gitkit.BranchExists(t, h.RecordsBare, weftBranch) {
 		t.Errorf("weft branch %q still exists on the remote after Remove(remote=true)", weftBranch)
 	}
 
@@ -69,7 +69,7 @@ func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 	const slug = "remove-remote-off"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -81,7 +81,7 @@ func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 	if res.RemoteBranchDeleted {
 		t.Errorf("RemoteBranchDeleted = true; want false — remote is opt-in")
 	}
-	if !gitkit.BranchExists(t, h.WeftBare, weftBranch) {
+	if !gitkit.BranchExists(t, h.RecordsBare, weftBranch) {
 		t.Errorf("weft branch %q no longer exists on the remote after Remove(remote=false)", weftBranch)
 	}
 }
@@ -97,7 +97,7 @@ func TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact(t *testing.T)
 	const slug = "remove-remote-fail"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -109,7 +109,7 @@ func TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact(t *testing.T)
 		t.Fatalf("Remove(%q, remote=true) = nil error; want the archive push failure against the unreachable origin", slug)
 	}
 
-	weftTarget := fabricengine.WeftWorktreePath(l, slug)
+	weftTarget := fabricengine.RecordsWorktreePath(l, slug)
 	if _, statErr := os.Stat(weftTarget); statErr != nil {
 		t.Errorf("weft worktree missing at %s; want the pair left intact by the failed archive: %v", weftTarget, statErr)
 	}
@@ -125,7 +125,7 @@ func TestRemove_NoOriginUnderRemoteReportsSkipReasonAndCompletesTeardown(t *test
 	const slug = "remove-no-origin"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -143,7 +143,7 @@ func TestRemove_NoOriginUnderRemoteReportsSkipReasonAndCompletesTeardown(t *test
 		t.Errorf("RemoteBranchError = %q; want empty when the pre-check itself skipped", res.RemoteBranchError)
 	}
 
-	weftTarget := fabricengine.WeftWorktreePath(l, slug)
+	weftTarget := fabricengine.RecordsWorktreePath(l, slug)
 	if _, statErr := os.Stat(weftTarget); statErr == nil {
 		t.Errorf("weft worktree still exists at %s; want the teardown to have completed", weftTarget)
 	}

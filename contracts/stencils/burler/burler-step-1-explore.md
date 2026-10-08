@@ -2,8 +2,9 @@
      understand what it is judged against.
      It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go),
      seeded to <hub>/_board/_lyx/stencils/burler/ and read from there at call time by composePrompt
-     (prompt.go) via internal/stencil, then read by the agent only when the round orchestrator
-     (burler-template-round-orchestrator.md) directs it here. target, fasit, rubric, and tool_use_rules are top-level {{.X}} substitutions;
+     (prompt.go) via internal/stencil, then read by each half's agent only when its orchestrator
+     (burler-template-review-orchestrator.md for the reviewer, burler-template-fix-orchestrator.md
+     for the fixer) directs it here; both halves read it, rendered once per half. target, fasit, rubric, and tool_use_rules are top-level {{.X}} substitutions;
      stencil.Fill requires all four non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive is the fifth marker,
      and friction_directive is the sixth: both are optional, both filled via stencil.FillOptional, and
      both render as nothing when their respective feature is inactive (PATTERN for pattern_directive,
@@ -35,6 +36,6 @@ It maps its own criteria onto that fixed four-value severity vocabulary;
 it never introduces a new severity name, and neither do you.
 Each finding also carries one of the four classes — `design`, `scope`, `decision`, `consistency` — and the rubric says what `design` means for this target.
 
-## Tool-use rules — how you gather evidence in job A
+## Tool-use rules — how you gather evidence
 
 {{.tool_use_rules}}

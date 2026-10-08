@@ -27,7 +27,7 @@ func TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes(t *testing.T) {
 
 	h1, f1, _, _, _, _ := newMergePairFixture(t, ".")
 	setupCleanNonFastForward(t, h1.PrimeWorktree(), "feature", "feature.txt", "warp-progress.txt")
-	branchAtCurrentHEAD(t, h1.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h1.PrimeRecords(), "feature-weft")
 	if err := os.WriteFile(filepath.Join(h1.PrimeWorktree(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
 		t.Fatalf("write dirty.txt: %v", err)
 	}
@@ -38,12 +38,12 @@ func TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes(t *testing.T) {
 
 	h2, f2, _, _, _, _ := newMergePairFixture(t, ".")
 	setupCleanNonFastForward(t, h2.PrimeWorktree(), "feature", "feature.txt", "warp-progress.txt")
-	branchAtCurrentHEAD(t, h2.PrimeWeft(), "feature-weft")
-	weftBefore2 := fabricengine.CurrentSHAForTest(t, h2.PrimeWeft())
-	if err := os.WriteFile(filepath.Join(h2.PrimeWeft(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
+	branchAtCurrentHEAD(t, h2.PrimeRecords(), "feature-weft")
+	weftBefore2 := fabricengine.CurrentSHAForTest(t, h2.PrimeRecords())
+	if err := os.WriteFile(filepath.Join(h2.PrimeRecords(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
 		t.Fatalf("write dirty.txt: %v", err)
 	}
-	gitkit.MustRun(t, h2.PrimeWeft(), "git", "add", "dirty.txt")
+	gitkit.MustRun(t, h2.PrimeRecords(), "git", "add", "dirty.txt")
 
 	res, err := f2.MergeIn("feature")
 	if err != nil {
@@ -52,10 +52,10 @@ func TestWeftGuards_DirtyWeftDoesNotRefuseWarpDirtyStillDoes(t *testing.T) {
 	if !res.Committed {
 		t.Errorf("MergeIn(feature) [weft dirty].Committed = false; want true — a real (non-fast-forward) merge")
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h2.PrimeWeft()); got != weftBefore2 {
+	if got := fabricengine.CurrentSHAForTest(t, h2.PrimeRecords()); got != weftBefore2 {
 		t.Errorf("weft HEAD changed to %q; want unchanged %q — MergeIn never touches the weft", got, weftBefore2)
 	}
-	if out := gitkit.GitStatusPorcelain(t, h2.PrimeWeft()); out == "" {
+	if out := gitkit.GitStatusPorcelain(t, h2.PrimeRecords()); out == "" {
 		t.Error("weft git status --porcelain after MergeIn = clean; want it to still mention the uncommitted dirty.txt")
 	}
 }
@@ -77,13 +77,13 @@ func TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes(t *testing.T)
 	h2, f2, commitOnWarpBranch2, commitOnWeftBranch2, _, _ := newMergePairFixture(t, ".")
 	commitOnWarpBranch2("feature", "feature.txt", "feature\n", "feature: warp")
 	commitOnWeftBranch2("feature-weft", "feature.txt", "feature\n", "feature: weft")
-	gitkit.MustRun(t, h2.PrimeWeft(), "git", "checkout", "-q", "--detach", "HEAD")
-	weftBefore2 := fabricengine.CurrentSHAForTest(t, h2.PrimeWeft())
+	gitkit.MustRun(t, h2.PrimeRecords(), "git", "checkout", "-q", "--detach", "HEAD")
+	weftBefore2 := fabricengine.CurrentSHAForTest(t, h2.PrimeRecords())
 
 	if _, err := f2.MergeIn("feature"); err != nil {
 		t.Fatalf("MergeIn(feature) [weft detached] error = %v; want nil — a detached weft HEAD must no longer refuse a merge the warp alone can complete", err)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h2.PrimeWeft()); got != weftBefore2 {
+	if got := fabricengine.CurrentSHAForTest(t, h2.PrimeRecords()); got != weftBefore2 {
 		t.Errorf("weft HEAD changed to %q; want unchanged %q — MergeIn never touches the weft", got, weftBefore2)
 	}
 }
@@ -140,14 +140,14 @@ func TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges(t *testing.T) {
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "feature.txt", "warp-progress.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "checkout", "-q", "--detach", "HEAD")
-	if err := os.WriteFile(filepath.Join(h.PrimeWeft(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "checkout", "-q", "--detach", "HEAD")
+	if err := os.WriteFile(filepath.Join(h.PrimeRecords(), "dirty.txt"), []byte("uncommitted\n"), 0o644); err != nil {
 		t.Fatalf("write dirty.txt: %v", err)
 	}
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "add", "dirty.txt")
-	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "add", "dirty.txt")
+	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -156,10 +156,10 @@ func TestWeftGuards_DirtyAndDetachedWeftTogetherStillMerges(t *testing.T) {
 	if !res.Committed {
 		t.Errorf("MergeIn(feature) [weft dirty AND detached].Committed = false; want true — a real (non-fast-forward) merge")
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftBefore {
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeRecords()); got != weftBefore {
 		t.Errorf("weft HEAD changed to %q; want unchanged %q — MergeIn never touches the weft", got, weftBefore)
 	}
-	if out := gitkit.GitStatusPorcelain(t, h.PrimeWeft()); out == "" {
+	if out := gitkit.GitStatusPorcelain(t, h.PrimeRecords()); out == "" {
 		t.Error("weft git status --porcelain after MergeIn = clean; want the uncommitted dirty.txt still there — the merge must not have tidied the weft")
 	}
 }
@@ -177,7 +177,7 @@ func TestWeftGuards_EveryRecordThisBinaryWritesIsResumable(t *testing.T) {
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -216,7 +216,7 @@ func TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact(t *testing.T
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	warpStartSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
 
@@ -226,8 +226,8 @@ func TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact(t *testing.T
 
 	// The weft gains its own commit during the attempt window — its own advance, independent of the
 	// merge attempt in progress on the warp side.
-	gitkit.CommitFile(t, h.PrimeWeft(), "weft-progress.txt", "progress\n", "weft: progress during attempt")
-	weftDuringAttempt := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	gitkit.CommitFile(t, h.PrimeRecords(), "weft-progress.txt", "progress\n", "weft: progress during attempt")
+	weftDuringAttempt := fabricengine.CurrentSHAForTest(t, h.PrimeRecords())
 
 	if _, err := f.MergeAbort(); err != nil {
 		t.Fatalf("MergeAbort() error = %v", err)
@@ -236,10 +236,10 @@ func TestWeftGuards_AbortLeavesWeftCommitsDuringAttemptWindowIntact(t *testing.T
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpStartSHA {
 		t.Errorf("warp HEAD after MergeAbort = %q; want restored pre-merge SHA %q", got, warpStartSHA)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftDuringAttempt {
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeRecords()); got != weftDuringAttempt {
 		t.Errorf("weft HEAD after MergeAbort = %q; want unchanged %q — the weft is not a reset target", got, weftDuringAttempt)
 	}
-	if _, err := os.Stat(filepath.Join(h.PrimeWeft(), "weft-progress.txt")); err != nil {
+	if _, err := os.Stat(filepath.Join(h.PrimeRecords(), "weft-progress.txt")); err != nil {
 		t.Errorf("Stat(weft-progress.txt) after MergeAbort = %v; want present — the weft commit made during the attempt window must survive intact", err)
 	}
 }

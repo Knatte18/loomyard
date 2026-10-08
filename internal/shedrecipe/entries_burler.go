@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, resolves the row's "gates" Config key through resolveGateSpec into the RunOpts.Gate it builds, joins and creates the run directory this row's segment shares with its Bouncer row, and returns shedadapters.NewBurlerProducer(name, env.Burler, env.Shuttle, profile, opts, runDir, env.Now).
+// burlerRoundEntry is the Constructor for the "BurlerRound" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, resolves the row's "gates" Config key through resolveGateSpec into the RunOpts.Gate it builds, joins and creates the run directory this row's segment shares with its Bouncer row, and returns shedadapters.NewBurlerProducer(name, shedadapters.BurlerDeps{Runner: env.Burler, Remover: env.BurlerRemover, Models: env.ReviewModels, AnchorPath: env.AnchorPath}, profile, opts, runDir, env.Now).
 //
 // All three burler rows (Discussion-Burler, Plan-Burler, Webster-Burler) share this one constructor, which is why the validator is selected by the "gates" key rather than implied by the constructor:
 // the Webster round names the "verify" gate, so a round that changed code ends with a passing plan verify, and the two review rounds name their own validators.
@@ -27,14 +27,6 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
-	model, err := configString(cfg, "model", false)
-	if err != nil {
-		return nil, err
-	}
-	effort, err := configString(cfg, "effort", false)
-	if err != nil {
-		return nil, err
-	}
 	timeoutS, err := configInt(cfg, "timeout_s", false)
 	if err != nil {
 		return nil, err
@@ -43,7 +35,7 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "run_subdir", "profile", "model", "effort", "timeout_s", "gates"); err != nil {
+	if err := configRejectUnknown(cfg, "run_subdir", "profile", "timeout_s", "gates"); err != nil {
 		return nil, err
 	}
 
@@ -52,24 +44,15 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, err
 	}
 
-	// A row setting model/effort/timeout_s overrides the Env value; a row omitting it takes the Env
-	// value; both absent leaves the zero value. configInt with required false returns 0 for an
-	// absent key, so 0 is the absent sentinel here -- the same "no meaningful explicit zero"
-	// reasoning as configString's empty-string sentinel.
-	if model == "" {
-		model = env.ReviewModel
-	}
-	if effort == "" {
-		effort = env.ReviewEffort
-	}
+	// A row setting timeout_s overrides the Env value; a row omitting it takes the Env value; both absent leaves the zero value.
+	// configInt with required false returns 0 for an absent key, so 0 is the absent sentinel here.
+	// The reasoning is configString's: an empty string is the absent sentinel because there is no meaningful explicit zero.
 	timeout := time.Duration(timeoutS) * time.Second
 	if timeoutS == 0 {
 		timeout = env.ReviewTimeout
 	}
 
 	opts := burlerengine.RunOpts{
-		Model:   model,
-		Effort:  effort,
 		Timeout: timeout,
 		Gate:    gate,
 	}
@@ -77,14 +60,16 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 	if err := requireAbsRoot("BurlerRound", "RunRoot", env.RunRoot); err != nil {
 		return nil, err
 	}
+	// The anchor the round's ready marker is derived under.
+	if err := requireAbsRoot("BurlerRound", "AnchorPath", env.AnchorPath); err != nil {
+		return nil, err
+	}
 	if err := requireSeam("BurlerRound", "Burler", env.Burler); err != nil {
 		return nil, err
 	}
-	// The same Shuttle seam the segment's Bouncer row already reads, threaded here as the round's
-	// live-agent probe. Required rather than optional: without it a resumed run respawns over a
-	// still-live round, producing two agents writing one review -- and on a fix-scope: source row,
-	// two agents committing to one branch.
-	if err := requireSeam("BurlerRound", "Shuttle", env.Shuttle); err != nil {
+	// The remover is required rather than optional: without it a resumed run could not stop the one live half of a round,
+	// and respawning beside it would produce two agents writing one file -- and on a fix-scope: source row, two agents committing to one branch.
+	if err := requireSeam("BurlerRound", "BurlerRemover", env.BurlerRemover); err != nil {
 		return nil, err
 	}
 
@@ -99,7 +84,7 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, fmt.Errorf("shedrecipe: BurlerRound: create run dir %q: %w", runDir, err)
 	}
 
-	producer, err := shedadapters.NewBurlerProducer(name, env.Burler, env.Shuttle, profile, opts, runDir, env.Now)
+	producer, err := shedadapters.NewBurlerProducer(name, shedadapters.BurlerDeps{Runner: env.Burler, Remover: env.BurlerRemover, Models: env.ReviewModels, AnchorPath: env.AnchorPath}, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerRound: %w", err)
 	}
@@ -142,10 +127,9 @@ func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, 
 // Six of these seven key names are a hand-maintained duplicate of internal/burlercli's profileYAML
 // kebab-case shape, kept identical deliberately so a human who has written a burler profile file
 // reads a recipe row without a second vocabulary. review-path, fixer-report-path, prior-reviews,
-// prior-fixer-reports, and cluster-exclude are deliberately absent because
-// shedadapters.NewBurlerProducer's own doc states those five burlerengine.Profile fields and
-// burlerengine.RunOpts.Round are overwritten per round, so a recipe author setting one would be
-// setting a value the producer silently discards.
+// prior-fixer-reports, and cluster-exclude are deliberately absent.
+// shedadapters.NewBurlerProducer's own doc states that those burlerengine.Profile fields, the ready marker path and burlerengine.RunOpts.Round are overwritten per round.
+// A recipe author setting one would therefore set a value the producer silently discards.
 //
 // rubric_stencil is the one key with no profileYAML counterpart: it names a stencilstore rubric
 // stencil, read and filled via shedadapters.ReadRubric, to set Profile.Rubric in place of a literal

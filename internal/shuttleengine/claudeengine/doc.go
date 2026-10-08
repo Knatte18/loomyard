@@ -47,6 +47,14 @@
 // a child `bash` the agent starts does not re-run the file, and it grants or denies nothing, so the agents' permission rules are untouched.
 // A `CLAUDE_ENV_FILE` the operator's own environment exports is overridden for lyx-spawned sessions only.
 //
+// Both lines carry `CLAUDE_CODE_PROMPT_CACHE_TTL`, so a session writes its prompt cache at the TTL its role needs rather than at Claude Code's subscription default.
+// Prepare resolves the value from `Spec.Role` through `shuttle.yaml`'s `claude_prompt_cache_ttl_roles` map, with `claude_prompt_cache_ttl` as the fallback for an empty or unmapped role,
+// and validates the whole configured set to `5m` or `1h` (exact, case-sensitive) before any artifact is written.
+// It logs the resolved value with the role.
+// The value is fixed for the session's life, since a resume line is never rebuilt.
+// The subagent bucket (`CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL`) is left at Claude Code's default,
+// and a `FORCE_PROMPT_CACHING_5M` in Claude Code's own environment still wins.
+//
 // The context reading comes from the transcript a Stop payload names, read backwards from its end in doubling chunks.
 // The latest main-chain assistant usage entry or compaction boundary is the reading, whichever sits later in the file;
 // a boundary reading carries its `postTokens` and timestamp and is marked compacted.

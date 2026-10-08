@@ -26,7 +26,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-fabric-git` — Running git on warp or weft: only `internal/fabricengine`, in-process, never raw git; the weft commit is Go with a scoped pathspec. — [background](pattern/PATTERN-fabric-git.md)
 - `PATTERN-fabric-destruction-chokepoint` — Destroying anything in fabric: only `internal/fabricengine/destroy.go`, checking containment, ownership, dirtiness, force in that order. — [background](pattern/PATTERN-fabric-destruction-chokepoint.md)
 - `PATTERN-fabric-write-containment` — Writing under `_launchers` or `_portals` from `fabricengine`: through an `os.Root` rooted at the hub, never raw `os.MkdirAll`, `os.WriteFile` or `fslink`.
-- `PATTERN-push-both-sides` — Pushing a run's records side from Go: in a task pair the code branch goes with it, rebase-free, under fabric's absorbing push lock, and pushing is never left to an agent; the prime's per-transition push stays records-only, since its code branch is the operator's parent branch.
+- `PATTERN-push-both-sides` — Pushing a run's records side from Go: in a task pair the code branch goes with it, rebase-free, under fabric's absorbing push lock, and never left to an agent; the prime's pushes (per-transition, `fabric push`/`sync`/`commit`) stay records-only, its code branch being the operator's.
 - `PATTERN-mutation-record` — Adding a mutating fabric verb: it accumulates a `*Mutations` record and its result embeds `MutationRecord` under a fixed envelope key set. — [background](pattern/PATTERN-mutation-record.md)
 - `PATTERN-pair-teardown` — Tearing down a pair: only through `internal/pairteardown`, which ends the pair's reed session before any worktree is removed. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: the producer never runs from inside it, and session shutdown precedes removal in one row. — [background](pattern/PATTERN-batten-bookend.md)
@@ -51,7 +51,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-gate-self-check-parity` — Adding a mechanical gate: its closure and its CLI self-check verb call the same package function, and both land in one task. — [background](pattern/PATTERN-gate-self-check-parity.md)
 - `PATTERN-verified-tree` — Running a verify command: through `verifytree.Verify` only, never on a dirty tree, skipping only on a record of HEAD's tree. (test) — [background](pattern/PATTERN-verified-tree.md)
 - `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active profile's batchifier derives, its kind chosen by `internal/batcher`'s registry and the profile by `batcher.yaml`'s `active:`; the partition is recorded in `state.json` at first init, replaced only by a rebaseline.
-- `PATTERN-review-round` — Running a review and fix round: review on disk before any target is touched, every finding fixed, converged only on a judge verdict. — [background](pattern/PATTERN-review-round.md)
+- `PATTERN-review-round` — Running a review and fix round: review on disk before any target is touched, every finding fixed or disputed by the fixer with evidence that its premise is false, converged only on a judge verdict. — [background](pattern/PATTERN-review-round.md)
 - `PATTERN-sole-parsers` — Reading or writing plan, discussion, summary or recipe files: only `planparser`, `discussionparser`, `summaryparser` and `shedbuild` parse them. (test) — [background](pattern/PATTERN-sole-parsers.md)
 
 ## Agents and prompts

@@ -155,7 +155,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	}
 
 	geom := hubgeom.WebsterGeometry(loc)
-	geom.Index = planglyph.NewIndex()
+	geom.Index = planglyph.NewIndex(fabricengine.NewReferenceRule())
 	if stencilsDir != "" {
 		// The same boundary stat standalone's prologue applies, through the same descriptor method,
 		// so the two modes can never drift on what a told stencils directory must be: a typo'd
@@ -246,7 +246,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	}
 
 	geom := standalonegeom.WebsterGeometry(res.Target, res.StateDir)
-	geom.Index = planglyph.NewIndex()
+	geom.Index = planglyph.NewIndex(fabricengine.NewReferenceRule())
 	reedGeom := standalonegeom.ReedGeometry(res.Target, res.StateDir, res.Hash8)
 	geom.StencilsDir = res.StencilsDir
 	geom.PlanDir = res.PlanDir

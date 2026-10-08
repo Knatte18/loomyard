@@ -74,8 +74,6 @@ func TestBurlerRoundEntry_ProfileMapping(t *testing.T) {
 			"tool-use":    true,
 			"cluster-fan": "",
 		},
-		"model":     "opus",
-		"effort":    "high",
 		"timeout_s": 30,
 	}
 
@@ -106,12 +104,6 @@ func TestBurlerRoundEntry_ProfileMapping(t *testing.T) {
 		t.Errorf("profile.ClusterFan = %q; want \"\"", profile.ClusterFan)
 	}
 
-	if opts.Model != "opus" {
-		t.Errorf("opts.Model = %q; want %q", opts.Model, "opus")
-	}
-	if opts.Effort != "high" {
-		t.Errorf("opts.Effort = %q; want %q", opts.Effort, "high")
-	}
 	if opts.Timeout != 30*time.Second {
 		t.Errorf("opts.Timeout = %v; want %v", opts.Timeout, 30*time.Second)
 	}
@@ -234,38 +226,59 @@ func TestBurlerRoundEntry_RubricStencil(t *testing.T) {
 		}
 	})
 
-	// A nil Shuttle is refused rather than tolerated: it is the round's live-agent probe, and a
-	// producer built without it respawns over a still-live round -- two agents writing one review,
-	// and on a fix-scope: source row, two agents committing to one branch. A wiring slip must fail
-	// here, at construction, not silently at the next crash.
-	t.Run("NilShuttleSeamIsRefused", func(t *testing.T) {
+	t.Run("RelativeAnchorPathIsRefused", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.AnchorPath = "relative/anchor"
+		cfg := minimalBurlerConfig()
+
+		_, err := burlerRoundEntry("review-round", cfg, env)
+		assertErrContains(t, err, "AnchorPath")
+	})
+
+	// A nil BurlerRemover is refused rather than tolerated: it stops the one live half of a resumed round.
+	// A producer built without it respawns beside a still-live half, which is two agents writing one file and, on a fix-scope: source row, two agents committing to one branch.
+	// A wiring slip must fail here, at construction, not silently at the next crash.
+	t.Run("NilBurlerRemoverSeamIsRefused", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.BurlerRemover = nil
+		cfg := minimalBurlerConfig()
+
+		_, err := burlerRoundEntry("review-round", cfg, env)
+		assertErrContains(t, err, "BurlerRemover")
+	})
+
+	// The round probes through its runner, so the row reads no Shuttle.
+	t.Run("NilShuttleSeamIsTolerated", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.Shuttle = nil
 		cfg := minimalBurlerConfig()
 
-		_, err := burlerRoundEntry("review-round", cfg, env)
-		assertErrContains(t, err, "Shuttle")
+		if _, err := burlerRoundEntry("review-round", cfg, env); err != nil {
+			t.Fatalf("burlerRoundEntry() error = %v; want nil", err)
+		}
 	})
 }
 
-// TestBurlerRoundEntry_EnvReviewFallback covers the three fallback outcomes for
-// burlerRoundEntry's model/effort/timeout_s resolution: a row omitting the keys takes
-// env.ReviewModel/ReviewEffort/ReviewTimeout; a row setting all three overrides the Env values;
+// TestBurlerRoundEntry_EnvReviewFallback covers burlerRoundEntry's model and timeout_s resolution:
+// each half's model is the first pick of its list in env.ReviewModels and a row has no key to change it;
+// a row omitting timeout_s takes env.ReviewTimeout and a row setting it overrides the Env value;
 // both absent with an empty Env leaves the zero values.
 func TestBurlerRoundEntry_EnvReviewFallback(t *testing.T) {
 	t.Run("RowOmitsTakesEnvValues", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.ReviewModel = "env-model"
-		env.ReviewEffort = "env-effort"
+		env.ReviewModels = burlerengine.RoundModels{
+			Review: []burlerengine.ModelChoice{{Model: "env-model", Effort: "env-effort"}},
+			Fix:    []burlerengine.ModelChoice{{Model: "env-fix-model", Effort: "env-fix-effort"}},
+		}
 		env.ReviewTimeout = 45 * time.Second
 		cfg := minimalBurlerConfig()
 
 		_, opts := callAndCaptureProfile(t, "review-round", cfg, env)
-		if opts.Model != "env-model" {
-			t.Errorf("opts.Model = %q; want %q", opts.Model, "env-model")
+		if want := (burlerengine.ModelChoice{Model: "env-model", Effort: "env-effort"}); opts.Review != want {
+			t.Errorf("opts.Review = %+v; want %+v", opts.Review, want)
 		}
-		if opts.Effort != "env-effort" {
-			t.Errorf("opts.Effort = %q; want %q", opts.Effort, "env-effort")
+		if want := (burlerengine.ModelChoice{Model: "env-fix-model", Effort: "env-fix-effort"}); opts.Fix != want {
+			t.Errorf("opts.Fix = %+v; want %+v", opts.Fix, want)
 		}
 		if opts.Timeout != 45*time.Second {
 			t.Errorf("opts.Timeout = %v; want %v", opts.Timeout, 45*time.Second)
@@ -274,21 +287,11 @@ func TestBurlerRoundEntry_EnvReviewFallback(t *testing.T) {
 
 	t.Run("RowSetsOverridesEnvValues", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.ReviewModel = "env-model"
-		env.ReviewEffort = "env-effort"
 		env.ReviewTimeout = 45 * time.Second
 		cfg := minimalBurlerConfig()
-		cfg["model"] = "row-model"
-		cfg["effort"] = "row-effort"
 		cfg["timeout_s"] = 30
 
 		_, opts := callAndCaptureProfile(t, "review-round", cfg, env)
-		if opts.Model != "row-model" {
-			t.Errorf("opts.Model = %q; want %q", opts.Model, "row-model")
-		}
-		if opts.Effort != "row-effort" {
-			t.Errorf("opts.Effort = %q; want %q", opts.Effort, "row-effort")
-		}
 		if opts.Timeout != 30*time.Second {
 			t.Errorf("opts.Timeout = %v; want %v", opts.Timeout, 30*time.Second)
 		}
@@ -299,11 +302,8 @@ func TestBurlerRoundEntry_EnvReviewFallback(t *testing.T) {
 		cfg := minimalBurlerConfig()
 
 		_, opts := callAndCaptureProfile(t, "review-round", cfg, env)
-		if opts.Model != "" {
-			t.Errorf("opts.Model = %q; want \"\"", opts.Model)
-		}
-		if opts.Effort != "" {
-			t.Errorf("opts.Effort = %q; want \"\"", opts.Effort)
+		if opts.Review != (burlerengine.ModelChoice{}) || opts.Fix != (burlerengine.ModelChoice{}) {
+			t.Errorf("opts models = (%+v, %+v); want the zero choices", opts.Review, opts.Fix)
 		}
 		if opts.Timeout != 0 {
 			t.Errorf("opts.Timeout = %v; want 0", opts.Timeout)
@@ -351,6 +351,17 @@ func TestBurlerRoundEntry_StrictUnknownKeys(t *testing.T) {
 		_, err := burlerRoundEntry("review-round", cfg, env)
 		assertErrContains(t, err, "unexpected")
 	})
+
+	// The retired model and effort keys: model choice lives in loom.yaml's review and fix keys only.
+	for _, key := range []string{"model", "effort"} {
+		t.Run("RowKey_"+key, func(t *testing.T) {
+			env := newTestEnv(t)
+			cfg := minimalBurlerConfig()
+			cfg[key] = "value"
+			_, err := burlerRoundEntry("review-round", cfg, env)
+			assertErrContains(t, err, key)
+		})
+	}
 
 	for _, key := range []string{"review-path", "fixer-report-path", "prior-reviews", "prior-fixer-reports", "cluster-exclude"} {
 		t.Run("ProfileKey_"+key, func(t *testing.T) {

@@ -138,7 +138,7 @@ func TestPrune_StillRemovesAStaleWeftWorktreeItOwns(t *testing.T) {
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	weftPath := fabricengine.WeftWorktreePath(l, slug)
+	weftPath := fabricengine.RecordsWorktreePath(l, slug)
 
 	// Make the pair stale: the warp worktree directory disappears, the registration stays.
 	if err := os.RemoveAll(fabricengine.WorktreePath(l, slug)); err != nil {

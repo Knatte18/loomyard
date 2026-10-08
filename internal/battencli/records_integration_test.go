@@ -79,7 +79,7 @@ func stepAwaitingApprovalResumeDoneTeardown_ArchivesTheRunRecords(t *testing.T, 
 		if !committed {
 			t.Errorf("the stubbed child commit recorded nothing")
 		}
-		out, err := exec.Command("git", "-C", h.PairWeftSibling(slug), "rev-parse", "HEAD").Output()
+		out, err := exec.Command("git", "-C", h.PairRecordsSibling(slug), "rev-parse", "HEAD").Output()
 		if err != nil {
 			return err
 		}
@@ -139,7 +139,7 @@ func stepAwaitingApprovalResumeDoneTeardown_ArchivesTheRunRecords(t *testing.T, 
 	if len(tasksFile.Tasks) != 1 || strings.Join(tasksFile.Tasks[0].Args, " ") != "reed attach" || tasksFile.Tasks[0].RunOptions.RunOn != "folderOpen" {
 		t.Errorf("tasks.json tasks = %+v; want exactly one `reed attach` task on folderOpen", tasksFile.Tasks)
 	}
-	if out, err := exec.Command("git", "-C", h.PairWarpWorktree(slug), "status", "--porcelain").Output(); err != nil {
+	if out, err := exec.Command("git", "-C", h.PairCodeWorktree(slug), "status", "--porcelain").Output(); err != nil {
 		t.Fatalf("git status in the pair's code worktree: %v", err)
 	} else if strings.TrimSpace(string(out)) != "" {
 		t.Errorf("pair's code worktree is dirty after the driven open:\n%s", out)
@@ -164,7 +164,7 @@ func stepAwaitingApprovalResumeDoneTeardown_ArchivesTheRunRecords(t *testing.T, 
 	if step.Producer != battenrecipe.NameWorktreeTeardown || step.Outcome != shedengine.Done || step.State != shedengine.StateDone {
 		t.Errorf("teardown step = producer %q outcome %q state %q; want %q done with the run done", step.Producer, step.Outcome, step.State, battenrecipe.NameWorktreeTeardown)
 	}
-	if pathExists(h.PairWarpWorktree(slug)) || pathExists(h.PairWeftSibling(slug)) {
+	if pathExists(h.PairCodeWorktree(slug)) || pathExists(h.PairRecordsSibling(slug)) {
 		t.Errorf("the task pair still exists after Worktree-Teardown")
 	}
 
@@ -172,7 +172,7 @@ func stepAwaitingApprovalResumeDoneTeardown_ArchivesTheRunRecords(t *testing.T, 
 	anchorRel := filepath.ToSlash(childLocation.AnchorRel)
 	for _, rel := range []string{frictionRel, reportRel} {
 		path := filepath.ToSlash(filepath.Join(anchorRel, rel))
-		if got := gitShow(t, h.WeftBare, tag+":"+path); len(got) == 0 {
+		if got := gitShow(t, h.RecordsBare, tag+":"+path); len(got) == 0 {
 			t.Errorf("%s:%s is empty on the records origin", tag, path)
 		}
 	}

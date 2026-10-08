@@ -31,16 +31,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// mustWeftRepoRoot resolves fabricengine.WeftRepoRoot(l), failing the test on
+// mustRecordsRepoRoot resolves fabricengine.RecordsRepoRoot(l), failing the test on
 // any error — the shared test-package helper for the many call sites across
 // this package's tests that need the weft prime worktree path, now that it is
 // a fabricengine-owned resolution rather than a Layout method.
-func mustWeftRepoRoot(t *testing.T, l *lyxcwd.Location) string {
+func mustRecordsRepoRoot(t *testing.T, l *lyxcwd.Location) string {
 	t.Helper()
 
-	root, err := fabricengine.WeftRepoRoot(l)
+	root, err := fabricengine.RecordsRepoRoot(l)
 	if err != nil {
-		t.Fatalf("WeftRepoRoot: %v", err)
+		t.Fatalf("RecordsRepoRoot: %v", err)
 	}
 	return root
 }
@@ -60,15 +60,15 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	// scaffolding is seeded by hand any more.
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	// Pre-create the weft branch with a unique commit that predates the Add —
 	// the history the rollback must not destroy. The seeding worktree is
 	// removed again so the branch is free for Add to adopt.
 	seedDir := filepath.Join(t.TempDir(), "seed")
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
 	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Inject a deterministic failure AFTER the adopt: a blocker file at the
 	// portal location makes step 9 (createPortal) fail, triggering rollback.
@@ -80,11 +80,6 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 		t.Fatalf("create blocker: %v", err)
 	}
 
-	// The gate's ownedManagedBranch requires either a "-weft" suffix or a configured branch prefix
-	// to recognize a branch as fabric-managed; a bare slug carries neither, so rollbackAdd's warp
-	// branch deletion would be refused as unmanaged with an empty prefix. A nonempty BranchPrefix
-	// here makes the warp branch this Add creates recognizable to the gate, matching how a real
-	// deployment configures fabric.
 	const branchPrefix = "task/"
 	warpBranch := branchPrefix + slug
 	topology := fabricengine.NewTopology(fabricengine.Config{BranchPrefix: branchPrefix})
@@ -93,18 +88,18 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	}
 
 	// The adopted branch survives the rollback, still at its unique commit.
-	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
+	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), weftBranch) {
 		t.Fatalf("adopted weft branch %q was deleted by Add's rollback; want it preserved", weftBranch)
 	}
-	branchSHA := gitkit.RevParse(t, mustWeftRepoRoot(t, l), "refs/heads/"+weftBranch)
+	branchSHA := gitkit.RevParse(t, mustRecordsRepoRoot(t, l), "refs/heads/"+weftBranch)
 	if branchSHA != preciousSHA {
 		t.Errorf("adopted weft branch %q = %s; want the pre-existing commit %s", weftBranch, branchSHA, preciousSHA)
 	}
 
 	// Everything Add itself created is rolled back: no weft worktree dir, no
 	// warp worktree dir, no warp branch.
-	if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
-		t.Errorf("weft worktree dir still exists at %s", fabricengine.WeftWorktreePath(l, slug))
+	if _, err := os.Stat(fabricengine.RecordsWorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("weft worktree dir still exists at %s", fabricengine.RecordsWorktreePath(l, slug))
 	}
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("warp worktree dir still exists at %s", fabricengine.WorktreePath(l, slug))
@@ -137,11 +132,11 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 			}
 			h := hubforge.NewHub(t, ".")
 			l := h.Location
-			weftBranch := fabricengine.WeftBranchName(slug)
-			weftRoot := mustWeftRepoRoot(t, l)
+			weftBranch := fabricengine.RecordsBranchName(slug)
+			weftRoot := mustRecordsRepoRoot(t, l)
 
 			clone := t.TempDir()
-			gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.WeftBare, ".")
+			gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.RecordsBare, ".")
 			gitkit.MustRun(t, clone, "git", "checkout", "--quiet", "-b", weftBranch)
 			gitkit.CommitFile(t, clone, "first.txt", "first\n", "first origin work")
 			gitkit.MustRun(t, clone, "git", "push", "--quiet", "origin", weftBranch)
@@ -151,7 +146,7 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 				gitkit.CommitFile(t, clone, "second.txt", "second\n", "second origin work")
 				gitkit.MustRun(t, clone, "git", "push", "--quiet", "origin", weftBranch)
 			}
-			originTip := gitkit.RevParse(t, h.WeftBare, weftBranch)
+			originTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
 
 			// A blocker at the portal location fails Add at createPortal, after the weft branch is taken from origin.
 			portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
@@ -166,7 +161,7 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 				t.Fatalf("Add should have failed (portal blocker)")
 			}
 
-			if got := gitkit.RevParse(t, h.WeftBare, weftBranch); got != originTip {
+			if got := gitkit.RevParse(t, h.RecordsBare, weftBranch); got != originTip {
 				t.Errorf("origin weft branch = %s; want unchanged %s", got, originTip)
 			}
 			exists := gitkit.BranchExists(t, weftRoot, weftBranch)
@@ -178,21 +173,15 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 					t.Errorf("local weft branch = %s; want origin's tip %s", got, originTip)
 				}
 			}
-			if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
-				t.Errorf("weft worktree dir still exists at %s", fabricengine.WeftWorktreePath(l, slug))
+			if _, err := os.Stat(fabricengine.RecordsWorktreePath(l, slug)); !os.IsNotExist(err) {
+				t.Errorf("weft worktree dir still exists at %s", fabricengine.RecordsWorktreePath(l, slug))
 			}
 		})
 	}
 }
 
-// TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix documents the F2 behaviour: under the DEFAULT
-// empty branch_prefix, the warp branch Add creates is a bare slug the gate cannot prove is fabric's,
-// so rollbackAdd's step-5 deletion is refused and the branch is left behind — while the worktree pair
-// itself is fully rolled back. This is the conservative-by-design counterpart to
-// TestAddRollback_AdoptedWeftBranchSurvives (which uses a non-empty prefix so the branch IS
-// deletable); pinning it guards against a regression that would make the gate delete a bare-slug
-// branch indistinguishable from a user's own.
-func TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix(t *testing.T) {
+// TestAddRollback_WarpBranchDeletedUnderEmptyPrefix pins that under the DEFAULT empty branch_prefix the rollback deletes the bare-slug warp branch this Add created, together with the worktree pair.
+func TestAddRollback_WarpBranchDeletedUnderEmptyPrefix(t *testing.T) {
 	t.Parallel()
 
 	const slug = "empty-prefix-rollback"
@@ -220,34 +209,67 @@ func TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix(t *testing.T) {
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("warp worktree dir still exists at %s after rollback", fabricengine.WorktreePath(l, slug))
 	}
-	if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
-		t.Errorf("weft worktree dir still exists at %s after rollback", fabricengine.WeftWorktreePath(l, slug))
+	if _, err := os.Stat(fabricengine.RecordsWorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("weft worktree dir still exists at %s after rollback", fabricengine.RecordsWorktreePath(l, slug))
 	}
 
-	// The bare-slug warp branch is left behind: the gate cannot prove it is fabric's under an empty
-	// prefix, so it refuses deletion rather than risk deleting a user branch of the same name.
-	if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
-		t.Errorf("warp branch %q was deleted by rollback under an empty prefix; the gate must refuse to delete an unprovable bare-slug branch", slug)
+	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
+		t.Errorf("warp branch %q survived the rollback under an empty prefix; the rollback must delete the branch this Add created", slug)
 	}
 }
 
-// TestAddRollback_RefusedWarpBranchDeletionLogsWarn sabotage-proves the WARN log round 4 added:
-// TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix above only asserts the branch is left behind,
-// which is refusal behavior that predates the log line — reverting rollbackAdd's logger.Warn hunk
-// leaves that test green. This test captures the logger's stderr half and asserts the specific WARN
-// line actually fires when the gate refuses the bare-slug branch deletion, so a regression that drops
-// the log is caught rather than silently tolerated.
+// TestAddRollback_RefusedWarpBranchDeletionLogsWarn pins the origin deletion's lease: a warp branch that moved on origin after step 11's push is left there,
+// and a WARN line names the branch and the lease the deletion was pinned to.
+// A pre-receive hook on the weft bare advances the warp bare's branch and declines step 12's push, which fails Add after step 11 landed.
 //
 // It is deliberately NOT parallel: it rebinds the process-global logger sink via SetOutput, and Go
 // pauses t.Parallel() tests until the sequential ones finish, so a non-parallel test owns the sink for
 // its duration with no cross-talk from a concurrently-logging sibling.
 func TestAddRollback_RefusedWarpBranchDeletionLogsWarn(t *testing.T) {
-	const slug = "warn-on-refused-branch"
+	const slug = "warn-on-refused-lease"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
+	pushedTip := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 
-	// Deterministic post-creation failure: a blocker file at the portal makes createPortal fail after
-	// the warp worktree and its bare-slug branch already exist, triggering rollbackAdd.
+	clone := t.TempDir()
+	gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.CodeBare, ".")
+	movedTip := gitkit.CommitFile(t, clone, "moved.txt", "moved\n", "moved on origin")
+	gitkit.MustRun(t, clone, "git", "push", "--quiet", "origin", "HEAD:refs/heads/elsewhere")
+	installPreReceive(t, h.RecordsBare, "#!/bin/sh\nenv -i PATH=\"$PATH\" git --git-dir='"+filepath.ToSlash(h.CodeBare)+"' update-ref refs/heads/"+slug+" "+movedTip+"\necho declined >&2\nexit 1\n")
+
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
+		t.Fatalf("Add should have failed (weft push declined)")
+	}
+
+	if got := gitkit.RevParse(t, h.CodeBare, slug); got != movedTip {
+		t.Errorf("origin warp branch = %s; want the moved tip %s left in place", got, movedTip)
+	}
+	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
+		t.Errorf("local warp branch %q survived the rollback", slug)
+	}
+	logged := buf.String()
+	for _, want := range []string{"left the warp branch on origin", slug, "lease=" + pushedTip} {
+		if !strings.Contains(logged, want) {
+			t.Errorf("WARN output lacks %q; got:\n%s", want, logged)
+		}
+	}
+}
+
+// TestAddRollback_AdoptedWarpBranchLocalCopyDeleted forces Add to fail after it adopted a live pair's warp branch from origin, and asserts the rollback deletes the local copy and leaves origin's branch untouched.
+func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
+	t.Parallel()
+
+	const slug = "adopted-warp-rollback"
+	h := removedPair(t, slug)
+	l := h.Location
+	// A weft branch on origin that moved past its archive tag makes the pair live, so Add adopts both branches from origin.
+	pushCommitToOrigin(t, h.RecordsBare, fabricengine.RecordsBranchName(slug))
+	originTip := gitkit.RevParse(t, h.CodeBare, slug)
+
 	portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
 	if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
 		t.Fatalf("mkdir portal parent: %v", err)
@@ -256,27 +278,15 @@ func TestAddRollback_RefusedWarpBranchDeletionLogsWarn(t *testing.T) {
 		t.Fatalf("create blocker: %v", err)
 	}
 
-	// Capture the logger's stderr half for the duration of the Add.
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-
-	// Default empty branch_prefix: the warp branch is the bare slug the gate cannot prove is fabric's.
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
+	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
 		t.Fatalf("Add should have failed (portal blocker)")
 	}
 
-	logged := buf.String()
-	if !strings.Contains(logged, "rollbackAdd's warp-branch deletion was refused by the destructive gate") {
-		t.Fatalf("expected a WARN line surfacing the refused bare-slug branch deletion; got logger output:\n%s", logged)
+	if gitkit.BranchExists(t, l.WorktreePath(), slug) {
+		t.Errorf("local warp branch %q adopted from origin survived the rollback", slug)
 	}
-	// The refusal names the branch and the check that refused, so the trace is actionable.
-	if !strings.Contains(logged, slug) {
-		t.Errorf("WARN line does not name the left-behind branch %q; got:\n%s", slug, logged)
-	}
-	if !strings.Contains(logged, "ownership") {
-		t.Errorf("WARN line does not name the ownership check as the refusal cause; got:\n%s", logged)
+	if got := gitkit.RevParse(t, h.CodeBare, slug); got != originTip {
+		t.Errorf("origin warp branch = %s; want unchanged %s", got, originTip)
 	}
 }
 
@@ -306,8 +316,8 @@ func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 		link   string
 		target string
 	}{
-		{"_lyx", fabricengine.WarpLyxLink(l, slug), fabricengine.WeftLyxDirFor(l, slug)},
-		{"_extra", filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra"), filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, "_extra")},
+		{"_lyx", fabricengine.CodeLyxLink(l, slug), fabricengine.WeftLyxDirFor(l, slug)},
+		{"_extra", filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra"), filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, "_extra")},
 	} {
 		isLink, err := fslink.IsLink(tc.link)
 		if err != nil || !isLink {
@@ -343,21 +353,19 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	// already produces the real-hub shape this fixture used to hand-assemble.
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftBranch := fabricengine.WeftBranchName(slug)
+	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	// Pre-create the weft branch with a unique commit that predates the Add,
 	// exactly as TestAddRollback_AdoptedWeftBranchSurvives does.
 	seedDir := filepath.Join(t.TempDir(), "seed")
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
 	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Break the warp origin remote so step 11's push fails AFTER step 10b has
 	// already wired the junctions — the mid-add failure this test covers.
 	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
 
-	// See TestAddRollback_AdoptedWeftBranchSurvives's comment: a configured branch prefix is what
-	// makes the warp branch this Add creates recognizable to the gate's ownedManagedBranch check.
 	const branchPrefix = "task/"
 	warpBranch := branchPrefix + slug
 	topology := fabricengine.NewTopology(fabricengine.Config{BranchPrefix: branchPrefix})
@@ -376,7 +384,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 		name string
 		link string
 	}{
-		{"_lyx", fabricengine.WarpLyxLink(l, slug)},
+		{"_lyx", fabricengine.CodeLyxLink(l, slug)},
 		{"_extra", filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra")},
 	} {
 		if _, err := os.Lstat(tc.link); !os.IsNotExist(err) {
@@ -386,18 +394,18 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 
 	// The adopted branch still survives the rollback, exactly as the portal-
 	// blocker variant of this scenario asserts.
-	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
+	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), weftBranch) {
 		t.Fatalf("adopted weft branch %q was deleted by Add's rollback; want it preserved", weftBranch)
 	}
-	branchSHA := gitkit.RevParse(t, mustWeftRepoRoot(t, l), "refs/heads/"+weftBranch)
+	branchSHA := gitkit.RevParse(t, mustRecordsRepoRoot(t, l), "refs/heads/"+weftBranch)
 	if branchSHA != preciousSHA {
 		t.Errorf("adopted weft branch %q = %s; want the pre-existing commit %s", weftBranch, branchSHA, preciousSHA)
 	}
 
 	// Everything Add itself created is rolled back: no weft worktree dir, no
 	// warp worktree dir, no warp branch.
-	if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
-		t.Errorf("weft worktree dir still exists at %s", fabricengine.WeftWorktreePath(l, slug))
+	if _, err := os.Stat(fabricengine.RecordsWorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("weft worktree dir still exists at %s", fabricengine.RecordsWorktreePath(l, slug))
 	}
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("warp worktree dir still exists at %s", fabricengine.WorktreePath(l, slug))

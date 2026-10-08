@@ -10,7 +10,7 @@
 // tree combining warp↔weft topology verbs and weft content-sync verbs over the fabricengine
 // package.
 // fabric is the sole warp↔weft git-coordination module (see docs/overview.md).
-// Every fabric weft branch carries the uniform "-weft" suffix (fabricengine.WeftBranchName).
+// Every fabric weft branch carries the uniform "-weft" suffix (fabricengine.RecordsBranchName).
 package fabriccli
 
 import (
@@ -234,7 +234,7 @@ nothing unless the target is a registered linked worktree of this repo.
 The pair's weft branch is deleted locally as before. The pair's local task
 (warp) branch is deleted too when its work is pushed or landed on the parent
 branch recorded when the pair was added; otherwise it is kept, with the reason
-in warp_branch_kept_reason, and the command still exits 0. --force never
+in code_branch_kept_reason, and the command still exits 0. --force never
 overrides that check. Use --remote to
 additionally delete its copy on the weft remote — an irreversible action,
 visible to every other clone. A weft repo with no origin remote configured
@@ -242,7 +242,7 @@ reports the reason in remote_skipped_reason and still exits 0. A failed
 remote deletion exits non-zero, with the reason in remote_branch_error.
 --remote also deletes the task branch on the warp repo's origin once its work
 is landed; otherwise the branch is kept, with the reason in
-remote_warp_branch_kept_reason, and the command still exits 0.
+remote_code_branch_kept_reason, and the command still exits 0.
 
 Example:
   lyx fabric remove my-task
@@ -666,8 +666,8 @@ func runCheckout(ctx context.Context, out io.Writer, args []string) int {
 		return errWithRecord(out, r.Mutated(), err)
 	}
 	return okWithRecord(out, r.Mutated(), map[string]any{
-		"branch":        r.Branch,
-		"weft_worktree": r.WeftWorktree,
+		"branch":           r.Branch,
+		"records_worktree": r.RecordsWorktree,
 	})
 }
 
@@ -901,7 +901,7 @@ func failedReconcilePairs(pairs []fabricengine.ReconcilePairResult) error {
 	}
 	return fmt.Errorf(
 		"reconcile could not repair %d of %d pair(s); first failure at %s: %s",
-		len(failed), len(pairs), failed[0].WarpWorktree, failed[0].Error,
+		len(failed), len(pairs), failed[0].CodeWorktree, failed[0].Error,
 	)
 }
 
@@ -1099,7 +1099,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 	// produces exit 0 here exactly as it does from cleanup, and the identical configuration state
 	// never yields two different verdicts across the two verbs.
 	if r.RemoteBranchError != "" {
-		weftBranch := fabricengine.WeftBranchName(cfg.BranchPrefix + slug)
+		weftBranch := fabricengine.RecordsBranchName(cfg.BranchPrefix + slug)
 		// "origin" is hardcoded here rather than referencing fabricengine's own unexported
 		// originRemoteName, which stays unexported: exporting it just to spell this one error string
 		// would widen the engine's API for no caller that needs it.
@@ -1113,7 +1113,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 
 // removeFields builds the envelope fields for a remove result.
 // New RemoveResult fields must be added here explicitly — the map is hand-built, not reflected.
-// warp_branch_kept_reason, remote_warp_branch_kept_reason, stray_path and abandoned_session appear only when set.
+// code_branch_kept_reason, remote_code_branch_kept_reason, stray_path and abandoned_session appear only when set.
 func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResult) map[string]any {
 	steps := r.Steps
 	if steps == nil {
@@ -1126,17 +1126,17 @@ func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResul
 		"remote_branch_deleted":      r.RemoteBranchDeleted,
 		"remote_branch_error":        r.RemoteBranchError,
 		"remote_skipped_reason":      r.RemoteSkippedReason,
-		"warp_branch_deleted":        r.WarpBranchDeleted,
+		"code_branch_deleted":        r.CodeBranchDeleted,
 		"steps":                      steps,
 		"finished":                   r.Finished,
-		"remote_warp_branch_deleted": r.RemoteWarpBranchDeleted,
+		"remote_code_branch_deleted": r.RemoteCodeBranchDeleted,
 		"session_ended":              session.Ended,
 	}
-	if r.WarpBranchKeptReason != "" {
-		fields["warp_branch_kept_reason"] = r.WarpBranchKeptReason
+	if r.CodeBranchKeptReason != "" {
+		fields["code_branch_kept_reason"] = r.CodeBranchKeptReason
 	}
-	if r.RemoteWarpBranchKeptReason != "" {
-		fields["remote_warp_branch_kept_reason"] = r.RemoteWarpBranchKeptReason
+	if r.RemoteCodeBranchKeptReason != "" {
+		fields["remote_code_branch_kept_reason"] = r.RemoteCodeBranchKeptReason
 	}
 	if r.StrayPath != "" {
 		fields["stray_path"] = r.StrayPath

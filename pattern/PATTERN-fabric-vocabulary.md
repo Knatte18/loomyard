@@ -14,8 +14,6 @@
   - `CLAUDE.md` and `README.md`.
 - Skipped: `_lyx`, `.lyx` and the repo-root `sandbox/` fixture tree, matched on the path's first segment, and the paths in `vocabScanAllowlist` in `internal/lyxcwd/enforcement_test.go`.
 - `internal/configsync` keeps a narrower carve-out in its test files too: string literals and comments may name the sides, identifiers may not.
-- `vocabExempt` in `internal/lyxcwd/enforcement_test.go` is the closed list of owner-set spellings a non-owner file may carry despite naming a side.
-  The scan strips exactly those whole tokens before matching, so any other identifier carrying a side, including a new owner-set export, still fails.
-  An entry needs a reason naming its owner-set declaration.
+- A non-owner file carries no side-named spelling, owner-set exports included.
 - `internal/weftname` is imported only from the owner set and from `internal/lyxcwd/geometry_test.go`, which tests `weftname.SiblingPath`.
 - Enforced by `TestEnforcement_FabricVocabulary`, which `internal/lyxcwd/vocabscan_test.go` backs with fixtures.

@@ -48,7 +48,7 @@ func TestWireJunctions_RepairsCorruptedJunctions(t *testing.T) {
 	slug := l.WorktreeName
 
 	extraLink := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra")
-	extraTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, "_extra")
+	extraTarget := filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, "_extra")
 
 	realDirectory := func(t *testing.T, name string) string {
 		t.Helper()
@@ -71,7 +71,7 @@ func TestWireJunctions_RepairsCorruptedJunctions(t *testing.T) {
 	}{
 		{
 			name:          "lyx_wrong_target",
-			link:          fabricengine.WarpLyxLink(l, slug),
+			link:          fabricengine.CodeLyxLink(l, slug),
 			correctTarget: fabricengine.WeftLyxDirFor(l, slug),
 			corruptTarget: func(t *testing.T) string { return realDirectory(t, "not-the-weft-lyx-dir") },
 		},
@@ -83,7 +83,7 @@ func TestWireJunctions_RepairsCorruptedJunctions(t *testing.T) {
 		},
 		{
 			name:          "lyx_dangling",
-			link:          fabricengine.WarpLyxLink(l, slug),
+			link:          fabricengine.CodeLyxLink(l, slug),
 			correctTarget: fabricengine.WeftLyxDirFor(l, slug),
 			corruptTarget: func(t *testing.T) string { return missingDirectory(t, "does-not-exist") },
 		},

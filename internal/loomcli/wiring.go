@@ -267,7 +267,7 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
 	c.env.Rework.ReadCommitted = committedAnchoredReader(location)
-	c.env.PlanIndex = planglyph.NewIndex()
+	c.env.PlanIndex = planglyph.NewIndex(fabricengine.NewReferenceRule())
 }
 
 // committedAnchoredReader returns the seam that reads an anchor-relative file as committed at HEAD for location, with found false when HEAD has no such file.
@@ -431,7 +431,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(location, line) })
 
 	websterGeom := hubgeom.WebsterGeometry(location)
-	websterGeom.Index = planglyph.NewIndex()
+	websterGeom.Index = planglyph.NewIndex(fabricengine.NewReferenceRule())
 
 	// frictionDir is the single resolved value every told-friction consumer below reads: non-empty
 	// only when loom.yaml's friction key is set, per the "Tier 2 off is an empty path string, never a
@@ -447,7 +447,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// AnchorPath semantics and the field set burlerengine.Geometry declares, rather than webster's
 	// (see hubgeom.go's BurlerGeometry doc comment). The two geometry builders are distinct types
 	// with distinct field sets, not interchangeable constructors of the same shape.
-	burlerEngine := burlerengine.New(runner, hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir, frictionDir)
+	burlerRemover := burlerengine.NewReedStrandRemover(reedEngine)
+	burlerEngine := burlerengine.New(burlerengine.RunnerShuttle(runner), burlerRemover, hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir, frictionDir)
 
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},
@@ -679,7 +680,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// RunRoot is durable: the status seam commits it with every transition.
 		RunRoot: loomengine.LoomReviewsDir(location),
 		Burler:  burlerEngine,
-		Now:     time.Now,
+		// The remover the engine stops a half with, so the producer stops the one live half of a resumed round the same way.
+		BurlerRemover: burlerRemover,
+		Now:           time.Now,
 
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug:           seedSlug(location.WorktreeName),
@@ -688,9 +691,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 
-		ReviewModel:   reviewSettings.Model,
-		ReviewEffort:  reviewSettings.Effort,
-		ReviewVersion: reviewSettings.Version,
+		ReviewModels:  reviewSettings.Models,
 		ReviewTimeout: reviewSettings.Timeout,
 
 		JudgeModel:   judgeSettings.Model,

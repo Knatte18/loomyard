@@ -17,7 +17,7 @@
 // With no slugs it counts the -last finished runs whose sessions changed most recently,
 // leaving out the prime, the current directory.
 // A run is finished once its pair is torn down, which leaves an archive/<slug>/<sha> tag in
-// the prime's weft repository (-weft, default the current worktree's weft sibling); a run still in flight,
+// the prime's fabric repository (the one repository flag, -weft, default the current worktree's weft sibling); a run still in flight,
 // or parked before Webster, would count as one whose later steps cost nothing.
 // Claude Code keeps a worktree's sessions in ~/.claude/projects/<encoded path>/, one
 // <session>.jsonl per session, and a session's sub-agents (the Webster master's forks)
@@ -32,24 +32,50 @@
 // parent's context, so usage is counted once per message id within a run.
 //
 // One fork is one sub-agent transcript of a session whose role is webster;
-// the report's "Webster forks" section lists every such fork of every run, by run as listed and then by start time, with the cards it ran, its counted messages, its peak context (the largest input + cache write + cache read of any counted message) and its weight.
+// the report's "Webster forks" section lists every such fork of every run, by run as listed and then by start time, with the cards it ran, its start context, its counted messages, its peak context and its weight.
+// A fork's start context is the input + cache write + cache read of its first counted message, the context Merriam held when it spawned the fork, and its peak context is the largest such sum of any counted message;
+// the fork also records the file name of the webster session transcript its own transcript sits under, its Merriam session.
 // A fork's cards are read from its prompt, never from commit times: the prompt is the first tool result in the fork's transcript holding a card pointer line, a "- `<path>/NN-<slug>.md`" bullet with nothing after the closing backtick (a Read result's line-number prefix is ignored), and the cards are every such line of that one result.
 // A fork whose transcript has no such result is listed as unattributed.
 //
-// With -calibrate <profile> the report gains a "Calibration (<profile>)" section: the batcher's peak-context estimate for each card beside the measured peak context of the fork that ran it, for every run counted.
-// -history names the repository holding the runs' plan commits and is required with -calibrate;
+// With -calibrate <profile> the report gains a "Calibration (<profile>)" section of two tables, each row a fork that names cards.
+// The one repository flag, -weft, names the repository holding the archive tags of finished runs, the runs' plan commits and the runs' webster records;
+// its default, the current worktree's weft sibling, applies whenever the flag is empty and either no slugs are named or the calibration is asked for, so -calibrate needs no other flag.
 // -config names the directory whose batcher.yaml holds the profile, default the current directory.
 // The code repository is the current directory.
-// A run's plan is read from the newest "loom: plan artifacts for <slug>" commit in the history repository committed before the run's first Webster fork started.
-// Its base tree is the start_sha of the earliest successful begin-batch result in the run's webster session transcripts, the HEAD before the first batch forked, read from the code repository.
-// A card's estimate is batcher.PeakContext of the card alone over the base tree with the profile's weights;
-// its measured peak is the largest PeakContext of any fork whose cards name it, and its ratio is measured over estimate.
-// The card's own text is not in the base tree, so the estimate leaves it out.
-// The section lists the runs and cards it left out, each with its reason:
-//   - a run: "no webster fork"; "no plan commit before the first fork"; "plan at <sha> does not parse: <error>"; "no base: no begin-batch result in its webster sessions"; "base <sha> is not in the repository";
-//   - a card: "no fork names it"; "ran in a multi-card fork", since only a one-card fork measures a one-card cost; "estimate is 0".
 //
-// The section ends with the fit per run and overall: the number of cards, the median ratio and the spread, the 75th percentile of the ratios over the 25th, both interpolated linearly between the closest ranks.
+// A fork's position is one plus the card-naming forks before it in the same Merriam session, by start time, so a resumed session restarts its positions at 1.
+// The start table gives each fork's measured start context beside the start the profile estimates for its position, master_base + (position - 1) x batch_growth.
+// It needs only the transcripts, so a run left out of the peak table for its plan or base still contributes its start rows.
+// Below it the section prints the least-squares fit of master_base and batch_growth, the measured start over position - 1 across all those forks, beside the profile's values, with its residual spread: the 75th over the 25th percentile of each fork's measured start over its fitted start.
+// With fewer than two distinct positions it prints "not fitted" with that reason, and a negative fitted coefficient is printed and marked unusable, since batcher.yaml refuses a negative weight.
+// The fit is a report; nothing consumes it and the tool never edits batcher.yaml.
+//
+// The peak table gives, for every fork whose cards are all cards of the run's plan, one-card and multi-card alike, batcher.PeakContext of the fork's cards at its position beside the fork's measured peak context and their ratio, measured over estimate.
+// A run's plan is read from the newest "loom: plan artifacts for <slug>" commit in the repository committed before the run's first Webster fork started.
+// The estimate's tree is the run's base: the start_sha of the earliest successful begin-batch result in the run's webster session transcripts, the HEAD before the first batch forked, read from the code repository.
+// The card's own text is not in the base tree, so the estimate leaves it out.
+// Each row also gives the fork's in-fork growth: its measured peak minus its measured start, against its estimated peak minus the estimated start of its position, and the growth ratio of the two, "n/a" when the estimated growth is not positive.
+// The section lists the runs, forks and cards it left out, each with its reason:
+//   - a run: "no webster fork"; "no plan commit before the first fork"; "plan at <sha> does not parse: <error>"; "no base: no begin-batch result in its webster sessions"; "base <sha> is not in the repository";
+//   - a fork: "names a card the plan lacks: <id>"; "estimate is 0";
+//   - a card: "no fork names it".
+//
+// The section ends with the fit per run and overall: the number of forks, the median peak ratio and its spread, and the number of forks with a growth ratio, their median growth ratio and its spread.
+// A spread is the 75th percentile of the ratios over the 25th, both interpolated linearly between the closest ranks.
+//
+// With -calibrate the report then gains three more sections, read from the same repository through gitrepo's read side: the cost of each batch, one row per run and one summary line per profile.
+// A run's webster records are the commits whose subject is "loom: webster run record for <slug>", and the last one is the newest;
+// its state.json, decoded leniently so an older shape still reads, gives the partition and the batch records.
+// A batch's profile is its recorded partition batch's profile, and a run with no recorded partition counts as "identity", one batch per card, with its cards counted from the run's plan commit.
+// A batch's weight and measured peak come from the run's forks whose transcript file name is among its record's fork transcripts;
+// a batch is failed when its record's terminal status is failed, dead or stuck or its kind is recovery, and a record of kind recovery is one recovery.
+// A run whose records carry more than one run guid was restarted with --fresh, and a run whose state cannot be read or decoded has no partition to name a profile;
+// each keeps a row marked with its reason and enters no profile line.
+// Webster-Review findings are those of the round-<n>-review.md files directly in the webster review directory at the last record, counted through the review parser;
+// no such file, or one that does not parse, marks the run's findings not read.
+// Per-batch figures go to each batch's own profile, so a run whose batches name several profiles contributes to each.
+// A run contributes findings to a profile line only when its batches name one profile, it was not restarted with --fresh and its review files were read, and the line's findings per card is over the cards of those runs alone, with their number stated, or "n/a" when there are none.
 //
 // The weight column is input + 1.25 x cache writes + 0.1 x cache reads + 5 x output: a
 // relative figure for ranking roles, not a price, and blind to the per-model price
@@ -71,6 +97,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
+// repositoryFlag is the name of the one flag naming the repository that holds the archive tags, plan commits and webster records.
+const repositoryFlag = "weft"
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "tokencount:", err)
@@ -84,15 +113,11 @@ func run(args []string, stdout io.Writer) error {
 	projects := fs.String("projects", "", "Claude Code projects directory (default: ~/.claude/projects)")
 	out := fs.String("out", "", "write the report to this file instead of stdout")
 	last := fs.Int("last", 6, "with no slugs named, count this many of the most recently active finished runs")
-	weft := fs.String("weft", "", "the prime's weft repository holding the archive tags of finished runs (default: the current worktree's weft sibling)")
+	weft := fs.String(repositoryFlag, "", "the prime's fabric repository holding the archive tags of finished runs, the runs' plan commits and webster records (default: the current worktree's weft sibling)")
 	calibrate := fs.String("calibrate", "", "add the calibration section for this batcher.yaml profile")
-	history := fs.String("history", "", "repository holding the runs' plan commits, required with -calibrate")
 	configDir := fs.String("config", "", "directory whose batcher.yaml holds the profile (default: the current directory)")
 	if err := fs.Parse(args); err != nil {
 		return err
-	}
-	if *calibrate != "" && *history == "" {
-		return fmt.Errorf("-calibrate needs -history, the repository holding the plan commits")
 	}
 	wd, err := lyxcwd.Getwd()
 	if err != nil {
@@ -109,14 +134,14 @@ func run(args []string, stdout io.Writer) error {
 		*projects = filepath.Join(home, ".claude", "projects")
 	}
 	slugs := fs.Args()
-	if len(slugs) == 0 {
-		if *weft == "" {
-			loc, err := lyxcwd.Resolve(wd)
-			if err != nil {
-				return err
-			}
-			*weft = fabricengine.WeftWorktree(loc)
+	if *weft == "" && (len(slugs) == 0 || *calibrate != "") {
+		loc, err := lyxcwd.Resolve(wd)
+		if err != nil {
+			return err
 		}
+		*weft = fabricengine.RecordsWorktree(loc)
+	}
+	if len(slugs) == 0 {
 		finished, err := finishedRuns(*weft)
 		if err != nil {
 			return err
@@ -140,15 +165,22 @@ func run(args []string, stdout io.Writer) error {
 	}
 
 	var calibration *Calibration
+	var profiles *ProfileReport
 	if *calibrate != "" {
 		if *configDir == "" {
 			*configDir = wd
 		}
-		c, err := Calibrate(report.Runs, *calibrate, *configDir, gitrepo.New(*history), gitrepo.New(wd))
+		fabric := gitrepo.New(*weft)
+		c, err := Calibrate(report.Runs, *calibrate, *configDir, fabric, gitrepo.New(wd))
 		if err != nil {
 			return err
 		}
 		calibration = &c
+		p, err := BuildProfileReport(report.Runs, fabric)
+		if err != nil {
+			return err
+		}
+		profiles = &p
 	}
 
 	w := stdout
@@ -166,6 +198,9 @@ func run(args []string, stdout io.Writer) error {
 	}
 	if calibration != nil {
 		calibration.WriteMarkdown(w)
+	}
+	if profiles != nil {
+		profiles.WriteMarkdown(w)
 	}
 	if *out != "" {
 		fmt.Fprintln(stdout, "wrote", *out)

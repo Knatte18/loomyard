@@ -62,7 +62,7 @@ func TestRemove_RefusesForeignWorktreeWithoutDeletingIt(t *testing.T) {
 
 	const slug = "sidecar"
 	foreign := filepath.Join(l.HubPath, slug)
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "worktree", "add", "--detach", foreign)
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "worktree", "add", "--detach", foreign)
 
 	marker := filepath.Join(foreign, "content-marker")
 	gitkit.CommitFile(t, foreign, "content-marker", "keep me\n", "seed marker")

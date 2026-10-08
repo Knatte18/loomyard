@@ -16,19 +16,26 @@ var (
 )
 
 // NewIndex returns the real code index, each method forwarding to the gate of the same name in this package.
-func NewIndex() planindex.Index {
-	return index{}
+// matcher is the fabric-reference rule the index's format and rework validations run as planparser's card-fabric-reference check; dispatch validation does not run it.
+func NewIndex(matcher planparser.FabricReferenceMatcher) planindex.Index {
+	return index{matcher: matcher}
 }
 
-// index forwards every planindex.Index method to this package's function.
-type index struct{}
-
-func (index) ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
-	return ValidateFormat(plan, worktreeRoot)
+// index forwards every planindex.Index method to this package's function, and holds the matcher the plan-gate check needs.
+type index struct {
+	matcher planparser.FabricReferenceMatcher
 }
 
-func (index) ValidateRework(plan *planparser.Plan, worktreeRoot string, told int) ([]Finding, error) {
-	return ValidateRework(plan, worktreeRoot, told)
+// ValidateFormat is the package's ValidateFormat plus the card-fabric-reference findings, which sit outside planparser's entry points.
+func (i index) ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
+	findings, err := ValidateFormat(plan, worktreeRoot)
+	return append(findings, convertAll(planparser.CheckCardFabricReference(plan, i.matcher))...), err
+}
+
+// ValidateRework is the package's ValidateRework plus the card-fabric-reference findings.
+func (i index) ValidateRework(plan *planparser.Plan, worktreeRoot string, told int) ([]Finding, error) {
+	findings, err := ValidateRework(plan, worktreeRoot, told)
+	return append(findings, convertAll(planparser.CheckCardFabricReference(plan, i.matcher))...), err
 }
 
 func (index) ValidateDispatch(plan *planparser.Plan, worktreeRoot string, completed, forthcoming []planparser.Card) ([]Finding, error) {
