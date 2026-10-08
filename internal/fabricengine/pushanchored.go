@@ -129,7 +129,7 @@ func PushAnchored(l *lyxcwd.Location, opts SyncOptions, lockWait time.Duration) 
 // The records side is attempted even when the code side failed.
 // A side whose HEAD is unborn is skipped.
 // Each side retries a rejection once, after a fetch, when the remote tip is already contained in local HEAD.
-// A failing side's error is wrapped as `fabricengine: push <side> side at <path>: %w` with the side named warp or weft,
+// A failing side's error is wrapped as `fabricengine: push <side> side at <path>: %w` with the side named code or records,
 // so errors.Is(err, gitrepo.ErrPushRejected) holds for a rejected side;
 // both failing returns the errors.Join of the two.
 // lockWait bounds only the wait for the lock:
