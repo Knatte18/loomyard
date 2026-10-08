@@ -212,7 +212,9 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, prevDigest, reportPath, pl
 // parentName is the told parent agent name; an empty one renders parentdirective's no-parent variant.
 // failureDigest is the prior failed record's reasons and suspect paths, or "" when the batch was not failed;
 // it fills the optional failure_digest marker, rendered as "none" when empty, and being optional it leaves an older deployed stencil rendering.
-func RenderRecoveryPrompt(batch batcher.Batch, cardGates, prevDigest, failureDigest, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath, parentName string) ([]byte, error) {
+// uncommittedPaths is the caller-rendered block of the worktree's uncommitted paths grouped by who wrote them, or "" for a clean tree;
+// it fills the optional uncommitted_paths marker the same way.
+func RenderRecoveryPrompt(batch batcher.Batch, cardGates, prevDigest, failureDigest, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir string, selfFixCap int, notePath, parentName string) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -220,6 +222,10 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, prevDigest, failureDig
 	failureLine := failureDigest
 	if strings.TrimSpace(failureLine) == "" {
 		failureLine = "none"
+	}
+	uncommittedLine := uncommittedPaths
+	if strings.TrimSpace(uncommittedLine) == "" {
+		uncommittedLine = "none"
 	}
 
 	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleImplementer)
@@ -246,6 +252,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, prevDigest, failureDig
 		"worktree_root":     promptWorktreeRoot,
 		"prev_digest":       digestLine,
 		"failure_digest":    failureLine,
+		"uncommitted_paths": uncommittedLine,
 		"pattern_directive": directive,
 		"specs_dir":         specsDir,
 		friction.MarkerName: frictionDirective,
@@ -257,7 +264,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, prevDigest, failureDig
 		return nil, fmt.Errorf("webster: read recovery template: %w", err)
 	}
 	friction.WarnIfMarkerAbsent(template, "webster-prefix-recovery", frictionDirective)
-	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", friction.MarkerName, parentdirective.MarkerName})
+	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", "uncommitted_paths", friction.MarkerName, parentdirective.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill recovery template: %w", err)
 	}

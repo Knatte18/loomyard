@@ -330,6 +330,10 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 		if len(result.MigratedFrom) > 0 {
 			m["migratedFrom"] = result.MigratedFrom
 		}
+		// migrated is exceptional as well: only a module with a Migrate hook that rewrote its present file sets it.
+		if len(result.Migrated) > 0 {
+			m["migrated"] = result.Migrated
+		}
 		// retired and divergent are exceptional too: only a hub-wide module's leftover per-worktree copy sets them.
 		if result.Retired {
 			m["retired"] = true
@@ -399,6 +403,9 @@ func Command() *cobra.Command {
 their live templates, reporting added keys (new in template) and removed keys
 (deleted from template). By default it is a dry-run: no files are written.
 Pass --apply to write the reconciled files to disk atomically.
+A module that retires keys first migrates its present file: the dry-run lists
+each rewrite under the module's "migrated" key, and --apply writes the migrated
+file even when the reconcile adds and removes nothing.
 Hub-wide modules (fabric, board) are reported, not reconciled here: a leftover
 per-worktree copy is "retired" when the hub file holds everything it holds
 (--apply deletes it), or "divergent" when it holds an entry the hub file lacks

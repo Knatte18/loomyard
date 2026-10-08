@@ -78,8 +78,8 @@ func TestAcceptPendingAudit_RefusesPathlessFinding(t *testing.T) {
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
-	if !strings.Contains(err.Error(), "lyx webster run --fresh") {
-		t.Errorf("error = %q; want it to name lyx webster run --fresh", err)
+	if !strings.Contains(err.Error(), "1) lyx webster reset --to start; 2) lyx webster run") || strings.Contains(err.Error(), "--fresh") {
+		t.Errorf("error = %q; want it to name the reset to start, then a plain lyx webster run", err)
 	}
 	if len(st.PendingAuditFindings) != 1 {
 		t.Errorf("PendingAuditFindings = %v; want unchanged", st.PendingAuditFindings)

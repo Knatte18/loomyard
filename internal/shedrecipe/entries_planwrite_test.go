@@ -74,6 +74,18 @@ func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
 		}
 	})
 
+	t.Run("NilArchiveWebster", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Rework.ArchiveWebster = nil
+		_, err := planWriteEntry("Row", Config{}, env)
+		if err == nil {
+			t.Fatalf("planWriteEntry() error = nil; want non-nil when Env.Rework.ArchiveWebster is nil")
+		}
+		if !strings.Contains(err.Error(), "PlanWrite") || !strings.Contains(err.Error(), "Rework.ArchiveWebster") {
+			t.Errorf("planWriteEntry() error = %v; want it to name entry %q and field %q", err, "PlanWrite", "Rework.ArchiveWebster")
+		}
+	})
+
 	t.Run("EmptyStencilsDir", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.StencilsDir = ""
@@ -163,6 +175,11 @@ func TestPlanWriteEntry_CallAppendsPriorPlanBlock(t *testing.T) {
 		}, nil
 	}
 	env.CommitPlan = func() error { return nil }
+	var archived []string
+	env.Rework.ArchiveWebster = func(dest string) error {
+		archived = append(archived, dest)
+		return nil
+	}
 
 	producer, err := planWriteEntry("Row", Config{}, env)
 	if err != nil {
@@ -176,6 +193,9 @@ func TestPlanWriteEntry_CallAppendsPriorPlanBlock(t *testing.T) {
 	}
 	if len(fake.Specs) != 1 {
 		t.Fatalf("fake.Specs has %d entries; want 1", len(fake.Specs))
+	}
+	if len(archived) != 1 || filepath.Base(archived[0]) != "webster" || filepath.Dir(filepath.Dir(archived[0])) != planDir {
+		t.Errorf("ArchiveWebster calls = %v; want one call into an archive directory's webster subdirectory under %s", archived, planDir)
 	}
 	prompt := fake.Specs[0].Prompt
 	if !strings.HasPrefix(prompt, "plan prompt\n") {

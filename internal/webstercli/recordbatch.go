@@ -40,6 +40,21 @@ func digestFields(d websterengine.Digest) map[string]any {
 	return fields
 }
 
+// batchFailedFields is the envelope of a batch taken terminal failed, naming the batch and its warnings.
+// card_amended is set only when err carries a card_amended failure, which recover-batch re-runs even from a failed recovery.
+func (c *websterCLI) batchFailedFields(batchName string, warnings []string, err error) map[string]any {
+	fields := map[string]any{
+		"batch_failed": true,
+		"batch":        batchName,
+		"warnings":     ownerlessRunWarnings(c.geom.ScratchDir, warnings),
+	}
+	var failed *websterengine.BatchFailedError
+	if errors.As(err, &failed) && failed.CardAmended {
+		fields["card_amended"] = true
+	}
+	return fields
+}
+
 // recordBatchCmd builds the `record-batch <NN>` subcommand.
 func (c *websterCLI) recordBatchCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -57,7 +72,9 @@ not an error; Master re-forks once and calls record-batch again.
 A batch rejected on its merits exits non-zero with {"batch_failed": true,
 "batch": "NN-<slug>", "warnings": [...]} after its terminal failed state
 and archived report are saved and committed; the error names
-"lyx webster recover-batch NN". A report that cannot be attributed to a
+"lyx webster recover-batch NN". The envelope also carries "card_amended": true
+when a card of the batch was amended after its attempt began, which forces the
+batch failed whatever its report says. A report that cannot be attributed to a
 fork of this bracket is archived and committed, and the call exits non-zero
 with {"report_archived": true, "batch": "NN-<slug>"}; the error names
 "lyx webster begin-batch NN", which re-drives the batch.
@@ -147,11 +164,7 @@ Example:
 				if result != nil {
 					resultWarnings = result.Warnings
 				}
-				clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, map[string]any{
-					"batch_failed": true,
-					"batch":        batchName,
-					"warnings":     ownerlessRunWarnings(c.geom.ScratchDir, resultWarnings),
-				}))
+				clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, c.batchFailedFields(batchName, resultWarnings, err)))
 				return nil
 			}
 			if errors.Is(err, websterengine.ErrReportArchived) {

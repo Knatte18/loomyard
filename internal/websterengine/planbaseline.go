@@ -22,12 +22,16 @@ const planBaselineDirName = "plan-baseline"
 // ErrPlanBaselineMissing is returned by RestorePlan when a changed plan file has no stored copy to restore from, or the state recorded no plan hashes at all.
 var ErrPlanBaselineMissing = errors.New("websterengine: plan baseline copy missing")
 
-// freshRestartSteps is the ordered step list that discards the run and starts it over: the reset verb, then a fresh run.
+// freshRestartSteps is the ordered step list that discards the run and starts it over: the reset verb, then reentry.
 // Callers embed it after their own lead-in, so it carries no "way forward: " prefix.
-var freshRestartSteps = strings.TrimPrefix(wayForwardSteps("lyx webster reset --to start", "lyx webster run --fresh"), "way forward: ")
+func freshRestartSteps(reentry string) string {
+	return strings.TrimPrefix(resetToStartSteps(reentry), "way forward: ")
+}
 
 // planBaselineWayForward is the way forward named when a plan cannot be restored from the store.
-var planBaselineWayForward = wayForwardSteps("lyx webster reset --to start", "lyx webster run --fresh")
+func planBaselineWayForward(reentry string) string {
+	return resetToStartSteps(reentry)
+}
 
 // planBaselinePath returns the stored copy's path for a content hash.
 func planBaselinePath(websterDir, hash string) string {
@@ -119,7 +123,7 @@ func writeFileAtomic(dir, dst string, data []byte) error {
 // It returns the restored file names, sorted, and never touches state.json.
 func RestorePlan(st *State, geom Geometry) ([]string, error) {
 	if len(st.PlanFileHashes) == 0 {
-		return nil, fmt.Errorf("%w: state.json recorded no plan hashes; %s", ErrPlanBaselineMissing, planBaselineWayForward)
+		return nil, fmt.Errorf("%w: state.json recorded no plan hashes; %s", ErrPlanBaselineMissing, planBaselineWayForward(stepRun))
 	}
 	changed, err := changedPlanFiles(st, geom.PlanDir)
 	if err != nil {
@@ -145,7 +149,7 @@ func RestorePlan(st *State, geom Geometry) ([]string, error) {
 		contents[name] = data
 	}
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("%w: %s; %s", ErrPlanBaselineMissing, strings.Join(missing, ", "), planBaselineWayForward)
+		return nil, fmt.Errorf("%w: %s; %s", ErrPlanBaselineMissing, strings.Join(missing, ", "), planBaselineWayForward(stepRun))
 	}
 	for _, name := range changed {
 		path := filepath.Join(geom.PlanDir, name)

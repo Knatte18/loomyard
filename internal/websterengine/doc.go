@@ -33,6 +33,13 @@
 // number, not card number: a grouping batchifier puts several cards in one
 // batch, and only under identity do the two numbers coincide.
 //
+// # Merriam's start base enters at partition time
+//
+// The batchifier prices each fork from Merriam's context at that point, whose start part is the start base this package computes in merriambase.go:
+// the line count of what Merriam loads at start (the worktree's CLAUDE.md and CLAUDE.local.md, the Master stencil with the orchestrator PATTERN directive, and the plan's 00-overview.md) plus a fixed system-prompt-and-tools context.
+// Run computes it where it forms a new partition (first init and `--fresh`), Rebaseline is told it when it batches the tail, and validate computes it for a run with no state;
+// a recorded partition keeps the estimates it was formed with, so the base never regroups a run.
+//
 // # Batches run in the batchifier's order, asserted not derived
 //
 // internal/batcher owns both grouping and order: a batchifier returns its batches in plan card order, and webster runs them in that order, never reordering them.
@@ -158,7 +165,7 @@
 // a card an earlier untracked rewrite already moved keeps its old hash and stays refused.
 // Each restamp site runs after a foreign-edit check passed in the same call, so an edit on disk when the call starts is refused, never adopted.
 // The check precedes the rewrite rather than being atomic with the restamp, so an edit landing between the two in one call is adopted with the rewrite.
-// `rebaseline` accepts an operator's edit, so it never moves a begun card's hash, except for a card the operator names with --card whose batch is terminal failed, dead or stuck.
+// `rebaseline` accepts an operator's edit, so it never moves a begun card's hash, except for a card the operator names with --card whose batch is in flight or terminal failed, dead or stuck.
 //
 // A foreign edit an operator means to keep has its own way forward:
 // `lyx webster rebaseline --card NN` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record, provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
@@ -169,9 +176,34 @@
 // The operator names every card the edit changed with --card: State.PlanFileHashes records a hash of every plan file, and a changed card file whose number is not named is refused.
 // A named card of a batch that is terminal failed, dead or stuck is accepted even though that batch was begun:
 // Rebaseline restamps that card's CardHashes entry and keeps the rest of the batch record, so a one-card fix needs no reset and no fresh run.
-// A done batch, an unfinished batch and a failed batch whose record lists Uncheckable entries still refuse, each with its own way forward.
-// An edit to 00-overview.md, which carries the plan's integration verify, is never accepted; the way forward is to restore it or to run `lyx webster reset --to start` and then `lyx webster run --fresh`.
-// The fingerprint refusals in begin-batch and run name it.
+// A named card of an in-flight batch, begun and not terminal, is accepted the same way and is also recorded in the batch's AmendedCards (AmendedCard) with Rendered false;
+// a card already there has its mark set back to false, and RebaselineResult.CardsAmended reports the accepted ones as `cards_amended`.
+// The fork or recovery strand running then keeps working on the old text and nothing is stopped; recovery re-runs the batch on the edited cards.
+// That re-run is forced.
+// When record-batch records a fork's report, or recover-batch records a recovery's terminal digest, and the batch holds an AmendedCards entry with Rendered false, the batch first runs every normal check.
+// It is then recorded failed through failBatch, whatever the report's status.
+// failBatch adds a reason per unrendered entry to any failure and sets BatchFailedError.CardAmended, which both verbs' batch_failed envelopes carry as `card_amended`;
+// the reason is recoverable, never an Uncheckable entry, so recover-batch never answers needs_fresh for it.
+// Every recovery spawn lists each AmendedCards entry of the record it replaces in the prompt's failure digest, with an instruction to re-read the card and bring the committed work in line with it,
+// and carries the entries onto the fresh record with Rendered true, so that recovery's own report is not forced failed.
+// A recovery recorded done clears the entries; one that ends stuck, dead or failed keeps them, so the next spawn renders them again.
+// Each amendment thus forces at most one failed record and so at most one extra recover-batch;
+// Master's template re-runs recover-batch on a `card_amended` refusal even after a failed recovery.
+// A done batch and a failed batch whose record lists Uncheckable entries still refuse, each with its own way forward.
+// The done batch's way forward is the follow-up card landing below; the failed batch's is to restore the card or take the reset route.
+//
+// 00-overview.md carries the plan's integration verify, and only its Card Index section is rebaselined.
+// State.PlanOverviewFrameHash is the hash of planparser.OverviewWithoutCardIndex over the overview, recorded wherever State.PlanFileHashes is.
+// When the overview is among the changed plan files, Rebaseline accepts it if the state carries that hash and the file's frame hash still equals it, so the change is confined to the Card Index.
+// The index change is then held to the card-set rule, which compares NN-slug ids: only cards after the last begun batch can be added, removed or reordered, and a begun card's index line keeps its number and slug.
+// What passes besides is a reworded one-line intent of a begun card in a later Master render, while that card's file stays pinned by its recorded hash.
+// A state without the frame hash refuses any overview change, and a change outside the Card Index refuses naming the overview outside its Card Index.
+// A done batch's card and a changed frame refuse with the follow-up card landing as their way forward:
+// add a follow-up card after the last begun batch that carries the decision, with its Card Index line, then `lyx webster rebaseline --card NN` naming it.
+// The fingerprint refusals in begin-batch and run name the landing too, and for an index-only change name rebaseline with the added cards' flags.
+// An operator decision taken mid-Webster reaches the plan in this order:
+// `lyx loom decision add` for the record, the card edit (or a follow-up card with its index line), then `lyx webster rebaseline --card NN`.
+// No refusal or prompt text names a loom verb.
 //
 // validate, record-batch and recovery refuse a plan that changed before their own rewrites, instead of adopting it:
 // each checks the plan against the recorded fingerprint (PlanEditError) before its first rewrite,
@@ -202,14 +234,14 @@
 // recover-batch proceeds from a failed batch and hands its strand the failure digest,
 // except a batch failed on a correctness finding the recovery check cannot verify (a finding with no path, or a path outside the tracked tree and the plan directory), which its record lists as Uncheckable:
 // recover-batch refuses it with ErrRecoveryNeedsFresh before spawning anything,
-// and the way forward is `lyx webster run --fresh` after resetting the branch to the run's start commit.
+// and the way forward is `lyx webster reset --to start`, which archives the run record, and then `lyx webster run`.
 // `run --fresh` drops such a batch under the same HEAD and path rules as a pending finding.
 // One narrow exception keeps the batches before it (AcceptBatchFabricReference, `lyx webster accept-audit --batch NN`):
 // when every Uncheckable entry is a pathless fabric reference, the batch recorded a start commit and the worktree is clean apart from the run's own state,
 // the explicit call clears the entries and records each as a batch audit warning, and recover-batch then proceeds;
 // the refusal names that route only for such a record.
 // It has two routes.
-// Either HEAD is that start, so the batch changed nothing (a batch that committed qualifies after `git reset --keep <start>`),
+// Either HEAD is that start, so the batch changed nothing (a batch that committed qualifies after `lyx webster reset --to batch-start --batch NN`),
 // or the start is an ancestor of HEAD and every entry's recorded command is read-only (`fabricengine.IsReadOnlyCommand`), so the batch's commits are kept.
 // An entry that is not read-only, or records no command, refuses the whole call with the reset-to-start and fresh-run steps.
 // The evidence shows the start still lies in HEAD's history, nothing uncommitted, and no listed reader able to write; it does not inspect the batch's commits.
@@ -222,17 +254,17 @@
 // The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
 // A delete-not-done finding gets one more check, planindex.Index.LaterDeleteReferences over the batch's own cards and the cards of every batch with no record:
 // when an unbegun later card's Edit code still references the target, the failure's reasons name that card and the reference,
-// and the BatchFailedError's way forward is the plan edit (move the delete after that card, rebaseline, then recover-batch), or the `--fresh` steps when the record also lists uncheckable entries, since recover-batch would repeat the same failure.
+// and the BatchFailedError's way forward is the plan edit (move the delete after that card, rebaseline, then recover-batch), or the reset-to-start steps when the record also lists uncheckable entries, since recover-batch would repeat the same failure.
 // PersistRecoveryTerminal fails a recovered batch the same way, and recover-batch runs the same check before spawning:
 // while it fires it refuses with ErrRecoveryDeleteReferenced, which the CLI maps to the `batch_failed` flag.
 // At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.
 // A correctness finding stays pending in state.json until `lyx webster accept-audit` clears it, and run entry refuses with ErrPendingAuditFindings meanwhile.
 // accept-audit needs evidence: it checks every suspect path against the last batch head (a plan file against the run's recorded plan hashes) and refuses with ErrAuditNotAcceptable while any path differs, cannot be checked, or a finding names no path;
 // the evidence covers HEAD too, so it also refuses while HEAD carries a commit past the last batch head other than a clean parent merge, and checks the paths against that reconciled HEAD;
-// the last two clear only through `lyx webster reset --to start` and then `lyx webster run --fresh`.
+// the last two clear only through `lyx webster reset --to start` and then `lyx webster run`.
 // The run-exit stuck reason and the pending-findings refusal name each finding once (findingsClause), an uncheckable path carrying its reason (uncheckableReason),
 // and end in one ordered list: the restores, then `lyx webster accept-audit`, then exactly one re-entry step, RunDeps.ReentryStep (`lyx webster run` when empty);
-// the reset route ends in `lyx webster run --fresh` instead, which the shed adapter never runs itself.
+// the reset route ends in that same re-entry step, since the reset archives the run record and a plain run starts over.
 // A suspect path that is one of the run's two contract files, outcome.yaml or summary.md, is the exception, since it lies outside the tracked tree and has no blob to compare:
 // contractFileStatus clears it on evidence, when the file is absent or the latest successful Master write to it (from RunWrites) is later than every fork write to it.
 // A Master write whose result failed is not evidence, and an acknowledgement never clears it.
@@ -246,6 +278,11 @@
 // a differing plan path whose recorded copy is missing is dropped with the archived state,
 // and its warning says so.
 // Every way forward for a differing plan path names restore-plan or `rebaseline --card`, never a git checkout.
+// The archive `run --fresh` performs is one function (archiveRunInPlace): state.json and the reports dir renamed with a stamp, the rendered prompts cleared.
+// ArchiveRunAfterReset is the reset's entry to it, behind the same pending-findings checks (checkPendingFindings) judged against the worktree's HEAD in place of the recorded start.
+// After a moving reset HEAD is the start, so the checks are the ones `run --fresh` runs there; on an archive-only reset the recorded start may be missing or not an ancestor of HEAD, and the tree the next run starts from is HEAD's.
+// A HEAD-relative guard therefore never refuses toward a verb that cannot clear the state: it refuses only on an uncleared contract file, a plan path differing from the recorded plan and a suspect path differing from HEAD, each naming its clearing step and then the reset, and drops every other pending finding with a warning.
+// A branch rewritten under the run passes, and the dropped findings stay readable in the archived state.
 //
 // Every refusal this package can return, and the way forward from it, is tabulated in contracts/specs/refusal-spec.md;
 // this documentation links that table rather than restating its rows.
@@ -298,6 +335,8 @@
 // Decision).
 // The master and the recovery strand both load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn spec's skills (`roleSkills`), and their opening prompts render the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.WebsterGeometry fills from the worktree's origin record.
 // Forks get no skills and no directive: they inherit the master's context.
+// The recovery prompt also carries a block of the worktree's uncommitted paths (the optional uncommitted_paths marker, `none` on a clean tree), taken from UncommittedPaths when the strand is spawned.
+// Each path is grouped by the run's write evidence (loadRunWrites): "Written by this run" is the earlier attempt's unfinished work, which the strand keeps as its starting point after checking it against the card, and "Not written by this run", which includes every path the evidence cannot attribute, the strand leaves untouched and never stages or commits.
 // The call that spawns the recovery strand first waits for its provider to come up (normally seconds, bounded by startup_timeout_s),
 // and every call then blocks for RecoveryWaitBudget (recovery_timeout_min plus one poll tick) and returns a terminal digest:
 // the budget outlasts the timeout measured from spawn, so a strand that never reports classifies dead on its timeout and the call returns.
@@ -401,6 +440,13 @@
 //
 // After the wait, a done run whose gate did not pass ends stuck, with a reason naming the failing identities and the attempts spent, or the `Terminal` failure's own reason.
 //
+// # A broken config stops Master
+//
+// A verb whose `webster.yaml` or `batcher.yaml` is present with content that fails to parse or validate refuses in the CLI's pre-run, before its body, with `config_invalid: true`;
+// `LoadConfig` marks those failures `configengine.ErrInvalid`, and the refusal changes no state, report or plan.
+// Master's failure ladder has a rung for it: a refusal carrying `config_invalid` from any verb ends the run with `outcome: stuck` quoting the refusal, without calling another verb.
+// A config file that exists but cannot be read refuses with no `config_invalid` and a transient way forward, so it never stops a run through that rung.
+//
 // # Background shells in Master's wait
 //
 // Master's spawn declares one awaited shell prefix, `masterAwaitedShellPrefix` (the backgrounded recovery verb of the failure ladder);
@@ -421,30 +467,52 @@
 // # Planning a reset
 //
 // PlanReset decides, read-only, what a reset of the task branch may do, and refuses before fabric is ever called.
-// The target is `start` (ResetToStart) or `pre-fix` (ResetToPreFix); no raw SHA is accepted.
-// `start` is the run's oldest recorded start commit, or the octopus merge-base of the recorded starts when none is the oldest of all;
-// `pre-fix` is state.json's `PreFixHead`.
-// The refusals run in order: run lock held (transient), no state, a merge in progress, a checked-out branch that is not the task branch,
+// The target is one of five commits the run recorded (ResetTargets); no raw SHA is accepted.
+// `start` (ResetToStart) is the run's oldest recorded start commit, or the octopus merge-base of the recorded starts when none is the oldest of all;
+// `pre-fix` (ResetToPreFix) is state.json's `PreFixHead`;
+// `last-batch-head` (ResetToLastBatchHead) is the last recorded batch head, the commit accept-audit picks by git ancestry.
+// `batch-start` (ResetToBatchStart) takes `--batch NN` and is batch NN's recorded start commit, refused when a later batch in the partition's order recorded a start.
+// `report-head` (ResetToReportHead) takes `--batch NN` and is the `head_sha` of batch NN's report.
+// It is accepted only for a begun, non-terminal batch whose report parses and whose head descends from or equals the batch's start, with no later batch begun and no live recovery strand of the batch in reed.
+// It is the one target allowed while the run lock is held, because Master runs it inside its run between a fork's report and record-batch.
+// Its bound is that those checks rule out every writer lyx can see; a Master that spawned an in-session fork out of order stays unseen.
+// `--batch` is required for `report-head` and `batch-start` and refused for the other three, before any git read.
+// The refusals run in order: the `--batch` pairing, run lock held (transient, except for `report-head`), no state, a merge in progress, a checked-out branch that is not the task branch,
 // no recorded target, a recorded commit missing from the repository, a target that is not an ancestor of HEAD, and a dirty tracked path outside the run's own writes.
 // The own paths are the tracked paths that loadRunWrites records a successful write to, Master's and every fork's; a failed write is not evidence.
 // Each refusal ends in wayForwardSteps' numbered list.
 // The plan carries the SHA and the own paths, and reads no force flag.
+// `start` is the one start-over verb, so it does not refuse where the start cannot be moved to:
+// when no batch recorded a start, a recorded start is missing from the repository, the recorded starts share no single oldest commit and no common ancestor, or the resolved start is not an ancestor of HEAD, PlanReset returns a plan with ArchiveOnly set and the Reason.
+// Those four are the closed set, since each guards only a branch move the archive-only path does not make; the refusals before the target resolves, and `pre-fix` and the other targets, keep all of theirs.
 //
 // # The reset verb
 //
-// `lyx webster reset --to start|pre-fix` (internal/webstercli) performs the reset PlanReset planned, so no recovery needs the denied `git reset --hard`.
+// `lyx webster reset --to start|pre-fix|report-head|last-batch-head|batch-start [--batch NN]` (internal/webstercli) performs the reset PlanReset planned, so no recovery needs the denied `git reset --hard`.
 // Under the state-mutation lease it plans with the pair's branch read through the fabric handle,
 // resets the pair's code checkout through fabricengine's pair-checkout reset with the plan's SHA, the parent branch from the origin record and the own paths,
 // clears State.PreFixHead, saves, and fabric-syncs state.json.
-// It changes no other webster state; `run --fresh` or a plain `run` does the rest, as the way-forward texts order them.
+// It changes no other webster state, except that a reset to start ends by calling ArchiveRunAfterReset under the same lease, after the move and the save, so a following plain `run` finds no state and starts a new run.
+// When the pending-findings guard refuses after the move, the move and the save stand, the record stays unarchived and re-running the reset converges, since a reset to the commit HEAD is already on moves nothing.
+// On the archive-only path the verb removes the live recovery strands as a moving reset does, runs no git that mutates and archives alone; the guard there refuses only on what its clearing step can undo, because it judges against HEAD.
+// The trees differ by mode: a pair's reset discards the run's tracked changes and keeps untracked files, and the archive-only path keeps everything, which the next run starts over.
+// A plain `run` does the rest for the other targets, as the way-forward texts order them.
 // The reset also moves the task branch on the remote to the same commit, so a later push is not rejected as diverged; `FABRIC_SKIP_PUSH=1` skips that half.
 // The bound: it can discard only commits above a run-recorded commit on the task's own branch, on the checkout and on the remote, and uncommitted tracked changes to paths the run itself wrote.
 // The remote update is made only when every commit it drops is reachable from the task worktree's HEAD and under a lease on the remote tip it read;
 // a remote-only commit becomes reachable only through the `git merge --strategy ours` the operator runs after reading the commits the refusal lists.
 // It cannot move another branch, take a raw SHA, touch the parent branch, the records side or untracked files, and it has no `--force`.
 // Fabric's own refusal (ownership, dirtiness, remote divergence, an unreachable remote) is surfaced as the verb's error with fabric's reason.
-// In standalone mode the verb plans, then refuses naming `git reset --keep <sha>`, since standalone has no pair for the fabric gate to guard.
+// In standalone mode, with no task pair, the verb performs the planned move itself with gitrepo's keep-reset, touching no remote.
+// The call sits in internal/webstercli, since webster's engine runs no mutating git.
+// PlanReset skips its foreign-dirty-path refusal there (ResetDeps.Standalone), because keep is the guard: it carries an uncommitted change across and refuses, changing nothing, over one the move would overwrite, so it never discards one.
+// A standalone reset therefore leaves foreign tracked changes the move does not touch in the tree, and every other PlanReset refusal still applies.
+// KeepResetRefusal builds the keep refusal: git's message and, per overwritten path, `git checkout -- <path>` for a path the run wrote or commit-or-restore for any other, then the re-run.
+// A standalone reset keeps every change git carries across, the run's own included, so its `uncommitted` list holds all of them.
 // The envelope carries `target`, `sha`, `mutations` (the `worktree_reset` entry, and `remote_branch_updated` when the remote moved) and `partial`, false on success.
+// A reset to start, and a standalone reset to any target, also carries `uncommitted` (UncommittedPaths, read after the move) and `warnings` (the findings a reset to start's archive dropped).
+// A reset to start also carries `moved` and, when `moved` is false, `reason`, with no `sha`.
+// A failed UncommittedPaths read leaves `uncommitted` out and adds a warning, since the reset and any archive are already done.
 // A refusal before the remote update is a bare error envelope.
 // A checkout rewrite that fails after the remote moved is an error envelope carrying `mutations` and `partial: true`, and re-running the reset converges.
 // Each refusal has a row in contracts/specs/refusal-spec.md.
@@ -466,6 +534,8 @@
 // Geometry.Git carries it, and nil means the real repository, so no production caller sets it and the helpers in gitwrap.go stay the one place webster runs git.
 // A test that asserts on webster's own records, warnings and verdicts sets a fake and spawns nothing;
 // a test whose behavior is git itself (merge commits, ignore rules, blobs, the verify gate) builds a real scratch repository under the `integration` tag.
+// UncommittedPaths is the one read of the task's uncommitted work: the dirty and untracked paths minus the run's own state (webster's run directory, the plan directory and the scratch directory), sorted.
+// accept-audit's clean-tree evidence and the reset's and the recovery prompt's lists of uncommitted paths all read it.
 //
 // # The code-index seam
 //

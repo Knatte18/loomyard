@@ -9,6 +9,7 @@
 package websterengine_test
 
 import (
+	"errors"
 	"os"
 	"reflect"
 	"strings"
@@ -75,6 +76,7 @@ func containsKey(text, key string) bool {
 // recovery batch dead/timeout on the first poll), an uninitialized _lyx/ degrades to the embedded
 // template, a malformed role model-spec fails loud naming the offending key, and webster's own
 // positive-integer check still refuses a knob the file sets to zero, which the template fill never touches.
+// Both refusals are marked configengine.ErrInvalid.
 func TestLoadConfig(t *testing.T) {
 	t.Parallel()
 
@@ -178,6 +180,9 @@ func TestLoadConfig(t *testing.T) {
 				}
 				if !strings.Contains(err.Error(), tt.wantErrKey) {
 					t.Errorf("LoadConfig() error = %q; want it to name the offending key %q", err.Error(), tt.wantErrKey)
+				}
+				if !errors.Is(err, configengine.ErrInvalid) {
+					t.Errorf("LoadConfig() error = %v; want it marked configengine.ErrInvalid", err)
 				}
 				return
 			}
