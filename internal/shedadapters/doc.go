@@ -165,9 +165,13 @@
 // through that same pair. The two sides once disagreed -- the writer emitted this .md file while the
 // reader opened a round-<N>-focus.json and strictly decoded JSON -- which silently emptied the
 // directive on every production read, so the agreement is pinned here rather than left implicit.
-// A Bouncer asks for exclude_lenses only when told ClusterExcludes, meaning its round runs a cluster
-// fan the excludes can trim; otherwise its prompts request focus alone, so the key may be absent
-// from a judge-written file.
+// Only the judge call asks for exclude_lenses, and only when told ClusterExcludes, meaning its round runs a cluster
+// fan the excludes can trim; the seed call and every other judge prompt request focus alone, so the key may be absent
+// from a written file.
+// The fanned judge prompt states three rules.
+// An exclusion is permanent for the segment generation.
+// A lens is excluded only when the latest round ran it and its area is settled, meaning nothing at MEDIUM or worse from it and not in the next round's focus.
+// Earlier exclusions are never restated.
 // Its exclude_lenses reach the round's ClusterExclude;
 // the file itself reaches the round profile's focus-directive field whenever it carries a directive at all,
 // and the explore step reads it there, which is how the judge's targeting reaches the fixer.

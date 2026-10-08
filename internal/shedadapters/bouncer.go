@@ -98,8 +98,8 @@ type BouncerConfig struct {
 	Now func() time.Time
 	// ClusterExcludes is a told value: true exactly when the BurlerRound row this Bouncer's OnStuck
 	// names runs a cluster fan the judge's exclude_lenses can trim.
-	// Only then do the seed and judge prompts ask for exclude_lenses; the zero value asks for focus
-	// alone.
+	// Only then does the judge prompt ask for exclude_lenses, and the seed prompt never does;
+	// the zero value asks the judge for focus alone.
 	ClusterExcludes bool
 	// Skip is the optional seam a caller tells this Bouncer when the artifact under review may need no review at all.
 	// True settles the segment as approved without a seed or judge spawn;
@@ -871,7 +871,8 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		"focus_path":               focusPathValue,
 		parentdirective.MarkerName: parentDirective,
 	}
-	maps.Copy(seedValues, focusSchemaMarkers(b.cfg.ClusterExcludes))
+	// The seed judges no round, so there is nothing settled for it to exclude; only the judge call is asked for exclude_lenses.
+	maps.Copy(seedValues, focusSchemaMarkers(false))
 	prompt, err := stencil.Fill(seedTemplate, seedValues)
 	if err != nil {
 		logger.Warn("shedadapters: bouncer seed prompt fill failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
