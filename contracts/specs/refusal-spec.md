@@ -147,6 +147,8 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | re-baseline persist failed, validate | `lyx webster validate` cannot persist the plan-fingerprint re-baseline | transient | re-run `lyx webster validate` alone |
 | standalone reed boot failed | the standalone reed session does not come up | transient | transient, re-run the verb |
 | overview frame unreadable | `run`, `rebaseline` or a verb restamping the plan baseline cannot read `00-overview.md`, or finds it without its Card Index, after the verb parsed the plan, because the file changed between the reads | transient | transient, re-run `lyx webster run` or `lyx webster rebaseline`; a restamp names re-running the verb |
+| Merriam start base unreadable | a verb forming the batch partition cannot read a present `CLAUDE.md` or `CLAUDE.local.md`, the Master stencil, the PATTERN directive or `00-overview.md` to compute Merriam's start base | transient | transient, re-run the verb |
+| recover-batch: uncommitted paths unreadable | `recover-batch` cannot list the worktree's uncommitted paths for the recovery prompt | transient | transient, re-run `lyx webster recover-batch NN` |
 | strand spawn: no shortname | a strand spawn on a hub whose `.lyx-shortname` records no shortname | correctness halt | `lyx fabric shortname <shortname>` records it, then retry |
 | strand spawn: worktree name not a slug | a strand spawn in a worktree whose name does not fit the name grammar | correctness halt | `lyx fabric add <slug>` creates the task under a slug that fits |
 | wiring guards | nil deps, empty paths and an invalid batcher or geometry, unreachable from any on-disk state a run can produce | wiring guard | none per row; grouped |
