@@ -538,6 +538,11 @@ func TestGlyphChain_RedundantFile(t *testing.T) {
 			want:    []findingKey{{"redundant-file-target", "1-card1", SeverityBlocking}},
 		},
 		{
+			name:    "file beside a member listed twice",
+			targets: []string{"shapes/shapes.go", "shapes#Func", "shapes#Func"},
+			want:    []findingKey{{"redundant-file-target", "1-card1", SeverityBlocking}},
+		},
+		{
 			name:    "file beside a member declared in another file",
 			targets: []string{"shapes/shapes.go", "dirname#DirDiffers"},
 		},
@@ -645,6 +650,11 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 		{
 			name:  "delete with no covers",
 			cards: []string{deleteCard("callees#Target")},
+			want:  []string{"blocking callees/callees_external_test.go", "blocking callees/local.go", "blocking callers/callers.go"},
+		},
+		{
+			name:  "delete of a member listed twice",
+			cards: []string{deleteCard("callees#Target", "callees#Target")},
 			want:  []string{"blocking callees/callees_external_test.go", "blocking callees/local.go", "blocking callers/callers.go"},
 		},
 		{

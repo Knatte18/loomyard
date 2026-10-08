@@ -42,10 +42,12 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string) ([]Finding, error)
 	var findings []Finding
 	for _, c := range plan.Cards {
 		var files, members []string
+		seen := make(map[string]bool)
 		for _, t := range c.Targets {
-			if planparser.IsHandleRef(t) {
+			if seen[t] || planparser.IsHandleRef(t) {
 				continue
 			}
+			seen[t] = true
 			g, err := glyph.Parse(lang, t)
 			if err != nil {
 				continue

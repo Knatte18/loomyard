@@ -80,12 +80,19 @@ func callerCoverageFindings(plan *planparser.Plan, lang glyph.Language, worktree
 }
 
 // coverageSubjects returns, in card and body order, every member glyph a card deletes or re-signs whose answer holds its declaration.
+// A member listed more than once on one card is one subject.
 func coverageSubjects(plan *planparser.Plan, lang glyph.Language, worktreeRoot string, answers map[string]quarry.ResolveResult) ([]coverageSubject, error) {
+	type cardRef struct {
+		card int
+		ref  string
+	}
 	var subjects []coverageSubject
+	seen := make(map[cardRef]bool)
 	add := func(c planparser.Card, ref string, deleted bool) error {
-		if planparser.IsHandleRef(ref) {
+		if seen[cardRef{c.Number, ref}] || planparser.IsHandleRef(ref) {
 			return nil
 		}
+		seen[cardRef{c.Number, ref}] = true
 		g, err := glyph.Parse(lang, ref)
 		if err != nil || g.IsSelf() {
 			return nil
