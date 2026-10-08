@@ -708,6 +708,71 @@ func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing
 	}
 }
 
+// TestRecoverBatch_AmendedCards walks one batch's amendment through its recoveries.
+// A spawn renders the amended card into the prompt and carries the entry as rendered, so the rendering recovery's own stuck record is not forced failed.
+// A re-edit during a recovery forces that recovery's done report failed with card_amended.
+// A stuck recovery keeps the entry for the next spawn, and a done recovery clears it.
+func TestRecoverBatch_AmendedCards(t *testing.T) {
+	fx := newRecoverFixture(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+	const amendedLine = "card 01-json-flag was amended after the previous attempt began"
+
+	spawnRendering := func(step string) {
+		t.Helper()
+		prompts := fx.Engine.PrepareCalls
+		res, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+		if err != nil || !res.Spawned || !res.Running {
+			t.Fatalf("%s: spawn = %+v, %v; want a running spawned recovery", step, res, err)
+		}
+		if fx.Engine.PrepareCalls != prompts+1 || !strings.Contains(fx.Engine.LastPrompt, amendedLine) {
+			t.Fatalf("%s: prompt does not carry the amended card instruction %q", step, amendedLine)
+		}
+		if got := fx.Deps.State.Batches[1].AmendedCards; len(got) != 1 || got[0].Card != "01-json-flag" || !got[0].Rendered {
+			t.Fatalf("%s: AmendedCards = %+v; want the entry carried as rendered", step, got)
+		}
+	}
+
+	// A fork attempt failed on a different reason while its card was amended, so the failure carries both.
+	prior := failedRecord("an earlier reason")
+	prior.AmendedCards = []websterengine.AmendedCard{{Card: "01-json-flag"}}
+	fx.Deps.State.Batches[1] = prior
+
+	spawnRendering("first spawn")
+	head := fx.Git.head
+
+	// An amendment accepted while that recovery runs forces its done report failed, whatever the report says.
+	fx.Deps.State.Batches[1].AmendedCards[0].Rendered = false
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
+	_, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	var failed *websterengine.BatchFailedError
+	if !errors.As(err, &failed) || !failed.CardAmended {
+		t.Fatalf("done report over a re-edited card: err = %v; want a BatchFailedError with CardAmended", err)
+	}
+	if bs := fx.Deps.State.Batches[1]; !bs.Terminal || bs.Status != websterengine.DigestStatusFailed || len(bs.AmendedCards) != 1 || bs.AmendedCards[0].Rendered {
+		t.Fatalf("record after the forced failure = %+v; want terminal failed with the entry still unrendered", bs)
+	}
+
+	// The next spawn renders it again, and the recovery ending stuck keeps the entry.
+	spawnRendering("second spawn")
+	writeRecoverReport(t, fx.ReportsDir, "status: FAILED\nhead_sha: "+head+"\n")
+	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
+		t.Fatalf("stuck recovery over a rendered amendment: err = %v; want it recorded, not forced failed", err)
+	}
+	if bs := fx.Deps.State.Batches[1]; bs.Status != websterengine.DigestStatusStuck || len(bs.AmendedCards) != 1 {
+		t.Fatalf("record after the stuck recovery = status %q, AmendedCards %+v; want stuck with the entry kept", bs.Status, bs.AmendedCards)
+	}
+
+	// A stuck prior is no failed digest, yet its kept entry is rendered into the next spawn, and a done recovery clears it.
+	spawnRendering("third spawn")
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
+	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
+		t.Fatalf("done recovery over a rendered amendment: err = %v; want it recorded done", err)
+	}
+	if bs := fx.Deps.State.Batches[1]; bs.Status != websterengine.DigestStatusDone || len(bs.AmendedCards) != 0 {
+		t.Fatalf("record after the done recovery = status %q, AmendedCards %+v; want done with the entries cleared", bs.Status, bs.AmendedCards)
+	}
+}
+
 // failedRecord builds the record RecordBatch leaves behind for a batch it failed on its merits:
 // terminal, status failed, reasons ending with the suspect paths.
 func failedRecord(reasons ...string) *websterengine.BatchState {
@@ -728,7 +793,7 @@ var _ websterengine.Starter = erroringStarter{}
 
 // TestRecoverSpawnOrAttach asserts RecoverSpawnOrAttach's spawn-or-attach decision for the state a batch is in:
 // no record, a terminal prior or a failed batch spawns fresh, with the recorded card set, the original bracket's start commit, the failure digest and the execution predecessor's digest in the prompt, and any late or malformed report archived;
-// a recorded non-terminal recovery attaches; findings recovery cannot check are refused toward run --fresh; and a failed or not-ready start surfaces without recording a strand.
+// a recorded non-terminal recovery attaches; findings recovery cannot check are refused toward the reset-to-start route; and a failed or not-ready start surfaces without recording a strand.
 //
 //testtiming:keep pins the spawn-or-attach decision for every batch state, the prompt's card set, start commit and digests, the archived late report and the refusals; each covering test reaches one state
 func TestRecoverSpawnOrAttach(t *testing.T) {
@@ -780,7 +845,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			if spawned {
 				t.Error("spawned = true; want no strand")
 			}
-			for _, want := range append([]string{"lyx webster run --fresh", "batch 01"}, uncheckable...) {
+			for _, want := range append([]string{"1) lyx webster reset --to start; 2) lyx webster run", "batch 01"}, uncheckable...) {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q lacks %q", err, want)
 				}
@@ -799,7 +864,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 	// Only a refusal over pathless fabric references names the accept-audit --batch route.
 	const acceptBatchStep = `"lyx webster accept-audit --batch 1" then "lyx webster recover-batch 1"`
 	// The route names both evidence: HEAD at the start commit, and a committed batch whose recorded commands are read-only.
-	const startRouteText = "when the worktree is clean and HEAD is the batch's start commit"
+	const startRouteText = "when the worktree is clean and HEAD is the batch's start commit (\"lyx webster reset --to batch-start --batch 01\" moves it there if the batch committed)"
 	const committedRouteText = "or the batch's commits are kept and every recorded command is read-only"
 	fabricRefusalCheck := func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
 		fabricRefusalBase(t, fx, bs, spawned, err)
@@ -932,14 +997,14 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			},
 		},
 		{
-			name: "a failed batch on a fabric reference recovery cannot check is refused toward run --fresh",
+			name: "a failed batch on a fabric reference recovery cannot check is refused toward the reset-to-start route",
 			setup: func(fx *recoverFixture) {
 				fabricRefusalSetup(fx)
 			},
 			check: fabricRefusalCheck,
 		},
 		{
-			name: "a failed batch on the scratch pause flag recovery cannot check is refused toward run --fresh",
+			name: "a failed batch on the scratch pause flag recovery cannot check is refused toward the reset-to-start route",
 			setup: func(fx *recoverFixture) {
 				pauseRefusalSetup(fx)
 			},
@@ -1052,37 +1117,79 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 	}
 }
 
-// TestRecoverSpawnOrAttach_StartFailures asserts a not-ready recovery start (shuttle's Start returning ErrNotStarted after tearing its own strand down)
-// surfaces unchanged from RecoverSpawnOrAttach, records no batch state — the strand shuttle already tore down must never be persisted as this batch's recovery record —
-// and names the transient re-run as the way forward, after which re-running the verb once the provider answers spawns the strand.
+// TestRecoverSpawnOrAttach_StartFailures asserts a transient failure before the recovery strand is recorded refuses with the transient re-run as the way forward, records no batch state, and spawns no strand, after which re-running the verb once the failure clears spawns it.
+// The failures are a not-ready start (shuttle's Start returning ErrNotStarted after tearing its own strand down, a strand that must never be persisted as this batch's recovery record) and, for the recovery prompt's uncommitted paths, a git status that cannot list them or an audit of the run's sessions that cannot tell which of them the run wrote.
 func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 	t.Parallel()
-	fx := newRecoverFixture(t)
-	realStarter := fx.Deps.Starter
-	fx.Deps.Starter = erroringStarter{}
-	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 
-	bs, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
-	if !errors.Is(err, shuttleengine.ErrNotStarted) {
-		t.Errorf("RecoverSpawnOrAttach() error = %v; want it to wrap shuttleengine.ErrNotStarted", err)
+	statusErr := errors.New("git status failed")
+	auditErr := errors.New("transcript unreadable")
+	tests := []struct {
+		name    string
+		fail    func(fx *recoverFixture) (restore func())
+		wantErr error
+	}{
+		{
+			name: "a not-ready start",
+			fail: func(fx *recoverFixture) func() {
+				realStarter := fx.Deps.Starter
+				fx.Deps.Starter = erroringStarter{}
+				return func() { fx.Deps.Starter = realStarter }
+			},
+			wantErr: shuttleengine.ErrNotStarted,
+		},
+		{
+			name: "an unreadable uncommitted-path listing",
+			fail: func(fx *recoverFixture) func() {
+				fx.Git.dirtyPathsErr = statusErr
+				return func() { fx.Git.dirtyPathsErr = nil }
+			},
+			wantErr: statusErr,
+		},
+		{
+			name: "a failed audit of the run's writes to the uncommitted paths",
+			fail: func(fx *recoverFixture) func() {
+				fx.Git.dirtyPaths = []string{"base.txt"}
+				fx.Deps.State.MasterSessionID = "s1"
+				fx.Engine.AuditErr = auditErr
+				return func() { fx.Engine.AuditErr = nil }
+			},
+			wantErr: auditErr,
+		},
 	}
-	if err == nil || !strings.Contains(err.Error(), "way forward: transient, re-run `lyx webster recover-batch 1`") {
-		t.Fatalf("RecoverSpawnOrAttach() error = %v; want the transient re-run way forward", err)
-	}
-	if spawned {
-		t.Error("RecoverSpawnOrAttach() spawned = true; want false on a not-ready start")
-	}
-	if bs != nil {
-		t.Errorf("RecoverSpawnOrAttach() BatchState = %+v; want nil on a not-ready start", bs)
-	}
-	if fx.Deps.State.Batches[1] != nil {
-		t.Errorf("State.Batches[1] = %+v; want nil — a strand shuttle already tore down must record no guid", fx.Deps.State.Batches[1])
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newRecoverFixture(t)
+			restore := tt.fail(fx)
+			clk := &recoverFakeClock{now: time.Unix(0, 0)}
 
-	fx.Deps.Starter = realStarter
-	_, spawned, err = websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
-	if err != nil || !spawned {
-		t.Fatalf("RecoverSpawnOrAttach() after the retry = spawned %v, error %v; want a spawned strand", spawned, err)
+			bs, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("RecoverSpawnOrAttach() error = %v; want it to wrap %v", err, tt.wantErr)
+			}
+			if err == nil || !strings.HasSuffix(err.Error(), "way forward: transient, re-run `lyx webster recover-batch 1`") {
+				t.Fatalf("RecoverSpawnOrAttach() error = %v; want the transient re-run way forward", err)
+			}
+			if spawned {
+				t.Error("RecoverSpawnOrAttach() spawned = true; want false")
+			}
+			if bs != nil {
+				t.Errorf("RecoverSpawnOrAttach() BatchState = %+v; want nil", bs)
+			}
+			if fx.Deps.State.Batches[1] != nil {
+				t.Errorf("State.Batches[1] = %+v; want nil", fx.Deps.State.Batches[1])
+			}
+			if fx.Engine.PrepareCalls != 0 {
+				t.Errorf("Engine.PrepareCalls = %d; want no strand prepared", fx.Engine.PrepareCalls)
+			}
+
+			restore()
+			_, spawned, err = websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
+			if err != nil || !spawned {
+				t.Fatalf("RecoverSpawnOrAttach() after the retry = spawned %v, error %v; want a spawned strand", spawned, err)
+			}
+		})
 	}
 }
 

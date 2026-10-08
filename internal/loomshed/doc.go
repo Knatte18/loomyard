@@ -7,6 +7,10 @@
 // The stops its gate rows halt on each name a way forward, tabulated in contracts/specs/refusal-spec.md.
 // Loom-Preflight's half-finished-run stop names `lyx loom goto` as that way forward.
 //
+// Loom-Preflight also loads `batcher.yaml` from the told config base directory after a passing seed check, as the Batchifier row does, so a stale file stops the run before any LLM row.
+// A retired key names `lyx config reconcile --apply` as the way forward, any other load fault the fix-and-re-step one.
+// The check reads and never writes, and validates no other module's config.
+//
 // Its plan gates resolve plan refs through a told planindex.Index, so the package links no tree-sitter grammar.
 //
 // The Webster-Burler round gate (NewVerifyGate) runs less than the plan's `## verify:`.
@@ -15,6 +19,8 @@
 // The round compiles the `tmux` and `llm` tiers and never runs them.
 //
 // The Plan-Write rotation archives the prior plan and appends a prior-plan block naming that archive to the respawned session's prompt.
+// It first archives webster's run record into the archive's `webster` subdirectory through a told seam, so the next Webster run starts a new run over the new plan instead of refusing the old record's plan drift.
+// A run holding webster's run lock refuses the archive before any plan file moves, and ArchivedPlanWebsterDirs lists the subdirectories a rotation writes the record into.
 //
 // It declares its own unexported cancellation helpers (entryErr/cancelErr in ctx.go) rather than
 // reusing internal/shedadapters' identically-shaped, unexported ones: shedadapters' versions are

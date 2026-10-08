@@ -62,6 +62,9 @@ envelope, exactly like record-batch's own terminal envelope. A recovery
 the post-batch checks reject takes the batch terminal failed: the failed
 state and archived report are saved and committed, and the call exits
 non-zero with {"batch_failed": true, "batch": "NN-<slug>", "warnings": [...]};
+the envelope carries "card_amended": true when a card of the batch was amended
+after the recovery spawned, and the error then names "lyx webster recover-batch NN"
+again, which re-runs the batch on the amended card;
 the error names "lyx webster recover-batch NN" unless a later card still
 references a symbol the batch deletes: a call that finds that before spawning
 refuses with {"batch_failed": true} and the plan edit as its way forward. If --wait
@@ -271,11 +274,7 @@ Example:
 					if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("recover-batch %s failed", batchName)); syncErr != nil {
 						msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v; %s", msg, syncErr, fabricSyncWayForward)
 					}
-					clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, map[string]any{
-						"batch_failed": true,
-						"batch":        batchName,
-						"warnings":     ownerlessRunWarnings(c.geom.ScratchDir, result.Warnings),
-					}))
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, c.batchFailedFields(batchName, result.Warnings, err)))
 					return nil
 				}
 				if errors.Is(err, websterengine.ErrFingerprintMismatch) {

@@ -30,6 +30,29 @@ const configDirName = "config"
 // ErrNotInitialized) rather than matching error text.
 var ErrNotInitialized = errors.New("not initialized")
 
+// ErrInvalid marks the failure of a present config file's content to parse or validate.
+// An error without the mark is an unreadable file or an absent one, never the file's content.
+// Test with errors.Is(err, ErrInvalid).
+var ErrInvalid = errors.New("invalid config content")
+
+// invalidError wraps an error so errors.Is matches ErrInvalid while Error stays the wrapped text.
+type invalidError struct {
+	err error
+}
+
+func (e invalidError) Error() string { return e.err.Error() }
+
+func (e invalidError) Unwrap() []error { return []error{e.err, ErrInvalid} }
+
+// MarkInvalid returns err marked as ErrInvalid, its text unchanged.
+// A nil err stays nil.
+func MarkInvalid(err error) error {
+	if err == nil {
+		return nil
+	}
+	return invalidError{err: err}
+}
+
 // FindBaseDir checks if <cwd>/_lyx exists, performing a strict check without walking up to parent
 // directories.
 // Returns cwd on success or an error on failure.
@@ -121,7 +144,7 @@ func load(baseDir, module string, template []byte, fallbackOnAbsent bool, openMa
 
 	filled, filledKeys, err := yamlengine.FillMissing(template, fileBytes, openMaps...)
 	if err != nil {
-		return nil, fmt.Errorf("config file %s: %w", cfgPath, err)
+		return nil, MarkInvalid(fmt.Errorf("config file %s: %w", cfgPath, err))
 	}
 	if len(filledKeys) > 0 {
 		logger.Info("configengine: filled missing keys from template", "module", module, "file", cfgPath, "keys", strings.Join(filledKeys, ","))
@@ -131,10 +154,10 @@ func load(baseDir, module string, template []byte, fallbackOnAbsent bool, openMa
 	// reconcile carries lists whole and cannot add it either, so no reconcile hint.
 	missing, err := yamlengine.MissingKeys(template, filled, openMaps...)
 	if err != nil {
-		return nil, fmt.Errorf("config file %s: %w", cfgPath, err)
+		return nil, MarkInvalid(fmt.Errorf("config file %s: %w", cfgPath, err))
 	}
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("config file %s: missing keys: %s", cfgPath, strings.Join(missing, ", "))
+		return nil, MarkInvalid(fmt.Errorf("config file %s: missing keys: %s", cfgPath, strings.Join(missing, ", ")))
 	}
 
 	env, err := envsource.Build(baseDir)
@@ -144,7 +167,7 @@ func load(baseDir, module string, template []byte, fallbackOnAbsent bool, openMa
 
 	resolved, err := yamlengine.Resolve(filled, env)
 	if err != nil {
-		return nil, fmt.Errorf("config file %s: %w", cfgPath, err)
+		return nil, MarkInvalid(fmt.Errorf("config file %s: %w", cfgPath, err))
 	}
 
 	return resolved, nil

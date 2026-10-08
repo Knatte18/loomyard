@@ -164,7 +164,7 @@ func simpleEntryCases() []simpleEntryCase {
 			registryKey:     "LoomPreflight",
 			entry:           loomPreflightEntry,
 			buildEnv:        newTestEnv,
-			validatedFields: []string{"StatusPath", "StatusLockPath"},
+			validatedFields: []string{"StatusPath", "StatusLockPath", "AnchorPath"},
 			unreadField:     "Cwd",
 		},
 		{

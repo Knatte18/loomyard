@@ -1,12 +1,12 @@
 # Top-level test functions per package, in its _test.go files under every build tag.
 # TestTestBudget_PackagesStayWithinBudget fails when a package exceeds its row or has tests and no row.
 # Raise a row in the commit that adds the tests that need it.
-cmd/lyx: 68
+cmd/lyx: 70
 cmd/testtiming: 13
 contracts/specs: 3
 contracts/stencils: 14
 internal/agentname: 7
-internal/batcher: 8
+internal/batcher: 9
 internal/battencli: 56
 internal/battenrecipe: 8
 internal/battenshed: 90
@@ -21,7 +21,7 @@ internal/clihelp: 11
 internal/cliwire: 12
 internal/commentlint: 3
 internal/configcli: 10
-internal/configengine: 12
+internal/configengine: 13
 internal/configreg: 6
 internal/configsync: 5
 internal/discussionparser: 16
@@ -35,7 +35,7 @@ internal/fsx: 3
 internal/gitexec: 6
 internal/githubclient: 11
 internal/gitkit: 8
-internal/gitrepo: 35
+internal/gitrepo: 36
 internal/gitrepo/internal/gitoracle: 1
 internal/hubforge: 5
 internal/hubgeom: 10
@@ -46,10 +46,10 @@ internal/landingshed: 65
 internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
-internal/loomcli: 180
+internal/loomcli: 181
 internal/loomengine: 39
 internal/loomrecipe: 45
-internal/loomshed: 68
+internal/loomshed: 69
 internal/lyxcwd: 23
 internal/mergeresolve: 17
 internal/modelspec: 11
@@ -61,7 +61,7 @@ internal/parentdirective: 4
 internal/parentreview: 53
 internal/pattern: 7
 internal/planglyph: 82
-internal/planparser: 81
+internal/planparser: 82
 internal/preflight: 7
 internal/preflightshed: 5
 internal/proc: 12
@@ -111,7 +111,7 @@ internal/verifyrun: 4
 internal/verifytree: 5
 internal/vscode: 12
 internal/webstercli: 81
-internal/websterengine: 185
+internal/websterengine: 190
 internal/weftname: 1
 internal/yamlengine: 12
 tools/codestats: 9

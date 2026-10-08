@@ -1,6 +1,6 @@
 //go:build integration
 
-// reset_test.go covers Repo.ResetHard against real git repositories, reusing
+// reset_test.go covers Repo.ResetHard and Repo.ResetKeep against real git repositories, reusing
 // gitrepo_test.go's fixture helpers (newRepo, writeFile, commitAll, runGit).
 
 package gitrepo_test
@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
@@ -86,4 +87,81 @@ func TestResetHard_InvalidSHA_RejectedBeforeGitSpawn(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestResetKeep covers ResetKeep against one repository with two commits.
+// An invalid sha is rejected before any git spawn, checked against a path with no .git directory;
+// a move back over a committed change keeps an unrelated uncommitted file;
+// and a move that would rewrite an uncommitted path is refused with git's error, leaving HEAD and that file untouched.
+// The steps run serially in that order, each starting from the one before's state.
+// The top-level test calls t.Parallel; no step does, because the steps share the repository.
+func TestResetKeep(t *testing.T) {
+	t.Parallel()
+
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "v1")
+	writeFile(t, dir, "b.txt", "b1")
+	commitAll(t, dir, "v1")
+	earlier := requireCurrentSHA(t, repo)
+	writeFile(t, dir, "a.txt", "v2")
+	commitAll(t, dir, "v2")
+	later := requireCurrentSHA(t, repo)
+
+	readFile := func(t *testing.T, name string) string {
+		t.Helper()
+		content, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("read %s error = %v", name, err)
+		}
+		return string(content)
+	}
+
+	t.Run("an invalid sha is rejected before any git spawn", func(t *testing.T) {
+		unversioned := gitrepo.New(t.TempDir())
+		for _, sha := range []string{"--keep", ""} {
+			if err := unversioned.ResetKeep(sha); !errors.Is(err, gitrepo.ErrInvalidSHA) {
+				t.Errorf("ResetKeep(%q) error = %v; want errors.Is(err, ErrInvalidSHA)", sha, err)
+			}
+		}
+	})
+
+	if !t.Run("a move back keeps an unrelated uncommitted file", func(t *testing.T) {
+		writeFile(t, dir, "b.txt", "dirty")
+
+		if err := repo.ResetKeep(earlier); err != nil {
+			t.Fatalf("ResetKeep(%q) error = %v; want nil", earlier, err)
+		}
+
+		if got := requireCurrentSHA(t, repo); got != earlier {
+			t.Errorf("CurrentSHA() after ResetKeep() = %q; want %q", got, earlier)
+		}
+		if got := readFile(t, "a.txt"); got != "v1" {
+			t.Errorf("a.txt after ResetKeep() = %q; want %q", got, "v1")
+		}
+		if got := readFile(t, "b.txt"); got != "dirty" {
+			t.Errorf("b.txt after ResetKeep() = %q; want the uncommitted %q kept", got, "dirty")
+		}
+	}) {
+		return
+	}
+
+	t.Run("a move over an uncommitted path is refused and changes nothing", func(t *testing.T) {
+		if err := repo.ResetKeep(later); err != nil {
+			t.Fatalf("ResetKeep(%q) error = %v; want nil", later, err)
+		}
+		writeFile(t, dir, "a.txt", "dirty-a")
+
+		err := repo.ResetKeep(earlier)
+
+		var gitErr *gitexec.GitError
+		if !errors.As(err, &gitErr) {
+			t.Fatalf("ResetKeep(%q) over a dirty a.txt error = %v; want a wrapped *gitexec.GitError", earlier, err)
+		}
+		if got := requireCurrentSHA(t, repo); got != later {
+			t.Errorf("CurrentSHA() after a refused ResetKeep() = %q; want it unmoved at %q", got, later)
+		}
+		if got := readFile(t, "a.txt"); got != "dirty-a" {
+			t.Errorf("a.txt after a refused ResetKeep() = %q; want the uncommitted %q untouched", got, "dirty-a")
+		}
+	})
 }

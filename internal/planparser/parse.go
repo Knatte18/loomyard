@@ -264,11 +264,10 @@ func splitFrontmatter(content string) (frontmatter, body string, found bool, err
 	return "", "", false, fmt.Errorf("unterminated frontmatter fence")
 }
 
-// splitFraming locates the "## Card Index" heading and splits the body into framing prose above it and index lines below it.
-func splitFraming(body string) (framing string, indexLines []string, err error) {
-	lines := strings.Split(body, "\n")
-
-	headingIdx := -1
+// cardIndexBounds locates the Card Index section in lines: the "## Card Index" heading line at headingIdx, and end, the index of the next "## " heading or len(lines) when none follows.
+// The index lines are lines[headingIdx+1:end].
+func cardIndexBounds(lines []string) (headingIdx, end int, err error) {
+	headingIdx = -1
 	for i, l := range lines {
 		if strings.TrimSpace(l) == cardIndexHeading {
 			headingIdx = i
@@ -276,7 +275,47 @@ func splitFraming(body string) (framing string, indexLines []string, err error) 
 		}
 	}
 	if headingIdx == -1 {
-		return "", nil, fmt.Errorf(`missing %q heading`, cardIndexHeading)
+		return 0, 0, fmt.Errorf(`missing %q heading`, cardIndexHeading)
+	}
+
+	end = len(lines)
+	for i := headingIdx + 1; i < len(lines); i++ {
+		if strings.HasPrefix(strings.TrimSpace(lines[i]), "## ") {
+			end = i
+			break
+		}
+	}
+	return headingIdx, end, nil
+}
+
+// OverviewWithoutCardIndex returns the bytes of a 00-overview.md with its Card Index section cut out: the "## Card Index" heading line through the line before the next "## " heading, or to the end of the file when none follows.
+// Everything else, the frontmatter, the title, the framing and every later section, is returned byte-for-byte.
+// Two overviews that differ only inside the Card Index therefore return equal bytes.
+// A missing "## Card Index" heading and an unterminated frontmatter fence are errors, the same ones ParsePlan reports.
+func OverviewWithoutCardIndex(content []byte) ([]byte, error) {
+	text := string(content)
+	_, body, _, err := splitFrontmatter(text)
+	if err != nil {
+		return nil, fmt.Errorf("planparser: plan overview: %w", err)
+	}
+	prefix := text[:len(text)-len(body)]
+
+	lines := strings.Split(body, "\n")
+	headingIdx, end, err := cardIndexBounds(lines)
+	if err != nil {
+		return nil, fmt.Errorf("planparser: plan overview: %w", err)
+	}
+	kept := append(append([]string(nil), lines[:headingIdx]...), lines[end:]...)
+	return []byte(prefix + strings.Join(kept, "\n")), nil
+}
+
+// splitFraming locates the "## Card Index" heading and splits the body into framing prose above it and index lines below it.
+func splitFraming(body string) (framing string, indexLines []string, err error) {
+	lines := strings.Split(body, "\n")
+
+	headingIdx, end, err := cardIndexBounds(lines)
+	if err != nil {
+		return "", nil, err
 	}
 
 	var framingLines []string
@@ -287,14 +326,6 @@ func splitFraming(body string) (framing string, indexLines []string, err error) 
 		framingLines = append(framingLines, l)
 	}
 	framing = strings.TrimSpace(strings.Join(framingLines, "\n"))
-
-	end := len(lines)
-	for i := headingIdx + 1; i < len(lines); i++ {
-		if strings.HasPrefix(strings.TrimSpace(lines[i]), "## ") {
-			end = i
-			break
-		}
-	}
 	return framing, lines[headingIdx+1 : end], nil
 }
 

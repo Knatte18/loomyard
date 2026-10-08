@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -149,17 +150,75 @@ func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prio
 	return nil
 }
 
-// failureDigestBlock renders a failed prior record's digest for the recovery prompt: the reasons, which failBatch already ends with the suspect paths.
-// It returns "" when prior is not a failed batch.
+// failureDigestBlock renders a prior record's failure for the recovery prompt.
+// It lists the reasons of a failed digest, which failBatch already ends with the suspect paths.
+// It then adds one instruction per card in the prior record's AmendedCards to re-read the card and bring the committed work in line with it.
+// The amended instructions come from AmendedCards, not from the reasons, so a stuck, dead or failed recovery does not erase them.
+// It returns "" when prior is neither a failed batch nor holds an amended card.
 func failureDigestBlock(prior *BatchState) string {
-	if prior == nil || prior.Status != DigestStatusFailed || prior.Digest == nil || len(prior.Digest.Reasons) == 0 {
+	if prior == nil {
 		return ""
 	}
-	var b strings.Builder
-	for _, r := range prior.Digest.Reasons {
-		fmt.Fprintf(&b, "- %s\n", r)
+	var lines []string
+	if prior.Status == DigestStatusFailed && prior.Digest != nil {
+		for _, r := range prior.Digest.Reasons {
+			lines = append(lines, "- "+r)
+		}
 	}
-	return strings.TrimRight(b.String(), "\n")
+	for _, a := range prior.AmendedCards {
+		lines = append(lines, fmt.Sprintf("- card %s was amended after the previous attempt began: re-read the card file and bring the work already committed in line with it", a.Card))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// uncommittedPathsBlock renders the worktree's uncommitted paths for the recovery prompt, grouped by whether some session of the run wrote them.
+// A path the run's write evidence cannot attribute counts as not written by this run, the side the strand leaves untouched;
+// a collapsed untracked directory counts as written when any written path lies under it.
+// A clean tree renders "none".
+func uncommittedPathsBlock(deps RecoverDeps) (string, error) {
+	uncommitted, err := UncommittedPaths(deps.Geom)
+	if err != nil {
+		return "", err
+	}
+	if len(uncommitted) == 0 {
+		return "none", nil
+	}
+	var written []string
+	if deps.Engine != nil {
+		writes, err := loadRunWrites(deps.Engine, deps.State, deps.Geom.WorktreeRoot)
+		if err != nil {
+			return "", err
+		}
+		if written, err = writtenWorktreePaths(writes, deps.Geom.WorktreeRoot); err != nil {
+			return "", err
+		}
+	}
+	var own, foreign []string
+	for _, p := range uncommitted {
+		if writtenUnder(written, p) {
+			own = append(own, p)
+		} else {
+			foreign = append(foreign, p)
+		}
+	}
+	var sections []string
+	for _, group := range []struct {
+		heading string
+		paths   []string
+	}{{"Written by this run:", own}, {"Not written by this run:", foreign}} {
+		if len(group.paths) > 0 {
+			sections = append(sections, group.heading+"\n- "+strings.Join(group.paths, "\n- "))
+		}
+	}
+	return strings.Join(sections, "\n\n"), nil
+}
+
+// writtenUnder reports whether uncommitted, a path git status names, is one of written or a directory holding one.
+func writtenUnder(written []string, uncommitted string) bool {
+	if dir, isDir := strings.CutSuffix(uncommitted, "/"); isDir {
+		return slices.ContainsFunc(written, func(w string) bool { return strings.HasPrefix(w, dir+"/") })
+	}
+	return slices.Contains(written, uncommitted)
 }
 
 // recoverSpawn archives any stale report, stops a live prior strand, renders
@@ -201,7 +260,11 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 
 	notePath := friction.NotePath(deps.FrictionDir, batchName+"-recovery")
 	cardGates := renderCardGates(deps.Plan, batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Geom.WorktreeRoot)
-	prompt, err := RenderRecoveryPrompt(batch, cardGates, prevDigest, failureDigestBlock(prior), reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
+	uncommittedPaths, err := uncommittedPathsBlock(deps)
+	if err != nil {
+		return nil, fmt.Errorf("webster: list the worktree's uncommitted paths for batch %s: %w; way forward: transient, re-run `lyx webster recover-batch %d`", batchName, err, number)
+	}
+	prompt, err := RenderRecoveryPrompt(batch, cardGates, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +320,12 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	var priorWarnings []AuditWarning
 	var priorSuspects []SuspectPath
 	var priorTranscripts []string
+	// The prompt above rendered every amended card, so the fresh record carries the entries as rendered: only an edit made after this spawn forces it failed.
+	var amended []AmendedCard
 	if prior != nil {
+		for _, a := range prior.AmendedCards {
+			amended = append(amended, AmendedCard{Card: a.Card, Rendered: true})
+		}
 		priorWarnings = prior.AuditWarnings
 		priorSuspects = prior.SuspectPaths
 		priorTranscripts = prior.ForkTranscripts
@@ -267,6 +335,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		Slug:            slug,
 		Cards:           batchCardIDs(batch),
 		CardHashes:      cardHashes,
+		AmendedCards:    amended,
 		StartSHA:        start,
 		AuditWarnings:   priorWarnings,
 		SuspectPaths:    priorSuspects,
@@ -336,9 +405,9 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 			for _, p := range contracts.Uncleared {
 				what = append(what, fmt.Sprintf("%s (%s)", p, noteForkWroteLast))
 			}
-			wayForward := resetToStartSteps(stepRunFresh)
+			wayForward := resetToStartSteps(stepRun)
 			if len(contracts.Uncleared) == 0 && allPathlessFabricReference(contracts.Rest) {
-				wayForward = fmt.Sprintf("way forward: when the worktree is clean and HEAD is the batch's start commit (git reset --keep to it if the batch committed), or the batch's commits are kept and every recorded command is read-only, \"lyx webster accept-audit --batch %d\" then \"lyx webster recover-batch %d\"; otherwise %s", batchNumber, batchNumber, strings.TrimPrefix(resetToStartSteps(stepRunFresh), "way forward: "))
+				wayForward = fmt.Sprintf("way forward: when the worktree is clean and HEAD is the batch's start commit (\"%s\" moves it there if the batch committed), or the batch's commits are kept and every recorded command is read-only, \"lyx webster accept-audit --batch %d\" then \"lyx webster recover-batch %d\"; otherwise %s", resetVerb(ResetToBatchStart, batchNumber), batchNumber, batchNumber, freshRestartSteps(stepRun))
 			}
 			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; %s", batchNumber, strings.Join(what, ", "), wayForward)}
 		}
@@ -509,9 +578,32 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		return warnings, bfe
 	}
 
+	// An amendment accepted while this recovery ran fails it whatever its report says, so the next recover-batch re-runs the batch on the amended card.
+	if len(amendedReasons(bs)) > 0 {
+		bfe, ferr := failBatch(failBatchInput{
+			State:        st,
+			Batch:        bs,
+			Number:       number,
+			Slug:         slug,
+			ReportsDir:   deps.Geom.ReportsDir,
+			WorktreeRoot: deps.Geom.WorktreeRoot,
+			Git:          deps.Geom.Git,
+			HeadSHA:      head,
+			Now:          time.Now,
+		})
+		if ferr != nil {
+			return warnings, ferr
+		}
+		return warnings, bfe
+	}
+
 	bs.Digest = digest
 	bs.Terminal = true
 	bs.Status = digest.Status
+	// A recovery recorded done has built every amended card, so none stays to be rendered again.
+	if digest.Status == DigestStatusDone {
+		bs.AmendedCards = nil
+	}
 	// Record CardSHAs like record-batch does, so the verify gate's card hint has no gaps.
 	if digest.HeadSHA != "" {
 		bs.CardSHAs = []string{digest.HeadSHA}
@@ -597,7 +689,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 
 	// Cross-check report's head_sha against worktree's actual HEAD under RecordBatch's merge-only rule.
 	if digest.HeadSHA != "" {
-		moved, err := reconcileReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, digest.HeadSHA, fmt.Sprintf("recovery report for batch %02d-%s", number, slug), deps.ParentBranch)
+		moved, err := reconcileReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, digest.HeadSHA, fmt.Sprintf("recovery report for batch %02d-%s", number, slug), deps.ParentBranch, number)
 		if err != nil {
 			return nil, err
 		}

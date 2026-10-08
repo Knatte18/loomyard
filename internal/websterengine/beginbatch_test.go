@@ -148,7 +148,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	return &beginFixture{Deps: deps, Stopper: stopper, Git: git, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
 }
 
-// TestBeginBatch_Refusals proves each entry refusal names its way forward: a pause, a plan edited after run init, and a report already on disk for a terminal record (left untouched) or for a begun non-terminal record (left for record-batch), each message naming the record it saw, and a geometry with no code index, whose message names the missing wiring.
+// TestBeginBatch_Refusals proves each entry refusal names its way forward: a pause, a plan edited after run init, and a report already on disk for each recorded state (terminal done, stuck, failed or dead, and begun non-terminal fork or recovery), each message naming the record it saw and the one remedy that state calls for, and a geometry with no code index, whose message names the missing wiring.
 func TestBeginBatch_Refusals(t *testing.T) {
 	t.Parallel()
 
@@ -181,23 +181,50 @@ func TestBeginBatch_Refusals(t *testing.T) {
 			wantIs: websterengine.ErrPaused,
 		},
 		{
-			name: "a plan edited after run init points at run --fresh",
+			name: "a plan edited after run init points at the reset-to-start route",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				fx.Deps.State.PlanFingerprint = "0000000000000000000000000000000000000000000000000000000000000000"
 			},
 			wantIs:   websterengine.ErrFingerprintMismatch,
-			wantText: []string{"--fresh"},
+			wantText: []string{"1) lyx webster reset --to start; 2) lyx webster run"},
 		},
 		{
-			name: "a report over a terminal record names recover-batch and leaves the record untouched",
+			name: "an overview change confined to its Card Index names rebaseline with the added card",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				if err := websterengine.RestampPlanBaseline(fx.Deps.State, fx.PlanDir, fx.Deps.Geom.WebsterDir); err != nil {
+					t.Fatalf("RestampPlanBaseline() error = %v", err)
+				}
+				editOverview(t, fx, func(text string) string { return text + "3 — third — the follow-up card\n" })
+				writePlanFile(t, fx, "03-third.md", "# Card 3 — third\n\n**Intent:** new.\n")
+			},
+			wantIs:      websterengine.ErrFingerprintMismatch,
+			wantText:    []string{"lyx webster rebaseline --card 03"},
+			wantNotText: []string{"never rebaselined", "outside its Card Index"},
+		},
+		{
+			name: "an overview change outside its Card Index names the follow-up card landing",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				if err := websterengine.RestampPlanBaseline(fx.Deps.State, fx.PlanDir, fx.Deps.Geom.WebsterDir); err != nil {
+					t.Fatalf("RestampPlanBaseline() error = %v", err)
+				}
+				editOverview(t, fx, func(text string) string {
+					return strings.Replace(text, "## Card Index", "Reframed.\n\n## Card Index", 1)
+				})
+			},
+			wantIs:      websterengine.ErrFingerprintMismatch,
+			wantText:    []string{"00-overview.md changed outside its Card Index", followUpWayForward},
+			wantNotText: []string{"never rebaselined"},
+		},
+		{
+			name: "a report over a terminal done record says to begin the next batch and leaves the record untouched",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				seedReport(t, fx)
 				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
 					1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "done"},
 				}
 			},
-			wantText:    []string{"recover-batch", "terminal with status done"},
-			wantNotText: []string{"--restart-chain"},
+			wantText:    []string{"terminal with status done", "way forward: the batch is finished, so begin the next batch"},
+			wantNotText: []string{"record-batch", "recover-batch", "--restart-chain"},
 			check: func(t *testing.T, fx *beginFixture) {
 				if bs := fx.Deps.State.Batches[1]; !bs.Terminal || bs.Status != "done" {
 					t.Errorf("Batches[1] = %+v; want the terminal done record untouched by the refusal", bs)
@@ -205,20 +232,65 @@ func TestBeginBatch_Refusals(t *testing.T) {
 			},
 		},
 		{
-			name: "a report over a begun non-terminal record names record-batch and stays for it",
+			name: "a report over a begun non-terminal fork record names record-batch and stays for it",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				seedReport(t, fx)
 				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
 					1: {Slug: "json-flag", Kind: "fork"},
 				}
 			},
-			wantText: []string{"`lyx webster record-batch 1`", "begun and not terminal"},
+			wantText:    []string{"begun and not terminal", "way forward: `lyx webster record-batch 1`, after fixing whatever its last refusal named"},
+			wantNotText: []string{"recover-batch"},
 			check: func(t *testing.T, fx *beginFixture) {
 				reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
 				if _, statErr := os.Stat(reportPath); statErr != nil {
 					t.Errorf("stat(report) = %v; want it left for record-batch", statErr)
 				}
 			},
+		},
+		{
+			name: "a report over a begun non-terminal recovery record names recover-batch",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				seedReport(t, fx)
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+					1: {Slug: "json-flag", Kind: "recovery"},
+				}
+			},
+			wantText:    []string{"begun and not terminal", "way forward: `lyx webster recover-batch 1`"},
+			wantNotText: []string{"record-batch"},
+		},
+		{
+			name: "a report over a terminal stuck record names recover-batch",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				seedReport(t, fx)
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+					1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "stuck"},
+				}
+			},
+			wantText:    []string{"terminal with status stuck", "way forward: `lyx webster recover-batch 1`"},
+			wantNotText: []string{"record-batch"},
+		},
+		{
+			name: "a report over a terminal failed record names recover-batch",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				seedReport(t, fx)
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+					1: {Slug: "json-flag", Kind: "fork", Terminal: true, Status: "failed"},
+				}
+			},
+			wantText:    []string{"terminal with status failed", "way forward: `lyx webster recover-batch 1`"},
+			wantNotText: []string{"record-batch"},
+		},
+		{
+			name: "a report over a terminal dead record ends the run stuck",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				seedReport(t, fx)
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+					1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead"},
+				}
+			},
+			wantText:    []string{"terminal with status dead", "way forward: the recovery of batch 1 is exhausted, so end the run stuck naming the batch"},
+			wantNotText: []string{"record-batch", "recover-batch"},
 		},
 		{
 			name: "a geometry with no code index names the missing wiring",

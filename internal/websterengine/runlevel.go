@@ -18,7 +18,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -158,14 +157,14 @@ type RunDeps struct {
 
 	// ReentryStep is the plain step that re-enters the run after accept-audit, closing every pending-findings and run-exit way forward.
 	// Empty means `lyx webster run`; the shed adapter sets "re-step the <row> row".
-	// The reset route ends in `lyx webster run --fresh` instead, which the shed adapter never runs itself.
+	// The reset route ends in it too, since the reset archives the run record and a plain run starts over.
 	ReentryStep string
 }
 
 // reentryStep returns the step that re-enters the run, defaulting to `lyx webster run`.
 func (d RunDeps) reentryStep() string {
 	if d.ReentryStep == "" {
-		return "lyx webster run"
+		return stepRun
 	}
 	return d.ReentryStep
 }
@@ -356,7 +355,15 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	}
 	defer runLock.Release()
 
-	plan, err := planparser.ParsePlan(deps.Geom.PlanDir)
+	// The overview frame is hashed from the bytes this parse accepts, so a file changing after the parse cannot make the frame unreadable.
+	var overview []byte
+	plan, err := planparser.ParsePlanFrom(deps.Geom.PlanDir, func(name string) ([]byte, error) {
+		data, err := os.ReadFile(filepath.Join(deps.Geom.PlanDir, name))
+		if name == planOverviewFile {
+			overview = data
+		}
+		return data, err
+	})
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -384,6 +391,10 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	fileHashes, err := planFileHashes(deps.Geom.PlanDir)
 	if err != nil {
 		return RunResult{}, err
+	}
+	frameHash, err := overviewFrameHashOf(overview)
+	if err != nil {
+		panic(fmt.Sprintf("websterengine: the overview planparser.ParsePlanFrom accepted has no frame: %v", err))
 	}
 
 	// Serialize the whole state phase — load, entry-time reclaim, fresh
@@ -426,7 +437,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	sizes := batcher.DiskSizes(deps.Geom.WorktreeRoot)
 	var batches []batcher.Batch
 	newPartition := func() ([]batcher.Batch, error) {
-		formed, err := formBatches(plan, deps.Batcher, sizes, 0)
+		base, err := MerriamBase(deps.Geom)
+		if err != nil {
+			return nil, err
+		}
+		formed, err := formBatches(plan, deps.Batcher, sizes, 0, base)
 		if err != nil {
 			return nil, err
 		}
@@ -447,10 +462,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, err
 		}
 		st = &State{
-			RunGUID:         guid,
-			PlanFingerprint: fingerprint,
-			PlanFileHashes:  fileHashes,
-			Batches:         map[int]*BatchState{},
+			RunGUID:               guid,
+			PlanFingerprint:       fingerprint,
+			PlanFileHashes:        fileHashes,
+			PlanOverviewFrameHash: frameHash,
+			Batches:               map[int]*BatchState{},
 		}
 		RecordPartition(st, batches)
 		if err := storePlanBaseline(deps.Geom.WebsterDir, deps.Geom.PlanDir, fileHashes); err != nil {
@@ -462,26 +478,20 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	case st.PlanFingerprint != fingerprint, freshDrop:
 		if !opts.Fresh {
-			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint, fingerprintMismatchWayForward(st, deps.Geom.PlanDir))
+			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint, fingerprintMismatchWayForward(st, deps.Geom.PlanDir, deps.reentryStep()))
 		}
 
 		batches, err = newPartition()
 		if err != nil {
 			return RunResult{}, err
 		}
-		if _, err := archiveStateFile(deps.Geom.WebsterDir, time.Now); err != nil {
+		if err := archiveRunInPlace(deps.Geom, time.Now); err != nil {
 			return RunResult{}, err
 		}
-		// The drop is committed once the state is archived.
+		// The drop is committed once the run record is archived.
 		// Only a done outcome carries RunResult.Warnings, so each drop is logged here too, where every later refusal, Master outcome and error still leaves it on record.
 		for _, w := range freshWarnings {
 			logger.Warn("websterengine: --fresh dropped a pending audit finding", "warning", w)
-		}
-		if err := archiveReportsDir(deps.Geom.ReportsDir, time.Now); err != nil {
-			return RunResult{}, err
-		}
-		if err := clearRenderedPrompts(deps.Geom.PromptsDir); err != nil {
-			return RunResult{}, err
 		}
 
 		guid, err := newRunGUID()
@@ -489,10 +499,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, err
 		}
 		st = &State{
-			RunGUID:         guid,
-			PlanFingerprint: fingerprint,
-			PlanFileHashes:  fileHashes,
-			Batches:         map[int]*BatchState{},
+			RunGUID:               guid,
+			PlanFingerprint:       fingerprint,
+			PlanFileHashes:        fileHashes,
+			PlanOverviewFrameHash: frameHash,
+			Batches:               map[int]*BatchState{},
 		}
 		RecordPartition(st, batches)
 		if err := storePlanBaseline(deps.Geom.WebsterDir, deps.Geom.PlanDir, fileHashes); err != nil {
@@ -503,7 +514,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 
 	default:
-		batches, err = ExecutionBatches(plan, st, deps.Batcher, sizes)
+		batches, err = ExecutionBatches(plan, st, deps.Batcher, sizes, batcher.StartBase{})
 		if err != nil {
 			return RunResult{}, err
 		}
@@ -1080,8 +1091,8 @@ func pendingFindingsText(engine shuttleengine.Engine, st *State, geom Geometry, 
 }
 
 // pendingPathsWayForward returns the ordered steps that clear pending findings naming paths, and each path's note for the findings clause.
-// A finding with no path, or a path nothing the run recorded can check (see uncheckableReason) other than a cleared contract file, clears only through run --fresh,
-// so the steps are then the reset route, `lyx webster run --fresh` being the re-entry:
+// A finding with no path, or a path nothing the run recorded can check (see uncheckableReason) other than a cleared contract file, clears only through the reset route,
+// so the steps are then the reset to start, then reentry:
 // accept-audit refuses every finding while any one of them cannot be checked.
 // Otherwise the steps are the restores first (git checkout of the differing tracked paths to the last batch head, restore-plan for plan paths that differ, rm for a contract path a fork wrote last),
 // then accept-audit, then reentry.
@@ -1124,7 +1135,7 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 		unchecked = true
 	}
 	if unchecked {
-		return []string{stepResetToStart, stepRunFresh}, notes, nil
+		return []string{stepResetToStart, reentry}, notes, nil
 	}
 	if len(rest) > 0 {
 		differing, _, err := checkSuspectPaths(geom, st, bases.Last, rest)
@@ -1151,6 +1162,7 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 // a plan path differs from the plan the run recorded and restore-plan can undo that, either because the store holds the recorded copy or because the file was never recorded.
 // The start commit is picked by git ancestry,
 // and a recorded commit missing from the repository refuses with the fetch way forward.
+// The HEAD refusal comes before the path checks, which checkPendingFindings runs against the start commit.
 // When no batch recorded a start, the worktree's HEAD stands in for it.
 // When starts are recorded but none is an ancestor of all the others, HEAD stands in only while it is an ancestor of every recorded start (headBeforeEveryStart).
 // An unverifiable path, a pathless finding and a differing plan path whose recorded copy is missing from the store are dropped with the archived state,
@@ -1159,17 +1171,7 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 // A batch record with Uncheckable entries counts as a pending finding: its SuspectPaths join the path check,
 // and it adds its own drop warning.
 func freshPendingDrop(engine shuttleengine.Engine, geom Geometry, st *State, opts RunOptions) (drop bool, warnings []string, err error) {
-	if !opts.Fresh || st == nil {
-		return false, nil, nil
-	}
-	var uncheckableBatches []int
-	for n, bs := range st.Batches {
-		if bs != nil && len(bs.Uncheckable) > 0 {
-			uncheckableBatches = append(uncheckableBatches, n)
-		}
-	}
-	sort.Ints(uncheckableBatches)
-	if len(st.PendingAuditFindings) == 0 && len(uncheckableBatches) == 0 {
+	if !opts.Fresh || st == nil || !hasPendingFindings(st) {
 		return false, nil, nil
 	}
 	bases, err := runEvidenceBases(geom, st)
@@ -1190,93 +1192,12 @@ func freshPendingDrop(engine shuttleengine.Engine, geom Geometry, st *State, opt
 		}
 		base = head
 	}
-	var allPaths []string
-	seen := map[string]bool{}
-	for _, f := range st.PendingAuditFindings {
-		for _, p := range f.Paths {
-			if !seen[p] {
-				seen[p] = true
-				allPaths = append(allPaths, p)
-			}
-		}
-	}
-	for _, n := range uncheckableBatches {
-		for _, sp := range st.Batches[n].SuspectPaths {
-			if !seen[sp.Path] {
-				seen[sp.Path] = true
-				allPaths = append(allPaths, sp.Path)
-			}
-		}
-	}
-	writes, err := contractWritesFor(engine, st, geom, allPaths)
-	if err != nil {
-		return false, nil, err
-	}
-	contracts, err := splitContractPaths(geom, writes, allPaths)
-	if err != nil {
-		return false, nil, err
-	}
-	if len(contracts.Uncleared) > 0 {
-		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while %s", ErrPendingAuditFindings, contractDeleteClause(contracts.Uncleared, "lyx webster run --fresh"))
-	}
-	planPaths, paths, err := splitPlanPaths(geom, contracts.Rest)
-	if err != nil {
-		return false, nil, err
-	}
-	differing, _, err := checkSuspectPaths(geom, st, base, paths)
-	if err != nil {
-		return false, nil, err
-	}
-	if len(differing) > 0 {
-		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while their suspect paths still differ from the run's start commit %s: %s; %s", ErrPendingAuditFindings, base, strings.Join(differing, ", "), resetToStartSteps(stepRunFresh))
-	}
 	if head != base {
-		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while HEAD %s is not the run's start commit %s; %s", ErrPendingAuditFindings, head, base, resetToStartSteps(stepRunFresh))
+		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while HEAD %s is not the run's start commit %s; %s", ErrPendingAuditFindings, head, base, resetToStartSteps(stepRun))
 	}
-	planDiffering, _, err := checkSuspectPaths(geom, st, base, planPaths)
+	warnings, err = checkPendingFindings(engine, geom, st, base, freshPendingGuard())
 	if err != nil {
 		return false, nil, err
-	}
-	var restorable []string
-	noCopy := map[string]bool{}
-	for _, p := range planDiffering {
-		name, err := planFileName(geom, p)
-		if err != nil {
-			return false, nil, err
-		}
-		hash, recorded := st.PlanFileHashes[name]
-		if !recorded {
-			restorable = append(restorable, p)
-			continue
-		}
-		has, err := planBaselineHas(geom.WebsterDir, hash)
-		if err != nil {
-			return false, nil, err
-		}
-		if has {
-			restorable = append(restorable, p)
-		} else {
-			noCopy[p] = true
-		}
-	}
-	if len(restorable) > 0 {
-		return false, nil, fmt.Errorf("%w: --fresh would drop pending audit findings while plan file(s) differ from the plan the run recorded: %s; way forward: %s", ErrPendingAuditFindings, strings.Join(restorable, ", "), planPathClause("\"lyx webster run --fresh\""))
-	}
-	for _, f := range st.PendingAuditFindings {
-		w := fmt.Sprintf("--fresh dropped pending audit finding %s: %s", f.ID, f.Detail)
-		var lost []string
-		for _, p := range f.Paths {
-			if noCopy[p] {
-				lost = append(lost, p)
-			}
-		}
-		if len(lost) > 0 {
-			w += fmt.Sprintf("; plan file(s) %s differ from the recorded plan and their recorded copy is missing from the plan baseline store, so no verb could restore them", strings.Join(lost, ", "))
-		}
-		warnings = append(warnings, w)
-	}
-	for _, n := range uncheckableBatches {
-		warnings = append(warnings, fmt.Sprintf("--fresh dropped batch %02d's uncheckable findings: %s", n, strings.Join(st.Batches[n].Uncheckable, ", ")))
 	}
 	return true, warnings, nil
 }
@@ -1294,7 +1215,7 @@ func headBeforeEveryStart(git Git, worktree, head string, starts []string) error
 			return err
 		}
 		if !ok {
-			return fmt.Errorf("%w: --fresh would drop pending audit findings while the batches' recorded start commits %s share no single oldest commit and HEAD %s is not an ancestor of every one of them; %s", ErrPendingAuditFindings, strings.Join(starts, ", "), head, resetToStartSteps(stepRunFresh))
+			return fmt.Errorf("%w: --fresh would drop pending audit findings while the batches' recorded start commits %s share no single oldest commit and HEAD %s is not an ancestor of every one of them; %s", ErrPendingAuditFindings, strings.Join(starts, ", "), head, resetToStartSteps(stepRun))
 		}
 	}
 	return nil

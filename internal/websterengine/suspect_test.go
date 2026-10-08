@@ -288,7 +288,7 @@ func TestAcceptPendingAudit_RefusesCommitPastHead(t *testing.T) {
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
-	for _, want := range []string{fx.head, "way forward: 1) run `git reset --keep " + fx.head + "` to move HEAD back to the last batch head", `2) re-run "lyx webster accept-audit"`} {
+	for _, want := range []string{fx.head, "way forward: 1) lyx webster reset --to last-batch-head", `2) re-run "lyx webster accept-audit"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q; want it to contain %q", err, want)
 		}
@@ -323,7 +323,7 @@ func TestAcceptPendingAudit_RefusesUnverifiablePath(t *testing.T) {
 	if !errors.Is(err, ErrAuditNotAcceptable) {
 		t.Fatalf("AcceptPendingAudit() error = %v; want ErrAuditNotAcceptable", err)
 	}
-	for _, want := range []string{"ignored.log cannot be checked: ignored by git", "1) lyx webster reset --to start; 2) lyx webster run --fresh"} {
+	for _, want := range []string{"ignored.log cannot be checked: ignored by git", "1) lyx webster reset --to start; 2) lyx webster run"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q; want it to contain %q", err, want)
 		}

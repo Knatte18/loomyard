@@ -688,6 +688,28 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 			},
 		},
 		{
+			name:   "a done report over an unrendered amendment fails the batch with card_amended",
+			audits: oneFork,
+			prepare: func(t *testing.T, fx *recordFixture) {
+				fx.Deps.State.Batches[1].AmendedCards = []websterengine.AmendedCard{{Card: "01-json-flag"}}
+			},
+			report:     okReport,
+			wantFailed: true,
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				var failed *websterengine.BatchFailedError
+				if !errors.As(err, &failed) || !failed.CardAmended {
+					t.Errorf("err = %v; want a BatchFailedError with CardAmended", err)
+				}
+				if !warningsContain(result.Digest.Reasons, "card 01-json-flag was amended after this attempt began") {
+					t.Errorf("Reasons = %v; want the amended card named", result.Digest.Reasons)
+				}
+				if got := fx.Deps.State.Batches[1].Uncheckable; len(got) != 0 {
+					t.Errorf("Uncheckable = %v; want empty", got)
+				}
+				archived(t, fx, 1)
+			},
+		},
+		{
 			name:       "a Master write to a tracked file fails the batch yet stays checkable by recovery",
 			audits:     oneFork,
 			prepare:    parentWrite(trackedFile),
@@ -827,9 +849,9 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 				failed := *fx.Deps.State.Batches[1]
 				rfx.Deps.State.Batches[1] = &failed
 				clk := &recoverFakeClock{now: time.Unix(0, 0)}
-				// A fabric reference has no path recovery could check, so recover-batch names run --fresh instead of spawning.
-				if _, spawned, err := websterengine.RecoverSpawnOrAttach(rfx.Deps, 1, clk); !errors.Is(err, websterengine.ErrRecoveryNeedsFresh) || spawned || !strings.Contains(err.Error(), "lyx webster run --fresh") {
-					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want ErrRecoveryNeedsFresh naming run --fresh", spawned, err)
+				// A fabric reference has no path recovery could check, so recover-batch names the reset-to-start route instead of spawning.
+				if _, spawned, err := websterengine.RecoverSpawnOrAttach(rfx.Deps, 1, clk); !errors.Is(err, websterengine.ErrRecoveryNeedsFresh) || spawned || !strings.Contains(err.Error(), "1) lyx webster reset --to start; 2) lyx webster run") {
+					t.Fatalf("RecoverSpawnOrAttach() = spawned %v, err %v; want ErrRecoveryNeedsFresh naming the reset-to-start route", spawned, err)
 				}
 			},
 		},
@@ -1277,7 +1299,7 @@ func TestRecordBatch_DeleteNotDoneNamesLaterCard(t *testing.T) {
 			name:        "an uncheckable record names the fresh restart",
 			referenced:  true,
 			uncheckable: []string{"fabric-reference: Bash command references the fabric"},
-			wantIn:      []string{"2-later", "internal/foo/user.go:4", "way forward: 1) lyx webster reset --to start; 2) lyx webster run --fresh"},
+			wantIn:      []string{"2-later", "internal/foo/user.go:4", "way forward: 1) lyx webster reset --to start; 2) lyx webster run"},
 			wantNotIn:   []string{"rebaseline"},
 		},
 		{
@@ -1543,7 +1565,7 @@ func TestRecordBatch_ParentMovedHead(t *testing.T) {
 	t.Parallel()
 
 	resetWayForward := func(fx *recordFixture) string {
-		return "way forward: 1) run `git reset --keep " + fx.HeadSHA + "` to move HEAD back to the report's head_sha"
+		return "way forward: 1) lyx webster reset --to report-head --batch 01"
 	}
 	cases := []struct {
 		name string
@@ -1720,7 +1742,7 @@ func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 	if err == nil {
 		t.Fatal("RecordBatch() after a hand-resolved merge: error = nil; want a refusal")
 	}
-	for _, want := range []string{"do not merge cleanly", "way forward: 1) run `git reset --keep "} {
+	for _, want := range []string{"do not merge cleanly", "way forward: 1) lyx webster reset --to report-head --batch 01"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err.Error(), want)
 		}

@@ -26,7 +26,7 @@ type sizeBatcher struct{}
 
 func (sizeBatcher) Name() string { return "size" }
 
-func (sizeBatcher) Batch(_ *planparser.Plan, cards []planparser.Card, sizes batcher.SizeSource, _ int) ([]batcher.Batch, error) {
+func (sizeBatcher) Batch(_ *planparser.Plan, cards []planparser.Card, sizes batcher.SizeSource, _ int, _ batcher.StartBase) ([]batcher.Batch, error) {
 	lines, _, err := sizes.Lines("any.go")
 	if err != nil {
 		return nil, err
@@ -68,8 +68,17 @@ type beforeBatcher struct{}
 
 func (beforeBatcher) Name() string { return "before" }
 
-func (beforeBatcher) Batch(_ *planparser.Plan, cards []planparser.Card, _ batcher.SizeSource, before int) ([]batcher.Batch, error) {
+func (beforeBatcher) Batch(_ *planparser.Plan, cards []planparser.Card, _ batcher.SizeSource, before int, _ batcher.StartBase) ([]batcher.Batch, error) {
 	return []batcher.Batch{{Cards: cards, Profile: "before", Estimate: float64(before)}}, nil
+}
+
+// baseBatcher is a batchifier whose single batch records the start base it was handed: the base's line count as its estimate and its fixed context in its profile.
+type baseBatcher struct{}
+
+func (baseBatcher) Name() string { return "base" }
+
+func (baseBatcher) Batch(_ *planparser.Plan, cards []planparser.Card, _ batcher.SizeSource, _ int, base batcher.StartBase) ([]batcher.Batch, error) {
+	return []batcher.Batch{{Cards: cards, Profile: fmt.Sprintf("base-%v", base.Fixed), Estimate: float64(base.Lines)}}, nil
 }
 
 // TestExecutionBatches asserts the batches each state shape resolves to: the active batchifier's grouping with no state, the recorded partition (profile and estimate kept) when the state holds one even after the size source changed, and the identity batchifier over a state with no partition whatever batchifier is active.
@@ -78,7 +87,7 @@ func TestExecutionBatches(t *testing.T) {
 
 	plan := partitionPlan()
 	recorded := &websterengine.State{}
-	grouped, err := sizeBatcher{}.Batch(plan, plan.Cards, linesSizes(10), 0)
+	grouped, err := sizeBatcher{}.Batch(plan, plan.Cards, linesSizes(10), 0, batcher.StartBase{})
 	if err != nil {
 		t.Fatalf("Batch: %v", err)
 	}
@@ -90,6 +99,7 @@ func TestExecutionBatches(t *testing.T) {
 		// active is the batchifier; nil means sizeBatcher.
 		active    batcher.Batcher
 		sizes     batcher.SizeSource
+		base      batcher.StartBase
 		want      []string
 		wantStats [][2]any
 	}{
@@ -126,6 +136,23 @@ func TestExecutionBatches(t *testing.T) {
 			want:      []string{"01-a+02-b+03-c"},
 			wantStats: [][2]any{{"before", 0.0}},
 		},
+		{
+			name:      "no state hands the batchifier the told start base",
+			active:    baseBatcher{},
+			sizes:     linesSizes(10),
+			base:      batcher.StartBase{Lines: 120, Fixed: 15896},
+			want:      []string{"01-a+02-b+03-c"},
+			wantStats: [][2]any{{"base-15896", 120.0}},
+		},
+		{
+			name:      "a recorded partition keeps its estimates when the told start base differs",
+			state:     recorded,
+			active:    baseBatcher{},
+			sizes:     linesSizes(10),
+			base:      batcher.StartBase{Lines: 120, Fixed: 15896},
+			want:      []string{"01-a+02-b+03-c"},
+			wantStats: [][2]any{{"size", 7.0}},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -134,7 +161,7 @@ func TestExecutionBatches(t *testing.T) {
 			if tc.active != nil {
 				active = tc.active
 			}
-			got, err := websterengine.ExecutionBatches(plan, tc.state, active, tc.sizes)
+			got, err := websterengine.ExecutionBatches(plan, tc.state, active, tc.sizes, tc.base)
 			if err != nil {
 				t.Fatalf("ExecutionBatches() error = %v; want nil", err)
 			}
@@ -189,7 +216,7 @@ func TestExecutionBatches_Refusals(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := websterengine.ExecutionBatches(tc.plan, &websterengine.State{Partition: tc.partition}, sizeBatcher{}, linesSizes(10))
+			_, err := websterengine.ExecutionBatches(tc.plan, &websterengine.State{Partition: tc.partition}, sizeBatcher{}, linesSizes(10), batcher.StartBase{})
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("ExecutionBatches() error = %v; want errors.Is(err, %v)", err, tc.wantErr)
 			}

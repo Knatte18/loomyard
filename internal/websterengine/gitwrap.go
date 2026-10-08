@@ -82,23 +82,25 @@ type ParentBranchFunc func() (string, error)
 // A non-merge commit, the root, or a merge failing any check ends the walk in refusal, and so does any error while checking.
 // The rule keeps the audit sound: the batch is recorded at reportHead, so content a merge adds beyond a clean parent merge would bypass the audited delta.
 // On acceptance the warning names subject, both heads and every walked merge SHA in walk order.
-// A refusal's way forward is worded for record-batch and recover-batch (reportHeadRefusal).
-func reconcileReportHead(git Git, worktree, reportHead, subject string, parentBranch ParentBranchFunc) (warning string, err error) {
-	return reconcileHead(git, worktree, reportHead, subject, parentBranch, reportHeadRefusal)
+// A refusal's way forward is worded for record-batch and recover-batch of the given batch number (reportHeadRefusal).
+func reconcileReportHead(git Git, worktree, reportHead, subject string, parentBranch ParentBranchFunc, batch int) (warning string, err error) {
+	return reconcileHead(git, worktree, reportHead, subject, parentBranch, reportHeadRefusal(batch))
 }
 
 // headRefusal words a reconcileHead refusal's way forward for one caller.
 type headRefusal struct {
-	// head names the commit HEAD must move back to, such as "the report's head_sha".
-	head string
+	// resetStep is the reset that moves HEAD back onto the commit the check expects.
+	resetStep string
 	// rerun is what to re-run once HEAD is back on it, such as "re-run this verb".
 	rerun string
 	// redoMerge is when to redo a parent merge-in that did not qualify, such as "after the batch is recorded".
 	redoMerge string
 }
 
-// reportHeadRefusal is the wording for a verb that records a batch at a report's head_sha.
-var reportHeadRefusal = headRefusal{head: "the report's head_sha", rerun: "re-run this verb", redoMerge: "after the batch is recorded"}
+// reportHeadRefusal is the wording for a verb that records batch at a report's head_sha: reset to the report's head with `reset --to report-head`.
+func reportHeadRefusal(batch int) headRefusal {
+	return headRefusal{resetStep: resetVerb(ResetToReportHead, batch), rerun: "re-run this verb", redoMerge: "after the batch is recorded"}
+}
 
 // reconcileHead is reconcileReportHead with the refusal's way forward worded by refusal.
 func reconcileHead(git Git, worktree, reportHead, subject string, parentBranch ParentBranchFunc, refusal headRefusal) (warning string, err error) {
@@ -124,7 +126,7 @@ func reconcileHead(git Git, worktree, reportHead, subject string, parentBranch P
 			return "", fmt.Errorf("webster: %s: head_sha %q does not match the worktree's actual HEAD %q; "+
 				"only merge commits, such as a parent merge-in, may sit between a fork's reported head and HEAD; "+
 				"%s",
-				subject, reportHead, head, wayForwardSteps(resetKeepStep(refusal.head, reportHead), refusal.rerun))
+				subject, reportHead, head, wayForwardSteps(refusal.resetStep, refusal.rerun))
 		}
 		if reason := git.MergeRejection(worktree, cur, parents, parentBranch); reason != "" {
 			return "", parentMergeRefusal(subject, reportHead, head, cur, reason, refusal)
@@ -207,13 +209,7 @@ func parentMergeRefusal(subject, reportHead, head, merge, reason string, refusal
 		"and merge commit %s does not qualify: %s; "+
 		"%s",
 		subject, reportHead, head, merge, reason,
-		wayForwardSteps(resetKeepStep(refusal.head, reportHead), refusal.rerun, "redo the parent merge-in "+refusal.redoMerge))
-}
-
-// resetKeepStep is the way-forward step that moves HEAD back to sha, named by what: the plain `git reset --keep`, which refuses rather than discards uncommitted changes.
-// The reset verb targets only the run's start and pre-fix heads, so this step stands in for it.
-func resetKeepStep(what, sha string) string {
-	return fmt.Sprintf("run `git reset --keep %s` to move HEAD back to %s", sha, what)
+		wayForwardSteps(refusal.resetStep, refusal.rerun, "redo the parent merge-in "+refusal.redoMerge))
 }
 
 // ignoredPath reports whether git ignores path in worktree.

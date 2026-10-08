@@ -95,6 +95,42 @@ func TestFailBatch(t *testing.T) {
 		}
 	})
 
+	t.Run("an unrendered amendment adds a card_amended reason and flag, a rendered one does not, and neither is uncheckable", func(t *testing.T) {
+		t.Parallel()
+
+		in, _ := failBatchFixture(t, true)
+		in.Batch.AmendedCards = []AmendedCard{{Card: "03-alpha"}, {Card: "04-beta", Rendered: true}}
+		bfe, err := failBatch(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		const want = "card 03-alpha was amended after this attempt began; recovery re-runs the batch on the amended card"
+		if !bfe.CardAmended {
+			t.Fatal("CardAmended = false, want true")
+		}
+		for name, reasons := range map[string][]string{"error": bfe.Reasons, "digest": in.Batch.Digest.Reasons} {
+			if got := strings.Count(strings.Join(reasons, "\n"), want); got != 1 {
+				t.Fatalf("%s reasons carry the amended reason %d times: %v", name, got, reasons)
+			}
+			if strings.Contains(strings.Join(reasons, "\n"), "04-beta") {
+				t.Fatalf("%s reasons name the rendered amendment: %v", name, reasons)
+			}
+		}
+		if len(in.Batch.Uncheckable) != 0 {
+			t.Fatalf("Uncheckable = %v, want none", in.Batch.Uncheckable)
+		}
+
+		in, _ = failBatchFixture(t, true)
+		in.Batch.AmendedCards = []AmendedCard{{Card: "03-alpha", Rendered: true}}
+		bfe, err = failBatch(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bfe.CardAmended {
+			t.Fatal("CardAmended = true over a rendered amendment")
+		}
+	})
+
 	t.Run("appends each transcript once", func(t *testing.T) {
 		t.Parallel()
 

@@ -74,6 +74,7 @@ func TestState_RoundTrip(t *testing.T) {
 				StrandGUID:    "strand-2",
 				ShuttleRunDir: "/runs/2",
 				EventsPath:    "/runs/2/events.jsonl",
+				AmendedCards:  []websterengine.AmendedCard{{Card: "02-second", Rendered: false}, {Card: "03-third", Rendered: true}},
 			},
 		},
 		SeenForkTranscripts: []string{"subagents/abc.jsonl"},
@@ -128,6 +129,10 @@ func TestLoadState_UnusualFiles(t *testing.T) {
   "runGuid": "g",
   "partition": [{"cards": ["01-alpha"], "profile": "cautious", "estimate": 70000, "breakdown": {"weights": {"startup_context": 60000, "fork_messages": 4}, "startup": 61200, "read_union": 0, "cards": []}}]
 }`
+	const retiredMasterBase = `{
+  "runGuid": "g",
+  "partition": [{"cards": ["01-alpha"], "profile": "cautious", "estimate": 70000, "breakdown": {"weights": {"master_base": 52000, "fork_messages": 4}, "startup": 53200, "read_union": 0, "cards": []}}]
+}`
 	tests := []struct {
 		name string
 		// content is the state.json body; absent leaves the file out.
@@ -138,11 +143,14 @@ func TestLoadState_UnusualFiles(t *testing.T) {
 		wantLegacyBatches bool
 		// wantRetiredStartup asserts the partition's breakdown decoded its retired startup_context weight.
 		wantRetiredStartup bool
+		// wantRetiredMasterBase asserts the partition's breakdown decoded its retired master_base weight.
+		wantRetiredMasterBase bool
 	}{
 		{name: "absent file returns nil", absent: true},
 		{name: "corrupt file errors", content: "not valid json{{{", wantErr: true},
 		{name: "legacy integration records still load", content: legacy, wantLegacyBatches: true},
 		{name: "a breakdown recorded with the retired startup_context weight still loads", content: retiredStartup, wantRetiredStartup: true},
+		{name: "a breakdown recorded with the retired master_base weight still loads", content: retiredMasterBase, wantRetiredMasterBase: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -170,6 +178,12 @@ func TestLoadState_UnusualFiles(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("LoadState error = %v; want nil", err)
+			}
+			if tt.wantRetiredMasterBase {
+				if got == nil || len(got.Partition) != 1 || got.Partition[0].Breakdown == nil || got.Partition[0].Breakdown.Weights.RetiredMasterBase != 52000 {
+					t.Errorf("LoadState = %+v; want the partition breakdown's retired master_base weight 52000 decoded", got)
+				}
+				return
 			}
 			if tt.wantRetiredStartup {
 				if got == nil || len(got.Partition) != 1 || got.Partition[0].Breakdown == nil || got.Partition[0].Breakdown.Weights.RetiredStartupContext != 60000 {

@@ -27,8 +27,8 @@ func (c *websterCLI) acceptAuditCmd() *cobra.Command {
 It checks every suspect path against the last batch head and refuses, changing
 nothing, while any differs or cannot be checked.
 It also refuses while HEAD carries a commit past the last batch head other
-than a clean parent merge; run git reset --keep <that head> first, which
-refuses rather than discards uncommitted changes.
+than a clean parent merge; run lyx webster reset --to last-batch-head first,
+which moves HEAD back to that head.
 Restore the named paths with git first, then run it.
 A contract file (outcome.yaml or summary.md) clears when it is absent or when
 Master wrote it after the fork did; a file a fork wrote last refuses, naming
@@ -41,7 +41,7 @@ On success the envelope carries accepted, one entry per accepted finding with
 its class, detail and paths.
 
 With --batch NN it instead accepts failed batch NN's uncheckable findings,
-which otherwise make recover-batch refuse toward reset and run --fresh.
+which otherwise make recover-batch refuse toward "lyx webster reset --to start" and then "lyx webster run".
 It accepts only pathless fabric-reference findings, and only when the worktree
 is clean and either HEAD is the batch's start commit, or the start is an
 ancestor of HEAD, so the batch's commits are kept, and every finding's command

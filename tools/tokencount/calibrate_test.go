@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // fakeHistory is an in-memory PlanHistory: commits by subject and file contents by "<sha>:<path>".
@@ -83,7 +84,44 @@ func planWith(targets map[int]string) map[string]string {
 // lines is content of n lines.
 func lines(n int) string { return strings.Repeat("x\n", n) }
 
-// seedProfile writes a batcher.yaml whose "fit" profile estimates one card's peak as master_base + the lines of its file, with every other coefficient 0;
+// The base files of a based run hold these many lines each.
+const (
+	claudeLines   = 3
+	patternLines  = 4
+	templateLines = 5
+)
+
+// withBaseFiles adds the files a run's Merriam base is computed from to the base tree at sha:
+// CLAUDE.md, PATTERN.md and the Master template.
+func withBaseFiles(files map[string]string, sha string) {
+	files[sha+":CLAUDE.md"] = lines(claudeLines)
+	files[sha+":PATTERN.md"] = lines(patternLines)
+	files[sha+":"+masterTemplatePath] = lines(templateLines)
+}
+
+// knownBaseContext is the context the seeded profiles (a context_per_line of 1) price for a based run whose plan renders overview:
+// the lines of the overview and the three base files, plus the fixed system-prompt context.
+func knownBaseContext(overview string) float64 {
+	base := websterengine.MerriamBaseOf(overview, lines(claudeLines), lines(patternLines), lines(templateLines))
+	return float64(base.Lines) + base.Fixed
+}
+
+// basedRunFixture returns a plan history and base tree in which run slug has a plan commit before the forks of the tests, a base commit sha-of-slug holding the base files, and the base context those give.
+func basedRunFixture(slug string, planTargets map[int]string, forksStarted time.Time) (fakeHistory, fakeBase, float64) {
+	plan := planWith(planTargets)
+	history := fakeHistory{
+		commits: map[string][]gitrepo.SubjectCommit{planCommitSubjectPrefix + slug: {{SHA: slug + "plan", Committed: forksStarted.Add(-time.Hour)}}},
+		files:   map[string]string{},
+	}
+	for name, data := range plan {
+		history.files[slug+"plan:_lyx/plan/"+name] = data
+	}
+	base := fakeBase{shas: map[string]bool{"base" + slug: true}, files: map[string]string{}}
+	withBaseFiles(base.files, "base"+slug)
+	return history, base, knownBaseContext(plan["00-overview.md"])
+}
+
+// seedProfile writes a batcher.yaml whose "fit" profile estimates one card's peak as orientation + the lines of its file, with every other coefficient 0;
 // its "grow" profile is "fit" with a batch_growth of 5.
 func seedProfile(t *testing.T, dir string) {
 	t.Helper()
@@ -93,7 +131,7 @@ func seedProfile(t *testing.T, dir string) {
 	const config = `profiles:
   fit:
     weights:
-      master_base: 10
+      orientation: 10
       batch_growth: 0
       fork_messages: 0
       message_context: 0
@@ -105,7 +143,7 @@ func seedProfile(t *testing.T, dir string) {
       package_context: 0
   grow:
     weights:
-      master_base: 10
+      orientation: 10
       batch_growth: 5
       fork_messages: 0
       message_context: 0
@@ -170,7 +208,7 @@ func TestCalibrate(t *testing.T) {
 		},
 	}
 
-	// Every fork starts at 10 tokens, the profile's master_base, so the start rows lie on a flat line.
+	// Every fork starts at 10 tokens, the profile's orientation, so the start rows lie on a flat line.
 	runs := []RunTally{
 		{Slug: "alpha", BaseSHA: "basea", Forks: []ForkTally{
 			fork(firstFork, 10, 220, "01-c1"),
@@ -241,9 +279,15 @@ func TestCalibrate(t *testing.T) {
 		}
 	}
 
-	// Runs left out for their plan or base still contribute their forks' start rows: every card-naming fork of every run.
-	if len(got.Starts) != 10 || got.StartFit.NotFitted != "" || !near(got.StartFit.MasterBase, 10) || !near(got.StartFit.BatchGrowth, 0) {
-		t.Errorf("starts = %d rows, fit = %+v; want 10 rows fitted to master_base 10, batch_growth 0", len(got.Starts), got.StartFit)
+	// Runs left out for their plan or base still list their forks' start rows, every card-naming fork of every run;
+	// none of these runs holds a Master template at its base commit, so no row carries a base and none enters the fit.
+	if len(got.Starts) != 10 || got.StartFit.NotFitted != "fewer than two distinct positions" || got.StartFit.Forks != 0 {
+		t.Errorf("starts = %d rows, fit = %+v; want 10 rows and no fit over zero forks", len(got.Starts), got.StartFit)
+	}
+	for _, row := range got.Starts {
+		if row.HasBase {
+			t.Errorf("start row %+v has a base; want none, the base trees hold no Master template", row)
+		}
 	}
 
 	alpha, alphaGrowth := FitOf(got.Rows[:4]), GrowthFitOf(got.Rows[:4])
@@ -262,8 +306,8 @@ func TestCalibrate(t *testing.T) {
 	got.WriteMarkdown(&out)
 	for _, want := range []string{
 		"## Calibration (fit)",
-		"| alpha |  | 1 | 10 | 10 |",
-		"Start fit over 10 forks: master_base 10 (profile 10), batch_growth 0 (profile 0), residual spread 1.000.",
+		"| alpha |  | 1 | 10 | n/a (no Master template at base basea) | 10 |",
+		"Start fit: not fitted, fewer than two distinct positions (0 forks).",
 		"| alpha | 03-c3, 04-c4 | 4 | 60 | 120 | 2.000 | 50 | 110 | 2.200 |",
 		"- alpha 05-c5: no fork names it",
 		"- alpha: 4 forks, median ratio 1.750, spread 1.548; growth: 4 forks, median ratio 1.850, spread 1.574",
@@ -289,6 +333,25 @@ func TestCalibrate(t *testing.T) {
 			if !near(row.Estimate, wantEstimates[i]) || !near(row.EstimatedGrowth, wantGrowths[i]) {
 				t.Errorf("row %d at position %d = estimate %v, estimated growth %v; want %v and %v", i, row.Position, row.Estimate, row.EstimatedGrowth, wantEstimates[i], wantGrowths[i])
 			}
+		}
+	})
+
+	t.Run("a run with a computed base prices its start and peak from it", func(t *testing.T) {
+		t.Parallel()
+		basedHistory, basedBase, baseContext := basedRunFixture("delta", map[int]string{1: "internal/a/a.go"}, firstFork)
+		basedBase.files["basedelta:internal/a/a.go"] = lines(100)
+		basedRuns := []RunTally{{Slug: "delta", BaseSHA: "basedelta", Forks: []ForkTally{fork(firstFork, int(baseContext)+10, int(baseContext)+220, "01-c1")}}}
+
+		based, err := Calibrate(basedRuns, "fit", configDir, basedHistory, basedBase)
+		if err != nil {
+			t.Fatalf("Calibrate: %v", err)
+		}
+		if len(based.Starts) != 1 || !based.Starts[0].HasBase || !near(based.Starts[0].Base, baseContext) || !near(based.Starts[0].Estimate, baseContext+10) {
+			t.Errorf("starts = %+v; want one row with base %v and estimated start %v", based.Starts, baseContext, baseContext+10)
+		}
+		// The peak adds the base to the card's 100 lines and the orientation of 10, and the in-fork growth is unchanged: the same base comes off the estimated start.
+		if len(based.Rows) != 1 || !near(based.Rows[0].Estimate, baseContext+110) || !near(based.Rows[0].EstimatedGrowth, 100) || !near(based.Rows[0].MeasuredGrowth, 210) {
+			t.Errorf("rows = %+v; want one row with estimate %v, estimated growth 100 and measured growth 210", based.Rows, baseContext+110)
 		}
 	})
 
@@ -333,7 +396,7 @@ func TestCalibrate(t *testing.T) {
 	})
 }
 
-// TestCalibrateStartFit asserts the start rows' positions restart in each webster session, and the least-squares fit of the start coefficients: exact on starts laid on a line, not fitted from a single position, and marked unusable when the growth comes out negative.
+// TestCalibrateStartFit asserts the start rows' positions restart in each webster session, and the least-squares fit of the start coefficients over the measured start minus the run's computed base: exact on starts laid on a line above the base, not fitted from a single position, marked unusable when the growth comes out negative, and leaving a run without a readable base listed with its reason and outside the fit.
 func TestCalibrateStartFit(t *testing.T) {
 	t.Parallel()
 
@@ -341,85 +404,120 @@ func TestCalibrateStartFit(t *testing.T) {
 	seedProfile(t, configDir)
 	at := time.Date(2026, 1, 2, 3, 0, 0, 0, time.UTC)
 	minute := func(n int) time.Time { return at.Add(time.Duration(n) * time.Minute) }
+	history, base, baseContext := basedRunFixture("r", map[int]string{1: "internal/a/a.go"}, at)
+	// The orientation is the seeded start minus this known base.
+	b := int(baseContext)
 
 	tests := []struct {
 		name  string
 		forks []ForkTally
-		// wantPositions are the rows' positions in order.
-		wantPositions  []int
-		wantNotFitted  string
-		wantBase       float64
-		wantGrowth     float64
-		wantUnusable   bool
-		wantMarkdownIn string
+		// orphan holds the forks of a second run with no plan commit, so no base.
+		orphan []ForkTally
+		// wantPositions are the rows' positions in order, the based run's then the orphan's.
+		wantPositions   []int
+		wantForks       int
+		wantNotFitted   string
+		wantOrientation float64
+		wantGrowth      float64
+		wantUnusable    bool
+		wantMarkdownIn  []string
 	}{
 		{
-			name: "positions restart in a second session and starts on a line fit exactly",
+			name: "positions restart in a second session and starts on a line above the base fit exactly",
 			forks: []ForkTally{
-				forkIn("s1.jsonl", minute(0), 40, 100, "01-x"),
-				forkIn("s1.jsonl", minute(1), 47, 100, "02-x"),
-				forkIn("s1.jsonl", minute(2), 54, 100, "03-x"),
-				forkIn("s2.jsonl", minute(3), 40, 100, "04-x"),
-				forkIn("s2.jsonl", minute(4), 47, 100, "05-x"),
+				forkIn("s1.jsonl", minute(0), b+40, 100, "01-x"),
+				forkIn("s1.jsonl", minute(1), b+47, 100, "02-x"),
+				forkIn("s1.jsonl", minute(2), b+54, 100, "03-x"),
+				forkIn("s2.jsonl", minute(3), b+40, 100, "04-x"),
+				forkIn("s2.jsonl", minute(4), b+47, 100, "05-x"),
 				// A fork naming no cards is no position.
-				forkIn("s2.jsonl", minute(5), 90, 100),
+				forkIn("s2.jsonl", minute(5), b+90, 100),
 			},
-			wantPositions:  []int{1, 2, 3, 1, 2},
-			wantBase:       40,
-			wantGrowth:     7,
-			wantMarkdownIn: "| r | s2.jsonl | 2 | 47 | 15 |",
+			wantPositions:   []int{1, 2, 3, 1, 2},
+			wantForks:       5,
+			wantOrientation: 40,
+			wantGrowth:      7,
+			wantMarkdownIn:  []string{fmt.Sprintf("| r | s2.jsonl | 2 | %d | %d | %d |", b+47, b, b+15)},
 		},
 		{
 			name: "one distinct position is not fitted",
 			forks: []ForkTally{
-				forkIn("s1.jsonl", minute(0), 40, 100, "01-x"),
-				forkIn("s2.jsonl", minute(1), 44, 100, "02-x"),
+				forkIn("s1.jsonl", minute(0), b+40, 100, "01-x"),
+				forkIn("s2.jsonl", minute(1), b+44, 100, "02-x"),
 			},
 			wantPositions:  []int{1, 1},
+			wantForks:      2,
 			wantNotFitted:  "fewer than two distinct positions",
-			wantMarkdownIn: "Start fit: not fitted, fewer than two distinct positions (2 forks).",
+			wantMarkdownIn: []string{"Start fit: not fitted, fewer than two distinct positions (2 forks)."},
 		},
 		{
 			name: "starts falling with position give a negative growth marked unusable",
 			forks: []ForkTally{
-				forkIn("s1.jsonl", minute(0), 100, 100, "01-x"),
-				forkIn("s1.jsonl", minute(1), 60, 100, "02-x"),
+				forkIn("s1.jsonl", minute(0), b+100, 100, "01-x"),
+				forkIn("s1.jsonl", minute(1), b+60, 100, "02-x"),
 			},
-			wantPositions:  []int{1, 2},
-			wantBase:       100,
-			wantGrowth:     -40,
-			wantUnusable:   true,
-			wantMarkdownIn: "unusable: a negative coefficient",
+			wantPositions:   []int{1, 2},
+			wantForks:       2,
+			wantOrientation: 100,
+			wantGrowth:      -40,
+			wantUnusable:    true,
+			wantMarkdownIn:  []string{"unusable: a negative coefficient"},
+		},
+		{
+			name: "a run without a readable base stays listed with its reason and outside the fit",
+			forks: []ForkTally{
+				forkIn("s1.jsonl", minute(0), b+40, 100, "01-x"),
+				forkIn("s1.jsonl", minute(1), b+47, 100, "02-x"),
+			},
+			orphan:          []ForkTally{forkIn("s1.jsonl", minute(0), 9999, 100, "01-x"), forkIn("s1.jsonl", minute(1), 1, 100, "02-x")},
+			wantPositions:   []int{1, 2, 1, 2},
+			wantForks:       2,
+			wantOrientation: 40,
+			wantGrowth:      7,
+			wantMarkdownIn: []string{
+				"| orphan | s1.jsonl | 1 | 9999 | n/a (no plan commit before the first fork) | 10 |",
+				"Start fit over 2 forks: orientation 40 (profile 10), batch_growth 7 (profile 5)",
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := Calibrate([]RunTally{{Slug: "r", Forks: tt.forks}}, "grow", configDir, fakeHistory{}, fakeBase{})
+			runs := []RunTally{{Slug: "r", BaseSHA: "baser", Forks: tt.forks}}
+			if tt.orphan != nil {
+				runs = append(runs, RunTally{Slug: "orphan", Forks: tt.orphan})
+			}
+			got, err := Calibrate(runs, "grow", configDir, history, base)
 			if err != nil {
 				t.Fatalf("Calibrate: %v", err)
 			}
 			var positions []int
 			for _, row := range got.Starts {
 				positions = append(positions, row.Position)
-				if want := float64(10 + 5*(row.Position-1)); row.Estimate != want {
-					t.Errorf("start row at position %d estimate = %v; want the profile's %v", row.Position, row.Estimate, want)
+				want := float64(10 + 5*(row.Position-1))
+				if row.HasBase {
+					want += baseContext
+				}
+				if row.Estimate != want {
+					t.Errorf("start row of %s at position %d estimate = %v; want the profile's %v", row.Run, row.Position, row.Estimate, want)
 				}
 			}
 			if !slices.Equal(positions, tt.wantPositions) {
 				t.Errorf("start row positions = %v; want %v", positions, tt.wantPositions)
 			}
 			fit := got.StartFit
-			if fit.NotFitted != tt.wantNotFitted || fit.Unusable() != tt.wantUnusable {
-				t.Fatalf("fit = %+v; want not fitted %q, unusable %v", fit, tt.wantNotFitted, tt.wantUnusable)
+			if fit.NotFitted != tt.wantNotFitted || fit.Unusable() != tt.wantUnusable || fit.Forks != tt.wantForks {
+				t.Fatalf("fit = %+v; want %d forks, not fitted %q, unusable %v", fit, tt.wantForks, tt.wantNotFitted, tt.wantUnusable)
 			}
-			if tt.wantNotFitted == "" && (math.Abs(fit.MasterBase-tt.wantBase) > 1e-9 || math.Abs(fit.BatchGrowth-tt.wantGrowth) > 1e-9) {
-				t.Errorf("fit = master_base %v, batch_growth %v; want %v, %v", fit.MasterBase, fit.BatchGrowth, tt.wantBase, tt.wantGrowth)
+			if tt.wantNotFitted == "" && (math.Abs(fit.Orientation-tt.wantOrientation) > 1e-9 || math.Abs(fit.BatchGrowth-tt.wantGrowth) > 1e-9) {
+				t.Errorf("fit = orientation %v, batch_growth %v; want %v, %v", fit.Orientation, fit.BatchGrowth, tt.wantOrientation, tt.wantGrowth)
 			}
 			var out bytes.Buffer
 			got.WriteMarkdown(&out)
-			if !strings.Contains(out.String(), tt.wantMarkdownIn) {
-				t.Errorf("markdown lacks %q:\n%s", tt.wantMarkdownIn, out.String())
+			for _, want := range tt.wantMarkdownIn {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("markdown lacks %q:\n%s", want, out.String())
+				}
 			}
 		})
 	}

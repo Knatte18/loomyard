@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -247,7 +248,7 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	}
 }
 
-// TestBeginBatchCmd_ReportOnDisk proves begin-batch archives a report that has no begin-batch record and names the archive as archived_report, while a report over a recorded batch is refused with the record's state named.
+// TestBeginBatchCmd_ReportOnDisk proves begin-batch archives a report that has no begin-batch record and names the archive as archived_report, while a report over a recorded batch is refused with the record's state and its one remedy named.
 func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -267,7 +268,7 @@ func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
 			name:     "a terminal record is refused",
 			record:   &websterengine.BatchState{Slug: "only", Kind: "fork", Terminal: true, Status: "done"},
 			wantExit: 1,
-			wantText: []string{"terminal with status done", "recover-batch 1"},
+			wantText: []string{"terminal with status done", "begin the next batch"},
 		},
 	}
 	for _, tt := range tests {
@@ -516,7 +517,7 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 	fx := newVerbsFixture(t)
 	st := fx.initState(t)
 	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
-	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
+	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork", AmendedCards: []websterengine.AmendedCard{{Card: "01-only"}}}
 	st.CurrentBatch = 1
 	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
@@ -537,7 +538,7 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 		t.Fatalf("record-batch 1 = 0; want non-zero, output: %s", out.String())
 	}
 	got := out.String()
-	for _, want := range []string{`"batch_failed":true`, `"batch":"01-only"`, `lyx webster recover-batch`} {
+	for _, want := range []string{`"batch_failed":true`, `"card_amended":true`, `"batch":"01-only"`, `lyx webster recover-batch`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q; got %q", want, got)
 		}
@@ -598,6 +599,9 @@ func TestRecordBatchCmd_DeleteReferencedByLaterCard(t *testing.T) {
 			t.Errorf("record-batch output missing %q; got %q", want, out.String())
 		}
 	}
+	if strings.Contains(out.String(), "card_amended") {
+		t.Errorf("record-batch output carries card_amended without an amendment: %q", out.String())
+	}
 
 	out.Reset()
 	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code == 0 {
@@ -639,7 +643,7 @@ func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 	}
 }
 
-// TestRecoverBatchCmd_NeedsFreshEnvelope proves recover-batch over a batch failed on an uncheckable finding exits non-zero with needs_fresh, names run --fresh, and spawns nothing.
+// TestRecoverBatchCmd_NeedsFreshEnvelope proves recover-batch over a batch failed on an uncheckable finding exits non-zero with needs_fresh, names the reset-to-start route, and spawns nothing.
 func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
@@ -658,7 +662,7 @@ func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 		t.Fatalf("recover-batch 1 = 0; want non-zero, output: %s", out.String())
 	}
 	got := out.String()
-	for _, want := range []string{`"needs_fresh":true`, `lyx webster run --fresh`} {
+	for _, want := range []string{`"needs_fresh":true`, `1) lyx webster reset --to start; 2) lyx webster run`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q; got %q", want, got)
 		}
@@ -723,6 +727,16 @@ func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 	if !strings.Contains(prompt, "./internal/edited") {
 		t.Errorf("recovery prompt lacks the edited card's gate package ./internal/edited; got %q", prompt)
 	}
+
+	// The recovery strand is now in flight: a further edit of its card is accepted and reported as amended.
+	plankit.Write(t, fx.CLI.geom.PlanDir, onlyCreatePlan("", "internal/edited-again/new.go"))
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, []string{"--card", "1"}); code != 0 {
+		t.Fatalf("rebaseline --card 1 over the in-flight recovery = %d; want 0, output: %s", code, out.String())
+	}
+	if want := `"cards_amended":["01-only"]`; !strings.Contains(out.String(), want) {
+		t.Errorf("in-flight rebaseline output missing %s; got %q", want, out.String())
+	}
 }
 
 // TestRecoverBatchCmd_RunningThenTerminal drives recover-batch across two calls against the same
@@ -774,7 +788,28 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	head := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: land the card's Create target")
 	writeBatchReport(t, fx.CLI.geom.ReportsDir, head)
 
-	// Second call: ATTACH (Kind == recovery, non-terminal, StrandGUID set)
+	// A card of the batch is amended while that recovery runs, which forces its done report failed.
+	// The envelope carries card_amended, and the call after it spawns again with the entry rendered.
+	loaded.Batches[1].AmendedCards = []websterengine.AmendedCard{{Card: "01-only"}}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, loaded); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	var outForced strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outForced, []string{"1", "--wait", "1ns"}); code == 0 {
+		t.Fatalf("recover-batch 1 over an amended card = 0; want non-zero, output: %s", outForced.String())
+	}
+	for _, want := range []string{`"batch_failed":true`, `"card_amended":true`, `"batch":"01-only"`} {
+		if !strings.Contains(outForced.String(), want) {
+			t.Errorf("forced-failure output missing %q; got %q", want, outForced.String())
+		}
+	}
+	var outRespawn strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outRespawn, []string{"1", "--wait", "1ns"}); code != 0 || !strings.Contains(outRespawn.String(), `"status":"running"`) {
+		t.Fatalf("recover-batch 1 after the forced failure = %d, output: %s; want a running respawn", code, outRespawn.String())
+	}
+	writeBatchReport(t, fx.CLI.geom.ReportsDir, head)
+
+	// Last call: ATTACH (Kind == recovery, non-terminal, StrandGUID set)
 	// -- recoverSpawn/archiveStaleReport never runs again, so the report
 	// just written survives and the very first gather sees it -- terminal.
 	var out2 strings.Builder
@@ -788,8 +823,11 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 			t.Errorf("second call output missing %q; got %q", want, got2)
 		}
 	}
-	if fx.Engine.PrepareCalls != 1 {
-		t.Errorf("Engine.prepareCalls after attach call = %d; want still exactly 1 (no re-spawn)", fx.Engine.PrepareCalls)
+	if strings.Contains(got2, "card_amended") {
+		t.Errorf("done call output carries card_amended: %q", got2)
+	}
+	if fx.Engine.PrepareCalls != 2 {
+		t.Errorf("Engine.prepareCalls after attach call = %d; want still exactly 2 (no re-spawn)", fx.Engine.PrepareCalls)
 	}
 
 	loaded, err = websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
@@ -924,6 +962,8 @@ func seedPersistentPreRunFixture(t *testing.T, anchor, batcherConfig string) *hu
 	t.Helper()
 	h := hubforge.NewHub(t, anchor)
 	seedPersistentPreRunConfig(t, h, batcherConfig)
+	// validate with no run state computes Merriam's start base, which reads the Master stencil.
+	seedHubStencils(t, h.Path)
 	return h
 }
 
@@ -940,6 +980,7 @@ func seedPersistentPreRunConfig(t *testing.T, h *hubforge.Hub, batcherConfig str
 
 // TestPersistentPreRunE_BatcherSelection proves the load-time batcher selection (batcher.Active(baseDir), wired into PersistentPreRunE) through the `status` verb, which never itself touches the batcher, over one hub whose batcher.yaml each step rewrites:
 // an active: naming no profile is a true fail-fast gate that aborts before any verb's RunE ever runs, with an output.Err envelope naming batcher.yaml and the bad key, a rebaseline under a profile with a negative coefficient is refused the same way and leaves state.json byte-identical, and the template's default active: key resolves its cautious profile, so the command proceeds normally through the rest of PersistentPreRunE and into the verb's own RunE.
+// A last step drives the config-load refusals of batcher.yaml and webster.yaml: broken content (including a retired key, whose way forward is the reconcile) carries `config_invalid: true`, an unreadable file and a broken shuttle.yaml carry none, and state.json stays byte-identical.
 // The steps share one hub and each rewrites its own config, so none relies on another's result.
 // The scenario calls t.Parallel as a whole and no step does, since the steps share the one hub.
 func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
@@ -1014,6 +1055,139 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 			t.Errorf("state.json changed under a refused rebaseline:\nbefore %s\nafter  %s", before, after)
 		}
 	})
+
+	t.Run("config load refusals carry config_invalid only for broken content", func(t *testing.T) {
+		geom := hubgeom.WebsterGeometry(h.Location)
+		st := &websterengine.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}
+		if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, st); err != nil {
+			t.Fatalf("SaveState() error = %v", err)
+		}
+		statePath := filepath.Join(geom.WebsterDir, "state.json")
+
+		badRole := "master: sonnet\nrecovery: \"opus \"\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 3\n"
+		tests := []struct {
+			name string
+			// seed rewrites the hub's config for the case; it may leave one file unreadable.
+			seed            func(t *testing.T)
+			wantConfig      bool
+			wantContains    []string
+			wantNotContains []string
+		}{
+			{
+				name: "a malformed batcher profile",
+				seed: func(t *testing.T) {
+					seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), "fork_messages: 4", "fork_messages: -1", 1))
+				},
+				wantConfig:   true,
+				wantContains: []string{"batcher.yaml did not load", "fork_messages", "way forward: fix batcher.yaml under _lyx/config, then re-run the verb"},
+			},
+			{
+				name: "a batcher profile carrying master_base",
+				seed: func(t *testing.T) {
+					seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), "orientation: 31400", "master_base: 52000", 1))
+				},
+				wantConfig:   true,
+				wantContains: []string{"batcher.yaml did not load", "master_base", `way forward: run \"lyx config reconcile --apply\", then re-run the verb`},
+			},
+			{
+				name: "an unreadable batcher.yaml",
+				seed: func(t *testing.T) {
+					seedPersistentPreRunConfig(t, h, batcher.ConfigTemplate())
+					makeConfigUnreadable(t, h, "batcher")
+				},
+				wantContains:    []string{"batcher.yaml could not be read", "way forward: transient, re-run the verb"},
+				wantNotContains: []string{"did not load"},
+			},
+			{
+				name: "a webster.yaml with a bad role spec",
+				seed: func(t *testing.T) {
+					seedPersistentPreRunConfig(t, h, batcher.ConfigTemplate())
+					hubforge.SeedConfig(t, h, map[string]string{"webster": badRole})
+				},
+				wantConfig:   true,
+				wantContains: []string{"webster.yaml did not load", "recovery", "way forward: fix webster.yaml under _lyx/config, then re-run the verb"},
+			},
+			{
+				name: "an unreadable webster.yaml",
+				seed: func(t *testing.T) {
+					seedPersistentPreRunConfig(t, h, batcher.ConfigTemplate())
+					makeConfigUnreadable(t, h, "webster")
+				},
+				wantContains:    []string{"webster.yaml could not be read", "way forward: transient, re-run the verb"},
+				wantNotContains: []string{"did not load"},
+			},
+			{
+				name: "a malformed shuttle.yaml keeps its plain refusal",
+				seed: func(t *testing.T) {
+					seedPersistentPreRunConfig(t, h, batcher.ConfigTemplate())
+					hubforge.SeedConfig(t, h, map[string]string{"shuttle": "not: [valid"})
+				},
+				wantNotContains: []string{"did not load", "could not be read"},
+			},
+		}
+		for _, tt := range tests {
+			tt.seed(t)
+			before, err := os.ReadFile(statePath)
+			if err != nil {
+				t.Fatalf("%s: read state.json: %v", tt.name, err)
+			}
+
+			var out strings.Builder
+			exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})
+
+			got := out.String()
+			if exitCode != 1 {
+				t.Errorf("%s: status = %d; want 1, output: %s", tt.name, exitCode, got)
+			}
+			if hasFlag := strings.Contains(got, `"config_invalid":true`); hasFlag != tt.wantConfig {
+				t.Errorf("%s: output has config_invalid:true = %v; want %v, output: %s", tt.name, hasFlag, tt.wantConfig, got)
+			}
+			for _, want := range tt.wantContains {
+				if !strings.Contains(got, want) {
+					t.Errorf("%s: output missing %q; got %q", tt.name, want, got)
+				}
+			}
+			for _, unwanted := range tt.wantNotContains {
+				if strings.Contains(got, unwanted) {
+					t.Errorf("%s: output contains %q; got %q", tt.name, unwanted, got)
+				}
+			}
+			after, err := os.ReadFile(statePath)
+			if err != nil {
+				t.Fatalf("%s: read state.json after: %v", tt.name, err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Errorf("%s: state.json changed under a refused verb:\nbefore %s\nafter  %s", tt.name, before, after)
+			}
+			unmakeConfigUnreadable(t, h, "batcher")
+			unmakeConfigUnreadable(t, h, "webster")
+		}
+	})
+}
+
+// makeConfigUnreadable replaces h's config file for module with a directory of the same name, so the file exists but reading it fails.
+func makeConfigUnreadable(t *testing.T, h *hubforge.Hub, module string) {
+	t.Helper()
+
+	path := configengine.ConfigFile(h.Location.AnchorPath(), module)
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove %s: %v", path, err)
+	}
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", path, err)
+	}
+}
+
+// unmakeConfigUnreadable removes the directory makeConfigUnreadable left at h's config file for module, if any, so the next seed can write the file again.
+func unmakeConfigUnreadable(t *testing.T, h *hubforge.Hub, module string) {
+	t.Helper()
+
+	path := configengine.ConfigFile(h.Location.AnchorPath(), module)
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		if err := os.Remove(path); err != nil {
+			t.Fatalf("remove %s: %v", path, err)
+		}
+	}
 }
 
 // TestPersistentPreRunE_PlanDirAnchoredAtSubpath is the one case that covers wiring.go's production

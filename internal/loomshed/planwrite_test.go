@@ -13,6 +13,7 @@ package loomshed
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // planInnerProducer is a caller-settable shedengine.ShedProducer stand-in recording its call count.
@@ -222,11 +224,37 @@ func seedPriorPlanStencils(t *testing.T) string {
 	return stencilkit.Seed(t)
 }
 
+// noWebsterArchive is the archiveWebster seam of a rotation with no webster run record.
+func noWebsterArchive(string) error { return nil }
+
+// websterArchiveRecorder is an archiveWebster seam recording each destination it is handed, and what the plan directory held at the time.
+type websterArchiveRecorder struct {
+	planDir string
+	err     error
+	dests   []string
+	// planFilesAtCall is the number of top-level plan entries present at each call.
+	planFilesAtCall []int
+}
+
+func (r *websterArchiveRecorder) archive(dest string) error {
+	entries, _ := os.ReadDir(r.planDir)
+	n := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			n++
+		}
+	}
+	r.dests = append(r.dests, dest)
+	r.planFilesAtCall = append(r.planFilesAtCall, n)
+	return r.err
+}
+
 func TestNewPlanDirRotator(t *testing.T) {
 	t.Run("MovesEveryTopLevelMDFilePreservingContent", func(t *testing.T) {
 		anchorPath, planDir := setupPlanDir(t, "00-overview.md", "01-card-one.md")
+		webster := &websterArchiveRecorder{planDir: planDir}
 
-		if amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)(); err != nil {
+		if amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), webster.archive, fixedPlanClock)(); err != nil {
 			t.Fatalf("rotate() error = %v; want nil", err)
 		} else {
 			archiveDir := filepath.Join(planparser.PlanDir(anchorPath), planparser.ArchiveDirName(fixedPlanClock().UTC().Format(archiveTimestampFormat), ""))
@@ -250,6 +278,56 @@ func TestNewPlanDirRotator(t *testing.T) {
 				t.Errorf("%s still present at plan directory root after rotation", name)
 			}
 		}
+
+		// The record is archived once, into the archive's webster subdirectory, before the plan files move.
+		wantDest := filepath.Join(archiveDir, "webster")
+		if len(webster.dests) != 1 || webster.dests[0] != wantDest || webster.planFilesAtCall[0] != 2 {
+			t.Errorf("webster archive calls = %v with %v plan files at call; want one call to %q with both plan files still in place", webster.dests, webster.planFilesAtCall, wantDest)
+		}
+		if got := ArchivedPlanWebsterDirs(planDir); len(got) != 1 || got[0] != wantDest {
+			t.Errorf("ArchivedPlanWebsterDirs() = %v; want [%s]", got, wantDest)
+		}
+	})
+
+	t.Run("NothingToRotateNeverArchivesTheWebsterRecord", func(t *testing.T) {
+		for name, setup := range map[string]func(t *testing.T) (string, string){
+			"empty plan directory": func(t *testing.T) (string, string) { return setupPlanDir(t) },
+			"absent plan directory": func(t *testing.T) (string, string) {
+				anchorPath := t.TempDir()
+				return anchorPath, planparser.PlanDir(anchorPath)
+			},
+		} {
+			anchorPath, planDir := setup(t)
+			webster := &websterArchiveRecorder{planDir: planDir}
+			if _, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), webster.archive, fixedPlanClock)(); err != nil {
+				t.Fatalf("%s: rotate() error = %v; want nil", name, err)
+			}
+			if len(webster.dests) != 0 {
+				t.Errorf("%s: webster archive calls = %v; want none", name, webster.dests)
+			}
+		}
+	})
+
+	t.Run("AWebsterArchiveFailureLeavesEveryPlanFileInPlaceAndARetryRotates", func(t *testing.T) {
+		anchorPath, planDir := setupPlanDir(t, "00-overview.md", "01-card-one.md")
+		busy := fmt.Errorf("%w: %q (run.lock held); way forward: wait for the run to finish, then retry", websterengine.ErrRunBusy, "scratch")
+		webster := &websterArchiveRecorder{planDir: planDir, err: busy}
+		rotate := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), webster.archive, fixedPlanClock)
+
+		_, err := rotate()
+		if !errors.Is(err, websterengine.ErrRunBusy) || !strings.Contains(err.Error(), "wait for the run to finish") {
+			t.Fatalf("rotate() error = %v; want the busy refusal with its way forward", err)
+		}
+		for _, name := range []string{"00-overview.md", "01-card-one.md"} {
+			if _, statErr := os.Stat(filepath.Join(planDir, name)); statErr != nil {
+				t.Errorf("Stat(%s) = %v; want the plan file left in place by the failed archive", name, statErr)
+			}
+		}
+
+		webster.err = nil
+		if amendment, err := rotate(); err != nil || !strings.Contains(amendment, "00-overview.md") {
+			t.Fatalf("retry rotate() = %q, %v; want the plan rotated and announced", amendment, err)
+		}
 	})
 
 	t.Run("PreexistingArchiveSubdirIsNotNestedInsideNewOne", func(t *testing.T) {
@@ -262,7 +340,7 @@ func TestNewPlanDirRotator(t *testing.T) {
 			t.Fatalf("WriteFile error = %v", err)
 		}
 
-		if amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)(); err != nil {
+		if amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), noWebsterArchive, fixedPlanClock)(); err != nil {
 			t.Fatalf("rotate() error = %v; want nil", err)
 		} else if amendment == "" {
 			t.Errorf("rotate() amendment is empty; want the prior-plan block")
@@ -280,7 +358,7 @@ func TestNewPlanDirRotator(t *testing.T) {
 		anchorPath := t.TempDir()
 		planDir := planparser.PlanDir(anchorPath)
 
-		if amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)(); err != nil {
+		if amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), noWebsterArchive, fixedPlanClock)(); err != nil {
 			t.Fatalf("rotate() error = %v; want nil", err)
 		} else if amendment != "" {
 			t.Errorf("rotate() amendment = %q; want empty", amendment)
@@ -293,7 +371,7 @@ func TestNewPlanDirRotator(t *testing.T) {
 	t.Run("EmptyPlanDirectoryCreatesNoArchiveDirectory", func(t *testing.T) {
 		anchorPath, planDir := setupPlanDir(t)
 
-		if amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)(); err != nil {
+		if amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), noWebsterArchive, fixedPlanClock)(); err != nil {
 			t.Fatalf("rotate() error = %v; want nil", err)
 		} else if amendment != "" {
 			t.Errorf("rotate() amendment = %q; want empty", amendment)
@@ -310,7 +388,7 @@ func TestNewPlanDirRotator(t *testing.T) {
 
 	t.Run("TwoRotationsUnderPinnedClockProduceStampThenStampDash1", func(t *testing.T) {
 		anchorPath, planDir := setupPlanDir(t, "00-overview.md")
-		rotate := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)
+		rotate := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), noWebsterArchive, fixedPlanClock)
 
 		if _, err := rotate(); err != nil {
 			t.Fatalf("first rotate() error = %v; want nil", err)
@@ -341,7 +419,7 @@ func TestNewPlanDirRotator(t *testing.T) {
 			t.Fatalf("MkdirAll(%q) error = %v", colliding, err)
 		}
 
-		amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)()
+		amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), noWebsterArchive, fixedPlanClock)()
 		if err != nil {
 			t.Fatalf("rotate() error = %v; want nil", err)
 		}
@@ -357,7 +435,7 @@ func TestNewPlanDirRotator(t *testing.T) {
 	t.Run("MissingStencilWithPriorFilesIsAnErrorAndMovesNothing", func(t *testing.T) {
 		anchorPath, planDir := setupPlanDir(t, "00-overview.md")
 
-		if _, err := NewPlanDirRotator(anchorPath, t.TempDir(), fixedPlanClock)(); err == nil {
+		if _, err := NewPlanDirRotator(anchorPath, t.TempDir(), noWebsterArchive, fixedPlanClock)(); err == nil {
 			t.Fatalf("rotate() error = nil; want a render error when the stencil is missing")
 		}
 		// The render runs before any move,
@@ -370,7 +448,7 @@ func TestNewPlanDirRotator(t *testing.T) {
 			t.Errorf("plan directory entries after a failed render = %v; want only 00-overview.md, with no archive directory", entries)
 		}
 
-		amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)()
+		amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), noWebsterArchive, fixedPlanClock)()
 		if err != nil {
 			t.Fatalf("retry rotate() error = %v; want nil", err)
 		}
@@ -391,7 +469,7 @@ func TestNewPlanDirRotator(t *testing.T) {
 			t.Fatalf("WriteFile(%q) error = %v", planDir, err)
 		}
 
-		_, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), fixedPlanClock)()
+		_, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), noWebsterArchive, fixedPlanClock)()
 		if err == nil {
 			t.Fatalf("rotate() error = nil; want a non-nil rotation error")
 		}
@@ -403,7 +481,7 @@ func TestNewPlanDirRotator(t *testing.T) {
 	t.Run("NilNowDefaultsToTimeNowAndStillRotates", func(t *testing.T) {
 		anchorPath, planDir := setupPlanDir(t, "00-overview.md")
 
-		if _, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), nil)(); err != nil {
+		if _, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), noWebsterArchive, nil)(); err != nil {
 			t.Fatalf("rotate() error = %v; want nil", err)
 		}
 

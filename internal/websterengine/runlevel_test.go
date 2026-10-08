@@ -403,11 +403,10 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 		cards int
 		// setup edits the fixture to provoke the refusal and returns the step that takes the way
 		// forward; nil means the case has no way forward to take.
-		setup          func(t *testing.T, fx *runFixture) (takeWayForward func())
-		errIs          error
-		msgContains    []string
-		msgNotContains []string
-		wayForward     []string
+		setup       func(t *testing.T, fx *runFixture) (takeWayForward func())
+		errIs       error
+		msgContains []string
+		wayForward  []string
 		// reachesStarter marks a refusal raised by the Starter itself.
 		reachesStarter bool
 		// fresh runs with --fresh.
@@ -575,7 +574,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return nil
 			},
 			errIs:      websterengine.ErrFingerprintMismatch,
-			wayForward: []string{"lyx webster rebaseline", "lyx webster run --fresh"},
+			wayForward: []string{"lyx webster rebaseline", "2) lyx webster run"},
 			check: func(t *testing.T, fx *runFixture, err error) {
 				if !websterengine.PauseRequested(fx.Deps.Geom.ScratchDir) {
 					t.Error("pause flag cleared on a refused run; want it left intact")
@@ -591,10 +590,10 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				return nil
 			},
 			errIs:      websterengine.ErrFingerprintMismatch,
-			wayForward: []string{"lyx webster rebaseline --card 02", "lyx webster run --fresh"},
+			wayForward: []string{"lyx webster rebaseline --card 02", "2) lyx webster run"},
 		},
 		{
-			name:  "an edited overview names no card to rebaseline",
+			name:  "an edited overview outside its Card Index names the follow-up card landing",
 			cards: 2,
 			setup: func(t *testing.T, fx *runFixture) func() {
 				seedMatchingState(t, fx, &websterengine.State{})
@@ -608,9 +607,8 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				}
 				return nil
 			},
-			errIs:          websterengine.ErrFingerprintMismatch,
-			wayForward:     []string{"--fresh"},
-			msgNotContains: []string{"--card"},
+			errIs:      websterengine.ErrFingerprintMismatch,
+			wayForward: []string{"changed outside its Card Index", "add a follow-up card after the last begun batch", "1) lyx webster reset --to start; 2) lyx webster run"},
 		},
 		{
 			// The validation error is forced by pointing WorktreeRoot at a path with no repository,
@@ -678,11 +676,6 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			for _, want := range tc.msgContains {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("Run() error = %q; want it to contain %q", err, want)
-				}
-			}
-			for _, unwanted := range tc.msgNotContains {
-				if strings.Contains(err.Error(), unwanted) {
-					t.Errorf("Run() error = %q; want it free of %q", err, unwanted)
 				}
 			}
 			if tc.wayForward != nil {
@@ -769,10 +762,13 @@ func TestRun_EntryValidationReachesMaster(t *testing.T) {
 			},
 		},
 		{
-			name:  "a first init records a hash for every plan file",
+			name:  "a first init records a hash for every plan file and the overview frame hash",
 			cards: 2,
 			check: func(t *testing.T, fx *runFixture) {
 				st := loadRunState(t, fx)
+				if st.PlanOverviewFrameHash == "" {
+					t.Error("PlanOverviewFrameHash is empty; want the first init to record the overview frame hash")
+				}
 				for _, name := range []string{"00-overview.md", "01-batch1.md", "02-batch2.md"} {
 					if st.PlanFileHashes[name] == "" {
 						t.Errorf("PlanFileHashes = %v; want a hash for %s", st.PlanFileHashes, name)
@@ -1402,8 +1398,8 @@ func TestRun_DoneOutcome(t *testing.T) {
 					t.Errorf("PendingAuditFindings = %+v; want one fork-state-write finding", st.PendingAuditFindings)
 				}
 				_, way, _ := strings.Cut(result.StuckReason, "way forward:")
-				if !strings.Contains(way, "lyx webster run --fresh") || strings.Contains(way, "accept-audit") {
-					t.Errorf("StuckReason = %q; want the --fresh route without accept-audit", result.StuckReason)
+				if !strings.Contains(way, "1) lyx webster reset --to start; 2) lyx webster run") || strings.Contains(way, "accept-audit") {
+					t.Errorf("StuckReason = %q; want the reset-to-start route without accept-audit", result.StuckReason)
 				}
 			},
 		},
@@ -1914,7 +1910,7 @@ func rebaselineOnDisk(t *testing.T, fx *runFixture, cards ...int) {
 // emptyBatcher is a batchifier that derives no execution batches from any plan.
 type emptyBatcher struct{}
 
-func (emptyBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource, int) ([]batcher.Batch, error) {
+func (emptyBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource, int, batcher.StartBase) ([]batcher.Batch, error) {
 	return nil, nil
 }
 func (emptyBatcher) Name() string { return "empty" }
@@ -1922,7 +1918,7 @@ func (emptyBatcher) Name() string { return "empty" }
 // failingBatcher is a batchifier whose Batch always fails.
 type failingBatcher struct{}
 
-func (failingBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource, int) ([]batcher.Batch, error) {
+func (failingBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource, int, batcher.StartBase) ([]batcher.Batch, error) {
 	return nil, errors.New("batchifier failed")
 }
 func (failingBatcher) Name() string { return "failing" }
@@ -2245,7 +2241,6 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		tracked := filepath.Join(fx.Worktree, "base.txt")
 		start := seedFreshPendingState(t, fx, tracked)
-		fx.Git.commit()
 		fx.Git.differing[tracked] = true
 		marker := plantReportsMarker(t, fx)
 
@@ -2268,7 +2263,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 		if !strings.Contains(err.Error(), "is not the run's start commit "+start) {
 			t.Errorf("Run() error = %q; want it to name the start commit %s", err, start)
 		}
-		requireWayForward(t, err, "1) lyx webster reset --to start", "2) lyx webster run --fresh")
+		requireWayForward(t, err, "1) lyx webster reset --to start", "2) lyx webster run")
 	})
 
 	t.Run("drops the finding once the branch is reset to the start commit", func(t *testing.T) {
@@ -2441,7 +2436,7 @@ func TestRun_FreshOverPendingFindings(t *testing.T) {
 
 		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true})
 		requireFreshRefusal(t, fx, err, "")
-		requireWayForward(t, err, "1) lyx webster reset --to start", "2) lyx webster run --fresh")
+		requireWayForward(t, err, "1) lyx webster reset --to start", "2) lyx webster run")
 		if strings.Contains(err.Error(), "merge-base --octopus") {
 			t.Errorf("Run() error = %q; want the reset verb, not a git merge-base command", err)
 		}

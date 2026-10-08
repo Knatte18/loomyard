@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// planWriteEntry is the Constructor for the "PlanWrite" registry row: it validates Env.PlanSpec, Env.CommitPlan, Env.Shuttle, Env.AnchorPath, and Env.StencilsDir, resolves the row's "gates" Config key through resolveGateSpec, then builds a gated SingleLLMProducer carrying loomshed.NewPlanDirRotator as its fresh-spawn preparation, behind loomshed.NewPlanWrite's post-Done commit decorator.
+// planWriteEntry is the Constructor for the "PlanWrite" registry row: it validates Env.PlanSpec, Env.CommitPlan, Env.Shuttle, Env.AnchorPath, Env.StencilsDir and Env.Rework.ArchiveWebster, resolves the row's "gates" Config key through resolveGateSpec, then builds a gated SingleLLMProducer carrying loomshed.NewPlanDirRotator as its fresh-spawn preparation, behind loomshed.NewPlanWrite's post-Done commit decorator.
 //
 // The Spec arrives as an injected shedadapters.SpecSource closure rather than as recipe Config
 // because building it needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this
@@ -53,10 +53,13 @@ func planWriteEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, 
 	if err := requireAbsRoot("PlanWrite", "StencilsDir", env.StencilsDir); err != nil {
 		return nil, err
 	}
+	if err := requireSeam("PlanWrite", "Rework.ArchiveWebster", env.Rework.ArchiveWebster); err != nil {
+		return nil, err
+	}
 	// The rotation is handed to the producer as its fresh-spawn preparation, never run as a step
 	// ahead of it: it must not touch _lyx/plan until the producer's own attach probe has proved no
 	// live plan agent is writing there. See loomshed.NewPlanDirRotator.
-	rotate := loomshed.NewPlanDirRotator(env.AnchorPath, env.StencilsDir, env.Now)
+	rotate := loomshed.NewPlanDirRotator(env.AnchorPath, env.StencilsDir, env.Rework.ArchiveWebster, env.Now)
 	inner := shedadapters.NewSingleLLMProducerGated(name, env.PlanSpec, env.Shuttle, env.Now, rotate, gate)
 	return loomshed.NewPlanWrite(name, inner, env.CommitPlan), nil
 }
