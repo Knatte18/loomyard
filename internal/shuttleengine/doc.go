@@ -163,13 +163,13 @@
 // Every verified send first waits for an idle session, for at most `send_ready_timeout_s` and never past the run's deadline, and types nothing until then.
 // For an engine with the optional SessionCycler idle reading the pane must classify ready and idle,
 // and for one that also parses session signals no turn start may be left unmatched by a later turn end;
-// an unmatched turn start releases after the pane has read idle for ten seconds, or at once when the engine reports that turn interrupted.
+// an unmatched turn start releases after the pane has read idle on every poll for turnStartIdleOverride, or at once when the engine reports that turn interrupted.
 // A session that stays busy fails the send with ErrSessionBusy, naming the reading and ending with the pane's last lines.
 // An engine without the idle reading keeps the not-ready refusal alone.
 // That path confirms a send is submitted, not only that its text appeared in the pane, for an engine that implements the optional InputBoxReader capability, inside a window of `submit_confirm_timeout_s` from the moment typing begins.
 // The text is typed without its Enter, and once it has appeared shuttle reads the input box every `submit_settle_ms` until two reads agree, so no Enter lands inside a typing burst;
 // reads that agree only once the window has closed send no Enter.
-// It then sends the Enter and reads the box at an interval that starts at `submit_redraw_settle_ms` and doubles up to five seconds.
+// It then sends the Enter and reads the box at an interval that starts at `submit_redraw_settle_ms` and doubles up to confirmBackoffCap.
 // While the box still holds the sent text and the window is open, each read is followed by one more Enter.
 // Every idle poll, box read and Enter runs a tmux process through reed, so each of these loops also stops at an attempt count derived from its window, which ends it under a clock that never advances.
 // The submission is confirmed when the box no longer holds the sent text, or when the engine's session signals show a turn start past the file's size before the send.
