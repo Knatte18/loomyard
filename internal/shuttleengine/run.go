@@ -297,9 +297,9 @@ type Run struct {
 	// startCleared reports that a turn start after the boundary cleared gateAtBoundary, and startHold times the release of that turn start against the pane's idle reading.
 	startCleared bool
 	startHold    turnStartHold
-	// unsentReprompts counts the consecutive re-prompt sends at this boundary that failed busy or unlanded; while it is positive the loop re-sends the re-prompt on a later tick with no new writer event.
-	// It is zeroed by a successful re-prompt, a new arrival and a writer turn that starts meanwhile.
-	unsentReprompts int
+	// unsentReprompt marks that a re-prompt send at this boundary failed busy or unlanded; while it is set the loop re-sends the re-prompt on a later tick with no new writer event.
+	// It is cleared by a successful re-prompt, a new arrival and a writer turn that starts meanwhile.
+	unsentReprompt bool
 
 	// resumeWarning is the non-empty warning SessionResumer.CheckResume returned when it could not confirm the session was resumable, empty otherwise.
 	resumeWarning string

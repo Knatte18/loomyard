@@ -452,7 +452,7 @@ func (run *Run) boundaryIdle() bool {
 		return true
 	}
 	run.gateAtBoundary = false
-	run.unsentReprompts = 0
+	run.unsentReprompt = false
 	run.startCleared = true
 	run.startHold = turnStartHold{}
 	logger.Info("shuttle: gate: a turn started after the boundary, holding the gate send", "strandGUID", run.state.StrandGUID, "turnStartAt", turnStart.At)
