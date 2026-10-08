@@ -90,6 +90,9 @@ func sessionNameListed(listSessionsOutput, sessionName string) bool {
 // failed exec of the tmux binary, an unreachable socket, a non-exit-1 tmux failure, or an answer
 // that did not parse. Callers must not read it as "the session is gone";
 // refuseLiveForeignSessionLocked below answers that question with list-sessions instead.
+//
+// The target stays the session's current-window form ("=<session>:") outside the strand-window seam.
+// The format reads session fields only, so whichever window is current gives the same answer, and a bare "=<session>" target expands every session field to empty on tmux 3.6.
 func (e *Engine) paneGenerationLocked(sessionName string) (PaneGeneration, error) {
 	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(sessionName), paneGenerationFormat)
 	if err != nil {

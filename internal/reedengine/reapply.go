@@ -80,11 +80,11 @@ func hookArrayEntries(raw string) []string {
 // (windowsize.go's resizePinHookArgvs doc comment): a multi-entry hook's `show-options -v` answer is
 // every entry's command string, one per line, in install order, so the watchdog's own signal command
 // can share the array with any number of resize-pane pins.
-func (e *Engine) hookInstalledLocked() (installed bool, known bool) {
+func (e *Engine) hookInstalledLocked(windowTarget string) (installed bool, known bool) {
 	if runtime.GOOS == "windows" {
 		return false, false
 	}
-	out, err := e.tmux.output("show-options", "-v", "-t", exactSessionWindowTarget(e.SessionName()), windowResizedHookName)
+	out, err := e.tmux.output("show-options", "-v", "-t", windowTarget, windowResizedHookName)
 	if err != nil {
 		logger.Debug("reed: failed to read back window-resized hook", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return false, false
@@ -132,13 +132,17 @@ func (e *Engine) reapplyLayout(lastApplied render.Box, probeHook bool) (ReapplyR
 		if err != nil {
 			return err
 		}
-		live, err := e.tmux.listPanes(e.SessionName())
+		windowTarget, err := e.strandWindowTargetFor(st)
+		if err != nil {
+			return fmt.Errorf("list panes: %w", err)
+		}
+		live, err := e.tmux.listPanes(windowTarget)
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
 		}
 
 		if probeHook {
-			installed, known := e.hookInstalledLocked()
+			installed, known := e.hookInstalledLocked(windowTarget)
 			result.HookInstalled = installed
 			result.HookKnown = known
 		}

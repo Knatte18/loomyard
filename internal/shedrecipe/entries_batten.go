@@ -17,10 +17,13 @@ import (
 // defaultInnerRunPollIntervalS is innerRunEntry's own default for the poll_interval_s Config key,
 // used when the extracted value is zero -- configInt reports an absent key and an explicit zero
 // identically, so both resolve to this default. It agrees with the batten recipe's own explicit
-// poll_interval_s so an omitted key and the recipe's own value never diverge; the wait budget
-// itself now lives on the recipe row's own max_bounces, not on a Go constant, since InnerRun's
-// bounce loop lives in shedengine's own on_stuck routing rather than inside this producer.
-const defaultInnerRunPollIntervalS = 30
+// poll_interval_s so an omitted key and the recipe's own value never diverge.
+// It is the interval at which the producer's in-call wait checks its child.
+const defaultInnerRunPollIntervalS = 2
+
+// defaultInnerRunNoticeProbeS is innerRunEntry's own default for the notice_probe_s Config key, used when the extracted value is zero, exactly as defaultInnerRunPollIntervalS is.
+// It agrees with the batten recipe's own explicit notice_probe_s: the longest the in-call wait goes between the reads that cost a process or a multiplexer round trip.
+const defaultInnerRunNoticeProbeS = 30
 
 // defaultInnerRunDriverExitGraceS is innerRunEntry's own default for the driver_exit_grace_s Config key, used when the extracted value is zero, exactly as defaultInnerRunPollIntervalS is.
 // It agrees with the batten recipe's own explicit driver_exit_grace_s: 900 seconds, the longest a done child's live driver strand is waited for before teardown ends it.
@@ -87,7 +90,8 @@ func worktreeTeardownEntry(name string, cfg Config, env Env) (shedengine.ShedPro
 
 // innerRunEntry is the Constructor for the "InnerRun" registry row: it reads the optional int Config key poll_interval_s through configInt, defaulting to defaultInnerRunPollIntervalS when the extracted value is zero -- configInt reports an absent key and an explicit zero identically, so both resolve to the same default -- and rejects a negative value with an error naming the key.
 // It reads driver_exit_grace_s the same way, defaulting to defaultInnerRunDriverExitGraceS, and notice_quiet_min likewise, defaulting to defaultInnerRunNoticeQuietMin and set on the deps as InnerRunDeps.NoticeQuiet.
-// poll_attempts is retired: the wait budget now lives on the recipe row's own max_bounces, read by shedengine itself, not on a Config key this entry reads, so poll_attempts is rejected as an unrecognised key rather than silently read.
+// It reads notice_probe_s the same way, defaulting to defaultInnerRunNoticeProbeS and set on the deps as InnerRunDeps.NoticeProbe.
+// poll_attempts is retired: the wait lives in the producer's own call, not on a Config key this entry reads, so poll_attempts is rejected as an unrecognised key rather than silently read.
 // It validates Env.Slug, Env.ScratchDir, and Env.InnerRun.Spawn/ResolveStatus/ReadStatus/ReadDecision/DriverAlive -- and not Env.InnerRun.Sleep or Env.InnerRun.Now, whose nil values are legitimate and select the production sleep and clock.
 // It returns battenshed.NewInnerRun(name, env.Slug, env.InnerRun, time.Duration(pollIntervalS)*time.Second, env.ScratchDir, time.Duration(driverExitGraceS)*time.Second).
 func innerRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
@@ -124,7 +128,18 @@ func innerRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 		noticeQuietMin = defaultInnerRunNoticeQuietMin
 	}
 
-	if err := configRejectUnknown(cfg, "poll_interval_s", "driver_exit_grace_s", "notice_quiet_min"); err != nil {
+	noticeProbeS, err := configInt(cfg, "notice_probe_s", false)
+	if err != nil {
+		return nil, err
+	}
+	if noticeProbeS < 0 {
+		return nil, fmt.Errorf("shedrecipe: InnerRun: config key %q must not be negative, got %d", "notice_probe_s", noticeProbeS)
+	}
+	if noticeProbeS == 0 {
+		noticeProbeS = defaultInnerRunNoticeProbeS
+	}
+
+	if err := configRejectUnknown(cfg, "poll_interval_s", "driver_exit_grace_s", "notice_quiet_min", "notice_probe_s"); err != nil {
 		return nil, err
 	}
 	if err := requireNonEmpty("InnerRun", "Slug", env.Slug); err != nil {
@@ -150,6 +165,7 @@ func innerRunEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, e
 	}
 	deps := env.InnerRun
 	deps.NoticeQuiet = time.Duration(noticeQuietMin) * time.Minute
+	deps.NoticeProbe = time.Duration(noticeProbeS) * time.Second
 	return battenshed.NewInnerRun(name, env.Slug, deps, time.Duration(pollIntervalS)*time.Second, env.ScratchDir, time.Duration(driverExitGraceS)*time.Second), nil
 }
 

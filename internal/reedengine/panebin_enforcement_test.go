@@ -43,32 +43,51 @@ var paneCreationAllowlist = []scankit.Entry{
 	},
 }
 
-// TestPaneCreationSitesRouteThroughThePreludeChokepoint walks each parsed file for an *ast.BasicLit
-// whose value is the string "split-window" and fails for any occurrence in a file outside
-// paneCreationAllowlist. Scanning the AST rather than raw bytes is what keeps a doc comment
-// mentioning split-window from tripping the check -- go/parser turns a comment into neither an
-// identifier nor a basic literal.
+// windowCreationAllowlist names the files in this package permitted to contain the "new-window" string literal, each with the reason.
+var windowCreationAllowlist = []scankit.Entry{
+	{
+		Key: "internal/reedengine/window.go",
+		Why: "the one detached-window op: it runs a `lyx` command composed by composeWindowCommand, which carries the pane-binary prelude",
+	},
+	{
+		Key: "internal/reedengine/probe.go",
+		Why: "lists \"new-window\" as a required subcommand NAME in requiredSubcommands; it issues no window of its own",
+	},
+}
+
+// TestPaneCreationSitesRouteThroughThePreludeChokepoint walks each parsed file for an *ast.BasicLit whose value is the string "split-window" or "new-window", and fails for any occurrence in a file outside its allowlist (paneCreationAllowlist, windowCreationAllowlist).
+// Scanning the AST rather than raw bytes is what keeps a doc comment mentioning split-window from tripping the check, since go/parser turns a comment into neither an identifier nor a basic literal.
 //
 //testtiming:keep pins that no file outside the pane-creation allowlist holds the "split-window" string literal, so every strand pane is created through the prelude chokepoint; its covering tests run this code without asserting it
 func TestPaneCreationSitesRouteThroughThePreludeChokepoint(t *testing.T) {
-	allow := scankit.NewAllowlist(paneCreationAllowlist)
+	scans := []struct {
+		literal   string
+		allowlist []scankit.Entry
+		advice    string
+	}{
+		{`"split-window"`, paneCreationAllowlist, "route the split through launchStrandLocked instead"},
+		{`"new-window"`, windowCreationAllowlist, "route the window through OpenWindow instead"},
+	}
+	for _, scan := range scans {
+		allow := scankit.NewAllowlist(scan.allowlist)
 
-	var failures []string
-	scanned := scankit.Walk(t, scankit.Options{Roots: []string{reedengineScanDir}, Shallow: true}, func(f *scankit.File) {
-		if !fileContainsSplitWindowLiteral(f.AST(t, 0)) {
-			return
+		var failures []string
+		scanned := scankit.Walk(t, scankit.Options{Roots: []string{reedengineScanDir}, Shallow: true}, func(f *scankit.File) {
+			if !fileContainsStringLiteral(f.AST(t, 0), scan.literal) {
+				return
+			}
+			if allow.Allowed(f.Rel) {
+				return
+			}
+			failures = append(failures, f.Rel)
+		})
+
+		scankit.RequireFloor(t, scanned, panebinScanMinFiles, "panebin enforcement")
+		allow.RequireNoStale(t)
+
+		if len(failures) > 0 {
+			t.Errorf("pane-creation chokepoint violated (see PATTERN-pane-binary-resolution): %v carries a %s literal outside the named allowlist -- %s", failures, scan.literal, scan.advice)
 		}
-		if allow.Allowed(f.Rel) {
-			return
-		}
-		failures = append(failures, f.Rel)
-	})
-
-	scankit.RequireFloor(t, scanned, panebinScanMinFiles, "panebin enforcement")
-	allow.RequireNoStale(t)
-
-	if len(failures) > 0 {
-		t.Errorf("pane-creation chokepoint violated (see PATTERN-pane-binary-resolution): %v carries a \"split-window\" literal outside the named allowlist -- route the split through launchStrandLocked instead", failures)
 	}
 }
 
@@ -116,16 +135,15 @@ func TestLaunchStrandLockedStillComposesThePrelude(t *testing.T) {
 	}
 }
 
-// fileContainsSplitWindowLiteral reports whether astFile contains an *ast.BasicLit whose value is
-// the quoted string "split-window".
-func fileContainsSplitWindowLiteral(astFile *ast.File) bool {
+// fileContainsStringLiteral reports whether astFile contains an *ast.BasicLit whose value is quoted, the string literal as written in source.
+func fileContainsStringLiteral(astFile *ast.File, quoted string) bool {
 	found := false
 	ast.Inspect(astFile, func(n ast.Node) bool {
 		lit, ok := n.(*ast.BasicLit)
 		if !ok || lit.Kind != token.STRING {
 			return true
 		}
-		if lit.Value == `"split-window"` {
+		if lit.Value == quoted {
 			found = true
 		}
 		return true

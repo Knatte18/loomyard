@@ -25,6 +25,11 @@ const driveReportsDirName = "drive-reports"
 // `lyx loom start` removes it when it resumes the driver, or before it spawns a fresh one.
 const ParkMarkerFileName = "driver-parked"
 
+// BattenWatchedFileName is the filename of the batten-watched marker, whose path BattenWatchedMarker returns.
+// The file holds the pid, in decimal on one line, of the live batten process watching the run.
+// A batten writes it while it watches and removes it when it stops; a driver launched fresh renders its parent-notification rule from whether the pid in it is live.
+const BattenWatchedFileName = "batten-watched"
+
 // StartNotParkedKind is the envelope "kind" of the `lyx loom start` refusal for a live driver whose run has halted at a hand-back but whose park marker is not written yet.
 // That refusal is retryable: the driver is still writing its stop report and committing its records, and parks within seconds.
 // It is exported so battencli recognises the refusal by this one declared value rather than by its message text.
@@ -91,6 +96,11 @@ func LastCommitMarker(l *lyxcwd.Location, runID string) string {
 // ParkMarker returns the path to the ephemeral driver park marker, ParkMarkerFileName under ScratchDir(l, runID), so it sits in the directory the full step envelope, held by the step record, reports as scratch_dir.
 func ParkMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), ParkMarkerFileName)
+}
+
+// BattenWatchedMarker returns the path to the ephemeral batten-watched marker, BattenWatchedFileName under ScratchDir(l, runID).
+func BattenWatchedMarker(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), BattenWatchedFileName)
 }
 
 // SeedRel returns the worktree-anchor-relative form of SeedFile's path: the join of

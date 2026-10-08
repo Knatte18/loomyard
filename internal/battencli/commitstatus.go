@@ -18,10 +18,11 @@
 //
 // The skip's own cost, stated here because nothing else in the code says it: shedengine rewrites the
 // run's durable status file on every Run-Shed self-bounce (a history append), and the skip declines
-// to commit every one of them after the first, so the pair carries an uncommitted change at that
-// path for the whole watch -- up to the row's full 12-hour budget. That is the right trade against
-// 1440 identical commits, and it is why an operation requiring a clean pair, such as
-// "lyx fabric checkout", refuses hub-wide while a batten run is watching.
+// to commit every one of them after the first.
+// Run-Shed waits on its child inside its call, so it bounces only on a state change, a pause or a failed status stat,
+// and the pair carries an uncommitted change at that path for as long as a watch goes between them.
+// That is the right trade against one identical commit per bounce,
+// and it is why an operation requiring a clean pair, such as "lyx fabric checkout", refuses hub-wide while a batten run is watching.
 package battencli
 
 import (

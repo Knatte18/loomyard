@@ -154,7 +154,7 @@ func TestAttachArgv_ChainedArgv(t *testing.T) {
 			if err != nil {
 				t.Fatalf("planLayout() unexpected error: %v", err)
 			}
-			want := append(wantBareAttachArgv(e), ";", "select-layout", "-t", exactSessionWindowTarget(e.SessionName()), wantLayout)
+			want := append(wantBareAttachArgv(e), ";", "select-layout", "-t", fakeStrandWindow, wantLayout)
 			if !slices.Equal(got, want) {
 				t.Errorf("AttachArgv() = %v, want %v", got, want)
 			}
@@ -283,7 +283,7 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 			statusPinIdx = i
 		case argv[0] == "display-message" && argv[len(argv)-1] == "#{status}" && statusReadbackIdx == -1:
 			statusReadbackIdx = i
-		case argv[0] == "list-panes" && listPanesIdx == -1:
+		case callVerb(argv) == "list-panes" && listPanesIdx == -1:
 			listPanesIdx = i
 		case argv[0] == "set-hook" && firstSetHookIdx == -1:
 			firstSetHookIdx = i
@@ -333,8 +333,7 @@ func wantChainedAttachArgv(t *testing.T, e *Engine, cols, rows int) []string {
 	}
 	bare := wantBareAttachArgv(e)
 	out := append([]string{}, bare...)
-	target := exactSessionWindowTarget(e.SessionName())
-	out = append(out, ";", "select-layout", "-t", target, layout)
+	out = append(out, ";", "select-layout", "-t", fakeStrandWindow, layout)
 	return out
 }
 

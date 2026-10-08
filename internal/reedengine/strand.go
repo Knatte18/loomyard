@@ -511,7 +511,7 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 		}
 
 		if spec.IfAbsent {
-			live, err := e.tmux.listPanes(e.SessionName())
+			live, err := e.listStrandPanes(st)
 			if err != nil {
 				return fmt.Errorf("list panes: %w", err)
 			}
@@ -732,7 +732,7 @@ func (e *Engine) killStrandPanes(paneIDs []string) []int {
 	var reapPIDs []int
 	var killPaneIDs []string
 	if len(paneIDs) > 0 {
-		live, err := e.tmux.listPanes(e.SessionName())
+		live, err := e.listStoredStrandPanes()
 		if err != nil {
 			logger.Warn("reed: could not enumerate panes before removing a strand, killing none",
 				"socket", e.Socket(), "session", e.SessionName(), "err", err)

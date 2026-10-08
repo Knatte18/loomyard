@@ -36,20 +36,20 @@ func bareAttachArgv(socket, session string) []string {
 
 // chainedAttachArgv returns the ten-element argv that chains a client-sized select-layout onto the
 // bare attach: the five elements of bareAttachArgv, then the literal one-character element ";", then
-// "select-layout", "-t", the exact session/window target, and layout.
+// "select-layout", "-t", the strands' window target, and layout.
 //
 // The separator is a literal single-character ";" argv element, never "\\;" — exec.Command passes
 // argv directly and never sees a shell, so a backslash would be passed through as a literal
 // backslash-semicolon and tmux would not read it as a command separator.
 //
-// The chained select-layout carries its own explicit -t "=<session>:" target rather than relying on
+// The chained select-layout carries its own explicit -t window target rather than relying on
 // whichever window the new client lands in, matching the exact-target discipline every other reed
 // call site follows.
-func chainedAttachArgv(socket, session, layout string) []string {
+func chainedAttachArgv(socket, session, windowTarget, layout string) []string {
 	bare := bareAttachArgv(socket, session)
 	out := make([]string, 0, len(bare)+5)
 	out = append(out, bare...)
-	out = append(out, ";", "select-layout", "-t", exactSessionWindowTarget(session), layout)
+	out = append(out, ";", "select-layout", "-t", windowTarget, layout)
 	return out
 }
 
@@ -91,34 +91,38 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 
 		e.warnMismatchedClientsLocked(cols, rows)
 
+		// Read-only with respect to reed.json: this builder never calls SaveState.
+		st, err := e.loadOrInitStateLocked()
+		if err != nil {
+			return err
+		}
+		windowTarget, err := e.strandWindowTargetFor(st)
+		if err != nil {
+			return err
+		}
+
 		// The pins are made here, by the builder itself, not by a second exported call a CLI must
 		// remember. The ordering is still load-bearing, but for the opposite reason it used to be: the
 		// told box is only correct once the status-line pins have landed AND been read back, because
 		// readStatusRowsLocked a few statements later is what turns whatever #{status} actually became
 		// into the reserved-row count the box is computed from.
-		e.pinGeometryOptionsLocked()
+		e.pinGeometryOptionsLocked(windowTarget)
 
-		if !e.readWindowSizeLatestLocked() {
+		if !e.readWindowSizeLatestLocked(windowTarget) {
 			// Anything other than "latest" means the post-attach window will not become the client's
 			// size, so the told box's whole premise has failed and chaining would hand tmux a wrong-height
 			// string to rescale — worse than not chaining.
 			return errAttachChainSuppressed
 		}
 
-		reserved, ok := e.readStatusRowsLocked()
+		reserved, ok := e.readStatusRowsLocked(windowTarget)
 		if !ok {
 			// The reserved-row count is taken from whatever value #{status} reads back as; only an
 			// unrecognized value (readStatusRowsLocked's ok == false) suppresses the chain.
 			return errAttachChainSuppressed
 		}
 
-		// Read-only with respect to reed.json: this builder never calls SaveState.
-		st, err := e.loadOrInitStateLocked()
-		if err != nil {
-			return err
-		}
-
-		live, err := e.tmux.listPanes(e.SessionName())
+		live, err := e.tmux.listPanes(windowTarget)
 		if err != nil {
 			return err
 		}
@@ -152,9 +156,9 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 			return err
 		}
 
-		e.installResizePinsLocked(e.fixedHeightPins(st, live, box))
+		e.installResizePinsLocked(windowTarget, e.fixedHeightPins(st, live, box))
 
-		chained = chainedAttachArgv(e.Socket(), e.SessionName(), layout)
+		chained = chainedAttachArgv(e.Socket(), e.SessionName(), windowTarget, layout)
 		return nil
 	})
 	if err != nil {

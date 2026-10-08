@@ -34,7 +34,7 @@ func TestDriverStencil_ShowsOneBareStepCall(t *testing.T) {
 	}
 }
 
-// TestDriverStencil_IsRecipeBlind fails for every shipped recipe name appearing as a whole word
+// TestDriverStencil_IsRecipeBlind scans the driver stencil and the two parent-notification stencils filled into it, and fails for every shipped recipe name appearing as a whole word
 // (case-insensitively, so "loomyard" does not match) and for every forbidden literal, naming the
 // offending token and its line number.
 func TestDriverStencil_IsRecipeBlind(t *testing.T) {
@@ -61,10 +61,19 @@ func TestDriverStencil_IsRecipeBlind(t *testing.T) {
 		})
 	}
 
-	for index, line := range strings.Split(string(stencils.ShedTemplateDriver), "\n") {
-		for _, token := range tokens {
-			if token.matches(line) {
-				t.Errorf("shed-template-driver.md:%d names %s; the stencil must stay recipe-blind: %q", index+1, token.label, line)
+	for _, file := range []struct {
+		name string
+		body []byte
+	}{
+		{"shed-template-driver.md", stencils.ShedTemplateDriver},
+		{"shed-template-driver-notify.md", stencils.ShedTemplateDriverNotify},
+		{"shed-template-driver-notify-watched.md", stencils.ShedTemplateDriverNotifyWatched},
+	} {
+		for index, line := range strings.Split(string(file.body), "\n") {
+			for _, token := range tokens {
+				if token.matches(line) {
+					t.Errorf("%s:%d names %s; the stencil must stay recipe-blind: %q", file.name, index+1, token.label, line)
+				}
 			}
 		}
 	}

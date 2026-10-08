@@ -212,7 +212,11 @@ func (e *Engine) applyLayoutLockedOpts(st *ReedState, live []LivePane, opts appl
 		return applyResult{}, nil
 	}
 
-	box, boxIsLive := e.liveBoxLocked()
+	windowTarget, err := e.strandWindowTargetFor(st)
+	if err != nil {
+		return applyResult{}, fmt.Errorf("resolve strand window: %w", err)
+	}
+	box, boxIsLive := e.liveBoxLocked(windowTarget)
 	if opts.SkipWhenBoxEquals != nil && boxIsLive && box == *opts.SkipWhenBoxEquals {
 		return applyResult{Applied: false, Box: box, BoxIsLive: true}, nil
 	}
@@ -222,14 +226,13 @@ func (e *Engine) applyLayoutLockedOpts(st *ReedState, live []LivePane, opts appl
 		return applyResult{}, fmt.Errorf("plan layout: %w", err)
 	}
 
-	session := e.SessionName()
-	if err := e.tmux.run("select-layout", "-t", exactSessionWindowTarget(session), layout); err != nil {
+	if err := e.tmux.run("select-layout", "-t", windowTarget, layout); err != nil {
 		return applyResult{}, fmt.Errorf("select-layout: %w", err)
 	}
 	if opts.SkipFocus {
 		return applyResult{Applied: true, Box: box, BoxIsLive: boxIsLive}, nil
 	}
-	e.installResizePinsLocked(e.fixedHeightPins(st, live, box))
+	e.installResizePinsLocked(windowTarget, e.fixedHeightPins(st, live, box))
 	if focus == "" {
 		return applyResult{Applied: true, Box: box, BoxIsLive: boxIsLive}, nil
 	}

@@ -23,8 +23,7 @@ func (c *fakeClock) advance(d time.Duration) { c.now = c.now.Add(d) }
 type fakeSession struct {
 	alive      bool
 	events     []shuttleengine.Event
-	usage      map[string]int       // Turn-end message to tokens; a missing message is unknown.
-	boundary   map[string]time.Time // Turn-end message to a compaction boundary read through it; the boundary's tokens are usage's.
+	usage      map[string]int // Turn-end message to tokens; a missing message is unknown.
 	idle       bool
 	idleSeq    []bool // Consumed before idle.
 	tooShort   bool   // Reported with every probe that is not idle.
@@ -75,8 +74,7 @@ func (f *fakeSession) ReadEvents(_ string, offset int64) ([]shuttleengine.Event,
 func (f *fakeSession) ContextTokens(ev shuttleengine.Event) (shuttleengine.ContextReading, error) {
 	f.tokenAsks = append(f.tokenAsks, ev.Message)
 	n, ok := f.usage[ev.Message]
-	at, compacted := f.boundary[ev.Message]
-	return shuttleengine.ContextReading{Tokens: n, Known: ok, Compacted: compacted, BoundaryAt: at}, nil
+	return shuttleengine.ContextReading{Tokens: n, Known: ok}, nil
 }
 
 func (f *fakeSession) SessionIdle(string) (shuttleengine.IdleProbe, error) {
@@ -507,6 +505,36 @@ func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
 	last := e.s.calls[len(e.s.calls)-1]
 	if !strings.HasPrefix(last, "send:") || !strings.Contains(last, handoff) {
 		t.Errorf("resume prompt = %q, want one naming %s", last, handoff)
+	}
+}
+
+func TestWatcher_ConfirmedClearRemovesOnlyASatisfiedClearRequest(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		mode        string
+		wantPending bool
+	}{
+		{"clear request made during the cycle is removed", CycleClear, false},
+		{"compact request made during the cycle stays pending", CycleCompact, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.reachClearing()
+			if err := RequestCycle(e.paths, c.mode, e.clock.Now()); err != nil {
+				t.Fatal(err)
+			}
+			e.tick()
+			if st := e.state(); st.Phase != PhaseResuming {
+				t.Fatalf("phase = %s, want resuming", st.Phase)
+			}
+			if _, pending, _ := CycleRequested(e.paths); pending != c.wantPending {
+				t.Errorf("request pending = %v, want %v", pending, c.wantPending)
+			}
+		})
 	}
 }
 

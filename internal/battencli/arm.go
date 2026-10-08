@@ -569,8 +569,8 @@ func (c *battenCLI) battenPostRun(ctx context.Context, result shedengine.Result,
 }
 
 // maxStatusHistoryEntries caps the history entries the status envelope carries.
-// The running watch appends one entry per poll, bounded by its 1440-bounce budget, while a budget-exempt wait (an awaiting hand-off, the driver-exit grace) folds into one entry.
-// The cap still keeps a long watch from burying the two ends that carry the run's meaning.
+// History grows only when Run-Shed's wait returns: on a state change, a pause or a failed status stat, each its own entry.
+// The cap still keeps a long run from burying the two ends that carry the run's meaning.
 const maxStatusHistoryEntries = 20
 
 // battenStatusExtras implements the StatusExtras hook for batten's spec: batten's own

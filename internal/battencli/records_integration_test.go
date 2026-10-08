@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -49,7 +48,6 @@ func stepAwaitingApprovalResumeDoneTeardown_ArchivesTheRunRecords(t *testing.T, 
 		}
 		return shedengine.Status{State: shedengine.StateDone}, true, nil
 	})
-	c.env.InnerRun.Sleep = func(ctx context.Context, d time.Duration) {}
 	c.env.InnerRun.DriverAlive = func(ctx context.Context) (bool, error) { return false, nil }
 	c.env.InnerRun.Spawn = func(ctx context.Context) error {
 		spawns++
@@ -193,7 +191,6 @@ func stepAwaitingRejectionResumesTheChildOnce(t *testing.T, h *hubforge.Hub) {
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 		return shedengine.Status{State: shedengine.StateAwaiting, Error: "awaiting pull-request decision"}, true, nil
 	})
-	c.env.InnerRun.Sleep = func(ctx context.Context, d time.Duration) {}
 	c.env.InnerRun.Spawn = func(ctx context.Context) error {
 		spawns++
 		return nil

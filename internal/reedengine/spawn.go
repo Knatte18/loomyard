@@ -78,9 +78,7 @@ func sendKeysLiteralArg(text string) string {
 // a script write failure degrades to typing the composed line itself.
 // The script is written on every launch, so a relaunch with a different command or a different spawning executable always regenerates it.
 func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) error {
-	session := e.SessionName()
-
-	live, err := e.tmux.listPanes(session)
+	live, err := e.listStrandPanes(st)
 	if err != nil {
 		return fmt.Errorf("list panes: %w", err)
 	}
@@ -94,7 +92,7 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 		// The kill-pane calls above mutate the pane set planPaneTarget below
 		// must choose from, so enumeration must follow them (same ordering
 		// reconcileApplyPersistLocked already treats as load-bearing).
-		live, err = e.tmux.listPanes(session)
+		live, err = e.listStrandPanes(st)
 		if err != nil {
 			return fmt.Errorf("list panes after reconcile: %w", err)
 		}
@@ -207,8 +205,7 @@ func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {
 // pane bindings, reapplies the layout, and persists the state. It is the
 // shared tail every public op composes after mutation.
 func (e *Engine) reconcileApplyPersistLocked(st *ReedState) ([]LivePane, error) {
-	session := e.SessionName()
-	live, err := e.tmux.listPanes(session)
+	live, err := e.listStrandPanes(st)
 	if err != nil {
 		return nil, fmt.Errorf("list panes: %w", err)
 	}
@@ -221,7 +218,7 @@ func (e *Engine) reconcileApplyPersistLocked(st *ReedState) ([]LivePane, error) 
 		// Order matters: kill dead -> re-enumerate live -> compute layout
 		// -> apply. The kill-pane calls above mutate the pane set the next
 		// select-layout must enumerate, so enumeration must follow them.
-		live, err = e.tmux.listPanes(session)
+		live, err = e.listStrandPanes(st)
 		if err != nil {
 			return nil, fmt.Errorf("list panes after reconcile: %w", err)
 		}

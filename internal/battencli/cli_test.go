@@ -4,11 +4,15 @@ package battencli
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/spf13/cobra"
@@ -158,4 +162,131 @@ func TestCommand_HelpCarriesNoTeardownGotoExample(t *testing.T) {
 		}
 	}
 	walk(Command())
+}
+
+// TestRunInWindow covers the run verb's --window body with a fake window opener: the envelope of a fresh and of an already-live window, what the opener is asked for, and the way forward each refusal names.
+func TestRunInWindow(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		driverSet    bool
+		childSet     bool
+		opened       reedengine.WindowResult
+		openErr      error
+		wantArgs     []string
+		wantExisting bool
+		wantNote     string
+		wantErr      []string
+	}{
+		{
+			name:     "FreshWindowPrintsItsId",
+			opened:   reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
+			wantArgs: []string{"batten", "run", "some-slug"},
+		},
+		{
+			name:         "ExistingLiveWindowStartsNothing",
+			opened:       reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug", Existing: true},
+			wantArgs:     []string{"batten", "run", "some-slug"},
+			wantExisting: true,
+			wantNote:     "already running; nothing started",
+		},
+		{
+			name:      "TypedDriversAreCarriedThrough",
+			driverSet: true,
+			childSet:  true,
+			opened:    reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
+			wantArgs:  []string{"batten", "run", "some-slug", "--driver", "go", "--child-driver", "go"},
+		},
+		{
+			name:     "NoSessionNamesOrchStartOrATerminal",
+			openErr:  fmt.Errorf("wrapped: %w", reedengine.ErrNoSession),
+			wantArgs: []string{"batten", "run", "some-slug"},
+			wantErr:  []string{"lyx orch start", "lyx batten run some-slug"},
+		},
+		{
+			name:     "MissingCapabilityNamesATerminal",
+			openErr:  &reedengine.CapabilityError{Reason: "missing new-window"},
+			wantArgs: []string{"batten", "run", "some-slug"},
+			wantErr:  []string{"lyx batten run some-slug"},
+		},
+		{
+			name:     "FailedNewWindowNamesATerminal",
+			openErr:  fmt.Errorf("%w: no space", reedengine.ErrNewWindowFailed),
+			wantArgs: []string{"batten", "run", "some-slug"},
+			wantErr:  []string{"lyx batten run some-slug"},
+		},
+		{
+			name:     "ReadBackNamesStatusFirst",
+			openErr:  fmt.Errorf("%w: read on", reedengine.ErrWindowReadBack),
+			wantArgs: []string{"batten", "run", "some-slug"},
+			wantErr:  []string{"lyx batten status some-slug", "lyx batten run some-slug"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var gotName string
+			var gotArgs []string
+			c := &battenCLI{
+				slug:               "some-slug",
+				driverFlag:         "go",
+				childDriverFlag:    "go",
+				driverFlagSet:      tt.driverSet,
+				childDriverFlagSet: tt.childSet,
+				windowOpener: func(name string, lyxArgs []string) (reedengine.WindowResult, error) {
+					gotName, gotArgs = name, lyxArgs
+					return tt.opened, tt.openErr
+				},
+			}
+			cmd := &cobra.Command{Use: "run", RunE: func(cmd *cobra.Command, args []string) error { return c.runInWindow(cmd) }}
+
+			var out bytes.Buffer
+			exitCode := clihelp.Execute(cmd, &out, []string{})
+
+			if gotName != "batten:some-slug" {
+				t.Errorf("opener asked for window %q, want %q", gotName, "batten:some-slug")
+			}
+			if !slices.Equal(gotArgs, tt.wantArgs) {
+				t.Errorf("opener asked to run %v, want %v", gotArgs, tt.wantArgs)
+			}
+			var envelope map[string]any
+			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+				t.Fatalf("envelope %q is not one JSON object: %v", out.String(), err)
+			}
+			if tt.openErr != nil {
+				if exitCode != 1 || envelope["ok"] != false {
+					t.Fatalf("exit %d, envelope %v; want exit 1 and ok=false", exitCode, envelope)
+				}
+				for _, want := range tt.wantErr {
+					if msg, _ := envelope["error"].(string); !strings.Contains(msg, want) {
+						t.Errorf("error %q does not name its way forward %q", msg, want)
+					}
+				}
+				return
+			}
+			if exitCode != 0 || envelope["ok"] != true {
+				t.Fatalf("exit %d, envelope %v; want exit 0 and ok=true", exitCode, envelope)
+			}
+			if envelope["window_id"] != tt.opened.WindowID || envelope["window_name"] != tt.opened.Name || envelope["existing"] != tt.wantExisting {
+				t.Errorf("envelope %v does not name window %+v", envelope, tt.opened)
+			}
+			if note, _ := envelope["note"].(string); note != tt.wantNote {
+				t.Errorf("envelope note = %q, want %q", note, tt.wantNote)
+			}
+		})
+	}
+}
+
+// TestWindowFlagIsOnTheRunVerbOnly asserts "--window" is declared on run and on no other verb, so any other verb rejects it as an unknown flag.
+func TestWindowFlagIsOnTheRunVerbOnly(t *testing.T) {
+	t.Parallel()
+
+	for _, cmd := range Command().Commands() {
+		declared := cmd.Flags().Lookup("window") != nil
+		if want := cmd.Name() == "run"; declared != want {
+			t.Errorf("verb %q declares --window = %v, want %v", cmd.Name(), declared, want)
+		}
+	}
 }

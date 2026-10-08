@@ -308,3 +308,30 @@ func TestInnerRunEntry_DriverExitGraceKey(t *testing.T) {
 		}
 	})
 }
+
+// TestInnerRunEntry_NoticeProbeKey covers innerRunEntry's notice_probe_s config key: absent resolves to defaultInnerRunNoticeProbeS, an explicit value builds successfully, and a negative value is rejected naming the key.
+func TestInnerRunEntry_NoticeProbeKey(t *testing.T) {
+	t.Run("DefaultIsThirty", func(t *testing.T) {
+		if defaultInnerRunNoticeProbeS != 30 {
+			t.Errorf("defaultInnerRunNoticeProbeS = %d; want 30", defaultInnerRunNoticeProbeS)
+		}
+		producer, err := innerRunEntry("InnerRun", Config{}, newTestEnv(t))
+		if err != nil || producer == nil {
+			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)
+		}
+	})
+
+	t.Run("ExplicitValue", func(t *testing.T) {
+		producer, err := innerRunEntry("InnerRun", Config{"notice_probe_s": 5}, newTestEnv(t))
+		if err != nil || producer == nil {
+			t.Fatalf("innerRunEntry() = %v, %v; want a producer", producer, err)
+		}
+	})
+
+	t.Run("NegativeIsRejected", func(t *testing.T) {
+		_, err := innerRunEntry("InnerRun", Config{"notice_probe_s": -1}, newTestEnv(t))
+		if err == nil || !strings.Contains(err.Error(), "notice_probe_s") {
+			t.Errorf("innerRunEntry() error = %v; want it to name %q", err, "notice_probe_s")
+		}
+	})
+}

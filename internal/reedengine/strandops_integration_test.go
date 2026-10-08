@@ -68,7 +68,7 @@ func TestStrandOps_RealTmux(t *testing.T) {
 				after.Strands[1].PaneID, after.Strands[2].PaneID, middlePane, bottomPane)
 		}
 
-		live, err := e.tmux.listPanes(e.SessionName())
+		live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 		if err != nil {
 			t.Fatalf("listPanes: %v", err)
 		}

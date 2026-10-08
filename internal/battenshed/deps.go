@@ -34,7 +34,7 @@ var ErrUnsupportedChildRecipe = errors.New("battenshed: recipe cannot be a task 
 var ErrDisagreeingChildSeed = errors.New("battenshed: task worktree already seeded with a disagreeing seed")
 
 // ErrChildNotParked is the sentinel an InnerRunDeps.Spawn closure wraps when the child's bootstrap refused because its live driver has halted the run at a hand-back but not parked yet.
-// InnerRun treats it as a retryable wait on the approval-resume path: it records nothing and spawns again on its next poll.
+// InnerRun treats it as a retryable wait on the approval-resume path: it records nothing and spawns again, at most once per notice probe, until the driver parks or the child's state changes.
 var ErrChildNotParked = errors.New("battenshed: the task worktree's driver has not parked yet")
 
 // PrimeLock carries the told absolute path to a hub-scoped advisory lock plus the injected
@@ -84,12 +84,13 @@ type InnerRunDeps struct {
 	// Spawn starts the inner shed run and blocks until the bootstrap process it launched exits,
 	// which is not the inner run's own completion:
 	// the bootstrap returns once the child's driver is up, and the wait for the campaign itself is
-	// the recipe row's on_stuck self-route, one bounce per poll.
+	// the producer's own wait loop, inside the call.
 	//
 	// InnerRun waits for that bootstrap process rather than detaching, per the Live-Substrate Spawn
-	// Observability invariant. Call invokes Spawn at most once per invocation, and only when its own
+	// Observability invariant. Call invokes Spawn at its start only when its own
 	// read-before-spawn check found no status file yet, or a running one with no spawn confirmed
-	// under the row's scratch directory. Spawn must therefore be idempotent against a driver that
+	// under the row's scratch directory, and later only to resume a decided awaiting child.
+	// Spawn must therefore be idempotent against a driver that
 	// is already alive: a bootstrap killed after its driver came up but before it returned is
 	// spawned again.
 	//
@@ -101,25 +102,30 @@ type InnerRunDeps struct {
 	// earlier would resolve a path that is not there yet.
 	ResolveStatus func() (statusPath, statusLockPath string, err error)
 	// ReadStatus reads and decodes the persisted status file under statusLockPath's protection,
-	// reporting found == false when no status file exists yet. Call reads it before doing
-	// anything else, and again once more after a spawn it triggers -- never in a bounded poll
-	// loop, since the wait across Call invocations is shedengine's own bounce budget.
+	// reporting found == false when no status file exists yet.
+	// Call reads it before doing anything else, and again once more after a spawn it triggers;
+	// the wait loop then decodes it again only when the file's modification time moved or the notice probe is due.
 	ReadStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)
 	// Sleep pauses for d, returning early when ctx is cancelled.
-	// It takes a context because it is the longest wait the producer performs and sits directly in
+	// It is the wait loop's check interval, and it takes a context because it sits directly in
 	// front of a cancellation check, which an uninterruptible sleep would delay by a whole interval
 	// for any caller driving the producer under a cancellable context (the lyx CLI's own context is
 	// never cancelled; see waitOrCancel).
 	// A nil Sleep resolves to waitOrCancel in NewInnerRun;
-	// a test replaces it with a no-op so the attempt-cap test proves the bound is attempt-counted
-	// rather than wall-clock-timed.
+	// a test replaces it with a function that advances its fake clock and never blocks.
 	Sleep func(ctx context.Context, d time.Duration)
+	// PauseRequested reports whether batten's own status carries pause_requested, which ends the wait within one check.
+	// A nil PauseRequested resolves to reporting false in NewInnerRun; an error is warned about and reads as not paused.
+	PauseRequested func() (bool, error)
+	// NoticeProbe is how rarely the wait does anything costing a process or a multiplexer round trip: the driver, review and agent-activity reads, the forced status decode, the not-parked resume retry, the watched-marker refresh and a notice's delivery.
+	// Zero makes every check a probe.
+	NoticeProbe time.Duration
 	// ReadDecision reads whichever operator record the child's run holds, an approval or a rejection, reporting found == false when neither exists.
 	// Call invokes it while the child is awaiting a decision, to tell a fresh decision from one it has already resumed on.
 	// It is resolved on Call, never at wiring time, since the task worktree holding the record does not exist until WorktreeCreate has run.
 	ReadDecision func() (ChildDecision, bool, error)
 	// DriverAlive reports whether the child's driver strand is live.
-	// Call invokes it once the child is done, to wait for the driver to finish its stop report before the pair is torn down.
+	// Call invokes it once the child is done, at most once per notice probe, to wait for the driver to finish its stop report before the pair is torn down.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	DriverAlive func(ctx context.Context) (bool, error)
 	// ReviewWait returns a note naming the reviewer the still-running child waits on, or an empty string when it waits on none.
@@ -134,13 +140,27 @@ type InnerRunDeps struct {
 	// Call invokes it at most once per run, after a spawn that returned success; its error is only warned about and never changes the row's outcome.
 	// A nil OpenIDE resolves to a no-op returning nil in NewInnerRun, the same way a nil Sleep and Now resolve.
 	OpenIDE func(ctx context.Context) error
-	// Notify hands one run notice line to whoever tells the orch, queued behind a seam so this package never imports the orch.
-	// Call invokes it at most once per condition per episode (see notice.go); its error is only warned about and never changes the row's outcome.
+	// Notify hands one run notice line to whoever tells the orch, queued behind a seam so this package never imports the orch, and reports whether the line was queued.
+	// A notice is recorded as sent only when it was queued.
+	// The wait invokes it once per condition per episode (see notice.go) and retries an error or an unqueued line at most once per notice probe and at most three times; its failure is only warned about and never changes the row's outcome.
 	// A nil Notify resolves to a no-op in NewInnerRun, the same way a nil OpenIDE resolves, and then no notice step runs at all.
-	Notify func(ctx context.Context, line string) error
-	// NoticeQuiet is how long a running child's status file may stay unchanged, with its driver strand alive, before the row sends a quiet notice.
+	Notify func(ctx context.Context, line string) (queued bool, err error)
+	// OrchStrandRecorded reports whether the orch the notices go to has a strand recorded to receive them.
+	// With none, the notice step does not call Notify, warns once per episode and asks again once per notice probe.
+	// A nil OrchStrandRecorded resolves to reporting one recorded in NewInnerRun.
+	OrchStrandRecorded func() (bool, error)
+	// StopReport returns the path of the stop report the child's driver parked on, and the time the park marker holding it was written.
+	// It reports found == false when the driver has not parked.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil StopReport resolves to reporting none in NewInnerRun.
+	StopReport func() (path string, at time.Time, found bool, err error)
+	// NoticeQuiet is how long a running child's agents may all stay idle, with its driver strand alive and no wait marker live, before the row sends a quiet notice.
 	// Zero disables the quiet notice.
 	NoticeQuiet time.Duration
+	// Activity reads what the task worktree's live agent runs have been doing, and whether a Go-side wait (a verify or a shuttle wait) is live.
+	// The wait reads it for a running child with a live driver strand, at most once per notice probe; an error is warned about and sends no activity notice.
+	// A nil Activity resolves to reporting no live run and no live wait in NewInnerRun.
+	Activity func(ctx context.Context) (runs []AgentActivity, waitLive bool, err error)
 	// AttachDir returns the task worktree directory the notice's attach command changes into.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	AttachDir func() (string, error)
@@ -161,6 +181,24 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil ReviveStrands resolves to a function returning an error that says no revive is wired, in NewInnerRun.
 	ReviveStrands func(ctx context.Context) error
+	// MarkWatched writes or removes the batten-watched marker of the task worktree's run and reports whether this batten now holds it.
+	// The marker is held while this batten's notices have a destination that is also the child driver's parent, so the driver can leave the run's stops to batten.
+	// Call invokes it at its start and once per notice probe inside the wait, keeps the last answer for the awaiting notice rule, and reads an error as not held with one Warn per change of answer.
+	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
+	// A nil MarkWatched resolves to a function reporting not held in NewInnerRun.
+	MarkWatched func(ctx context.Context) (held bool, err error)
+}
+
+// AgentActivity is the reading of one live agent run of the child's task worktree.
+type AgentActivity struct {
+	// Producer labels the run, the strand name its agent works under.
+	Producer string
+	// LastActivity is when the run last wrote anything.
+	LastActivity time.Time
+	// APIError is true when the run's newest turn end is an API error.
+	APIError bool
+	// APIErrorText is the error's text; empty unless APIError is true.
+	APIErrorText string
 }
 
 // ChildDriverStrand is the state of a child's driver strand in its reed state.
@@ -204,6 +242,10 @@ type SeedChildDeps struct {
 	// changes SeedChild's verdict: an offline machine must not halt a run, and the next push on
 	// this pair catches the branch up.
 	PushSeed func(ctx context.Context) error
+	// MarkWatched writes or removes the batten-watched marker of the task worktree's run and reports whether this batten now holds it.
+	// SeedChild invokes it once the seed is written and committed, so the child's first driver launch already renders the watched rule; an error is only warned about and never changes SeedChild's verdict, like the push.
+	// A nil MarkWatched resolves to a function reporting not held in NewSeedChild.
+	MarkWatched func(ctx context.Context) (held bool, err error)
 }
 
 // TeardownDeps carries the two closures NewWorktreeTeardown calls in sequence: Shutdown strictly

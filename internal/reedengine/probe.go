@@ -33,6 +33,7 @@ var requiredSubcommands = []string{
 	"new-session",
 	"has-session",
 	"split-window",
+	"new-window",
 	"select-layout",
 	"select-pane",
 	"send-keys",

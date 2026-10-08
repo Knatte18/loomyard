@@ -267,6 +267,16 @@ var FrictionTemplateReflection []byte
 //go:embed shed/shed-template-driver.md
 var ShedTemplateDriver []byte
 
+// ShedTemplateDriverNotify is the driver's shipped-default parent-notification rule for a run no batten watches.
+//
+//go:embed shed/shed-template-driver-notify.md
+var ShedTemplateDriverNotify []byte
+
+// ShedTemplateDriverNotifyWatched is the driver's shipped-default parent-notification rule for a run a batten watches.
+//
+//go:embed shed/shed-template-driver-notify-watched.md
+var ShedTemplateDriverNotifyWatched []byte
+
 // ParentDirectiveParent is the shared parent directive's shipped-default variant for a run with a recorded parent.
 //
 //go:embed parent/parent-directive-parent.md
@@ -340,6 +350,8 @@ var entries = []registryEntry{
 	{"friction-directive-interview", &FrictionDirectiveInterview},
 	{"friction-template-reflection", &FrictionTemplateReflection},
 	{"shed-template-driver", &ShedTemplateDriver},
+	{"shed-template-driver-notify", &ShedTemplateDriverNotify},
+	{"shed-template-driver-notify-watched", &ShedTemplateDriverNotifyWatched},
 	{"parent-directive-parent", &ParentDirectiveParent},
 	{"parent-directive-operator-ban", &ParentDirectiveOperatorBan},
 	{"parent-directive-none", &ParentDirectiveNone},

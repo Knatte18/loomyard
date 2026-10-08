@@ -434,6 +434,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		EventsPath:   filepath.Join(runDir, eventsFileName),
 		CreatedAt:    time.Now().UTC().Format(time.RFC3339),
 		Outcome:      runOutcomeRunning,
+		PID:          os.Getpid(),
 	}
 	if err := saveRunState(runDir, state); err != nil {
 		// The strand registered and its pane is already launching, but

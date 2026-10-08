@@ -143,11 +143,10 @@ func listSessionsVia(cmd TmuxCmd) ([]string, error) {
 	return names, nil
 }
 
-// reapSessionPanes lists session's panes, split out from ReapSession so a test can drive the
-// pane-listing half through TmuxCmd's execHook seam directly, mirroring listSessionsVia's own
-// reason for existing.
+// reapSessionPanes lists the panes of every window of session, the panes a kill-session ends, so a session reap covers a second window's process tree too and needs no reed state.
+// It is split out from ReapSession so a test can drive the pane-listing half through TmuxCmd's execHook seam directly, mirroring listSessionsVia's own reason for existing.
 func reapSessionPanes(cmd TmuxCmd, session string) ([]LivePane, error) {
-	return cmd.listPanes(session)
+	return cmd.listSessionPanes(session)
 }
 
 // reapSessionKill kills session by exact-match target. The exactSessionTarget wrapper is
@@ -266,9 +265,21 @@ func (p TmuxCmd) hasSession(name string) (bool, error) {
 	return false, err
 }
 
-// listPanes returns all panes in the session (by exact match).
-func (p TmuxCmd) listPanes(session string) ([]LivePane, error) {
-	out, err := p.output("list-panes", "-t", exactSessionWindowTarget(session), "-F", "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}")
+// paneListFormat is the list-panes format parsePaneList reads.
+const paneListFormat = "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}"
+
+// listPanes returns all panes of the window windowTarget names.
+func (p TmuxCmd) listPanes(windowTarget string) ([]LivePane, error) {
+	out, err := p.output("list-panes", "-t", windowTarget, "-F", paneListFormat)
+	if err != nil {
+		return nil, err
+	}
+	return parsePaneList(out)
+}
+
+// listSessionPanes returns the panes of every window of session.
+func (p TmuxCmd) listSessionPanes(session string) ([]LivePane, error) {
+	out, err := p.output("list-panes", "-s", "-t", exactSessionTarget(session), "-F", paneListFormat)
 	if err != nil {
 		return nil, err
 	}

@@ -288,6 +288,15 @@ func (r *Runner) reconstruct(candidate attachCandidate, normalized Spec, gate Ga
 		}
 	}
 
+	// The attaching process now waits on the run, so liveness readers must see its pid.
+	// Only the pid changes on disk: the legacy reset above stays in memory until the run's own persists.
+	state.PID = os.Getpid()
+	persisted := candidate.state
+	persisted.PID = state.PID
+	if err := saveRunState(candidate.runDir, persisted); err != nil {
+		logger.Warn("shuttle: attach: could not record the attaching pid", "runDir", candidate.runDir, "cause", err)
+	}
+
 	run := &Run{
 		runner: r,
 		// spec is the caller's own normalized spec, never one rebuilt from run.json: RunState

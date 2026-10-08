@@ -616,8 +616,25 @@ func (w *Watcher) tickClearing(st State, now time.Time) error {
 
 	if st.PhaseInjected {
 		st.CycleCount++
+		if err := w.removeSatisfiedRequest(CycleClear, now); err != nil {
+			return err
+		}
 	}
 	return w.startReload(st, now, false)
+}
+
+// removeSatisfiedRequest removes a pending cycle request of mode made no later than effectAt, the time the running cycle's action took effect.
+// A cycle start clears the request pending at that moment, so a request found during the cycle was made after it started;
+// the cycle's action did what that request asks, so a second cycle for it is pointless.
+// Bound: it removes only a request made after the cycle started and before its action took effect, for the same thing the action did;
+// the request time is CLI-written and the boundary time is the transcript's, both wall clock on one host.
+func (w *Watcher) removeSatisfiedRequest(mode string, effectAt time.Time) error {
+	req, pending, err := CycleRequested(w.paths)
+	if err != nil || !pending || req.Mode != mode || req.RequestedAt.After(effectAt) {
+		return err
+	}
+	logger.Info("orch: cycle request satisfied by the running cycle and removed", "mode", req.Mode, "requestedAt", req.RequestedAt)
+	return ClearCycleRequest(w.paths)
 }
 
 // startAutoReload reloads the plugins and the role after an auto-compaction read at a turn end, once the idle probe passes.
@@ -855,19 +872,30 @@ func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
 	return w.startReload(st, now, true)
 }
 
-// tickCompacting re-reads the context through State.ReadingTurnEnd every tick, since a compaction ends without a turn end.
-// The phase completes on a compaction boundary at or after the phase was entered, once the idle probe passes; an earlier boundary never completes it.
+// tickCompacting searches the transcript State.ReadingTurnEnd names for a compaction boundary every tick, since a compaction ends without a turn end.
+// The boundary is searched for rather than read off the newest entry, because a message answered right after the boundary hides it there.
+// The phase completes on a boundary after the phase was entered, whatever follows it, once the idle probe passes; an earlier boundary never completes it.
 // Past the handoff timeout it returns to idle and holds the next automatic trigger for the soft idle, through LastDeferral.
-// An unconfirmed `/compact` is typed again only when the idle probe passes and no qualifying boundary has been read.
+// An unconfirmed `/compact` is typed again only when the idle probe passes and no qualifying boundary has been found.
 func (w *Watcher) tickCompacting(st State, now time.Time) error {
-	var reading shuttleengine.ContextReading
+	var boundary shuttleengine.CompactionBoundary
 	qualifying := false
 	if st.ReadingTurnEnd != nil {
 		var err error
-		if reading, err = w.session.ContextTokens(*st.ReadingTurnEnd); err != nil {
+		if boundary, qualifying, err = w.session.CompactedSince(*st.ReadingTurnEnd, st.PhaseEnteredAt); err != nil {
 			return err
 		}
-		qualifying = reading.Known && reading.Compacted && !reading.BoundaryAt.Before(st.PhaseEnteredAt)
+	}
+	storeCurrentReading := func() error {
+		if st.ReadingTurnEnd == nil {
+			return nil
+		}
+		reading, err := w.session.ContextTokens(*st.ReadingTurnEnd)
+		if err != nil {
+			return err
+		}
+		storeReading(&st, reading, *st.ReadingTurnEnd)
+		return nil
 	}
 
 	idleProbed, idle := false, false
@@ -888,15 +916,20 @@ func (w *Watcher) tickCompacting(st State, now time.Time) error {
 			return err
 		}
 		if idle {
-			storeReading(&st, reading, *st.ReadingTurnEnd)
+			if err := storeCurrentReading(); err != nil {
+				return err
+			}
 			st.CycleCount++
-			st.CompactionBaseline = reading.BoundaryAt
+			st.CompactionBaseline = boundary.At
+			if err := w.removeSatisfiedRequest(CycleCompact, boundary.At); err != nil {
+				return err
+			}
 			return w.reloadAfterCompaction(st, now)
 		}
 	}
 	if now.Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout() {
-		if st.ReadingTurnEnd != nil {
-			storeReading(&st, reading, *st.ReadingTurnEnd)
+		if err := storeCurrentReading(); err != nil {
+			return err
 		}
 		st.LastDeferral = now
 		return w.toIdle(st, "compaction timed out")

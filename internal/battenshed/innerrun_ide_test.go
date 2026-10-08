@@ -25,7 +25,7 @@ func absentThenRunning() []statusResult {
 
 func approvedDeps(t *testing.T, spawnErr error) (*int, InnerRunDeps) {
 	t.Helper()
-	_, spawnCalls, deps := newInnerRunDeps(spawnErr, nil, awaitingStatus(), &fakeClock{})
+	_, spawnCalls, deps := newInnerRunDeps(t, spawnErr, nil, awaitingStatus(), &fakeClock{})
 	deps.ReadDecision = func() (ChildDecision, bool, error) {
 		return ChildDecision{Kind: DecisionApprove, At: "2026-01-01T10:00:00Z", HeadSHA: "abc"}, true, nil
 	}
@@ -35,7 +35,7 @@ func approvedDeps(t *testing.T, spawnErr error) (*int, InnerRunDeps) {
 func TestInnerRun_OpensIDEOnceAfterSpawnBeforeSecondRead(t *testing.T) {
 	scratchDir := t.TempDir()
 	var order []string
-	_, _, deps := newInnerRunDeps(nil, nil, absentThenRunning(), &fakeClock{})
+	_, _, deps := newInnerRunDeps(t, nil, nil, absentThenRunning(), &fakeClock{})
 	spawn, read := deps.Spawn, deps.ReadStatus
 	deps.Spawn = func(ctx context.Context) error {
 		order = append(order, "spawn")
@@ -64,7 +64,7 @@ func TestInnerRun_OpensIDEOnceAfterSpawnBeforeSecondRead(t *testing.T) {
 
 func TestInnerRun_LaterSpawnsInSameRunDoNotReopen(t *testing.T) {
 	scratchDir := t.TempDir()
-	_, spawnCalls, deps := newInnerRunDeps(nil, nil, absentThenRunning(), &fakeClock{})
+	_, spawnCalls, deps := newInnerRunDeps(t, nil, nil, absentThenRunning(), &fakeClock{})
 	opens := 0
 	deps.OpenIDE = func(ctx context.Context) error { opens++; return nil }
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
@@ -118,7 +118,7 @@ func TestInnerRun_OpensIDEOncePerRunAcrossAMarker(t *testing.T) {
 			if tt.approved {
 				spawnCalls, deps = approvedDeps(t, nil)
 			} else {
-				_, spawnCalls, deps = newInnerRunDeps(nil, nil, absentThenRunning(), &fakeClock{})
+				_, spawnCalls, deps = newInnerRunDeps(t, nil, nil, absentThenRunning(), &fakeClock{})
 			}
 			opens := 0
 			deps.OpenIDE = func(ctx context.Context) error { opens++; return nil }
@@ -138,7 +138,7 @@ func TestInnerRun_OpenErrorIsWarnedNotEscalated(t *testing.T) {
 		logger.SetOutput(&buf)
 		t.Cleanup(func() { logger.SetOutput(os.Stderr) })
 		scratchDir := t.TempDir()
-		_, _, deps := newInnerRunDeps(nil, nil, absentThenRunning(), &fakeClock{})
+		_, _, deps := newInnerRunDeps(t, nil, nil, absentThenRunning(), &fakeClock{})
 		deps.OpenIDE = func(ctx context.Context) error { return openErr }
 		producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 		outcome, ptr := shedfake.CallOK(t, producer)
@@ -180,7 +180,7 @@ func TestInnerRun_FailedSpawnDoesNotOpen(t *testing.T) {
 	spawnErr := errors.New("bootstrap failed")
 
 	t.Run("read-before-spawn", func(t *testing.T) {
-		_, _, deps := newInnerRunDeps(spawnErr, nil, absentThenRunning(), &fakeClock{})
+		_, _, deps := newInnerRunDeps(t, spawnErr, nil, absentThenRunning(), &fakeClock{})
 		opens := 0
 		deps.OpenIDE = func(ctx context.Context) error { opens++; return nil }
 		producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, t.TempDir(), testGrace)

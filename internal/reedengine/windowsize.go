@@ -63,9 +63,10 @@ func parseWindowSize(out string) (w, h int, ok bool) {
 // This method never reports failure through its box: a degraded query returns the configured
 // cfg.Width/cfg.Height pair, a perfectly plausible-looking box, so a caller comparing boxes across
 // calls must be told whether the box was an observation at all.
+// windowTarget is the strands' window, as resolved by the window seam.
 // Assumes the op lock is already held.
-func (e *Engine) liveBoxLocked() (render.Box, bool) {
-	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{window_width} #{window_height}")
+func (e *Engine) liveBoxLocked(windowTarget string) (render.Box, bool) {
+	out, err := e.tmux.output("display-message", "-p", "-t", windowTarget, "#{window_width} #{window_height}")
 	if err != nil {
 		logger.Warn("reed: failed to query live window size, falling back to configured box", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return render.Box{X: 0, Y: 0, W: e.cfg.Width, H: e.cfg.Height}, false
@@ -146,7 +147,7 @@ func statusLeftLength(escaped string) int {
 // "status-left-length" <statusLeftLength(escaped without the placeholder) plus waitsSegmentLengthAllowance when the placeholder is present>;
 // and, window-targeted with -w, "window-status-format" "" and "window-status-current-format" "".
 // Suppressing the window-status segment is deliberate rather than left at tmux's default:
-// reed's session has exactly one window,
+// reed's strands share one window,
 // so the default "0:bash*" segment beside the identity text names nothing the operator can act on and would shift position as the window's active pane name changes.
 //
 // Every geometry pin — the status-line options and window-size — is session/window-targeted rather
@@ -169,10 +170,10 @@ func statusLeftLength(escaped string) int {
 // installed keeps spawning run-shell on every resize to write a signal file nobody reads — and it
 // clears the pins alongside it here on purpose, since the very next installResizePinsLocked rebuilds
 // them.
+// target is the strands' window, as resolved by the window seam;
+// the session-wide options ride the window's session.
 // Assumes the op lock is already held.
-func (e *Engine) pinGeometryOptionsLocked() {
-	target := exactSessionWindowTarget(e.SessionName())
-
+func (e *Engine) pinGeometryOptionsLocked(target string) {
 	text, textErr := e.StatusLineText()
 	haveText := textErr == nil
 	var escaped string
@@ -261,8 +262,8 @@ func (e *Engine) removeResizeSignalFileLocked() {
 // of rows it reserves, per reservedRowsFromStatus.
 // A round-trip error is logged via logger.Warn and reported as (0, false).
 // Assumes the op lock is already held.
-func (e *Engine) readStatusRowsLocked() (rows int, ok bool) {
-	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{status}")
+func (e *Engine) readStatusRowsLocked(windowTarget string) (rows int, ok bool) {
+	out, err := e.tmux.output("display-message", "-p", "-t", windowTarget, "#{status}")
 	if err != nil {
 		logger.Warn("reed: failed to read back status option", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return 0, false
@@ -274,8 +275,8 @@ func (e *Engine) readStatusRowsLocked() (rows int, ok bool) {
 // whether it permits the attach chain, per windowSizeAllowsChain.
 // A round-trip error is logged via logger.Warn and reported as false.
 // Assumes the op lock is already held.
-func (e *Engine) readWindowSizeLatestLocked() bool {
-	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{window-size}")
+func (e *Engine) readWindowSizeLatestLocked(windowTarget string) bool {
+	out, err := e.tmux.output("display-message", "-p", "-t", windowTarget, "#{window-size}")
 	if err != nil {
 		logger.Warn("reed: failed to read back window-size option", "socket", e.Socket(), "session", e.SessionName(), "err", err)
 		return false
@@ -283,16 +284,13 @@ func (e *Engine) readWindowSizeLatestLocked() bool {
 	return windowSizeAllowsChain(out)
 }
 
-// resizePinHookArgvs returns the full argv sequence rebuilding session's `window-resized` window-hook
+// resizePinHookArgvs returns the full argv sequence rebuilding the strands' window's `window-resized` window-hook
 // array from pins and signalCommand. It performs no I/O and no logging.
 //
-// The first returned argv is always the clear — {"set-hook", "-u", "-w", "-t",
-// exactSessionWindowTarget(session), "window-resized"} — emitted even when there is nothing at all to
-// install behind it, per the Shared Decision the-clear-is-unconditional-including-zero-pins. Then one
-// argv per array entry, in entry order: {"set-hook", "-w", "-t",
-// exactSessionWindowTarget(session), "window-resized", body} for the entry that establishes the array
-// at index 0 (a plain set-hook replaces) and {"set-hook", "-a", "-w", "-t",
-// exactSessionWindowTarget(session), "window-resized", body} for every entry after it (-a appends).
+// The first returned argv is always the clear, {"set-hook", "-u", "-w", "-t", windowTarget, "window-resized"}, emitted even when there is nothing at all to install behind it, per the Shared Decision the-clear-is-unconditional-including-zero-pins.
+// Then one argv per array entry, in entry order:
+// {"set-hook", "-w", "-t", windowTarget, "window-resized", body} for the entry that establishes the array at index 0 (a plain set-hook replaces),
+// and {"set-hook", "-a", "-w", "-t", windowTarget, "window-resized", body} for every entry after it (-a appends).
 //
 // The entries are the pins, in pins order, each with the body "resize-pane -t <pane> -y <height>",
 // and then — when signalCommand is non-empty — signalCommand itself, verbatim, as the array's LAST
@@ -316,8 +314,7 @@ func (e *Engine) readWindowSizeLatestLocked() bool {
 // for failure isolation: verified live on tmux 3.6, a resize-pane naming a destroyed pane aborts the
 // rest of a single command list, while array entries are independent. The Selvage pin is always pin
 // index 0 so it fires before any strip pin can go wrong.
-func resizePinHookArgvs(session string, pins []render.Pin, signalCommand string) [][]string {
-	target := exactSessionWindowTarget(session)
+func resizePinHookArgvs(target string, pins []render.Pin, signalCommand string) [][]string {
 	argvs := make([][]string, 0, len(pins)+2)
 	argvs = append(argvs, []string{"set-hook", "-u", "-w", "-t", target, "window-resized"})
 	appendEntry := func(body string) {
@@ -403,8 +400,8 @@ func (e *Engine) resizeSignalHookCommand() string {
 // reed operation.
 //
 // Assumes the op lock is already held, like every other Locked method in this file.
-func (e *Engine) installResizePinsLocked(pins []render.Pin) {
-	for _, argv := range resizePinHookArgvs(e.SessionName(), pins, e.resizeSignalHookCommand()) {
+func (e *Engine) installResizePinsLocked(windowTarget string, pins []render.Pin) {
+	for _, argv := range resizePinHookArgvs(windowTarget, pins, e.resizeSignalHookCommand()) {
 		if err := e.tmux.run(argv...); err != nil {
 			// One message for every argv in the rebuild — the clear, each resize-pane pin, and the
 			// resize-signal entry — since they are one array's install and each of them is equally

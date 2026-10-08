@@ -19,12 +19,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/ideengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -41,7 +43,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // driverAliveFrom answers whether the child's driver strand is live, over an injected status reader so its answers are testable without tmux.
@@ -130,17 +135,47 @@ func runLockHeld(lockPath string) (bool, error) {
 // not Worktree-Create, so the abandon path names batten's own run directory as well, and both
 // branch copies, since the ones on the remote make a fresh create's push refuse.
 func taskWorktreeLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location, error) {
+	worktreePath, err := presentTaskWorktreePath(prime, slug)
+	if err != nil {
+		return nil, err
+	}
+	return lyxcwd.ResolveWorktree(worktreePath)
+}
+
+// presentTaskWorktreePath returns the task worktree's root for slug, refusing an absent one by name (see taskWorktreeLocation).
+func presentTaskWorktreePath(prime *lyxcwd.Location, slug string) (string, error) {
 	worktreePath := fabricengine.WorktreePath(prime, slug)
 	if _, err := os.Stat(worktreePath); err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf(
+			return "", fmt.Errorf(
 				"battencli: the task worktree for %q is not present at %s; this run's durable status says it was already created, so it is either on another machine or was removed by hand -- batten does not recreate a pair from its branch, and no \"lyx fabric\" command currently does either (creating one refuses when its branch already exists). Resolve it by hand, one of two ways: restore the worktree pair yourself from its branches, outside lyx's own automation, which keeps the task's work, then resume this run; or abandon this run by deleting its run directory %s (a change on the pair's fabric sibling) and the pair's branches, local and remote, after which \"lyx batten run %s\" starts over from a fresh create -- discarding any of the task's work not already merged",
 				slug, worktreePath, shedrun.RunDir(prime, slug), slug,
 			)
 		}
-		return nil, err
+		return "", err
 	}
-	return lyxcwd.ResolveWorktree(worktreePath)
+	return worktreePath, nil
+}
+
+// taskWorktreeLocator returns a taskWorktreeLocation for slug that spawns git only until a resolution succeeds.
+// Run-Shed's wait reads the task worktree's files every poll check, and resolving the location runs git;
+// a present pair's location never changes, so the first success is kept, while every call still stats the pair and refuses an absent one by name.
+func taskWorktreeLocator(prime *lyxcwd.Location, slug string) func() (*lyxcwd.Location, error) {
+	var resolved *lyxcwd.Location
+	return func() (*lyxcwd.Location, error) {
+		if resolved == nil {
+			taskLocation, err := taskWorktreeLocation(prime, slug)
+			if err != nil {
+				return nil, err
+			}
+			resolved = taskLocation
+			return resolved, nil
+		}
+		if _, err := presentTaskWorktreePath(prime, slug); err != nil {
+			return nil, err
+		}
+		return resolved, nil
+	}
 }
 
 // taskWorktreePresent reports whether the task worktree for slug is already on disk under prime's
@@ -367,6 +402,102 @@ func childSeedFor(recipe, driver string, params map[string]string) shedrun.Seed 
 	return shedrun.Seed{Recipe: recipe, Driver: driver, Params: params}
 }
 
+// noticesReachDriversParent reports whether this batten's notices have a destination that is also the task worktree driver's parent:
+// the pair's parent worktree is the prime batten runs in, and the prime's orch state records a strand.
+// A pair created from another worktree, or with no resolvable parent, has a different parent to message.
+func noticesReachDriversParent(prime, taskLocation *lyxcwd.Location) (bool, error) {
+	parent, err := hubgeom.ResolveParent(taskLocation)
+	if err != nil {
+		return false, err
+	}
+	if parent.Worktree != prime.WorktreeName {
+		return false, nil
+	}
+	return orchStrandRecorded(prime)
+}
+
+// orchStrandRecorded reports whether the prime's orch state records a strand to receive notices.
+func orchStrandRecorded(prime *lyxcwd.Location) (bool, error) {
+	orch, err := orchengine.LoadState(orchcli.PrimePaths(prime))
+	if err != nil {
+		return false, err
+	}
+	return orch.Strand != "", nil
+}
+
+// readStopReport reads the driver park marker of the task worktree's run, whose content is the path of the stop report the driver parked on, and the time the marker was written.
+// An absent marker reports found == false.
+func readStopReport(taskLocation *lyxcwd.Location) (path string, at time.Time, found bool, err error) {
+	marker := shedrun.ParkMarker(taskLocation, shedrun.SelfRunID)
+	info, err := os.Stat(marker)
+	if os.IsNotExist(err) {
+		return "", time.Time{}, false, nil
+	}
+	if err != nil {
+		return "", time.Time{}, false, err
+	}
+	raw, err := os.ReadFile(marker)
+	if err != nil {
+		return "", time.Time{}, false, err
+	}
+	return strings.TrimSpace(string(raw)), info.ModTime(), true, nil
+}
+
+// readAgentActivity reads the live agent runs of the task worktree through the shuttle config and a Claude engine, mapped onto battenshed's neutral type,
+// and reports whether a Go-side wait is live: a running verify, or a shuttle wait.
+// Both waits are read from their marker files, never from the pane options that display them.
+func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentActivity, waitLive bool, err error) {
+	anchor := taskLocation.AnchorPath()
+	cfg, err := shuttleengine.LoadConfig(anchor, "shuttle")
+	if err != nil {
+		return nil, false, err
+	}
+	readings, err := shuttleengine.ReadAgentActivity(cfg, anchor, claudeengine.NewFromConfig(cfg))
+	if err != nil {
+		return nil, false, err
+	}
+	for _, reading := range readings {
+		runs = append(runs, battenshed.AgentActivity{Producer: reading.StrandName, LastActivity: reading.LastActivity, APIError: reading.APIError, APIErrorText: reading.APIErrorText})
+	}
+	_, verifyLive, err := verifytree.ReadMarker(verifytree.NewPaths(taskLocation.WorktreePath(), verifytree.Dir(anchor)).Marker)
+	if err != nil {
+		return nil, false, err
+	}
+	if verifyLive {
+		return runs, true, nil
+	}
+	_, shuttleLive, err := shuttleengine.ReadWaitMarker(cfg, anchor)
+	if err != nil {
+		return nil, false, err
+	}
+	return runs, shuttleLive, nil
+}
+
+// markBattenWatched writes the batten-watched marker of the task worktree's run, holding this process's pid, while noticesReachDriversParent holds, and removes it otherwise.
+// The write is atomic, so the driver's render never reads a torn pid, and an absent marker is fine to remove.
+// It reports whether the marker is held.
+func markBattenWatched(prime, taskLocation *lyxcwd.Location) (bool, error) {
+	marker := shedrun.BattenWatchedMarker(taskLocation, shedrun.SelfRunID)
+	watched, err := noticesReachDriversParent(prime, taskLocation)
+	if err != nil {
+		return false, err
+	}
+	if !watched {
+		if err := os.Remove(marker); err != nil && !os.IsNotExist(err) {
+			return false, err
+		}
+		return false, nil
+	}
+	content := []byte(strconv.Itoa(os.Getpid()) + "\n")
+	if existing, err := os.ReadFile(marker); err == nil && bytes.Equal(existing, content) {
+		return true, nil
+	}
+	if err := fsx.AtomicWriteBytes(marker, content); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // wire builds and stores the shedrecipe.Env and shedbuild.ShedPaths the run and status verbs
 // need, over the resolved prime location and slug.
 func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
@@ -393,6 +524,18 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			}
 			return fl.Release, true, nil
 		},
+	}
+
+	// Every seam below that reads the task worktree locates it through this one locator, so git runs only until the first resolution succeeds.
+	locateTask := taskWorktreeLocator(location, slug)
+
+	// One closure keeps the marker for both rows that ask: Seed-Child once the seed is committed, and Run-Shed through the whole watch.
+	markWatched := func(ctx context.Context) (bool, error) {
+		taskLocation, err := locateTask()
+		if err != nil {
+			return false, err
+		}
+		return markBattenWatched(location, taskLocation)
 	}
 
 	env := shedrecipe.Env{
@@ -463,13 +606,39 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 		},
 		InnerRun: battenshed.InnerRunDeps{
-			// Notify queues the notice on the prime's orch, the parent of a batten run started from the prime; a notice the orch has no strand to receive is logged by QueueNotice.
-			Notify: func(ctx context.Context, line string) error {
-				_, err := orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())
-				return err
+			// Notify queues the notice on the prime's orch, the parent of a batten run started from the prime, and reports QueueNotice's own answer: whether the notice was queued.
+			Notify: func(ctx context.Context, line string) (bool, error) {
+				return orchengine.QueueNotice(orchcli.PrimePaths(location), line, time.Now())
+			},
+			// OrchStrandRecorded reads the prime orch's state, the same fact the watched marker is kept on.
+			OrchStrandRecorded: func() (bool, error) { return orchStrandRecorded(location) },
+			// StopReport reads the driver's park marker in the task worktree: the stop report path it holds and the time it was written.
+			StopReport: func() (string, time.Time, bool, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return "", time.Time{}, false, err
+				}
+				return readStopReport(taskLocation)
+			},
+			MarkWatched: markWatched,
+			// PauseRequested reads batten's own status file, the one `lyx batten pause` writes, so the in-call wait notices a pause within one check.
+			PauseRequested: func() (bool, error) {
+				status, found, err := state.ReadJSONStrict[shedengine.Status](StatusFile(location, slug), StatusLock(location, slug))
+				if err != nil || !found {
+					return false, err
+				}
+				return status.PauseRequested, nil
+			},
+			// Activity resolves the task worktree on Call like every seam here.
+			Activity: func(context.Context) ([]battenshed.AgentActivity, bool, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return nil, false, err
+				}
+				return readAgentActivity(taskLocation)
 			},
 			AttachDir: func() (string, error) {
-				taskLocation, err := taskWorktreeLocation(location, slug)
+				taskLocation, err := locateTask()
 				if err != nil {
 					return "", err
 				}
@@ -477,7 +646,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 			// ReadDecision, DriverAlive and ReviewWait resolve the task worktree on Call like every seam here, never at wiring time.
 			ReviewWait: func() (string, error) {
-				taskLocation, err := taskWorktreeLocation(location, slug)
+				taskLocation, err := locateTask()
 				if err != nil {
 					return "", err
 				}
@@ -489,7 +658,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return "parent review: " + note, nil
 			},
 			ReadDecision: func() (battenshed.ChildDecision, bool, error) {
-				taskLocation, err := taskWorktreeLocation(location, slug)
+				taskLocation, err := locateTask()
 				if err != nil {
 					return battenshed.ChildDecision{}, false, err
 				}
@@ -514,7 +683,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return false, err
 				}
 				return driverAliveFrom(present, func() (reedengine.StatusResult, error) {
-					taskLocation, err := taskWorktreeLocation(location, slug)
+					taskLocation, err := locateTask()
 					if err != nil {
 						return reedengine.StatusResult{}, err
 					}
@@ -535,7 +704,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return battenshed.ChildDriverNone, err
 				}
 				return driverStrandFrom(present, func() ([]reedengine.DirectoryRow, error) {
-					taskLocation, err := taskWorktreeLocation(location, slug)
+					taskLocation, err := locateTask()
 					if err != nil {
 						return nil, err
 					}
@@ -552,7 +721,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 			// ReviveStrands resumes the task worktree's reed session, which relaunches the dead driver strand and every other non-live strand of the pair.
 			ReviveStrands: func(ctx context.Context) error {
-				taskLocation, err := taskWorktreeLocation(location, slug)
+				taskLocation, err := locateTask()
 				if err != nil {
 					return err
 				}
@@ -574,7 +743,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return nil
 			},
 			ChildRunLockHeld: func() (bool, error) {
-				taskLocation, err := taskWorktreeLocation(location, slug)
+				taskLocation, err := locateTask()
 				if err != nil {
 					return false, err
 				}
@@ -585,7 +754,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			// it: the child's status file is durable while its lock is not. This mirrors
 			// battenPreRun's own MkdirAll for prime's status lock (arm.go).
 			ResolveStatus: func() (statusPath, statusLockPath string, err error) {
-				taskLocation, err := taskWorktreeLocation(location, slug)
+				taskLocation, err := locateTask()
 				if err != nil {
 					return "", "", err
 				}
@@ -597,7 +766,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return statusPath, statusLockPath, nil
 			},
 			Spawn: func(ctx context.Context) error {
-				taskLocation, err := taskWorktreeLocation(location, slug)
+				taskLocation, err := locateTask()
 				if err != nil {
 					return err
 				}
@@ -627,7 +796,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 			// OpenIDE confirms the pair first so an absent one is named in the warning, then hands the prime location to the driven open.
 			OpenIDE: func(ctx context.Context) error {
-				if _, err := taskWorktreeLocation(location, slug); err != nil {
+				if _, err := locateTask(); err != nil {
 					return err
 				}
 				return ideengine.SpawnDriven(location, slug)
@@ -683,7 +852,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if recipe != shedrun.RecipeLoom {
 					return fmt.Errorf("%w: only %q has a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q or empty; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeLoom, shedrun.RecipeLoom, recipe)
 				}
-				childLocation, err := taskWorktreeLocation(location, slug)
+				childLocation, err := locateTask()
 				if err != nil {
 					return err
 				}
@@ -703,17 +872,18 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			// one-off write, distinct from CommitStatus below, which commits prime's own batten
 			// status onto prime's own pair on every non-no-op transition.
 			CommitSeed: func(ctx context.Context) error {
-				childLocation, err := taskWorktreeLocation(location, slug)
+				childLocation, err := locateTask()
 				if err != nil {
 					return err
 				}
 				_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), childLocation, []string{shedrun.SeedRel(childLocation, shedrun.SelfRunID)}, fmt.Sprintf("batten: seed child %s", slug), fabricengine.EnvSyncOptions())
 				return err
 			},
+			MarkWatched: markWatched,
 			// PushSeed pushes the child's own fabric pair, the same location CommitSeed just
 			// committed onto.
 			PushSeed: func(ctx context.Context) error {
-				childLocation, err := taskWorktreeLocation(location, slug)
+				childLocation, err := locateTask()
 				if err != nil {
 					return err
 				}

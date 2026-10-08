@@ -233,7 +233,7 @@ func TestAttachGeometry_ExactLayoutAndRowBudgets(t *testing.T) {
 	parentPaneID := st.Strands[0].PaneID
 	selvagePaneID := st.SelvagePaneID
 
-	live, err := e.tmux.listPanes(e.SessionName())
+	live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
 		t.Fatalf("listPanes: %v", err)
 	}
@@ -298,7 +298,7 @@ func TestAttachGeometry_StaleLayoutRaceIsSafe(t *testing.T) {
 	}
 	plannedLayout := argv[len(argv)-1]
 
-	live, err := e.tmux.listPanes(e.SessionName())
+	live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
 		t.Fatalf("listPanes before mutating the pane set: %v", err)
 	}
@@ -314,7 +314,7 @@ func TestAttachGeometry_StaleLayoutRaceIsSafe(t *testing.T) {
 		t.Fatalf("AddStrand (stale-race third strand): %v", err)
 	}
 
-	live, err = e.tmux.listPanes(e.SessionName())
+	live, err = e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
 		t.Fatalf("listPanes after mutating the pane set: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestAttachGeometry_StaleLayoutRaceIsSafe(t *testing.T) {
 		t.Errorf("#{window_layout} after the stale-race attach = %q, want it to DIFFER from the planned string %q — tmux should have refused the pane-count mismatch rather than applying it", gotLayout, plannedLayout)
 	}
 
-	afterLive, err := e.tmux.listPanes(e.SessionName())
+	afterLive, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
 		t.Fatalf("listPanes after the stale-race attach: %v", err)
 	}
@@ -352,7 +352,7 @@ func TestAttachGeometry_StaleLayoutRaceIsSafe(t *testing.T) {
 // tell which point failed.
 func assertAttachGeometryRowBudgets(t *testing.T, e *Engine, selvagePaneID, parentPaneID, step string) {
 	t.Helper()
-	live, err := e.tmux.listPanes(e.SessionName())
+	live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
 		t.Fatalf("listPanes (%s): %v", step, err)
 	}
@@ -459,7 +459,7 @@ func TestAttachGeometry_BareAttachFromTallClientStillHoldsSelvageBudget(t *testi
 	waitForClientAttached(t, e, 15*time.Second)
 
 	waitUntil(t, 15*time.Second, "Selvage pane never settled at cfg.Selvage.HeightRows after the bare attach", func() bool {
-		live, err := e.tmux.listPanes(e.SessionName())
+		live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 		if err != nil {
 			return false
 		}
@@ -519,7 +519,7 @@ func TestAttachGeometry_DeadStripPinDoesNotBreakSelvagePin(t *testing.T) {
 		return h == resizedRows-1
 	})
 
-	live, err := e.tmux.listPanes(e.SessionName())
+	live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
 		t.Fatalf("listPanes: %v", err)
 	}
