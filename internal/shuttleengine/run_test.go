@@ -1173,8 +1173,8 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			// A 1 s window allows six Enters at the 250 ms floor.
 			name: "Enters under a clock that never advances stop at the Enter count", text: shortText,
 			confirmS: 1, frozen: true,
-			boxes:    join(settled(shortText), []inputBoxAnswer{box(shortText)}),
-			wantErr:  "after 6 Enter(s)", wantNotLand: true,
+			boxes:   join(settled(shortText), []inputBoxAnswer{box(shortText)}),
+			wantErr: "after 6 Enter(s)", wantNotLand: true,
 			wantKeys: keys("Escape", "Enter", "Enter", "Enter", "Enter", "Enter", "Enter"),
 		},
 		{
@@ -1260,8 +1260,8 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			// A 1 s window closes inside the first typing's polls, so there is no replay.
 			name: "a text that has not appeared when the window closes names the window and the one typing", text: shortText,
 			confirmS: 1, captures: []string{"❯ "},
-			boxes:    []inputBoxAnswer{box(shortText)},
-			wantErr:  "after 1 typing(s) — the 1s submit window, cut to the send's deadline, closed before it appeared", wantNotLand: true,
+			boxes:   []inputBoxAnswer{box(shortText)},
+			wantErr: "after 1 typing(s) — the 1s submit window, cut to the send's deadline, closed before it appeared", wantNotLand: true,
 			wantKeys: keys("Escape"),
 		},
 		{
