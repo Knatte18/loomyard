@@ -190,7 +190,7 @@
 // ReadAgentActivity returns one AgentActivity per live run under a run-directory root:
 // the run's strand name, its last activity, and whether its newest turn end is an API error with the error's text.
 // The last activity is the newer of the transcript's last write and the time of the events file's newest Stop or ask line, the run's creation time when neither is readable.
-// A Stop or ask line carrying no time, an engine without the optional SessionSignalParser capability, and a file yielding no signals count the events file's last write instead, so a Notification, prompt submission or stamp append never moves it.
+// A Stop or ask line carrying no time, an engine without the optional SessionSignalParser capability, and a file yielding no signals count the events file's last write instead, so an idle notice, a prompt submission or a stamp line never moves it.
 // The events past the prompt offset are parsed through the Engine, and the newest turn end goes to the optional ActivityReader capability for the transcript part;
 // an engine without it, and a run with no turn end yet, are judged by the events file alone.
 // Like ReadWaitMarker it reads files only, so a process that runs no shuttle may call it.
