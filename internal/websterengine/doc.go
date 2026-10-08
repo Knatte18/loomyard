@@ -491,6 +491,8 @@
 // Geometry.Git carries it, and nil means the real repository, so no production caller sets it and the helpers in gitwrap.go stay the one place webster runs git.
 // A test that asserts on webster's own records, warnings and verdicts sets a fake and spawns nothing;
 // a test whose behavior is git itself (merge commits, ignore rules, blobs, the verify gate) builds a real scratch repository under the `integration` tag.
+// UncommittedPaths is the one read of the task's uncommitted work: the dirty and untracked paths minus the run's own state (webster's run directory, the plan directory and the scratch directory), sorted.
+// accept-audit's clean-tree evidence and the reset's and the recovery prompt's lists of uncommitted paths all read it.
 //
 // # The code-index seam
 //

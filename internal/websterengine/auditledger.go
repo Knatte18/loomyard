@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -225,15 +226,9 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int, readOnly func(c
 			return nil, fmt.Errorf("%w: HEAD %s is not batch %02d's start commit %s; way forward: git reset --keep %s, then re-run \"lyx webster accept-audit --batch %d\"", ErrAuditNotAcceptable, head, n, bs.StartSHA, bs.StartSHA, n)
 		}
 	}
-	dirtyPaths, err := geom.git().DirtyPaths(geom.WorktreeRoot)
+	dirty, err := UncommittedPaths(geom)
 	if err != nil {
 		return nil, err
-	}
-	var dirty []string
-	for _, p := range dirtyPaths {
-		if !runOwnPath(geom, p) {
-			dirty = append(dirty, p)
-		}
 	}
 	if len(dirty) > 0 {
 		return nil, fmt.Errorf("%w: the worktree has uncommitted or untracked changes: %s; way forward: restore or remove them with git, then re-run \"lyx webster accept-audit --batch %d\"", ErrAuditNotAcceptable, strings.Join(dirty, ", "), n)
@@ -255,6 +250,23 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int, readOnly func(c
 	accepted = bs.Uncheckable
 	bs.Uncheckable = nil
 	return accepted, nil
+}
+
+// UncommittedPaths returns, sorted, the worktree-relative paths of the task's uncommitted work: every tracked change and untracked file git status names, minus the run's own state.
+// A clean tree returns none, and a git read failure is returned.
+func UncommittedPaths(geom Geometry) ([]string, error) {
+	dirtyPaths, err := geom.git().DirtyPaths(geom.WorktreeRoot)
+	if err != nil {
+		return nil, err
+	}
+	var uncommitted []string
+	for _, p := range dirtyPaths {
+		if !runOwnPath(geom, p) {
+			uncommitted = append(uncommitted, p)
+		}
+	}
+	sort.Strings(uncommitted)
+	return uncommitted, nil
 }
 
 // runOwnPath reports whether rel, a worktree-relative path git status names, is the run's own state rather than the task's content:
