@@ -80,7 +80,7 @@ Each card lives in its own file, and the file's content is:
    ```markdown
    **Edit:**
    - `internal/boardcli#newListCmd`
-   - `list.go`
+   - `list_test.go`
    ```
 
    A card whose targets span two labels carries both groups, one after the other, each with its own sub-bullets:
@@ -409,10 +409,14 @@ The rows below stay in one fixed order regardless of which entry point runs them
 29. `delete-before-reference` — a `Delete:` target that is a member glyph or a package self glyph, while a card with a higher number still references it in its `Edit:` code (a member glyph's resolved span, or the whole file of a path or file self glyph).
     Emitted by `internal/planglyph`'s resolve pass, not by `internal/planparser`, at `ValidateFormat`, `Validate`, `ValidateRework` and `ValidateDispatch`, and never under `language: "none"`.
     The match is textual, and the finding is attributed to the deleting card; the fix is to move the delete to a card after the editing one.
-30. `delete-target-gone` (informational) — a `Delete:` target of a card that has not begun, already absent from the tree.
+30. `redundant-file-target` — a card's own target list holds a file self glyph beside a member glyph that resolves into that file; one finding per file and member, attributed to the card, with `Ref` the member.
+    A member that resolves `not_found`, ambiguous or unreadably is skipped, since the resolve status policy already reports it.
+    The way forward is to keep the member glyphs and drop the file, or keep the file when the card changes the whole file.
+    Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch` and never under `language: "none"`: the verdict depends on a member's resolved file, which the run itself changes once record-batch binds a handle into a member glyph.
+31. `delete-target-gone` (informational) — a `Delete:` target of a card that has not begun, already absent from the tree.
     Emitted by `internal/planglyph` at `ValidateDispatch` only, once at least one batch is begun, in place of the blocking `path-missing` or `glyph-not-found` finding for that target; `ValidateFormat`, `Validate` and `ValidateRework` keep refusing a missing `Delete:` target.
     The same target under the card's own `Edit:`, `Uses:` or `Rename` old side keeps its blocking finding.
-31. `card-fabric-reference` — a command in the plan that reaches the fabric repo: a sibling worktree path (a name ending in the fabric suffix) or a command spelling that drives the fabric repo.
+32. `card-fabric-reference` — a command in the plan that reaches the fabric repo: a sibling worktree path (a name ending in the fabric suffix) or a command spelling that drives the fabric repo.
     It scans a card's `**Verify:**` value and the overview's `## verify:` section body with both rules, every fenced code block of every plan file with both rules, and every inline code span of every plan file with the path rule only, because a span documenting a command opens with the spelling.
     Prose outside code is never scanned.
     Each span is matched on its own, with the same rule the implementer audit uses.
@@ -502,7 +506,6 @@ go test ./internal/boardcli/... ./internal/boardengine/... ./cmd/lyx/...
 
 **Edit:**
 - `internal/boardcli#newListCmd`
-- `list.go`
 
 **Create:**
 - `list_json_test.go`

@@ -782,9 +782,9 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 		{
 			number: 2, slug: "json-flag", summary: "add the --json bool flag and wire list.go",
 			typ: planparser.CardTypeEdit, typeLabelCount: 2,
-			targets: []string{"internal/boardcli#newListCmd", "internal/boardcli/list.go#", "internal/boardcli/list_json_test.go#"},
+			targets: []string{"internal/boardcli#newListCmd", "internal/boardcli/list_json_test.go#"},
 			groups: []wantGroup{
-				{typ: planparser.CardTypeEdit, refs: []string{"internal/boardcli#newListCmd", "internal/boardcli/list.go#"}},
+				{typ: planparser.CardTypeEdit, refs: []string{"internal/boardcli#newListCmd"}},
 				{typ: planparser.CardTypeCreate, refs: []string{"internal/boardcli/list_json_test.go#"}},
 			},
 			uses: []string{"internal/output/envelope.go#"}, hasUses: true,
@@ -927,7 +927,6 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 	// SurfaceRefs records the pre-canonicalization surface lexeme for every canonicalized
 	// path-shaped ref, keyed by the owning card's own identity.
 	wantSurface := map[string]string{
-		"internal/boardcli/list.go#":           "internal/boardcli/list.go",
 		"internal/boardcli/list_json_test.go#": "internal/boardcli/list_json_test.go",
 		"internal/output/envelope.go#":         "internal/output/envelope.go",
 	}

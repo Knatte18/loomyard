@@ -437,3 +437,42 @@ func TestGlyphChain_CrossCard(t *testing.T) {
 		})
 	}
 }
+
+// TestGlyphChain_RedundantFile pins redundant-file-target: a file beside a member that resolves into it is flagged by ValidateFormat and not by ValidateDispatch, and a file beside a member of another file is clean.
+func TestGlyphChain_RedundantFile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		targets []string
+		want    []findingKey
+	}{
+		{
+			name:    "file beside a member declared in it",
+			targets: []string{"shapes/shapes.go", "shapes#Func"},
+			want:    []findingKey{{"redundant-file-target", "1-card1", SeverityBlocking}},
+		},
+		{
+			name:    "file beside a member declared in another file",
+			targets: []string{"shapes/shapes.go", "dirname#DirDiffers"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := copyGlyphChainFixture(t)
+			_, plan := writeGlyphPlan(t, []string{editCard(tc.targets...)})
+			assertPlanGate(t, plan, root, tc.want)
+
+			findings, err := ValidateDispatch(plan, root, nil, nil)
+			if err != nil {
+				t.Fatalf("ValidateDispatch(...) returned error: %v", err)
+			}
+			for _, finding := range findings {
+				if finding.Check == "redundant-file-target" {
+					t.Errorf("ValidateDispatch reported %+v; want the pass skipped", finding)
+				}
+			}
+		})
+	}
+}

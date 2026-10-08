@@ -21,6 +21,8 @@ import (
 // report as a gate/infrastructure failure rather than as a plan finding so nobody mistakes "quarry
 // broke" for "the plan is wrong".
 //
+// After resolvePass it appends planGatePass's findings, skipping that pass when resolvePass failed.
+//
 // This is the WHOLE-plan form, correct before execution starts (both plan gate sites -- Plan-Write's
 // and Plan-Burler's own gates -- and the standalone verbs). Once execution is under way, use
 // ValidateDispatch instead.
@@ -28,7 +30,11 @@ func ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, erro
 	findings := convertAll(planparser.ValidateFormat(plan, worktreeRoot))
 	resolveFindings, err := resolvePass(plan, worktreeRoot, nil, nil)
 	findings = append(findings, resolveFindings...)
-	return findings, err
+	if err != nil {
+		return findings, err
+	}
+	gateFindings, err := planGatePass(plan, worktreeRoot)
+	return append(findings, gateFindings...), err
 }
 
 // ValidateRework is the rework gate's check set: ValidateFormat's findings, then planparser.CheckFirstCard's finding when plan's first_card differs from told, the card number Go told the rework session to start at.
@@ -46,12 +52,16 @@ func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 	findings := convertAll(planparser.Validate(plan, worktreeRoot))
 	resolveFindings, err := resolvePass(plan, worktreeRoot, nil, nil)
 	findings = append(findings, resolveFindings...)
-	return findings, err
+	if err != nil {
+		return findings, err
+	}
+	gateFindings, err := planGatePass(plan, worktreeRoot)
+	return append(findings, gateFindings...), err
 }
 
 // ValidateDispatch is ValidateFormat's mid-execution form: the same check set, scoped to the cards
 // whose work has NOT landed yet. completed names every card already built, and a caller with none
-// gets exactly ValidateFormat's answer.
+// gets ValidateFormat's answer less planGatePass's findings, a pass that runs at the plan gates only.
 //
 // The scoping is not an optimisation, it is correctness. A plan describes intended change, so a card
 // whose work already landed necessarily contradicts the tree it is re-resolved against: a completed

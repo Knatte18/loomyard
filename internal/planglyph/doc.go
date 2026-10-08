@@ -45,6 +45,9 @@
 //     create-already-exists covers found, multipart and ambiguous alike: all three mean a
 //     declaration already occupies the name the card is creating.
 //   - delete-before-reference (blocking) — LaterDeleteReferences (deleteorder.go), a card that deletes a symbol whose reference a later card's Edit code still holds, so the delete must move after that card.
+//   - redundant-file-target (blocking) — planGatePass (plangate.go), a card listing a file self glyph beside a member glyph that resolves into that file.
+//     It runs at the plan gates only (ValidateFormat, Validate and so ValidateRework), never at ValidateDispatch.
+//     The rule the pass exists for: a check whose verdict depends on state the run itself changes runs at the plan gates only, because dispatch re-validates a plan against a tree the run has already changed.
 //   - delete-target-gone (informational) — downgradeGoneDeleteTargets (planglyph.go), a Delete target of a pending card that is already absent, reported by ValidateDispatch alone once a batch is begun instead of the blocking path-missing or glyph-not-found finding for it.
 //   - handle-name-failed, handle-canonical-collision (both blocking) — CanonicalizeHandles
 //     (handle.go), a declaration that fails to parse or two draft handles that canonicalize to the

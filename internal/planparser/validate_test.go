@@ -111,7 +111,7 @@ func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 
 	root := t.TempDir()
 	materializeFiles(t, root,
-		"internal/boardcli/list.go",          // card 2's own target, and card 3's Uses (dedup)
+		"internal/boardcli/list.go",          // card 3's Uses
 		"internal/output/envelope.go",        // card 2's Uses
 		"internal/boardengine/legacyrows.go", // card 4's target
 		"internal/boardengine/rows.go",       // card 5's Rename pair pre-rename (Old) side

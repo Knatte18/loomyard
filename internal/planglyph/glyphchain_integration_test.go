@@ -170,7 +170,7 @@ func TestGlyphChain_UnreferencedHandle(t *testing.T) {
 	requireDoneChecksClean(t, bound, bound.Cards[:1], f.root)
 }
 
-// TestGlyphChain_ReworkGenerations pins the rework-generations scenario: three cards share a file and validate clean at the plan gate, and once card 1's code is bound a dispatch with card 1 completed reports no blocking finding.
+// TestGlyphChain_ReworkGenerations pins the rework-generations scenario: three cards share a file and validate clean at the plan gate, and once card 1's code is bound a dispatch with card 1 completed reports no blocking finding and no redundant-file-target for card 2's file and handle built in that file.
 func TestGlyphChain_ReworkGenerations(t *testing.T) {
 	t.Parallel()
 
@@ -189,6 +189,9 @@ func TestGlyphChain_ReworkGenerations(t *testing.T) {
 		t.Fatalf("ValidateDispatch(...) returned error: %v", err)
 	}
 	for _, finding := range findings {
+		if finding.Check == "redundant-file-target" {
+			t.Errorf("ValidateDispatch reported %+v; want the plan-gate pass skipped", finding)
+		}
 		if finding.Severity == SeverityBlocking {
 			t.Errorf("ValidateDispatch reported blocking finding %+v; want none", finding)
 		}
