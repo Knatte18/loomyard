@@ -341,6 +341,21 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 				commitTemplate(t, h.PairRecordsSibling("pair-a"), "loom")
 			},
 		},
+		{
+			name: "unparseable hub-wide config",
+			breakConfig: func(t *testing.T, h *hubforge.Hub) (string, string, string) {
+				// A stale board.yaml, which precedes fabric.yaml in the registry, is written before the fabric failure.
+				board, _ := configreg.Lookup("board")
+				gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("board"), board.Template()+"retired_fixture_key: 1\n", "fixture: stale board.yaml")
+				hubforge.SeedFabricConfig(t, h, "a: [unclosed\n")
+				return h.BoardDir(), h.BoardDir(), configengine.ConfigFile(h.BoardDir(), "fabric")
+			},
+			module: "fabric",
+			repair: func(t *testing.T, h *hubforge.Hub) {
+				m, _ := configreg.Lookup("fabric")
+				hubforge.SeedFabricConfig(t, h, m.Template())
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
