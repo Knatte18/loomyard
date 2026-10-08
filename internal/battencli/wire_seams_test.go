@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
@@ -211,9 +212,24 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	}
 }
 
-// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto battenshed's type, skips a run whose process has ended, and reports a live wait marker.
+// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto battenshed's type, with the session state of its stamped turn end, skips a run whose process has ended, and reports a live wait marker.
+// It points HOME at a session registry through t.Setenv, so it does not run in parallel.
 func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
-	t.Parallel()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	registry := filepath.Join(home, ".claude", "sessions")
+	if err := os.MkdirAll(registry, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A registry entry for the live run's session, proven alive by this test process, where the platform reads a process start time.
+	wantState, wantCause := "unknown", "liveness-unproven"
+	if procStart, ok := proc.StartTime(os.Getpid()); ok {
+		entry := fmt.Sprintf(`{"pid":%d,"sessionId":"sess-1","procStart":%q}`, os.Getpid(), procStart)
+		if err := os.WriteFile(filepath.Join(registry, "live.json"), []byte(entry), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		wantState, wantCause = "idle-stalled", "no-output"
+	}
 
 	taskLocation := &lyxcwd.Location{RepoName: "example", HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
 	runsRoot := filepath.Join(taskLocation.AnchorPath(), ".lyx", "shuttle")
@@ -233,7 +249,8 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	liveDir := writeRun("live", livePID, "hub:task:impl")
 	activeAt := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
 	eventsPath := filepath.Join(liveDir, "events")
-	if err := os.WriteFile(eventsPath, nil, 0o644); err != nil {
+	stampedStop := fmt.Sprintf(`{"lyx_stamp":"Stop","lyx_at":%q}`+"\n"+`{"hook_event_name":"Stop","session_id":"sess-1"}`+"\n", activeAt.Format(time.RFC3339))
+	if err := os.WriteFile(eventsPath, []byte(stampedStop), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chtimes(eventsPath, activeAt, activeAt); err != nil {
@@ -244,6 +261,9 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	runs, waitLive, err := readAgentActivity(taskLocation)
 	if err != nil || waitLive || len(runs) != 1 || runs[0].Producer != "hub:task:impl" || !runs[0].LastActivity.Equal(activeAt) || runs[0].APIError {
 		t.Fatalf("readAgentActivity() = %+v, %v, %v; want the live run hub:task:impl last active at %s, no wait", runs, waitLive, err, activeAt)
+	}
+	if runs[0].SessionState != wantState || runs[0].SessionCause != wantCause {
+		t.Errorf("session state = %q/%q, want %q/%q", runs[0].SessionState, runs[0].SessionCause, wantState, wantCause)
 	}
 
 	writeMarker := func(dir, kind string) {
