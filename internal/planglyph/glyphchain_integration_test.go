@@ -152,6 +152,22 @@ func TestGlyphChain_Delta(t *testing.T) {
 	}
 }
 
+// TestGlyphChain_UnreferencedHandle pins that a Create handle no other card references is bound at record-batch and passes its done-check.
+func TestGlyphChain_UnreferencedHandle(t *testing.T) {
+	t.Parallel()
+
+	f, base := newGlyphChainRepo(t)
+	dir, plan := writeGlyphPlan(t, []string{createCard(&createLeg{"plan:shapes#draft", "func NewFunc() int", ""})})
+	assertPlanGate(t, plan, f.root, nil)
+
+	bound := bindCardOne(t, f, dir, base, f.commitEdits([]codeEdit{appendText(shapesFile, "\nfunc NewFunc() int { return 1 }\n")}))
+
+	if got := readCardFile(t, dir, 1, "card1"); !strings.Contains(got, "- `shapes#NewFunc`\n") {
+		t.Errorf("card 1 = %q; want its declaration bullet collapsed to `shapes#NewFunc`", got)
+	}
+	requireDoneChecksClean(t, bound, bound.Cards[:1], f.root)
+}
+
 // TestGlyphChain_ReworkGenerations pins the rework-generations scenario: three cards share a file and validate clean at the plan gate, and once card 1's code is bound a dispatch with card 1 completed reports no blocking finding.
 func TestGlyphChain_ReworkGenerations(t *testing.T) {
 	t.Parallel()

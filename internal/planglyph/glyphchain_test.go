@@ -399,7 +399,7 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 	}
 }
 
-// TestGlyphChain_CrossCard pins the cross-card verdicts: a member and its file, or either and its package self glyph, or one file, on different cards validate clean, and a Create handle no other card references is refused.
+// TestGlyphChain_CrossCard pins the cross-card verdicts: a member and its file, or either and its package self glyph, or one file, on different cards validate clean, and so does a Create handle no other card references.
 func TestGlyphChain_CrossCard(t *testing.T) {
 	t.Parallel()
 
@@ -427,7 +427,6 @@ func TestGlyphChain_CrossCard(t *testing.T) {
 		{
 			name:  "create handle no other card references",
 			cards: []string{createCard(&createLeg{"plan:shapes#draft", "func NewFunc() int", ""})},
-			want:  []findingKey{{"handle-unreferenced", "1-card1", SeverityBlocking}},
 		},
 	}
 	for _, tc := range cases {

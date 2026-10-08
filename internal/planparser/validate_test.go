@@ -494,9 +494,7 @@ func TestValidate_RenameFormat(t *testing.T) {
 	})
 }
 
-// TestValidate_HandleConsistency covers handle-dangling, handle-collision, and
-// handle-unreferenced, each firing exactly once on a minimal offending plan, and a well-formed
-// plan with one declaration and one reference producing none of them.
+// TestValidate_HandleConsistency covers handle-dangling and handle-collision, each firing exactly once on a minimal offending plan, and a well-formed plan with one declaration and one reference producing neither.
 func TestValidate_HandleConsistency(t *testing.T) {
 	t.Parallel()
 
@@ -510,7 +508,7 @@ func TestValidate_HandleConsistency(t *testing.T) {
 		referencer.Uses = []string{"plan:internal/foo#NewThing"}
 		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{declarer, referencer}}
 		findings := planparser.Validate(plan, t.TempDir())
-		for _, check := range []string{"handle-dangling", "handle-collision", "handle-unreferenced"} {
+		for _, check := range []string{"handle-dangling", "handle-collision"} {
 			if got := countFor(findings, check); got != 0 {
 				t.Errorf("countFor(findings, %q) = %d; want 0", check, got)
 			}
@@ -585,27 +583,15 @@ func TestValidate_HandleConsistency(t *testing.T) {
 		}
 	})
 
-	t.Run("a lone Rename to-side handle is neither a collision nor unreferenced", func(t *testing.T) {
+	t.Run("a lone Rename to-side handle is not a collision", func(t *testing.T) {
 		t.Parallel()
 		card := renameCard(1, "one", "internal/bar#OldThing", "plan:internal/foo#NewThing")
 		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
-		for _, check := range []string{"handle-dangling", "handle-collision", "handle-unreferenced"} {
+		for _, check := range []string{"handle-dangling", "handle-collision"} {
 			if got := countFor(findings, check); got != 0 {
 				t.Errorf("countFor(findings, %q) = %d; want 0 — a rename destination nothing else references is the ordinary case", check, got)
 			}
-		}
-	})
-
-	t.Run("handle-unreferenced: a declared handle no other card references", func(t *testing.T) {
-		t.Parallel()
-		card := cardOfType(1, "a", planparser.CardTypeCreate, []string{"plan:internal/foo#NewThing"})
-		card.Declarations = []planparser.CardDeclaration{{Handle: "plan:internal/foo#NewThing", Decl: "func NewThing() *Thing"}}
-		card.TargetGroups[0].Declarations = card.Declarations
-		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
-		findings := planparser.Validate(plan, t.TempDir())
-		if got := countFor(findings, "handle-unreferenced"); got != 1 {
-			t.Errorf("countFor(findings, handle-unreferenced) = %d; want 1", got)
 		}
 	})
 

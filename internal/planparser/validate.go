@@ -1,6 +1,6 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
 // (contracts/specs/loom-plan-spec.md), run in this fixed order.
-// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision, handle-unreferenced (all three checkHandleConsistency), handle-malformed (checkHandleMalformed), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch (checkCommitSubjectMismatch).
+// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision (both checkHandleConsistency), handle-malformed (checkHandleMalformed), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), and commit-subject-mismatch (checkCommitSubjectMismatch).
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
 // No scheduler, dependency graph, or topological sort belongs in this file — the dependency graph
@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -523,22 +522,15 @@ func checkRenameFormat(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkHandleConsistency implements handle-dangling, handle-collision, and handle-unreferenced,
-// all pure string work over the parsed model via handleClaims/declaredHandles/referencedHandles
-// (handle.go).
+// checkHandleConsistency implements handle-dangling and handle-collision, both pure string work over the parsed model via handleClaims/referencedHandles (handle.go).
 // These checks run under every plan.Language, including "none": a handle is loomyard grammar, not
 // glyph grammar, and its consistency is checkable without any alphabet.
 //
-// handle-dangling and handle-collision both key on handleClaims, the union of the format's two
-// handle-declaring sources; handle-unreferenced keys on declaredHandles alone, and deliberately so
-// — a Rename card's destination that no OTHER card references is the ordinary case, not a defect,
-// so folding Rename to-sides into that half would fire a false finding on essentially every Rename
-// card in every plan.
+// handle-dangling and handle-collision both key on handleClaims, the union of the format's two handle-declaring sources.
 func checkHandleConsistency(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	claims := handleClaims(plan)
-	declared := declaredHandles(plan)
 	referenced := referencedHandles(plan)
 
 	// handle-dangling: a referenced handle with no matching Create declaration and no matching
@@ -588,35 +580,6 @@ func checkHandleConsistency(plan *Plan) []ValidationError {
 				handle, strings.Join(cards, ", "),
 			),
 		})
-	}
-
-	// handle-unreferenced: a declared handle no card other than its own declaring card(s)
-	// references. A declaring card's own Create bullet contributes the handle to its own Targets
-	// too, so that self-reference must not count.
-	declaredHandleNames := make([]string, 0, len(declared))
-	for h := range declared {
-		declaredHandleNames = append(declaredHandleNames, h)
-	}
-	sort.Strings(declaredHandleNames)
-	for _, handle := range declaredHandleNames {
-		decCards := declared[handle]
-		externallyReferenced := false
-		for _, rc := range referenced[handle] {
-			if !slices.Contains(decCards, rc) {
-				externallyReferenced = true
-				break
-			}
-		}
-		if externallyReferenced {
-			continue
-		}
-		for _, dc := range decCards {
-			findings = append(findings, ValidationError{
-				Check:  "handle-unreferenced",
-				Card:   dc,
-				Detail: fmt.Sprintf("card declares handle %q that no other card references", handle),
-			})
-		}
 	}
 
 	return findings

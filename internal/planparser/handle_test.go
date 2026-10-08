@@ -1,5 +1,5 @@
 // handle_test.go covers splitHandleDeclaration and handleUnit, the two pure string helpers card 9
-// adds, plus the declaredHandles/referencedHandles predicates card 10 adds beside them.
+// adds, plus the referencedHandles predicate card 10 adds beside them.
 
 package planparser
 
@@ -108,9 +108,9 @@ func TestHandleUnit(t *testing.T) {
 	}
 }
 
-// TestHandleIndexes asserts declaredHandles maps each declared handle to the cards declaring it, and referencedHandles maps each handle-shaped target or use to the cards naming it, leaving a non-handle ref out.
+// TestHandleIndexes asserts referencedHandles maps each handle-shaped target or use to the cards naming it, leaving a non-handle ref out.
 //
-//testtiming:keep pins declaredHandles and referencedHandles map contents, which TestValidate_HandleConsistency reaches only as findings
+//testtiming:keep pins referencedHandles map contents, which TestValidate_HandleConsistency reaches only as findings
 func TestHandleIndexes(t *testing.T) {
 	t.Parallel()
 
@@ -123,17 +123,6 @@ func TestHandleIndexes(t *testing.T) {
 				Declarations: []CardDeclaration{{Handle: "plan:internal/bar#NewOther", Decl: "func NewOther()"}},
 				Uses:         []string{"plan:internal/foo#NewThing"}},
 		},
-	}
-
-	declared := declaredHandles(plan)
-	if want := []string{"1-one"}; !slices.Equal(declared["plan:internal/foo#NewThing"], want) {
-		t.Errorf("declaredHandles()[%q] = %v; want %v", "plan:internal/foo#NewThing", declared["plan:internal/foo#NewThing"], want)
-	}
-	if want := []string{"2-two"}; !slices.Equal(declared["plan:internal/bar#NewOther"], want) {
-		t.Errorf("declaredHandles()[%q] = %v; want %v", "plan:internal/bar#NewOther", declared["plan:internal/bar#NewOther"], want)
-	}
-	if _, ok := declared["plan:nonexistent#X"]; ok {
-		t.Errorf("declaredHandles() carries an entry for an undeclared handle")
 	}
 
 	referenced := referencedHandles(plan)
