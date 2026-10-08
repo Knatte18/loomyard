@@ -454,6 +454,9 @@
 // The own paths are the tracked paths that loadRunWrites records a successful write to, Master's and every fork's; a failed write is not evidence.
 // Each refusal ends in wayForwardSteps' numbered list.
 // The plan carries the SHA and the own paths, and reads no force flag.
+// `start` is the one start-over verb, so it does not refuse where the start cannot be moved to:
+// when no batch recorded a start, a recorded start is missing from the repository, the recorded starts share no single oldest commit and no common ancestor, or the resolved start is not an ancestor of HEAD, PlanReset returns a plan with ArchiveOnly set and the Reason.
+// Those four are the closed set, since each guards only a branch move the archive-only path does not make; the refusals before the target resolves, and `pre-fix` and the other targets, keep all of theirs.
 //
 // # The reset verb
 //
@@ -461,7 +464,11 @@
 // Under the state-mutation lease it plans with the pair's branch read through the fabric handle,
 // resets the pair's code checkout through fabricengine's pair-checkout reset with the plan's SHA, the parent branch from the origin record and the own paths,
 // clears State.PreFixHead, saves, and fabric-syncs state.json.
-// It changes no other webster state; `run --fresh` or a plain `run` does the rest, as the way-forward texts order them.
+// It changes no other webster state, except that a reset to start ends by calling ArchiveRunAfterReset under the same lease, after the move and the save, so a following plain `run` finds no state and starts a new run.
+// When the pending-findings guard refuses after the move, the move and the save stand, the record stays unarchived and re-running the reset converges, since a reset to the commit HEAD is already on moves nothing.
+// On the archive-only path the verb removes the live recovery strands as a moving reset does, runs no git that mutates and archives alone; the guard there refuses only on what its clearing step can undo, because it judges against HEAD.
+// The trees differ by mode: a pair's reset discards the run's tracked changes and keeps untracked files, and the archive-only path keeps everything, which the next run starts over.
+// A plain `run` does the rest for the other targets, as the way-forward texts order them.
 // The reset also moves the task branch on the remote to the same commit, so a later push is not rejected as diverged; `FABRIC_SKIP_PUSH=1` skips that half.
 // The bound: it can discard only commits above a run-recorded commit on the task's own branch, on the checkout and on the remote, and uncommitted tracked changes to paths the run itself wrote.
 // The remote update is made only when every commit it drops is reachable from the task worktree's HEAD and under a lease on the remote tip it read;
@@ -470,6 +477,7 @@
 // Fabric's own refusal (ownership, dirtiness, remote divergence, an unreachable remote) is surfaced as the verb's error with fabric's reason.
 // In standalone mode the verb plans, then refuses naming `git reset --keep <sha>`, since standalone has no pair for the fabric gate to guard.
 // The envelope carries `target`, `sha`, `mutations` (the `worktree_reset` entry, and `remote_branch_updated` when the remote moved) and `partial`, false on success.
+// A reset to start also carries `moved`, `uncommitted` (UncommittedPaths, read after the move), `warnings` (the findings the archive dropped) and, when `moved` is false, `reason`, with no `sha`.
 // A refusal before the remote update is a bare error envelope.
 // A checkout rewrite that fails after the remote moved is an error envelope carrying `mutations` and `partial: true`, and re-running the reset converges.
 // Each refusal has a row in contracts/specs/refusal-spec.md.

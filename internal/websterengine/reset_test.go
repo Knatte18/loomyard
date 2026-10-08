@@ -107,7 +107,11 @@ func (fx *resolutionFixture) deps() websterengine.ResetDeps {
 	}
 }
 
-// TestPlanReset_Resolution pins each refusal PlanReset reaches from state, report files, the reed seam and a fake Git alone:
+// archiveOnlyPlan leads a TestPlanReset_Resolution row's wanted parts when the row expects an archive-only plan, whose reason carries the rest.
+const archiveOnlyPlan = "<archive-only plan>"
+
+// TestPlanReset_Resolution pins each refusal PlanReset reaches from state, report files, the reed seam and a fake Git alone,
+// and the archive-only plan a reset to start returns for a start it cannot move to:
 // the --batch pairing, an unknown target, and each target's own resolution.
 // The plans the targets resolve to are pinned in TestPlanReset over a real repository.
 func TestPlanReset_Resolution(t *testing.T) {
@@ -152,6 +156,18 @@ func TestPlanReset_Resolution(t *testing.T) {
 		}, []string{"share no single latest commit", "run `lyx webster reset --to start`"}},
 		{"batch-start of a batch with no start", websterengine.ResetToBatchStart, 3, nil, []string{"batch 3 recorded no start commit", "run `lyx webster reset --to start`"}},
 		{"batch-start with a later recorded start", websterengine.ResetToBatchStart, 1, nil, []string{"batch 1 is not the run's last begun batch", "commits of batch 2", "run `lyx webster reset --to start`"}},
+		{"start with no recorded start archives without moving", websterengine.ResetToStart, 0, func(fx *resolutionFixture) {
+			fx.state.Batches[1].StartSHA, fx.state.Batches[2].StartSHA = "", ""
+		}, []string{archiveOnlyPlan, "no batch recorded a start commit"}},
+		{"start with a missing start archives without moving", websterengine.ResetToStart, 0, func(fx *resolutionFixture) {
+			fx.state.Batches[2].StartSHA = strings.Repeat("ab", 20)
+		}, []string{archiveOnlyPlan, strings.Repeat("ab", 20), "not in this repository"}},
+		{"start that is not an ancestor of HEAD archives without moving", websterengine.ResetToStart, 0, func(fx *resolutionFixture) {
+			head := fx.git.head
+			unreachable := fx.git.commit()
+			fx.git.head = head
+			fx.state.Batches[1].StartSHA, fx.state.Batches[2].StartSHA = unreachable, unreachable
+		}, []string{archiveOnlyPlan, "is not an ancestor of HEAD", "the branch was rewritten under the run"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -160,14 +176,26 @@ func TestPlanReset_Resolution(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(fx)
 			}
-			_, err := websterengine.PlanReset(fx.deps(), tt.to, tt.batch)
-			if err == nil {
-				t.Fatalf("PlanReset(%s, %d) error = nil, want a refusal", tt.to, tt.batch)
+			plan, err := websterengine.PlanReset(fx.deps(), tt.to, tt.batch)
+
+			// text is what the parts are looked for in: the refusal, or an archive-only plan's reason.
+			text, parts := "", tt.want
+			if archiveOnly := tt.want[0] == archiveOnlyPlan; archiveOnly {
+				parts = tt.want[1:]
+				if err != nil || !plan.ArchiveOnly || plan.SHA != "" {
+					t.Fatalf("PlanReset(%s, %d) = %+v, %v; want an archive-only plan", tt.to, tt.batch, plan, err)
+				}
+				text = plan.Reason
+			} else {
+				if err == nil {
+					t.Fatalf("PlanReset(%s, %d) error = nil, want a refusal", tt.to, tt.batch)
+				}
+				text = err.Error()
 			}
-			for _, part := range tt.want {
+			for _, part := range parts {
 				part = strings.ReplaceAll(part, "%batch1Head", fx.batch1Head)
-				if !strings.Contains(err.Error(), part) {
-					t.Errorf("PlanReset(%s, %d) error = %v, want it to contain %q", tt.to, tt.batch, err, part)
+				if !strings.Contains(text, part) {
+					t.Errorf("PlanReset(%s, %d) = %q, want it to contain %q", tt.to, tt.batch, text, part)
 				}
 			}
 		})

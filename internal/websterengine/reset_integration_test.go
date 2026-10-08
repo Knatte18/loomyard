@@ -109,14 +109,11 @@ func TestPlanReset(t *testing.T) {
 
 	fx.step(t, "no recorded target refuses", func(t *testing.T) {
 		fx.deps.State.Batches = map[int]*BatchState{}
-		fx.wantRefusal(t, ResetToStart, "no batch recorded a start commit", "lyx webster run --fresh")
 		fx.wantRefusal(t, ResetToPreFix, "no pre-fix head", "way forward: run `lyx webster run`")
 	})
 
 	fx.step(t, "missing commit refuses", func(t *testing.T) {
 		bogus := strings.Repeat("ab", 20)
-		fx.deps.State.Batches[1].StartSHA = bogus
-		fx.wantRefusal(t, ResetToStart, bogus, "not in this repository")
 		fx.deps.State.PreFixHead = bogus
 		fx.wantRefusal(t, ResetToPreFix, bogus, "not in this repository")
 	})
@@ -126,10 +123,26 @@ func TestPlanReset(t *testing.T) {
 		gitkit.Git(t, fx.root, "checkout", "-b", "side", fx.first)
 		side := gitkit.CommitFile(t, fx.root, "c.txt", "side", "side")
 		gitkit.Git(t, fx.root, "checkout", "task")
-		fx.deps.State.Batches[1].StartSHA = side
 		fx.deps.State.PreFixHead = side
-		fx.wantRefusal(t, ResetToStart, "not an ancestor of HEAD", "lyx webster run --fresh")
 		fx.wantRefusal(t, ResetToPreFix, "not an ancestor of HEAD", "lyx webster reset --to start")
+	})
+
+	// The orphan commits this step makes sit on no branch, so no later step reads them.
+	fx.step(t, "start with no common ancestor archives without moving", func(t *testing.T) {
+		const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+		orphan1 := gitkit.Git(t, fx.root, "commit-tree", emptyTree, "-m", "orphan 1")
+		orphan2 := gitkit.Git(t, fx.root, "commit-tree", emptyTree, "-m", "orphan 2")
+		fx.deps.State.Batches = map[int]*BatchState{
+			1: {Slug: "one", StartSHA: orphan1},
+			2: {Slug: "two", StartSHA: orphan2},
+		}
+		plan, err := PlanReset(fx.deps, ResetToStart, 0)
+		if err != nil {
+			t.Fatalf("PlanReset error = %v, want an archive-only plan", err)
+		}
+		if !plan.ArchiveOnly || plan.SHA != "" || !strings.Contains(plan.Reason, "no common ancestor") {
+			t.Errorf("plan = %+v, want an archive-only plan whose reason names the missing common ancestor", plan)
+		}
 	})
 
 	fx.step(t, "foreign dirt refuses and names the path", func(t *testing.T) {

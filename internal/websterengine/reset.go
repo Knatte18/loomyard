@@ -5,6 +5,7 @@
 package websterengine
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"path/filepath"
@@ -59,6 +60,37 @@ type ResetPlan struct {
 	SHA string
 	// OwnPaths are the worktree-relative, slash-separated tracked paths the run wrote successfully, exempt from the dirt check.
 	OwnPaths []string
+	// ArchiveOnly marks a reset to start that moves no branch and only archives the run record, because Reason keeps the start from being moved to.
+	// SHA and OwnPaths are empty then.
+	ArchiveOnly bool
+	// Reason says why the start cannot be moved to, set with ArchiveOnly.
+	Reason string
+}
+
+// errStartUnresolvable marks a recorded start that cannot be resolved to one commit, which a reset to start answers by archiving without moving.
+var errStartUnresolvable = errors.New("the recorded start cannot be resolved")
+
+// archiveOnlyPlan is the plan of a reset to start that archives the run record and moves nothing, because reason keeps the start from being moved to.
+func archiveOnlyPlan(reason string) ResetPlan {
+	return ResetPlan{Target: ResetToStart, ArchiveOnly: true, Reason: reason}
+}
+
+// noStartToMoveTo returns why the recorded starts name no commit to move to, or "" when they do:
+// no batch recorded a start, or a recorded start is missing from the repository.
+func noStartToMoveTo(geom Geometry, bases evidenceBases) string {
+	if len(bases.Starts) == 0 {
+		return "no batch recorded a start commit"
+	}
+	var missing []string
+	for _, start := range bases.Starts {
+		if !geom.git().SHAExists(geom.WorktreeRoot, start) {
+			missing = append(missing, start)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Sprintf("recorded start commit(s) %s are not in this repository", strings.Join(missing, ", "))
+	}
+	return ""
 }
 
 // wayForwardSteps renders an ordered step list: `way forward: 1) <a>; 2) <b>` for two or more steps, `way forward: <a>` for one, and "" for none.
@@ -86,6 +118,8 @@ func resetRefusal(to ResetTarget, reason, wayForward string) error {
 // batch is the --batch number, zero when none: the report-head and batch-start targets require it and every other target refuses it.
 // The refusals run in this order: the batch pairing, run lock held (except for report-head, which Master runs inside its run), no state, merge in progress, a checked-out branch that is not the task branch,
 // no recorded target, a recorded commit missing from the repository, a target that is not an ancestor of HEAD, and a dirty tracked path outside the run's own writes.
+// A reset to start skips the recorded-target, missing-commit and ancestor refusals, which guard a branch move:
+// when no start is recorded, a recorded start is missing, the starts share no oldest commit and no common ancestor, or the resolved start is not an ancestor of HEAD, it returns an archive-only plan with the reason.
 // It plans only a run-recorded commit that is an ancestor of HEAD, exempts only paths the run's own transcripts record a successful write to, and never reads a force flag.
 func PlanReset(deps ResetDeps, to ResetTarget, batch int) (ResetPlan, error) {
 	geom := deps.Geom
@@ -118,9 +152,7 @@ func PlanReset(deps ResetDeps, to ResetTarget, batch int) (ResetPlan, error) {
 	}
 	switch to {
 	case ResetToStart:
-		if len(bases.Starts) == 0 {
-			return ResetPlan{}, resetRefusal(to, "no batch recorded a start commit", wayForwardSteps("run `lyx webster run --fresh`"))
-		}
+		// A start that cannot be moved to archives without moving, so it has no recorded-target refusal.
 	case ResetToPreFix:
 		if deps.State.PreFixHead == "" {
 			return ResetPlan{}, resetRefusal(to, "the verify gate recorded no pre-fix head", wayForwardSteps("run `lyx webster run`"))
@@ -145,18 +177,27 @@ func PlanReset(deps ResetDeps, to ResetTarget, batch int) (ResetPlan, error) {
 		return ResetPlan{}, fmt.Errorf("webster: reset target %q is not one of %s", to, strings.Join(names, ", "))
 	}
 
-	missing := bases.Missing
-	if to == ResetToPreFix {
-		missing = nil
-		if !geom.git().SHAExists(geom.WorktreeRoot, deps.State.PreFixHead) {
-			missing = []string{deps.State.PreFixHead}
+	if to == ResetToStart {
+		if reason := noStartToMoveTo(geom, bases); reason != "" {
+			return archiveOnlyPlan(reason), nil
 		}
-	}
-	if len(missing) > 0 {
-		return ResetPlan{}, fmt.Errorf("webster: reset --to %s refused: %s", to, missingCommitsClause(missing))
+	} else {
+		missing := bases.Missing
+		if to == ResetToPreFix {
+			missing = nil
+			if !geom.git().SHAExists(geom.WorktreeRoot, deps.State.PreFixHead) {
+				missing = []string{deps.State.PreFixHead}
+			}
+		}
+		if len(missing) > 0 {
+			return ResetPlan{}, fmt.Errorf("webster: reset --to %s refused: %s", to, missingCommitsClause(missing))
+		}
 	}
 
 	sha, err := resolveResetSHA(geom, deps.State, bases, to, batch)
+	if errors.Is(err, errStartUnresolvable) {
+		return archiveOnlyPlan(err.Error()), nil
+	}
 	if err != nil {
 		return ResetPlan{}, err
 	}
@@ -169,12 +210,11 @@ func PlanReset(deps ResetDeps, to ResetTarget, batch int) (ResetPlan, error) {
 		return ResetPlan{}, err
 	}
 	if !reachable {
-		fallback := resetToStartStep
+		reason := fmt.Sprintf("the recorded commit %s is not an ancestor of HEAD %s, so the branch was rewritten under the run", sha, head)
 		if to == ResetToStart {
-			fallback = "run `lyx webster run --fresh`"
+			return archiveOnlyPlan(reason), nil
 		}
-		return ResetPlan{}, resetRefusal(to, fmt.Sprintf("the recorded commit %s is not an ancestor of HEAD %s, so the branch was rewritten under the run", sha, head),
-			wayForwardSteps(fallback))
+		return ResetPlan{}, resetRefusal(to, reason, wayForwardSteps(resetToStartStep))
 	}
 
 	own, err := ownTrackedPaths(deps)
@@ -358,8 +398,7 @@ func resolveResetSHA(geom Geometry, st *State, bases evidenceBases, to ResetTarg
 	}
 	base, err := octopusMergeBase(geom.WorktreeRoot, bases.Starts)
 	if err != nil {
-		return "", resetRefusal(to, fmt.Sprintf("the recorded start commits %s share no single oldest commit and no common ancestor (%v)", strings.Join(bases.Starts, ", "), err),
-			wayForwardSteps("run `lyx webster run --fresh`"))
+		return "", fmt.Errorf("%w: the recorded start commits %s share no single oldest commit and no common ancestor (%v)", errStartUnresolvable, strings.Join(bases.Starts, ", "), err)
 	}
 	return base, nil
 }

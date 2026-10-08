@@ -1,5 +1,6 @@
 // reset.go implements the `reset` webster verb: the guarded way to move the task branch back to a commit the run recorded.
 // It plans the reset with websterengine.PlanReset, performs it through fabricengine's pair-checkout reset, clears the persisted pre-fix head and fabric-syncs state.json.
+// A reset to start ends by archiving the run record, or archives alone when the start cannot be moved to.
 // The verb runs no git of its own, so an agent that is denied `git reset --hard` still has a way to recover.
 package webstercli
 
@@ -39,7 +40,8 @@ later batch recorded a start.
 It refuses, changing nothing, while a run holds the run lock (except --to
 report-head, which Master runs inside its run), during a merge, off
 the task branch, with no recorded target, when the target commit is missing or
-is not an ancestor of HEAD, while a tracked path the run did not write
+is not an ancestor of HEAD (--to start archives without moving instead, in all
+three cases and when the starts share no common ancestor), while a tracked path the run did not write
 itself is dirty, when the remote task branch holds commits the checkout lacks
 (the refusal lists them and names the git merge --strategy ours step for the run's
 own abandoned commits), and when the remote cannot be read or updated.
@@ -48,13 +50,23 @@ to tracked paths the run wrote, and moves the remote task branch back to the
 target so a later push is not rejected; it leaves untracked files, the records side and every
 other branch alone, takes no raw SHA and has no force flag.
 FABRIC_SKIP_PUSH=1 leaves the remote task branch alone.
-It clears the persisted pre-fix head and changes no other webster state; run
-"lyx webster run --fresh" or "lyx webster run" afterwards, as the refusal that
-sent you here says.
+It clears the persisted pre-fix head and changes no other webster state, except
+that --to start also archives the run record (state.json and the reports dir
+renamed with a stamp, the rendered prompts cleared) behind a pending-findings
+guard judged against HEAD, so a following "lyx webster run" starts a new run.
+The guard refuses, with the move already made, only on a contract file a fork
+wrote last, a plan path that differs from the recorded plan, or a suspect path
+that differs from HEAD, each naming its clearing step; re-running the reset
+then converges. Every other pending finding is dropped with a warning.
+Otherwise run what the refusal that sent you here says.
 In standalone mode it refuses and names the git reset --keep command to run.
 On success the envelope carries target, sha, mutations (the worktree_reset
 entry, and a remote_branch_updated entry when the remote moved) and partial
-(false). When the checkout rewrite fails after the remote moved, the error
+(false). --to start also carries moved (false when the start could not be moved
+to and the record was only archived, with the reason key naming why), uncommitted
+(the worktree paths left uncommitted outside the run's own state, which the next
+run starts over) and warnings (the findings the archive dropped).
+When the checkout rewrite fails after the remote moved, the error
 envelope carries mutations and partial true; re-running the reset converges.
 
 Example:
@@ -116,14 +128,16 @@ Example:
 			if err != nil {
 				return fail(err.Error())
 			}
-			if fab == nil {
+			if fab == nil && !plan.ArchiveOnly {
 				return fail(fmt.Sprintf("webster: reset --to %s refused: standalone mode has no task pair for the reset to guard; way forward: run `git reset --keep %s` in the task worktree, which keeps uncommitted changes",
 					target, plan.SHA))
 			}
 
-			parent, err := c.parentBranch()
-			if err != nil {
-				return fail(fmt.Sprintf("webster: reset --to %s refused: the parent branch is unknown (%v); way forward: run `lyx fabric reconcile` to repair the pair, then re-run `lyx webster reset --to %s`", target, err, target))
+			var parent string
+			if !plan.ArchiveOnly {
+				if parent, err = c.parentBranch(); err != nil {
+					return fail(fmt.Sprintf("webster: reset --to %s refused: the parent branch is unknown (%v); way forward: run `lyx fabric reconcile` to repair the pair, then re-run `lyx webster reset --to %s`", target, err, target))
+				}
 			}
 			if target == websterengine.ResetToStart {
 				var removeErr *websterengine.RecoveryStrandRemoveError
@@ -132,20 +146,34 @@ Example:
 				}
 			}
 			rec := fabricengine.NewMutations("")
-			if err := fab.ResetPairCode(rec, plan.SHA, parent, plan.OwnPaths, fabricengine.EnvSyncOptions()); err != nil {
-				if remoteBranchMoved(rec) {
-					clihelp.SetExit(cmd.Context(), output.ErrFields(out, fmt.Sprintf("webster: reset --to %s moved the remote task branch but not the checkout: %v", target, err), map[string]any{
-						"mutations": rec.Entries(),
-						"partial":   true,
-					}))
-					return nil
+			if !plan.ArchiveOnly {
+				if err := fab.ResetPairCode(rec, plan.SHA, parent, plan.OwnPaths, fabricengine.EnvSyncOptions()); err != nil {
+					if remoteBranchMoved(rec) {
+						clihelp.SetExit(cmd.Context(), output.ErrFields(out, fmt.Sprintf("webster: reset --to %s moved the remote task branch but not the checkout: %v", target, err), map[string]any{
+							"mutations": rec.Entries(),
+							"partial":   true,
+						}))
+						return nil
+					}
+					return fail(fmt.Sprintf("webster: reset --to %s refused: %v", target, err))
 				}
-				return fail(fmt.Sprintf("webster: reset --to %s refused: %v", target, err))
+
+				st.PreFixHead = ""
+				if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
+					return fail(fmt.Sprintf("webster: the branch was reset to %s but state.json could not be saved: %v; way forward: re-run `lyx webster reset --to %s`", plan.SHA, err, target))
+				}
 			}
 
-			st.PreFixHead = ""
-			if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
-				return fail(fmt.Sprintf("webster: the branch was reset to %s but state.json could not be saved: %v; way forward: re-run `lyx webster reset --to %s`", plan.SHA, err, target))
+			warnings := []string{}
+			if target == websterengine.ResetToStart {
+				dropped, err := websterengine.ArchiveRunAfterReset(c.engine, c.geom, st)
+				if err != nil {
+					if plan.ArchiveOnly {
+						return fail(err.Error())
+					}
+					return fail(fmt.Sprintf("webster: the branch was reset to %s but the run record was not archived: %v", plan.SHA, err))
+				}
+				warnings = append(warnings, dropped...)
 			}
 			_ = mutateLock.Release()
 			mutateHeld = false
@@ -154,12 +182,27 @@ Example:
 				return fail(fmt.Sprintf("webster: the branch was reset but the fabric sync failed: %v; %s", syncErr, fabricSyncWayForward))
 			}
 
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
+			fields := map[string]any{
 				"target":    string(plan.Target),
-				"sha":       plan.SHA,
 				"mutations": rec.Entries(),
 				"partial":   false,
-			}))
+			}
+			if !plan.ArchiveOnly {
+				fields["sha"] = plan.SHA
+			}
+			if target == websterengine.ResetToStart {
+				uncommitted, err := websterengine.UncommittedPaths(c.geom)
+				if err != nil {
+					return fail(fmt.Sprintf("webster: the run record was archived but the uncommitted paths could not be read: %v", err))
+				}
+				fields["moved"] = !plan.ArchiveOnly
+				fields["uncommitted"] = append([]string{}, uncommitted...)
+				fields["warnings"] = warnings
+				if plan.ArchiveOnly {
+					fields["reason"] = plan.Reason
+				}
+			}
+			clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 			return nil
 		},
 	}

@@ -193,6 +193,55 @@ func TestResetCmd(t *testing.T) {
 		if _, err := os.Stat(untracked); err != nil {
 			t.Errorf("untracked file removed by the reset: %v", err)
 		}
+		if loaded, err := websterengine.LoadState(fx.cli.geom.WebsterDir, fx.cli.geom.ScratchDir); loaded != nil || err != nil {
+			t.Errorf("LoadState after the reset = %+v, %v; want the run record archived", loaded, err)
+		}
+		if envelope["moved"] != true || envelope["reason"] != nil {
+			t.Errorf("envelope = %v; want moved true and no reason", envelope)
+		}
+		if got, _ := envelope["uncommitted"].([]any); len(got) != 1 || got[0] != "untracked.txt" {
+			t.Errorf("uncommitted = %v; want only untracked.txt", envelope["uncommitted"])
+		}
+		if got, ok := envelope["warnings"].([]any); !ok || len(got) != 0 {
+			t.Errorf("warnings = %v; want an empty list", envelope["warnings"])
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("start archives without moving when the recorded start was rewritten away", func(t *testing.T) {
+		fx := newResetFixture(t, h, "rst-archive-only")
+		gitkit.Git(t, fx.checkout, "checkout", "-b", "rst-archive-only-side", fx.base)
+		side := gitkit.CommitFile(t, fx.checkout, "side.txt", "side", "side")
+		gitkit.Git(t, fx.checkout, "checkout", fx.branch)
+		fx.saveState(t, startedAt(side))
+		head := gitkit.RevParse(t, fx.checkout, "HEAD")
+		if err := os.WriteFile(filepath.Join(fx.checkout, "later.txt"), []byte("dirty"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		code, envelope := fx.reset(t, "--to", "start")
+		if code != 0 || envelope["ok"] != true || envelope["moved"] != false {
+			t.Fatalf("reset --to start = %d, %v; want ok with moved false", code, envelope)
+		}
+		if reason, _ := envelope["reason"].(string); !strings.Contains(reason, "is not an ancestor of HEAD") {
+			t.Errorf("reason = %q; want the not-an-ancestor reason", reason)
+		}
+		if _, has := envelope["sha"]; has {
+			t.Errorf("envelope carries sha %v; want none for an archive-only reset", envelope["sha"])
+		}
+		if got, _ := envelope["uncommitted"].([]any); len(got) != 1 || got[0] != "later.txt" {
+			t.Errorf("uncommitted = %v; want the dirty later.txt kept and listed", envelope["uncommitted"])
+		}
+		if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != head {
+			t.Errorf("HEAD moved from %s to %s", head, got)
+		}
+		if got, err := os.ReadFile(filepath.Join(fx.checkout, "later.txt")); err != nil || string(got) != "dirty" {
+			t.Errorf("later.txt = %q, %v; want the uncommitted change kept", got, err)
+		}
+		if loaded, err := websterengine.LoadState(fx.cli.geom.WebsterDir, fx.cli.geom.ScratchDir); loaded != nil || err != nil {
+			t.Errorf("LoadState after the reset = %+v, %v; want the run record archived", loaded, err)
+		}
 	}) {
 		return
 	}
@@ -485,16 +534,17 @@ func TestResetCmd(t *testing.T) {
 				fx.saveState(t, &websterengine.State{MasterSessionID: "master-session", Batches: map[int]*websterengine.BatchState{}})
 			},
 			attempts: []refusalAttempt{
-				{[]string{"--to", "start"}, []string{"no batch recorded a start commit", "lyx webster run --fresh"}},
 				{[]string{"--to", "pre-fix"}, []string{"no pre-fix head", "run `lyx webster run`"}},
 			},
 		},
 		{
 			name: "missing target commit",
 			arrange: func(t *testing.T, fx *resetFixture) {
-				fx.saveState(t, startedAt(strings.Repeat("ab", 20)))
+				st := startedAt(fx.base)
+				st.PreFixHead = strings.Repeat("ab", 20)
+				fx.saveState(t, st)
 			},
-			attempts: []refusalAttempt{{[]string{"--to", "start"}, []string{strings.Repeat("ab", 20), "not in this repository", "fetch the task branch"}}},
+			attempts: []refusalAttempt{{[]string{"--to", "pre-fix"}, []string{strings.Repeat("ab", 20), "not in this repository", "fetch the task branch"}}},
 		},
 		{
 			name: "target not an ancestor",
@@ -507,7 +557,6 @@ func TestResetCmd(t *testing.T) {
 				fx.saveState(t, st)
 			},
 			attempts: []refusalAttempt{
-				{[]string{"--to", "start"}, []string{"not an ancestor of HEAD", "lyx webster run --fresh"}},
 				{[]string{"--to", "pre-fix"}, []string{"not an ancestor of HEAD", "lyx webster reset --to start"}},
 			},
 		},
