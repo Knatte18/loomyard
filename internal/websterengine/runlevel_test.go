@@ -1255,8 +1255,35 @@ func TestRun_DoneOutcome(t *testing.T) {
 		state       *websterengine.State
 		audit       func(fx *runFixture) shuttleengine.ForkAudit
 		batchesDone int
-		check       func(t *testing.T, fx *runFixture, result websterengine.RunResult)
+		// outcome and summary replace the contract files Master writes, which otherwise report outcome done.
+		outcome, summary string
+		check            func(t *testing.T, fx *runFixture, result websterengine.RunResult)
 	}{
+		{
+			// The stuck path never reads as a question: nothing the run returns names one.
+			name:    "a stuck outcome reads stuck with its reason and is never reported as a question",
+			cards:   1,
+			session: "master-session-stuck",
+			state: &websterengine.State{Batches: map[int]*websterengine.BatchState{
+				1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done"},
+			}},
+			audit:   func(*runFixture) shuttleengine.ForkAudit { return shuttleengine.ForkAudit{Forks: forkReports(1)} },
+			outcome: "outcome: stuck\nstuck_reason: \"batch 2 red after a recovery\"\nbatches_done: 1\n",
+			summary: "# Stopped on batch 2\n\nBatch 2 stayed red.\n",
+			check: func(t *testing.T, fx *runFixture, result websterengine.RunResult) {
+				if result.Outcome != "stuck" || result.StuckReason != "batch 2 red after a recovery" {
+					t.Errorf("RunResult = outcome %q, stuck reason %q; want stuck with the reason verbatim", result.Outcome, result.StuckReason)
+				}
+				if result.SummaryTitle != "Stopped on batch 2" {
+					t.Errorf("RunResult.SummaryTitle = %q; want %q", result.SummaryTitle, "Stopped on batch 2")
+				}
+				for _, text := range append([]string{result.StuckReason, result.SummaryTitle}, result.Warnings...) {
+					if strings.Contains(strings.ToLower(text), "question") {
+						t.Errorf("%q names a question; a stuck outcome is never reported as one", text)
+					}
+				}
+			},
+		},
 		{
 			name:    "a valid summary and a clean audit populate the result",
 			cards:   1,
@@ -1488,7 +1515,11 @@ func TestRun_DoneOutcome(t *testing.T) {
 				tc.prepare(t, fx)
 			}
 			seedMatchingState(t, fx, tc.state)
-			fx.Starter.handle = auditDoneHandle(t, fx, tc.session, tc.batchesDone, tc.audit(fx), func() {})
+			handle := auditDoneHandle(t, fx, tc.session, tc.batchesDone, tc.audit(fx), func() {})
+			if tc.outcome != "" {
+				handle.onWait = func() { writeContractFiles(t, fx, tc.outcome, tc.summary) }
+			}
+			fx.Starter.handle = handle
 			seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-audit", tc.session)
 
 			result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
