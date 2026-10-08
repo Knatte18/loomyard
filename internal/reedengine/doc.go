@@ -63,6 +63,17 @@
 // They are display only: the status bar and the key bindings read them, no Go decision does, and Selvage never gets either pane option.
 // A strand's Segment is an opaque field its spawner names through AddSpec.Segment; reed reads it only to look up the segment's color, which the strand an add or replace returns and Status carry as Color.
 //
+// The navigation bindings (bindings.go) are root-table bindings on the hub's reed server, issued by pinBindingsLocked at the end of the geometry pins, so boot and every attach pre-flight pin them and a server booted by an older lyx gets them at its next attach.
+// Alt+z zooms or unzooms a strand pane, and does nothing in Selvage or in a window that holds no strands;
+// Alt+Up and Alt+Down step to the previous or next strand pane of the strands' window, wrapping, keeping the zoom and passing over Selvage;
+// Alt+Left and Alt+Right run `lyx reed switch --prev|--next` in the background through run-shell, naming the absolute path of the `lyx` that pinned them (panebin.go's composeSwitchCommand), never PATH's;
+// and a left click on the status bar dispatches on its range: VIEW selects and unzooms the strands' window, a strand button selects that pane and zooms it (never toggling the zoom off), a window button selects that window, and a session button switches the client to that session.
+// Bound: these five keys and the left status click are taken from every pane on the server, so a program in a pane, Claude Code included, never receives them; no other key or mouse binding is changed, and tmux's right-click menus keep their defaults.
+// The VIEW and strand-button branches find the strands' window through the @lyx_strands marker, expanded at click time to a tmux-issued window id (`@<n>`), never a config value or free text.
+// tmux resolves a pane range's `=` target only inside the client's current window, so the strand-button branch selects the strands' window first.
+// Every binding is non-fatal: a failed `bind-key` is logged and the rest are still issued, and an unresolvable executable, socket path or tmux path logs a named warning and leaves only Alt+Left and Alt+Right unbound.
+// The capability probe checks bind-key, run-shell, if-shell and switch-client as optional verbs after the required set: a missing one logs one warning naming it and never fails the probe, so a psmux without them still boots.
+//
 // A second package-level invariant: every session also carries exactly one
 // additional, permanent pane beyond its strands — Selvage
 // (ReedState.SelvagePaneID). It is a first-class construct, deliberately

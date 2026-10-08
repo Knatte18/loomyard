@@ -221,6 +221,33 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		}
 	})
 
+	t.Run("BindingsAreIssuedAfterTheOptionPins", func(t *testing.T) {
+		e := newTestEngine(t)
+		fake := installFakeTmux(t, e)
+
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
+
+		lastOption, firstBinding, bindings := -1, -1, 0
+		for i, call := range fake.Calls() {
+			switch call[0] {
+			case "set-option":
+				lastOption = i
+			case "bind-key":
+				bindings++
+				if firstBinding == -1 {
+					firstBinding = i
+				}
+			}
+		}
+		// The fixture's tmux binary does not exist, so the two session-switch keys are left unbound.
+		if want := len(bindingArgvs("", "")); bindings != want {
+			t.Errorf("pinGeometryOptionsLocked issued %d bind-key calls, want %d", bindings, want)
+		}
+		if firstBinding < lastOption {
+			t.Errorf("first bind-key call at %d precedes the last set-option call at %d, want the bindings after the option pins", firstBinding, lastOption)
+		}
+	})
+
 	t.Run("OneOptionFailureDoesNotStopTheRest", func(t *testing.T) {
 		e := newTestEngine(t)
 		fake := installFakeTmux(t, e)

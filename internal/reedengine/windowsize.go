@@ -101,6 +101,7 @@ func windowSizeAllowsChain(raw string) bool {
 // "status" "2" and "status-position" "bottom" on the session;
 // and, window-targeted with -w on the strands' window only, "pane-border-status" "top" and "pane-border-format", so a batten window gets no border title.
 // The reserved status rows are read back by readStatusRowsLocked, so the layout box shrinks by two rows with no planner change.
+// After the option pins it issues the navigation bindings (bindings.go), so a server booted by an older lyx gets them at the next attach.
 //
 // Each call's error is logged via logger.Warn and then ignored.
 // Every later step, including the hook block, is attempted even when an earlier one failed, per the Shared Decision geometry-tmux-failures-are-non-fatal-everywhere.
@@ -142,6 +143,8 @@ func (e *Engine) pinGeometryOptionsLocked(target string) {
 	if err := e.tmux.run("set-option", "-w", "-t", target, "window-size", "latest"); err != nil {
 		logger.Warn("reed: failed to pin window-size latest", "socket", e.Socket(), "session", e.SessionName(), "option", "window-size", "err", err)
 	}
+
+	e.pinBindingsLocked()
 
 	// watchdogOption returns nothing and is all-non-fatal by contract, so an invalid value takes the
 	// unset side here rather than propagating; the boot path (ensureServerAndSessionLocked) is where
