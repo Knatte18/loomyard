@@ -21,7 +21,7 @@ internal/clihelp: 11
 internal/cliwire: 12
 internal/commentlint: 3
 internal/configcli: 10
-internal/configengine: 12
+internal/configengine: 13
 internal/configreg: 6
 internal/configsync: 5
 internal/discussionparser: 12
