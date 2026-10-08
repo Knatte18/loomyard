@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -26,6 +27,8 @@ type declSource struct {
 	handle string
 	card   string
 	decl   quarry.Declaration
+	// resign marks a source built from an Edit card's re-sign arrow rather than from a handle: handle is then the arrow's member glyph, and the answer is only compared with it.
+	resign bool
 }
 
 // identifierPattern caches one compiled word-boundary matcher per identifier, so renameSignature
@@ -78,10 +81,12 @@ func renameSignature(signature, oldName, newName string) (string, bool) {
 // a Rename keeps its symbol in the same package — never the draft handle's own unit half, so a
 // draft that misspells the unit is corrected by canonicalization rather than propagated. Only the
 // identifier is taken from the draft handle, never its glyph spelling — the spelling is what
-// quarry.Name computes. It reports ok false, with a rename-old-unresolved Finding, when Old did not
-// resolve found, when Old resolved found but carries no symbol declaration (a self glyph's answer —
-// a file or unit, not a symbol), when the new-side handle carries no member name, or when Old's own
-// signature carries no occurrence of the identifier it is supposed to declare.
+// quarry.Name computes.
+// A var or const carries its whole spec as its signature, which can declare several names and which quarry.Name rejects then;
+// its declaration is derived as a one-name spec from the kind and the new identifier alone, since the declaration only feeds quarry.Name's glyph prediction.
+// An interface method's signature is its bare method spec, with no "func" and no receiver, which quarry.Name rejects;
+// the declaration is then derived as a method on the symbol's owner, "func (Owner) Spec".
+// It reports ok false, with a rename-old-unresolved Finding, when Old did not resolve found, when Old resolved found but carries no symbol declaration (a self glyph's answer — a file or unit, not a symbol), when the new-side handle carries no member name, or when Old's own signature carries no occurrence of the identifier it is supposed to declare.
 //
 // The r.Status != quarry.StatusFound check below is Found-only by design, not an oversight left
 // over from before the vocabulary was widened: StatusMultipart is deliberately excluded alongside
@@ -124,7 +129,17 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 	}
 
 	sym := r.Symbols[0]
-	decl, renamed := renameSignature(sym.Signature, sym.Glyph.Name, identifier)
+	switch sym.Kind {
+	case quarry.KindVar:
+		return declSource{handle: newHandle, decl: quarry.Declaration{Unit: sym.Glyph.Unit, Decl: "var " + identifier + " int"}}, Finding{}, true
+	case quarry.KindConst:
+		return declSource{handle: newHandle, decl: quarry.Declaration{Unit: sym.Glyph.Unit, Decl: "const " + identifier + " = 0"}}, Finding{}, true
+	}
+	signature := sym.Signature
+	if isInterfaceMethod(sym) {
+		signature = "func (" + strings.Join(sym.Glyph.Owner, ".") + ") " + signature
+	}
+	decl, renamed := renameSignature(signature, sym.Glyph.Name, identifier)
 	if !renamed {
 		return declSource{}, Finding{
 			Check:    "rename-old-unresolved",
@@ -148,6 +163,10 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 // declaration head verbatim), and every Rename pair whose New side is a handle (its declaration
 // computed via renameDeclSource, never trusted from the planner's draft spelling).
 //
+// Every re-sign arrow whose target is a member glyph adds a third source to the same call: the glyph's own unit and the arrow's head.
+// Its answer is compared with the glyph and discarded, never entering the canonical-owner bookkeeping or the rewrite, since the head names an existing member rather than a handle.
+// A naming error, or an ID other than the glyph's own, is the blocking resign-head-mismatch.
+//
 // Under plan.Language "none" this function returns nil findings and performs no call and no
 // rewrite.
 //
@@ -156,7 +175,8 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 // whether a failure to re-read it is a real infrastructure failure or merely an in-memory plan that
 // was never on disk to begin with.
 func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry.ResolveResult) ([]Finding, bool, error) {
-	if _, ok := plan.GlyphLanguage(); !ok {
+	lang, ok := plan.GlyphLanguage()
+	if !ok {
 		return nil, false, nil
 	}
 
@@ -185,6 +205,21 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 			}
 			src.card = card
 			sources = append(sources, src)
+		}
+		for _, r := range c.Resigns {
+			if planparser.IsHandleRef(r.Target) {
+				continue
+			}
+			g, err := glyph.Parse(lang, r.Target)
+			if err != nil || g.IsSelf() {
+				continue // resign-not-member and glyph-malformed already report these.
+			}
+			sources = append(sources, declSource{
+				handle: g.String(),
+				card:   card,
+				decl:   quarry.Declaration{Unit: g.Unit, Decl: r.Decl},
+				resign: true,
+			})
 		}
 	}
 
@@ -217,6 +252,12 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 				Detail:   fmt.Sprintf("Name result for handle %q did not echo its own input", src.handle),
 				Severity: SeverityBlocking,
 			})
+			continue
+		}
+		if src.resign {
+			if res.Error != "" || res.ID != src.handle {
+				findings = append(findings, resignHeadMismatch(src, res))
+			}
 			continue
 		}
 		if res.Error != "" {
@@ -290,17 +331,30 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 	return findings, true, nil
 }
 
+// resignHeadMismatch is the blocking resign-head-mismatch finding for a re-sign arrow whose head quarry.Name could not name, or named as a member other than the arrow's own glyph.
+func resignHeadMismatch(src declSource, res quarry.NameResult) Finding {
+	answer := fmt.Sprintf("answered %q", res.ID)
+	if res.Error != "" {
+		answer = fmt.Sprintf("failed: %s (%s)", res.Error, res.Reason)
+	}
+	return Finding{
+		Check: "resign-head-mismatch",
+		Card:  src.card,
+		Detail: fmt.Sprintf(
+			"re-sign head %q does not name the member %q: naming it %s; write the member's new declaration head, receiver included for a method",
+			src.decl.Decl, src.handle, answer,
+		),
+		Severity: SeverityBlocking,
+		Ref:      src.handle,
+	}
+}
+
 // cardOwnHandles returns every plan: handle a card's own Declarations AND Rename pairs declare, in
 // body order: a Create declaration's own Handle, plus any Rename pair whose New side is still
 // handle-shaped (a file-rename pair's New side is already a self glyph, never a handle, and is
 // skipped here — nothing to bind).
 //
-// Folding a Rename pair's New side in alongside Create declarations is what closes the gap a
-// Rename-only card fell into before this fix (crucible round sonnet-xhigh-r8, PG-2): a card
-// carrying no Create group has an empty Declarations, so a BindHandles keyed on Declarations alone
-// skipped it entirely, and its own New-side handle never lost its "plan:" prefix — permanently
-// invisible to collectGlyphTargets and both containment tiers, which exclude anything plan:-prefixed
-// by construction, for every later card that legitimately referenced the renamed symbol.
+// Folding a Rename pair's New side in alongside Create declarations is what closes the gap a Rename-only card fell into before this fix (crucible round sonnet-xhigh-r8, PG-2): a card carrying no Create group has an empty Declarations, so a BindHandles keyed on Declarations alone skipped it entirely, and its own New-side handle never lost its "plan:" prefix — permanently invisible to collectGlyphTargets, which excludes anything plan:-prefixed by construction, for every later card that legitimately referenced the renamed symbol.
 func cardOwnHandles(c planparser.Card) []string {
 	handles := make([]string, 0, len(c.Declarations)+len(c.Pairs))
 	for _, d := range c.Declarations {

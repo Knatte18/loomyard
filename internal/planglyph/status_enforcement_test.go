@@ -91,7 +91,6 @@ var allowedStatusConsumers = []scankit.Entry{
 	{Key: "internal/planglyph/donecheck.go:doneCheckVerdicts", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/deleteorder.go:answerSymbols", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/handle.go:renameDeclSource", Why: "fail-closed status reader"},
-	{Key: "internal/planglyph/containment.go:resolveContainment", Why: "fail-closed status reader"},
 	{
 		Key: "internal/planglyph/handle.go:CanonicalizeHandles",
 		Why: "reads Unit-named selectors that are NOT the status vocabulary -- quarry.NameResult.Unit and quarry.Declaration.Unit, the batched Name call's echo pair, compared to each other in its own fail-closed echo guard -- but the scan is a name-shape check and cannot tell those apart from ResolveResult.Unit, so the reviewed function earns its row here rather than a carve-out in the matcher",

@@ -1,10 +1,9 @@
 // handle.go implements the `plan:` handle grammar: a handle has no reality to point at, unlike a
 // glyph, so letting the planner invent its draft spelling is safe in a way that letting it invent
-// a real glyph is not — quarry never sees a handle. This file holds the handle-specific parse
-// helpers card 9 introduces (splitHandleDeclaration, handleUnit) and the reusable
-// declared/referenced predicates card 10's checks share, so validate.go stays a check-dispatch
-// file. classifyRef (classify.go) is the sole classifier that recognizes the "plan:" prefix as a
-// shape; this file never re-implements that classification.
+// a real glyph is not — quarry never sees a handle.
+// This file holds the handle-specific parse helpers card 9 introduces (splitHandleDeclaration, handleUnit) and the reusable claim/referenced predicates card 10's checks share, so validate.go stays a check-dispatch file.
+// classifyRef (classify.go) is the sole classifier that recognizes the "plan:" prefix as a shape;
+// this file never re-implements that classification.
 
 package planparser
 
@@ -110,21 +109,6 @@ func HandleIdentifier(handle string) (string, bool) {
 		return "", false
 	}
 	return member, true
-}
-
-// declaredHandles maps every handle declared by some card's own Create group (via
-// CardDeclaration) to every card ID that declares it, in card order. A handle declared twice by
-// the same card appears once per declaration.
-// It is the Create-declaration half of handleClaims, kept separate because handle-unreferenced and
-// checkHandleMalformed's file-unit rule bind to that half alone (validate.go).
-func declaredHandles(plan *Plan) map[string][]string {
-	declared := make(map[string][]string)
-	for _, c := range plan.Cards {
-		for _, d := range c.Declarations {
-			declared[d.Handle] = append(declared[d.Handle], cardID(c))
-		}
-	}
-	return declared
 }
 
 // handleClaim is one card's claim on one handle: which card makes it, and which of the plan

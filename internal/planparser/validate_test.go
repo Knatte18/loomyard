@@ -111,7 +111,7 @@ func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 
 	root := t.TempDir()
 	materializeFiles(t, root,
-		"internal/boardcli/list.go",          // card 2's own target, and card 3's Uses (dedup)
+		"internal/boardcli/list.go",          // card 3's Uses
 		"internal/output/envelope.go",        // card 2's Uses
 		"internal/boardengine/legacyrows.go", // card 4's target
 		"internal/boardengine/rows.go",       // card 5's Rename pair pre-rename (Old) side
@@ -494,9 +494,7 @@ func TestValidate_RenameFormat(t *testing.T) {
 	})
 }
 
-// TestValidate_HandleConsistency covers handle-dangling, handle-collision, and
-// handle-unreferenced, each firing exactly once on a minimal offending plan, and a well-formed
-// plan with one declaration and one reference producing none of them.
+// TestValidate_HandleConsistency covers handle-dangling and handle-collision, each firing exactly once on a minimal offending plan, and a well-formed plan with one declaration and one reference producing neither.
 func TestValidate_HandleConsistency(t *testing.T) {
 	t.Parallel()
 
@@ -510,7 +508,7 @@ func TestValidate_HandleConsistency(t *testing.T) {
 		referencer.Uses = []string{"plan:internal/foo#NewThing"}
 		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{declarer, referencer}}
 		findings := planparser.Validate(plan, t.TempDir())
-		for _, check := range []string{"handle-dangling", "handle-collision", "handle-unreferenced"} {
+		for _, check := range []string{"handle-dangling", "handle-collision"} {
 			if got := countFor(findings, check); got != 0 {
 				t.Errorf("countFor(findings, %q) = %d; want 0", check, got)
 			}
@@ -585,27 +583,15 @@ func TestValidate_HandleConsistency(t *testing.T) {
 		}
 	})
 
-	t.Run("a lone Rename to-side handle is neither a collision nor unreferenced", func(t *testing.T) {
+	t.Run("a lone Rename to-side handle is not a collision", func(t *testing.T) {
 		t.Parallel()
 		card := renameCard(1, "one", "internal/bar#OldThing", "plan:internal/foo#NewThing")
 		plan := &planparser.Plan{Format: 5, Approved: true, RenameMechanic: "mechanic", Cards: []planparser.Card{card}}
 		findings := planparser.Validate(plan, t.TempDir())
-		for _, check := range []string{"handle-dangling", "handle-collision", "handle-unreferenced"} {
+		for _, check := range []string{"handle-dangling", "handle-collision"} {
 			if got := countFor(findings, check); got != 0 {
 				t.Errorf("countFor(findings, %q) = %d; want 0 — a rename destination nothing else references is the ordinary case", check, got)
 			}
-		}
-	})
-
-	t.Run("handle-unreferenced: a declared handle no other card references", func(t *testing.T) {
-		t.Parallel()
-		card := cardOfType(1, "a", planparser.CardTypeCreate, []string{"plan:internal/foo#NewThing"})
-		card.Declarations = []planparser.CardDeclaration{{Handle: "plan:internal/foo#NewThing", Decl: "func NewThing() *Thing"}}
-		card.TargetGroups[0].Declarations = card.Declarations
-		plan := &planparser.Plan{Format: 5, Approved: true, Cards: []planparser.Card{card}}
-		findings := planparser.Validate(plan, t.TempDir())
-		if got := countFor(findings, "handle-unreferenced"); got != 1 {
-			t.Errorf("countFor(findings, handle-unreferenced) = %d; want 1", got)
 		}
 	})
 
@@ -1105,6 +1091,138 @@ func TestValidate_UsesLaterTarget(t *testing.T) {
 			}
 			if !slices.Equal(got, tc.wantDetails) {
 				t.Errorf("uses-later-target details = %q; want %q", got, tc.wantDetails)
+			}
+		})
+	}
+}
+
+// TestValidate_RedundantPackageTarget covers redundant-package-target: a package self glyph listed on one card beside a member, a file self glyph or a handle of that package is one finding per contained target, attributed to the card with Ref the contained target.
+func TestValidate_RedundantPackageTarget(t *testing.T) {
+	t.Parallel()
+
+	renameCard := func(number int, old, new string) planparser.Card {
+		card := cardOfType(number, "renamer", planparser.CardTypeRename, []string{old, new})
+		card.Pairs = []planparser.MovePair{{Old: old, New: new}}
+		card.TargetGroups[0].Pairs = card.Pairs
+		return card
+	}
+	edit := func(number int, refs ...string) planparser.Card {
+		return cardOfType(number, "editor", planparser.CardTypeEdit, refs)
+	}
+
+	tests := []struct {
+		name     string
+		language string
+		cards    []planparser.Card
+		wantRefs []string
+	}{
+		{
+			name:     "a package self glyph beside a member of that package",
+			cards:    []planparser.Card{edit(1, "pkg/a#", "pkg/a#Thing")},
+			wantRefs: []string{"pkg/a#Thing"},
+		},
+		{
+			name:     "a package self glyph beside a file of that package",
+			cards:    []planparser.Card{edit(1, "pkg/a#", "pkg/a/file.go#")},
+			wantRefs: []string{"pkg/a/file.go#"},
+		},
+		{
+			name:     "a package self glyph beside a handle of that package",
+			cards:    []planparser.Card{edit(1, "pkg/a#", "plan:pkg/a#Fresh")},
+			wantRefs: []string{"plan:pkg/a#Fresh"},
+		},
+		{
+			name:     "each contained target is its own finding",
+			cards:    []planparser.Card{edit(1, "pkg/a#", "pkg/a#One", "pkg/a#Two", "pkg/a#One")},
+			wantRefs: []string{"pkg/a#One", "pkg/a#Two"},
+		},
+		{
+			name:  "a member of another unit is clean",
+			cards: []planparser.Card{edit(1, "pkg/a#", "pkg/b#Thing", "pkg/a/sub/file.go#")},
+		},
+		{
+			name:  "the member on a different card is clean",
+			cards: []planparser.Card{edit(1, "pkg/a#"), edit(2, "pkg/a#Thing")},
+		},
+		{
+			name:     "a rename to-side handle belongs to the old glyph's unit: the old unit is flagged",
+			cards:    []planparser.Card{renameCard(1, "pkg/a#Old", "plan:pkg/b#Moved"), edit(2, "pkg/a#", "plan:pkg/b#Moved")},
+			wantRefs: []string{"plan:pkg/b#Moved"},
+		},
+		{
+			name:  "a rename to-side handle belongs to the old glyph's unit: the draft unit is clean",
+			cards: []planparser.Card{renameCard(1, "pkg/a#Old", "plan:pkg/b#Moved"), edit(2, "pkg/b#", "plan:pkg/b#Moved")},
+		},
+		{
+			name:     "language none reports nothing",
+			language: "none",
+			cards:    []planparser.Card{edit(1, "pkg/a#", "pkg/a#Thing")},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			plan := &planparser.Plan{Format: 5, Approved: true, Language: tc.language, Cards: tc.cards}
+
+			var gotRefs []string
+			for _, f := range planparser.Validate(plan, t.TempDir()) {
+				if f.Check != "redundant-package-target" {
+					continue
+				}
+				if !strings.HasSuffix(f.Card, "-editor") {
+					t.Errorf("finding attributed to %q; want an editor card", f.Card)
+				}
+				gotRefs = append(gotRefs, f.Ref)
+			}
+			if !slices.Equal(gotRefs, tc.wantRefs) {
+				t.Errorf("redundant-package-target refs = %q; want %q", gotRefs, tc.wantRefs)
+			}
+		})
+	}
+}
+
+// TestValidate_ResignNotMember covers resign-not-member: an Edit re-sign arrow is clean on a member glyph and a finding, with Ref the target, on a file path, a file or package self glyph, a bare symbol or a handle; a malformed glyph is left to glyph-malformed, and nothing is reported under language: none.
+func TestValidate_ResignNotMember(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		language string
+		target   string
+		want     bool
+	}{
+		{name: "member glyph", target: "pkg/a#Thing"},
+		{name: "method glyph", target: "pkg/a#Owner.Method"},
+		{name: "file path", target: "pkg/a/file.go", want: true},
+		{name: "file self glyph", target: "pkg/a/file.go#", want: true},
+		{name: "package self glyph", target: "pkg/a#", want: true},
+		{name: "handle", target: "plan:pkg/a#Thing", want: true},
+		{name: "bare symbol", target: "a.Thing", want: true},
+		{name: "glyph that fails to parse", target: "pkg/a##Thing"},
+		{name: "language none", language: "none", target: "pkg/a/file.go"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			card := cardOfType(1, "resigner", planparser.CardTypeEdit, []string{tc.target})
+			card.Resigns = []planparser.CardResign{{Target: tc.target, Decl: "func Thing(count int)"}}
+			card.TargetGroups[0].Resigns = card.Resigns
+			plan := &planparser.Plan{Format: 5, Approved: true, Language: tc.language, Cards: []planparser.Card{card}}
+
+			var got []string
+			for _, f := range planparser.Validate(plan, t.TempDir()) {
+				if f.Check == "resign-not-member" {
+					got = append(got, f.Ref)
+				}
+			}
+			var want []string
+			if tc.want {
+				want = []string{tc.target}
+			}
+			if !slices.Equal(got, want) {
+				t.Errorf("resign-not-member refs = %q; want %q", got, want)
 			}
 		})
 	}

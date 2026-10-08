@@ -271,13 +271,9 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, err
 	}
 	resolveFindings, resolveErr := index.ValidateDispatch(deps.Plan, deps.Geom.WorktreeRoot, begun, forthcoming)
-	// ValidateDispatch's resolve pass canonicalizes handles, which rewrites the plan on disk, and it
-	// then keeps going: the status, Create-inversion and containment passes all run after the
-	// rewrite, so "rewrote the plan" and "reported a blocking finding" co-occur routinely, and the
-	// rewrite also survives the pass's own hard-error paths. The staleness re-baseline therefore runs
-	// HERE, ahead of every refusal below, rather than once past them — otherwise state.json keeps the
-	// pre-rewrite fingerprint while the plan on disk carries this run's own sanctioned edit, and every
-	// later begin-batch refuses it as a foreign one. See this package's doc.go.
+	// ValidateDispatch's resolve pass canonicalizes handles, which rewrites the plan on disk, and it then keeps going: the status and Create-inversion passes both run after the rewrite, so "rewrote the plan" and "reported a blocking finding" co-occur routinely, and the rewrite also survives the pass's own hard-error paths.
+	// The staleness re-baseline therefore runs HERE, ahead of every refusal below, rather than once past them — otherwise state.json keeps the pre-rewrite fingerprint while the plan on disk carries this run's own sanctioned edit, and every later begin-batch refuses it as a foreign one.
+	// See this package's doc.go.
 	// A restamp failure never masks resolveErr: the caller is already returning for that reason.
 	if err := restampFingerprint(deps.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil && resolveErr == nil {
 		return nil, err

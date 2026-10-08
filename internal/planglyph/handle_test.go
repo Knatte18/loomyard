@@ -480,7 +480,7 @@ func TestBindHandles_MatchedHandleRewritesDeclaringAndReferencingCard(t *testing
 	}
 	for _, e := range planparser.ValidateFormat(reparsed, dir) {
 		switch e.Check {
-		case "handle-malformed", "card-field-empty", "handle-unreferenced", "handle-dangling":
+		case "handle-malformed", "card-field-empty", "handle-dangling":
 			t.Errorf("bound plan reports %s: %s", e.Check, e.Detail)
 		}
 	}
@@ -568,9 +568,8 @@ func TestBindHandles_SubstitutionReachesCardOutsideTheCompletedBatch(t *testing.
 // TestBindHandles_RenameNewSideHandleBinds is PG-2's own regression test (crucible round
 // sonnet-xhigh-r8): a Rename-only card -- carrying no Create group, so its own Declarations is
 // empty -- must still have its New-side handle bound once the rename lands, exactly as a Create
-// declaration would be. Before this fix, BindHandles skipped any card with zero Declarations, so
-// this card's own "plan:sub#New" handle never lost its prefix, permanently invisible to
-// collectGlyphTargets and both containment tiers.
+// declaration would be.
+// Before this fix, BindHandles skipped any card with zero Declarations, so this card's own "plan:sub#New" handle never lost its prefix, permanently invisible to collectGlyphTargets.
 func TestBindHandles_RenameNewSideHandleBinds(t *testing.T) {
 	dir, plan := writePlanFixture(t, map[int]string{
 		1: "**Rename:**\n- `sub#Old` -> `plan:sub#New`\n\n**Intent:** rename\n",
@@ -599,16 +598,15 @@ func TestBindHandles_RenameNewSideHandleBinds(t *testing.T) {
 		t.Errorf("card 2 (referencing the Rename's New side) was not rewritten to the plain glyph: %s", got2)
 	}
 
-	// The bound plan still parses, and the reference is now a genuine glyph -- reachable by
-	// collectGlyphTargets and both containment tiers, which exclude anything plan:-prefixed by
-	// construction.
+	// The bound plan still parses.
+	// The reference is now a genuine glyph, reachable by collectGlyphTargets, which excludes anything plan:-prefixed by construction.
 	reparsed, err := planparser.ParsePlan(dir)
 	if err != nil {
 		t.Fatalf("ParsePlan after binding returned error: %v", err)
 	}
 	for _, e := range planparser.ValidateFormat(reparsed, dir) {
 		switch e.Check {
-		case "handle-malformed", "handle-unreferenced", "handle-dangling":
+		case "handle-malformed", "handle-dangling":
 			t.Errorf("bound plan reports %s: %s", e.Check, e.Detail)
 		}
 	}

@@ -220,7 +220,7 @@ func TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError(t *testing.T) 
 	// would have had to run against a plan the gate could not confirm.
 	for _, f := range got {
 		switch f.Check {
-		case "glyph-not-found", "glyph-ambiguous", "glyph-rejected", "create-already-exists", "create-new-unit", "containment-file-overlap":
+		case "glyph-not-found", "glyph-ambiguous", "glyph-rejected", "create-already-exists", "create-new-unit":
 			t.Errorf("ValidateFormat(...) reported resolve-backed finding %+v; want none when the plan could not be read", f)
 		}
 	}

@@ -119,7 +119,8 @@ The left-hand token is the handle you just invented; the right-hand token is the
 
 On a `**Rename:**` pair renaming an existing symbol, the grammar is asymmetric: the `Old` side is always a real glyph (looked up via `lyx quarry`, exactly like any other target), and the `New` side is always a `plan:` handle you invent for the renamed name — never a glyph, since the symbol under its new name does not exist until the rename lands. A file-rename pair (old and new both plain file paths) is unaffected by this rule.
 
-A handle you declare but no other card ever references, a handle referenced but never declared, or two `Create:` bullets declaring the same handle are each hard findings (`handle-unreferenced`, `handle-dangling`, `handle-collision`) — every handle you invent must be declared exactly once and used by at least one later card.
+Every new member a card creates is declared as a `plan:` handle, whether or not a later card references it.
+A handle referenced but never declared, or two `Create:` bullets declaring the same handle, are each hard findings (`handle-dangling`, `handle-collision`) — every handle you invent must be declared exactly once.
 
 Always write `approved: false` — you never self-approve;
 `Plan-Bouncer`'s approved settle writes it to `true`.
@@ -134,8 +135,17 @@ a required, multi-line `**Intent:**` (prose — what, and why);
 `**ImpactSummary:**` on `Edit`/`Delete` cards only, taking its value inline on the label line;
 optionally `**Commit:**` (must start `N: `) and `**Verify:**`.
 
-An implementation card normally writes `**Edit:**` for the implementation and `**Edit:**` for the existing test file that covers its surface.
+An implementation card lists the implementation's member glyphs under `**Edit:**`, beside the existing test file that covers its surface.
 A `**Create:**` test file, after the implementation's `**Edit:**`, appears only for a surface no existing test file covers.
+
+`**Edit:**` lists the member glyphs the card changes, and a file path only for a file with no symbol to name: a test file the card adds tests to, a non-Go file, or a whole file the card creates or deletes.
+Listing a file or a package beside a member of it on one card is refused: `redundant-package-target` and `redundant-file-target` in `{{.specs_dir}}/loom/loom-plan-spec.md` say what counts and the way forward.
+
+A card that changes a member's parameters, results, type parameters or receiver writes that `**Edit:**` bullet with the re-sign arrow, `` `<glyph>` -> `<new declaration head>` ``, the head written like a `Create` head.
+An interface method or a struct field takes no arrow, and the card's `**Intent:**` states its change.
+
+A card that deletes or re-signs a member lists every caller of it: the file, or the member glyph whose body holds the call, on the same card for a re-sign and on the same or an earlier card for a delete.
+`caller-uncovered` in `{{.specs_dir}}/loom/loom-plan-spec.md` says what counts.
 
 `**Custom:**` is a last resort, used only where none of the other six genuinely fits.
 A card whose targets can be expressed as a multi-label combination of the other six is not `Custom`.
@@ -202,7 +212,9 @@ approved: false
 # Card 1 — <name>
 
 **Edit:**
-- `path/to/file.go`
+- `internal/boardcli#newListCmd`
+- `internal/boardcli#Row.Render` -> `func (r Row) Render(width int) string`
+- `path/to/list_test.go`
 
 **Intent:** <the change to make, concretely>
 
