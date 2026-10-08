@@ -49,7 +49,6 @@ func newTestEngine(t *testing.T) *Engine {
 		PaneCwd:       filepath.Join(hub, "pane"),
 		WorktreeRoot:  worktreeRoot,
 		LogsDir:       filepath.Join(hub, "logs"),
-		RepoName:      "test-repo",
 		HubPath:       hub,
 		NameShortname: "tc",
 		NameSlug:      "tslug",
@@ -91,7 +90,6 @@ func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
 		PaneCwd:      anchorPath,
 		WorktreeRoot: worktreeRoot,
 		LogsDir:      filepath.Join(hub, "logs"),
-		RepoName:     "test-repo",
 		HubPath:      hub,
 	}
 	cfg := Config{
@@ -197,7 +195,6 @@ func TestEngine_SocketAndSessionName(t *testing.T) {
 		PaneCwd:      worktreeRoot,
 		WorktreeRoot: worktreeRoot,
 		LogsDir:      filepath.Join(hub, "logs"),
-		RepoName:     "test-repo",
 		HubPath:      hub,
 	}
 	e := New(Config{}, geom)
@@ -339,7 +336,6 @@ func TestWithTryOpLock_ToldGeometryValidationFailureLeavesTheLockFileUntouched(t
 		PaneCwd:      filepath.Join(hub, "pane"),
 		WorktreeRoot: worktreeRoot,
 		LogsDir:      filepath.Join(hub, "logs"),
-		RepoName:     "test-repo",
 		HubPath:      hub,
 	}
 	e := New(Config{

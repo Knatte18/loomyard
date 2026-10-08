@@ -271,24 +271,6 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		return false, nil, err
 	}
 
-	// Validate the status-line template in the same pre-tmux block — it reads
-	// only cfg+geometry (StatusLineText makes no tmux round trip), so like
-	// debug_log and mouse it must fail the boot before anything is spawned.
-	// An earlier version validated only AFTER the session existed, which
-	// left a half-created session behind on a bad template — and, on the
-	// crash-recovery path, lost the booted=true rebirth signal: the boot
-	// had already replaced the session (pane ids reset) when validation
-	// failed, so the NEXT resume saw the session simply "up", skipped
-	// clearAllPaneBindings, and mistook stale pre-crash pane bindings for
-	// live strands (observed live: resumed:0 with a bare shell reported
-	// live). Validating up front removes the realistic — config-mistake —
-	// path into that trap; a set-option failure between spawn and return
-	// can still theoretically lose the signal, but has no config-shaped
-	// trigger.
-	if err := e.ValidateStatusLine(); err != nil {
-		return false, nil, err
-	}
-
 	// Fail loud, once per ensure/boot, if the configured multiplexer binary
 	// is below the pinned version floor or missing a required subcommand —
 	// far better than letting an unknown surface surface later as a cryptic

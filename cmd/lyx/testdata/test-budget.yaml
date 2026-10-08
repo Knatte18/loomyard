@@ -66,8 +66,8 @@ internal/preflight: 7
 internal/preflightshed: 5
 internal/proc: 12
 internal/quarrycli: 7
-internal/reedcli: 37
-internal/reedengine: 222
+internal/reedcli: 36
+internal/reedengine: 220
 internal/reedengine/render: 12
 internal/segmentcolor: 4
 internal/selfreportcli: 3
@@ -106,7 +106,6 @@ internal/testkit/shedfake: 8
 internal/testkit/shuttlefake: 8
 internal/testkit/stencilkit: 3
 internal/testkit/tmuxkit: 9
-internal/tokenvocab: 5
 internal/treadleengine: 34
 internal/verifyrun: 4
 internal/verifytree: 5

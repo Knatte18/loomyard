@@ -1,6 +1,6 @@
-// geometry.go declares Geometry, the nine-field struct reed is told its coordinates through.
+// geometry.go declares Geometry, the struct reed is told its coordinates through.
 // It declares the type only — New and every method stay in their existing files (lock.go,
-// lifecycle.go, strand.go, statusline.go); this file adds no constructor, no validator, and no
+// lifecycle.go, strand.go); this file adds no constructor, no validator, and no
 // default.
 
 package reedengine
@@ -42,11 +42,9 @@ type Geometry struct {
 	WorktreeRoot string
 	// LogsDir is the shared per-hub server's runtime log directory.
 	LogsDir string
-	// RepoName is the status-line's "repo" token, passed through internal/tokenvocab.
-	RepoName string
-	// WorktreeName is the status-line's "worktree" token, passed through internal/tokenvocab.
+	// WorktreeName names the worktree in the strand-name refusals.
 	WorktreeName string
-	// HubPath is the status-line's "hub" token, passed through internal/tokenvocab.
+	// HubPath names the hub in the told-identity error messages.
 	HubPath string
 	// NameShortname is the shortname every strand name starts with; empty means the hub records none.
 	NameShortname string

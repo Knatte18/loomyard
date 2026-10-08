@@ -27,7 +27,7 @@ func guids(strands []Strand) []string {
 	return out
 }
 
-// TestUp_BootValidation pins the eager boot validation of Up: a bad status-line template or an invalid watchdog value
+// TestUp_BootValidation pins the eager boot validation of Up: a segment color outside the palette or an invalid watchdog value
 // fails with an error naming it before any tmux round trip (validation ORDER, not just existence),
 // while "on" and "off" do not trip the watchdog check (the fixture's nonexistent tmux binary is expected to fail Up() past this point,
 // so the assertion is only that the error is NOT the watchdog validation error).
@@ -38,11 +38,6 @@ func TestUp_BootValidation(t *testing.T) {
 		wantErr   string // the validation error Up must fail with before any tmux contact; empty when the value must pass the check
 		notErr    string // an error text Up must not fail with
 	}{
-		{
-			name:      "BadStatusLineTemplate",
-			configure: func(cfg *Config) { cfg.StatusLine.Template = "{{.bogus}}" },
-			wantErr:   "unfilled top-level marker",
-		},
 		{
 			name:      "SegmentColorOutsidePalette",
 			configure: func(cfg *Config) { cfg.SegmentColors = map[string]string{"review": "crimson"} },

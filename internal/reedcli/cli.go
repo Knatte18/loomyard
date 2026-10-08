@@ -2,8 +2,7 @@
 // the standard io.Writer-based call contract.
 // The parent "reed" command carries a PersistentPreRunE that resolves
 // cwd -> location -> config -> geometry -> *reedengine.Engine exactly once per invocation,
-// into a receiver every verb (up.go, add.go, remove.go, status.go, resume.go, attach.go,
-// statusline.go, watchdog.go) closes over, so no subcommand re-resolves geometry or config itself.
+// into a receiver every verb (up.go, add.go, remove.go, status.go, resume.go, attach.go, watchdog.go) closes over, so no subcommand re-resolves geometry or config itself.
 // The `switch` verb is the exception: it is told its socket and client on its flags, so it skips that resolution and never touches the engine.
 // The geometry step is hubgeom.ReedGeometry: this file is where the resolved Location becomes the
 // reedengine.Geometry the engine is told, and the engine never sees the Location.
@@ -153,7 +152,7 @@ rather than booting substrate it cannot reach.`,
 		},
 	}
 
-	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.statuslineCmd(), c.watchdogCmd(), c.listCmd(), c.switchCmd())
+	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.watchdogCmd(), c.listCmd(), c.switchCmd())
 
 	return parent
 }

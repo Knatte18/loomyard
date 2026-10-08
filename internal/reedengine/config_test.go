@@ -189,10 +189,9 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored pins the no-removal-logic decision: an un-reconciled
-// reed.yaml that still carries a stale header: block alongside the new status_line: and selvage: blocks,
-// or the retired strand_name key, must unmarshal cleanly, with the old keys simply ignored
-// because nothing unmarshals them into Config any more.
+// TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored pins the no-removal-logic decision.
+// An un-reconciled reed.yaml that still carries a stale header: block, the retired strand_name key or the retired status_line block must unmarshal cleanly.
+// The old keys are simply ignored, because nothing unmarshals them into Config any more.
 //
 //testtiming:keep pins an older reed.yaml with a stale header block or the retired strand_name key loading cleanly with the rest of the config undisturbed; its covering tests run this code without asserting it
 func TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored(t *testing.T) {
@@ -202,6 +201,7 @@ func TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored(t *testing.T) {
 	}{
 		{"StaleHeaderBlock", "\nheader:\n  template: \"stale\"\n  height_rows: 5\n"},
 		{"RetiredStrandNameKey", "\nstrand_name: '<ROLE>:<ROUND>:<SHORT_GUID>'\n"},
+		{"RetiredStatusLineBlock", "\nstatus_line:\n  template: \"{{.repo}}\"\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

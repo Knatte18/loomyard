@@ -77,7 +77,6 @@ func reedGeometry(l *lyxcwd.Location, prime bool) reedengine.Geometry {
 		PaneCwd:       l.AnchorPath(),
 		WorktreeRoot:  l.WorktreePath(),
 		LogsDir:       fabricengine.HubLogsDir(l.HubPath),
-		RepoName:      l.RepoName,
 		WorktreeName:  l.WorktreeName,
 		HubPath:       l.HubPath,
 		NameShortname: shortname,

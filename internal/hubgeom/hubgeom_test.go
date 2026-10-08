@@ -82,9 +82,6 @@ func TestReedGeometry(t *testing.T) {
 			if want := fabricengine.HubLogsDir(hub); got.LogsDir != want {
 				t.Errorf("ReedGeometry(l).LogsDir = %q; want %q", got.LogsDir, want)
 			}
-			if got.RepoName != l.RepoName {
-				t.Errorf("ReedGeometry(l).RepoName = %q; want %q", got.RepoName, l.RepoName)
-			}
 			if got.WorktreeName != l.WorktreeName {
 				t.Errorf("ReedGeometry(l).WorktreeName = %q; want %q", got.WorktreeName, l.WorktreeName)
 			}
