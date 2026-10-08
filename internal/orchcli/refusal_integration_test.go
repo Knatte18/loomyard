@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
@@ -68,6 +69,50 @@ func TestOrchIntegration_Refusals(t *testing.T) {
 		}
 		if _, err := os.Stat(filepath.Join(anchor, lyxdirs.DotLyxDirName, orchDirName)); err == nil {
 			t.Error(".lyx/orch was created under the prime; the refusal must land first")
+		}
+	})
+
+	t.Run("hub config reconcile", func(t *testing.T) {
+		pairLoomYAML := configengine.ConfigFile(h.PairCodeWorktree("orch-task"), "loom")
+		original, err := os.ReadFile(pairLoomYAML)
+		if err != nil {
+			t.Fatalf("read pair loom.yaml: %v", err)
+		}
+		defer func() {
+			if err := os.WriteFile(pairLoomYAML, original, 0o644); err != nil {
+				t.Errorf("restore pair loom.yaml: %v", err)
+			}
+		}()
+		if err := os.WriteFile(pairLoomYAML, []byte("a: [unclosed\n"), 0o644); err != nil {
+			t.Fatalf("write unparseable loom.yaml: %v", err)
+		}
+		stampPath := hubreconcile.Geometry{BoardDir: h.BoardDir()}.StampPath()
+		if err := os.Remove(stampPath); err != nil && !os.IsNotExist(err) {
+			t.Fatalf("remove stamp: %v", err)
+		}
+
+		var statusOut bytes.Buffer
+		RunCLIIn(anchor, &statusOut, []string{"status"})
+		if _, err := os.Stat(stampPath); err == nil {
+			t.Fatalf("status wrote the build stamp; only start reconciles")
+		}
+
+		var out bytes.Buffer
+		code := RunCLIIn(anchor, &out, []string{"start"})
+
+		if code != 1 {
+			t.Fatalf("exit code = %d; want 1; output: %s", code, out.String())
+		}
+		for _, want := range []string{pairLoomYAML, "lyx config loom"} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("envelope %q does not name %q", out.String(), want)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(anchor, lyxdirs.DotLyxDirName, orchDirName)); err == nil {
+			t.Error(".lyx/orch was created under the prime; the reconcile refusal must land first")
+		}
+		if _, err := os.Stat(stampPath); err == nil {
+			t.Error("a build stamp exists after a failed reconcile")
 		}
 	})
 }

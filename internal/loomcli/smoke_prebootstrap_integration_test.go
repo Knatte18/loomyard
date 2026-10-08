@@ -15,9 +15,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -171,6 +174,50 @@ func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 	}
 }
 
+// hubStampPath returns the hub's build stamp file.
+func hubStampPath(loc *lyxcwd.Location) string {
+	return hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(loc.HubPath)}.StampPath()
+}
+
+// TestLoomResumeReconcilesTheHubConfigBeforeArming asserts only a start verb reconciles a hub whose build has no stamp:
+// status leaves a retired key in a pair's committed batcher.yaml and writes no stamp, and resume removes the key, commits it and writes the stamp whatever its own exit.
+func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
+	t.Parallel()
+
+	exe := sharedLyxBinary(t)
+	_, loc, worktree, _ := newWiredPairFixture(t)
+	recordsDir := fabricengine.RecordsWorktree(loc)
+
+	batcher, _ := configreg.Lookup("batcher")
+	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
+	gitkit.CommitFile(t, recordsDir, configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
+	batcherPath := configengine.ConfigFile(worktree, "batcher")
+
+	if _, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "status"); err != nil {
+		t.Fatalf("loom status: %v", err)
+	}
+	if data, err := os.ReadFile(batcherPath); err != nil || !strings.Contains(string(data), "master_base") {
+		t.Fatalf("loom status changed batcher.yaml (err %v); want the retired key left in place", err)
+	}
+	if _, err := os.Stat(hubStampPath(loc)); err == nil {
+		t.Fatalf("loom status wrote the build stamp; only a start verb reconciles")
+	}
+
+	if out, _, err := runLoomCLINoFatal(exe, worktree, 60*time.Second, "loom", "resume"); err != nil {
+		t.Fatalf("loom resume: %v; output: %s", err, out)
+	}
+
+	if data, err := os.ReadFile(batcherPath); err != nil || strings.Contains(string(data), "master_base") {
+		t.Errorf("batcher.yaml after loom resume still carries the retired key (err %v)", err)
+	}
+	if clean, reason, err := fabricengine.Clean(loc); err != nil || !clean {
+		t.Errorf("records worktree after loom resume: clean %v, reason %q, err %v; want the reconcile committed", clean, reason, err)
+	}
+	if _, err := os.Stat(hubStampPath(loc)); err != nil {
+		t.Errorf("hub build stamp after loom resume: %v; want it written", err)
+	}
+}
+
 // TestLoomFailedReedUpRefuses asserts a bad reed config refuses the verbs that bring reed up, before any watchdog or driver is spawned.
 // Each driver's seed gets its own pair, because a run's seed cannot be rewritten to the other driver.
 func TestLoomFailedReedUpRefuses(t *testing.T) {
@@ -196,6 +243,10 @@ func TestLoomFailedReedUpRefuses(t *testing.T) {
 		}
 		if pids := findDriverPIDs(worktree); len(pids) != 0 {
 			t.Errorf("driver pids after a failed reed Up = %v; want none", pids)
+		}
+		// The start gate reconciles the hub's config before reed comes up, so the stamp exists although the verb refused.
+		if _, err := os.Stat(hubStampPath(loc)); err != nil {
+			t.Errorf("hub build stamp after a start refused at reed Up: %v; want it written before reed came up", err)
 		}
 	}
 
