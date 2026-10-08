@@ -27,9 +27,13 @@ type Config struct {
 
 	BackgroundShellWaitMin int `yaml:"background_shell_wait_min"` // Minutes a turn end waits on an outstanding transcript-reported background shell; a shell the turn-end payload reports never expires. LoadConfig refuses non-positive.
 
-	SubmitSettleMS int `yaml:"submit_settle_ms"` // Pause between typed text and its submitting Enter; LoadConfig refuses negative.
+	SubmitSettleMS int `yaml:"submit_settle_ms"` // Interval between the two input-box reads that must agree before an Enter; 0 reads back to back, LoadConfig refuses negative.
 
-	SubmitRedrawSettleMS int `yaml:"submit_redraw_settle_ms"` // Wait after an Enter before the input box is read to confirm the send; 0 reads at once, LoadConfig refuses negative.
+	SubmitRedrawSettleMS int `yaml:"submit_redraw_settle_ms"` // First step of the doubling interval at which the input box is read after an Enter to confirm the send; 0 reads at once, LoadConfig refuses negative.
+
+	SendReadyTimeoutS int `yaml:"send_ready_timeout_s"` // Seconds a verified send waits for an idle session before it fails busy; LoadConfig refuses non-positive.
+
+	SubmitConfirmTimeoutS int `yaml:"submit_confirm_timeout_s"` // Seconds after an Enter within which the send must be seen to land before it fails; LoadConfig refuses non-positive.
 
 	Claude                    string `yaml:"claude"`
 	ClaudeDenyAgentTool       bool   `yaml:"claude_deny_agent_tool"`
@@ -73,6 +77,14 @@ func LoadConfig(baseDir, module string) (Config, error) {
 
 	if cfg.SubmitRedrawSettleMS < 0 {
 		return Config{}, fmt.Errorf("shuttle config: submit_redraw_settle_ms must not be negative, got %d", cfg.SubmitRedrawSettleMS)
+	}
+
+	if cfg.SendReadyTimeoutS <= 0 {
+		return Config{}, fmt.Errorf("shuttle config: send_ready_timeout_s must be positive, got %d", cfg.SendReadyTimeoutS)
+	}
+
+	if cfg.SubmitConfirmTimeoutS <= 0 {
+		return Config{}, fmt.Errorf("shuttle config: submit_confirm_timeout_s must be positive, got %d", cfg.SubmitConfirmTimeoutS)
 	}
 
 	return cfg, nil

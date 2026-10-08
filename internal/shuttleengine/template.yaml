@@ -4,8 +4,10 @@ liveness_every_n_polls: 10  # how often (in polls) to check pane liveness alongs
 run_timeout_min: 30  # minutes before an in-progress run is classified as timed out; 0 is NOT "unlimited" — it times out immediately
 startup_timeout_s: 90  # seconds allowed for the claude process to start and reach a live pane; 0 is NOT "unlimited" or "disabled" — it fast-fails startup as died immediately AND zeroes the orphan-sweep age guard (minAge = 2x this value)
 background_shell_wait_min: 10  # minutes a turn end waits on an outstanding transcript-reported background shell before it counts as a turn end, forks, declared shells and payload-reported shells excepted (those never expire); 0 or negative is a config error, not "unlimited"
-submit_settle_ms: 300  # milliseconds between typed text and the Enter that submits it (the /clear, /compact and /model commands and every injected prompt); Claude Code reads a fast burst as a paste and swallows an Enter inside it, so too low a value loses submissions while a high one delays every injected prompt; 0 sends the Enter immediately, negative is a config error
-submit_redraw_settle_ms: 300  # milliseconds to wait after an Enter before the input box is read to confirm the send, so Claude Code has redrawn it; 0 reads at once, negative is a config error
+send_ready_timeout_s: 60  # seconds a verified send (the /clear, /compact and /model commands and every injected prompt) waits for an idle session before it fails as busy; 0 or negative is a config error
+submit_confirm_timeout_s: 30  # seconds after an Enter within which a verified send must be seen to land before it fails as not landed; 0 or negative is a config error
+submit_settle_ms: 300  # milliseconds between the two input-box reads that must agree before the Enter is sent, so typed text has finished arriving and Claude Code does not swallow the Enter as part of a paste; 0 reads back to back, negative is a config error
+submit_redraw_settle_ms: 300  # milliseconds for the first step of the doubling interval at which the input box is read after an Enter to confirm the send, so Claude Code has redrawn it; 0 reads at once, negative is a config error
 claude: ${env:LYX_SHUTTLE_CLAUDE:-}  # path to the claude executable; empty falls back to "claude" on PATH — prefer an explicit path, PATH aliases can hit the 0-byte WindowsApps stub
 claude_deny_agent_tool: true  # emit a PreToolUse deny for the in-process Agent tool
 claude_deny_ask_user_question: true  # emit a PreToolUse deny for the AskUserQuestion tool (autonomous runs only)
