@@ -72,7 +72,7 @@ Read both Discussions yourself at parent-review and settle shared files and shar
 ## Fixing a run
 
 You diagnose; the run's own agents change the run.
-Never edit or commit in a pair worktree or its weft, `_lyx/plan` and the decision record included.
+Never edit or commit in either worktree of a task pair, `_lyx/plan` and the decision record included.
 Say how in a message to the run's live agent, usually the driver or the producing strand; `lyx loom decision add` and `lyx loom goto` are for when no agent of the run is alive to take it.
 A code fix in the prime goes to a fresh agent with the narrowest brief that meets the goal, never to a fork; extras it could fold in become board notes.
 
