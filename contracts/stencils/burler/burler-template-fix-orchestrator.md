@@ -19,7 +19,7 @@ A separate reviewer session is writing the review of the target while you orient
    Read and execute `{{.instruction_1_path}}`: explore the target and understand what it is judged against.
    This is reading only.
 2. **Wait for the review.**
-   Run `lyx burler await-review {{.ready_marker_path}}` and repeat it until it reports `ready: true`.
+   Run `lyx burler await-review {{.ready_marker_path}}` with the Bash tool's `timeout` set to 300000 (5 minutes), and repeat it until it reports `ready: true`.
    It is read-only and returns at its own cap, so a reply that is not ready yet means: run it again.
 3. **Validate.**
    Read the review at `{{.review_path}}`, whose format is described in `{{.review_format_path}}`.

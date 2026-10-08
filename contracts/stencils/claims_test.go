@@ -238,6 +238,7 @@ var wordingClaims = []stencilClaims{
 	}},
 	{"burler-template-fix-orchestrator.md", BurlerTemplateFixOrchestrator, []claim{
 		{must: "lyx burler await-review {{.ready_marker_path}}", why: "the fixer waits for the review through the wait verb on the told marker"},
+		{must: "with the Bash tool's `timeout` set to 300000", why: "the wait verb's cap exceeds the default Bash tool timeout, so the fixer raises it"},
 		{must: "you edit no file and run no mutating git command", section: "## Sequencing rule", why: "the fixer touches nothing until the review is ready"},
 		{must: "you never write the review file", why: "the review is the reviewer's file"},
 	}},
