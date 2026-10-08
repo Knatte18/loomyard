@@ -1,5 +1,4 @@
-// handle_test.go covers splitHandleDeclaration and handleUnit, the two pure string helpers card 9
-// adds, plus the referencedHandles predicate card 10 adds beside them.
+// handle_test.go covers splitHandleDeclaration and handleUnit, the two pure string helpers card 9 adds, plus the referencedHandles predicate card 10 adds beside them.
 
 package planparser
 

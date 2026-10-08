@@ -462,17 +462,8 @@ func checkDirectoryTarget(plan *Plan) []ValidationError {
 // target today. Skipped entirely when plan.Language does not enable the glyph alphabet, for the same
 // reason checkBareSymbolTarget is.
 //
-// Without this check a malformed-but-"#"-shaped entry (a doubled "#", an empty unit, a member
-// carrying a paren or a keyword) is invisible end to end outside a Prosa group: classifyRef sends it
-// to refKindGlyph on shape alone and never calls glyph.Parse itself (by design -- see classify.go's
-// own doc comment), bare-symbol-target/directory-target skip it (wrong shape),
-// card-path-malformed/path-missing skip it (diskPathForRef returns not-ok on a parse error),
-// and internal/planglyph's collectGlyphTargets
-// silently drops it before it ever enters the batched Resolve call -- so it never even reaches a
-// glyph-not-found/glyph-ambiguous/glyph-rejected verdict either. The plan would validate 100% clean
-// while carrying a target no execution engine can ever act on, discovered only deep into a batch's
-// own done-check, not up front at the plan gate where every other malformed-entry class is caught
-// (crucible round sonnet-xhigh-r8, PG-1).
+// Without this check a malformed-but-"#"-shaped entry (a doubled "#", an empty unit, a member carrying a paren or a keyword) is invisible end to end outside a Prosa group: classifyRef sends it to refKindGlyph on shape alone and never calls glyph.Parse itself (by design -- see classify.go's own doc comment), bare-symbol-target/directory-target skip it (wrong shape), card-path-malformed/path-missing skip it (diskPathForRef returns not-ok on a parse error), and internal/planglyph's collectGlyphTargets silently drops it before it ever enters the batched Resolve call -- so it never even reaches a glyph-not-found/glyph-ambiguous/glyph-rejected verdict either.
+// The plan would validate 100% clean while carrying a target no execution engine can ever act on, discovered only deep into a batch's own done-check, not up front at the plan gate where every other malformed-entry class is caught (crucible round sonnet-xhigh-r8, PG-1).
 func checkGlyphMalformed(plan *Plan) []ValidationError {
 	var findings []ValidationError
 

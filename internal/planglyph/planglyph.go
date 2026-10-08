@@ -60,8 +60,8 @@ func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 }
 
 // ValidateDispatch is ValidateFormat's mid-execution form: the same check set, scoped to the cards
-// whose work has NOT landed yet. completed names every card already built, and a caller with none
-// gets ValidateFormat's answer less planGatePass's findings, a pass that runs at the plan gates only.
+// whose work has NOT landed yet.
+// completed names every card already built, and a caller with none gets ValidateFormat's answer less planGatePass's findings, a pass that runs at the plan gates only.
 //
 // The scoping is not an optimisation, it is correctness. A plan describes intended change, so a card
 // whose work already landed necessarily contradicts the tree it is re-resolved against: a completed

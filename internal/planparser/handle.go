@@ -1,9 +1,9 @@
 // handle.go implements the `plan:` handle grammar: a handle has no reality to point at, unlike a
 // glyph, so letting the planner invent its draft spelling is safe in a way that letting it invent
-// a real glyph is not — quarry never sees a handle. This file holds the handle-specific parse
-// helpers card 9 introduces (splitHandleDeclaration, handleUnit) and the reusable claim/referenced predicates card 10's checks share, so validate.go stays a check-dispatch file.
-// classifyRef (classify.go) is the sole classifier that recognizes the "plan:" prefix as a
-// shape; this file never re-implements that classification.
+// a real glyph is not — quarry never sees a handle.
+// This file holds the handle-specific parse helpers card 9 introduces (splitHandleDeclaration, handleUnit) and the reusable claim/referenced predicates card 10's checks share, so validate.go stays a check-dispatch file.
+// classifyRef (classify.go) is the sole classifier that recognizes the "plan:" prefix as a shape;
+// this file never re-implements that classification.
 
 package planparser
 

@@ -100,10 +100,8 @@ const (
 // ledger policy's domain equals it exactly.
 var allRefKinds = []refKind{refKindPath, refKindSymbol, refKindGlyph, refKindHandle}
 
-// ledger is the package-level registry of every gate's policy: one map[refKind]disposition per
-// refGate, covering exactly the policies declared in this file's refGate constants. A
-// refGate absent from ledger, or a refKind absent from one of ledger's policy maps, both yield the
-// disposition zero value at lookup -- undeclared, and therefore fail-closed.
+// ledger is the package-level registry of every gate's policy: one map[refKind]disposition per refGate, covering exactly the policies declared in this file's refGate constants.
+// A refGate absent from ledger, or a refKind absent from one of ledger's policy maps, both yield the disposition zero value at lookup -- undeclared, and therefore fail-closed.
 var ledger = map[refGate]map[refKind]disposition{
 	gateBareSymbolTarget: {
 		refKindPath:   dispSkip,
