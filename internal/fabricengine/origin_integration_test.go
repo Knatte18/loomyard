@@ -6,7 +6,7 @@
 // commit kind carries), and the run launcher that lands alongside it in the same batch.
 //
 // Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helpers
-// (mustWeftRepoRoot); shares the single TestMain in testmain_test.go.
+// (mustRecordsRepoRoot); shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -160,7 +160,7 @@ func TestAdd_OriginRecord(t *testing.T) {
 		// Give the weft side a branch to fork from before the warp side ever leaves "main": the weft-side
 		// branch existing is what createWeftWorktree's fork-from-parent-weft-branch step needs, and
 		// creating it here (rather than via a checkout) needs no worktree of its own.
-		gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.RecordsBranchName(parentBranch), fabricengine.RecordsBranchName("main"))
+		gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "branch", fabricengine.RecordsBranchName(parentBranch), fabricengine.RecordsBranchName("main"))
 
 		// Move the prime warp worktree onto the non-default branch Add will read via rev-parse
 		// --abbrev-ref HEAD.
@@ -251,7 +251,7 @@ func TestAddRollback_CreatedPathLeavesNoOriginRecord(t *testing.T) {
 		t.Fatalf("Add(%q) error = %v; want the step-11 push failure, so rollback runs after the record step", slug, err)
 	}
 
-	if gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
+	if gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), weftBranch) {
 		t.Errorf("weft branch %q survived rollback on the created-branch path; want it (and the record commit it carried) removed", weftBranch)
 	}
 	if _, err := os.Stat(fabricengine.RecordsWorktreePath(l, slug)); !os.IsNotExist(err) {
@@ -277,10 +277,10 @@ func TestAddRollback_AdoptedPathPreservesOriginRecordCommit(t *testing.T) {
 	// Pre-create the weft branch with a unique commit that predates the Add, exactly as
 	// TestAddRollback_AdoptedWeftBranchSurvives does.
 	seedDir := filepath.Join(t.TempDir(), "seed")
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
 	gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
 	preciousSHA := gitkit.RevParse(t, seedDir, "HEAD")
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Break the warp origin remote so the push (the nearest step after the record's write-and-commit
 	// step) fails, triggering rollbackAdd — the same injection
@@ -294,7 +294,7 @@ func TestAddRollback_AdoptedPathPreservesOriginRecordCommit(t *testing.T) {
 		t.Fatalf("Add(%q) should have failed (broken origin remote)", slug)
 	}
 
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	if !gitkit.BranchExists(t, weftRoot, weftBranch) {
 		t.Fatalf("adopted weft branch %q was deleted by Add's rollback; want it preserved", weftBranch)
 	}
@@ -334,11 +334,11 @@ func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
 	weftBranch := fabricengine.RecordsBranchName(slug)
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
-	recordedTip := gitkit.RevParse(t, mustWeftRepoRoot(t, l), "refs/remotes/origin/"+weftBranch)
+	recordedTip := gitkit.RevParse(t, mustRecordsRepoRoot(t, l), "refs/remotes/origin/"+weftBranch)
 	if _, err := h.Topology.Remove(l, slug, false, false); err != nil {
 		t.Fatalf("setup Remove(%q): %v", slug, err)
 	}
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", weftBranch, recordedTip)
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "branch", weftBranch, recordedTip)
 	gitkit.MustRun(t, l.WorktreePath(), "git", "checkout", "-b", "another-parent")
 
 	res, err := h.Topology.Add(l, slug, fabricengine.AddOptions{})

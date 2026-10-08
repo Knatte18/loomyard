@@ -8,11 +8,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// TestWeftBranchName covers the uniform <warp>/<warp>-weft scheme across the primary branch, a
+// TestRecordsBranchName covers the uniform <warp>/<warp>-weft scheme across the primary branch, a
 // prefixed task branch, and a plain (empty-prefix) slug.
 //
 //testtiming:keep the <warp>/<warp>-weft scheme for the primary branch, a prefixed task branch and an empty-prefix slug; coverage of its blocks by other tests does not show an assertion of this
-func TestWeftBranchName(t *testing.T) {
+func TestRecordsBranchName(t *testing.T) {
 	tests := []struct {
 		name       string
 		warpBranch string
@@ -32,11 +32,11 @@ func TestWeftBranchName(t *testing.T) {
 	}
 }
 
-// TestWeftBranchName_RoundTripsWithWeftWarpSlug asserts that fabricengine.WeftWarpSlug, the
+// TestRecordsBranchName_RoundTripsWithWeftWarpSlug asserts that fabricengine.WeftWarpSlug, the
 // documented inverse, recovers the original warp branch from every RecordsBranchName output.
 //
 //testtiming:keep WeftWarpSlug recovering the warp branch from every RecordsBranchName output; coverage of its blocks by other tests does not show an assertion of this
-func TestWeftBranchName_RoundTripsWithWeftWarpSlug(t *testing.T) {
+func TestRecordsBranchName_RoundTripsWithWeftWarpSlug(t *testing.T) {
 	warpBranches := []string{"main", "hanf/foo", "foo"}
 	for _, warp := range warpBranches {
 		weft := fabricengine.RecordsBranchName(warp)

@@ -90,7 +90,7 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 	const slug = "records-stray"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	weftWorktree := fabricengine.RecordsWorktreePath(l, slug)
@@ -161,7 +161,7 @@ func TestRemoveRefusal_ProbeLeavesPairUntouched(t *testing.T) {
 	const slug = "records-probe"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	warpPath := fabricengine.WorktreePath(l, slug)

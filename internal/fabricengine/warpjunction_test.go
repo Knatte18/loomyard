@@ -16,18 +16,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestWarpLyxLinkMethods covers CodeLyxLink(l, slug) and WarpLyxLinkHere(l) with both AnchorRel "."
+// TestCodeLyxLinkMethods covers CodeLyxLink(l, slug) and WarpLyxLinkHere(l) with both AnchorRel "."
 // (root) and subpath cases, verifying AnchorRel-mirroring and junction pairing against the
 // weft-sibling worktree.
 //
 //testtiming:keep CodeLyxLink and WarpLyxLinkHere mirroring AnchorRel and pairing with the weft sibling; coverage of its blocks by other tests does not show an assertion of this
-func TestWarpLyxLinkMethods(t *testing.T) {
+func TestCodeLyxLinkMethods(t *testing.T) {
 	tests := []struct {
 		name                string
 		hub                 string
 		slug                string
 		relPath             string
-		wantWarpLyxLink     string
+		wantCodeLyxLink     string
 		wantWarpLyxLinkHere string
 	}{
 		{
@@ -35,7 +35,7 @@ func TestWarpLyxLinkMethods(t *testing.T) {
 			hub:                 "/h",
 			slug:                "x",
 			relPath:             ".",
-			wantWarpLyxLink:     filepath.Join("/h", "x", "_lyx"),
+			wantCodeLyxLink:     filepath.Join("/h", "x", "_lyx"),
 			wantWarpLyxLinkHere: filepath.Join("/h", "feat", "_lyx"),
 		},
 		{
@@ -43,7 +43,7 @@ func TestWarpLyxLinkMethods(t *testing.T) {
 			hub:                 "/h",
 			slug:                "x",
 			relPath:             "sub",
-			wantWarpLyxLink:     filepath.Join("/h", "x", "sub", "_lyx"),
+			wantCodeLyxLink:     filepath.Join("/h", "x", "sub", "_lyx"),
 			wantWarpLyxLinkHere: filepath.Join("/h", "feat", "sub", "_lyx"),
 		},
 		{
@@ -51,7 +51,7 @@ func TestWarpLyxLinkMethods(t *testing.T) {
 			hub:                 "/h",
 			slug:                "y",
 			relPath:             "sub/dir",
-			wantWarpLyxLink:     filepath.Join("/h", "y", "sub/dir", "_lyx"),
+			wantCodeLyxLink:     filepath.Join("/h", "y", "sub/dir", "_lyx"),
 			wantWarpLyxLinkHere: filepath.Join("/h", "feat", "sub/dir", "_lyx"),
 		},
 	}
@@ -64,8 +64,8 @@ func TestWarpLyxLinkMethods(t *testing.T) {
 				AnchorRel:    tt.relPath,
 			}
 
-			if got := CodeLyxLink(loc, tt.slug); got != tt.wantWarpLyxLink {
-				t.Errorf("CodeLyxLink(l, %q) = %q; want %q", tt.slug, got, tt.wantWarpLyxLink)
+			if got := CodeLyxLink(loc, tt.slug); got != tt.wantCodeLyxLink {
+				t.Errorf("CodeLyxLink(l, %q) = %q; want %q", tt.slug, got, tt.wantCodeLyxLink)
 			}
 
 			if got := WarpLyxLinkHere(loc); got != tt.wantWarpLyxLinkHere {

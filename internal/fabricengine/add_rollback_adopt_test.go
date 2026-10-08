@@ -31,11 +31,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// mustWeftRepoRoot resolves fabricengine.RecordsRepoRoot(l), failing the test on
+// mustRecordsRepoRoot resolves fabricengine.RecordsRepoRoot(l), failing the test on
 // any error — the shared test-package helper for the many call sites across
 // this package's tests that need the weft prime worktree path, now that it is
 // a fabricengine-owned resolution rather than a Layout method.
-func mustWeftRepoRoot(t *testing.T, l *lyxcwd.Location) string {
+func mustRecordsRepoRoot(t *testing.T, l *lyxcwd.Location) string {
 	t.Helper()
 
 	root, err := fabricengine.RecordsRepoRoot(l)
@@ -66,9 +66,9 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	// the history the rollback must not destroy. The seeding worktree is
 	// removed again so the branch is free for Add to adopt.
 	seedDir := filepath.Join(t.TempDir(), "seed")
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
 	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Inject a deterministic failure AFTER the adopt: a blocker file at the
 	// portal location makes step 9 (createPortal) fail, triggering rollback.
@@ -88,10 +88,10 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	}
 
 	// The adopted branch survives the rollback, still at its unique commit.
-	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
+	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), weftBranch) {
 		t.Fatalf("adopted weft branch %q was deleted by Add's rollback; want it preserved", weftBranch)
 	}
-	branchSHA := gitkit.RevParse(t, mustWeftRepoRoot(t, l), "refs/heads/"+weftBranch)
+	branchSHA := gitkit.RevParse(t, mustRecordsRepoRoot(t, l), "refs/heads/"+weftBranch)
 	if branchSHA != preciousSHA {
 		t.Errorf("adopted weft branch %q = %s; want the pre-existing commit %s", weftBranch, branchSHA, preciousSHA)
 	}
@@ -133,7 +133,7 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 			h := hubforge.NewHub(t, ".")
 			l := h.Location
 			weftBranch := fabricengine.RecordsBranchName(slug)
-			weftRoot := mustWeftRepoRoot(t, l)
+			weftRoot := mustRecordsRepoRoot(t, l)
 
 			clone := t.TempDir()
 			gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.RecordsBare, ".")
@@ -358,9 +358,9 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	// Pre-create the weft branch with a unique commit that predates the Add,
 	// exactly as TestAddRollback_AdoptedWeftBranchSurvives does.
 	seedDir := filepath.Join(t.TempDir(), "seed")
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.RecordsBranchName("main"))
 	preciousSHA := gitkit.CommitFile(t, seedDir, "precious.txt", "pre-existing weft work\n", "precious pre-existing weft work")
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Break the warp origin remote so step 11's push fails AFTER step 10b has
 	// already wired the junctions — the mid-add failure this test covers.
@@ -394,10 +394,10 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 
 	// The adopted branch still survives the rollback, exactly as the portal-
 	// blocker variant of this scenario asserts.
-	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
+	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), weftBranch) {
 		t.Fatalf("adopted weft branch %q was deleted by Add's rollback; want it preserved", weftBranch)
 	}
-	branchSHA := gitkit.RevParse(t, mustWeftRepoRoot(t, l), "refs/heads/"+weftBranch)
+	branchSHA := gitkit.RevParse(t, mustRecordsRepoRoot(t, l), "refs/heads/"+weftBranch)
 	if branchSHA != preciousSHA {
 		t.Errorf("adopted weft branch %q = %s; want the pre-existing commit %s", weftBranch, branchSHA, preciousSHA)
 	}

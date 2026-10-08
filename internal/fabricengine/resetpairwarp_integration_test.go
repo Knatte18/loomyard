@@ -56,7 +56,7 @@ func assertResetRefused(t *testing.T, err error, rec *fabricengine.Mutations, wa
 	return refusal
 }
 
-func TestResetPairWarp_DiscardsCommitsAndOwnPathDirtKeepsUntracked(t *testing.T) {
+func TestResetPairCode_DiscardsCommitsAndOwnPathDirtKeepsUntracked(t *testing.T) {
 	t.Parallel()
 
 	const slug = "rpw-reset"
@@ -106,7 +106,7 @@ func TestResetPairWarp_DiscardsCommitsAndOwnPathDirtKeepsUntracked(t *testing.T)
 	gitkit.Git(t, warp, "push", "origin", "HEAD")
 }
 
-func TestResetPairWarp_DirtyPathOutsideOwnPathsRefuses(t *testing.T) {
+func TestResetPairCode_DirtyPathOutsideOwnPathsRefuses(t *testing.T) {
 	t.Parallel()
 
 	const slug = "rpw-foreign"
@@ -152,7 +152,7 @@ func TestResetPairWarp_DirtyPathOutsideOwnPathsRefuses(t *testing.T) {
 	}
 }
 
-func TestResetPairWarp_OwnershipRefusals(t *testing.T) {
+func TestResetPairCode_OwnershipRefusals(t *testing.T) {
 	t.Parallel()
 
 	t.Run("PrimeCheckout", func(t *testing.T) {
@@ -269,9 +269,9 @@ func (p *remoteHalfPair) pushRemoteOnlyCommit(t *testing.T) string {
 	return extra
 }
 
-// TestResetPairWarp_RemoteHalf covers every outcome of the remote half of ResetPairCode other than the update itself:
+// TestResetPairCode_RemoteHalf covers every outcome of the remote half of ResetPairCode other than the update itself:
 // the refusals, each leaving the remote and the checkout unchanged, and the cases that leave the remote alone.
-func TestResetPairWarp_RemoteHalf(t *testing.T) {
+func TestResetPairCode_RemoteHalf(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -408,9 +408,9 @@ func TestResetPairWarp_RemoteHalf(t *testing.T) {
 	}
 }
 
-// TestResetPairWarp_OursMergeThenRerunConverges proves the way forward a remote-only commit's refusal names:
+// TestResetPairCode_OursMergeThenRerunConverges proves the way forward a remote-only commit's refusal names:
 // after `git merge --strategy ours` takes in the remote tip, a re-run rewinds both the checkout and the remote task branch.
-func TestResetPairWarp_OursMergeThenRerunConverges(t *testing.T) {
+func TestResetPairCode_OursMergeThenRerunConverges(t *testing.T) {
 	t.Parallel()
 
 	p := newRemoteHalfPair(t, "rhf-ours")
@@ -456,8 +456,8 @@ func TestUpdateRemoteBranch_StaleLeaseRefuses(t *testing.T) {
 	}
 }
 
-// TestResetPairWarp_CheckoutFailureAfterRemoteUpdateConverges holds the checkout's index lock so the rewrite fails once the remote has moved.
-func TestResetPairWarp_CheckoutFailureAfterRemoteUpdateConverges(t *testing.T) {
+// TestResetPairCode_CheckoutFailureAfterRemoteUpdateConverges holds the checkout's index lock so the rewrite fails once the remote has moved.
+func TestResetPairCode_CheckoutFailureAfterRemoteUpdateConverges(t *testing.T) {
 	t.Parallel()
 
 	p := newRemoteHalfPair(t, "rhf-lock")

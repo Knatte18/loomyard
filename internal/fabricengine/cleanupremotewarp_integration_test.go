@@ -21,7 +21,7 @@ import (
 func markManaged(t *testing.T, h *hubforge.Hub, branch string) {
 	t.Helper()
 
-	gitkit.MustRun(t, mustWeftRepoRoot(t, h.Location), "git", "push", "origin", "HEAD:refs/heads/"+fabricengine.RecordsBranchName(branch))
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, h.Location), "git", "push", "origin", "HEAD:refs/heads/"+fabricengine.RecordsBranchName(branch))
 }
 
 // pushLandedLeftover pushes the prime's HEAD to origin as branch, so all its work is already on the default branch.

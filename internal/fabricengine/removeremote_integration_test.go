@@ -97,7 +97,7 @@ func TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact(t *testing.T)
 	const slug = "remove-remote-fail"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -125,7 +125,7 @@ func TestRemove_NoOriginUnderRemoteReportsSkipReasonAndCompletesTeardown(t *test
 	const slug = "remove-no-origin"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})

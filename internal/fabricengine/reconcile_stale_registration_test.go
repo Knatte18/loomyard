@@ -347,7 +347,7 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 			t.Errorf("Cleanup reported/handled primary weft branch %q; want not reported (live pair)", mainWeft)
 		}
 	}
-	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), mainWeft) {
+	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), mainWeft) {
 		t.Errorf("main-weft branch deleted after force Cleanup with primary parked elsewhere; want intact (F1 regression)")
 	}
 }
@@ -363,7 +363,7 @@ func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	topology := h.Topology
 
 	const warpManagedBranch = "cleanup-warp-owned"
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", warpManagedBranch, fabricengine.RecordsBranchName("main"))
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "branch", warpManagedBranch, fabricengine.RecordsBranchName("main"))
 
 	res, err := topology.Cleanup(l, true, true, false)
 	if err != nil {
@@ -377,7 +377,7 @@ func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	if entry.Deleted {
 		t.Errorf("Deleted = true for non-suffixed branch %q; want false even under force", warpManagedBranch)
 	}
-	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), warpManagedBranch) {
+	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), warpManagedBranch) {
 		t.Errorf("non-suffixed branch %q deleted; want intact", warpManagedBranch)
 	}
 }
@@ -427,7 +427,7 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	if forcedEntry.Error != "" {
 		t.Errorf("apply+force entry Error = %q; want empty (no doomed delete attempt)", forcedEntry.Error)
 	}
-	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
+	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), weftBranch) {
 		t.Errorf("checked-out weft branch %q deleted; want intact", weftBranch)
 	}
 }

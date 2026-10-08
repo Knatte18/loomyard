@@ -48,7 +48,7 @@ func TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand(t *testing.T) {
 	const slug = "finish-by-hand"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	rel := "_lyx/shed/" + slug + "/drive-reports/stop.md"
@@ -100,7 +100,7 @@ func TestRemove_FinishesPairWithBothWorktreesGone(t *testing.T) {
 	const slug = "finish-both-gone"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	siblingTip := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(slug))
@@ -134,7 +134,7 @@ func leaveSiblingBranchOnlyOnOrigin(t *testing.T, h *hubforge.Hub, slug string) 
 	t.Helper()
 
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	removeByHand(t, fabricengine.WorktreePath(l, slug))
 	removeByHand(t, fabricengine.RecordsWorktreePath(l, slug))
 	gitkit.MustRun(t, l.WorktreePath(), "git", "worktree", "prune")
@@ -208,7 +208,7 @@ func TestRemove_ReportsStrayPathAndFinishesBranchTeardown(t *testing.T) {
 	const slug = "finish-stray"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
 	target := fabricengine.WorktreePath(l, slug)

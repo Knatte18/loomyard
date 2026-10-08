@@ -46,7 +46,7 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	// correspondence-carrying commit recorded on the original branch.
 	const targetBranch = "index-refresh-target"
 	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.RecordsBranchName(targetBranch))
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "branch", fabricengine.RecordsBranchName(targetBranch))
 
 	f := hubforge.OpenFabric(t, h)
 

@@ -4,7 +4,7 @@
 // the records never reach the new worktree's disk, the pair's first weft commit records their deletion,
 // and the adopt path, the parent branch and Add's rollback are untouched by the drop.
 //
-// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helper mustWeftRepoRoot;
+// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helper mustRecordsRepoRoot;
 // it shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -72,7 +72,7 @@ func TestAdd_RunRecords(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	parentWeft := fabricengine.RecordsBranchName("main")
 	baseWeftTip := gitkit.RevParse(t, weftRoot, parentWeft)
 
@@ -216,7 +216,7 @@ func TestAdd_DropsParentRunRecords_SubpathAnchor(t *testing.T) {
 	h := hubforge.NewHub(t, "backend")
 	l := h.Location
 	const slug = "drops-records-subpath"
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 
 	commitRunRecords(t, l, weftRoot)
 	forkPoint := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName("main"))

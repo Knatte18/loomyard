@@ -53,7 +53,7 @@ func TestArchiveWeftTip(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 
 	t.Run("tags and pushes the tip, idempotently", func(t *testing.T) {
 		const slug = "archive-happy"
@@ -149,7 +149,7 @@ func TestArchiveWeftTip_NoOriginSkips(t *testing.T) {
 	const branch = "archive-no-origin-weft"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	tip := gitkit.RevParse(t, weftRoot, branch)
 	mustRemoveOrigin(t, weftRoot)
@@ -181,7 +181,7 @@ func TestArchiveWeftTip_UnreachableOriginErrors(t *testing.T) {
 	const branch = "archive-unreachable-weft"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	tip := gitkit.RevParse(t, weftRoot, branch)
 	mustBreakOrigin(t, weftRoot)

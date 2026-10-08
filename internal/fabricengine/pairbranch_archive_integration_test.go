@@ -27,7 +27,7 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 	slugs := []string{"cleanup-archive-a", "cleanup-archive-b"}
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	tips := make(map[string]string, len(slugs))
 	for _, slug := range slugs {
 		branch := fabricengine.RecordsBranchName(slug)
@@ -66,7 +66,7 @@ func TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep(t *testing.T) {
 	const branch = "cleanup-archive-fail-weft"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustBreakOrigin(t, weftRoot)
 
@@ -91,7 +91,7 @@ func TestCleanup_NoOriginDeletesAndReportsArchiveSkip(t *testing.T) {
 	const branch = "cleanup-archive-noorigin-weft"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
 	mustRemoveOrigin(t, weftRoot)
 

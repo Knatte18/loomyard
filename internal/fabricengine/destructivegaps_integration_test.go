@@ -9,7 +9,7 @@
 // unit tests (destroy_test.go): those cover the pipeline's hermetic logic (check ordering,
 // containment, zero-value refusals, force's narrow reach) with no git spawn at all.
 //
-// Package fabricengine_test to reuse mustWeftRepoRoot from
+// Package fabricengine_test to reuse mustRecordsRepoRoot from
 // reconcile_stale_registration_test.go, and makeBareRemote from clone_adopt_test.go, matching
 // prune_unowned_integration_test.go's convention; shares the single TestMain in testmain_test.go.
 
@@ -573,7 +573,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	primaryWeft := fabricengine.RecordsBranchName("main")
 
 	t.Run("RefusesPrimaryWeftBranch", func(t *testing.T) {
@@ -586,7 +586,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 		// deletions are irreversible.
 		unreadable := hubforge.NewHub(t, ".")
 		ul := unreadable.Location
-		uWeftRoot := mustWeftRepoRoot(t, ul)
+		uWeftRoot := mustRecordsRepoRoot(t, ul)
 		if err := os.RemoveAll(fabricengine.BoardDir(ul.HubPath)); err != nil {
 			t.Fatalf("remove board worktree: %v", err)
 		}
@@ -598,7 +598,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 	t.Run("RefusesCheckedOutBranch", func(t *testing.T) {
 		checkedOut := hubforge.NewHub(t, ".")
 		cl := checkedOut.Location
-		cWeftRoot := mustWeftRepoRoot(t, cl)
+		cWeftRoot := mustRecordsRepoRoot(t, cl)
 		topology := checkedOut.Topology
 		const slug = "branch-ownership-checkedout"
 		if _, err := topology.Add(cl, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {

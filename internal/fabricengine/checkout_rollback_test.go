@@ -46,7 +46,7 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.RecordsBranchName(targetBranch))
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "branch", fabricengine.RecordsBranchName(targetBranch))
 
 	originalWarpBranch := gitkit.CurrentBranch(t, l.WorktreePath())
 	originalWeftBranch := gitkit.CurrentBranch(t, fabricengine.RecordsWorktree(l))
@@ -78,7 +78,7 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 
 	// The target weft branch pre-existed this Checkout (adopted, not forked), so
 	// the rollback must NOT have deleted it.
-	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), fabricengine.RecordsBranchName(targetBranch)) {
+	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), fabricengine.RecordsBranchName(targetBranch)) {
 		t.Errorf("pre-existing weft branch %q deleted by rollback; want it untouched", fabricengine.RecordsBranchName(targetBranch))
 	}
 }
@@ -131,7 +131,7 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	// The branch step 4 forked must be gone: the rolled-back Checkout tears down
 	// exactly what it created.
 	forked := fabricengine.RecordsBranchName(targetBranch)
-	if gitkit.BranchExists(t, mustWeftRepoRoot(t, l), forked) {
+	if gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), forked) {
 		t.Errorf("forked weft branch %q survived the rollback; want it deleted (orphan branch stranded by fabric's own failed operation)", forked)
 	}
 }
@@ -207,7 +207,7 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 			if got := gitkit.CurrentBranch(t, fabricengine.RecordsWorktree(l)); got != originalWeftBranch {
 				t.Errorf("weft branch after failed Checkout = %q; want %q (original)", got, originalWeftBranch)
 			}
-			if gitkit.BranchExists(t, mustWeftRepoRoot(t, l), weftBranch) {
+			if gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), weftBranch) {
 				t.Errorf("local weft branch %q adopted from origin survived the rollback; want it deleted", weftBranch)
 			}
 			if got := gitkit.RevParse(t, h.RecordsBare, "refs/heads/"+weftBranch); got != originTip {

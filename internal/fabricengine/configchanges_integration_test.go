@@ -2,7 +2,7 @@
 
 // configchanges_integration_test.go proves ReadConfigChanges reports a task's changes to the per-worktree config files it is told about, read from the task's weft branch since its fork point.
 //
-// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helper mustWeftRepoRoot;
+// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helper mustRecordsRepoRoot;
 // it shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -104,7 +104,7 @@ func TestReadConfigChanges(t *testing.T) {
 			const slug = "feature"
 			h := hubforge.NewHub(t, tc.anchor)
 			l := h.Location
-			weftRoot := mustWeftRepoRoot(t, l)
+			weftRoot := mustRecordsRepoRoot(t, l)
 			forkPoint := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName("main"))
 
 			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})

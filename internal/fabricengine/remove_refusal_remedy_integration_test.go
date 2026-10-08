@@ -28,7 +28,7 @@ func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 	const slug = "remove-refusal-intact"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -68,7 +68,7 @@ func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 	const slug = "remove-probe-failure"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -115,7 +115,7 @@ func assertPairIntact(t *testing.T, l *lyxcwd.Location, slug string) {
 	if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
 		t.Errorf("warp branch gone after a refused Remove")
 	}
-	if !gitkit.BranchExists(t, mustWeftRepoRoot(t, l), fabricengine.RecordsBranchName(slug)) {
+	if !gitkit.BranchExists(t, mustRecordsRepoRoot(t, l), fabricengine.RecordsBranchName(slug)) {
 		t.Errorf("weft branch gone after a refused Remove")
 	}
 }

@@ -65,7 +65,7 @@ func TestRemove_ReusesSameTipArchiveTag(t *testing.T) {
 	const slug = "remove-archive-reuse"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	tip := gitkit.CommitFile(t, fabricengine.RecordsWorktreePath(l, slug), "_lyx/record.txt", "run record\n", "record")
@@ -97,7 +97,7 @@ func TestRemove_PendingRecordsAreCommittedAndArchivedOnce(t *testing.T) {
 	const slug = "remove-archive-weft-dirty"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 
@@ -144,7 +144,7 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 	const slug = "remove-archive-unreachable"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
 	mustBreakOrigin(t, weftRoot)
@@ -226,7 +226,7 @@ func TestRemove_NoOriginSkipsArchiveAndCompletes(t *testing.T) {
 	const slug = "remove-archive-noorigin"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 	mustRemoveOrigin(t, weftRoot)
@@ -250,7 +250,7 @@ func TestAddRollback_LeavesNoArchiveTag(t *testing.T) {
 	const slug = "add-rollback-no-archive"
 	h := hubforge.NewHub(t, ".")
 	l := h.Location
-	weftRoot := mustWeftRepoRoot(t, l)
+	weftRoot := mustRecordsRepoRoot(t, l)
 
 	// A blocker file at the portal fails Add after its weft branch exists, triggering rollbackAdd.
 	portalLink := fabricengine.PortalLink(l, slug)
