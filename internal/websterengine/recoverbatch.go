@@ -333,7 +333,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 			}
 			wayForward := resetToStartSteps(stepRunFresh)
 			if len(contracts.Uncleared) == 0 && allPathlessFabricReference(contracts.Rest) {
-				wayForward = fmt.Sprintf("way forward: when the worktree is clean and HEAD is the batch's start commit (git reset --keep to it if the batch committed), or the batch's commits are kept and every recorded command is read-only, \"lyx webster accept-audit --batch %d\" then \"lyx webster recover-batch %d\"; otherwise %s", batchNumber, batchNumber, strings.TrimPrefix(resetToStartSteps(stepRunFresh), "way forward: "))
+				wayForward = fmt.Sprintf("way forward: when the worktree is clean and HEAD is the batch's start commit (\"%s\" moves it there if the batch committed), or the batch's commits are kept and every recorded command is read-only, \"lyx webster accept-audit --batch %d\" then \"lyx webster recover-batch %d\"; otherwise %s", resetVerb(ResetToBatchStart, batchNumber), batchNumber, batchNumber, strings.TrimPrefix(resetToStartSteps(stepRunFresh), "way forward: "))
 			}
 			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; %s", batchNumber, strings.Join(what, ", "), wayForward)}
 		}
@@ -592,7 +592,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 
 	// Cross-check report's head_sha against worktree's actual HEAD under RecordBatch's merge-only rule.
 	if digest.HeadSHA != "" {
-		moved, err := reconcileReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, digest.HeadSHA, fmt.Sprintf("recovery report for batch %02d-%s", number, slug), deps.ParentBranch)
+		moved, err := reconcileReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, digest.HeadSHA, fmt.Sprintf("recovery report for batch %02d-%s", number, slug), deps.ParentBranch, number)
 		if err != nil {
 			return nil, err
 		}

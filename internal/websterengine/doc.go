@@ -216,7 +216,7 @@
 // the explicit call clears the entries and records each as a batch audit warning, and recover-batch then proceeds;
 // the refusal names that route only for such a record.
 // It has two routes.
-// Either HEAD is that start, so the batch changed nothing (a batch that committed qualifies after `git reset --keep <start>`),
+// Either HEAD is that start, so the batch changed nothing (a batch that committed qualifies after `lyx webster reset --to batch-start --batch NN`),
 // or the start is an ancestor of HEAD and every entry's recorded command is read-only (`fabricengine.IsReadOnlyCommand`), so the batch's commits are kept.
 // An entry that is not read-only, or records no command, refuses the whole call with the reset-to-start and fresh-run steps.
 // The evidence shows the start still lies in HEAD's history, nothing uncommitted, and no listed reader able to write; it does not inspect the batch's commits.
@@ -475,7 +475,7 @@
 // a remote-only commit becomes reachable only through the `git merge --strategy ours` the operator runs after reading the commits the refusal lists.
 // It cannot move another branch, take a raw SHA, touch the parent branch, the records side or untracked files, and it has no `--force`.
 // Fabric's own refusal (ownership, dirtiness, remote divergence, an unreachable remote) is surfaced as the verb's error with fabric's reason.
-// In standalone mode, with no task pair, the verb performs the planned move itself with gitrepo's keep-reset (`git reset --keep`), touching no remote.
+// In standalone mode, with no task pair, the verb performs the planned move itself with gitrepo's keep-reset, touching no remote.
 // The call sits in internal/webstercli, since webster's engine runs no mutating git.
 // PlanReset skips its foreign-dirty-path refusal there (ResetDeps.Standalone), because keep is the guard: it carries an uncommitted change across and refuses, changing nothing, over one the move would overwrite, so it never discards one.
 // A standalone reset therefore leaves foreign tracked changes the move does not touch in the tree, and every other PlanReset refusal still applies.

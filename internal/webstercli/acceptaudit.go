@@ -27,8 +27,8 @@ func (c *websterCLI) acceptAuditCmd() *cobra.Command {
 It checks every suspect path against the last batch head and refuses, changing
 nothing, while any differs or cannot be checked.
 It also refuses while HEAD carries a commit past the last batch head other
-than a clean parent merge; run git reset --keep <that head> first, which
-refuses rather than discards uncommitted changes.
+than a clean parent merge; run lyx webster reset --to last-batch-head first,
+which moves HEAD back to that head.
 Restore the named paths with git first, then run it.
 A contract file (outcome.yaml or summary.md) clears when it is absent or when
 Master wrote it after the fork did; a file a fork wrote last refuses, naming

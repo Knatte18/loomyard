@@ -1543,7 +1543,7 @@ func TestRecordBatch_ParentMovedHead(t *testing.T) {
 	t.Parallel()
 
 	resetWayForward := func(fx *recordFixture) string {
-		return "way forward: 1) run `git reset --keep " + fx.HeadSHA + "` to move HEAD back to the report's head_sha"
+		return "way forward: 1) lyx webster reset --to report-head --batch 01"
 	}
 	cases := []struct {
 		name string
@@ -1720,7 +1720,7 @@ func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 	if err == nil {
 		t.Fatal("RecordBatch() after a hand-resolved merge: error = nil; want a refusal")
 	}
-	for _, want := range []string{"do not merge cleanly", "way forward: 1) run `git reset --keep "} {
+	for _, want := range []string{"do not merge cleanly", "way forward: 1) lyx webster reset --to report-head --batch 01"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err.Error(), want)
 		}
