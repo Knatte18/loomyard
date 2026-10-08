@@ -8,9 +8,8 @@
 // which is exactly why the root is told rather than derived.
 //
 // planglyph composes internal/planparser's pure checks rather than reimplementing any of them:
-// ValidateFormat calls planparser.ValidateFormat and Validate calls planparser.Validate, converts
-// every finding, and appends the same resolve-backed findings on top via one shared resolvePass —
-// no check exists in both packages.
+// ValidateFormat calls planparser.ValidateFormat and Validate calls planparser.Validate, converts every finding, and appends the same resolve-backed findings on top via one shared resolvePass and then planGatePass — no check exists in both packages.
+// ValidateDispatch shares resolvePass but never runs planGatePass, whose checks run at the plan gates only.
 //
 // A caller's own answer is therefore a three-way split, never a two-way one: pure findings (from
 // planparser, stamped SeverityBlocking), resolve findings (from this package's own passes, either
