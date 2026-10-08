@@ -166,8 +166,8 @@ var errStrandPaneBindingCleared = errors.New(
 		"running: a restored backup, a copied .lyx, or a reed.json older than the session), " +
 		`which says nothing about the agent: its process may still be working in a pane reed can no longer address. Check "lyx reed status"`)
 
-// ErrNotStarted reports that a run's provider never became ready inside its startup window.
-// StartGated wraps it, after tearing the strand down, when awaitStartup's loop resolves not-ready —
+// ErrNotStarted reports that a run's provider never became ready inside its startup window or never took its first input.
+// StartGated wraps it, after tearing the strand down, when awaitStartup's loop resolves not-ready or a start-time send fails —
 // see abandonStartup for the teardown and the full error text a caller actually sees.
 var ErrNotStarted = errors.New("shuttle: the provider never became ready")
 
@@ -424,10 +424,9 @@ func startupTickCap(startupTimeout, interval time.Duration) int {
 // persisted to run.json by checkLivenessTick, so a later Attach skips the startup probe), or the run's
 // file contract already satisfied; (result, err) with errors.Is(err, ErrNotStarted) and a died/timeout
 // Result.Outcome when the pane died, the startup window closed, or the run's own deadline arrived
-// first, all with the teardown abandonStartup performs already done; (run.identity(), err) without
-// ErrNotStarted when checkLivenessTick failed maxStatusRetries consecutive times with the file
-// contract unsatisfied — a startup MECHANISM failure, worded in the same family Wait uses, that tears
-// nothing down because it says nothing about the agent.
+// first, all with the teardown abandonStartup performs already done.
+// The same teardown and a died Result follow when checkLivenessTick failed maxStatusRetries consecutive times with the file contract unsatisfied.
+// The error then wraps ErrNotStarted beside the mechanism failure's own sentinel, worded in the same family Wait uses.
 //
 // The window is the shorter of startup_timeout_s and the time left until run.deadline (floored at
 // 0): a run.Timeout shorter than startup_timeout_s must still expire on schedule, classified
@@ -487,11 +486,11 @@ func (run *Run) awaitStartup() (Result, error) {
 				}
 				switch {
 				case errors.Is(err, errStrandNotTracked):
-					return run.identity(), fmt.Errorf("shuttle: startup: reed did not track strand %q on %d consecutive liveness checks (run dir %s): %w", run.state.StrandGUID, maxStatusRetries, run.runDir, err)
+					return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: startup: reed did not track strand %q on %d consecutive liveness checks (run dir %s): %w", run.state.StrandGUID, maxStatusRetries, run.runDir, err))
 				case errors.Is(err, errStrandPaneBindingCleared):
-					return run.identity(), fmt.Errorf("shuttle: startup: reed held no pane binding for strand %q on %d consecutive liveness checks (run dir %s): %w", run.state.StrandGUID, maxStatusRetries, run.runDir, err)
+					return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: startup: reed held no pane binding for strand %q on %d consecutive liveness checks (run dir %s): %w", run.state.StrandGUID, maxStatusRetries, run.runDir, err))
 				default:
-					return run.identity(), fmt.Errorf("shuttle: startup: reed status failed %d times consecutively for strand %q (run dir %s): %w", maxStatusRetries, run.state.StrandGUID, run.runDir, err)
+					return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: startup: reed status failed %d times consecutively for strand %q (run dir %s): %w", maxStatusRetries, run.state.StrandGUID, run.runDir, err))
 				}
 			}
 		} else {
@@ -500,7 +499,7 @@ func (run *Run) awaitStartup() (Result, error) {
 				return Result{}, nil
 			}
 			if outcome == OutcomeDied {
-				return run.abandonStartup(OutcomeDied)
+				return run.abandonStartup(OutcomeDied, nil)
 			}
 		}
 
@@ -508,7 +507,7 @@ func (run *Run) awaitStartup() (Result, error) {
 			if run.classifyDeadlineExpiry(OutcomeTimeout) == OutcomeDone {
 				return Result{}, nil
 			}
-			return run.abandonStartup(OutcomeTimeout)
+			return run.abandonStartup(OutcomeTimeout, nil)
 		}
 
 		run.clock.Sleep(interval)
@@ -517,12 +516,14 @@ func (run *Run) awaitStartup() (Result, error) {
 	if allOutputFilesExist(run.spec.OutputFiles) {
 		return Result{}, nil
 	}
-	return run.abandonStartup(OutcomeDied)
+	return run.abandonStartup(OutcomeDied, nil)
 }
 
-// abandonStartup is awaitStartup's not-ready teardown: the provider never reached StartupReady inside
-// its window, so the strand is torn down and the run's own Outcome is finalized while the run
+// abandonStartup is start's teardown for a provider that never became ready or never took its first input:
+// the strand is torn down and the run's own Outcome is finalized while the run
 // directory and its last pane capture are kept for diagnosis.
+// cause is nil when the provider never reached StartupReady inside its window,
+// and otherwise the error that ended the start, which the returned error wraps beside ErrNotStarted.
 //
 // In order: any capture checkLivenessTick recorded is saved to startupCaptureFileName (a write
 // failure is a Warn, and the returned error then says no capture was saved); run.finalize(outcome)
@@ -537,7 +538,7 @@ func (run *Run) awaitStartup() (Result, error) {
 // the capture was saved, and whether the strand removal itself succeeded — carrying reed's own error
 // text and an operator remedy when it did not, since a strand abandonStartup could not remove is the
 // one residual an operator must clear by hand.
-func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
+func (run *Run) abandonStartup(outcome Outcome, cause error) (Result, error) {
 	captureNote := "no pane capture was saved"
 	if run.lastStartupCapture != "" {
 		capturePath := filepath.Join(run.runDir, startupCaptureFileName)
@@ -556,9 +557,17 @@ func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
 		removeNote = fmt.Sprintf("the strand could NOT be removed (%v); remove it by hand (\"lyx reed status\" / \"lyx reed remove\")", rerr)
 	}
 
-	logger.Warn("shuttle: provider never became ready; strand torn down", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome))
+	format := "shuttle: start: %w — run dir %s, strand %q, outcome %q; %s; %s"
+	args := []any{ErrNotStarted, run.runDir, run.state.StrandGUID, string(outcome), captureNote, removeNote}
+	if cause == nil {
+		logger.Warn("shuttle: provider never became ready; strand torn down", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome))
+	} else {
+		logger.Warn("shuttle: start failed before the provider took its first input; strand torn down", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome), "cause", cause)
+		format += ": %w"
+		args = append(args, cause)
+	}
 
-	return result, fmt.Errorf("shuttle: start: %w — run dir %s, strand %q, outcome %q; %s; %s", ErrNotStarted, run.runDir, run.state.StrandGUID, string(outcome), captureNote, removeNote)
+	return result, fmt.Errorf(format, args...)
 }
 
 // pollEventsTick reads any events.jsonl bytes appended since run.offset and

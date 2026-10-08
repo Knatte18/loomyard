@@ -124,8 +124,8 @@ var negativeVerdictMarkers = map[string]bool{
 //     finalize's own gate check), so neither is itself a negative verdict on whether the run
 //     finished — they are infrastructure faults surfacing after the fact, the same reasoning the
 //     pre-existing fork-audit entry already carried.
-//   - awaitStartup [Errorf] x3 — the three retry-cap mechanism-failure arms, each sitting behind a
-//     direct allOutputFilesExist check.
+//   - awaitStartup [Errorf,OutcomeDied] x3 — the three retry-cap arms, each the status-cap teardown
+//     behind the direct allOutputFilesExist check.
 //   - awaitStartup [OutcomeDied] x2 — the checkLivenessTick not-ready answer (case (c) in its own doc
 //     comment) and the tick-cap exhaustion fallback, each reached only past a direct or upstream
 //     allOutputFilesExist check.
@@ -138,7 +138,7 @@ var auditedNegativeVerdictReturns = map[string]int{
 	"attach [Errorf]":                                 5,
 	"removeSupersededStrands [Errorf]":                1,
 	"abandonStartup [Errorf]":                         1,
-	"awaitStartup [Errorf]":                           3,
+	"awaitStartup [Errorf,OutcomeDied]":               3,
 	"awaitStartup [OutcomeDied]":                      2,
 	"awaitStartup [OutcomeTimeout]":                   1,
 	"Wait [Errorf]":                                   4,

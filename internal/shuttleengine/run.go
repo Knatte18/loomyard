@@ -493,11 +493,16 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 // The run's events offset ends past every load turn end, the retry's included,
 // so Wait never reads one as a held turn end of the run's own.
 // A pane that dies meanwhile is a died startup.
+// Every other failure tears the run down through abandonStartup too: a skill-load send, a prompt-offset persist or a prompt delivery that fails returns an error wrapping ErrNotStarted beside the cause.
+// A prompt delivery that fails with ErrSubmissionNotLanded but is followed by a turn start in the events file past the pre-send offset landed late.
+// Start then returns the run.
+// Residual: a prompt consumed between that signal read and the strand removal is killed with its agent;
+// if it wrote an output file, the re-step's Spec.validate refuses on that file.
 func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 	if len(run.spec.Skills) > 0 {
 		loader, err := run.runner.skillLoader()
 		if err != nil {
-			return run.abandonStartup(OutcomeDied)
+			return run.abandonStartup(OutcomeDied, err)
 		}
 		timeout := run.spec.SkillLoadTimeout
 		if timeout <= 0 {
@@ -508,10 +513,10 @@ func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 			_, died, err = run.settleLoadTurn(loader, missing, timeout, true)
 		}
 		if err != nil {
-			return run.identity(), err
+			return run.abandonStartup(OutcomeDied, err)
 		}
 		if died {
-			return run.abandonStartup(OutcomeDied)
+			return run.abandonStartup(OutcomeDied, nil)
 		}
 	}
 	if run.offset > 0 {
@@ -519,11 +524,15 @@ func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 		// (an Attach, webster's recovery classification) starts past the load turns too.
 		run.state.PromptOffset = run.offset
 		if err := saveRunState(run.runDir, run.state); err != nil {
-			return run.identity(), fmt.Errorf("shuttle: persist the prompt offset after loading skills: %w", err)
+			return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: persist the prompt offset after loading skills: %w", err))
 		}
 	}
+	sentAt := eventsSize(run.state.EventsPath)
 	if err := sendVerified(run.newSendContext(), promptLine); err != nil {
-		return run.identity(), fmt.Errorf("shuttle: deliver the prompt after loading skills: %w", err)
+		if errors.Is(err, ErrSubmissionNotLanded) && turnStartedSince(run.runner.engine, run.state.EventsPath, sentAt) {
+			return Result{}, nil
+		}
+		return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: deliver the prompt after loading skills: %w", err))
 	}
 	return Result{}, nil
 }
@@ -662,7 +671,7 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 // contract that the burler round producer's one-retry ladder depends on
 // (TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry), so a caller that already branches on
 // Result.Outcome sees the same shape whether the run died at startup or later in Wait's own loop.
-// Any other non-nil err (a startup mechanism failure, or a pre-strand failure from start itself) is
+// Any other non-nil err (a pre-strand failure from start itself) is
 // returned unchanged, alongside whatever identity result carries.
 func (r *Runner) RunGated(spec Spec, gate GateSpec) (Result, error) {
 	run, result, err := r.start(spec, gate)
