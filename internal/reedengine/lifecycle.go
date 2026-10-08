@@ -275,7 +275,7 @@ func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err err
 
 // ensureServerAndSessionLocked ensures this hub's tmux server and this
 // worktree's session exist. Reports booted=true on fresh spawn; validates
-// capability, debug_log, mouse, watchdog, segment colors, and status-line template before any tmux round trip.
+// capability, debug_log, mouse, watchdog and segment colors before any tmux round trip.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
 	debugArgs, mouse, err := e.validateBootConfig()
 	if err != nil {
@@ -306,8 +306,6 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 	if up {
 		if usable {
-			// The status-line template was already validated in the pre-tmux
-			// block above, so this healthy already-up path returns directly.
 			return false, nil, nil
 		}
 		// A session that exists but holds ZERO panes is broken substrate: it
