@@ -151,7 +151,7 @@ func TestFill(t *testing.T) {
 	}
 	rows = append(rows,
 		fillRow{name: "reed dropped nested key", module: "reed", keyPath: "selvage.height_rows"},
-		fillRow{name: "reed dropped whole mapping", module: "reed", keyPath: "status_line"},
+		fillRow{name: "reed dropped whole mapping", module: "reed", keyPath: "segment_colors"},
 	)
 
 	for _, row := range rows {

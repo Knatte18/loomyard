@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
 // stateDir returns the path to the worktree-level ephemeral tree holding reed.json and reed.lock.
@@ -68,6 +69,8 @@ type StrandStatus struct {
 	Live   bool
 	// Retiring mirrors Strand.Retiring.
 	Retiring bool
+	// Color is the palette color the strand's segment resolves to, empty when it has none.
+	Color segmentcolor.Color
 }
 
 // StatusResult reports this session's tracked strands and their live/dead state.
@@ -234,49 +237,48 @@ func (e *Engine) sessionSubstrateLocked() (up bool, usable bool, err error) {
 	return true, len(live) > 0, nil
 }
 
-// ensureServerAndSessionLocked ensures this hub's tmux server and this
-// worktree's session exist. Reports booted=true on fresh spawn; validates
-// capability, debug_log, mouse, watchdog, and status-line template before any tmux round trip.
-func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
+// validateBootConfig refuses a boot-time config value that is wrong on its own, before any tmux round trip.
+// It validates debug_log, mouse, watchdog and the segment colors, and returns the tmux global flags debug_log selects and the mouse option value.
+// The boot path calls it, and so does an op that reads the strands' window's zoom before booting, so a pure config error surfaces ahead of that read.
+func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err error) {
 	// Validate debug_log before anything else touches tmux: a misconfigured
 	// value is a pure config error, unrelated to server/session state, so it
 	// must surface before the capability probe or any spawn attempt.
-	debugArgs, err := debugLogArgs(e.cfg.DebugLog)
+	debugArgs, err = debugLogArgs(e.cfg.DebugLog)
 	if err != nil {
-		return false, nil, err
+		return nil, "", err
 	}
 
 	// Validate mouse alongside debug_log, at the same early point: this too
 	// is a pure config error that must surface before the capability probe
 	// or any spawn attempt, not partway through a boot.
-	mouse, err := mouseOption(e.cfg.Mouse)
+	mouse, err = mouseOption(e.cfg.Mouse)
 	if err != nil {
-		return false, nil, err
+		return nil, "", err
 	}
 
 	// The boolean is discarded here: this is the one consumer of watchdogOption with an error
 	// channel, and its only job is to make a typo fail `lyx reed up` loudly and by name — the hook
 	// install (pinGeometryOptionsLocked) and the watch loop each read the key again and fail safe
 	// toward "no watchdog" instead.
-	if _, err := watchdogOption(e.cfg.Watchdog); err != nil {
-		return false, nil, err
+	if _, err = watchdogOption(e.cfg.Watchdog); err != nil {
+		return nil, "", err
 	}
 
-	// Validate the status-line template in the same pre-tmux block — it reads
-	// only cfg+geometry (StatusLineText makes no tmux round trip), so like
-	// debug_log and mouse it must fail the boot before anything is spawned.
-	// An earlier version validated only AFTER the session existed, which
-	// left a half-created session behind on a bad template — and, on the
-	// crash-recovery path, lost the booted=true rebirth signal: the boot
-	// had already replaced the session (pane ids reset) when validation
-	// failed, so the NEXT resume saw the session simply "up", skipped
-	// clearAllPaneBindings, and mistook stale pre-crash pane bindings for
-	// live strands (observed live: resumed:0 with a bare shell reported
-	// live). Validating up front removes the realistic — config-mistake —
-	// path into that trap; a set-option failure between spawn and return
-	// can still theoretically lose the signal, but has no config-shaped
-	// trigger.
-	if err := e.ValidateStatusLine(); err != nil {
+	// A segment color outside the palette is a pure config error too.
+	// This is the only refusal; every other reader goes through segmentColor and degrades to no color.
+	if err = validateSegmentColors(e.cfg.SegmentColors); err != nil {
+		return nil, "", err
+	}
+	return debugArgs, mouse, nil
+}
+
+// ensureServerAndSessionLocked ensures this hub's tmux server and this
+// worktree's session exist. Reports booted=true on fresh spawn; validates
+// capability, debug_log, mouse, watchdog and segment colors before any tmux round trip.
+func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
+	debugArgs, mouse, err := e.validateBootConfig()
+	if err != nil {
 		return false, nil, err
 	}
 
@@ -304,8 +306,6 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 	if up {
 		if usable {
-			// The status-line template was already validated in the pre-tmux
-			// block above, so this healthy already-up path returns directly.
 			return false, nil, nil
 		}
 		// A session that exists but holds ZERO panes is broken substrate: it
@@ -317,6 +317,12 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		// through to a fresh boot — the booted=true return then makes the
 		// caller clear every stale binding, exactly like a server rebirth.
 		_ = e.tmux.run("kill-session", "-t", exactSessionTarget(session))
+	}
+
+	// This worktree's recorded session is gone with the server: the earlier worktrees revive theirs first,
+	// so the session ids follow spawn order again. Nothing is created yet.
+	if !up && e.reviveDueLocked() {
+		return false, nil, errReviveFirst
 	}
 
 	// A stale socket-holder wedges a fresh boot: on Windows, psmux's internal
@@ -573,6 +579,7 @@ func (e *Engine) upLocked() (UpResult, bool, error) {
 	if err := e.ensureSelvagePaneLocked(st); err != nil {
 		return result, booted, err
 	}
+	e.markResolvedStrandWindowLocked(st)
 
 	if _, err := e.reconcileApplyPersistLocked(st); err != nil {
 		return result, booted, err
@@ -592,7 +599,7 @@ func (e *Engine) upLocked() (UpResult, bool, error) {
 // Resume rebuilds content after a server restart.
 func (e *Engine) Up() (UpResult, error) {
 	var result UpResult
-	err := e.withOpLock(func() error {
+	err := e.withRevivalFirst(e.withBootOpLockKeepingZoom, func() error {
 		var err error
 		result, _, err = e.upLocked()
 		return err
@@ -626,10 +633,10 @@ func (e *Engine) ensureSessionLocked() (bool, error) {
 
 // EnsureSession boots this worktree's session only when there is nothing usable to attach to, and
 // reports whether a session was actually created.
-// It reads no persisted state on the warm path, so a caller needing reed's state-level refusals must
+// It raises no state-level refusal on the warm path, since the only state it reads is the zoom bracket's, which swallows its errors, so a caller needing reed's state-level refusals must
 // still make its own Status call.
 func (e *Engine) EnsureSession() (booted bool, err error) {
-	err = e.withOpLock(func() error {
+	err = e.withRevivalFirst(e.withOpLockKeepingZoom, func() error {
 		var innerErr error
 		booted, innerErr = e.ensureSessionLocked()
 		return innerErr
@@ -641,7 +648,7 @@ func (e *Engine) EnsureSession() (booted bool, err error) {
 // drops non-live strands whose done-when paths all exist, relaunches the other non-live strands, and re-applies the layout.
 func (e *Engine) Resume() (ResumeResult, error) {
 	var result ResumeResult
-	err := e.withOpLock(func() error {
+	err := e.withRevivalFirst(e.withBootOpLockKeepingZoom, func() error {
 		dropped := 0
 		booted, stripped, err := e.ensureServerAndSessionLocked()
 		if err != nil {
@@ -671,6 +678,7 @@ func (e *Engine) Resume() (ResumeResult, error) {
 		if err := e.ensureSelvagePaneLocked(st); err != nil {
 			return err
 		}
+		e.markResolvedStrandWindowLocked(st)
 
 		live, err := e.listStrandPanes(st)
 		if err != nil {
@@ -1160,7 +1168,7 @@ func (e *Engine) Status() (StatusResult, error) {
 		// must not "fix" a missing Selvage row by appending one here.
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
-			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID], Retiring: s.Retiring}
+			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, Live: aliveIDs[s.PaneID], Retiring: s.Retiring, Color: e.withColor(s).Color}
 		}
 
 		result = StatusResult{Session: session, Socket: e.Socket(), Strands: strands}

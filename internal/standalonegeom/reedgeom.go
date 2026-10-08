@@ -41,16 +41,10 @@ import (
 //
 // PaneCwd and WorktreeRoot stay exactly as TOLD: both name a directory rather than an identity, both
 // spellings reach the same one, and the told spelling is the one the operator typed and will
-// recognise in a status line or an error. RepoName is likewise left RAW -- it is the status-line's
-// display token, never a tmux target.
+// recognise in an error.
 //
-// WorktreeName is also filled with the RAW filepath.Base(target) -- the identical expression used
-// one line away for RepoName, and deliberately not standalonestate.Normalize(target)'s basename nor
-// readableName above. Standalone mode has no worktree distinct from the repository it targets, so
-// {{.worktree}} and {{.repo}} must render the same string byte for byte and the default template
-// reads "foo/foo · <stateDir>". Taking the raw spelling for both is what makes that exact rather than
-// approximate: normalizing only the new token would make a symlinked target render two different
-// names on one line, even though both tokens are display values that never reach a tmux target.
+// WorktreeName is filled with the RAW filepath.Base(target), deliberately not standalonestate.Normalize(target)'s basename nor readableName above.
+// It is a display value in error messages and never reaches a tmux target.
 func ReedGeometry(target, stateDir, hash8 string) reedengine.Geometry {
 	readableName := filepath.Base(standalonestate.Normalize(target))
 	return reedengine.Geometry{
@@ -63,7 +57,6 @@ func ReedGeometry(target, stateDir, hash8 string) reedengine.Geometry {
 		// fabricengine.HubLogsDir(stateDir), which would produce a board-shaped path that does
 		// not exist in standalone mode.
 		LogsDir:      filepath.Join(stateDir, "logs"),
-		RepoName:     filepath.Base(target),
 		WorktreeName: filepath.Base(target),
 		HubPath:      stateDir,
 		// A standalone run has no Board to record a shortname on and no seed,

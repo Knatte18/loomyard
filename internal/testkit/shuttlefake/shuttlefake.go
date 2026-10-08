@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -47,6 +48,7 @@ type Engine struct {
 	TrustDismissSequenceFn  func(capture string) []shuttleengine.PaneInput
 	ComposeSendFn           func(text string) []shuttleengine.PaneInput
 	ModelSwitchSequenceFn   func(model string) []shuttleengine.PaneInput
+	ColorSequenceFn         func(color segmentcolor.Color) []shuttleengine.PaneInput
 	SkillLoadMessageFn      func(skills []string) string
 	ClassifySkillLoadFn     func(turnEnd shuttleengine.Event, skills []string) shuttleengine.SkillLoadReport
 	AuditForksFn            func(sessionID, workdir string) (shuttleengine.ForkAudit, error)
@@ -145,6 +147,14 @@ func (e *Engine) DefaultSkillLoadTimeout() time.Duration {
 func (e *Engine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
 	if e.ModelSwitchSequenceFn != nil {
 		return e.ModelSwitchSequenceFn(model)
+	}
+	return nil
+}
+
+// ColorSequence answers ColorSequenceFn, else no inputs.
+func (e *Engine) ColorSequence(color segmentcolor.Color) []shuttleengine.PaneInput {
+	if e.ColorSequenceFn != nil {
+		return e.ColorSequenceFn(color)
 	}
 	return nil
 }

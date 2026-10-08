@@ -13,10 +13,6 @@ Imports only the standard library, `lyxcwd`, `weftname`, `configengine` and `lyx
 
 Imports only the standard library, `configengine` and `gopkg.in/yaml.v3`.
 
-## `internal/tokenvocab`
-
-Imports only the standard library and `internal/stencil`.
-
 ## `internal/buildinfo`
 
 Imports nothing at all, not even the standard library.
@@ -26,6 +22,10 @@ It exposes `Channel` and `IsDev()` only.
 
 Imports only the standard library.
 It never resolves a working directory, and `Derive` creates nothing on disk.
+
+## `internal/segmentcolor`
+
+Imports only the standard library.
 
 ## `internal/pattern`
 

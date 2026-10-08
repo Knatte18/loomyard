@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
 // fakeReed is a hermetic ReedOps double that never touches tmux.
@@ -196,6 +197,9 @@ type fakeEngine struct {
 	StartupScript []StartupState
 	StartupCalls  []string
 
+	// NoColorInputs makes ColorSequence answer no inputs, like an engine without a color command.
+	NoColorInputs bool
+
 	// AuditForksResult is returned by AuditForks whenever AuditForksErr is
 	// nil; AuditForksCalls records every (sessionID, workdir) pair AuditForks
 	// was called with, so a test can assert it was — or was NOT — called.
@@ -313,6 +317,14 @@ func (e *fakeEngine) ModelSwitchSequence(model string) []PaneInput {
 		{Key: "Escape"},
 		{Text: "MODEL:" + model, Submit: true},
 	}
+}
+
+// ColorSequence returns a canonical submit-color-command choreography — fixed, not scripted, so tests assert against it directly — or no inputs when NoColorInputs is set.
+func (e *fakeEngine) ColorSequence(color segmentcolor.Color) []PaneInput {
+	if e.NoColorInputs {
+		return nil
+	}
+	return []PaneInput{{Text: "COLOR:" + string(color), Submit: true}}
 }
 
 // AuditForks records the (sessionID, workdir) it was called with and returns
@@ -451,6 +463,8 @@ type skillReed struct {
 	EventsPath func() string
 	Hangs      map[int]bool
 	Dies       map[int]bool
+	// ColorErr, when set, fails every "COLOR:<name>" typed, after the call is recorded.
+	ColorErr error
 
 	loads int
 	dead  bool
@@ -459,6 +473,9 @@ type skillReed struct {
 func (r *skillReed) SendText(guid, text string, submit bool) error {
 	if err := r.fakeReed.SendText(guid, text, submit); err != nil {
 		return err
+	}
+	if strings.HasPrefix(text, "COLOR:") {
+		return r.ColorErr
 	}
 	list, ok := strings.CutPrefix(text, "LOAD:")
 	if !ok {

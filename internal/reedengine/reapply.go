@@ -120,38 +120,42 @@ func (e *Engine) hookInstalledLocked(windowTarget string) (installed bool, known
 // envelope — and it owns the box-equality guard itself so the comparison happens under the same lock
 // as the query that produced the box.
 //
+// The whole re-apply runs inside keepZoomLocked, so the pane list the layout is planned from is read on the unzoomed window and a zoomed strand stays zoomed.
+//
 // reapplyLayout is never exported, never acquires a second lock, and never queries geometry outside
 // applyLayoutLockedOpts.
 func (e *Engine) reapplyLayout(lastApplied render.Box, probeHook bool) (ReapplyResult, error) {
 	var result ReapplyResult
 	acquired, err := e.withTryOpLock(func() error {
-		if err := e.requireSessionLocked(); err != nil {
-			return err
-		}
-		st, err := e.loadOrInitStateLocked()
-		if err != nil {
-			return err
-		}
-		windowTarget, err := e.strandWindowTargetFor(st)
-		if err != nil {
-			return fmt.Errorf("list panes: %w", err)
-		}
-		live, err := e.tmux.listPanes(windowTarget)
-		if err != nil {
-			return fmt.Errorf("list panes: %w", err)
-		}
+		return e.keepZoomLocked(func() error {
+			if err := e.requireSessionLocked(); err != nil {
+				return err
+			}
+			st, err := e.loadOrInitStateLocked()
+			if err != nil {
+				return err
+			}
+			windowTarget, err := e.strandWindowTargetFor(st)
+			if err != nil {
+				return fmt.Errorf("list panes: %w", err)
+			}
+			live, err := e.tmux.listPanes(windowTarget)
+			if err != nil {
+				return fmt.Errorf("list panes: %w", err)
+			}
 
-		if probeHook {
-			installed, known := e.hookInstalledLocked(windowTarget)
-			result.HookInstalled = installed
-			result.HookKnown = known
-		}
+			if probeHook {
+				installed, known := e.hookInstalledLocked(windowTarget)
+				result.HookInstalled = installed
+				result.HookKnown = known
+			}
 
-		applyRes, err := e.applyLayoutLockedOpts(st, live, applyOpts{SkipFocus: true, SkipWhenBoxEquals: &lastApplied})
-		result.Applied = applyRes.Applied
-		result.Box = applyRes.Box
-		result.BoxIsLive = applyRes.BoxIsLive
-		return err
+			applyRes, err := e.applyLayoutLockedOpts(st, live, applyOpts{SkipFocus: true, SkipWhenBoxEquals: &lastApplied})
+			result.Applied = applyRes.Applied
+			result.Box = applyRes.Box
+			result.BoxIsLive = applyRes.BoxIsLive
+			return err
+		})
 	})
 	if !acquired && err == nil {
 		return ReapplyResult{Deferred: true}, nil

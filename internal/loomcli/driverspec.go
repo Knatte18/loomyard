@@ -7,6 +7,7 @@ package loomcli
 import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -38,6 +39,7 @@ var driverSkills = []string{"scribe:prose"}
 // records and what makes a driver run distinguishable from a producer round. Round is empty, because
 // a driver is not one round of anything. Parent is empty, because the driver is top-level and the
 // panes loom's producers spawn while it runs are its siblings.
+// Segment is the coordinator, because the driver is the session that drives the whole run.
 //
 // Display.Anchor is below-parent and must never be hidden: the driver is the session an operator
 // attaches to watch, and a hidden pane would make a run that may last hours legible only through its
@@ -62,6 +64,7 @@ func driverSpec(prompt string, reportPath string, settings loomengine.DriverSett
 		Interactive:   false,
 		ForkSubagents: false,
 		Role:          driverRole,
+		Segment:       segmentcolor.Coordinator,
 		Round:         "",
 		Parent:        "",
 		Display: render.Display{

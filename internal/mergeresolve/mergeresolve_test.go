@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -660,6 +661,9 @@ func TestBuildConflictSpec_SkillsAndParentDirective(t *testing.T) {
 			}
 			if got := strings.Join(spec.Skills, ","); got != "scribe:prose,scribe:code-quality" {
 				t.Errorf("Skills = %q; want scribe:prose,scribe:code-quality", got)
+			}
+			if spec.Segment != segmentcolor.Landing {
+				t.Errorf("Segment = %q; want %q", spec.Segment, segmentcolor.Landing)
 			}
 		})
 	}

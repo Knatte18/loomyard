@@ -38,7 +38,7 @@ Discovering the command surface is done via `lyx reed`, `lyx reed <subcommand>`,
 
 Two sanctioned deviations from the pure black-box rule, mirroring the main suite's S6 controlled-exception note:
 
-- **(a) Direct `tmux -L <socket>` verbs** (`kill-server`, `list-panes`, `ls`) are allowed **only** for crash simulation and layout/stray-state verification, where `<socket>` is taken from `lyx reed status` output (its JSON result carries `session`, `socket`, and `strands[]` with `guid`/`name`/`paneId`/`live`).
+- **(a) Direct `tmux -L <socket>` verbs** (`kill-server`, `list-panes`, `ls`, `display`) are allowed **only** for crash simulation and layout/stray-state verification, where `<socket>` is taken from `lyx reed status` output (its JSON result carries `session`, `socket`, and `strands[]` with `guid`/`name`/`paneId`/`live`).
 - **(b) Scenario M7 (attach) is operator-assisted** -- see M7 below.
 
 ## Fingerprint header
@@ -337,9 +337,9 @@ a plain-text line has no such corruption risk.
 
 ### M19 -- Always-on Selvage pane
 
-**Goal:** "With the overlay up, find the always-on Selvage pane, confirm it is a genuine shell prompt, confirm the rendered identity text lives in the status-line instead, and prove Selvage survives everything the strand lifecycle throws at it — including the removal of the session's last strand and the death of its own process."
+**Goal:** "With the overlay up, find the always-on Selvage pane, confirm it is a genuine shell prompt, confirm the strand bar lives in the status bar instead, and prove Selvage survives everything the strand lifecycle throws at it — including the removal of the session's last strand and the death of its own process."
 
-**Watch:** After `lyx reed up`, the session holds one extra pane beyond any strands: Selvage, physically **bottom**-most, whose **visible content** is a bare **shell prompt** — a JSON error body, an empty row, or anything other than an idle shell prompt is a `FAIL`, not cosmetics (the pane merely being *alive* is not enough). Separately, `tmux -L <socket> display-message -p '#{status-left}'` (controlled exception) must show the rendered identity text (default template names the repo and the hub) — a blank or stale readback there is a `FAIL` in its own right. `lyx reed status` must never list Selvage as a strand, and `up`'s `strands` count must exclude it.
+**Watch:** After `lyx reed up`, the session holds one extra pane beyond any strands: Selvage, physically **bottom**-most, whose **visible content** is a bare **shell prompt** — a JSON error body, an empty row, or anything other than an idle shell prompt is a `FAIL`, not cosmetics (the pane merely being *alive* is not enough). Separately, `tmux -L <socket> display-message -p '#{status}'` (controlled exception) must read `2`, and the attached client (operator-assisted, as in M7) must show the `VIEW` button on line 1 and the worktree's session on line 2 — a missing bar there is a `FAIL` in its own right. `lyx reed status` must never list Selvage as a strand, and `up`'s `strands` count must exclude it.
 Then: add a strand, remove it — the session **survives** on Selvage alone (a session with no permanent pane would die with its last strand;
 that teardown is the footgun this feature exists to remove) and a follow-up `add` still works, with Selvage back at its configured `selvage.height_rows` (default 1) and still bottom-most.
 Finally kill Selvage's own shell process (`tmux -L <socket> list-panes -t "=<session>:" -F "#{pane_id} #{pane_pid}"` to find it, then kill that pid — controlled exception;
@@ -480,6 +480,23 @@ Run the identical `add --if-absent` a second time while that strand's pane is st
 Kill the strand's pane (not `remove` -- the strand must stay tracked, only its pane must die) and run the identical `add --if-absent` a third time: it must relaunch the SAME guid rather than adding a second strand, and `status` must then report that guid `live: true`.
 Finally, `add --if-absent` naming a HIDDEN strand (added via the engine with `anchor: hidden`, since the CLI has no hidden-add path of its own) must add nothing and report the hidden strand's own guid.
 A second strand appearing under the same name at any point, a guid that changes across the reopen, or a `live: false` after the third add's relaunch is a `FAIL`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### M28 -- Switch steps a client through the sessions
+
+**Covers:** reed
+
+**Goal:** "Prove `lyx reed switch --next` and `--prev` move an attached client to the neighbouring session of the server, wrapping at either end."
+
+**Watch:** bring two worktrees' sessions up (`up` in each, so one server holds both sessions) and attach a client to the first (operator-assisted, as in M7).
+Read the server's socket path with `tmux -L <socket> display -p '#{socket_path}'` (controlled exception) and the client's name with `tmux -L <socket> list-clients -F '#{client_name}'`, then run `lyx reed switch --next --socket <path> --client <name> --tmux <tmux binary>`.
+It must print nothing and exit 0, and the client must land on the neighbouring session, in the order the sessions were created.
+Run `--next` again to see the client wrap to the first session, then `--prev` to wrap back.
+Run it once with neither flag and once with both: each must exit non-zero with a JSON error.
+A client that does not move, a move to a non-neighbouring session, output on success, or a bare-flag run that exits 0 is a `FAIL`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

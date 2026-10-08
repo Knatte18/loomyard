@@ -67,11 +67,12 @@ func Command() *cobra.Command {
 			}
 			slug := args[0]
 
-			if err := ideengine.Spawn(l, slug); err != nil {
+			keybindings, err := ideengine.Spawn(l, slug)
+			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), fmt.Sprintf("spawn failed: %v", err)))
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), output.Ok(cmd.OutOrStdout(), map[string]any{}))
+			clihelp.SetExit(cmd.Context(), output.Ok(cmd.OutOrStdout(), map[string]any{"keybindings": keybindings}))
 			return nil
 		},
 	}

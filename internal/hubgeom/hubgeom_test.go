@@ -53,6 +53,10 @@ func TestReedGeometry(t *testing.T) {
 
 			got := reedGeometry(l, tt.isPrime)
 
+			if got.SpawnOrder == nil {
+				t.Error("ReedGeometry(l).SpawnOrder = nil, want the hub's spawn-order teller")
+			}
+
 			if got.NameSlug != tt.wantSlug {
 				t.Errorf("ReedGeometry(l).NameSlug = %q; want %q", got.NameSlug, tt.wantSlug)
 			}
@@ -81,9 +85,6 @@ func TestReedGeometry(t *testing.T) {
 			}
 			if want := fabricengine.HubLogsDir(hub); got.LogsDir != want {
 				t.Errorf("ReedGeometry(l).LogsDir = %q; want %q", got.LogsDir, want)
-			}
-			if got.RepoName != l.RepoName {
-				t.Errorf("ReedGeometry(l).RepoName = %q; want %q", got.RepoName, l.RepoName)
 			}
 			if got.WorktreeName != l.WorktreeName {
 				t.Errorf("ReedGeometry(l).WorktreeName = %q; want %q", got.WorktreeName, l.WorktreeName)

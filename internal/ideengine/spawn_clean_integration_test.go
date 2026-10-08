@@ -78,7 +78,7 @@ func checkTaskPairStaysClean(t *testing.T, h *hubforge.Hub, slug, gitignore stri
 	excludePath := sharedExcludePath(t, worktreeDir)
 	excludeBefore, _ := os.ReadFile(excludePath)
 
-	if err := Spawn(l, slug); err != nil {
+	if _, err := Spawn(l, slug); err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
 
@@ -120,7 +120,7 @@ func checkOverwritesTasksKeepsSettings(t *testing.T, h *hubforge.Hub, slug strin
 		t.Fatalf("write settings: %v", err)
 	}
 
-	if err := Spawn(l, slug); err != nil {
+	if _, err := Spawn(l, slug); err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
 
@@ -154,7 +154,7 @@ func checkSkipsTrackedVSCode(t *testing.T, h *hubforge.Hub, slug string, onPrime
 	excludeBefore, _ := os.ReadFile(excludePath)
 	logBuf := logcapture.Capture(t)
 
-	if err := Spawn(l, slug); err != nil {
+	if _, err := Spawn(l, slug); err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
 
@@ -197,7 +197,7 @@ func checkPrimeNameFailureOpensBareFolder(t *testing.T, h *hubforge.Hub, slug st
 	l := &lyxcwd.Location{RepoName: h.Location.RepoName, HubPath: h.Path, WorktreeName: notGit, AnchorRel: h.Location.AnchorRel}
 	logBuf := logcapture.Capture(t)
 
-	if err := Spawn(l, slug); err != nil {
+	if _, err := Spawn(l, slug); err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
 

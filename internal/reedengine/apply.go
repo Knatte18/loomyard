@@ -175,6 +175,8 @@ type applyResult struct {
 // string would then enumerate zero panes, which tmux answers by destroying
 // the session's entire pane set (see anyPlacedStrand) — with nothing of
 // reed's to lay out, there is nothing worth destroying foreign panes over.
+// Right after select-layout, on the focusing path and the SkipFocus one alike, it issues the fixed-height pins as resize-pane calls (adjusted for a title row at window row 0), so the heights hold from the apply and not only after the next resize.
+// Only the focusing path installs the window-resized hook array, and no apply signals the watchdog.
 // Both guards return a zero applyResult (Applied: false, BoxIsLive: false)
 // and nil, before any box query.
 //
@@ -229,10 +231,12 @@ func (e *Engine) applyLayoutLockedOpts(st *ReedState, live []LivePane, opts appl
 	if err := e.tmux.run("select-layout", "-t", windowTarget, layout); err != nil {
 		return applyResult{}, fmt.Errorf("select-layout: %w", err)
 	}
+	pins := e.contentPinsLocked(windowTarget, st, live, box)
+	e.runResizePinsLocked(pins)
 	if opts.SkipFocus {
 		return applyResult{Applied: true, Box: box, BoxIsLive: boxIsLive}, nil
 	}
-	e.installResizePinsLocked(windowTarget, e.fixedHeightPins(st, live, box))
+	e.installResizePinsLocked(windowTarget, pins)
 	if focus == "" {
 		return applyResult{Applied: true, Box: box, BoxIsLive: boxIsLive}, nil
 	}

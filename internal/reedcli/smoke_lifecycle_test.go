@@ -297,8 +297,8 @@ func TestSmokeLifecycle(t *testing.T) {
 				t.Errorf("orphaned strand pane %s still present after the recovering up; want it reaped", oldStrandPaneID)
 			}
 		}
-		if fields := strings.Fields(panes[0]); len(fields) < 3 || fields[2] != "0" {
-			t.Errorf("rebuilt Selvage pane row %q; want pane_top 0 — as the session's sole pane, Selvage must land at the origin or select-layout misassigns its cell", panes[0])
+		if fields := strings.Fields(panes[0]); len(fields) < 3 || fields[2] != "1" {
+			t.Errorf("rebuilt Selvage pane row %q; want pane_top 1 — as the session's sole pane, Selvage must land directly below the title row at the top of the window or select-layout misassigns its cell", panes[0])
 		}
 
 		pollProcessGone(t, oldStrandPID, 20*time.Second)

@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
@@ -125,6 +126,9 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	}
 	if !spec.Interactive || spec.NameOverride != "orch" || spec.Role != "orch" || !spec.Display.Focus {
 		t.Errorf("spec = %+v; want interactive, focused, named orch", spec)
+	}
+	if spec.Segment != segmentcolor.Coordinator || !spec.ColorByCaller {
+		t.Errorf("Segment/ColorByCaller = %q/%v; want %q/true", spec.Segment, spec.ColorByCaller, segmentcolor.Coordinator)
 	}
 	if !slices.Equal(spec.Skills, []string{"scribe:prose", "scribe:conversation", "ly:board"}) {
 		t.Errorf("Skills = %v; want the three orch skills", spec.Skills)

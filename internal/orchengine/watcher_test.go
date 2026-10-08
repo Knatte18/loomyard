@@ -32,6 +32,8 @@ type fakeSession struct {
 	clearErr   error // Returned by every ClearSession while set.
 	clearErrs  []error
 	compactErr error    // Returned by every CompactSession while set.
+	colorErr   error    // Returned by every TypeColor while set.
+	colors     int      // TypeColor calls, kept out of calls so a test of any other behavior ignores the color typing.
 	calls      []string // "send:<text>", "clear", "reload-plugins", "skills:<list>" and "compact:<focus>", in order.
 	tokenAsks  []string
 	onSend     func()
@@ -126,6 +128,11 @@ func (f *fakeSession) ClearSession(string) error {
 func (f *fakeSession) ReloadPlugins(string) error {
 	f.calls = append(f.calls, reloadPluginsCall)
 	return nil
+}
+
+func (f *fakeSession) TypeColor(string) error {
+	f.colors++
+	return f.colorErr
 }
 
 func (f *fakeSession) CompactSession(_, focus string) error {
@@ -288,10 +295,11 @@ func (e *watchEnv) reachClearing() {
 	}
 }
 
-// reachResuming continues from reachClearing until the resume prompt is sent: the plugins reload on one tick, the pointer on the next.
+// reachResuming continues from reachClearing until the resume prompt is sent: the color on one tick, the plugins reload on the next, the pointer on the one after.
 func (e *watchEnv) reachResuming() {
 	e.t.Helper()
 	e.reachClearing()
+	e.tick()
 	e.tick()
 	if st := e.state(); st.Phase != PhaseResuming {
 		e.t.Fatalf("phase = %s, want resuming", st.Phase)
@@ -509,8 +517,12 @@ func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
 	if st.Phase != PhaseResuming || st.CycleCount != 1 || st.LastHandoff != handoff {
 		t.Fatalf("state = %+v", st)
 	}
+	if e.s.colors != 2 || e.s.count(reloadPluginsCall) != 0 {
+		t.Fatalf("colors = %d calls = %v, want the color typed and no plugins reload yet", e.s.colors, e.s.calls)
+	}
+	e.tick()
 	if last := e.s.calls[len(e.s.calls)-1]; last != reloadPluginsCall {
-		t.Fatalf("last call = %q, want the plugins reload first", last)
+		t.Fatalf("last call = %q, want the plugins reload after the color", last)
 	}
 	e.tick()
 	last := e.s.calls[len(e.s.calls)-1]
@@ -569,8 +581,12 @@ func TestWatcher_ClearingTimeoutNeverTypesWhileBusy(t *testing.T) {
 	e.s.idle = true
 	e.tick()
 	st = e.state()
-	if st.Phase != PhaseResuming || st.CycleCount != 1 || st.Stuck != "" || e.s.count(reloadPluginsCall) != 1 || e.s.count("send:") != 1 {
+	if st.Phase != PhaseResuming || st.CycleCount != 1 || st.Stuck != "" || e.s.count(reloadPluginsCall) != 0 || e.s.count("send:") != 1 {
 		t.Fatalf("state = %+v calls = %v", st, e.s.calls)
+	}
+	e.tick()
+	if e.s.count(reloadPluginsCall) != 1 || e.s.count("send:") != 1 {
+		t.Fatalf("calls = %v", e.s.calls)
 	}
 	e.tick()
 	if e.s.count("send:") != 2 {
@@ -687,6 +703,7 @@ func TestWatcher_PreClearTurnEndNeverReadNorCyclesAgain(t *testing.T) {
 		t.Fatalf("phase = %s", e.state().Phase)
 	}
 	e.clock.advance(101 * time.Second)
+	e.tick() // the plugins step follows the color
 	e.tick() // the pointer is typed after the plugins step
 	sends := e.s.count("send:")
 	for i := 0; i < 3; i++ {
@@ -957,19 +974,27 @@ func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
 	e.withSkills()
 	e.reachClearing()
 	e.s.idleSeq = []bool{true, false}
-	e.tick() // clearing -> resuming, plugins typed and nothing else
+	colorsBefore := e.s.colors
+	e.tick() // clearing -> resuming, the color typed and nothing else
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPlugins || !st.ReloadTypedAt.IsZero() {
+		t.Fatalf("state = %+v, want the plugins step not yet typed", st)
+	}
+	if got := e.callsAfter("clear"); len(got) != 0 || e.s.colors != colorsBefore+1 {
+		t.Fatalf("calls after clear = %v colors = %d, want only the color typed", got, e.s.colors-colorsBefore)
+	}
+	e.tick() // the idle probe fails: nothing is typed
+	if got := e.callsAfter("clear"); len(got) != 0 {
+		t.Fatalf("typed behind a failing probe: %v", got)
+	}
+	e.s.idle = true
+	e.tick() // plugins typed on a later tick, and nothing else
 	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepSkills || !st.ReloadTypedAt.IsZero() || st.ReloadSkipsSkills {
 		t.Fatalf("state = %+v, want the skills step not yet typed", st)
 	}
 	if got := e.callsAfter("clear"); !slices.Equal(got, []string{reloadPluginsCall}) {
 		t.Fatalf("calls after clear = %v, want only the plugins reload", got)
 	}
-	e.tick() // the idle probe fails: nothing is typed
-	if got := e.callsAfter("clear"); len(got) != 1 {
-		t.Fatalf("typed behind a failing probe: %v", got)
-	}
-	e.s.idle = true
-	e.tick() // skills typed on a later tick
+	e.tick() // skills typed on the next tick
 	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepSkills || st.ReloadTypedAt.IsZero() {
 		t.Fatalf("state = %+v", st)
 	}
@@ -1056,6 +1081,7 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 			e.withSkills()
 			e.s.skillLoads = tt.loads
 			e.reachClearing()
+			e.tick() // color typed
 			e.tick() // plugins typed
 			e.tick() // skills typed
 			for _, turn := range tt.endTurns {
@@ -1102,6 +1128,7 @@ func TestWatcher_ReloadRestartRetypesOnlyTheUnconfirmedStep(t *testing.T) {
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.reachClearing()
+	e.tick() // color typed
 	e.tick() // plugins typed
 	e.tick() // skills typed
 	typedAt := e.state().ReloadTypedAt
@@ -1127,6 +1154,7 @@ func TestWatcher_ReloadRestartRetypesOnlyTheUnconfirmedStep(t *testing.T) {
 	e2 := newWatchEnv(t)
 	e2.withSkills()
 	e2.reachClearing()
+	e2.tick() // color typed and moved past
 	e2.tick() // plugins typed and moved past
 	e2.setState(func(st *State) {
 		st.ReloadStep, st.ReloadTypedAt = ReloadStepPlugins, e2.clock.now.Add(-200*time.Second)
@@ -1151,6 +1179,7 @@ func TestWatcher_ReloadRestartAroundTheRetryStep(t *testing.T) {
 		"t2": {Verified: true, Missing: []string{"ly:board"}},
 	}
 	e.reachClearing()
+	e.tick()        // color typed
 	e.tick()        // plugins typed
 	e.tick()        // skills typed
 	e.endTurn("t1") // moves to the retry step, typed on the same tick
@@ -1196,7 +1225,8 @@ func TestWatcher_ReloadReadsAnUnreadableStepAsThePointer(t *testing.T) {
 			e := newWatchEnv(t)
 			e.withSkills()
 			e.reachClearing()
-			e.tick()
+			e.tick() // color
+			e.tick() // plugins
 			e.setState(func(st *State) { st.ReloadStep, st.ReloadRetry, st.ReloadTypedAt = tt.step, tt.retry, time.Time{} })
 			e.w = e.newWatcher()
 			e.tick()
@@ -1214,8 +1244,9 @@ func TestWatcher_ReloadTypesNothingWhenIdleProbeFails(t *testing.T) {
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.reachClearing()
-	e.s.idleSeq = []bool{true, true, false, false}
-	e.tick() // clearing probe passes, plugins typed
+	e.s.idleSeq = []bool{true, true, true, false, false}
+	e.tick() // clearing probe passes, color typed
+	e.tick() // probe passes, plugins typed
 	e.tick() // probe passes, skills typed
 	e.s.events = append(e.s.events, stop("t1"))
 	e.tick() // confirmed, but the next probe fails
@@ -1239,12 +1270,13 @@ func TestWatcher_AutoCompactionReloadsPluginsThenPointer(t *testing.T) {
 	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(boundary)}
 	e.s.usage["a"] = 100
 	e.endTurn("a")
-	if st := e.state(); st.Phase != PhaseResuming || !st.CompactionBaseline.Equal(boundary) || !st.ReloadSkipsSkills || st.ReloadStep != ReloadStepPointer {
-		t.Fatalf("state = %+v, want resuming at the pointer step with the baseline at the boundary", st)
+	if st := e.state(); st.Phase != PhaseResuming || !st.CompactionBaseline.Equal(boundary) || !st.ReloadSkipsSkills || st.ReloadStep != ReloadStepPlugins {
+		t.Fatalf("state = %+v, want resuming at the plugins step with the baseline at the boundary", st)
 	}
 	if _, err := os.Stat(e.paths.RolePath); err != nil {
 		t.Errorf("role file not rendered: %v", err)
 	}
+	e.tick() // the plugins reload after the color
 	e.tick() // the pointer, with no skills step in between
 	e.endTurn("resumed")
 	if got := e.s.calls; len(got) != 2 || got[0] != reloadPluginsCall || e.s.count("skills:") != 0 {
@@ -1294,6 +1326,10 @@ func TestWatcher_AutoCompactionWaitsForIdleProbe(t *testing.T) {
 	}
 	e.s.idle = true
 	e.tick()
+	if e.s.count(reloadPluginsCall) != 0 || e.s.colors == 0 {
+		t.Fatalf("calls = %v colors = %d, want only the color typed", e.s.calls, e.s.colors)
+	}
+	e.tick()
 	if e.s.count(reloadPluginsCall) != 1 {
 		t.Fatalf("calls = %v", e.s.calls)
 	}
@@ -1332,8 +1368,8 @@ func TestWatcher_AutoCompactionReloadsOnlyAFreshBoundary(t *testing.T) {
 				t.Fatalf("baseline = %v, want it left where it was", st.CompactionBaseline)
 			}
 			e.endTurn("b")
-			if e.s.count(reloadPluginsCall) != 1 {
-				t.Fatalf("calls = %v, want the reload", e.s.calls)
+			if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPlugins {
+				t.Fatalf("state = %+v, want the reload entered at its plugins step after the color", st)
 			}
 		}},
 		{"no later turn end types nothing and keeps the baseline", func(t *testing.T, e *watchEnv, boundary time.Time) {
@@ -1460,6 +1496,7 @@ func TestWatcher_HandoffSendErrorResendsSamePathOnce(t *testing.T) {
 func TestWatcher_ResumeSendErrorResendsOnce(t *testing.T) {
 	e := newWatchEnv(t)
 	e.reachClearing()
+	e.tick() // color typed
 	e.tick() // plugins typed
 	e.s.sendErrs = []error{errBoom}
 	e.tickErr()
@@ -1474,6 +1511,7 @@ func TestWatcher_ResumeSendErrorResendsOnce(t *testing.T) {
 func TestWatcher_ResumeSendErrorButLandedNoResend(t *testing.T) {
 	e := newWatchEnv(t)
 	e.reachClearing()
+	e.tick() // color typed
 	e.tick() // plugins typed
 	e.s.sendErrs = []error{errBoom}
 	e.tickErr()
@@ -1493,6 +1531,7 @@ func TestWatcher_ClearTimeoutSendErrorResendsOnlyOncePassing(t *testing.T) {
 	e.clock.advance(101 * time.Second)
 	e.tick()
 	e.s.idle = true
+	e.tick() // color typed
 	e.tick() // plugins typed
 	e.s.sendErrs = []error{errBoom}
 	e.tickErr()
@@ -1515,6 +1554,7 @@ func TestWatcher_ClearTimeoutSendErrorResendsOnlyOncePassing(t *testing.T) {
 func TestWatcher_ResumeSendErrorWhileTurnRunningNoResend(t *testing.T) {
 	e := newWatchEnv(t)
 	e.reachClearing()
+	e.tick() // color typed
 	e.tick() // plugins typed
 	e.s.sendErrs = []error{errBoom}
 	e.tickErr()
@@ -1536,7 +1576,8 @@ func TestWatcher_RestartResumingInjectedTrueFailingThenPassingResendsOnce(t *tes
 		t.Fatal("precondition: injection persisted true")
 	}
 	e.w = e.newWatcher()
-	e.s.idleSeq = []bool{false, true}
+	// The restarted watcher's pending color probes first, then the resuming step.
+	e.s.idleSeq = []bool{false, false}
 	e.tick()
 	if e.s.count("send:") != sends {
 		t.Fatalf("re-sent behind a failing probe: %v", e.s.calls)
@@ -1580,6 +1621,7 @@ func TestWatcher_ClearErrorsUntilTimeoutResumesWithoutCounting(t *testing.T) {
 	if st.Phase != PhaseResuming || st.CycleCount != 0 {
 		t.Fatalf("state = %+v", st)
 	}
+	e.tick() // the plugins reload follows the color
 	e.tick() // the pointer follows the plugins reload
 	if !strings.HasPrefix(e.s.calls[len(e.s.calls)-1], "send:") {
 		t.Errorf("resume prompt not sent: %v", e.s.calls)
@@ -1986,6 +2028,74 @@ func TestWatcher_TickThatStartsACycleDeliversNoNotice(t *testing.T) {
 	}
 }
 
+func TestWatcher_StartTypesTheColorOnTheFirstIdleTickOnly(t *testing.T) {
+	t.Parallel()
+
+	e := newWatchEnv(t)
+	e.s.idle = false
+	e.tick()
+	if e.s.colors != 0 {
+		t.Fatalf("colors = %d, want none while the probe fails", e.s.colors)
+	}
+	e.s.idle = true
+	e.tick()
+	e.tick()
+	if e.s.colors != 1 {
+		t.Fatalf("colors = %d, want the color typed once", e.s.colors)
+	}
+	e.assertNoCalls()
+
+	// A restarted watcher types it again, which is harmless.
+	e.w = e.newWatcher()
+	e.tick()
+	if e.s.colors != 2 {
+		t.Fatalf("colors = %d, want the restarted watcher to type it again", e.s.colors)
+	}
+}
+
+func TestWatcher_ReloadTypesTheColorFirstAndAFailingColorNeverWedgesIt(t *testing.T) {
+	t.Parallel()
+
+	e := newWatchEnv(t)
+	e.reachClearing()
+	e.s.colorErr = errBoom
+	e.tick() // clearing -> resuming, the failing color typed and logged
+	if st := e.state(); st.Phase != PhaseResuming || st.ReloadStep != ReloadStepPlugins {
+		t.Fatalf("state = %+v, want the plugins step after the failed color", st)
+	}
+	if got := e.callsAfter("clear"); len(got) != 0 {
+		t.Fatalf("calls after clear = %v, want the color alone on this tick", got)
+	}
+	e.tick()
+	if got := e.callsAfter("clear"); !slices.Equal(got, []string{reloadPluginsCall}) {
+		t.Fatalf("calls after clear = %v, want the plugins reload on the next tick", got)
+	}
+}
+
+func TestWatcher_RestartMidColorStepTypesItOnceWhenIdle(t *testing.T) {
+	t.Parallel()
+
+	e := newWatchEnv(t)
+	e.reachClearing()
+	e.tick() // color typed
+	e.setState(func(st *State) { st.ReloadStep, st.ReloadTypedAt = ReloadStepColor, time.Time{} })
+	before := e.s.colors
+	e.w = e.newWatcher()
+	e.s.idle = false
+	e.tick()
+	if e.s.colors != before {
+		t.Fatalf("color typed behind a failing probe")
+	}
+	e.s.idle = true
+	e.tick()
+	if e.s.colors != before+1 {
+		t.Fatalf("colors typed = %d, want the color step typed once", e.s.colors-before)
+	}
+	if st := e.state(); st.ReloadStep != ReloadStepPlugins {
+		t.Errorf("state = %+v, want the move to the plugins step", st)
+	}
+}
+
 // TestWatcher_LogsDisagreementBetweenIdleProbeAndSessionState drives notice deliveries, whose idle probe is the one door every probe goes through.
 // Each row logs its Warn count once per disagreement, and the same ticks with the state unreadable change neither the saved State, the session calls nor the queue.
 // The log is captured process-wide, so the test does not run in parallel.
@@ -2018,6 +2128,8 @@ func TestWatcher_LogsDisagreementBetweenIdleProbeAndSessionState(t *testing.T) {
 			drive := func(stateErr error) outcome {
 				buf := logcapture.CaptureVerbose(t)
 				e := newWatchEnv(t)
+				// The start color takes the first idle probe, so it is typed before the probe sequence is scripted.
+				e.tick()
 				e.s.idleSeq, e.s.tooShort = slices.Clone(tt.idleSeq), tt.tooShort
 				e.s.sessionState, e.s.sessionStateErr = shuttleengine.SessionState{Name: tt.state, Cause: "turn"}, stateErr
 				for i := range tt.notices {

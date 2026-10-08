@@ -2,7 +2,7 @@
 // imports ONLY the standard library, internal/stencilstore, and
 // internal/stencil — never a feature package (websterengine, burlerengine, loomengine, or any
 // other).
-// Like modelspec's and tokenvocab's leaf_enforcement_test.go, this check is an ALLOWLIST: any
+// Like modelspec's leaf_enforcement_test.go, this check is an ALLOWLIST: any
 // import outside the allowed set fails the test, so a future stray dependency is caught with no
 // list maintenance required.
 

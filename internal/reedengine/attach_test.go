@@ -14,6 +14,7 @@ package reedengine
 import (
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -105,6 +106,16 @@ func wantBareAttachArgv(e *Engine) []string {
 	return []string{"-L", e.Socket(), "attach-session", "-t", "=" + e.SessionName()}
 }
 
+// wantZoomBracketedChain builds the expected chained argv: the bare attach, the zoom record entry, then middle (the select-layout and the pins, each led by its ";"), then the zoom restore entry.
+func wantZoomBracketedChain(e *Engine, middle ...string) []string {
+	out := append(wantBareAttachArgv(e), ";")
+	out = append(out, zoomRecordChainArgv(fakeStrandWindow)...)
+	out = append(out, ";")
+	out = append(out, middle...)
+	out = append(out, ";")
+	return append(out, zoomRestoreChainArgv(fakeStrandWindow)...)
+}
+
 func assertBareArgv(t *testing.T, e *Engine, got []string) {
 	t.Helper()
 	want := wantBareAttachArgv(e)
@@ -119,8 +130,8 @@ func assertBareArgv(t *testing.T, e *Engine, got []string) {
 }
 
 // TestAttachArgv_ChainedArgv pins the chained argv on a known-good pre-flight, element by element:
-// the five bare elements, the one-character ";" separator (compared exactly, so "\\;" cannot pass),
-// select-layout/-t/target, then the layout planLayout itself would produce for the told box.
+// the five bare elements, the one-character ";" separator (compared exactly, so "\\;" cannot pass) and the zoom record entry.
+// Then select-layout/-t/target, the layout planLayout itself would produce for the told box, and the zoom restore entry.
 // The box comes from the client's told cols/rows, never from a live display-message query and never from the configured size;
 // the #{status} readback is the reserved-row source (off reserves zero rows, on one, a non-negative integer that many),
 // clamped to rows-1 so a multi-line status bar cannot drive the planned height to zero or below.
@@ -154,7 +165,7 @@ func TestAttachArgv_ChainedArgv(t *testing.T) {
 			if err != nil {
 				t.Fatalf("planLayout() unexpected error: %v", err)
 			}
-			want := append(wantBareAttachArgv(e), ";", "select-layout", "-t", fakeStrandWindow, wantLayout)
+			want := wantZoomBracketedChain(e, "select-layout", "-t", fakeStrandWindow, wantLayout)
 			if !slices.Equal(got, want) {
 				t.Errorf("AttachArgv() = %v, want %v", got, want)
 			}
@@ -192,12 +203,13 @@ func TestAttachArgv_ChainGate(t *testing.T) {
 
 			got := e.AttachArgv(cols, rows)
 
+			assertStrandOptionsReasserted(t, fake)
 			if tt.wantBare {
 				assertBareArgv(t, e, got)
 				return
 			}
-			if len(got) != 10 {
-				t.Fatalf("AttachArgv() = %v, want the 10-element chained argv (this case must not suppress)", got)
+			if !slices.Contains(got, "select-layout") {
+				t.Fatalf("AttachArgv() = %v, want the chained argv (this case must not suppress)", got)
 			}
 		})
 	}
@@ -253,10 +265,6 @@ func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 //testtiming:keep pins one known-good AttachArgv call issuing every geometry pin itself, the status-line pin before the #{status} readback and the set-hook clear after list-panes, no pane-set mutation, reed.json left untouched, and a failing set-hook leaving the chained argv unchanged; its covering tests run this code without asserting it
 func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	e, fake := newAttachTestEngine(t, goodAttachStrands())
-	// newTestEngine's Geometry leaves WorktreeName unset; the default status-line template's
-	// {{.worktree}} marker requires it, so this case sets it so StatusLineText() succeeds and all
-	// eight set-option calls (not the six-call degraded shape) are issued.
-	e.geom.WorktreeName = "test-worktree"
 	fake.mustNotCall("select-layout", "select-pane", "kill-pane", "split-window")
 
 	stateBefore, err := LoadState(e.stateDir())
@@ -265,15 +273,17 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	}
 
 	want := e.AttachArgv(80, 24)
-	if len(want) != 10 {
-		t.Fatalf("AttachArgv() = %v, want the 10-element chained argv on this known-good script", want)
+	if !slices.Contains(want, "select-layout") {
+		t.Fatalf("AttachArgv() = %v, want the chained argv on this known-good script", want)
 	}
 
-	// The seven status-line options plus the pre-existing window-size pin.
-	const wantSetOptionCalls = 8
+	// The six bar and border pins plus the pre-existing window-size pin, the window marker and the strand pane's two options.
+	const wantSetOptionCalls = 10
 	if setOptions := fake.ArgvFor("set-option"); len(setOptions) != wantSetOptionCalls {
 		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(setOptions), wantSetOptionCalls, setOptions)
 	}
+
+	assertStrandOptionsReasserted(t, fake)
 
 	calls := fake.Calls()
 	statusPinIdx, statusReadbackIdx, listPanesIdx, firstSetHookIdx := -1, -1, -1, -1
@@ -322,6 +332,26 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	}
 }
 
+// assertStrandOptionsReasserted asserts the pre-flight marked the strand window and set the pane options on the live bound pane %1, and none on the unbound pane %2.
+func assertStrandOptionsReasserted(t *testing.T, fake *fakeTmux) {
+	t.Helper()
+	var marked, labeled bool
+	for _, argv := range fake.ArgvFor("set-option") {
+		switch {
+		case containsArg(argv, "@lyx_strands"):
+			marked = true
+		case containsArg(argv, "@strand"):
+			labeled = true
+			if !containsArg(argv, "%1") {
+				t.Errorf("@strand set with %v, want it on the bound pane %%1 only", argv)
+			}
+		}
+	}
+	if !marked || !labeled {
+		t.Errorf("set-option calls = %v, want the window marked (%v) and the bound pane labeled (%v)", fake.ArgvFor("set-option"), marked, labeled)
+	}
+}
+
 // wantChainedAttachArgv builds the exact chained argv TestAttachArgv_ChainedArgv already pins for
 // goodAttachStrands at cols/rows, so the multi-client warning tests below can assert their argv is
 // byte-identical to what the same script produces today without re-deriving the expectation.
@@ -331,10 +361,7 @@ func wantChainedAttachArgv(t *testing.T, e *Engine, cols, rows int) []string {
 	if err != nil {
 		t.Fatalf("planLayout() unexpected error: %v", err)
 	}
-	bare := wantBareAttachArgv(e)
-	out := append([]string{}, bare...)
-	out = append(out, ";", "select-layout", "-t", fakeStrandWindow, layout)
-	return out
+	return wantZoomBracketedChain(e, "select-layout", "-t", fakeStrandWindow, layout)
 }
 
 // assertChainedArgv asserts got is byte-identical to wantChainedAttachArgv(e, cols, rows).
@@ -439,4 +466,74 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 			t.Fatalf("log output = %q, want exactly 1 multi-client warning line even though the chain is suppressed, got %d", out, n)
 		}
 	})
+}
+
+// TestAttachArgv_ChainCarriesTheAdjustedPinsAfterSelectLayout pins the chain's pin tail and the hook it installs:
+// `attach-session ; <zoom record> ; select-layout ... ; resize-pane -t <pane> -y <n>` per pin, then the zoom restore, the row-0 pane taken from the physical pane order and its pin one row shorter under a title row.
+func TestAttachArgv_ChainCarriesTheAdjustedPinsAfterSelectLayout(t *testing.T) {
+	const cols, rows = 80, 24
+	strands := []Strand{
+		{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		{GUID: "child", Parent: "root", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}},
+	}
+	tests := []struct {
+		name         string
+		borderStatus string
+		listPanes    string
+		wantHeight   int
+	}{
+		{"title row with the pinned pane at row 0", "top", "%1 0 0 40 20 4321\n%2 0 20 40 20 4322\n", planCollapsedRows - 1},
+		{"title row with an unpinned pane at row 0, whatever the pin order", "top", "%2 0 0 40 20 4322\n%1 0 20 40 20 4321\n", planCollapsedRows},
+		{"no title row", "off", "%1 0 0 40 20 4321\n%2 0 20 40 20 4322\n", planCollapsedRows},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e, fake := newAttachTestEngine(t, strands)
+			fake.answerFormat("#{pane-border-status}", tt.borderStatus, nil)
+			fake.answer("list-panes", tt.listPanes, nil)
+
+			got := e.AttachArgv(cols, rows)
+
+			layoutAt := slices.Index(got, "select-layout")
+			if layoutAt == -1 {
+				t.Fatalf("AttachArgv() = %v, want a chained select-layout", got)
+			}
+			want := wantZoomBracketedChain(e, "select-layout", "-t", fakeStrandWindow, got[layoutAt+3], ";", "resize-pane", "-t", "%1", "-y", strconv.Itoa(tt.wantHeight))
+			if !slices.Equal(got, want) {
+				t.Fatalf("AttachArgv() = %v, want %v", got, want)
+			}
+			wantBody := "resize-pane -t %1 -y " + strconv.Itoa(tt.wantHeight)
+			var bodies []string
+			for _, argv := range fake.ArgvFor("set-hook") {
+				bodies = append(bodies, argv[len(argv)-1])
+			}
+			if !slices.Contains(bodies, wantBody) {
+				t.Errorf("hook entries = %v, want %q among them", bodies, wantBody)
+			}
+		})
+	}
+}
+
+// TestAttachArgv_PreflightListsPanesOnTheUnzoomedWindow pins the pre-flight's bracket: a zoomed strand window is unzoomed before the pane list the layout is planned from, and zoomed again after it, the same pane both times.
+func TestAttachArgv_PreflightListsPanesOnTheUnzoomedWindow(t *testing.T) {
+	e, fake := newAttachTestEngine(t, goodAttachStrands())
+	fake.answerFormat(zoomStateFormat, "1 %2", nil)
+
+	got := e.AttachArgv(80, 24)
+
+	if !slices.Contains(got, "select-layout") {
+		t.Fatalf("AttachArgv() = %v, want the chained argv", got)
+	}
+	var steps []string
+	for _, argv := range fake.Calls() {
+		switch {
+		case slices.Equal(argv, []string{"resize-pane", "-Z", "-t", "%2"}):
+			steps = append(steps, "zoom-toggle")
+		case callVerb(argv) == "list-panes":
+			steps = append(steps, "list-panes")
+		}
+	}
+	if len(steps) < 3 || steps[0] != "zoom-toggle" || steps[len(steps)-1] != "zoom-toggle" || slices.Index(steps, "list-panes") < 1 {
+		t.Errorf("pre-flight steps = %v, want the unzoom toggle first, the pane lists after it and the re-zoom toggle last", steps)
+	}
 }

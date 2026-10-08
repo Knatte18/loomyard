@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
@@ -44,6 +45,9 @@ func TestReworkSpec(t *testing.T) {
 	}
 	if spec.Role != "rework" {
 		t.Errorf("ReworkSpec(...).Role = %q; want %q", spec.Role, "rework")
+	}
+	if spec.Segment != segmentcolor.Webster {
+		t.Errorf("ReworkSpec(...).Segment = %q; want %q", spec.Segment, segmentcolor.Webster)
 	}
 	if spec.Interactive {
 		t.Error("ReworkSpec(...).Interactive = true; want false")

@@ -1,7 +1,7 @@
 // Package vscode generates VS Code configuration and manages VS Code-specific launch behavior for
 // worktrees.
-// It is responsible for config generation (settings.json and tasks.json), color-palette selection,
-// and launching VS Code.
+// It is responsible for config generation (settings.json and tasks.json), color-palette selection, and launching VS Code.
+// It also seeds the marked block of terminal key bindings into the user's keybindings.json (see SeedKeybindings).
 // The mill values (palette, settings keys, cmd /c code) are baked in — no external Python is read.
 //
 // Limitation: BuildWorkspace splices the prime's settings verbatim into a workspace file under _launchers/, so a relative path value (starting with ./ or ../) resolves against that file's directory, no longer against the prime's own folder.

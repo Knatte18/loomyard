@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -28,6 +29,7 @@ var discussionSkills = []string{"scribe:prose", "scribe:conversation"}
 
 // DiscussionSpec builds the shuttleengine.Spec for one discussion producer run.
 // parentName is told, never derived; an empty one renders the no-parent directive.
+// Segment is the discussion segment, because the run is the Discussion-Write phase.
 func DiscussionSpec(layout *lyxcwd.Location, stencilsDir, parentName string, cfg Config, reg modelspec.Registry, slug string, autonomous bool) (shuttleengine.Spec, error) {
 	if slug == "" {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: slug must not be empty")
@@ -82,6 +84,7 @@ func DiscussionSpec(layout *lyxcwd.Location, stencilsDir, parentName string, cfg
 		Version:     resolved.Params["version"],
 		Interactive: !autonomous,
 		Role:        discussionRole,
+		Segment:     segmentcolor.Discussion,
 		Skills:      discussionSkills,
 		Timeout:     time.Duration(cfg.DiscussionTimeoutMin) * time.Minute,
 	}, nil

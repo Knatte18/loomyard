@@ -2,8 +2,8 @@
 // the standard io.Writer-based call contract.
 // The parent "reed" command carries a PersistentPreRunE that resolves
 // cwd -> location -> config -> geometry -> *reedengine.Engine exactly once per invocation,
-// into a receiver every verb (up.go, add.go, remove.go, status.go, resume.go, attach.go,
-// statusline.go, watchdog.go) closes over, so no subcommand re-resolves geometry or config itself.
+// into a receiver every verb (up.go, add.go, remove.go, status.go, resume.go, attach.go, watchdog.go) closes over, so no subcommand re-resolves geometry or config itself.
+// The `switch` verb is the exception: it is told its socket and client on its flags, so it skips that resolution and never touches the engine.
 // The geometry step is hubgeom.ReedGeometry: this file is where the resolved Location becomes the
 // reedengine.Geometry the engine is told, and the engine never sees the Location.
 // The resolved *lyxcwd.Location is named "location" throughout, never "layout": "layout" is a live
@@ -101,13 +101,11 @@ rather than booting substrate it cannot reach.`,
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Guard: when the reed group command itself is invoked (bare listing or
-			// unknown-subcommand error path via GroupRunE), or when the watchdog daemon is
-			// invoked, skip cwd/location/config resolution entirely. The daemon is told its hub
-			// path on its own flags and must never be reached through c.eng — letting it run the
-			// normal pre-run would make it refuse to start outside a worktree and hold a geometry
-			// it must not use.
-			if cmd.Name() == "reed" || cmd.Name() == "watchdog" {
+			// Guard: skip cwd/location/config resolution entirely when the reed group command itself is invoked (bare listing or unknown-subcommand error path via GroupRunE), or when the watchdog daemon or the switch verb is invoked.
+			// The daemon is told its hub path on its own flags and must never be reached through c.eng.
+			// Letting it run the normal pre-run would make it refuse to start outside a worktree and hold a geometry it must not use.
+			// switch is told its socket and client the same way.
+			if cmd.Name() == "reed" || cmd.Name() == "watchdog" || cmd.Name() == "switch" {
 				return nil
 			}
 
@@ -154,7 +152,7 @@ rather than booting substrate it cannot reach.`,
 		},
 	}
 
-	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.statuslineCmd(), c.watchdogCmd(), c.listCmd())
+	parent.AddCommand(c.upCmd(), c.downCmd(), c.addCmd(), c.removeCmd(), c.statusCmd(), c.resumeCmd(), c.attachCmd(), c.watchdogCmd(), c.listCmd(), c.switchCmd())
 
 	return parent
 }

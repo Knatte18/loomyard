@@ -32,6 +32,7 @@ var landingshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/githubclient",
 	"github.com/Knatte18/loomyard/internal/gitrepo",
 	"github.com/Knatte18/loomyard/internal/summaryparser",
+	"github.com/Knatte18/loomyard/internal/segmentcolor",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
 	"github.com/Knatte18/loomyard/internal/stencil",
 	"github.com/Knatte18/loomyard/internal/stencilstore",

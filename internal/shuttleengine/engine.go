@@ -6,7 +6,11 @@
 
 package shuttleengine
 
-import "time"
+import (
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
+)
 
 // Outcome classifies how a shuttle run ended: a terminal classification, not an error.
 type Outcome string
@@ -159,6 +163,9 @@ type Engine interface {
 	// ModelSwitchSequence returns the key choreography that switches a live session's model (e.g. `/model <name>` typed and submitted).
 	// It lives on the seam because which command string and key sequence switch a provider's model is provider grammar.
 	ModelSwitchSequence(model string) []PaneInput
+	// ColorSequence returns the key choreography that sets a live session's display color (e.g. `/color <name>` typed and submitted), or no inputs for a provider without one or a color it has no name for.
+	// It lives on the seam because which command string and key sequence color a provider's session is provider grammar.
+	ColorSequence(color segmentcolor.Color) []PaneInput
 	// AuditForks reads the provider's on-disk record of fork subagents for a fork-authorized session (identified by sessionID).
 	// workdir is the pane's actual process cwd. Returns mechanical facts observed with no policy interpretation.
 	// Returns error (not zero ForkAudit) if the provider has no fork concept, so callers can distinguish "no forks" from "cannot audit".

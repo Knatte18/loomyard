@@ -15,7 +15,7 @@ An engine is handed the absolute paths it operates on and derives none of its ow
 
 ## Bound packages
 
-`internal/tokenvocab`, `pattern`, `buildinfo`, `standalonestate`, `shedengine`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `reedengine`, `burlerengine`, `websterengine`, `verifytree`, `cliwire`, `battenshed`, `battenrecipe`, `orchengine`, `parentreview`.
+`internal/pattern`, `buildinfo`, `standalonestate`, `shedengine`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `reedengine`, `burlerengine`, `websterengine`, `verifytree`, `cliwire`, `battenshed`, `battenrecipe`, `orchengine`, `parentreview`.
 
 ## Detached runners
 

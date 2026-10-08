@@ -94,14 +94,14 @@ func TestReconcileAll(t *testing.T) {
 			},
 		},
 		{
-			name:  "stale reed header block is replaced by status_line and selvage",
+			name:  "stale reed header block is replaced by selvage",
 			seed:  map[string]string{"reed": "tmux: C:\\tools\\tmux.exe\nheader:\n  template: \"\"\n  height_rows: 1\n"},
 			apply: true,
 			want: map[string]moduleWant{
 				"reed": {
 					applied:         true,
 					removedAll:      []string{"header.template", "header.height_rows"},
-					addedAll:        []string{"status_line.template", "selvage.height_rows"},
+					addedAll:        []string{"selvage.height_rows"},
 					fileNotContains: []string{"header:"},
 				},
 			},

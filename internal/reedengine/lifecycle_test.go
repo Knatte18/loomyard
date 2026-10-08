@@ -8,6 +8,7 @@
 package reedengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
 func guids(strands []Strand) []string {
@@ -26,7 +28,7 @@ func guids(strands []Strand) []string {
 	return out
 }
 
-// TestUp_BootValidation pins the eager boot validation of Up: a bad status-line template or an invalid watchdog value
+// TestUp_BootValidation pins the eager boot validation of Up: a segment color outside the palette or an invalid watchdog value
 // fails with an error naming it before any tmux round trip (validation ORDER, not just existence),
 // while "on" and "off" do not trip the watchdog check (the fixture's nonexistent tmux binary is expected to fail Up() past this point,
 // so the assertion is only that the error is NOT the watchdog validation error).
@@ -38,9 +40,9 @@ func TestUp_BootValidation(t *testing.T) {
 		notErr    string // an error text Up must not fail with
 	}{
 		{
-			name:      "BadStatusLineTemplate",
-			configure: func(cfg *Config) { cfg.StatusLine.Template = "{{.bogus}}" },
-			wantErr:   "unfilled top-level marker",
+			name:      "SegmentColorOutsidePalette",
+			configure: func(cfg *Config) { cfg.SegmentColors = map[string]string{"review": "crimson"} },
+			wantErr:   `segment_colors.review: color "crimson" is not in the palette`,
 		},
 		{name: "InvalidWatchdog_Empty", configure: func(cfg *Config) { cfg.Watchdog = "" }, wantErr: "invalid watchdog value"},
 		{name: "InvalidWatchdog_1", configure: func(cfg *Config) { cfg.Watchdog = "1" }, wantErr: "invalid watchdog value"},
@@ -77,6 +79,37 @@ func TestUp_BootValidation(t *testing.T) {
 				t.Errorf("Up() error = %q, want the check to pass", err)
 			}
 		})
+	}
+}
+
+// TestStatus_ReportsSegmentColor pins that Status carries each strand's resolved segment color, and none for a strand recorded without a segment.
+func TestStatus_ReportsSegmentColor(t *testing.T) {
+	e := newTestEngine(t)
+	fake := installFakeTmux(t, e)
+	fake.answer("display-message", "$0|4321|1787000000", nil)
+	fake.answer("list-sessions", "worktree\n", nil)
+	fake.answer("list-panes", "%1 0 0 100 3 4322\n%2 0 3 100 20 4323\n", nil)
+	st := &ReedState{
+		SelvagePaneID:  "%1",
+		PaneGeneration: PaneGeneration{SessionName: "worktree", TmuxSessionID: "$0", ServerPID: "4321", Created: "1787000000"},
+		Strands: []Strand{
+			{GUID: "colored", Name: "colored", PaneID: "%2", Segment: "review"},
+			{GUID: "plain", Name: "plain"},
+		},
+	}
+	if err := SaveState(e.stateDir(), st); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	result, err := e.Status()
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if got := result.Strands[0].Color; got != segmentcolor.Orange {
+		t.Errorf("Status color of the review strand = %q, want orange", got)
+	}
+	if got := result.Strands[1].Color; got != "" {
+		t.Errorf("Status color of the strand without a segment = %q, want none", got)
 	}
 }
 
@@ -384,5 +417,44 @@ func TestDown_ListsEveryWindowsPanesOverACorruptState(t *testing.T) {
 	}
 	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
 		t.Errorf("stat %s error = %v; want the state file deleted", statePath, err)
+	}
+}
+
+// TestWithRevivalFirst_RevivesEarlierWorktreesThenRerunsTheStep pins the revival helper's sequence for a told list of fake revive functions:
+// the predecessors run in list order, the booter's own entry and later entries are never called, a failing predecessor is skipped, and the step runs again once with the skip set.
+func TestWithRevivalFirst_RevivesEarlierWorktreesThenRerunsTheStep(t *testing.T) {
+	e := newTestEngine(t)
+	e.geom.WorktreeName = "booter"
+	var revived []string
+	entry := func(name string, err error) ReviveEntry {
+		return ReviveEntry{Worktree: name, Revive: func() (bool, error) {
+			revived = append(revived, name)
+			return err == nil, err
+		}}
+	}
+	e.geom.SpawnOrder = func() ([]ReviveEntry, error) {
+		return []ReviveEntry{entry("first", nil), entry("broken", errors.New("boom")), entry("second", nil), entry(e.geom.WorktreeName, nil), entry("later", nil)}, nil
+	}
+
+	var skipsSeen []bool
+	err := e.withRevivalFirst(e.withOpLock, func() error {
+		skipsSeen = append(skipsSeen, e.skipRevival)
+		if e.skipRevival {
+			return nil
+		}
+		return errReviveFirst
+	})
+
+	if err != nil {
+		t.Fatalf("withRevivalFirst() = %v, want nil", err)
+	}
+	if want := []string{"first", "broken", "second"}; !slices.Equal(revived, want) {
+		t.Errorf("revived = %v, want %v", revived, want)
+	}
+	if want := []bool{false, true}; !slices.Equal(skipsSeen, want) {
+		t.Errorf("step ran with skips %v, want %v", skipsSeen, want)
+	}
+	if e.skipRevival {
+		t.Error("the skip is still set after the step, want it cleared")
 	}
 }

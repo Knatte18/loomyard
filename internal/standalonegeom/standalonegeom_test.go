@@ -125,19 +125,11 @@ func TestReedGeometry(t *testing.T) {
 		// board-shaped path, so this row is explicit rather than derived.
 		t.Errorf("ReedGeometry().LogsDir = %q; want %q (stateDir joined with \"logs\")", got.LogsDir, want)
 	}
-	if want := "distinctive-repo-name"; got.RepoName != want {
-		t.Errorf("ReedGeometry().RepoName = %q; want %q", got.RepoName, want)
-	}
 	if got.HubPath != stateDir {
 		t.Errorf("ReedGeometry().HubPath = %q; want %q (stateDir)", got.HubPath, stateDir)
 	}
 	if want := "distinctive-repo-name"; got.WorktreeName != want {
 		t.Errorf("ReedGeometry().WorktreeName = %q; want %q", got.WorktreeName, want)
-	}
-	// Standalone mode has no worktree distinct from the repository it targets, so the two
-	// tokens must render the same string byte for byte.
-	if got.WorktreeName != got.RepoName {
-		t.Errorf("ReedGeometry().WorktreeName = %q; want == RepoName %q", got.WorktreeName, got.RepoName)
 	}
 }
 
@@ -182,17 +174,10 @@ func TestReedGeometry_SessionNameSanitizesTheReadableHalf(t *testing.T) {
 			if want := reedengine.SanitizeSessionName(c.basename) + "-" + hash8; got.SessionName != want {
 				t.Errorf("ReedGeometry(%q).SessionName = %q; want %q (reedengine.SanitizeSessionName + hash8)", target, got.SessionName, want)
 			}
-			// RepoName is the status-line's display token, not a tmux target, so it stays raw.
-			if got.RepoName != c.basename {
-				t.Errorf("ReedGeometry(%q).RepoName = %q; want %q (raw basename)", target, got.RepoName, c.basename)
-			}
-			// WorktreeName takes the identical raw expression, so a routine repository name
-			// must not be sanitized or normalized out from under either token.
+			// WorktreeName is a display value, not a tmux target, so a routine repository name
+			// must not be sanitized or normalized out from under it.
 			if got.WorktreeName != c.basename {
 				t.Errorf("ReedGeometry(%q).WorktreeName = %q; want %q (raw basename)", target, got.WorktreeName, c.basename)
-			}
-			if got.WorktreeName != got.RepoName {
-				t.Errorf("ReedGeometry(%q).WorktreeName = %q; want == RepoName %q", target, got.WorktreeName, got.RepoName)
 			}
 		})
 	}

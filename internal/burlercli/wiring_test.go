@@ -30,10 +30,10 @@
 // What this file does NOT assert: the reed geometry's field values. burlerengine.Engine exposes only
 // Run and holds its geom, cfg, and stencilsDir unexported; shuttleengine.Runner holds reed, engine,
 // anchorPath, worktreeRoot, and cfg unexported with no geometry accessor. Both are different packages
-// from this in-package test, so SocketKey, SessionName, LogsDir, RepoName, and HubPath are
+// from this in-package test, so SocketKey, SessionName, LogsDir and HubPath are
 // unreachable from here, and none of the three reporting fields (c.mode, c.stateDir, c.stencilsDir)
-// encodes them. Those five values are already pinned one layer down, by TestReedGeometry in
-// internal/standalonegeom/standalonegeom_test.go, which asserts all eight fields against told
+// encodes them. Those values are already pinned one layer down, by TestReedGeometry in
+// internal/standalonegeom/standalonegeom_test.go, which asserts the geometry's fields against told
 // parameters. What that leaves uncovered by any test is the *linkage* -- that wireStandalone calls
 // standalonegeom.ReedGeometry with this invocation's own target, stateDir, and hash8 rather than some
 // other triple. No seam exposes it, so it is a review obligation rather than an assertion, recorded

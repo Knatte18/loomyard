@@ -139,7 +139,7 @@ func (e *Engine) SendKey(guid, key string) error {
 
 // SetWaitMark sets guid's pane wait mark to label, started at start, or clears it when label is empty.
 // The mark is two pane user options, @lyx_wait (the label) and @lyx_wait_start (epoch seconds),
-// which the status line renders and which die with the pane.
+// which the status bar renders on the strand's button and which die with the pane.
 // It is display only: nothing is persisted,
 // and a failure is returned for the caller to log.
 func (e *Engine) SetWaitMark(guid, label string, start time.Time) error {

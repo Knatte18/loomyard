@@ -14,10 +14,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pattern"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// The agent-name roles of a round's two halves.
+// The agent-name roles of a round's two halves, both specs naming the review segment.
 const (
 	burlerReviewRole = "burler-review"
 	burlerFixRole    = "burler-fix"
@@ -112,6 +113,7 @@ func (p *Profile) roundHalves(opts RunOpts, reviewPrompt, fixPrompt string) (rev
 			Version:       opts.Review.Version,
 			Timeout:       opts.Timeout,
 			Role:          burlerReviewRole,
+			Segment:       segmentcolor.Review,
 			Skills:        burlerSkills,
 			Round:         opts.Round,
 			ForkSubagents: p.ClusterFan != "",
@@ -135,6 +137,7 @@ func (p *Profile) roundHalves(opts RunOpts, reviewPrompt, fixPrompt string) (rev
 			Version:     opts.Fix.Version,
 			Timeout:     opts.Timeout,
 			Role:        burlerFixRole,
+			Segment:     segmentcolor.Review,
 			Skills:      burlerSkills,
 			Round:       opts.Round,
 		},

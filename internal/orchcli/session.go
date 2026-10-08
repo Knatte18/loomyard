@@ -68,6 +68,21 @@ func (s runnerSession) ReloadPlugins(guid string) error {
 	return s.runner.ReloadPlugins(guid)
 }
 
+// TypeColor types the palette color reed resolved for the orch strand through Runner.TypeColor;
+// a strand with no color types nothing.
+func (s runnerSession) TypeColor(guid string) error {
+	strands, err := s.strands.Strands()
+	if err != nil {
+		return err
+	}
+	strand, tracked := trackedStrand(strands, guid)
+	if !tracked || strand.Color == "" {
+		return nil
+	}
+	logger.Debug("orch: type strand color", "strandGUID", guid, "color", string(strand.Color))
+	return s.runner.TypeColor(guid, strand.Color)
+}
+
 // LoadSkills delegates to Runner.LoadSkills,
 // which types the one-turn load message into the pane through tmux.
 func (s runnerSession) LoadSkills(guid string, skills []string) error {

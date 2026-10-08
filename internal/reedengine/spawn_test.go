@@ -580,48 +580,90 @@ func TestLaunchScriptDoesNotSurviveAFailedLaunch(t *testing.T) {
 //
 //testtiming:keep pins the split-window argv ending with -F #{pane_id} with no trailing shell command, which would make tmux exec a non-login shell, and the two title commands running in order between the split and the send-keys; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
-	e := newTestEngine(t)
-	withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
-	fake := launchFake(t, e, nil)
-	st := &ReedState{SelvagePaneID: "%selvage"}
-	st.Strands = append(st.Strands, Strand{GUID: "new", Name: "tst:slug:worker"})
-	s := &st.Strands[0]
+	tests := []struct {
+		name      string
+		strand    Strand
+		wantLabel string
+		// wantColorCall is the @strand_color call after @strand: a set to the tmux color, or the unset.
+		wantColorCall string
+	}{
+		{
+			name:          "ColoredTaskStrand",
+			strand:        Strand{GUID: "new", Name: "tst:slug:worker", Segment: "review"},
+			wantLabel:     "worker",
+			wantColorCall: "set-option -p -t %new @strand_color colour208",
+		},
+		{
+			name:          "PrimeNameNoSegment",
+			strand:        Strand{GUID: "new", Name: "tst:worker"},
+			wantLabel:     "worker",
+			wantColorCall: "set-option -p -u -t %new @strand_color",
+		},
+		{
+			name:          "NumberedRoleSegmentWithoutConfigKey",
+			strand:        Strand{GUID: "new", Name: "tst:slug:burler-review-2", Segment: "unconfigured"},
+			wantLabel:     "burler-review-2",
+			wantColorCall: "set-option -p -u -t %new @strand_color",
+		},
+		{
+			name:          "UnparseableName",
+			strand:        Strand{GUID: "new", Name: "plainname", Segment: "plan"},
+			wantLabel:     "plainname",
+			wantColorCall: "set-option -p -t %new @strand_color cyan",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			withInjectedExecutablePath(t, func() (string, error) { return "/opt/lyx/bin/lyx", nil })
+			fake := launchFake(t, e, nil)
+			st := &ReedState{SelvagePaneID: "%selvage"}
+			st.Strands = append(st.Strands, tt.strand)
+			s := &st.Strands[0]
 
-	if err := e.launchStrandLocked(st, s, "claude --continue"); err != nil {
-		t.Fatalf("launchStrandLocked: %v", err)
-	}
+			if err := e.launchStrandLocked(st, s, "claude --continue"); err != nil {
+				t.Fatalf("launchStrandLocked: %v", err)
+			}
 
-	splitArgs := fake.LastArgv("split-window")
-	if len(splitArgs) < 2 {
-		t.Fatalf("split-window argv = %v, too short to check its tail", splitArgs)
-	}
-	last, secondLast := splitArgs[len(splitArgs)-1], splitArgs[len(splitArgs)-2]
-	if secondLast != "-F" || last != "#{pane_id}" {
-		t.Errorf("split-window argv = %v, want it to end with \"-F\" \"#{pane_id}\" and nothing after -- a trailing shell-command argument would make tmux exec a non-login shell that skips the pane's profile", splitArgs)
-	}
+			splitArgs := fake.LastArgv("split-window")
+			if len(splitArgs) < 2 {
+				t.Fatalf("split-window argv = %v, too short to check its tail", splitArgs)
+			}
+			last, secondLast := splitArgs[len(splitArgs)-1], splitArgs[len(splitArgs)-2]
+			if secondLast != "-F" || last != "#{pane_id}" {
+				t.Errorf("split-window argv = %v, want it to end with \"-F\" \"#{pane_id}\" and nothing after -- a trailing shell-command argument would make tmux exec a non-login shell that skips the pane's profile", splitArgs)
+			}
 
-	var order []string
-	for _, call := range fake.Calls() {
-		switch call[0] {
-		case "split-window":
-			order = append(order, "split-window")
-		case "set-option", "select-pane", "send-keys":
-			order = append(order, strings.Join(call, " "))
-		}
-	}
-	if len(order) < 4 {
-		t.Fatalf("recorded calls = %v, want split-window, set-option, select-pane, send-keys", order)
-	}
-	if order[0] != "split-window" {
-		t.Errorf("first call = %q, want split-window", order[0])
-	}
-	if want := "set-option -p -t %new allow-set-title off"; order[1] != want {
-		t.Errorf("second call = %q, want %q", order[1], want)
-	}
-	if want := "select-pane -t %new -T tst:slug:worker"; order[2] != want {
-		t.Errorf("third call = %q, want %q", order[2], want)
-	}
-	if !strings.HasPrefix(order[3], "send-keys") {
-		t.Errorf("fourth call = %q, want send-keys after the title commands", order[3])
+			var order []string
+			for _, call := range fake.Calls() {
+				switch call[0] {
+				case "split-window":
+					order = append(order, "split-window")
+				case "set-option", "select-pane", "send-keys":
+					order = append(order, strings.Join(call, " "))
+				}
+			}
+			if len(order) < 6 {
+				t.Fatalf("recorded calls = %v, want split-window, set-option, select-pane, the two strand options, send-keys", order)
+			}
+			if order[0] != "split-window" {
+				t.Errorf("first call = %q, want split-window", order[0])
+			}
+			if want := "set-option -p -t %new allow-set-title off"; order[1] != want {
+				t.Errorf("second call = %q, want %q", order[1], want)
+			}
+			if want := "select-pane -t %new -T " + tt.strand.Name; order[2] != want {
+				t.Errorf("third call = %q, want %q", order[2], want)
+			}
+			if want := "set-option -p -t %new @strand " + tt.wantLabel; order[3] != want {
+				t.Errorf("fourth call = %q, want %q", order[3], want)
+			}
+			if order[4] != tt.wantColorCall {
+				t.Errorf("fifth call = %q, want %q", order[4], tt.wantColorCall)
+			}
+			if !strings.HasPrefix(order[5], "send-keys") {
+				t.Errorf("sixth call = %q, want send-keys after the title and strand option commands", order[5])
+			}
+		})
 	}
 }

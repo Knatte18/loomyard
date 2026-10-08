@@ -25,6 +25,10 @@ import (
 // Exported so that cli_test.go in the idecli package can swap it.
 var CodeLauncher = vscode.Launch
 
+// KeybindingsPath is the injectable seam that names the user's VS Code keybindings.json.
+// It defaults to vscode.UserKeybindingsPath and is exported so that tests in other packages can point it at a temporary file.
+var KeybindingsPath = vscode.UserKeybindingsPath
+
 // Spawn regenerates a worktree's interactive .vscode/ chain on every call and launches VS Code.
 // It keeps .vscode/ out of git through info/exclude and never writes a .gitignore;
 // a tracked .vscode/tasks.json is left alone with a warning, and the launch still happens.
@@ -32,7 +36,9 @@ var CodeLauncher = vscode.Launch
 // When slug names the prime, Spawn writes the hub workspace file, whose settings carry the prime's .vscode/settings.json, and launches that file instead;
 // every error on that path is returned wrapped with its step, never degraded to the bare folder.
 // A failure to resolve the prime's name is logged and degrades to the bare-folder path.
-func Spawn(l *lyxcwd.Location, slug string) error {
+// Before launching it seeds the lyx block of terminal key bindings into the user's VS Code keybindings.json and returns the outcome beside the error;
+// a skipped seed never fails the spawn.
+func Spawn(l *lyxcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 	worktreeDir, color, primeName, primeResolved := resolveSpawnTarget(l, slug, targetUnknown)
 
 	// Resolve both binary paths the generated folderOpen chain stamps in absolute.
@@ -42,19 +48,30 @@ func Spawn(l *lyxcwd.Location, slug string) error {
 	claudePath, _ := exec.LookPath("claude")
 
 	if err := writeVSCodeConfig(l, worktreeDir, slug, color, lyxPath, claudePath, vscode.TaskChainInteractive); err != nil {
-		return err
+		return vscode.KeybindingsResult{}, err
 	}
+
+	keybindings := seedKeybindings()
 
 	openDir := filepath.Join(worktreeDir, l.AnchorRel)
 	if primeResolved && slug == primeName {
 		workspacePath, err := writePrimeWorkspace(l, primeName, openDir)
 		if err != nil {
-			return err
+			return keybindings, err
 		}
-		return CodeLauncher(workspacePath)
+		return keybindings, CodeLauncher(workspacePath)
 	}
 
-	return CodeLauncher(openDir)
+	return keybindings, CodeLauncher(openDir)
+}
+
+// seedKeybindings seeds the user's keybindings.json through the KeybindingsPath seam; a path it cannot resolve is a skip.
+func seedKeybindings() vscode.KeybindingsResult {
+	keybindingsPath, err := KeybindingsPath()
+	if err != nil {
+		return vscode.KeybindingsResult{Outcome: vscode.KeybindingsSkipped, Reason: fmt.Sprintf("resolve the keybindings path: %v", err)}
+	}
+	return vscode.SeedKeybindings(keybindingsPath)
 }
 
 // SpawnDriven opens VS Code on a driven pair's task folder, wired to attach to the child run's own reed session.

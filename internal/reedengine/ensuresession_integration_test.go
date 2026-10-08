@@ -50,7 +50,6 @@ func newColdScratchEngine(t *testing.T) *Engine {
 		PaneCwd:       tmpDir,
 		WorktreeRoot:  tmpDir,
 		LogsDir:       filepath.Join(hub, "logs"),
-		RepoName:      "test-repo",
 		WorktreeName:  filepath.Base(tmpDir),
 		HubPath:       hub,
 		NameShortname: "tc",
