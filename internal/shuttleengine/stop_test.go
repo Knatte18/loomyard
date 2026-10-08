@@ -119,6 +119,63 @@ func TestStop_FailedRecordWriteRemovesNothingAndRestoresTheHandle(t *testing.T) 
 	}
 }
 
+// TestStopStrand_UnrecordableStopRemovesNothing covers the guid form's record that cannot be read or rewritten.
+// The read row calls stopRecorded because FindRun skips an unreadable record, so only a record that turns unreadable after the scan reaches that refusal.
+func TestStopStrand_UnrecordableStopRemovesNothing(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		corrupt func(t *testing.T, runDir string)
+	}{
+		{name: "unreadable_record", corrupt: func(t *testing.T, runDir string) {
+			if err := os.WriteFile(filepath.Join(runDir, runStateFileName), []byte("{not json"), 0o644); err != nil {
+				t.Fatalf("corrupt run.json: %v", err)
+			}
+		}},
+		{name: "unwritable_record", corrupt: func(t *testing.T, runDir string) {
+			if _, _, err := loadRunState(runDir); err != nil {
+				t.Fatalf("loadRunState: %v", err)
+			}
+			if err := os.Chmod(runDir, 0o555); err != nil {
+				t.Fatalf("make run dir read-only: %v", err)
+			}
+			t.Cleanup(func() { os.Chmod(runDir, 0o755) })
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fake := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}}}
+			fx := newFixture(t, fake, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
+			runDir := seedAttachRun(t, fx.RunRoot, "run-1", seedAttachRunOpts{
+				strandGUID: "strand-1", outputFiles: []string{filepath.Join(fx.RunRoot, "out.md")}, outcome: runOutcomeRunning, includeOutcome: true,
+			})
+			tt.corrupt(t, runDir)
+			before, err := os.ReadFile(filepath.Join(runDir, runStateFileName))
+			if err != nil {
+				t.Fatalf("read run.json: %v", err)
+			}
+
+			if err := fx.Runner.stopRecorded(runDir, "strand-1"); err == nil {
+				t.Fatal("stopRecorded() error = nil; want the record failure")
+			}
+
+			if len(fake.RemoveStrandCalls) != 0 {
+				t.Errorf("RemoveStrand calls = %v; want none when the stop cannot be recorded", fake.RemoveStrandCalls)
+			}
+			after, err := os.ReadFile(filepath.Join(runDir, runStateFileName))
+			if err != nil {
+				t.Fatalf("read run.json: %v", err)
+			}
+			if string(after) != string(before) {
+				t.Errorf("run.json = %s; want it untouched: %s", after, before)
+			}
+		})
+	}
+}
+
 // TestStopStrand_GuidWithNoRunRecordIsRemovedByStrandAlone covers the guid form for a strand shuttle never recorded.
 func TestStopStrand_GuidWithNoRunRecordIsRemovedByStrandAlone(t *testing.T) {
 	t.Parallel()
