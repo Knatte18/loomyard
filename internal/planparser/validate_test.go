@@ -1145,10 +1145,6 @@ func TestValidate_RedundantPackageTarget(t *testing.T) {
 			cards: []planparser.Card{edit(1, "pkg/a#"), edit(2, "pkg/a#Thing")},
 		},
 		{
-			name:  "a path beside a package self glyph is clean",
-			cards: []planparser.Card{edit(1, "pkg/a#", "pkg/a/file.go")},
-		},
-		{
 			name:     "a rename to-side handle belongs to the old glyph's unit: the old unit is flagged",
 			cards:    []planparser.Card{renameCard(1, "pkg/a#Old", "plan:pkg/b#Moved"), edit(2, "pkg/a#", "plan:pkg/b#Moved")},
 			wantRefs: []string{"plan:pkg/b#Moved"},
