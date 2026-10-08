@@ -134,8 +134,12 @@
 // Segment color: Spec.Segment names the loom segment the spawning module gives its role, and Runner.start forwards it to reed, which resolves the segment's palette color on the strand it returns.
 // After startup confirms the provider ready and before the skill load, start plays Engine.ColorSequence for that color into the strand's pane;
 // an engine without a color command, a strand without a color and a spec with ColorByCaller type nothing.
-// A failed play is logged and never fails the launch, since the color is display only.
-// Runner.TypeColor plays the same sequence into a live shuttle strand for a caller that colors its own session.
+// The play then waits, at most colorSettleAttempts pane reads, until the provider has consumed the command:
+// the pane classifies StartupReady and the input box (InputBoxReader) no longer holds the command,
+// so the next step never finds the command still sitting in the box.
+// A command still in the box after the last read is submitted again through the verified send's extra Enters.
+// A failed play and an unconfirmed command are logged and never fail the launch, since the color is display only.
+// Runner.TypeColor plays the same sequence, with the same wait, into a live shuttle strand for a caller that colors its own session.
 // The palette-to-command mapping is provider grammar and lives in the engine.
 //
 // Skill loading: Spec.Skills names provider-neutral skills that shuttle loads into a fresh session, all in one turn, before the prompt.
