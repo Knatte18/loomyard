@@ -107,6 +107,25 @@ func TestAcceptAuditCmd_BatchClearsFabricReference(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{"--batch", "2"}); code == 0 {
 		t.Fatalf("second accept-audit --batch 2 = 0; want a refusal, output: %s", out.String())
 	}
+
+	// A batch that committed keeps its commits when every recorded command only reads.
+	loaded.Batches[3] = &websterengine.BatchState{
+		Slug: "report", Kind: "fork", StartSHA: head, Terminal: true, Status: "failed",
+		Digest:      &websterengine.Digest{Status: "failed", HeadSHA: head},
+		Uncheckable: []string{"fabric-reference: ran a fabric-referencing command (\"cat ../x-records/log | grep needle\")"},
+	}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, loaded); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	gitkit.CommitFile(t, fx.Worktree, "later.txt", "later", "the batch's commit")
+
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{"--batch", "3"}); code != 0 {
+		t.Fatalf("accept-audit --batch 3 over a committed read-only batch = %d; want 0, output: %s", code, out.String())
+	}
+	if !strings.Contains(out.String(), "lyx webster recover-batch 3") {
+		t.Errorf("output missing the recover-batch next step; got %q", out.String())
+	}
 }
 
 // TestAcceptAuditCmd_Refusals proves a suspect path that moved since the run recorded it refuses with its way forward and leaves state.json byte-identical:

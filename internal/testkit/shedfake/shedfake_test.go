@@ -152,6 +152,30 @@ func TestBurlerRunner_LastEntryRepeats(t *testing.T) {
 	if len(seen) != 4 || seen[0] != 0 || seen[3] != 3 {
 		t.Errorf("DuringRun indices = %v; want 0..3", seen)
 	}
+
+	// ProbeRound and Resume script the same way, and unscripted answer a round with neither half live.
+	live := burlerengine.LiveRound{Review: burlerengine.LiveHalf{State: burlerengine.HalfLive}}
+	probing := &BurlerRunner{LiveRounds: []burlerengine.LiveRound{live}, ProbeErrs: []error{nil, first}, ResumeResults: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}}}
+	for i, wantErr := range []error{nil, first, first} {
+		got, err := probing.ProbeRound(burlerengine.Profile{}, burlerengine.RunOpts{Round: "1"})
+		if got != live || !errors.Is(err, wantErr) {
+			t.Errorf("ProbeRound call %d = %+v, %v; want %+v, %v", i, got, err, live, wantErr)
+		}
+	}
+	res, err := probing.Resume(burlerengine.Profile{}, burlerengine.RunOpts{}, live)
+	if res.Outcome != shuttleengine.OutcomeDone || err != nil || probing.ProbeCalls != 3 || len(probing.GotProbeOpts) != 3 || probing.ResumeCalls != 1 || probing.GotLive[0] != live {
+		t.Errorf("Resume() = %+v, %v with ProbeCalls %d, ResumeCalls %d, GotLive %+v; want done, nil, 3, 1, [%+v]", res, err, probing.ProbeCalls, probing.ResumeCalls, probing.GotLive, live)
+	}
+	unscripted := &BurlerRunner{}
+	if got, err := unscripted.ProbeRound(burlerengine.Profile{}, burlerengine.RunOpts{}); got != (burlerengine.LiveRound{}) || err != nil {
+		t.Errorf("unscripted ProbeRound() = %+v, %v; want the zero LiveRound and nil", got, err)
+	}
+
+	// StrandRemover records the guids it is asked to remove and answers Err.
+	remover := &StrandRemover{Err: first}
+	if err := remover.RemoveStrandIfLive("g1"); !errors.Is(err, first) || len(remover.Removed) != 1 || remover.Removed[0] != "g1" {
+		t.Errorf("RemoveStrandIfLive() = %v with Removed %v; want %v and [g1]", err, remover.Removed, first)
+	}
 }
 
 func TestMergeShuttle_ScriptsByCallOrder(t *testing.T) {

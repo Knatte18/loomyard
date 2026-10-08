@@ -231,12 +231,21 @@ var wordingClaims = []stencilClaims{
 		{must: "`decision`", why: "the review format names the decision class"},
 		{must: "`consistency`", why: "the review format names the consistency class"},
 	}},
-	{"burler-template-round-orchestrator.md", BurlerTemplateRoundOrchestrator, []claim{
-		{must: "Sequencing rule", why: "the orchestrator states the sequencing rule between its two jobs"},
-		{must: "fully written to", why: "the review file is fully written before the fix job starts"},
-		{must: "before you touch", why: "the review is saved before the orchestrator touches a target file"},
+	{"burler-template-review-orchestrator.md", BurlerTemplateReviewOrchestrator, []claim{
+		{must: "never edit, create, or delete a target file", why: "the reviewer never touches a target file"},
+		{must: "you never fix a finding", why: "the reviewer records findings and the fixer fixes them"},
+		{must: "is the review file `{{.review_path}}` and nothing else", why: "the reviewer's write surface is the review file only, in every fix scope"},
+	}},
+	{"burler-template-fix-orchestrator.md", BurlerTemplateFixOrchestrator, []claim{
+		{must: "lyx burler await-review {{.ready_marker_path}}", why: "the fixer waits for the review through the wait verb on the told marker"},
+		{must: "with the Bash tool's `timeout` set to 300000", why: "the wait verb's cap exceeds the default Bash tool timeout, so the fixer raises it"},
+		{must: "you edit no file and run no mutating git command", section: "## Sequencing rule", why: "the fixer touches nothing until the review is ready"},
+		{must: "you never write the review file", why: "the review is the reviewer's file"},
 	}},
 	{"burler-step-3-fix.md", BurlerStep3Fix, []claim{
+		{must: "`Disputed` section", why: "a finding with a false premise is disputed in the fixer-report, not fixed"},
+		{must: "the finding id and the evidence", why: "a dispute carries the finding id and the evidence that contradicts the premise"},
+		{must: "only for a factually wrong premise", why: "severity, size, cost or rubric disagreement never justify a dispute"},
 		{must: "not whether it gets fixed", why: "every finding is fixed, severity decides only the order"},
 		{must: "never push", why: "the fixer commits to code source and never pushes"},
 		{must: "nothing fixed", why: "the fixer report states when nothing was fixed"},

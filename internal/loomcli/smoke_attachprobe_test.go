@@ -89,21 +89,48 @@ func (e *shellLaunchEngine) ParseEvents(data []byte) ([]shuttleengine.Event, err
 	return []shuttleengine.Event{{Kind: shuttleengine.EventStop, Raw: data}}, nil
 }
 
-// refusingBurlerRunner fails the test if a round is ever run through it. It stands in for the
-// burlerengine round this producer must NOT start while an equivalent one is still alive.
-type refusingBurlerRunner struct {
-	t *testing.T
+// probingBurlerRunner is a shedadapters.BurlerRunner whose ProbeRound probes each half through the real shuttleengine.Runner, as burlerengine.Engine does, and whose Resume waits on the two live halves.
+// Run fails the test: it stands in for the burlerengine round this producer must NOT start while an equivalent one is still alive.
+type probingBurlerRunner struct {
+	t       *testing.T
+	runner  *shuttleengine.Runner
+	timeout time.Duration
 }
 
-func (r refusingBurlerRunner) Run(_ burlerengine.Profile, _ burlerengine.RunOpts) (burlerengine.Result, error) {
-	r.t.Error("burlerengine round was started while an equivalent live run existed; want the producer to attach to it instead")
+func (r probingBurlerRunner) Run(_ burlerengine.Profile, _ burlerengine.RunOpts) (burlerengine.Result, error) {
+	r.t.Error("burlerengine round was started while an equivalent live run existed; want the producer to resume it instead")
 	return burlerengine.Result{}, nil
 }
 
-// TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning starts a real, live shuttle run whose
-// declared output files are a burler round's own review/fixer-report pair, then calls
-// BurlerProducer.Call against the same run directory and asserts it attached to that run rather than
-// starting a second one -- and that the live run's own artifacts were left where it wrote them.
+func (r probingBurlerRunner) ProbeRound(p burlerengine.Profile, _ burlerengine.RunOpts) (burlerengine.LiveRound, error) {
+	probe := func(outputPath string) (burlerengine.LiveHalf, error) {
+		run, found, err := r.runner.ProbeGated(shuttleengine.Spec{OutputFiles: []string{outputPath}, Timeout: r.timeout}, nil)
+		if err != nil || !found {
+			return burlerengine.LiveHalf{}, err
+		}
+		return burlerengine.LiveHalf{State: burlerengine.HalfLive, Handle: run}, nil
+	}
+	review, err := probe(p.ReviewPath)
+	if err != nil {
+		return burlerengine.LiveRound{}, err
+	}
+	fix, err := probe(p.FixerReportPath)
+	return burlerengine.LiveRound{Review: review, Fix: fix}, err
+}
+
+func (r probingBurlerRunner) Resume(_ burlerengine.Profile, _ burlerengine.RunOpts, live burlerengine.LiveRound) (burlerengine.Result, error) {
+	for _, half := range []burlerengine.LiveHalf{live.Review, live.Fix} {
+		result, err := half.Handle.Wait()
+		if err != nil || result.Outcome != shuttleengine.OutcomeDone {
+			return burlerengine.Result{Outcome: result.Outcome}, err
+		}
+	}
+	return burlerengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
+}
+
+// TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning starts two real, live shuttle runs, one declaring a burler round's review and one its fixer-report.
+// It then calls BurlerProducer.Call against the same run directory and asserts it resumed those runs rather than starting a second pair.
+// It also asserts the live runs' own artifacts were left where they wrote them.
 func TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning(t *testing.T) {
 	tmuxBinaryPath(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
@@ -140,23 +167,27 @@ func TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning(t *testing.T) 
 	}
 	runner := shuttleengine.NewRunner(reedEngine, &shellLaunchEngine{quietSeconds: 3}, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
-	liveSpec := shuttleengine.Spec{
-		Prompt:      "smoke: stand in for a live burler round",
-		OutputFiles: []string{reviewPath, fixerReportPath},
-		Role:        "burler",
-		Round:       "1",
-		Timeout:     2 * time.Minute,
+	for _, half := range []struct{ role, outputPath string }{{"burler-review", reviewPath}, {"burler-fix", fixerReportPath}} {
+		live, err := runner.Start(shuttleengine.Spec{
+			Prompt:      "smoke: stand in for a live burler half",
+			OutputFiles: []string{half.outputPath},
+			Role:        half.role,
+			Round:       "1",
+			Timeout:     2 * time.Minute,
+		})
+		if err != nil {
+			t.Fatalf("start the live %s stand-in run: %v", half.role, err)
+		}
+		t.Cleanup(func() { _, _ = reedEngine.RemoveStrand(live.StrandGUID(), false) })
 	}
-	live, err := runner.Start(liveSpec)
-	if err != nil {
-		t.Fatalf("start the live stand-in run: %v", err)
-	}
-	t.Cleanup(func() { _, _ = reedEngine.RemoveStrand(live.StrandGUID(), false) })
 
 	producer, err := shedadapters.NewBurlerProducer(
 		"Webster-Burler",
-		refusingBurlerRunner{t: t},
-		runner,
+		shedadapters.BurlerDeps{
+			Runner:     probingBurlerRunner{t: t, runner: runner, timeout: 2 * time.Minute},
+			Remover:    burlerengine.NewReedStrandRemover(reedEngine),
+			AnchorPath: loc.AnchorPath(),
+		},
 		burlerengine.Profile{Rubric: "smoke rubric", FixScope: burlerengine.FixScopeOverlay},
 		burlerengine.RunOpts{Timeout: 2 * time.Minute},
 		runDir,

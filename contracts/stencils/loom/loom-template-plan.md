@@ -65,6 +65,12 @@ Each card is the smallest change that:
 4. **Greps for reworded messages** — a card that changes a user-visible message or error text greps the repository for the old text, and every test asserting it joins that card's targets.
    A stale exact-string assertion then fails on the card that reworded it, under that card's own gate, not at the plan-level gate.
 
+The plan runs strictly in card order, and the Card Index lists the cards in that order: a card never depends on anything a later card does.
+`{{.specs_dir}}/loom/loom-plan-spec.md`'s "Plan vs. schedule" section holds the rule.
+
+A card that needs a corpus or a fixture takes it from committed test data in the tree, created by an earlier card where it does not exist yet, never from the live files of other worktrees or the fabric repo.
+`card-fabric-reference` in `{{.specs_dir}}/loom/loom-plan-spec.md` names what the plan gate refuses.
+
 ### On-disk layout
 
 `00-overview.md` + one `NN-<card-slug>.md` per card. `NN` is zero-padded and equals the card's flat heading number `N`;

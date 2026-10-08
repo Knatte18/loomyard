@@ -346,7 +346,7 @@ func TestValidateCmd_BatchesFlag(t *testing.T) {
 	cost := batcher.NewCost("pair", batcher.CostParams{
 		Budget:   1e9,
 		MaxCards: 2,
-		Weights:  batcher.Weights{StartupContext: 1000},
+		Weights:  batcher.Weights{MasterBase: 1000},
 	})
 
 	for _, tc := range []struct {

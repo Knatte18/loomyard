@@ -18,11 +18,14 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -192,7 +195,35 @@ func planFixtureInvalidFormat(t *testing.T, anchorPath, worktreeRoot string) *lo
 	}
 
 	return &loomCLI{env: shedrecipe.Env{
-		PlanIndex:    planglyph.NewIndex(),
+		PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
+		AnchorPath:   anchorPath,
+		WorktreeRoot: worktreeRoot,
+	}}
+}
+
+// fabricReferenceCommand is a command that reaches a sibling worktree of the fabric repo, the shape card-fabric-reference refuses in a plan's verify: section.
+var fabricReferenceCommand = "cat " + fabricengine.RecordsWorktree(&lyxcwd.Location{HubPath: "/hub", WorktreeName: "task"}) + "/_lyx/plan.md"
+
+// fabricReferencePlanFixture writes a language: none plan under <anchorPath>/_lyx/plan/ whose verify: section runs fabricReferenceCommand, and returns a *loomCLI wired with anchorPath and worktreeRoot.
+func fabricReferencePlanFixture(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+	t.Helper()
+
+	plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
+		Approved: true,
+		Language: "none",
+		Sections: []plankit.Section{{Heading: "verify:", Body: fabricReferenceCommand}},
+		Cards: []plankit.Card{{
+			Number:  1,
+			Slug:    "validate-fixture",
+			Summary: "a minimal fixture card",
+			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"fixture-output.txt"}}},
+			Intent:  "minimal fixture card for validate-plan tests.",
+			Commit:  "1: validate-fixture",
+		}},
+	})
+
+	return &loomCLI{env: shedrecipe.Env{
+		PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
 	}}
@@ -227,7 +258,7 @@ func glyphRepoPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget, 
 	})
 
 	return &loomCLI{env: shedrecipe.Env{
-		PlanIndex:    planglyph.NewIndex(),
+		PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
 	}}
@@ -243,6 +274,8 @@ type planParityCase struct {
 	build    func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI
 	wantGate parityVerdict
 	wantCLI  parityVerdict
+	// wantFinding, when set, is a substring both the gate's findings and the verb's envelope must carry.
+	wantFinding string
 }
 
 // TestGateParity_PlanGate drives NewPlanGate and the validate-plan verb, flag-absent mode only, over
@@ -288,6 +321,16 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantCLI:  verdictStuck,
 		},
 		{
+			// FabricReference puts a command that reaches the fabric repo in the verify: section: the gate and the verb both report card-fabric-reference.
+			name: "FabricReference",
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				return fabricReferencePlanFixture(t, anchorPath, worktreeRoot)
+			},
+			wantGate:    verdictStuck,
+			wantCLI:     verdictStuck,
+			wantFinding: "card-fabric-reference",
+		},
+		{
 			// NoPlanDirectory is the one expected divergence the Gate Self-Check Parity Invariant's
 			// own rewrite carves out: it binds the two sides to the same package FUNCTION, which both
 			// still call here -- planglyph.ValidateFormat -- and the divergence lives strictly in the
@@ -300,7 +343,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 			// rather than folded into the pv == cv comparison every other fixture uses.
 			name: "NoPlanDirectory",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
-				return &loomCLI{env: shedrecipe.Env{AnchorPath: anchorPath, WorktreeRoot: worktreeRoot, PlanIndex: planglyph.NewIndex()}}
+				return &loomCLI{env: shedrecipe.Env{AnchorPath: anchorPath, WorktreeRoot: worktreeRoot, PlanIndex: planglyph.NewIndex(fabricengine.NewReferenceRule())}}
 			},
 			wantGate: verdictStuck,
 			wantCLI:  verdictError,
@@ -355,7 +398,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 			worktreeRoot := t.TempDir()
 			c := tc.build(t, anchorPath, worktreeRoot)
 
-			gate := loomshed.NewPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, planglyph.NewIndex())
+			gate := loomshed.NewPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))
 			result, err := gate()
 			pv := producerVerdict(result, err)
 
@@ -376,6 +419,9 @@ func TestGateParity_PlanGate(t *testing.T) {
 			}
 			if cv != tc.wantCLI {
 				t.Errorf("fixture %q: CLI verdict = %q; want %q", tc.name, cv, tc.wantCLI)
+			}
+			if tc.wantFinding != "" && (!strings.Contains(result.Findings, tc.wantFinding) || !strings.Contains(out.String(), tc.wantFinding)) {
+				t.Errorf("fixture %q: want %q in both the gate findings %q and the verb output %q", tc.name, tc.wantFinding, result.Findings, out.String())
 			}
 		})
 	}
@@ -474,10 +520,10 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 	}
 }
 
-// reworkParityFixture writes a one-card language: go plan under anchorPath, a new generation whose card is numbered cardNumber (with first_card: cardNumber above 1) and creates newpkg#Bar, also using uses when it is non-empty, and returns a *loomCLI whose committed-file seam serves a one-card generation (card 1 creating sub#Foo) as the plan at HEAD -- or nothing at all when committed is false.
+// reworkParityFixture writes a one-card language: go plan under anchorPath, a new generation whose card is numbered cardNumber (with first_card: cardNumber above 1) and creates newpkg#Bar, also using uses when it is non-empty and carrying verify as its verify: section when that is non-empty, and returns a *loomCLI whose committed-file seam serves a one-card generation (card 1 creating sub#Foo) as the plan at HEAD -- or nothing at all when committed is false.
 // The told number is therefore 2.
 // It is duplicated from internal/loomshed/gates_test.go's seedReworkGlyphPlan.
-func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumber int, uses string, committed bool) *loomCLI {
+func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumber int, uses, verify string, committed bool) *loomCLI {
 	t.Helper()
 	var usesTargets []string
 	if uses != "" {
@@ -487,11 +533,16 @@ func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumb
 	if cardNumber > 1 {
 		firstCard = cardNumber
 	}
+	var sections []plankit.Section
+	if verify != "" {
+		sections = []plankit.Section{{Heading: "verify:", Body: verify}}
+	}
 	plankit.Write(t, planparser.PlanDir(anchorPath), plankit.Plan{
 		Approved:  true,
 		Language:  "go",
 		FirstCard: firstCard,
 		Framing:   "Framing.",
+		Sections:  sections,
 		Cards: []plankit.Card{{
 			Number:  cardNumber,
 			Slug:    "new-card",
@@ -521,7 +572,7 @@ func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumb
 		}
 	}
 	return &loomCLI{env: shedrecipe.Env{
-		PlanIndex:    planglyph.NewIndex(),
+		PlanIndex:    planglyph.NewIndex(fabricengine.NewReferenceRule()),
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
 		Rework: loomshed.PRReworkDeps{ReadCommitted: func(rel string) ([]byte, bool, error) {
@@ -538,22 +589,26 @@ func TestGateParity_ReworkPlanGate(t *testing.T) {
 		name       string
 		cardNumber int
 		uses       string
+		verify     string
 		committed  bool
 		want       parityVerdict
+		// wantFinding, when set, is a substring both the gate's findings and the verb's envelope must carry.
+		wantFinding string
 	}{
-		{"WholePlanFromToldCard", 2, "", true, verdictDone},
-		{"FirstCardMismatch", 1, "", true, verdictStuck},
-		{"CardBlocking", 2, "sub#Missing", true, verdictStuck},
-		{"NothingCommitted", 2, "", false, verdictError},
+		{"WholePlanFromToldCard", 2, "", "", true, verdictDone, ""},
+		{"FirstCardMismatch", 1, "", "", true, verdictStuck, ""},
+		{"CardBlocking", 2, "sub#Missing", "", true, verdictStuck, ""},
+		{"FabricReference", 2, "", fabricReferenceCommand, true, verdictStuck, "card-fabric-reference"},
+		{"NothingCommitted", 2, "", "", false, verdictError, ""},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			anchorPath := t.TempDir()
 			worktreeRoot := t.TempDir()
 			plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
-			c := reworkParityFixture(t, anchorPath, worktreeRoot, tt.cardNumber, tt.uses, tt.committed)
+			c := reworkParityFixture(t, anchorPath, worktreeRoot, tt.cardNumber, tt.uses, tt.verify, tt.committed)
 
-			result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, planglyph.NewIndex(), c.env.Rework.ReadCommitted)()
+			result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()), c.env.Rework.ReadCommitted)()
 			pv := producerVerdict(result, err)
 
 			var out bytes.Buffer
@@ -565,6 +620,9 @@ func TestGateParity_ReworkPlanGate(t *testing.T) {
 			}
 			if pv != tt.want {
 				t.Errorf("gate verdict = %q; want %q", pv, tt.want)
+			}
+			if tt.wantFinding != "" && (!strings.Contains(result.Findings, tt.wantFinding) || !strings.Contains(out.String(), tt.wantFinding)) {
+				t.Errorf("want %q in both the gate findings %q and the verb output %q", tt.wantFinding, result.Findings, out.String())
 			}
 		})
 	}

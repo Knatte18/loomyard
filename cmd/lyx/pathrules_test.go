@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
+	"github.com/Knatte18/loomyard/internal/burlermarker"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -91,6 +92,13 @@ var pathRules = []pathRule{
 	{name: "battencli.RunLock", class: classTransient, path: func(l *lyxcwd.Location) string { return battencli.RunLock(l, "slug") }},
 	{name: "battencli.StatusLock", class: classTransient, path: func(l *lyxcwd.Location) string { return battencli.StatusLock(l, "slug") }},
 	{name: "battencli.PrimeRunLock", class: classTransient, path: battencli.PrimeRunLock},
+	{name: "burlermarker.Path", class: classTransient, path: func(l *lyxcwd.Location) string {
+		marker, err := burlermarker.Path(l.AnchorPath(), l.AnchorPath(), filepath.Join(lyxdirs.LyxDirName, "reviews", "x-review.md"))
+		if err != nil {
+			panic(err)
+		}
+		return marker
+	}},
 
 	// HubLogsDir is hub-anchored through the board, so one reed server per hub resolves to one place.
 	{name: "fabricengine.HubLogsDir", class: classHub, path: func(l *lyxcwd.Location) string { return fabricengine.HubLogsDir(l.HubPath) }},

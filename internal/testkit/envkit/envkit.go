@@ -144,6 +144,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		DescriptionPath:    filepath.Join(dir, "description.md"),
 		Shuttle:            &shedfake.Shuttle{},
 		Burler:             &shedfake.BurlerRunner{},
+		BurlerRemover:      &shedfake.StrandRemover{},
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 			return websterengine.RunResult{}, nil
 		},

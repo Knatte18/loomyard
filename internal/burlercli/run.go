@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/burlermarker"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -75,11 +76,13 @@ func decodeProfile(data []byte) (burlerengine.Profile, error) {
 // than via MarkFlagRequired) to route the flag error through SetExit.
 func (c *burlerCLI) runCmd() *cobra.Command {
 	var (
-		profilePath string
-		model       string
-		effort      string
-		round       string
-		timeout     time.Duration
+		profilePath  string
+		reviewModel  string
+		reviewEffort string
+		fixModel     string
+		fixEffort    string
+		round        string
+		timeout      time.Duration
 	)
 
 	cmd := &cobra.Command{
@@ -89,6 +92,11 @@ func (c *burlerCLI) runCmd() *cobra.Command {
 review, what to judge it against, and how the round is allowed to write its
 fixes — drives the round through the real shuttle substrate, and prints its
 Result as a single JSON envelope.
+
+The round starts two agents: a reviewer that writes the review file, and a
+fixer that waits for lyx to accept the review (it waits on a ready marker, whose
+path the envelope reports as readyMarkerPath) and then fixes what the reviewer
+found. The envelope reports each half's identity under review and fix.
 
 Example profile YAML:
   target:
@@ -113,9 +121,15 @@ Example profile YAML:
 Example invocation:
   lyx burler run --profile profile.yaml
 
---model/--effort override the provider's model/reasoning-effort; empty
-defers to the provider default. --timeout overrides the shuttle config's
-run-timeout; zero defers to the config default.`,
+--review-model/--review-effort and --fix-model/--fix-effort override each
+half's provider model and reasoning effort; empty defers to the provider
+default. --timeout overrides the shuttle config's run-timeout; zero defers to
+the config default.
+
+The ready marker lies under the state directory's ephemeral lyx directory at
+the review path's place relative to the reviewed root, so review-path must lie
+under the reviewed root: the anchor in hub mode, the target in standalone
+mode. A review-path outside it is refused.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
@@ -153,9 +167,16 @@ run-timeout; zero defers to the config default.`,
 				return nil
 			}
 
+			readyMarkerPath, err := burlermarker.Path(c.markerRoot, c.markerBase, profile.ReviewPath)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			profile.ReadyMarkerPath = readyMarkerPath
+
 			opts := burlerengine.RunOpts{
-				Model:   model,
-				Effort:  effort,
+				Review:  burlerengine.ModelChoice{Model: reviewModel, Effort: reviewEffort},
+				Fix:     burlerengine.ModelChoice{Model: fixModel, Effort: fixEffort},
 				Timeout: timeout,
 				Round:   round,
 			}
@@ -177,14 +198,16 @@ run-timeout; zero defers to the config default.`,
 				return nil
 			}
 
-			clihelp.SetExit(cmd.Context(), output.Ok(out, resultEnvelope(result, c.mode, c.stateDir, c.stencilsDir)))
+			clihelp.SetExit(cmd.Context(), output.Ok(out, resultEnvelope(result, readyMarkerPath, c.mode, c.stateDir, c.stencilsDir)))
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&profilePath, "profile", "", "path to the profile YAML file describing this round (required)")
-	cmd.Flags().StringVar(&model, "model", "", "provider model override; empty defers to the engine/provider default")
-	cmd.Flags().StringVar(&effort, "effort", "", "reasoning-effort override; empty defers to the provider default")
+	cmd.Flags().StringVar(&reviewModel, "review-model", "", "the reviewer's provider model override; empty defers to the engine/provider default")
+	cmd.Flags().StringVar(&reviewEffort, "review-effort", "", "the reviewer's reasoning-effort override; empty defers to the provider default")
+	cmd.Flags().StringVar(&fixModel, "fix-model", "", "the fixer's provider model override; empty defers to the engine/provider default")
+	cmd.Flags().StringVar(&fixEffort, "fix-effort", "", "the fixer's reasoning-effort override; empty defers to the provider default")
 	cmd.Flags().StringVar(&round, "round", "", "round token used to fill the strand-name template")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "wall-clock deadline before an in-progress run is classified as timed out (0 = config default)")
 
@@ -207,24 +230,36 @@ run-timeout; zero defers to the config default.`,
 // This is the third named exception to hub byte-identity: it is an output-shape-only change, no path
 // resolves differently and nothing new is written in hub mode, and the keys are additive so no
 // existing consumer breaks.
-func resultEnvelope(result burlerengine.Result, mode, stateDir, stencilsDir string) map[string]any {
+func resultEnvelope(result burlerengine.Result, readyMarkerPath, mode, stateDir, stencilsDir string) map[string]any {
 	forkCount := 0
 	if result.ForkAudit != nil {
 		forkCount = len(result.ForkAudit.Forks)
 	}
 
 	return map[string]any{
-		"outcome":              string(result.Outcome),
-		"verdict":              string(result.Verdict),
-		"reviewPath":           result.ReviewPath,
-		"fixerReportPath":      result.FixerReportPath,
-		"sessionId":            result.SessionID,
-		"strandGuid":           result.StrandGUID,
-		"lastAssistantMessage": result.LastAssistantMessage,
-		"clusterWarnings":      result.ClusterWarnings,
-		"forkCount":            forkCount,
-		"mode":                 mode,
-		"stateDir":             stateDir,
-		"stencilsDir":          stencilsDir,
+		"outcome":         string(result.Outcome),
+		"verdict":         string(result.Verdict),
+		"reviewPath":      result.ReviewPath,
+		"fixerReportPath": result.FixerReportPath,
+		"readyMarkerPath": readyMarkerPath,
+		"review":          halfEnvelope(result.Review),
+		"fix":             halfEnvelope(result.Fix),
+		"clusterWarnings": result.ClusterWarnings,
+		"forkCount":       forkCount,
+		"mode":            mode,
+		"stateDir":        stateDir,
+		"stencilsDir":     stencilsDir,
+	}
+}
+
+// halfEnvelope maps one half of a round onto its JSON object.
+// startError is empty for a half that started.
+func halfEnvelope(half burlerengine.Half) map[string]any {
+	return map[string]any{
+		"sessionId":            half.SessionID,
+		"strandGuid":           half.StrandGUID,
+		"lastAssistantMessage": half.LastAssistantMessage,
+		"runDir":               half.RunDir,
+		"startError":           half.StartError,
 	}
 }

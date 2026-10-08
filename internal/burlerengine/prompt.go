@@ -1,12 +1,8 @@
-// prompt.go composes the burler round prompt: it reads the four round prompts from stencilsDir at call time via stencilstore.Read — the orchestrator plus three instruction files, and the focus directive block when the round carries one — each with only its own marker subset, and returns the orchestrator string plus the three rendered (path, content) instruction pairs the caller (Engine.Run) writes to disk.
-// composePrompt is called only after (*Profile).validate has run, so every path field it reads is
-// already a cleaned absolute path and p.clusterLenses (when ClusterFan was set) is already
-// resolved.
-// composePrompt itself does no filesystem access beyond the directory check formatFileSet already
-// performs on each Target/Fasit path and the stencilstore.Read calls at its top — it takes the three
-// instruction paths as plain string parameters rather than the engine's Geometry, so it never gains
-// geometry awareness of its own; the caller (Engine.Run) computes the directive, the stencils
-// directory, and the three paths.
+// prompt.go composes the burler round's prompts: it reads the round prompts from stencilsDir at call time via stencilstore.Read — the reviewer and fixer orchestrators plus the explore, review and fix instruction stencils, and the focus directive block when the round carries one — each with only its own marker subset, and returns the two orchestrator strings plus the rendered (path, content) instruction pairs the caller (Engine.Run) writes to disk.
+// composePrompt is called only after (*Profile).validate has run, so every path field it reads is already a cleaned absolute path and p.clusterLenses (when ClusterFan was set) is already resolved.
+// composePrompt itself does no filesystem access beyond the directory check formatFileSet already performs on each Target/Fasit path and the stencilstore.Read calls at its top.
+// It takes the instruction paths as plain string parameters rather than the engine's Geometry, so it never gains geometry awareness of its own;
+// the caller (Engine.Run) computes the directive, the stencils directory, and the paths.
 //
 // composePrompt warns, without failing, when the explore stencil lacks the friction directive marker or the focus directive marker while a directive was computed for it.
 
@@ -25,104 +21,138 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// instructionFile is one rendered instruction asset paired with the
-// absolute path Engine.Run will write it to. composePrompt returns three
-// of these, in read order, so the caller can materialize them under a
-// fresh per-round directory before handing the shuttle only the
-// orchestrator string.
+// instructionFile is one rendered instruction asset paired with the absolute path Engine.Run will write it to.
+// composePrompt returns these so the caller can materialize them under a fresh per-round directory before handing each half's shuttle run only its orchestrator string.
 type instructionFile struct {
 	Path    string
 	Content string
 }
 
-// composePrompt builds the burler round prompt for p, returning the
-// orchestrator string and three instruction files. patternDirective is not
-// gated on target type because loomyard has no target-type classification;
-// a heuristic would risk silently dropping constraints. frictionDirective is
-// the caller-resolved Tier 2 note directive for this round -- an empty string
-// means Tier 2 is off or the read failed, and renders as nothing.
-// stencilsDir is the absolute stencils directory composePrompt reads all
-// four round prompts from via stencilstore.Read.
-// parentName is the told parent agent name the orchestrator's parent directive renders from; an empty one renders the no-parent variant.
-func composePrompt(stencilsDir, parentName string, p *Profile, patternDirective, frictionDirective, inst1Path, inst2Path, inst3Path string) (string, []instructionFile, error) {
-	roundOrchestratorTemplate, err := stencilstore.Read(stencilsDir, "burler-template-round-orchestrator")
-	if err != nil {
-		return "", nil, err
-	}
+// roundFilePaths are the absolute paths the round's four instruction files are written to.
+// The explore step is rendered once per half, since only the fixer's carries the friction directive.
+type roundFilePaths struct {
+	ReviewerExplore string
+	FixerExplore    string
+	Review          string
+	Fix             string
+}
+
+// roundPrompts is composePrompt's result: each half's orchestrator prompt, and the four instruction files in the order explore (reviewer), explore (fixer), review, fix.
+type roundPrompts struct {
+	Reviewer string
+	Fixer    string
+	Files    []instructionFile
+}
+
+// composePrompt builds the burler round prompts for p.
+// patternDirective is not gated on target type because loomyard has no target-type classification;
+// a heuristic would risk silently dropping constraints.
+// frictionDirective is the caller-resolved Tier 2 note directive for this round, carried by the fixer's explore file only since the fixer is the round's only note writer;
+// an empty string means Tier 2 is off or the read failed, and renders as nothing.
+// stencilsDir is the absolute stencils directory composePrompt reads all round prompts from via stencilstore.Read.
+// parentName is the told parent agent name the orchestrators' parent directive renders from; an empty one renders the no-parent variant.
+func composePrompt(stencilsDir, parentName string, p *Profile, patternDirective, frictionDirective string, paths roundFilePaths) (roundPrompts, error) {
 	parentDirective, err := parentdirective.Directive(stencilsDir, parentName, false)
 	if err != nil {
-		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
+		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
 	}
-	orchestratorValues := map[string]string{
-		"instruction_1_path":       inst1Path,
-		"instruction_2_path":       inst2Path,
-		"instruction_3_path":       inst3Path,
+
+	reviewerTemplate, err := stencilstore.Read(stencilsDir, "burler-template-review-orchestrator")
+	if err != nil {
+		return roundPrompts{}, err
+	}
+	reviewer, err := stencil.FillOptional(reviewerTemplate, map[string]string{
+		"instruction_1_path":       paths.ReviewerExplore,
+		"instruction_2_path":       paths.Review,
 		"review_path":              p.ReviewPath,
 		parentdirective.MarkerName: parentDirective,
-	}
-	orchestrator, err := stencil.FillOptional(roundOrchestratorTemplate, orchestratorValues, []string{parentdirective.MarkerName})
+	}, []string{parentdirective.MarkerName})
 	if err != nil {
-		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
+		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
 	}
 
-	instruction1Template, err := stencilstore.Read(stencilsDir, "burler-step-1-explore")
+	fixerTemplate, err := stencilstore.Read(stencilsDir, "burler-template-fix-orchestrator")
 	if err != nil {
-		return "", nil, err
+		return roundPrompts{}, err
 	}
-	friction.WarnIfMarkerAbsent(instruction1Template, "burler-step-1-explore", frictionDirective)
+	fixer, err := stencil.FillOptional(fixerTemplate, map[string]string{
+		"instruction_1_path":       paths.FixerExplore,
+		"review_format_path":       paths.Review,
+		"instruction_3_path":       paths.Fix,
+		"review_path":              p.ReviewPath,
+		"ready_marker_path":        p.ReadyMarkerPath,
+		parentdirective.MarkerName: parentDirective,
+	}, []string{parentdirective.MarkerName})
+	if err != nil {
+		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
+	}
+
+	exploreTemplate, err := stencilstore.Read(stencilsDir, "burler-step-1-explore")
+	if err != nil {
+		return roundPrompts{}, err
+	}
+	friction.WarnIfMarkerAbsent(exploreTemplate, "burler-step-1-explore", frictionDirective)
 	focusDirective, err := focusDirectiveBlock(stencilsDir, p.FocusDirective)
 	if err != nil {
-		return "", nil, err
+		return roundPrompts{}, err
 	}
-	warnIfFocusMarkerAbsent(instruction1Template, "burler-step-1-explore", focusDirective)
-	instruction1Values := map[string]string{
-		"pattern_directive": patternDirective,
-		friction.MarkerName: frictionDirective,
-		focusMarkerName:     focusDirective,
-		"target":            formatFileSet(p.Target),
-		"fasit":             formatFileSet(p.Fasit),
-		"rubric":            p.Rubric,
-		"tool_use_rules":    toolUseRules(p.ToolUse),
+	warnIfFocusMarkerAbsent(exploreTemplate, "burler-step-1-explore", focusDirective)
+	renderExplore := func(halfFrictionDirective string) ([]byte, error) {
+		return stencil.FillOptional(exploreTemplate, map[string]string{
+			"pattern_directive": patternDirective,
+			friction.MarkerName: halfFrictionDirective,
+			focusMarkerName:     focusDirective,
+			"target":            formatFileSet(p.Target),
+			"fasit":             formatFileSet(p.Fasit),
+			"rubric":            p.Rubric,
+			"tool_use_rules":    toolUseRules(p.ToolUse),
+		}, []string{"pattern_directive", friction.MarkerName, focusMarkerName})
 	}
-	instruction1, err := stencil.FillOptional(instruction1Template, instruction1Values, []string{"pattern_directive", friction.MarkerName, focusMarkerName})
+	reviewerExplore, err := renderExplore("")
 	if err != nil {
-		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
+		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
+	}
+	fixerExplore, err := renderExplore(frictionDirective)
+	if err != nil {
+		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
 	}
 
-	instruction2Template, err := stencilstore.Read(stencilsDir, "burler-step-2-review")
+	reviewTemplate, err := stencilstore.Read(stencilsDir, "burler-step-2-review")
 	if err != nil {
-		return "", nil, err
+		return roundPrompts{}, err
 	}
-	instruction2Values := map[string]string{
+	review, err := stencil.Fill(reviewTemplate, map[string]string{
 		"cluster_rules": clusterRulesBlock(p),
 		"review_path":   p.ReviewPath,
 		"prior_rounds":  priorRoundsBlock(p),
-	}
-	instruction2, err := stencil.Fill(instruction2Template, instruction2Values)
+	})
 	if err != nil {
-		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
+		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
 	}
 
-	instruction3Template, err := stencilstore.Read(stencilsDir, "burler-step-3-fix")
+	fixTemplate, err := stencilstore.Read(stencilsDir, "burler-step-3-fix")
 	if err != nil {
-		return "", nil, err
+		return roundPrompts{}, err
 	}
-	instruction3Values := map[string]string{
+	fix, err := stencil.Fill(fixTemplate, map[string]string{
 		"fix_scope_rules":   fixScopeRules(p),
 		"review_path":       p.ReviewPath,
 		"fixer_report_path": p.FixerReportPath,
-	}
-	instruction3, err := stencil.Fill(instruction3Template, instruction3Values)
+	})
 	if err != nil {
-		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
+		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
 	}
 
-	files := []instructionFile{
-		{Path: inst1Path, Content: string(instruction1)},
-		{Path: inst2Path, Content: string(instruction2)},
-		{Path: inst3Path, Content: string(instruction3)},
-	}
-	return string(orchestrator), files, nil
+	return roundPrompts{
+		Reviewer: string(reviewer),
+		Fixer:    string(fixer),
+		Files: []instructionFile{
+			{Path: paths.ReviewerExplore, Content: string(reviewerExplore)},
+			{Path: paths.FixerExplore, Content: string(fixerExplore)},
+			{Path: paths.Review, Content: string(review)},
+			{Path: paths.Fix, Content: string(fix)},
+		},
+	}, nil
 }
 
 // focusDirectiveBlock renders the focus-directive stencil for focusPath, the value injected as the explore step's optional focus_directive marker.
@@ -189,12 +219,10 @@ func formatFileSet(fs FileSet) string {
 	return b.String()
 }
 
-// fixScopeRules returns the write-surface and git-discipline prose for p's
-// FixScope: FixScopeSource gets the commit-per-fix rules (working
-// tree, commit each fix individually, never push); FixScopeOverlay gets the
-// overlay rules (write surface is exactly the target paths plus the two
-// output files, no git at all — the loop owner commits). p.FixScope is
-// assumed already validated to one of the two legal values.
+// fixScopeRules returns the write-surface and git-discipline prose for p's FixScope.
+// FixScopeSource gets the commit-per-fix rules (working tree, commit each fix individually, never push).
+// FixScopeOverlay gets the overlay rules (write surface is exactly the target paths plus the fixer-report, never the review file, no git at all — the loop owner commits).
+// p.FixScope is assumed already validated to one of the two legal values.
 func fixScopeRules(p *Profile) string {
 	switch p.FixScope {
 	case FixScopeSource:
@@ -206,10 +234,10 @@ func fixScopeRules(p *Profile) string {
 			"what/why>`. Never push."
 	case FixScopeOverlay:
 		return fmt.Sprintf(
-			"Write surface: exactly the target paths plus the two output files (`%s`, `%s`) — "+
+			"Write surface: exactly the target paths plus the fixer-report (`%s`) — "+
 				"nothing else — and you run no git commands at all; the loop owner commits "+
 				"these files at the round boundary.",
-			p.ReviewPath, p.FixerReportPath)
+			p.FixerReportPath)
 	default:
 		// validate rejects every other value before composePrompt is ever
 		// called; this branch is unreachable in practice and exists only so
@@ -219,15 +247,15 @@ func fixScopeRules(p *Profile) string {
 	}
 }
 
-// toolUseRules returns the job-A evidence-gathering prose for toolUse: true
-// authorizes driving the real substrate, false restricts job A to read-only
+// toolUseRules returns the evidence-gathering prose of the explore and review steps for toolUse: true
+// authorizes driving the real substrate, false restricts those steps to read-only
 // analysis.
 func toolUseRules(toolUse bool) string {
 	if toolUse {
 		return "Drive the real substrate: build, run, test what you review — this is where " +
 			"the real defects hide."
 	}
-	return "Read-only analysis in job A: read files, run nothing."
+	return "Read-only analysis in the explore and review steps: read files, run nothing."
 }
 
 // priorRoundsBlock returns the clean-room hydration prose: the first-round
@@ -252,11 +280,11 @@ func priorRoundsBlock(p *Profile) string {
 	}
 	b.WriteString("\nForm your OWN findings first; only AFTER your review is saved may you " +
 		"read the prior rounds' files, to confirm previously-fixed behaviors have not " +
-		"regressed and to re-evaluate their deferred items.")
+		"regressed and to re-evaluate their deferred and disputed items.")
 	return b.String()
 }
 
-// clusterRulesBlock returns job A's fork-cluster prose: the plain
+// clusterRulesBlock returns the review step's fork-cluster prose: the plain
 // single-reviewer statement when p carries no ClusterFan, or the full
 // phase/spawn/consolidation discipline composed from p.clusterLenses when
 // it does. p.clusterLenses is assumed already resolved by
@@ -294,7 +322,7 @@ func clusterRulesBlock(p *Profile) string {
 		"kept finding's frontmatter with an `origin:` key (`lens:<name>` or `handler`), move " +
 		"false positives to a `## Rejected` prose section below the frontmatter with a " +
 		"one-line reason each (a rejected item never appears in `findings:`), and order kept " +
-		"findings by severity. The consolidated review is the ONE review file, and it must be " +
-		"fully written to disk before job B touches anything — consolidation is part of job A, " +
+		"findings by severity. The consolidated review is the ONE review file, and the review is " +
+		"complete once it is fully written to disk — consolidation is part of the review, " +
 		"not a separate step after it."
 }
