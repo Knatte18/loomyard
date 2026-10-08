@@ -1,6 +1,6 @@
 # PATTERN-pane-binary-resolution
 
-A strand pane reed creates resolves `lyx` to the binary that spawned it.
+A strand pane or detached `lyx` window reed creates resolves `lyx` to the binary that spawned it.
 
 - `panebin.go` owns the seam, and its call sites are `launchStrandLocked` for strand panes and `OpenWindow` for the detached `lyx` window.
 - Every shell token is emitted through `internal/shell`, per the shell-mechanics-seam entry.
