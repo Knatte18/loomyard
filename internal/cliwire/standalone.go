@@ -106,7 +106,7 @@ func (m Module) ResolveStandalone(req StandaloneRequest) (Standalone, error) {
 		// An operator who named a curated stencil set must not have it rewritten from under them --
 		// seed only the standalone DEFAULT, never an explicit override.
 		stencilsDir = standalonegeom.StencilsDir(stateDir)
-		if _, err := stencilstore.Reconcile(stencilsDir, stencils.Registry(), stencilstore.ModeFor(buildinfo.IsDev()), ""); err != nil {
+		if _, err := stencilstore.Reconcile(stencilsDir, stencils.Registry(), stencilstore.ModeFor(buildinfo.IsDev()), stencilstore.Source{}); err != nil {
 			// Unlike the root pre-run's best-effort, logged-only seed pass, nothing else will ever
 			// create this directory: a reconcile failure here is a hard error, since every prompt
 			// render would otherwise fail later with a far less informative message.
@@ -118,7 +118,7 @@ func (m Module) ResolveStandalone(req StandaloneRequest) (Standalone, error) {
 	// own doc comment for why. It logs nothing, so it stays below the durable-sink redirect without
 	// widening the log-free obligation that redirect statement carries.
 	specsDir := standalonegeom.SpecsDir(stateDir)
-	if _, err := stencilstore.Reconcile(specsDir, specs.Registry(), stencilstore.ModeFor(buildinfo.IsDev()), ""); err != nil {
+	if _, err := stencilstore.Reconcile(specsDir, specs.Registry(), stencilstore.ModeFor(buildinfo.IsDev()), stencilstore.Source{}); err != nil {
 		return Standalone{}, fmt.Errorf("%s: seed the standalone specs directory %s: %w", m.Name, specsDir, err)
 	}
 

@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // TestFabricWarp_IsAncestorOrdersWarpCommits proves IsAncestor reaches the warp checkout's history:
@@ -141,5 +142,54 @@ func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
 
 	if _, err := f.CurrentBranch(); err == nil {
 		t.Fatalf("CurrentBranch() on detached HEAD error = nil; want non-nil")
+	}
+}
+
+// TestStencilSource_BuildAncestryFollowsTheRevision pins StencilSource's three source shapes and the ancestry its Build reports.
+// The ancestry is memoized, so a second call returns the first answer.
+func TestStencilSource_BuildAncestryFollowsTheRevision(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.NewHub(t, ".")
+	prime := h.PrimeWorktree()
+	headSHA := gitkit.RevParse(t, prime, "HEAD")
+	absentSHA := strings.Repeat("a", len(headSHA))
+	sourceDir := filepath.Join(prime, "contracts", "stencils")
+
+	tests := []struct {
+		name         string
+		sourceDir    string
+		revision     string
+		wantDir      string
+		wantNoBuild  bool
+		wantAncestry stencilstore.BuildAncestry
+	}{
+		{name: "empty source dir is the zero source", revision: headSHA, wantNoBuild: true},
+		{name: "empty revision has no build func", sourceDir: sourceDir, wantDir: sourceDir, wantNoBuild: true},
+		{name: "head sha is in head", sourceDir: sourceDir, revision: headSHA, wantDir: sourceDir, wantAncestry: stencilstore.BuildInHead},
+		{name: "absent sha is not in head", sourceDir: sourceDir, revision: absentSHA, wantDir: sourceDir, wantAncestry: stencilstore.BuildNotInHead},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			source := fabricengine.StencilSource(prime, tt.sourceDir, tt.revision)
+			if source.Dir != tt.wantDir {
+				t.Errorf("Source.Dir = %q; want %q", source.Dir, tt.wantDir)
+			}
+			if tt.wantNoBuild {
+				if source.Build != nil {
+					t.Errorf("Source.Build != nil; want nil")
+				}
+				return
+			}
+			if got := source.Build(); got != tt.wantAncestry {
+				t.Errorf("first Build() = %v; want %v", got, tt.wantAncestry)
+			}
+			if got := source.Build(); got != tt.wantAncestry {
+				t.Errorf("second Build() = %v; want the memoized %v", got, tt.wantAncestry)
+			}
+		})
 	}
 }

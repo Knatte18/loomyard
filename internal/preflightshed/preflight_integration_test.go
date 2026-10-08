@@ -18,10 +18,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -121,6 +126,91 @@ func TestPreflight_Scenario(t *testing.T) {
 		outcome, _, err := p.Call(context.Background())
 		if err != nil || outcome != shedengine.Done {
 			t.Errorf("re-step Call() = (%q, %v); want Done once the worktree is clean", outcome, err)
+		}
+	})
+}
+
+// hubStampPath returns the hub's build stamp file.
+func hubStampPath(h *hubforge.Hub) string {
+	return hubreconcile.Geometry{BoardDir: h.BoardDir()}.StampPath()
+}
+
+// commitRetiredBatcherKey commits a batcher.yaml carrying the retired master_base key into the records worktree at recordsRoot.
+func commitRetiredBatcherKey(t *testing.T, recordsRoot string) {
+	t.Helper()
+
+	module, _ := configreg.Lookup("batcher")
+	content := strings.Replace(module.Template(), "orientation: 31400", "master_base: 52000", 1)
+	gitkit.CommitFile(t, recordsRoot, configengine.ConfigFileRel("batcher"), content, "fixture: retired key")
+}
+
+// TestPreflight_StaleStampReconcilesBeforeTheCleanCheck verifies a stale hub's committed retired key is removed and committed ahead of the worktree-clean check, so the row still ends Done and the stamp is written.
+func TestPreflight_StaleStampReconcilesBeforeTheCleanCheck(t *testing.T) {
+	t.Parallel()
+
+	h := setupPreflightWrapperFixture(t)
+	hubforge.AddPair(t, h, "pair-a")
+	task := h.PairCodeWorktree("pair-a")
+	commitRetiredBatcherKey(t, h.PairRecordsSibling("pair-a"))
+	p := newPreflightWith("Preflight", task, hubreconcile.Options{LockWait: 50 * time.Millisecond})
+
+	shedfake.RequireOutcome(t, p, shedengine.Done)
+
+	if data, err := os.ReadFile(configengine.ConfigFile(task, "batcher")); err != nil || strings.Contains(string(data), "master_base") {
+		t.Errorf("task batcher.yaml still carries the retired key (err %v)", err)
+	}
+	if _, err := os.Stat(hubStampPath(h)); err != nil {
+		t.Errorf("stamp after a Done row: %v; want it written", err)
+	}
+}
+
+// TestPreflight_ReconcileFailureStopsTheRowWithItsWayForward verifies an unparseable config in another pair, and a held hub lock, each stop the row Stuck with a reason naming the verb that re-enters the run, and leave no stamp.
+func TestPreflight_ReconcileFailureStopsTheRowWithItsWayForward(t *testing.T) {
+	t.Parallel()
+
+	t.Run("unparseable config in another pair", func(t *testing.T) {
+		t.Parallel()
+
+		h := setupPreflightWrapperFixture(t)
+		hubforge.AddPair(t, h, "pair-a")
+		hubforge.AddPair(t, h, "pair-b")
+		gitkit.CommitFile(t, h.PairRecordsSibling("pair-b"), configengine.ConfigFileRel("loom"), "a: [unclosed\n", "fixture: broken loom.yaml")
+		p := newPreflightWith("Preflight", h.PairCodeWorktree("pair-a"), hubreconcile.Options{LockWait: 50 * time.Millisecond})
+
+		ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
+
+		for _, want := range []string{configengine.ConfigFile(h.PairCodeWorktree("pair-b"), "loom"), `lyx config loom`, `lyx loom resume`} {
+			if !strings.Contains(ptr.Reason, want) {
+				t.Errorf("Reason = %q; want it to contain %q", ptr.Reason, want)
+			}
+		}
+		if _, err := os.Stat(hubStampPath(h)); err == nil {
+			t.Errorf("stamp written after a failed reconcile")
+		}
+	})
+
+	t.Run("held hub lock", func(t *testing.T) {
+		t.Parallel()
+
+		h := setupPreflightWrapperFixture(t)
+		geometry := hubreconcile.Geometry{BoardDir: h.BoardDir()}
+		if err := os.MkdirAll(filepath.Dir(geometry.LockPath()), 0o755); err != nil {
+			t.Fatalf("mkdir lock dir: %v", err)
+		}
+		held, err := lock.AcquireWriteLock(geometry.LockPath())
+		if err != nil {
+			t.Fatalf("hold lock: %v", err)
+		}
+		defer func() { _ = held.Release() }()
+		p := newPreflightWith("Preflight", h.PrimeWorktree(), hubreconcile.Options{LockWait: 50 * time.Millisecond})
+
+		ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
+
+		if !strings.Contains(ptr.Reason, `lyx loom resume`) {
+			t.Errorf("Reason = %q; want it to name lyx loom resume", ptr.Reason)
+		}
+		if _, err := os.Stat(hubStampPath(h)); err == nil {
+			t.Errorf("stamp written without the lock")
 		}
 	})
 }

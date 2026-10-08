@@ -299,3 +299,16 @@ func (f *Fabric) foreignMergeStatePresent() (bool, error) {
 	}
 	return r.warpMergeHead || len(r.warpConflicted) > 0 || r.weftMergeHead || len(r.weftConflicted) > 0, nil
 }
+
+// MergeBlocked reports whether a fabric merge record exists or git-level merge state fabric did not start sits on either side.
+// Those are the two conditions under which Commit refuses.
+func (f *Fabric) MergeBlocked() (bool, error) {
+	recordExists, err := f.mergeRecordExists()
+	if err != nil {
+		return false, err
+	}
+	if recordExists {
+		return true, nil
+	}
+	return f.foreignMergeStatePresent()
+}

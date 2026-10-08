@@ -93,7 +93,7 @@ func (f *fakeMergeSurface) indexOf(name string) int {
 
 // conflictStencilFixture is a minimal, valid conflict stencil carrying exactly the markers
 // buildConflictSpec fills.
-const conflictStencilFixture = "# Conflict\n\n{{.parent_directive}}\n\nPaths:\n{{.conflicted_paths}}\n\nReport: {{.report_path}}\n"
+const conflictStencilFixture = "# Conflict\n\n{{.parent_directive}}\n{{.edit_directive}}\n\nPaths:\n{{.conflicted_paths}}\n\nReport: {{.report_path}}\n"
 
 // newTestDeps returns a Deps wired against fake, shuttle, and a fresh worktree/scratch/stencils
 // directory tree under t.TempDir(), with the conflict stencil fixture seeded.
@@ -655,6 +655,9 @@ func TestBuildConflictSpec_SkillsAndParentDirective(t *testing.T) {
 			}
 			if !strings.Contains(spec.Prompt, tt.want) {
 				t.Errorf("Prompt = %q; want it to contain %q", spec.Prompt, tt.want)
+			}
+			if !strings.Contains(spec.Prompt, "Edit or Write") {
+				t.Errorf("Prompt = %q; want it to contain the edit directive's \"Edit or Write\" sentence", spec.Prompt)
 			}
 			if tt.parentName == "" && strings.Contains(spec.Prompt, "Your parent is") {
 				t.Errorf("Prompt = %q; want the no-parent variant", spec.Prompt)

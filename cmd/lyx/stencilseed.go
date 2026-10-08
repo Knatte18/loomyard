@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/specs"
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/buildinfo"
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -119,7 +120,7 @@ func seedStencilsAt(hub, worktree string) {
 
 	mode := stencilstore.ModeFor(buildinfo.IsDev())
 
-	seedSubtree(hub, fabricengine.StencilsDir(hub), fabricengine.StencilsSubtreeRel(), stencils.Registry(), mode, sourceDir, "stencils")
+	seedSubtree(hub, fabricengine.StencilsDir(hub), fabricengine.StencilsSubtreeRel(), stencils.Registry(), mode, fabricengine.StencilSource(worktree, sourceDir, buildvcs.Running().Revision), "stencils")
 
 	// sourceDir is deliberately empty here rather than derived from worktree: sourceDir exists only
 	// to drive the port-back drift warning, which serves an authoring workflow specs do not have --
@@ -127,7 +128,7 @@ func seedStencilsAt(hub, worktree string) {
 	// A per-name source mapping is deliberately not built either: the two travelling docs live in
 	// different directories and one's basename differs from its registered name, so no single
 	// sourceDir shape fits.
-	seedSubtree(hub, fabricengine.SpecsDir(hub), fabricengine.SpecsSubtreeRel(), specs.Registry(), mode, "", "specs")
+	seedSubtree(hub, fabricengine.SpecsDir(hub), fabricengine.SpecsSubtreeRel(), specs.Registry(), mode, stencilstore.Source{}, "specs")
 }
 
 // seedSubtree reconciles baseDir (the subtreeRel-rooted subtree under hub's board) against registry
@@ -136,8 +137,8 @@ func seedStencilsAt(hub, worktree string) {
 // It is best-effort, exactly as seedStencilsAt's single pass was before this subtree split: a
 // reconcile or commit failure logs a logger.Warn and returns without failing the command, since the
 // root pre-run runs before every single lyx invocation.
-func seedSubtree(hub, baseDir, subtreeRel string, registry stencilstore.Registry, mode stencilstore.Mode, sourceDir, label string) {
-	written, err := stencilstore.Reconcile(baseDir, registry, mode, sourceDir)
+func seedSubtree(hub, baseDir, subtreeRel string, registry stencilstore.Registry, mode stencilstore.Mode, source stencilstore.Source, label string) {
+	written, err := stencilstore.Reconcile(baseDir, registry, mode, source)
 	if err != nil {
 		logger.Warn("stencilseed: reconcile failed", "subtree", label, "error", err)
 		return

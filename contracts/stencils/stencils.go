@@ -292,6 +292,11 @@ var ParentDirectiveOperatorBan []byte
 //go:embed parent/parent-directive-none.md
 var ParentDirectiveNone []byte
 
+// EditDirective is the shared edit directive's shipped default: the no-script edit rule every spawned role's opening stencil carries.
+//
+//go:embed edit/edit-directive.md
+var EditDirective []byte
+
 // registryEntry pairs one stencil's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -355,10 +360,11 @@ var entries = []registryEntry{
 	{"parent-directive-parent", &ParentDirectiveParent},
 	{"parent-directive-operator-ban", &ParentDirectiveOperatorBan},
 	{"parent-directive-none", &ParentDirectiveNone},
+	{"edit-directive", &EditDirective},
 }
 
 // roleOpeningStencils maps each spawned role other than the orch to the stencils that open its session.
-// Each carries the parent directive marker, which parentdirective_test.go enforces.
+// Each carries both the parent directive marker and the edit directive marker, which parentdirective_test.go enforces.
 var roleOpeningStencils = map[string][]string{
 	"driver":            {"shed-template-driver"},
 	"discussion":        {"loom-template-discussion"},
@@ -385,6 +391,14 @@ var askOperatorPhrases = []string{
 	"ask your operator",
 	"check with the operator",
 	"confirm with the operator",
+}
+
+// editRulePhrases is the closed list of phrases distinctive to the no-script edit rule's statement, matched case-insensitively.
+var editRulePhrases = []string{
+	"`sed`",
+	"heredoc",
+	"replace_all",
+	"edit or write",
 }
 
 // askOperatorBounds are the words that make an ask-the-operator sentence a prohibition rather than an instruction.

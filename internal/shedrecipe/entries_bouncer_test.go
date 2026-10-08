@@ -50,6 +50,7 @@ func minimalBouncerConfig(t *testing.T, env Env) Config {
 	t.Helper()
 	writeStencil(t, env.StencilsDir, "bouncer-rubric", "BLOCKING: a bug.\n")
 	writeStencil(t, env.StencilsDir, "parent-directive-none", "no parent\n")
+	writeStencil(t, env.StencilsDir, "edit-directive", "edit directive\n")
 	return Config{
 		"run_subdir":     "review-segment",
 		"artifact_paths": []string{"artifact.md"},

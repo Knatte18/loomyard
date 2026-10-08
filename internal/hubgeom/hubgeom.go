@@ -1,5 +1,5 @@
 // hubgeom.go implements the hub-mode tellers that convert a resolved *lyxcwd.Location into each
-// engine's own geometry struct: ReedGeometry and BurlerGeometry are its members.
+// engine's own geometry struct: ReedGeometry, BurlerGeometry and ReconcileGeometry are its members.
 
 package hubgeom
 
@@ -11,9 +11,20 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
+
+// ReconcileGeometry builds the hubreconcile.Geometry for l: the hub's board dir and l's worktree root.
+// It reports false, with the zero Geometry, when the hub has no board-level lyx dir, so a standalone repository never reconciles.
+func ReconcileGeometry(l *lyxcwd.Location) (hubreconcile.Geometry, bool) {
+	if !preflight.BoardLyxPresent(l) {
+		return hubreconcile.Geometry{}, false
+	}
+	return hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(l.HubPath), WorktreePath: l.WorktreePath()}, true
+}
 
 // ReedGeometry builds a reedengine.Geometry for l: the resolved Location's paths, read off its accessors and passed through untouched, plus the name prefix and parent reed forms strand names from.
 // It performs no os.Getwd, no git discovery, and no path resolution of its own — internal/lyxcwd stays the sole owner of cwd resolution (the Cwd Resolution Invariant).

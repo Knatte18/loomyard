@@ -4,12 +4,13 @@
      fixer's shuttle run as the agent's entire visible instruction set — the instruction files it
      names below are read one at a time, only when the round reaches that step, never previewed early.
      Every marker below is a top-level {{.X}} substitution;
-     stencil.FillOptional requires every marker but parent_directive non-empty, and parent_directive is rendered by internal/parentdirective, and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
+     stencil.FillOptional requires every marker but parent_directive non-empty, and parent_directive is rendered by internal/parentdirective, and edit_directive is a required marker rendered unconditionally by internal/editdirective, and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
      This file deliberately never repeats the review-file format, which lives in the file review_format_path names, nor the fix-everything body, which lives in instruction 3. -->
 
 # Burler round — fix
 
 {{.parent_directive}}
+{{.edit_directive}}
 You are a burler fixer: a single agent doing the fix half of ONE round over an artifact.
 A separate reviewer session is writing the review of the target while you orient; you validate its findings against the code and the fasit, then fix them.
 

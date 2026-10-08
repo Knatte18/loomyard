@@ -37,10 +37,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -172,6 +177,64 @@ func seedBoardTask(t *testing.T, h *hubforge.Hub, slug, recipeType string) {
 func pathExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating pins both reconcile calls of `lyx batten run`.
+// With a fresh stamp the first call is a no-op, so the new pair losing the prime's retired key can only come from the unconditional pair call after the create row.
+// Against an absent stamp, `arm` for run reconciles ahead of armAt's non-prime refusal and its auto-seed.
+func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.NewHub(t, ".")
+	const slug = "batten-reconcile-pair"
+	stampPath := hubreconcile.Geometry{BoardDir: h.BoardDir()}.StampPath()
+	stamp, err := json.Marshal(map[string]string{"build_key": hubreconcile.BuildKey(buildvcs.Running(), configreg.Fingerprint())})
+	if err != nil {
+		t.Fatalf("marshal stamp: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(stampPath), 0o755); err != nil {
+		t.Fatalf("mkdir stamp dir: %v", err)
+	}
+	if err := os.WriteFile(stampPath, stamp, 0o644); err != nil {
+		t.Fatalf("write stamp: %v", err)
+	}
+
+	batcher, _ := configreg.Lookup("batcher")
+	retired := strings.Replace(batcher.Template(), "orientation: 31400", "master_base: 52000", 1)
+	gitkit.CommitFile(t, h.PrimeRecords(), configengine.ConfigFileRel("batcher"), retired, "fixture: retired key")
+
+	c := wireForHub(t, h, slug, nil)
+	if err := c.env.CreateWorktree(context.Background()); err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+
+	pair := h.PairCodeWorktree(slug)
+	if data, err := os.ReadFile(configengine.ConfigFile(pair, "batcher")); err != nil || strings.Contains(string(data), "master_base") {
+		t.Errorf("new pair's batcher.yaml still carries the retired key (err %v)", err)
+	}
+	if status := gitkit.GitStatusPorcelain(t, h.PairRecordsSibling(slug)); status != "" {
+		t.Errorf("new pair's records worktree is dirty after the create row:\n%s", status)
+	}
+
+	if err := os.Remove(stampPath); err != nil {
+		t.Fatalf("remove stamp: %v", err)
+	}
+	_, err = (&battenCLI{}).arm(pair, "run", []string{slug})
+	if err == nil {
+		t.Fatal("arm for run from a pair error = nil; want the non-prime refusal")
+	}
+	if _, statErr := os.Stat(stampPath); statErr != nil {
+		t.Errorf("stamp after arm for run: %v; want the reconcile to have run ahead of armAt's refusal", statErr)
+	}
+	pairLocation, err := lyxcwd.Resolve(pair)
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(%s): %v", pair, err)
+	}
+	for name, location := range map[string]*lyxcwd.Location{"prime": h.Location, "pair": pairLocation} {
+		if _, found, err := shedrun.ReadSeed(location, slug); err != nil || found {
+			t.Errorf("%s holds a seed for %q (found %v, err %v); want none before the refusal", name, slug, found, err)
+		}
+	}
 }
 
 // gitShow runs `git show <spec>` in dir and returns its stdout, fataling on failure -- used to

@@ -110,3 +110,44 @@ func TestLookup(t *testing.T) {
 		})
 	}
 }
+
+// TestFingerprint pins what the registry fingerprint is sensitive to: a module's template, flags, open maps and name, and not its Migrate hook.
+func TestFingerprint(t *testing.T) {
+	t.Parallel()
+	base := func() []Module {
+		return []Module{
+			{Name: "alpha", Template: func() string { return "a: 1\n" }, OpenMaps: []string{"a"}},
+			{Name: "beta", Template: func() string { return "b: 2\n" }},
+		}
+	}
+	tests := []struct {
+		name   string
+		mutate func(m []Module)
+		same   bool
+	}{
+		{"identical copy", func(m []Module) {}, true},
+		{"changed template", func(m []Module) { m[1].Template = func() string { return "b: 3\n" } }, false},
+		{"flipped HubWide", func(m []Module) { m[0].HubWide = true }, false},
+		{"flipped SeedOnly", func(m []Module) { m[0].SeedOnly = true }, false},
+		{"added OpenMaps entry", func(m []Module) { m[1].OpenMaps = []string{"b"} }, false},
+		{"renamed module", func(m []Module) { m[0].Name = "gamma" }, false},
+		{"swapped Migrate hook", func(m []Module) {
+			m[0].Migrate = func(existing []byte) ([]byte, []string, error) { return existing, nil, nil }
+		}, true},
+	}
+	want := fingerprintOf(base())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			mods := base()
+			tt.mutate(mods)
+			if got := fingerprintOf(mods); (got == want) != tt.same {
+				t.Errorf("fingerprintOf equals base = %v, want %v", got == want, tt.same)
+			}
+		})
+	}
+
+	if got := Fingerprint(); got != fingerprintOf(Modules()) || got != Fingerprint() {
+		t.Errorf("Fingerprint() = %q, want it equal to fingerprintOf(Modules()) and stable across calls", got)
+	}
+}

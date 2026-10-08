@@ -40,6 +40,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -123,6 +125,16 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 		// lyxcwd.Resolve's error is already self-describing (it IS the "not a git repository"
 		// sentinel); pass it through bare rather than doubling that same text on top of it.
 		return shedverbs.Spec{}, err
+	}
+
+	// A start verb reconciles the hub's config after a binary change before armAt loads any module config.
+	// A strict load of a file still carrying a retired key would otherwise refuse the verb before the reconcile that removes the key.
+	if verb == "start" || verb == "resume" {
+		if geometry, inHub := hubgeom.ReconcileGeometry(location); inHub {
+			if err := hubreconcile.Ensure(geometry, hubreconcile.Options{}); err != nil {
+				return shedverbs.Spec{}, err
+			}
+		}
 	}
 
 	return c.armAt(location, verb, args)

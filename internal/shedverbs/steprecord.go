@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
@@ -30,7 +31,7 @@ type inflightRecord struct {
 	TraceID   string    `json:"trace_id"`
 	PID       int       `json:"pid"`
 	StartedAt time.Time `json:"started_at"`
-	BuildIdentity
+	buildvcs.Identity
 }
 
 // LastStep is the status envelope's last_step value: the most recent step record's trace id,
@@ -51,12 +52,12 @@ type LastStep struct {
 type stepRecorder struct {
 	dir     string
 	traceID string
-	build   BuildIdentity
+	build   buildvcs.Identity
 }
 
 // newStepRecorder returns a recorder for traceID under dir that records build as the step's build identity;
 // an empty dir or trace id disables it.
-func newStepRecorder(dir, traceID string, build BuildIdentity) *stepRecorder {
+func newStepRecorder(dir, traceID string, build buildvcs.Identity) *stepRecorder {
 	if dir == "" || traceID == "" {
 		return &stepRecorder{}
 	}
@@ -70,7 +71,7 @@ func (r *stepRecorder) begin() {
 	if !r.enabled() {
 		return
 	}
-	data, err := json.Marshal(inflightRecord{TraceID: r.traceID, PID: os.Getpid(), StartedAt: time.Now().UTC(), BuildIdentity: r.build})
+	data, err := json.Marshal(inflightRecord{TraceID: r.traceID, PID: os.Getpid(), StartedAt: time.Now().UTC(), Identity: r.build})
 	if err == nil {
 		err = os.MkdirAll(r.dir, 0o755)
 	}
@@ -99,7 +100,7 @@ func (r *stepRecorder) write(envelope []byte) (string, bool) {
 // lastStepOf reads dir for the most recent in-flight record and reports it, or nil when dir is
 // empty, unreadable or holds none.
 // running is the build identity of the calling lyx, compared with the chosen record's recorded one to set binary_changed.
-func lastStepOf(dir string, running BuildIdentity) *LastStep {
+func lastStepOf(dir string, running buildvcs.Identity) *LastStep {
 	if dir == "" {
 		return nil
 	}
@@ -110,7 +111,7 @@ func lastStepOf(dir string, running BuildIdentity) *LastStep {
 	type candidate struct {
 		traceID string
 		started time.Time
-		build   BuildIdentity
+		build   buildvcs.Identity
 	}
 	var cands []candidate
 	for _, e := range entries {
@@ -123,7 +124,7 @@ func lastStepOf(dir string, running BuildIdentity) *LastStep {
 			var rec inflightRecord
 			if json.Unmarshal(data, &rec) == nil {
 				c.started = rec.StartedAt
-				c.build = rec.BuildIdentity
+				c.build = rec.Identity
 			}
 		}
 		if c.started.IsZero() {

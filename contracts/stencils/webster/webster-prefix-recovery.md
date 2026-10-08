@@ -3,7 +3,8 @@
      Unlike a fork prefix, this strand inherits NOTHING from Master's session: no codebase orientation, no plan framing, no constraints.
      It must earn its own orientation before the shared implementer body runs.
      Its markers are {{.pattern_directive}}, {{.friction_directive}}, {{.failure_digest}} and {{.uncommitted_paths}}, all optional (filled via stencil.FillOptional); the first two render as nothing when their own tier is inactive, failure_digest renders as `none` when the batch was not failed, and uncommitted_paths renders as `none` on a clean worktree.
-     parent_directive is a fourth optional marker, rendered by internal/parentdirective. -->
+     parent_directive is a fourth optional marker, rendered by internal/parentdirective.
+     edit_directive is a required marker, rendered unconditionally by internal/editdirective. -->
 
 # Webster cold recovery implementer — starting COLD, inheriting nothing
 
@@ -12,6 +13,7 @@ You inherit NO session context: no prior orientation, no plan framing already re
 This prompt is deliberately full, not thin, because it is your whole starting point.
 
 {{.parent_directive}}
+{{.edit_directive}}
 {{.pattern_directive}}
 {{.friction_directive}}
 ## Orient yourself before you touch anything

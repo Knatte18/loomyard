@@ -7,6 +7,11 @@
 package configreg
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"strconv"
+
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
@@ -98,4 +103,39 @@ func Names() []string {
 		names[i] = m.Name
 	}
 	return names
+}
+
+// Fingerprint returns a hex digest of the registry that changes whenever a registered module's name, flags, open maps or template text changes.
+// A change that only swaps a module's Migrate hook leaves it unchanged, since a function value has no stable bytes.
+func Fingerprint() string {
+	return fingerprintOf(Modules())
+}
+
+// fingerprintOf hashes a canonical, length-prefixed encoding of modules in their given order and returns the lowercase hex SHA-256.
+func fingerprintOf(modules []Module) string {
+	hash := sha256.New()
+	writeField := func(field string) {
+		var length [8]byte
+		binary.BigEndian.PutUint64(length[:], uint64(len(field)))
+		hash.Write(length[:])
+		hash.Write([]byte(field))
+	}
+	writeFlag := func(flag bool) {
+		if flag {
+			writeField("1")
+			return
+		}
+		writeField("0")
+	}
+	for _, m := range modules {
+		writeField(m.Name)
+		writeFlag(m.HubWide)
+		writeFlag(m.SeedOnly)
+		writeField(strconv.Itoa(len(m.OpenMaps)))
+		for _, openMap := range m.OpenMaps {
+			writeField(openMap)
+		}
+		writeField(m.Template())
+	}
+	return hex.EncodeToString(hash.Sum(nil))
 }

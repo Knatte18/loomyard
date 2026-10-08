@@ -40,6 +40,11 @@
 // an automated loop, through batten, the driver's own repairs and the orchestrator's context cycling, by `/compact` or `/clear` as orch.yaml's `cycle_mode` says;
 // records that survive teardown; and the operator's surface, meaning panes, the IDE workspace and the launch line.
 //
+// # Config after a binary change
+//
+// `start` reconciles the hub's config after a binary change, once per build, before it loads any module config or launches anything; a failure stops it with the reconcile's own message and way forward.
+// No other orch verb reconciles.
+//
 // # Reaching the orch from another module
 //
 // `PrimePaths` is the one accessor other modules use for the orch's told paths, so the notice queue and the orch state are reached without re-deriving either.

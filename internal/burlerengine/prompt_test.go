@@ -260,6 +260,7 @@ func TestComposePrompt_ParentDirective(t *testing.T) {
 	for _, orchestrator := range []string{withParent.Reviewer, withParent.Fixer} {
 		requireContains(t, orchestrator, "tst:task:orch")
 		requireContains(t, orchestrator, "A question to the operator in your pane is never the way forward.")
+		requireContains(t, orchestrator, "Edit or Write")
 	}
 
 	without, err := composePrompt(stencilsDir, "", &p, "", "", testRoundFilePaths)

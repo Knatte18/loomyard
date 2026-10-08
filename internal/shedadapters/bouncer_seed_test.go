@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -392,6 +393,7 @@ func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
 		}
 		maps.Copy(values, focusSchemaMarkers(true))
 		values[parentdirective.MarkerName] = "PARENT DIRECTIVE"
+		values[editdirective.MarkerName] = "EDIT DIRECTIVE"
 		prompt, err := stencil.Fill(stencils.BouncerTemplateSeed, values)
 		if err != nil {
 			t.Fatalf("stencil.Fill(seed template, ...) error = %v; want nil", err)
@@ -425,6 +427,7 @@ func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
 		}
 		maps.Copy(values, focusSchemaMarkers(true))
 		values[parentdirective.MarkerName] = "PARENT DIRECTIVE"
+		values[editdirective.MarkerName] = "EDIT DIRECTIVE"
 		if values["previous_ledger"] != "(none)" {
 			t.Fatalf("test setup error: previous_ledger must be the literal (none) for round 1")
 		}

@@ -404,7 +404,7 @@ func stepPromoteRoundTripAndDiffAll(t *testing.T, h *hubforge.Hub, worktree stri
 		t.Fatalf("read %s: %v", sourcePath, err)
 	}
 	fake := fakeRegistry{names: stencils.Registry().Names(), overrides: map[string][]byte{name: promoted}}
-	if _, err := stencilstore.Reconcile(stencilsDir, fake, stencilstore.ModeProduction, ""); err != nil {
+	if _, err := stencilstore.Reconcile(stencilsDir, fake, stencilstore.ModeProduction, stencilstore.Source{}); err != nil {
 		t.Fatalf("stencilstore.Reconcile against the promoted default: %v", err)
 	}
 

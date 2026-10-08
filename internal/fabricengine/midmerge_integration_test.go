@@ -26,6 +26,7 @@ func TestMidMerge_CleanPair_None(t *testing.T) {
 	if got.Kind != fabricengine.MidMergeNone || len(got.Conflicts) != 0 || got.Conflicts == nil {
 		t.Errorf("MidMerge() = %+v; want MidMergeNone with empty non-nil Conflicts", got)
 	}
+	assertMergeBlocked(t, h.Location, false)
 }
 
 func TestMidMerge_FabricParkedWithConflicts_Parked(t *testing.T) {
@@ -53,6 +54,7 @@ func TestMidMerge_FabricParkedWithConflicts_Parked(t *testing.T) {
 	if !reflect.DeepEqual(got.Conflicts, res.Conflicts) {
 		t.Errorf("MidMerge().Conflicts = %v; want MergeIn's own %v", got.Conflicts, res.Conflicts)
 	}
+	assertMergeBlocked(t, h.Location, true)
 }
 
 func TestMidMerge_FabricParkedResolved_ParkedNoConflicts(t *testing.T) {
@@ -67,6 +69,7 @@ func TestMidMerge_FabricParkedResolved_ParkedNoConflicts(t *testing.T) {
 	if got.Kind != fabricengine.MidMergeParked || len(got.Conflicts) != 0 || got.Conflicts == nil {
 		t.Errorf("MidMerge() = %+v; want MidMergeParked with empty non-nil Conflicts", got)
 	}
+	assertMergeBlocked(t, h.Location, true)
 }
 
 func TestMidMerge_ForeignState_EverySideAndShape(t *testing.T) {
@@ -121,6 +124,7 @@ func TestMidMerge_ForeignState_EverySideAndShape(t *testing.T) {
 			if !reflect.DeepEqual(got.Conflicts, want) {
 				t.Errorf("MidMerge().Conflicts = %#v; want %#v", got.Conflicts, want)
 			}
+			assertMergeBlocked(t, h.Location, true)
 		})
 	}
 }
@@ -132,5 +136,21 @@ func TestMidMerge_UnopenablePair_Errors(t *testing.T) {
 
 	if _, err := fabricengine.MidMerge(l); err == nil {
 		t.Fatalf("MidMerge() over an unopenable pair error = nil; want an error, never MidMergeNone")
+	}
+}
+
+// assertMergeBlocked checks that the pair at l reports MergeBlocked as want.
+func assertMergeBlocked(t *testing.T, l *lyxcwd.Location, want bool) {
+	t.Helper()
+	f, err := fabricengine.Open(l)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	got, err := f.MergeBlocked()
+	if err != nil {
+		t.Fatalf("MergeBlocked() error = %v", err)
+	}
+	if got != want {
+		t.Errorf("MergeBlocked() = %v; want %v", got, want)
 	}
 }

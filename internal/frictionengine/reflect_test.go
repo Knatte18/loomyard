@@ -19,7 +19,7 @@ import (
 
 // reflectionStencilFixture is a minimal, valid reflection stencil carrying exactly the markers
 // buildReflectionSpec fills.
-const reflectionStencilFixture = "# Reflection\n\n{{.parent_directive}}\n\nDir: {{.friction_dir}}\n\nReport: {{.report_path}}\n\nTask: {{.task_slug}}\n\nNotes:\n{{.note_list}}\n"
+const reflectionStencilFixture = "# Reflection\n\n{{.parent_directive}}\n{{.edit_directive}}\n\nDir: {{.friction_dir}}\n\nReport: {{.report_path}}\n\nTask: {{.task_slug}}\n\nNotes:\n{{.note_list}}\n"
 
 // fakeClock is the Clock seam a test injects to assert an exact archive directory name rather than a
 // pattern, and to advance time mid-run.
@@ -158,6 +158,9 @@ func TestBuildReflectionSpec_SkillsAndParentDirective(t *testing.T) {
 			}
 			if !strings.Contains(spec.Prompt, tt.want) {
 				t.Errorf("Prompt = %q; want it to contain %q", spec.Prompt, tt.want)
+			}
+			if !strings.Contains(spec.Prompt, "Edit or Write") {
+				t.Errorf("Prompt = %q; want it to contain the edit directive's \"Edit or Write\" sentence", spec.Prompt)
 			}
 			if tt.parentName == "" && strings.Contains(spec.Prompt, "Your parent is") {
 				t.Errorf("Prompt = %q; want the no-parent variant", spec.Prompt)

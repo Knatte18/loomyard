@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -58,12 +59,17 @@ func buildReflectionSpec(deps Deps, notes []string, reportPath string) (shuttlee
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("frictionengine: buildReflectionSpec: %w", err)
 	}
+	editDirective, err := editdirective.Directive(deps.StencilsDir)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("frictionengine: buildReflectionSpec: %w", err)
+	}
 	values := map[string]string{
 		"friction_dir":             deps.FrictionDir,
 		"report_path":              reportPath,
 		"note_list":                renderNoteList(notes),
 		"task_slug":                deps.TaskSlug,
 		parentdirective.MarkerName: directive,
+		editdirective.MarkerName:   editDirective,
 	}
 	prompt, err := stencil.Fill(template, values)
 	if err != nil {

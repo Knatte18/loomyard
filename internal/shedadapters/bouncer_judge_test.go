@@ -151,6 +151,9 @@ func TestBouncer_PromptComposition(t *testing.T) {
 				if !strings.Contains(prompt, tt.wantPrompt) {
 					t.Errorf("%s prompt does not contain %q", role, tt.wantPrompt)
 				}
+				if !strings.Contains(prompt, "Edit or Write") {
+					t.Errorf("%s prompt lacks the edit directive's \"Edit or Write\" sentence", role)
+				}
 				if strings.Contains(prompt, "{{.specs_dir}}") {
 					t.Errorf("%s prompt contains a literal \"{{.specs_dir}}\" marker; want it rendered", role)
 				}

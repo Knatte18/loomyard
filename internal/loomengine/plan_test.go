@@ -148,6 +148,10 @@ func TestPlanSpec_PatternDirective(t *testing.T) {
 			if strings.Contains(prompt, "{{") {
 				t.Errorf("PlanSpec(...).Prompt contains a leftover {{: %q", prompt)
 			}
+			// The edit directive renders unconditionally, with or without PATTERN.md.
+			if !strings.Contains(prompt, "Edit or Write") {
+				t.Errorf("PlanSpec(...).Prompt lacks the edit directive's \"Edit or Write\" sentence: %q", prompt)
+			}
 			directiveIdx := strings.Index(prompt, "## Constraints")
 			if tt.wantDirective {
 				if stepIdx := strings.Index(prompt, "## Step 1"); directiveIdx == -1 || stepIdx == -1 || directiveIdx >= stepIdx {

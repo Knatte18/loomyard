@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -109,6 +110,15 @@ Every verb runs from the hub's prime worktree only.`,
 			primeName, primeNameErr := fabricengine.PrimeName(location)
 			if err := refuseNonPrime(location.WorktreeName, primeName, primeNameErr); err != nil {
 				return fail(err)
+			}
+
+			// Only start reconciles, and before any module config loads, so a retired key cannot refuse the verb ahead of the reconcile that removes it.
+			if cmd.Name() == "start" {
+				if geometry, inHub := hubgeom.ReconcileGeometry(location); inHub {
+					if err := hubreconcile.Ensure(geometry, hubreconcile.Options{}); err != nil {
+						return fail(err)
+					}
+				}
 			}
 
 			orchCfg, err := orchengine.LoadConfig(location.AnchorPath(), "orch")

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -195,7 +196,7 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				"trace_dir":        traceDir,
 				"run_id":           spec.RunID,
 				"progress":         progressOf(spec.Routing, st.CurrentProducer),
-				"last_step":        lastStepOf(spec.StepsDir, runningBuildIdentity()),
+				"last_step":        lastStepOf(spec.StepsDir, buildvcs.Running()),
 			}
 			if spec.Hooks.StatusExtras != nil {
 				extras, err := spec.Hooks.StatusExtras(st)

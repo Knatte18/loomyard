@@ -365,7 +365,7 @@ var wordingClaims = []stencilClaims{
 			"NEVER use a `/model` switch",
 			"NEVER spawn a non-fork or named subagent"),
 		wantAll("Master needs no script to read or write a file: it reads with Read and Grep and writes its two contract files with Write",
-			"You read files with Read and Grep and write your two contract files with Write; NEVER run a script, an interpreter or a heredoc to read or write a file."),
+			"You read files with Read and Grep and write your two contract files with Write."),
 		wantAll("the plan and state files are read and written as ordinary files at the told plan directory, and an audit finding is never worked around",
 			"{{.plan_dir}}` holds the plan",
 			"Read and write them all as ordinary files",

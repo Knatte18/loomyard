@@ -61,7 +61,7 @@ func readAll(t *testing.T, baseDir, name string) []byte {
 func seedBoard(t *testing.T, registry *fakeRegistry) string {
 	t.Helper()
 	baseDir := t.TempDir()
-	if _, err := Reconcile(baseDir, registry, ModeProduction, ""); err != nil {
+	if _, err := Reconcile(baseDir, registry, ModeProduction, Source{}); err != nil {
 		t.Fatalf("seed Reconcile(...) returned error: %v", err)
 	}
 	return baseDir
@@ -95,7 +95,7 @@ func TestReconcile_SeedsAbsentFileAndGitattributesOnce(t *testing.T) {
 	baseDir := t.TempDir()
 	registry := newFakeRegistry(map[string][]byte{"family-one": []byte("shipped body\n")})
 
-	written, err := Reconcile(baseDir, registry, ModeProduction, "")
+	written, err := Reconcile(baseDir, registry, ModeProduction, Source{})
 	if err != nil {
 		t.Fatalf("Reconcile(...) returned error: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestReconcile_SeedsAbsentFileAndGitattributesOnce(t *testing.T) {
 		t.Fatalf("os.WriteFile failed: %v", err)
 	}
 
-	written, err = Reconcile(baseDir, registry, ModeProduction, "")
+	written, err = Reconcile(baseDir, registry, ModeProduction, Source{})
 	if err != nil {
 		t.Fatalf("Reconcile(...) returned error: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestReconcile_UntouchedBoardCopy(t *testing.T) {
 				registry.defaults["family-one"] = []byte(tt.updated)
 			}
 
-			written, err := Reconcile(baseDir, registry, tt.mode, "")
+			written, err := Reconcile(baseDir, registry, tt.mode, Source{})
 			if err != nil {
 				t.Fatalf("Reconcile(...) returned error: %v", err)
 			}
@@ -221,7 +221,7 @@ func TestReconcile_RestampsRowWhoseBodyMatchesDefault(t *testing.T) {
 			writeBoardCopy(t, baseDir, "family-one", ApplyStamp(shipped, staleHash))
 			seedGitattributesForTest(t, baseDir)
 
-			written, err := Reconcile(baseDir, registry, tt.mode, "")
+			written, err := Reconcile(baseDir, registry, tt.mode, Source{})
 			if err != nil {
 				t.Fatalf("Reconcile(...) returned error: %v", err)
 			}
@@ -250,7 +250,7 @@ func TestForceRefresh_PerformsRefreshRowFromDevSkippedFile(t *testing.T) {
 
 	updated := []byte("updated shipped body\n")
 	registry.defaults["family-one"] = updated
-	if _, err := Reconcile(baseDir, registry, ModeDev, ""); err != nil {
+	if _, err := Reconcile(baseDir, registry, ModeDev, Source{}); err != nil {
 		t.Fatalf("Reconcile(ModeDev) returned error: %v", err)
 	}
 	skipped := readAll(t, baseDir, "family-one")
@@ -258,7 +258,7 @@ func TestForceRefresh_PerformsRefreshRowFromDevSkippedFile(t *testing.T) {
 		t.Fatalf("precondition failed: ModeDev already refreshed the file")
 	}
 
-	written, err := ForceRefresh(baseDir, registry, "")
+	written, err := ForceRefresh(baseDir, registry, Source{})
 	if err != nil {
 		t.Fatalf("ForceRefresh(...) returned error: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestReconcile_EditedBoardCopyIsNeverModified(t *testing.T) {
 			writeBoardCopy(t, baseDir, "family-one", tt.onDisk)
 			seedGitattributesForTest(t, baseDir)
 
-			written, err := Reconcile(baseDir, registry, ModeProduction, "")
+			written, err := Reconcile(baseDir, registry, ModeProduction, Source{})
 			if err != nil {
 				t.Fatalf("Reconcile(...) returned error: %v", err)
 			}
@@ -346,7 +346,7 @@ func TestReconcile_SourceDirNeverFailsReconcile(t *testing.T) {
 				}
 			}
 
-			written, err := Reconcile(baseDir, registry, ModeProduction, sourceDir)
+			written, err := Reconcile(baseDir, registry, ModeProduction, Source{Dir: sourceDir})
 			if err != nil {
 				t.Fatalf("Reconcile(...) with sourceDir %q returned error: %v", sourceDir, err)
 			}
@@ -371,7 +371,7 @@ func TestReconcile_ModeDevRefusalNamesItsRemedy(t *testing.T) {
 	logger.SetOutput(&buf)
 	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
 
-	if _, err := Reconcile(baseDir, registry, ModeDev, ""); err != nil {
+	if _, err := Reconcile(baseDir, registry, ModeDev, Source{}); err != nil {
 		t.Fatalf("Reconcile(ModeDev) returned error: %v", err)
 	}
 

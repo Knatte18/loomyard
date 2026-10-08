@@ -182,6 +182,41 @@ func TestHistoryReads(t *testing.T) {
 				t.Errorf("CommitsWithSubject(absent) = %v; want none", got)
 			}
 		}},
+		// HeadContains is true for HEAD's own commit and an earlier one, false for a commit only an unmerged side branch holds, a well-formed sha in no object store, and an unborn HEAD, and ErrInvalidSHA for a malformed sha.
+		{"HeadContains answers whether HEAD's history holds a commit", func(t *testing.T) {
+			sideDir, sideRepo := newRepo(t)
+			writeFile(t, sideDir, "x.txt", "base")
+			commitAll(t, sideDir, "base")
+			gitkit.Git(t, sideDir, "checkout", "-b", "side")
+			writeFile(t, sideDir, "x.txt", "side only")
+			commitAll(t, sideDir, "side only")
+			shaSide := requireCurrentSHA(t, sideRepo)
+			gitkit.Git(t, sideDir, "checkout", "main")
+
+			_, unbornRepo := newRepo(t)
+
+			const absentSHA = "0123456789abcdef0123456789abcdef01234567"
+			tests := []struct {
+				name    string
+				repo    *gitrepo.Repo
+				sha     string
+				want    bool
+				wantErr error
+			}{
+				{"HEAD's own commit", repo, shaC, true, nil},
+				{"an earlier commit", repo, shaA, true, nil},
+				{"a commit only a side branch holds", sideRepo, shaSide, false, nil},
+				{"a well-formed sha in no object store", repo, absentSHA, false, nil},
+				{"a malformed sha", repo, "not-a-sha!!", false, gitrepo.ErrInvalidSHA},
+				{"an unborn repository", unbornRepo, shaC, false, nil},
+			}
+			for _, tc := range tests {
+				got, err := tc.repo.HeadContains(tc.sha)
+				if !errors.Is(err, tc.wantErr) || got != tc.want {
+					t.Errorf("%s: HeadContains() = (%v, %v); want (%v, %v)", tc.name, got, err, tc.want, tc.wantErr)
+				}
+			}
+		}},
 		{"PathRevisions returns an empty slice for a path with no history", func(t *testing.T) {
 			got, err := repo.PathRevisions("never-touched.txt", 0)
 			if err != nil {

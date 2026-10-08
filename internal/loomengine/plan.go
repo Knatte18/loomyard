@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -57,6 +58,11 @@ func composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overv
 
 	friction.WarnIfMarkerAbsent(template, "loom-template-plan", frictionDirective)
 
+	editDirective, err := editdirective.Directive(stencilsDir)
+	if err != nil {
+		return nil, fmt.Errorf("loom: compose plan prompt: %w", err)
+	}
+
 	values := map[string]string{
 		"decision_record_path":     decisionRecordPath,
 		"plan_dir":                 planDir,
@@ -65,6 +71,7 @@ func composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overv
 		"specs_dir":                specsDir,
 		friction.MarkerName:        frictionDirective,
 		parentdirective.MarkerName: parentDirective,
+		editdirective.MarkerName:   editDirective,
 	}
 
 	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName})

@@ -33,6 +33,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -266,6 +268,15 @@ func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec,
 		// lyxcwd.Resolve's error is already self-describing (it IS the "not a git repository"
 		// sentinel); pass it through bare rather than doubling that same text on top of it.
 		return shedverbs.Spec{}, err
+	}
+
+	// run reconciles the hub's config after a binary change before the run is seeded and before the Worktree-Create row forks the pair from the prime.
+	if verb == "run" {
+		if geometry, inHub := hubgeom.ReconcileGeometry(location); inHub {
+			if err := hubreconcile.Ensure(geometry, hubreconcile.Options{}); err != nil {
+				return shedverbs.Spec{}, err
+			}
+		}
 	}
 
 	runID, explicit := resolveBattenRunID(args)

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -864,12 +865,19 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		return nil
 	}
 
+	editDirective, err := editdirective.Directive(b.cfg.StencilsDir)
+	if err != nil {
+		logger.Warn("shedadapters: bouncer edit directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
+		return nil
+	}
+
 	seedValues := map[string]string{
 		"rubric":                   rubric,
 		"artifacts":                strings.Join(b.cfg.ArtifactPaths, "\n"),
 		"round":                    "1",
 		"focus_path":               focusPathValue,
 		parentdirective.MarkerName: parentDirective,
+		editdirective.MarkerName:   editDirective,
 	}
 	// The seed judges no round, so there is nothing settled for it to exclude; only the judge call is asked for exclude_lenses.
 	maps.Copy(seedValues, focusSchemaMarkers(false))
@@ -970,6 +978,11 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		return b.degrade(ctx, "shedadapters: bouncer parent directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
 
+	editDirective, err := editdirective.Directive(b.cfg.StencilsDir)
+	if err != nil {
+		return b.degrade(ctx, "shedadapters: bouncer edit directive unreadable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
+	}
+
 	// The output list is never conditional on the verdict:
 	// shuttleengine classifies a run complete only when every declared output file exists,
 	// so a third entry written only on CONTINUE would make every approval classify non-complete, degrade, and render shedengine.Done unreachable.
@@ -994,6 +1007,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		"focus_path":      outputs[2],
 
 		parentdirective.MarkerName: parentDirective,
+		editdirective.MarkerName:   editDirective,
 	}
 	if patternDirective != "" {
 		judgeValues["pattern_directive"] = patternDirective

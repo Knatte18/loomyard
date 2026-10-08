@@ -13,7 +13,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -189,6 +191,44 @@ func TestIsPrimeWorktree(t *testing.T) {
 			}
 			if err == nil && prime != tt.wantPrime {
 				t.Errorf("isPrimeWorktree() = %v; want %v", prime, tt.wantPrime)
+			}
+		})
+	}
+}
+
+// TestReconcileGeometry verifies a hub with a board-level lyx dir yields exactly the board dir and worktree root, and a layout without one yields the zero value and false.
+func TestReconcileGeometry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		boardLyxDir  bool
+		wantGeometry bool
+	}{
+		{"hub with a board lyx dir", true, true},
+		{"layout without a board lyx dir", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			hub := filepath.Join(t.TempDir(), "some-hub-LYXHUB")
+			l := &lyxcwd.Location{HubPath: hub, WorktreeName: "some-worktree", AnchorRel: "."}
+			mkdir(t, l.WorktreePath())
+			if tt.boardLyxDir {
+				mkdir(t, filepath.Join(fabricengine.BoardDir(hub), lyxdirs.LyxDirName))
+			} else {
+				mkdir(t, fabricengine.BoardDir(hub))
+			}
+
+			got, ok := ReconcileGeometry(l)
+
+			want := hubreconcile.Geometry{}
+			if tt.wantGeometry {
+				want = hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(hub), WorktreePath: l.WorktreePath()}
+			}
+			if ok != tt.wantGeometry || got != want {
+				t.Errorf("ReconcileGeometry() = (%+v, %v); want (%+v, %v)", got, ok, want, tt.wantGeometry)
 			}
 		})
 	}

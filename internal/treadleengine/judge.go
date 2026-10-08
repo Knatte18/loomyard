@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -74,6 +75,11 @@ func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string,
 		logger.Warn(name+": circling judge parent directive unreadable, defaulting to "+string(JudgeProgressing), "round", in.Round, "cause", err)
 		return JudgeProgressing, "", false
 	}
+	editDirective, err := editdirective.Directive(in.StencilsDir)
+	if err != nil {
+		logger.Warn(name+": circling judge edit directive unreadable, defaulting to "+string(JudgeProgressing), "round", in.Round, "cause", err)
+		return JudgeProgressing, "", false
+	}
 	values := map[string]string{
 		"round":                    strconv.Itoa(in.Round),
 		"prior_reviews":            strings.Join(in.PriorReviews, "\n"),
@@ -81,6 +87,7 @@ func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string,
 		"previous_handoff":         previousHandoffMarker(in.PreviousHandoffPath),
 		"handoff_path":             in.HandoffPath,
 		parentdirective.MarkerName: directive,
+		editdirective.MarkerName:   editDirective,
 	}
 	return runJudgeCall(sh, name, template, values, framingCircling, in.Round, in.Model, in.Effort, JudgeProgressing, "circling judge")
 }
@@ -99,6 +106,11 @@ func runMilestone(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string
 		logger.Warn(name+": milestone judge parent directive unreadable, defaulting to "+string(JudgeContinue), "round", in.Round, "cause", err)
 		return JudgeContinue, "", false
 	}
+	editDirective, err := editdirective.Directive(in.StencilsDir)
+	if err != nil {
+		logger.Warn(name+": milestone judge edit directive unreadable, defaulting to "+string(JudgeContinue), "round", in.Round, "cause", err)
+		return JudgeContinue, "", false
+	}
 	values := map[string]string{
 		"round":                    strconv.Itoa(in.Round),
 		"hard_cap":                 strconv.Itoa(in.HardCap),
@@ -107,6 +119,7 @@ func runMilestone(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string
 		"previous_handoff":         previousHandoffMarker(in.PreviousHandoffPath),
 		"handoff_path":             in.HandoffPath,
 		parentdirective.MarkerName: directive,
+		editdirective.MarkerName:   editDirective,
 	}
 	return runJudgeCall(sh, name, template, values, framingMilestone, in.Round, in.Model, in.Effort, JudgeContinue, "milestone judge")
 }

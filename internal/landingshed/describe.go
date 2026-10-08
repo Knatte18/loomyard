@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
@@ -128,8 +129,13 @@ func DescribeSpec(in DescribeInputs, cfg Config, reg modelspec.Registry) (shuttl
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DescribeSpec: %w", err)
 	}
+	editDirective, err := editdirective.Directive(in.StencilsDir)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("landingshed: DescribeSpec: %w", err)
+	}
 	prompt, err := stencil.Fill(template, map[string]string{
 		parentdirective.MarkerName: directive,
+		editdirective.MarkerName:   editDirective,
 		"slug":                     in.Slug,
 		"decision_record_path":     in.DecisionRecordPath,
 		"run_record_paths":         runRecordBullets(in),

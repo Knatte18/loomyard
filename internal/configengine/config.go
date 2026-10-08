@@ -74,6 +74,11 @@ func ConfigDir(baseDir string) string {
 	return filepath.Join(baseDir, lyxdirs.LyxDirName, configDirName)
 }
 
+// ScratchDir returns the never-tracked mirror of ConfigDir under the .lyx counterpart, for files a caller keeps beside the config that must never be committed.
+func ScratchDir(baseDir string) string {
+	return filepath.Join(baseDir, lyxdirs.DotLyxDirName, configDirName)
+}
+
 // ConfigFile returns the path to a module-specific configuration YAML file within a baseDir.
 func ConfigFile(baseDir, module string) string {
 	return filepath.Join(ConfigDir(baseDir), module+".yaml")
@@ -82,7 +87,7 @@ func ConfigFile(baseDir, module string) string {
 // StagingFile returns the path of a module's staging copy for an interactive edit:
 // the ephemeral .lyx counterpart of ConfigFile, at the mirrored subpath, so a staged edit is never tracked.
 func StagingFile(baseDir, module string) string {
-	return filepath.Join(baseDir, lyxdirs.DotLyxDirName, configDirName, module+".yaml")
+	return filepath.Join(ScratchDir(baseDir), module+".yaml")
 }
 
 // ConfigFileRel returns a module's configuration YAML file path relative to a worktree's anchor --

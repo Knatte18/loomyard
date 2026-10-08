@@ -49,6 +49,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
@@ -238,6 +239,11 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, prevDigest, failureDig
 		return nil, fmt.Errorf("webster: recovery prompt parent directive: %w", err)
 	}
 
+	editDirective, err := editdirective.Directive(stencilsDir)
+	if err != nil {
+		return nil, fmt.Errorf("webster: recovery prompt edit directive: %w", err)
+	}
+
 	frictionDirective, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
 	if err != nil {
 		logger.Warn("webster: friction directive failed, continuing without one", "role", "implementer", "stencil", "webster-prefix-recovery", "error", err)
@@ -258,6 +264,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, prevDigest, failureDig
 		friction.MarkerName: frictionDirective,
 
 		parentdirective.MarkerName: parentDirective,
+		editdirective.MarkerName:   editDirective,
 	}
 	template, err := composeRecoveryTemplate(stencilsDir)
 	if err != nil {
@@ -361,6 +368,11 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 		return nil, fmt.Errorf("webster: master prompt parent directive: %w", err)
 	}
 
+	editDirective, err := editdirective.Directive(stencilsDir)
+	if err != nil {
+		return nil, fmt.Errorf("webster: master prompt edit directive: %w", err)
+	}
+
 	frictionDirective, err := friction.Directive(notePath, stencilsDir, friction.RoleOrchestrator)
 	if err != nil {
 		logger.Warn("webster: friction directive failed, continuing without one", "role", "orchestrator", "stencil", "webster-template-master", "error", err)
@@ -380,6 +392,7 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 		friction.MarkerName:      frictionDirective,
 
 		parentdirective.MarkerName: parentDirective,
+		editdirective.MarkerName:   editDirective,
 	}
 	template, err := MasterTemplate(stencilsDir)
 	if err != nil {
