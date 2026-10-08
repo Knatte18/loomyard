@@ -1023,3 +1023,57 @@ func TestParsePlan_FirstCard(t *testing.T) {
 		})
 	}
 }
+
+// TestOverviewWithoutCardIndex covers the overview comparison form webster hashes: an index change leaves the output equal, a change anywhere else changes it, an index at the end of the file is cut to the end, and a missing heading or an unterminated frontmatter fence errors.
+func TestOverviewWithoutCardIndex(t *testing.T) {
+	t.Parallel()
+
+	const overview = "---\nformat: 5\napproved: true\n---\n\n# Plan: x\n\nFraming.\n\n## Card Index\n\n1 — one — first\n\n## Shared Decisions\n\nDecided.\n\n## Rename mechanic\n\nNone.\n\n## verify:\n\ngo test ./...\n"
+	cut := func(t *testing.T, content string) string {
+		t.Helper()
+		got, err := planparser.OverviewWithoutCardIndex([]byte(content))
+		if err != nil {
+			t.Fatalf("OverviewWithoutCardIndex() error = %v", err)
+		}
+		return string(got)
+	}
+	want := cut(t, overview)
+
+	same := map[string]string{
+		"index line reworded": strings.Replace(overview, "1 — one — first", "1 — one — reworded", 1),
+		"index line added":    strings.Replace(overview, "1 — one — first\n", "1 — one — first\n2 — two — second\n", 1),
+		"index line removed":  strings.Replace(overview, "1 — one — first\n", "", 1),
+	}
+	for name, content := range same {
+		if got := cut(t, content); got != want {
+			t.Errorf("%s: output = %q; want equal to %q", name, got, want)
+		}
+	}
+
+	different := map[string]string{
+		"frontmatter":      strings.Replace(overview, "approved: true", "approved: false", 1),
+		"title":            strings.Replace(overview, "# Plan: x", "# Plan: y", 1),
+		"framing":          strings.Replace(overview, "Framing.", "Reframed.", 1),
+		"verify":           strings.Replace(overview, "go test ./...", "go vet ./...", 1),
+		"shared decisions": strings.Replace(overview, "Decided.", "Undecided.", 1),
+		"rename mechanic":  strings.Replace(overview, "None.", "Some.", 1),
+	}
+	for name, content := range different {
+		if got := cut(t, content); got == want {
+			t.Errorf("%s: output equals the unchanged overview's; want a difference", name)
+		}
+	}
+
+	if got, wantTail := cut(t, "---\nformat: 5\n---\n\nFraming.\n\n## Card Index\n\n1 — one — first\n"), "---\nformat: 5\n---\n\nFraming.\n"; got != wantTail {
+		t.Errorf("index at end of file: output = %q; want %q", got, wantTail)
+	}
+
+	for name, content := range map[string]string{
+		"missing heading":    "---\nformat: 5\n---\n\nFraming.\n",
+		"unterminated fence": "---\nformat: 5\n\nFraming.\n\n## Card Index\n",
+	} {
+		if _, err := planparser.OverviewWithoutCardIndex([]byte(content)); err == nil {
+			t.Errorf("%s: error = nil; want an error", name)
+		}
+	}
+}
