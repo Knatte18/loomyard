@@ -31,6 +31,7 @@ func TestIdleSession(t *testing.T) {
 		{"turn running", readPaneFixture(t, "pane-turn-running.txt"), false},
 		{"no input box", "● some transcript\n\nnothing else here\n", false},
 		{"empty capture", "", false},
+		{"exported idle input box fixture", IdleInputBoxFixture, true},
 		{
 			name:    "transcript quoting the running hint above an empty box",
 			capture: "● the hint reads: esc to interrupt\n\n" + rule + "\n❯ \n" + rule + "\n  ? for shortcuts\n",

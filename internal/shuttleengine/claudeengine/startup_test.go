@@ -94,6 +94,11 @@ func TestStartup_Classification(t *testing.T) {
 			want:    shuttleengine.StartupReady,
 		},
 		{
+			name:    "ready_idle_input_box_fixture",
+			capture: IdleInputBoxFixture,
+			want:    shuttleengine.StartupReady,
+		},
+		{
 			name:    "pending_cold_boot",
 			capture: "Loading...",
 			want:    shuttleengine.StartupPending,
