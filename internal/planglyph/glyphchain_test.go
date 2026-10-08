@@ -607,6 +607,37 @@ func TestGlyphChain_ResignScenarios(t *testing.T) {
 	})
 }
 
+// TestGlyphChain_FuncNamedInterfaceMethod pins that an interface method whose name opens with "func" is still told apart from a declared method: its arrow reports resign-interface-method, and its Rename canonicalizes.
+func TestGlyphChain_FuncNamedInterfaceMethod(t *testing.T) {
+	t.Parallel()
+
+	const member = "shapes#FuncNamed.funcLike"
+	withFuncNamed := func(t *testing.T) string {
+		t.Helper()
+		root := copyGlyphChainFixture(t)
+		source := "package shapes\n\ntype FuncNamed interface {\n\tfuncLike() int\n}\n"
+		if err := os.WriteFile(filepath.Join(root, "shapes", "funcnamed.go"), []byte(source), 0o644); err != nil {
+			t.Fatalf("WriteFile(funcnamed.go) failed: %v", err)
+		}
+		return root
+	}
+
+	t.Run("arrow", func(t *testing.T) {
+		t.Parallel()
+		_, plan := writeGlyphPlan(t, []string{resignCard(resignLeg{member, "func (FuncNamed) funcLike(count int) int"})})
+		assertPlanGate(t, plan, withFuncNamed(t), []findingKey{{"resign-interface-method", "1-card1", SeverityBlocking}})
+	})
+
+	t.Run("rename", func(t *testing.T) {
+		t.Parallel()
+		dir, plan := writeGlyphPlan(t, []string{renameCard(member, "plan:shapes#FuncNamed.funcRenamed")}, renameMechanic)
+		assertPlanGate(t, plan, withFuncNamed(t), nil)
+		if got := readCardFile(t, dir, 1, "card1"); !strings.Contains(got, "plan:shapes#FuncNamed.funcRenamed") {
+			t.Errorf("card 1 lacks the canonical handle: %s", got)
+		}
+	})
+}
+
 // coverageFiles are the fixture files the caller-coverage rows can report.
 var coverageFiles = []string{
 	"callees/callees.go",

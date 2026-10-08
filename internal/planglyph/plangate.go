@@ -102,9 +102,10 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string) ([]Finding, error)
 	return append(findings, coverage...), err
 }
 
-// isInterfaceMethod reports whether s is a method whose signature does not open with func, quarry's answer for an interface method.
+// isInterfaceMethod reports whether s is a method whose signature does not open with the func keyword and a receiver, quarry's answer for an interface method.
+// An interface method's own name may open with "func", so the keyword is told apart by the receiver's parenthesis after it.
 func isInterfaceMethod(s quarry.Symbol) bool {
-	return s.Kind == quarry.KindMethod && !strings.HasPrefix(s.Signature, "func")
+	return s.Kind == quarry.KindMethod && !strings.HasPrefix(s.Signature, "func (") && !strings.HasPrefix(s.Signature, "func(")
 }
 
 // collectMemberTargets returns every distinct member glyph plan's cards list among their own Targets, sorted for determinism.

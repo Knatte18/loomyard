@@ -136,7 +136,7 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 		return declSource{handle: newHandle, decl: quarry.Declaration{Unit: sym.Glyph.Unit, Decl: "const " + identifier + " = 0"}}, Finding{}, true
 	}
 	signature := sym.Signature
-	if sym.Kind == quarry.KindMethod && !strings.HasPrefix(signature, "func") {
+	if isInterfaceMethod(sym) {
 		signature = "func (" + strings.Join(sym.Glyph.Owner, ".") + ") " + signature
 	}
 	decl, renamed := renameSignature(signature, sym.Glyph.Name, identifier)
