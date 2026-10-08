@@ -187,6 +187,21 @@
 // an engine without it, and a run with no turn end yet, are judged by the events file alone.
 // Like ReadWaitMarker it reads files only, so a process that runs no shuttle may call it.
 //
+// Session state, in shadow mode: no consumer acts on it.
+// The optional SessionSignalParser capability reads the events file's hook lines as provider-neutral signals with hook-side times:
+// a turn start, a turn end (with its outstanding background tasks), an API-error turn end, an ask, an idle notice and a session end.
+// SessionFold reduces the signals in file order, with facts the caller reads, to one state: busy, idle-done, idle-stalled, asking, dead or unknown, with a cause, a since time and the history of states passed through.
+// Precedence, first that applies: a process-ending session end; a process proven dead; liveness left unproven; an unreadable events file; no signal at all; otherwise the state the signals give.
+// A turn end reads busy while it reports background tasks, idle-done when the run's output files exist, asking for an interactive run, and idle-stalled otherwise.
+// The transcript's API-error marker turns the newest turn end into an API-error stall, and the interrupt marker turns a turn that is still open into an interrupt stall.
+// Output files are consulted first only among the output-derived states, so dead and unknown outrank idle-done and a finished run can read dead:
+// the first consumer that acts on dead applies PATTERN-completion-signal's output check before acting.
+// The facts and their sources: the record gives Interactive and the output files (a run that declares none has none that exist), taken once per read;
+// the optional SessionProber gives process liveness for the session id of the newest signal that names one, else the record's, and the interrupt marker of the newest turn start;
+// the optional ActivityReader gives the API-error marker of the newest turn end; the caller's clock gives the reading time.
+// ReadSessionStates returns one RunSessionState per run under a run-directory root whose record reads running, whether or not its waiting process is alive, and Runner.SessionState reads the one run a guid names.
+// Both read the signals past the prompt offset and write nothing; an engine without the parser reads unknown with cause unsupported.
+//
 // Start/StartGated/Run/RunGated run the startup probe (readiness plus dismissal of any one-time
 // startup gate, through the Engine seam's startup classification and trust-dismiss sequence) before
 // issuing a handle, so no caller outside this package probes readiness or plays gate keys.
