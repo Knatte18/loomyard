@@ -29,6 +29,11 @@ func TestClassifyPortBackDrift(t *testing.T) {
 		wantClass    driftClass
 		wantContains []string
 		wantPromote  bool
+		// ancestry is what the build func reports; nilBuild passes no func at all.
+		ancestry   BuildAncestry
+		nilBuild   bool
+		wantCalls  int
+		wantNoText []string
 	}{
 		{
 			name:         "hand-edited only",
@@ -42,13 +47,43 @@ func TestClassifyPortBackDrift(t *testing.T) {
 			name:         "source-ahead only",
 			board:        stampedBody(embedded),
 			source:       ahead,
+			ancestry:     BuildInHead,
 			wantClass:    driftSourceAhead,
 			wantContains: []string{"update-plugins.sh", "older than the source"},
+			wantCalls:    1,
+		},
+		{
+			name:         "source-ahead with an unknown ancestry",
+			board:        stampedBody(embedded),
+			source:       ahead,
+			ancestry:     BuildAncestryUnknown,
+			wantClass:    driftSourceAhead,
+			wantContains: []string{"update-plugins.sh"},
+			wantCalls:    1,
+		},
+		{
+			name:         "source-ahead with no build func",
+			board:        stampedBody(embedded),
+			source:       ahead,
+			nilBuild:     true,
+			wantClass:    driftSourceAhead,
+			wantContains: []string{"update-plugins.sh"},
+		},
+		{
+			name:         "source-ahead in a worktree behind the build",
+			board:        stampedBody(embedded),
+			source:       ahead,
+			ancestry:     BuildNotInHead,
+			wantClass:    driftBehind,
+			wantContains: []string{"behind the build", "syncing"},
+			wantNoText:   []string{"update-plugins.sh"},
+			wantCalls:    1,
 		},
 		{
 			name:         "both",
 			board:        ApplyStamp([]byte("operator edit\n"), BodyHash([]byte(embedded))),
 			source:       ahead,
+			ancestry:     BuildNotInHead,
 			wantClass:    driftBoth,
 			wantContains: []string{"reconcile by hand", "overwrite the source's changes"},
 			wantPromote:  true,
@@ -57,6 +92,7 @@ func TestClassifyPortBackDrift(t *testing.T) {
 			name:         "neither: untouched copy older than a dev build's embedded bytes",
 			board:        stampedBody("older body\n"),
 			source:       embedded,
+			ancestry:     BuildNotInHead,
 			wantClass:    driftNeither,
 			wantContains: []string{"lyx stencil sync", "dev build"},
 		},
@@ -66,9 +102,25 @@ func TestClassifyPortBackDrift(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			class, msg := classifyPortBackDrift(tt.board, []byte(tt.source), []byte(embedded))
+			calls := 0
+			var build func() BuildAncestry
+			if !tt.nilBuild {
+				build = func() BuildAncestry {
+					calls++
+					return tt.ancestry
+				}
+			}
+			class, msg := classifyPortBackDrift(tt.board, []byte(tt.source), []byte(embedded), build)
 			if class != tt.wantClass {
 				t.Errorf("class = %v; want %v", class, tt.wantClass)
+			}
+			if calls != tt.wantCalls {
+				t.Errorf("build calls = %d; want %d", calls, tt.wantCalls)
+			}
+			for _, unwanted := range tt.wantNoText {
+				if strings.Contains(msg, unwanted) {
+					t.Errorf("message = %q; want it not to contain %q", msg, unwanted)
+				}
 			}
 			for _, want := range tt.wantContains {
 				if !strings.Contains(msg, want) {
@@ -91,6 +143,7 @@ func TestWarnPortBackDrift_EmitsClassAndRemedyPerDifferingStencil(t *testing.T) 
 	registry := newFakeRegistry(map[string][]byte{
 		"family-older": []byte("embedded body\n"),
 		"family-same":  []byte("embedded body\n"),
+		"family-ahead": []byte("embedded body\n"),
 	})
 
 	writeAt := func(root, name string, content []byte) {
@@ -107,17 +160,39 @@ func TestWarnPortBackDrift_EmitsClassAndRemedyPerDifferingStencil(t *testing.T) 
 	writeAt(sourceDir, "family-older", []byte("embedded body\n"))
 	writeAt(baseDir, "family-same", stampedBody("embedded body\n"))
 	writeAt(sourceDir, "family-same", []byte("embedded body\n"))
+	writeAt(baseDir, "family-ahead", stampedBody("embedded body\n"))
+	writeAt(sourceDir, "family-ahead", []byte("source ahead body\n"))
 
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	logger.SetVerbosity(1)
+	t.Cleanup(func() {
+		logger.SetOutput(os.Stderr)
+		logger.SetVerbosity(0)
+	})
 
-	warnPortBackDrift(baseDir, registry, sourceDir)
+	buildCalls := 0
+	warnPortBackDrift(baseDir, registry, Source{Dir: sourceDir, Build: func() BuildAncestry {
+		buildCalls++
+		return BuildNotInHead
+	}})
 
 	got := buf.String()
-	for _, want := range []string{"family-older", "neither", "lyx stencil sync"} {
+	// Only the source-ahead stencil reaches the ancestry read; the equal and older ones never do.
+	if buildCalls != 1 {
+		t.Errorf("build calls = %d; want 1, from the source-ahead stencil alone", buildCalls)
+	}
+	for _, want := range []string{"family-older", "neither", "lyx stencil sync", "family-ahead", "class=behind"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("warning log = %q; want it to contain %q", got, want)
+		}
+	}
+	for _, line := range strings.Split(got, "\n") {
+		if strings.Contains(line, "class=behind") && !strings.Contains(line, "level=INFO") {
+			t.Errorf("behind line = %q; want level=INFO", line)
+		}
+		if strings.Contains(line, "family-older") && !strings.Contains(line, "level=WARN") {
+			t.Errorf("neither line = %q; want level=WARN", line)
 		}
 	}
 	if strings.Contains(got, "family-same") {
@@ -126,7 +201,7 @@ func TestWarnPortBackDrift_EmitsClassAndRemedyPerDifferingStencil(t *testing.T) 
 	if strings.Contains(got, "promote") {
 		t.Errorf("warning log = %q; an untouched older copy must never name promote", got)
 	}
-	if n := strings.Count(got, "board copy has drifted"); n != 1 {
-		t.Errorf("warning count = %d; want exactly 1", n)
+	if n := strings.Count(got, "board copy has drifted"); n != 2 {
+		t.Errorf("warning count = %d; want exactly 2", n)
 	}
 }

@@ -4,7 +4,8 @@
      to shuttle as the rework agent's entire instruction set.
      Every marker below is a top-level {{.X}} substitution;
      stencil.FillOptional requires every marker except pattern_directive and friction_directive non-empty, and there are no {{if}}/{{range}} conditionals anywhere in this file. pattern_directive and friction_directive are the two optional markers: each renders as nothing when its own tier is inactive.
-     parent_directive is a third optional marker, rendered by internal/parentdirective. -->
+     parent_directive is a third optional marker, rendered by internal/parentdirective.
+     edit_directive is a required marker, rendered unconditionally by internal/editdirective. -->
 
 # Rework — turn a rejected pull request's findings into a new plan generation
 
@@ -13,6 +14,7 @@ The plan that was built so far is a retired generation, already archived for you
 You never interview and never ask.
 
 {{.parent_directive}}
+{{.edit_directive}}
 {{.pattern_directive}}
 {{.friction_directive}}
 ## Step 1 — Read the plan stencil first

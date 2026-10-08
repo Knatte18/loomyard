@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -27,7 +28,7 @@ func TestStatusCmd_LastStepCarriesBuildIdentity(t *testing.T) {
 	stepsDir := filepath.Join(t.TempDir(), "steps")
 	spec := seededStatusSpec(t, Hooks{})
 	spec.StepsDir = stepsDir
-	newStepRecorder(stepsDir, "aaaa", BuildIdentity{Revision: "abc"}).begin()
+	newStepRecorder(stepsDir, "aaaa", buildvcs.Identity{Revision: "abc"}).begin()
 
 	env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
 	if code != 0 {

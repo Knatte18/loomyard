@@ -7,6 +7,7 @@ package loomengine
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -29,6 +30,11 @@ func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patter
 
 	friction.WarnIfMarkerAbsent(template, "loom-template-discussion", frictionDirective)
 
+	editDirective, err := editdirective.Directive(stencilsDir)
+	if err != nil {
+		return nil, fmt.Errorf("loom: compose discussion prompt: %w", err)
+	}
+
 	values := map[string]string{
 		"slug":                     slug,
 		"decision_record_path":     decisionRecordPath,
@@ -37,6 +43,7 @@ func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, patter
 		"pattern_directive":        patternDirective,
 		friction.MarkerName:        frictionDirective,
 		parentdirective.MarkerName: parentDirective,
+		editdirective.MarkerName:   editDirective,
 	}
 
 	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName})

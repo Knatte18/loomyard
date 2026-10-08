@@ -93,6 +93,9 @@ func TestSpawnedRoles_SkillAndParentDirective(t *testing.T) {
 				if got := sh.spec.Skills; len(got) != 1 || got[0] != "scribe:prose" {
 					t.Errorf("spec.Skills = %v; want [scribe:prose]", got)
 				}
+				if !strings.Contains(sh.spec.Prompt, "Edit or Write") {
+					t.Error("prompt lacks the edit directive's \"Edit or Write\" sentence")
+				}
 				if strings.Contains(sh.spec.Prompt, parentName) != tc.wantParent {
 					t.Errorf("prompt names the parent = %v; want %v", !tc.wantParent, tc.wantParent)
 				}

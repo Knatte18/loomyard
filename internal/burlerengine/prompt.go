@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
@@ -57,6 +58,11 @@ func composePrompt(stencilsDir, parentName string, p *Profile, patternDirective,
 		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
 	}
 
+	editDirective, err := editdirective.Directive(stencilsDir)
+	if err != nil {
+		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
+	}
+
 	reviewerTemplate, err := stencilstore.Read(stencilsDir, "burler-template-review-orchestrator")
 	if err != nil {
 		return roundPrompts{}, err
@@ -66,6 +72,7 @@ func composePrompt(stencilsDir, parentName string, p *Profile, patternDirective,
 		"instruction_2_path":       paths.Review,
 		"review_path":              p.ReviewPath,
 		parentdirective.MarkerName: parentDirective,
+		editdirective.MarkerName:   editDirective,
 	}, []string{parentdirective.MarkerName})
 	if err != nil {
 		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)
@@ -82,6 +89,7 @@ func composePrompt(stencilsDir, parentName string, p *Profile, patternDirective,
 		"review_path":              p.ReviewPath,
 		"ready_marker_path":        p.ReadyMarkerPath,
 		parentdirective.MarkerName: parentDirective,
+		editdirective.MarkerName:   editDirective,
 	}, []string{parentdirective.MarkerName})
 	if err != nil {
 		return roundPrompts{}, fmt.Errorf("burler: compose prompt: %w", err)

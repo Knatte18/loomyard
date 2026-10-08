@@ -598,6 +598,7 @@ func TestConfigPaths(t *testing.T) {
 	}{
 		{"ConfigDir", configengine.ConfigDir(base), filepath.Join(base, lyxdirs.LyxDirName, "config")},
 		{"ConfigFile", configengine.ConfigFile(base, "myapp"), filepath.Join(base, lyxdirs.LyxDirName, "config", "myapp.yaml")},
+		{"ScratchDir", configengine.ScratchDir(base), filepath.Join(base, lyxdirs.DotLyxDirName, "config")},
 		{"StagingFile", configengine.StagingFile(base, "board"), filepath.Join(base, lyxdirs.DotLyxDirName, "config", "board.yaml")},
 		{"ConfigFileRel loom", configengine.ConfigFileRel("loom"), filepath.Join(lyxdirs.LyxDirName, "config", "loom.yaml")},
 		{"ConfigFileRel board", configengine.ConfigFileRel("board"), filepath.Join(lyxdirs.LyxDirName, "config", "board.yaml")},

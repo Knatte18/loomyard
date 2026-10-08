@@ -30,6 +30,7 @@ func reviewOrchestratorMarkerValues() map[string]string {
 		"instruction_1_path": "/tmp/instruction-1-explore.md",
 		"instruction_2_path": "/tmp/instruction-2-review.md",
 		"review_path":        "/tmp/review.md",
+		"edit_directive":     "edit directive placeholder",
 	}
 }
 
@@ -41,6 +42,7 @@ func fixOrchestratorMarkerValues() map[string]string {
 		"instruction_3_path": "/tmp/instruction-3-fix.md",
 		"review_path":        "/tmp/review.md",
 		"ready_marker_path":  "/tmp/review.md.ready",
+		"edit_directive":     "edit directive placeholder",
 	}
 }
 
