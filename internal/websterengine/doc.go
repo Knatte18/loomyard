@@ -255,7 +255,10 @@
 // an undispositioned correctness finding (a fork that marked its own batch done by writing state.json) replaces the terminal record with a failed one,
 // and otherwise the "already terminal" refusal stands.
 // It audits nothing while a later fork batch of the session is open or the verify-gate report exists, since an unseen transcript may then be that fork's.
-// A report that cannot be attributed to a begun batch, or to any fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
+// A batch's own bracket transcripts, the ones record-batch attributed to it since its begin-batch, count toward attribution when one of their writes is the batch's report,
+// and every one of them is re-audited in full on each call, so a fork stopped and resumed across a no-report call is attributed on the next.
+// begin-batch and recover-batch open an empty bracket list, so a transcript of an earlier bracket never counts.
+// A report that cannot be attributed to a begun batch, or to any counted fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
 // The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
 // A delete-not-done finding gets one more check, planindex.Index.LaterDeleteReferences over the batch's own cards and the cards of every batch with no record:
 // when an unbegun later card's Edit code still references the target, the failure's reasons name that card and the reference,
