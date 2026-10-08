@@ -36,13 +36,14 @@
 //     Create inversion's own fail-closed arm (create.go), since a Create target is excluded from
 //     the status policy above and would otherwise have no reader at all for an answer neither
 //     policy understands.
-//     The passes that raise glyph-rejected are resolve.go, create.go and donecheck.go — one per fail-closed status policy in the package;
+//     The passes that raise glyph-rejected are resolve.go, create.go, deleteorder.go and donecheck.go — one per fail-closed status policy in the package;
 //     each is named at its own bullet, and the double report one anomalous target can produce across two of them is accepted by design.
 //   - create-already-exists (blocking), create-new-unit (informational) — the Create inversion
 //     (create.go), over every Create group's own targets, handle-shaped or glyph-shaped alike.
 //     create-already-exists covers found, multipart and ambiguous alike: all three mean a
 //     declaration already occupies the name the card is creating.
 //   - delete-before-reference (blocking) — LaterDeleteReferences (deleteorder.go), a card that deletes a symbol whose reference a later card's Edit code still holds, so the delete must move after that card.
+//     glyph-rejected is additionally its own fail-closed arm, for a Delete or Edit member whose answer it cannot read.
 //   - resign-head-mismatch (blocking) — CanonicalizeHandles (handle.go), an Edit re-sign arrow whose head quarry.Name cannot name or names as a member other than the arrow's own glyph.
 //     It reads plan text alone, so it runs wherever resolvePass does, ValidateDispatch included.
 //   - redundant-file-target (blocking) — planGatePass (plangate.go), a card listing a file self glyph beside a member glyph that resolves into that file.
