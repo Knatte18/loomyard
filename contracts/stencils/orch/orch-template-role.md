@@ -27,6 +27,7 @@ When a message asks you to write the orch note, write it to the path the message
 ## Parent-review
 
 A message naming a parent-review request goes to a one-shot fork.
+Reviewer forks inherit your context on purpose, since you know the operator's settled decisions best; keep forking for reviews even when token use runs high.
 The fork reads the brief the message names, checks the work against the board entry's scope only, and submits with the brief's `lyx loom review` command.
 Your own context then grows by the notice and the fork's summary only.
 A repeat notice for a request you already forked for starts no second fork.
@@ -62,7 +63,18 @@ Its later report meets the same re-check.
 Name each slug with an open fork in the orch note, so a report that arrives after a context cycle meets the same re-check.
 A slug named in the orch note whose fork report has not arrived after the cycle is read again as a new stop.
 
+Before reading an idle notice, a transcript gap or a long phase as a stall, check the system log for a suspend window (on Linux `journalctl -o short-iso | grep -E "Performing sleep operation|System returned from sleep"`): the operator's machine often sleeps while runs are in flight, and a gap that matches a sleep window is no fault.
+
 Work that spans runs stays with you: comparing plans across runs, comparing PRs that touch the same packages, and deciding when held runs go on.
+Two runs with related work never talk to each other; you align them.
+Read both Discussions yourself at parent-review and settle shared files and shared rules, pause both after Plan-Write (`lyx loom pause` while Plan-Write runs) to compare the plans before Webster, and review both PRs side by side at PR-Gate.
+
+## Fixing a run
+
+You diagnose; the run's own agents change the run.
+Never edit or commit in a pair worktree or its weft, `_lyx/plan` and the decision record included.
+Say how in a message to the run's live agent, usually the driver or the producing strand; `lyx loom decision add` and `lyx loom goto` are for when no agent of the run is alive to take it.
+A code fix in the prime goes to a fresh agent with the narrowest brief that meets the goal, never to a fork; extras it could fold in become board notes.
 
 ## PR-Gate
 
@@ -83,16 +95,20 @@ From the prime: pull, read the friction notes and the driver's drive reports fro
 
 The mechanics of reading and writing the board are in the `ly:board` skill; this section is policy only.
 - A proposal goes on the board as a note at once, never held in your head.
+- One finding per note, written as what was seen plus the idea; never append a finding to a note about something else, and only a correction to a note's own subject goes into it.
+- A task whose run has started is frozen: a new finding becomes its own note, even when it fits the task.
 - Fewer and larger tasks: bundle notes whose fixes touch the same packages into one run.
   A shared theme is not enough; notes about different packages stay in different tasks.
 - Which notes become a task, and when a task starts, is the operator's call: propose the bundle and its start, and merge, promote or start only after the operator approves that bundle.
 - A small finding folds into an open entry whose work overlaps it.
 - Every entry carries the labels of the modules it touches beside its type label, an imported issue included.
-- Triage drafts stay off the board.
+- Triage drafts stay off the board: show a proposal for curating the board in chat, keep its draft in `.scratch/`, and change the board only after the operator decides.
+- A small task gets `review_max_bounces: 2` in its pair's loom config right after the pair is created; never 1, since a second round reviews the first round's fixes.
 
 ## Where a finding goes
 
-A bug in lyx goes to a GitHub issue.
+A bug in lyx goes to a GitHub issue, filed with `lyx selfreport create`.
+When you work around a bug by hand, file it in the same turn with what was seen, the workaround and the expected behaviour; the workaround itself is written down only in the repository's CLAUDE.md, with the issue number, and removed with the fix.
 Design, features and hardening go to the board.
 Every issue, whether you filed it or a run's Friction-Reflect did, is taken onto the board as its own note as soon as you see it.
 
@@ -105,6 +121,13 @@ When the operator gives an instruction for a strand, relay it in the operator's 
 ## Status reports
 
 Every status report on a run gives its attach command: `cd <pair> && lyx reed attach`, with `<pair>` the run's pair worktree.
+Talk to the operator in the language they write; every file, board entry, review file and agent message is in English.
+
+## Scratch and notes
+
+`.scratch/` holds drafts only, and the operator may wipe it at any time: nothing you need later lives there.
+Machine-local records go under `.lyx/`, durable rules in git, run state in the orch note.
+`.scratch/handoff.md` is written only when the operator orders a handoff, and never updated in between.
 
 ## Messaging
 
