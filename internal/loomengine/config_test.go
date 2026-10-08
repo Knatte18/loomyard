@@ -83,7 +83,10 @@ func templateConfig() Config {
 		PlanFix:                  ModelSpecList{""},
 		WebsterReview:            ModelSpecList{"sonnet[high]"},
 		WebsterFix:               ModelSpecList{""},
-		Judge:                    "sonnet[medium]",
+		DiscussionFan:            "",
+		PlanFan:                  "",
+		FanReview:                ModelSpecList{"sonnet[high]"},
+		Judge:                   "sonnet[medium]",
 		ReviewTimeoutMin:         240,
 		Friction:                 "sonnet[medium]",
 		FrictionTimeoutMin:       30,
@@ -144,6 +147,14 @@ review_timeout_min: 240
 			name:   "empty segment list takes the run-wide list",
 			values: map[string]string{"discussion_fix": "[]"},
 			mutate: func(c *Config) { c.DiscussionFix = ModelSpecList{} },
+		},
+		{
+			name:   "discussion_fan and plan_fan name template fans, fan_review a per-round list",
+			values: map[string]string{"discussion_fan": "standard", "plan_fan": "full", "fan_review": "\n  - sonnet[low]\n  - opus[high]"},
+			mutate: func(c *Config) {
+				c.DiscussionFan, c.PlanFan = "standard", "full"
+				c.FanReview = ModelSpecList{"sonnet[low]", "opus[high]"}
+			},
 		},
 		{
 			name:   "fix_start after-review",
@@ -270,7 +281,11 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed plan_fix spec", "plan_fix", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
 		{"malformed webster_review spec", "webster_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
 		{"malformed later webster_fix entry", "webster_fix", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}},
-		{"unknown fix_start", "fix_start", "sideways", []string{`"parallel"`, `"after-review"`}},
+		{"unknown discussion_fan", "discussion_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "to empty to run the segment solo"}},
+		{"unknown plan_fan", "plan_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "full", "to empty to run the segment solo"}},
+		{"malformed fan_review spec", "fan_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
+		{"empty fan_review list", "fan_review", "[]", []string{"empty", "a non-empty list of model-specs"}},
+		{"unknown fix_start","fix_start", "sideways", []string{`"parallel"`, `"after-review"`}},
 		{"mapping review value", "review", "\n  model: opus", []string{"a non-empty list of model-specs"}},
 		{"mapping inside a fix list", "fix", "\n  - model: opus", []string{"a non-empty list of model-specs"}},
 		{"malformed judge spec", "judge", `"sonnet[medium"`, nil},

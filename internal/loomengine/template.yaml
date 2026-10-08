@@ -11,6 +11,9 @@ plan_review: ""  # model-spec for the Plan-Review reviewer; empty takes the run-
 plan_fix: ""  # model-spec for the Plan-Review fixer; empty takes the run-wide fix list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
 webster_review: sonnet[high]  # model-spec for the Webster-Review reviewer; empty takes the run-wide review list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
 webster_fix: ""  # model-spec for the Webster-Review fixer; empty takes the run-wide fix list, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
+discussion_fan: ""  # fan name from burler.yaml (its fans fall back per name to the embedded template) that turns the lens fan on for Discussion-Review; empty, the default, runs the segment solo
+plan_fan: ""  # fan name from burler.yaml that turns the lens fan on for Plan-Review; empty, the default, runs the segment solo; Webster-Review has no fan key and always runs solo
+fan_review: sonnet[high]  # model-spec for the reviewer of a fanned segment's round (a segment whose discussion_fan or plan_fan is set), replacing that segment's review list while its fixer list is kept; it is also the forks' model, since forks run on the reviewer session's model; same grammar as review, a YAML list sets one model per round with the last entry for every later round
 judge: sonnet[medium]  # model-spec for every Bouncer row's seed and judge passes (see contracts/specs/llm-model-spec.md)
 review_timeout_min: 240  # minutes one review round's shuttle run is allowed to run
 friction: sonnet[medium]  # model-spec for the Tier 2 friction-reflection producer (see contracts/specs/llm-model-spec.md); empty turns Tier 2 self-reporting off
