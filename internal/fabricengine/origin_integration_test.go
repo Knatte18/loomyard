@@ -5,8 +5,8 @@
 // adopted-weft-branch paths, its mutation-record entries (including the exemption the git-state
 // commit kind carries), and the run launcher that lands alongside it in the same batch.
 //
-// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helpers
-// (mustRecordsRepoRoot); shares the single TestMain in testmain_test.go.
+// Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helpers (mustRecordsRepoRoot);
+// shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
 
