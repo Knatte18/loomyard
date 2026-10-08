@@ -3,7 +3,7 @@
 // dismissal or a fast-failing dead pane, and runs the done-outcome cleanup (strand removal + run
 // dir deletion).
 // It also hosts awaitStartup, the startup probe run.go's own start method calls before issuing a run
-// handle at all, and abandonStartup, its not-ready teardown.
+// handle at all, and abandonStartup, start's teardown for a provider that never became ready or never took its first input.
 // Wait and awaitStartup are the only two places in the run loop that sleep — both through the clock
 // seam defined here, which lets tests replay a whole poll sequence instantly.
 // A pane that goes not-live (crashed, killed, or exited) is classified done rather than died when
