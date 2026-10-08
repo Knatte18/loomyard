@@ -39,7 +39,7 @@ internal/gitkit: 8
 internal/gitrepo: 36
 internal/gitrepo/internal/gitoracle: 1
 internal/hubforge: 5
-internal/hubgeom: 10
+internal/hubgeom: 11
 internal/hubreconcile: 16
 internal/idecli: 2
 internal/ideengine: 4
