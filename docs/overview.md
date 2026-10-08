@@ -259,6 +259,7 @@ github.com/Knatte18/loomyard/
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
 ├── internal/standalonegeom/      the told-mode geometry teller that builds each engine's geometry struct from told absolute path strings
 ├── internal/cliwire/             the shared standalone/hub wiring resolver for the standalone-capable CLIs, the layer that runs after `preflight.ResolveMode` has chosen a mode
+├── internal/hubreconcile/        the hub config walk a start verb runs once after a binary change: build stamp, hub lock, reconcile and commit of every worktree's config
 ├── internal/preflightshed/       the general `Preflight` `ShedProducer` over `internal/preflight`'s tier-1/tier-2 checks, shared by reference across producer lists
 ├── internal/preflight/           orchestrator-agnostic tier-1/tier-2 precondition checks (geometry, worktree-pair cleanliness, Fabric readiness/sync) + the shared Report result type
 ├── internal/lyxcwd/              cwd resolution entry gate (the sole owner of cwd resolution, nothing else)
