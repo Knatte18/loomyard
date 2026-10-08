@@ -137,7 +137,7 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(loc, line) })
 
 	// A `lyx burler` run is not a loom run and has no friction directory in either mode.
-	c.engine = burlerengine.New(burlerengine.RunnerShuttle(runner), burlerengine.NewReedStrandRemover(reedEngine), hubgeom.BurlerGeometry(loc), burlerCfg, stencilsDir, "")
+	c.engine = burlerengine.New(burlerengine.RunnerShuttle(runner), hubgeom.BurlerGeometry(loc), burlerCfg, stencilsDir, "")
 	c.mode = "hub"
 	c.stateDir = ""
 	c.markerRoot = anchorPath
@@ -214,7 +214,7 @@ func (c *burlerCLI) wireStandalone(cwd, stencilsDirOverride, targetDirFlag strin
 	}
 
 	// A `lyx burler` run is not a loom run and has no friction directory in either mode.
-	c.engine = burlerengine.New(burlerengine.RunnerShuttle(runner), burlerengine.NewReedStrandRemover(reedEngine), standalonegeom.BurlerGeometry(res.Target, res.StateDir), burlerCfg, res.StencilsDir, "")
+	c.engine = burlerengine.New(burlerengine.RunnerShuttle(runner), standalonegeom.BurlerGeometry(res.Target, res.StateDir), burlerCfg, res.StencilsDir, "")
 	c.mode = "standalone"
 	c.stateDir = res.StateDir
 	c.markerRoot = res.Target

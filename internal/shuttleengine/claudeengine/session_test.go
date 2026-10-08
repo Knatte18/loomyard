@@ -31,6 +31,7 @@ func TestIdleSession(t *testing.T) {
 		{"turn running", readPaneFixture(t, "pane-turn-running.txt"), false},
 		{"no input box", "● some transcript\n\nnothing else here\n", false},
 		{"empty capture", "", false},
+		{"exported idle input box fixture", IdleInputBoxFixture, true},
 		{
 			name:    "transcript quoting the running hint above an empty box",
 			capture: "● the hint reads: esc to interrupt\n\n" + rule + "\n❯ \n" + rule + "\n  ? for shortcuts\n",
@@ -151,6 +152,42 @@ func TestReloadPluginsSequence(t *testing.T) {
 	want := []shuttleengine.PaneInput{{Text: "/reload-plugins", SettleMS: defaultSubmitSettleMS}, {Key: "Enter"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ReloadPluginsSequence = %#v; want %#v", got, want)
+	}
+}
+
+func TestClearInputSequence(t *testing.T) {
+	t.Parallel()
+
+	got := New().ClearInputSequence()
+	want := []shuttleengine.PaneInput{{Key: "C-u"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ClearInputSequence = %#v; want %#v", got, want)
+	}
+}
+
+func TestPastePlaceholder(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		box  string
+		want bool
+	}{
+		{"bare placeholder", "[Pasted text #1]", true},
+		{"placeholder with line count", "[Pasted text #12 +40 lines]", true},
+		{"placeholder with surrounding space", "  [Pasted text #3 +2 lines] ", true},
+		{"draft quoting the placeholder", "see [Pasted text #1] above", false},
+		{"typed text", "hello", false},
+		{"empty reading", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := New().PastePlaceholder(tt.box); got != tt.want {
+				t.Errorf("PastePlaceholder(%q) = %v; want %v", tt.box, got, tt.want)
+			}
+		})
 	}
 }
 

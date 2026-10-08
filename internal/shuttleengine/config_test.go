@@ -78,6 +78,12 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if cfg.SubmitSettleMS != 300 {
 		t.Errorf("SubmitSettleMS = %d, want 300", cfg.SubmitSettleMS)
 	}
+	if cfg.SendReadyTimeoutS != 60 {
+		t.Errorf("SendReadyTimeoutS = %d, want 60", cfg.SendReadyTimeoutS)
+	}
+	if cfg.SubmitConfirmTimeoutS != 30 {
+		t.Errorf("SubmitConfirmTimeoutS = %d, want 30", cfg.SubmitConfirmTimeoutS)
+	}
 	if cfg.Claude != "" {
 		t.Errorf("Claude = %q, want empty default", cfg.Claude)
 	}
@@ -213,6 +219,7 @@ func TestLoadConfig_SubmitSettleKeys(t *testing.T) {
 	tests := []struct {
 		name    string
 		key     string
+		def     string
 		value   string
 		want    int
 		wantErr bool
@@ -224,13 +231,23 @@ func TestLoadConfig_SubmitSettleKeys(t *testing.T) {
 		{name: "redraw settle positive override loads", key: "submit_redraw_settle_ms", value: "150", want: 150, got: func(c shuttleengine.Config) int { return c.SubmitRedrawSettleMS }},
 		{name: "redraw settle zero loads", key: "submit_redraw_settle_ms", value: "0", want: 0, got: func(c shuttleengine.Config) int { return c.SubmitRedrawSettleMS }},
 		{name: "redraw settle negative refused", key: "submit_redraw_settle_ms", value: "-1", wantErr: true},
+		{name: "send ready timeout positive override loads", key: "send_ready_timeout_s", def: "60", value: "5", want: 5, got: func(c shuttleengine.Config) int { return c.SendReadyTimeoutS }},
+		{name: "send ready timeout zero refused", key: "send_ready_timeout_s", def: "60", value: "0", wantErr: true},
+		{name: "send ready timeout negative refused", key: "send_ready_timeout_s", def: "60", value: "-1", wantErr: true},
+		{name: "submit confirm timeout positive override loads", key: "submit_confirm_timeout_s", def: "30", value: "5", want: 5, got: func(c shuttleengine.Config) int { return c.SubmitConfirmTimeoutS }},
+		{name: "submit confirm timeout zero refused", key: "submit_confirm_timeout_s", def: "30", value: "0", wantErr: true},
+		{name: "submit confirm timeout negative refused", key: "submit_confirm_timeout_s", def: "30", value: "-1", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			def := tt.def
+			if def == "" {
+				def = "300"
+			}
 			tmpDir := t.TempDir()
-			seeded := strings.Replace(shuttleengine.ConfigTemplate(), tt.key+": 300", tt.key+": "+tt.value, 1)
+			seeded := strings.Replace(shuttleengine.ConfigTemplate(), tt.key+": "+def, tt.key+": "+tt.value, 1)
 			seedLyxConfig(t, tmpDir, "shuttle", seeded)
 
 			cfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")

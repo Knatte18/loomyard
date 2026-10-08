@@ -1,6 +1,6 @@
 // Package shedfake fakes the shed-layer seams: the shuttle, the burler runner, the merge shuttle and the webster run seams, plus the producer Call helpers.
 //
-// Shuttle satisfies shedadapters.Shuttle and frictionengine.Shuttle, BurlerRunner satisfies shedadapters.BurlerRunner, StrandRemover satisfies burlerengine.StrandRemover, and MergeShuttle satisfies mergeresolve.Shuttle, all structurally, so no consumer package is imported here and shedadapters' and landingshed's in-package tests can use the kit.
+// Shuttle satisfies shedadapters.Shuttle and frictionengine.Shuttle, BurlerRunner satisfies shedadapters.BurlerRunner, and MergeShuttle satisfies mergeresolve.Shuttle, all structurally, so no consumer package is imported here and shedadapters' and landingshed's in-package tests can use the kit.
 // Every fake exposes fields and optional func overrides, and none asserts anything.
 // CallOK and RequireOutcome are the only assertions the kit makes.
 //
@@ -237,23 +237,6 @@ func scripted[T any](entries []T, i int) T {
 	return zero
 }
 
-// StrandRemover is a fake burlerengine.StrandRemover: it records every guid it is asked to remove and fails with Err when set.
-type StrandRemover struct {
-	mu sync.Mutex
-
-	Err error
-	// Removed holds every guid RemoveStrandIfLive was called with, in order.
-	Removed []string
-}
-
-// RemoveStrandIfLive records guid and answers Err.
-func (f *StrandRemover) RemoveStrandIfLive(guid string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.Removed = append(f.Removed, guid)
-	return f.Err
-}
-
 // MergeShuttle is a Run-only fake shuttle: Results[i] and Errs[i] answer the (i+1)th call, and a call past the scripted entries answers a zero Result and a nil error, so an unscripted MergeShuttle is a no-op.
 type MergeShuttle struct {
 	mu sync.Mutex
@@ -296,18 +279,18 @@ func (f *MergeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error
 
 type (
 	masterStarter  struct{ websterengine.MasterStarter }
-	reedOps        struct{ shuttleengine.ReedOps }
+	strandStopper  struct{ websterengine.StrandStopper }
 	shuttleEngine  struct{ shuttleengine.Engine }
 	refMatcherSeam struct{ websterengine.RefMatcher }
 	indexSeam      struct{ planindex.Index }
 )
 
-// WebsterSeams returns a RunDeps whose Starter, Reed, Engine and RefMatcher, and the Index of its Geom, are placeholders.
+// WebsterSeams returns a RunDeps whose Starter, Stopper, Engine and RefMatcher, and the Index of its Geom, are placeholders.
 // Each embeds its interface in an empty struct, so it is non-nil for a constructor check and panics if any method is called.
 func WebsterSeams() websterengine.RunDeps {
 	return websterengine.RunDeps{
 		Starter:    masterStarter{},
-		Reed:       reedOps{},
+		Stopper:    strandStopper{},
 		Engine:     shuttleEngine{},
 		RefMatcher: refMatcherSeam{},
 		Geom:       websterengine.Geometry{Index: indexSeam{}},

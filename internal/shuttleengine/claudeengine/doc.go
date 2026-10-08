@@ -105,6 +105,10 @@
 // The newest main-chain entry of the transcript a turn start's `transcript_path` names is the user's `[Request interrupted by user` entry, and its own timestamp is the interrupt's time.
 // Any later main-chain entry, a missing path or an unreadable transcript reads as no interrupt.
 //
+// A send can be split into its typing and its Enter: TypeSequence types text as the next turn without submitting it, and the caller sends the Enter once the input box has settled.
+// ClearInputSequence is one `C-u`, which deletes from the caret to the start of the line and so empties a one-line draft without interrupting a running turn.
+// PastePlaceholder recognises the `[Pasted text #<n>]` form Claude Code collapses a pasted draft into, which a box reading cannot otherwise match against the typed text.
+//
 // Beside the clear sequence (`/clear`) and the compact sequence (`/compact`), the engine realizes skill loading, in skillload.go.
 // A spec that names skills starts on an empty input box: the launch line carries no prompt pointer, and the pointer comes back as Launch.PromptLine for shuttle to send after the skills.
 //

@@ -185,7 +185,6 @@ func TestSmokeBurlerRound_AttachesToALiveRoundInsteadOfRespawning(t *testing.T) 
 		"Webster-Burler",
 		shedadapters.BurlerDeps{
 			Runner:     probingBurlerRunner{t: t, runner: runner, timeout: 2 * time.Minute},
-			Remover:    burlerengine.NewReedStrandRemover(reedEngine),
 			AnchorPath: loc.AnchorPath(),
 		},
 		burlerengine.Profile{Rubric: "smoke rubric", FixScope: burlerengine.FixScopeOverlay},

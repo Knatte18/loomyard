@@ -104,7 +104,7 @@ Example:
 				Batches:     batches,
 				State:       st,
 				Config:      c.cfg,
-				Reed:        c.reed,
+				Stopper:     c.runner,
 				Geom:        c.geom,
 				FrictionDir: c.frictionDir,
 			}

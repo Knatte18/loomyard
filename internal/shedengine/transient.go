@@ -19,7 +19,7 @@ const (
 	// TransientGitHubAPI is a GitHub API failure that a retry can clear: a network error, a 5xx, or a timeout.
 	// A 4xx that names a bad request, a missing resource or bad credentials never qualifies, and neither does a rate limit, since an immediate retry hits the same limit.
 	TransientGitHubAPI TransientClass = "github-api"
-	// TransientAgentStart is an agent session that never became ready.
+	// TransientAgentStart is an agent session that never became ready or never took its first input.
 	// An agent that started and then died or timed out never qualifies.
 	TransientAgentStart TransientClass = "agent-start"
 )

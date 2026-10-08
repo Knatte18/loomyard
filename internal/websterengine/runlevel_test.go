@@ -41,7 +41,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
@@ -172,7 +171,7 @@ func seedShuttleRunState(t *testing.T, runDirRoot, strandGUID, sessionID string)
 // and a fake Starter a test scripts per case.
 type runFixture struct {
 	Deps           websterengine.RunDeps
-	Reed           *shuttlefake.Reed
+	Stopper        *recordingStopper
 	Starter        *runFakeStarter
 	Git            *fakeGit
 	Worktree       string
@@ -199,8 +198,7 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 
 	planDir := seedRunPlanDir(t, numCards)
 
-	// Run never registers a strand itself, so a stray AddStrand fails loud.
-	reed := &shuttlefake.Reed{AddErr: errors.New("AddStrand is not used by Run's own path")}
+	stopper := &recordingStopper{}
 	starter := &runFakeStarter{}
 	hubPath := filepath.Dir(worktree)
 	// webster's prompts are read from disk at call time now, so the fixture's
@@ -222,7 +220,7 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 
 	deps := websterengine.RunDeps{
 		Starter:    starter,
-		Reed:       reed,
+		Stopper:    stopper,
 		Engine:     &shuttlefake.Engine{},
 		ShuttleCfg: shuttleCfg,
 		Roles:      roles,
@@ -248,7 +246,7 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 		RefMatcher: websterengine.NeverMatches{},
 	}
 
-	return &runFixture{Deps: deps, Reed: reed, Starter: starter, Worktree: worktree, PlanDir: planDir, ShuttleRunRoot: shuttleRunRoot}
+	return &runFixture{Deps: deps, Stopper: stopper, Starter: starter, Worktree: worktree, PlanDir: planDir, ShuttleRunRoot: shuttleRunRoot}
 }
 
 // appendIntegrationVerify appends a plan-level "## verify:" section to the overview of the already-seeded plan dir at planDir,
@@ -921,45 +919,45 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 			},
 		},
 		{
-			// A recorded, still-live Master strand and a recorded, non-terminal, still-live
-			// recovery-batch strand are stopped; a recorded strand the reed no longer reports at
-			// all is cleanly absent — already gone, nothing to stop.
-			name: "live Master and recovery strands are stopped, an absent one is left alone",
+			// The recorded Master strand and each recorded, non-terminal recovery-batch strand are stopped through the stopper.
+			// A terminal recovery batch's strand is not.
+			name: "the Master and non-terminal recovery strands are stopped",
 			setup: func(t *testing.T, fx *runFixture) func(t *testing.T) {
 				seedMatchingState(t, fx, &websterengine.State{
 					MasterStrand: "prior-master-strand",
 					Batches: map[int]*websterengine.BatchState{
 						1: {Slug: "batch1", Kind: "recovery", Terminal: false, StrandGUID: "prior-recovery-strand"},
-						2: {Slug: "batch2", Kind: "recovery", Terminal: false, StrandGUID: "absent-recovery-strand"},
+						2: {Slug: "batch2", Kind: "recovery", Terminal: true, StrandGUID: "terminal-recovery-strand"},
 					},
 				})
-				fx.Reed.Strands = []reedengine.StrandStatus{
-					{GUID: "prior-master-strand", Live: true},
-					{GUID: "prior-recovery-strand", Live: true},
-					// "absent-recovery-strand" is deliberately absent from Status at all.
-				}
 
 				return func(t *testing.T) {
-					wantRemoved := map[string]bool{"prior-master-strand": true, "prior-recovery-strand": true}
-					for _, guid := range fx.Reed.RemovedGUIDs {
-						if guid == "absent-recovery-strand" {
-							t.Errorf("RemoveStrand called for a cleanly-absent strand %q; want it left untouched", guid)
-						}
-						delete(wantRemoved, guid)
-					}
-					if len(wantRemoved) != 0 {
-						t.Errorf("RemoveStrand calls = %v; missing %v", fx.Reed.RemovedGUIDs, wantRemoved)
+					if want := []string{"prior-master-strand", "prior-recovery-strand"}; !slices.Equal(fx.Stopper.Stopped, want) {
+						t.Errorf("stopped = %v; want %v", fx.Stopper.Stopped, want)
 					}
 				}
 			},
 		},
 		{
-			name: "a state recording no strand removes nothing",
+			name: "a stop failure fails the reclaim before any Master is spawned",
+			setup: func(t *testing.T, fx *runFixture) func(t *testing.T) {
+				seedMatchingState(t, fx, &websterengine.State{MasterStrand: "prior-master-strand"})
+				fx.Stopper.Err = errors.New("record write refused")
+
+				return func(t *testing.T) {
+					if got := fx.Starter.callCount(); got != 0 {
+						t.Errorf("StartMaster calls = %d; want 0 once the stop failed", got)
+					}
+				}
+			},
+		},
+		{
+			name: "a state recording no strand stops nothing",
 			setup: func(t *testing.T, fx *runFixture) func(t *testing.T) {
 				seedMatchingState(t, fx, &websterengine.State{})
 				return func(t *testing.T) {
-					if len(fx.Reed.RemovedGUIDs) != 0 {
-						t.Errorf("RemoveStrand calls = %v; want none", fx.Reed.RemovedGUIDs)
+					if len(fx.Stopper.Stopped) != 0 {
+						t.Errorf("stopped = %v; want none", fx.Stopper.Stopped)
 					}
 				}
 			},

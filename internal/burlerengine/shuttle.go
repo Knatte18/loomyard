@@ -5,12 +5,13 @@ package burlerengine
 import "github.com/Knatte18/loomyard/internal/shuttleengine"
 
 // Handle is one started half of a round.
-// The engine reads its strand guid to stop it, and waits on it for the half's terminal result.
+// The engine stops it through Stop, which records the stop, and waits on it for the half's terminal result.
 // *shuttleengine.Run satisfies it.
 type Handle interface {
 	StrandGUID() string
 	RunDir() string
 	Wait() (shuttleengine.Result, error)
+	Stop() error
 }
 
 var _ Handle = (*shuttleengine.Run)(nil)

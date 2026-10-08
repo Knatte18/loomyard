@@ -1,4 +1,4 @@
-// beginbatch_test.go exercises BeginBatch end to end (Tier 1 — see docs/benchmarks/running-tests.md): a temp directory backs WorktreeRoot with a fakeGit answering the HeadSHA capture, while the reed query seam is a shuttlefake.Reed.
+// beginbatch_test.go exercises BeginBatch end to end (Tier 1 — see docs/benchmarks/running-tests.md): a temp directory backs WorktreeRoot with a fakeGit answering the HeadSHA capture, while the strand-stop seam is a recordingStopper.
 // The plan itself is a minimal *planparser.Plan (Dir only — begin-batch never reads Plan.Cards, only deps.Batches, the already-derived execution batches), backed by a t.TempDir() seeded with a throwaway markdown file so the fingerprint gate has something real to hash.
 // There is no chain/restart path and no oversized role under the flat card-list model:
 // this file's own mustFingerprint helper duplicates fingerprint.go's pure hashing algorithm rather than importing anything, since this file deliberately stays in the external websterengine_test package (fingerprint itself is package-private).
@@ -21,9 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
-	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -91,7 +89,7 @@ func beginCard(number int, slug string) batcher.Batch {
 // beginFixture is a fully-wired set of BeginBatch dependencies: a temp directory holding base.txt as WorktreeRoot over a fakeGit at one commit, fresh webster/reports/prompts temp dirs, two literal single-card execution batches backed by a seeded plan dir for the fingerprint gate.
 type beginFixture struct {
 	Deps      websterengine.BeginDeps
-	Reed      *shuttlefake.Reed
+	Stopper   *recordingStopper
 	Git       *fakeGit
 	Worktree  string
 	PlanDir   string
@@ -119,7 +117,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	index := newFakeIndex()
 
 	promptsDir := t.TempDir()
-	reed := &shuttlefake.Reed{}
+	stopper := &recordingStopper{}
 
 	// webster's prompts are read from disk at call time now, so the fixture's
 	// hub must carry them before BeginBatch reaches RenderForkPrompt.
@@ -131,7 +129,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 		Batches: batches,
 		State:   &websterengine.State{PlanFingerprint: fp, MasterStrand: "master-strand-1"},
 		Config:  websterengine.Config{SelfFixCap: 2},
-		Reed:    reed,
+		Stopper: stopper,
 		Geom: websterengine.Geometry{
 			AnchorRoot:   worktree,
 			WorktreeRoot: worktree,
@@ -147,7 +145,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 		},
 	}
 
-	return &beginFixture{Deps: deps, Reed: reed, Git: git, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
+	return &beginFixture{Deps: deps, Stopper: stopper, Git: git, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
 }
 
 // TestBeginBatch_Refusals proves each entry refusal names its way forward: a pause, a plan edited after run init, and a report already on disk for each recorded state (terminal done, stuck, failed or dead, and begun non-terminal fork or recovery), each message naming the record it saw and the one remedy that state calls for, and a geometry with no code index, whose message names the missing wiring.
@@ -582,29 +580,44 @@ func TestBeginBatch_Record(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite proves F9's guard: when the batch being
-// begun as a fork carries a prior recovery record whose strand the reed still reports live (a dead
-// recovery keeps its substrate alive by design), BeginBatch stops that strand before the record
-// overwrite erases its StrandGUID — otherwise the unreclaimed strand would race the fresh fork on
-// the repo.
+// TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite proves F9's guard: when the batch being begun as a fork carries a prior recovery record with a strand (a dead recovery keeps its substrate alive by design), BeginBatch stops that strand before the record overwrite erases its StrandGUID.
+// Otherwise the unreclaimed strand would race the fresh fork on the repo.
+// A stop that fails fails the begin and leaves the record as it was.
 func TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite(t *testing.T) {
 	fx := newBeginFixture(t)
 	fx.Deps.State.Batches = map[int]*websterengine.BatchState{
 		1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", StrandGUID: "dead-but-live-recovery"},
 	}
-	fx.Reed.Strands = []reedengine.StrandStatus{{GUID: "dead-but-live-recovery", Live: true}}
 
-	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
-		t.Fatalf("BeginBatch() error = %v; want nil", err)
-	}
+	t.Run("the prior strand is stopped before the record is overwritten", func(t *testing.T) {
+		if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
+			t.Fatalf("BeginBatch() error = %v; want nil", err)
+		}
 
-	if len(fx.Reed.RemovedGUIDs) != 1 || fx.Reed.RemovedGUIDs[0] != "dead-but-live-recovery" {
-		t.Errorf("RemovedGUIDs = %v; want exactly [dead-but-live-recovery] stopped before the record overwrite", fx.Reed.RemovedGUIDs)
-	}
-	// The record was overwritten to a fresh fork batch.
-	if bs := fx.Deps.State.Batches[1]; bs.Kind != "fork" || bs.Terminal || bs.StrandGUID != "" {
-		t.Errorf("Batches[1] = %+v; want a fresh non-terminal fork record with no strand", bs)
-	}
+		if want := []string{"dead-but-live-recovery"}; !slices.Equal(fx.Stopper.Stopped, want) {
+			t.Errorf("stopped = %v; want %v stopped before the record overwrite", fx.Stopper.Stopped, want)
+		}
+		// The record was overwritten to a fresh fork batch.
+		if bs := fx.Deps.State.Batches[1]; bs.Kind != "fork" || bs.Terminal || bs.StrandGUID != "" {
+			t.Errorf("Batches[1] = %+v; want a fresh non-terminal fork record with no strand", bs)
+		}
+	})
+
+	t.Run("a stop failure fails the begin and keeps the record", func(t *testing.T) {
+		failing := newBeginFixture(t)
+		failing.Stopper.Err = errors.New("record write refused")
+		failing.Deps.State.Batches = map[int]*websterengine.BatchState{
+			1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", StrandGUID: "dead-but-live-recovery"},
+		}
+
+		_, err := websterengine.BeginBatch(failing.Deps, 1)
+		if !errors.Is(err, failing.Stopper.Err) {
+			t.Fatalf("BeginBatch() error = %v; want it to wrap %v", err, failing.Stopper.Err)
+		}
+		if bs := failing.Deps.State.Batches[1]; bs.Kind != "recovery" || bs.StrandGUID != "dead-but-live-recovery" {
+			t.Errorf("Batches[1] = %+v; want the recovery record kept", bs)
+		}
+	})
 }
 
 // TestBeginBatch_ReResolvesPlanAtDispatch covers card 32's re-resolution step: a clean plan

@@ -145,7 +145,7 @@ Example:
 			}
 			if target == websterengine.ResetToStart {
 				var removeErr *websterengine.RecoveryStrandRemoveError
-				if errors.As(websterengine.RemoveRecoveryStrands(c.reed, st), &removeErr) {
+				if errors.As(websterengine.RemoveRecoveryStrands(c.runner, st), &removeErr) {
 					return fail(fmt.Sprintf("webster: reset --to %s refused: %v; way forward: run `lyx reed remove %s`, then re-run `lyx webster reset --to %s`", target, removeErr, removeErr.GUID, target))
 				}
 			}

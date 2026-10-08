@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -233,6 +234,10 @@ type Run struct {
 	spec   Spec
 	runDir string
 	state  RunState
+	// recordMu guards stopMarked, state.Outcome and every save of state, so a stop from another goroutine never interleaves with Wait's record writes.
+	recordMu sync.Mutex
+	// stopMarked reports that Stop recorded a stop on this handle, which makes finalize store the stop outcome instead of the classified one.
+	stopMarked bool
 
 	// offset is the byte offset already consumed from state.EventsPath.
 	offset int64
@@ -297,6 +302,12 @@ type Run struct {
 	// It is false for a fresh run and for one AttachGated reconstructs, and becomes true at the first gated Done arrival;
 	// every gate send and every pending re-evaluation happens only while it is true.
 	gateAtBoundary bool
+	// startCleared reports that a turn start after the boundary cleared gateAtBoundary, and startHold times the release of that turn start against the pane's idle reading.
+	startCleared bool
+	startHold    turnStartHold
+	// unsentReprompt marks that a re-prompt send at this boundary failed busy or unlanded; while it is set the loop re-sends the re-prompt on a later tick with no new writer event.
+	// It is cleared by a successful re-prompt, a new arrival and a writer turn that starts meanwhile.
+	unsentReprompt bool
 
 	// resumeWarning is the non-empty warning SessionResumer.CheckResume returned when it could not confirm the session was resumable, empty otherwise.
 	resumeWarning string
@@ -488,7 +499,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	}
 	if strand.Color != "" && !spec.ColorByCaller {
 		// The color is display only, like the pane title, so a failed play never fails the launch.
-		if err := typeColor(r.reed, r.engine, strand.GUID, strand.Color); err != nil {
+		if err := typeColor(run.newSendContext(), strand.Color); err != nil {
 			logger.Warn("shuttle: could not type the segment color", "strandGUID", strand.GUID, "color", strand.Color, "error", err)
 		}
 	}
@@ -508,12 +519,16 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 // The run's events offset ends past every load turn end, the retry's included,
 // so Wait never reads one as a held turn end of the run's own.
 // A pane that dies meanwhile is a died startup.
+// Every other failure tears the run down through abandonStartup too: a skill-load send, a prompt-offset persist or a prompt delivery that fails returns an error wrapping ErrNotStarted beside the cause.
+// A prompt delivery that fails with ErrSubmissionNotLanded but is followed by a turn start in the events file past the pre-send offset landed late.
+// Start then returns the run.
+// Residual: a prompt consumed between that signal read and the strand removal is killed with its agent;
+// if it wrote an output file, the re-step's Spec.validate refuses on that file.
 func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
-	guid := run.state.StrandGUID
 	if len(run.spec.Skills) > 0 {
 		loader, err := run.runner.skillLoader()
 		if err != nil {
-			return run.abandonStartup(OutcomeDied)
+			return run.abandonStartup(OutcomeDied, err)
 		}
 		timeout := run.spec.SkillLoadTimeout
 		if timeout <= 0 {
@@ -524,22 +539,29 @@ func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 			_, died, err = run.settleLoadTurn(loader, missing, timeout, true)
 		}
 		if err != nil {
-			return run.identity(), err
+			return run.abandonStartup(OutcomeDied, err)
 		}
 		if died {
-			return run.abandonStartup(OutcomeDied)
+			return run.abandonStartup(OutcomeDied, nil)
 		}
 	}
 	if run.offset > 0 {
 		// Persisted before the prompt is sent, so a reader of the events file that never Waits on this Run
 		// (an Attach, webster's recovery classification) starts past the load turns too.
+		run.recordMu.Lock()
 		run.state.PromptOffset = run.offset
-		if err := saveRunState(run.runDir, run.state); err != nil {
-			return run.identity(), fmt.Errorf("shuttle: persist the prompt offset after loading skills: %w", err)
+		err := run.saveState()
+		run.recordMu.Unlock()
+		if err != nil {
+			return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: persist the prompt offset after loading skills: %w", err))
 		}
 	}
-	if err := sendVerified(run.runner.reed, run.runner.engine, guid, promptLine); err != nil {
-		return run.identity(), fmt.Errorf("shuttle: deliver the prompt after loading skills: %w", err)
+	sentAt := eventsSize(run.state.EventsPath)
+	if err := sendVerified(run.newSendContext(), promptLine); err != nil {
+		if errors.Is(err, ErrSubmissionNotLanded) && turnStartedSince(run.runner.engine, run.state.EventsPath, sentAt) {
+			return Result{}, nil
+		}
+		return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: deliver the prompt after loading skills: %w", err))
 	}
 	return Result{}, nil
 }
@@ -585,7 +607,7 @@ func (run *Run) settleLoadTurn(loader SkillLoader, skills []string, timeout time
 func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.Duration) (turnEnd Event, ended, died bool, err error) {
 	reed := run.runner.reed
 	guid := run.state.StrandGUID
-	if err := sendVerified(reed, run.runner.engine, guid, loader.SkillLoadMessage(skills)); err != nil {
+	if err := sendVerified(run.newSendContext(), loader.SkillLoadMessage(skills)); err != nil {
 		return Event{}, false, false, fmt.Errorf("shuttle: load skills %v: %w", skills, err)
 	}
 	deadline := run.clock.Now().Add(timeout)
@@ -678,7 +700,7 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 // contract that the burler round producer's one-retry ladder depends on
 // (TestBurlerProducer_Call_DiedThenDoneSucceedsWithRetry), so a caller that already branches on
 // Result.Outcome sees the same shape whether the run died at startup or later in Wait's own loop.
-// Any other non-nil err (a startup mechanism failure, or a pre-strand failure from start itself) is
+// Any other non-nil err (a pre-strand failure from start itself) is
 // returned unchanged, alongside whatever identity result carries.
 func (r *Runner) RunGated(spec Spec, gate GateSpec) (Result, error) {
 	run, result, err := r.start(spec, gate)
@@ -758,15 +780,13 @@ func (run *Run) Interrupt() error {
 // Send types text as run's next turn.
 // Text must be a single, non-empty line.
 // Verifies delivery by observing the text in the pane capture, replaying once if it never appears.
+// Waits for an idle session first and fails with ErrSessionBusy if it stays busy.
 // Safe to call concurrently with a blocked Wait.
 func (run *Run) Send(text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
 	}
-	if err := requireReadyAgentPane(run.runner.reed, run.runner.engine, run.state.StrandGUID); err != nil {
-		return err
-	}
-	return sendVerified(run.runner.reed, run.runner.engine, run.state.StrandGUID, text)
+	return sendVerified(run.newSendContext(), text)
 }
 
 // validateSendText rejects multiline text, empty text, or whitespace-only text
@@ -807,13 +827,11 @@ func (r *Runner) Send(guid, text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
 	}
-	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
+	state, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
-	if err := requireReadyAgentPane(r.reed, r.engine, guid); err != nil {
-		return err
-	}
-	return sendVerified(r.reed, r.engine, guid, text)
+	return sendVerified(r.newSendContext(state), text)
 }
 
 // Inject plays inputs into the live pane of the run identified by guid, without needing an
@@ -841,8 +859,6 @@ const (
 	sendVerifyAttempts = 20
 	sendVerifyInterval = 250 * time.Millisecond
 	sendReplays        = 1
-	// sendExtraEnters bounds the Enters a verified send adds when the provider's input box still holds the sent text.
-	sendExtraEnters = 2
 	// sendNeedleRunes is the length of the leading slice of a sent text that identifies it in a pane.
 	sendNeedleRunes = 48
 )
@@ -954,18 +970,20 @@ const (
 	colorSettleInterval = 250 * time.Millisecond
 )
 
-// typeColor plays engine's color command for color into guid's pane,
+// typeColor plays the engine's color command for color into sc's pane,
 // then waits, at most colorSettleAttempts reads, until the provider has consumed it:
 // the pane classifies StartupReady and the input box (for an engine that implements InputBoxReader) no longer holds the command.
 // A pane showing no readable box counts as not holding it, as in the verified send's confirmation.
 // Without the wait the command can still sit in the box when the next step demands an idle, input-ready provider.
-// A command still in the box after the last read is submitted through confirmSubmitted's extra Enters.
+// A command still in the box after the last read is submitted through confirmSubmitted's Enters, within one submit window.
 // Only a failed play is returned: an unconsumed command is logged, since the color is display only.
-func typeColor(reed ReedOps, engine Engine, guid string, color segmentcolor.Color) error {
+func typeColor(sc sendContext, color segmentcolor.Color) error {
+	reed, engine, guid := sc.reed, sc.engine, sc.guid
 	inputs := engine.ColorSequence(color)
 	if len(inputs) == 0 {
 		return nil
 	}
+	sentAt := eventsSize(sc.eventsPath)
 	if err := playInputs(reed, guid, inputs); err != nil {
 		return err
 	}
@@ -994,7 +1012,8 @@ func typeColor(reed ReedOps, engine Engine, guid string, color segmentcolor.Colo
 		logger.Warn("shuttle: the segment color command was not confirmed consumed", "strandGUID", guid, "color", color, "attempts", colorSettleAttempts)
 		return nil
 	}
-	if err := confirmSubmitted(reed, engine, guid, normalized, needle); err != nil {
+	closeAt := sc.clock.Now().Add(submitConfirmTimeout(sc.cfg))
+	if err := confirmSubmitted(sc, reader, normalized, needle, sentAt, closeAt); err != nil {
 		logger.Warn("shuttle: the segment color command stayed in the input box", "strandGUID", guid, "color", color, "error", err)
 		return nil
 	}
@@ -1121,16 +1140,33 @@ func deliveredBelowBaseline(current, baseline paneNeedleScan) bool {
 // is itself evicted between two polls, no viewport-only check can see it at all. That window is far
 // narrower than the one closed here and cannot be closed without scrollback.
 //
-// When engine also implements InputBoxReader, an accepted delivery is then confirmed submitted:
-// after the provider's SubmitSettle the input box is read,
-// and while it holds the sent text one extra Enter is sent,
-// at most sendExtraEnters times, before the send fails naming the pending input.
-// An extra Enter is sent only when the provider reports the box holding the sent text,
-// so it never lands on an empty box, a running turn or a draft lacking the needle;
+// An engine that implements InputBoxReader types without submitting and then submits itself, inside a window of submitConfirmTimeout from the moment typing begins (cut to the send's deadline):
+// once the text has appeared, awaitSettledBox waits for the input box to stop changing,
+// and confirmSubmitted sends the Enter, then reads the box at a growing interval and sends one more Enter while the box still holds the sent text.
+// An Enter goes only into a box holding the sent text, so it never lands on an empty box, a running turn or a draft lacking the needle;
 // a draft containing the needle of a text of sendNeedleRunes or more characters is indistinguishable from the sent text and is submitted by the Enter.
-// An engine without the capability keeps the appearance-only check,
+// A send that does not land fails with ErrSubmissionNotLanded, after clearUnlandedText has emptied the box of this send's own text where the engine can.
+// An engine without the capability plays ComposeSend and keeps the appearance-only check with no window,
 // so a text that collapses into a paste placeholder is never confirmed there and relies on the engine's own pacing.
-func sendVerified(reed ReedOps, engine Engine, guid, text string) error {
+//
+// Before anything is typed, awaitIdleSession waits for the session to be idle, so a busy session fails the send with ErrSessionBusy.
+func sendVerified(sc sendContext, text string) error {
+	if err := awaitIdleSession(sc); err != nil {
+		return err
+	}
+	reed, engine, guid := sc.reed, sc.engine, sc.guid
+	reader, readsBox := engine.(InputBoxReader)
+	typing := engine.ComposeSend
+	var closeAt time.Time
+	sentAt := eventsSize(sc.eventsPath)
+	if readsBox {
+		typing = reader.TypeSequence
+		closeAt = sc.clock.Now().Add(submitConfirmTimeout(sc.cfg))
+		if !sc.deadline.IsZero() && sc.deadline.Before(closeAt) {
+			closeAt = sc.deadline
+		}
+	}
+
 	normalized := normalizePaneText(text)
 	needle := sendNeedle(normalized)
 
@@ -1139,51 +1175,45 @@ func sendVerified(reed ReedOps, engine Engine, guid, text string) error {
 		baseline = scanPaneForNeedle(capture, needle)
 	}
 
+	typings := 0
 	for try := 0; try <= sendReplays; try++ {
-		if err := playInputs(reed, guid, engine.ComposeSend(text)); err != nil {
+		if windowClosed(sc.clock, closeAt) {
+			break
+		}
+		if err := playInputs(reed, guid, typing(text)); err != nil {
 			return err
 		}
-		for attempt := 0; attempt < sendVerifyAttempts; attempt++ {
+		typings++
+		for attempt := 0; attempt < sendVerifyAttempts && !windowClosed(sc.clock, closeAt); attempt++ {
 			capture, err := reed.CapturePane(guid)
 			if err == nil {
 				switch current := scanPaneForNeedle(capture, needle); {
-				case current.count > baseline.count:
-					return confirmSubmitted(reed, engine, guid, normalized, needle)
-				case deliveredBelowBaseline(current, baseline):
-					return confirmSubmitted(reed, engine, guid, normalized, needle)
+				case current.count > baseline.count, deliveredBelowBaseline(current, baseline):
+					if !readsBox {
+						return nil
+					}
+					return settleAndConfirm(sc, reader, normalized, needle, sentAt, closeAt)
 				case current.count < baseline.count:
 					// The viewport scrolled past an occurrence the baseline counted. Track the
 					// pane's reality rather than holding a threshold it can no longer reach.
 					baseline = current
 				}
 			}
-			inputSleep(sendVerifyInterval)
+			sc.clock.Sleep(sendVerifyInterval)
 		}
 	}
-	return fmt.Errorf("shuttle: Send: sent text never appeared in the pane after %d attempt(s) — the provider TUI likely swallowed the input; the send was NOT delivered", 1+sendReplays)
-}
-
-// confirmSubmitted reads the provider's input box after each settle and sends one extra Enter while the box still holds the sent text, at most sendExtraEnters times.
-// normalized is the whole sent text normalized by normalizePaneText and needle its leading sendNeedleRunes characters.
-// It returns nil at once for an engine that cannot read its input box.
-func confirmSubmitted(reed ReedOps, engine Engine, guid, normalized, needle string) error {
-	reader, ok := engine.(InputBoxReader)
-	if !ok {
-		return nil
+	if typings == 0 {
+		return withPaneTail(fmt.Errorf("%w: the submit window, cut to the send's deadline, had closed before typing began; nothing was typed", ErrSubmissionNotLanded), "", sc)
 	}
-	settle := reader.SubmitSettle()
-	for extraEnters := 0; ; extraEnters++ {
-		inputSleep(settle)
-		if !inputBoxHoldsSentText(reed, reader, guid, normalized, needle) {
-			return nil
-		}
-		if extraEnters == sendExtraEnters {
-			return fmt.Errorf("shuttle: Send: the sent text is still pending in the input box after %d extra Enter(s); the submission did not land", sendExtraEnters)
-		}
-		if err := reed.SendKey(guid, "Enter"); err != nil {
-			return err
-		}
+	cause := "the provider TUI likely swallowed the input"
+	if windowClosed(sc.clock, closeAt) {
+		cause = fmt.Sprintf("the %s submit window, cut to the send's deadline, closed before it appeared", submitConfirmTimeout(sc.cfg))
 	}
+	err := fmt.Errorf("%w: sent text never appeared in the pane after %d typing(s) — %s; the send was NOT delivered", ErrSubmissionNotLanded, typings, cause)
+	if !readsBox {
+		return withPaneTail(err, "", sc)
+	}
+	return failUnlanded(sc, reader, normalized, needle, err)
 }
 
 // inputBoxHoldsSentText reports whether the pane's input box holds the sent text.

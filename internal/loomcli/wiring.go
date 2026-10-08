@@ -472,12 +472,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// AnchorPath semantics and the field set burlerengine.Geometry declares, rather than webster's
 	// (see hubgeom.go's BurlerGeometry doc comment). The two geometry builders are distinct types
 	// with distinct field sets, not interchangeable constructors of the same shape.
-	burlerRemover := burlerengine.NewReedStrandRemover(reedEngine)
-	burlerEngine := burlerengine.New(burlerengine.RunnerShuttle(runner), burlerRemover, hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir, frictionDir)
+	burlerEngine := burlerengine.New(burlerengine.RunnerShuttle(runner), hubgeom.BurlerGeometry(location), burlerCfg, websterGeom.StencilsDir, frictionDir)
 
 	runDeps := websterengine.RunDeps{
 		Starter:    runnerMasterStarter{runner: runner},
-		Reed:       reedEngine,
+		Stopper:    runner,
 		Engine:     claudeEngine,
 		ShuttleCfg: shuttleCfg,
 		Roles:      roles,
@@ -708,9 +707,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// RunRoot is durable: the status seam commits it with every transition.
 		RunRoot: loomengine.LoomReviewsDir(location),
 		Burler:  burlerEngine,
-		// The remover the engine stops a half with, so the producer stops the one live half of a resumed round the same way.
-		BurlerRemover: burlerRemover,
-		Now:           time.Now,
+		Now:     time.Now,
 
 		// Slug and SegmentBounces tell each Bouncer row the verbs' slug and the live bounce budget its CIRCLING Reason names.
 		Slug:           seedSlug(location.WorktreeName),

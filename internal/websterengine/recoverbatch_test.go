@@ -111,6 +111,7 @@ func newRecoverFixtureOver(t *testing.T, worktree string, git websterengine.Git)
 		Config:     websterengine.Config{SelfFixCap: 2, RecoveryTimeoutMin: 30},
 		Engine:     engine,
 		Reed:       reed,
+		Stopper:    runner,
 		ShuttleCfg: shuttleCfg,
 		Geom: websterengine.Geometry{
 			AnchorRoot:   worktree,
@@ -936,6 +937,34 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				requireSpawned(t, spawned, err)
 				if fx.Engine.PrepareCalls != 1 {
 					t.Errorf("Engine.prepareCalls = %d; want 1", fx.Engine.PrepareCalls)
+				}
+			},
+		},
+		{
+			name: "a prior recovery strand that cannot be stopped fails the spawn",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", StrandGUID: "prior-dead-1"}
+				fx.Deps.Stopper = &recordingStopper{Err: errors.New("record write refused")}
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				if err == nil || !strings.Contains(err.Error(), "record write refused") {
+					t.Fatalf("RecoverSpawnOrAttach() error = %v; want the stop failure", err)
+				}
+				if spawned || fx.Engine.PrepareCalls != 0 {
+					t.Errorf("spawned = %v, prepareCalls = %d; want no strand started beside the unstopped one", spawned, fx.Engine.PrepareCalls)
+				}
+			},
+		},
+		{
+			name: "a failed fork batch, which records no strand, spawns without stopping one",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.State.Batches[1] = failedRecord("fork reported stuck")
+				fx.Deps.Stopper = &recordingStopper{}
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+				if stopped := fx.Deps.Stopper.(*recordingStopper).Stopped; len(stopped) != 0 {
+					t.Errorf("stopped = %q; want none", stopped)
 				}
 			},
 		},
