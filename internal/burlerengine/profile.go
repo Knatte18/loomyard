@@ -42,10 +42,13 @@ type Profile struct {
 	ClusterFan string
 	// ClusterExclude names lenses to drop from the resolved ClusterFan — a
 	// per-call advisory filter, not config.
-	ClusterExclude  []string
-	clusterLenses   []Lens
-	ReviewPath      string
-	FixerReportPath string
+	ClusterExclude []string
+	// ClusterExcludeHeld names the exclusions carried from earlier rounds of the generation, a subset of ClusterExclude the caller fills.
+	// It applies in place of ClusterExclude when ClusterExclude would empty the fan.
+	ClusterExcludeHeld []string
+	clusterLenses      []Lens
+	ReviewPath         string
+	FixerReportPath    string
 	// ReadyMarkerPath is the told path of the file the engine writes once the reviewer's review is accepted and the fixer waits on.
 	// The caller derives it with burlermarker.Path; the engine derives no path.
 	ReadyMarkerPath   string
@@ -145,13 +148,16 @@ func (p *Profile) validate(worktreeRoot string, cfg Config) error {
 	if p.ClusterFan == "" && len(p.ClusterExclude) > 0 {
 		return fmt.Errorf("burler: profile.ClusterExclude is set but profile.ClusterFan is empty — there is no fan to trim")
 	}
+	if p.ClusterFan == "" && len(p.ClusterExcludeHeld) > 0 {
+		return fmt.Errorf("burler: profile.ClusterExcludeHeld is set but profile.ClusterFan is empty — there is no fan to trim")
+	}
 	if p.ClusterFan != "" {
 		// Resolve fan now so bad names fail upfront.
 		lenses, err := ResolveFan(cfg, p.ClusterFan)
 		if err != nil {
 			return err
 		}
-		p.clusterLenses = applyClusterExclude(p.ClusterFan, lenses, p.ClusterExclude)
+		p.clusterLenses = applyClusterExclude(p.ClusterFan, lenses, p.ClusterExclude, p.ClusterExcludeHeld)
 	}
 
 	if p.ReviewPath == "" {
@@ -179,42 +185,52 @@ func (p *Profile) validate(worktreeRoot string, cfg Config) error {
 // logged as a warning naming fan and the unmatched name — exclude is an
 // advisory, per-call directive over a config-owned fan, so a stale name is
 // stale rather than wrong.
-// If excluding would empty the survivors, the exclusion is dropped whole and
-// lenses is returned unchanged, logged as a warning naming fan — a round
-// demanding zero forks is never what an exclusion meant, and re-running the
-// full fan costs tokens, never correctness.
-func applyClusterExclude(fan string, lenses []Lens, exclude []string) []Lens {
+// If excluding would empty the survivors, held (the exclusions carried from earlier rounds) is applied instead,
+// and the dropped names of exclude are logged as a warning naming fan.
+// If held would empty the fan too, lenses is returned unchanged, logged as a warning naming fan:
+// a round demanding zero forks is never what an exclusion meant, and running more lenses costs tokens, never correctness.
+func applyClusterExclude(fan string, lenses []Lens, exclude, held []string) []Lens {
 	if len(exclude) == 0 {
 		return lenses
 	}
 
-	excludeSet := make(map[string]struct{}, len(exclude))
+	survivors, matched := dropLenses(lenses, exclude)
 	for _, name := range exclude {
-		excludeSet[name] = struct{}{}
+		if _, ok := matched[name]; !ok {
+			logger.Warn("burler: cluster exclude named a lens absent from the resolved fan", "fan", fan, "lens", name)
+		}
+	}
+	if len(survivors) > 0 {
+		return survivors
 	}
 
-	matched := make(map[string]struct{}, len(exclude))
+	logger.Warn("burler: cluster exclude would empty the fan — falling back to the held exclusions", "fan", fan, "dropped", exclude)
+	survivors, _ = dropLenses(lenses, held)
+	if len(survivors) > 0 {
+		return survivors
+	}
+
+	logger.Warn("burler: held exclusions would empty the fan too — keeping the fan intact", "fan", fan)
+	return lenses
+}
+
+// dropLenses returns the lenses whose Name is not in names, in order, and the set of names that matched a lens.
+func dropLenses(lenses []Lens, names []string) ([]Lens, map[string]struct{}) {
+	nameSet := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		nameSet[name] = struct{}{}
+	}
+
+	matched := make(map[string]struct{}, len(names))
 	survivors := make([]Lens, 0, len(lenses))
 	for _, lens := range lenses {
-		if _, excluded := excludeSet[lens.Name]; excluded {
+		if _, dropped := nameSet[lens.Name]; dropped {
 			matched[lens.Name] = struct{}{}
 			continue
 		}
 		survivors = append(survivors, lens)
 	}
-
-	for name := range excludeSet {
-		if _, ok := matched[name]; !ok {
-			logger.Warn("burler: cluster exclude named a lens absent from the resolved fan", "fan", fan, "lens", name)
-		}
-	}
-
-	if len(survivors) == 0 {
-		logger.Warn("burler: cluster exclude would empty the fan — dropping the exclusion whole to keep the fan intact", "fan", fan)
-		return lenses
-	}
-
-	return survivors
+	return survivors, matched
 }
 
 // resolvePath resolves a single path to a cleaned absolute path: an

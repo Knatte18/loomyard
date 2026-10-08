@@ -6,6 +6,11 @@
 # lens or fan you don't want is a supported, permanent choice — it will not
 # come back on the next reconcile.
 #
+# Resolution falls back per name to this embedded template: a fan or lens
+# name this file defines is used verbatim and wins, and a name it lacks
+# resolves from the template. A fan or lens you deleted here therefore still
+# resolves when a profile or loom.yaml names it.
+#
 # lenses: maps a lens name to emphasis-steering review prose for one fork of a
 # cluster round. Add a repo-local lens by adding a block like this:
 #
@@ -80,6 +85,43 @@ lenses:
     change should have updated but didn't, stale references to removed or
     renamed symbols, and examples that would no longer compile or run as
     written. Report anything else you notice too — emphasis, never exclusion.
+  goal-scope: |
+    Focus on the record against its board entry: whether the stated goal is
+    met, scope boundaries are explicit, nothing the entry asks for is missing,
+    nothing unlicensed was added, no deferral or MVP phase hides in the text,
+    and whether this is the right thing to build at all. Report anything else
+    you notice too — emphasis, never exclusion.
+  pattern-fit: |
+    Focus on fit with the repo's rules: check every decision or card against
+    the PATTERN.md entries and the pattern/ background files it touches, and
+    flag a departure that does not name the entry it changes. Report anything
+    else you notice too — emphasis, never exclusion.
+  scenarios: |
+    Focus on scenarios: failure, restart and resume, concurrency, empty state
+    and invalid input. Apply the Discussion-Review rubric's "The attack-surface
+    question" and the discussion stencil's "Must-cover test scenarios go under
+    `## Acceptance criteria`" rule. Report anything else you notice too —
+    emphasis, never exclusion.
+  leanness: |
+    Focus on content to move or cut: apply the Discussion-Review rubric's
+    "Relocation and exclusion findings are legitimate, on equal footing with
+    gap-filling findings" and "The completeness-before-leanness test". Seek
+    what does not belong in the decision record rather than what is missing
+    from it. Report anything else you notice too — emphasis, never exclusion.
+  decision-coverage: |
+    Focus on the plan against the decision record: apply the Plan-Review
+    rubric's "Fidelity to the answer key". Report anything else you notice
+    too — emphasis, never exclusion.
+  card-structure: |
+    Focus on how the cards are cut and typed: apply the Plan-Review rubric's
+    "Granularity", "Card order", "Member glyphs on an `Edit` card", "The
+    re-sign arrow", "`ImpactSummary` carries a real conclusion" and "`Custom`
+    is a last resort". Report anything else you notice too — emphasis, never
+    exclusion.
+  verify-tests: |
+    Focus on verification: apply the Plan-Review rubric's "Verify coverage"
+    and "Test economy". Report anything else you notice too — emphasis, never
+    exclusion.
 
 fans:
   standard:
@@ -97,3 +139,15 @@ fans:
     - api-design
     - concurrency
     - docs-consistency
+  discussion:
+    - generic
+    - goal-scope
+    - pattern-fit
+    - scenarios
+    - leanness
+  plan:
+    - generic
+    - decision-coverage
+    - card-structure
+    - verify-tests
+    - pattern-fit

@@ -20,9 +20,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"gopkg.in/yaml.v3"
@@ -85,16 +87,41 @@ func LoadConfig(baseDir string) (Config, error) {
 	return cfg, nil
 }
 
-// ResolveFan resolves a fan name against cfg into its ordered []Lens.
+var decodeTemplateOnce = sync.OnceValues(func() (Config, error) {
+	var cfg Config
+	decoder := yaml.NewDecoder(strings.NewReader(configTemplate))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&cfg); err != nil {
+		return Config{}, fmt.Errorf("burler: parse embedded template: %w", err)
+	}
+	return cfg, nil
+})
+
+// templateConfig decodes the embedded template strictly, once, and returns it.
+// The result is shared and must be treated as read-only.
+func templateConfig() (Config, error) {
+	return decodeTemplateOnce()
+}
+
+// ResolveFan resolves a fan name into its ordered []Lens.
+// The fan and each of its lenses are looked up in cfg first and, per name, in the embedded template when cfg does not define them,
+// so a name cfg defines wins and a zero Config resolves wholly from the template.
 // It is fail-loud and never degrades.
 // The returned slice preserves fan order exactly.
 func ResolveFan(cfg Config, name string) ([]Lens, error) {
+	template, err := templateConfig()
+	if err != nil {
+		return nil, err
+	}
 	entries, ok := cfg.Fans[name]
 	if !ok {
-		if len(cfg.Fans) == 0 {
-			return nil, fmt.Errorf("burler: no fans are configured (requested fan %q) — seed the standard lens/fan library with `lyx config reconcile`", name)
-		}
-		return nil, fmt.Errorf("burler: unknown fan %q (known fans: %s)", name, strings.Join(fanNames(cfg.Fans), ", "))
+		entries, ok = template.Fans[name]
+	}
+	if !ok {
+		known := make(map[string][]string, len(cfg.Fans)+len(template.Fans))
+		maps.Copy(known, template.Fans)
+		maps.Copy(known, cfg.Fans)
+		return nil, fmt.Errorf("burler: unknown fan %q (known fans: %s)", name, strings.Join(fanNames(known), ", "))
 	}
 	if len(entries) == 0 {
 		return nil, fmt.Errorf("burler: fan %q is empty", name)
@@ -106,6 +133,9 @@ func ResolveFan(cfg Config, name string) ([]Lens, error) {
 	lenses := make([]Lens, 0, len(entries))
 	for _, lensName := range entries {
 		text, ok := cfg.Lenses[lensName]
+		if !ok {
+			text, ok = template.Lenses[lensName]
+		}
 		if !ok {
 			return nil, fmt.Errorf("burler: fan %q names undefined lens %q", name, lensName)
 		}

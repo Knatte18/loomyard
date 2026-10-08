@@ -52,19 +52,19 @@ var nilLegal = map[string]bool{
 	"InnerRun.Sleep":                                   true,
 	"InnerRun.ReviewWait":                              true,
 	"InnerRun.Now":                                     true,
-	"InnerRun.OpenIDE":                                 true,
 	"InnerRun.Notify":                                  true,
 	"InnerRun.AttachDir":                               true,
 	"PrimeLock.Sleep":                                  true,
 	"SegmentBounces":                                   true,
 	"RowReviewModels":                                  true,
+	"RowClusterFans":                                   true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
 // Its Delta panics: a test that needs a delta supplies its own index.
 type noFindingsIndex struct{ planindex.Index }
 
-func (noFindingsIndex) ValidateFormat(*planparser.Plan, string) ([]planindex.Finding, error) {
+func (noFindingsIndex) ValidateFormat(*planparser.Plan, string, []planparser.Card) ([]planindex.Finding, error) {
 	return nil, nil
 }
 

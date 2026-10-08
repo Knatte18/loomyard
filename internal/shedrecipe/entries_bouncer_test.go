@@ -800,9 +800,10 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 // boolean values observed through the judge prompt a Call renders, the type check, and the
 // allowlist entry that admits exactly this spelling.
 func TestBouncerEntry_ClusterExcludes(t *testing.T) {
-	judgePrompt := func(t *testing.T, cfgValue any, set bool) string {
+	judgePrompt := func(t *testing.T, cfgValue any, set bool, rowFans map[string]string) string {
 		t.Helper()
 		env := newTestEnv(t)
+		env.RowClusterFans = rowFans
 		shuttle := judgeSeamShuttle()
 		env.Shuttle = shuttle
 		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "rules:\n{{.focus_list_rules}}\n")
@@ -826,19 +827,31 @@ func TestBouncerEntry_ClusterExcludes(t *testing.T) {
 	}
 
 	t.Run("AbsentOmitsExcludeLenses", func(t *testing.T) {
-		if p := judgePrompt(t, nil, false); strings.Contains(p, "exclude_lenses") {
+		if p := judgePrompt(t, nil, false, nil); strings.Contains(p, "exclude_lenses") {
 			t.Errorf("prompt mentions exclude_lenses with the key absent:\n%s", p)
 		}
 	})
 
 	t.Run("TrueRendersExcludeLenses", func(t *testing.T) {
-		if p := judgePrompt(t, true, true); !strings.Contains(p, "exclude_lenses") {
+		if p := judgePrompt(t, true, true, nil); !strings.Contains(p, "exclude_lenses") {
 			t.Errorf("prompt lacks exclude_lenses with cluster_excludes true:\n%s", p)
 		}
 	})
 
+	t.Run("EnvFanRendersExcludeLenses", func(t *testing.T) {
+		if p := judgePrompt(t, nil, false, map[string]string{"review-bounce": "env-fan"}); !strings.Contains(p, "exclude_lenses") {
+			t.Errorf("prompt lacks exclude_lenses with a RowClusterFans entry for the row:\n%s", p)
+		}
+	})
+
+	t.Run("EmptyEnvFanOmitsExcludeLenses", func(t *testing.T) {
+		if p := judgePrompt(t, nil, false, map[string]string{"review-bounce": ""}); strings.Contains(p, "exclude_lenses") {
+			t.Errorf("prompt mentions exclude_lenses with an empty RowClusterFans entry:\n%s", p)
+		}
+	})
+
 	t.Run("FalseOmitsExcludeLenses", func(t *testing.T) {
-		if p := judgePrompt(t, false, true); strings.Contains(p, "exclude_lenses") {
+		if p := judgePrompt(t, false, true, nil); strings.Contains(p, "exclude_lenses") {
 			t.Errorf("prompt mentions exclude_lenses with cluster_excludes false:\n%s", p)
 		}
 	})

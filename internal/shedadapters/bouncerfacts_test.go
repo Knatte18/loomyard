@@ -145,7 +145,7 @@ func TestComputeRoundFacts_ClasslessReviewIsAParseErrorRow(t *testing.T) {
 		t.Errorf("round 2 row = %+v; want its counts rendered", facts.Rows[1])
 	}
 
-	if err := writeRoundFacts(dir, 2, reportName); err != nil {
+	if err := writeRoundFacts("gate", dir, 2, reportName, false); err != nil {
 		t.Fatalf("writeRoundFacts = %v; want nil", err)
 	}
 	raw, err := os.ReadFile(factsPath(dir, 2))
@@ -225,7 +225,7 @@ func TestWriteRoundFacts_IsDeterministic(t *testing.T) {
 	writeFactsReview(t, dir, 2, factsFinding{burlerengine.SeverityLow, "scope"})
 	writeFactsLedger(t, dir, 1, "k:open:[1]", "j:open:[1]")
 
-	if err := writeRoundFacts(dir, 2, reportName); err != nil {
+	if err := writeRoundFacts("gate", dir, 2, reportName, false); err != nil {
 		t.Fatalf("writeRoundFacts first = %v; want nil", err)
 	}
 	first, err := os.ReadFile(factsPath(dir, 2))
@@ -241,7 +241,7 @@ func TestWriteRoundFacts_IsDeterministic(t *testing.T) {
 	if round1 := string(renderRoundFacts(computeRoundFacts(dir, 1, reportName))); !strings.Contains(round1, "No ledger key was open in an earlier round.") {
 		t.Errorf("round 1 facts = %q; want the empty earlier-open line", round1)
 	}
-	if err := writeRoundFacts(dir, 2, reportName); err != nil {
+	if err := writeRoundFacts("gate", dir, 2, reportName, false); err != nil {
 		t.Fatalf("writeRoundFacts second = %v; want nil", err)
 	}
 	second, err := os.ReadFile(factsPath(dir, 2))
@@ -265,4 +265,121 @@ func TestFactsPath_IsNotAJudgeOutput(t *testing.T) {
 			t.Errorf("judgeOutputs includes %q; the facts file is an input, not an output", want)
 		}
 	}
+}
+
+// TestWriteRoundFacts_LensSection pins the lens section of a fanned segment's facts file.
+func TestWriteRoundFacts_LensSection(t *testing.T) {
+	t.Parallel()
+	const review = `---
+verdict: APPROVED
+findings:
+  - id: F1
+    severity: MEDIUM
+    class: design
+    location: a.go
+    summary: one
+    origin: lens:alpha
+  - id: F2
+    severity: LOW
+    class: scope
+    location: a.go
+    summary: two
+    origin: lens:alpha
+  - id: F3
+    severity: NIT
+    class: consistency
+    location: a.go
+    summary: three
+    origin: handler
+  - id: F4
+    severity: NIT
+    class: consistency
+    location: a.go
+    summary: four
+---
+prose
+`
+	writeFacts := func(t *testing.T, dir string) string {
+		t.Helper()
+		if err := writeRoundFacts("gate", dir, 2, reportName, true); err != nil {
+			t.Fatalf("writeRoundFacts = %v; want nil", err)
+		}
+		raw, err := os.ReadFile(factsPath(dir, 2))
+		if err != nil {
+			t.Fatalf("ReadFile facts = %v; want nil", err)
+		}
+		return string(raw)
+	}
+	writeReview := func(t *testing.T, dir string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, reportName(2)), []byte(review), 0o644); err != nil {
+			t.Fatalf("WriteFile review = %v; want nil", err)
+		}
+	}
+
+	t.Run("lens rows, handler row, no-origin row and excluded lenses", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeReview(t, dir)
+		if err := writeRoundUsage(dir, 1, roundUsage{Fan: "fanX", Lenses: []string{"alpha", "beta", "gamma"}}); err != nil {
+			t.Fatalf("writeRoundUsage 1 = %v; want nil", err)
+		}
+		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", Lenses: []string{"alpha", "beta"}}); err != nil {
+			t.Fatalf("writeRoundUsage 2 = %v; want nil", err)
+		}
+		writeFocusFile(t, dir, 2, focusFile{Round: 2, ExcludeLenses: []string{"gamma"}})
+
+		out := writeFacts(t, dir)
+		_, lenses, found := strings.Cut(out, "## Lenses")
+		if !found {
+			t.Fatalf("facts file = %q; want a Lenses section", out)
+		}
+		for _, want := range []string{
+			"Fan: `fanX`\n",
+			"Lenses run: alpha, beta\n",
+			"Lenses already excluded for the next round: gamma\n",
+			"| `(no origin)` | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 1 |\n",
+			"| `handler` | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 1 |\n",
+			"| `lens:alpha` | 2 | 0 | 1 | 1 | 0 | 1 | 1 | 0 | 0 |\n",
+			"| `lens:beta` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |\n",
+		} {
+			if !strings.Contains(lenses, want) {
+				t.Errorf("lens section = %q; want it to contain %q", lenses, want)
+			}
+		}
+	})
+
+	t.Run("missing usage record renders a line saying so", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		writeReview(t, dir)
+
+		out := writeFacts(t, dir)
+		if !strings.Contains(out, "Usage record unreadable, so the fan and lenses run are unknown: ") || !strings.Contains(out, "| `handler` | 1 |") {
+			t.Errorf("facts file = %q; want the unreadable-record line and the per-origin table still counted", out)
+		}
+	})
+
+	t.Run("unparseable review renders a line saying so in place of the table", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, reportName(2)), []byte("no frontmatter here\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile review = %v; want nil", err)
+		}
+		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", Lenses: []string{"alpha"}}); err != nil {
+			t.Fatalf("writeRoundUsage 2 = %v; want nil", err)
+		}
+
+		out := writeFacts(t, dir)
+		_, lenses, found := strings.Cut(out, "## Lenses")
+		if !found {
+			t.Fatalf("facts file = %q; want a Lenses section", out)
+		}
+		if !strings.Contains(lenses, "Fan: `fanX`\n") || !strings.Contains(lenses, "\nReview unparseable, so findings per origin are unknown: ") {
+			t.Errorf("lens section = %q; want the fan and the unparseable-review line", lenses)
+		}
+		if strings.Contains(lenses, "| Origin |") {
+			t.Errorf("lens section = %q; want no per-origin table", lenses)
+		}
+	})
 }

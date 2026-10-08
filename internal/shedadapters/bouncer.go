@@ -99,8 +99,8 @@ type BouncerConfig struct {
 	Now func() time.Time
 	// ClusterExcludes is a told value: true exactly when the BurlerRound row this Bouncer's OnStuck
 	// names runs a cluster fan the judge's exclude_lenses can trim.
-	// Only then do the seed and judge prompts ask for exclude_lenses; the zero value asks for focus
-	// alone.
+	// Only then does the judge prompt ask for exclude_lenses, and the seed prompt never does;
+	// the zero value asks the judge for focus alone.
 	ClusterExcludes bool
 	// Skip is the optional seam a caller tells this Bouncer when the artifact under review may need no review at all.
 	// True settles the segment as approved without a seed or judge spawn;
@@ -879,7 +879,8 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		parentdirective.MarkerName: parentDirective,
 		editdirective.MarkerName:   editDirective,
 	}
-	maps.Copy(seedValues, focusSchemaMarkers(b.cfg.ClusterExcludes))
+	// The seed judges no round, so there is nothing settled for it to exclude; only the judge call is asked for exclude_lenses.
+	maps.Copy(seedValues, focusSchemaMarkers(false))
 	prompt, err := stencil.Fill(seedTemplate, seedValues)
 	if err != nil {
 		logger.Warn("shedadapters: bouncer seed prompt fill failed", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", 1, "cause", err)
@@ -989,7 +990,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 
 	// The facts file is regenerated on every judge call, including one that ends up attaching to a live judge, since the render is deterministic.
 	// A write failure degrades like an unreadable template, because the prompt would name a file that does not exist.
-	if err := writeRoundFacts(b.cfg.RunDir, n, b.cfg.ReportName); err != nil {
+	if err := writeRoundFacts(b.cfg.Name, b.cfg.RunDir, n, b.cfg.ReportName, b.cfg.ClusterExcludes); err != nil {
 		return b.degrade(ctx, "shedadapters: bouncer facts file unwritable", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", n, "cause", err)
 	}
 

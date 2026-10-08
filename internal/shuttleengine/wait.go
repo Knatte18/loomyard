@@ -1174,6 +1174,10 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 		StrandGUID:    run.state.StrandGUID,
 		RunDir:        run.runDir,
 		ExpiredShells: slices.Clone(run.expiredLabels),
+		EndedAt:       run.clock.Now(),
+	}
+	if createdAt, err := time.Parse(time.RFC3339, run.state.CreatedAt); err == nil {
+		result.StartedAt = createdAt
 	}
 
 	if outcome == OutcomeDone {
@@ -1187,6 +1191,10 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 	run.state.Outcome = string(outcome)
 	if err := saveRunState(run.runDir, run.state); err != nil {
 		logger.Warn("shuttle: persist run outcome failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome), "error", err)
+	}
+
+	if reader, ok := run.runner.engine.(UsageReader); ok && outcome == OutcomeDone {
+		result.Usage = reader.SessionUsage(run.state.SessionID, run.runner.paneCwd)
 	}
 
 	if outcome == OutcomeDone && run.spec.ForkSubagents {
