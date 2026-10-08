@@ -1,6 +1,6 @@
-// spawn.go implements both ide entry points: Spawn (`ide spawn`) and SpawnDriven (batten's driven-pair open).
-// Each assigns a title-bar color, generates the worktree's .vscode/ config, and launches VS Code;
-// Spawn regenerates the interactive chain on every call, SpawnDriven the attach-only chain, and both keep .vscode/ out of git through info/exclude.
+// spawn.go implements the ide entry point Spawn (`ide spawn`).
+// It assigns a title-bar color, generates the worktree's .vscode/ config, and launches VS Code;
+// it regenerates the interactive chain on every call and keeps .vscode/ out of git through info/exclude.
 // A task slug opens its bare folder.
 // The prime instead opens a lyx-generated hub workspace (prime, _board, _portals) under <hub>/_launchers/<AnchorRel>, regenerated on every prime spawn.
 
@@ -72,23 +72,6 @@ func seedKeybindings() vscode.KeybindingsResult {
 		return vscode.KeybindingsResult{Outcome: vscode.KeybindingsSkipped, Reason: fmt.Sprintf("resolve the keybindings path: %v", err)}
 	}
 	return vscode.SeedKeybindings(keybindingsPath)
-}
-
-// SpawnDriven opens VS Code on a driven pair's task folder, wired to attach to the child run's own reed session.
-// The caller decides the pair is driven; nothing here detects it.
-// The folder gets an attach-only tasks.json (vscode.TaskChainAttachOnly), overwritten if present, and a settings.json written only when absent.
-// When .vscode/tasks.json is already tracked in the pair's repo, .vscode/ belongs to the repo:
-// SpawnDriven then writes neither file, leaves the shared info/exclude alone, logs one warning, and still launches.
-// Otherwise it first keeps .vscode/ out of git with an anchored line in the shared info/exclude, so the child's commits never sweep it up.
-func SpawnDriven(l *lyxcwd.Location, slug string) error {
-	worktreeDir, color, _, _ := resolveSpawnTarget(l, slug, targetTask)
-
-	lyxPath, _ := os.Executable()
-	if err := writeVSCodeConfig(l, worktreeDir, slug, color, lyxPath, "", vscode.TaskChainAttachOnly); err != nil {
-		return err
-	}
-
-	return CodeLauncher(filepath.Join(worktreeDir, l.AnchorRel))
 }
 
 // writeVSCodeConfig keeps .vscode/ out of git and writes the chain's config at the worktree's anchor.

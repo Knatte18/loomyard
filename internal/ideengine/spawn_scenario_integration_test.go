@@ -1,6 +1,6 @@
 //go:build integration
 
-// spawn_scenario_integration_test.go drives Spawn and SpawnDriven as scenarios over one hubforge hub per anchor, so a hub is built once per anchor instead of once per check.
+// spawn_scenario_integration_test.go drives Spawn as scenarios over one hubforge hub per anchor, so a hub is built once per anchor instead of once per check.
 // Serial by design: every step swaps the package-level CodeLauncher, and the driven steps swap the logger output.
 
 package ideengine
@@ -29,7 +29,7 @@ func spawnStepRunner(t *testing.T, h *hubforge.Hub) func(name string, step func(
 	}
 }
 
-// TestSpawnScenario drives every Spawn and SpawnDriven check that does not depend on the hub's anchor against one hub at the repo root.
+// TestSpawnScenario drives every Spawn check that does not depend on the hub's anchor against one hub at the repo root.
 // Steps run in this order: the prime-touching steps follow the task-pair ones, and the tracked-tasks.json commit on the prime is last, because it leaves the prime's tasks.json tracked.
 func TestSpawnScenario(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
@@ -65,21 +65,6 @@ func TestSpawnScenario(t *testing.T) {
 	}) {
 		return
 	}
-	if !step("driven spawn writes attach-only and excludes", func(t *testing.T) {
-		checkDrivenWritesAttachOnlyAndExcludes(t, h, "driven-writes")
-	}) {
-		return
-	}
-	if !step("driven spawn overwrites tasks and keeps settings", func(t *testing.T) {
-		checkDrivenOverwritesTasksKeepsSettings(t, h, "driven-overwrite")
-	}) {
-		return
-	}
-	if !step("driven spawn skips a tracked .vscode", func(t *testing.T) {
-		checkDrivenSkipsTrackedVSCode(t, h, "driven-tracked")
-	}) {
-		return
-	}
 	if !step("prime writes the hub workspace", func(t *testing.T) {
 		checkPrimeWritesHubWorkspace(t, h)
 	}) {
@@ -111,11 +96,6 @@ func TestSpawnAnchoredScenario(t *testing.T) {
 	h := hubforge.NewHub(t, "wts/some-task")
 	step := spawnStepRunner(t, h)
 
-	if !step("driven spawn writes attach-only and excludes", func(t *testing.T) {
-		checkDrivenWritesAttachOnlyAndExcludes(t, h, "driven-writes")
-	}) {
-		return
-	}
 	step("prime writes the hub workspace", func(t *testing.T) {
 		checkPrimeWritesHubWorkspace(t, h)
 	})

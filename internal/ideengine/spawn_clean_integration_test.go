@@ -8,6 +8,7 @@ package ideengine
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,32 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
+
+// sharedExcludePath resolves the shared info/exclude of the task worktree's repo.
+func sharedExcludePath(t *testing.T, worktreeDir string) string {
+	t.Helper()
+	p := gitkit.Git(t, worktreeDir, "rev-parse", "--git-path", "info/exclude")
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(worktreeDir, p)
+	}
+	return p
+}
+
+// readTasks decodes the tasks.json under anchorDir.
+func readTasks(t *testing.T, anchorDir string) []map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(anchorDir, ".vscode", "tasks.json"))
+	if err != nil {
+		t.Fatalf("read tasks.json: %v", err)
+	}
+	var tasks struct {
+		Tasks []map[string]any `json:"tasks"`
+	}
+	if err := json.Unmarshal(data, &tasks); err != nil {
+		t.Fatalf("tasks.json is not valid JSON: %v\n%s", err, data)
+	}
+	return tasks.Tasks
+}
 
 // commitFile writes content to rel under dir and commits it, force-adding because the path may be ignored.
 func commitFile(t *testing.T, dir, rel, content string) {

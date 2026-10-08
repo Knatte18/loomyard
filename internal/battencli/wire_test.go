@@ -58,7 +58,6 @@ func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
 		{"ReviveStrands", c.env.InnerRun.ReviveStrands != nil},
 		{"RunShedMarkWatched", c.env.InnerRun.MarkWatched != nil},
 		{"SeedChildMarkWatched", c.env.SeedChild.MarkWatched != nil},
-		{"OpenIDE", c.env.InnerRun.OpenIDE != nil},
 		{"CommitStatus", c.shedPaths.CommitStatus != nil},
 	}
 	for _, tt := range tests {
