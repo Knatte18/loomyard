@@ -241,10 +241,9 @@
 // no-op for that name with a warning, because an exclusion list is an
 // advisory, per-call directive over a config-owned fan an operator may edit
 // between rounds, so a stale name is stale rather than wrong; and an
-// exclusion that would empty the fan drops the whole exclusion and keeps the
-// fan intact, because dropping to zero lenses is never what "these found
-// nothing last round" meant and re-running the full fan costs tokens, never
-// correctness.
+// exclusion that would empty the fan falls back to ClusterExcludeHeld, the exclusions carried from earlier rounds of the generation.
+// When that would empty the fan too the whole fan runs, because dropping to zero lenses is never what "these found nothing last round" meant and running more lenses costs tokens, never correctness.
+// ClusterExcludeHeld set with an empty ClusterFan is a validate error too.
 //
 // A cluster round still runs its review as ONE shuttle session, the handler, in three phases.
 // (1) the handler explores the target in full; (2)
