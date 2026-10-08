@@ -173,37 +173,59 @@ func TestBouncer_ConvergedSettle_CallsCarryOverBeforeApproveAndCommit(t *testing
 	}
 }
 
-// TestBouncer_ConvergedSettle_CarryOverFailureBlocksTheSettle pins that a failing CarryOver seam returns an error wrapping the cause with a way forward, never Stuck, and runs neither Approve nor Commit.
+// TestBouncer_ConvergedSettle_CarryOverFailureBlocksTheSettle pins that a failed carry-over returns an error naming its cause with a way forward, never Stuck, and runs neither Approve nor Commit.
+// The failure is either the seam's own error or a run directory outside the anchor, which fails before the seam is called.
 func TestBouncer_ConvergedSettle_CarryOverFailureBlocksTheSettle(t *testing.T) {
 	t.Parallel()
 	sentinel := errors.New("record malformed")
-	var log seamLog
-	recorder := carryOverRecorder{log: &log, err: sentinel}
-	cfg := newBouncerFixture(t, withNestedRunDir()).Config
-	recorder.install(&cfg)
-	cfg.Approve = log.approve(nil)
-	cfg.Commit = log.commit(nil)
-	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
-	b, err := NewBouncer(cfg)
-	if err != nil {
-		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+	tests := []struct {
+		name          string
+		seamErr       error
+		outsideAnchor bool
+		wantCause     string
+		wantSeamCalls []string
+	}{
+		{name: "the seam fails", seamErr: sentinel, wantCause: sentinel.Error(), wantSeamCalls: []string{"carry-over"}},
+		{name: "the run directory lies outside the anchor", outsideAnchor: true, wantCause: "does not lie under the anchor"},
 	}
-	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var log seamLog
+			recorder := carryOverRecorder{log: &log, err: tt.seamErr}
+			cfg := newBouncerFixture(t, withNestedRunDir()).Config
+			recorder.install(&cfg)
+			if tt.outsideAnchor {
+				cfg.AnchorPath = t.TempDir()
+			}
+			cfg.Approve = log.approve(nil)
+			cfg.Commit = log.commit(nil)
+			cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
+			b, err := NewBouncer(cfg)
+			if err != nil {
+				t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+			}
+			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
 
-	outcome, ptr, err := b.Call(context.Background())
-	if !errors.Is(err, sentinel) {
-		t.Fatalf("Call() error = %v; want errors.Is(err, sentinel)", err)
-	}
-	for _, want := range []string{"shedadapters: gate (bouncer): carry over round 1's open findings", "way forward:", "`## Open risks`", "lyx loom start"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("Call() error = %q; want it to contain %q", err, want)
-		}
-	}
-	if outcome != "" || ptr != (shedengine.OutputPointer{}) {
-		t.Errorf("Call() = (%q, %+v); want an empty outcome and pointer alongside the error", outcome, ptr)
-	}
-	if want := []string{"carry-over"}; !slices.Equal(log.calls, want) {
-		t.Errorf("seam calls = %v; want %v", log.calls, want)
+			outcome, ptr, err := b.Call(context.Background())
+			if err == nil {
+				t.Fatalf("Call() error = nil; want the carry-over failure")
+			}
+			if tt.seamErr != nil && !errors.Is(err, tt.seamErr) {
+				t.Errorf("Call() error = %v; want errors.Is(err, %v)", err, tt.seamErr)
+			}
+			for _, want := range []string{"shedadapters: gate (bouncer): carry over round 1's open findings", tt.wantCause, "way forward:", "`## Open risks`", "lyx loom start"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("Call() error = %q; want it to contain %q", err, want)
+				}
+			}
+			if outcome != "" || ptr != (shedengine.OutputPointer{}) {
+				t.Errorf("Call() = (%q, %+v); want an empty outcome and pointer alongside the error", outcome, ptr)
+			}
+			if !slices.Equal(log.calls, tt.wantSeamCalls) {
+				t.Errorf("seam calls = %v; want %v", log.calls, tt.wantSeamCalls)
+			}
+		})
 	}
 }
 
