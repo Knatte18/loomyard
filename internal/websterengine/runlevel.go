@@ -131,7 +131,7 @@ type RunDeps struct {
 	Stopper    StrandStopper
 	Engine     shuttleengine.Engine
 	ShuttleCfg shuttleengine.Config
-	Roles     map[Role]modelspec.Resolved
+	Roles      map[Role]modelspec.Resolved
 	Config     Config
 	// Batcher is the CLI-resolved active batchifier (batcher.Active),
 	// populated by webstercli's PersistentPreRunE before Run is called. Run

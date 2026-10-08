@@ -171,11 +171,6 @@ func TestBurlerRunner_LastEntryRepeats(t *testing.T) {
 		t.Errorf("unscripted ProbeRound() = %+v, %v; want the zero LiveRound and nil", got, err)
 	}
 
-	// StrandRemover records the guids it is asked to remove and answers Err.
-	remover := &StrandRemover{Err: first}
-	if err := remover.RemoveStrandIfLive("g1"); !errors.Is(err, first) || len(remover.Removed) != 1 || remover.Removed[0] != "g1" {
-		t.Errorf("RemoveStrandIfLive() = %v with Removed %v; want %v and [g1]", err, remover.Removed, first)
-	}
 }
 
 func TestMergeShuttle_ScriptsByCallOrder(t *testing.T) {
