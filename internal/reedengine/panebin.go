@@ -1,9 +1,6 @@
-// panebin.go owns the whole pane-binary seam: composing the shell prelude that resolves `lyx` to the
-// binary that spawned every strand pane, the one function (composePaneLaunchLine) that joins it
-// onto a strand's launch command, and the one (composeWindowCommand) that joins it onto a detached window's `lyx` command. The composition lives in this one file, reached from the one
-// chokepoint (launchStrandLocked in spawn.go), so the property "every strand pane resolves lyx to its
-// spawning binary" holds by construction rather than by every strand-realizing call site remembering
-// to apply it.
+// panebin.go owns the whole pane-binary seam: composing the shell prelude that resolves `lyx` to the binary that spawned every strand pane, the one function (composePaneLaunchLine) that joins it onto a strand's launch command, and the one (composeWindowCommand) that joins it onto a detached window's `lyx` command.
+// The composition lives in this one file, reached from two chokepoints, launchStrandLocked in spawn.go for strand panes and OpenWindow in window.go for detached windows,
+// so the property "every pane reed creates for a `lyx` command resolves lyx to its spawning binary" holds by construction rather than by every pane-creating call site remembering to apply it.
 // The same composition exports LYX_STRAND_NAME (the strand's full name) and LYX_PARENT (the worktree's parent, when told) beside LYX_BIN.
 // The file also owns the per-strand launch script the composed line is written to,
 // so the pane types a short source statement instead of the full line.

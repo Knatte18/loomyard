@@ -2,7 +2,7 @@
 
 A strand pane reed creates resolves `lyx` to the binary that spawned it.
 
-- `panebin.go` owns the seam, and `launchStrandLocked` is its only call site.
+- `panebin.go` owns the seam, and its call sites are `launchStrandLocked` for strand panes and `OpenWindow` for the detached `lyx` window.
 - Every shell token is emitted through `internal/shell`, per the shell-mechanics-seam entry.
 - The dialect is `shell.ForGOOS()`, the same selector as the launch command the prelude is joined onto.
   Reed neither derives a dialect of its own nor changes how a pane's shell is started.
