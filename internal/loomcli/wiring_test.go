@@ -206,8 +206,8 @@ func TestWire_DefaultConfig(t *testing.T) {
 		if deps.Starter == nil {
 			t.Error("runDeps.Starter = nil; want the runnerMasterStarter adapter")
 		}
-		if deps.Reed == nil {
-			t.Error("runDeps.Reed = nil; want the constructed reed engine")
+		if deps.Stopper == nil {
+			t.Error("runDeps.Stopper = nil; want the constructed shuttle runner")
 		}
 		if deps.Engine == nil {
 			t.Error("runDeps.Engine = nil; want the constructed claude engine")
@@ -272,12 +272,6 @@ func TestWire_DefaultConfig(t *testing.T) {
 	t.Run("env shuttle is the runner", func(t *testing.T) {
 		if c.env.Shuttle != c.runner {
 			t.Errorf("c.env.Shuttle = %v; want the same *shuttleengine.Runner value as c.runner = %v", c.env.Shuttle, c.runner)
-		}
-	})
-
-	t.Run("env burler remover is wired", func(t *testing.T) {
-		if c.env.BurlerRemover == nil {
-			t.Error("c.env.BurlerRemover = nil; want the remover the burler engine is built with")
 		}
 	})
 

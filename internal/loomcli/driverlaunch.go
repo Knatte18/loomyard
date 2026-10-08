@@ -34,7 +34,8 @@ type driverStarter interface {
 // driverSender types one line into a live driver strand's pane.
 type driverSender interface {
 	// SendDriver types text as the strand's next turn and verifies it arrived.
-	// A pane whose provider is not input-ready is refused with an error wrapping shuttleengine.ErrPaneNotReady;
+	// A busy or not-ready pane waits inside the send, and one that stays busy fails with an error wrapping shuttleengine.ErrSessionBusy.
+	// An engine without the idle reading refuses a pane whose provider is not input-ready at once, with an error wrapping shuttleengine.ErrPaneNotReady;
 	// any other error may follow a delivery the pane hid, so a caller must not blindly re-send after it.
 	SendDriver(guid, text string) error
 }
@@ -70,7 +71,7 @@ func (s runnerDriverStarter) StartDriver(spec shuttleengine.Spec) (driverHandle,
 	return run, nil
 }
 
-// SendDriver implements driverSender through the runner's Send, which verifies delivery and refuses a pane whose provider is not input-ready.
+// SendDriver implements driverSender through the runner's Send, which waits for an idle session, verifies delivery and fails with ErrSessionBusy when the session stays busy.
 func (s runnerDriverStarter) SendDriver(guid, text string) error {
 	return s.runner.Send(guid, text)
 }

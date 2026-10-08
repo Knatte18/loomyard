@@ -247,13 +247,13 @@
 // BurlerRunner.ProbeRound reports each half as live, done or gone, and Call acts on the pair.
 // With both halves live it calls Resume and maps the result through the outcome switch a spawned attempt uses.
 // A died or timeout result there falls through to a fresh attempt 1, since the resumed round is not counted as an attempt.
-// With exactly one half live it removes that half's strand through BurlerDeps.Remover (the same remover the engine is told) and falls through to attempt 1.
+// With exactly one half live it stops that half through its handle's Stop, which records the stop, and falls through to attempt 1.
 // So a live fixer beside a finished review is stopped and re-run rather than attached, and its target edits stay in the worktree for the next attempt's reviewer to review.
 // With one half done and the other gone nothing is live, so nothing is removed and it falls through to attempt 1.
 // With neither half live it falls through.
 // A fall-through spawn archives the round's outputs and the engine removes the ready marker, so a round never ends with one half still live and a live half is never spawned a second time.
-// A probe error, a failed removal and a Resume error wrapping burlerengine.ErrHalfNotStopped are returned without archiving and without spawning, since a half that may still be live may be writing the round's files.
-// The failed-removal error wraps burlerengine.ErrHalfNotStopped and ends with the way forward, run "lyx reed remove <guid>" and re-step the row.
+// A probe error, a failed stop and a Resume error wrapping burlerengine.ErrHalfNotStopped are returned without archiving and without spawning, since a half that may still be live may be writing the round's files.
+// The failed-stop error wraps burlerengine.ErrHalfNotStopped and ends with the way forward, run "lyx reed remove <guid>" and re-step the row.
 //
 // The Bouncer's third probe covers the two modes that spawn nothing at all, and it exists because
 // its own judgment record is narrower than the judge spawn that produces it: a recorded judgment is

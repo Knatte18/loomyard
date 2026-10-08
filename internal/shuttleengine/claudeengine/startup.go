@@ -250,6 +250,13 @@ const gateCaretMarker = "❯"
 // in one place, owned here.
 const ReadyFooterFixture = "? for shortcuts"
 
+// IdleInputBoxFixture is a live claude TUI's idle bottom rows: an empty input box between two horizontal rules, with the ready-marker footer under it.
+// It reads as ready at startup and as an idle session, so a stubbed provider that prints it after each line it reads takes verified sends one after another.
+const IdleInputBoxFixture = "────────────────────────────────\n" +
+	gateCaretMarker + " \n" +
+	"────────────────────────────────\n" +
+	"  " + ReadyFooterFixture
+
 // gateFooterNeedle is the whitespace-stripped, lowercased prefix of the footer claude draws under
 // every one-time gate ("Enter to confirm · Esc to cancel"), and the second of the two pieces of
 // positive evidence Startup accepts that a gate is actually on screen.
@@ -348,6 +355,15 @@ func (c *Claude) ComposeSend(text string) []shuttleengine.PaneInput {
 		{Key: "Escape", SettleMS: composeSendSettleMS},
 		{Text: text, SettleMS: c.submitSettleMS},
 		{Key: "Enter"},
+	}
+}
+
+// TypeSequence returns the key choreography that types text as claude's next turn without submitting it.
+// It opens with the same Escape and settle pause as ComposeSend, and ends with the text: the caller sends the Enter itself once the input box has settled.
+func (c *Claude) TypeSequence(text string) []shuttleengine.PaneInput {
+	return []shuttleengine.PaneInput{
+		{Key: "Escape", SettleMS: composeSendSettleMS},
+		{Text: text},
 	}
 }
 

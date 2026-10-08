@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -50,14 +51,35 @@ func stampedSiblingCount(t *testing.T, dir, base string) int {
 
 // --- BurlerProducer ---
 
-// probedHandle is a burlerengine.Handle for a half the runner's probe reports live; the producer reads only its strand guid.
-type probedHandle struct{ guid string }
+// stopLog records the strand guid of every Stop call on the handles of a round built by roundWithStops, failing each call with err when set.
+type stopLog struct {
+	mu      sync.Mutex
+	err     error
+	stopped []string
+}
+
+// probedHandle is a burlerengine.Handle for a half the runner's probe reports live; the producer reads its strand guid and stops it.
+// A nil log makes Stop a no-op.
+type probedHandle struct {
+	guid string
+	log  *stopLog
+}
 
 func (h probedHandle) StrandGUID() string { return h.guid }
 
 func (h probedHandle) RunDir() string { return "/kept/" + h.guid }
 
 func (h probedHandle) Wait() (shuttleengine.Result, error) { return shuttleengine.Result{}, nil }
+
+func (h probedHandle) Stop() error {
+	if h.log == nil {
+		return nil
+	}
+	h.log.mu.Lock()
+	defer h.log.mu.Unlock()
+	h.log.stopped = append(h.log.stopped, h.guid)
+	return h.log.err
+}
 
 const (
 	reviewGUID = "review-guid"
@@ -66,11 +88,16 @@ const (
 
 // roundWith builds the LiveRound a probe reports for the given states, a live half carrying its guid's handle.
 func roundWith(review, fix burlerengine.HalfState) burlerengine.LiveRound {
+	return roundWithStops(nil, review, fix)
+}
+
+// roundWithStops is roundWith whose live halves record their Stop calls in log.
+func roundWithStops(log *stopLog, review, fix burlerengine.HalfState) burlerengine.LiveRound {
 	half := func(state burlerengine.HalfState, guid string) burlerengine.LiveHalf {
 		if state != burlerengine.HalfLive {
 			return burlerengine.LiveHalf{State: state}
 		}
-		return burlerengine.LiveHalf{State: state, Handle: probedHandle{guid: guid}}
+		return burlerengine.LiveHalf{State: state, Handle: probedHandle{guid: guid, log: log}}
 	}
 	return burlerengine.LiveRound{Review: half(review, reviewGUID), Fix: half(fix, fixGUID)}
 }
@@ -79,12 +106,13 @@ func TestBurlerProducer_ResumesBothLiveHalvesInsteadOfRespawning(t *testing.T) {
 	t.Parallel()
 
 	runDir := t.TempDir()
+	stops := &stopLog{}
+	live := roundWithStops(stops, burlerengine.HalfLive, burlerengine.HalfLive)
 	runner := &shedfake.BurlerRunner{
-		LiveRounds:    []burlerengine.LiveRound{roundWith(burlerengine.HalfLive, burlerengine.HalfLive)},
+		LiveRounds:    []burlerengine.LiveRound{live},
 		ResumeResults: []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}},
 	}
-	remover := &shedfake.StrandRemover{}
-	p := newBurlerProducer(t, runDir, runner, withRemover(remover), withBurlerClock(fixedClock(time.Now())))
+	p := newBurlerProducer(t, runDir, runner, withBurlerClock(fixedClock(time.Now())))
 
 	// The live reviewer's own in-progress review, already on disk.
 	// It must still be there afterwards.
@@ -99,14 +127,14 @@ func TestBurlerProducer_ResumesBothLiveHalvesInsteadOfRespawning(t *testing.T) {
 	if runner.ProbeCalls != 1 || runner.ResumeCalls != 1 {
 		t.Errorf("ProbeRound calls %d, Resume calls %d; want 1 each, the probe before anything else", runner.ProbeCalls, runner.ResumeCalls)
 	}
-	if runner.GotLive[0] != roundWith(burlerengine.HalfLive, burlerengine.HalfLive) {
+	if runner.GotLive[0] != live {
 		t.Errorf("Resume was handed %+v; want the probed round", runner.GotLive[0])
 	}
 	if runner.Calls != 0 {
 		t.Errorf("runner.Run calls = %d; want 0 -- a live round must be resumed, never respawned over", runner.Calls)
 	}
-	if len(remover.Removed) != 0 {
-		t.Errorf("removed strands = %v; want none for a resumed round", remover.Removed)
+	if len(stops.stopped) != 0 {
+		t.Errorf("stopped halves = %v; want none for a resumed round", stops.stopped)
 	}
 	if _, err := os.Stat(roundReviewPath(runDir, 1)); err != nil {
 		t.Errorf("the live round's review file was moved (stat = %v); want it untouched -- archiving renames the file the live reviewer is still writing", err)
@@ -174,20 +202,17 @@ func TestBurlerProducer_LiveRoundErrorNeitherArchivesNorSpawns(t *testing.T) {
 	tests := []struct {
 		name       string
 		runner     *shedfake.BurlerRunner
-		remover    *shedfake.StrandRemover
 		wantErr    error
 		wantSuffix string
 	}{
 		{
 			name:    "probe error",
 			runner:  &shedfake.BurlerRunner{ProbeErrs: []error{sentinel}},
-			remover: &shedfake.StrandRemover{},
 			wantErr: sentinel,
 		},
 		{
-			name:       "failed removal of the one live half",
-			runner:     &shedfake.BurlerRunner{LiveRounds: []burlerengine.LiveRound{roundWith(burlerengine.HalfDone, burlerengine.HalfLive)}},
-			remover:    &shedfake.StrandRemover{Err: sentinel},
+			name:       "failed stop of the one live half",
+			runner:     &shedfake.BurlerRunner{LiveRounds: []burlerengine.LiveRound{roundWithStops(&stopLog{err: sentinel}, burlerengine.HalfDone, burlerengine.HalfLive)}},
 			wantErr:    burlerengine.ErrHalfNotStopped,
 			wantSuffix: `way forward: run "lyx reed remove ` + fixGUID + `", then re-step the row`,
 		},
@@ -197,7 +222,6 @@ func TestBurlerProducer_LiveRoundErrorNeitherArchivesNorSpawns(t *testing.T) {
 				LiveRounds: []burlerengine.LiveRound{roundWith(burlerengine.HalfLive, burlerengine.HalfLive)},
 				ResumeErrs: []error{fmt.Errorf("%w: strand g", burlerengine.ErrHalfNotStopped)},
 			},
-			remover: &shedfake.StrandRemover{},
 			wantErr: burlerengine.ErrHalfNotStopped,
 		},
 	}
@@ -205,7 +229,7 @@ func TestBurlerProducer_LiveRoundErrorNeitherArchivesNorSpawns(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			runDir := t.TempDir()
-			p := newBurlerProducer(t, runDir, tt.runner, withRemover(tt.remover), withBurlerClock(fixedClock(time.Now())))
+			p := newBurlerProducer(t, runDir, tt.runner, withBurlerClock(fixedClock(time.Now())))
 			writeRoundFile(t, roundReviewPath(runDir, 1))
 
 			outcome, _, err := p.Call(context.Background())
@@ -229,33 +253,33 @@ func TestBurlerProducer_LiveRoundErrorNeitherArchivesNorSpawns(t *testing.T) {
 }
 
 // TestBurlerProducer_PartiallyLiveRoundIsStoppedAndRespawned covers the pairs a round cannot be resumed from:
-// one live half is removed by its strand guid, and a done/gone pair removes nothing, and both spawn attempt 1.
+// one live half is stopped through its handle, and a done/gone pair stops nothing, and both spawn attempt 1.
 func TestBurlerProducer_PartiallyLiveRoundIsStoppedAndRespawned(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name        string
-		live        burlerengine.LiveRound
-		wantRemoved []string
+		review, fix burlerengine.HalfState
+		wantStopped []string
 	}{
-		{"live reviewer beside a gone fixer", roundWith(burlerengine.HalfLive, burlerengine.HalfGone), []string{reviewGUID}},
-		{"live fixer beside a finished review", roundWith(burlerengine.HalfDone, burlerengine.HalfLive), []string{fixGUID}},
-		{"finished review and a gone fixer", roundWith(burlerengine.HalfDone, burlerengine.HalfGone), nil},
+		{"live reviewer beside a gone fixer", burlerengine.HalfLive, burlerengine.HalfGone, []string{reviewGUID}},
+		{"live fixer beside a finished review", burlerengine.HalfDone, burlerengine.HalfLive, []string{fixGUID}},
+		{"finished review and a gone fixer", burlerengine.HalfDone, burlerengine.HalfGone, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			runDir := t.TempDir()
+			stops := &stopLog{}
 			runner := &shedfake.BurlerRunner{
 				Results:    []burlerengine.Result{{Outcome: shuttleengine.OutcomeDone}},
-				LiveRounds: []burlerengine.LiveRound{tt.live},
+				LiveRounds: []burlerengine.LiveRound{roundWithStops(stops, tt.review, tt.fix)},
 			}
-			remover := &shedfake.StrandRemover{}
-			p := newBurlerProducer(t, runDir, runner, withRemover(remover), withBurlerClock(fixedClock(time.Now())))
+			p := newBurlerProducer(t, runDir, runner, withBurlerClock(fixedClock(time.Now())))
 
 			shedfake.RequireOutcome(t, p, shedengine.Stuck)
-			if !slices.Equal(remover.Removed, tt.wantRemoved) {
-				t.Errorf("removed strands = %v; want %v", remover.Removed, tt.wantRemoved)
+			if !slices.Equal(stops.stopped, tt.wantStopped) {
+				t.Errorf("stopped halves = %v; want %v", stops.stopped, tt.wantStopped)
 			}
 			if runner.ResumeCalls != 0 || runner.Calls != 1 {
 				t.Errorf("Resume calls %d, runner.Run calls %d; want 0 and 1", runner.ResumeCalls, runner.Calls)

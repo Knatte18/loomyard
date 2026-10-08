@@ -94,6 +94,11 @@ func TestStartup_Classification(t *testing.T) {
 			want:    shuttleengine.StartupReady,
 		},
 		{
+			name:    "ready_idle_input_box_fixture",
+			capture: IdleInputBoxFixture,
+			want:    shuttleengine.StartupReady,
+		},
+		{
 			name:    "pending_cold_boot",
 			capture: "Loading...",
 			want:    shuttleengine.StartupPending,
@@ -389,6 +394,21 @@ func TestComposeSend(t *testing.T) {
 			for i := range want {
 				if got[i] != want[i] {
 					t.Errorf("ComposeSend(%q)[%d] = %+v; want %+v", "hello", i, got[i], want[i])
+				}
+			}
+
+			// TypeSequence is the same choreography without its Enter step and without the text's paced settle.
+			wantTyped := []shuttleengine.PaneInput{
+				{Key: "Escape", SettleMS: composeSendSettleMS},
+				{Text: "hello"},
+			}
+			typed := tt.engine.TypeSequence("hello")
+			if len(typed) != len(wantTyped) {
+				t.Fatalf("TypeSequence(%q) = %+v; want %+v", "hello", typed, wantTyped)
+			}
+			for i := range wantTyped {
+				if typed[i] != wantTyped[i] {
+					t.Errorf("TypeSequence(%q)[%d] = %+v; want %+v", "hello", i, typed[i], wantTyped[i])
 				}
 			}
 		})

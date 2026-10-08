@@ -171,11 +171,6 @@ func TestBurlerRunner_LastEntryRepeats(t *testing.T) {
 		t.Errorf("unscripted ProbeRound() = %+v, %v; want the zero LiveRound and nil", got, err)
 	}
 
-	// StrandRemover records the guids it is asked to remove and answers Err.
-	remover := &StrandRemover{Err: first}
-	if err := remover.RemoveStrandIfLive("g1"); !errors.Is(err, first) || len(remover.Removed) != 1 || remover.Removed[0] != "g1" {
-		t.Errorf("RemoveStrandIfLive() = %v with Removed %v; want %v and [g1]", err, remover.Removed, first)
-	}
 }
 
 func TestMergeShuttle_ScriptsByCallOrder(t *testing.T) {
@@ -217,8 +212,8 @@ func TestMergeShuttle_RunFnReplacesScriptedAnswer(t *testing.T) {
 
 func TestWebsterSeams_FieldsNonNil(t *testing.T) {
 	deps := WebsterSeams()
-	if deps.Starter == nil || deps.Reed == nil || deps.Engine == nil || deps.RefMatcher == nil {
-		t.Errorf("WebsterSeams() = %+v; want Starter, Reed, Engine and RefMatcher non-nil", deps)
+	if deps.Starter == nil || deps.Stopper == nil || deps.Engine == nil || deps.RefMatcher == nil {
+		t.Errorf("WebsterSeams() = %+v; want Starter, Stopper, Engine and RefMatcher non-nil", deps)
 	}
 }
 

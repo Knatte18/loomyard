@@ -1,13 +1,9 @@
-// strand.go implements webster's own strand/spawn seam helpers: StrandLive and TurnEnded, the
-// Starter seam, the OrchestratorStarter/OrchestratorHandle spawn seam, and RemoveStrandIfLive,
-// inlining direct shuttleengine calls.
+// strand.go implements webster's own strand/spawn seam helpers: StrandLive and TurnEnded, the Starter seam, the OrchestratorStarter/OrchestratorHandle spawn seam, and the StrandStopper seam, inlining direct shuttleengine calls.
 // These are deliberately module-local rather than shared, since the spawn seam is part of
 // webster's own contract shape.
 // StrandLive and TurnEnded are EXPORTED because internal/webstercli calls them directly;
 // the spawn-seam interfaces are exported so webstercli can assign a real *shuttleengine.Runner into
-// them (Go's structural typing means *shuttleengine.Runner satisfies Starter with no adapter glue);
-// removeStrandIfLive stays engine-internal, consumed only by webster's own respawn ladders (wired
-// in batch 7).
+// them (Go's structural typing means *shuttleengine.Runner satisfies Starter and StrandStopper with no adapter glue).
 
 package websterengine
 
@@ -16,7 +12,6 @@ import (
 	"os"
 	"sort"
 
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -110,12 +105,18 @@ func (e *RecoveryStrandRemoveError) Error() string {
 
 func (e *RecoveryStrandRemoveError) Unwrap() error { return e.Err }
 
-// RemoveRecoveryStrands removes every live recovery strand the state records, in batch-number order.
+// StrandStopper is the seam a leftover strand is stopped through by guid.
+// StopStrand records the stop on the strand's run, then ends the strand when it is live, logging that kill at Warn, and is a no-op for a strand that is not.
+type StrandStopper interface {
+	StopStrand(guid string) error
+}
+
+// RemoveRecoveryStrands stops every live recovery strand the state records, in batch-number order.
 // Only a batch of Kind "recovery" with a StrandGUID names one;
 // implementer forks and the Master have no recorded strand.
 // The first failure returns a *RecoveryStrandRemoveError naming the strand guid.
-// A nil state removes nothing.
-func RemoveRecoveryStrands(reed shuttleengine.ReedOps, st *State) error {
+// A nil state stops nothing.
+func RemoveRecoveryStrands(stopper StrandStopper, st *State) error {
 	if st == nil {
 		return nil
 	}
@@ -129,50 +130,9 @@ func RemoveRecoveryStrands(reed shuttleengine.ReedOps, st *State) error {
 		if bs == nil || bs.Kind != "recovery" || bs.StrandGUID == "" {
 			continue
 		}
-		if err := removeStrandIfLive(reed, bs.StrandGUID); err != nil {
+		if err := stopper.StopStrand(bs.StrandGUID); err != nil {
 			return &RecoveryStrandRemoveError{GUID: bs.StrandGUID, Err: err}
 		}
-	}
-	return nil
-}
-
-// removeStrandIfLive removes guid's reed strand when reed still reports it
-// live, otherwise a no-op, and logs the removal because it kills a real agent
-// process. A failed removal of a genuinely live strand propagates to prevent
-// double-drive, and so does a FAILED liveness probe: a probe that could not
-// answer has not established that the strand is dead, and the reclaim's whole
-// job is to make sure no leftover agent is running beside its replacement.
-func removeStrandIfLive(reed shuttleengine.ReedOps, guid string) error {
-	live, err := StrandLive(reed, guid)
-	if err != nil {
-		// A liveness probe that FAILED is not evidence the strand is dead, and treating it as such
-		// left a leftover agent running while its replacement was spawned beside it — the exact
-		// double-agent this reclaim exists to prevent. reed's own answer is the only thing that can
-		// settle the question, so a probe failure fails the reclaim rather than guessing past it.
-		return fmt.Errorf("websterengine: probe strand %s before respawn: %w", guid, err)
-	}
-	if !live {
-		return nil
-	}
-	// Logged because this teardown kills a real, live agent process — a lifecycle teardown per
-	// PATTERN-spawn-observability, and the single event an operator
-	// diagnosing a crashed run most needs to see, since without it a resumed run's log shows only
-	// the replacement being started and nothing about the one it stopped.
-	//
-	// At Warn, not Info: internal/logger's default console level is Warn, and the detached driver's
-	// own log — the one `lyx loom start` points an operator at — carries Warn and above, so at Info
-	// this reached the durable trace file and nothing anybody is sent to. That matters most on
-	// exactly the row it matters most for. loomshed.InterruptPolicies maps Webster alone to
-	// "handback" precisely because re-invoking an interrupted Webster step reaches this line, kills
-	// the in-flight Master, and restarts the batch run from state.json — "the most expensive row in
-	// the list", whose cost that table's own comment says "is the operator's to accept". An operator
-	// cannot accept a cost nothing tells them about. Confirmed live in crucible round 1: a
-	// handback-row reinvocation killed a live Master and restarted it with no output at default
-	// verbosity at all. shedadapters.Bouncer's own expensive-reclaim Warn sets this precedent and
-	// argues the same case.
-	logger.Warn("websterengine: stopping a leftover live strand before respawning it; an in-flight batch run restarts from state.json rather than resuming", "strandGUID", guid)
-	if _, err := reed.RemoveStrand(guid, false); err != nil {
-		return fmt.Errorf("websterengine: remove kept strand %s before respawn: %w", guid, err)
 	}
 	return nil
 }

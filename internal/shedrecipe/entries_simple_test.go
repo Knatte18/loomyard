@@ -80,8 +80,8 @@ func zeroEnvField(env Env, field string) Env {
 		env.CommitWebster = nil
 	case "WebsterDeps.Starter":
 		env.WebsterDeps.Starter = nil
-	case "WebsterDeps.Reed":
-		env.WebsterDeps.Reed = nil
+	case "WebsterDeps.Stopper":
+		env.WebsterDeps.Stopper = nil
 	case "WebsterDeps.Engine":
 		env.WebsterDeps.Engine = nil
 	case "WebsterDeps.RefMatcher":
@@ -185,7 +185,7 @@ func simpleEntryCases() []simpleEntryCase {
 			registryKey:     "Webster",
 			entry:           websterEntry,
 			buildEnv:        newTestEnv,
-			validatedFields: []string{"AnchorPath", "WebsterRun", "CommitWebster", "WebsterDeps.Starter", "WebsterDeps.Reed", "WebsterDeps.Engine", "WebsterDeps.RefMatcher"},
+			validatedFields: []string{"AnchorPath", "WebsterRun", "CommitWebster", "WebsterDeps.Starter", "WebsterDeps.Stopper", "WebsterDeps.Engine", "WebsterDeps.RefMatcher"},
 			unreadField:     "Cwd",
 		},
 	}
@@ -239,7 +239,7 @@ func TestSimpleEntries_UnderfilledEnv(t *testing.T) {
 // shared under-filled-Env table: each nil in turn fails naming that field, and a WebsterDeps with
 // Batcher nil (newTestEnv's own default) still constructs successfully.
 func TestWebsterEntry_SeamFields(t *testing.T) {
-	seamFields := []string{"WebsterDeps.Starter", "WebsterDeps.Reed", "WebsterDeps.Engine", "WebsterDeps.RefMatcher"}
+	seamFields := []string{"WebsterDeps.Starter", "WebsterDeps.Stopper", "WebsterDeps.Engine", "WebsterDeps.RefMatcher"}
 	for _, field := range seamFields {
 		t.Run("Nil"+strings.ReplaceAll(field, ".", "_"), func(t *testing.T) {
 			env := zeroEnvField(newTestEnv(t), field)

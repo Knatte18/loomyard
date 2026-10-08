@@ -71,23 +71,21 @@ func TestNewBurlerProducer_Validation(t *testing.T) {
 	tests := []struct {
 		name    string
 		runner  BurlerRunner
-		remover burlerengine.StrandRemover
 		pname   string
 		runDir  string
 		anchor  string
 		wantErr bool
 	}{
-		{"Valid", &shedfake.BurlerRunner{}, &shedfake.StrandRemover{}, "burler", filepath.Join(dir, "runs"), dir, false},
-		{"NilRunner", nil, &shedfake.StrandRemover{}, "burler", filepath.Join(dir, "runs"), dir, true},
-		{"NilRemover", &shedfake.BurlerRunner{}, nil, "burler", filepath.Join(dir, "runs"), dir, true},
-		{"EmptyName", &shedfake.BurlerRunner{}, &shedfake.StrandRemover{}, "", filepath.Join(dir, "runs"), dir, true},
-		{"EmptyRunDir", &shedfake.BurlerRunner{}, &shedfake.StrandRemover{}, "burler", "", dir, true},
-		{"RelativeRunDir", &shedfake.BurlerRunner{}, &shedfake.StrandRemover{}, "burler", "relative/runs", dir, true},
-		{"RelativeAnchorPath", &shedfake.BurlerRunner{}, &shedfake.StrandRemover{}, "burler", filepath.Join(dir, "runs"), "relative/anchor", true},
+		{"Valid", &shedfake.BurlerRunner{}, "burler", filepath.Join(dir, "runs"), dir, false},
+		{"NilRunner", nil, "burler", filepath.Join(dir, "runs"), dir, true},
+		{"EmptyName", &shedfake.BurlerRunner{}, "", filepath.Join(dir, "runs"), dir, true},
+		{"EmptyRunDir", &shedfake.BurlerRunner{}, "burler", "", dir, true},
+		{"RelativeRunDir", &shedfake.BurlerRunner{}, "burler", "relative/runs", dir, true},
+		{"RelativeAnchorPath", &shedfake.BurlerRunner{}, "burler", filepath.Join(dir, "runs"), "relative/anchor", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p, err := NewBurlerProducer(tt.pname, BurlerDeps{Runner: tt.runner, Remover: tt.remover, AnchorPath: tt.anchor}, profile, burlerengine.RunOpts{}, tt.runDir, nil)
+			p, err := NewBurlerProducer(tt.pname, BurlerDeps{Runner: tt.runner, AnchorPath: tt.anchor}, profile, burlerengine.RunOpts{}, tt.runDir, nil)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("NewBurlerProducer() error = nil; want non-nil")

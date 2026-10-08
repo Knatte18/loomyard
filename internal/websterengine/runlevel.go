@@ -118,7 +118,8 @@ type MasterStarter interface {
 }
 
 // RunDeps carries every seam Run needs for testing.
-// Starter spawns Master; Reed, Engine, and ShuttleCfg support session resolution and audit;
+// Starter spawns Master; Stopper is the seam the entry-time reclaim stops a leftover strand through;
+// Engine and ShuttleCfg support session resolution and audit;
 // Geom is the told Geometry every path (PlanDir, WebsterDir, ReportsDir, PromptsDir, ScratchDir,
 // WorktreeRoot, AnchorRoot, StencilsDir) is read from;
 // RefMatcher is the injected fabric-reference class matcher CheckParent/CheckFork consult, never nil
@@ -127,7 +128,7 @@ type MasterStarter interface {
 // map, and CLI-pre-resolved active batchifier.
 type RunDeps struct {
 	Starter    MasterStarter
-	Reed       shuttleengine.ReedOps
+	Stopper    StrandStopper
 	Engine     shuttleengine.Engine
 	ShuttleCfg shuttleengine.Config
 	Roles      map[Role]modelspec.Resolved
@@ -283,21 +284,21 @@ func clearRenderedPrompts(promptsDir string) error {
 // entry-time reclaim simple, per
 // discussion.md's crash-resume-re-drive-first-unreported decision. A nil st
 // (no run has ever started) is a no-op.
-func reclaimEntryTimeStrands(reed shuttleengine.ReedOps, st *State) error {
+func reclaimEntryTimeStrands(stopper StrandStopper, st *State) error {
 	if st == nil {
 		return nil
 	}
 
 	if st.MasterStrand != "" {
-		if err := removeStrandIfLive(reed, st.MasterStrand); err != nil {
-			return err
+		if err := stopper.StopStrand(st.MasterStrand); err != nil {
+			return fmt.Errorf("websterengine: stop leftover master strand %s before respawn: %w", st.MasterStrand, err)
 		}
 	}
 
 	for _, bs := range st.Batches {
-		if bs != nil && bs.Kind == "recovery" && !bs.Terminal {
-			if err := removeStrandIfLive(reed, bs.StrandGUID); err != nil {
-				return err
+		if bs != nil && bs.Kind == "recovery" && !bs.Terminal && bs.StrandGUID != "" {
+			if err := stopper.StopStrand(bs.StrandGUID); err != nil {
+				return fmt.Errorf("websterengine: stop leftover recovery strand %s before respawn: %w", bs.StrandGUID, err)
 			}
 		}
 	}
@@ -422,7 +423,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// record of these strands): a prior run whose process died mid-wait
 	// leaves a live Master pane (or a live recovery strand) that keeps
 	// driving on its own.
-	if err := reclaimEntryTimeStrands(deps.Reed, st); err != nil {
+	if err := reclaimEntryTimeStrands(deps.Stopper, st); err != nil {
 		return RunResult{}, err
 	}
 

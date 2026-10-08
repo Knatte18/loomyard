@@ -65,7 +65,8 @@ type Clock interface {
 }
 
 // RecoverDeps carries seams RecoverBatch needs: Starter, Plan, Batches, State, Roles, Config,
-// Engine, Reed, ShuttleCfg, and Geom, the told Geometry every path is read from.
+// Engine, Reed, Stopper, ShuttleCfg, and Geom, the told Geometry every path is read from.
+// Reed answers awaitTerminal's liveness read, and Stopper is the seam the reclaims stop a leftover strand through.
 // Batches is the execution order, the batchifier's own order (ExecutionBatches);
 // predecessorDigestLine's lookup depends on Batches already being in that order.
 type RecoverDeps struct {
@@ -77,6 +78,7 @@ type RecoverDeps struct {
 	Config     Config
 	Engine     shuttleengine.Engine
 	Reed       shuttleengine.ReedOps
+	Stopper    StrandStopper
 	ShuttleCfg shuttleengine.Config
 	Geom       Geometry
 
@@ -243,9 +245,10 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, err
 	}
 
-	if prior != nil {
-		if err := removeStrandIfLive(deps.Reed, prior.StrandGUID); err != nil {
-			return nil, err
+	// A fork batch's record has an empty StrandGUID, which the reclaim skips.
+	if prior != nil && prior.StrandGUID != "" {
+		if err := deps.Stopper.StopStrand(prior.StrandGUID); err != nil {
+			return nil, fmt.Errorf("websterengine: stop prior recovery strand %s before respawn: %w", prior.StrandGUID, err)
 		}
 	}
 
@@ -355,7 +358,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 // the state-mutation lease, and from state.json being persisted only after that call returns:
 //
 //  1. A process killed inside the startup window leaves a live recovery strand whose guid was
-//     never persisted, so the next call's prior.StrandGUID reclaim (removeStrandIfLive) cannot
+//     never persisted, so the next call's prior.StrandGUID reclaim (StopStrand) cannot
 //     see it, and the next spawn runs beside it.
 //  2. A startup mechanism failure (shuttle could not get a liveness answer from reed
 //     maxStatusRetries times) returns an error with the strand left live and no guid persisted,
@@ -675,8 +678,8 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 
 	// The strand is removed before the refusals below,
 	// so a terminal digest that then refuses leaves no live strand.
-	if err := removeStrandIfLive(deps.Reed, bs.StrandGUID); err != nil {
-		warnings = append(warnings, fmt.Sprintf("recover-batch: remove strand %s: %v", bs.StrandGUID, err))
+	if err := deps.Stopper.StopStrand(bs.StrandGUID); err != nil {
+		warnings = append(warnings, fmt.Sprintf("recover-batch: stop strand %s: %v", bs.StrandGUID, err))
 	}
 
 	// A merge in progress leaves the batch non-terminal and retryable, like RecordBatch.

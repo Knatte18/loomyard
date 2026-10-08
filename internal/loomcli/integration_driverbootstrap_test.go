@@ -46,9 +46,10 @@ import (
 // integrationWriteStubDriverScript writes a POSIX shell script standing in for the claude binary this
 // file's one spawn launches. The driver spec names a skill, so the claude engine's launch line carries no
 // prompt pointer: shuttle types one skill-load message first and the pointer to the run's prompt.md afterwards.
-// The script prints claudeengine's own ready-marker fixture -- shuttle's own startup step blocks Start until this
-// (or the window closes), so a script that skipped it would make every call here time out at
-// startup_timeout_s instead of returning fast -- then reads typed lines:
+// The script prints claudeengine's own idle-input-box fixture at start and again after each line it reads.
+// Shuttle's startup step blocks Start until it sees a ready marker, and every verified send waits for an idle box,
+// so a script that skipped the fixture would make every call here time out instead of returning fast.
+// It reads typed lines:
 // a leading `/color` line, which shuttle types for the driver's colored segment, is skipped, and the next is the load message, answered by appending a Stop event with no transcript to the events.jsonl beside the `--settings` file,
 // so shuttle confirms the load unverified at once,
 // and the one after it is the pointer, from which the script takes the prompt.md path and extracts the drive report path driverPrompt quoted into that file.
@@ -64,11 +65,14 @@ while [ $# -gt 0 ]; do
   if [ "$1" = "--settings" ]; then settings=$2; fi
   shift
 done
-echo '%s'
+box() { printf '%%s\n' '%s'; }
+box
 IFS= read -r line
-case $line in /color*) IFS= read -r line ;; esac
+box
+case $line in /color*) IFS= read -r line; box ;; esac
 printf '%%s\n' '{"hook_event_name":"Stop","last_assistant_message":"ok"}' >> "$(dirname "$settings")/events.jsonl"
 IFS= read -r line
+box
 prompt_file=$(printf '%%s' "$line" | grep -o '[^ "]*prompt\.md' | head -1)
 report=$(grep -o '"[^"]*drive-report[^"]*"' "$prompt_file" | head -1 | tr -d '"')
 sleep %s
@@ -77,7 +81,7 @@ if [ -n "$report" ]; then
   printf 'stub driver report\n' > "$report"
 fi
 exit 0
-`, claudeengine.ReadyFooterFixture, settleDelay)
+`, claudeengine.IdleInputBoxFixture, settleDelay)
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("write stub driver script: %v", err)
 	}

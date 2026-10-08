@@ -3,7 +3,7 @@
 // dismissal or a fast-failing dead pane, and runs the done-outcome cleanup (strand removal + run
 // dir deletion).
 // It also hosts awaitStartup, the startup probe run.go's own start method calls before issuing a run
-// handle at all, and abandonStartup, its not-ready teardown.
+// handle at all, and abandonStartup, start's teardown for a provider that never became ready or never took its first input.
 // Wait and awaitStartup are the only two places in the run loop that sleep — both through the clock
 // seam defined here, which lets tests replay a whole poll sequence instantly.
 // A pane that goes not-live (crashed, killed, or exited) is classified done rather than died when
@@ -31,13 +31,18 @@
 // A gated Done is also the writer's turn boundary, and a PassOnCap entry may answer pending there:
 // the loop sends the entry's carried text (only at a boundary), keeps polling, and re-evaluates on every poll tick with no new arrival while the writer is idle, so a verdict recorded meanwhile is read without a new arrival.
 // Both paths run through handleGatedBoundary, and the run deadline and liveness checks keep running throughout, never extended by the wait.
+// For an engine with the idle reading and session signals, a boundary is confirmed idle in fact before the gate sends:
+// a turn start left unmatched by a later turn end clears the boundary, the loop keeps polling and reads the pane every tick,
+// and the boundary is restored when the engine reports that turn interrupted or the pane has read idle for turnStartIdleOverride.
+// Every gate send goes through sendWithin, so its idle wait and submit window end by the run deadline.
+// A re-prompt that fails busy or unlanded spends no attempt and is re-sent on a later tick, bounded by the run deadline.
 // The other three finalize call sites in this file (the events-unreadable/status-retry mechanism-failure exits via finishedDespiteMechanismFailure, the liveness-tick exit, and the deadline exit) are left untouched:
 // each is reached precisely because the session is gone, the clock ran out, or the bookkeeping broke, so no Send is attempted there and finalize's own evaluation reports Attempts as it stands.
 //
 // # Completion Signal Invariant
 //
 // Any code path in this package that finalizes a NEGATIVE answer to "did this run finish" -- an
-// OutcomeDied, an OutcomeTimeout, a mechanism-failure error, or a verdictRespawnEligible -- must
+// OutcomeDied, an OutcomeTimeout, a runOutcomeStopped record, a mechanism-failure error, or a verdictRespawnEligible -- must
 // first consult allOutputFilesExist over the run's OutputFiles, directly or through one of the three
 // helpers that own the check: classifyDeadlineExpiry, finishedDespiteMechanismFailure (both here),
 // or soleFinishedCandidate (attach.go). The startup step (awaitStartup, abandonStartup) honours the
@@ -166,8 +171,8 @@ var errStrandPaneBindingCleared = errors.New(
 		"running: a restored backup, a copied .lyx, or a reed.json older than the session), " +
 		`which says nothing about the agent: its process may still be working in a pane reed can no longer address. Check "lyx reed status"`)
 
-// ErrNotStarted reports that a run's provider never became ready inside its startup window.
-// StartGated wraps it, after tearing the strand down, when awaitStartup's loop resolves not-ready —
+// ErrNotStarted reports that a run's provider never became ready inside its startup window or never took its first input.
+// StartGated wraps it, after tearing the strand down, when awaitStartup's loop resolves not-ready or a start-time send fails —
 // see abandonStartup for the teardown and the full error text a caller actually sees.
 var ErrNotStarted = errors.New("shuttle: the provider never became ready")
 
@@ -270,11 +275,22 @@ func (run *Run) Wait() (Result, error) {
 			} else if outcome == OutcomeDone {
 				// A gated Done is the writer's turn boundary: let the shared helper judge it.
 				run.gateAtBoundary = true
-				if result, finished, ferr := run.handleGatedBoundary(); finished {
-					return result, ferr
+				run.startCleared = false
+				run.unsentReprompt = false
+				if run.boundaryIdle() {
+					if result, finished, ferr := run.handleGatedBoundary(); finished {
+						return result, ferr
+					}
 				}
-			} else if run.gatePending && run.gateAtBoundary {
-				// No new arrival, an entry is pending and the writer is idle: re-evaluate, so a verdict recorded since is read without waiting for the writer to speak.
+			} else if (run.gatePending || run.unsentReprompt) && run.gateAtBoundary {
+				// No new arrival, an entry is pending or a re-prompt is unsent, and the writer is idle: re-evaluate, so a verdict recorded since is read without waiting for the writer to speak.
+				if run.boundaryIdle() {
+					if result, finished, ferr := run.handleGatedBoundary(); finished {
+						return result, ferr
+					}
+				}
+			} else if run.startCleared && run.startHoldReleased() {
+				// The boundary a turn start cleared is restored: evaluate it as on a new turn end, pending or not.
 				if result, finished, ferr := run.handleGatedBoundary(); finished {
 					return result, ferr
 				}
@@ -335,8 +351,9 @@ func gateEntryError(name, problem string) error {
 // so a timeout mid-wait still reaches classifyDeadlineExpiry, which classifies OutcomeDone when the files are present and therefore still runs the gate one final time through finalize.
 //
 // A pass, a terminal failure (GateResult.Terminal, whatever the entry's failure count, with no re-prompt and no count incremented), or a failure whose budget is spent, finalizes done.
-// A failure with budget remaining re-prompts and keeps polling;
-// a re-prompt send failure ends the loop as it always has.
+// A failure with budget remaining re-prompts and keeps polling.
+// A re-prompt send that fails with ErrSessionBusy or ErrSubmissionNotLanded leaves the entry's failure and sent counts unchanged, clears the memo and keeps the writer at the boundary with the re-prompt marked unsent, so a later tick re-sends it until the run deadline;
+// any other re-prompt send failure ends the loop as it always has.
 // A pending result sends its Send text when non-empty and keeps polling;
 // a failed pending send logs one Warn naming the entry, the error and the closure's way-forward, leaves the entry pending and the writer at the boundary, and never ends the loop.
 // The memo is cleared after a pending result, so the next evaluation, and a finalize after it, read the closures afresh.
@@ -350,7 +367,7 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 		if run.gatePendingSend == "" {
 			return Result{}, false, nil
 		}
-		if serr := run.Send(run.gatePendingSend); serr != nil {
+		if serr := run.sendWithin(run.gatePendingSend); serr != nil {
 			logger.Warn("shuttle: gate: pending send failed, entry stays pending", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", run.gate[run.gatePendingAt].Name, "error", serr, "wayForward", run.gatePendingWayForward)
 			return Result{}, false, nil
 		}
@@ -364,11 +381,20 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 		return result, true, ferr
 	}
 	// An entry failed with budget remaining: re-prompt the agent and keep polling.
-	if serr := run.Send(gateRepromptText(run.gateFindingsPath)); serr != nil {
+	if serr := run.sendWithin(gateRepromptText(run.gateFindingsPath)); serr != nil {
+		if errors.Is(serr, ErrSessionBusy) || errors.Is(serr, ErrSubmissionNotLanded) {
+			// No attempt was spent: keep the writer at the boundary and re-send on a later tick.
+			// The send cleared its own text where it could, but for an engine with the idle reading a box it left occupied fails that re-send busy, until the run deadline ends the loop.
+			run.unsentReprompt = true
+			logger.Warn("shuttle: gate: re-prompt not delivered, retrying on a later tick without spending an attempt", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", run.gate[failed].Name, "error", serr)
+			run.gateVerdict = nil
+			return Result{}, false, nil
+		}
 		logger.Warn("shuttle: gate: re-prompt send failed, ending the loop with the attempts spent so far", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "error", serr)
 		result, ferr := run.finalize(OutcomeDone)
 		return result, true, ferr
 	}
+	run.unsentReprompt = false
 	run.gateAtBoundary = false
 	run.gateFails[failed]++
 	run.gateSent[failed]++
@@ -424,10 +450,9 @@ func startupTickCap(startupTimeout, interval time.Duration) int {
 // persisted to run.json by checkLivenessTick, so a later Attach skips the startup probe), or the run's
 // file contract already satisfied; (result, err) with errors.Is(err, ErrNotStarted) and a died/timeout
 // Result.Outcome when the pane died, the startup window closed, or the run's own deadline arrived
-// first, all with the teardown abandonStartup performs already done; (run.identity(), err) without
-// ErrNotStarted when checkLivenessTick failed maxStatusRetries consecutive times with the file
-// contract unsatisfied — a startup MECHANISM failure, worded in the same family Wait uses, that tears
-// nothing down because it says nothing about the agent.
+// first, all with the teardown abandonStartup performs already done.
+// The same teardown and a died Result follow when checkLivenessTick failed maxStatusRetries consecutive times with the file contract unsatisfied.
+// The error then wraps ErrNotStarted beside the mechanism failure's own sentinel, worded in the same family Wait uses.
 //
 // The window is the shorter of startup_timeout_s and the time left until run.deadline (floored at
 // 0): a run.Timeout shorter than startup_timeout_s must still expire on schedule, classified
@@ -487,11 +512,11 @@ func (run *Run) awaitStartup() (Result, error) {
 				}
 				switch {
 				case errors.Is(err, errStrandNotTracked):
-					return run.identity(), fmt.Errorf("shuttle: startup: reed did not track strand %q on %d consecutive liveness checks (run dir %s): %w", run.state.StrandGUID, maxStatusRetries, run.runDir, err)
+					return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: startup: reed did not track strand %q on %d consecutive liveness checks (run dir %s): %w", run.state.StrandGUID, maxStatusRetries, run.runDir, err))
 				case errors.Is(err, errStrandPaneBindingCleared):
-					return run.identity(), fmt.Errorf("shuttle: startup: reed held no pane binding for strand %q on %d consecutive liveness checks (run dir %s): %w", run.state.StrandGUID, maxStatusRetries, run.runDir, err)
+					return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: startup: reed held no pane binding for strand %q on %d consecutive liveness checks (run dir %s): %w", run.state.StrandGUID, maxStatusRetries, run.runDir, err))
 				default:
-					return run.identity(), fmt.Errorf("shuttle: startup: reed status failed %d times consecutively for strand %q (run dir %s): %w", maxStatusRetries, run.state.StrandGUID, run.runDir, err)
+					return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: startup: reed status failed %d times consecutively for strand %q (run dir %s): %w", maxStatusRetries, run.state.StrandGUID, run.runDir, err))
 				}
 			}
 		} else {
@@ -500,7 +525,7 @@ func (run *Run) awaitStartup() (Result, error) {
 				return Result{}, nil
 			}
 			if outcome == OutcomeDied {
-				return run.abandonStartup(OutcomeDied)
+				return run.abandonStartup(OutcomeDied, nil)
 			}
 		}
 
@@ -508,7 +533,7 @@ func (run *Run) awaitStartup() (Result, error) {
 			if run.classifyDeadlineExpiry(OutcomeTimeout) == OutcomeDone {
 				return Result{}, nil
 			}
-			return run.abandonStartup(OutcomeTimeout)
+			return run.abandonStartup(OutcomeTimeout, nil)
 		}
 
 		run.clock.Sleep(interval)
@@ -517,12 +542,14 @@ func (run *Run) awaitStartup() (Result, error) {
 	if allOutputFilesExist(run.spec.OutputFiles) {
 		return Result{}, nil
 	}
-	return run.abandonStartup(OutcomeDied)
+	return run.abandonStartup(OutcomeDied, nil)
 }
 
-// abandonStartup is awaitStartup's not-ready teardown: the provider never reached StartupReady inside
-// its window, so the strand is torn down and the run's own Outcome is finalized while the run
+// abandonStartup is start's teardown for a provider that never became ready or never took its first input:
+// the strand is torn down and the run's own Outcome is finalized while the run
 // directory and its last pane capture are kept for diagnosis.
+// cause is nil when the provider never reached StartupReady inside its window,
+// and otherwise the error that ended the start, which the returned error wraps beside ErrNotStarted.
 //
 // In order: any capture checkLivenessTick recorded is saved to startupCaptureFileName (a write
 // failure is a Warn, and the returned error then says no capture was saved); run.finalize(outcome)
@@ -537,7 +564,7 @@ func (run *Run) awaitStartup() (Result, error) {
 // the capture was saved, and whether the strand removal itself succeeded — carrying reed's own error
 // text and an operator remedy when it did not, since a strand abandonStartup could not remove is the
 // one residual an operator must clear by hand.
-func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
+func (run *Run) abandonStartup(outcome Outcome, cause error) (Result, error) {
 	captureNote := "no pane capture was saved"
 	if run.lastStartupCapture != "" {
 		capturePath := filepath.Join(run.runDir, startupCaptureFileName)
@@ -556,9 +583,17 @@ func (run *Run) abandonStartup(outcome Outcome) (Result, error) {
 		removeNote = fmt.Sprintf("the strand could NOT be removed (%v); remove it by hand (\"lyx reed status\" / \"lyx reed remove\")", rerr)
 	}
 
-	logger.Warn("shuttle: provider never became ready; strand torn down", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome))
+	format := "shuttle: start: %w — run dir %s, strand %q, outcome %q; %s; %s"
+	args := []any{ErrNotStarted, run.runDir, run.state.StrandGUID, string(outcome), captureNote, removeNote}
+	if cause == nil {
+		logger.Warn("shuttle: provider never became ready; strand torn down", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome))
+	} else {
+		logger.Warn("shuttle: start failed before the provider took its first input; strand torn down", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome), "cause", cause)
+		format += ": %w"
+		args = append(args, cause)
+	}
 
-	return result, fmt.Errorf("shuttle: start: %w — run dir %s, strand %q, outcome %q; %s; %s", ErrNotStarted, run.runDir, run.state.StrandGUID, string(outcome), captureNote, removeNote)
+	return result, fmt.Errorf(format, args...)
 }
 
 // pollEventsTick reads any events.jsonl bytes appended since run.offset and
@@ -898,8 +933,11 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 		// like every other mid-run persistence in this package (finalize's Outcome write) — a save
 		// failure here costs a future re-attach one extra startup probe, never this run's own
 		// correctness.
+		run.recordMu.Lock()
 		run.state.Started = true
-		if err := saveRunState(run.runDir, run.state); err != nil {
+		err := run.saveState()
+		run.recordMu.Unlock()
+		if err != nil {
 			logger.Warn("shuttle: persist run started failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "error", err)
 		}
 		return "", nil
@@ -1188,9 +1226,16 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 		result.Gate = gateOutcome
 	}
 
-	run.state.Outcome = string(outcome)
-	if err := saveRunState(run.runDir, run.state); err != nil {
-		logger.Warn("shuttle: persist run outcome failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", string(outcome), "error", err)
+	run.recordMu.Lock()
+	recorded := string(outcome)
+	if run.stopMarked {
+		recorded = stopOutcome(recorded, run.spec.OutputFiles)
+	}
+	run.state.Outcome = recorded
+	saveErr := run.saveState()
+	run.recordMu.Unlock()
+	if saveErr != nil {
+		logger.Warn("shuttle: persist run outcome failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", recorded, "error", saveErr)
 	}
 
 	if reader, ok := run.runner.engine.(UsageReader); ok && outcome == OutcomeDone {

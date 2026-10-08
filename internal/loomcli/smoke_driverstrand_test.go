@@ -60,17 +60,18 @@ import (
 
 // writeStubDriverScript writes a POSIX shell script standing in for the claude binary this file's
 // spawns launch: it ignores every argument the claude engine's own launch line appends, prints
-// claudeengine's own ready-marker fixture, answers skill loads, then sleeps for a long, harmless duration. The marker
-// line is required under the readiness signal this file now drives: without it shuttle's own startup
-// step would never observe readiness, so every "loom start --no-attach" below would refuse at
-// startup_timeout_s instead of succeeding. The fixture text, and which of a provider's gates it is
-// or isn't, is claudeengine's own concern (see claudeengine.ReadyFooterFixture) -- this package only
-// needs a realistic stand-in, never the classification details behind it.
+// claudeengine's own idle-input-box fixture, answers skill loads, then sleeps for a long, harmless duration.
+// The fixture is required under the readiness signal this file now drives: without it shuttle's own startup step would never observe readiness and no verified send would find the session idle,
+// so every "loom start --no-attach" below would refuse instead of succeeding.
+// The fixture text, and how a provider's panes are classified, is claudeengine's own concern (see claudeengine.IdleInputBoxFixture);
+// this package only needs a realistic stand-in, never the classification details behind it.
+// The script prints the fixture again after each line it reads, so the session reads idle before the next send.
 // The driver spec names skills,
-// and shuttle types one skill-load message before the prompt pointer, waiting until the turn ends.
-// The script answers that first line by appending a Stop event with no transcript to the events.jsonl beside the `--settings` file,
+// and shuttle types one skill-load message before the prompt pointer, waiting until the turn ends;
+// a leading `/color` line, which shuttle types for the driver's colored segment, is skipped.
+// The script answers the load message by appending a Stop event with no transcript to the events.jsonl beside the `--settings` file,
 // so shuttle confirms the load unverified at once instead of waiting out the skill-load timeout,
-// and it starts the sleep at the second line, the pointer.
+// and it starts the sleep at the next line, the pointer.
 // The script never needs to
 // exit on its own -- this file's own third case kills its pane directly (see the file-level doc
 // comment) -- so the sleep only needs to outlast the whole test, never to be observed finishing.
@@ -83,10 +84,14 @@ while [ $# -gt 0 ]; do
   if [ "$1" = "--settings" ]; then settings=$2; fi
   shift
 done
-echo '` + claudeengine.ReadyFooterFixture + `'
+box() { printf '%s\n' '` + claudeengine.IdleInputBoxFixture + `'; }
+box
 IFS= read -r line
+box
+case $line in /color*) IFS= read -r line; box ;; esac
 printf '%s\n' '{"hook_event_name":"Stop","last_assistant_message":"ok"}' >> "$(dirname "$settings")/events.jsonl"
 IFS= read -r line
+box
 sleep 3600
 `
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {

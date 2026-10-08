@@ -142,7 +142,7 @@ func stubEntry(name string, cfg Config, _ Env) (shedengine.ShedProducer, error) 
 	return loomshed.NewStub(name), nil
 }
 
-// websterEntry is the Constructor for the "Webster" registry row: it resolves the row's "gates" Config key through resolveGateSpec onto RunDeps.Gate, validates Env.AnchorPath, Env.WebsterRun, Env.CommitWebster, and exactly four inner fields of Env.WebsterDeps -- Starter, Reed, Engine, and RefMatcher -- and returns loomshed.NewWebsterProducer(name, env.AnchorPath, env.WebsterRun, deps, env.CommitWebster).
+// websterEntry is the Constructor for the "Webster" registry row: it resolves the row's "gates" Config key through resolveGateSpec onto RunDeps.Gate, validates Env.AnchorPath, Env.WebsterRun, Env.CommitWebster, and exactly four inner fields of Env.WebsterDeps -- Starter, Stopper, Engine, and RefMatcher -- and returns loomshed.NewWebsterProducer(name, env.AnchorPath, env.WebsterRun, deps, env.CommitWebster).
 //
 // The gate is resolved here for the same reason the three already-gated rows resolve theirs here:
 // one key means one thing at every gated site, and a reader of the recipe can see which validator
@@ -175,7 +175,7 @@ func websterEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, er
 	if err := requireSeam("Webster", "WebsterDeps.Starter", env.WebsterDeps.Starter); err != nil {
 		return nil, err
 	}
-	if err := requireSeam("Webster", "WebsterDeps.Reed", env.WebsterDeps.Reed); err != nil {
+	if err := requireSeam("Webster", "WebsterDeps.Stopper", env.WebsterDeps.Stopper); err != nil {
 		return nil, err
 	}
 	if err := requireSeam("Webster", "WebsterDeps.Engine", env.WebsterDeps.Engine); err != nil {

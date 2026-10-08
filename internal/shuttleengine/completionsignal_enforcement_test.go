@@ -39,11 +39,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
-// completionSignalScannedFiles are the two files that own every run-outcome verdict in this package:
+// completionSignalScannedFiles are the files that own every run-outcome verdict in this package:
 // wait.go finalizes a live run's outcome, attach.go decides whether a persisted one is reconstructed
-// or respawned over. A future file that grows a third kind of verdict belongs in this list, and the
+// or respawned over, and stop.go records a stop over a run that has not finished. A future file that grows a third kind of verdict belongs in this list, and the
 // failure message says so.
-var completionSignalScannedFiles = []string{"wait.go", "attach.go"}
+var completionSignalScannedFiles = []string{"wait.go", "attach.go", "stop.go"}
 
 // negativeVerdictMarkers are the identifiers whose appearance anywhere in a return statement's
 // results makes that return a NEGATIVE answer to "did this run finish".
@@ -61,6 +61,7 @@ var negativeVerdictMarkers = map[string]bool{
 	"OutcomeTimeout":              true,
 	"verdictRespawnEligible":      true,
 	"verdictError":                true,
+	"runOutcomeStopped":           true,
 	"errStrandNotTracked":         true,
 	"errStrandPaneBindingCleared": true,
 	"Errorf":                      true,
@@ -104,6 +105,14 @@ var negativeVerdictMarkers = map[string]bool{
 //     rule, whose first line is the contract check. The third respawn-eligible return is the terminal-
 //     Outcome check added by the shuttle-blocking-start batch: it sits after the function's file-
 //     contract check, so it is reached only when the output files are not all present.
+//   - stopOutcome [runOutcomeStopped] x1 — the one site that chooses the stopped outcome, behind the
+//     allOutputFilesExist call that opens the function.
+//   - Stop [Errorf] x1 — the failed record write, returned with the strand untouched; a refusal to
+//     stop, not a verdict on whether the run finished, and the write itself goes through stopOutcome.
+//   - stopRecorded [Errorf] x2 — the unreadable record and the failed record write, both returned
+//     before any strand removal; refusals to stop, with the write behind stopOutcome.
+//   - removeStrandIfLive [Errorf] x2 — the failed reed probe and the failed removal, after the record
+//     was written; infrastructure faults of the removal, not verdicts on any run.
 //   - AttachGated [Errorf] x5 — a rename of Attach's own unchanged set, not a new site: card 3 moved
 //     Attach's whole body into AttachGated wholesale and added no return of its own. The five are
 //     still the three reed-state gates (each consulting soleFinishedCandidate first) plus the two
@@ -124,8 +133,8 @@ var negativeVerdictMarkers = map[string]bool{
 //     finalize's own gate check), so neither is itself a negative verdict on whether the run
 //     finished — they are infrastructure faults surfacing after the fact, the same reasoning the
 //     pre-existing fork-audit entry already carried.
-//   - awaitStartup [Errorf] x3 — the three retry-cap mechanism-failure arms, each sitting behind a
-//     direct allOutputFilesExist check.
+//   - awaitStartup [Errorf,OutcomeDied] x3 — the three retry-cap arms, each the status-cap teardown
+//     behind the direct allOutputFilesExist check.
 //   - awaitStartup [OutcomeDied] x2 — the checkLivenessTick not-ready answer (case (c) in its own doc
 //     comment) and the tick-cap exhaustion fallback, each reached only past a direct or upstream
 //     allOutputFilesExist check.
@@ -138,7 +147,7 @@ var auditedNegativeVerdictReturns = map[string]int{
 	"attach [Errorf]":                                 5,
 	"removeSupersededStrands [Errorf]":                1,
 	"abandonStartup [Errorf]":                         1,
-	"awaitStartup [Errorf]":                           3,
+	"awaitStartup [Errorf,OutcomeDied]":               3,
 	"awaitStartup [OutcomeDied]":                      2,
 	"awaitStartup [OutcomeTimeout]":                   1,
 	"Wait [Errorf]":                                   4,
@@ -156,6 +165,10 @@ var auditedNegativeVerdictReturns = map[string]int{
 	"leftoverThenAgeVerdict [verdictRespawnEligible]": 3,
 	"normalizeAttachSpec [Errorf]":                    1,
 	"readEventsFrom [Errorf]":                         3,
+	"removeStrandIfLive [Errorf]":                     2,
+	"Stop [Errorf]":                                   1,
+	"stopOutcome [runOutcomeStopped]":                 1,
+	"stopRecorded [Errorf]":                           2,
 }
 
 // auditedFileContractCallSites is the audited set of allOutputFilesExist call sites as of the
@@ -170,6 +183,7 @@ var auditedNegativeVerdictReturns = map[string]int{
 // shuttle-blocking-start batch when the startup step moved from its own method into Start's own
 // blocking call),
 // plus expiredTurnEnd, whose held turn end for a waited-out background shell consults the files first.
+// The last site is stopOutcome, whose stopped answer consults the files first.
 var auditedFileContractCallSites = map[string]int{
 	"awaitStartup":                    2,
 	"checkLivenessTick":               2,
@@ -180,6 +194,7 @@ var auditedFileContractCallSites = map[string]int{
 	"leftoverThenAgeVerdict":          1,
 	"pollEventsTick":                  1,
 	"soleFinishedCandidate":           1,
+	"stopOutcome":                     1,
 }
 
 // TestCompletionSignal_NegativeVerdictReturnSites trips when a return statement yielding a negative

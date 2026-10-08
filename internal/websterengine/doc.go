@@ -350,9 +350,10 @@
 // and every call then blocks for RecoveryWaitBudget (recovery_timeout_min plus one poll tick) and returns a terminal digest:
 // the budget outlasts the timeout measured from spawn, so a strand that never reports classifies dead on its timeout and the call returns.
 // A re-entrant call finds the strand already recorded in state and skips straight to the wait.
-// Every terminal digest (done, stuck or dead) removes the recovery strand if it is still live, even when the call then refuses on a merge in progress or a report head mismatch;
+// Every terminal digest (done, stuck or dead) stops the recovery strand through shuttle's stop verb, even when the call then refuses on a merge in progress or a report head mismatch;
 // only a done digest also removes the run dir, which stuck and dead keep for diagnosis.
-// `lyx webster reset --to start` likewise removes every live recovery strand the state records before it resets,
+// Every reclaim of a leftover strand (entry-time, begin-batch's prior recovery strand, recover-batch's prior strand and reset) goes through that verb, which records the stop on the strand's run before it removes a live strand, so a stop that cannot be recorded fails the reclaim.
+// `lyx webster reset --to start` likewise stops every recovery strand the state records before it resets,
 // so no recovery agent keeps writing into the tree the reset moves;
 // `--to pre-fix` removes none.
 // Merriam runs the call as a backgrounded Bash command, ends its turn and acts on the completion notification.

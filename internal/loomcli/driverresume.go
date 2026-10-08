@@ -14,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// driverResumeSendAttempts and driverResumeSendInterval bound the wait for a parked driver's pane to be input-ready: about a minute in all.
+// driverResumeSendAttempts and driverResumeSendInterval bound the wait for a parked driver's pane to be input-ready when the engine has no idle reading: about a minute in all.
+// Against Claude the send's own send_ready_timeout_s window bounds that wait instead.
 // The attempt count is the cap, not elapsed time, so a fake wait in a test cannot loop forever.
 const (
 	driverResumeSendAttempts = 20
@@ -23,7 +24,8 @@ const (
 
 // resumeParkedDriver resumes the live, parked driver strand guid by typing driverResumeLine into its pane, then removes the park marker.
 //
-// Only a not-ready pane (shuttleengine.ErrPaneNotReady) is waited on and retried.
+// Only a not-ready pane (shuttleengine.ErrPaneNotReady), which an engine without the idle reading refuses at once, is waited on and retried.
+// Against Claude a busy or not-ready pane waits inside the send and fails with shuttleengine.ErrSessionBusy, which the loop does not retry.
 // Any other Send error ends the loop at once: Send already replays its own keystrokes internally,
 // and a "never appeared" verification failure can follow a delivery the pane hid, so re-sending could type the line into the driver twice.
 // A failure leaves the marker in place,

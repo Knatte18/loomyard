@@ -57,9 +57,12 @@ func newResetFixture(t *testing.T, h *hubforge.Hub, slug string) *resetFixture {
 			{Path: filepath.Join(checkout, "own.txt"), Succeeded: true},
 		}}, nil
 	}}
+	reed := &shuttlefake.Reed{}
+	runner := shuttleengine.NewRunner(reed, engine, loc.AnchorPath(), checkout, shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30})
 	c := &websterCLI{
 		engine:     engine,
-		reed:       &shuttlefake.Reed{},
+		reed:       reed,
+		runner:     runner,
 		anchorRel:  loc.AnchorRel,
 		geom:       hubgeom.WebsterGeometry(loc),
 		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(loc) },
