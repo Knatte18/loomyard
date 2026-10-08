@@ -1,6 +1,7 @@
-// append.go implements AppendDecision, the only write path into the decision record: it adds one
-// design call made after the Discussion ended to the record's `## Decisions` section, so a later
-// reader of the record sees it beside the decisions the Discussion itself made.
+// append.go implements AppendDecision, one of the two write paths into the decision record.
+// The other keeps a review segment's carry-over entry in `## Open risks`.
+// AppendDecision adds one design call made after the Discussion ended to the record's `## Decisions` section,
+// so a later reader of the record sees it beside the decisions the Discussion itself made.
 
 package discussionparser
 
@@ -31,6 +32,7 @@ type AddedDecision struct {
 
 // AppendDecision adds d as the last entry of the decision record's `## Decisions` section and then
 // runs Validate over the result.
+// It writes only that section; the `## Open risks` section has its own write path.
 //
 // It reads decisionRecordPath first; a missing file comes back as an error wrapping os.ErrNotExist,
 // so the caller can refuse with its own way forward.
