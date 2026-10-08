@@ -41,8 +41,8 @@ type sessionShadow struct {
 	fold   SessionFold
 	// sessionID is the session id of the newest signal that named one.
 	sessionID string
-	// turnStart and turnEnd are the newest turn start and turn end folded so far, re-read at every refresh,
-	// because a transcript marker can land after the tick that folded its signal.
+	// turnStart and turnEnd are the newest turn start and turn end folded so far, whose markers every refresh re-reads.
+	// A transcript marker can land after the tick that folded its signal.
 	// Each is kept without its session id, so the fact read probes sessionID instead.
 	turnStart, turnEnd *SessionSignal
 	// facts holds the liveness and transcript facts of the latest refresh, reused between refreshes.
