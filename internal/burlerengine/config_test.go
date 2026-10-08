@@ -204,11 +204,45 @@ func TestResolveFan(t *testing.T) {
 		requireContains(t, err.Error(), "exceeding the maximum")
 	})
 
-	t.Run("zero-Config fan lookup mentions reconcile", func(t *testing.T) {
-		_, err := ResolveFan(Config{}, "standard")
-		if err == nil {
-			t.Fatal("ResolveFan(zero Config) returned nil error")
+	t.Run("zero Config resolves from the template", func(t *testing.T) {
+		lenses, err := ResolveFan(Config{}, "standard")
+		if err != nil {
+			t.Fatalf("ResolveFan(zero Config, standard) returned unexpected error: %v", err)
 		}
-		requireContains(t, err.Error(), "reconcile")
+		if want := len(seeded.Fans["standard"]); len(lenses) != want {
+			t.Errorf("ResolveFan(zero Config, standard) returned %d lenses; want %d", len(lenses), want)
+		}
+	})
+
+	t.Run("operator file without the fan resolves it from the template", func(t *testing.T) {
+		lenses, err := ResolveFan(custom, "standard")
+		if err != nil {
+			t.Fatalf("ResolveFan(custom, standard) returned unexpected error: %v", err)
+		}
+		if lenses[0].Text != seeded.Lenses[lenses[0].Name] {
+			t.Errorf("lens %q text does not come from the template", lenses[0].Name)
+		}
+	})
+
+	t.Run("operator-defined fan and lens win over the template", func(t *testing.T) {
+		operator := Config{
+			Lenses: map[string]string{"generic": "operator generic"},
+			Fans:   map[string][]string{"standard": {"generic"}},
+		}
+		lenses, err := ResolveFan(operator, "standard")
+		if err != nil {
+			t.Fatalf("ResolveFan(operator, standard) returned unexpected error: %v", err)
+		}
+		if len(lenses) != 1 || lenses[0].Text != "operator generic" {
+			t.Errorf("ResolveFan(operator, standard) = %+v; want the operator's single generic lens", lenses)
+		}
+	})
+
+	t.Run("fan undefined in both names the fan", func(t *testing.T) {
+		_, err := ResolveFan(Config{}, "nope")
+		if err == nil {
+			t.Fatal("ResolveFan(zero Config, nope) returned nil error")
+		}
+		requireContains(t, err.Error(), `"nope"`)
 	})
 }

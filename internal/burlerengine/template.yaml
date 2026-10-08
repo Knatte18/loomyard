@@ -6,6 +6,11 @@
 # lens or fan you don't want is a supported, permanent choice — it will not
 # come back on the next reconcile.
 #
+# Resolution falls back per name to this embedded template: a fan or lens
+# name this file defines is used verbatim and wins, and a name it lacks
+# resolves from the template. A fan or lens you deleted here therefore still
+# resolves when a profile or loom.yaml names it.
+#
 # lenses: maps a lens name to emphasis-steering review prose for one fork of a
 # cluster round. Add a repo-local lens by adding a block like this:
 #

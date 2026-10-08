@@ -227,6 +227,8 @@
 // profile explicitly names a fan — and a fan longer than maxClusterN (16)
 // entries fails validate. There is deliberately no fan named "default":
 // every seeded fan is dormant until a profile names it.
+// Fan and lens names resolve against burler.yaml first and, per name, against the embedded template,
+// so an operator-defined name wins and an absent burler.yaml resolves wholly from the template.
 //
 // ClusterExclude names lenses to drop from the fan ClusterFan resolves to,
 // applied inside validate after ResolveFan, with the survivors stored in
