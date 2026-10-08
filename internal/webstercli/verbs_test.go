@@ -724,6 +724,16 @@ func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 	if !strings.Contains(prompt, "./internal/edited") {
 		t.Errorf("recovery prompt lacks the edited card's gate package ./internal/edited; got %q", prompt)
 	}
+
+	// The recovery strand is now in flight: a further edit of its card is accepted and reported as amended.
+	plankit.Write(t, fx.CLI.geom.PlanDir, onlyCreatePlan("", "internal/edited-again/new.go"))
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, []string{"--card", "1"}); code != 0 {
+		t.Fatalf("rebaseline --card 1 over the in-flight recovery = %d; want 0, output: %s", code, out.String())
+	}
+	if want := `"cards_amended":["01-only"]`; !strings.Contains(out.String(), want) {
+		t.Errorf("in-flight rebaseline output missing %s; got %q", want, out.String())
+	}
 }
 
 // TestRecoverBatchCmd_RunningThenTerminal drives recover-batch across two calls against the same

@@ -53,6 +53,8 @@ type RebaselineResult struct {
 	BatchesKept int
 	// CardsAccepted are the changed card file names this call accepted.
 	CardsAccepted []string
+	// CardsAmended are the NN-<slug> ids of the accepted cards that belong to an in-flight batch, which a recovery re-runs on the edited text.
+	CardsAmended []string
 }
 
 // rebaselineBatches returns the batches the edited plan runs as, and whether they replace the recorded partition.
@@ -113,12 +115,13 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 // Rebaseline accepts the on-disk plan as the run's plan without discarding any batch record.
 // With a recorded partition it keeps every batch up to the last begun one as recorded, re-batches the plan's cards after it with the active batchifier, and replaces State.Partition with the result once every check passes;
 // cards added, removed or reordered after the last begun batch are accepted.
-// It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number, or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only), except that a card named in deps.Cards is accepted when its batch is terminal failed, dead or stuck.
+// It refuses, wrapping ErrRebaselineCardSetChanged, when a begun batch's card set differs from the card set the edited plan's batch of that number now holds, or the plan no longer has that number, or when a begun card's file content differs from the hash recorded at begin (a record without hashes compares ids only), except that a card named in deps.Cards is accepted when its batch is in flight or terminal failed, dead or stuck.
 // It also refuses when 00-overview.md changed, or a changed card file's number is not in deps.Cards, unless the state predates State.PlanFileHashes.
 // The start commit a refusal names is picked by git ancestry.
-// The bound on the accepted card edit: only cards named with --card, only in batches terminal failed, dead or stuck, never a failed batch whose record lists Uncheckable entries, never a change to a batch's card-ID set, never 00-overview.md.
-// A dead batch's strand, kept alive when classified dead, may still work on the old card;
+// The bound on the accepted card edit: only cards named with --card, only in batches in flight or terminal failed, dead or stuck, never a failed batch whose record lists Uncheckable entries, never a change to a batch's card-ID set, never 00-overview.md.
+// A dead batch's strand, kept alive when classified dead, may still work on the old card, and so may the fork or recovery strand of an in-flight batch;
 // the restamp stops no strand, and the next recover-batch stops it before it spawns and archives a late report from it.
+// A card accepted in an in-flight batch is also recorded in the batch's AmendedCards with Rendered false, which resets an entry already there.
 // Otherwise it restamps State.PlanFingerprint, State.PlanFileHashes and the CardHashes entry of each accepted card, and leaves every other field untouched.
 // A refusal leaves the state unchanged.
 // It never saves;
@@ -176,7 +179,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	}
 	sort.Ints(numbers)
 
-	var changed, unfinished []string
+	var changed []string
 	restamps := make(map[int]map[string]string)
 	for _, n := range numbers {
 		bs := deps.State.Batches[n]
@@ -199,11 +202,9 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 					continue
 				}
 				switch {
-				case !bs.Terminal:
-					unfinished = append(unfinished, fmt.Sprintf("batch %d card %s changed since it was begun, and the batch is unfinished so a fork may still be working on it; run `lyx webster record-batch %d` or `lyx webster recover-batch %d` first, then re-run the rebaseline", n, id, n, n))
-				case !editableTerminalStatus(bs.Status):
+				case bs.Terminal && !editableTerminalStatus(bs.Status):
 					changed = append(changed, fmt.Sprintf("batch %d card %s changed since it was begun, and the batch is %s so its work has landed and --card cannot accept the edit", n, id, bs.Status))
-				case len(bs.Uncheckable) > 0:
+				case bs.Terminal && len(bs.Uncheckable) > 0:
 					changed = append(changed, fmt.Sprintf("batch %d card %s changed since it was begun, and the batch failed on findings recovery cannot check so --card cannot accept the edit", n, id))
 				case !slices.Contains(deps.Cards, cardNumberInt(id)):
 					changed = append(changed, fmt.Sprintf("batch %d card %s changed since it was begun and is not named with --card", n, id))
@@ -223,17 +224,30 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		changed = append(changed, fmt.Sprintf("batch %d recorded [%s], plan now %s", n, strings.Join(recorded, ", "), nowText))
 	}
 	if len(changed) > 0 {
-		reasons := append(changed, unfinished...)
-		return nil, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or %s", ErrRebaselineCardSetChanged, strings.Join(reasons, "; "), freshRestartSteps(stepRun))
+		return nil, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or %s", ErrRebaselineCardSetChanged, strings.Join(changed, "; "), freshRestartSteps(stepRun))
 	}
-	if len(unfinished) > 0 {
-		return nil, fmt.Errorf("%w: %s", ErrRebaselineCardSetChanged, strings.Join(unfinished, "; "))
-	}
-	for n, hashes := range restamps {
-		for id, hash := range hashes {
-			deps.State.Batches[n].CardHashes[id] = hash
+	var cardsAmended []string
+	for _, n := range numbers {
+		bs := deps.State.Batches[n]
+		ids := make([]string, 0, len(restamps[n]))
+		for id := range restamps[n] {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			bs.CardHashes[id] = restamps[n][id]
+			if bs.Terminal {
+				continue
+			}
+			cardsAmended = append(cardsAmended, id)
+			if i := slices.IndexFunc(bs.AmendedCards, func(a AmendedCard) bool { return a.Card == id }); i >= 0 {
+				bs.AmendedCards[i].Rendered = false
+			} else {
+				bs.AmendedCards = append(bs.AmendedCards, AmendedCard{Card: id})
+			}
 		}
 	}
+	sort.Strings(cardsAmended)
 
 	previous := deps.State.PlanFingerprint
 	if err := restampBaseline(deps.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil {
@@ -247,5 +261,6 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		Fingerprint:         deps.State.PlanFingerprint,
 		BatchesKept:         len(numbers),
 		CardsAccepted:       cardsAccepted,
+		CardsAmended:        cardsAmended,
 	}, nil
 }

@@ -74,6 +74,7 @@ func TestState_RoundTrip(t *testing.T) {
 				StrandGUID:    "strand-2",
 				ShuttleRunDir: "/runs/2",
 				EventsPath:    "/runs/2/events.jsonl",
+				AmendedCards:  []websterengine.AmendedCard{{Card: "02-second", Rendered: false}, {Card: "03-third", Rendered: true}},
 			},
 		},
 		SeenForkTranscripts: []string{"subagents/abc.jsonl"},

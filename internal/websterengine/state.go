@@ -187,6 +187,14 @@ type SuspectPath struct {
 	Blob string `json:"blob,omitempty"`
 }
 
+// AmendedCard is one card of an in-flight batch that an operator edited mid-run and rebaseline accepted.
+type AmendedCard struct {
+	// Card is the amended card's NN-<slug> id.
+	Card string `json:"card"`
+	// Rendered is false while the amendment is recorded only, and true once a recovery spawn has rendered the edited card into its prompt.
+	Rendered bool `json:"rendered"`
+}
+
 // BatchState is one batch's own persisted run record.
 type BatchState struct {
 	// Slug is the batch's <batch-slug> segment.
@@ -198,6 +206,9 @@ type BatchState struct {
 	// Rebaseline compares it so a begun card whose body changed while its file name stayed is refused.
 	// A record written before the field existed has none, and Rebaseline compares only its ids.
 	CardHashes map[string]string `json:"cardHashes,omitempty"`
+	// AmendedCards lists the cards of this batch that rebaseline accepted an edit to while the batch was in flight, one entry per card.
+	// The attempt running then keeps the old text; a recovery re-runs the batch on the edited cards.
+	AmendedCards []AmendedCard `json:"amendedCards,omitempty"`
 	// StartSHA is the repo HEAD immediately before this batch's implementer
 	// first forked — the durable base-commit record a resume, an operator
 	// diagnosis, and the post-batch delta all read. A recovery batch inherits

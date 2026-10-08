@@ -412,14 +412,34 @@ func TestRebaseline_EditedPlan(t *testing.T) {
 			check: checkBegunCardRestamped,
 		},
 		{
-			name: "a named card of an unfinished batch refuses naming record-batch and recover-batch",
+			name: "a named card of an in-flight batch is accepted, restamped and recorded as amended",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				beginAndFinishBatchOne(t, fx)
 				setBatchOneState(fx, false, "", nil)
 				editBegunCardOne(t, fx)
 			},
-			cards:    []int{1},
-			wantText: []string{"batch 1 card 01-json-flag changed since it was begun", "unfinished", "lyx webster record-batch 1", "lyx webster recover-batch 1"},
+			cards: []int{1},
+			check: checkInFlightCardAmended,
+		},
+		{
+			name: "a re-edit of an amended card resets its rendered mark without a second entry",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				setBatchOneState(fx, false, "", nil)
+				fx.Deps.State.Batches[1].AmendedCards = []websterengine.AmendedCard{{Card: "01-json-flag", Rendered: true}}
+				editBegunCardOne(t, fx)
+			},
+			cards: []int{1},
+			check: checkInFlightCardAmended,
+		},
+		{
+			name: "an unnamed edited card of an in-flight batch refuses as unnamed",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				beginAndFinishBatchOne(t, fx)
+				setBatchOneState(fx, false, "", nil)
+				editBegunCardOne(t, fx)
+			},
+			wantText: []string{"01-json-flag.md", "changed but not named", "--card"},
 		},
 		{
 			name: "a named card of a failed batch with uncheckable findings refuses toward a fresh restart",
@@ -542,6 +562,19 @@ func checkBegunCardRestamped(t *testing.T, fx *beginFixture, before websterengin
 	}
 	if !slices.Equal(res.CardsAccepted, []string{"01-json-flag.md"}) {
 		t.Errorf("CardsAccepted = %v; want [01-json-flag.md]", res.CardsAccepted)
+	}
+}
+
+// checkInFlightCardAmended asserts the accepted edit of an in-flight batch's card restamped it like a terminal one and also left exactly one unrendered AmendedCards entry for it.
+func checkInFlightCardAmended(t *testing.T, fx *beginFixture, before websterengine.BatchState, res *websterengine.RebaselineResult) {
+	t.Helper()
+	checkBegunCardRestamped(t, fx, before, res)
+	want := []websterengine.AmendedCard{{Card: "01-json-flag", Rendered: false}}
+	if got := fx.Deps.State.Batches[1].AmendedCards; !slices.Equal(got, want) {
+		t.Errorf("AmendedCards = %v; want %v", got, want)
+	}
+	if !slices.Equal(res.CardsAmended, []string{"01-json-flag"}) {
+		t.Errorf("CardsAmended = %v; want [01-json-flag]", res.CardsAmended)
 	}
 }
 

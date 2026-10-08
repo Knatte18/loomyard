@@ -165,7 +165,7 @@
 // a card an earlier untracked rewrite already moved keeps its old hash and stays refused.
 // Each restamp site runs after a foreign-edit check passed in the same call, so an edit on disk when the call starts is refused, never adopted.
 // The check precedes the rewrite rather than being atomic with the restamp, so an edit landing between the two in one call is adopted with the rewrite.
-// `rebaseline` accepts an operator's edit, so it never moves a begun card's hash, except for a card the operator names with --card whose batch is terminal failed, dead or stuck.
+// `rebaseline` accepts an operator's edit, so it never moves a begun card's hash, except for a card the operator names with --card whose batch is in flight or terminal failed, dead or stuck.
 //
 // A foreign edit an operator means to keep has its own way forward:
 // `lyx webster rebaseline --card NN` (Rebaseline) accepts the on-disk plan as the new baseline without dropping any batch record, provided the edited plan's batch of each recorded number still holds exactly the cards that record names.
@@ -176,7 +176,10 @@
 // The operator names every card the edit changed with --card: State.PlanFileHashes records a hash of every plan file, and a changed card file whose number is not named is refused.
 // A named card of a batch that is terminal failed, dead or stuck is accepted even though that batch was begun:
 // Rebaseline restamps that card's CardHashes entry and keeps the rest of the batch record, so a one-card fix needs no reset and no fresh run.
-// A done batch, an unfinished batch and a failed batch whose record lists Uncheckable entries still refuse, each with its own way forward.
+// A named card of an in-flight batch, begun and not terminal, is accepted the same way and is also recorded in the batch's AmendedCards (AmendedCard) with Rendered false;
+// a card already there has its mark set back to false, and RebaselineResult.CardsAmended reports the accepted ones as `cards_amended`.
+// The fork or recovery strand running then keeps working on the old text and nothing is stopped; recovery re-runs the batch on the edited cards.
+// A done batch and a failed batch whose record lists Uncheckable entries still refuse, each with its own way forward.
 // An edit to 00-overview.md, which carries the plan's integration verify, is never accepted; the way forward is to restore it or to run `lyx webster reset --to start` and then `lyx webster run`.
 // The fingerprint refusals in begin-batch and run name it.
 //
@@ -229,7 +232,7 @@
 // The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
 // A delete-not-done finding gets one more check, planindex.Index.LaterDeleteReferences over the batch's own cards and the cards of every batch with no record:
 // when an unbegun later card's Edit code still references the target, the failure's reasons name that card and the reference,
-// and the BatchFailedError's way forward is the plan edit (move the delete after that card, rebaseline, then recover-batch), or the `--fresh` steps when the record also lists uncheckable entries, since recover-batch would repeat the same failure.
+// and the BatchFailedError's way forward is the plan edit (move the delete after that card, rebaseline, then recover-batch), or the reset-to-start steps when the record also lists uncheckable entries, since recover-batch would repeat the same failure.
 // PersistRecoveryTerminal fails a recovered batch the same way, and recover-batch runs the same check before spawning:
 // while it fires it refuses with ErrRecoveryDeleteReferenced, which the CLI maps to the `batch_failed` flag.
 // At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.
