@@ -1,0 +1,51 @@
+test_build_metadata_ignored (test_semver_range.TestSemverRange.test_build_metadata_ignored) ... ok
+test_caret_with_prerelease (test_semver_range.TestSemverRange.test_caret_with_prerelease) ... ok
+test_caret_zero_minor (test_semver_range.TestSemverRange.test_caret_zero_minor) ... ok
+test_caret_zero_patch (test_semver_range.TestSemverRange.test_caret_zero_patch) ... ok
+test_caret_zero_two_components (test_semver_range.TestSemverRange.test_caret_zero_two_components) ... ok
+test_complex_or_range (test_semver_range.TestSemverRange.test_complex_or_range) ... ok
+test_empty_range_means_wildcard (test_semver_range.TestSemverRange.test_empty_range_means_wildcard) ... ok
+test_exact_match (test_semver_range.TestSemverRange.test_exact_match) ... ok
+test_example_1_caret (test_semver_range.TestSemverRange.test_example_1_caret) ... ok
+test_example_2_caret_zero (test_semver_range.TestSemverRange.test_example_2_caret_zero) ... ok
+test_example_3_prerelease_not_matched (test_semver_range.TestSemverRange.test_example_3_prerelease_not_matched) ... ok
+test_example_4_prerelease_matched (test_semver_range.TestSemverRange.test_example_4_prerelease_matched) ... ok
+test_example_5_or_range (test_semver_range.TestSemverRange.test_example_5_or_range) ... ok
+test_example_6_hyphen_range (test_semver_range.TestSemverRange.test_example_6_hyphen_range) ... ok
+test_example_7_invalid_range (test_semver_range.TestSemverRange.test_example_7_invalid_range) ... ok
+test_first_of_equal_builds_returned (test_semver_range.TestSemverRange.test_first_of_equal_builds_returned) ... ok
+test_greater_partial_major_only (test_semver_range.TestSemverRange.test_greater_partial_major_only) ... ok
+test_greater_partial_minor (test_semver_range.TestSemverRange.test_greater_partial_minor) ... ok
+test_greater_than (test_semver_range.TestSemverRange.test_greater_than) ... ok
+test_greater_than_or_equal (test_semver_range.TestSemverRange.test_greater_than_or_equal) ... ok
+test_hyphen_range_full_left_partial_right (test_semver_range.TestSemverRange.test_hyphen_range_full_left_partial_right) ... ok
+test_hyphen_range_partial_right (test_semver_range.TestSemverRange.test_hyphen_range_partial_right) ... ok
+test_invalid_versions_skipped (test_semver_range.TestSemverRange.test_invalid_versions_skipped) ... ok
+test_less_than (test_semver_range.TestSemverRange.test_less_than) ... ok
+test_less_than_or_equal (test_semver_range.TestSemverRange.test_less_than_or_equal) ... ok
+test_less_than_zero (test_semver_range.TestSemverRange.test_less_than_zero) ... ok
+test_multiple_comparators_and (test_semver_range.TestSemverRange.test_multiple_comparators_and) ... ok
+test_no_match (test_semver_range.TestSemverRange.test_no_match) ... ok
+test_operator_with_space (test_semver_range.TestSemverRange.test_operator_with_space) ... ok
+test_or_both_sets_match (test_semver_range.TestSemverRange.test_or_both_sets_match) ... ok
+test_or_first_set_matches (test_semver_range.TestSemverRange.test_or_first_set_matches) ... ok
+test_partial_version_one_component (test_semver_range.TestSemverRange.test_partial_version_one_component) ... ok
+test_partial_version_two_components (test_semver_range.TestSemverRange.test_partial_version_two_components) ... ok
+test_partial_version_x (test_semver_range.TestSemverRange.test_partial_version_x) ... ok
+test_prerelease_comparison_alpha (test_semver_range.TestSemverRange.test_prerelease_comparison_alpha) ... ok
+test_prerelease_comparison_numeric (test_semver_range.TestSemverRange.test_prerelease_comparison_numeric) ... ok
+test_prerelease_longer_higher (test_semver_range.TestSemverRange.test_prerelease_longer_higher) ... ok
+test_prerelease_lower_than_release (test_semver_range.TestSemverRange.test_prerelease_lower_than_release) ... ok
+test_prerelease_no_match_without_prerelease_comparator (test_semver_range.TestSemverRange.test_prerelease_no_match_without_prerelease_comparator) ... ok
+test_prerelease_numeric_lower_than_alpha (test_semver_range.TestSemverRange.test_prerelease_numeric_lower_than_alpha) ... ok
+test_prerelease_with_prerelease_comparator (test_semver_range.TestSemverRange.test_prerelease_with_prerelease_comparator) ... ok
+test_tilde_range_full (test_semver_range.TestSemverRange.test_tilde_range_full) ... ok
+test_tilde_range_one_component (test_semver_range.TestSemverRange.test_tilde_range_one_component) ... ok
+test_tilde_range_two_components (test_semver_range.TestSemverRange.test_tilde_range_two_components) ... ok
+test_whitespace_only_range (test_semver_range.TestSemverRange.test_whitespace_only_range) ... ok
+test_wildcard_range (test_semver_range.TestSemverRange.test_wildcard_range) ... ok
+
+----------------------------------------------------------------------
+Ran 46 tests in 0.002s
+
+OK
