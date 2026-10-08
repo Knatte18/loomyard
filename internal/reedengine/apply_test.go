@@ -9,6 +9,8 @@ package reedengine
 import (
 	"errors"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -529,5 +531,83 @@ func TestPaneIDsByTop_SortsByVerticalPosition(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("paneIDsByTop[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+// TestApplyLayoutLockedOpts_IssuesTheAdjustedPinsAfterSelectLayoutOnBothPaths pins the pin run of an apply:
+// the focusing path and the SkipFocus path both issue the fixed-height pins as resize-pane calls right after select-layout, with the row-0 pane's pin one row shorter under a title row;
+// only the focusing path installs the hook, and neither path issues the watchdog's signal entry.
+func TestApplyLayoutLockedOpts_IssuesTheAdjustedPinsAfterSelectLayoutOnBothPaths(t *testing.T) {
+	newFixture := func(t *testing.T, borderStatus string) (*Engine, *ReedState, []LivePane, *fakeTmux) {
+		e := newTestEngine(t)
+		fake := installFakeTmux(t, e)
+		fake.answerFormat(liveBoxFormat, "100 21", nil)
+		fake.answerFormat("#{pane-border-status}", borderStatus, nil)
+		st := &ReedState{
+			SelvagePaneID: "%9",
+			Strands: []Strand{
+				{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+				{GUID: "child", Parent: "root", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent, Focus: true}},
+			},
+		}
+		live := []LivePane{{ID: "%1", Top: 0}, {ID: "%2", Top: 3}, {ID: "%9", Top: 20}}
+		return e, st, live, fake
+	}
+	signal := func(e *Engine) string { return e.resizeSignalHookCommand() }
+
+	tests := []struct {
+		name         string
+		borderStatus string
+		opts         applyOpts
+		wantPins     []string
+		wantHook     bool
+	}{
+		{"focusing path with a title row", "top", applyOpts{}, []string{"%9 1", "%1 " + strconv.Itoa(planCollapsedRows-1)}, true},
+		{"focusing path without a title row", "off", applyOpts{}, []string{"%9 1", "%1 " + strconv.Itoa(planCollapsedRows)}, true},
+		{"watchdog re-apply with a title row", "top", applyOpts{SkipFocus: true}, []string{"%9 1", "%1 " + strconv.Itoa(planCollapsedRows-1)}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e, st, live, fake := newFixture(t, tt.borderStatus)
+
+			if _, err := e.applyLayoutLockedOpts(st, live, tt.opts); err != nil {
+				t.Fatalf("applyLayoutLockedOpts() error = %v, want nil", err)
+			}
+
+			sequence := fake.Sequence("select-layout", "resize-pane", "set-hook")
+			if len(sequence) < 1+len(tt.wantPins) || sequence[0] != "select-layout" {
+				t.Fatalf("sequence = %v, want select-layout first and then %d resize-pane calls", sequence, len(tt.wantPins))
+			}
+			for i := range tt.wantPins {
+				if sequence[1+i] != "resize-pane" {
+					t.Errorf("sequence = %v, want the pin run of resize-pane calls right after select-layout", sequence)
+				}
+			}
+			var gotPins []string
+			for _, argv := range fake.ArgvFor("resize-pane") {
+				if argv[len(argv)-2] != "-y" {
+					continue
+				}
+				gotPins = append(gotPins, argv[len(argv)-3]+" "+argv[len(argv)-1])
+			}
+			if !slices.Equal(gotPins, tt.wantPins) {
+				t.Errorf("issued pins = %v, want %v", gotPins, tt.wantPins)
+			}
+
+			setHooks := fake.ArgvFor("set-hook")
+			if (len(setHooks) > 0) != tt.wantHook {
+				t.Errorf("set-hook calls = %v, want hook install: %v", setHooks, tt.wantHook)
+			}
+			for _, argv := range setHooks {
+				if body := argv[len(argv)-1]; body == signal(e) && body != "" && !tt.wantHook {
+					t.Errorf("a path that installs no hook issued the watchdog signal entry %q", body)
+				}
+			}
+			for _, argv := range fake.Calls() {
+				if argv[0] == "run-shell" {
+					t.Errorf("apply issued %v, want no signal run from an apply", argv)
+				}
+			}
+		})
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
 // sessionCycler returns the engine's SessionCycler capability, or an error naming it when the engine lacks it.
@@ -83,6 +84,18 @@ func (r *Runner) ReadEvents(guid string, offset int64) ([]Event, int64, error) {
 		return nil, offset, err
 	}
 	return events, newOffset, nil
+}
+
+// SessionState returns the session state of the run identified by guid, read from files at the runner's clock.
+func (r *Runner) SessionState(guid string) (RunSessionState, error) {
+	if r.toldErr != nil {
+		return RunSessionState{}, r.toldErr
+	}
+	rs, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return RunSessionState{}, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	return readRunSessionState(rs, r.engine, r.clock.Now()), nil
 }
 
 // ContextTokens returns the provider's context usage as of turnEnd, via the engine's SessionCycler.
@@ -174,6 +187,21 @@ func (r *Runner) ReloadPlugins(guid string) error {
 		return err
 	}
 	return playInputs(r.reed, guid, cycler.ReloadPluginsSequence())
+}
+
+// TypeColor plays the provider's color command for color into the live pane of the run identified by guid, for a caller that colors the session itself.
+// A provider with no color command, or none for color, types nothing.
+func (r *Runner) TypeColor(guid string, color segmentcolor.Color) error {
+	if r.toldErr != nil {
+		return r.toldErr
+	}
+	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
+		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	if err := requireLiveStrand(r.reed, guid); err != nil {
+		return err
+	}
+	return playInputs(r.reed, guid, r.engine.ColorSequence(color))
 }
 
 // CompactSession plays the provider's compact-session key choreography, keeping what focus names, into the live pane of the run identified by guid.

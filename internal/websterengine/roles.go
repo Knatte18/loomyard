@@ -23,6 +23,7 @@ const (
 	RoleMaster Role = "master"
 	// RoleRecovery is the cold, fresh recovery strand recover-batch spawns when a fork reports stuck
 	// or writes no report.
+	// Its spec names the webster segment.
 	RoleRecovery Role = "recovery"
 )
 
@@ -33,6 +34,7 @@ var roleSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testing
 // MerriamStrandRole is the reed strand role Merriam, the Master session, runs under,
 // so reed names the strand `<shortname>:<slug>:webster`.
 // It is distinct from RoleMaster, which stays the webster.yaml model key.
+// Its spec names the webster segment.
 const MerriamStrandRole = "webster"
 
 // ResolveRoles parses and resolves cfg's two role model-spec strings against reg, failing before

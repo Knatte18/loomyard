@@ -84,7 +84,7 @@ func expiredShellWarning(label string, waitMin int, outcome backgroundShellOutco
 	if outcome.strandReclaimed {
 		ends = "Master's strand stays alive until the next `lyx webster run` reclaims it at entry, which ends the session and the shell with it"
 	}
-	return fmt.Sprintf("background shell `%s` ran past %s: the wait stopped waiting on the shell at a turn end, which finished the run when Master's output files existed and otherwise held it for the parent, and lyx did not stop the shell; %s; the run's final outcome: %s", label, bound, ends, outcome.description)
+	return fmt.Sprintf("background shell `%s` was still running when the wait counted Master's turn end, which comes after %s for a shell only the transcript reports and at once for one the Stop payload reports when Master's output files exist: the wait stopped waiting on the shell at a turn end, which finished the run when Master's output files existed and otherwise held it for the parent, and lyx did not stop the shell; %s; the run's final outcome: %s", label, bound, ends, outcome.description)
 }
 
 // writeBackgroundShellFrictionNote records the shells Master's wait stopped waiting on at a turn end and the run's final outcome,

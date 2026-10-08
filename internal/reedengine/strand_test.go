@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
 // TestAddStrandLocked pins the hidden-add path and the engine-boundary rejections of one fresh state.
@@ -604,7 +605,7 @@ func TestAddStrandUnless_NoNamedStrandAdds(t *testing.T) {
 				t.Fatalf("SaveState: %v", err)
 			}
 
-			got, skipped, err := e.AddStrandUnless(AddSpec{NameOverride: "claude", Display: render.Display{Anchor: render.AnchorHidden}}, "orch")
+			got, skipped, err := e.AddStrandUnless(AddSpec{NameOverride: "claude", Segment: "review", Display: render.Display{Anchor: render.AnchorHidden}}, "orch")
 			if err != nil {
 				t.Fatalf("AddStrandUnless: %v", err)
 			}
@@ -614,9 +615,15 @@ func TestAddStrandUnless_NoNamedStrandAdds(t *testing.T) {
 			if got.Name != "tc:tslug:claude" {
 				t.Errorf("added strand name = %q, want tc:tslug:claude", got.Name)
 			}
+			if got.Segment != "review" || got.Color != segmentcolor.Orange {
+				t.Errorf("added strand segment/color = %q/%q, want review/orange", got.Segment, got.Color)
+			}
 			loaded, err := LoadState(e.stateDir())
 			if err != nil {
 				t.Fatalf("LoadState: %v", err)
+			}
+			if saved, ok := strandByGUID(loaded.Strands, got.GUID); !ok || saved.Segment != "review" || saved.Color != "" {
+				t.Errorf("persisted strand = %+v (found %v), want Segment review persisted and Color never persisted", saved, ok)
 			}
 			if len(loaded.Strands) != len(tt.persisted)+1 {
 				t.Errorf("strand count = %d, want %d", len(loaded.Strands), len(tt.persisted)+1)

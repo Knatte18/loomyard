@@ -279,11 +279,11 @@ func TestSmokeSelvage(t *testing.T) {
 		return
 	}
 
-	// StatusLinePinsIdentityAndPosition pins pinGeometryOptionsLocked's status-line pins after `up`:
-	// `#{status}` reads "on", `#{status-position}` reads "bottom", and `#{status-left}` names the repo, the worktree and the hub's absolute path, which the embedded default template renders ("{{.repo}}/{{.worktree}} · {{.hub}}") — the rendered text itself, not merely that `up` succeeded.
-	// Content is no longer assertable against any pane at all (pinGeometryOptionsLocked pins it into tmux's status-line option), so the assertion is a `display-message -p '#{status-left}'` readback rather than a pane-content poll, and the former 1-row pane-clamping regression the old header-pane test also pinned has no counterpart either — the status-line is not a pane and carries no row budget of its own to clamp against.
+	// StatusLinePinsIdentityAndPosition pins pinGeometryOptionsLocked's status-bar pins after `up`:
+	// `#{status}` reads "2" (the two-line bar) and `#{status-position}` reads "bottom".
+	// The bar's content is not a pane, so the assertion is a `display-message -p` readback rather than a pane-content poll.
 	//
-	// On Windows the identity values are not asserted directly — per the windows-status-line-is-an-unbranched-accepted-degrade Shared Decision, psmux may refuse some or all of the seven status-line set-option calls, and reed does not branch to compensate.
+	// On Windows the identity values are not asserted directly — per the windows-status-line-is-an-unbranched-accepted-degrade Shared Decision, psmux may refuse some or all of the status-bar set-option calls, and reed does not branch to compensate.
 	// What is asserted there instead is the SELF-CORRECTING half: whatever `#{status}` reads back, the reserved-row count it implies must match the window the layout was actually planned against, so a psmux that refuses the options fails the identity assertion loudly (an operator watching the status-line notices) rather than silently corrupting the layout.
 	t.Run("StatusLinePinsIdentityAndPosition", func(t *testing.T) {
 		restartSession(t, prime)
@@ -297,10 +297,6 @@ func TestSmokeSelvage(t *testing.T) {
 				t.Fatalf("display-message #{%s}: %v", option, err)
 			}
 			return strings.TrimSpace(string(out))
-		}
-
-		if got := readOption("status-left"); !strings.Contains(got, h.Location.HubPath) {
-			t.Errorf("#{status-left} = %q; want it to contain the hub path %q", got, h.Location.HubPath)
 		}
 
 		if runtime.GOOS == "windows" {
@@ -349,18 +345,11 @@ func TestSmokeSelvage(t *testing.T) {
 			return
 		}
 
-		if got := readOption("status"); got != "on" {
-			t.Errorf("#{status} = %q; want \"on\"", got)
+		if got := readOption("status"); got != "2" {
+			t.Errorf("#{status} = %q; want \"2\"", got)
 		}
 		if got := readOption("status-position"); got != "bottom" {
 			t.Errorf("#{status-position} = %q; want \"bottom\"", got)
-		}
-		statusLeft := readOption("status-left")
-		if !strings.Contains(statusLeft, h.Location.RepoName) {
-			t.Errorf("#{status-left} = %q; want it to contain the repo name %q", statusLeft, h.Location.RepoName)
-		}
-		if !strings.Contains(statusLeft, h.Location.WorktreeName) {
-			t.Errorf("#{status-left} = %q; want it to contain the worktree name %q", statusLeft, h.Location.WorktreeName)
 		}
 	})
 }

@@ -48,6 +48,9 @@
 // HasImpactSummary, HasVerify), its RetiredLabels (one entry per format-3 label the
 // card body still carried), and the optional Commit and Verify fields.
 //
+// An Edit group's bullet may carry the re-sign arrow, `<glyph>` -> `<new declaration head>`, which marks a signature change and states the new head.
+// Each arrow bullet is a CardResign (Target, Decl) in the group's Resigns and the card's flat Resigns, and its left token also stays in Refs, so the member remains an ordinary Edit target.
+//
 // Only path-shaped Targets/Uses/Pairs entries are normalized (see below), and a
 // path-shaped entry is further canonicalized into its glyph string at parse time
 // when it carries a file extension or carries no "/" at all (canonicalizablePath,

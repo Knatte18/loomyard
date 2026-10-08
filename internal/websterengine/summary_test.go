@@ -65,7 +65,7 @@ func TestAppendSummarySections(t *testing.T) {
 		{
 			name:   "background shells: one bullet per label in order",
 			append: func(dir string) error { return websterengine.AppendBackgroundShells(dir, []string{"first", "second"}) },
-			want:   "# S\n\n\n## Background shells waited out\n\nMaster's turn end was counted after these background shells ran past `background_shell_wait_min`; they may still be running in the session.\n\n- `first`\n- `second`\n",
+			want:   "# S\n\n\n## Background shells waited out\n\nMaster's turn end was counted while these background shells were still running, which comes after `background_shell_wait_min` for a shell only the transcript reports and at once for one the Stop payload reports when Master's output files exist; they may still be running in the session.\n\n- `first`\n- `second`\n",
 		},
 		{
 			name:   "integration triage: empty is a no-op",

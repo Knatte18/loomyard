@@ -270,3 +270,46 @@ func TestStageLaunchScript_WriteFailureDegrades(t *testing.T) {
 		t.Errorf("log %q does not name the strand and path", out)
 	}
 }
+
+// TestComposeSwitchCommand pins the switch command a key binding runs: the pinned tokens are quoted once and have every # doubled, #{q:client_name} stays an unquoted word, and an unresolvable executable pins nothing.
+func TestComposeSwitchCommand(t *testing.T) {
+	const (
+		exe        = "/opt/it's#here/lyx"
+		socketPath = "/tmp/tmux-1000/it's#socket"
+		tmuxPath   = "/usr/local/it's#bin/tmux"
+	)
+	for _, next := range []bool{false, true} {
+		direction := "--prev"
+		if next {
+			direction = "--next"
+		}
+		t.Run(direction, func(t *testing.T) {
+			withInjectedExecutablePath(t, func() (string, error) { return exe, nil })
+			sh := shell.Posix()
+
+			got, ok := composeSwitchCommand(sh, next, socketPath, tmuxPath)
+
+			want := sh.Invoke(exe) + " reed switch " + direction + " --socket " + sh.Quote(socketPath) + " --client #{q:client_name} --tmux " + sh.Quote(tmuxPath)
+			want = strings.ReplaceAll(want, "#{q:client_name}", "\x00")
+			want = strings.ReplaceAll(want, "#", "##")
+			want = strings.ReplaceAll(want, "\x00", "#{q:client_name}")
+			if !ok || got != want {
+				t.Errorf("composeSwitchCommand(%v) = (%q, %v), want (%q, true)", next, got, ok, want)
+			}
+		})
+	}
+
+	t.Run("unresolvable executable pins nothing", func(t *testing.T) {
+		withInjectedExecutablePath(t, func() (string, error) { return "", errors.New("no executable") })
+		logs := logcapture.CaptureVerbose(t)
+
+		got, ok := composeSwitchCommand(shell.Posix(), true, socketPath, tmuxPath)
+
+		if ok || got != "" {
+			t.Errorf("composeSwitchCommand with an unresolvable executable = (%q, %v), want (\"\", false)", got, ok)
+		}
+		if !strings.Contains(logs.String(), "pinning no session-switch binding") {
+			t.Errorf("log = %q, want a named warning that no switch binding is pinned", logs.String())
+		}
+	})
+}

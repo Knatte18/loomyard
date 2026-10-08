@@ -210,8 +210,8 @@ type Result struct {
 	// it is false on every other return, including a died or timeout outcome reached in Wait.
 	// RunGated folds that branch into (result, nil), so this field is how a caller tells a never-ready start from an agent that died mid-run.
 	NotStarted bool
-	// ExpiredShells holds the labels of the background shells this run waited out, in expiry order:
-	// each outlasted background_shell_wait_min and was let through as a turn end.
+	// ExpiredShells holds the labels of the background shells the wait stopped waiting on, in order:
+	// transcript-reported shells it waited out past background_shell_wait_min, and payload-reported shells a gated run's turn end left behind at once.
 	ExpiredShells []string
 }
 
@@ -248,10 +248,16 @@ type Run struct {
 	shellFirstSeen map[string]time.Time
 	// expiredShells holds the shell ids already waited out in this run, so a later turn end listing one again does not restart its wait.
 	expiredShells map[string]bool
+	// payloadShellLogged holds the payload-reported shell ids already logged as outstanding past background_shell_wait_min, so each is logged once.
+	payloadShellLogged map[string]bool
 	// expiredLabels is the labels of expiredShells in expiry order, reported as Result.ExpiredShells.
 	expiredLabels []string
 	// wait is the wait marker and pane mark this run has on show, display only.
 	wait waitState
+	// eventsRead is true when the latest pollEventsTick parsed at least one event, which ends a held wait.
+	eventsRead bool
+	// shadow is the session-state logging Wait keeps beside its classification, display only.
+	shadow sessionShadow
 
 	// gate is the GateSpec this run was told, empty for an ungated run — the same zero value Run/Attach's own RunGated(spec, GateSpec{})/AttachGated(spec, GateSpec{}) delegation passes, so an ungated run behaves byte-for-byte as it did before the gate existed.
 	gate GateSpec
@@ -382,6 +388,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	strand, err := r.reed.AddStrand(reedengine.AddSpec{
 		Role:         spec.Role,
 		NameOverride: spec.NameOverride,
+		Segment:      string(spec.Segment),
 		Parent:       spec.Parent,
 		Cmd:          launch.Cmd,
 		ResumeCmd:    launch.ResumeCmd,
@@ -470,6 +477,12 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	result, err := run.awaitStartup()
 	if err != nil {
 		return nil, result, err
+	}
+	if strand.Color != "" && !spec.ColorByCaller {
+		// The color is display only, like the pane title, so a failed play never fails the launch.
+		if err := playInputs(r.reed, strand.GUID, r.engine.ColorSequence(strand.Color)); err != nil {
+			logger.Warn("shuttle: could not type the segment color", "strandGUID", strand.GUID, "color", strand.Color, "error", err)
+		}
 	}
 	if launch.PromptLine != "" {
 		if result, err := run.loadSkillsThenPrompt(launch.PromptLine); err != nil {

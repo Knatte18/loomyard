@@ -18,3 +18,5 @@ turn_ends:
   - reading: done
     outputs_exist: true
     old_reading: waiting on shell b5o9v6f2u, forever
+states:
+  - {state: idle-done, cause: done}

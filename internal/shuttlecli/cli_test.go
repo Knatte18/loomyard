@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -143,7 +144,7 @@ func parseSingleEnvelope(t *testing.T, out []byte) map[string]any {
 	return envelope
 }
 
-// TestRunCLI_PositionalArgValidation verifies that "lyx shuttle interrupt" and "lyx shuttle send" enforce their exact positional arguments (<guid>, and <guid> <text>) via cobra's Args validation, which runs before PersistentPreRunE — so this fires even against a non-git directory with no config to resolve.
+// TestRunCLI_PositionalArgValidation verifies that "lyx shuttle interrupt" and "lyx shuttle send" enforce their exact positional arguments (<guid>, and <guid> <text>), and "lyx shuttle state" accepts none, via cobra's Args validation, which runs before PersistentPreRunE — so this fires even against a non-git directory with no config to resolve.
 // Each subtest changes the process working directory, so none runs in parallel.
 func TestRunCLI_PositionalArgValidation(t *testing.T) {
 	tests := []struct {
@@ -155,6 +156,7 @@ func TestRunCLI_PositionalArgValidation(t *testing.T) {
 		{"SendNoArgs", []string{"send"}},
 		{"SendOnlyGuid", []string{"send", "guid-1"}},
 		{"SendTooManyArgs", []string{"send", "guid-1", "text", "extra"}},
+		{"StateStrayArgument", []string{"state", "stray"}},
 	}
 
 	for _, tt := range tests {
@@ -352,5 +354,101 @@ func TestSendCmd_AppendsMessageTail(t *testing.T) {
 				t.Errorf("typed texts = %+v; want exactly one, %q", reed.SendTextCalls, tt.want)
 			}
 		})
+	}
+}
+
+// stateEngine is a shuttlefake.Engine that also reads session signals: a line STOP@<time> is a turn end stamped with that time.
+// Its process always reads alive, so the state read depends on the run's files alone.
+type stateEngine struct {
+	*shuttlefake.Engine
+}
+
+func (stateEngine) ParseSessionSignals(data []byte) ([]shuttleengine.SessionSignal, int) {
+	var signals []shuttleengine.SessionSignal
+	for _, line := range strings.Split(string(data), "\n") {
+		if stamp, ok := strings.CutPrefix(line, "STOP@"); ok {
+			at, _ := time.Parse(time.RFC3339, stamp)
+			signals = append(signals, shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalTurnEnd, At: at, SessionID: "session-1", Raw: []byte(line)})
+		}
+	}
+	return signals, len(data)
+}
+
+func (stateEngine) ProcessLiveness(string) shuttleengine.Liveness { return shuttleengine.LivenessAlive }
+
+func (stateEngine) TurnStartInterrupt(shuttleengine.SessionSignal) (time.Time, bool) {
+	return time.Time{}, false
+}
+
+// TestStateCmd_ListsRunningRunsAndNarrowsByStrand drives stateCmd over a run-directory root holding one running record with a stamped turn end and its output file,
+// and asserts the envelope's run, state, cause and history, then that --strand with a name matching no running run prints an empty list.
+func TestStateCmd_ListsRunningRunsAndNarrowsByStrand(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	runDir := filepath.Join(root, "run-1")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(runDir, "report.md")
+	if err := os.WriteFile(output, []byte("done"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	eventsPath := filepath.Join(runDir, "events.jsonl")
+	if err := os.WriteFile(eventsPath, []byte("STOP@2026-10-08T07:05:00Z\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	record, err := json.Marshal(shuttleengine.RunState{
+		RunID: "run-1", StrandGUID: "guid-1", StrandName: "hub:task:driver", SessionID: "session-1",
+		OutputFiles: []string{output}, EventsPath: eventsPath, Outcome: "running",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(runDir, "run.json"), record, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(args ...string) map[string]any {
+		c := &shuttleCLI{cfg: shuttleengine.Config{RunDir: root}, anchorPath: t.TempDir(), engine: stateEngine{&shuttlefake.Engine{}}}
+		cmd := c.stateCmd()
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&out)
+		cmd.SetArgs(args)
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+		}
+		return parseSingleEnvelope(t, out.Bytes())
+	}
+
+	envelope := run()
+	runs, _ := envelope["runs"].([]any)
+	if len(runs) != 1 {
+		t.Fatalf("runs = %v; want exactly the one running record", envelope["runs"])
+	}
+	got, _ := runs[0].(map[string]any)
+	for key, want := range map[string]string{
+		"strand": "hub:task:driver", "guid": "guid-1", "state": "idle-done", "cause": "done", "since": "2026-10-08T07:05:00Z",
+	} {
+		if got[key] != want {
+			t.Errorf("run[%q] = %v; want %q", key, got[key], want)
+		}
+	}
+	history, _ := got["history"].([]any)
+	if len(history) == 0 {
+		t.Fatalf("history is empty; want the states passed through")
+	}
+	if last, _ := history[len(history)-1].(map[string]any); last["state"] != "idle-done" || last["cause"] != "done" {
+		t.Errorf("last history entry = %v; want idle-done/done", last)
+	}
+
+	for _, name := range []string{"hub:task:driver", "guid-1"} {
+		if runs, _ := run("--strand", name)["runs"].([]any); len(runs) != 1 {
+			t.Errorf("--strand %q runs = %v; want the one matching run", name, runs)
+		}
+	}
+	empty := run("--strand", "no-such-strand")
+	if runs, ok := empty["runs"].([]any); !ok || len(runs) != 0 || empty["ok"] != true {
+		t.Errorf("--strand with no match = %v; want ok with an empty runs list", empty)
 	}
 }

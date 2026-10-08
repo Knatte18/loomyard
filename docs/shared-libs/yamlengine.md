@@ -113,7 +113,7 @@ Merges every mapping key the template holds and `existing` lacks into `existing`
 
 - The walk runs over the two node trees in parallel from the document root.
 - A template key the file's mapping lacks is appended to that mapping as a deep copy of the template's nodes, after the file's own keys, in template order.
-  The reported path is the inserted key's own path (`selvage.height_rows`, or `status_line` for a whole missing mapping), never its descendants.
+  The reported path is the inserted key's own path (`selvage.height_rows`, or `segment_colors` for a whole missing mapping), never its descendants.
 - A template mapping whose file counterpart is also a mapping is recursed into.
 - A shape mismatch is an error naming the key-path and both shapes: a scalar or null where the template holds a mapping, a mapping where it holds a scalar, or a non-mapping document root.
 - A key present with any other value, empty string and null included, keeps its value; a key the template lacks stays as the file has it.

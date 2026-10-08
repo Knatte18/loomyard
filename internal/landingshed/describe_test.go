@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
@@ -52,6 +53,9 @@ func TestDescribeSpec_ComposesSpec(t *testing.T) {
 	}
 	if spec.Role != "describe" {
 		t.Errorf("spec.Role = %q; want %q", spec.Role, "describe")
+	}
+	if spec.Segment != segmentcolor.Describe {
+		t.Errorf("spec.Segment = %q; want %q", spec.Segment, segmentcolor.Describe)
 	}
 	if spec.Interactive {
 		t.Errorf("spec.Interactive = true; want false")

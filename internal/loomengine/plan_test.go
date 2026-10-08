@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
 // TestPlanSpec verifies PlanSpec's field mapping and its composed prompt, at an unanchored location and at a subpath-anchored one.
@@ -60,6 +61,9 @@ func TestPlanSpec(t *testing.T) {
 			}
 			if spec.Role != "plan" {
 				t.Errorf("PlanSpec(...).Role = %q; want %q", spec.Role, "plan")
+			}
+			if spec.Segment != segmentcolor.Plan {
+				t.Errorf("PlanSpec(...).Segment = %q; want %q", spec.Segment, segmentcolor.Plan)
 			}
 			if spec.Model == "" {
 				t.Error("PlanSpec(...).Model = \"\"; want non-empty")

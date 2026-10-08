@@ -79,6 +79,12 @@
 // A healthy live watcher records no stopping,
 // so `start` never waits for it.
 // The consecutive tick-error count is capped, and the watcher exits with its reason recorded in State.WatcherExit once the cap is reached.
+//
+// The orch is colored like every other strand, and the watcher stays the single writer into its pane:
+// the launch spec names the coordinator segment and leaves the color to the caller,
+// and the watcher types the strand's palette color, read from reed's strand status, on the first tick after binding whose idle probe passes, before anything else that tick types.
+// The mark that the color is pending is held in memory, so a restarted watcher types it again, which is harmless.
+// A failed color typing is logged and dropped, since the color is display only.
 // Every provider and reed interaction goes through the Session seam, so the state machine runs against a fake in unit tests.
 //
 // # Idle rules
@@ -118,6 +124,11 @@
 // Every idle probe goes through one watcher helper.
 // A probe that reports the pane too short to draw an input box records `orch pane too short for the idle probe; resize or use the larger client` in State.Stuck, saved and logged once, and holds cycles and notice delivery like any failing probe.
 // The next probe that does not report it clears that reason and only that reason, so `lyx orch status` shows the hold in the idle phase too.
+//
+// Session.SessionState reads the orch session's state from its shuttle run record, which is interactive with a never-written sentinel output, so its turn ends read `asking`.
+// The watcher only logs it: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled` or `asking`, logs `orch: session state disagrees with the idle probe` at Warn.
+// A disagreement is logged once and again only after either side changes, the last pair being watcher memory and not State.
+// A state that cannot be read is logged at Debug, and no probe result, cycle, delivery or State write depends on the state.
 //
 // A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace, and adds one:
 // State.LastDeferral is zero or at least `soft_idle_s` before now.
@@ -198,7 +209,8 @@
 // A compaction keeps the skills the session invoked, which Claude Code re-injects,
 // and `/clear` loses them;
 // both lose the role.
-// Every entry point therefore starts the sequence with a plugins step,
+// Every entry point therefore starts the sequence with a color step, which restores the orch's color a `/clear` or compaction reload drops,
+// and a plugins step after it,
 // so a skill deployed after the session started loads at the next reload.
 // After `/clear` a skills step then loads the whole orch skill list in one turn,
 // an optional retry step loads what that turn left missing,
@@ -206,9 +218,13 @@
 // after a compaction the pointer follows the plugins step directly.
 // `start` and `--adopt` load the same skills through the launch spec.
 // The step, the skills the retry step loads, whether the sequence skips the skills, the step's first typing time and its events offset are persisted in State (`reload_step`, `reload_retry`, `reload_skips_skills`, `reload_typed_at`, `phase_events_offset`), the offset and time at the first typing, before the text is typed.
-// `reload_step` is -2 for the plugins step, 0 for the skills step and -1 for the retry step.
+// `reload_step` is -3 for the color step, -2 for the plugins step, 0 for the skills step and -1 for the retry step.
 // Every other value, including a per-skill index persisted before the one-turn load, is read as the pointer step, as is a retry step with an empty `reload_retry` and a skills step when `reload_skips_skills` is set.
+// A state persisted mid-reload by a watcher that had no color step resumes where it was.
 //
+//   - The color step types the strand's color command, only when the idle probe passed on the same tick, and ends no turn.
+//     It persists the move to the plugins step with a zero `reload_typed_at` and types nothing else on that tick.
+//     It has no confirmation and no timeout, and a failed typing is logged and moves on, so the color never wedges a reload.
 //   - The plugins step types `/reload-plugins`, only when the idle probe passed on the same tick, and ends no turn.
 //     It persists the move to the next step, the skills step or, when `reload_skips_skills` is set, the pointer, with a zero `reload_typed_at`, and types nothing else on that tick;
 //     the next step is typed on a later tick whose idle probe passed.

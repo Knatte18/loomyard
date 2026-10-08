@@ -1,5 +1,5 @@
-// waitmark.go declares the wait marker and pane mark shuttle keeps while its Go side waits on a gate entry or on background shells,
-// and ReadWaitMarker, the reader `lyx loom status` uses.
+// waitmark.go declares the wait marker and pane mark shuttle keeps while its Go side waits on a gate entry, on background shells or on a held turn end,
+// and ReadWaitMarker and ReadWaitMarkers, the readers `lyx loom status` and batten use.
 // Both are display and status only: no shuttle decision reads them,
 // and a failure to write, remove, set or clear either is logged and changes nothing else.
 
@@ -23,6 +23,8 @@ const (
 	gateWaitLabelPrefix = "gate "
 	// shellWaitLabel is the label of the background-shell wait.
 	shellWaitLabel = "background shells"
+	// heldWaitLabel is the label of the held-turn-end wait.
+	heldWaitLabel = "held"
 )
 
 // isAlive is the liveness seam over proc.IsAlive,
@@ -30,11 +32,17 @@ const (
 var isAlive = proc.IsAlive
 
 // WaitMarker is the file `lyx loom status` reads to see what a shuttle run waits on:
-// the wait's label (`gate <entry name>` or `background shells`), when it started, and the pid of the process running Wait.
+// the wait's label (`gate <entry name>`, `background shells` or `held`), when it started, and the pid of the process running Wait.
+// Batten's wait reading ignores a held marker, since a held run is idle at its turn end rather than working.
 type WaitMarker struct {
 	Kind    string    `yaml:"kind"`
 	Started time.Time `yaml:"started"`
 	PID     int       `yaml:"pid"`
+}
+
+// Held reports whether the marker is the held-turn-end wait.
+func (m WaitMarker) Held() bool {
+	return m.Kind == heldWaitLabel
 }
 
 // waitState is the run's record of the wait it has on show.
@@ -43,23 +51,36 @@ type waitState struct {
 	gateLabel string
 	// shellStart is when the background-shell wait began, the zero time while it is off.
 	shellStart time.Time
+	// heldStart is when the held-turn-end wait began, the zero time while it is off.
+	heldStart time.Time
 	// shown is the label currently on disk and on screen, empty when nothing is.
 	shown string
 }
 
 // ReadWaitMarker returns the first wait marker with a live pid among the run directories under the run-directory root.
+// It is the first of ReadWaitMarkers.
+func ReadWaitMarker(cfg Config, anchorPath string) (WaitMarker, bool, error) {
+	markers, err := ReadWaitMarkers(cfg, anchorPath)
+	if err != nil || len(markers) == 0 {
+		return WaitMarker{}, false, err
+	}
+	return markers[0], true, nil
+}
+
+// ReadWaitMarkers returns every wait marker with a live pid among the run directories under the run-directory root, in directory order.
 // A marker whose pid is dead reads as absent and the scan goes on,
 // and an unreadable or undecodable marker is skipped with a logged warning,
 // so one torn file cannot hide another run's wait.
-func ReadWaitMarker(cfg Config, anchorPath string) (WaitMarker, bool, error) {
+func ReadWaitMarkers(cfg Config, anchorPath string) ([]WaitMarker, error) {
 	root := runDirRoot(cfg, anchorPath)
 	entries, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
-		return WaitMarker{}, false, nil
+		return nil, nil
 	}
 	if err != nil {
-		return WaitMarker{}, false, err
+		return nil, err
 	}
+	var markers []WaitMarker
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -78,10 +99,10 @@ func ReadWaitMarker(cfg Config, anchorPath string) (WaitMarker, bool, error) {
 			continue
 		}
 		if isAlive(marker.PID) {
-			return marker, true, nil
+			markers = append(markers, marker)
 		}
 	}
-	return WaitMarker{}, false, nil
+	return markers, nil
 }
 
 // waitMarkerPath returns the wait marker's path inside the run directory.
@@ -148,7 +169,7 @@ func (run *Run) syncShellWait() {
 	run.showWait()
 }
 
-// shellWaitActive reports whether the recorded waiting turn end holds only non-awaited background shells, not all waited out.
+// shellWaitActive reports whether the recorded waiting turn end holds only non-awaited background shells, at least one a payload-reported shell or not yet waited out.
 func (run *Run) shellWaitActive() bool {
 	if len(run.waitingTasks) == 0 {
 		return false
@@ -158,16 +179,35 @@ func (run *Run) shellWaitActive() bool {
 		if task.Kind != BackgroundShell || run.awaitedShell(task) {
 			return false
 		}
-		if !run.expiredShells[task.ID] {
+		if payloadShell(task) || !run.expiredShells[task.ID] {
 			pending = true
 		}
 	}
 	return pending
 }
 
+// beginHeldWait shows `held` from the run clock's now, when a held turn end is read.
+// A hold already on show keeps its start.
+func (run *Run) beginHeldWait() {
+	if !run.wait.heldStart.IsZero() {
+		return
+	}
+	run.wait.heldStart = run.clock.Now()
+	run.showWait()
+}
+
+// endHeldWait takes the held label off, which brings back a wait ranked below it, if any.
+func (run *Run) endHeldWait() {
+	if run.wait.heldStart.IsZero() {
+		return
+	}
+	run.wait.heldStart = time.Time{}
+	run.showWait()
+}
+
 // showWait brings the marker file and the pane mark in line with the wait that should be on show:
-// a running gate entry wins over the background-shell wait,
-// and neither shows nothing.
+// a running gate entry wins over the background-shell wait, which wins over the held wait,
+// and none shows nothing.
 func (run *Run) showWait() {
 	label, started := "", time.Time{}
 	switch {
@@ -175,6 +215,8 @@ func (run *Run) showWait() {
 		label, started = run.wait.gateLabel, run.clock.Now()
 	case !run.wait.shellStart.IsZero():
 		label, started = shellWaitLabel, run.wait.shellStart
+	case !run.wait.heldStart.IsZero():
+		label, started = heldWaitLabel, run.wait.heldStart
 	}
 	if label == run.wait.shown {
 		return

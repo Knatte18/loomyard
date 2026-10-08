@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -453,6 +454,9 @@ func TestEngine_Run_SpecConstruction(t *testing.T) {
 			}
 			if spec.Role != tt.role {
 				t.Errorf("spec.Role = %q; want %q", spec.Role, tt.role)
+			}
+			if spec.Segment != segmentcolor.Review {
+				t.Errorf("spec.Segment = %q; want %q", spec.Segment, segmentcolor.Review)
 			}
 			if got, want := spec.Skills, []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}; !slices.Equal(got, want) {
 				t.Errorf("spec.Skills = %v; want %v", got, want)

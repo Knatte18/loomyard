@@ -16,6 +16,9 @@ events_reconstructed: true
 events_note: >-
   The run directory was removed, so events.jsonl is rebuilt from the transcript's two turn ends;
   each background_tasks lists the one fork the transcript shows running at that turn end.
+  The StopFailure line between them is also reconstructed, for the Master turn that died on the outage:
+  its fields (error, error_details, last_assistant_message) follow Claude Code 2.1.294's schema and its text is the transcript's API-error entry.
+  ParseEvents reads no event from it.
 gated: true
 turn_ends:
   - reading: waiting
@@ -28,3 +31,7 @@ turn_ends:
     tasks:
       - {kind: fork, id: afb597a692202e929, signal: payload}
     old_reading: waiting on the re-fork; the transcript scan matched the killed fork's notification
+states:
+  - {state: busy, cause: background}
+  - {state: idle-stalled, cause: api-error, detail: "API Error: Can't reach the API server — check your internet or DNS (EAI_AGAIN)"}
+  - {state: busy, cause: background}
