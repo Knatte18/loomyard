@@ -428,16 +428,11 @@ func validateModelSpecList(key string, specs ModelSpecList) error {
 }
 
 // validateFanKeys resolves each non-empty fan key of cfg through burler.yaml, which falls back per name to the embedded template.
-// A fan that does not resolve is refused naming the key, the unknown name and the fans that exist.
+// A fan that does not resolve is refused naming the key, the unknown name and the fans that exist,
+// and an unreadable burler.yaml is refused naming the first set key.
 // With both fan keys empty, burler.yaml is never read.
 func validateFanKeys(baseDir string, cfg Config) error {
-	if cfg.DiscussionFan == "" && cfg.PlanFan == "" {
-		return nil
-	}
-	burlerCfg, err := burlerengine.LoadConfig(baseDir)
-	if err != nil {
-		return err
-	}
+	var burlerCfg *burlerengine.Config
 	for _, fan := range []struct {
 		key  string
 		name string
@@ -448,7 +443,14 @@ func validateFanKeys(baseDir string, cfg Config) error {
 		if fan.name == "" {
 			continue
 		}
-		if _, err := burlerengine.ResolveFan(burlerCfg, fan.name); err != nil {
+		if burlerCfg == nil {
+			loaded, err := burlerengine.LoadConfig(baseDir)
+			if err != nil {
+				return fmt.Errorf("loom config key %q: %w; fix burler.yaml, or set the key to empty to run the segment solo", fan.key, err)
+			}
+			burlerCfg = &loaded
+		}
+		if _, err := burlerengine.ResolveFan(*burlerCfg, fan.name); err != nil {
 			return fmt.Errorf("loom config key %q: %w; set the key to one of those fans, or to empty to run the segment solo", fan.key, err)
 		}
 	}

@@ -32,6 +32,18 @@ func seedLoomConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
+// malformedBurlerYAML is a burler.yaml that fails to parse, for the fan-key rows that pin when LoadConfig reads it.
+const malformedBurlerYAML = "fans: [unclosed\n"
+
+// seedBurlerConfig creates <baseDir>/_lyx/config/burler.yaml with the given contents.
+func seedBurlerConfig(t *testing.T, baseDir, contents string) {
+	t.Helper()
+	cfgPath := filepath.Join(baseDir, "_lyx", "config", "burler.yaml")
+	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
+	}
+}
+
 // writeLoomConfigWithKey seeds a loom.yaml built from the shipped template with exactly one key's
 // value replaced, so a test can vary a single knob without restating the whole file and drifting
 // from the template's key set (which configengine.Load is strict about).
@@ -99,7 +111,7 @@ func templateConfig() Config {
 }
 
 // TestLoadConfig_Loads verifies each loom.yaml shape that must load, against the whole Config it yields:
-// the template's own values, a retired key ignored, explicit overrides, present-but-empty and null friction and driver values (Tier 2 off, "defer to the provider default"), keys absent from an already-seeded file at their template defaults, zero timeouts (shuttleengine.Spec treats zero as "defer to shuttle's run_timeout_min", so the negative guard must not sweep them up), and a checkpoint above the budget (a run that never rules CIRCLING and reaches the budget escalation instead).
+// the template's own values, an unparseable burler.yaml beside empty fan keys (never read), a retired key ignored, explicit overrides, present-but-empty and null friction and driver values (Tier 2 off, "defer to the provider default"), keys absent from an already-seeded file at their template defaults, zero timeouts (shuttleengine.Spec treats zero as "defer to shuttle's run_timeout_min", so the negative guard must not sweep them up), and a checkpoint above the budget (a run that never rules CIRCLING and reaches the budget escalation instead).
 func TestLoadConfig_Loads(t *testing.T) {
 	t.Parallel()
 	// legacyContents is a file seeded before the friction, driver, judge, parent-review and review-budget keys existed.
@@ -115,9 +127,15 @@ review_timeout_min: 240
 		name     string
 		contents string
 		values   map[string]string
+		burler   string
 		mutate   func(*Config)
 	}{
 		{name: "template defaults", mutate: func(*Config) {}},
+		{
+			name:   "empty fan keys never read a malformed burler.yaml",
+			burler: malformedBurlerYAML,
+			mutate: func(*Config) {},
+		},
 		{
 			name:     "retired selfreport key ignored",
 			contents: ConfigTemplate() + "selfreport: false\n",
@@ -242,6 +260,9 @@ review_timeout_min: 240
 			default:
 				seedLoomConfig(t, baseDir, ConfigTemplate())
 			}
+			if tt.burler != "" {
+				seedBurlerConfig(t, baseDir, tt.burler)
+			}
 
 			want := templateConfig()
 			tt.mutate(&want)
@@ -258,7 +279,7 @@ review_timeout_min: 240
 }
 
 // TestLoadConfig_Refuses verifies each invalid loom.yaml is refused at load time, naming the offending key:
-// an ungrammatical model-spec (rather than being silently carried into a producer's spawn site), a parent_review_wait_min or review key below one (the sibling timeouts' "0 defers to shuttle" carve-out does not apply to them) with the way forward, and a negative timeout (which would otherwise surface only when the producer it governs first spawns).
+// an ungrammatical model-spec (rather than being silently carried into a producer's spawn site), a parent_review_wait_min or review key below one (the sibling timeouts' "0 defers to shuttle" carve-out does not apply to them) with the way forward, a negative timeout (which would otherwise surface only when the producer it governs first spawns), and a set fan key beside an unparseable burler.yaml.
 func TestLoadConfig_Refuses(t *testing.T) {
 	t.Parallel()
 	const positiveIntegerForward = "set it to a positive integer in loom.yaml"
@@ -267,40 +288,42 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		key    string
 		value  string
 		wantIn []string
+		burler string
 	}{
-		{"malformed discussion spec", "discussion", `"opus[effort"`, nil},
-		{"malformed plan spec", "plan", `"opus[effort"`, nil},
-		{"malformed review spec", "review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
-		{"malformed fix spec", "fix", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
-		{"malformed later review entry", "review", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}},
-		{"empty review list", "review", "[]", []string{"empty", "a non-empty list of model-specs"}},
-		{"empty fix list", "fix", "[]", []string{"empty", "a non-empty list of model-specs"}},
-		{"malformed discussion_review spec", "discussion_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
-		{"malformed discussion_fix spec", "discussion_fix", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
-		{"malformed plan_review spec", "plan_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
-		{"malformed plan_fix spec", "plan_fix", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
-		{"malformed webster_review spec", "webster_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
-		{"malformed later webster_fix entry", "webster_fix", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}},
-		{"unknown discussion_fan", "discussion_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "to empty to run the segment solo"}},
-		{"unknown plan_fan", "plan_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "full", "to empty to run the segment solo"}},
-		{"malformed fan_review spec", "fan_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
-		{"empty fan_review list", "fan_review", "[]", []string{"empty", "a non-empty list of model-specs"}},
-		{"unknown fix_start", "fix_start", "sideways", []string{`"parallel"`, `"after-review"`}},
-		{"mapping review value", "review", "\n  model: opus", []string{"a non-empty list of model-specs"}},
-		{"mapping inside a fix list", "fix", "\n  - model: opus", []string{"a non-empty list of model-specs"}},
-		{"malformed judge spec", "judge", `"sonnet[medium"`, nil},
-		{"malformed friction spec", "friction", `"opus[effort"`, nil},
-		{"malformed driver spec", "driver", `"opus[effort"`, nil},
-		{"zero parent_review_wait_min", "parent_review_wait_min", "0", []string{"attempts: 0"}},
-		{"negative parent_review_wait_min", "parent_review_wait_min", "-1", []string{"attempts: 0"}},
-		{"zero review_circling_checkpoint", "review_circling_checkpoint", "0", []string{positiveIntegerForward}},
-		{"negative review_circling_checkpoint", "review_circling_checkpoint", "-1", []string{positiveIntegerForward}},
-		{"zero review_max_bounces", "review_max_bounces", "0", []string{positiveIntegerForward}},
-		{"negative review_max_bounces", "review_max_bounces", "-1", []string{positiveIntegerForward}},
-		{"negative discussion timeout", "discussion_timeout_min", "-1", []string{"must not be negative"}},
-		{"negative plan timeout", "plan_timeout_min", "-1", []string{"must not be negative"}},
-		{"negative review timeout", "review_timeout_min", "-1", []string{"must not be negative"}},
-		{"negative friction timeout", "friction_timeout_min", "-1", []string{"must not be negative"}},
+		{"malformed discussion spec", "discussion", `"opus[effort"`, nil, ""},
+		{"malformed plan spec", "plan", `"opus[effort"`, nil, ""},
+		{"malformed review spec", "review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed fix spec", "fix", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed later review entry", "review", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
+		{"empty review list", "review", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
+		{"empty fix list", "fix", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
+		{"malformed discussion_review spec", "discussion_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed discussion_fix spec", "discussion_fix", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed plan_review spec", "plan_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed plan_fix spec", "plan_fix", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed webster_review spec", "webster_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed later webster_fix entry", "webster_fix", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
+		{"unknown discussion_fan", "discussion_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "to empty to run the segment solo"}, ""},
+		{"unknown plan_fan", "plan_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "full", "to empty to run the segment solo"}, ""},
+		{"set discussion_fan with a malformed burler.yaml", "discussion_fan", "standard", []string{"burler: parse ", "fix burler.yaml, or set the key to empty"}, malformedBurlerYAML},
+		{"malformed fan_review spec", "fan_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"empty fan_review list", "fan_review", "[]", []string{"empty", "a non-empty list of model-specs"}, ""},
+		{"unknown fix_start", "fix_start", "sideways", []string{`"parallel"`, `"after-review"`}, ""},
+		{"mapping review value", "review", "\n  model: opus", []string{"a non-empty list of model-specs"}, ""},
+		{"mapping inside a fix list", "fix", "\n  - model: opus", []string{"a non-empty list of model-specs"}, ""},
+		{"malformed judge spec", "judge", `"sonnet[medium"`, nil, ""},
+		{"malformed friction spec", "friction", `"opus[effort"`, nil, ""},
+		{"malformed driver spec", "driver", `"opus[effort"`, nil, ""},
+		{"zero parent_review_wait_min", "parent_review_wait_min", "0", []string{"attempts: 0"}, ""},
+		{"negative parent_review_wait_min", "parent_review_wait_min", "-1", []string{"attempts: 0"}, ""},
+		{"zero review_circling_checkpoint", "review_circling_checkpoint", "0", []string{positiveIntegerForward}, ""},
+		{"negative review_circling_checkpoint", "review_circling_checkpoint", "-1", []string{positiveIntegerForward}, ""},
+		{"zero review_max_bounces", "review_max_bounces", "0", []string{positiveIntegerForward}, ""},
+		{"negative review_max_bounces", "review_max_bounces", "-1", []string{positiveIntegerForward}, ""},
+		{"negative discussion timeout", "discussion_timeout_min", "-1", []string{"must not be negative"}, ""},
+		{"negative plan timeout", "plan_timeout_min", "-1", []string{"must not be negative"}, ""},
+		{"negative review timeout", "review_timeout_min", "-1", []string{"must not be negative"}, ""},
+		{"negative friction timeout", "friction_timeout_min", "-1", []string{"must not be negative"}, ""},
 	}
 
 	for _, tt := range tests {
@@ -308,6 +331,9 @@ func TestLoadConfig_Refuses(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
 			writeLoomConfigWithKey(t, dir, tt.key, tt.value)
+			if tt.burler != "" {
+				seedBurlerConfig(t, dir, tt.burler)
+			}
 
 			_, err := LoadConfig(dir, "loom")
 			if err == nil {
