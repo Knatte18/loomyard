@@ -61,7 +61,7 @@ func Healthy(l *lyxcwd.Location) (ok bool, reason HealthReason, err error) {
 		return false, HealthReason{}, fmt.Errorf("get warp branch: %w", err)
 	}
 
-	weftWorktree := WeftWorktree(l)
+	weftWorktree := RecordsWorktree(l)
 	weftBranch, err := readBranch(weftWorktree)
 	if err != nil {
 		return false, HealthReason{}, fmt.Errorf("get weft branch: %w", err)
@@ -69,7 +69,7 @@ func Healthy(l *lyxcwd.Location) (ok bool, reason HealthReason, err error) {
 
 	// Check branch correspondence: the weft branch must be the suffixed sibling of the
 	// warp branch, not merely an equal name (fabric's uniform <warp>/<warp>-weft scheme).
-	expectedWeftBranch := WeftBranchName(warpBranch)
+	expectedWeftBranch := RecordsBranchName(warpBranch)
 	if weftBranch != expectedWeftBranch {
 		return false, HealthReason{
 			Cause:  CauseBranchMismatch,

@@ -77,7 +77,7 @@ func Unwire(cwd string) (res UnwireVerbResult, err error) {
 	// open handle inside it makes that `git worktree remove --force` fail with an OS
 	// error that surfaces as-is; the remedy is the same as adoption's: stop the
 	// daemons and re-run.
-	weftWorktree := WeftWorktree(l)
+	weftWorktree := RecordsWorktree(l)
 	if _, statErr := os.Stat(weftWorktree); statErr != nil && !os.IsNotExist(statErr) {
 		return UnwireVerbResult{}, statErr
 	} else if os.IsNotExist(statErr) {

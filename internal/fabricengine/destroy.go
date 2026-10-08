@@ -1,5 +1,5 @@
 // destroy.go is the only file in package fabricengine permitted to perform a destructive primitive.
-// The primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch -D), deleting a branch on a remote (git push <remote> --delete), moving a branch on a remote (a leased force push, updateRemoteBranch), and resetting a warp checkout hard (ResetHard, and ResetPairWarp for a task pair's checkout, both through resetHardTo).
+// The primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch -D), deleting a branch on a remote (git push <remote> --delete), moving a branch on a remote (a leased force push, updateRemoteBranch), and resetting a warp checkout hard (ResetHard, and ResetPairCode for a task pair's checkout, both through resetHardTo).
 // Every one of them is reached only through one of this file's executors, and every executor runs the shared check pipeline before performing its act — the gate executes, it does not merely approve.
 //
 // The pipeline runs four checks, always in this fixed order, stopping at the first failure:
@@ -179,6 +179,14 @@ type createdToken struct {
 	worktree bool
 }
 
+// createdBranchToken is the unforgeable proof that the `git worktree add -b <branch>` createGitWorktree ran created branch, locally, in this call.
+// createGitWorktree is its only producer.
+// Like createdToken, its unexported-ness does not stop a same-package composite literal,
+// so the property is enforced by the bypass guard banning the token `createdBranchToken{` outside this file.
+type createdBranchToken struct {
+	branch string
+}
+
 // pathRequest is the gate's request shape for every destructive primitive whose target is a
 // filesystem path: os.RemoveAll/os.Remove, git worktree remove, ResetHard, and link removal/re-point.
 // Every field is required — a zero-value ownership or dirtiness is refused by the pipeline rather
@@ -328,7 +336,7 @@ func ownedWarpCheckout(repoDir string) pathOwnership {
 
 // ownedPairWarpCheckout declares target as owned when it is a registered linked worktree of the warp repo at repoDir, never its main checkout;
 // its checked-out branch is not parentBranch (the ownedPairWarpBranch rule);
-// and the weft checkout at weftDir has WeftBranchName of that branch checked out, so the branch is the pair's own.
+// and the weft checkout at weftDir has RecordsBranchName of that branch checked out, so the branch is the pair's own.
 // A detached HEAD on either side fails the predicate.
 func ownedPairWarpCheckout(repoDir, weftDir, parentBranch string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipPairWarpCheckout, repoDir: repoDir, weftDir: weftDir, parentBranch: parentBranch}
@@ -386,6 +394,7 @@ const (
 	branchOwnershipManaged
 	branchOwnershipPairWarp
 	branchOwnershipPairWeft
+	branchOwnershipCreatedBranch
 )
 
 // branchOwnership declares which of the closed set of ownership kinds a branchRequest's branch must
@@ -398,6 +407,16 @@ type branchOwnership struct {
 	// parentBranch serves ownedPairWarpBranch only.
 	warpBranch   string
 	parentBranch string
+	// createdBranch serves ownedCreatedBranch only: the one branch name its proof covers.
+	createdBranch string
+}
+
+// ownedCreatedBranch declares branch as owned when it is exactly the branch tok proves this call created.
+// It consults no naming scheme, so a bare-slug warp branch under the default empty branch_prefix is as deletable as a prefixed one.
+// l serves the checked-out dirtiness probe.
+// An empty proof matches nothing.
+func ownedCreatedBranch(l *lyxcwd.Location, tok createdBranchToken) branchOwnership {
+	return branchOwnership{kind: branchOwnershipCreatedBranch, location: l, createdBranch: tok.branch}
 }
 
 // ownedPairWarpBranch declares branch as owned when it is exactly warpBranch — the pair's own
@@ -410,7 +429,7 @@ func ownedPairWarpBranch(warpBranch, parentBranch string) branchOwnership {
 	return branchOwnership{kind: branchOwnershipPairWarp, warpBranch: warpBranch, parentBranch: parentBranch}
 }
 
-// ownedPairWeftBranch declares branch as owned when it is exactly WeftBranchName(warpBranch), is accepted by WeftWarpSlug, and is not l's primary weft branch.
+// ownedPairWeftBranch declares branch as owned when it is exactly RecordsBranchName(warpBranch), is accepted by WeftWarpSlug, and is not l's primary weft branch.
 // It deliberately has no checked-out test:
 // at Add's step 12 the same-named local branch is the replacement, checked out at the new weft worktree, which is exactly what ownedManagedBranch refuses.
 // An empty warpBranch matches nothing.
@@ -489,6 +508,7 @@ const (
 	branchDirtinessUnlandedWork
 	branchDirtinessArchivedOnRemote
 	branchDirtinessUnlandedRemoteTip
+	branchDirtinessPushedByThisCall
 )
 
 // branchDirtiness declares which dirtiness probe the pipeline runs against a branchRequest's branch.
@@ -507,6 +527,13 @@ type branchDirtiness struct {
 // and an empty archiveTag is refused as covered by no archive tag.
 func dirtyArchivedOnRemote(archiveTag string) branchDirtiness {
 	return branchDirtiness{kind: branchDirtinessArchivedOnRemote, archiveTag: archiveTag}
+}
+
+// dirtyPushedByThisCall declares that the remote branch is one this same call pushed, so deleting it loses no work.
+// It answers a remote question only: checkRemoteBranchRequest accepts it and requires a non-empty leaseSHA, the commit this call pushed,
+// and checkBranchDirtiness refuses it for a local delete.
+func dirtyPushedByThisCall() branchDirtiness {
+	return branchDirtiness{kind: branchDirtinessPushedByThisCall}
 }
 
 // dirtyUnlandedWork declares that the pipeline's dirtiness step refuses a branch whose work would be
@@ -646,8 +673,8 @@ func resolvePairWarpCheckout(own pathOwnership, target string) (bool, string) {
 	if err != nil {
 		return false, fmt.Sprintf("cannot read the branch checked out at the pair's weft %s: %v", own.weftDir, err)
 	}
-	if weftBranch != WeftBranchName(branch) {
-		return false, fmt.Sprintf("the pair's weft %s has %q checked out, not %q, so %s is not the pair's own warp branch", own.weftDir, weftBranch, WeftBranchName(branch), branch)
+	if weftBranch != RecordsBranchName(branch) {
+		return false, fmt.Sprintf("the pair's weft %s has %q checked out, not %q, so %s is not the pair's own warp branch", own.weftDir, weftBranch, RecordsBranchName(branch), branch)
 	}
 	return true, ""
 }
@@ -716,6 +743,11 @@ func resolveBranchOwnership(own branchOwnership, branch string) (ok bool, reason
 		return resolvePairWarpBranch(own.warpBranch, own.parentBranch, branch)
 	case branchOwnershipPairWeft:
 		return resolvePairWeftBranch(own.location, own.warpBranch, branch)
+	case branchOwnershipCreatedBranch:
+		if own.createdBranch == "" || branch != own.createdBranch {
+			return false, fmt.Sprintf("%s is not the branch this call created (%q)", branch, own.createdBranch)
+		}
+		return true, ""
 	default:
 		return false, "no ownership kind declared"
 	}
@@ -737,7 +769,7 @@ func resolvePairWarpBranch(warpBranch, parentBranch, branch string) (bool, strin
 // The two pure name checks run first, so a mismatched name refuses without spawning git;
 // then branch must not be l's primary weft branch, failing closed when the primary cannot be read.
 func resolvePairWeftBranch(l *lyxcwd.Location, warpBranch, branch string) (bool, string) {
-	if warpBranch == "" || branch != WeftBranchName(warpBranch) {
+	if warpBranch == "" || branch != RecordsBranchName(warpBranch) {
 		return false, fmt.Sprintf("%s is not the pair's own weft branch for %q", branch, warpBranch)
 	}
 	if _, ok := WeftWarpSlug(branch); !ok {
@@ -936,6 +968,9 @@ func checkBranchDirtiness(req branchRequest) error {
 	if req.dirtiness.kind == branchDirtinessUnlandedRemoteTip {
 		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "unlanded-remote-tip dirtiness answers a remote question; a local branch delete has no remote tip to probe"}
 	}
+	if req.dirtiness.kind == branchDirtinessPushedByThisCall {
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "pushed-by-this-call dirtiness answers a remote question; a local branch delete has no pushed commit to lease"}
+	}
 	if req.dirtiness.kind == branchDirtinessUnlandedWork {
 		return checkUnlandedWork(req)
 	}
@@ -1070,6 +1105,13 @@ func checkRemoteBranchRequest(req remoteBranchRequest) error {
 		}
 		if req.leaseSHA == "" {
 			return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "no lease SHA: the archive-coverage proof holds only for the tip it was computed against"}
+		}
+		return nil
+	}
+
+	if req.dirtiness.kind == branchDirtinessPushedByThisCall {
+		if req.leaseSHA == "" {
+			return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "no lease SHA: the push this call made holds only for the commit it pushed"}
 		}
 		return nil
 	}
@@ -1365,7 +1407,7 @@ func createExclusiveDir(rec *Mutations, path string) (createdToken, error) {
 }
 
 // createGitWorktree adds a git worktree at target through containedWorktreeAdd and, on success,
-// returns the createdToken proving the gate itself added it there.
+// returns the createdToken proving the gate itself added it there and the createdBranchToken proving the `-b` of buildArgs created createdBranch.
 //
 // buildArgs returns the full `git worktree add` argument slice given the path git should write the
 // worktree to; the caller supplies it so this one minter serves the warp-side add's `-b <branch>`
@@ -1377,12 +1419,12 @@ func createExclusiveDir(rec *Mutations, path string) (createdToken, error) {
 // unforgeable outside this file, and errors.As(err, &gitErr) for how a call site recovers the exit
 // code and stderr it needs.
 // It appends KindWorktreeCreated to rec only on the success path that mints the token.
-func createGitWorktree(rec *Mutations, repoDir, container, target string, buildArgs func(worktreePath string) []string) (createdToken, error) {
+func createGitWorktree(rec *Mutations, repoDir, container, target, createdBranch string, buildArgs func(worktreePath string) []string) (createdToken, createdBranchToken, error) {
 	if err := containedWorktreeAdd(repoDir, container, target, buildArgs); err != nil {
-		return createdToken{}, err
+		return createdToken{}, createdBranchToken{}, err
 	}
 	rec.Append(KindWorktreeCreated, target, "")
-	return createdToken{path: filepath.Clean(target), worktree: true}, nil
+	return createdToken{path: filepath.Clean(target), worktree: true}, createdBranchToken{branch: createdBranch}, nil
 }
 
 // containedWorktreeAdd runs `git worktree add` in a way that never REPORTS a worktree placed inside
@@ -1589,10 +1631,10 @@ func (f *Fabric) ResetHard(rec *Mutations, sha string) error {
 		dirtiness: dirtyScopeTracked(),
 		force:     false,
 	}
-	return resetHardTo(rec, req, f.warp, sha)
+	return resetHardTo(rec, req, f.code, sha)
 }
 
-// ResetPairWarp resets a task pair's warp checkout's HEAD, index and working tree to sha.
+// ResetPairCode resets a task pair's warp checkout's HEAD, index and working tree to sha.
 // It is the gated executor for the pair-scoped reset, beside ResetHard, which refuses on any tracked dirt and accepts the prime checkout.
 // The request is hardcoded: container is the hub (filepath.Dir(f.warpPath)), target is the warp worktree,
 // ownership is ownedPairWarpCheckout, so the prime checkout, a pair on parentBranch, a pair whose weft is on another branch and a detached HEAD all refuse,
@@ -1610,7 +1652,7 @@ func (f *Fabric) ResetHard(rec *Mutations, sha string) error {
 // A remote-only commit becomes reachable only through the `ours` merge the operator runs after reading the commits the refusal lists, which is the one judgment left to the operator.
 // If the checkout rewrite fails after the remote moved, the error says so; rec then holds the remote_branch_updated entry, and re-running converges.
 // rec is the caller's recorder; resetHardTo appends the resulting worktree_reset entry to it.
-func (f *Fabric) ResetPairWarp(rec *Mutations, sha, parentBranch string, ownPaths []string, opts SyncOptions) error {
+func (f *Fabric) ResetPairCode(rec *Mutations, sha, parentBranch string, ownPaths []string, opts SyncOptions) error {
 	req := pathRequest{
 		what:      "reset pair warp checkout",
 		container: filepath.Dir(f.warpPath),
@@ -1627,7 +1669,7 @@ func (f *Fabric) ResetPairWarp(rec *Mutations, sha, parentBranch string, ownPath
 	if err != nil {
 		return err
 	}
-	if err := resetHardTo(rec, req, f.warp, sha); err != nil {
+	if err := resetHardTo(rec, req, f.code, sha); err != nil {
 		if moved {
 			return fmt.Errorf("the remote task branch was already updated to %s, but rewriting the checkout failed: %w; way forward: re-run this reset, which converges", sha, err)
 		}
@@ -1636,7 +1678,7 @@ func (f *Fabric) ResetPairWarp(rec *Mutations, sha, parentBranch string, ownPath
 	return nil
 }
 
-// moveRemoteTaskBranch is ResetPairWarp's remote half: it refuses on a remote task branch holding commits HEAD lacks, and otherwise moves the remote branch to sha through updateRemoteBranch, reporting whether it did.
+// moveRemoteTaskBranch is ResetPairCode's remote half: it refuses on a remote task branch holding commits HEAD lacks, and otherwise moves the remote branch to sha through updateRemoteBranch, reporting whether it did.
 func (f *Fabric) moveRemoteTaskBranch(rec *Mutations, req pathRequest, sha, parentBranch string, opts SyncOptions) (moved bool, err error) {
 	if opts.SkipPush {
 		return false, nil
@@ -1649,7 +1691,7 @@ func (f *Fabric) moveRemoteTaskBranch(rec *Mutations, req pathRequest, sha, pare
 	if tip == "" {
 		return false, nil
 	}
-	branch, err := f.warp.CurrentBranch()
+	branch, err := f.code.CurrentBranch()
 	if err != nil {
 		return false, fmt.Errorf("cannot read the task branch: %w", err)
 	}
@@ -1657,7 +1699,7 @@ func (f *Fabric) moveRemoteTaskBranch(rec *Mutations, req pathRequest, sha, pare
 		return false, fmt.Errorf("the remote task branch %s holds commits this checkout lacks:\n%s\n%s", branch, f.describeCommits(remoteOnly), remoteDivergenceWayForward(originRemoteName, branch))
 	}
 
-	beyondSHA, err := f.warp.CommitsNotIn(tip, sha)
+	beyondSHA, err := f.code.CommitsNotIn(tip, sha)
 	if err != nil {
 		return false, fmt.Errorf("cannot compare the remote task branch with %s: %w", sha, err)
 	}
@@ -1667,7 +1709,7 @@ func (f *Fabric) moveRemoteTaskBranch(rec *Mutations, req pathRequest, sha, pare
 
 	err = updateRemoteBranch(rec, remoteBranchUpdateRequest{
 		pathReq:      req,
-		repo:         f.warp,
+		repo:         f.code,
 		remote:       originRemoteName,
 		branch:       branch,
 		parentBranch: parentBranch,
@@ -1715,5 +1757,5 @@ func (f *Fabric) resetMergeSides(rec *Mutations, warpSHA string) error {
 		dirtiness: dirtyScopeTracked(),
 		force:     true,
 	}
-	return resetHardTo(rec, warpReq, f.warp, warpSHA)
+	return resetHardTo(rec, warpReq, f.code, warpSHA)
 }

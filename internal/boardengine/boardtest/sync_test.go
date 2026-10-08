@@ -20,7 +20,7 @@ import (
 
 // newSyncRepo returns an isolated working-tree and helpers that count commits on
 // the remote (@{u}) and locally (HEAD). It builds a real hub via hubforge.NewHub, whose records
-// worktree is cloned from h.WeftBare by CloneHub -- but unlike the old records-only fixture's
+// worktree is cloned from h.RecordsBare by CloneHub -- but unlike the old records-only fixture's
 // pre-established upstream tracking, that tracking is NOT set up here: hubforge's own records-bare
 // template must stay genuinely empty and unpushed (pushing to it would trip CloneHub's records-sibling bootstrap guard), so a
 // fresh hub's records primary carries a local-only "initialise records primary branch" commit with no
@@ -32,7 +32,7 @@ func newSyncRepo(t *testing.T) (work string, remoteCommits, localCommits func() 
 	t.Helper()
 
 	h := hubforge.NewHub(t, ".")
-	work = h.PrimeWeft()
+	work = h.PrimeRecords()
 
 	if out, err := exec.Command("git", "-C", work, "push", "-u", "origin", "HEAD").CombinedOutput(); err != nil {
 		t.Fatalf("establish upstream tracking: %v: %s", err, out)

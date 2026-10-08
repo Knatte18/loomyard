@@ -1,7 +1,6 @@
 // clone.go implements the clone orchestration logic with strict-abort teardown.
 //
-// After the weft clone succeeds, the weft primary is checked out onto its WeftBranchName-suffixed
-// pairing (e.g. "main-weft" for a default branch "main") so weft:main is never claimed directly —
+// After the weft clone succeeds, the weft primary is checked out onto its RecordsBranchName-suffixed pairing (e.g. "main-weft" for a default branch "main") so weft:main is never claimed directly —
 // every fabric-managed weft branch, including the primary's, carries the uniform "-weft" suffix.
 // The suffixed branch is adopted from an existing origin/<branch>-weft when the remote already
 // carries one (a re-clone of a hub with weft history) and created fresh only otherwise;
@@ -118,7 +117,7 @@ type CloneResult struct {
 //  2. Clone warp repo to <Hub>/<name>; on failure, teardown and return the error.
 //  3. Clone weft repo to <Hub>/<name>-weft; on failure, teardown and return the error.
 //     3b. Read the weft primary's checked-out branch and check out its
-//     WeftBranchName-suffixed pairing at the same HEAD, capturing the warp
+//     RecordsBranchName-suffixed pairing at the same HEAD, capturing the warp
 //     branch name it read; on failure, teardown and return the error.
 //  4. Materialize <Hub>/_board as a second weft worktree via ensureBoardWorktree,
 //     adopted onto the captured warp branch if it already exists locally from
@@ -299,10 +298,10 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	}
 	rec.Append(KindWorktreeCreated, weftPath, "")
 
-	// Step 6b: Check the weft primary out onto the WeftBranchName-suffixed pairing of the warp
+	// Step 6b: Check the weft primary out onto the RecordsBranchName-suffixed pairing of the warp
 	// prime's own branch, so weft:<branch> is never claimed directly under fabric's uniform branch
 	// scheme. warpBranch is read from the warp clone, never from the weft clone: `lyx fabric add`
-	// forks every new pair's weft branch from WeftBranchName(<warp branch>), so a weft primary named
+	// forks every new pair's weft branch from RecordsBranchName(<warp branch>), so a weft primary named
 	// after the weft remote's own HEAD (an empty bare created with a different default branch)
 	// leaves a hub on which no pair can ever be created. Step 7's _board worktree-add reuses the
 	// same value.
@@ -442,7 +441,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("resolve prime layout at %s: %w", primeCwd, err))
 	}
 
-	weftBase := filepath.Join(WeftWorktree(l), l.AnchorRel)
+	weftBase := filepath.Join(RecordsWorktree(l), l.AnchorRel)
 
 	return CloneResult{
 		HubPath:             hubPath,
@@ -472,16 +471,15 @@ func checkedOutBranch(dir, role string) (string, error) {
 	return branch, nil
 }
 
-// suffixWeftPrimaryBranch checks the weft primary at weftPath (immediately after clone) out onto
-// WeftBranchName(warpBranch), adopt-or-create style. When origin already carries the suffixed
-// branch — a re-clone (fresh machine, `clone --reset`) of a hub that has synced weft history — that
+// suffixWeftPrimaryBranch checks the weft primary at weftPath (immediately after clone) out onto RecordsBranchName(warpBranch), adopt-or-create style.
+// When origin already carries the suffixed branch — a re-clone (fresh machine, `clone --reset`) of a hub that has synced weft history — that
 // remote branch is adopted as a tracking local branch, so the fresh hub inherits the accumulated
 // weft state (its _lyx content) and its first push can rebase-recover through the configured
-// upstream instead of diverging permanently from an untracked fork. Only when the remote has no
-// suffixed branch yet (a genuinely new hub) is the branch created fresh at the current HEAD.
+// upstream instead of diverging permanently from an untracked fork.
+// Only when the remote has no suffixed branch yet (a genuinely new hub) is the branch created fresh at the current HEAD.
 // Returns an error if any git call fails.
 func suffixWeftPrimaryBranch(weftPath, warpBranch string) error {
-	suffixedBranch := WeftBranchName(warpBranch)
+	suffixedBranch := RecordsBranchName(warpBranch)
 
 	// Adopt path: the remote already carries the suffixed branch (this is a
 	// re-clone of a hub with existing weft history). Starting the local branch

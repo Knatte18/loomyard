@@ -33,11 +33,11 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	hubforge.AddPair(t, h, "task")
-	taskRecords := h.PairWeftSibling("task")
+	taskRecords := h.PairRecordsSibling("task")
 	gitkit.CommitFile(t, taskRecords, configengine.ConfigFileRel("loom"), "task_setting: changed\n", "task: change loom config")
 	gitkit.CommitFile(t, taskRecords, configengine.ConfigFileRel("board"), "task_setting: changed\n", "task: change board config")
 
-	taskLocation, err := lyxcwd.ResolveWorktree(h.PairWarpWorktree("task"))
+	taskLocation, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("task"))
 	if err != nil {
 		t.Fatalf("lyxcwd.ResolveWorktree(task) error = %v; want nil", err)
 	}

@@ -100,7 +100,7 @@ func NewPublish(deps Deps) (*Publish, error) {
 // Done after a created or open pull request is safe because the next row is the PR-Gate producer, which owns approval, rejection and the wait;
 // an open pull request's title and body are refreshed from the change description first.
 // Out of scope: Finalize's pull-request close calls only warn;
-// batten's Worktree-Create row keeps a failed fabricengine.Add push as Stuck, because Add's rollback keeps the branch it made and an immediate re-step would stop again;
+// batten's Worktree-Create row keeps a failed fabricengine.Add push as Stuck, because Add retries a bare `(failed)` refusal itself and rolls back what it created, so a push that still fails is left Stuck for a human;
 // the status-commit and Seed-Child pushes only warn;
 // batten's Worktree-Teardown returns a failed remote branch deletion as an unmarked error, since fabricengine.RemoveResult reports it as text with no chain to classify.
 func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {

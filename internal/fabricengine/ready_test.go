@@ -31,7 +31,7 @@ func TestReady(t *testing.T) {
 		{
 			name: "sibling present",
 			location: func(t *testing.T, tmp string) string {
-				if err := os.Mkdir(fabricengine.WeftWorktree(locationkit.Location(tmp, "worktree", ".")), 0o755); err != nil {
+				if err := os.Mkdir(fabricengine.RecordsWorktree(locationkit.Location(tmp, "worktree", ".")), 0o755); err != nil {
 					t.Fatalf("mkdir weft sibling: %v", err)
 				}
 				return tmp

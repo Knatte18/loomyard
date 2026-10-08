@@ -25,7 +25,7 @@ func TestWire_Real_PublishRejectedPushNamesRemoteTip(t *testing.T) {
 	hub := hubforge.NewHub(t, ".")
 	const slug = "publishrejected"
 	hubforge.AddPair(t, hub, slug)
-	worktree := hub.PairWarpWorktree(slug)
+	worktree := hub.PairCodeWorktree(slug)
 	location, err := lyxcwd.ResolveWorktree(worktree)
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)

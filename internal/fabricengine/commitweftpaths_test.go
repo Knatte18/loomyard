@@ -1,4 +1,4 @@
-// commitweftpaths_test.go — unit tests for weftCommitPathspec and CommitWeftPaths' git-free early
+// commitweftpaths_test.go — unit tests for weftCommitPathspec and CommitRecordsPaths' git-free early
 // return paths. Every test here builds inputs by hand and spawns no git, per the Test Tier Purity
 // Invariant.
 
@@ -56,40 +56,40 @@ func TestWeftCommitPathspec(t *testing.T) {
 	}
 }
 
-// TestCommitWeftPaths_SkipGit asserts CommitWeftPaths returns ("", false, nil) for
+// TestCommitRecordsPaths_SkipGit asserts CommitRecordsPaths returns ("", false, nil) for
 // SyncOptions{SkipGit: true} against a path that does not exist, proving no lock was taken and no
 // directory created, and that the passed recorder's snapshot stays empty.
 //
-//testtiming:keep CommitWeftPaths taking no lock and creating no directory under SkipGit against a nonexistent path, leaving the recorder empty; coverage of its blocks by other tests does not show an assertion of this
-func TestCommitWeftPaths_SkipGit(t *testing.T) {
+//testtiming:keep CommitRecordsPaths taking no lock and creating no directory under SkipGit against a nonexistent path, leaving the recorder empty; coverage of its blocks by other tests does not show an assertion of this
+func TestCommitRecordsPaths_SkipGit(t *testing.T) {
 	weftPath := filepath.Join(t.TempDir(), "does-not-exist")
 	rec := NewMutations("")
 
-	sha, committed, err := CommitWeftPaths(rec, weftPath, ".", []string{"_lyx/fabric/origin.json"}, "msg", SyncOptions{SkipGit: true})
+	sha, committed, err := CommitRecordsPaths(rec, weftPath, ".", []string{"_lyx/fabric/origin.json"}, "msg", SyncOptions{SkipGit: true})
 	if err != nil {
-		t.Fatalf("CommitWeftPaths() error = %v; want nil", err)
+		t.Fatalf("CommitRecordsPaths() error = %v; want nil", err)
 	}
 	if sha != "" || committed {
-		t.Errorf("CommitWeftPaths() = (%q, %v); want (\"\", false)", sha, committed)
+		t.Errorf("CommitRecordsPaths() = (%q, %v); want (\"\", false)", sha, committed)
 	}
 	if got := rec.Snapshot().Len(); got != 0 {
 		t.Errorf("recorder snapshot has %d entries; want 0 — the SkipGit early return must claim no commit", got)
 	}
 }
 
-// TestCommitWeftPaths_EmptyPaths asserts CommitWeftPaths returns ("", false, nil) for an empty
+// TestCommitRecordsPaths_EmptyPaths asserts CommitRecordsPaths returns ("", false, nil) for an empty
 // relPaths slice against a path that does not exist, proving no lock was taken and no directory
 // created, and that the passed recorder's snapshot stays empty.
-func TestCommitWeftPaths_EmptyPaths(t *testing.T) {
+func TestCommitRecordsPaths_EmptyPaths(t *testing.T) {
 	weftPath := filepath.Join(t.TempDir(), "does-not-exist")
 	rec := NewMutations("")
 
-	sha, committed, err := CommitWeftPaths(rec, weftPath, ".", nil, "msg", SyncOptions{})
+	sha, committed, err := CommitRecordsPaths(rec, weftPath, ".", nil, "msg", SyncOptions{})
 	if err != nil {
-		t.Fatalf("CommitWeftPaths() error = %v; want nil", err)
+		t.Fatalf("CommitRecordsPaths() error = %v; want nil", err)
 	}
 	if sha != "" || committed {
-		t.Errorf("CommitWeftPaths() = (%q, %v); want (\"\", false)", sha, committed)
+		t.Errorf("CommitRecordsPaths() = (%q, %v); want (\"\", false)", sha, committed)
 	}
 	if got := rec.Snapshot().Len(); got != 0 {
 		t.Errorf("recorder snapshot has %d entries; want 0 — the empty-relPaths early return must claim no commit", got)

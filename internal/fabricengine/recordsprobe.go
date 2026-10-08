@@ -1,4 +1,4 @@
-// warpprobe.go implements the pre-hub weft probe: a shallow, throwaway clone of the weft candidate
+// recordsprobe.go implements the pre-hub weft probe: a shallow, throwaway clone of the weft candidate
 // used to read the recorded warp binding and discriminate a real weft from an accidental warp before
 // any hub directory is created.
 //

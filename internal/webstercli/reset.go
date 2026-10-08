@@ -36,7 +36,7 @@ It discards commits above the target on the task branch and uncommitted changes
 to tracked paths the run wrote, and moves the remote task branch back to the
 target so a later push is not rejected; it leaves untracked files, the records side and every
 other branch alone, takes no raw SHA and has no force flag.
-WEFT_SKIP_PUSH=1 leaves the remote task branch alone.
+FABRIC_SKIP_PUSH=1 leaves the remote task branch alone.
 It clears the persisted pre-fix head and changes no other webster state; run
 "lyx webster run --fresh" or "lyx webster run" afterwards, as the refusal that
 sent you here says.
@@ -116,7 +116,7 @@ Example:
 				}
 			}
 			rec := fabricengine.NewMutations("")
-			if err := fab.ResetPairWarp(rec, plan.SHA, parent, plan.OwnPaths, fabricengine.EnvSyncOptions()); err != nil {
+			if err := fab.ResetPairCode(rec, plan.SHA, parent, plan.OwnPaths, fabricengine.EnvSyncOptions()); err != nil {
 				if remoteBranchMoved(rec) {
 					clihelp.SetExit(cmd.Context(), output.ErrFields(out, fmt.Sprintf("webster: reset --to %s moved the remote task branch but not the checkout: %v", target, err), map[string]any{
 						"mutations": rec.Entries(),

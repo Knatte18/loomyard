@@ -38,7 +38,7 @@ type RemoteWarpCleanupResult struct {
 }
 
 // CleanupRemoteWarp classifies every branch on the warp repo's origin and, with apply, deletes the leftover task branches among them.
-// A branch is fabric-managed when the weft origin holds an archive/<slug>/* tag or a WeftBranchName(branch) branch for it, where slug is the branch without BranchPrefix;
+// A branch is fabric-managed when the weft origin holds an archive/<slug>/* tag or a RecordsBranchName(branch) branch for it, where slug is the branch without BranchPrefix;
 // with a non-empty BranchPrefix, a branch lacking it is unmanaged.
 // A managed branch is a deletion candidate unless it is origin's default branch, is checked out in a hub worktree, is in openPRHeads, or carries work not landed on the default branch.
 // Every other entry carries the reason it was kept.
@@ -73,7 +73,7 @@ func (t *Topology) cleanupRemoteWarp(l *lyxcwd.Location, apply bool, openPRHeads
 		return res, err
 	}
 
-	weftRoot, err := WeftRepoRoot(l)
+	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return res, fmt.Errorf("resolve weft repo root: %w", err)
 	}
@@ -160,7 +160,7 @@ func (t *Topology) keptReason(branch, defaultBranch string, weftBranches map[str
 	if slug == "" {
 		return "not fabric-managed: empty slug"
 	}
-	if !hasWeftEvidence(slug, WeftBranchName(branch), weftBranches, archiveTagRefs) {
+	if !hasWeftEvidence(slug, RecordsBranchName(branch), weftBranches, archiveTagRefs) {
 		return "not fabric-managed: the weft origin holds neither a weft branch nor an archive tag for it"
 	}
 	if checkedOut[branch] {

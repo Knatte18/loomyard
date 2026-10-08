@@ -4,7 +4,7 @@
 // internal/fabriccli.spawnPush: it launches a detached `lyx fabric --warp-path <abs> --weft-path
 // <abs> push` child (either flag omitted when its path is empty) that re-enters the fabric CLI's
 // bypass mode and pushes whichever side(s) were supplied.
-// PushWarpAt is the warp-side sibling of weftgit.go's pushWeftAt — the synchronous, no-Fabric-
+// PushWarpAt is the warp-side sibling of recordsgit.go's pushWeftAt — the synchronous, no-Fabric-
 // instance push primitive for the warp side.
 // It has no production caller today: the detached child's bypass handler (internal/fabriccli's
 // `push` RunE) drives CoalescePushBothAt instead, which pushes both sides through PushRebaseFree
@@ -32,13 +32,13 @@ import (
 // Shared Decision's spawn point.
 // Either flag is omitted from the child's args when its corresponding path is empty;
 // the caller may pass one or both paths.
-// Returns nil immediately, forking no child, when WEFT_SKIP_GIT or WEFT_SKIP_PUSH is set (skip-env
+// Returns nil immediately, forking no child, when FABRIC_SKIP_GIT or FABRIC_SKIP_PUSH is set (skip-env
 // gating is helper-internal, matching the pre-consolidation fabriccli.spawnPush) or when both paths
 // are empty — there is nothing to push.
 // The child is started but never Waited,
 // and its stdin/stdout/stderr are left nil so no handle is inherited from the parent.
 func SpawnDetachedPush(warpPath, weftPath string) error {
-	if os.Getenv("WEFT_SKIP_GIT") == "1" || os.Getenv("WEFT_SKIP_PUSH") == "1" {
+	if os.Getenv("FABRIC_SKIP_GIT") == "1" || os.Getenv("FABRIC_SKIP_PUSH") == "1" {
 		return nil
 	}
 	if warpPath == "" && weftPath == "" {
@@ -79,7 +79,7 @@ func SpawnDetachedPush(warpPath, weftPath string) error {
 }
 
 // PushWarpAt pushes unpushed commits at warpPath directly, with no Fabric instance and no weft path
-// involved — the warp-side analog of weftgit.go's pushWeftAt.
+// involved — the warp-side analog of recordsgit.go's pushWeftAt.
 // Gating matches pushWeftAt exactly.
 //
 // It has NO production caller. The detached push child's bypass handler drives CoalescePushBothAt,
@@ -103,7 +103,7 @@ func PushWarpAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
 	if err := repo.PushCoalesced(); err != nil {
 		return PushResult{}, err
 	}
-	recordPushIfAdvanced(rec, repo, "warp", warpPath, hadUnpushed, hadUnpushedErr)
+	recordPushIfAdvanced(rec, repo, "code", warpPath, hadUnpushed, hadUnpushedErr)
 
 	return PushResult{}, nil
 }
@@ -135,7 +135,7 @@ func PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (res PushResult, er
 	if err := repo.PushRebaseFree(); err != nil {
 		return PushResult{}, err
 	}
-	recordPushIfAdvanced(rec, repo, "warp", warpPath, hadUnpushed, hadUnpushedErr)
+	recordPushIfAdvanced(rec, repo, "code", warpPath, hadUnpushed, hadUnpushedErr)
 
 	return PushResult{}, nil
 }

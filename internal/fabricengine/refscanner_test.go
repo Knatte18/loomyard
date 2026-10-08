@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// fakeLayout returns a lyxcwd.Location that resolves fabricengine.WeftWorktree() without spawning
+// fakeLayout returns a lyxcwd.Location that resolves fabricengine.RecordsWorktree() without spawning
 // git, the same shape websterengine/audit_test.go's own fakeLayout builds.
 func fakeLayout() *lyxcwd.Location {
 	return &lyxcwd.Location{HubPath: "/hub", WorktreeName: filepath.Base("/hub/master-builder")}
@@ -27,7 +27,7 @@ func fakeLayout() *lyxcwd.Location {
 func TestRefScanner_Matches(t *testing.T) {
 	layout := fakeLayout()
 	scanner := fabricengine.NewRefScanner(layout)
-	weftWorktree := fabricengine.WeftWorktree(layout)
+	weftWorktree := fabricengine.RecordsWorktree(layout)
 
 	tests := []struct {
 		name string
@@ -39,6 +39,7 @@ func TestRefScanner_Matches(t *testing.T) {
 		{"lyx fabric invocation", "lyx fabric sync", true},
 		{"lyx weft invocation", "lyx weft sync", true},
 		{"lyx warp invocation", "lyx warp checkout feature", true},
+		{"lyx.exe weft invocation", "lyx.exe weft push", true},
 		{"clean command does not match", "git commit -am wip", false},
 		{"invocation after a separator", "cd /hub/master-builder && lyx fabric sync", true},
 		{"invocation in a pipeline", "echo y | lyx fabric remove x", true},

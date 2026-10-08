@@ -43,7 +43,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 
 	// Resolve a nested layout: same worktree (l.WorktreePath()), but anchored
 	// one level deeper — AnchorRel becomes "sub", matching the hub-wide
-	// nesting convention WarpLyxLink/WeftLyxDirFor assume (every sibling
+	// nesting convention CodeLyxLink/WeftLyxDirFor assume (every sibling
 	// worktree nests at the same AnchorRel offset as the caller's own). The
 	// strict cwd gate requires the anchor to actually be recorded before
 	// Resolve(subDir) can succeed at that subpath.
@@ -70,7 +70,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		t.Fatalf("WireJunctions(nested): %v", err)
 	}
 
-	nestedLyxLink := fabricengine.WarpLyxLink(nestedLayout, slug)
+	nestedLyxLink := fabricengine.CodeLyxLink(nestedLayout, slug)
 	if isLink, err := fslink.IsLink(nestedLyxLink); err != nil || !isLink {
 		t.Fatalf("setup: nested _lyx junction %s not wired: isLink=%v err=%v", nestedLyxLink, isLink, err)
 	}
@@ -103,8 +103,8 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 // <worktree>/<anchorRel> — so a root sweep saw nothing, left the links behind, and reported
 // LinksRemoved: 0 while two junctions existed one directory down.
 func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "remove-anchored-sweep"
 	const anchor = "backend"
@@ -153,8 +153,8 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 // refuses it, and asserts Remove reports the surviving weft worktree instead of returning success —
 // the silent `_ =` swallow used to leave a half-torn pair behind with an ok verdict.
 func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
-	// Serial: t.Setenv("WEFT_SKIP_PUSH") sets a process-global variable.
-	t.Setenv("WEFT_SKIP_PUSH", "1")
+	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
+	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
 	const slug = "remove-locked-pair"
 	h := hubforge.NewHub(t, ".")
@@ -163,8 +163,8 @@ func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
-	weftTarget := fabricengine.WeftWorktreePath(l, slug)
-	gitkit.MustRun(t, h.PrimeWeft(), "git", "worktree", "lock", weftTarget)
+	weftTarget := fabricengine.RecordsWorktreePath(l, slug)
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "worktree", "lock", weftTarget)
 
 	_, err := topology.Remove(l, slug, true, false)
 	if err == nil {

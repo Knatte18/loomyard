@@ -48,7 +48,7 @@ func TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn(t *testing.T) {
 	}
 
 	weftPrimary := filepath.Join(res.HubPath, "warp-weft")
-	suffixed := fabricengine.WeftBranchName("main")
+	suffixed := fabricengine.RecordsBranchName("main")
 
 	// The ref must EXIST, not merely be the checked-out name: an unborn branch is checked out and
 	// reports as current while refs/heads/<branch> resolves to nothing, which is exactly the state
@@ -64,7 +64,7 @@ func TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn(t *testing.T) {
 	// repo-wide fabric.yaml is materialised by the CLI layer through configsync, which
 	// fabricengine must never import.
 	gitkit.MustRun(t, weftPrimary, "git", "worktree", "add", "-b",
-		fabricengine.WeftBranchName("my-task"), filepath.Join(res.HubPath, "my-task-weft"), suffixed)
+		fabricengine.RecordsBranchName("my-task"), filepath.Join(res.HubPath, "my-task-weft"), suffixed)
 }
 
 // TestCloneHub_NonEmptyWeftRemoteBranchUnchanged is the counter-test: the ordinary clone path must
@@ -94,7 +94,7 @@ func TestCloneHub_NonEmptyWeftRemoteBranchUnchanged(t *testing.T) {
 	}
 
 	weftPrimary := filepath.Join(res.HubPath, "warp-weft")
-	suffixed := fabricengine.WeftBranchName("main")
+	suffixed := fabricengine.RecordsBranchName("main")
 
 	suffixedSHA := gitOutput(t, weftPrimary, "rev-parse", "refs/heads/"+suffixed)
 	clonedSHA := gitOutput(t, weftPrimary, "rev-parse", "refs/remotes/origin/main")

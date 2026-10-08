@@ -70,16 +70,16 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 	warpSHA := gitkit.CommitFile(t, warpPath, "warp-file.txt", "warp change", "warp change")
 
 	weftFixture := hubforge.NewHub(t, ".")
-	weftSHA := gitkit.CommitFile(t, weftFixture.PrimeWeft(), "weft-file.txt", "weft change", "weft change")
+	weftSHA := gitkit.CommitFile(t, weftFixture.PrimeRecords(), "weft-file.txt", "weft change", "weft change")
 
-	if _, err := fabricengine.CoalescePushBothAt(warpPath, weftFixture.PrimeWeft(), fabricengine.SyncOptions{}); err != nil {
+	if _, err := fabricengine.CoalescePushBothAt(warpPath, weftFixture.PrimeRecords(), fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("fabricengine.CoalescePushBothAt() error = %v; want nil", err)
 	}
 
 	if got := fabricengine.BareBranchSHAForTest(t, warpBare, "main"); got != warpSHA {
 		t.Errorf("warp bare main = %q; want it advanced to local HEAD %q", got, warpSHA)
 	}
-	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.WeftBare, fabricengine.WeftBranchName("main")); got != weftSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.RecordsBare, fabricengine.RecordsBranchName("main")); got != weftSHA {
 		t.Errorf("weft bare main = %q; want it advanced to local HEAD %q", got, weftSHA)
 	}
 
@@ -123,7 +123,7 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 	}
 
 	callErr := runWithDeadline(t, 30*time.Second, func() error {
-		_, err := fabricengine.CoalescePushBothAt(warpPath, weftFixture.PrimeWeft(), fabricengine.SyncOptions{})
+		_, err := fabricengine.CoalescePushBothAt(warpPath, weftFixture.PrimeRecords(), fabricengine.SyncOptions{})
 		return err
 	})
 	if callErr != nil {
@@ -170,13 +170,13 @@ func TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd(t *testing.
 	})
 
 	weftFixture := hubforge.NewHub(t, ".")
-	weftSHA := gitkit.CommitFile(t, weftFixture.PrimeWeft(), "weft-file.txt", "weft change, no warp", "weft change, no warp")
+	weftSHA := gitkit.CommitFile(t, weftFixture.PrimeRecords(), "weft-file.txt", "weft change, no warp", "weft change, no warp")
 
-	if _, err := fabricengine.CoalescePushBothAt("", weftFixture.PrimeWeft(), fabricengine.SyncOptions{}); err != nil {
+	if _, err := fabricengine.CoalescePushBothAt("", weftFixture.PrimeRecords(), fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("fabricengine.CoalescePushBothAt(\"\", ...) error = %v; want nil (empty warpPath must be a true no-op, not a cwd-relative git open)", err)
 	}
 
-	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.WeftBare, fabricengine.WeftBranchName("main")); got != weftSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.RecordsBare, fabricengine.RecordsBranchName("main")); got != weftSHA {
 		t.Errorf("weft bare main = %q; want it advanced to local HEAD %q", got, weftSHA)
 	}
 }

@@ -22,7 +22,7 @@ func seedBattenRefusedOutsidePrime(t *testing.T, h *hubforge.Hub) {
 		t.Fatalf("writeSeed(prime, batten) = %v; want nil", err)
 	}
 
-	taskLocation, err := lyxcwdResolveWorktreeForTest(t, h.PairWarpWorktree("seed-here"))
+	taskLocation, err := lyxcwdResolveWorktreeForTest(t, h.PairCodeWorktree("seed-here"))
 	if err != nil {
 		t.Fatalf("resolve task worktree: %v", err)
 	}

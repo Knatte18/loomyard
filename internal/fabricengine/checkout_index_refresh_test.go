@@ -46,12 +46,12 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	// correspondence-carrying commit recorded on the original branch.
 	const targetBranch = "index-refresh-target"
 	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
-	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "branch", fabricengine.RecordsBranchName(targetBranch))
 
 	f := hubforge.OpenFabric(t, h)
 
 	// Record one correspondence on the original branch via a real scoped commit.
-	if err := os.WriteFile(filepath.Join(fabricengine.WeftWorktree(l), "_lyx", "config.yaml"), []byte("index refresh probe"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(fabricengine.RecordsWorktree(l), "_lyx", "config.yaml"), []byte("index refresh probe"), 0o644); err != nil {
 		t.Fatalf("write weft config: %v", err)
 	}
 	warpSHA, err := fabricengine.WarpForTest(f).CurrentSHA()
@@ -73,8 +73,8 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	if _, err := top.Checkout(l, targetBranch); err != nil {
 		t.Fatalf("Checkout(%q): %v", targetBranch, err)
 	}
-	if got := gitkit.CurrentBranch(t, fabricengine.WeftWorktree(l)); got != fabricengine.WeftBranchName(targetBranch) {
-		t.Fatalf("weft branch after Checkout = %q; want %q", got, fabricengine.WeftBranchName(targetBranch))
+	if got := gitkit.CurrentBranch(t, fabricengine.RecordsWorktree(l)); got != fabricengine.RecordsBranchName(targetBranch) {
+		t.Fatalf("weft branch after Checkout = %q; want %q", got, fabricengine.RecordsBranchName(targetBranch))
 	}
 
 	// The refreshed index reflects only the now-current branch's trailer

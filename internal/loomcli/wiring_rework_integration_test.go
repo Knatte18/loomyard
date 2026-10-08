@@ -66,11 +66,11 @@ func TestWire_Real_ReworkRoundsArchiveGenerations(t *testing.T) {
 	hub := hubforge.NewHub(t, ".")
 	const slug = "reworkgenerations"
 	hubforge.AddPair(t, hub, slug)
-	location, err := lyxcwd.ResolveWorktree(hub.PairWarpWorktree(slug))
+	location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
 	}
-	recordsSibling := hub.PairWeftSibling(slug)
+	recordsSibling := hub.PairRecordsSibling(slug)
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(location, location.AnchorPath()); err != nil {
@@ -212,7 +212,7 @@ func TestWire_Real_PlanReviewSkipFollowsGenerationClass(t *testing.T) {
 	hub := hubforge.NewHub(t, ".")
 	const slug = "reworkskip"
 	hubforge.AddPair(t, hub, slug)
-	location, err := lyxcwd.ResolveWorktree(hub.PairWarpWorktree(slug))
+	location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
 	if err != nil {
 		t.Fatalf("ResolveWorktree error = %v; want nil", err)
 	}

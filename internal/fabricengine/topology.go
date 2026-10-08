@@ -8,7 +8,7 @@
 // like Commit);
 // Topology is the hub-scoped holder that creates, removes, and reconciles the pairs themselves.
 // A pair does not exist yet when Topology.Add runs, so Topology cannot hold a *Fabric — it only
-// holds the Config needed to derive paths via lyxcwd and branch names via WeftBranchName (backed by
+// holds the Config needed to derive paths via lyxcwd and branch names via RecordsBranchName (backed by
 // internal/weftname).
 
 package fabricengine
@@ -17,6 +17,8 @@ package fabricengine
 // It holds the configuration needed by all topology methods.
 type Topology struct {
 	cfg Config
+	// push is the seam behind Add's branch pushes; its zero value is production.
+	push pushSeam
 }
 
 // NewTopology returns a Topology operating with the given config.

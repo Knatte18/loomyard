@@ -233,7 +233,7 @@ func TestWriteSeed_IdempotentAgainstAnIdenticalSeedAndRefusesADisagreeingOne(t *
 // already applies, so a stray seed can never land in a checkout no run is driven from.
 func TestWriteSeed_RefusesFabricsOwnCheckouts(t *testing.T) {
 	hub := t.TempDir()
-	siblingName := filepath.Base(fabricengine.WeftWorktree(&lyxcwd.Location{HubPath: hub, WorktreeName: "pair", AnchorRel: "."}))
+	siblingName := filepath.Base(fabricengine.RecordsWorktree(&lyxcwd.Location{HubPath: hub, WorktreeName: "pair", AnchorRel: "."}))
 	tests := []struct {
 		name         string
 		worktreeName string

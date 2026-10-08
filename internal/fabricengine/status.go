@@ -3,11 +3,10 @@
 // Status enumerates all warp worktrees via List, pairs each with its weft sibling, reports branch,
 // in-sync verdict, junction health, and scans the warp index for any _lyx
 // paths that have been accidentally git-tracked (warp pollution).
-// A pair is InSync when weftBranch == WeftBranchName(warpBranch),
+// A pair is InSync when weftBranch == RecordsBranchName(warpBranch),
 // and DriftReason states the expected suffixed branch rather than a bare mismatch.
 //
-// Status computes its in-sync verdict inline (branch correspondence via WeftBranchName, then
-// junction health via checkJunctionHealth, both already defined in reconcile.go) rather than
+// Status computes its in-sync verdict inline (branch correspondence via RecordsBranchName, then junction health via checkJunctionHealth, both already defined in reconcile.go) rather than
 // calling the shared Healthy helper (drift.go) — Status already has warpBranch/weftBranch in hand
 // from readBranch, so there is nothing to gain from a second rev-parse round trip through a shared
 // helper.
@@ -35,16 +34,15 @@ type PollutionEntry struct {
 
 // PairStatus describes the relationship between one warp worktree and its paired weft sibling.
 type PairStatus struct {
-	// WarpWorktree is the absolute path to the warp worktree.
-	WarpWorktree string `json:"warp_worktree"`
-	// WeftWorktree is the absolute path to the expected weft sibling worktree.
-	WeftWorktree string `json:"weft_worktree"`
+	// CodeWorktree is the absolute path to the warp worktree.
+	CodeWorktree string `json:"code_worktree"`
+	// RecordsWorktree is the absolute path to the expected weft sibling worktree.
+	RecordsWorktree string `json:"records_worktree"`
 	// WarpBranch is the current branch of the warp worktree (empty if undetermined).
 	WarpBranch string `json:"warp_branch"`
 	// WeftBranch is the current branch of the weft worktree (empty if missing or undetermined).
 	WeftBranch string `json:"weft_branch"`
-	// InSync reports whether the pair is branch-synchronized (weftBranch ==
-	// WeftBranchName(warpBranch)) and the junction is healthy.
+	// InSync reports whether the pair is branch-synchronized (weftBranch == RecordsBranchName(warpBranch)) and the junction is healthy.
 	InSync bool `json:"in_sync"`
 	// DriftReason describes why the pair is out of sync. Empty when InSync is true.
 	DriftReason string `json:"drift_reason,omitempty"`
@@ -80,11 +78,11 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 		warpPath := filepath.FromSlash(entry.Path)
 		warpPath = filepath.Clean(warpPath)
 
-		weftPath := WeftWorktreePath(l, filepath.Base(warpPath))
+		weftPath := RecordsWorktreePath(l, filepath.Base(warpPath))
 
 		pair := PairStatus{
-			WarpWorktree: filepath.ToSlash(warpPath),
-			WeftWorktree: filepath.ToSlash(weftPath),
+			CodeWorktree:    filepath.ToSlash(warpPath),
+			RecordsWorktree: filepath.ToSlash(weftPath),
 		}
 
 		warpBranch, warpBranchErr := readBranch(warpPath)
@@ -122,11 +120,10 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 		pair.JunctionHealthy = junctionHealthy
 		pair.JunctionReason = junctionReason
 
-		// Determine pair in-sync status: branch correspondence uses WeftBranchName
-		// (fabric's suffixed pairing) rather than warp's equal-name requirement, folded
-		// together with junction health exactly as warp's pair-in-sync check (fabric's
+		// Determine pair in-sync status: branch correspondence uses RecordsBranchName (fabric's suffixed pairing) rather than warp's equal-name requirement.
+		// It is folded together with junction health exactly as warp's pair-in-sync check (fabric's
 		// Healthy) folds both checks into one verdict.
-		expectedWeftBranch := WeftBranchName(warpBranch)
+		expectedWeftBranch := RecordsBranchName(warpBranch)
 		switch {
 		case weftBranch != expectedWeftBranch:
 			pair.InSync = false

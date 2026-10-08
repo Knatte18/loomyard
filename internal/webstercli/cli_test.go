@@ -72,8 +72,8 @@ func containsString(haystack []string, needle string) bool {
 	return false
 }
 
-// TestFabricSync_GuardOrdering verifies the WEFT_SKIP_GIT bypass short-circuits before path validation, and that without it fabricSync validates the pair's paths before any git work.
-// It sets WEFT_SKIP_GIT and WEFT_SKIP_PUSH, so it is not parallel.
+// TestFabricSync_GuardOrdering verifies the FABRIC_SKIP_GIT bypass short-circuits before path validation, and that without it fabricSync validates the pair's paths before any git work.
+// It sets FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH, so it is not parallel.
 func TestFabricSync_GuardOrdering(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -85,8 +85,8 @@ func TestFabricSync_GuardOrdering(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("WEFT_SKIP_GIT", tc.skipGit)
-			t.Setenv("WEFT_SKIP_PUSH", "")
+			t.Setenv("FABRIC_SKIP_GIT", tc.skipGit)
+			t.Setenv("FABRIC_SKIP_PUSH", "")
 
 			hub := t.TempDir()
 			layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "pair")), AnchorRel: "."}
@@ -1095,9 +1095,9 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 
 // TestValidateCmd_RefusesOverviewEditWithoutRestamp proves validate refuses a plan whose 00-overview.md changed since the run recorded it:
 // it exits non-zero naming rebaseline and leaves PlanFileHashes and PlanFingerprint untouched in state.json, and the next run entry's fingerprint check still refuses the edit.
-// It sets WEFT_SKIP_GIT, so it is not parallel.
+// It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestValidateCmd_RefusesOverviewEditWithoutRestamp(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	c := newRunTestCLI(t)
 	before := seedRunState(t, c)
 
@@ -1204,9 +1204,9 @@ func TestValidateCmd_Regression329_ForthcomingCreateTargetPassesPending(t *testi
 
 // TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords proves a plan edit to a later card is accepted:
 // the verb exits 0 with batches_kept 1, restamps the fingerprint and leaves batch 1's record intact.
-// It sets WEFT_SKIP_GIT, so it is not parallel.
+// It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	c := newRunTestCLI(t)
 	seedTwoCardPlan(t, c.geom.PlanDir, "second card.")
 	st := seedRunState(t, c)
@@ -1245,9 +1245,9 @@ func TestRebaselineCmd_AcceptsForeignEditAndKeepsRecords(t *testing.T) {
 }
 
 // TestRebaselineCmd_Refusals proves each refused rebaseline exits non-zero with its way forward and leaves state.json byte-identical: an edited card the operator did not name (naming --card), a --card value that is not a positive integer (a usage error naming the value), a removed card whose batch was begun (naming --fresh), and a named card of a done batch (naming that its work has landed, and --fresh).
-// It sets WEFT_SKIP_GIT, so it is not parallel.
+// It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestRebaselineCmd_Refusals(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 
 	cases := []struct {
 		name string
@@ -1355,9 +1355,9 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 
 // TestRebaselineCmd_FabricSyncFailureWayForward reaches rebaseline's fabric-sync refusal and checks it names the same way forward as the bracket verbs' sync refusals.
 // The restamped state is saved locally before the sync, which is what that way forward commits.
-// It sets WEFT_SKIP_GIT, so it is not parallel.
+// It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "")
+	t.Setenv("FABRIC_SKIP_GIT", "")
 	c := newRunTestCLI(t)
 	seedTwoCardPlan(t, c.geom.PlanDir, "second card.")
 	seedRunState(t, c)
@@ -1379,9 +1379,9 @@ func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
 }
 
 // TestRestorePlanCmd_RestoresEditedCard proves an edited card is reported and written back, with state.json byte-identical.
-// It sets WEFT_SKIP_GIT, so it is not parallel.
+// It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestRestorePlanCmd_RestoresEditedCard(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("FABRIC_SKIP_GIT", "1")
 	c := newRunTestCLI(t)
 	seedRunState(t, c)
 	cardPath := filepath.Join(c.geom.PlanDir, "01-only.md")

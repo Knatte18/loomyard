@@ -691,7 +691,7 @@ func paneEventuallyContains(t *testing.T, tmuxPath, socket, target, want string,
 func materializeSibling(t *testing.T, h *hubforge.Hub, name string) string {
 	t.Helper()
 	sibling := filepath.Join(h.Path, name)
-	gitkit.MustRun(t, h.Path, "git", "clone", h.WarpBare, sibling)
+	gitkit.MustRun(t, h.Path, "git", "clone", h.CodeBare, sibling)
 	gitkit.MustRun(t, sibling, "git", "config", "user.email", "test@test.com")
 	gitkit.MustRun(t, sibling, "git", "config", "user.name", "Test")
 	gitkit.SeedConfig(t, sibling, map[string]string{

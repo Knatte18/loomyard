@@ -77,9 +77,8 @@ func pushRebaseFreeLogged(path string) error {
 // than falling back to warpPath (which would put a lock at the pristine warp root) or defaulting to
 // the process cwd (which ensureWeftLockDirAt("") would do — mkdir .weft and git rev-parse relative
 // to cwd).
-// This is a latent edge only: the detached push child always supplies both paths (see
-// SpawnDetachedPush and Fabric.Commit's spawnDetachedPushFn(f.warpPath, f.weftPath) call), so
-// production never hits this guard.
+// This is a latent edge only: the detached push child always supplies the weft path, so production never hits this guard.
+// It supplies the warp path too, except in the prime (see SpawnDetachedPush and Fabric.Commit's spawnDetachedPushFn call).
 // warpPath may still be empty when weftPath is present — that pushes only the weft side;
 // a warp-only push (warpPath set, weftPath empty) is not a supported coalescing entry and is
 // rejected by the same guard.
@@ -148,10 +147,10 @@ func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushRe
 		}
 
 		if warpRepo != nil {
-			recordPushIfAdvanced(rec, warpRepo, "warp", warpPath, warpHadUnpushed, warpUnpushedErr)
+			recordPushIfAdvanced(rec, warpRepo, "code", warpPath, warpHadUnpushed, warpUnpushedErr)
 		}
 		if weftRepo != nil {
-			recordPushIfAdvanced(rec, weftRepo, "weft", weftPath, weftHadUnpushed, weftUnpushedErr)
+			recordPushIfAdvanced(rec, weftRepo, "records", weftPath, weftHadUnpushed, weftUnpushedErr)
 		}
 
 		return afterWarp != beforeWarp || afterWeft != beforeWeft, nil

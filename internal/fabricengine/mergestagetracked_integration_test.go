@@ -26,7 +26,7 @@ func TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed(t *testing
 
 	gitkit.CommitFile(t, warpDir, "tracked.txt", "base\n", "seed tracked.txt")
 	setupConflictingDivergence(t, warpDir, "feature", "conflict.txt")
-	branchAtCurrentHEAD(t, h.PrimeWeft(), "feature-weft")
+	branchAtCurrentHEAD(t, h.PrimeRecords(), "feature-weft")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -46,7 +46,7 @@ func TestMergeStageTracked_EditLandsInMergeCommitAndUntrackedIsListed(t *testing
 		t.Fatalf("WriteFile(created.txt): %v", err)
 	}
 	// The weft is no merge participant, so its untracked file is neither listed nor a reason to fail.
-	if err := os.WriteFile(filepath.Join(h.PrimeWeft(), "weft-state.txt"), []byte("lyx state\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(h.PrimeRecords(), "weft-state.txt"), []byte("lyx state\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(weft-state.txt): %v", err)
 	}
 

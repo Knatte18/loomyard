@@ -177,7 +177,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	})
 	const slug = "loom-smoke-driver-task"
 	hubforge.AddPair(t, h, slug)
-	worktree := h.PairWarpWorktree(slug)
+	worktree := h.PairCodeWorktree(slug)
 
 	loc, err := lyxcwd.Resolve(worktree)
 	if err != nil {
