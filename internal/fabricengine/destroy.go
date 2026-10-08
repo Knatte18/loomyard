@@ -1407,8 +1407,7 @@ func createExclusiveDir(rec *Mutations, path string) (createdToken, error) {
 }
 
 // createGitWorktree adds a git worktree at target through containedWorktreeAdd and, on success,
-// returns the createdToken proving the gate itself added it there,
-// and the createdBranchToken proving the `-b` of buildArgs created createdBranch.
+// returns the createdToken proving the gate itself added it there and the createdBranchToken proving the `-b` of buildArgs created createdBranch.
 //
 // buildArgs returns the full `git worktree add` argument slice given the path git should write the
 // worktree to; the caller supplies it so this one minter serves the warp-side add's `-b <branch>`

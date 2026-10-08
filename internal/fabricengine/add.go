@@ -384,8 +384,8 @@ type addWarpBranch struct {
 // No other origin branch is ever touched.
 // warpTok is the token createGitWorktree minted when this Add call created the warp worktree at
 // target; it is the ownership proof the gate's warp-side removal requires.
-// warp carries the proof that this Add created the warp branch, which deletes the local branch whether it was forked or adopted from origin,
-// and what step 11 did about origin.
+// warp carries the proof that this Add created the warp branch, which lets the gate delete the local branch whether it was forked or adopted from origin.
+// It also carries what step 11 did about origin.
 // A refused or failed branch deletion is logged, not swallowed (this function's return is discarded by every caller), so a branch left behind is visible in the trace.
 // Rollback never restores a remote weft branch Add's step 12 replaced:
 // its content stays reachable from the archive tag, and recreating it would re-block the next retry.
