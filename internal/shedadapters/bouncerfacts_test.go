@@ -359,4 +359,27 @@ prose
 			t.Errorf("facts file = %q; want the unreadable-record line and the per-origin table still counted", out)
 		}
 	})
+
+	t.Run("unparseable review renders a line saying so in place of the table", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, reportName(2)), []byte("no frontmatter here\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile review = %v; want nil", err)
+		}
+		if err := writeRoundUsage(dir, 2, roundUsage{Fan: "fanX", Lenses: []string{"alpha"}}); err != nil {
+			t.Fatalf("writeRoundUsage 2 = %v; want nil", err)
+		}
+
+		out := writeFacts(t, dir)
+		_, lenses, found := strings.Cut(out, "## Lenses")
+		if !found {
+			t.Fatalf("facts file = %q; want a Lenses section", out)
+		}
+		if !strings.Contains(lenses, "Fan: `fanX`\n") || !strings.Contains(lenses, "\nReview unparseable, so findings per origin are unknown: ") {
+			t.Errorf("lens section = %q; want the fan and the unparseable-review line", lenses)
+		}
+		if strings.Contains(lenses, "| Origin |") {
+			t.Errorf("lens section = %q; want no per-origin table", lenses)
+		}
+	})
 }
