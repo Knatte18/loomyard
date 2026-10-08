@@ -36,10 +36,9 @@
 //     own path-missing rule that never checks Pairs.New). glyph-rejected is additionally the
 //     Create inversion's own fail-closed arm (create.go), since a Create target is excluded from
 //     the status policy above and would otherwise have no reader at all for an answer neither
-//     policy understands. The passes that raise glyph-rejected are resolve.go, create.go and
-//     donecheck.go — one per fail-closed status policy in the package; each is named at its own
-//     bullet, and the double report one anomalous target can produce across two of them is
-//     accepted by design.
+//     policy understands.
+//     The passes that raise glyph-rejected are resolve.go, create.go and donecheck.go — one per fail-closed status policy in the package;
+//     each is named at its own bullet, and the double report one anomalous target can produce across two of them is accepted by design.
 //   - create-already-exists (blocking), create-new-unit (informational) — the Create inversion
 //     (create.go), over every Create group's own targets, handle-shaped or glyph-shaped alike.
 //     create-already-exists covers found, multipart and ambiguous alike: all three mean a

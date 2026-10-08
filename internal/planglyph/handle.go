@@ -86,10 +86,7 @@ func renameSignature(signature, oldName, newName string) (string, bool) {
 // its declaration is derived as a one-name spec from the kind and the new identifier alone, since the declaration only feeds quarry.Name's glyph prediction.
 // An interface method's signature is its bare method spec, with no "func" and no receiver, which quarry.Name rejects;
 // the declaration is then derived as a method on the symbol's owner, "func (Owner) Spec".
-// It reports ok false, with a rename-old-unresolved Finding, when Old did not
-// resolve found, when Old resolved found but carries no symbol declaration (a self glyph's answer —
-// a file or unit, not a symbol), when the new-side handle carries no member name, or when Old's own
-// signature carries no occurrence of the identifier it is supposed to declare.
+// It reports ok false, with a rename-old-unresolved Finding, when Old did not resolve found, when Old resolved found but carries no symbol declaration (a self glyph's answer — a file or unit, not a symbol), when the new-side handle carries no member name, or when Old's own signature carries no occurrence of the identifier it is supposed to declare.
 //
 // The r.Status != quarry.StatusFound check below is Found-only by design, not an oversight left
 // over from before the vocabulary was widened: StatusMultipart is deliberately excluded alongside
@@ -358,11 +355,8 @@ func resignHeadMismatch(src declSource, res quarry.NameResult) Finding {
 // skipped here — nothing to bind).
 //
 // Folding a Rename pair's New side in alongside Create declarations is what closes the gap a
-// Rename-only card fell into before this fix (crucible round sonnet-xhigh-r8, PG-2): a card
-// carrying no Create group has an empty Declarations, so a BindHandles keyed on Declarations alone
-// skipped it entirely, and its own New-side handle never lost its "plan:" prefix — permanently
-// invisible to collectGlyphTargets, which excludes anything plan:-prefixed
-// by construction, for every later card that legitimately referenced the renamed symbol.
+// Rename-only card fell into before this fix (crucible round sonnet-xhigh-r8, PG-2):
+// a card carrying no Create group has an empty Declarations, so a BindHandles keyed on Declarations alone skipped it entirely, and its own New-side handle never lost its "plan:" prefix — permanently invisible to collectGlyphTargets, which excludes anything plan:-prefixed by construction, for every later card that legitimately referenced the renamed symbol.
 func cardOwnHandles(c planparser.Card) []string {
 	handles := make([]string, 0, len(c.Declarations)+len(c.Pairs))
 	for _, d := range c.Declarations {

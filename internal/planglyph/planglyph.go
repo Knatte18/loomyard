@@ -78,14 +78,10 @@ func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
 // a pending card's Uses or target of one is excluded from the status check rather than resolved, because the destination may legitimately not exist on disk yet.
 // Its Delete and Edit targets add nothing.
 //
-// The two halves are scoped differently, deliberately. The resolve-backed pass runs over the pending
-// cards ALONE, so a completed card's targets are never resolved against a tree it deliberately changed.
-// The pure
-// pass runs over the WHOLE plan and has only its card-scoped findings dropped, because several pure
-// checks are plan-level and would misreport against a filtered plan: index-file-mismatch would see
-// every completed card's file as orphaned, card-numbering would see gaps, and path-missing's
-// satisfied-by-another-card union would lose the Create and Rename destinations completed cards
-// contribute to still-pending ones.
+// The two halves are scoped differently, deliberately.
+// The resolve-backed pass runs over the pending cards ALONE, so a completed card's targets are never resolved against a tree it deliberately changed.
+// The pure pass runs over the WHOLE plan and has only its card-scoped findings dropped, because several pure checks are plan-level and would misreport against a filtered plan:
+// index-file-mismatch would see every completed card's file as orphaned, card-numbering would see gaps, and path-missing's satisfied-by-another-card union would lose the Create and Rename destinations completed cards contribute to still-pending ones.
 //
 // Once completed is non-empty, a Delete target of a pending card that is already gone is reported as the informational delete-target-gone finding instead of the blocking path-missing or glyph-not-found one:
 // the wanted end state is already the tree's state.
