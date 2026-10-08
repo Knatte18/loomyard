@@ -60,6 +60,14 @@
 // a boundary reading carries its `postTokens` and timestamp and is marked compacted.
 // Every failure degrades to an unknown reading.
 //
+// The session-signal parse (SessionSignalParser) reads the same events file as ParseEvents but yields a separate stream, in signals.go, and leaves ParseEvents unchanged.
+// A `Stop` line is a turn end with its outstanding tasks read exactly as ParseEvents reads them, a `StopFailure` an API-error turn end, a `UserPromptSubmit` a turn start, a `PreToolUse` for `AskUserQuestion` an ask, a `Notification` of type permission prompt or elicitation dialog an ask and `idle_prompt` an idle notice (any other type is skipped), and a `SessionEnd` a session end with its reason.
+// A `SessionEnd` reason of `logout`, `prompt_input_exit` or `other` ends the process; `clear`, `resume` and an unknown reason do not.
+// A recording hook writes a stamp line `{"lyx_stamp":"<hook>","lyx_at":"<RFC 3339 UTC>"}` before its payload, and the parser gives a payload the time of the nearest preceding untaken stamp naming its hook.
+// A payload with no such stamp, or whose stamp's time is empty or malformed, reads a zero time.
+// The count the parser reports as consumed stops before the trailing run of stamp lines with no payload after them, so an incremental reader sees each stamp with its payload at its next read.
+// A transcript-fallback turn end's tasks are read from the transcript at parse time, so the same line parsed again later can read fewer.
+//
 // The activity reading (ActivityReader) takes the transcript's last write time and walks it backwards for the newest main-chain assistant entry that ends a turn or carries Claude Code's `isApiErrorMessage` marker.
 // A session whose newest such entry carries the marker stands on an API error, and the entry's final text is the error's text;
 // a sidechain entry never counts, and a later normal turn end clears the error.
