@@ -60,7 +60,11 @@
 //     A parsed CONTINUE verdict maps to Stuck on harvest or on a CONTINUE replay,
 //     and a parsed CIRCLING verdict maps to Awaiting on harvest or on a replay without spawning anything (see Escalation below),
 //     all three reporting the round's ledger path as the pointer.
-//     Checkpoint judging: the judge prompt's decision rule is held in Go (decisionRuleMarker) and offers CIRCLING only from BouncerConfig.CirclingCheckpoint on.
+//     Checkpoint judging: the judge prompt's decision rule is held in Go (decisionRuleMarker), depends on the round, and offers CIRCLING only from BouncerConfig.CirclingCheckpoint on.
+//     Round 1 rules CONTINUE over any BLOCKING finding or any gating-class finding at MEDIUM or worse.
+//     From round 2 on only a BLOCKING finding, or a gating-class finding at MEDIUM or worse on a key the facts file lists as open in an earlier round, rules CONTINUE;
+//     a gating finding on a key first raised in the latest round converges and is carried into the decision record's `## Open risks` through the CarryOver seam.
+//     A parse-error line in the facts file's earlier-open list, from a missing or unparseable earlier ledger, sends the judge back to round 1's rule.
 //     A Go guard backs the prompt: a CIRCLING verdict with no decision file recorded for its round is read as CONTINUE, with a warning,
 //     when the round is below the checkpoint or when no gating finding is open in this round's ledger and an earlier one (circlingEvidence).
 //     The guard only narrows CIRCLING to CONTINUE, reads only on-disk state, and leaves a round that already has a decision file as recorded.

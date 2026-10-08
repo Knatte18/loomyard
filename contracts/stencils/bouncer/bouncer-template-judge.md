@@ -9,7 +9,7 @@
      and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty -- see internal/stencil/stencil.go).
      The focus-schema markers ({{.focus_example_lists}}, {{.focus_list_rules}}, {{.approved_focus_lists}}) have two variants, rendered by focusSchemaMarkers in internal/shedadapters/bouncerprompt.go:
      Go holds the variant so this stencil stays conditional-free.
-     {{.decision_rule}} is the same kind of Go-held variant, rendered by decisionRuleMarker in the same file: it offers CIRCLING only from the configured checkpoint round on.
+     {{.decision_rule}} is the same kind of Go-held variant, rendered by decisionRuleMarker in the same file: it renders round 1's rule in round 1 and the lighter rule from round 2 on, and offers CIRCLING only from the configured checkpoint round on.
      {{.round}} and {{.next_round}} are deliberately DIFFERENT markers, not a typo: the ledger file
      (`{{.ledger_path}}`, built from ledgerPath(runDir, round)) records the round being judged, while
      the focus file (`{{.focus_path}}`, built from focusPath(runDir, round+1) -- see focusPath's own
@@ -37,21 +37,22 @@ It is no mandate to re-review anything.
 ## Reading order (read all three, in this order)
 
 1. Read the round facts at `{{.facts_path}}`.
-   It is rendered by Go from the reviews and ledgers: counts per round, severity and class, and the finding keys that recur across the ledgers.
+   It is rendered by Go from the reviews and ledgers: counts per round, severity and class, the finding keys that recur across the ledgers, and the keys open in an earlier round.
 2. Read the latest review at `{{.report_path}}`.
    When it carries a `## Focus departures` section, read it too, and ratify or reject each departure explicitly in your verdict rationale.
 3. Read the previous ledger at `{{.previous_ledger}}`.
    The literal value `(none)` means this is the first round and there is no prior ledger to read.
 
-Fixed findings never count as convergence: a fix is new text no fresh reviewer has seen.
+A fix converges a round only for a key first raised in the closing round, from round 2 on, where the decision rule says so, and only because Go carries that finding into the decision record's `## Open risks`.
+Any other fix is new text no fresh reviewer has seen, and never counts as convergence.
 The review's own top-level `verdict:` is no convergence signal either; decide from its findings.
 
 ## Decision rule
 
 {{.decision_rule}}
 
-The facts' recurring-key list comes from ledgers, which carry no class.
-A recurring or reopened key counts as a gating finding when the latest review's finding that you map to that key in the ledger you write is gating-class at MEDIUM or worse, or BLOCKING.
+The facts' recurring-key list and its list of keys open in an earlier round both come from ledgers, which carry no class.
+A listed key counts as a gating finding when the latest review's finding that you map to that key in the ledger you write is gating-class at MEDIUM or worse, or BLOCKING.
 
 You may relabel one finding's effective class or severity, in either direction, only where that finding's own review entry shows the mislabel.
 Never relabel a BLOCKING finding downward.
