@@ -30,7 +30,7 @@ Every entry carries `labels`, validated against two maps in the hub's `board.yam
 - `labels`: every other label, such as an area.
 
 Run `lyx board labels` before choosing labels: it prints both maps in file order with their descriptions.
-A label names the lyx module an entry mainly touches; an entry that belongs to no module carries none beyond its type label.
+Beside its type label, every entry carries a label for each lyx module it touches; an entry that spans the whole tool takes the modules its work would change first.
 A label in neither map is refused; add it with `lyx config board --set labels.<name>=<description>`, or edit the maps in the `lyx config board` editor.
 A recipe name goes in `recipe`, never in a label.
 
@@ -108,6 +108,7 @@ lyx board intake close '{"issue":14,"reason":"Duplicate of #12."}'
 
 - `list` prints the open issues no entry records.
 - `import` with `slug` records the issue as a new note; with `into` it folds the issue into an existing entry. Either way it comments on the issue with a pointer and closes it.
+  An imported note carries only a type label, so give it its module labels with `upsert` at once.
 - `close` ends a noise issue with a stated `reason` and writes nothing to the board.
 
 ## Writing a body
