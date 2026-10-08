@@ -71,7 +71,7 @@ internal/reedengine: 216
 internal/reedengine/render: 12
 internal/selfreportcli: 3
 internal/selfreportengine: 11
-internal/shedadapters: 151
+internal/shedadapters: 152
 internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17

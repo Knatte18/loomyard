@@ -9,9 +9,13 @@ package shedadapters
 import (
 	"context"
 	"errors"
+	"os"
+	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
@@ -79,6 +83,127 @@ func TestBouncer_ConvergedSettle_CallsApproveThenCommit(t *testing.T) {
 				t.Errorf("Call() pointer = %q; want %q", ptr.Path, wantPointer)
 			}
 		})
+	}
+}
+
+// evidenceLedgerContent returns the bytes writeEvidenceLedger writes for round, for the fakes that write a ledger during a run.
+func evidenceLedgerContent(t *testing.T, round int, entries ...evidenceEntry) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeEvidenceLedger(t, dir, round, entries...)
+	content, err := os.ReadFile(ledgerPath(dir, round))
+	if err != nil {
+		t.Fatalf("ReadFile(ledger round %d) = %v; want nil", round, err)
+	}
+	return string(content)
+}
+
+// TestBouncer_ConvergedSettle_CallsCarryOverBeforeApproveAndCommit pins that a CONVERGED round calls the CarryOver seam once, before Approve and Commit.
+// The entry holds the round's open MEDIUM-or-worse and unlabelled findings sorted by key, each with the ledger rounds its key was open in and an "unlabelled" label where the ledger has none, and anchor-relative slash-separated paths.
+// A round with no such finding calls the seam with an empty list.
+func TestBouncer_ConvergedSettle_CallsCarryOverBeforeApproveAndCommit(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		earlier []evidenceEntry
+		judged  []evidenceEntry
+		want    []discussionparser.CarryOverFinding
+	}{
+		{
+			name: "findings are filtered, labelled and given their ledger rounds",
+			earlier: []evidenceEntry{
+				{"alpha", "open", "design", "MEDIUM"},
+				{"delta", "open", "", ""},
+			},
+			judged: []evidenceEntry{
+				{"eps", "open", "design", ""},
+				{"alpha", "open", "design", "MEDIUM"},
+				{"beta", "open", "scope", "BLOCKING"},
+				{"gamma", "open", "design", "LOW"},
+				{"delta", "open", "", ""},
+				{"zeta", "resolved", "design", "MEDIUM"},
+			},
+			want: []discussionparser.CarryOverFinding{
+				{Key: "alpha", Class: "design", Severity: "MEDIUM", Rounds: []int{1, 2}},
+				{Key: "beta", Class: "scope", Severity: "BLOCKING", Rounds: []int{2}},
+				{Key: "delta", Class: "unlabelled", Severity: "unlabelled", Rounds: []int{1, 2}},
+				{Key: "eps", Class: "design", Severity: "unlabelled", Rounds: []int{2}},
+			},
+		},
+		{
+			name:   "a round with nothing to carry over passes an empty list",
+			judged: []evidenceEntry{{"gamma", "open", "design", "LOW"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var log seamLog
+			recorder := carryOverRecorder{log: &log}
+			cfg := newBouncerFixture(t, withNestedRunDir()).Config
+			recorder.install(&cfg)
+			cfg.Approve = log.approve(nil)
+			cfg.Commit = log.commit(nil)
+			cfg.Shuttle = judgeFakeShuttle(2, bouncerVerdictContent("CONVERGED"), evidenceLedgerContent(t, 2, tt.judged...), true)
+			b, err := NewBouncer(cfg)
+			if err != nil {
+				t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+			}
+			layoutBouncerRun(t, cfg, []bouncerJudgeFixture{
+				{round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONTINUE"), ledger: evidenceLedgerContent(t, 1, tt.earlier...)},
+				{round: 2, report: bouncerReport(2)},
+			})
+
+			shedfake.RequireOutcome(t, b, shedengine.Done)
+			if want := []string{"carry-over", "approve", "commit"}; !slices.Equal(log.calls, want) {
+				t.Errorf("seam calls = %v; want %v", log.calls, want)
+			}
+			want := discussionparser.CarryOver{
+				Segment:         "Plan-Review",
+				Round:           2,
+				Closing:         discussionparser.CarryOverConverged,
+				ReviewPath:      "run/round-2-report.md",
+				FixerReportPath: "run/round-2-fixer-report.md",
+				Findings:        tt.want,
+			}
+			if len(recorder.entries) != 1 || !reflect.DeepEqual(recorder.entries[0], want) {
+				t.Errorf("carry-over entries = %+v; want [%+v]", recorder.entries, want)
+			}
+		})
+	}
+}
+
+// TestBouncer_ConvergedSettle_CarryOverFailureBlocksTheSettle pins that a failing CarryOver seam returns an error wrapping the cause with a way forward, never Stuck, and runs neither Approve nor Commit.
+func TestBouncer_ConvergedSettle_CarryOverFailureBlocksTheSettle(t *testing.T) {
+	t.Parallel()
+	sentinel := errors.New("record malformed")
+	var log seamLog
+	recorder := carryOverRecorder{log: &log, err: sentinel}
+	cfg := newBouncerFixture(t, withNestedRunDir()).Config
+	recorder.install(&cfg)
+	cfg.Approve = log.approve(nil)
+	cfg.Commit = log.commit(nil)
+	cfg.Shuttle = judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
+	b, err := NewBouncer(cfg)
+	if err != nil {
+		t.Fatalf("NewBouncer(...) error = %v; want nil", err)
+	}
+	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
+
+	outcome, ptr, err := b.Call(context.Background())
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("Call() error = %v; want errors.Is(err, sentinel)", err)
+	}
+	for _, want := range []string{"shedadapters: gate (bouncer): carry over round 1's open findings", "way forward:", "`## Open risks`", "lyx loom start"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Call() error = %q; want it to contain %q", err, want)
+		}
+	}
+	if outcome != "" || ptr != (shedengine.OutputPointer{}) {
+		t.Errorf("Call() = (%q, %+v); want an empty outcome and pointer alongside the error", outcome, ptr)
+	}
+	if want := []string{"carry-over"}; !slices.Equal(log.calls, want) {
+		t.Errorf("seam calls = %v; want %v", log.calls, want)
 	}
 }
 

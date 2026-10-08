@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -122,6 +123,20 @@ type BouncerConfig struct {
 	// The judge prompt offers CIRCLING only from this round on, and settle reads an earlier CIRCLING as CONTINUE.
 	// It must be positive.
 	CirclingCheckpoint int
+	// Segment is the review segment's name the carry-over entry is filed under, for example Discussion-Review.
+	// Name stays a log identity and is never used for this.
+	// It must be non-empty when CarryOver is set.
+	Segment string
+	// AnchorPath is the absolute anchor the carry-over entry's review and fixer-report paths are made relative to.
+	// It must be absolute when CarryOver is set.
+	AnchorPath string
+	// CarryOver is the one seam that writes and commits the round's carry-over entry into the decision record.
+	// It is called with CarryOverConverged before Approve on a CONVERGED settle, and with CarryOverAccepted before the settle write of a pending circling accept.
+	// The entry has no findings when the round left none, which asks the seam to remove the segment's entry.
+	// An error blocks the settle: neither Approve nor Commit runs.
+	// The skip seam never calls it, since no round ran.
+	// Nil is the absent value and leaves every row behaving exactly as before.
+	CarryOver func(discussionparser.CarryOver) error
 }
 
 // Bouncer is the shedadapters adapter implementing the generic review-gate producer: it composes
@@ -190,6 +205,14 @@ func NewBouncer(cfg BouncerConfig) (*Bouncer, error) {
 	}
 	if cfg.CirclingCheckpoint < 1 {
 		return nil, fmt.Errorf("shedadapters: NewBouncer: CirclingCheckpoint must be positive, got %d", cfg.CirclingCheckpoint)
+	}
+	if cfg.CarryOver != nil {
+		if cfg.Segment == "" {
+			return nil, fmt.Errorf("shedadapters: NewBouncer: Segment must not be empty when CarryOver is set")
+		}
+		if !filepath.IsAbs(cfg.AnchorPath) {
+			return nil, fmt.Errorf("shedadapters: NewBouncer: AnchorPath %q is not absolute when CarryOver is set", cfg.AnchorPath)
+		}
 	}
 	// Model, Effort, and Version are accepted empty and defer to the provider default.
 	if cfg.Now == nil {
@@ -535,7 +558,9 @@ func (b *Bouncer) retireLegacyVerdict(ctx context.Context, round int) (shedengin
 // Both harvest sites have already applied the strict harvestedVerdict check before calling it,
 // so settle reads through parseRecordedVerdict: a replay over a legacy word settles as its alias instead of degrading.
 //
-// On verdictConverged it calls b.cfg.Approve when non-nil, then b.cfg.Commit when non-nil,
+// On verdictConverged it first calls b.cfg.CarryOver when non-nil, with the round's open findings;
+// a failure of that seam is returned as settle's own error, before Approve and Commit.
+// It then calls b.cfg.Approve when non-nil, then b.cfg.Commit when non-nil,
 // and returns shedengine.Done with the round's ledger as the pointer;
 // a non-nil error from either seam is returned as settle's own error, never routed through degrade,
 // because degrade only ever returns shedengine.Stuck and none of its callers ever return shedengine.Done.
@@ -576,6 +601,9 @@ func (b *Bouncer) settle(ctx context.Context, round int, spawned bool) (shedengi
 
 	switch verdict {
 	case verdictConverged:
+		if err := b.writeCarryOver(round, discussionparser.CarryOverConverged); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
 		if b.cfg.Approve != nil {
 			if err := b.cfg.Approve(); err != nil {
 				return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): approve reviewed artifacts: %w", b.cfg.Name, bouncerEngineLabel, err)
@@ -617,7 +645,8 @@ func (b *Bouncer) unearnedCircling(round int) string {
 // settleUnconverged maps a CONTINUE or CIRCLING round onto the recorded decision, then the bounce budget.
 // A decision file for the round is acted on first, whatever the budget:
 // a continue returns Stuck, marked BudgetExempt exactly when the decision's cause is budget,
-// and a pending accept settles its record, then approves and commits exactly as CONVERGED does.
+// and a pending accept calls the CarryOver seam, settles its record, then approves and commits exactly as CONVERGED does.
+// A failed carry-over leaves the accept pending, so its re-call retries the write.
 // A failed settle write is returned before Approve runs, so an accept never passes without its settled record.
 // A settled accept is reachable here only through the entry-time attach branch, and degrades rather than settling twice.
 // A malformed decision file degrades with the read error as the Reason.
@@ -639,6 +668,9 @@ func (b *Bouncer) settleUnconverged(ctx context.Context, round int, verdict boun
 		return b.degrade(ctx, fmt.Sprintf("shedadapters: bouncer circling accept for round %d is already settled; way forward: run `lyx loom start`, which re-enters the segment and archives the settled round", round), "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round)
 	}
 
+	if err := b.writeCarryOver(round, discussionparser.CarryOverAccepted); err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
 	if err := settleCirclingAccept(b.cfg.RunDir, round); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): settle circling accept: %w", b.cfg.Name, bouncerEngineLabel, err)
 	}

@@ -81,6 +81,17 @@
 //     A recorded decision is acted on first, whatever the budget:
 //     a continue maps to Stuck, marked BudgetExempt exactly when the escalation's cause is budget, so a continue after a budget escalation spends no budget;
 //     a pending accept settles its record and maps to Done after Approve and Commit, for either cause.
+//     Carry-over: a Bouncer told a CarryOver seam, with the Segment its entry is filed under and the AnchorPath its paths are relative to, calls it on every Done that settles a judged round.
+//     The seam is called with discussionparser.CarryOverConverged before Approve on a CONVERGED settle,
+//     and with CarryOverAccepted before the settle write of a pending accept, so a failed write leaves the accept pending and its re-call retries.
+//     The entry lists the round ledger's open findings at MEDIUM or worse and the open ones missing a class or severity (labelled `unlabelled`),
+//     sorted by key, each with the ledger rounds its key was open in and never the judge-written rounds list,
+//     and the review and fixer-report paths relative to the anchor.
+//     A round with no such finding calls the seam with an empty list, which removes the segment's entry.
+//     The skip seam never calls it, since no round ran and the last reviewed generation's entry still describes the artifact.
+//     The seam only writes the segment's `## Open risks` entry: it approves nothing and skips no seam,
+//     and a failure is returned as the settle's own error with a way forward, so neither Approve nor Commit runs.
+//     A nil seam leaves every path as before.
 //     The exemption covers only the Bouncer's Stuck; each further round past the budget needs its own decision, and `lyx loom goto` grants a fresh budget.
 //     Every other path -- the seed call, the re-bounce, the clear itself, every degraded path -- reports an empty Path,
 //     with the re-bounce and degraded paths carrying their cause on Reason.
