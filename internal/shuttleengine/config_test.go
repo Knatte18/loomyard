@@ -92,6 +92,9 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	if !cfg.ClaudeDenyAskUserQuestion {
 		t.Error("ClaudeDenyAskUserQuestion = false, want true")
 	}
+	if !cfg.ClaudeDenyPython {
+		t.Error("ClaudeDenyPython = false, want true")
+	}
 	if cfg.ClaudePromptCacheTTL != "5m" {
 		t.Errorf("ClaudePromptCacheTTL = %q, want 5m", cfg.ClaudePromptCacheTTL)
 	}

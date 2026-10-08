@@ -9,6 +9,8 @@ package reedengine
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // CapabilityError reports the multiplexer binary does not meet minimum surface requirements
@@ -47,7 +49,17 @@ var requiredSubcommands = []string{
 	"kill-server",
 }
 
-// probeCapability checks version floor and required subcommands.
+// optionalSubcommands names the tmux subcommands the key bindings depend on.
+// A multiplexer lacking one still boots, since a required verb psmux lacks would take every reed verb down;
+// the probe logs one warning naming each missing verb.
+var optionalSubcommands = []string{
+	"bind-key",
+	"run-shell",
+	"if-shell",
+	"switch-client",
+}
+
+// probeCapability checks version floor and required subcommands, and warns about missing optional ones.
 // run is injected for testability; probeCapabilityLocked binds it to real exec.
 func probeCapability(run func(args ...string) (string, error)) error {
 	versionOut, err := run("-V")
@@ -75,6 +87,11 @@ func probeCapability(run func(args ...string) (string, error)) error {
 			return &CapabilityError{
 				Reason: fmt.Sprintf("multiplexer is missing required subcommand %q", want),
 			}
+		}
+	}
+	for _, optional := range optionalSubcommands {
+		if !available[optional] {
+			logger.Warn("reed: multiplexer lacks an optional subcommand, the key bindings that need it are not pinned", "subcommand", optional)
 		}
 	}
 	return nil

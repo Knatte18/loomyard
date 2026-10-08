@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -37,6 +38,12 @@ type Strand struct {
 	// its spawner sets it at add time.
 	// Reed only stats them: Resume drops a non-live strand whose list is non-empty and fully present, instead of relaunching it.
 	DoneWhen []string `json:"doneWhen,omitempty"`
+	// Segment is the loom segment its spawner named, an opaque display field reed reads only to look up the segment's color.
+	// A strand recorded before the field existed decodes with none.
+	Segment string `json:"segment,omitempty"`
+	// Color is the palette color Segment resolved to, filled on the strand an add or replace returns.
+	// It is never persisted.
+	Color segmentcolor.Color `json:"-"`
 }
 
 // ReedState is the persisted record for one hub's tmux server: the socket name, the session,

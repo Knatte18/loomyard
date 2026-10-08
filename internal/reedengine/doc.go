@@ -49,10 +49,54 @@
 // Engine.SetWaitMark marks a strand's pane as waiting: it sets the pane user options @lyx_wait (the label) and @lyx_wait_start (epoch seconds), or unsets both on an empty label.
 // The mark is display only,
 // so reed stores nothing for it and the options die with the pane;
-// the default status line renders it through its {{.waits}} token, as "<pane title> ⏳<label> <elapsed>m" per marked pane with tmux computing the elapsed minutes at each refresh,
+// the status bar renders it on the strand's own button, as " ⏳<label> <elapsed>m" appended to the strand's name with tmux computing the elapsed minutes at each refresh,
 // and no Go decision reads it.
-// The token resolves to a placeholder that pinGeometryOptionsLocked swaps for the raw tmux format after escaping the rest of the line,
-// so an unmarked session renders as before.
+//
+// Segment colors are read from reed.yaml's segment_colors block, resolved only through Engine.segmentColor, and refused only at boot.
+//
+// SwitchClient (switch.go) is the engine-less function behind `lyx reed switch`: it addresses a told server by socket path and issues list-sessions, display-message and switch-client on it, and nothing else.
+// It is the only reed code that issues switch-client.
+//
+// Every strand pane carries the user options @strand (the role segment of its name, or the full name when it does not parse) and @strand_color (the tmux color of its segment, unset when it has none),
+// and the strand window carries @lyx_strands.
+// Launch sets the pane options and boot marks the strand window; every attach pre-flight marks the window and re-asserts both pane options on every strand bound to a live pane, so a session or strand spawned by an older lyx gets them at its next attach.
+// They are display only: the status bar and the key bindings read them, no Go decision does, and Selvage never gets either pane option.
+// A strand's Segment is an opaque field its spawner names through AddSpec.Segment; reed reads it only to look up the segment's color, which the strand an add or replace returns and Status carry as Color.
+//
+// The navigation bindings (bindings.go) are root-table bindings on the hub's reed server, issued by pinBindingsLocked at the end of the geometry pins, so boot and every attach pre-flight pin them and a server booted by an older lyx gets them at its next attach.
+// Alt+z zooms or unzooms a strand pane, and does nothing in Selvage or in a window that holds no strands;
+// Alt+Up and Alt+Down step to the previous or next strand pane of the strands' window, wrapping, keeping the zoom and passing over Selvage;
+// Alt+Left and Alt+Right run `lyx reed switch --prev|--next` in the background through run-shell, naming the absolute path of the `lyx` that pinned them (panebin.go's composeSwitchCommand), never PATH's;
+// and a left click on the status bar dispatches on its range: VIEW selects and unzooms the strands' window, a strand button selects that pane and zooms it (never toggling the zoom off), a window button selects that window, and a session button switches the client to that session.
+// Bound: these five keys and the left status click are taken from every pane on the server, so a program in a pane, Claude Code included, never receives them; no other key or mouse binding is changed, and tmux's right-click menus keep their defaults.
+// The VIEW and strand-button branches find the strands' window through the @lyx_strands marker, expanded at click time to a tmux-issued window id (`@<n>`), never a config value or free text.
+// tmux resolves a pane range's `=` target only inside the client's current window, so the strand-button branch selects the strands' window first.
+// Every binding is non-fatal: a failed `bind-key` is logged and the rest are still issued, and an unresolvable executable, socket path or tmux path logs a named warning and leaves only Alt+Left and Alt+Right unbound.
+// The capability probe checks bind-key, run-shell, if-shell and switch-client as optional verbs after the required set: a missing one logs one warning naming it and never fails the probe, so a psmux without them still boots.
+//
+// A zoomed strand survives every reed step (zoom.go).
+// tmux clears a window's zoom on resize-pane -y, select-layout, split-window, select-pane without -Z and kill-pane of another pane, so every step that changes panes runs inside keepZoomLocked, under the op lock.
+// It reads the strands' window's `#{window_zoomed_flag} #{pane_id}` through the stored-state window seam; for a zoomed window it unzooms the active pane with `resize-pane -Z`, runs the step, and zooms the same pane again, also when the step failed.
+// The call sites are Up, EnsureSession, Resume, AddStrand and AddStrandUnless, UpdateStrand, RemoveStrand, ReplaceStrand, the watchdog's reapplyLayout and AttachArgv's pre-flight, so every pane list a layout or a pin is planned from is read on the unzoomed window.
+// An op that refuses a bad config value or an unformable name does so before the bracket's first read.
+// Bound: a step re-zooms only a window that was zoomed when it started, and only the pane that was zoomed; a pane gone by then leaves the window in the overview.
+// No session, a failed read, an unparseable answer and a failed unzoom all mean "run plain", logged and never fatal.
+// The two executions tmux runs after reed returns carry the same bracket as tmux commands that test the zoom when they run:
+// the window-resized hook array, when it holds any pin, starts with an entry that records a zoomed window in the window option @lyx_rezoom and unzooms it, and ends its pins with an entry that zooms the active pane again and clears the record, ahead of the watchdog's signal entry;
+// the attach chain runs the same two entries around its select-layout and pins, each naming the strands' window, since the chain runs in the client's context.
+//
+// A restarted server's sessions come back in spawn order (revive.go).
+// The teller tells Geometry.SpawnOrder, a lazy list of ReviveEntry for the hub's worktrees in spawn order, nil in standalone mode; reedengine sorts nothing and reads no loom or fabric record.
+// The revival predicate is one test a worktree evaluates only on its own state under its own op lock: its reed.json records a session, and that session is not live.
+// A downed worktree has no such record, so it is never revived, and a first boot has none either.
+// The steps that can create the session (Up, EnsureSession, Resume, AddStrandUnless) run through withRevivalFirst.
+// At the point where the booter would create its session, with the skip unset, a spawn order told and the predicate holding, the boot returns a sentinel having created nothing.
+// The lock is then released, each entry before the booter's own in the list runs its Revive in list order, sequentially and outside the booter's lock,
+// and the whole step runs again from its start under the lock with the skip set, so a session another booter created meanwhile is used as found and the trigger is evaluated once.
+// No two op locks are ever held at once.
+// Engine.Revive runs this worktree's ordinary up (session and Selvage, no strand relaunch) with the skip set when the predicate holds, and reports whether it did.
+// Bound: the step runs only for a revival of the booter's own recorded session, never for a first boot; it starts no strand and never recurses, since every nested up carries the skip;
+// an entry whose Revive or whose list fails is logged and skipped, and the boot goes on; a later-position session that is still live is not reordered, since session ids cannot change without killing live sessions.
 //
 // A second package-level invariant: every session also carries exactly one
 // additional, permanent pane beyond its strands — Selvage
@@ -492,6 +536,26 @@
 //     pinned heights coming from render.FixedHeightPins: the heights render
 //     actually placed the cells at, after clampBandHeight and
 //     clampToFit, never the raw configured budgets.
+//     The pins are adjusted for the pane-border title row (pinsForContent):
+//     "resize-pane -y" sizes a pane's content, which equals its cell
+//     everywhere except at window row 0, where "pane-border-status top"
+//     draws the title inside the top cell. When the strands' window reads
+//     back "top", the pin on the row-0 pane is its planned cell height
+//     minus one, floored at one content row (so a planned one-row top cell
+//     ends one row taller, the row coming from the cells below), and every
+//     other pin keeps its cell height. The row-0 pane is the first of the
+//     physical pane order the layout string was built from, never the pin
+//     emission order, and a row-0 pane with no pin gets none. "off",
+//     "bottom", an empty answer and a failed readback mean no title row,
+//     so the pins pass through unchanged. The layout planner and render are
+//     untouched.
+//     The same adjusted pins also run directly: right after its
+//     select-layout, on the focusing path and on the SkipFocus one the
+//     watchdog's re-apply takes, applyLayoutLockedOpts issues them as
+//     "resize-pane -t <pane> -y <n>" calls, each non-fatal, so the heights
+//     hold from the apply and not only after the next resize. This run
+//     issues pin entries only — never the hook's signal entry — so an apply
+//     never signals the watchdog into another apply.
 //     The watchdog's own signal entry rides the SAME array, always as its
 //     last entry, and installResizePinsLocked is its only install site —
 //     the array is a whole-snapshot rebuild, so a second writer could only
@@ -680,6 +744,10 @@
 //     mitigation not helping. Adding either would make a multiplexer that runs reed perfectly well
 //     today fail at boot over a cosmetic feature.
 //   - The chained attach (attach.go): AttachArgv's argv is "attach-session … ; select-layout -t <strand window> <layout>", with the separator a literal one-character ";" argv element — never "\;", since exec.Command passes argv directly to the child and no shell ever sees it to unescape.
+//     Each adjusted pin follows the select-layout as one more ";"-separated
+//     "resize-pane -t <pane> -y <n>", so the heights hold from the first
+//     frame; the chained form is therefore recognised by its select-layout
+//     element, never by the argv length.
 //     The chained select-layout runs only after the
 //     client has attached and tmux has already resized the window to it, so
 //     the layout string lands verbatim with no rescale — but only until the
@@ -694,13 +762,15 @@
 //     the layout (exit 1, "have 3 panes but need 2") and destroys nothing;
 //     when the count still matches but membership shifted, cells apply
 //     positionally, so a strand ends up mis-sized rather than lost.
-//   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins seven status-line options — "status" "on"; "status-position" "bottom"; "status-left" <rendered text>; "status-right" ""; "status-left-length" <computed>; and, window-targeted with -w, "window-status-format" "" and "window-status-current-format" "" — plus "window-size" "latest", all targeted at the strand window (-t <strand window>, and -w for window-size, per the Strand window and Session targeting grammar above) both at boot and again in AttachArgv's pre-flight.
+//   - The geometry option pins (windowsize.go): pinGeometryOptionsLocked pins the two-line status bar and the strand pane-border title, whose format strings bar.go declares: "status-format[0]" (the VIEW, strand and window buttons) and "status-format[1]" (the session buttons and the time), both with -g since tmux's status formats are one array; "status-style" (-g) with the dark grey statusBarStyle, so the gaps between the buttons are not tmux's default green; "status" "2" and "status-position" "bottom" on the session; and, window-targeted with -w on the strand window only, "pane-border-status" "top" and "pane-border-format", so a batten window gets no border title — plus "window-size" "latest" (-w).
+//     The window-targeted pins are targeted at the strand window (-t <strand window>, per the Strand window and Session targeting grammar above), both at boot and again in AttachArgv's pre-flight.
+//     The bar reads strands only through the @strand and @strand_color pane options and the @lyx_strands window option, never through the current window.
 //     Their EFFECTIVE values are read
 //     back with display-message rather than trusted from set-option's exit status, because a -g pin
 //     plus exit 0 is not proof the option took — verified live, tmux 3.6: a session-scoped "status on"
 //     survives a global "set-option -g status off" with exit 0, and a window-scoped "window-size
 //     manual" survives the global "latest" pin the same way. "#{status}" feeds the reserved-row count
-//     reserved for the status line ("off" -> 0, "on" -> 1, a numeric N -> N); a "#{window-size}" other
+//     reserved for the status bar ("off" -> 0, "on" -> 1, a numeric N -> N, so the pinned "2" reserves two rows); a "#{window-size}" other
 //     than "latest", or either readback erroring or answering an unrecognised value, suppresses the
 //     chain rather than risking a wrong-height string. Unlike the remain-on-exit/mouse pins beside
 //     them, every pin and both readbacks here are NON-FATAL: those two are correctness dependencies,

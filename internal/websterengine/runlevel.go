@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
@@ -658,6 +659,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		// The failure ladder backgrounds recover-batch and recovery_timeout_min bounds it, so the gate waits on it like a fork.
 		AwaitedShellPrefixes: []string{masterAwaitedShellPrefix},
 		Role:                 MerriamStrandRole,
+		Segment:              segmentcolor.Webster,
 		Interactive:          false,
 		Timeout:              time.Duration(deps.Config.MasterTimeoutMin) * time.Minute,
 	}

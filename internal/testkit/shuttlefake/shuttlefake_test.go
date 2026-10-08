@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -22,7 +23,7 @@ func TestEngine_InertDefaults(t *testing.T) {
 	if got := e.Startup("x"); got != shuttleengine.StartupReady {
 		t.Errorf("Startup = %v, want StartupReady", got)
 	}
-	if e.InterruptSequence() != nil || e.TrustDismissSequence("x") != nil || e.ComposeSend("x") != nil || e.ModelSwitchSequence("x") != nil {
+	if e.InterruptSequence() != nil || e.TrustDismissSequence("x") != nil || e.ComposeSend("x") != nil || e.ModelSwitchSequence("x") != nil || e.ColorSequence("blue") != nil {
 		t.Error("key sequences must default to no inputs")
 	}
 	if audit, err := e.AuditForks("s", "w"); err != nil || audit.SpawnCalls != 0 {
@@ -100,6 +101,9 @@ func TestEngine_Overrides(t *testing.T) {
 			TrustDismissSequenceFn: func(c string) []shuttleengine.PaneInput { return []shuttleengine.PaneInput{{Text: c}} },
 			ComposeSendFn:          func(s string) []shuttleengine.PaneInput { return []shuttleengine.PaneInput{{Text: s}} },
 			ModelSwitchSequenceFn:  func(m string) []shuttleengine.PaneInput { return []shuttleengine.PaneInput{{Text: m}} },
+			ColorSequenceFn: func(c segmentcolor.Color) []shuttleengine.PaneInput {
+				return []shuttleengine.PaneInput{{Text: string(c)}}
+			},
 		}
 		if got := e.InterruptSequence(); len(got) != 1 || got[0].Key != "k" {
 			t.Errorf("InterruptSequence = %v", got)
@@ -112,6 +116,9 @@ func TestEngine_Overrides(t *testing.T) {
 		}
 		if got := e.ModelSwitchSequence("m"); got[0].Text != "m" {
 			t.Errorf("ModelSwitchSequence = %v", got)
+		}
+		if got := e.ColorSequence(segmentcolor.Cyan); got[0].Text != "cyan" {
+			t.Errorf("ColorSequence = %v", got)
 		}
 	})
 	t.Run("Audit", func(t *testing.T) {

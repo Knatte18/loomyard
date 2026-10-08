@@ -5,9 +5,12 @@ package shedadapters
 import (
 	"errors"
 	"os"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -90,7 +93,7 @@ func TestBouncer_Circling_NoDecisionAwaitsNamingBothVerbs(t *testing.T) {
 		{
 			name:      "a slug is named in both verbs",
 			slug:      "my-task",
-			wantReasn: []string{"round 2", "lyx loom circling accept my-task", "lyx loom circling continue my-task", "lyx loom start"},
+			wantReasn: []string{"round 2", "lyx loom circling accept my-task", "lyx loom circling continue my-task", "lyx loom resume"},
 		},
 		{
 			name:      "an empty slug omits the argument",
@@ -170,6 +173,57 @@ func TestBouncer_Circling_RecordedDecision(t *testing.T) {
 				t.Errorf("seams ran %v; want approve and commit once each", seams.order)
 			}
 		})
+	}
+}
+
+// TestBouncer_Circling_AcceptCallsCarryOverBeforeSettling pins that a pending accept calls the CarryOver seam with CarryOverAccepted while the decision is still unsettled, and that a failing seam leaves it unsettled and unapproved so the re-call retries the write.
+func TestBouncer_Circling_AcceptCallsCarryOverBeforeSettling(t *testing.T) {
+	seams := &circlingSeams{}
+	recorder := &carryOverRecorder{err: errors.New("record malformed")}
+	var settledAtCall []bool
+	b, cfg, _ := circlingBouncer(t, func(cfg *BouncerConfig) {
+		seams.install(cfg)
+		recorder.install(cfg)
+	})
+	recorder.onCall = func() {
+		_, _, settled, _, err := readCirclingDecision(cfg.RunDir, 2)
+		settledAtCall = append(settledAtCall, err != nil || settled)
+	}
+	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
+		t.Fatalf("RecordCirclingDecision(accept) = %v; want nil", err)
+	}
+
+	if _, _, err := b.Call(t.Context()); !errors.Is(err, recorder.err) {
+		t.Fatalf("Call() error = %v; want the carry-over failure", err)
+	}
+	if _, _, settled, _, err := readCirclingDecision(cfg.RunDir, 2); err != nil || settled {
+		t.Errorf("readCirclingDecision settled = %v, err = %v; want the accept still pending", settled, err)
+	}
+	if len(seams.order) != 0 {
+		t.Errorf("seams ran %v; want none after a failed carry-over", seams.order)
+	}
+
+	recorder.err = nil
+	shedfake.RequireOutcome(t, b, shedengine.Done)
+	if want := []bool{false, false}; !slices.Equal(settledAtCall, want) {
+		t.Errorf("decision settled at each seam call = %v; want %v", settledAtCall, want)
+	}
+	if len(recorder.entries) != 2 {
+		t.Fatalf("carry-over seam called %d times; want 2 (the failed call and its retry)", len(recorder.entries))
+	}
+	want := discussionparser.CarryOver{
+		Segment:         "Plan-Review",
+		Round:           2,
+		Closing:         discussionparser.CarryOverAccepted,
+		ReviewPath:      "run/round-2-report.md",
+		FixerReportPath: "run/round-2-fixer-report.md",
+		Findings:        []discussionparser.CarryOverFinding{{Key: "alpha", Class: "design", Severity: "MEDIUM", Rounds: []int{1, 2}}},
+	}
+	if !reflect.DeepEqual(recorder.entries[1], want) {
+		t.Errorf("carry-over entry = %+v; want %+v", recorder.entries[1], want)
+	}
+	if got := strings.Join(seams.order, ","); got != "approve,commit" {
+		t.Errorf("seam order = %q; want approve,commit", got)
 	}
 }
 

@@ -45,6 +45,11 @@ func (s runnerSession) SessionIdle(guid string) (shuttleengine.IdleProbe, error)
 	return s.runner.SessionIdle(guid)
 }
 
+// SessionState delegates to Runner.SessionState, which reads the run's files only.
+func (s runnerSession) SessionState(guid string) (shuttleengine.RunSessionState, error) {
+	return s.runner.SessionState(guid)
+}
+
 // Send delegates to Runner.Send, which types into the pane through tmux.
 func (s runnerSession) Send(guid, text string) error {
 	logger.Debug("orch: send to session", "strandGUID", guid)
@@ -61,6 +66,21 @@ func (s runnerSession) ClearSession(guid string) error {
 func (s runnerSession) ReloadPlugins(guid string) error {
 	logger.Debug("orch: reload plugins", "strandGUID", guid)
 	return s.runner.ReloadPlugins(guid)
+}
+
+// TypeColor types the palette color reed resolved for the orch strand through Runner.TypeColor;
+// a strand with no color types nothing.
+func (s runnerSession) TypeColor(guid string) error {
+	strands, err := s.strands.Strands()
+	if err != nil {
+		return err
+	}
+	strand, tracked := trackedStrand(strands, guid)
+	if !tracked || strand.Color == "" {
+		return nil
+	}
+	logger.Debug("orch: type strand color", "strandGUID", guid, "color", string(strand.Color))
+	return s.runner.TypeColor(guid, strand.Color)
 }
 
 // LoadSkills delegates to Runner.LoadSkills,

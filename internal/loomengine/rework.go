@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -84,6 +85,7 @@ func composeReworkPrompt(stencilsDir, specsDir string, p reworkPaths, firstCard 
 // firstCard is the number the new generation's first card takes, one past the highest card of the retired generation,
 // and priorPlanDir is where that generation's plan was archived; both are told as values because the session cannot derive them from the worktree it runs in.
 // The plan role's model-spec and PlanTimeoutMin are reused.
+// Segment is the webster segment, because rework belongs to the Webster row of the loom.
 func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir, parentName string, cfg Config, reg modelspec.Registry, firstCard int, priorPlanDir string) (shuttleengine.Spec, error) {
 	spec, err := modelspec.Parse(cfg.Plan)
 	if err != nil {
@@ -139,6 +141,7 @@ func ReworkSpec(layout *lyxcwd.Location, stencilsDir, specsDir, parentName strin
 		Version:     resolved.Params["version"],
 		Interactive: false,
 		Role:        reworkRole,
+		Segment:     segmentcolor.Webster,
 		Skills:      reworkSkills,
 		Timeout:     time.Duration(cfg.PlanTimeoutMin) * time.Minute,
 	}, nil

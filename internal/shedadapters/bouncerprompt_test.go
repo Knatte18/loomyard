@@ -52,20 +52,32 @@ func decisionRuleSection(t *testing.T, prompt string) string {
 	return section
 }
 
-//testtiming:keep pins the decision rule's text: both non-circling verdicts are always offered and the rising-count caveat comes with CIRCLING
+//testtiming:keep pins the decision rule's text: both non-circling verdicts are always offered, the rising-count caveat comes with CIRCLING, and round 2 on renders the lighter rule with its earlier-open list and round-1 fallback
 func TestDecisionRuleMarker_CirclingOnlyFromTheCheckpoint(t *testing.T) {
 	for _, tt := range []struct {
 		name         string
 		round        int
 		checkpoint   int
 		wantCircling bool
+		wantLighter  bool
 	}{
-		{"below the checkpoint", 1, 2, false},
-		{"at the checkpoint", 2, 2, true},
-		{"above the checkpoint", 5, 2, true},
+		{"round 1 below the checkpoint", 1, 2, false, false},
+		{"round 2 below the checkpoint", 2, 3, false, true},
+		{"at the checkpoint", 2, 2, true, true},
+		{"above the checkpoint", 5, 2, true, true},
+		{"round 1 at the checkpoint", 1, 1, true, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got := decisionRuleMarker(tt.round, tt.checkpoint)
+			lighterPhrases := []string{"keys open in an earlier round", "`## Open risks`", "rule by round 1's rule instead: `CONTINUE` while the latest round carries a gating-class finding at MEDIUM or worse, or any BLOCKING finding"}
+			for _, phrase := range lighterPhrases {
+				if has := strings.Contains(got, phrase); has != tt.wantLighter {
+					t.Errorf("decisionRuleMarker(%d, %d) contains %q = %v; want %v", tt.round, tt.checkpoint, phrase, has, tt.wantLighter)
+				}
+			}
+			if !tt.wantLighter && !strings.Contains(got, "- `CONTINUE` while the latest round carries a gating-class finding at MEDIUM or worse, or any BLOCKING finding.\n") {
+				t.Errorf("decisionRuleMarker(%d, %d) lacks round 1's CONTINUE bullet", tt.round, tt.checkpoint)
+			}
 			if has := strings.Contains(got, "CIRCLING"); has != tt.wantCircling {
 				t.Errorf("decisionRuleMarker(%d, %d) names CIRCLING = %v; want %v", tt.round, tt.checkpoint, has, tt.wantCircling)
 			}

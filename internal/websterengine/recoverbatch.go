@@ -36,6 +36,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -278,6 +279,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		Version:     resolved.Params["version"],
 		Skills:      roleSkills,
 		Role:        string(RoleRecovery),
+		Segment:     segmentcolor.Webster,
 		Round:       batchName,
 		Timeout:     time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,
 	}

@@ -1,4 +1,4 @@
-// cli_test.go covers the reedcli cobra seam through RunCLI: watchdog's flag refusals and the not-a-git-repo error surface.
+// cli_test.go covers the reedcli cobra seam through RunCLI: watchdog's and switch's flag refusals and the not-a-git-repo error surface.
 // No live tmux session is required by any test in this file;
 // the real up/add/status/down round-trip lives in smoke_test.go behind //go:build tmux || llm.
 // Config resolution against a real fixture hub now lives in cli_integration_test.go per the Test Tier Purity Invariant.
@@ -66,5 +66,34 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 
 	if errMsg := envelope.Decode(t, out.String()).Error; errMsg != "not a git repository" {
 		t.Errorf("RunCLI(status) error = %q; want exactly \"not a git repository\"", errMsg)
+	}
+}
+
+// TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository verifies that switch refuses a missing or doubled direction and a missing --client with a JSON error and a non-zero exit.
+// It runs from a directory that is not a git repository, so a refusal naming the flag, not lyxcwd.Resolve's not-a-git-repository error, proves the verb skips the root pre-run's resolution.
+func TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{name: "neither direction", args: []string{"switch", "--socket", "/tmp/s", "--client", "c", "--tmux", "tmux"}, wantErr: "--next and --prev"},
+		{name: "both directions", args: []string{"switch", "--next", "--prev", "--socket", "/tmp/s", "--client", "c", "--tmux", "tmux"}, wantErr: "--next and --prev"},
+		{name: "missing client", args: []string{"switch", "--next", "--socket", "/tmp/s", "--tmux", "tmux"}, wantErr: "--client"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+
+			var out bytes.Buffer
+			exitCode := RunCLI(&out, tt.args)
+
+			if exitCode == 0 {
+				t.Fatalf("RunCLI(%v) = 0; want non-zero", tt.args)
+			}
+			if errMsg := envelope.Decode(t, out.String()).Error; !strings.Contains(errMsg, tt.wantErr) {
+				t.Errorf("RunCLI(%v) error = %q; want it to contain %q", tt.args, errMsg, tt.wantErr)
+			}
+		})
 	}
 }

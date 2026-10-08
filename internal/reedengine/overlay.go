@@ -20,10 +20,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// TmuxCmd wraps low-level tmux operations for one binary and -L socket.
+// TmuxCmd wraps low-level tmux operations for one binary and one server, addressed by -L socket name or, in socket-path mode, by -S socket path.
 type TmuxCmd struct {
 	tmuxPath string
 	socket   string
+	// socketPath, when non-empty, addresses the server by `-S <path>` instead of `-L <socket>`.
+	socketPath string
 	// execHook, when non-nil, replaces the real subprocess exec for BOTH run
 	// and output — the single white-box seam a test can stub to drive a
 	// composed engine call site (e.g. ensureSelvagePaneLocked's Selvage-rebuild
@@ -43,14 +45,27 @@ func NewTmuxCmd(tmuxPath, socket string) TmuxCmd {
 	return TmuxCmd{tmuxPath: tmuxPath, socket: socket}
 }
 
-// run builds and runs a command with "-L <socket>" prepended,
+// newTmuxCmdForSocketPath builds a TmuxCmd bound to the given binary and the server listening on socketPath (-S).
+func newTmuxCmdForSocketPath(tmuxPath, socketPath string) TmuxCmd {
+	return TmuxCmd{tmuxPath: tmuxPath, socketPath: socketPath}
+}
+
+// serverArgs returns the leading flags that address this command's server.
+func (p TmuxCmd) serverArgs() []string {
+	if p.socketPath != "" {
+		return []string{"-S", p.socketPath}
+	}
+	return []string{"-L", p.socket}
+}
+
+// run builds and runs a command with the server flags prepended,
 // folding stderr into the returned error.
 func (p TmuxCmd) run(args ...string) error {
 	if p.execHook != nil {
 		_, err := p.execHook(false, args...)
 		return err
 	}
-	fullArgs := append([]string{"-L", p.socket}, args...)
+	fullArgs := append(p.serverArgs(), args...)
 	logger.Debug("tmux", "args", fullArgs)
 	cmd := exec.Command(p.tmuxPath, fullArgs...)
 	var stderr bytes.Buffer
@@ -60,13 +75,13 @@ func (p TmuxCmd) run(args ...string) error {
 	return wrapTmuxError(err, stderr.Bytes())
 }
 
-// output builds and runs a command with "-L <socket>" prepended,
+// output builds and runs a command with the server flags prepended,
 // capturing stdout and folding stderr into the error.
 func (p TmuxCmd) output(args ...string) (string, error) {
 	if p.execHook != nil {
 		return p.execHook(true, args...)
 	}
-	fullArgs := append([]string{"-L", p.socket}, args...)
+	fullArgs := append(p.serverArgs(), args...)
 	logger.Debug("tmux", "args", fullArgs)
 	cmd := exec.Command(p.tmuxPath, fullArgs...)
 	out, err := cmd.Output()

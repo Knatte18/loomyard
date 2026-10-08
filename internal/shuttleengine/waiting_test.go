@@ -201,22 +201,52 @@ func shellWaitFixture(t *testing.T, outputFile string, tasks []BackgroundTask, s
 
 var oneShell = []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999"}}
 
-// TestPollEventsTick_ShellExpiry covers a waiting turn end whose outstanding list is one background shell:
-// the turn keeps waiting until the bound, and at the bound it ends done when the output files exist.
+// payloadShellTask and transcriptShellTask are one background shell as reported by the turn-end payload and by the transcript fallback.
+var (
+	payloadShellTask    = BackgroundTask{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999", Signal: SignalPayload}
+	transcriptShellTask = BackgroundTask{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999", Signal: SignalTranscript}
+)
+
+// TestPollEventsTick_ShellExpiry covers a waiting turn end whose outstanding list is background shells:
+// a shell without a payload signal keeps the turn waiting until the bound, and at the bound it ends done when the output files exist.
 // When they do not, it is a held turn end naming the expired shell, with the waiting message and the offset past the waiting line.
+// A payload-reported shell never expires, except that a gated run with its output files present finishes done at once on shells that are all payload-reported and unawaited.
 //
-//testtiming:keep pins the background-shell wait bound: still waiting until the bound, then done with output files or held, naming the shell, without them
+//testtiming:keep pins the background-shell wait bound: still waiting until the bound, then done with output files or held, naming the shell, without them; and the payload-shell rules
 func TestPollEventsTick_ShellExpiry(t *testing.T) {
+	passingGate := GateSpec{{Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}
 	tests := []struct {
 		name string
+		// tasks is the outstanding list, oneShell when nil.
+		tasks []BackgroundTask
+		spec  Spec
 		// gated keeps the files-exist shortcut out of the way, so the expiry alone ends the turn.
 		gated       bool
 		touchOutput bool
+		// doneFirst expects the first tick to finish done, with wantExpired as the shells waited out.
+		doneFirst   bool
+		wantExpired []string
 		wantOutcome Outcome
 		wantHeld    bool
 	}{
 		{name: "expires after the bound", gated: true, touchOutput: true, wantOutcome: OutcomeDone},
 		{name: "expiry with missing output is held", wantHeld: true},
+		{name: "a transcript-reported shell expires at the bound", tasks: []BackgroundTask{transcriptShellTask}, gated: true, touchOutput: true, wantOutcome: OutcomeDone},
+		{name: "a payload-reported shell is still waiting, not held, past the bound", tasks: []BackgroundTask{payloadShellTask}},
+		{
+			name: "a gated run with outputs and only payload-reported shells finishes done on the first tick", tasks: []BackgroundTask{payloadShellTask},
+			gated: true, touchOutput: true, doneFirst: true, wantExpired: []string{"sleep 9999"},
+		},
+		{
+			name: "a fork beside payload-reported shells keeps the gated run waiting", tasks: []BackgroundTask{payloadShellTask, {Kind: BackgroundFork, ID: "fork-1"}},
+			gated: true, touchOutput: true,
+		},
+		{
+			name: "an awaited shell beside payload-reported shells keeps the gated run waiting",
+			tasks: []BackgroundTask{payloadShellTask, {Kind: BackgroundShell, ID: "sh-2", Label: "await-me 03", Signal: SignalPayload}},
+			spec:  Spec{AwaitedShellPrefixes: []string{"await-me"}}, gated: true, touchOutput: true,
+		},
+		{name: "an ungated run with outputs and a payload-reported shell finishes done", tasks: []BackgroundTask{payloadShellTask}, touchOutput: true, doneFirst: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -224,11 +254,22 @@ func TestPollEventsTick_ShellExpiry(t *testing.T) {
 			if tt.touchOutput {
 				touchOutputFile(t, outputFile)
 			}
-			run, fc := shellWaitFixture(t, outputFile, oneShell, Spec{})
+			tasks := tt.tasks
+			if tasks == nil {
+				tasks = oneShell
+			}
+			run, fc := shellWaitFixture(t, outputFile, tasks, tt.spec)
 			if tt.gated {
-				run.gate = GateSpec{{Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}
+				run.gate = passingGate
 			}
 
+			if tt.doneFirst {
+				outcome, held, err := run.pollEventsTick()
+				if err != nil || outcome != OutcomeDone || held != nil || !slices.Equal(run.expiredLabels, tt.wantExpired) {
+					t.Fatalf("first tick = (%q, %+v, %v) with expired %v, want done with expired %v", outcome, held, err, run.expiredLabels, tt.wantExpired)
+				}
+				return
+			}
 			if outcome, held, err := run.pollEventsTick(); err != nil || outcome != "" || held != nil {
 				t.Fatalf("first tick = (%q, %v), want still waiting", outcome, err)
 			}
@@ -339,6 +380,64 @@ func TestWait_GatedShellExpiryEvaluatesGate(t *testing.T) {
 	}
 }
 
+// jumpStepClock is a fake clock whose Sleep advances a fixed jump and runs the next scripted step.
+type jumpStepClock struct {
+	*multiStepClock
+	jump time.Duration
+}
+
+func (c *jumpStepClock) Sleep(time.Duration) { c.multiStepClock.Sleep(c.jump) }
+
+// TestWait_PayloadShellLogsPastWaitMinOnceAndFinishesAtTheNextTurnEnd drives an autonomous run whose turn end lists a payload-reported shell across several ticks past the bound.
+// The run logs the shell once, never holds, and finishes at the agent's next turn end.
+// It captures the process-global logger, so it does not run in parallel.
+func TestWait_PayloadShellLogsPastWaitMinOnceAndFinishesAtTheNextTurnEnd(t *testing.T) {
+	buf := logcapture.CaptureVerbose(t)
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, eventsFileName)
+	outputFile := filepath.Join(runDir, "out.md")
+	if err := os.WriteFile(eventsPath, []byte("WAIT:background work\n"), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+
+	fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{outstanding: []BackgroundTask{payloadShellTask}}, withConfig(gateConfig))
+	var notices []string
+	fx.Runner.SetNotifier(func(line string) error {
+		notices = append(notices, line)
+		return nil
+	})
+	fc := newFakeClock(time.Now())
+	idle := func() {}
+	clk := &jumpStepClock{
+		multiStepClock: &multiStepClock{fakeClock: fc, steps: []func(){idle, idle, idle, func() {
+			touchOutputFile(t, outputFile)
+			appendEventsLine(t, eventsPath, "STOP:done")
+		}}},
+		jump: 6 * time.Minute,
+	}
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(clk, fc.Now().Add(time.Hour)))
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Errorf("Outcome = %q, want %q at the agent's next turn end", result.Outcome, OutcomeDone)
+	}
+	if len(notices) != 0 {
+		t.Errorf("notices = %q, want none: a payload-reported shell is never a held turn end", notices)
+	}
+	if got := strings.Count(buf.String(), "shuttle: background shell past wait min"); got != 1 {
+		t.Errorf("past-wait-min log lines = %d, want exactly 1 across the ticks past the bound; log:\n%s", got, buf.String())
+	}
+	if !strings.Contains(buf.String(), "sleep 9999") {
+		t.Errorf("log does not name the shell's label; log:\n%s", buf.String())
+	}
+}
+
 // TestShellWaitMark pins the background-shell wait's mark and marker: on while only non-awaited shells are outstanding,
 // off once they are waited out or a new event replaces the waiting turn end, and never on with a fork or an awaited shell outstanding.
 func TestShellWaitMark(t *testing.T) {
@@ -360,6 +459,7 @@ func TestShellWaitMark(t *testing.T) {
 		{name: "waited out", tasks: oneShell, advance: true, wantOn: true, wantOffAfter: true},
 		{name: "replaced by a later event", tasks: oneShell, replace: true, wantOn: true, wantOffAfter: true},
 		{name: "still waiting stays on", tasks: oneShell, wantOn: true},
+		{name: "a payload-reported shell stays on past the bound", tasks: []BackgroundTask{payloadShellTask}, advance: true, wantOn: true},
 		{name: "a fork outstanding is not a shell wait", tasks: []BackgroundTask{oneShell[0], {Kind: BackgroundFork, ID: "fork-1"}}},
 		{
 			name:  "an awaited shell is not a shell wait",

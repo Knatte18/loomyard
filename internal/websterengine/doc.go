@@ -451,7 +451,8 @@
 //
 // Master's spawn declares one awaited shell prefix, `masterAwaitedShellPrefix` (the backgrounded recovery verb of the failure ladder);
 // recovery_timeout_min already bounds that verb, so shuttle's turn-end wait treats it like a fork.
-// Every other background shell is waited out after `background_shell_wait_min`, and the labels come back on shuttle's `Result.ExpiredShells`.
+// Every other background shell is waited out: after `background_shell_wait_min` for a shell only the transcript reports, and at once, when Master's output files exist, for one the Stop payload reports.
+// The labels come back on shuttle's `Result.ExpiredShells`.
 // lyx does not stop such a shell: the wait only stops waiting on it at a turn end.
 // That turn end finishes the run when Master's output files exist, and otherwise holds the run for the parent until they exist, Master dies or the run times out.
 // What ends the shell follows the run's final outcome.

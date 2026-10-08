@@ -127,6 +127,13 @@
 // Runner.AttachIfLive is the same probe with the removal off, for a caller that waits on a live run and starts nothing after a not-found answer.
 // Runner.ProbeGated is AttachGated's probe returning the reconstructed *Run unwaited, so a caller can hold two probed runs and wait on both concurrently.
 //
+// Segment color: Spec.Segment names the loom segment the spawning module gives its role, and Runner.start forwards it to reed, which resolves the segment's palette color on the strand it returns.
+// After startup confirms the provider ready and before the skill load, start plays Engine.ColorSequence for that color into the strand's pane;
+// an engine without a color command, a strand without a color and a spec with ColorByCaller type nothing.
+// A failed play is logged and never fails the launch, since the color is display only.
+// Runner.TypeColor plays the same sequence into a live shuttle strand for a caller that colors its own session.
+// The palette-to-command mapping is provider grammar and lives in the engine.
+//
 // Skill loading: Spec.Skills names provider-neutral skills that shuttle loads into a fresh session, all in one turn, before the prompt.
 // It needs the optional SkillLoader capability, and a spec that names skills on an engine without it is refused before any run directory exists.
 // An engine that realizes skills leaves the prompt pointer off its launch line and returns it as Launch.PromptLine;
@@ -158,8 +165,13 @@
 // the wait loop sends the entry's carried text once, keeps polling, and re-evaluates on poll ticks while the writer is idle.
 // The deadline and liveness checks keep running, and a deadline or liveness finalize evaluates each entry's optional Final closure in place of Gate, reporting the entry waiting.
 //
-// A turn end that leaves background work outstanding (EventWaiting) keeps the run waiting, with one bound.
-// Once every outstanding task is a background shell and each has been outstanding for Config.BackgroundShellWaitMin minutes (stamped when first seen, kept across ticks),
+// A turn end that leaves background work outstanding (EventWaiting) keeps the run waiting, with one bound for transcript-reported shells.
+// A shell the turn-end payload itself reported (SignalPayload) is live work and never expires: it keeps the turn waiting, never held and never notified, bounded only by the run's own Timeout and the liveness check, and lyx reaps no shell.
+// Once it has been outstanding for Config.BackgroundShellWaitMin minutes the wait logs that once at Info, which changes no decision.
+// A gated run whose output files all exist and whose outstanding tasks are all unawaited payload-reported shells finishes Done at once, through the gate, with those shells in Result.ExpiredShells;
+// an outstanding fork or awaited shell keeps even that run waiting.
+// An ungated run with every output file present finishes Done at any turn end, whatever is outstanding.
+// For any other shell, those the transcript fallback reported or a record with no signal, once every outstanding task is a background shell and each has been outstanding for Config.BackgroundShellWaitMin minutes (stamped when first seen, kept across ticks),
 // the wait loop counts the turn end as a Stop would: OutcomeDone when every output file exists, otherwise a held turn end naming the expired shells.
 // A gated run reaches its gate through the Done branch, so the expiry is an arrival.
 // A fork in the list keeps the turn waiting however long it runs, as does a shell whose label starts with one of Spec.AwaitedShellPrefixes;
@@ -168,10 +180,13 @@
 // A shell once waited out stays expired for the rest of the run, so a later turn end listing it again ends at once.
 // Result.ExpiredShells names the waited-out shells' labels in expiry order, and each expiry is logged as a warning.
 //
-// Wait shows its two Go-side waits, a gate entry's closure (`gate <entry name>`) and the background-shell wait above (`background shells`), in two places:
+// Wait shows its three Go-side waits, a gate entry's closure (`gate <entry name>`), the background-shell wait above (`background shells`) and a held turn end (`held`), in two places:
 // a WaitMarker file, `wait.yaml` in the run's own directory, carrying the label, the start time and the pid of the process running Wait,
 // and a pane mark that ReedOps.SetWaitMark puts on the run's strand.
+// A running gate entry ranks first, then the background-shell wait, then the held wait.
+// The held wait starts at a held turn end, stamped with the run clock's time, and the next tick that reads a new event clears it, so the following turn start, turn end or ask ends it.
 // ReadWaitMarker returns the first marker with a live pid among a run-directory root's runs, which is how `lyx loom status` reads it.
+// ReadWaitMarkers returns every such marker, and WaitMarker.Held tells the held label, so batten's wait reading can skip a held wait: a held run is idle, and its quiet notice still fires.
 // Both exist only for display and status: no shuttle decision reads either,
 // and a failure to write, remove, set or clear one is logged and changes no verdict, error return, re-prompt or gate outcome.
 // Wait clears the pane mark and removes the marker file on entry,
@@ -181,10 +196,33 @@
 // A run counts as live when its outcome reads running and that pid is alive; a record without a pid, from an older binary, is not live.
 // ReadAgentActivity returns one AgentActivity per live run under a run-directory root:
 // the run's strand name, its last activity, and whether its newest turn end is an API error with the error's text.
-// The last activity is the newer of the transcript's last write and the events file's last write, the run's creation time when neither is readable.
+// The last activity is the newer of the transcript's last write and the time of the events file's newest Stop or ask line, the run's creation time when neither is readable.
+// A Stop or ask line carrying no time, an engine without the optional SessionSignalParser capability, and a file yielding no signals count the events file's last write instead, so an idle notice, a prompt submission or a stamp line never moves it.
 // The events past the prompt offset are parsed through the Engine, and the newest turn end goes to the optional ActivityReader capability for the transcript part;
 // an engine without it, and a run with no turn end yet, are judged by the events file alone.
 // Like ReadWaitMarker it reads files only, so a process that runs no shuttle may call it.
+//
+// Session state, in shadow mode: no consumer acts on it.
+// The optional SessionSignalParser capability reads the events file's hook lines as provider-neutral signals with hook-side times:
+// a turn start, a turn end (with its outstanding background tasks), an API-error turn end, an ask, an idle notice and a session end.
+// SessionFold reduces the signals in file order, with facts the caller reads, to one state: busy, idle-done, idle-stalled, asking, dead or unknown, with a cause, a since time and the history of states passed through.
+// Precedence, first that applies: a process-ending session end; a process proven dead; liveness left unproven; an unreadable events file; no signal at all; otherwise the state the signals give.
+// A turn end reads busy while it reports background tasks, idle-done when the run's output files exist, asking for an interactive run, and idle-stalled otherwise.
+// The transcript's API-error marker turns the newest turn end into an API-error stall, and the interrupt marker turns a turn that is still open into an interrupt stall.
+// Output files are consulted first only among the output-derived states, so dead and unknown outrank idle-done and a finished run can read dead:
+// the first consumer that acts on dead applies PATTERN-completion-signal's output check before acting.
+// The facts and their sources: the record gives Interactive and the output files (a run that declares none has none that exist), taken once per read;
+// the optional SessionProber gives process liveness for the session id of the newest signal that names one, else the record's, and the interrupt marker of the newest turn start;
+// the optional ActivityReader gives the API-error marker of the newest turn end; the caller's clock gives the reading time.
+// ReadSessionStates returns one RunSessionState per run under a run-directory root whose record reads running, whether or not its waiting process is alive, and Runner.SessionState reads the one run a guid names.
+// Both read the signals past the prompt offset and write nothing; an engine without the parser reads unknown with cause unsupported.
+// The wait loop folds the same signals on a cursor of its own: it starts at the prompt offset on every path, never at the loop's event offset, and stops before an unpaired trailing stamp, so the stamp is read again with its payload.
+// At every liveness tick it re-reads the markers of the newest turn start and turn end folded so far, since the transcript can mark them after the tick that folded them.
+// Each tick, and once more just before a classified outcome is finalized, it logs every state change at Info as `shuttle: session state` with the loop's classification: running, waiting, held, done or died.
+// It logs `shuttle: session state disagrees` at Warn once per disagreement, again only after either side changed, when the pair is outside the fixed mapping:
+// waiting and running read busy, held reads idle-stalled or asking, done reads idle-done, died reads dead.
+// Three pairings are expected and log nothing: a gate wait with every output present beside idle-done, a held turn end after transcript-reported shells expired beside busy on background work, and done beside busy on background work.
+// The loop never branches on the state; an engine without the parser, an unreadable events file or a failed fact read logs once at Debug and changes no verdict, notice, wait mark or return.
 //
 // Start/StartGated/Run/RunGated run the startup probe (readiness plus dismissal of any one-time
 // startup gate, through the Engine seam's startup classification and trust-dismiss sequence) before

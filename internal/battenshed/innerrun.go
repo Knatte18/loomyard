@@ -129,8 +129,9 @@ func parseDecisionActed(raw string) (identity string, historyLen int, hasLen boo
 	return identity, n, true
 }
 
-// awaitingHandOff is the operator instruction an awaiting child's wait carries: the child waits on a pull-request decision that only the operator can give from inside the task worktree.
-const awaitingHandOff = "run \"lyx loom approve\" or \"lyx loom reject\" in the task worktree; this run then resumes the child itself"
+// awaitingHandOff is the operator instruction an awaiting child's wait carries: the child waits either on a pull-request decision or on a review segment's escalation, and only the operator can settle either from inside the task worktree.
+// A pull-request decision is resumed by this run itself; an escalation's circling decision is resumed by the operator's own `lyx loom resume`.
+const awaitingHandOff = "at PR-Gate run \"lyx loom approve\" or \"lyx loom reject\" in the task worktree, after which this run resumes the child itself; at a review segment's escalation run \"lyx loom circling accept <slug>\" or \"lyx loom circling continue <slug>\" and then \"lyx loom resume\" in the task worktree"
 
 // innerRunProducer spawns the inner shed run for a task worktree, once, and then waits inside its Call on the child's persisted status.
 // A Call returns Stuck, always budget-exempt, only when the wait has something to record, so shedengine's own on_stuck self-route re-enters it as a new bounce.
@@ -761,7 +762,7 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 				p.report(w, fmt.Sprintf("the %s at %s was acted on and the resume was delivered, but the child's driver has not re-stepped yet; if this persists, inspect a live driver in its pane, or run \"lyx loom start\" in the task worktree if the driver has ended", decision.Kind, decision.At))
 				return nil
 			}
-			p.report(w, fmt.Sprintf("the %s at %s was already acted on and the child is awaiting again; re-run \"lyx loom approve\" or \"lyx loom reject\" in the task worktree, which records a new decision and resumes the child once more", decision.Kind, decision.At))
+			p.report(w, fmt.Sprintf("the %s at %s was already acted on and the child is awaiting again; decide again: %s", decision.Kind, decision.At, awaitingHandOff))
 			return nil
 		}
 	}

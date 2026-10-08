@@ -26,6 +26,7 @@ package reedengine
 import (
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -184,6 +185,17 @@ func windowLayoutNow(t *testing.T, e *Engine) string {
 	return strings.TrimSpace(out)
 }
 
+// plannedLayoutOfChain asserts argv is the chained form, recognised by its select-layout element, and returns the planned layout string, the argument after the window target.
+// The pin tail after the layout makes the chain's length depend on the strands, so the form is never recognised by its length.
+func plannedLayoutOfChain(t *testing.T, argv []string) string {
+	t.Helper()
+	at := slices.Index(argv, "select-layout")
+	if at < 0 || at+3 >= len(argv) {
+		t.Fatalf("AttachArgv() = %v, want the chained form with a select-layout element — the attach chain was unexpectedly suppressed", argv)
+	}
+	return argv[at+3]
+}
+
 // TestAttachGeometry_ExactLayoutAndRowBudgets is the assertion that fails before this task: with a
 // pty deliberately unequal to the configured boot size — a 100x30 client, SHORTER in both dimensions
 // than the fixture's 220x50 boot box, so this is a window SHRINK at attach time, never the growth
@@ -199,10 +211,7 @@ func TestAttachGeometry_ExactLayoutAndRowBudgets(t *testing.T) {
 
 	const cols, rows = 100, 30
 	argv := e.AttachArgv(cols, rows)
-	if len(argv) != 10 {
-		t.Fatalf("AttachArgv(%d, %d) = %v (%d argv elements), want the 10-element chained form — the attach chain was unexpectedly suppressed", cols, rows, argv, len(argv))
-	}
-	wantLayout := argv[len(argv)-1]
+	wantLayout := plannedLayoutOfChain(t, argv)
 
 	startInPTY(t, append([]string{e.cfg.Tmux}, argv...), cols, rows)
 	waitForClientAttached(t, e, 15*time.Second)
@@ -213,10 +222,10 @@ func TestAttachGeometry_ExactLayoutAndRowBudgets(t *testing.T) {
 	if gotW != cols {
 		t.Errorf("#{window_width} after attach = %d, want %d (the client's told cols)", gotW, cols)
 	}
-	// The status-line pins now leave "status" on, which reserves one row, so the live window settles
-	// at rows-1 rather than the client's full told rows.
-	if gotH != rows-1 {
-		t.Errorf("#{window_height} after attach = %d, want exactly %d (status is on, reserving one row)", gotH, rows-1)
+	// The status-bar pins leave "status" at 2, which reserves two rows, so the live window settles
+	// at rows-2 rather than the client's full told rows.
+	if gotH != rows-2 {
+		t.Errorf("#{window_height} after attach = %d, want exactly %d (status is 2, reserving two rows)", gotH, rows-2)
 	}
 	if gotLayout := windowLayoutNow(t, e); gotLayout != wantLayout {
 		t.Errorf("#{window_layout} after attach = %q, want %q byte for byte — a mismatch here means tmux rescaled the planned string instead of applying it verbatim", gotLayout, wantLayout)
@@ -247,8 +256,8 @@ func TestAttachGeometry_ExactLayoutAndRowBudgets(t *testing.T) {
 			}
 		case parentPaneID:
 			sawParent = true
-			if p.Height != e.cfg.CollapsedRows {
-				t.Errorf("collapsed parent pane %s height = %d, want %d (cfg.CollapsedRows)", p.ID, p.Height, e.cfg.CollapsedRows)
+			if wantHeight := e.cfg.CollapsedRows - 1; p.Height != wantHeight {
+				t.Errorf("collapsed parent pane %s height = %d, want %d (cfg.CollapsedRows minus the title row)", p.ID, p.Height, wantHeight)
 			}
 		}
 	}
@@ -293,10 +302,7 @@ func TestAttachGeometry_StaleLayoutRaceIsSafe(t *testing.T) {
 
 	const cols, rows = 100, 30
 	argv := e.AttachArgv(cols, rows)
-	if len(argv) != 10 {
-		t.Fatalf("AttachArgv(%d, %d) = %v (%d argv elements), want the 10-element chained form", cols, rows, argv, len(argv))
-	}
-	plannedLayout := argv[len(argv)-1]
+	plannedLayout := plannedLayoutOfChain(t, argv)
 
 	live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
 	if err != nil {
@@ -366,8 +372,8 @@ func assertAttachGeometryRowBudgets(t *testing.T, e *Engine, selvagePaneID, pare
 			}
 		case parentPaneID:
 			sawParent = true
-			if p.Height != e.cfg.CollapsedRows {
-				t.Errorf("(%s) collapsed parent pane %s height = %d, want %d (cfg.CollapsedRows)", step, p.ID, p.Height, e.cfg.CollapsedRows)
+			if wantHeight := e.cfg.CollapsedRows - 1; p.Height != wantHeight {
+				t.Errorf("(%s) collapsed parent pane %s height = %d, want %d (cfg.CollapsedRows minus the title row)", step, p.ID, p.Height, wantHeight)
 			}
 		}
 	}
@@ -393,9 +399,7 @@ func TestAttachGeometry_ResizeAfterAttachHoldsRowBudgets(t *testing.T) {
 
 	const cols, rows = 100, 30
 	argv := e.AttachArgv(cols, rows)
-	if len(argv) != 10 {
-		t.Fatalf("AttachArgv(%d, %d) = %v (%d argv elements), want the 10-element chained form", cols, rows, argv, len(argv))
-	}
+	plannedLayoutOfChain(t, argv)
 
 	pty := startInPTY(t, append([]string{e.cfg.Tmux}, argv...), cols, rows)
 	waitForClientAttached(t, e, 15*time.Second)
@@ -420,11 +424,11 @@ func TestAttachGeometry_ResizeAfterAttachHoldsRowBudgets(t *testing.T) {
 	if err := unix.IoctlSetWinsize(int(pty.master.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: uint16(resizedCols), Row: uint16(resizedRows)}); err != nil {
 		t.Fatalf("TIOCSWINSZ (%dx%d): %v", resizedCols, resizedRows, err)
 	}
-	// With "status" pinned on, tmux's content window settles at resizedRows-1, not resizedRows — the
-	// status-line's own row is not part of the window tmux reports here.
+	// With "status" pinned to 2, tmux's content window settles at resizedRows-2, not resizedRows.
+	// The status bar's own two rows are not part of the window tmux reports here.
 	waitUntil(t, 15*time.Second, "window never reported the resized height", func() bool {
 		_, h := windowSizeNow(t, e)
-		return h == resizedRows-1
+		return h == resizedRows-2
 	})
 
 	assertAttachGeometryRowBudgets(t, e, selvagePaneID, parentPaneID, "after resize")
@@ -485,9 +489,7 @@ func TestAttachGeometry_DeadStripPinDoesNotBreakSelvagePin(t *testing.T) {
 
 	const cols, rows = 100, 30
 	argv := e.AttachArgv(cols, rows)
-	if len(argv) != 10 {
-		t.Fatalf("AttachArgv(%d, %d) = %v (%d argv elements), want the 10-element chained form", cols, rows, argv, len(argv))
-	}
+	plannedLayoutOfChain(t, argv)
 
 	pty := startInPTY(t, append([]string{e.cfg.Tmux}, argv...), cols, rows)
 	waitForClientAttached(t, e, 15*time.Second)
@@ -513,10 +515,10 @@ func TestAttachGeometry_DeadStripPinDoesNotBreakSelvagePin(t *testing.T) {
 	if err := unix.IoctlSetWinsize(int(pty.master.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: uint16(resizedCols), Row: uint16(resizedRows)}); err != nil {
 		t.Fatalf("TIOCSWINSZ (%dx%d): %v", resizedCols, resizedRows, err)
 	}
-	// With "status" pinned on, tmux's content window settles at resizedRows-1, not resizedRows.
+	// With "status" pinned to 2, tmux's content window settles at resizedRows-2, not resizedRows.
 	waitUntil(t, 15*time.Second, "window never reported the resized height", func() bool {
 		_, h := windowSizeNow(t, e)
-		return h == resizedRows-1
+		return h == resizedRows-2
 	})
 
 	live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
@@ -535,4 +537,165 @@ func TestAttachGeometry_DeadStripPinDoesNotBreakSelvagePin(t *testing.T) {
 	if !sawSelvage {
 		t.Fatalf("Selvage pane %s missing from live panes %+v", selvagePaneID, live)
 	}
+}
+
+// applyLayoutNow applies st's layout against the strands' window as it is now, under the op lock, and focuses nothing.
+func applyLayoutNow(t *testing.T, e *Engine, st *ReedState) {
+	t.Helper()
+	err := e.withOpLock(func() error {
+		live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
+		if err != nil {
+			return err
+		}
+		_, err = e.applyLayoutLockedOpts(st, live, applyOpts{})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("apply the layout: %v", err)
+	}
+}
+
+// strandWindowCells returns the cell height of every pane of the strands' window, keyed by pane id.
+// A cell is the pane's content plus the pane-border title row drawn inside the cell at the window edge the option names.
+func strandWindowCells(t *testing.T, e *Engine) map[string]int {
+	t.Helper()
+	target := exactSessionWindowTarget(e.SessionName())
+	border := strings.TrimSpace(mustTmuxOutput(t, e, "display-message", "-p", "-t", target, "#{pane-border-status}"))
+	out := mustTmuxOutput(t, e, "list-panes", "-t", target, "-F", "#{pane_id} #{pane_height} #{pane_at_top} #{pane_at_bottom}")
+	cells := map[string]int{}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 4 {
+			t.Fatalf("list-panes line %q, want four fields", line)
+		}
+		height, err := strconv.Atoi(fields[1])
+		if err != nil {
+			t.Fatalf("pane height %q: %v", fields[1], err)
+		}
+		if (border == "top" && fields[2] == "1") || (border == "bottom" && fields[3] == "1") {
+			height++
+		}
+		cells[fields[0]] = height
+	}
+	return cells
+}
+
+// assertPlannedCells asserts the fixture's three cells hold their planned heights in a window of windowHeight rows:
+// the Selvage band and the collapsed parent at their configured budgets, and the child taking every remaining row after the one-row borders between cells.
+func assertPlannedCells(t *testing.T, e *Engine, st *ReedState, parentCell int, step string) {
+	t.Helper()
+	_, windowHeight := windowSizeNow(t, e)
+	cells := strandWindowCells(t, e)
+	childPaneID := st.Strands[1].PaneID
+	want := map[string]int{
+		st.SelvagePaneID:     e.cfg.Selvage.HeightRows,
+		st.Strands[0].PaneID: parentCell,
+		childPaneID:          windowHeight - e.cfg.Selvage.HeightRows - parentCell - 2,
+	}
+	for paneID, wantCell := range want {
+		if cells[paneID] != wantCell {
+			t.Errorf("(%s) pane %s cell = %d, want %d (cells %v in a %d-row window)", step, paneID, cells[paneID], wantCell, cells, windowHeight)
+		}
+	}
+}
+
+// resizeClientAndWait resizes the pty and waits until the window reports its content height for that many client rows under the two-row status.
+func resizeClientAndWait(t *testing.T, e *Engine, pty *attachGeometryPTY, cols, rows int) {
+	t.Helper()
+	if err := unix.IoctlSetWinsize(int(pty.master.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: uint16(cols), Row: uint16(rows)}); err != nil {
+		t.Fatalf("TIOCSWINSZ (%dx%d): %v", cols, rows, err)
+	}
+	waitUntil(t, 15*time.Second, "window never reported the resized height", func() bool {
+		_, h := windowSizeNow(t, e)
+		return h == rows-2
+	})
+}
+
+// TestAttachGeometry_TitleRowCellsHoldTheirPlannedHeights pins the D7 acceptance rows with the two-line status and pane-border-status top:
+// the layout fills the window with no rescale at boot, at attach and after a resize.
+// Every cell, the top one included, has its planned height after a resize, and still does with the strand panes in a physical order other than the intended one.
+func TestAttachGeometry_TitleRowCellsHoldTheirPlannedHeights(t *testing.T) {
+	e := setupAttachGeometryFixture(t)
+	st, err := LoadState(e.stateDir())
+	if err != nil || st == nil || len(st.Strands) != 2 {
+		t.Fatalf("LoadState = (%+v, %v), want a state of the collapsed parent and its child", st, err)
+	}
+
+	assertPlannedCells(t, e, st, e.cfg.CollapsedRows, "at boot")
+
+	const cols, rows, resizedRows = 100, 30, 90
+	argv := e.AttachArgv(cols, rows)
+	wantLayout := plannedLayoutOfChain(t, argv)
+	pty := startInPTY(t, append([]string{e.cfg.Tmux}, argv...), cols, rows)
+	waitForClientAttached(t, e, 15*time.Second)
+	if got := windowLayoutNow(t, e); got != wantLayout {
+		t.Errorf("#{window_layout} after attach = %q, want the planned %q (no rescale)", got, wantLayout)
+	}
+	assertPlannedCells(t, e, st, e.cfg.CollapsedRows, "after attach")
+
+	resizeClientAndWait(t, e, pty, cols, resizedRows)
+	assertPlannedCells(t, e, st, e.cfg.CollapsedRows, "after a resize")
+
+	// Swap the child to window row 0, then re-apply the layout, which plans against the physical order and rebuilds the hook from it.
+	if err := e.tmux.run("swap-pane", "-s", st.Strands[1].PaneID, "-t", st.Strands[0].PaneID); err != nil {
+		t.Fatalf("swap-pane: %v", err)
+	}
+	applyLayoutNow(t, e, st)
+	resizeClientAndWait(t, e, pty, cols, rows)
+	assertPlannedCells(t, e, st, e.cfg.CollapsedRows, "after a resize with the panes swapped")
+}
+
+// TestAttachGeometry_PinsKeepTheirCellHeightWithoutATopTitleRow pins that a window whose pane-border-status is off or bottom is not adjusted:
+// an apply right after the option changes leaves the parent's cell at its planned height.
+func TestAttachGeometry_PinsKeepTheirCellHeightWithoutATopTitleRow(t *testing.T) {
+	for _, border := range []string{"off", "bottom"} {
+		t.Run(border, func(t *testing.T) {
+			e := setupAttachGeometryFixture(t)
+			st, err := LoadState(e.stateDir())
+			if err != nil || st == nil || len(st.Strands) != 2 {
+				t.Fatalf("LoadState = (%+v, %v), want a state of the collapsed parent and its child", st, err)
+			}
+			if err := e.tmux.run("set-option", "-w", "-t", exactSessionWindowTarget(e.SessionName()), "pane-border-status", border); err != nil {
+				t.Fatalf("set-option pane-border-status %s: %v", border, err)
+			}
+
+			applyLayoutNow(t, e, st)
+
+			// A one-row Selvage cell cannot hold a bottom title row and a content row, so only the parent's cell is compared with a bottom title.
+			if border == "off" {
+				assertPlannedCells(t, e, st, e.cfg.CollapsedRows, "pane-border-status off")
+				return
+			}
+			if got := strandWindowCells(t, e)[st.Strands[0].PaneID]; got != e.cfg.CollapsedRows {
+				t.Errorf("parent cell with pane-border-status bottom = %d, want %d (its pin keeps the cell height)", got, e.cfg.CollapsedRows)
+			}
+		})
+	}
+}
+
+// TestAttachGeometry_OneRowTopCellEndsOneRowTallerRightAfterTheApply pins the floor:
+// a planned one-row top cell under a title row keeps one content row, so its cell ends one row taller than planned at attach, before any resize.
+func TestAttachGeometry_OneRowTopCellEndsOneRowTallerRightAfterTheApply(t *testing.T) {
+	e := setupAttachGeometryFixture(t)
+	e.cfg.CollapsedRows = 1
+	st, err := LoadState(e.stateDir())
+	if err != nil || st == nil || len(st.Strands) != 2 {
+		t.Fatalf("LoadState = (%+v, %v), want a state of the collapsed parent and its child", st, err)
+	}
+
+	const cols, rows = 100, 30
+	startInPTY(t, append([]string{e.cfg.Tmux}, e.AttachArgv(cols, rows)...), cols, rows)
+	waitForClientAttached(t, e, 15*time.Second)
+
+	parentPaneID := st.Strands[0].PaneID
+	live, err := e.tmux.listPanes(exactSessionWindowTarget(e.SessionName()))
+	if err != nil {
+		t.Fatalf("listPanes: %v", err)
+	}
+	for _, p := range live {
+		if p.ID == parentPaneID && p.Height != 1 {
+			t.Errorf("one-row top cell's content height = %d, want 1", p.Height)
+		}
+	}
+	assertPlannedCells(t, e, st, 2, "one row taller than planned")
 }

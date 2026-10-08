@@ -6,8 +6,11 @@ package reedengine
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // fakeVersionOutput reports a version comfortably above both
@@ -16,16 +19,23 @@ import (
 // minMultiplexerVersion selects on the host running this test.
 const fakeVersionOutput = "psmux 99.0.0 / tmux 99.0\n"
 
-// fakeFullCommandsOutput renders every requiredSubcommands entry as one
-// list-commands line (name plus filler description text, mirroring real
-// psmux/tmux output), so parseCommandNames sees a complete command set.
-func fakeFullCommandsOutput() string {
+// listedCommands renders every requiredSubcommands and optionalSubcommands entry except missing as one
+// list-commands line (name plus filler description text, mirroring real psmux/tmux output).
+func listedCommands(missing string) string {
 	var b strings.Builder
-	for _, name := range requiredSubcommands {
+	for _, name := range append(slices.Clone(requiredSubcommands), optionalSubcommands...) {
+		if name == missing {
+			continue
+		}
 		b.WriteString(name)
 		b.WriteString("               - description\n")
 	}
 	return b.String()
+}
+
+// fakeFullCommandsOutput renders the complete command set, so parseCommandNames sees every required and optional verb.
+func fakeFullCommandsOutput() string {
+	return listedCommands("")
 }
 
 // commandsWithout returns a probe run that reports the healthy version and every required subcommand except missing,
@@ -35,25 +45,19 @@ func commandsWithout(missing string) func(args ...string) (string, error) {
 		if args[0] == "-V" {
 			return fakeVersionOutput, nil
 		}
-		var b strings.Builder
-		for _, name := range requiredSubcommands {
-			if name == missing {
-				continue
-			}
-			b.WriteString(name)
-			b.WriteString("               - description\n")
-		}
-		return b.String(), nil
+		return listedCommands(missing), nil
 	}
 }
 
-//testtiming:keep pins the capability probe's three outcomes with a fake run: healthy, a version below the pin and a missing required subcommand, the last two as *CapabilityError; its covering tests run this code without asserting it
+//testtiming:keep pins the capability probe's outcomes with a fake run: healthy, a version below the pin and a missing required subcommand, the last two as *CapabilityError, and a missing optional subcommand passing with one warning; its covering tests run this code without asserting it
 func TestProbeCapability(t *testing.T) {
 	tests := []struct {
 		name       string
 		run        func(args ...string) (string, error)
 		wantErr    bool
 		wantCapErr bool
+		// wantWarnings is the number of optional-subcommand warnings the probe logs.
+		wantWarnings int
 	}{
 		{
 			name: "healthy version and full command set",
@@ -89,10 +93,16 @@ func TestProbeCapability(t *testing.T) {
 			wantErr:    true,
 			wantCapErr: true,
 		},
+		{
+			name:         "missing optional bind-key passes with one warning",
+			run:          commandsWithout("bind-key"),
+			wantWarnings: 1,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			logs := logcapture.Capture(t)
 			err := probeCapability(tt.run)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("probeCapability() error = %v, wantErr %v", err, tt.wantErr)
@@ -102,6 +112,9 @@ func TestProbeCapability(t *testing.T) {
 				if !errors.As(err, &capErr) {
 					t.Errorf("probeCapability() error = %v, want *CapabilityError", err)
 				}
+			}
+			if got := strings.Count(logs.String(), "optional subcommand"); got != tt.wantWarnings {
+				t.Errorf("probeCapability() logged %d optional-subcommand warnings, want %d: %s", got, tt.wantWarnings, logs.String())
 			}
 		})
 	}

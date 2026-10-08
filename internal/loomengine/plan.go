@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -76,6 +77,7 @@ func composePlanPrompt(stencilsDir, specsDir, decisionRecordPath, planDir, overv
 // PlanSpec builds the shuttleengine.Spec for one Plan producer run. specsDir is told, never
 // derived: this package is bound by the Told-Geometry Invariant and derives no path of its own.
 // parentName is told likewise; an empty one renders the no-parent directive.
+// Segment is the plan segment, because the run is the Plan-Write phase.
 func PlanSpec(layout *lyxcwd.Location, stencilsDir, specsDir, parentName string, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
 	spec, err := modelspec.Parse(cfg.Plan)
 	if err != nil {
@@ -127,6 +129,7 @@ func PlanSpec(layout *lyxcwd.Location, stencilsDir, specsDir, parentName string,
 		Version:     resolved.Params["version"],
 		Interactive: false,
 		Role:        planRole,
+		Segment:     segmentcolor.Plan,
 		Skills:      planSkills,
 		Timeout:     time.Duration(cfg.PlanTimeoutMin) * time.Minute,
 	}, nil

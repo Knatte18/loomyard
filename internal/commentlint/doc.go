@@ -20,5 +20,5 @@
 // The kinds of line skipped follow `tools/godocreflow`; this package re-implements them, since `tools/` is not importable.
 //
 // Bound: every comma-plus-conjunction break passes, compound predicates included.
-// Telling those from independent clauses needs a parser, so they stay review findings.
+// Telling those from independent clauses needs a parser, so they go unchecked, and a comment's line breaks are never a review finding.
 package commentlint
