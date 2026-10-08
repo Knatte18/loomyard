@@ -272,11 +272,11 @@ func TestSessionUsage_SumsParentAndForks(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		parent      []string
-		forks       map[string][]string
+		name         string
+		parent       []string
+		forks        map[string][]string
 		noTranscript bool
-		want        shuttleengine.SessionUsage
+		want         shuttleengine.SessionUsage
 	}{
 		{
 			name:   "repeated message lines count once",
@@ -293,9 +293,9 @@ func TestSessionUsage_SumsParentAndForks(t *testing.T) {
 			},
 		},
 		{
-			name:        "a missing transcript reads unknown",
+			name:         "a missing transcript reads unknown",
 			noTranscript: true,
-			want:        shuttleengine.SessionUsage{},
+			want:         shuttleengine.SessionUsage{},
 		},
 	}
 	for _, tt := range tests {

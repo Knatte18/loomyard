@@ -318,7 +318,7 @@ type Config struct {
 	DiscussionFan         string        `yaml:"discussion_fan"`
 	PlanFan               string        `yaml:"plan_fan"`
 	FanReview             ModelSpecList `yaml:"fan_review"`
-	Judge               string        `yaml:"judge"`
+	Judge                 string        `yaml:"judge"`
 	ReviewTimeoutMin      int           `yaml:"review_timeout_min"`
 	Friction              string        `yaml:"friction"`
 	FrictionTimeoutMin    int           `yaml:"friction_timeout_min"`
