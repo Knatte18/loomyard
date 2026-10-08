@@ -130,6 +130,7 @@ var wordingClaims = []stencilClaims{
 		{must: "no graded blast radius to summarise", why: "Rename carries no ImpactSummary because there is no graded blast radius"},
 		{must: "support-log.md", why: "support-log.md is outside this review entirely"},
 		{must: "findings.md", why: "the live generation's findings join the answer key"},
+		{must: "is not part of the answer key", why: "a carry-over entry in the record's Open risks is an unreviewed fix, not a requirement the plan must carry"},
 		{must: "record.json` carries a `class`", why: "the live generation's round needs a class"},
 		{must: "`first_card`", why: "the live generation's round matches first_card"},
 		{must: "the decision record alone is the answer key", why: "generation 0 falls back to the decision record alone"},
@@ -157,6 +158,13 @@ var wordingClaims = []stencilClaims{
 		{must: "assert-no-callers", why: "the per-card mechanical check names assert-no-callers for a Delete card"},
 		{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"},
 	}},
+	{"loom-template-rework.md", LoomTemplateRework, []claim{
+		{must: "never plan an entry as scope", why: "a carry-over entry in the record's Open risks lists unreviewed fixes, never scope for a rework generation"},
+	}},
+	{"landing-template-describe.md", LandingTemplateDescribe, []claim{
+		{must: "one item to check by hand", why: "a Plan-Review or Webster-Review carry-over finding reaches the reviewer as a manual-check item"},
+		{must: "A Discussion-Review entry is not carried into the description", why: "a Discussion-Review carry-over finding concerns the record, not the change under review"},
+	}},
 	{"loom-template-plan.md", LoomTemplatePlan, joinClaims(wantAll("the card-granularity contract reaches the agent", "What a card is", "independently committable", "Carries the coverage for the behavior it introduces", "`PATTERN-test-economy`", "no substitute for test coverage"),
 		wantNone("the old bundle-a-test wording cannot return", "Bundles its own test", "not a substitute for a bundled test"),
 		wantAll("a reworded message's asserting tests join the card's targets", "greps the repository for the old text", "every test asserting it joins that card's targets"),
@@ -174,6 +182,7 @@ var wordingClaims = []stencilClaims{
 		wantNone("delta and name are pipeline-internal and are never named to the planner", "lyx quarry delta", "lyx quarry name"),
 		wantAll("the closing step runs validate-plan until it exits 0", "lyx loom validate-plan", "re-run it until it exits 0"),
 		wantAll("a scope addition after the Discussion is recorded with decision add, never written as an operator addition", "lyx loom decision add", "`--by`", "Never write such an addition into the plan as an operator addition"),
+		wantAll("a carry-over entry in the record's Open risks is checked against the code and never planned as scope", "never plan an entry as scope"),
 		[]claim{
 			{must: "ends with a `Prior plan` section", why: "the template tells the agent to act on a trailing Prior plan section before writing"},
 			{must: "must cover every package any card targets", why: "the verify section covers every targeted package"},
