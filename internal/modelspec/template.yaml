@@ -20,10 +20,12 @@ opus:
   engine: claude
   model: opus
   defaults:
-    effort: high
+    effort: medium
 haiku:
   engine: claude
   model: haiku
+  defaults:
+    effort: medium
 fable:
   engine: claude
   model: fable
