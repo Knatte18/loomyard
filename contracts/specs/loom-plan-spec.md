@@ -288,6 +288,7 @@ The three tiers match this repo's own test-tier discipline — `internal/planpar
 
 - **Tier 1 (per card, automatic, no author action).**
   Implemented as the Go-derived per-card gate: `go build ./...`, the whole untagged test suite, and the integration-tagged tests of the card's own package directories.
+  A package directory inside a nested module is tested inside that module with `go -C <module>` and module-relative paths.
   Untagged tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
   Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
 - **Tier 2 (per card for its own packages, plan-level for the whole suite).**
