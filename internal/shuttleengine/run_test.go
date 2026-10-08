@@ -1138,6 +1138,13 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			wantKeys: keys("Escape"), wantSleeps: []time.Duration{ms(400), ms(400), ms(400)},
 		},
 		{
+			name: "box that settles only after the window closes fails with no Enter", text: shortText,
+			settleMS: 400, confirmS: 1,
+			boxes:   []inputBoxAnswer{box("a"), box("b"), box("c"), box("c")},
+			wantErr: "settled only after the 1s submit window closed", wantNotLand: true,
+			wantKeys: keys("Escape"), wantSleeps: []time.Duration{ms(400), ms(400), ms(400)},
+		},
+		{
 			name: "Enters at a growing interval until the window closes", text: shortText,
 			boxes:   join(settled(shortText), []inputBoxAnswer{box(shortText)}),
 			wantErr: "still pending in the input box", wantNotLand: true,

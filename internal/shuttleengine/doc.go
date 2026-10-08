@@ -167,7 +167,8 @@
 // A session that stays busy fails the send with ErrSessionBusy, naming the reading and ending with the pane's last lines.
 // An engine without the idle reading keeps the not-ready refusal alone.
 // That path confirms a send is submitted, not only that its text appeared in the pane, for an engine that implements the optional InputBoxReader capability, inside a window of `submit_confirm_timeout_s` from the moment typing begins.
-// The text is typed without its Enter, and once it has appeared shuttle reads the input box every `submit_settle_ms` until two reads agree, so no Enter lands inside a typing burst.
+// The text is typed without its Enter, and once it has appeared shuttle reads the input box every `submit_settle_ms` until two reads agree, so no Enter lands inside a typing burst;
+// reads that agree only once the window has closed send no Enter.
 // It then sends the Enter and reads the box at an interval that starts at `submit_redraw_settle_ms` and doubles up to five seconds.
 // While the box still holds the sent text and the window is open, each read is followed by one more Enter.
 // Every idle poll, box read and Enter runs a tmux process through reed, so each of these loops also stops at an attempt count derived from its window, which ends it under a clock that never advances.

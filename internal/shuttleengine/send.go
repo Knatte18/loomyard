@@ -297,7 +297,7 @@ func withPaneTail(err error, note string, sc sendContext) error {
 
 // awaitSettledBox reads the input box every Config.SubmitSettleMS until two consecutive reads agree, so no Enter lands inside a typing burst.
 // A collapsed paste placeholder is content like any other, and two reads that both show no readable box agree.
-// A box that has not settled when closeAt arrives, or within the window's read count, fails with ErrSubmissionNotLanded.
+// A box that has not settled when closeAt arrives, or within the window's read count, fails with ErrSubmissionNotLanded, and so does one whose agreeing read comes at or after closeAt, so the first Enter never goes out after the window.
 func awaitSettledBox(sc sendContext, reader InputBoxReader, closeAt time.Time) error {
 	interval := time.Duration(sc.cfg.SubmitSettleMS) * time.Millisecond
 	maxReads := windowPollCap(submitConfirmTimeout(sc.cfg), interval)
@@ -309,6 +309,9 @@ func awaitSettledBox(sc sendContext, reader InputBoxReader, closeAt time.Time) e
 		sc.clock.Sleep(interval)
 		text, ok := readInputBox(sc, reader)
 		if text == previousText && ok == previousOK {
+			if windowClosed(sc.clock, closeAt) {
+				return fmt.Errorf("%w: the input box settled only after the %s submit window closed; no Enter was sent", ErrSubmissionNotLanded, submitConfirmTimeout(sc.cfg))
+			}
 			return nil
 		}
 		previousText, previousOK = text, ok
