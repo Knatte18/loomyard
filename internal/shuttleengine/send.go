@@ -237,8 +237,8 @@ func paneTail(reed ReedOps, guid string) string {
 	return strings.Join(lines, "\n")
 }
 
-// ErrSubmissionNotLanded marks a verified send whose text was typed but never seen to be submitted: it did not appear, its input box did not settle, or the box still held it when the submit window closed.
-// The send clears its own text from the box where the engine can, so the caller may retry.
+// ErrSubmissionNotLanded marks a verified send whose text was never seen to be submitted: the submit window closed before typing began, the typed text did not appear, its input box did not settle, or the box still held it when the window closed.
+// The send clears its own typed text from the box where the engine can, so the caller may retry.
 var ErrSubmissionNotLanded = errors.New("shuttle: Send: the send did not land")
 
 const (
