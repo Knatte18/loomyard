@@ -58,6 +58,7 @@ var nilLegal = map[string]bool{
 	"PrimeLock.Sleep":                                  true,
 	"SegmentBounces":                                   true,
 	"RowReviewModels":                                  true,
+	"RowClusterFans":                                   true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.

@@ -44,6 +44,13 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, err
 	}
 
+	if fan := env.RowClusterFans[name]; fan != "" {
+		if profile.ClusterFan != "" {
+			return nil, fmt.Errorf("shedrecipe: BurlerRound: row %q: cluster fan %q from loom.yaml through the wiring conflicts with cluster-fan %q set in the recipe's profile; way forward: remove cluster-fan from the recipe's profile for this row", name, fan, profile.ClusterFan)
+		}
+		profile.ClusterFan = fan
+	}
+
 	// A row setting timeout_s overrides the Env value; a row omitting it takes the Env value; both absent leaves the zero value.
 	// configInt with required false returns 0 for an absent key, so 0 is the absent sentinel here.
 	// The reasoning is configString's: an empty string is the absent sentinel because there is no meaningful explicit zero.

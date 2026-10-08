@@ -80,6 +80,9 @@ type Env struct {
 	// RowReviewModels holds a BurlerRound row's own reviewer and fixer model lists, keyed by row name like SegmentBounces.
 	// A row with no entry, and a nil map, take ReviewModels.
 	RowReviewModels map[string]burlerengine.RoundModels
+	// RowClusterFans holds the burler cluster fan a review segment runs, keyed by the name of each of the segment's two rows.
+	// A row with no entry, and a nil map, take no fan from it.
+	RowClusterFans map[string]string
 	// FixStart is the run-wide start order of every BurlerRound row's fixer, set on each round's RunOpts; empty is parallel.
 	FixStart burlerengine.FixStart
 
