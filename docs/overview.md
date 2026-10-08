@@ -264,6 +264,7 @@ github.com/Knatte18/loomyard/
 ├── internal/lyxcwd/              cwd resolution entry gate (the sole owner of cwd resolution, nothing else)
 ├── internal/lyxdirs/             the two directory-name tokens (`_lyx` durable, `.lyx` ephemeral), a zero-import leaf
 ├── internal/buildinfo/           the ldflags-stamped build channel, a zero-import leaf
+├── internal/buildvcs/            the running binary's VCS identity, a stdlib-only leaf
 ├── internal/standalonestate/     target-path-to-hash8-and-state-directory derivation, a stdlib-only leaf
 ├── internal/segmentcolor/        the loom segments, lyx's color palette and its tmux colors, a stdlib-only leaf
 ├── internal/configengine/        shared config resolution

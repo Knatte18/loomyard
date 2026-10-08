@@ -2,21 +2,25 @@
 
 package shedverbs
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Knatte18/loomyard/internal/buildvcs"
+)
 
 //testtiming:keep pins the flipped modified flag and the empty-revision rows that never report a change, which its covering test does not
 func TestBinaryChanged(t *testing.T) {
 	tests := []struct {
 		name              string
-		running, recorded BuildIdentity
+		running, recorded buildvcs.Identity
 		want              bool
 	}{
-		{"equal pairs", BuildIdentity{"abc", false}, BuildIdentity{"abc", false}, false},
-		{"differing revisions", BuildIdentity{"abc", false}, BuildIdentity{"def", false}, true},
-		{"flipped modified flag", BuildIdentity{"abc", true}, BuildIdentity{"abc", false}, true},
-		{"empty recorded revision", BuildIdentity{"abc", false}, BuildIdentity{"", true}, false},
-		{"empty running revision", BuildIdentity{"", false}, BuildIdentity{"abc", true}, false},
-		{"both empty", BuildIdentity{"", true}, BuildIdentity{"", false}, false},
+		{"equal pairs", buildvcs.Identity{"abc", false}, buildvcs.Identity{"abc", false}, false},
+		{"differing revisions", buildvcs.Identity{"abc", false}, buildvcs.Identity{"def", false}, true},
+		{"flipped modified flag", buildvcs.Identity{"abc", true}, buildvcs.Identity{"abc", false}, true},
+		{"empty recorded revision", buildvcs.Identity{"abc", false}, buildvcs.Identity{"", true}, false},
+		{"empty running revision", buildvcs.Identity{"", false}, buildvcs.Identity{"abc", true}, false},
+		{"both empty", buildvcs.Identity{"", true}, buildvcs.Identity{"", false}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

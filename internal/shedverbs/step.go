@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -206,7 +207,7 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 
 			// The in-flight record is written before anything can refuse, and the full envelope,
 			// success or refusal, is written to its own record before stdout is printed.
-			rec := newStepRecorder(spec.StepsDir, logger.TraceID(), runningBuildIdentity())
+			rec := newStepRecorder(spec.StepsDir, logger.TraceID(), buildvcs.Running())
 			rec.begin()
 			full, _ := cmd.Flags().GetBool("full")
 			out := cmd.OutOrStdout()
