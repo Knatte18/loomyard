@@ -78,7 +78,17 @@ func sendReadyTimeout(cfg Config) time.Duration {
 	return time.Duration(cfg.SendReadyTimeoutS) * time.Second
 }
 
-// awaitIdleSession returns nil once the strand's session is idle in fact, and fails with an error wrapping ErrSessionBusy when it stays busy past the send-ready window or sc's deadline.
+// windowPollCap returns how many polls paced at least minInterval apart fit in window, plus slack for a first poll at once and a last sleep cut short.
+// Every poll of a send runs a real tmux process through reed, so this attempt-count bound sits beside the window and also ends the loop under a clock that never advances.
+// A non-positive minInterval is paced as idlePollInitial.
+func windowPollCap(window, minInterval time.Duration) int {
+	if minInterval <= 0 {
+		minInterval = idlePollInitial
+	}
+	return int(window/minInterval) + 2
+}
+
+// awaitIdleSession returns nil once the strand's session is idle in fact, and fails with an error wrapping ErrSessionBusy when it stays busy past the send-ready window, sc's deadline or the window's poll count.
 // An engine without the SessionCycler idle reading keeps requireReadyAgentPane alone, with no wait.
 // Otherwise the pane must classify ready and idle.
 // For an engine that parses session signals, no turn start may be left unmatched by a later turn end either, unless the pane has read idle for turnStartIdleOverride or the engine reports that turn interrupted.
@@ -100,13 +110,14 @@ func awaitIdleSession(sc sendContext) error {
 		hold = &turnStartHold{}
 	}
 	interval := idlePollInitial
-	for {
+	maxPolls := windowPollCap(sendReadyTimeout(sc.cfg), idlePollInitial)
+	for poll := 1; ; poll++ {
 		busy := busyReading(sc, cycler, hold)
 		if busy == "" {
 			return nil
 		}
 		now := sc.clock.Now()
-		if !now.Before(limit) {
+		if !now.Before(limit) || poll >= maxPolls {
 			return fmt.Errorf("%w: strand %q: %s; retry once the session is idle. The pane's last lines:\n%s", ErrSessionBusy, sc.guid, busy, paneTail(sc.reed, sc.guid))
 		}
 		sc.clock.Sleep(min(interval, limit.Sub(now)))
@@ -286,13 +297,14 @@ func withPaneTail(err error, note string, sc sendContext) error {
 
 // awaitSettledBox reads the input box every Config.SubmitSettleMS until two consecutive reads agree, so no Enter lands inside a typing burst.
 // A collapsed paste placeholder is content like any other, and two reads that both show no readable box agree.
-// A box that has not settled when closeAt arrives fails with ErrSubmissionNotLanded.
+// A box that has not settled when closeAt arrives, or within the window's read count, fails with ErrSubmissionNotLanded.
 func awaitSettledBox(sc sendContext, reader InputBoxReader, closeAt time.Time) error {
 	interval := time.Duration(sc.cfg.SubmitSettleMS) * time.Millisecond
+	maxReads := windowPollCap(submitConfirmTimeout(sc.cfg), interval)
 	previousText, previousOK := readInputBox(sc, reader)
-	for {
-		if windowClosed(sc.clock, closeAt) {
-			return fmt.Errorf("%w: the input box was still changing when the %s submit window closed; no Enter was sent", ErrSubmissionNotLanded, submitConfirmTimeout(sc.cfg))
+	for read := 1; ; read++ {
+		if windowClosed(sc.clock, closeAt) || read >= maxReads {
+			return fmt.Errorf("%w: the input box was still changing after %d read(s) within the %s submit window; no Enter was sent", ErrSubmissionNotLanded, read, submitConfirmTimeout(sc.cfg))
 		}
 		sc.clock.Sleep(interval)
 		text, ok := readInputBox(sc, reader)
@@ -306,13 +318,14 @@ func awaitSettledBox(sc sendContext, reader InputBoxReader, closeAt time.Time) e
 // confirmSubmitted sends the first Enter and then reads the input box at an interval that starts at reader.SubmitSettle() and doubles up to confirmBackoffCap.
 // An interval that would end past closeAt is cut to end at it, but a read never comes sooner than SubmitSettle() after its Enter.
 // A read taken while the window is open that shows the box still holding the sent text sends one more Enter;
-// a read at or after closeAt sends none and ends the loop, so every Enter is followed by exactly one read.
+// a read at or after closeAt, or after the window's Enter count, sends none and ends the loop, so every Enter is followed by exactly one read.
 // The submission is confirmed when the box no longer holds the sent text, or when the engine's session signals show a turn start past offset sentAt.
 // normalized is the whole sent text normalized by normalizePaneText and needle its leading sendNeedleRunes characters.
 func confirmSubmitted(sc sendContext, reader InputBoxReader, normalized, needle string, sentAt int64, closeAt time.Time) error {
 	settle := reader.SubmitSettle()
 	interval := settle
-	for {
+	maxEnters := windowPollCap(submitConfirmTimeout(sc.cfg), idlePollInitial)
+	for enter := 1; ; enter++ {
 		if err := sc.reed.SendKey(sc.guid, "Enter"); err != nil {
 			return err
 		}
@@ -321,8 +334,8 @@ func confirmSubmitted(sc sendContext, reader InputBoxReader, normalized, needle 
 		if turnStartedSince(sc.engine, sc.eventsPath, sentAt) || !inputBoxHoldsSentText(sc.reed, reader, sc.guid, normalized, needle) {
 			return nil
 		}
-		if windowClosed(sc.clock, closeAt) {
-			return fmt.Errorf("%w: the sent text is still pending in the input box and the %s submit window closed", ErrSubmissionNotLanded, submitConfirmTimeout(sc.cfg))
+		if windowClosed(sc.clock, closeAt) || enter >= maxEnters {
+			return fmt.Errorf("%w: the sent text is still pending in the input box after %d Enter(s) within the %s submit window", ErrSubmissionNotLanded, enter, submitConfirmTimeout(sc.cfg))
 		}
 		interval = min(max(2*interval, idlePollInitial), confirmBackoffCap)
 	}
@@ -436,7 +449,7 @@ func (run *Run) boundaryIdle() bool {
 		return true
 	}
 	run.gateAtBoundary = false
-	run.unsentReprompt = false
+	run.unsentReprompts = 0
 	run.startCleared = true
 	run.startHold = turnStartHold{}
 	logger.Info("shuttle: gate: a turn started after the boundary, holding the gate send", "strandGUID", run.state.StrandGUID, "turnStartAt", turnStart.At)

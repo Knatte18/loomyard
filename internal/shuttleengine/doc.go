@@ -163,6 +163,7 @@
 // The text is typed without its Enter, and once it has appeared shuttle reads the input box every `submit_settle_ms` until two reads agree, so no Enter lands inside a typing burst.
 // It then sends the Enter and reads the box at an interval that starts at `submit_redraw_settle_ms` and doubles up to five seconds.
 // While the box still holds the sent text and the window is open, each read is followed by one more Enter.
+// Every idle poll, box read and Enter runs a tmux process through reed, so each of these loops also stops at an attempt count derived from its window, which ends it under a clock that never advances.
 // The submission is confirmed when the box no longer holds the sent text, or when the engine's session signals show a turn start past the file's size before the send.
 // A send that does not land fails with ErrSubmissionNotLanded, naming why and ending with the pane's last lines.
 // An empty box then means the submission landed late and the send succeeds;

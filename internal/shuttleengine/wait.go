@@ -35,7 +35,7 @@
 // a turn start left unmatched by a later turn end clears the boundary, the loop keeps polling and reads the pane every tick,
 // and the boundary is restored when the engine reports that turn interrupted or the pane has read idle for turnStartIdleOverride.
 // Every gate send goes through sendWithin, so its idle wait and submit window end by the run deadline.
-// A re-prompt that fails busy or unlanded spends no attempt and is re-sent on a later tick, bounded only by the run deadline.
+// A re-prompt that fails busy or unlanded spends no attempt and is re-sent on a later tick, bounded by the run deadline and by maxUnsentReprompts consecutive failures at one boundary, after which the loop ends with the attempts spent so far.
 // The other three finalize call sites in this file (the events-unreadable/status-retry mechanism-failure exits via finishedDespiteMechanismFailure, the liveness-tick exit, and the deadline exit) are left untouched:
 // each is reached precisely because the session is gone, the clock ran out, or the bookkeeping broke, so no Send is attempted there and finalize's own evaluation reports Attempts as it stands.
 //
@@ -130,6 +130,10 @@ const maxEventsReadRetries = 3
 // a Status that ran but no longer lists this run's strand, and a Status that lists it with no pane
 // bound.
 const maxStatusRetries = 2
+
+// maxUnsentReprompts bounds the consecutive busy or unlanded re-prompt sends at one gate boundary, each a full idle wait, typing and confirm cycle of real tmux processes.
+// The count bound sits beside the run deadline, so the retry also ends under a clock that never advances.
+const maxUnsentReprompts = 5
 
 // errStrandNotTracked reports that reed answered the liveness check successfully but its strand table
 // no longer holds this run's guid.
@@ -276,13 +280,13 @@ func (run *Run) Wait() (Result, error) {
 				// A gated Done is the writer's turn boundary: let the shared helper judge it.
 				run.gateAtBoundary = true
 				run.startCleared = false
-				run.unsentReprompt = false
+				run.unsentReprompts = 0
 				if run.boundaryIdle() {
 					if result, finished, ferr := run.handleGatedBoundary(); finished {
 						return result, ferr
 					}
 				}
-			} else if (run.gatePending || run.unsentReprompt) && run.gateAtBoundary {
+			} else if (run.gatePending || run.unsentReprompts > 0) && run.gateAtBoundary {
 				// No new arrival, an entry is pending or a re-prompt is unsent, and the writer is idle: re-evaluate, so a verdict recorded since is read without waiting for the writer to speak.
 				if run.boundaryIdle() {
 					if result, finished, ferr := run.handleGatedBoundary(); finished {
@@ -353,7 +357,7 @@ func gateEntryError(name, problem string) error {
 // A pass, a terminal failure (GateResult.Terminal, whatever the entry's failure count, with no re-prompt and no count incremented), or a failure whose budget is spent, finalizes done.
 // A failure with budget remaining re-prompts and keeps polling.
 // A re-prompt send that fails with ErrSessionBusy or ErrSubmissionNotLanded leaves the entry's failure and sent counts unchanged, clears the memo and keeps the writer at the boundary with the re-prompt marked unsent, so a later tick re-sends it;
-// any other re-prompt send failure ends the loop as it always has.
+// the maxUnsentReprompts-th consecutive such failure at one boundary, and any other re-prompt send failure, ends the loop as it always has.
 // A pending result sends its Send text when non-empty and keeps polling;
 // a failed pending send logs one Warn naming the entry, the error and the closure's way-forward, leaves the entry pending and the writer at the boundary, and never ends the loop.
 // The memo is cleared after a pending result, so the next evaluation, and a finalize after it, read the closures afresh.
@@ -382,18 +386,18 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	}
 	// An entry failed with budget remaining: re-prompt the agent and keep polling.
 	if serr := run.sendWithin(gateRepromptText(run.gateFindingsPath)); serr != nil {
-		if errors.Is(serr, ErrSessionBusy) || errors.Is(serr, ErrSubmissionNotLanded) {
+		if (errors.Is(serr, ErrSessionBusy) || errors.Is(serr, ErrSubmissionNotLanded)) && run.unsentReprompts+1 < maxUnsentReprompts {
 			// Nothing of this send is left in the box and no attempt was spent: keep the writer at the boundary and re-send on a later tick.
-			logger.Warn("shuttle: gate: re-prompt not delivered, retrying on a later tick without spending an attempt", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", run.gate[failed].Name, "error", serr)
+			run.unsentReprompts++
+			logger.Warn("shuttle: gate: re-prompt not delivered, retrying on a later tick without spending an attempt", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", run.gate[failed].Name, "unsent", run.unsentReprompts, "error", serr)
 			run.gateVerdict = nil
-			run.unsentReprompt = true
 			return Result{}, false, nil
 		}
 		logger.Warn("shuttle: gate: re-prompt send failed, ending the loop with the attempts spent so far", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "error", serr)
 		result, ferr := run.finalize(OutcomeDone)
 		return result, true, ferr
 	}
-	run.unsentReprompt = false
+	run.unsentReprompts = 0
 	run.gateAtBoundary = false
 	run.gateFails[failed]++
 	run.gateSent[failed]++

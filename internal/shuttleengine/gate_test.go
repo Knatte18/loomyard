@@ -721,7 +721,7 @@ func TestGate_WaitsForIdleWriter(t *testing.T) {
 	}
 }
 
-// TestGate_UnsentRepromptRetries covers a re-prompt that cannot be delivered: busy or unlanded, it spends no attempt and is re-sent on a later tick, a writer turn that starts meanwhile cancels it, and its idle wait and submit window end by the run deadline.
+// TestGate_UnsentRepromptRetries covers a re-prompt that cannot be delivered: busy or unlanded, it spends no attempt and is re-sent on a later tick, a writer turn that starts meanwhile cancels it, its idle wait and submit window end by the run deadline, and a re-prompt that stays undelivered ends the loop at the unsent count.
 func TestGate_UnsentRepromptRetries(t *testing.T) {
 	const never = 24 * time.Hour
 	tests := []struct {
@@ -737,8 +737,10 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 		// wantTypedMin bounds the first typed text from the start.
 		wantTypedMin time.Duration
 		wantClears   bool
-		// wantEndBy bounds the clock at the end, from the start; zero leaves it unchecked.
+		// wantEndBy bounds the clock at the end, from the start, under a 3 s run deadline; zero leaves it unchecked.
 		wantEndBy time.Duration
+		// wantEndBefore bounds the clock at the end, from the start, under the rig's own run deadline; zero leaves it unchecked.
+		wantEndBefore time.Duration
 		// wantNoEvalAfterStart pins that the gate was not evaluated after the writer's new turn, bar the deadline's final evaluation.
 		wantNoEvalAfterStart bool
 	}{
@@ -753,6 +755,11 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 		{
 			name: "a writer turn starting meanwhile cancels the pending re-send", cfg: Config{SendReadyTimeoutS: 1},
 			busyFor: never, startAt: 4 * time.Second, wantSends: 0, wantAttempts: 0, wantNoEvalAfterStart: true,
+		},
+		{
+			// Each busy send waits out its 1 s idle window and a 1 s tick follows, so five sends end the loop long before the 30 s deadline.
+			name: "a re-prompt that stays undelivered ends the loop at the unsent count", cfg: Config{SendReadyTimeoutS: 1},
+			busyFor: never, wantSends: 0, wantAttempts: 0, wantEndBefore: 15 * time.Second,
 		},
 		{
 			name: "a re-prompt with little time left ends its idle wait by the run deadline", cfg: Config{SendReadyTimeoutS: 60},
@@ -807,6 +814,9 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 			}
 			if tt.wantEndBy > 0 && rig.clock.Now().Sub(rig.start) > tt.wantEndBy {
 				t.Errorf("ended %v after the start, want by %v", rig.clock.Now().Sub(rig.start), tt.wantEndBy)
+			}
+			if tt.wantEndBefore > 0 && rig.clock.Now().Sub(rig.start) >= tt.wantEndBefore {
+				t.Errorf("ended %v after the start, want before %v", rig.clock.Now().Sub(rig.start), tt.wantEndBefore)
 			}
 			if tt.wantNoEvalAfterStart && rig.gateCalls != callsAtStart+1 {
 				t.Errorf("gate evaluated %d times, want %d: the calls up to the new turn plus the deadline's final evaluation", rig.gateCalls, callsAtStart+1)

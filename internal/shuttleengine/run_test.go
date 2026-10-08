@@ -1056,6 +1056,8 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 		boxes []inputBoxAnswer
 		// startOnEnter appends a turn start to the events file after every Enter.
 		startOnEnter bool
+		// frozen gives the run a clock that never advances, so only the window's attempt count can end the send.
+		frozen bool
 		wantErr      string
 		wantAbsent   string
 		wantNotLand  bool
@@ -1107,6 +1109,22 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 			boxes:    join(settled(shortText), []inputBoxAnswer{box(shortText)}),
 			wantErr:  "still pending in the input box", wantNotLand: true,
 			wantKeys: keys("Escape", "Enter", "Enter"), wantSleeps: []time.Duration{ms(100), ms(300), ms(600)},
+		},
+		{
+			// A 400 ms settle in a 1 s window allows four reads.
+			name: "a box that never settles under a clock that never advances stops at the read count", text: shortText,
+			settleMS: 400, confirmS: 1, frozen: true,
+			boxes:   []inputBoxAnswer{box("a"), box("b"), box("c"), box("d"), box("e")},
+			wantErr: "after 4 read(s)", wantNotLand: true,
+			wantKeys: keys("Escape"),
+		},
+		{
+			// A 1 s window allows six Enters at the 250 ms floor.
+			name: "Enters under a clock that never advances stop at the Enter count", text: shortText,
+			confirmS: 1, frozen: true,
+			boxes:    join(settled(shortText), []inputBoxAnswer{box(shortText)}),
+			wantErr:  "after 6 Enter(s)", wantNotLand: true,
+			wantKeys: keys("Escape", "Enter", "Enter", "Enter", "Enter", "Enter", "Enter"),
 		},
 		{
 			name: "a turn start past the pre-send offset confirms despite an ambiguous box", text: shortText,
@@ -1234,7 +1252,11 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 				cfg.SubmitConfirmTimeoutS = tt.confirmS
 			}
 			clock := &boxTestClock{fakeClock: newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))}
-			run = newFixture(t, reed, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(""), withRunClock(clock, clock.Now().Add(time.Hour)))
+			var runClock Clock = clock
+			if tt.frozen {
+				runClock = &frozenClock{now: clock.Now()}
+			}
+			run = newFixture(t, reed, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(""), withRunClock(runClock, clock.Now().Add(time.Hour)))
 
 			err := run.Send(tt.text)
 			if tt.wantErr == "" {
@@ -1314,6 +1336,8 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		events           string
 		interrupted      bool
 		viaRunner        bool
+		// frozen gives the run a clock that never advances, so only the poll count can end the wait.
+		frozen bool
 		// wantTypedBetween is the window the first typed key lands in; ignored when wantBusy is set.
 		wantTypedMin, wantTypedMax time.Duration
 		wantBusy                   []string
@@ -1324,6 +1348,7 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		{name: "runner send waits as run send does", idleAfter: 3 * time.Second, busyFrame: "working (esc to interrupt)", viaRunner: true, wantTypedMin: 3 * time.Second, wantTypedMax: 5 * time.Second},
 		{name: "draft that never clears fails busy", idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the pane is not idle", "a half-typed draft"}},
 		{name: "failed final capture is said so", idleAfter: never, busyFrame: "working", failCaptureAfter: 59 * time.Second, wantBusy: []string{"the final pane capture failed"}},
+		{name: "a busy pane under a clock that never advances fails busy at the poll count", idleAfter: never, busyFrame: "working", frozen: true, wantBusy: []string{"the pane is not idle"}},
 		{name: "unmatched turn start is released by the idle override", events: "START\n", wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
 		{name: "unmatched turn start is released by an interrupt report", events: "START\n", interrupted: true},
 		{name: "turn end after the turn start releases at once", events: "START\nSTOP:done\n"},
@@ -1351,7 +1376,11 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 				fx := newFixture(t, reed, engine, withConfig(cfg), withClock(clock), withStrand("strand-1"))
 				err = fx.Runner.Send("strand-1", "hello")
 			} else {
-				run := newFixture(t, reed, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(tt.events), withRunClock(clock, start.Add(time.Hour)))
+				var runClock Clock = clock
+				if tt.frozen {
+					runClock = &frozenClock{now: start}
+				}
+				run := newFixture(t, reed, engine, withConfig(cfg)).newRun(Spec{}, withRunEvents(tt.events), withRunClock(runClock, start.Add(time.Hour)))
 				err = run.Send("hello")
 			}
 
