@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -26,6 +27,8 @@ type declSource struct {
 	handle string
 	card   string
 	decl   quarry.Declaration
+	// resign marks a source built from an Edit card's re-sign arrow rather than from a handle: handle is then the arrow's member glyph, and the answer is only compared with it.
+	resign bool
 }
 
 // identifierPattern caches one compiled word-boundary matcher per identifier, so renameSignature
@@ -163,6 +166,10 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 // declaration head verbatim), and every Rename pair whose New side is a handle (its declaration
 // computed via renameDeclSource, never trusted from the planner's draft spelling).
 //
+// Every re-sign arrow whose target is a member glyph adds a third source to the same call: the glyph's own unit and the arrow's head.
+// Its answer is compared with the glyph and discarded, never entering the canonical-owner bookkeeping or the rewrite, since the head names an existing member rather than a handle.
+// A naming error, or an ID other than the glyph's own, is the blocking resign-head-mismatch.
+//
 // Under plan.Language "none" this function returns nil findings and performs no call and no
 // rewrite.
 //
@@ -171,7 +178,8 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 // whether a failure to re-read it is a real infrastructure failure or merely an in-memory plan that
 // was never on disk to begin with.
 func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry.ResolveResult) ([]Finding, bool, error) {
-	if _, ok := plan.GlyphLanguage(); !ok {
+	lang, ok := plan.GlyphLanguage()
+	if !ok {
 		return nil, false, nil
 	}
 
@@ -200,6 +208,21 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 			}
 			src.card = card
 			sources = append(sources, src)
+		}
+		for _, r := range c.Resigns {
+			if planparser.IsHandleRef(r.Target) {
+				continue
+			}
+			g, err := glyph.Parse(lang, r.Target)
+			if err != nil || g.IsSelf() {
+				continue // resign-not-member and glyph-malformed already report these.
+			}
+			sources = append(sources, declSource{
+				handle: g.String(),
+				card:   card,
+				decl:   quarry.Declaration{Unit: g.Unit, Decl: r.Decl},
+				resign: true,
+			})
 		}
 	}
 
@@ -232,6 +255,12 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 				Detail:   fmt.Sprintf("Name result for handle %q did not echo its own input", src.handle),
 				Severity: SeverityBlocking,
 			})
+			continue
+		}
+		if src.resign {
+			if res.Error != "" || res.ID != src.handle {
+				findings = append(findings, resignHeadMismatch(src, res))
+			}
 			continue
 		}
 		if res.Error != "" {
@@ -303,6 +332,24 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 	}
 
 	return findings, true, nil
+}
+
+// resignHeadMismatch is the blocking resign-head-mismatch finding for a re-sign arrow whose head quarry.Name could not name, or named as a member other than the arrow's own glyph.
+func resignHeadMismatch(src declSource, res quarry.NameResult) Finding {
+	answer := fmt.Sprintf("answered %q", res.ID)
+	if res.Error != "" {
+		answer = fmt.Sprintf("failed: %s (%s)", res.Error, res.Reason)
+	}
+	return Finding{
+		Check: "resign-head-mismatch",
+		Card:  src.card,
+		Detail: fmt.Sprintf(
+			"re-sign head %q does not name the member %q: naming it %s; write the member's new declaration head, receiver included for a method",
+			src.decl.Decl, src.handle, answer,
+		),
+		Severity: SeverityBlocking,
+		Ref:      src.handle,
+	}
 }
 
 // cardOwnHandles returns every plan: handle a card's own Declarations AND Rename pairs declare, in

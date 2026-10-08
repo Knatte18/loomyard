@@ -8,6 +8,7 @@ import (
 	"path"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/glyph"
@@ -16,6 +17,7 @@ import (
 
 // planGatePass reports redundant-file-target: a card listing a file self glyph and a member glyph that resolves into that file.
 // One finding per file and member, attributed to the card, with Ref the member.
+// It also reports resign-interface-method: a re-sign arrow whose member resolves to an interface method.
 // A member that resolves not_found, ambiguous or unreadably is skipped, since the status policy already reports it.
 // Under a non-glyph language it returns nothing and opens no repository.
 // An infrastructure error is wrapped in ErrQuarryUnavailable.
@@ -74,8 +76,30 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string) ([]Finding, error)
 				})
 			}
 		}
+
+		for _, r := range c.Resigns {
+			symbols, readable := answerSymbols(answers[r.Target])
+			if !readable || !slices.ContainsFunc(symbols, isInterfaceMethod) {
+				continue
+			}
+			findings = append(findings, Finding{
+				Check: "resign-interface-method",
+				Card:  c.ID(),
+				Detail: fmt.Sprintf(
+					"card %d re-sign arrow on %q: it is an interface method, whose own spec is no declaration a head can re-sign; drop the arrow and state the signature change in the card's Intent",
+					c.Number, r.Target,
+				),
+				Severity: SeverityBlocking,
+				Ref:      r.Target,
+			})
+		}
 	}
 	return findings, nil
+}
+
+// isInterfaceMethod reports whether s is a method whose signature does not open with func, quarry's answer for an interface method.
+func isInterfaceMethod(s quarry.Symbol) bool {
+	return s.Kind == quarry.KindMethod && !strings.HasPrefix(s.Signature, "func")
 }
 
 // collectMemberTargets returns every distinct member glyph plan's cards list among their own Targets, sorted for determinism.

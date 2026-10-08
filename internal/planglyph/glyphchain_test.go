@@ -62,6 +62,17 @@ type shapeRow struct {
 	deleteEdits []codeEdit
 	// gap names a known defect the row's assertions record rather than fix.
 	gap string
+	// resignHead is the declaration head that re-signs glyph on the Edit arrow leg; resigns lists the arrows the leg writes, defaulting to glyph with resignHead.
+	resignHead string
+	resigns    []resignLeg
+	// resignFindings is the exact finding set ValidateFormat reports for the arrow leg, empty when it validates clean.
+	resignFindings []findingKey
+}
+
+// resignLeg is one Edit arrow: a member glyph and the declaration head written for it.
+type resignLeg struct {
+	glyph string
+	head  string
 }
 
 // newRenameLeg returns the Rename leg of glyph: a to-side handle carrying member name plus "Renamed" in wrongUnit, and the canonical handle in glyph's own unit.
@@ -87,6 +98,7 @@ func shapeRows() []shapeRow {
 	rows := []shapeRow{
 		{
 			glyph:       "shapes#Func",
+			resignHead:  `func Func(count int) int`,
 			create:      &createLeg{"plan:shapes#draft", "func NewFunc() int", "plan:shapes#NewFunc"},
 			createEdits: []codeEdit{appendText(shapesFile, "\nfunc NewFunc() int { return 1 }\n")},
 			renameEdits: []codeEdit{replaceText(shapesFile, "func Func() int", "func FuncRenamed() int")},
@@ -94,6 +106,7 @@ func shapeRows() []shapeRow {
 		},
 		{
 			glyph:       "shapes#Plain",
+			resignHead:  `type Plain struct{ Count int }`,
 			create:      &createLeg{"plan:shapes#draft", "type NewPlain struct{}", "plan:shapes#NewPlain"},
 			createEdits: []codeEdit{appendText(shapesFile, "\ntype NewPlain struct{}\n")},
 			renameEdits: []codeEdit{replaceText(shapesFile, "type Plain struct{}", "type PlainRenamed struct{}")},
@@ -101,6 +114,7 @@ func shapeRows() []shapeRow {
 		},
 		{
 			glyph:       "shapes#Var",
+			resignHead:  `var Var = 2`,
 			create:      &createLeg{"plan:shapes#draft", "var NewVar = 1", "plan:shapes#NewVar"},
 			createEdits: []codeEdit{appendText(shapesFile, "\nvar NewVar = 1\n")},
 			renameEdits: []codeEdit{replaceText(shapesFile, "var Var = 1", "var VarRenamed = 1")},
@@ -108,6 +122,7 @@ func shapeRows() []shapeRow {
 		},
 		{
 			glyph:       "shapes#Const",
+			resignHead:  `const Const = 3`,
 			create:      &createLeg{"plan:shapes#draft", "const NewConst = 2", "plan:shapes#NewConst"},
 			createEdits: []codeEdit{appendText(shapesFile, "\nconst NewConst = 2\n")},
 			renameEdits: []codeEdit{replaceText(shapesFile, "const Const = 2", "const ConstRenamed = 2")},
@@ -115,6 +130,7 @@ func shapeRows() []shapeRow {
 		},
 		{
 			glyph:       "shapes#Struct.ValueMethod",
+			resignHead:  `func (s *Struct) ValueMethod() int`,
 			create:      &createLeg{"plan:shapes#Struct.draft", "func (s Struct) NewValueMethod() int", "plan:shapes#Struct.NewValueMethod"},
 			createEdits: []codeEdit{appendText(shapesFile, "\nfunc (s Struct) NewValueMethod() int { return 1 }\n")},
 			renameEdits: []codeEdit{replaceText(shapesFile, "ValueMethod() int", "ValueMethodRenamed() int")},
@@ -122,27 +138,35 @@ func shapeRows() []shapeRow {
 		},
 		{
 			glyph:       "shapes#Struct.PointerMethod",
+			resignHead:  `func (s *Struct) PointerMethod(by int)`,
 			create:      &createLeg{"plan:shapes#Struct.draft", "func (s *Struct) NewPointerMethod()", "plan:shapes#Struct.NewPointerMethod"},
 			createEdits: []codeEdit{appendText(shapesFile, "\nfunc (s *Struct) NewPointerMethod() {}\n")},
 			renameEdits: []codeEdit{replaceText(shapesFile, "PointerMethod() {", "PointerMethodRenamed() {")},
 			deleteEdits: []codeEdit{replaceText(shapesFile, "func (s *Struct) PointerMethod() { s.Field++ }\n", "")},
 		},
 		{
-			glyph: "shapes#Struct.Field",
+			glyph:          "shapes#Struct.Field",
+			resignHead:     `Field int64`,
+			resignFindings: []findingKey{{"glyph-not-found", "1-card1", SeverityBlocking}, {"resign-head-mismatch", "1-card1", SeverityBlocking}},
 			// quarry indexes no struct fields, so a field glyph never resolves.
 			editFindings: []findingKey{{"glyph-not-found", "1-card1", SeverityBlocking}},
 			gap:          "quarry indexes no struct fields; shapes#Struct.Field resolves not_found",
 		},
 		{
-			glyph:       "shapes#Iface.IfaceMethod",
-			create:      &createLeg{"plan:shapes#Iface.draft", "func (i Iface) NewIfaceMethod() int", "plan:shapes#Iface.NewIfaceMethod"},
-			createEdits: []codeEdit{replaceText(shapesFile, "IfaceMethod() int\n}", "IfaceMethod() int\n\tNewIfaceMethod() int\n}")},
-			renameEdits: []codeEdit{replaceText(shapesFile, "IfaceMethod() int\n}", "IfaceMethodRenamed() int\n}")},
-			deleteEdits: []codeEdit{replaceText(shapesFile, "\tIfaceMethod() int\n", "")},
+			glyph:          "shapes#Iface.IfaceMethod",
+			resignHead:     `func (Iface) IfaceMethod(count int) int`,
+			resignFindings: []findingKey{{"resign-interface-method", "1-card1", SeverityBlocking}},
+			create:         &createLeg{"plan:shapes#Iface.draft", "func (i Iface) NewIfaceMethod() int", "plan:shapes#Iface.NewIfaceMethod"},
+			createEdits:    []codeEdit{replaceText(shapesFile, "IfaceMethod() int\n}", "IfaceMethod() int\n\tNewIfaceMethod() int\n}")},
+			renameEdits:    []codeEdit{replaceText(shapesFile, "IfaceMethod() int\n}", "IfaceMethodRenamed() int\n}")},
+			deleteEdits:    []codeEdit{replaceText(shapesFile, "\tIfaceMethod() int\n", "")},
 		},
 		{
 			// The method cannot outlive its receiver type, so the Delete leg's card deletes both, and the rename carries the method's receiver along.
-			glyph:       "shapes#Generic",
+			glyph:      "shapes#Generic",
+			resignHead: `type Generic[E any] struct{ value, extra E }`,
+			// The method names the type in its receiver, the member card 11 counts as a caller.
+			resigns:     []resignLeg{{"shapes#Generic", "type Generic[E any] struct{ value, extra E }"}, {"shapes#Generic.GenericMethod", "func (g *Generic[E]) GenericMethod(count int) E"}},
 			create:      &createLeg{"plan:shapes#draft", "type NewGeneric[E any] struct{}", "plan:shapes#NewGeneric"},
 			createEdits: []codeEdit{appendText(shapesFile, "\ntype NewGeneric[E any] struct{}\n")},
 			renameEdits: []codeEdit{
@@ -157,6 +181,7 @@ func shapeRows() []shapeRow {
 		},
 		{
 			glyph:       "shapes#Generic.GenericMethod",
+			resignHead:  `func (g *Generic[E]) GenericMethod(count int) E`,
 			create:      &createLeg{"plan:shapes#Generic.draft", "func (g *Generic[E]) NewGenericMethod() E", "plan:shapes#Generic.NewGenericMethod"},
 			createEdits: []codeEdit{appendText(shapesFile, "\nfunc (g *Generic[E]) NewGenericMethod() E { return g.value }\n")},
 			renameEdits: []codeEdit{replaceText(shapesFile, "GenericMethod() E", "GenericMethodRenamed() E")},
@@ -164,6 +189,7 @@ func shapeRows() []shapeRow {
 		},
 		{
 			glyph:       "shapes#testHelper",
+			resignHead:  `func testHelper(count int) int`,
 			create:      &createLeg{"plan:shapes#draft", "func newTestHelper() int", "plan:shapes#newTestHelper"},
 			createEdits: []codeEdit{appendText(shapesTestFile, "\nfunc newTestHelper() int { return 0 }\n")},
 			renameEdits: []codeEdit{replaceText(shapesTestFile, "func testHelper()", "func testHelperRenamed()")},
@@ -171,6 +197,7 @@ func shapeRows() []shapeRow {
 		},
 		{
 			glyph:       "shapes_test#TestExternal",
+			resignHead:  `func TestExternal(t *testing.T, count int)`,
 			create:      &createLeg{"plan:shapes_test#draft", "func TestNewExternal(t *testing.T)", "plan:shapes_test#TestNewExternal"},
 			createEdits: []codeEdit{appendText(externalTestFile, "\nfunc TestNewExternal(t *testing.T) {}\n")},
 			renameEdits: []codeEdit{replaceText(externalTestFile, "func TestExternal(", "func TestExternalRenamed(")},
@@ -178,6 +205,7 @@ func shapeRows() []shapeRow {
 		},
 		{
 			glyph:       "shapes#Tagged",
+			resignHead:  `func Tagged(count int)`,
 			create:      &createLeg{"plan:shapes#draft", "func NewTagged()", "plan:shapes#NewTagged"},
 			createEdits: []codeEdit{appendText(taggedFile, "\nfunc NewTagged() {}\n")},
 			renameEdits: []codeEdit{replaceText(taggedFile, "func Tagged()", "func TaggedRenamed()")},
@@ -185,6 +213,7 @@ func shapeRows() []shapeRow {
 		},
 		{
 			glyph:       "dirname#DirDiffers",
+			resignHead:  `func DirDiffers(count int)`,
 			create:      &createLeg{"plan:dirname#draft", "func NewDirDiffers()", "plan:dirname#NewDirDiffers"},
 			createEdits: []codeEdit{appendText(clauseFile, "\nfunc NewDirDiffers() {}\n")},
 			renameEdits: []codeEdit{replaceText(clauseFile, "func DirDiffers()", "func DirDiffersRenamed()")},
@@ -192,6 +221,7 @@ func shapeRows() []shapeRow {
 		},
 		{
 			glyph:       "cmd/tool#run",
+			resignHead:  `func run(count int)`,
 			create:      &createLeg{"plan:cmd/tool#draft", "func newRun()", "plan:cmd/tool#newRun"},
 			createEdits: []codeEdit{appendText(mainFile, "\nfunc newRun() {}\n")},
 			renameEdits: []codeEdit{replaceText(mainFile, "func run()", "func runRenamed()")},
@@ -199,6 +229,7 @@ func shapeRows() []shapeRow {
 		},
 		{
 			glyph:       "shapes#BlockVar",
+			resignHead:  `var BlockVar = 7`,
 			create:      &createLeg{"plan:shapes#draft", "var NewBlockVar = 6", "plan:shapes#NewBlockVar"},
 			createEdits: []codeEdit{replaceText(shapesFile, "\tBlockVar     = 3\n", "\tBlockVar     = 3\n\tNewBlockVar  = 6\n")},
 			renameEdits: []codeEdit{replaceText(shapesFile, "\tBlockVar     = 3\n", "\tBlockVarRenamed = 3\n")},
@@ -206,6 +237,7 @@ func shapeRows() []shapeRow {
 		},
 		{
 			glyph:       "shapes#NextConst",
+			resignHead:  `const NextConst = 8`,
 			create:      &createLeg{"plan:shapes#draft", "const NewNextConst = 7", "plan:shapes#NewNextConst"},
 			createEdits: []codeEdit{replaceText(shapesFile, "\tNextConst\n)", "\tNextConst\n\tNewNextConst = 7\n)")},
 			renameEdits: []codeEdit{replaceText(shapesFile, "\tNextConst\n)", "\tNextConstRenamed\n)")},
@@ -213,6 +245,7 @@ func shapeRows() []shapeRow {
 		},
 		{
 			glyph:       "shapes#PairB",
+			resignHead:  `var PairB = 9`,
 			create:      &createLeg{"plan:shapes#draft", "var NewPairB int", "plan:shapes#NewPairB"},
 			createEdits: []codeEdit{replaceText(shapesFile, "PairA, PairB = 4, 5\n)", "PairA, PairB = 4, 5\n\tNewPairB int\n)")},
 			rename:      &renameLeg{"plan:dirname#PairRenamed", "plan:shapes#PairRenamed"},
@@ -234,6 +267,9 @@ func shapeRows() []shapeRow {
 		}
 		if r.deleteEdits != nil && r.deleteGlyphs == nil {
 			r.deleteGlyphs = []string{r.glyph}
+		}
+		if r.resigns == nil && r.resignHead != "" {
+			r.resigns = []resignLeg{{r.glyph, r.resignHead}}
 		}
 	}
 	return rows
@@ -295,6 +331,16 @@ func renameCard(old, draft string) string {
 	return fmt.Sprintf("**Rename:**\n- `%s` -> `%s`\n\n**Intent:** rename\n", old, draft)
 }
 
+func resignCard(legs ...resignLeg) string {
+	var b strings.Builder
+	b.WriteString("**Edit:**\n")
+	for _, leg := range legs {
+		fmt.Fprintf(&b, "- `%s` -> `%s`\n", leg.glyph, leg.head)
+	}
+	b.WriteString("\n**Intent:** resign\n\n**ImpactSummary:** none\n")
+	return b.String()
+}
+
 func bullets(targets []string) string {
 	var b strings.Builder
 	for _, target := range targets {
@@ -310,6 +356,11 @@ func planGateKeys(t *testing.T, plan *planparser.Plan, root string) []findingKey
 	if err != nil {
 		t.Fatalf("ValidateFormat(...) returned error: %v", err)
 	}
+	return sortedKeys(findings)
+}
+
+// sortedKeys returns findings as sorted keys.
+func sortedKeys(findings []Finding) []findingKey {
 	keys := make([]findingKey, 0, len(findings))
 	for _, f := range findings {
 		keys = append(keys, findingKey{f.Check, f.Card, f.Severity})
@@ -318,6 +369,21 @@ func planGateKeys(t *testing.T, plan *planparser.Plan, root string) []findingKey
 		return strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
 	})
 	return keys
+}
+
+// assertDispatch fails unless ValidateDispatch over plan with no completed card reports exactly want.
+func assertDispatch(t *testing.T, plan *planparser.Plan, root string, want []findingKey) {
+	t.Helper()
+	findings, err := ValidateDispatch(plan, root, nil, nil)
+	if err != nil {
+		t.Fatalf("ValidateDispatch(...) returned error: %v", err)
+	}
+	if want == nil {
+		want = []findingKey{}
+	}
+	if got := sortedKeys(findings); !slices.Equal(got, want) {
+		t.Errorf("ValidateDispatch findings = %+v; want %+v", got, want)
+	}
 }
 
 // assertPlanGate fails unless ValidateFormat over plan reports exactly want.
@@ -393,6 +459,24 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 					t.Parallel()
 					_, plan := writeGlyphPlan(t, []string{deleteCard(row.deleteGlyphs...)})
 					assertPlanGate(t, plan, copyGlyphChainFixture(t), nil)
+				})
+			}
+
+			if row.resigns != nil {
+				t.Run("resign", func(t *testing.T) {
+					t.Parallel()
+					root := copyGlyphChainFixture(t)
+					_, plan := writeGlyphPlan(t, []string{resignCard(row.resigns...)})
+					assertPlanGate(t, plan, root, row.resignFindings)
+
+					// Only the interface-method check reads the tree, so only it stays out of dispatch.
+					var dispatch []findingKey
+					for _, key := range row.resignFindings {
+						if key.check != "resign-interface-method" {
+							dispatch = append(dispatch, key)
+						}
+					}
+					assertDispatch(t, plan, root, dispatch)
 				})
 			}
 		})
@@ -475,4 +559,44 @@ func TestGlyphChain_RedundantFile(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGlyphChain_ResignScenarios pins the arrow's mismatch verdicts, which every gate reports, and that one member re-signed on two cards validates clean and leaves both card files untouched.
+func TestGlyphChain_ResignScenarios(t *testing.T) {
+	t.Parallel()
+
+	mismatch := []findingKey{{"resign-head-mismatch", "1-card1", SeverityBlocking}}
+	tests := []struct {
+		name string
+		leg  resignLeg
+	}{
+		{"a head naming another member", resignLeg{"shapes#Func", "func Other() int"}},
+		{"a head that fails to parse", resignLeg{"shapes#Func", "func ("}},
+		{"a changed receiver type", resignLeg{"shapes#Struct.ValueMethod", "func (s Plain) ValueMethod() int"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := copyGlyphChainFixture(t)
+			_, plan := writeGlyphPlan(t, []string{resignCard(tc.leg)})
+			assertPlanGate(t, plan, root, mismatch)
+			assertDispatch(t, plan, root, mismatch)
+		})
+	}
+
+	t.Run("one member re-signed on two cards", func(t *testing.T) {
+		t.Parallel()
+		root := copyGlyphChainFixture(t)
+		leg := resignLeg{"shapes#Func", "func Func(count int) int"}
+		dir, plan := writeGlyphPlan(t, []string{resignCard(leg), resignCard(leg)})
+		before := []string{readCardFile(t, dir, 1, "card1"), readCardFile(t, dir, 2, "card2")}
+
+		assertPlanGate(t, plan, root, nil)
+
+		for n := 1; n <= 2; n++ {
+			if got := readCardFile(t, dir, n, fmt.Sprintf("card%d", n)); got != before[n-1] {
+				t.Errorf("ValidateFormat rewrote card %d:\nbefore: %s\nafter: %s", n, before[n-1], got)
+			}
+		}
+	})
 }
