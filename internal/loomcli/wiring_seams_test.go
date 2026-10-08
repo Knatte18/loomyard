@@ -30,6 +30,7 @@ var intentionallyNil = map[string]string{
 	"InnerRun.MarkWatched":        "batten-only seam, filled by battencli",
 	"InnerRun.OrchStrandRecorded": "batten-only seam, filled by battencli",
 	"InnerRun.StopReport":         "batten-only seam, filled by battencli",
+	"InnerRun.Activity":           "batten-only seam, filled by battencli",
 	"SeedChild.ReadBoardType":     "batten-only seam, filled by battencli",
 	"SeedChild.ChildDriver":       "batten-only seam, filled by battencli",
 	"SeedChild.WriteSeed":         "batten-only seam, filled by battencli",

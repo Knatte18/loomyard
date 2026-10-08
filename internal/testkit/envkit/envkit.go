@@ -195,6 +195,9 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			MarkWatched:        func(context.Context) (bool, error) { return false, nil },
 			OrchStrandRecorded: func() (bool, error) { return true, nil },
 			StopReport:         func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
+			Activity: func(context.Context) ([]battenshed.AgentActivity, bool, error) {
+				return nil, false, nil
+			},
 		},
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },

@@ -12,10 +12,16 @@
 // fabric-internal side -- write "the task worktree" and "the pair" instead of naming either side
 // by name.
 //
-// The InnerRun row notices a child that left running, a driver strand found dead while the child runs, and a running child whose status file stays unchanged for the quiet window (notice_quiet_min) with its driver alive, and it notifies through the injected Notify seam (notice.go).
+// The InnerRun row notices a child that left running, a driver strand found dead while the child runs, an agent run of a running child stalled on an API error, and a running child whose agents are all idle for the quiet window (notice_quiet_min), and it notifies through the injected Notify seam (notice.go).
 // A notice is one line, sent once per episode, from inside the wait.
 // A state-changed and a driver-dead episode ends when the child's state changes, and the state's since is the status file's modification time at the first sight of the child in it:
 // a rewrite of the file in the same state does not move it, and only a batten start reads it from the file.
+// The api-error and quiet notices need a running child with a live driver strand, and read the agents through the injected Activity seam at most once per notice_probe_s; a failed read sends neither.
+// The api-error notice goes when the newest turn end of any live run is an API error and that run has not been active for two minutes since; it names the producer and the error text cut to one line, and takes precedence over quiet.
+// The quiet notice goes when every live run has been idle for the quiet window and no verify or shuttle wait marker is live, and says how long the agents have been idle;
+// with no live run found, it falls back to "no agent activity readable" counted from the later of the child's newest history entry and since.
+// Both episodes are keyed by the newest agent activity, so they end when an agent is active again, with `since` on the line as content only.
+// Limits: a run whose pid is dead is not read, a run that keeps writing or hangs in a live wait is never quiet, and both notices are informational.
 // A marker under the row's scratch directory records the notices sent, and only those queued, so a batten restart sends the notices not yet sent and never one already sent.
 // Every notice carries `since` and `history`, and a notice for a parked stop (blocked, paused, failed, awaiting) carries the driver's stop report, or `report none yet`.
 // A parked stop's notice waits for the driver's stop report, for the driver strand to end, or for three minutes after `since`, whichever comes first, and an older report never qualifies.
@@ -26,7 +32,7 @@
 // a Notify error or an unqueued line is retried at most once per notice_probe_s and at most three times, then dropped with a Warn.
 // Control flow is unchanged: a notice is informational, a delivery failure is only warned about, and the outcomes, halts and waits are the same with or without it.
 // Bound: the report wait delays a notice by at most three minutes, and the relay wait by at most ten minutes after the report; neither loses it, and there is one notice per episode.
-// A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window; an operator attaches to the child's session to tell the cases apart.
+// A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window, or by an API-error notice when the stall is one; an operator attaches to the child's session to tell the cases apart.
 //
 // The InnerRun row waits on its child inside its call rather than returning once per poll.
 // Every poll_interval_s it stats the child's status file, and decodes it when its modification time differs from the last decode or notice_probe_s has passed.

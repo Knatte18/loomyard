@@ -43,7 +43,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // driverAliveFrom answers whether the child's driver strand is live, over an injected status reader so its answers are testable without tmux.
@@ -413,6 +416,36 @@ func readStopReport(prime *lyxcwd.Location, slug string) (path string, at time.T
 	return strings.TrimSpace(string(raw)), info.ModTime(), true, nil
 }
 
+// readAgentActivity reads the live agent runs of the task worktree through the shuttle config and a Claude engine, mapped onto battenshed's neutral type,
+// and reports whether a Go-side wait is live: a running verify, or a shuttle wait.
+// Both waits are read from their marker files, never from the pane options that display them.
+func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentActivity, waitLive bool, err error) {
+	anchor := taskLocation.AnchorPath()
+	cfg, err := shuttleengine.LoadConfig(anchor, "shuttle")
+	if err != nil {
+		return nil, false, err
+	}
+	readings, err := shuttleengine.ReadAgentActivity(cfg, anchor, claudeengine.NewFromConfig(cfg))
+	if err != nil {
+		return nil, false, err
+	}
+	for _, reading := range readings {
+		runs = append(runs, battenshed.AgentActivity{Producer: reading.StrandName, LastActivity: reading.LastActivity, APIError: reading.APIError, APIErrorText: reading.APIErrorText})
+	}
+	_, verifyLive, err := verifytree.ReadMarker(verifytree.NewPaths(taskLocation.WorktreePath(), verifytree.Dir(anchor)).Marker)
+	if err != nil {
+		return nil, false, err
+	}
+	if verifyLive {
+		return runs, true, nil
+	}
+	_, shuttleLive, err := shuttleengine.ReadWaitMarker(cfg, anchor)
+	if err != nil {
+		return nil, false, err
+	}
+	return runs, shuttleLive, nil
+}
+
 // markBattenWatched writes the batten-watched marker of the task worktree's run, holding this process's pid, while noticesReachDriversParent holds, and removes it otherwise.
 // The write is atomic, so the driver's render never reads a torn pid, and an absent marker is fine to remove.
 // An absent task worktree is an error.
@@ -558,6 +591,14 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return false, err
 				}
 				return status.PauseRequested, nil
+			},
+			// Activity resolves the task worktree on Call like every seam here.
+			Activity: func(context.Context) ([]battenshed.AgentActivity, bool, error) {
+				taskLocation, err := taskWorktreeLocation(location, slug)
+				if err != nil {
+					return nil, false, err
+				}
+				return readAgentActivity(taskLocation)
 			},
 			AttachDir: func() (string, error) {
 				taskLocation, err := taskWorktreeLocation(location, slug)

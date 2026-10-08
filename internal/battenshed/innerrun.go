@@ -167,13 +167,16 @@ var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
 // A nil deps.OrchStrandRecorded resolves to reporting a strand recorded, and a nil deps.StopReport to reporting no stop report.
 // A nil deps.DriverStrand resolves to reporting no driver strand, a nil deps.ChildRunLockHeld to reporting no held lock and a nil deps.ReviveStrands to a revive that fails as not wired.
 // A nil deps.PauseRequested resolves to never paused.
-// A nil deps.MarkWatched resolves to reporting not held.
+// A nil deps.MarkWatched resolves to reporting not held, and a nil deps.Activity to reporting no live run and no live wait.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
 	if deps.PauseRequested == nil {
 		deps.PauseRequested = func() (bool, error) { return false, nil }
 	}
 	if deps.MarkWatched == nil {
 		deps.MarkWatched = func(context.Context) (bool, error) { return false, nil }
+	}
+	if deps.Activity == nil {
+		deps.Activity = func(context.Context) ([]AgentActivity, bool, error) { return nil, false, nil }
 	}
 	if deps.Sleep == nil {
 		deps.Sleep = waitOrCancel
@@ -465,6 +468,10 @@ type childWait struct {
 	alive      bool
 	aliveKnown bool
 	aliveStale bool
+	// activity is the newest reading of the child's agent runs, activityOK whether it succeeded, and activityStale is true on a probe check until it is read.
+	activity      agentReading
+	activityOK    bool
+	activityStale bool
 	// resumeRetryAt is when the awaiting arm may try a resume again after the child's driver refused one as not parked yet,
 	// and notParkedLogged whether that refusal was logged already.
 	resumeRetryAt   time.Time
@@ -513,6 +520,7 @@ func (p *innerRunProducer) wait(ctx context.Context, w *childWait, step armStep)
 	w.lastProbe = p.deps.Now()
 	w.probeDue = true
 	w.aliveStale = true
+	w.activityStale = true
 	p.noticeStep(ctx, w, false)
 	if end := step(ctx, w); end != nil {
 		return end.results()
@@ -527,6 +535,7 @@ func (p *innerRunProducer) wait(ctx context.Context, w *childWait, step armStep)
 		if w.probeDue {
 			w.lastProbe = now
 			w.aliveStale = true
+			w.activityStale = true
 		}
 		if end := p.check(ctx, w, step, now); end != nil {
 			return end.results()

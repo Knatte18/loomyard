@@ -44,9 +44,16 @@ const (
 	noticeStateChanged = "state-changed"
 	// noticeDriverDead is the child's driver strand found dead while the child is running.
 	noticeDriverDead = "driver-dead"
-	// noticeQuiet is the child's status file unchanged for the quiet window while the child is running and its driver strand is alive.
+	// noticeQuiet is every agent of the running child idle for the quiet window, with its driver strand alive and no wait marker live.
+	// It is informational: an agent that keeps writing, or a verify or shuttle wait that hangs live, is never quiet, and a dead pid is not an agent.
 	noticeQuiet = "quiet"
+	// noticeAPIError is a live agent run of the running child whose newest turn end is an API error and which has not been active for noticeAPIErrorIdle since.
+	// It takes precedence over noticeQuiet and is informational.
+	noticeAPIError = "api-error"
 )
+
+// noticeAPIErrorIdle is how long an agent run whose newest turn end is an API error must stay inactive before the api-error notice goes.
+const noticeAPIErrorIdle = 2 * time.Minute
 
 // noticeEpisodeFile returns the path of the marker holding one episode key per line.
 func noticeEpisodeFile(scratchDir, producer string) string {
@@ -103,7 +110,7 @@ func renderNotice(n noticeLine) string {
 }
 
 // noticeKey renders the episode key of one condition: the condition, the child's state and the stamp that tells its episodes apart.
-// The stamp of a state-changed and of a driver-dead notice is the state episode's since; a quiet notice's is the status file's modification time.
+// The stamp of a state-changed and of a driver-dead notice is the state episode's since; a quiet and an api-error notice's is the newest agent activity.
 func noticeKey(condition string, state shedengine.State, stampNanos int64) string {
 	return condition + "|" + string(state) + "|" + strconv.FormatInt(stampNanos, 10)
 }
@@ -125,24 +132,44 @@ func readNoticeKeys(path string) []string {
 
 // keepEpisode drops the keys the current status no longer belongs to.
 // A key ends with its episode when the child's state changed or the state episode's since moved;
-// a quiet key ends when the status file's modification time moved.
-func keepEpisode(keys []string, state shedengine.State, sinceNanos, modNanos int64) []string {
+// a quiet or api-error key ends when the newest agent activity moved, and stays while the activity cannot be read.
+func keepEpisode(keys []string, state shedengine.State, sinceNanos int64, activity activityStamp) []string {
 	var kept []string
 	for _, k := range keys {
 		parts := strings.Split(k, "|")
 		if len(parts) != 3 || parts[1] != string(state) {
 			continue
 		}
-		want := sinceNanos
-		if parts[0] == noticeQuiet {
-			want = modNanos
-		}
-		if parts[2] != strconv.FormatInt(want, 10) {
+		if parts[0] == noticeQuiet || parts[0] == noticeAPIError {
+			if activity.known && parts[2] != strconv.FormatInt(activity.nanos, 10) {
+				continue
+			}
+		} else if parts[2] != strconv.FormatInt(sinceNanos, 10) {
 			continue
 		}
 		kept = append(kept, k)
 	}
 	return kept
+}
+
+// activityStamp is the newest agent activity as an episode stamp, known only when the agents were read.
+type activityStamp struct {
+	nanos int64
+	known bool
+}
+
+// noticeFinding is the condition the child is in, the stamp of its episode key, and the words that replace the condition's fixed text when it carries any.
+// A zero condition means the child is in none.
+type noticeFinding struct {
+	condition string
+	stamp     int64
+	text      string
+}
+
+// agentReading is one reading of the child's agent runs.
+type agentReading struct {
+	runs     []AgentActivity
+	waitLive bool
 }
 
 // noticeDelivery is the in-process record of the attempts to send one notice.
@@ -186,21 +213,17 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait, final b
 	if !p.notices {
 		return
 	}
-	info, err := os.Stat(w.statusPath)
-	if err != nil {
-		logger.Warn("battenshed: notice skipped; status file unreadable", "producer", p.name, "slug", p.slug, "path", w.statusPath, "error", err)
-		return
-	}
 	status := w.status
 	old := readNoticeKeys(noticeEpisodeFile(p.scratchDir, p.name))
-	kept := keepEpisode(old, status.State, p.episode.since.UnixNano(), info.ModTime().UnixNano())
+	finding, activity := p.noticeCondition(ctx, w)
+	kept := keepEpisode(old, status.State, p.episode.since.UnixNano(), activity)
 
-	condition, stamp := p.noticeCondition(ctx, w, info.ModTime())
+	condition := finding.condition
 	if condition == "" {
 		p.saveEpisode(kept, old)
 		return
 	}
-	key := noticeKey(condition, status.State, stamp)
+	key := noticeKey(condition, status.State, finding.stamp)
 	for _, k := range kept {
 		if k == key {
 			p.saveEpisode(kept, old)
@@ -222,30 +245,86 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait, final b
 		logger.Warn("battenshed: notice skipped; attach directory unresolved", "producer", p.name, "slug", p.slug, "error", err)
 		return
 	}
-	line := renderNotice(noticeLine{slug: p.slug, condition: p.conditionText(condition), status: status, since: p.episode.since, report: report, attachDir: attachDir})
+	line := renderNotice(noticeLine{slug: p.slug, condition: p.conditionText(finding), status: status, since: p.episode.since, report: report, attachDir: attachDir})
 	if p.deliver(ctx, key, condition, line, final) {
 		kept = append(kept, key)
 	}
 	p.saveEpisode(kept, old)
 }
 
-// noticeCondition returns the condition the child is in and the stamp of its episode key, or an empty condition when it is in none.
-// A dead driver strand is checked before the quiet window, so a quiet status file with a live driver is the only quiet case.
-func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait, modTime time.Time) (string, int64) {
+// noticeCondition returns the condition the child is in, with the stamp of its episode key, and the newest agent activity the check could read.
+// A dead driver strand is checked before the agents, so an agent-based condition needs a live driver.
+func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait) (noticeFinding, activityStamp) {
 	if w.status.State != shedengine.StateRunning {
-		return noticeStateChanged, p.episode.since.UnixNano()
+		return noticeFinding{condition: noticeStateChanged, stamp: p.episode.since.UnixNano()}, activityStamp{}
 	}
 	alive, known := p.driverAlive(ctx, w)
 	if !known {
-		return "", 0
+		return noticeFinding{}, activityStamp{}
 	}
 	if !alive {
-		return noticeDriverDead, p.episode.since.UnixNano()
+		return noticeFinding{condition: noticeDriverDead, stamp: p.episode.since.UnixNano()}, activityStamp{}
 	}
-	if p.noticeQuiet > 0 && p.deps.Now().Sub(modTime) >= p.noticeQuiet {
-		return noticeQuiet, modTime.UnixNano()
+	return p.judgeAgents(ctx, w)
+}
+
+// agentActivity reads deps.Activity at most once per probe and reuses the answer on the checks between.
+// ok is false when the read failed, which is warned about once per read.
+func (p *innerRunProducer) agentActivity(ctx context.Context, w *childWait) (reading agentReading, ok bool) {
+	if w.activityStale {
+		w.activityStale = false
+		runs, waitLive, err := p.deps.Activity(ctx)
+		w.activity, w.activityOK = agentReading{runs: runs, waitLive: waitLive}, err == nil
+		if err != nil && ctx.Err() == nil {
+			logger.Warn("battenshed: agent activity read failed; no activity notice", "producer", p.name, "slug", p.slug, "error", err)
+		}
 	}
-	return "", 0
+	return w.activity, w.activityOK
+}
+
+// judgeAgents returns the api-error or quiet finding of a running child with a live driver, and the newest agent activity.
+// With several live runs, api-error needs any one and quiet needs every run idle.
+// With no live run found, quiet falls back to the later of the child's newest history entry and the state episode's since.
+func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (noticeFinding, activityStamp) {
+	reading, ok := p.agentActivity(ctx, w)
+	if !ok {
+		return noticeFinding{}, activityStamp{}
+	}
+	now := p.deps.Now()
+
+	if len(reading.runs) == 0 {
+		newest := p.episode.since
+		if n := len(w.status.History); n > 0 {
+			if at, err := time.Parse(time.RFC3339, w.status.History[n-1].At); err == nil && at.After(newest) {
+				newest = at
+			}
+		}
+		stamp := activityStamp{nanos: newest.UnixNano(), known: true}
+		if p.noticeQuiet > 0 && !reading.waitLive && now.Sub(newest) >= p.noticeQuiet {
+			text := fmt.Sprintf("no agent activity readable for %s while the child is running", now.Sub(newest).Round(time.Second))
+			return noticeFinding{condition: noticeQuiet, stamp: stamp.nanos, text: text}, stamp
+		}
+		return noticeFinding{}, stamp
+	}
+
+	newest := reading.runs[0].LastActivity
+	for _, run := range reading.runs[1:] {
+		if run.LastActivity.After(newest) {
+			newest = run.LastActivity
+		}
+	}
+	stamp := activityStamp{nanos: newest.UnixNano(), known: true}
+	for _, run := range reading.runs {
+		if run.APIError && now.Sub(run.LastActivity) >= noticeAPIErrorIdle {
+			text := fmt.Sprintf("agent %s hit an API error: %s", run.Producer, oneLine(run.APIErrorText, noticeErrorMax))
+			return noticeFinding{condition: noticeAPIError, stamp: stamp.nanos, text: text}, stamp
+		}
+	}
+	if p.noticeQuiet > 0 && !reading.waitLive && now.Sub(newest) >= p.noticeQuiet {
+		text := fmt.Sprintf("agents idle for %s while the child is running", now.Sub(newest).Round(time.Second))
+		return noticeFinding{condition: noticeQuiet, stamp: stamp.nanos, text: text}, stamp
+	}
+	return noticeFinding{}, stamp
 }
 
 // stateChangeReady decides whether the state-changed notice may go now, and returns its report clause.
@@ -354,12 +433,13 @@ func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line str
 }
 
 // conditionText renders the condition as the words a notice carries.
-func (p *innerRunProducer) conditionText(condition string) string {
-	switch condition {
+func (p *innerRunProducer) conditionText(finding noticeFinding) string {
+	if finding.text != "" {
+		return finding.text
+	}
+	switch finding.condition {
 	case noticeDriverDead:
 		return "driver strand is dead while the child is running"
-	case noticeQuiet:
-		return fmt.Sprintf("status file unchanged for %s while the child is running", p.noticeQuiet)
 	default:
 		return "child left running"
 	}

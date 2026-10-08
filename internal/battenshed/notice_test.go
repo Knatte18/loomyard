@@ -41,6 +41,12 @@ type noticeHarness struct {
 	decided     bool
 	watched     bool
 
+	// runs, waitLive and activityErr are what the fake Activity seam reports; activityReads counts its calls.
+	runs          []AgentActivity
+	waitLive      bool
+	activityErr   error
+	activityReads int
+
 	quiet time.Duration
 	probe time.Duration
 	poll  time.Duration
@@ -126,7 +132,11 @@ func (h *noticeHarness) producer() shedengine.ShedProducer {
 		},
 		MarkWatched: func(context.Context) (bool, error) { return h.watched, nil },
 		NoticeQuiet: h.quiet,
-		AttachDir:   func() (string, error) { return "/wt/task", nil },
+		Activity: func(context.Context) ([]AgentActivity, bool, error) {
+			h.activityReads++
+			return h.runs, h.waitLive, h.activityErr
+		},
+		AttachDir: func() (string, error) { return "/wt/task", nil },
 	}
 	return NewInnerRun("Run-Shed", "task", deps, h.poll, h.scratch, testGrace)
 }
@@ -296,9 +306,10 @@ func TestNotice_DeadDriverWhileRunning(t *testing.T) {
 }
 
 func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
-	t.Run("FiresAfterTheWindow", func(t *testing.T) {
+	t.Run("IdleAgentsGiveOneAfterTheWindow", func(t *testing.T) {
 		h := newNoticeHarness(t)
 		p := h.producer()
+		h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}, {Producer: "t:task:review", LastActivity: h.clock.Now().Add(-time.Hour)}}
 		h.clock.advance(44 * time.Minute)
 		h.call(p)
 		if len(h.notified) != 0 {
@@ -307,8 +318,64 @@ func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
 		h.clock.advance(time.Minute)
 		h.call(p)
 		h.call(p)
-		if len(h.notified) != 1 || !strings.Contains(h.notified[0], "unchanged for 45m0s") {
-			t.Fatalf("notified = %v; want exactly one quiet notice", h.notified)
+		if len(h.notified) != 1 || !strings.Contains(h.notified[0], "agents idle for 45m") {
+			t.Fatalf("notified = %v; want exactly one quiet notice measured from the newest run", h.notified)
+		}
+	})
+
+	t.Run("AnAgentThatKeepsWorkingNeverGoesQuietWhateverTheStatusFileDoes", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		for range 4 {
+			h.clock.advance(30 * time.Minute)
+			h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}}
+			h.call(p)
+		}
+		if len(h.notified) != 0 {
+			t.Fatalf("notified = %v; want none while an agent keeps reporting activity", h.notified)
+		}
+	})
+
+	t.Run("ALiveWaitMarkerSuppressesIt", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}}
+		h.waitLive = true
+		h.clock.advance(2 * time.Hour)
+		h.call(p)
+		h.runs = nil
+		h.call(p)
+		if len(h.notified) != 0 {
+			t.Fatalf("notified = %v; want none while a verify or shuttle wait is live, with or without a live run", h.notified)
+		}
+	})
+
+	t.Run("NoLiveRunFallsBackToTheLaterOfTheNewestHistoryEntryAndSince", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		h.call(p)
+		h.status.History = []shedengine.HistoryEntry{{At: h.clock.Now().Add(30 * time.Minute).Format(time.RFC3339)}}
+		h.clock.advance(60 * time.Minute)
+		h.call(p)
+		if len(h.notified) != 0 {
+			t.Fatalf("notified = %v; want none 30 minutes after the newest history entry", h.notified)
+		}
+		h.clock.advance(15 * time.Minute)
+		h.call(p)
+		h.call(p)
+		if len(h.notified) != 1 || !strings.Contains(h.notified[0], "no agent activity readable for 45m") {
+			t.Fatalf("notified = %v; want exactly one fallback quiet notice", h.notified)
+		}
+	})
+
+	t.Run("AnUnreadableActivitySendsNothing", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		h.activityErr = errors.New("shuttle config unreadable")
+		h.clock.advance(2 * time.Hour)
+		h.call(p)
+		if len(h.notified) != 0 {
+			t.Fatalf("notified = %v; want none when the activity cannot be read", h.notified)
 		}
 	})
 
@@ -318,7 +385,7 @@ func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
 		h.alive = false
 		h.clock.advance(time.Hour)
 		h.call(p)
-		if len(h.notified) != 1 || strings.Contains(h.notified[0], "unchanged") {
+		if len(h.notified) != 1 || strings.Contains(h.notified[0], "no agent activity") {
 			t.Fatalf("notified = %v; want the dead-driver notice only", h.notified)
 		}
 	})
@@ -330,7 +397,7 @@ func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
 		h.writeReport(h.clock.Now())
 		h.clock.advance(time.Hour)
 		h.call(p)
-		if len(h.notified) != 1 || strings.Contains(h.notified[0], "unchanged") {
+		if len(h.notified) != 1 || strings.Contains(h.notified[0], "no agent activity") {
 			t.Fatalf("notified = %v; want the state-change notice only", h.notified)
 		}
 	})
@@ -345,6 +412,42 @@ func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
 			t.Fatalf("notified = %v; want none with the quiet window off", h.notified)
 		}
 	})
+}
+
+func TestNotice_APIErrorStall(t *testing.T) {
+	h := newNoticeHarness(t)
+	p := h.producer()
+	stall := func() {
+		h.runs = []AgentActivity{
+			{Producer: "t:task:impl", LastActivity: h.clock.Now(), APIError: true, APIErrorText: "overloaded\nplease retry"},
+			{Producer: "t:task:review", LastActivity: h.clock.Now().Add(-time.Hour)},
+		}
+	}
+
+	stall()
+	h.clock.advance(noticeAPIErrorIdle - 5*time.Second)
+	h.call(p)
+	if len(h.notified) != 0 {
+		t.Fatalf("notified = %v; want none before the error has stood for %s", h.notified, noticeAPIErrorIdle)
+	}
+	h.clock.advance(5 * time.Second)
+	h.call(p)
+	h.call(p)
+	if len(h.notified) != 1 || !strings.Contains(h.notified[0], "agent t:task:impl hit an API error: overloaded please retry") {
+		t.Fatalf("notified = %v; want exactly one api-error notice naming the producer and the one-line error", h.notified)
+	}
+
+	// Activity ends the episode, and a later stall is a new notice that outranks quiet however long it stands.
+	h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}}
+	h.call(p)
+	stall()
+	h.clock.advance(noticeAPIErrorIdle)
+	h.call(p)
+	h.clock.advance(2 * h.quiet)
+	h.call(p)
+	if len(h.notified) != 2 || !strings.Contains(h.notified[1], "API error") {
+		t.Fatalf("notified = %v; want a second api-error notice and no quiet one", h.notified)
+	}
 }
 
 func TestNotice_RestartDoesNotRenotify(t *testing.T) {

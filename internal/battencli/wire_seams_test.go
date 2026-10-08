@@ -2,11 +2,13 @@ package battencli
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
@@ -202,6 +204,53 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	}
 	if _, _, found, err := c.env.InnerRun.StopReport(); err == nil || found || !strings.Contains(err.Error(), "a-slug") {
 		t.Errorf("StopReport() found=%v, error=%v; want the absent-worktree refusal naming the slug", found, err)
+	}
+	if runs, _, err := c.env.InnerRun.Activity(context.Background()); err == nil || runs != nil || !strings.Contains(err.Error(), "a-slug") {
+		t.Errorf("Activity() runs=%v, error=%v; want the absent-worktree refusal naming the slug", runs, err)
+	}
+}
+
+// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto battenshed's type, skips a run whose process has ended, and reports a live wait marker.
+func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
+	t.Parallel()
+
+	taskLocation := &lyxcwd.Location{RepoName: "example", HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
+	runsRoot := filepath.Join(taskLocation.AnchorPath(), ".lyx", "shuttle")
+	writeRun := func(name string, pid int, strand string) string {
+		dir := filepath.Join(runsRoot, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		record := fmt.Sprintf(`{"runId":%q,"strandName":%q,"outcome":"running","pid":%d,"eventsPath":%q,"createdAt":"2026-01-01T09:00:00Z"}`, name, strand, pid, filepath.Join(dir, "events"))
+		if err := os.WriteFile(filepath.Join(dir, "run.json"), []byte(record), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	livePID := os.Getpid()
+
+	liveDir := writeRun("live", livePID, "hub:task:impl")
+	activeAt := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	eventsPath := filepath.Join(liveDir, "events")
+	if err := os.WriteFile(eventsPath, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(eventsPath, activeAt, activeAt); err != nil {
+		t.Fatal(err)
+	}
+	writeRun("ended", 1<<30, "hub:task:review")
+
+	runs, waitLive, err := readAgentActivity(taskLocation)
+	if err != nil || waitLive || len(runs) != 1 || runs[0].Producer != "hub:task:impl" || !runs[0].LastActivity.Equal(activeAt) || runs[0].APIError {
+		t.Fatalf("readAgentActivity() = %+v, %v, %v; want the live run hub:task:impl last active at %s, no wait", runs, waitLive, err, activeAt)
+	}
+
+	marker := fmt.Sprintf("kind: background shells\nstarted: 2026-01-01T10:00:00Z\npid: %d\n", livePID)
+	if err := os.WriteFile(filepath.Join(liveDir, "wait.yaml"), []byte(marker), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, waitLive, err := readAgentActivity(taskLocation); err != nil || !waitLive {
+		t.Errorf("readAgentActivity() waitLive = %v, error = %v with a live wait marker; want true, nil", waitLive, err)
 	}
 }
 
