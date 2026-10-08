@@ -19,6 +19,7 @@
 // Each worktree's applied files are committed in that worktree, and the board commit's push failure is logged and never fatal.
 // Worktrees that committed before a failure keep their commits.
 // The failing worktree's, or the board's, config files are restored to their prior bytes, so a retry rewrites and commits them instead of finding them already current.
+// A worktree commit that landed before a later step of it failed, such as recording the commit's correspondence, keeps the written files, since they are already committed.
 // A config file that exists but cannot be read fails that worktree before anything in it is written.
 //
 // # Skips

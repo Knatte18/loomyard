@@ -207,7 +207,8 @@ func reconcileHubWide(boardDir, primeAnchor, revision string) error {
 // reconcileWorktree reconciles and commits one code worktree's config.
 // It reports skipped when a mid-merge state keeps the worktree from being written or committed, which leaves the build stamp stale.
 // A pair that is incomplete or has been removed is passed over without being reported skipped.
-// A failure after the write restores the config files to their prior bytes, so nothing written is left uncommitted.
+// A failure after the write restores the config files to their prior bytes, so nothing written is left uncommitted;
+// a commit that landed before a later step of it failed keeps them.
 func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision string, hooks walkHooks) (skipped bool, err error) {
 	if !w.Main {
 		complete, reason, err := fabricengine.PairCompleteAt(w.Path)
@@ -268,7 +269,12 @@ func reconcileWorktree(boardDir string, w fabricengine.CodeWorktree, revision st
 	if len(files) == 0 {
 		return false, nil
 	}
-	if _, err := f.Commit(files, "lyx: reconcile config for build "+revision, nil, fabricengine.SyncOptions{}); err != nil {
+	res, err := f.Commit(files, "lyx: reconcile config for build "+revision, nil, fabricengine.SyncOptions{})
+	if err != nil {
+		// A commit that landed before a later step failed already holds the written bytes, so a restore would dirty the tree against it.
+		if res.Committed() {
+			return false, &WorktreeError{Worktree: w.Path, Err: err}
+		}
 		var mergeInProgress *fabricengine.ErrMergeInProgress
 		var foreignMergeState *fabricengine.ErrForeignMergeState
 		if errors.As(err, &mergeInProgress) || errors.As(err, &foreignMergeState) {
