@@ -467,19 +467,19 @@ func TestSmokeDotFill(t *testing.T) {
 		}
 		observedPane, toucherPane := panes[0], panes[1]
 
-		// Size them deliberately unequally: the observed pane distinctly taller (about 30 rows), the
-		// toucher pane distinctly shorter (about 8 rows). This is the configuration the field report
+		// Size them deliberately unequally: the observed pane distinctly taller (about 27 rows), the
+		// toucher pane distinctly shorter (about 12 rows). This is the configuration the field report
 		// describes — a VS Code integrated terminal is smaller than a standalone Konsole window — and it
 		// is the only configuration this trigger is known to reproduce in.
-		if err := exec.Command(h.tmuxPath, "-L", h.harnessSocket, "resize-pane", "-t", observedPane, "-y", "30").Run(); err != nil {
+		if err := exec.Command(h.tmuxPath, "-L", h.harnessSocket, "resize-pane", "-t", observedPane, "-y", "27").Run(); err != nil {
 			t.Fatalf("resize-pane observed: %v", err)
 		}
-		if err := exec.Command(h.tmuxPath, "-L", h.harnessSocket, "resize-pane", "-t", toucherPane, "-y", "8").Run(); err != nil {
+		if err := exec.Command(h.tmuxPath, "-L", h.harnessSocket, "resize-pane", "-t", toucherPane, "-y", "12").Run(); err != nil {
 			t.Fatalf("resize-pane toucher: %v", err)
 		}
 
 		// Both attaches complete before anything else.
-		// The toucher pane is about 8 rows, too short to render the second strand, so both attaches wait on the first strand's marker.
+		// The toucher pane is about 12 rows: after the two status rows and one title row per pane, each strand keeps about two content rows, enough for the first strand's marker but not every strand's output, so both attaches wait on the first strand's marker.
 		h.attachIn(t, observedPane, "DOTFILL-MARKER-ALPHA")
 		h.attachIn(t, toucherPane, "DOTFILL-MARKER-ALPHA")
 
