@@ -6,7 +6,7 @@
 // denying AskUserQuestion in autonomous runs (where there is no operator present to answer it),
 // and recording — never denying — a live AskUserQuestion call in interactive runs so the run loop holds it like any turn end without output.
 // The Bash tool's default stdin is set by the env file Prepare writes (see command.go), not by a hook.
-// buildDenyNotice, built beside those hooks so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
+// buildDenyNotice, built from the same standingDenies table so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
 // Every document also sets `promptSuggestionEnabled` to false: a capture carries no styling,
 // so a greyed suggestion in an empty input box would read as a draft and IdleSession would never pass.
 
@@ -85,27 +85,77 @@ func denyJSON(steer string) string {
 	)
 }
 
-// denyInstalls reports which standing denies a run installs: the Agent deny, and the AskUserQuestion deny.
-// buildSettings and buildDenyNotice both read it, so the hooks and their announcement cannot drift.
-// An interactive run's AskUserQuestion hook only records, never denies, so it reports no AskUserQuestion deny.
+// denyInputs are the run inputs that decide which standing denies a run installs.
 // allowAgentTool is the per-run override (Spec.AllowAgentTool): it removes the Agent deny whatever cfg.ClaudeDenyAgentTool says.
-func denyInstalls(interactive bool, cfg shuttleengine.Config, allowAgentTool bool) (agentDeny, askUserDeny bool) {
-	return cfg.ClaudeDenyAgentTool && !allowAgentTool, !interactive && cfg.ClaudeDenyAskUserQuestion
+type denyInputs struct {
+	interactive    bool
+	cfg            shuttleengine.Config
+	forkSubagents  bool
+	allowAgentTool bool
+}
+
+// standingDeny is one PreToolUse deny lyx installs, with the system-prompt sentence announcing it.
+// buildSettings and buildDenyNotice both iterate standingDenies, so the hooks and their announcement cannot drift.
+type standingDeny struct {
+	// matcher is the tool name the PreToolUse entry matches.
+	matcher string
+	// command is the hook command, which carries steer in its deny JSON.
+	command string
+	// steer is the deny reason shown to the model.
+	steer string
+	// notice is the system-prompt sentence announcing the deny, or "" for a deny with none.
+	notice string
+	// installed reports whether a run with the given inputs installs this deny.
+	installed func(denyInputs) bool
+}
+
+// standingDenies lists lyx's denies in the order their PreToolUse entries appear.
+// An interactive run's AskUserQuestion hook only records, never denies, so it stays outside the table.
+var standingDenies = []standingDeny{
+	{
+		// Grep the payload for a fork subagent_type; a match exits 0 allowing the call, no
+		// match echoes the deny JSON. Whether the fork carried a name is deliberately NOT
+		// part of this test — a named fork is a defect signal the AUDIT records as
+		// ForkAudit.NamedSpawns for the caller's policy to interpret, never something this
+		// hook refuses mid-run.
+		matcher:   "Agent",
+		command:   fmt.Sprintf(`grep -q '"subagent_type":"fork"' || echo '%s'`, denyJSON(steerAgentNonForkDeny)),
+		steer:     steerAgentNonForkDeny,
+		notice:    noticeAgentForkDeny,
+		installed: func(in denyInputs) bool { return in.cfg.ClaudeDenyAgentTool && !in.allowAgentTool && in.forkSubagents },
+	},
+	{
+		matcher:   "Agent",
+		command:   "echo '" + denyJSON(steerAgentDeny) + "'",
+		steer:     steerAgentDeny,
+		notice:    noticeAgentDeny,
+		installed: func(in denyInputs) bool { return in.cfg.ClaudeDenyAgentTool && !in.allowAgentTool && !in.forkSubagents },
+	},
+	{
+		// Fork-context webster-verb guard: deny `lyx webster` inside forks (detected by top-level agent_id in payload).
+		// Ending with `; true` guarantees exit 0 so non-webster or non-fork calls are allowed.
+		matcher:   "Bash",
+		command:   "in=$(cat); { printf '%s' \"$in\" | grep -q '\"agent_id\"'; } && { printf '%s' \"$in\" | grep -Eq 'lyx[[:space:]]+webster'; } && echo '" + denyJSON(steerWebsterForkDeny) + "'; true",
+		steer:     steerWebsterForkDeny,
+		installed: func(in denyInputs) bool { return in.forkSubagents },
+	},
+	{
+		matcher:   "AskUserQuestion",
+		command:   "echo '" + denyJSON(steerAskUserQuestionDeny) + "'",
+		steer:     steerAskUserQuestionDeny,
+		notice:    noticeAskUserQuestionDeny,
+		installed: func(in denyInputs) bool { return !in.interactive && in.cfg.ClaudeDenyAskUserQuestion },
+	},
 }
 
 // buildDenyNotice returns the one-line system-prompt notice announcing each deny buildSettings installs under the same inputs, or "" when it installs none.
 func buildDenyNotice(interactive bool, cfg shuttleengine.Config, forkSubagents, allowAgentTool bool) string {
-	agentDeny, askUserDeny := denyInstalls(interactive, cfg, allowAgentTool)
+	in := denyInputs{interactive: interactive, cfg: cfg, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}
 	var sentences []string
-	if agentDeny {
-		if forkSubagents {
-			sentences = append(sentences, noticeAgentForkDeny)
-		} else {
-			sentences = append(sentences, noticeAgentDeny)
+	for _, deny := range standingDenies {
+		if deny.notice != "" && deny.installed(in) {
+			sentences = append(sentences, deny.notice)
 		}
-	}
-	if askUserDeny {
-		sentences = append(sentences, noticeAskUserQuestionDeny)
 	}
 	return strings.Join(sentences, " ")
 }
@@ -126,45 +176,20 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		},
 	}
 
-	agentDeny, askUserDeny := denyInstalls(interactive, cfg, allowAgentTool)
-	if agentDeny {
-		if forkSubagents {
-			// Grep the payload for a fork subagent_type; a match exits 0 allowing the call, no
-			// match echoes the deny JSON. Whether the fork carried a name is deliberately NOT
-			// part of this test — a named fork is a defect signal the AUDIT records as
-			// ForkAudit.NamedSpawns for the caller's policy to interpret, never something this
-			// hook refuses mid-run.
-			agentCmd := fmt.Sprintf(`grep -q '"subagent_type":"fork"' || echo '%s'`, denyJSON(steerAgentNonForkDeny))
+	in := denyInputs{interactive: interactive, cfg: cfg, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}
+	for _, deny := range standingDenies {
+		if deny.installed(in) {
 			doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
-				Matcher: "Agent",
-				Hooks:   []hookCommand{{Type: "command", Command: agentCmd}},
-			})
-		} else {
-			doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
-				Matcher: "Agent",
-				Hooks:   []hookCommand{{Type: "command", Command: "echo '" + denyJSON(steerAgentDeny) + "'"}},
+				Matcher: deny.matcher,
+				Hooks:   []hookCommand{{Type: "command", Command: deny.command}},
 			})
 		}
-	}
-	if forkSubagents {
-		// Fork-context webster-verb guard: deny `lyx webster` inside forks (detected by top-level agent_id in payload).
-		// Ending with `; true` guarantees exit 0 so non-webster or non-fork calls are allowed.
-		webForkCmd := "in=$(cat); { printf '%s' \"$in\" | grep -q '\"agent_id\"'; } && { printf '%s' \"$in\" | grep -Eq 'lyx[[:space:]]+webster'; } && echo '" + denyJSON(steerWebsterForkDeny) + "'; true"
-		doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
-			Matcher: "Bash",
-			Hooks:   []hookCommand{{Type: "command", Command: webForkCmd}},
-		})
 	}
 	if interactive {
 		// Record the live ask via the Stop hook's append command, allowing the tool call to proceed unhindered.
 		doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
 			Matcher: "AskUserQuestion",
 			Hooks:   []hookCommand{{Type: "command", Command: stopCmd}},
-		})
-	} else if askUserDeny {
-		doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
-			Matcher: "AskUserQuestion",
-			Hooks:   []hookCommand{{Type: "command", Command: "echo '" + denyJSON(steerAskUserQuestionDeny) + "'"}},
 		})
 	}
 
@@ -183,14 +208,12 @@ const noticeTextForbiddenChars = steerTextForbiddenChars + "\n\r"
 
 // init panics if any steer constant contains a forbidden character (checked at package load).
 func init() {
-	for _, steer := range []string{steerAgentDeny, steerAskUserQuestionDeny, steerAgentNonForkDeny, steerWebsterForkDeny} {
-		if strings.ContainsAny(steer, steerTextForbiddenChars) {
-			panic(fmt.Sprintf("claudeengine: steer text contains a forbidden character (one of %q), which would break the JSON payload or the echo hook command: %q", steerTextForbiddenChars, steer))
+	for _, deny := range standingDenies {
+		if strings.ContainsAny(deny.steer, steerTextForbiddenChars) {
+			panic(fmt.Sprintf("claudeengine: steer text contains a forbidden character (one of %q), which would break the JSON payload or the echo hook command: %q", steerTextForbiddenChars, deny.steer))
 		}
-	}
-	for _, notice := range []string{noticeAgentDeny, noticeAgentForkDeny, noticeAskUserQuestionDeny} {
-		if strings.ContainsAny(notice, noticeTextForbiddenChars) {
-			panic(fmt.Sprintf("claudeengine: notice text contains a forbidden character (one of %q), which would break the one-line launch argument: %q", noticeTextForbiddenChars, notice))
+		if strings.ContainsAny(deny.notice, noticeTextForbiddenChars) {
+			panic(fmt.Sprintf("claudeengine: notice text contains a forbidden character (one of %q), which would break the one-line launch argument: %q", noticeTextForbiddenChars, deny.notice))
 		}
 	}
 }

@@ -208,9 +208,12 @@ func TestBuildSettings_NoForbiddenCharsInSteerText(t *testing.T) {
 	// `"` or `\` would corrupt the payload) nested inside a single-quoted
 	// echo argument under git-bash (so a literal `'` would corrupt the
 	// hook command) — all three characters must stay absent.
-	for _, steer := range []string{steerAgentDeny, steerAskUserQuestionDeny, steerAgentNonForkDeny, steerWebsterForkDeny} {
-		if strings.ContainsAny(steer, steerTextForbiddenChars) {
-			t.Errorf("steer text contains a forbidden character (one of %q): %q", steerTextForbiddenChars, steer)
+	for _, deny := range standingDenies {
+		if strings.ContainsAny(deny.steer, steerTextForbiddenChars) {
+			t.Errorf("steer text contains a forbidden character (one of %q): %q", steerTextForbiddenChars, deny.steer)
+		}
+		if strings.ContainsAny(deny.notice, noticeTextForbiddenChars) {
+			t.Errorf("notice text contains a forbidden character (one of %q): %q", noticeTextForbiddenChars, deny.notice)
 		}
 	}
 }
@@ -484,29 +487,22 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 					if err != nil {
 						t.Fatalf("buildSettings() error: %v", err)
 					}
-					wantAgent, wantAsk := false, false
+					var wantSentences []string
 					for _, e := range hooksFor(parseSettings(t, data), "PreToolUse") {
 						entry, _ := e.(map[string]any)
-						switch entry["matcher"] {
-						case "Agent":
-							wantAgent = true
-						case "AskUserQuestion":
-							hooks, _ := entry["hooks"].([]any)
-							cmd, _ := hooks[0].(map[string]any)
-							command, _ := cmd["command"].(string)
-							wantAsk = strings.Contains(command, "permissionDecision")
+						hooks, _ := entry["hooks"].([]any)
+						cmd, _ := hooks[0].(map[string]any)
+						command, _ := cmd["command"].(string)
+						for _, deny := range standingDenies {
+							if deny.command == command && deny.notice != "" {
+								wantSentences = append(wantSentences, deny.notice)
+							}
 						}
 					}
+					want := strings.Join(wantSentences, " ")
 					notice := buildDenyNotice(interactive, cfg, fork, false)
-					hasAgent := strings.Contains(notice, noticeAgentDeny) || strings.Contains(notice, noticeAgentForkDeny)
-					if hasAgent != wantAgent {
-						t.Errorf("agent=%v ask=%v interactive=%v fork=%v: notice has Agent sentence = %v; want %v", agentDeny, askUserDeny, interactive, fork, hasAgent, wantAgent)
-					}
-					if got := strings.Contains(notice, noticeAskUserQuestionDeny); got != wantAsk {
-						t.Errorf("agent=%v ask=%v interactive=%v fork=%v: notice has AskUserQuestion sentence = %v; want %v", agentDeny, askUserDeny, interactive, fork, got, wantAsk)
-					}
-					if (notice == "") != (!wantAgent && !wantAsk) {
-						t.Errorf("agent=%v ask=%v interactive=%v fork=%v: notice = %q; want empty exactly when no deny installed", agentDeny, askUserDeny, interactive, fork, notice)
+					if notice != want {
+						t.Errorf("agent=%v ask=%v interactive=%v fork=%v: notice = %q; want the sentences of the installed denies %q", agentDeny, askUserDeny, interactive, fork, notice, want)
 					}
 					if strings.ContainsAny(notice, noticeTextForbiddenChars) {
 						t.Errorf("notice contains a forbidden character: %q", notice)
