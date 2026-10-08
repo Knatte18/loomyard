@@ -5,6 +5,7 @@
 package reedengine_test
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -74,6 +75,53 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	// types into the interview.
 	if cfg.Mouse != "on" {
 		t.Errorf("Mouse = %q, want %q", cfg.Mouse, "on")
+	}
+	if !maps.Equal(cfg.SegmentColors, wantSegmentColors) {
+		t.Errorf("SegmentColors = %v, want %v", cfg.SegmentColors, wantSegmentColors)
+	}
+}
+
+var wantSegmentColors = map[string]string{
+	"coordinator": "blue",
+	"discussion":  "purple",
+	"plan":        "cyan",
+	"webster":     "green",
+	"review":      "orange",
+	"describe":    "yellow",
+	"landing":     "pink",
+}
+
+// TestLoadConfig_MissingSegmentColorsTakeTemplateDefaults pins that a reed.yaml lacking the whole block, or a single key of it, loads with the template defaults.
+func TestLoadConfig_MissingSegmentColorsTakeTemplateDefaults(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    map[string]string
+	}{
+		{name: "WholeBlockMissing", content: "width: 100\n", want: wantSegmentColors},
+		{
+			name:    "OneKeyMissing",
+			content: "segment_colors:\n  review: red\n",
+			want: func() map[string]string {
+				colors := maps.Clone(wantSegmentColors)
+				colors["review"] = "red"
+				return colors
+			}(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			seedLyxConfig(t, tmpDir, "reed", tt.content)
+
+			cfg, err := reedengine.LoadConfig(tmpDir, "reed")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !maps.Equal(cfg.SegmentColors, tt.want) {
+				t.Errorf("SegmentColors = %v, want %v", cfg.SegmentColors, tt.want)
+			}
+		})
 	}
 }
 

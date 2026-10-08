@@ -236,7 +236,7 @@ func (e *Engine) sessionSubstrateLocked() (up bool, usable bool, err error) {
 
 // ensureServerAndSessionLocked ensures this hub's tmux server and this
 // worktree's session exist. Reports booted=true on fresh spawn; validates
-// capability, debug_log, mouse, watchdog, and status-line template before any tmux round trip.
+// capability, debug_log, mouse, watchdog, segment colors, and status-line template before any tmux round trip.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
 	// Validate debug_log before anything else touches tmux: a misconfigured
 	// value is a pure config error, unrelated to server/session state, so it
@@ -259,6 +259,12 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// install (pinGeometryOptionsLocked) and the watch loop each read the key again and fail safe
 	// toward "no watchdog" instead.
 	if _, err := watchdogOption(e.cfg.Watchdog); err != nil {
+		return false, nil, err
+	}
+
+	// A segment color outside the palette is a pure config error too.
+	// This is the only refusal; every other reader goes through segmentColor and degrades to no color.
+	if err := validateSegmentColors(e.cfg.SegmentColors); err != nil {
 		return false, nil, err
 	}
 

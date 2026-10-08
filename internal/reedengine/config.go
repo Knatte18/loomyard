@@ -31,6 +31,9 @@ type Config struct {
 
 	StatusLine StatusLineConfig `yaml:"status_line"`
 	Selvage    SelvageConfig    `yaml:"selvage"`
+
+	// SegmentColors maps a loom segment key to a palette color name.
+	SegmentColors map[string]string `yaml:"segment_colors"`
 }
 
 // StatusLineConfig configures the tmux status-line's rendered text.

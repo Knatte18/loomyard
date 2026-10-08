@@ -11,3 +11,11 @@ status_line:  # the tmux status-line's rendered text
   template: ""  # empty means "use the embedded default template"; set to override
 selvage:
   height_rows: 1  # fixed row count the always-on Selvage pane occupies at the bottom of the window
+segment_colors:  # tmux color per loom segment; each value must be a palette color (blue, purple, cyan, green, orange, yellow, pink, red), a value outside it fails "lyx reed up" and is no color everywhere else
+  coordinator: blue
+  discussion: purple
+  plan: cyan
+  webster: green
+  review: orange
+  describe: yellow
+  landing: pink

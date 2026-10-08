@@ -42,6 +42,11 @@ func TestUp_BootValidation(t *testing.T) {
 			configure: func(cfg *Config) { cfg.StatusLine.Template = "{{.bogus}}" },
 			wantErr:   "unfilled top-level marker",
 		},
+		{
+			name:      "SegmentColorOutsidePalette",
+			configure: func(cfg *Config) { cfg.SegmentColors = map[string]string{"review": "crimson"} },
+			wantErr:   `segment_colors.review: color "crimson" is not in the palette`,
+		},
 		{name: "InvalidWatchdog_Empty", configure: func(cfg *Config) { cfg.Watchdog = "" }, wantErr: "invalid watchdog value"},
 		{name: "InvalidWatchdog_1", configure: func(cfg *Config) { cfg.Watchdog = "1" }, wantErr: "invalid watchdog value"},
 		{name: "InvalidWatchdog_Yes", configure: func(cfg *Config) { cfg.Watchdog = "yes" }, wantErr: "invalid watchdog value"},

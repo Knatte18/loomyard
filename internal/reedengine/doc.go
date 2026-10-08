@@ -54,6 +54,8 @@
 // The token resolves to a placeholder that pinGeometryOptionsLocked swaps for the raw tmux format after escaping the rest of the line,
 // so an unmarked session renders as before.
 //
+// Segment colors are read from reed.yaml's segment_colors block, resolved only through Engine.segmentColor, and refused only at boot.
+//
 // A second package-level invariant: every session also carries exactly one
 // additional, permanent pane beyond its strands — Selvage
 // (ReedState.SelvagePaneID). It is a first-class construct, deliberately
