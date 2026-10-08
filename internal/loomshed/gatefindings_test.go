@@ -137,7 +137,7 @@ func TestLoomPreflight_StuckSurfacesItsFailures(t *testing.T) {
 	}
 
 	buf := logcapture.Capture(t)
-	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath)
+	p := NewLoomPreflight(NameLoomPreflight, statusPath, statusLockPath, t.TempDir())
 
 	shedfake.RequireOutcome(t, p, shedengine.Stuck)
 
