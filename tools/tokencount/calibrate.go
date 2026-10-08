@@ -48,7 +48,7 @@ type StartRow struct {
 	Position int
 	// Measured is the fork's StartContext.
 	Measured float64
-	// Estimate is the profile's MasterBase + (Position-1) x BatchGrowth.
+	// Estimate is the profile's Orientation + (Position-1) x BatchGrowth.
 	Estimate float64
 }
 
@@ -187,7 +187,7 @@ func Calibrate(runs []RunTally, profile, configDir string, history PlanHistory, 
 
 // startEstimate is the start context the weights estimate for a fork at the 1-based position.
 func startEstimate(w batcher.Weights, position int) float64 {
-	return w.MasterBase + float64(position-1)*w.BatchGrowth
+	return w.Orientation + float64(position-1)*w.BatchGrowth
 }
 
 // forkPositions returns each fork's 1-based position in its Merriam session: one plus the card-naming forks before it in that session, by start time.
@@ -343,7 +343,7 @@ func (c *Calibration) addRun(run RunTally, history PlanHistory, base BaseTrees) 
 			continue
 		}
 
-		estimate, err := batcher.PeakContext(plan, cards, sizes, c.Weights, position)
+		estimate, err := batcher.PeakContext(plan, cards, sizes, c.Weights, batcher.StartBase{}, position)
 		if err != nil {
 			return fmt.Errorf("estimate %s of %s: %w", subject, run.Slug, err)
 		}
@@ -478,7 +478,7 @@ func (f StartFit) write(w io.Writer, profile batcher.Weights) {
 		fmt.Fprintf(w, "Start fit: not fitted, %s (%d forks).\n\n", f.NotFitted, f.Forks)
 		return
 	}
-	fmt.Fprintf(w, "Start fit over %d forks: master_base %.0f (profile %.0f), batch_growth %.0f (profile %.0f), residual spread %s", f.Forks, f.MasterBase, profile.MasterBase, f.BatchGrowth, profile.BatchGrowth, spreadText(f.Residual))
+	fmt.Fprintf(w, "Start fit over %d forks: master_base %.0f (profile %.0f), batch_growth %.0f (profile %.0f), residual spread %s", f.Forks, f.MasterBase, profile.Orientation, f.BatchGrowth, profile.BatchGrowth, spreadText(f.Residual))
 	if f.Unusable() {
 		fmt.Fprint(w, "; unusable: a negative coefficient, which batcher.yaml refuses")
 	}

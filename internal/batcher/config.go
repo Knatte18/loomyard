@@ -5,6 +5,7 @@
 package batcher
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -32,6 +33,16 @@ type profile struct {
 	Weights    map[string]float64 `yaml:"weights"`
 }
 
+// ErrRetiredKey marks a batcher.yaml profile that still carries a key the cost model no longer has;
+// such an error is also marked configengine.ErrInvalid.
+var ErrRetiredKey = errors.New("retired key")
+
+// retiredKeyError builds the refusal for a profile still carrying the retired key, named as in the file.
+// It wraps ErrRetiredKey, is marked configengine.ErrInvalid, and ends in the reconcile way forward.
+func retiredKeyError(profileName, key string) error {
+	return configengine.MarkInvalid(fmt.Errorf("batcher.yaml profile %q carries %s, which no longer exists (%w); way forward: run \"lyx config reconcile --apply\"", profileName, key, ErrRetiredKey))
+}
+
 // ConfigOpenMaps returns the batcher.yaml keys whose entries are the operator's own, which configengine carries whole through reconcile and --set.
 func ConfigOpenMaps() []string {
 	return []string{"profiles"}
@@ -42,7 +53,7 @@ func ConfigOpenMaps() []string {
 // a configured profile named identity wins over that default.
 // An absent <baseDir>/_lyx/ directory or an absent batcher.yaml both resolve the embedded
 // ConfigTemplate(), whose active: names the cautious profile, instead of erroring;
-// a config file that exists but is invalid still errors, and so does an active: naming no profile, a profile of an unknown batchifier kind, or a cost profile with a missing or invalid parameter or the retired alone_above or startup_context, each naming batcher.yaml.
+// a config file that exists but is invalid still errors, and so does an active: naming no profile, a profile of an unknown batchifier kind, or a cost profile with a missing or invalid parameter, or a retired alone_above, master_base or startup_context, each naming batcher.yaml and marked configengine.ErrInvalid.
 // baseDir must already be resolved by the caller — Active never resolves cwd itself (see
 // PATTERN-cwd-resolution).
 func Active(baseDir string) (Batcher, error) {
@@ -60,11 +71,11 @@ func Active(baseDir string) (Batcher, error) {
 		if name == DefaultName {
 			return Identity(), nil
 		}
-		return nil, fmt.Errorf("batcher.yaml: active %q names no profile under profiles:", name)
+		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml: active %q names no profile under profiles:", name))
 	}
 	construct, ok := constructors[prof.Batchifier]
 	if !ok {
-		return nil, fmt.Errorf("batcher.yaml profile %q has unknown batchifier %q", name, prof.Batchifier)
+		return nil, configengine.MarkInvalid(fmt.Errorf("batcher.yaml profile %q has unknown batchifier %q", name, prof.Batchifier))
 	}
 	return construct(name, prof)
 }
@@ -78,7 +89,7 @@ func loadConfig(baseDir string) (config, error) {
 
 	var cfg config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
-		return config{}, fmt.Errorf("unmarshal batcher config: %w", err)
+		return config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal batcher config: %w", err))
 	}
 	return cfg, nil
 }

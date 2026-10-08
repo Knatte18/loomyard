@@ -72,7 +72,7 @@ func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
 // so a test pins the grouping Rebaseline compares the run's begun batches against.
 type fixedBatcher struct{ batches []batcher.Batch }
 
-func (f fixedBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource, int) ([]batcher.Batch, error) {
+func (f fixedBatcher) Batch(*planparser.Plan, []planparser.Card, batcher.SizeSource, int, batcher.StartBase) ([]batcher.Batch, error) {
 	return f.batches, nil
 }
 
@@ -121,7 +121,7 @@ func TestRebaseline_CardSet(t *testing.T) {
 		{Cards: []planparser.Card{{Number: 2, Slug: "list-tests", Uses: []string{"x.go"}}}},
 		{Cards: []planparser.Card{{Number: 3, Slug: "added", Targets: []string{"x.go"}}}},
 	}}
-	positioned := batcher.NewCost("positioned", batcher.CostParams{Budget: 1e9, MaxCards: 2, Weights: batcher.Weights{MasterBase: 100, BatchGrowth: 10}})
+	positioned := batcher.NewCost("positioned", batcher.CostParams{Budget: 1e9, MaxCards: 2, Weights: batcher.Weights{Orientation: 100, BatchGrowth: 10}})
 	cases := []struct {
 		name      string
 		cards     []planparser.Card

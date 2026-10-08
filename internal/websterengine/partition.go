@@ -46,7 +46,7 @@ func formBatches(plan *planparser.Plan, active batcher.Batcher, sizes batcher.Si
 // batchCards batches cards, a contiguous run of plan.Cards, with active, told that the run executes before batches ahead of them.
 // A batchifier failure is refused as transient, naming the plan.
 func batchCards(plan *planparser.Plan, cards []planparser.Card, active batcher.Batcher, sizes batcher.SizeSource, before int) ([]batcher.Batch, error) {
-	batches, err := active.Batch(plan, cards, sizes, before)
+	batches, err := active.Batch(plan, cards, sizes, before, batcher.StartBase{})
 	if err != nil {
 		return nil, fmt.Errorf("webster: batch the cards of plan %s: %w; way forward: transient, re-run the verb", plan.Dir, err)
 	}

@@ -4,6 +4,7 @@
 package batcher_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"gopkg.in/yaml.v3"
 )
+
+// assertRetiredKey fails unless err wraps ErrRetiredKey and ends in the reconcile way forward exactly when want is set.
+func assertRetiredKey(t *testing.T, err error, want bool) {
+	t.Helper()
+	if got := errors.Is(err, batcher.ErrRetiredKey); got != want {
+		t.Errorf("error %q wraps ErrRetiredKey = %v; want %v", err.Error(), got, want)
+	}
+	if want {
+		if !errors.Is(err, configengine.ErrInvalid) {
+			t.Errorf("retired-key error %q is not marked configengine.ErrInvalid", err.Error())
+		}
+		if !strings.Contains(err.Error(), `way forward: run "lyx config reconcile --apply"`) {
+			t.Errorf("retired-key error %q lacks the reconcile way forward", err.Error())
+		}
+	}
+}
 
 // seedConfig writes content to <baseDir>/_lyx/config/<module>.yaml,
 // creating the config directory (and its _lyx parent) as needed. It is a
@@ -47,6 +64,8 @@ func TestActive(t *testing.T) {
 		seed        func(t *testing.T, baseDir string)
 		wantName    string
 		wantErrWith []string
+		// wantRetired asserts the error wraps ErrRetiredKey and names the reconcile way forward.
+		wantRetired bool
 	}{
 		{
 			name: "templateDefaultResolvesCautious",
@@ -127,6 +146,15 @@ func TestActive(t *testing.T) {
 				seedConfig(t, baseDir, "batcher", strings.Replace(template, "    budget: ", "    alone_above: 1200000\n    budget: ", 1))
 			},
 			wantErrWith: []string{"batcher.yaml", "cautious", "alone_above"},
+			wantRetired: true,
+		},
+		{
+			name: "retiredMasterBaseErrors",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", strings.Replace(template, "orientation: 31400", "master_base: 52000", 1))
+			},
+			wantErrWith: []string{"batcher.yaml", "cautious", "master_base"},
+			wantRetired: true,
 		},
 		{
 			name: "maxCardsBelowTwoErrors",
@@ -154,6 +182,10 @@ func TestActive(t *testing.T) {
 						t.Errorf("Active error = %q; want it to contain %q", err.Error(), want)
 					}
 				}
+				if !errors.Is(err, configengine.ErrInvalid) {
+					t.Errorf("Active error = %q; want it marked configengine.ErrInvalid", err.Error())
+				}
+				assertRetiredKey(t, err, tt.wantRetired)
 				return
 			}
 			if err != nil {
@@ -172,7 +204,7 @@ func TestProfileWeights(t *testing.T) {
 	const valid = `profiles:
   cautious:
     weights:
-      master_base: 10
+      orientation: 10
       batch_growth: 3
       fork_messages: 2
       message_context: 8
@@ -189,13 +221,14 @@ func TestProfileWeights(t *testing.T) {
 		profile     string
 		want        batcher.Weights
 		wantErrWith []string
+		wantRetired bool
 	}{
 		{
 			name:    "validProfile",
 			config:  valid,
 			profile: "cautious",
 			want: batcher.Weights{
-				MasterBase: 10, BatchGrowth: 3, ForkMessages: 2, MessageContext: 8, TargetMessages: 3, TestFileMessages: 4,
+				Orientation: 10, BatchGrowth: 3, ForkMessages: 2, MessageContext: 8, TargetMessages: 3, TestFileMessages: 4,
 				UsesMessages: 5, ContextPerLine: 0.5, PackageContext: 7, WritePerCardLine: 9,
 			},
 		},
@@ -218,10 +251,10 @@ func TestProfileWeights(t *testing.T) {
 			wantErrWith: []string{"batcher.yaml", "fork_messages"},
 		},
 		{
-			name:        "missingMasterBase",
-			config:      strings.Replace(valid, "      master_base: 10\n", "", 1),
+			name:        "missingOrientation",
+			config:      strings.Replace(valid, "      orientation: 10\n", "", 1),
 			profile:     "cautious",
-			wantErrWith: []string{"batcher.yaml", "master_base"},
+			wantErrWith: []string{"batcher.yaml", "orientation"},
 		},
 		{
 			name:        "negativeBatchGrowth",
@@ -233,7 +266,15 @@ func TestProfileWeights(t *testing.T) {
 			name:        "retiredStartupContext",
 			config:      valid + "      startup_context: 60000\n",
 			profile:     "cautious",
-			wantErrWith: []string{"batcher.yaml", "cautious", "startup_context", "master_base", "batch_growth"},
+			wantErrWith: []string{"batcher.yaml", "cautious", "startup_context"},
+			wantRetired: true,
+		},
+		{
+			name:        "retiredMasterBase",
+			config:      valid + "      master_base: 52000\n",
+			profile:     "cautious",
+			wantErrWith: []string{"batcher.yaml", "cautious", "master_base"},
+			wantRetired: true,
 		},
 		{
 			name:        "unknownKey",
@@ -258,6 +299,7 @@ func TestProfileWeights(t *testing.T) {
 						t.Errorf("ProfileWeights error = %q; want it to contain %q", err.Error(), want)
 					}
 				}
+				assertRetiredKey(t, err, tt.wantRetired)
 				return
 			}
 			if err != nil {
@@ -274,8 +316,8 @@ func TestProfileWeights(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ProfileWeights = _, %v; want nil error", err)
 		}
-		if got.MasterBase != 52000 || got.BatchGrowth != 7000 || got.RetiredStartupContext != 0 {
-			t.Errorf("template cautious start = master_base %v, batch_growth %v, startup_context %v; want 52000, 7000, 0", got.MasterBase, got.BatchGrowth, got.RetiredStartupContext)
+		if got.Orientation != 31400 || got.BatchGrowth != 7000 || got.RetiredMasterBase != 0 || got.RetiredStartupContext != 0 {
+			t.Errorf("template cautious start = orientation %v, batch_growth %v, master_base %v, startup_context %v; want 31400, 7000, 0, 0", got.Orientation, got.BatchGrowth, got.RetiredMasterBase, got.RetiredStartupContext)
 		}
 	})
 }

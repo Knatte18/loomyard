@@ -26,7 +26,7 @@ type sizeBatcher struct{}
 
 func (sizeBatcher) Name() string { return "size" }
 
-func (sizeBatcher) Batch(_ *planparser.Plan, cards []planparser.Card, sizes batcher.SizeSource, _ int) ([]batcher.Batch, error) {
+func (sizeBatcher) Batch(_ *planparser.Plan, cards []planparser.Card, sizes batcher.SizeSource, _ int, _ batcher.StartBase) ([]batcher.Batch, error) {
 	lines, _, err := sizes.Lines("any.go")
 	if err != nil {
 		return nil, err
@@ -68,7 +68,7 @@ type beforeBatcher struct{}
 
 func (beforeBatcher) Name() string { return "before" }
 
-func (beforeBatcher) Batch(_ *planparser.Plan, cards []planparser.Card, _ batcher.SizeSource, before int) ([]batcher.Batch, error) {
+func (beforeBatcher) Batch(_ *planparser.Plan, cards []planparser.Card, _ batcher.SizeSource, before int, _ batcher.StartBase) ([]batcher.Batch, error) {
 	return []batcher.Batch{{Cards: cards, Profile: "before", Estimate: float64(before)}}, nil
 }
 
@@ -78,7 +78,7 @@ func TestExecutionBatches(t *testing.T) {
 
 	plan := partitionPlan()
 	recorded := &websterengine.State{}
-	grouped, err := sizeBatcher{}.Batch(plan, plan.Cards, linesSizes(10), 0)
+	grouped, err := sizeBatcher{}.Batch(plan, plan.Cards, linesSizes(10), 0, batcher.StartBase{})
 	if err != nil {
 		t.Fatalf("Batch: %v", err)
 	}

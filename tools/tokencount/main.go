@@ -45,7 +45,7 @@
 // The code repository is the current directory.
 //
 // A fork's position is one plus the card-naming forks before it in the same Merriam session, by start time, so a resumed session restarts its positions at 1.
-// The start table gives each fork's measured start context beside the start the profile estimates for its position, master_base + (position - 1) x batch_growth.
+// The start table gives each fork's measured start context beside the start the profile estimates for its position, orientation + (position - 1) x batch_growth.
 // It needs only the transcripts, so a run left out of the peak table for its plan or base still contributes its start rows.
 // Below it the section prints the least-squares fit of master_base and batch_growth, the measured start over position - 1 across all those forks, beside the profile's values, with its residual spread: the 75th over the 25th percentile of each fork's measured start over its fitted start.
 // With fewer than two distinct positions it prints "not fitted" with that reason, and a negative fitted coefficient is printed and marked unusable, since batcher.yaml refuses a negative weight.

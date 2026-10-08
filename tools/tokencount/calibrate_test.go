@@ -83,7 +83,7 @@ func planWith(targets map[int]string) map[string]string {
 // lines is content of n lines.
 func lines(n int) string { return strings.Repeat("x\n", n) }
 
-// seedProfile writes a batcher.yaml whose "fit" profile estimates one card's peak as master_base + the lines of its file, with every other coefficient 0;
+// seedProfile writes a batcher.yaml whose "fit" profile estimates one card's peak as orientation + the lines of its file, with every other coefficient 0;
 // its "grow" profile is "fit" with a batch_growth of 5.
 func seedProfile(t *testing.T, dir string) {
 	t.Helper()
@@ -93,7 +93,7 @@ func seedProfile(t *testing.T, dir string) {
 	const config = `profiles:
   fit:
     weights:
-      master_base: 10
+      orientation: 10
       batch_growth: 0
       fork_messages: 0
       message_context: 0
@@ -105,7 +105,7 @@ func seedProfile(t *testing.T, dir string) {
       package_context: 0
   grow:
     weights:
-      master_base: 10
+      orientation: 10
       batch_growth: 5
       fork_messages: 0
       message_context: 0
@@ -170,7 +170,7 @@ func TestCalibrate(t *testing.T) {
 		},
 	}
 
-	// Every fork starts at 10 tokens, the profile's master_base, so the start rows lie on a flat line.
+	// Every fork starts at 10 tokens, the profile's orientation, so the start rows lie on a flat line.
 	runs := []RunTally{
 		{Slug: "alpha", BaseSHA: "basea", Forks: []ForkTally{
 			fork(firstFork, 10, 220, "01-c1"),
