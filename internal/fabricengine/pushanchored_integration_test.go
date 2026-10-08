@@ -249,6 +249,7 @@ func countBranchPushed(res fabricengine.PushResult, detailPrefix string) int {
 
 // TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide walks one pair through the behaviors of PushPairAnchored in order:
 // both sides pushed and recorded, a remote that declines once retried to success on both entries, a rejection whose fetch then fails returned without a retry, a remote that keeps declining reported as a bare rejection, an unborn code side skipped while the records side still pushes, a diverged code side reported while the records side still pushes, and both sides failing reported together.
+// Two subtests then run on hubs of their own: the prime pushes its records side only and reports the skipped code push, and a prime that cannot be resolved fails the call with nothing pushed.
 func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T) {
 	t.Parallel()
 
