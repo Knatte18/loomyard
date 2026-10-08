@@ -136,7 +136,7 @@ func TestWindowSizeAllowsChain(t *testing.T) {
 // TestReadbacksLocked pins the two single-value tmux readbacks: the status row count (on reserves one row) and the window-size latest check,
 // each answering from a scripted display-message and degrading on a round-trip error.
 //
-//testtiming:keep pins the status-row and window-size-latest readbacks answering from a scripted display-message and degrading on a round-trip error; its covering tests run this code without asserting it
+//testtiming:keep pins the status-row, window-size-latest and border-title-row readbacks answering from a scripted display-message and degrading on a round-trip error; its covering tests run this code without asserting it
 func TestReadbacksLocked(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -180,6 +180,30 @@ func TestReadbacksLocked(t *testing.T) {
 			want: "false",
 		},
 	}
+	readBorderTitleRow := func(e *Engine) string {
+		return strconv.FormatBool(e.readBorderTitleRowLocked(exactSessionWindowTarget(e.SessionName())))
+	}
+	for _, answer := range []struct{ name, answer, want string }{
+		{"Top", "top\n", "true"},
+		{"Bottom", "bottom", "false"},
+		{"Off", "off", "false"},
+		{"Empty", "", "false"},
+	} {
+		tests = append(tests, struct {
+			name   string
+			answer string
+			err    error
+			read   func(e *Engine) string
+			want   string
+		}{"BorderTitleRow" + answer.name, answer.answer, nil, readBorderTitleRow, answer.want})
+	}
+	tests = append(tests, struct {
+		name   string
+		answer string
+		err    error
+		read   func(e *Engine) string
+		want   string
+	}{"BorderTitleRowRoundTripError", "", errors.New("boom"), readBorderTitleRow, "false"})
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newTestEngine(t)
@@ -582,4 +606,62 @@ func TestInstallResizePinsLocked_IssuesTheSignalEntryLast(t *testing.T) {
 			t.Fatalf("installResizePinsLocked calls = %v, want all 3 attempted despite every one erroring", calls)
 		}
 	})
+}
+
+// TestPinsForContent pins the title-row adjustment: only the row-0 pane's pin loses a row, floored at one content row, and the hook array built from the adjusted pins carries those heights.
+func TestPinsForContent(t *testing.T) {
+	t.Parallel()
+
+	pins := []render.Pin{{PaneID: "%9", Height: 1}, {PaneID: "%1", Height: 3}, {PaneID: "%2", Height: 2}}
+	tests := []struct {
+		name      string
+		rowZero   string
+		titleRow  bool
+		pins      []render.Pin
+		wantPins  []render.Pin
+		wantBodys []string
+	}{
+		{
+			name: "multi-row top cell loses the title row", rowZero: "%1", titleRow: true, pins: pins,
+			wantPins:  []render.Pin{{PaneID: "%9", Height: 1}, {PaneID: "%1", Height: 2}, {PaneID: "%2", Height: 2}},
+			wantBodys: []string{"resize-pane -t %9 -y 1", "resize-pane -t %1 -y 2", "resize-pane -t %2 -y 2"},
+		},
+		{
+			name: "one-row top cell is floored at one content row", rowZero: "%9", titleRow: true, pins: pins,
+			wantPins:  pins,
+			wantBodys: []string{"resize-pane -t %9 -y 1", "resize-pane -t %1 -y 3", "resize-pane -t %2 -y 2"},
+		},
+		{
+			name: "row-0 pane without a pin gets none", rowZero: "%5", titleRow: true, pins: pins,
+			wantPins:  pins,
+			wantBodys: []string{"resize-pane -t %9 -y 1", "resize-pane -t %1 -y 3", "resize-pane -t %2 -y 2"},
+		},
+		{
+			name: "no title row passes the pins through", rowZero: "%1", titleRow: false, pins: pins,
+			wantPins:  pins,
+			wantBodys: []string{"resize-pane -t %9 -y 1", "resize-pane -t %1 -y 3", "resize-pane -t %2 -y 2"},
+		},
+		{name: "no pins", rowZero: "%1", titleRow: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			input := slices.Clone(tt.pins)
+			got := pinsForContent(tt.pins, tt.rowZero, tt.titleRow)
+			if !slices.Equal(got, tt.wantPins) {
+				t.Errorf("pinsForContent(%v, %q, %v) = %v, want %v", tt.pins, tt.rowZero, tt.titleRow, got, tt.wantPins)
+			}
+			if !slices.Equal(tt.pins, input) {
+				t.Errorf("pinsForContent modified its input: %v, want %v", tt.pins, input)
+			}
+			var bodies []string
+			for _, argv := range resizePinHookArgvs("@1", got, "")[1:] {
+				bodies = append(bodies, argv[len(argv)-1])
+			}
+			if !slices.Equal(bodies, tt.wantBodys) {
+				t.Errorf("hook entries from the adjusted pins = %v, want %v", bodies, tt.wantBodys)
+			}
+		})
+	}
 }

@@ -1,5 +1,5 @@
 // windowsize.go owns the live-window-size query and its fallback and the geometry option pins (the two-line status bar, the pane-border title and window-size latest).
-// It also owns the two effective-value readbacks the attach path gates the chain on,
+// It also owns the effective-value readbacks the attach path gates the chain on and the title-row readback the pins are adjusted by,
 // and the whole write side of the `window-resized` hook array: both the resize-pane pins and the watchdog's own resize-signal entry, which are one array and are therefore installed by one function (installResizePinsLocked).
 // The array's READ side is reapply.go's hookInstalledLocked.
 // Every tmux interaction here is non-fatal, per the Shared Decision geometry-tmux-failures-are-non-fatal-everywhere:
@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -209,6 +210,59 @@ func (e *Engine) readWindowSizeLatestLocked(windowTarget string) bool {
 		return false
 	}
 	return windowSizeAllowsChain(out)
+}
+
+// readBorderTitleRowLocked reports whether the strands' window draws a pane-border title row at window row 0.
+// Only an answer of exactly `top` means a title row; `off`, `bottom`, an empty answer and a failed readback (logged) all mean none.
+// Assumes the op lock is already held.
+func (e *Engine) readBorderTitleRowLocked(windowTarget string) bool {
+	out, err := e.tmux.output("display-message", "-p", "-t", windowTarget, "#{pane-border-status}")
+	if err != nil {
+		logger.Warn("reed: failed to read back pane-border-status, assuming no title row", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		return false
+	}
+	return strings.TrimSpace(out) == "top"
+}
+
+// pinsForContent adjusts pins, which carry planned cell heights, to the content heights `resize-pane -y` sizes.
+// A pane's content equals its cell everywhere except at window row 0, where a title row takes the top row of the cell:
+// with titleRow, the pin on rowZeroPaneID is its planned cell height minus one, floored at one content row, and every other pin keeps its cell height.
+// The floor is the one case where a cell ends one row taller than planned, the row coming from the cells below it.
+// Without a title row the pins pass through unchanged; a row-0 pane with no pin gets none.
+// The input is not modified.
+func pinsForContent(pins []render.Pin, rowZeroPaneID string, titleRow bool) []render.Pin {
+	adjusted := slices.Clone(pins)
+	if !titleRow {
+		return adjusted
+	}
+	for i, pin := range adjusted {
+		if pin.PaneID == rowZeroPaneID {
+			adjusted[i].Height = max(pin.Height-1, 1)
+		}
+	}
+	return adjusted
+}
+
+// contentPinsLocked returns the fixed-height pins of st against live within box, adjusted for the strands' window's title row.
+// The row-0 pane is the first of the physical pane order the layout was built from, never a pin's emission order.
+// Assumes the op lock is already held.
+func (e *Engine) contentPinsLocked(windowTarget string, st *ReedState, live []LivePane, box render.Box) []render.Pin {
+	var rowZeroPaneID string
+	if order := paneIDsByTop(live); len(order) > 0 {
+		rowZeroPaneID = order[0]
+	}
+	return pinsForContent(e.fixedHeightPins(st, live, box), rowZeroPaneID, e.readBorderTitleRowLocked(windowTarget))
+}
+
+// runResizePinsLocked issues one `resize-pane -t <pane> -y <height>` per pin, so a layout just applied holds its heights before any resize fires the hook.
+// Each failure is logged via logger.Warn and ignored, like the hook install; the hook's signal entry is never run from here.
+// Assumes the op lock is already held.
+func (e *Engine) runResizePinsLocked(pins []render.Pin) {
+	for _, pin := range pins {
+		if err := e.tmux.run("resize-pane", "-t", pin.PaneID, "-y", strconv.Itoa(pin.Height)); err != nil {
+			logger.Warn("reed: failed to pin a pane height after the layout apply", "socket", e.Socket(), "session", e.SessionName(), "pane", pin.PaneID, "height", pin.Height, "err", err)
+		}
+	}
 }
 
 // resizePinHookArgvs returns the full argv sequence rebuilding the strands' window's `window-resized` window-hook

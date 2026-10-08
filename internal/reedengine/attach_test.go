@@ -14,6 +14,7 @@ package reedengine
 import (
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -458,4 +459,47 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 			t.Fatalf("log output = %q, want exactly 1 multi-client warning line even though the chain is suppressed, got %d", out, n)
 		}
 	})
+}
+
+// TestAttachArgv_ChainCarriesTheAdjustedPinsAfterSelectLayout pins the chain's pin tail and the hook it installs:
+// `attach-session ; select-layout ... ; resize-pane -t <pane> -y <n>` per pin, the row-0 pane taken from the physical pane order and its pin one row shorter under a title row.
+func TestAttachArgv_ChainCarriesTheAdjustedPinsAfterSelectLayout(t *testing.T) {
+	const cols, rows = 80, 24
+	strands := []Strand{
+		{GUID: "root", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},
+		{GUID: "child", Parent: "root", PaneID: "%2", Display: render.Display{Anchor: render.AnchorBelowParent}},
+	}
+	tests := []struct {
+		name         string
+		borderStatus string
+		listPanes    string
+		wantHeight   int
+	}{
+		{"title row with the pinned pane at row 0", "top", "%1 0 0 40 20 4321\n%2 0 20 40 20 4322\n", planCollapsedRows - 1},
+		{"title row with an unpinned pane at row 0, whatever the pin order", "top", "%2 0 0 40 20 4322\n%1 0 20 40 20 4321\n", planCollapsedRows},
+		{"no title row", "off", "%1 0 0 40 20 4321\n%2 0 20 40 20 4322\n", planCollapsedRows},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e, fake := newAttachTestEngine(t, strands)
+			fake.answerFormat("#{pane-border-status}", tt.borderStatus, nil)
+			fake.answer("list-panes", tt.listPanes, nil)
+
+			got := e.AttachArgv(cols, rows)
+
+			wantTail := []string{";", "resize-pane", "-t", "%1", "-y", strconv.Itoa(tt.wantHeight)}
+			layoutAt := slices.Index(got, "select-layout")
+			if layoutAt != len(wantBareAttachArgv(e))+1 || len(got) != layoutAt+4+len(wantTail) || !slices.Equal(got[layoutAt+4:], wantTail) {
+				t.Fatalf("AttachArgv() = %v, want the bare attach, ; select-layout -t <window> <layout>, then %v", got, wantTail)
+			}
+			wantBody := "resize-pane -t %1 -y " + strconv.Itoa(tt.wantHeight)
+			var bodies []string
+			for _, argv := range fake.ArgvFor("set-hook") {
+				bodies = append(bodies, argv[len(argv)-1])
+			}
+			if !slices.Contains(bodies, wantBody) {
+				t.Errorf("hook entries = %v, want %q among them", bodies, wantBody)
+			}
+		})
+	}
 }

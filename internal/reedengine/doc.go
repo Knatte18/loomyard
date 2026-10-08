@@ -512,6 +512,26 @@
 //     pinned heights coming from render.FixedHeightPins: the heights render
 //     actually placed the cells at, after clampBandHeight and
 //     clampToFit, never the raw configured budgets.
+//     The pins are adjusted for the pane-border title row (pinsForContent):
+//     "resize-pane -y" sizes a pane's content, which equals its cell
+//     everywhere except at window row 0, where "pane-border-status top"
+//     draws the title inside the top cell. When the strands' window reads
+//     back "top", the pin on the row-0 pane is its planned cell height
+//     minus one, floored at one content row (so a planned one-row top cell
+//     ends one row taller, the row coming from the cells below), and every
+//     other pin keeps its cell height. The row-0 pane is the first of the
+//     physical pane order the layout string was built from, never the pin
+//     emission order, and a row-0 pane with no pin gets none. "off",
+//     "bottom", an empty answer and a failed readback mean no title row,
+//     so the pins pass through unchanged. The layout planner and render are
+//     untouched.
+//     The same adjusted pins also run directly: right after its
+//     select-layout, on the focusing path and on the SkipFocus one the
+//     watchdog's re-apply takes, applyLayoutLockedOpts issues them as
+//     "resize-pane -t <pane> -y <n>" calls, each non-fatal, so the heights
+//     hold from the apply and not only after the next resize. This run
+//     issues pin entries only — never the hook's signal entry — so an apply
+//     never signals the watchdog into another apply.
 //     The watchdog's own signal entry rides the SAME array, always as its
 //     last entry, and installResizePinsLocked is its only install site —
 //     the array is a whole-snapshot rebuild, so a second writer could only
@@ -700,6 +720,10 @@
 //     mitigation not helping. Adding either would make a multiplexer that runs reed perfectly well
 //     today fail at boot over a cosmetic feature.
 //   - The chained attach (attach.go): AttachArgv's argv is "attach-session … ; select-layout -t <strand window> <layout>", with the separator a literal one-character ";" argv element — never "\;", since exec.Command passes argv directly to the child and no shell ever sees it to unescape.
+//     Each adjusted pin follows the select-layout as one more ";"-separated
+//     "resize-pane -t <pane> -y <n>", so the heights hold from the first
+//     frame; the chained form is therefore recognised by its select-layout
+//     element, never by the argv length.
 //     The chained select-layout runs only after the
 //     client has attached and tmux has already resized the window to it, so
 //     the layout string lands verbatim with no rescale — but only until the
