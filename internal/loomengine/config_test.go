@@ -84,7 +84,7 @@ func templateConfig() Config {
 		Driver:                   "sonnet[medium]",
 		ParentReviewWaitMin:      60,
 		ReviewCirclingCheckpoint: 3,
-		ReviewMaxBounces:         5,
+		ReviewMaxBounces:         3,
 	}
 }
 

@@ -173,7 +173,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		PlanIndex: noFindingsIndex{},
 
 		Slug:                     "test-slug",
-		ReviewMaxBounces:         5,
+		ReviewMaxBounces:         3,
 		ReviewCirclingCheckpoint: 3,
 
 		ScratchDir:     mustMkdir(t, filepath.Join(dir, "scratch")),
