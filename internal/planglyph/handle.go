@@ -354,9 +354,7 @@ func resignHeadMismatch(src declSource, res quarry.NameResult) Finding {
 // handle-shaped (a file-rename pair's New side is already a self glyph, never a handle, and is
 // skipped here — nothing to bind).
 //
-// Folding a Rename pair's New side in alongside Create declarations is what closes the gap a
-// Rename-only card fell into before this fix (crucible round sonnet-xhigh-r8, PG-2):
-// a card carrying no Create group has an empty Declarations, so a BindHandles keyed on Declarations alone skipped it entirely, and its own New-side handle never lost its "plan:" prefix — permanently invisible to collectGlyphTargets, which excludes anything plan:-prefixed by construction, for every later card that legitimately referenced the renamed symbol.
+// Folding a Rename pair's New side in alongside Create declarations is what closes the gap a Rename-only card fell into before this fix (crucible round sonnet-xhigh-r8, PG-2): a card carrying no Create group has an empty Declarations, so a BindHandles keyed on Declarations alone skipped it entirely, and its own New-side handle never lost its "plan:" prefix — permanently invisible to collectGlyphTargets, which excludes anything plan:-prefixed by construction, for every later card that legitimately referenced the renamed symbol.
 func cardOwnHandles(c planparser.Card) []string {
 	handles := make([]string, 0, len(c.Declarations)+len(c.Pairs))
 	for _, d := range c.Declarations {
