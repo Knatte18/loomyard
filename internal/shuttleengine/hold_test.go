@@ -128,6 +128,16 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			},
 		},
 		{
+			name: "a payload-reported shell keeps waiting past the bound with no held turn end and no notice", events: "WAIT:background work\n", strand: strandName,
+			outstand:  []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999", Signal: SignalPayload}},
+			shellJump: 6 * time.Minute,
+			check: func(t *testing.T, got heldRun) {
+				if len(got.notices) != 0 || got.result.Outcome != OutcomeTimeout {
+					t.Errorf("notices = %q, outcome = %q, want none and a wait to the run's deadline", got.notices, got.result.Outcome)
+				}
+			},
+		},
+		{
 			name:      "agent parts are single-line, delimited, cut to 200 runes and at most five tasks are named",
 			events:    "WAIT:a\tb«c»d" + strings.Repeat("é", 300) + "\n",
 			outstand:  manyShells(7),

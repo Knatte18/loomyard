@@ -18,3 +18,5 @@ turn_ends:
   - reading: held
     outputs_exist: false
     old_reading: asking
+states:
+  - {state: idle-stalled, cause: no-output}

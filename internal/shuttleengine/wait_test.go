@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"gopkg.in/yaml.v3"
 )
 
 // fakeClock is a virtual clock: Sleep instantly advances Now() by d instead
@@ -470,16 +471,32 @@ func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 				t.Fatalf("seed events: %v", err)
 			}
 
-			fx := newFixture(t, &fakeReed{StatusQueue: tt.status}, &fakeEngine{StartupScript: []StartupState{StartupReady}}, withConfig(fastConfig))
+			reed := &fakeReed{StatusQueue: tt.status}
+			fx := newFixture(t, reed, &fakeEngine{StartupScript: []StartupState{StartupReady}}, withConfig(fastConfig))
 			fc := newFakeClock(time.Now())
 			var clk Clock = fc
+			// holds is the wait marker on disk at each step, where the agent acts between two ticks.
+			var holds []WaitMarker
 			if tt.script != nil {
 				actions := tt.script(agentActions{
 					writeOutput: func() { touchOutputFile(t, outputFile) },
 					appendLine:  func(line string) { appendEventsLine(t, eventsPath, line) },
 				})
+				for i, action := range actions {
+					actions[i] = func() {
+						var marker WaitMarker
+						if data, err := os.ReadFile(filepath.Join(runDir, waitMarkerFileName)); err == nil {
+							if err := yaml.Unmarshal(data, &marker); err != nil {
+								t.Errorf("decode wait marker: %v", err)
+							}
+						}
+						holds = append(holds, marker)
+						action()
+					}
+				}
 				clk = &multiStepClock{fakeClock: fc, steps: actions}
 			}
+			firstTick := clk.Now()
 			opts := []runOpt{
 				withRunDir(runDir),
 				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
@@ -499,6 +516,30 @@ func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 			}
 			if (result.Gate != nil) != tt.wantGate {
 				t.Errorf("Gate = %+v, want gate report = %v", result.Gate, tt.wantGate)
+			}
+
+			// A held turn end shows the held wait stamped with the hold's time, each later event replaces it with the next hold,
+			// and no return leaves a mark or a marker file behind.
+			for i, hold := range holds {
+				if !hold.Held() {
+					t.Errorf("wait marker at step %d = %+v; want the held label", i, hold)
+				}
+				if i == 0 && !hold.Started.Equal(firstTick) {
+					t.Errorf("first hold started %v; want the first tick's time %v", hold.Started, firstTick)
+				}
+				if i > 0 && !hold.Started.After(holds[i-1].Started) {
+					t.Errorf("hold %d started %v; want after the previous hold's %v, since a new event clears the old one", i, hold.Started, holds[i-1].Started)
+				}
+			}
+			var labels []string
+			for _, call := range reed.WaitMarkCalls {
+				labels = append(labels, call.Label)
+			}
+			if !slices.Contains(labels, heldWaitLabel) || labels[len(labels)-1] != "" {
+				t.Errorf("pane mark labels = %q; want the held label set and the mark cleared last", labels)
+			}
+			if _, err := os.Stat(filepath.Join(runDir, waitMarkerFileName)); !os.IsNotExist(err) {
+				t.Errorf("wait marker file after Wait: stat error = %v; want it removed", err)
 			}
 		})
 	}

@@ -85,6 +85,18 @@ func (r *Runner) ReadEvents(guid string, offset int64) ([]Event, int64, error) {
 	return events, newOffset, nil
 }
 
+// SessionState returns the session state of the run identified by guid, read from files at the runner's clock.
+func (r *Runner) SessionState(guid string) (RunSessionState, error) {
+	if r.toldErr != nil {
+		return RunSessionState{}, r.toldErr
+	}
+	rs, _, err := FindRun(r.cfg, r.anchorPath, guid)
+	if err != nil {
+		return RunSessionState{}, fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
+	}
+	return readRunSessionState(rs, r.engine, r.clock.Now()), nil
+}
+
 // ContextTokens returns the provider's context usage as of turnEnd, via the engine's SessionCycler.
 // A reading with Known false means usage could not be read.
 func (r *Runner) ContextTokens(turnEnd Event) (ContextReading, error) {
