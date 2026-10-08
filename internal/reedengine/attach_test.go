@@ -277,8 +277,8 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 		t.Fatalf("AttachArgv() = %v, want the chained argv on this known-good script", want)
 	}
 
-	// The six bar and border pins plus the pre-existing window-size pin, the window marker and the strand pane's two options.
-	const wantSetOptionCalls = 10
+	// The seven bar and border pins plus the pre-existing window-size pin, the window marker and the strand pane's two options.
+	const wantSetOptionCalls = 11
 	if setOptions := fake.ArgvFor("set-option"); len(setOptions) != wantSetOptionCalls {
 		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(setOptions), wantSetOptionCalls, setOptions)
 	}

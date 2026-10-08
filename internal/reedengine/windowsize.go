@@ -99,6 +99,7 @@ func windowSizeAllowsChain(raw string) bool {
 // apply.
 //
 // It issues, in order: "status-format[0]" and "status-format[1]" with -g, because tmux's status formats are one array and a per-session index would drop the global lines for that session;
+// "status-style" with -g, like them, so the gaps between the buttons are dark grey instead of tmux's default green;
 // "status" "2" and "status-position" "bottom" on the session;
 // and, window-targeted with -w on the strands' window only, "pane-border-status" "top" and "pane-border-format", so a batten window gets no border title.
 // The reserved status rows are read back by readStatusRowsLocked, so the layout box shrinks by two rows with no planner change.
@@ -130,6 +131,7 @@ func (e *Engine) pinGeometryOptionsLocked(target string) {
 	}{
 		{"status-format[0]", []string{"set-option", "-g", "status-format[0]", statusFormatButtons}},
 		{"status-format[1]", []string{"set-option", "-g", "status-format[1]", statusFormatSessions}},
+		{"status-style", []string{"set-option", "-g", "status-style", statusBarStyle}},
 		{"status", []string{"set-option", "-t", target, "status", "2"}},
 		{"status-position", []string{"set-option", "-t", target, "status-position", "bottom"}},
 		{"pane-border-status", []string{"set-option", "-w", "-t", target, "pane-border-status", "top"}},

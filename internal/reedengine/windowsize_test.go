@@ -234,6 +234,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		wantOptions := [][]string{
 			{"set-option", "-g", "status-format[0]", statusFormatButtons},
 			{"set-option", "-g", "status-format[1]", statusFormatSessions},
+			{"set-option", "-g", "status-style", statusBarStyle},
 			{"set-option", "-t", target, "status", "2"},
 			{"set-option", "-t", target, "status-position", "bottom"},
 			{"set-option", "-w", "-t", target, "pane-border-status", "top"},
@@ -285,7 +286,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
 		calls := fake.ArgvFor("set-option")
 
-		const wantCalls = 7
+		const wantCalls = 8
 		if len(calls) != wantCalls {
 			t.Fatalf("pinGeometryOptionsLocked issued %d set-option calls despite one erroring, want all %d still attempted: %v", len(calls), wantCalls, calls)
 		}
@@ -317,8 +318,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 				setOptionCalls++
 			}
 		}
-		if setOptionCalls != 7 {
-			t.Errorf("pinGeometryOptionsLocked calls = %v, want 7 set-option calls (the six bar and border options and window-size)", calls)
+		if setOptionCalls != 8 {
+			t.Errorf("pinGeometryOptionsLocked calls = %v, want 8 set-option calls (the seven bar and border options and window-size)", calls)
 		}
 	})
 
@@ -379,8 +380,8 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 
 		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
 
-		if setOptionCalls := fake.Count("set-option"); setOptionCalls != 7 {
-			t.Errorf("set-option calls = %d, want 7 (all preceding pins still attempted despite the later set-hook error)", setOptionCalls)
+		if setOptionCalls := fake.Count("set-option"); setOptionCalls != 8 {
+			t.Errorf("set-option calls = %d, want 8(all preceding pins still attempted despite the later set-hook error)", setOptionCalls)
 		}
 		if setHookErrors := fake.Count("set-hook"); setHookErrors != 1 {
 			t.Errorf("set-hook errors = %d, want 1", setHookErrors)
