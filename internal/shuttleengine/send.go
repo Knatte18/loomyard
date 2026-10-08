@@ -1,5 +1,5 @@
-// send.go holds what every verified send does before it types: the context it runs in and the wait for an idle session.
-// The wait only delays a send or fails it as busy; it never ends, classifies or finalizes a run.
+// send.go holds what a verified send does around its typing: the context it runs in, the wait for an idle session, the settle, submit confirmation and clear of an input-box send, and the gated wait loop's send and boundary-idle checks.
+// None of it ends, classifies or finalizes a run.
 
 package shuttleengine
 
