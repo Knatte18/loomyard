@@ -1,10 +1,7 @@
 // Package fabricengine is lyx's sole warp↔weft git-coordination module, built on two
 // `internal/gitrepo.Repo` instances covering warp↔weft topology and commit/push/pull into the
 // paired weft repo.
-// fabric is the only module that knows both repos exist: the `Fabric` handle holds unexported `warp
-// *gitrepo.Repo` and `weft *gitrepo.Repo` fields for anything repo-specific and uncoordinated,
-// reachable only from inside this package, and adds a small set of genuinely cross-repo operations
-// (`Commit`, `Pull`, `Diff`, `Status`) on top of what gitrepo deliberately doesn't know about.
+// fabric is the only module that knows both repos exist: the `Fabric` handle holds unexported `code *gitrepo.Repo` and `records *gitrepo.Repo` fields for anything repo-specific and uncoordinated, reachable only from inside this package, and adds a small set of genuinely cross-repo operations (`Commit`, `Pull`, `Diff`, `Status`) on top of what gitrepo deliberately doesn't know about.
 //
 // `Fabric.Pull` (pull.go) is the unified read path: weft is fast-forwarded first via a plain
 // `PullWeft` — skipped as a vacuous success when the weft branch has no upstream yet, the freshly
