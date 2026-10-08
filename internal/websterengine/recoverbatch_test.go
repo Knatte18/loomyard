@@ -1083,37 +1083,70 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 	}
 }
 
-// TestRecoverSpawnOrAttach_StartFailures asserts a not-ready recovery start (shuttle's Start returning ErrNotStarted after tearing its own strand down)
-// surfaces unchanged from RecoverSpawnOrAttach, records no batch state — the strand shuttle already tore down must never be persisted as this batch's recovery record —
-// and names the transient re-run as the way forward, after which re-running the verb once the provider answers spawns the strand.
+// TestRecoverSpawnOrAttach_StartFailures asserts a transient failure before the recovery strand is recorded refuses with the transient re-run as the way forward,
+// records no batch state, and spawns no strand, after which re-running the verb once the failure clears spawns it.
+// The failures are a not-ready start (shuttle's Start returning ErrNotStarted after tearing its own strand down, a strand that must never be persisted as this batch's recovery record)
+// and a git status that cannot list the worktree's uncommitted paths for the recovery prompt.
 func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 	t.Parallel()
-	fx := newRecoverFixture(t)
-	realStarter := fx.Deps.Starter
-	fx.Deps.Starter = erroringStarter{}
-	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 
-	bs, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
-	if !errors.Is(err, shuttleengine.ErrNotStarted) {
-		t.Errorf("RecoverSpawnOrAttach() error = %v; want it to wrap shuttleengine.ErrNotStarted", err)
+	statusErr := errors.New("git status failed")
+	tests := []struct {
+		name    string
+		fail    func(fx *recoverFixture) (restore func())
+		wantErr error
+	}{
+		{
+			name: "a not-ready start",
+			fail: func(fx *recoverFixture) func() {
+				realStarter := fx.Deps.Starter
+				fx.Deps.Starter = erroringStarter{}
+				return func() { fx.Deps.Starter = realStarter }
+			},
+			wantErr: shuttleengine.ErrNotStarted,
+		},
+		{
+			name: "an unreadable uncommitted-path listing",
+			fail: func(fx *recoverFixture) func() {
+				fx.Git.dirtyPathsErr = statusErr
+				return func() { fx.Git.dirtyPathsErr = nil }
+			},
+			wantErr: statusErr,
+		},
 	}
-	if err == nil || !strings.Contains(err.Error(), "way forward: transient, re-run `lyx webster recover-batch 1`") {
-		t.Fatalf("RecoverSpawnOrAttach() error = %v; want the transient re-run way forward", err)
-	}
-	if spawned {
-		t.Error("RecoverSpawnOrAttach() spawned = true; want false on a not-ready start")
-	}
-	if bs != nil {
-		t.Errorf("RecoverSpawnOrAttach() BatchState = %+v; want nil on a not-ready start", bs)
-	}
-	if fx.Deps.State.Batches[1] != nil {
-		t.Errorf("State.Batches[1] = %+v; want nil — a strand shuttle already tore down must record no guid", fx.Deps.State.Batches[1])
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newRecoverFixture(t)
+			restore := tt.fail(fx)
+			clk := &recoverFakeClock{now: time.Unix(0, 0)}
 
-	fx.Deps.Starter = realStarter
-	_, spawned, err = websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
-	if err != nil || !spawned {
-		t.Fatalf("RecoverSpawnOrAttach() after the retry = spawned %v, error %v; want a spawned strand", spawned, err)
+			bs, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("RecoverSpawnOrAttach() error = %v; want it to wrap %v", err, tt.wantErr)
+			}
+			if err == nil || !strings.HasSuffix(err.Error(), "way forward: transient, re-run `lyx webster recover-batch 1`") {
+				t.Fatalf("RecoverSpawnOrAttach() error = %v; want the transient re-run way forward", err)
+			}
+			if spawned {
+				t.Error("RecoverSpawnOrAttach() spawned = true; want false")
+			}
+			if bs != nil {
+				t.Errorf("RecoverSpawnOrAttach() BatchState = %+v; want nil", bs)
+			}
+			if fx.Deps.State.Batches[1] != nil {
+				t.Errorf("State.Batches[1] = %+v; want nil", fx.Deps.State.Batches[1])
+			}
+			if fx.Engine.PrepareCalls != 0 {
+				t.Errorf("Engine.PrepareCalls = %d; want no strand prepared", fx.Engine.PrepareCalls)
+			}
+
+			restore()
+			_, spawned, err = websterengine.RecoverSpawnOrAttach(fx.Deps, 1, clk)
+			if err != nil || !spawned {
+				t.Fatalf("RecoverSpawnOrAttach() after the retry = spawned %v, error %v; want a spawned strand", spawned, err)
+			}
+		})
 	}
 }
 
