@@ -369,7 +369,13 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		all := append(append([]classifiedFinding(nil), correctness...), policy...)
 		headSHA := ""
 		if r, perr := ParseReport(reportPath); perr == nil {
-			headSHA = r.HeadSHA
+			resolved, rerr := resolveReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, reportPath, r.HeadSHA)
+			switch {
+			case rerr == nil:
+				headSHA = resolved
+			case !errors.Is(rerr, ErrHeadSHAUnresolved):
+				return nil, rerr
+			}
 		}
 		return failOnCorrectness(deps, bs, number, slug, headSHA, all, correctness, newPaths, warnings)
 	}
@@ -402,6 +408,11 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	report, err := ParseReport(reportPath)
 	if err != nil {
 		return nil, fmt.Errorf("%w; way forward: `lyx webster recover-batch %d` archives the malformed report and re-drives the batch", err, number)
+	}
+
+	// The run record holds full SHAs only, so an abbreviated head_sha is resolved before its first use.
+	if report.HeadSHA, err = resolveReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, reportPath, report.HeadSHA); err != nil {
+		return nil, err
 	}
 
 	// A merge in progress leaves the batch non-terminal and retryable.

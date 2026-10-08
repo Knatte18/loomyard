@@ -455,6 +455,16 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 	parentWrite := func(path func(fx *recordFixture) string) func(t *testing.T, fx *recordFixture) {
 		return func(t *testing.T, fx *recordFixture) { fx.Audit.scripted[0].ParentWrites = []string{path(fx)} }
 	}
+	requireFullHeadSHA := func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+		t.Helper()
+		requireDone(t, result)
+		if result.Digest.HeadSHA != fx.HeadSHA {
+			t.Errorf("Digest.HeadSHA = %q; want the full SHA %q", result.Digest.HeadSHA, fx.HeadSHA)
+		}
+		if got := fx.Deps.State.Batches[1].CardSHAs; len(got) != 1 || got[0] != fx.HeadSHA {
+			t.Errorf("CardSHAs = %v; want [%s]", got, fx.HeadSHA)
+		}
+	}
 	trackedFile := func(fx *recordFixture) string { return filepath.Join(fx.Worktree, "internal", "foo", "impl.go") }
 	oneFork := func() []shuttleengine.ForkAudit { return []shuttleengine.ForkAudit{oneForkAudit()} }
 
@@ -468,6 +478,45 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 		wantFailed bool
 		check      func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error)
 	}{
+		{
+			name:   "a lowercase abbreviation of HEAD records the full SHA",
+			audits: oneFork,
+			report: func(fx *recordFixture) string { return validReport(fx.HeadSHA[:9]) },
+			check:  requireFullHeadSHA,
+		},
+		{
+			name:   "an uppercase abbreviation of HEAD records the full lowercase SHA",
+			audits: oneFork,
+			report: func(fx *recordFixture) string { return validReport(strings.ToUpper(fx.HeadSHA[:9])) },
+			check:  requireFullHeadSHA,
+		},
+		{
+			name:       "a correctness finding fails with the full SHA when head_sha abbreviates HEAD",
+			audits:     forkWithCommand("cat FABRICREF/webster/state.json"),
+			prepare:    func(t *testing.T, fx *recordFixture) { fx.Deps.RefMatcher = fabricMatcher{} },
+			report:     func(fx *recordFixture) string { return validReport(fx.HeadSHA[:9]) },
+			wantFailed: true,
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				if result.Digest.HeadSHA != fx.HeadSHA {
+					t.Errorf("failed Digest.HeadSHA = %q; want the full SHA %q", result.Digest.HeadSHA, fx.HeadSHA)
+				}
+			},
+		},
+		{
+			name:       "a correctness finding wins over a head_sha naming no commit",
+			audits:     forkWithCommand("cat FABRICREF/webster/state.json"),
+			prepare:    func(t *testing.T, fx *recordFixture) { fx.Deps.RefMatcher = fabricMatcher{} },
+			report:     func(fx *recordFixture) string { return validReport("abcdef123") },
+			wantFailed: true,
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				if result.Digest.HeadSHA != "" {
+					t.Errorf("failed Digest.HeadSHA = %q; want empty", result.Digest.HeadSHA)
+				}
+				if errors.Is(err, websterengine.ErrHeadSHAUnresolved) {
+					t.Errorf("error = %v; want the correctness failure, not ErrHeadSHAUnresolved", err)
+				}
+			},
+		},
 		{
 			// A resumed run's fresh Master must be able to consume a report whose fork transcript
 			// lives under the crashed session's own subagents directory.
@@ -1159,11 +1208,78 @@ func TestRecordBatch_HeadSHAMismatchErrors(t *testing.T) {
 		t.Errorf("RecordBatch() error = %q; want it to name the worktree's actual HEAD %q", err.Error(), fx.HeadSHA)
 	}
 
+	// A value that is not hex is no abbreviation, so it meets the mismatch refusal too.
+	writeReport(t, fx.ReportsDir, validReport("main"))
+	restore()
+	if _, err := websterengine.RecordBatch(fx.Deps, 1); err == nil || errors.Is(err, websterengine.ErrHeadSHAUnresolved) || !strings.Contains(err.Error(), fx.HeadSHA) {
+		t.Errorf("RecordBatch() with head_sha main error = %v; want the mismatch refusal naming %q", err, fx.HeadSHA)
+	}
+
 	// Taking the way forward: the report names the worktree's actual HEAD, and the same call records.
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 	restore()
 	if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
 		t.Fatalf("RecordBatch() with a corrected head_sha error = %v; want nil", err)
+	}
+}
+
+// TestRecordBatch_UnresolvableHeadSHARefused proves an abbreviated head_sha naming no commit, or several, is refused with ErrHeadSHAUnresolved and the git rev-parse way forward, never a reset.
+// The batch stays non-terminal with the report in place, and the same call records once the report names the full HEAD.
+func TestRecordBatch_UnresolvableHeadSHARefused(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		// headSHA is the report's head_sha and prepare registers any extra commit it needs.
+		headSHA func(fx *recordFixture) string
+		prepare func(fx *recordFixture)
+		want    string
+	}{
+		{
+			name:    "no commit",
+			headSHA: func(*recordFixture) string { return "abcdef123" },
+			want:    "names no commit",
+		},
+		{
+			name:    "two commits",
+			headSHA: func(fx *recordFixture) string { return fx.HeadSHA[:9] },
+			prepare: func(fx *recordFixture) { fx.Git.parents[fx.HeadSHA[:9]+strings.Repeat("0", 31)] = nil },
+			want:    "names 2 commits",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newRecordFixture(t, []shuttleengine.ForkAudit{oneForkAudit()})
+			if tc.prepare != nil {
+				tc.prepare(fx)
+			}
+			writeReport(t, fx.ReportsDir, validReport(tc.headSHA(fx)))
+			restore := snapshotRecordState(fx)
+
+			_, err := websterengine.RecordBatch(fx.Deps, 1)
+			if !errors.Is(err, websterengine.ErrHeadSHAUnresolved) {
+				t.Fatalf("RecordBatch() error = %v; want ErrHeadSHAUnresolved", err)
+			}
+			for _, want := range []string{tc.want, "`git rev-parse HEAD`"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q missing %q", err.Error(), want)
+				}
+			}
+			if strings.Contains(err.Error(), "reset") {
+				t.Errorf("error %q names a reset; want only the git rev-parse way forward", err.Error())
+			}
+			assertBatchOpen(t, fx)
+			if got := archivedReports(t, fx.ReportsDir); len(got) != 0 {
+				t.Errorf("archived reports = %v; want the report left in place", got)
+			}
+
+			writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+			restore()
+			if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
+				t.Fatalf("RecordBatch() with the full head_sha error = %v; want nil", err)
+			}
+		})
 	}
 }
 
@@ -1593,6 +1709,21 @@ func TestRecordBatch_ParentMovedHead(t *testing.T) {
 					if !strings.Contains(result.Warnings[0], want) {
 						t.Errorf("warning %q missing %q", result.Warnings[0], want)
 					}
+				}
+			},
+		},
+		{
+			name: "an abbreviation a parent merge sits above is accepted with the full SHA in the warning",
+			move: func(fx *recordFixture) []string {
+				path := filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
+				if err := os.WriteFile(path, []byte(validReport(fx.HeadSHA[:9])), 0o644); err != nil {
+					panic(err)
+				}
+				return []string{parentMerge(fx)}
+			},
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, merges []string) {
+				if !fx.Deps.State.Batches[1].Terminal || len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], `head_sha "`+fx.HeadSHA+`"`) {
+					t.Errorf("Warnings = %v, terminal = %v; want a recorded batch with one warning naming the full SHA %s", result.Warnings, fx.Deps.State.Batches[1].Terminal, fx.HeadSHA)
 				}
 			},
 		},

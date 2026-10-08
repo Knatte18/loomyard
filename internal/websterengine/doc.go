@@ -87,6 +87,8 @@
 // because the audited delta ends at `head_sha` and such a merge's own content would bypass it.
 // The batch is recorded at the report's `head_sha` (CardSHAs and the delta's end), while the done-checks and drift detection read the merged tree as it stands,
 // and a warning names the walked merge SHAs.
+// A `head_sha` may be an abbreviation of 4 to 39 hex digits, resolved to the one commit it names before any comparison,
+// and an abbreviation naming no commit or several is refused with ErrHeadSHAUnresolved.
 // Any non-merge movement — a plain commit, a fast-forward onto non-merge commits — is refused,
 // and so is any call made while a git merge is in progress, leaving the batch non-terminal and retryable.
 //
