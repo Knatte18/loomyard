@@ -6,6 +6,8 @@ package websterengine
 
 import (
 	"fmt"
+	"maps"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -22,7 +24,16 @@ const (
 	ResetToStart ResetTarget = "start"
 	// ResetToPreFix is the HEAD the verify gate started its fixes from.
 	ResetToPreFix ResetTarget = "pre-fix"
+	// ResetToReportHead is the head_sha of the report the named in-flight batch's fork wrote, taking --batch.
+	ResetToReportHead ResetTarget = "report-head"
+	// ResetToLastBatchHead is the last batch head the run recorded.
+	ResetToLastBatchHead ResetTarget = "last-batch-head"
+	// ResetToBatchStart is the start commit the named batch recorded, taking --batch.
+	ResetToBatchStart ResetTarget = "batch-start"
 )
+
+// ResetTargets lists every ResetTarget in the order the verb names them.
+var ResetTargets = []ResetTarget{ResetToStart, ResetToPreFix, ResetToReportHead, ResetToLastBatchHead, ResetToBatchStart}
 
 // ResetDeps is what PlanReset reads.
 type ResetDeps struct {
@@ -32,6 +43,8 @@ type ResetDeps struct {
 	State *State
 	// Engine audits the run's sessions for the writes the dirt check exempts.
 	Engine shuttleengine.Engine
+	// Reed answers whether a recovery strand is live; nil leaves the live-strand refusal of report-head unchecked.
+	Reed shuttleengine.ReedOps
 	// ParentBranch names the branch the run merges its parent in from; nil or an error leaves the parent-branch refusal unchecked.
 	ParentBranch ParentBranchFunc
 	// Branch returns the branch checked out in the task worktree as fabric reads it, and errors on a detached HEAD or a branch that is not the pair's own.
@@ -70,18 +83,22 @@ func resetRefusal(to ResetTarget, reason, wayForward string) error {
 }
 
 // PlanReset resolves to against the run's record and refuses, read-only, when a reset would be unsafe.
-// The refusals run in this order: run lock held, no state, merge in progress, a checked-out branch that is not the task branch,
+// batch is the --batch number, zero when none: the report-head and batch-start targets require it and every other target refuses it.
+// The refusals run in this order: the batch pairing, run lock held (except for report-head, which Master runs inside its run), no state, merge in progress, a checked-out branch that is not the task branch,
 // no recorded target, a recorded commit missing from the repository, a target that is not an ancestor of HEAD, and a dirty tracked path outside the run's own writes.
 // It plans only a run-recorded commit that is an ancestor of HEAD, exempts only paths the run's own transcripts record a successful write to, and never reads a force flag.
-func PlanReset(deps ResetDeps, to ResetTarget) (ResetPlan, error) {
+func PlanReset(deps ResetDeps, to ResetTarget, batch int) (ResetPlan, error) {
 	geom := deps.Geom
-	rerun := fmt.Sprintf("re-run `lyx webster reset --to %s`", to)
+	if err := refuseBatchPairing(to, batch); err != nil {
+		return ResetPlan{}, err
+	}
+	rerun := fmt.Sprintf("re-run `%s`", resetVerb(to, batch))
 
 	active, err := RunActive(geom.ScratchDir)
 	if err != nil {
 		return ResetPlan{}, err
 	}
-	if active {
+	if active && to != ResetToReportHead {
 		return ResetPlan{}, fmt.Errorf("%w: %q (run.lock held); %s", ErrRunBusy, geom.ScratchDir,
 			wayForwardSteps("wait for it to finish, or check `lyx webster status`"))
 	}
@@ -108,8 +125,24 @@ func PlanReset(deps ResetDeps, to ResetTarget) (ResetPlan, error) {
 		if deps.State.PreFixHead == "" {
 			return ResetPlan{}, resetRefusal(to, "the verify gate recorded no pre-fix head", wayForwardSteps("run `lyx webster run`"))
 		}
+	case ResetToLastBatchHead:
+		if !slices.ContainsFunc(slices.Collect(maps.Values(deps.State.Batches)), recordedTerminalHead) {
+			return ResetPlan{}, resetRefusal(to, "no batch recorded a head commit", wayForwardSteps(resetToStartStep))
+		}
+	case ResetToBatchStart:
+		if err := refuseBatchStart(deps.State, batch); err != nil {
+			return ResetPlan{}, err
+		}
+	case ResetToReportHead:
+		if err := refuseReportHeadBatch(deps, batch); err != nil {
+			return ResetPlan{}, err
+		}
 	default:
-		return ResetPlan{}, fmt.Errorf("webster: reset target %q is not %q or %q", to, ResetToStart, ResetToPreFix)
+		names := make([]string, len(ResetTargets))
+		for i, target := range ResetTargets {
+			names[i] = string(target)
+		}
+		return ResetPlan{}, fmt.Errorf("webster: reset target %q is not one of %s", to, strings.Join(names, ", "))
 	}
 
 	missing := bases.Missing
@@ -123,7 +156,7 @@ func PlanReset(deps ResetDeps, to ResetTarget) (ResetPlan, error) {
 		return ResetPlan{}, fmt.Errorf("webster: reset --to %s refused: %s", to, missingCommitsClause(missing))
 	}
 
-	sha, err := resolveResetSHA(geom.WorktreeRoot, deps.State, bases, to)
+	sha, err := resolveResetSHA(geom, deps.State, bases, to, batch)
 	if err != nil {
 		return ResetPlan{}, err
 	}
@@ -136,7 +169,7 @@ func PlanReset(deps ResetDeps, to ResetTarget) (ResetPlan, error) {
 		return ResetPlan{}, err
 	}
 	if !reachable {
-		fallback := "run `lyx webster reset --to start`"
+		fallback := resetToStartStep
 		if to == ResetToStart {
 			fallback = "run `lyx webster run --fresh`"
 		}
@@ -184,16 +217,146 @@ func refuseForeignBranch(deps ResetDeps, to ResetTarget, rerun string) error {
 	return nil
 }
 
+// resetToStartStep is the way-forward step that restarts the run, the fallback of every target that cannot move the branch.
+const resetToStartStep = "run `" + stepResetToStart + "`"
+
+// resetVerb spells the reset verb for to, with --batch when the target takes one.
+func resetVerb(to ResetTarget, batch int) string {
+	if batch > 0 {
+		return fmt.Sprintf("lyx webster reset --to %s --batch %02d", to, batch)
+	}
+	return "lyx webster reset --to " + string(to)
+}
+
+// refuseBatchPairing refuses a --batch value that does not fit the target: report-head and batch-start need one, every other known target takes none.
+// An unknown target passes, since PlanReset refuses it by name later.
+func refuseBatchPairing(to ResetTarget, batch int) error {
+	switch to {
+	case ResetToReportHead, ResetToBatchStart:
+		if batch <= 0 {
+			return resetRefusal(to, "this target needs the batch to resolve against", wayForwardSteps(fmt.Sprintf("re-run `lyx webster reset --to %s --batch NN`", to)))
+		}
+	case ResetToStart, ResetToPreFix, ResetToLastBatchHead:
+		if batch != 0 {
+			return resetRefusal(to, fmt.Sprintf("--batch %d does not apply to this target", batch), wayForwardSteps(fmt.Sprintf("re-run `lyx webster reset --to %s` without --batch", to)))
+		}
+	}
+	return nil
+}
+
+// recordedTerminalHead reports whether bs is a terminal batch that recorded a head commit.
+func recordedTerminalHead(bs *BatchState) bool {
+	return bs != nil && bs.Terminal && bs.Digest != nil && bs.Digest.HeadSHA != ""
+}
+
+// recordedBatchesAfter returns the numbers of the batches after batch in the recorded partition's order that satisfy keep, in that order.
+// A state with no partition, or one that does not hold batch, orders by batch number.
+func recordedBatchesAfter(st *State, batch int, keep func(*BatchState) bool) []int {
+	var after []int
+	index := slices.IndexFunc(st.Partition, func(pb PartitionBatch) bool { return cardNumberInt(pb.Cards[0]) == batch })
+	if index >= 0 {
+		for _, pb := range st.Partition[index+1:] {
+			after = append(after, cardNumberInt(pb.Cards[0]))
+		}
+	} else {
+		for number := range st.Batches {
+			if number > batch {
+				after = append(after, number)
+			}
+		}
+		sort.Ints(after)
+	}
+	return slices.DeleteFunc(after, func(number int) bool {
+		bs := st.Batches[number]
+		return bs == nil || !keep(bs)
+	})
+}
+
+// refuseBatchStart refuses a batch-start reset when batch recorded no start commit or a later batch recorded one, which the reset would discard.
+func refuseBatchStart(st *State, batch int) error {
+	to := ResetToBatchStart
+	if bs := st.Batches[batch]; bs == nil || bs.StartSHA == "" {
+		return resetRefusal(to, fmt.Sprintf("batch %d recorded no start commit", batch), wayForwardSteps(resetToStartStep))
+	}
+	if later := recordedBatchesAfter(st, batch, func(bs *BatchState) bool { return bs.StartSHA != "" }); len(later) > 0 {
+		return resetRefusal(to, fmt.Sprintf("batch %d is not the run's last begun batch, so its start would discard the commits of batch %d", batch, later[0]), wayForwardSteps(resetToStartStep))
+	}
+	return nil
+}
+
+// refuseReportHeadBatch refuses a report-head reset unless batch is begun, not terminal, the last begun batch of the partition and without a live recovery strand.
+func refuseReportHeadBatch(deps ResetDeps, batch int) error {
+	to := ResetToReportHead
+	st := deps.State
+	bs := st.Batches[batch]
+	if bs == nil {
+		return resetRefusal(to, fmt.Sprintf("batch %d is not begun", batch), wayForwardSteps("check the batch number with `lyx webster status`"))
+	}
+	if bs.Terminal {
+		return resetRefusal(to, fmt.Sprintf("batch %d already reached a terminal record (%s)", batch, bs.Status), wayForwardSteps("run `lyx webster reset --to last-batch-head`"))
+	}
+	if later := recordedBatchesAfter(st, batch, func(*BatchState) bool { return true }); len(later) > 0 {
+		return resetRefusal(to, fmt.Sprintf("batch %d was begun after batch %d, so its report head is not the run's tip", later[0], batch), wayForwardSteps(resetToStartStep))
+	}
+	if deps.Reed != nil && bs.Kind == "recovery" && bs.StrandGUID != "" {
+		live, err := StrandLive(deps.Reed, bs.StrandGUID)
+		if err != nil {
+			return err
+		}
+		if live {
+			return resetRefusal(to, fmt.Sprintf("a recovery strand of batch %d is live", batch),
+				wayForwardSteps(fmt.Sprintf("wait for its `lyx webster recover-batch %02d` to finish, then re-run `%s`", batch, resetVerb(to, batch))))
+		}
+	}
+	return nil
+}
+
+// reportHeadSHA returns the head_sha of batch's report on disk, refusing when it is unreadable, missing from the repository or does not descend from the batch's start.
+func reportHeadSHA(geom Geometry, st *State, batch int) (string, error) {
+	to := ResetToReportHead
+	bs := st.Batches[batch]
+	report, err := ParseReport(filepath.Join(geom.ReportsDir, ReportFileName(batch, bs.Slug)))
+	if err != nil {
+		return "", resetRefusal(to, fmt.Sprintf("batch %d has no readable report (%v)", batch, err),
+			wayForwardSteps(fmt.Sprintf("wait for the fork's report, or run `lyx webster recover-batch %02d`", batch)))
+	}
+	git := geom.git()
+	if !git.SHAExists(geom.WorktreeRoot, report.HeadSHA) {
+		return "", fmt.Errorf("webster: reset --to %s refused: %s", to, missingCommitsClause([]string{report.HeadSHA}))
+	}
+	descends := report.HeadSHA == bs.StartSHA
+	if !descends {
+		if descends, err = git.IsAncestor(geom.WorktreeRoot, bs.StartSHA, report.HeadSHA); err != nil {
+			return "", err
+		}
+	}
+	if !descends {
+		return "", resetRefusal(to, fmt.Sprintf("the report head %s does not descend from batch %d's start %s", report.HeadSHA, batch, bs.StartSHA), wayForwardSteps(resetToStartStep))
+	}
+	return report.HeadSHA, nil
+}
+
 // resolveResetSHA returns the commit to reset to.
 // The start target is the oldest recorded start; when starts are recorded but none is the oldest of all, it is their octopus merge-base.
-func resolveResetSHA(worktree string, st *State, bases evidenceBases, to ResetTarget) (string, error) {
-	if to == ResetToPreFix {
+// Each other target is the one commit its name says, read from the state or, for report-head, from the batch's report under the geometry's reports directory.
+func resolveResetSHA(geom Geometry, st *State, bases evidenceBases, to ResetTarget, batch int) (string, error) {
+	switch to {
+	case ResetToPreFix:
 		return st.PreFixHead, nil
+	case ResetToBatchStart:
+		return st.Batches[batch].StartSHA, nil
+	case ResetToReportHead:
+		return reportHeadSHA(geom, st, batch)
+	case ResetToLastBatchHead:
+		if bases.Last == "" {
+			return "", resetRefusal(to, "the recorded batch heads share no single latest commit", wayForwardSteps(resetToStartStep))
+		}
+		return bases.Last, nil
 	}
 	if bases.Start != "" {
 		return bases.Start, nil
 	}
-	base, err := octopusMergeBase(worktree, bases.Starts)
+	base, err := octopusMergeBase(geom.WorktreeRoot, bases.Starts)
 	if err != nil {
 		return "", resetRefusal(to, fmt.Sprintf("the recorded start commits %s share no single oldest commit and no common ancestor (%v)", strings.Join(bases.Starts, ", "), err),
 			wayForwardSteps("run `lyx webster run --fresh`"))

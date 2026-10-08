@@ -163,3 +163,26 @@ func TestUncheckableReason(t *testing.T) {
 		})
 	}
 }
+
+func TestWayForwardSteps(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		steps []string
+		want  string
+	}{
+		{"none", nil, ""},
+		{"one", []string{"a"}, "way forward: a"},
+		{"two", []string{"a", "b"}, "way forward: 1) a; 2) b"},
+		{"three", []string{"a", "b", "c"}, "way forward: 1) a; 2) b; 3) c"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := wayForwardSteps(tt.steps...); got != tt.want {
+				t.Errorf("wayForwardSteps(%v) = %q, want %q", tt.steps, got, tt.want)
+			}
+		})
+	}
+}

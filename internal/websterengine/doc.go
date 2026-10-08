@@ -434,10 +434,17 @@
 // # Planning a reset
 //
 // PlanReset decides, read-only, what a reset of the task branch may do, and refuses before fabric is ever called.
-// The target is `start` (ResetToStart) or `pre-fix` (ResetToPreFix); no raw SHA is accepted.
-// `start` is the run's oldest recorded start commit, or the octopus merge-base of the recorded starts when none is the oldest of all;
-// `pre-fix` is state.json's `PreFixHead`.
-// The refusals run in order: run lock held (transient), no state, a merge in progress, a checked-out branch that is not the task branch,
+// The target is one of five commits the run recorded (ResetTargets); no raw SHA is accepted.
+// `start` (ResetToStart) is the run's oldest recorded start commit, or the octopus merge-base of the recorded starts when none is the oldest of all;
+// `pre-fix` (ResetToPreFix) is state.json's `PreFixHead`;
+// `last-batch-head` (ResetToLastBatchHead) is the last recorded batch head, the commit accept-audit picks by git ancestry.
+// `batch-start` (ResetToBatchStart) takes `--batch NN` and is batch NN's recorded start commit, refused when a later batch in the partition's order recorded a start.
+// `report-head` (ResetToReportHead) takes `--batch NN` and is the `head_sha` of batch NN's report.
+// It is accepted only for a begun, non-terminal batch whose report parses and whose head descends from or equals the batch's start, with no later batch begun and no live recovery strand of the batch in reed.
+// It is the one target allowed while the run lock is held, because Master runs it inside its run between a fork's report and record-batch.
+// Its bound is that those checks rule out every writer lyx can see; a Master that spawned an in-session fork out of order stays unseen.
+// `--batch` is required for `report-head` and `batch-start` and refused for the other three, before any git read.
+// The refusals run in order: the `--batch` pairing, run lock held (transient, except for `report-head`), no state, a merge in progress, a checked-out branch that is not the task branch,
 // no recorded target, a recorded commit missing from the repository, a target that is not an ancestor of HEAD, and a dirty tracked path outside the run's own writes.
 // The own paths are the tracked paths that loadRunWrites records a successful write to, Master's and every fork's; a failed write is not evidence.
 // Each refusal ends in wayForwardSteps' numbered list.
@@ -445,7 +452,7 @@
 //
 // # The reset verb
 //
-// `lyx webster reset --to start|pre-fix` (internal/webstercli) performs the reset PlanReset planned, so no recovery needs the denied `git reset --hard`.
+// `lyx webster reset --to start|pre-fix|report-head|last-batch-head|batch-start [--batch NN]` (internal/webstercli) performs the reset PlanReset planned, so no recovery needs the denied `git reset --hard`.
 // Under the state-mutation lease it plans with the pair's branch read through the fabric handle,
 // resets the pair's code checkout through fabricengine's pair-checkout reset with the plan's SHA, the parent branch from the origin record and the own paths,
 // clears State.PreFixHead, saves, and fabric-syncs state.json.

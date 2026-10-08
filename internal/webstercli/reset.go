@@ -6,6 +6,8 @@ package webstercli
 import (
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -17,16 +19,25 @@ import (
 // resetCmd builds the `reset` subcommand.
 func (c *websterCLI) resetCmd() *cobra.Command {
 	var to string
+	var batch int
 	cmd := &cobra.Command{
-		Use:   "reset --to start|pre-fix",
-		Short: "move the task branch back to the run's start commit or the verify gate's pre-fix head",
+		Use:   "reset --to start|pre-fix|report-head|last-batch-head|batch-start [--batch NN]",
+		Short: "move the task branch back to a commit the run recorded",
 		Long: `reset moves the task worktree's HEAD, index and tracked files back to a commit
 the run recorded, so a recovery needs no git reset of its own.
 --to start is the run's start commit: the oldest recorded batch start, or the
 octopus merge-base of the starts when none is the oldest.
 --to pre-fix is the HEAD the verify gate started its fixes from.
---to start removes the run's live recovery strands first, so no recovery agent keeps writing into the tree the reset moves; --to pre-fix removes none.
-It refuses, changing nothing, while a run holds the run lock, during a merge, off
+--to report-head --batch NN is the head_sha of batch NN's report: the batch is
+begun and not terminal, its report parses, the head descends from the batch's
+start, no later batch is begun and no recovery strand of the batch is live.
+--to last-batch-head is the last batch head the run recorded.
+--to batch-start --batch NN is batch NN's recorded start commit, refused when a
+later batch recorded a start.
+--batch is required for report-head and batch-start and refused for the others.
+--to start removes the run's live recovery strands first, so no recovery agent keeps writing into the tree the reset moves; the other targets remove none.
+It refuses, changing nothing, while a run holds the run lock (except --to
+report-head, which Master runs inside its run), during a merge, off
 the task branch, with no recorded target, when the target commit is missing or
 is not an ancestor of HEAD, while a tracked path the run did not write
 itself is dirty, when the remote task branch holds commits the checkout lacks
@@ -61,9 +72,13 @@ Example:
 			}
 
 			target := websterengine.ResetTarget(to)
-			if target != websterengine.ResetToStart && target != websterengine.ResetToPreFix {
-				return fail(fmt.Sprintf("webster: reset --to %q is not %q or %q; way forward: re-run `lyx webster reset --to %s` or `lyx webster reset --to %s`",
-					to, websterengine.ResetToStart, websterengine.ResetToPreFix, websterengine.ResetToStart, websterengine.ResetToPreFix))
+			if !slices.Contains(websterengine.ResetTargets, target) {
+				names := make([]string, len(websterengine.ResetTargets))
+				for i, known := range websterengine.ResetTargets {
+					names[i] = string(known)
+				}
+				return fail(fmt.Sprintf("webster: reset --to %q is not one of %s; way forward: re-run `lyx webster reset --to start`, or name another target, adding --batch NN for %s or %s",
+					to, strings.Join(names, ", "), websterengine.ResetToReportHead, websterengine.ResetToBatchStart))
 			}
 
 			mutateLock, err := websterengine.AcquireStateMutation(c.geom.ScratchDir)
@@ -94,9 +109,10 @@ Example:
 				Geom:         c.geom,
 				State:        st,
 				Engine:       c.engine,
+				Reed:         c.reed,
 				ParentBranch: c.parentBranch,
 				Branch:       branch,
-			}, target)
+			}, target, batch)
 			if err != nil {
 				return fail(err.Error())
 			}
@@ -147,7 +163,8 @@ Example:
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&to, "to", "", "the recorded commit to reset to: start or pre-fix (required)")
+	cmd.Flags().StringVar(&to, "to", "", "the recorded commit to reset to: start, pre-fix, report-head, last-batch-head or batch-start (required); report-head and batch-start take --batch")
+	cmd.Flags().IntVar(&batch, "batch", 0, "the batch number report-head and batch-start resolve against (refused for the other targets)")
 	return cmd
 }
 

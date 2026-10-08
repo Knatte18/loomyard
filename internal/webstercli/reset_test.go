@@ -282,6 +282,66 @@ func TestResetCmd(t *testing.T) {
 		return
 	}
 
+	if !t.Run("last-batch-head and batch-start reset to the commit they name", func(t *testing.T) {
+		for _, tc := range []struct {
+			target string
+			args   []string
+		}{
+			{"last-batch-head", []string{"--to", "last-batch-head"}},
+			{"batch-start", []string{"--to", "batch-start", "--batch", "1"}},
+		} {
+			fx := newResetFixture(t, h, "rst-"+tc.target)
+			st := startedAt(fx.base)
+			st.Batches[1].Terminal, st.Batches[1].Status, st.Batches[1].Digest = true, "done", &websterengine.Digest{HeadSHA: fx.base}
+			fx.saveState(t, st)
+
+			code, envelope := fx.reset(t, tc.args...)
+			if code != 0 || envelope["ok"] != true || envelope["target"] != tc.target || envelope["sha"] != fx.base || envelope["partial"] != false {
+				t.Fatalf("reset %v = %d, %v; want ok at %s", tc.args, code, envelope, fx.base)
+			}
+			if got := mutationKinds(envelope["mutations"]); !slices.Equal(got, []string{string(fabricengine.KindWorktreeReset)}) {
+				t.Errorf("mutation kinds = %v; want only worktree_reset", got)
+			}
+			if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != fx.base {
+				t.Errorf("reset --to %s left HEAD at %s; want %s", tc.target, got, fx.base)
+			}
+			if _, err := os.Stat(filepath.Join(fx.checkout, "later.txt")); !os.IsNotExist(err) {
+				t.Errorf("later.txt survived reset --to %s (err = %v)", tc.target, err)
+			}
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("report-head moves HEAD while the run lock is held and start is refused under it", func(t *testing.T) {
+		fx := newResetFixture(t, h, "rst-report-head")
+		fx.saveState(t, startedAt(fx.base))
+		if err := os.MkdirAll(fx.cli.geom.ReportsDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		report := &websterengine.Report{Status: websterengine.ReportStatusOK, HeadSHA: fx.base}
+		if err := websterengine.WriteReport(filepath.Join(fx.cli.geom.ReportsDir, websterengine.ReportFileName(1, "only")), report); err != nil {
+			t.Fatal(err)
+		}
+		held, acquired, err := lock.TryAcquireWriteLock(filepath.Join(fx.cli.geom.ScratchDir, "run.lock"))
+		if err != nil || !acquired {
+			t.Fatalf("hold run.lock = %v, %v", acquired, err)
+		}
+		t.Cleanup(func() { _ = held.Release() })
+
+		fx.wantRefusal(t, []string{"--to", "start"}, "run.lock held", "lyx webster status")
+
+		code, envelope := fx.reset(t, "--to", "report-head", "--batch", "1")
+		if code != 0 || envelope["ok"] != true || envelope["target"] != "report-head" || envelope["sha"] != fx.base {
+			t.Fatalf("reset --to report-head --batch 1 = %d, %v; want ok at %s", code, envelope, fx.base)
+		}
+		if got := gitkit.RevParse(t, fx.checkout, "HEAD"); got != fx.base {
+			t.Errorf("HEAD = %s; want the report head %s", got, fx.base)
+		}
+	}) {
+		return
+	}
+
 	if !t.Run("start resolves the octopus merge base of diverging starts", func(t *testing.T) {
 		fx := newResetFixture(t, h, "rst-octopus")
 		gitkit.Git(t, fx.checkout, "checkout", "-b", "rst-octopus-s1", fx.base)
@@ -355,13 +415,13 @@ func TestResetCmd(t *testing.T) {
 		attempts []refusalAttempt
 	}{
 		{
-			name: "unknown target names both targets",
+			name: "unknown target names the five targets and the batch pairing",
 			arrange: func(t *testing.T, fx *resetFixture) {
 				fx.saveState(t, startedAt(fx.base))
 			},
 			attempts: []refusalAttempt{
-				{[]string{"--to", "bogus"}, []string{`"bogus"`, "lyx webster reset --to start", "lyx webster reset --to pre-fix"}},
-				{nil, []string{"lyx webster reset --to start", "lyx webster reset --to pre-fix"}},
+				{[]string{"--to", "bogus"}, []string{`"bogus"`, "is not one of start, pre-fix, report-head, last-batch-head, batch-start", "lyx webster reset --to start", "--batch NN for report-head or batch-start"}},
+				{nil, []string{"is not one of start, pre-fix, report-head, last-batch-head, batch-start", "lyx webster reset --to start"}},
 			},
 		},
 		{
