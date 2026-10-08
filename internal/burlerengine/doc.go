@@ -325,6 +325,7 @@
 // the caller judges progress across rounds holistically via its own verdict judge, not by tracking finding-key identity.
 // It also carries the resolved ReviewPath/FixerReportPath, and each half's SessionID/StrandGUID/LastAssistantMessage/RunDir (Result.Review and Result.Fix, with StartError set only on a half that never started).
 // Outcome is the deciding half's, the fixer's Gate is passed through, and ForkAudit and ClusterWarnings come from the reviewer.
+// Each Half also carries its run's StartedAt, EndedAt and session Usage (forks included) from its terminal shuttle Result, and Result.Lenses names the lenses the reviewer ran, nil for a solo round; no decision reads them.
 // Run returns a nil error for every shuttleengine outcome except a hard failure:
 // an invalid profile, a shuttle start failure, a half that cannot be stopped, a skipped handoff, a changed review,
 // or — deliberately loud — a verdict parse failure on a done review, since a defaulted verdict could silently terminate a caller's round loop on a malformed round.
