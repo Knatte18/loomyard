@@ -1,6 +1,7 @@
 // callercoverage.go implements caller-uncovered: a card that deletes or re-signs a member while some Go code still references it and no admissible card's target covers that code.
-// The reference walk tokenizes every Go file under the worktree root, nested modules included, and resolves a package-level reference by import path, so it reads the tree and belongs to the plan gates only.
-// A method reference is matched by name alone and reported informationally, since the receiver is not resolved.
+// References come from a type-checked load where it answers (typesload.go) and from a token scan elsewhere, which resolves a package-level reference by import path and nested modules included, so it reads the tree and belongs to the plan gates only.
+// A method reference the scan matches by name alone is reported informationally, since its receiver is not resolved; a typed one is blocking.
+// Where a load covers a file, the scan keeps only the lines whose identifier the load left without type information, which bounds the scan's shadowed-import false negative to files and identifiers without types.
 
 package planglyph
 
@@ -35,10 +36,12 @@ type coverageSubject struct {
 	// deleted is false for a re-signed member.
 	deleted bool
 	symbols []quarry.Symbol
-	// dir, packageClause and importPath locate the declaring package of a package-level subject; importPath is empty when no go.mod covers dir.
+	// dir, packageClause and importPath locate the declaring package; importPath is empty when no go.mod covers dir.
 	dir           string
 	packageClause string
 	importPath    string
+	// receiver is the name of a method subject's receiver type, and empty for a package-level subject.
+	receiver string
 }
 
 // referenceSite is one identifier of a Go file that is named like a subject, with the context that decides whether it references the subject.
@@ -81,59 +84,116 @@ func importPathOf(worktreeRoot string, modules []string, dir string) (string, er
 // callerCoverageFindings reports caller-uncovered for every deleted or re-signed member of plan, given answers, the plan gate's one batched resolve answer.
 // A deleted member's reference inside a later card's Edit code is delete-before-reference's alone and is not reported here.
 // The walk runs only when a subject exists.
-func callerCoverageFindings(plan *planparser.Plan, lang glyph.Language, worktreeRoot string, answers map[string]quarry.ResolveResult) ([]Finding, error) {
+// References come from a type-checked load through loader where it answers, and from the import-path scan elsewhere: in every file the load did not check, and on each line of a checked file that has an identifier without type information.
+// A load that fails leaves every file to the scan and is never an error.
+func callerCoverageFindings(plan *planparser.Plan, lang glyph.Language, worktreeRoot string, answers map[string]quarry.ResolveResult, loader typesLoader) ([]Finding, error) {
 	subjects, err := coverageSubjects(plan, lang, worktreeRoot, answers)
 	if err != nil || len(subjects) == 0 {
 		return nil, err
 	}
 
-	references, err := scanReferences(worktreeRoot, subjects)
+	candidates, err := candidateFiles(worktreeRoot, subjects)
+	if err != nil {
+		return nil, err
+	}
+	checked, typed, unresolved := loadTypedReferences(plan, worktreeRoot, subjects, candidates, loader)
+	scanFiles := make([]string, 0, len(candidates))
+	for _, file := range candidates {
+		if !checked[file] || hasUnresolvedLine(unresolved, file) {
+			scanFiles = append(scanFiles, file)
+		}
+	}
+	scanned, err := scanReferences(worktreeRoot, scanFiles, subjects)
 	if err != nil {
 		return nil, err
 	}
 
 	regions, _ := buildEditRegions(collectEditTargets(lang, plan.Cards), answers)
+	uncovered := func(subject coverageSubject, file string, lines []int) []int {
+		var kept []int
+		for _, line := range lines {
+			if coveredByTarget(plan, lang, subject, file, line, answers) {
+				continue
+			}
+			if subject.deleted && insideLaterEditRegion(regions, subject.card.Number, file, line) {
+				continue
+			}
+			kept = append(kept, line)
+		}
+		return kept
+	}
 
 	var findings []Finding
 	for i, subject := range subjects {
-		files := make([]string, 0, len(references[i]))
-		for file := range references[i] {
-			files = append(files, file)
+		resolved, nameOnly := combineReferences(subject, checked, typed[i], unresolved[i], scanned[i])
+		for _, file := range sortedFiles(resolved) {
+			if lines := uncovered(subject, file, resolved[file]); len(lines) > 0 {
+				findings = append(findings, uncoveredFinding(subject, file, lines))
+			}
 		}
-		sort.Strings(files)
-
-		unresolved := make(map[string][]int)
-		for _, file := range files {
-			var lines []int
-			for _, line := range references[i][file] {
-				if coveredByTarget(plan, lang, subject, file, line, answers) {
-					continue
-				}
-				if subject.deleted && insideLaterEditRegion(regions, subject.card.Number, file, line) {
-					continue
-				}
-				lines = append(lines, line)
+		unresolvedLines := make(map[string][]int)
+		for _, file := range sortedFiles(nameOnly) {
+			if lines := uncovered(subject, file, nameOnly[file]); len(lines) > 0 {
+				unresolvedLines[file] = lines
 			}
-			if len(lines) == 0 {
-				continue
-			}
-			if subject.isMethod {
-				unresolved[file] = lines
-				continue
-			}
-			findings = append(findings, uncoveredFinding(subject, file, lines))
 		}
-		if len(unresolved) > 0 {
-			findings = append(findings, unresolvedMethodFinding(subject, unresolved))
+		if len(unresolvedLines) > 0 {
+			findings = append(findings, unresolvedMethodFinding(subject, unresolvedLines))
 		}
 	}
 	return findings, nil
 }
 
+// combineReferences merges one subject's typed and scanned references into the lines resolved to it and the lines matched by name alone, each by file.
+// In a checked file only a scanned line the load left unresolved for the subject counts, since a typed non-reference such as a call on another type never returns as a name match.
+// A package-level subject's scanned lines are resolved by import path and merge with its typed lines; a method's scanned lines stay name-only, less those the load already counted.
+func combineReferences(subject coverageSubject, checked map[string]bool, typed, unresolved, scanned map[string][]int) (resolved, nameOnly map[string][]int) {
+	resolved = make(map[string][]int)
+	nameOnly = make(map[string][]int)
+	for file, lines := range typed {
+		resolved[file] = slices.Clone(lines)
+	}
+	for file, lines := range scanned {
+		if checked[file] {
+			lines = slices.DeleteFunc(slices.Clone(lines), func(line int) bool { return !slices.Contains(unresolved[file], line) })
+		}
+		if subject.isMethod {
+			lines = slices.DeleteFunc(slices.Clone(lines), func(line int) bool { return slices.Contains(typed[file], line) })
+			if len(lines) > 0 {
+				nameOnly[file] = lines
+			}
+			continue
+		}
+		if len(lines) > 0 {
+			resolved[file] = append(resolved[file], lines...)
+		}
+	}
+	for file, lines := range resolved {
+		slices.Sort(lines)
+		resolved[file] = slices.Compact(lines)
+	}
+	return resolved, nameOnly
+}
+
+// sortedFiles returns the files m holds lines for, in ascending order.
+func sortedFiles(m map[string][]int) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// hasUnresolvedLine reports whether any subject's unresolved lines name file.
+func hasUnresolvedLine(unresolved []map[string][]int, file string) bool {
+	return slices.ContainsFunc(unresolved, func(lines map[string][]int) bool { return len(lines[file]) > 0 })
+}
+
 // coverageSubjects returns, in card and body order, every member glyph a card deletes or re-signs whose answer holds its declaration.
 // A member listed more than once on one card is one subject.
 func coverageSubjects(plan *planparser.Plan, lang glyph.Language, worktreeRoot string, answers map[string]quarry.ResolveResult) ([]coverageSubject, error) {
-	// modules is read on the first package-level subject, since the walk costs a tree read.
+	// modules is read on the first subject, since the walk costs a tree read.
 	var modules []string
 	modulesRead := false
 	type cardRef struct {
@@ -156,21 +216,22 @@ func coverageSubjects(plan *planparser.Plan, lang glyph.Language, worktreeRoot s
 			return nil
 		}
 		subject := coverageSubject{card: c, ref: ref, name: g.Name, isMethod: len(g.Owner) > 0, deleted: deleted, symbols: symbols}
-		if !subject.isMethod {
-			declaringFile := symbols[0].File
-			packageClause, err := packageNameOfFile(filepath.Join(worktreeRoot, filepath.FromSlash(declaringFile)))
-			if err != nil {
-				return fmt.Errorf("%w: read package clause of %q: %v", ErrQuarryUnavailable, declaringFile, err)
-			}
-			subject.dir = path.Dir(declaringFile)
-			subject.packageClause = packageClause
-			if !modulesRead {
-				modules, modulesRead = planparser.NestedModules(plan, 0, worktreeRoot), true
-			}
-			subject.importPath, err = importPathOf(worktreeRoot, modules, subject.dir)
-			if err != nil {
-				return fmt.Errorf("%w: read module path for %q: %v", ErrQuarryUnavailable, subject.dir, err)
-			}
+		if subject.isMethod {
+			subject.receiver = g.Owner[len(g.Owner)-1]
+		}
+		declaringFile := symbols[0].File
+		packageClause, err := packageNameOfFile(filepath.Join(worktreeRoot, filepath.FromSlash(declaringFile)))
+		if err != nil {
+			return fmt.Errorf("%w: read package clause of %q: %v", ErrQuarryUnavailable, declaringFile, err)
+		}
+		subject.dir = path.Dir(declaringFile)
+		subject.packageClause = packageClause
+		if !modulesRead {
+			modules, modulesRead = planparser.NestedModules(plan, 0, worktreeRoot), true
+		}
+		subject.importPath, err = importPathOf(worktreeRoot, modules, subject.dir)
+		if err != nil {
+			return fmt.Errorf("%w: read module path for %q: %v", ErrQuarryUnavailable, subject.dir, err)
 		}
 		subjects = append(subjects, subject)
 		return nil
@@ -196,25 +257,16 @@ func coverageSubjects(plan *planparser.Plan, lang glyph.Language, worktreeRoot s
 	return subjects, nil
 }
 
-// scanReferences tokenizes every Go file under root and returns, per subject, the lines of each file that reference it.
+// candidateFiles returns, sorted and slash-separated relative to root, every Go file under root that holds an identifier named like a subject, without deciding whether it references one.
 // It skips directories named testdata or vendor and directories whose name starts with . or _, which the go tool ignores too, and every file that is not Go source.
-// Comments and string literals never match, since the scanner drops the first and yields the second as one token.
-// A package-level subject is referenced by its bare identifier inside its own package, and elsewhere by an import of its import path under that import's name, a dot and the identifier, or by the bare identifier through a dot import.
-// A method subject is referenced by a dot followed by its identifier, anywhere, unless the identifier left of the dot is a name the file imports.
-// That exclusion also drops a method call on a local variable that shadows an imported package's name.
-// An occurrence inside one of the subject's own resolved spans is its declaration, not a reference.
-func scanReferences(root string, subjects []coverageSubject) ([]map[string][]int, error) {
-	references := make([]map[string][]int, len(subjects))
-	for i := range references {
-		references[i] = make(map[string][]int)
-	}
-	subjectClauses := make(map[string]string)
+// Comments and string literals never count, since the scanner drops the first and yields the second as one token.
+func candidateFiles(root string, subjects []coverageSubject) ([]string, error) {
+	names := make(map[string]bool, len(subjects))
 	for _, subject := range subjects {
-		if subject.importPath != "" {
-			subjectClauses[subject.importPath] = subject.packageClause
-		}
+		names[subject.name] = true
 	}
 
+	var files []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -233,15 +285,63 @@ func scanReferences(root string, subjects []coverageSubject) ([]map[string][]int
 		if err != nil {
 			return err
 		}
+		if !namesAnIdentifier(source, names) {
+			return nil
+		}
 		relative, err := filepath.Rel(root, p)
 		if err != nil {
 			return err
 		}
-		scanFileReferences(filepath.ToSlash(relative), source, subjects, subjectClauses, references)
+		files = append(files, filepath.ToSlash(relative))
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: walk %q for callers: %v", ErrQuarryUnavailable, root, err)
+	}
+	return files, nil
+}
+
+// namesAnIdentifier reports whether the Go source tokenizes to an identifier in names.
+func namesAnIdentifier(source []byte, names map[string]bool) bool {
+	fileSet := token.NewFileSet()
+	file := fileSet.AddFile("", fileSet.Base(), len(source))
+	var s scanner.Scanner
+	s.Init(file, source, nil, 0)
+	for {
+		_, tok, lit := s.Scan()
+		if tok == token.EOF {
+			return false
+		}
+		if tok == token.IDENT && names[lit] {
+			return true
+		}
+	}
+}
+
+// scanReferences tokenizes the Go files at files, slash-separated relative to root, and returns, per subject, the lines of each file that reference it.
+// Comments and string literals never match, since the scanner drops the first and yields the second as one token.
+// A package-level subject is referenced by its bare identifier inside its own package, and elsewhere by an import of its import path under that import's name, a dot and the identifier, or by the bare identifier through a dot import.
+// A method subject is referenced by a dot followed by its identifier, anywhere, unless the identifier left of the dot is a name the file imports.
+// That exclusion also drops a method call on a local variable that shadows an imported package's name.
+// An occurrence inside one of the subject's own resolved spans is its declaration, not a reference.
+func scanReferences(root string, files []string, subjects []coverageSubject) ([]map[string][]int, error) {
+	references := make([]map[string][]int, len(subjects))
+	for i := range references {
+		references[i] = make(map[string][]int)
+	}
+	subjectClauses := make(map[string]string)
+	for _, subject := range subjects {
+		if subject.importPath != "" {
+			subjectClauses[subject.importPath] = subject.packageClause
+		}
+	}
+
+	for _, relative := range files {
+		source, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
+		if err != nil {
+			return nil, fmt.Errorf("%w: read %q for callers: %v", ErrQuarryUnavailable, relative, err)
+		}
+		scanFileReferences(relative, source, subjects, subjectClauses, references)
 	}
 
 	for i := range references {

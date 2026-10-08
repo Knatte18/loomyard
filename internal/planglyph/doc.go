@@ -54,11 +54,16 @@
 //     The rule the pass exists for: a check whose verdict depends on state the run itself changes runs at the plan gates only, because dispatch re-validates a plan against a tree the run has already changed.
 //   - resign-interface-method (blocking) — planGatePass (plangate.go), an Edit re-sign arrow on a member that resolves to an interface method, whose own spec is no declaration.
 //     It reads the tree, so like redundant-file-target it runs at the plan gates only.
-//   - caller-uncovered (blocking for a package-level member, informational for a method) — callerCoverageFindings (callercoverage.go), reached through planGatePass: a deleted or re-signed member that Go code still references with no admissible card's target covering that code.
-//     It walks every Go file under the worktree root by token, nested modules included, so it runs only when a subject exists and at the plan gates only.
-//     A package-level member is resolved by import path: a reference is its bare identifier inside the declaring package, and elsewhere an import of the member's import path (aliased or dotted included) followed by the identifier.
+//   - caller-uncovered (blocking for a resolved reference, informational for a name-only method match) — callerCoverageFindings (callercoverage.go), reached through planGatePass: a deleted or re-signed member that Go code still references with no admissible card's target covering that code.
+//     It runs only when a subject exists and at the plan gates only.
+//     A typesLoader (typesload.go) loads the root module's packages through go/packages, offline, with test variants and the integration, tmux and llm tags, under a timeout, and logged; an identifier whose used object is the member is a resolved reference.
+//     The load is skipped when the worktree root holds no go.mod, and a failed or timed-out load is logged and leaves every file to the scan, never an error.
+//     The scan walks every Go file under the worktree root by token, nested modules included, over each file the load did not check and each line of a checked file that has an identifier without type information.
+//     In the scan a package-level member is resolved by import path: a reference is its bare identifier inside the declaring package, and elsewhere an import of the member's import path (aliased or dotted included) followed by the identifier.
 //     A method is matched by name alone, except after an imported package's name, and a subject's name-only matches collapse into one informational finding naming every file.
-//     The import-name exclusion also drops a method call on a local variable that shadows an imported package's name.
+//     The import-name exclusion also drops a method call on a local variable that shadows an imported package's name, in the scan only.
+//     A call through an interface whose method set holds the method is no longer reported once the load answers.
+//     The untagged test tier replaces defaultTypesLoader with a loader that fails without spawning, so only the integration tier runs go list.
 //     A re-signed member admits its own card's targets; a deleted member admits its own card and every earlier one, and its reference inside a later card's Edit code stays delete-before-reference's.
 //   - delete-target-gone (informational) — downgradeGoneDeleteTargets (planglyph.go), a Delete target of a pending card that is already absent, reported by ValidateDispatch alone, and so by ValidateFormatAfter, once a batch is begun or done instead of the blocking path-missing or glyph-not-found finding for it.
 //   - handle-name-failed, handle-canonical-collision (both blocking) — CanonicalizeHandles

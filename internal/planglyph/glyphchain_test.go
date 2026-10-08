@@ -639,6 +639,7 @@ func TestGlyphChain_FuncNamedInterfaceMethod(t *testing.T) {
 
 // coverageFiles are the fixture files the caller-coverage rows can report.
 var coverageFiles = []string{
+	"broken/broken.go",
 	"callees/callees.go",
 	"callees/callees_external_test.go",
 	"callees/local.go",
@@ -646,13 +647,36 @@ var coverageFiles = []string{
 	"callers/callers.go",
 	"callers/nested.go",
 	"callers/more.go",
+	"callers/promoted.go",
+	"callers/value.go",
 	"dotted/dotted.go",
 	"nested/use.go",
 	"other/holder.go",
+	"tagged/plan9.go",
 }
 
 // nestedModuleFile is the go.mod of a nested module that replaces the fixture module with the checkout above it.
 const nestedModuleFile = "module example.com/nested\n\ngo 1.26\n\nrequire example.com/glyphchain v0.0.0\n\nreplace example.com/glyphchain => ../\n"
+
+// aliasedImporter and dotImporter are Go files that call callees.Target through an aliased import and a dot import.
+const (
+	aliasedImporter = "package callers\n\nimport c \"example.com/glyphchain/callees\"\n\nfunc aliased() int { return c.Target() }\n"
+	dotImporter     = "package dotted\n\nimport . \"example.com/glyphchain/callees\"\n\nfunc dotted() int { return Target() }\n"
+)
+
+// writeFixtureFiles writes files, by fixture-relative path, into the fixture copy at root.
+func writeFixtureFiles(t *testing.T, root string, files map[string]string) {
+	t.Helper()
+	for file, source := range files {
+		target := filepath.Join(root, filepath.FromSlash(file))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) failed: %v", filepath.Dir(target), err)
+		}
+		if err := os.WriteFile(target, []byte(source), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) failed: %v", target, err)
+		}
+	}
+}
 
 // coveredTargetCard deletes callees#Target with every fixture caller of it covered, so a row's extra files are the only references left.
 func coveredTargetCard(covers []string) string {
@@ -673,6 +697,7 @@ func deleteWithEdit(deleted, edited []string) string {
 const skippedCaller = "package caller\n\nimport \"example.com/glyphchain/callees\"\n\nfunc use() { callees.Target() }\n"
 
 // TestGlyphChain_CallerCoverage pins caller-uncovered over the callees fixture: a deleted or re-signed member whose references no admissible card covers is reported per file, blocking for a package-level member and informational for a method, at the plan gate and never by ValidateDispatch.
+// The untagged tier's type loader always fails, so the rows pin that the gate then answers with the scan's findings and no error.
 func TestGlyphChain_CallerCoverage(t *testing.T) {
 	t.Parallel()
 
@@ -764,7 +789,7 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			name:  "an aliased importer is a blocking caller",
 			cards: []string{coveredTargetCard(covers)},
 			files: map[string]string{
-				"callers/aliased.go": "package callers\n\nimport c \"example.com/glyphchain/callees\"\n\nfunc aliased() int { return c.Target() }\n",
+				"callers/aliased.go": aliasedImporter,
 			},
 			want: []string{"blocking callers/aliased.go"},
 		},
@@ -772,7 +797,7 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			name:  "a dot importer is a blocking caller",
 			cards: []string{coveredTargetCard(covers)},
 			files: map[string]string{
-				"dotted/dotted.go": "package dotted\n\nimport . \"example.com/glyphchain/callees\"\n\nfunc dotted() int { return Target() }\n",
+				"dotted/dotted.go": dotImporter,
 			},
 			want: []string{"blocking dotted/dotted.go"},
 		},
@@ -834,15 +859,7 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
-			for file, source := range tc.files {
-				target := filepath.Join(root, filepath.FromSlash(file))
-				if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-					t.Fatalf("MkdirAll(%q) failed: %v", filepath.Dir(target), err)
-				}
-				if err := os.WriteFile(target, []byte(source), 0o644); err != nil {
-					t.Fatalf("WriteFile(%q) failed: %v", target, err)
-				}
-			}
+			writeFixtureFiles(t, root, tc.files)
 			_, plan := writeGlyphPlan(t, tc.cards, tc.sections...)
 
 			findings, err := ValidateFormat(plan, root)
