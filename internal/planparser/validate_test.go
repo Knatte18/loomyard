@@ -1623,6 +1623,77 @@ func TestValidate_CommitSubjectMismatch(t *testing.T) {
 	})
 }
 
+// TestValidate_VerifyNestedModule covers verify-nested-module: a go command in a card's Verify: value or the overview's verify chain must not name a package of a nested module other than the one it runs in.
+func TestValidate_VerifyNestedModule(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	materializeFiles(t, root, "nested/go.mod", "other/go.mod")
+
+	withVerify := func(verify string) planparser.Card {
+		card := validCard(1, "a")
+		card.Verify = verify
+		card.HasVerify = true
+		return card
+	}
+	createsModule := func(number int, verify string) planparser.Card {
+		card := cardOfType(number, "mod", planparser.CardTypeCreate, []string{"x/go.mod"})
+		card.Verify = verify
+		return card
+	}
+
+	tests := []struct {
+		name     string
+		cards    []planparser.Card
+		overview string
+		language string
+		want     []string
+	}{
+		{name: "card verify from the root fires", cards: []planparser.Card{withVerify("go test ./nested/pkg")}, want: []string{"1-a"}},
+		{name: "overview line from the root fires with no card", overview: "go test ./nested/pkg", want: []string{""}},
+		{name: "go -C into the module is silent", cards: []planparser.Card{withVerify("go -C nested test ./pkg")}},
+		{name: "cd into the module is silent", cards: []planparser.Card{withVerify("cd nested && go test ./pkg")}},
+		{name: "-C resolves against the cd", cards: []planparser.Card{withVerify("cd nested && go -C .. test ./nested/pkg")}, want: []string{"1-a"}},
+		{name: "-C into a second module is silent", cards: []planparser.Card{withVerify("cd nested && go -C ../other test ./pkg")}},
+		{name: "cd carries across overview lines", overview: "cd nested\ngo test ./pkg"},
+		{name: "-C= spelling sets the command directory", cards: []planparser.Card{withVerify("go -C=nested test ../other/pkg")}, want: []string{"1-a"}},
+		{name: "semicolon separates commands", cards: []planparser.Card{withVerify("cd nested; go test ../other/pkg")}, want: []string{"1-a"}},
+		{name: "newline separates commands", cards: []planparser.Card{withVerify("cd nested\ngo test ../other/pkg")}, want: []string{"1-a"}},
+		{name: "leading env assignment is skipped", cards: []planparser.Card{withVerify("GOFLAGS=-count=1 go test ./nested/pkg")}, want: []string{"1-a"}},
+		{name: "fields after -args are not package arguments", cards: []planparser.Card{withVerify("go test ./pkg -args ./nested/x")}},
+		{name: "cd to an absolute path ends the scan", cards: []planparser.Card{withVerify("cd /abs && go test ./nested/pkg")}},
+		{name: "-C out of the root ends the scan", cards: []planparser.Card{withVerify("go -C .. test ./nested/pkg")}},
+		{name: "-o value is not a package argument", cards: []planparser.Card{withVerify("go build -o ./nested/bin ./cmd/x")}},
+		{name: "-run value is not a package argument", cards: []planparser.Card{withVerify("go test -run . ./internal/x")}},
+		{name: "root dot-dot-dot is silent", cards: []planparser.Card{withVerify("go test ./...")}},
+		{
+			name:  "module created on a later card is silent",
+			cards: []planparser.Card{withVerify("go test ./x/pkg"), createsModule(2, "")},
+		},
+		{
+			name:  "module created on the same card fires",
+			cards: []planparser.Card{createsModule(1, "go test ./x/pkg")},
+			want:  []string{"1-mod"},
+		},
+		{name: "language none still fires", cards: []planparser.Card{withVerify("go test ./nested/pkg")}, language: "none", want: []string{"1-a"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			plan := &planparser.Plan{Format: 5, Approved: true, Language: tt.language, Cards: tt.cards, Verify: strings.ReplaceAll(tt.overview, "\n", " && ")}
+			var got []string
+			for _, f := range planparser.ValidateFormat(plan, root) {
+				if f.Check == "verify-nested-module" {
+					got = append(got, f.Card)
+				}
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("verify-nested-module cards = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestValidate_CustomCardBoundByGenericChecks proves a Custom card remains bound by the card-generic checks despite being validate.go's explicit escape hatch on the type-conditional checks (path-missing's own-target exemption, card-missing-field's ImpactSummary exemption): a malformed path-shaped target, a missing Intent:, an entry duplicated across Targets and Uses, and a badly prefixed Commit: each still fire, so a blanket-skip regression would fail this test.
 //
 //testtiming:keep pins that a Custom card stays bound by the generic checks, which its covering tests do not assert together

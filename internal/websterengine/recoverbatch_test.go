@@ -462,8 +462,31 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 			// and the bisect trail (crucible round fable-r1's F4).
 			name: "a report whose head_sha disagrees with the worktree is a hard error",
 			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
-				writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: deadbeef\n")
+				writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: main\n")
 				return secondCall{refusal: []string{"does not match the worktree's actual HEAD"}}
+			},
+		},
+		{
+			name: "an abbreviated head_sha records the full SHA",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				head := fx.Head(t)
+				writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head[:9]+"\n")
+				return secondCall{head: head}
+			},
+			check: func(t *testing.T, fx *recoverFixture, a attempt) {
+				if a.second.Digest == nil || a.second.Digest.HeadSHA != a.head {
+					t.Errorf("Digest = %+v; want HeadSHA %q", a.second.Digest, a.head)
+				}
+				if got := fx.Deps.State.Batches[1].CardSHAs; len(got) != 1 || got[0] != a.head {
+					t.Errorf("CardSHAs = %v; want [%s]", got, a.head)
+				}
+			},
+		},
+		{
+			name: "an abbreviated head_sha naming no commit is refused",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: abcdef123\n")
+				return secondCall{refusal: []string{"report head_sha unresolved", "names no commit", "`git rev-parse HEAD`"}}
 			},
 		},
 		{

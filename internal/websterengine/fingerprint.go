@@ -137,20 +137,20 @@ func changedPlanFiles(st *State, planDir string) ([]string, error) {
 // PlanEditError returns nil when the plan on disk fingerprints to st.PlanFingerprint, and otherwise the ErrFingerprintMismatch wrap naming the way forward.
 // BeginBatch, RecordBatch, PersistRecoveryTerminal and webstercli's validate call it before their own rewrites,
 // so any difference it sees is someone else's edit rather than webster's own.
-func PlanEditError(st *State, planDir string) error {
+func PlanEditError(st *State, planDir, websterDir string) error {
 	fp, err := fingerprint(planDir)
 	if err != nil {
 		return err
 	}
 	if st.PlanFingerprint != fp {
-		return fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fp, st.PlanFingerprint, fingerprintMismatchWayForward(st, planDir, stepRun))
+		return fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fp, st.PlanFingerprint, fingerprintMismatchWayForward(st, planDir, websterDir, stepRun))
 	}
 	return nil
 }
 
 // batchCardEditError returns nil when every card of b still hashes to the content bs recorded at begin-batch, or when bs recorded none.
 // Otherwise it returns an ErrFingerprintMismatch wrap naming each card that changed since its batch was begun.
-func batchCardEditError(st *State, bs *BatchState, b batcher.Batch, planDir string) error {
+func batchCardEditError(st *State, bs *BatchState, b batcher.Batch, planDir, websterDir string) error {
 	if len(bs.CardHashes) == 0 {
 		return nil
 	}
@@ -168,7 +168,7 @@ func batchCardEditError(st *State, bs *BatchState, b batcher.Batch, planDir stri
 	if len(changed) == 0 {
 		return nil
 	}
-	return fmt.Errorf("%w: %s; %s", ErrFingerprintMismatch, strings.Join(changed, "; "), fingerprintMismatchWayForward(st, planDir, stepRun))
+	return fmt.Errorf("%w: %s; %s", ErrFingerprintMismatch, strings.Join(changed, "; "), fingerprintMismatchWayForward(st, planDir, websterDir, stepRun))
 }
 
 // Fingerprint is fingerprint's exported seam for a caller outside this package that needs to know

@@ -63,8 +63,8 @@ internal/pairteardown: 4
 internal/parentdirective: 4
 internal/parentreview: 53
 internal/pattern: 7
-internal/planglyph: 82
-internal/planparser: 82
+internal/planglyph: 83
+internal/planparser: 84
 internal/preflight: 7
 internal/preflightshed: 8
 internal/proc: 12
@@ -114,7 +114,7 @@ internal/verifyrun: 4
 internal/verifytree: 5
 internal/vscode: 12
 internal/webstercli: 81
-internal/websterengine: 190
+internal/websterengine: 192
 internal/weftname: 1
 internal/yamlengine: 12
 tools/codestats: 9

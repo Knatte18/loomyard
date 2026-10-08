@@ -8,6 +8,7 @@ package websterengine
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -76,6 +77,27 @@ func TestRepositoryProbes(t *testing.T) {
 			}
 			if len(got) != 1 || got[0] != side.want {
 				t.Errorf("otherWorktrees(%s) = %v; want [%s]", side.from, got, side.want)
+			}
+		}
+	})
+
+	t.Run("commitsNamedBy matches commit object names only", func(t *testing.T) {
+		blob := strings.TrimSpace(gitkit.Git(t, dir, "rev-parse", "HEAD:a.txt"))
+		for _, tt := range []struct {
+			name   string
+			prefix string
+			want   []string
+		}{
+			{"a prefix of HEAD names HEAD alone", want[:9], []string{want}},
+			{"a prefix of a blob id names no commit", blob[:9], nil},
+			{"a prefix naming no object names no commit", "0000000", nil},
+		} {
+			got, err := commitsNamedBy(dir, tt.prefix)
+			if err != nil {
+				t.Fatalf("%s: commitsNamedBy(%q) error = %v; want nil", tt.name, tt.prefix, err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("%s: commitsNamedBy(%q) = %v; want %v", tt.name, tt.prefix, got, tt.want)
 			}
 		}
 	})

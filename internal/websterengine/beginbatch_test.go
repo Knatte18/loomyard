@@ -483,8 +483,8 @@ func TestBeginBatch_Record(t *testing.T) {
 			wantStart: func(fx *beginFixture) string { return fx.Git.head },
 		},
 		{
-			name:      "a re-begin keeps the audit warnings and fork transcripts",
-			prior:     &websterengine.BatchState{Slug: "json-flag", Kind: "fork", AuditWarnings: []websterengine.AuditWarning{warning}, ForkTranscripts: []string{"subagents/f1.jsonl"}},
+			name:      "a re-begin keeps the audit warnings and fork transcripts and opens an empty bracket list",
+			prior:     &websterengine.BatchState{Slug: "json-flag", Kind: "fork", AuditWarnings: []websterengine.AuditWarning{warning}, ForkTranscripts: []string{"subagents/f1.jsonl"}, BracketTranscripts: []string{"subagents/f1.jsonl"}},
 			wantStart: func(fx *beginFixture) string { return fx.Git.head },
 			check: func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState) {
 				if len(bs.AuditWarnings) != 1 || bs.AuditWarnings[0] != warning {
@@ -492,6 +492,9 @@ func TestBeginBatch_Record(t *testing.T) {
 				}
 				if !slices.Equal(bs.ForkTranscripts, []string{"subagents/f1.jsonl"}) {
 					t.Errorf("Batches[1].ForkTranscripts = %v; want the prior record's transcripts", bs.ForkTranscripts)
+				}
+				if len(bs.BracketTranscripts) != 0 {
+					t.Errorf("Batches[1].BracketTranscripts = %v; want none", bs.BracketTranscripts)
 				}
 			},
 		},
