@@ -26,9 +26,9 @@ type index struct {
 	matcher planparser.FabricReferenceMatcher
 }
 
-// ValidateFormat is the package's ValidateFormat plus the card-fabric-reference findings, which sit outside planparser's entry points.
-func (i index) ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
-	findings, err := ValidateFormat(plan, worktreeRoot)
+// ValidateFormat is the package's ValidateFormatAfter plus the card-fabric-reference findings, which sit outside planparser's entry points.
+func (i index) ValidateFormat(plan *planparser.Plan, worktreeRoot string, done []planparser.Card) ([]Finding, error) {
+	findings, err := ValidateFormatAfter(plan, worktreeRoot, done)
 	return append(findings, convertAll(planparser.CheckCardFabricReference(plan, i.matcher))...), err
 }
 

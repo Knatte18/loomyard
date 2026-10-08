@@ -142,7 +142,9 @@ func (c *loomCLI) validatePlanCmd() *cobra.Command {
 		Long: `validate-plan parses the current worktree's plan and checks it in one of
 three modes. With no flags, it runs the index's ValidateFormat -- the same
 format-only check set Plan-Write's and Plan-Burler's own gate runs before
-handoff, and the mode the plan writer calls before handoff. With
+handoff, and the mode the plan writer calls before handoff; the cards of
+batches webster's run record holds done are history, and their
+tree-dependent checks are skipped. With
 --require-approved, it runs planglyph.Validate -- the same format-only set
 plus the plan-unapproved approval check, which no gate runs at all: this
 flag is the one place an operator can still reach that check standalone,
@@ -188,7 +190,7 @@ Example:
 			case rework:
 				findings, err = loomshed.ValidateReworkPlan(plan, c.env.WorktreeRoot, c.env.PlanIndex, c.env.Rework.ReadCommitted)
 			default:
-				findings, err = c.env.PlanIndex.ValidateFormat(plan, c.env.WorktreeRoot)
+				findings, err = loomshed.ValidatePlan(plan, c.env.AnchorPath, c.env.WorktreeRoot, c.env.PlanIndex)
 			}
 			if err != nil {
 				// Named for quarry, not the plan: an operator reading this envelope must never be

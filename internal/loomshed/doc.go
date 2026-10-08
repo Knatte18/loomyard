@@ -12,6 +12,9 @@
 // The check reads and never writes, and validates no other module's config.
 //
 // Its plan gates resolve plan refs through a told planindex.Index, so the package links no tree-sitter grammar.
+// The plan gate and `lyx loom validate-plan` share ValidatePlan, which reads webster's run record under the anchor and tells the index the cards of every batch it holds done.
+// Those cards are history, not targets: a run moved back to the plan review after Webster executed batches has their work in the tree, so their tree-dependent checks are skipped.
+// Every other card, and every card of a plan with no run record, is checked against the tree.
 //
 // The Webster-Burler round gate (NewVerifyGate) runs less than the plan's `## verify:`.
 // It lints the comments added since the plan verify's last recorded pass, then runs the command impactset derives from that diff through verifytree.Verify, falling back to the plan's own command wherever impactset cannot narrow.
