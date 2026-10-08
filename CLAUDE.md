@@ -54,7 +54,7 @@ These are conversational shorthands; never rename code, files or docs to them un
   its strand is named `<shortname>:<slug>:webster`.
 - **perch**: a `Bouncer` row in a `Shed` producer list whose `OnStuck` points at a `Burler`-round row, whose own `OnStuck` points back (see `internal/shedadapters` and `contracts/recipes/loom-recipe.yaml`).
   Each review segment wires its own pair; there is no perch type.
-- **board**: the task tracker, read and written only through `lyx board`; **Bolt** is the nickname of the weft's `main` branch, the board's git home, never the tracker.
+- **board**: the task tracker, read and written only through `lyx board`; **Bolt** is the nickname of the records repository's `main` branch, the board's git home, never the tracker.
 
 ## Watching runs
 
