@@ -863,6 +863,19 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 			},
 		},
 		{
+			name: "a failed fork batch, which records no strand, spawns without stopping one",
+			setup: func(fx *recoverFixture) {
+				fx.Deps.State.Batches[1] = failedRecord("fork reported stuck")
+				fx.Deps.Stopper = &recordingStopper{}
+			},
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				requireSpawned(t, spawned, err)
+				if stopped := fx.Deps.Stopper.(*recordingStopper).Stopped; len(stopped) != 0 {
+					t.Errorf("stopped = %q; want none", stopped)
+				}
+			},
+		},
+		{
 			name: "a non-terminal recorded recovery attaches",
 			setup: func(fx *recoverFixture) {
 				fx.Deps.State.Batches[1] = &websterengine.BatchState{

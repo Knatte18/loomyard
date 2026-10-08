@@ -296,7 +296,7 @@ func reclaimEntryTimeStrands(stopper StrandStopper, st *State) error {
 	}
 
 	for _, bs := range st.Batches {
-		if bs != nil && bs.Kind == "recovery" && !bs.Terminal {
+		if bs != nil && bs.Kind == "recovery" && !bs.Terminal && bs.StrandGUID != "" {
 			if err := stopLeftoverStrand(stopper, bs.StrandGUID); err != nil {
 				return fmt.Errorf("websterengine: stop leftover recovery strand %s before respawn: %w", bs.StrandGUID, err)
 			}

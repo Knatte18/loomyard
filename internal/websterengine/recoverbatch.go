@@ -185,7 +185,8 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, err
 	}
 
-	if prior != nil {
+	// A fork batch's record has an empty StrandGUID, which the reclaim skips.
+	if prior != nil && prior.StrandGUID != "" {
 		if err := stopLeftoverStrand(deps.Stopper, prior.StrandGUID); err != nil {
 			return nil, fmt.Errorf("websterengine: stop prior recovery strand %s before respawn: %w", prior.StrandGUID, err)
 		}
@@ -583,7 +584,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 
 	// The strand is removed before the refusals below,
 	// so a terminal digest that then refuses leaves no live strand.
-	if err := stopLeftoverStrand(deps.Stopper, bs.StrandGUID); err != nil {
+	if err := deps.Stopper.StopStrand(bs.StrandGUID); err != nil {
 		warnings = append(warnings, fmt.Sprintf("recover-batch: stop strand %s: %v", bs.StrandGUID, err))
 	}
 
