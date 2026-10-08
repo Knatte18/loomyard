@@ -23,7 +23,7 @@ func newBaselineFixture(t *testing.T) *baselineFixture {
 	t.Helper()
 	planDir := t.TempDir()
 	fingerprintWriteFiles(t, planDir, map[string]string{
-		"00-overview.md": "overview",
+		"00-overview.md": overviewWithIndex("1 — first — first"),
 		"01-first.md":    "first",
 		"02-second.md":   "second",
 	})

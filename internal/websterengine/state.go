@@ -125,6 +125,10 @@ type State struct {
 	// It is recorded beside PlanFingerprint so rebaseline can tell which plan files an edit touched.
 	// A state written before this field existed leaves it empty.
 	PlanFileHashes map[string]string `json:"planFileHashes,omitempty"`
+	// PlanOverviewFrameHash is the hex SHA-256 of 00-overview.md with its Card Index section cut out (planparser.OverviewWithoutCardIndex), recorded wherever PlanFileHashes is.
+	// Rebaseline accepts an overview change when the file's frame hash still equals it, so only the Card Index changed.
+	// A state written before this field existed leaves it empty, and refuses any overview change.
+	PlanOverviewFrameHash string `json:"planOverviewFrameHash,omitempty"`
 	// Partition is the run's batches in execution order, recorded at first init.
 	// Every verb reads it and only a first init or a rebaseline replaces it.
 	// A state written before this field existed loads with it nil.

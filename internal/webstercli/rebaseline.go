@@ -34,10 +34,16 @@ edit is accepted, and "lyx webster recover-batch NN" then runs on the edited
 card. A named card of an in-flight batch is accepted too, and the envelope's
 cards_amended lists it: the running fork or recovery strand keeps working on
 the old text, and recovery re-runs the batch on the edited card. An edited
-card of a done batch is refused.
+card of a done batch is refused; the way forward is to restore the card, or
+to add a follow-up card after the last begun batch that carries the decision,
+with its Card Index line, and run rebaseline naming it.
 The operator names every card the edit changed with --card (repeatable);
-an edited card that is not named is refused, and 00-overview.md, which
-carries the plan's integration verify, is never accepted.
+an edited card that is not named is refused.
+A change to 00-overview.md is accepted only inside its "## Card Index"
+section, so a follow-up card and its index line land together; the index
+change is held to the same rule as the cards, so only cards after the last
+begun batch can be added, removed or reordered. The rest of the overview,
+which carries the plan's integration verify, is never accepted.
 On success the envelope carries previous_fingerprint, plan_fingerprint,
 batches_kept and cards_accepted.
 

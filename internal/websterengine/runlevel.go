@@ -382,6 +382,10 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err != nil {
 		return RunResult{}, err
 	}
+	frameHash, err := overviewFrameHash(deps.Geom.PlanDir)
+	if err != nil {
+		return RunResult{}, err
+	}
 
 	// Serialize the whole state phase — load, entry-time reclaim, fresh
 	// archive/re-init, and the post-start strand record — against every
@@ -448,10 +452,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, err
 		}
 		st = &State{
-			RunGUID:         guid,
-			PlanFingerprint: fingerprint,
-			PlanFileHashes:  fileHashes,
-			Batches:         map[int]*BatchState{},
+			RunGUID:               guid,
+			PlanFingerprint:       fingerprint,
+			PlanFileHashes:        fileHashes,
+			PlanOverviewFrameHash: frameHash,
+			Batches:               map[int]*BatchState{},
 		}
 		RecordPartition(st, batches)
 		if err := storePlanBaseline(deps.Geom.WebsterDir, deps.Geom.PlanDir, fileHashes); err != nil {
@@ -484,10 +489,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, err
 		}
 		st = &State{
-			RunGUID:         guid,
-			PlanFingerprint: fingerprint,
-			PlanFileHashes:  fileHashes,
-			Batches:         map[int]*BatchState{},
+			RunGUID:               guid,
+			PlanFingerprint:       fingerprint,
+			PlanFileHashes:        fileHashes,
+			PlanOverviewFrameHash: frameHash,
+			Batches:               map[int]*BatchState{},
 		}
 		RecordPartition(st, batches)
 		if err := storePlanBaseline(deps.Geom.WebsterDir, deps.Geom.PlanDir, fileHashes); err != nil {

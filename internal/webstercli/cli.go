@@ -345,7 +345,7 @@ func (c *websterCLI) addVerbs(parent *cobra.Command) {
 // genuine foreign edit failing ErrFingerprintMismatch exactly as it did before.
 // Callers invoke this while still holding the state-mutation lease.
 //
-// It persists the plan baseline, the fingerprint and the per-file hashes, and NOTHING ELSE.
+// It persists the plan baseline, the fingerprint, the per-file hashes and the overview frame hash, and NOTHING ELSE.
 // The state it writes is re-loaded from disk here and carries only the new baseline, rather than being the caller's whole in-memory *State.
 // The caller's copy is not a fingerprint-only delta. RecordBatch appends to State.SeenForkTranscripts
 // the moment it attributes a fork's transcripts, well BEFORE the step that can fail, so saving the
@@ -370,6 +370,7 @@ func persistPlanFingerprintRebaseline(geom websterengine.Geometry, st *websteren
 	}
 	fresh.PlanFingerprint = st.PlanFingerprint
 	fresh.PlanFileHashes = st.PlanFileHashes
+	fresh.PlanOverviewFrameHash = st.PlanOverviewFrameHash
 	return websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, fresh)
 }
 

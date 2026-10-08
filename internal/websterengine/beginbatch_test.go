@@ -191,6 +191,33 @@ func TestBeginBatch_Refusals(t *testing.T) {
 			wantText: []string{"1) lyx webster reset --to start; 2) lyx webster run"},
 		},
 		{
+			name: "an overview change confined to its Card Index names rebaseline with the added card",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				if err := websterengine.RestampPlanBaseline(fx.Deps.State, fx.PlanDir, fx.Deps.Geom.WebsterDir); err != nil {
+					t.Fatalf("RestampPlanBaseline() error = %v", err)
+				}
+				editOverview(t, fx, func(text string) string { return text + "3 — third — the follow-up card\n" })
+				writePlanFile(t, fx, "03-third.md", "# Card 3 — third\n\n**Intent:** new.\n")
+			},
+			wantIs:      websterengine.ErrFingerprintMismatch,
+			wantText:    []string{"lyx webster rebaseline --card 03"},
+			wantNotText: []string{"never rebaselined", "outside its Card Index"},
+		},
+		{
+			name: "an overview change outside its Card Index names the follow-up card landing",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				if err := websterengine.RestampPlanBaseline(fx.Deps.State, fx.PlanDir, fx.Deps.Geom.WebsterDir); err != nil {
+					t.Fatalf("RestampPlanBaseline() error = %v", err)
+				}
+				editOverview(t, fx, func(text string) string {
+					return strings.Replace(text, "## Card Index", "Reframed.\n\n## Card Index", 1)
+				})
+			},
+			wantIs:      websterengine.ErrFingerprintMismatch,
+			wantText:    []string{"00-overview.md changed outside its Card Index", followUpWayForward},
+			wantNotText: []string{"never rebaselined"},
+		},
+		{
 			name: "a report over a terminal done record says to begin the next batch and leaves the record untouched",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				seedReport(t, fx)

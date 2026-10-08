@@ -404,11 +404,10 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 		cards int
 		// setup edits the fixture to provoke the refusal and returns the step that takes the way
 		// forward; nil means the case has no way forward to take.
-		setup          func(t *testing.T, fx *runFixture) (takeWayForward func())
-		errIs          error
-		msgContains    []string
-		msgNotContains []string
-		wayForward     []string
+		setup       func(t *testing.T, fx *runFixture) (takeWayForward func())
+		errIs       error
+		msgContains []string
+		wayForward  []string
 		// reachesStarter marks a refusal raised by the Starter itself.
 		reachesStarter bool
 		// fresh runs with --fresh.
@@ -595,7 +594,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			wayForward: []string{"lyx webster rebaseline --card 02", "2) lyx webster run"},
 		},
 		{
-			name:  "an edited overview names no card to rebaseline",
+			name:  "an edited overview outside its Card Index names the follow-up card landing",
 			cards: 2,
 			setup: func(t *testing.T, fx *runFixture) func() {
 				seedMatchingState(t, fx, &websterengine.State{})
@@ -609,9 +608,8 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				}
 				return nil
 			},
-			errIs:          websterengine.ErrFingerprintMismatch,
-			wayForward:     []string{"1) lyx webster reset --to start; 2) lyx webster run"},
-			msgNotContains: []string{"--card"},
+			errIs:      websterengine.ErrFingerprintMismatch,
+			wayForward: []string{"changed outside its Card Index", "add a follow-up card after the last begun batch", "1) lyx webster reset --to start; 2) lyx webster run"},
 		},
 		{
 			// The validation error is forced by pointing WorktreeRoot at a path with no repository,
@@ -679,11 +677,6 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			for _, want := range tc.msgContains {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("Run() error = %q; want it to contain %q", err, want)
-				}
-			}
-			for _, unwanted := range tc.msgNotContains {
-				if strings.Contains(err.Error(), unwanted) {
-					t.Errorf("Run() error = %q; want it free of %q", err, unwanted)
 				}
 			}
 			if tc.wayForward != nil {
@@ -770,10 +763,13 @@ func TestRun_EntryValidationReachesMaster(t *testing.T) {
 			},
 		},
 		{
-			name:  "a first init records a hash for every plan file",
+			name:  "a first init records a hash for every plan file and the overview frame hash",
 			cards: 2,
 			check: func(t *testing.T, fx *runFixture) {
 				st := loadRunState(t, fx)
+				if st.PlanOverviewFrameHash == "" {
+					t.Error("PlanOverviewFrameHash is empty; want the first init to record the overview frame hash")
+				}
 				for _, name := range []string{"00-overview.md", "01-batch1.md", "02-batch2.md"} {
 					if st.PlanFileHashes[name] == "" {
 						t.Errorf("PlanFileHashes = %v; want a hash for %s", st.PlanFileHashes, name)

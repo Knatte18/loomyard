@@ -36,12 +36,13 @@ var ErrPaused = errors.New("webster: paused")
 // sentinel identity (webster-owns-its-own-domain-types).
 var ErrFingerprintMismatch = errors.New("webster: on-disk plan fingerprint does not match this run's recorded state")
 
-// planOverviewFile is the plan's overview file, which carries the integration verify and is never rebaselined.
+// planOverviewFile is the plan's overview file, which carries the integration verify; rebaseline accepts a change to its Card Index only.
 const planOverviewFile = "00-overview.md"
 
 // fingerprintMismatchWayForward is the trailing clause BeginBatch and Run put on an ErrFingerprintMismatch wrap.
 // It reads the changed plan files so the clause names the cards to pass to rebaseline;
 // a state without PlanFileHashes names rebaseline without card numbers, and a changedPlanFiles error falls back to the generic text.
+// An overview change confined to the Card Index names rebaseline with the changed and added cards, and any other overview change names the follow-up card landing.
 // The reset route it names ends in reentry.
 func fingerprintMismatchWayForward(st *State, planDir, reentry string) string {
 	fresh := freshRestartSteps(reentry)
@@ -54,13 +55,28 @@ func fingerprintMismatchWayForward(st *State, planDir, reentry string) string {
 		return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
 	}
 	var flags []string
+	indexChanged := false
 	for _, name := range changed {
 		if name == planOverviewFile {
-			return "way forward: " + planOverviewFile + " changed and is never rebaselined; restore it with \"lyx webster restore-plan\", or " + fresh
+			indexOnly, err := overviewIndexOnly(st, planDir)
+			if err != nil {
+				return "way forward: if the edit keeps every begun batch's cards, run `lyx webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
+			}
+			if !indexOnly {
+				if st.PlanOverviewFrameHash == "" {
+					return "way forward: " + planOverviewFile + " changed and is never rebaselined; restore it with \"lyx webster restore-plan\", or " + fresh
+				}
+				return "way forward: " + planOverviewFile + " changed outside its Card Index; restore it with \"lyx webster restore-plan\", or " + followUpCardLanding + ", or " + fresh
+			}
+			indexChanged = true
+			continue
 		}
 		flags = append(flags, "--card "+cardNumberOf(name))
 	}
 	if len(flags) == 0 {
+		if indexChanged {
+			return "way forward: only the Card Index of " + planOverviewFile + " changed; run `lyx webster rebaseline` to accept it, " + restore + "otherwise " + fresh
+		}
 		return "way forward: run `lyx webster rebaseline --card NN` naming each card you edited, " + restore + "otherwise " + fresh
 	}
 	return "way forward: run `lyx webster rebaseline " + strings.Join(flags, " ") + "` to accept the edit, " + restore + "otherwise " + fresh

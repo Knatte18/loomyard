@@ -10,7 +10,9 @@ package websterengine
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -81,6 +83,24 @@ func planFileHashes(planDir string) (map[string]string, error) {
 		hashes[name] = hex.EncodeToString(sum[:])
 	}
 	return hashes, nil
+}
+
+// overviewFrameHash hashes planDir's 00-overview.md with its Card Index section cut out, as the hex SHA-256 State.PlanOverviewFrameHash records.
+// A plan directory without an overview has no frame and hashes to "", the value that makes Rebaseline refuse any overview change.
+func overviewFrameHash(planDir string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(planDir, planOverviewFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("websterengine: overview frame hash %s: read %s: %w", planDir, planOverviewFile, err)
+	}
+	frame, err := planparser.OverviewWithoutCardIndex(data)
+	if err != nil {
+		return "", fmt.Errorf("websterengine: overview frame hash %s: %w", planDir, err)
+	}
+	sum := sha256.Sum256(frame)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // changedPlanFiles returns the plan file names whose current hash differs from st.PlanFileHashes, plus files added or removed since, sorted.
@@ -182,7 +202,7 @@ func restampFingerprint(st *State, planDir, websterDir string) error {
 	return nil
 }
 
-// restampBaseline records planDir's fingerprint, per-file hashes and stored baseline into st, and touches no batch record.
+// restampBaseline records planDir's fingerprint, per-file hashes, overview frame hash and stored baseline into st, and touches no batch record.
 func restampBaseline(st *State, planDir, websterDir string) error {
 	fp, err := fingerprint(planDir)
 	if err != nil {
@@ -192,11 +212,16 @@ func restampBaseline(st *State, planDir, websterDir string) error {
 	if err != nil {
 		return err
 	}
+	frame, err := overviewFrameHash(planDir)
+	if err != nil {
+		return err
+	}
 	if err := storePlanBaseline(websterDir, planDir, hashes); err != nil {
 		return err
 	}
 	st.PlanFingerprint = fp
 	st.PlanFileHashes = hashes
+	st.PlanOverviewFrameHash = frame
 	return nil
 }
 
