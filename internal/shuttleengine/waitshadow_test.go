@@ -48,10 +48,13 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 		outputsAtStart bool
 		gate           func() GateSpec
 		timeout        time.Duration
+		// livenessEvery overrides gateConfig's polls per liveness tick, which is also the shadow's fact refresh; zero keeps it.
+		livenessEvery int
 		// jump is the clock advance per Sleep, zero for the scripted steps below.
 		jump time.Duration
-		// script returns the agent's actions between ticks, run once per Sleep.
-		script func(appendLine func(string), touchOutput func()) []func()
+		// script returns the agent's actions between ticks, run once per Sleep;
+		// markInterrupt makes the transcript mark every turn start as interrupted, a no-op on an engine without a SessionProber.
+		script func(appendLine func(string), touchOutput func(), markInterrupt func()) []func()
 
 		wantChanges       []string
 		wantDisagreements int
@@ -59,7 +62,7 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 		{
 			name:   "a turn start, a waiting turn end, a held turn end and done log one line each with the loop's classification",
 			events: "START\n", outstanding: shadowPayloadShell, liveness: LivenessAlive, timeout: time.Hour,
-			script: func(appendLine func(string), touchOutput func()) []func() {
+			script: func(appendLine func(string), touchOutput func(), _ func()) []func() {
 				return []func(){
 					func() { appendLine("WAIT:background work") },
 					func() { appendLine("STOP:what now?") },
@@ -67,6 +70,19 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 				}
 			},
 			wantChanges: []string{"busy/turn running", "busy/background waiting", "idle-stalled/no-output held", "idle-done/done done"},
+		},
+		{
+			name:   "an interrupt marker that lands after its turn start was folded is read at a later refresh",
+			events: "START\n", liveness: LivenessAlive, livenessEvery: 1, timeout: time.Hour,
+			script: func(appendLine func(string), touchOutput func(), markInterrupt func()) []func() {
+				return []func(){
+					markInterrupt,
+					func() {},
+					func() { touchOutput(); appendLine("STOP:finished") },
+				}
+			},
+			wantChanges:       []string{"busy/turn running", "idle-stalled/interrupt running", "idle-done/done done"},
+			wantDisagreements: 1,
 		},
 		{
 			name:   "a dead reading while the loop reads running logs one disagreement across several ticks",
@@ -98,7 +114,11 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			drive := func(engine Engine) shadowRun {
 				buf := logcapture.CaptureVerbose(t)
-				fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, engine, withConfig(gateConfig))
+				cfg := gateConfig
+				if tt.livenessEvery > 0 {
+					cfg.LivenessEveryNPolls = tt.livenessEvery
+				}
+				fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, engine, withConfig(cfg))
 				fc := newFakeClock(time.Now())
 				var clk Clock = fc
 				var steps *multiStepClock
@@ -125,7 +145,12 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 				if steps != nil {
 					steps.steps = tt.script(
 						func(line string) { appendEventsLine(t, run.state.EventsPath, line) },
-						func() { touchOutputFile(t, outputFile) })
+						func() { touchOutputFile(t, outputFile) },
+						func() {
+							if prober, ok := engine.(*sessionFakeEngine); ok {
+								prober.interrupted, prober.interruptAt = true, fc.Now()
+							}
+						})
 				}
 				var got shadowRun
 				fx.Runner.SetNotifier(func(line string) error {

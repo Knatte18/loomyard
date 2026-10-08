@@ -510,11 +510,13 @@ var _ ReedOps = (*skillReed)(nil)
 // sessionFakeEngine is waitingEngine plus the opt-in SessionSignalParser and SessionProber capabilities.
 // ParseSessionSignals reads "START" as a turn start, "STOP:<message>" as a turn end and "WAIT:<message>" as a turn end carrying outstanding.
 // Every signal names session-1, and the read consumes through the last complete line.
-// ProcessLiveness answers liveness for any session id, and TurnStartInterrupt reads as not interrupted.
+// ProcessLiveness answers liveness for any session id, and TurnStartInterrupt answers interrupted and interruptAt for any turn start.
 type sessionFakeEngine struct {
 	waitingEngine
 
-	liveness Liveness
+	liveness    Liveness
+	interrupted bool
+	interruptAt time.Time
 }
 
 func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
@@ -542,7 +544,7 @@ func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, i
 func (e *sessionFakeEngine) ProcessLiveness(string) Liveness { return e.liveness }
 
 func (e *sessionFakeEngine) TurnStartInterrupt(SessionSignal) (time.Time, bool) {
-	return time.Time{}, false
+	return e.interruptAt, e.interrupted
 }
 
 var (

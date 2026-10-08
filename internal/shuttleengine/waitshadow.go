@@ -41,6 +41,10 @@ type sessionShadow struct {
 	fold   SessionFold
 	// sessionID is the session id of the newest signal that named one.
 	sessionID string
+	// turnStart and turnEnd are the newest turn start and turn end folded so far, re-read at every refresh,
+	// because a transcript marker can land after the tick that folded its signal.
+	// Each is kept without its session id, so the fact read probes sessionID instead.
+	turnStart, turnEnd *SessionSignal
 	// facts holds the liveness and transcript facts of the latest refresh, reused between refreshes.
 	facts     SessionFacts
 	factsRead bool
@@ -91,7 +95,7 @@ func loopAgreesWithState(loop string, state SessionState, gatePending bool) bool
 
 // logSessionState reads the signals appended since the shadow cursor, folds them with this tick's facts and logs a changed state and a new disagreement with the loop's classification.
 // outcome is the outcome Wait is about to finalize, empty on an ordinary tick;
-// refreshFacts re-reads the liveness and transcript facts, which are otherwise reused until new signals arrive.
+// refreshFacts re-reads the liveness and the transcript markers of the newest turn start and turn end folded so far, which are otherwise reused until new signals arrive.
 // It returns nothing Wait reads: an engine without a SessionSignalParser, an unreadable events file or a missing fact logs once at Debug and changes nothing.
 func (run *Run) logSessionState(outcome Outcome, refreshFacts bool) {
 	shadow := &run.shadow
@@ -115,10 +119,16 @@ func (run *Run) logSessionState(outcome Outcome, refreshFacts bool) {
 		signals, consumed = parser.ParseSessionSignals(data[shadow.cursor:])
 		shadow.cursor += int64(consumed)
 	}
-	for i := len(signals) - 1; i >= 0; i-- {
-		if signals[i].SessionID != "" {
-			shadow.sessionID = signals[i].SessionID
-			break
+	for _, signal := range signals {
+		if signal.SessionID != "" {
+			shadow.sessionID = signal.SessionID
+		}
+		signal.SessionID = ""
+		switch signal.Kind {
+		case SessionSignalTurnStart:
+			shadow.turnStart = &signal
+		case SessionSignalTurnEnd, SessionSignalAPIErrorTurnEnd:
+			shadow.turnEnd = &signal
 		}
 	}
 
@@ -129,7 +139,13 @@ func (run *Run) logSessionState(outcome Outcome, refreshFacts bool) {
 		if shadow.sessionID != "" {
 			record.SessionID = shadow.sessionID
 		}
-		shadow.facts, shadow.factsRead = readSessionFacts(record, run.runner.engine, signals, now), true
+		var markerSignals []SessionSignal
+		for _, signal := range []*SessionSignal{shadow.turnStart, shadow.turnEnd} {
+			if signal != nil {
+				markerSignals = append(markerSignals, *signal)
+			}
+		}
+		shadow.facts, shadow.factsRead = readSessionFacts(record, run.runner.engine, markerSignals, now), true
 	}
 	facts := shadow.facts
 	facts.Interactive = run.spec.Interactive
