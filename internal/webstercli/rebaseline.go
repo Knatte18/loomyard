@@ -28,15 +28,22 @@ It refuses, leaving state.json untouched, when the edit changes the cards of a
 batch the run already begun (a begun card's content counts, not only its id),
 or removes such a batch; the way forward then is
 to restore those cards, or to run "lyx webster reset --to start" and then
-"lyx webster run --fresh".
+"lyx webster run".
 A named card of a batch that is failed, dead or stuck is the exception: its
 edit is accepted, and "lyx webster recover-batch NN" then runs on the edited
-card. An edited card of a done batch is refused, and one of an unfinished
-batch is refused until "lyx webster record-batch NN" or "lyx webster
-recover-batch NN" has finished it.
+card. A named card of an in-flight batch is accepted too, and the envelope's
+cards_amended lists it: the running fork or recovery strand keeps working on
+the old text, and recovery re-runs the batch on the edited card. An edited
+card of a done batch is refused; the way forward is to restore the card, or
+to add a follow-up card after the last begun batch that carries the decision,
+with its Card Index line, and run rebaseline naming it.
 The operator names every card the edit changed with --card (repeatable);
-an edited card that is not named is refused, and 00-overview.md, which
-carries the plan's integration verify, is never accepted.
+an edited card that is not named is refused.
+A change to 00-overview.md is accepted only inside its "## Card Index"
+section, so a follow-up card and its index line land together; the index
+change is held to the same rule as the cards, so only cards after the last
+begun batch can be added, removed or reordered. The rest of the overview,
+which carries the plan's integration verify, is never accepted.
 On success the envelope carries previous_fingerprint, plan_fingerprint,
 batches_kept and cards_accepted.
 
@@ -88,7 +95,13 @@ Example:
 				return nil
 			}
 
-			result, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Active: c.batcher, Sizes: batcher.DiskSizes(c.geom.WorktreeRoot), State: st, Cards: cards, Geom: c.geom})
+			base, err := websterengine.MerriamBase(c.geom)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+
+			result, err := websterengine.Rebaseline(websterengine.RebaselineDeps{Plan: plan, Active: c.batcher, Sizes: batcher.DiskSizes(c.geom.WorktreeRoot), Base: base, State: st, Cards: cards, Geom: c.geom})
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -110,6 +123,7 @@ Example:
 				"plan_fingerprint":     result.Fingerprint,
 				"batches_kept":         result.BatchesKept,
 				"cards_accepted":       result.CardsAccepted,
+				"cards_amended":        result.CardsAmended,
 			}))
 			return nil
 		},

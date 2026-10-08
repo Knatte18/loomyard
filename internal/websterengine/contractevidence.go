@@ -1,6 +1,6 @@
 // contractevidence.go decides whether a suspect path that is one of the run's two contract files, outcome.yaml and summary.md, is cleared by evidence.
 // It is the one evidence function every site that classifies a suspect path consults before checkSuspectPaths,
-// since those two paths lie outside the tracked tree and would otherwise be unverifiable, leaving run --fresh as the only way forward.
+// since those two paths lie outside the tracked tree and would otherwise be unverifiable, leaving the reset-to-start route as the only way forward.
 
 package websterengine
 

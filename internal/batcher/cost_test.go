@@ -13,11 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// costWeights make a one-card edit of a 20-line file at position 1 peak at 10 master base + 1 fork message + 1 card message + 20 lines = 32.
-var costWeights = batcher.Weights{MasterBase: 10, ForkMessages: 1, MessageContext: 1, TargetMessages: 1, ContextPerLine: 1}
+// costWeights make a one-card edit of a 20-line file at position 1 peak at 10 orientation + 1 fork message + 1 card message + 20 lines = 32.
+var costWeights = batcher.Weights{Orientation: 10, ForkMessages: 1, MessageContext: 1, TargetMessages: 1, ContextPerLine: 1}
 
 // costGrowthWeights are costWeights with a 10-token start growth per batch position.
-var costGrowthWeights = batcher.Weights{MasterBase: 10, BatchGrowth: 10, ForkMessages: 1, MessageContext: 1, TargetMessages: 1, ContextPerLine: 1}
+var costGrowthWeights = batcher.Weights{Orientation: 10, BatchGrowth: 10, ForkMessages: 1, MessageContext: 1, TargetMessages: 1, ContextPerLine: 1}
 
 var costSizes = fakeSizes{lines: map[string]int{
 	"internal/a/a.go":   20,
@@ -142,7 +142,7 @@ func TestCostBatchifier_Limits(t *testing.T) {
 			if batcherUnderTest.Name() != "cautious" {
 				t.Errorf("Name = %q; want %q", batcherUnderTest.Name(), "cautious")
 			}
-			batches, err := batcherUnderTest.Batch(plan, tt.cards, costSizes, tt.before)
+			batches, err := batcherUnderTest.Batch(plan, tt.cards, costSizes, tt.before, batcher.StartBase{})
 			if err != nil {
 				t.Fatalf("Batch: %v", err)
 			}
@@ -175,7 +175,7 @@ func TestCostBatchifier_OptimalAndFeasible(t *testing.T) {
 
 	for iteration := 0; iteration < 200; iteration++ {
 		weights := batcher.Weights{
-			MasterBase:     float64(1 + rng.Intn(20)),
+			Orientation:    float64(1 + rng.Intn(20)),
 			BatchGrowth:    float64(rng.Intn(15)),
 			ForkMessages:   float64(rng.Intn(4)),
 			MessageContext: float64(rng.Intn(5)),
@@ -199,7 +199,7 @@ func TestCostBatchifier_OptimalAndFeasible(t *testing.T) {
 		}
 
 		wantBatches, wantLargest := bruteForceBest(t, plan, cards, params)
-		batches, err := batcher.NewCost("cautious", params).Batch(plan, cards, costSizes, 0)
+		batches, err := batcher.NewCost("cautious", params).Batch(plan, cards, costSizes, 0, batcher.StartBase{})
 		if err != nil {
 			t.Fatalf("iteration %d: Batch: %v", iteration, err)
 		}
@@ -246,7 +246,7 @@ func TestCostBatchifier_OptimalAndFeasible(t *testing.T) {
 // peakOf returns the PeakContext of cards at the 1-based position over costSizes.
 func peakOf(t *testing.T, plan *planparser.Plan, cards []planparser.Card, w batcher.Weights, position int) float64 {
 	t.Helper()
-	peak, err := batcher.PeakContext(plan, cards, costSizes, w, position)
+	peak, err := batcher.PeakContext(plan, cards, costSizes, w, batcher.StartBase{}, position)
 	if err != nil {
 		t.Fatalf("PeakContext: %v", err)
 	}

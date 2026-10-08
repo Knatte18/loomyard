@@ -14,7 +14,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // selfStatusRel is the status file's relative path for the self run.
@@ -259,5 +261,70 @@ func pendingRejectionSetup(writeFile func(t *testing.T, path, content string), r
 		if rejection {
 			writeFile(t, loomengine.LoomRejectionPath(loc), "{}\n")
 		}
+	}
+}
+
+// TestPlanCommitPathspec asserts the plan commit always names the plan directory, and adds webster's durable directory only when it holds a file or Plan-Write's rotation archived a run record under the plan:
+// the moved-from deletions and the archive then land in one commit, while an empty or absent directory would make the pathspec match nothing and fail.
+func TestPlanCommitPathspec(t *testing.T) {
+	t.Parallel()
+
+	writeFile := func(t *testing.T, path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tests := []struct {
+		name        string
+		setup       func(t *testing.T, anchorPath string)
+		wantWebster bool
+	}{
+		{name: "no webster directory", setup: func(t *testing.T, anchorPath string) {}},
+		{
+			name: "empty webster and archive directories",
+			setup: func(t *testing.T, anchorPath string) {
+				for _, d := range []string{websterengine.Dir(anchorPath), filepath.Join(planparser.PlanDir(anchorPath), planparser.ArchiveDirName("20260101T000000Z", ""), "webster")} {
+					if err := os.MkdirAll(d, 0o755); err != nil {
+						t.Fatal(err)
+					}
+				}
+			},
+		},
+		{
+			name: "webster directory holding a file",
+			setup: func(t *testing.T, anchorPath string) {
+				writeFile(t, filepath.Join(websterengine.Dir(anchorPath), "state.json"))
+			},
+			wantWebster: true,
+		},
+		{
+			name: "record moved into the archive with the webster directory empty",
+			setup: func(t *testing.T, anchorPath string) {
+				if err := os.MkdirAll(websterengine.Dir(anchorPath), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				writeFile(t, filepath.Join(planparser.PlanDir(anchorPath), planparser.ArchiveDirName("20260101T000000Z", ""), "webster", "state.json"))
+			},
+			wantWebster: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			tt.setup(t, location.AnchorPath())
+			want := []string{planparser.PlanDirRel()}
+			if tt.wantWebster {
+				want = append(want, websterengine.DirRel())
+			}
+			if got := planCommitPathspec(location); !reflect.DeepEqual(got, want) {
+				t.Errorf("planCommitPathspec() = %v; want %v", got, want)
+			}
+		})
 	}
 }

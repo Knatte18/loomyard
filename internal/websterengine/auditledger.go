@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -90,7 +91,7 @@ func recordFailedFinding(st *State, id string) {
 var ErrAuditNotAcceptable = errors.New("webster: pending audit findings cannot be accepted")
 
 // acceptAuditHeadRefusal words AcceptPendingAudit's HEAD refusal, which records no batch and is cleared by re-running accept-audit.
-var acceptAuditHeadRefusal = headRefusal{head: "the last batch head", rerun: `re-run "lyx webster accept-audit"`, redoMerge: "once accept-audit accepts the findings"}
+var acceptAuditHeadRefusal = headRefusal{resetStep: "lyx webster reset --to last-batch-head", rerun: `re-run "lyx webster accept-audit"`, redoMerge: "once accept-audit accepts the findings"}
 
 // AcceptPendingAudit clears st.PendingAuditFindings and returns what it cleared, once every finding's suspect paths are back at the last recorded batch head.
 // The evidence rule: checkSuspectPaths runs over every pending path with the last batch head as base, picked by git ancestry (runEvidenceBases),
@@ -183,13 +184,13 @@ func AcceptPendingAudit(engine shuttleengine.Engine, st *State, geom Geometry, p
 		if pathless {
 			what = append(what, reasonNoPath)
 		}
-		parts = append(parts, fmt.Sprintf("%s; %s", strings.Join(what, "; "), resetToStartSteps(stepRunFresh)))
+		parts = append(parts, fmt.Sprintf("%s; %s", strings.Join(what, "; "), resetToStartSteps(stepRun)))
 	}
 	return nil, false, fmt.Errorf("%w: %s", ErrAuditNotAcceptable, strings.Join(parts, "; "))
 }
 
 // AcceptBatchFabricReference clears the Uncheckable entries of failed batch n when every one is a pathless fabric-reference finding and the batch's evidence holds,
-// so `lyx webster recover-batch n` can proceed instead of refusing toward the `--fresh` route.
+// so `lyx webster recover-batch n` can proceed instead of refusing toward the reset-to-start route.
 // The evidence rule: the batch's recorded start commit is set and the worktree is clean apart from the run's own state, and one of two routes holds.
 // Either HEAD is that start, or the start is an ancestor of HEAD and every entry records a command that readOnly accepts.
 // A fabric reference stays correctness everywhere else: this clears it only on that evidence and only by the explicit `accept-audit --batch` call,
@@ -206,10 +207,10 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int, readOnly func(c
 		return nil, fmt.Errorf("%w: batch %02d is not a failed batch with uncheckable findings; accept-audit --batch accepts only those", ErrAuditNotAcceptable, n)
 	}
 	if !allPathlessFabricReference(bs.Uncheckable) {
-		return nil, fmt.Errorf("%w: batch %02d carries an uncheckable finding that is not a pathless fabric reference: %s; %s", ErrAuditNotAcceptable, n, strings.Join(bs.Uncheckable, ", "), resetToStartSteps(stepRunFresh))
+		return nil, fmt.Errorf("%w: batch %02d carries an uncheckable finding that is not a pathless fabric reference: %s; %s", ErrAuditNotAcceptable, n, strings.Join(bs.Uncheckable, ", "), resetToStartSteps(stepRun))
 	}
 	if bs.StartSHA == "" {
-		return nil, fmt.Errorf("%w: batch %02d recorded no start commit, so its tree cannot be shown unchanged; %s", ErrAuditNotAcceptable, n, resetToStartSteps(stepRunFresh))
+		return nil, fmt.Errorf("%w: batch %02d recorded no start commit, so its tree cannot be shown unchanged; %s", ErrAuditNotAcceptable, n, resetToStartSteps(stepRun))
 	}
 	head, err := geom.git().HeadSHA(geom.WorktreeRoot)
 	if err != nil {
@@ -222,18 +223,12 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int, readOnly func(c
 			return nil, err
 		}
 		if !reachable {
-			return nil, fmt.Errorf("%w: HEAD %s is not batch %02d's start commit %s; way forward: git reset --keep %s, then re-run \"lyx webster accept-audit --batch %d\"", ErrAuditNotAcceptable, head, n, bs.StartSHA, bs.StartSHA, n)
+			return nil, fmt.Errorf("%w: HEAD %s is not batch %02d's start commit %s, nor does it descend from it; %s", ErrAuditNotAcceptable, head, n, bs.StartSHA, wayForwardSteps(stepResetToStart, "lyx webster run"))
 		}
 	}
-	dirtyPaths, err := geom.git().DirtyPaths(geom.WorktreeRoot)
+	dirty, err := UncommittedPaths(geom)
 	if err != nil {
 		return nil, err
-	}
-	var dirty []string
-	for _, p := range dirtyPaths {
-		if !runOwnPath(geom, p) {
-			dirty = append(dirty, p)
-		}
 	}
 	if len(dirty) > 0 {
 		return nil, fmt.Errorf("%w: the worktree has uncommitted or untracked changes: %s; way forward: restore or remove them with git, then re-run \"lyx webster accept-audit --batch %d\"", ErrAuditNotAcceptable, strings.Join(dirty, ", "), n)
@@ -242,7 +237,7 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int, readOnly func(c
 	if !atStart {
 		for _, entry := range bs.Uncheckable {
 			if cmd, ok := fabricReferenceCommand(entry); !ok || !readOnly(cmd) {
-				return nil, fmt.Errorf("%w: batch %02d's commits are kept only when every fabric reference is a read-only command, and this one is not: %s; %s", ErrAuditNotAcceptable, n, entry, resetToStartSteps(stepRunFresh))
+				return nil, fmt.Errorf("%w: batch %02d's commits are kept only when every fabric reference is a read-only command, and this one is not: %s; %s", ErrAuditNotAcceptable, n, entry, wayForwardSteps(resetVerb(ResetToBatchStart, n), fmt.Sprintf("re-run \"lyx webster accept-audit --batch %d\"", n)))
 			}
 		}
 		basis = "the batch's commits were kept as the command is read-only and the tree clean"
@@ -255,6 +250,23 @@ func AcceptBatchFabricReference(st *State, geom Geometry, n int, readOnly func(c
 	accepted = bs.Uncheckable
 	bs.Uncheckable = nil
 	return accepted, nil
+}
+
+// UncommittedPaths returns, sorted, the worktree-relative paths of the task's uncommitted work: every tracked change and untracked file git status names, minus the run's own state.
+// A clean tree returns none, and a git read failure is returned.
+func UncommittedPaths(geom Geometry) ([]string, error) {
+	dirtyPaths, err := geom.git().DirtyPaths(geom.WorktreeRoot)
+	if err != nil {
+		return nil, err
+	}
+	var uncommitted []string
+	for _, p := range dirtyPaths {
+		if !runOwnPath(geom, p) {
+			uncommitted = append(uncommitted, p)
+		}
+	}
+	sort.Strings(uncommitted)
+	return uncommitted, nil
 }
 
 // runOwnPath reports whether rel, a worktree-relative path git status names, is the run's own state rather than the task's content:

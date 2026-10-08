@@ -28,7 +28,8 @@ type Batcher interface {
 	// Batch groups cards, a contiguous run of plan.Cards, into an ordered list of Batches in card order.
 	// plan carries the glyph language the estimator maps refs to files with, and sizes reads the worktree facts it weighs.
 	// before is the number of batches the run executes ahead of cards[0], so the k-th returned batch is the run's batch at position before + k.
-	Batch(plan *planparser.Plan, cards []planparser.Card, sizes SizeSource, before int) ([]Batch, error)
+	// base is the part of the orchestrating session's start context computed from what it loads; the zero value adds nothing.
+	Batch(plan *planparser.Plan, cards []planparser.Card, sizes SizeSource, before int, base StartBase) ([]Batch, error)
 
 	// Name reports this batchifier's registry key.
 	Name() string

@@ -1,5 +1,6 @@
 // calibrate.go sets the batcher's estimates beside what past Webster forks measured: each fork's start context against the start the profile estimates for its position and the fit of the two start coefficients, and each fork's peak context against the estimate of the cards it ran.
 // The plan comes from the history repository, the tree the estimate reads is the run's base commit in the code repository, and the profile's weights come from batcher.yaml.
+// Each run's Merriam base is reconstructed from those trees with websterengine.MerriamBaseOf, so the start fit and the peak estimates price what the live batchifier prices.
 // Read-only: it calls batcher.PeakContext, the same estimate the live batchifier bounds its batches by.
 
 package main
@@ -18,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // planCommitSubjectPrefix starts the subject of the commit that records a run's plan artifacts.
@@ -39,6 +41,9 @@ type BaseTrees interface {
 	FilesInDirAtRevision(rev, dir string) ([]string, error)
 }
 
+// masterTemplatePath is the repository's copy of the Master template, which Merriam loads at start.
+const masterTemplatePath = "contracts/stencils/webster/webster-template-master.md"
+
 // StartRow is one card-naming fork's measured start context beside the start the profile estimates for its position.
 type StartRow struct {
 	Run string
@@ -48,25 +53,30 @@ type StartRow struct {
 	Position int
 	// Measured is the fork's StartContext.
 	Measured float64
-	// Estimate is the profile's MasterBase + (Position-1) x BatchGrowth.
+	// Base is the context of the run's computed Merriam base under the profile's context_per_line, meaningful when HasBase.
+	Base    float64
+	HasBase bool
+	// NoBase is why the run has no computed base, empty when HasBase.
+	NoBase string
+	// Estimate is Base + the profile's Orientation + (Position-1) x BatchGrowth, with a Base of 0 for a run without one.
 	Estimate float64
 }
 
-// StartFit is the least-squares fit of the start coefficients over every StartRow.
+// StartFit is the least-squares fit of the start coefficients over every StartRow that carries a base.
 type StartFit struct {
 	// Forks is the number of rows fitted over.
 	Forks int
 	// NotFitted is why no fit exists, empty when the fit was made.
 	NotFitted string
-	// MasterBase and BatchGrowth are the fitted coefficients, meaningful when NotFitted is empty.
-	MasterBase, BatchGrowth float64
+	// Orientation and BatchGrowth are the fitted coefficients, meaningful when NotFitted is empty.
+	Orientation, BatchGrowth float64
 	// Residual summarizes each fork's measured start over its fitted start, over the forks whose fitted start is positive.
 	Residual Fit
 }
 
 // Unusable reports whether a fit was made with a negative coefficient, which the batcher.yaml loader refuses.
 func (f StartFit) Unusable() bool {
-	return f.NotFitted == "" && (f.MasterBase < 0 || f.BatchGrowth < 0)
+	return f.NotFitted == "" && (f.Orientation < 0 || f.BatchGrowth < 0)
 }
 
 // CalibrationRow is one fork's peak-context estimate beside its measured peak context.
@@ -102,7 +112,19 @@ type Calibration struct {
 	StartFit StartFit
 	Rows     []CalibrationRow
 	Skips    []CalibrationSkip
+
+	// bases is each run's computed Merriam base by run slug.
+	bases map[string]runStartBase
 }
+
+// runStartBase is the Merriam base reconstructed for one run.
+type runStartBase struct {
+	base batcher.StartBase
+	// reason is why no base could be reconstructed, empty when one was.
+	reason string
+}
+
+func (b runStartBase) found() bool { return b.reason == "" }
 
 // Fit summarizes a set of ratios.
 type Fit struct {
@@ -172,9 +194,11 @@ func Calibrate(runs []RunTally, profile, configDir string, history PlanHistory, 
 	if err != nil {
 		return Calibration{}, err
 	}
-	calibration := Calibration{Profile: profile, Weights: weights}
+	calibration := Calibration{Profile: profile, Weights: weights, bases: map[string]runStartBase{}}
 	for _, run := range runs {
-		calibration.addStarts(run)
+		if err := calibration.addStarts(run, history, base); err != nil {
+			return Calibration{}, err
+		}
 	}
 	calibration.StartFit = fitStart(calibration.Starts)
 	for _, run := range runs {
@@ -185,9 +209,14 @@ func Calibrate(runs []RunTally, profile, configDir string, history PlanHistory, 
 	return calibration, nil
 }
 
-// startEstimate is the start context the weights estimate for a fork at the 1-based position.
-func startEstimate(w batcher.Weights, position int) float64 {
-	return w.MasterBase + float64(position-1)*w.BatchGrowth
+// baseContext is the context of the start base under w: its lines at ContextPerLine plus its fixed part.
+func baseContext(w batcher.Weights, base batcher.StartBase) float64 {
+	return float64(base.Lines)*w.ContextPerLine + base.Fixed
+}
+
+// startEstimate is the start context the weights estimate for a fork at the 1-based position: the start base, the orientation and the growth of the batches before it.
+func startEstimate(w batcher.Weights, base batcher.StartBase, position int) float64 {
+	return baseContext(w, base) + w.Orientation + float64(position-1)*w.BatchGrowth
 }
 
 // forkPositions returns each fork's 1-based position in its Merriam session: one plus the card-naming forks before it in that session, by start time.
@@ -211,22 +240,82 @@ func forkPositions(forks []ForkTally) []int {
 	return positions
 }
 
-// addStarts adds a row per card-naming fork of run, which needs only the run's transcripts.
-func (c *Calibration) addStarts(run RunTally) {
+// addStarts adds a row per card-naming fork of run, carrying the run's computed Merriam base or the reason it has none.
+// A run whose base cannot be reconstructed is a row without a base, never an error;
+// an error is a failed read of the history or the base tree.
+func (c *Calibration) addStarts(run RunTally, history PlanHistory, base BaseTrees) error {
+	runBase, err := readRunStartBase(run, history, base)
+	if err != nil {
+		return err
+	}
+	c.bases[run.Slug] = runBase
 	for i, position := range forkPositions(run.Forks) {
 		if position == 0 {
 			continue
 		}
 		fork := run.Forks[i]
-		c.Starts = append(c.Starts, StartRow{Run: run.Slug, Session: fork.Session, Position: position, Measured: float64(fork.StartContext), Estimate: startEstimate(c.Weights, position)})
+		row := StartRow{
+			Run: run.Slug, Session: fork.Session, Position: position, Measured: float64(fork.StartContext),
+			NoBase: runBase.reason, HasBase: runBase.found(), Estimate: startEstimate(c.Weights, runBase.base, position),
+		}
+		if row.HasBase {
+			row.Base = baseContext(c.Weights, runBase.base)
+		}
+		c.Starts = append(c.Starts, row)
 	}
+	return nil
 }
 
-// fitStart fits MasterBase and BatchGrowth by least squares of the measured start over position - 1.
+// readRunStartBase reconstructs the Merriam base of run: websterengine.MerriamBaseOf over CLAUDE.md, PATTERN.md and the Master template at the run's base commit and the plan's 00-overview.md.
+// A CLAUDE.md or PATTERN.md absent at the base commit adds nothing, as it does for a live run.
+// A run whose plan, base commit or Master template cannot be found has a reason instead of a base.
+func readRunStartBase(run RunTally, history PlanHistory, trees BaseTrees) (runStartBase, error) {
+	plan, reason, err := readRunPlan(run, history)
+	if err != nil {
+		return runStartBase{}, err
+	}
+	switch {
+	case plan == nil:
+		return runStartBase{reason: reason}, nil
+	case run.BaseSHA == "":
+		return runStartBase{reason: "no base: no begin-batch result in its webster sessions"}, nil
+	case !trees.SHAExists(run.BaseSHA):
+		return runStartBase{reason: fmt.Sprintf("base %s is not in the repository", run.BaseSHA)}, nil
+	}
+
+	texts := []string{plan.OverviewText}
+	for _, name := range []string{"CLAUDE.md", "PATTERN.md"} {
+		data, err := trees.FileAtRevision(run.BaseSHA, name)
+		if errors.Is(err, gitrepo.ErrPathNotAtRevision) {
+			continue
+		}
+		if err != nil {
+			return runStartBase{}, fmt.Errorf("read %s of %s at %s: %w", name, run.Slug, run.BaseSHA, err)
+		}
+		texts = append(texts, string(data))
+	}
+	template, err := trees.FileAtRevision(run.BaseSHA, masterTemplatePath)
+	if errors.Is(err, gitrepo.ErrPathNotAtRevision) {
+		return runStartBase{reason: fmt.Sprintf("no Master template at base %s", run.BaseSHA)}, nil
+	}
+	if err != nil {
+		return runStartBase{}, fmt.Errorf("read the Master template of %s at %s: %w", run.Slug, run.BaseSHA, err)
+	}
+	texts = append(texts, string(template))
+	return runStartBase{base: websterengine.MerriamBaseOf(texts...)}, nil
+}
+
+// fitStart fits Orientation and BatchGrowth by least squares of the measured start minus the run's base over position - 1, over the rows that carry a base.
 func fitStart(rows []StartRow) StartFit {
-	fit := StartFit{Forks: len(rows)}
-	positions := map[int]bool{}
+	var fitted []StartRow
 	for _, row := range rows {
+		if row.HasBase {
+			fitted = append(fitted, row)
+		}
+	}
+	fit := StartFit{Forks: len(fitted)}
+	positions := map[int]bool{}
+	for _, row := range fitted {
 		positions[row.Position] = true
 	}
 	if len(positions) < 2 {
@@ -234,20 +323,20 @@ func fitStart(rows []StartRow) StartFit {
 		return fit
 	}
 	var n, sumX, sumY, sumXX, sumXY float64
-	for _, row := range rows {
-		x := float64(row.Position - 1)
+	for _, row := range fitted {
+		x, y := float64(row.Position-1), row.Measured-row.Base
 		n++
 		sumX += x
-		sumY += row.Measured
+		sumY += y
 		sumXX += x * x
-		sumXY += x * row.Measured
+		sumXY += x * y
 	}
 	fit.BatchGrowth = (n*sumXY - sumX*sumY) / (n*sumXX - sumX*sumX)
-	fit.MasterBase = (sumY - fit.BatchGrowth*sumX) / n
+	fit.Orientation = (sumY - fit.BatchGrowth*sumX) / n
 	var ratios []float64
-	for _, row := range rows {
-		if fitted := fit.MasterBase + fit.BatchGrowth*float64(row.Position-1); fitted > 0 {
-			ratios = append(ratios, row.Measured/fitted)
+	for _, row := range fitted {
+		if start := row.Base + fit.Orientation + fit.BatchGrowth*float64(row.Position-1); start > 0 {
+			ratios = append(ratios, row.Measured/start)
 		}
 	}
 	fit.Residual = fitOfRatios(ratios)
@@ -315,6 +404,12 @@ func (c *Calibration) addRun(run RunTally, history PlanHistory, base BaseTrees) 
 		return nil
 	}
 	sizes := treeSizes{trees: base, rev: run.BaseSHA}
+	// The peak is priced from the run's computed Merriam base, so the peak table and the start table agree;
+	// a run whose base could not be reconstructed is priced without one.
+	var startBase batcher.StartBase
+	if runBase := c.bases[run.Slug]; runBase.found() {
+		startBase = runBase.base
+	}
 
 	cardsByID := map[string]planparser.Card{}
 	for _, card := range plan.Cards {
@@ -343,7 +438,7 @@ func (c *Calibration) addRun(run RunTally, history PlanHistory, base BaseTrees) 
 			continue
 		}
 
-		estimate, err := batcher.PeakContext(plan, cards, sizes, c.Weights, position)
+		estimate, err := batcher.PeakContext(plan, cards, sizes, c.Weights, startBase, position)
 		if err != nil {
 			return fmt.Errorf("estimate %s of %s: %w", subject, run.Slug, err)
 		}
@@ -355,7 +450,7 @@ func (c *Calibration) addRun(run RunTally, history PlanHistory, base BaseTrees) 
 		row := CalibrationRow{
 			Run: run.Slug, Card: subject, Position: position, Estimate: estimate, Measured: measured, Ratio: measured / estimate,
 			MeasuredGrowth:  measured - float64(fork.StartContext),
-			EstimatedGrowth: estimate - startEstimate(c.Weights, position),
+			EstimatedGrowth: estimate - startEstimate(c.Weights, startBase, position),
 		}
 		if row.EstimatedGrowth > 0 {
 			row.GrowthRatio, row.HasGrowthRatio = row.MeasuredGrowth/row.EstimatedGrowth, true
@@ -421,10 +516,14 @@ func (c Calibration) WriteMarkdown(w io.Writer) {
 	fmt.Fprintf(w, "## Calibration (%s)\n\n", c.Profile)
 	fmt.Fprintln(w, "Start context:")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "| run | session | position | measured start | estimated start |")
-	fmt.Fprintln(w, "|---|---|---|---|---|")
+	fmt.Fprintln(w, "| run | session | position | measured start | base | estimated start |")
+	fmt.Fprintln(w, "|---|---|---|---|---|---|")
 	for _, row := range c.Starts {
-		fmt.Fprintf(w, "| %s | %s | %d | %.0f | %.0f |\n", row.Run, row.Session, row.Position, row.Measured, row.Estimate)
+		base := fmt.Sprintf("%.0f", row.Base)
+		if !row.HasBase {
+			base = "n/a (" + row.NoBase + ")"
+		}
+		fmt.Fprintf(w, "| %s | %s | %d | %.0f | %s | %.0f |\n", row.Run, row.Session, row.Position, row.Measured, base, row.Estimate)
 	}
 	fmt.Fprintln(w)
 	c.StartFit.write(w, c.Weights)
@@ -478,7 +577,7 @@ func (f StartFit) write(w io.Writer, profile batcher.Weights) {
 		fmt.Fprintf(w, "Start fit: not fitted, %s (%d forks).\n\n", f.NotFitted, f.Forks)
 		return
 	}
-	fmt.Fprintf(w, "Start fit over %d forks: master_base %.0f (profile %.0f), batch_growth %.0f (profile %.0f), residual spread %s", f.Forks, f.MasterBase, profile.MasterBase, f.BatchGrowth, profile.BatchGrowth, spreadText(f.Residual))
+	fmt.Fprintf(w, "Start fit over %d forks: orientation %.0f (profile %.0f), batch_growth %.0f (profile %.0f), residual spread %s", f.Forks, f.Orientation, profile.Orientation, f.BatchGrowth, profile.BatchGrowth, spreadText(f.Residual))
 	if f.Unusable() {
 		fmt.Fprint(w, "; unusable: a negative coefficient, which batcher.yaml refuses")
 	}

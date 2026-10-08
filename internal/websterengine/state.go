@@ -125,6 +125,10 @@ type State struct {
 	// It is recorded beside PlanFingerprint so rebaseline can tell which plan files an edit touched.
 	// A state written before this field existed leaves it empty.
 	PlanFileHashes map[string]string `json:"planFileHashes,omitempty"`
+	// PlanOverviewFrameHash is the hex SHA-256 of 00-overview.md with its Card Index section cut out (planparser.OverviewWithoutCardIndex), recorded wherever PlanFileHashes is.
+	// Rebaseline accepts an overview change when the file's frame hash still equals it, so only the Card Index changed.
+	// A state written before this field existed leaves it empty, and refuses any overview change.
+	PlanOverviewFrameHash string `json:"planOverviewFrameHash,omitempty"`
 	// Partition is the run's batches in execution order, recorded at first init.
 	// Every verb reads it and only a first init or a rebaseline replaces it.
 	// A state written before this field existed loads with it nil.
@@ -187,6 +191,14 @@ type SuspectPath struct {
 	Blob string `json:"blob,omitempty"`
 }
 
+// AmendedCard is one card of an in-flight batch that an operator edited mid-run and rebaseline accepted.
+type AmendedCard struct {
+	// Card is the amended card's NN-<slug> id.
+	Card string `json:"card"`
+	// Rendered is false while the amendment is recorded only, and true once a recovery spawn has rendered the edited card into its prompt.
+	Rendered bool `json:"rendered"`
+}
+
 // BatchState is one batch's own persisted run record.
 type BatchState struct {
 	// Slug is the batch's <batch-slug> segment.
@@ -198,6 +210,9 @@ type BatchState struct {
 	// Rebaseline compares it so a begun card whose body changed while its file name stayed is refused.
 	// A record written before the field existed has none, and Rebaseline compares only its ids.
 	CardHashes map[string]string `json:"cardHashes,omitempty"`
+	// AmendedCards lists the cards of this batch that rebaseline accepted an edit to while the batch was in flight, one entry per card.
+	// The attempt running then keeps the old text; a recovery re-runs the batch on the edited cards.
+	AmendedCards []AmendedCard `json:"amendedCards,omitempty"`
 	// StartSHA is the repo HEAD immediately before this batch's implementer
 	// first forked — the durable base-commit record a resume, an operator
 	// diagnosis, and the post-batch delta all read. A recovery batch inherits
@@ -250,7 +265,7 @@ type BatchState struct {
 	SuspectPaths []SuspectPath `json:"suspectPaths,omitempty"`
 	// Uncheckable is one entry per correctness finding the recovery check cannot verify:
 	// the path, or "<class>: <detail>" for a finding with no path.
-	// recover-batch refuses a failed batch carrying any, toward run --fresh.
+	// recover-batch refuses a failed batch carrying any, toward the reset-to-start route.
 	Uncheckable []string `json:"uncheckable,omitempty"`
 
 	// The following three fields are populated only for a recovery batch

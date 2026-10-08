@@ -102,9 +102,9 @@ func frictionReflectEntry(name string, cfg Config, env Env) (shedengine.ShedProd
 	return p, nil
 }
 
-// loomPreflightEntry is the Constructor for the "LoomPreflight" registry row: it validates
-// Env.StatusPath and Env.StatusLockPath and returns
-// loomshed.NewLoomPreflight(name, env.StatusPath, env.StatusLockPath).
+// loomPreflightEntry is the Constructor for the "LoomPreflight" registry row.
+// It validates Env.StatusPath, Env.StatusLockPath and Env.AnchorPath and returns
+// loomshed.NewLoomPreflight(name, env.StatusPath, env.StatusLockPath, env.AnchorPath).
 func loomPreflightEntry(name string, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
@@ -115,7 +115,10 @@ func loomPreflightEntry(name string, cfg Config, env Env) (shedengine.ShedProduc
 	if err := requireAbsRoot("LoomPreflight", "StatusLockPath", env.StatusLockPath); err != nil {
 		return nil, err
 	}
-	return loomshed.NewLoomPreflight(name, env.StatusPath, env.StatusLockPath), nil
+	if err := requireAbsRoot("LoomPreflight", "AnchorPath", env.AnchorPath); err != nil {
+		return nil, err
+	}
+	return loomshed.NewLoomPreflight(name, env.StatusPath, env.StatusLockPath, env.AnchorPath), nil
 }
 
 // batchifierEntry is the Constructor for the "Batchifier" registry row: it validates

@@ -25,6 +25,8 @@ type BatchFailedError struct {
 	// WayForward replaces the default way forward, a recover-batch call, for a failure that call cannot clear.
 	// It carries no "way forward: " prefix.
 	WayForward string
+	// CardAmended is true when the failure includes the reason that an amendment to a card landed after the attempt began.
+	CardAmended bool
 }
 
 // Error names the reasons, the suspect paths and the archived report, and ends with the way forward.
@@ -47,6 +49,17 @@ func (e *BatchFailedError) Error() string {
 
 // Unwrap returns ErrBatchFailed.
 func (e *BatchFailedError) Unwrap() error { return ErrBatchFailed }
+
+// amendedReasons returns one card_amended reason per entry of bs.AmendedCards that no recovery spawn has rendered yet.
+func amendedReasons(bs *BatchState) []string {
+	var reasons []string
+	for _, a := range bs.AmendedCards {
+		if !a.Rendered {
+			reasons = append(reasons, fmt.Sprintf("card %s was amended after this attempt began; recovery re-runs the batch on the amended card", a.Card))
+		}
+	}
+	return reasons
+}
 
 // failBatchInput carries everything failBatch needs to fail one batch.
 type failBatchInput struct {
@@ -71,6 +84,8 @@ type failBatchInput struct {
 
 // failBatch archives the batch's report, records the batch terminal failed with its reasons,
 // and clears State.CurrentBatch.
+// Every amendment of the batch not yet rendered into a recovery prompt adds a reason of its own and sets CardAmended on the error,
+// so the failure carries it whatever else failed; it is never recorded as uncheckable.
 // The returned error is only the archive's I/O failure;
 // the blob probes and the archive run first, so nothing in State has been mutated when one fails.
 func failBatch(in failBatchInput) (*BatchFailedError, error) {
@@ -93,10 +108,13 @@ func failBatch(in failBatchInput) (*BatchFailedError, error) {
 	}
 
 	batchName := fmt.Sprintf("%02d-%s", in.Number, in.Slug)
+	amended := amendedReasons(in.Batch)
+	errorReasons := append(append([]string(nil), in.Reasons...), amended...)
 	reasons := append([]string(nil), in.Reasons...)
 	for _, p := range in.SuspectPaths {
 		reasons = append(reasons, "suspect path: "+p)
 	}
+	reasons = append(reasons, amended...)
 
 	// A path the batch already records keeps its recorded blob, so a re-failed recovery still checks the content the audit first flagged.
 	recorded := map[string]string{}
@@ -127,9 +145,10 @@ func failBatch(in failBatchInput) (*BatchFailedError, error) {
 	return &BatchFailedError{
 		Number:         in.Number,
 		Batch:          batchName,
-		Reasons:        in.Reasons,
+		Reasons:        errorReasons,
 		SuspectPaths:   in.SuspectPaths,
 		ArchivedReport: archived,
 		WayForward:     in.WayForward,
+		CardAmended:    len(amended) > 0,
 	}, nil
 }

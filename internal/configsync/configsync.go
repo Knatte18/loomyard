@@ -58,6 +58,9 @@ type Result struct {
 	// false), so the operator can see the migration is pending before it
 	// applies; the legacy files themselves are only pruned when Applied.
 	MigratedFrom []string
+	// Migrated lists the rewrites the module's Migrate hook made to a present file, in the hook's order.
+	// Set on a dry run too; the file is rewritten only when Applied.
+	Migrated []string
 	// Seed names the input ReconcileHubWideAt reconciled: SeedHub, SeedPrime, SeedLegacy or SeedTemplate.
 	// Set on a dry run too; empty for ReconcileAll results.
 	Seed string
@@ -235,6 +238,14 @@ func ReconcileAll(baseDir, boardDir string, apply bool) ([]Result, error) {
 			continue
 		}
 
+		var migrated []string
+		if m.Migrate != nil && !fileAbsent {
+			existing, migrated, err = m.Migrate(existing)
+			if err != nil {
+				return nil, fmt.Errorf("migrate %s: %w", m.Name, err)
+			}
+		}
+
 		merged, added, removed, err := yamlengine.Reconcile([]byte(m.Template()), existing, m.OpenMaps...)
 		if err != nil {
 			return nil, fmt.Errorf("reconcile %s: %w", m.Name, err)
@@ -246,9 +257,10 @@ func ReconcileAll(baseDir, boardDir string, apply bool) ([]Result, error) {
 			Removed:      removed,
 			Applied:      false,
 			MigratedFrom: migratedFrom,
+			Migrated:     migrated,
 		}
 
-		hasChanges := len(added)+len(removed) > 0
+		hasChanges := len(added)+len(removed)+len(migrated) > 0
 
 		if apply && (fileAbsent || hasChanges) {
 			if err := fsx.AtomicWriteBytes(cfgPath, merged); err != nil {

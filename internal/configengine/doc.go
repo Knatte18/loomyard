@@ -9,6 +9,10 @@
 // A key missing inside a list element is the one gap fill cannot close, and is an error.
 // The result is resolved through envsource's markers.
 //
+// A present file whose content fails to parse, lacks a key inside a list element or fails to resolve returns an error marked [ErrInvalid];
+// an absent file or `_lyx/`, an unreadable file and a base directory failure stay unmarked.
+// A caller marks its own unmarshal and validation failures with [MarkInvalid], which leaves the error text unchanged.
+//
 // [Set] writes dotted key=value pairs into a module's file, scaffolding it from the template when absent, with no editor and no validation loop.
 // [Edit] is the interactive counterpart.
 // Its default editor is `$VISUAL`, then `$EDITOR`, then `code --wait` when `code` is on PATH, then `notepad` on Windows, and elsewhere `nano` when it is on PATH, else `vi`.

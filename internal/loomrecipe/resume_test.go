@@ -58,6 +58,8 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 	shed1.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	// Loom-Preflight loads batcher.yaml too, so it is substituted to let the malformed config reach Batchifier.
+	shed1.Producers[1].Producer = fakeAlwaysDoneProducer{}
 	result1, err := shed1.Run(context.Background())
 	if err != nil {
 		t.Fatalf("first Run() error = %v; want nil", err)
@@ -274,6 +276,8 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 	shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+	// Loom-Preflight loads batcher.yaml too, so it is substituted to let the malformed config reach Batchifier.
+	shed.Producers[1].Producer = fakeAlwaysDoneProducer{}
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)

@@ -18,7 +18,9 @@
 package webstercli
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -187,11 +189,31 @@ func (c *websterCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) 
 	}
 
 	if err := c.wire(loc, mode, cwd, c.stencilsDirFlag, c.planDirFlag, c.targetDirFlag); err != nil {
+		var refusal configLoadRefusal
+		if errors.As(err, &refusal) {
+			c.refuseConfigLoad(cmd, args, refusal)
+			return nil
+		}
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
 		return nil
 	}
 	return nil
+}
+
+// refuseConfigLoad prints refusal as an error envelope, carrying config_invalid: true for a content failure and nothing extra for an unreadable file, and aborts before the verb's body.
+// It writes the refusal's friction note itself, since a pre-run refusal never reaches the noteRefusals tee.
+func (c *websterCLI) refuseConfigLoad(cmd *cobra.Command, args []string, refusal configLoadRefusal) {
+	var fields map[string]any
+	if refusal.invalid {
+		fields = map[string]any{"config_invalid": true}
+	}
+	var captured bytes.Buffer
+	code := output.ErrFields(io.MultiWriter(cmd.OutOrStdout(), &captured), refusal.Error(), fields)
+	clihelp.Abort(cmd.Context(), code)
+	if c.frictionDir != "" {
+		c.noteEnvelope(cmd, args, captured.Bytes())
+	}
 }
 
 // Command returns the cobra command tree for the webster module.
@@ -225,7 +247,7 @@ Verbs:
   lyx webster accept-audit                   accept the pending run-exit audit findings once their paths are checked
   lyx webster accept-audit --batch 8         accept failed batch 8's pathless fabric references, once HEAD is at its start or its commands only read
   lyx webster restore-plan                   restore every plan file that differs from the plan the run recorded
-  lyx webster reset --to start|pre-fix       move the task branch back to the run's start commit or the verify gate's pre-fix head
+  lyx webster reset --to start|pre-fix|report-head|last-batch-head|batch-start   move the task branch back to a commit the run recorded; --batch NN for report-head and batch-start
   lyx webster verify                         run the plan's verify command over the worktree, as the verify gates do
 
 Modes:
@@ -268,8 +290,17 @@ Example (standalone, outside any lyx hub):
 }
 
 // executionBatches returns the batches every verb runs for plan and the loaded state, sizing cards from the task worktree.
+// Merriam's start base is computed only for a nil state, the one case that forms a partition; a recorded partition is mapped without reading it.
 func (c *websterCLI) executionBatches(plan *planparser.Plan, st *websterengine.State) ([]batcher.Batch, error) {
-	return websterengine.ExecutionBatches(plan, st, c.batcher, batcher.DiskSizes(c.geom.WorktreeRoot))
+	var base batcher.StartBase
+	if st == nil {
+		var err error
+		base, err = websterengine.MerriamBase(c.geom)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return websterengine.ExecutionBatches(plan, st, c.batcher, batcher.DiskSizes(c.geom.WorktreeRoot), base)
 }
 
 // addVerbs registers every webster verb under parent.
@@ -314,7 +345,7 @@ func (c *websterCLI) addVerbs(parent *cobra.Command) {
 // genuine foreign edit failing ErrFingerprintMismatch exactly as it did before.
 // Callers invoke this while still holding the state-mutation lease.
 //
-// It persists the plan baseline, the fingerprint and the per-file hashes, and NOTHING ELSE.
+// It persists the plan baseline, the fingerprint, the per-file hashes and the overview frame hash, and NOTHING ELSE.
 // The state it writes is re-loaded from disk here and carries only the new baseline, rather than being the caller's whole in-memory *State.
 // The caller's copy is not a fingerprint-only delta. RecordBatch appends to State.SeenForkTranscripts
 // the moment it attributes a fork's transcripts, well BEFORE the step that can fail, so saving the
@@ -339,6 +370,7 @@ func persistPlanFingerprintRebaseline(geom websterengine.Geometry, st *websteren
 	}
 	fresh.PlanFingerprint = st.PlanFingerprint
 	fresh.PlanFileHashes = st.PlanFileHashes
+	fresh.PlanOverviewFrameHash = st.PlanOverviewFrameHash
 	return websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, fresh)
 }
 

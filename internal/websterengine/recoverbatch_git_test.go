@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -256,4 +257,33 @@ func TestRecoverBatch_SuspectEvidence(t *testing.T) {
 			t.Errorf("recovery record ForkTranscripts = %v; want the failed record's transcripts carried", bs.ForkTranscripts)
 		}
 	})
+}
+
+// TestRecoverBatch_UncommittedPathsPrompt spawns a recovery over a real dirty worktree and asserts the prompt groups each uncommitted path by whether some session of the run wrote it.
+// The run-written paths are a file and a file inside a directory git collapses; the foreign path no session wrote.
+func TestRecoverBatch_UncommittedPathsPrompt(t *testing.T) {
+	t.Parallel()
+	s := newSuspectScenario(t)
+	fx := s.restart(t)
+	for path, content := range map[string]string{"mine.txt": "m", "newdir/inside.go": "i", "foreign.txt": "f"} {
+		writeWorktreeFile(t, fx.Worktree, path, content)
+	}
+	fx.Deps.State.MasterSessionID = "s1"
+	fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed, StartSHA: s.base}
+	fx.Engine.AuditForksFn = func(string, string) (shuttleengine.ForkAudit, error) {
+		return shuttleengine.ForkAudit{ParentWriteEvents: []shuttleengine.WriteEvent{
+			{Path: filepath.Join(fx.Worktree, "mine.txt"), Succeeded: true},
+			{Path: filepath.Join(fx.Worktree, "newdir", "inside.go"), Succeeded: true},
+			{Path: filepath.Join(fx.Worktree, "foreign.txt")},
+		}}, nil
+	}
+
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
+		t.Fatal(err)
+	}
+	want := "Written by this run:\n- mine.txt\n- newdir/\n\nNot written by this run:\n- foreign.txt"
+	if !strings.Contains(fx.Engine.LastPrompt, "What the worktree holds\n\n"+want+"\n") {
+		t.Errorf("recovery prompt does not hold the grouped uncommitted paths %q; got:\n%s", want, fx.Engine.LastPrompt)
+	}
 }

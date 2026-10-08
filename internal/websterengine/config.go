@@ -55,7 +55,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 
 	var cfg Config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
-		return Config{}, fmt.Errorf("unmarshal webster config: %w", err)
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("unmarshal webster config: %w", err))
 	}
 
 	roles := []struct {
@@ -67,7 +67,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	}
 	for _, role := range roles {
 		if _, err := modelspec.Parse(role.value); err != nil {
-			return Config{}, fmt.Errorf("webster config key %q: %w", role.key, err)
+			return Config{}, configengine.MarkInvalid(fmt.Errorf("webster config key %q: %w", role.key, err))
 		}
 	}
 
@@ -92,7 +92,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	}
 	for _, knob := range knobs {
 		if knob.value <= 0 {
-			return Config{}, fmt.Errorf("webster config key %q: must be a positive integer, got %d — a missing or zero value silently classifies every recovery batch dead on its first poll rather than degrading", knob.key, knob.value)
+			return Config{}, configengine.MarkInvalid(fmt.Errorf("webster config key %q: must be a positive integer, got %d — a missing or zero value silently classifies every recovery batch dead on its first poll rather than degrading", knob.key, knob.value))
 		}
 	}
 

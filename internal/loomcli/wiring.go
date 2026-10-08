@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
@@ -117,6 +118,18 @@ func reworkCommitPathspec(location *lyxcwd.Location) []string {
 		paths = append(paths, loomengine.LoomReviewsDirRel())
 	}
 	if holdsFile(websterengine.Dir(location.AnchorPath())) || holdsFileAt(loomshed.LatestArchivedWebsterDir(reworkDir)) {
+		paths = append(paths, websterengine.DirRel())
+	}
+	return paths
+}
+
+// planCommitPathspec returns the pathspec the plan commit stages: the plan directory, and webster's durable directory too when it holds a file or Plan-Write's rotation archived a run record under the plan.
+// Webster's directory is tracked, so a record moved out of it leaves deletions that only that pathspec stages, together with the archive, in the same commit.
+// It is left out otherwise, since git refuses a pathspec that matches nothing in the index or the working tree.
+func planCommitPathspec(location *lyxcwd.Location) []string {
+	paths := []string{planparser.PlanDirRel()}
+	archived := loomshed.ArchivedPlanWebsterDirs(planparser.PlanDir(location.AnchorPath()))
+	if holdsFile(websterengine.Dir(location.AnchorPath())) || slices.ContainsFunc(archived, holdsFile) {
 		paths = append(paths, websterengine.DirRel())
 	}
 	return paths
@@ -657,9 +670,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// discussion precedent: the commit keeps the artifact durable, it does not certify it. The
 		// pathspec is the whole plan directory via
 		// planparser.PlanDirRel(), never a hand-built filepath.Join naming the _lyx literal, which
-		// the Lyxdirs Single-Declarer Invariant forbids in production path-construction context.
+		// the Lyxdirs Single-Declarer Invariant forbids in production path-construction context;
+		// planCommitPathspec adds webster's durable directory when Plan-Write's rotation moved a run record out of it.
 		CommitPlan: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{planparser.PlanDirRel()}, fmt.Sprintf("loom: plan artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, planCommitPathspec(location), fmt.Sprintf("loom: plan artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
 		// ApprovePlan is what flips approved: true on the Plan-Bouncer row's approved settle. It runs

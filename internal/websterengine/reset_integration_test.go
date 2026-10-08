@@ -54,7 +54,13 @@ func (fx *resetFixture) step(t *testing.T, name string, run func(t *testing.T)) 
 
 func (fx *resetFixture) wantRefusal(t *testing.T, to ResetTarget, parts ...string) {
 	t.Helper()
-	_, err := PlanReset(fx.deps, to)
+	fx.wantBatchRefusal(t, to, 0, parts...)
+}
+
+// wantBatchRefusal is wantRefusal for a target that takes --batch.
+func (fx *resetFixture) wantBatchRefusal(t *testing.T, to ResetTarget, batch int, parts ...string) {
+	t.Helper()
+	_, err := PlanReset(fx.deps, to, batch)
 	if err == nil {
 		t.Fatalf("PlanReset(%s) error = nil, want a refusal containing %q", to, parts)
 	}
@@ -62,6 +68,18 @@ func (fx *resetFixture) wantRefusal(t *testing.T, to ResetTarget, parts ...strin
 		if !strings.Contains(err.Error(), p) {
 			t.Errorf("PlanReset(%s) error = %v, want it to contain %q", to, err, p)
 		}
+	}
+}
+
+// wantPlanSHA asserts PlanReset resolves to to, with batch, to the commit want.
+func (fx *resetFixture) wantPlanSHA(t *testing.T, to ResetTarget, batch int, want string) {
+	t.Helper()
+	plan, err := PlanReset(fx.deps, to, batch)
+	if err != nil {
+		t.Fatalf("PlanReset(%s) error = %v, want a plan", to, err)
+	}
+	if plan.SHA != want || plan.Target != to {
+		t.Errorf("PlanReset(%s) = %+v, want SHA %s", to, plan, want)
 	}
 }
 
@@ -91,14 +109,11 @@ func TestPlanReset(t *testing.T) {
 
 	fx.step(t, "no recorded target refuses", func(t *testing.T) {
 		fx.deps.State.Batches = map[int]*BatchState{}
-		fx.wantRefusal(t, ResetToStart, "no batch recorded a start commit", "lyx webster run --fresh")
 		fx.wantRefusal(t, ResetToPreFix, "no pre-fix head", "way forward: run `lyx webster run`")
 	})
 
 	fx.step(t, "missing commit refuses", func(t *testing.T) {
 		bogus := strings.Repeat("ab", 20)
-		fx.deps.State.Batches[1].StartSHA = bogus
-		fx.wantRefusal(t, ResetToStart, bogus, "not in this repository")
 		fx.deps.State.PreFixHead = bogus
 		fx.wantRefusal(t, ResetToPreFix, bogus, "not in this repository")
 	})
@@ -108,10 +123,26 @@ func TestPlanReset(t *testing.T) {
 		gitkit.Git(t, fx.root, "checkout", "-b", "side", fx.first)
 		side := gitkit.CommitFile(t, fx.root, "c.txt", "side", "side")
 		gitkit.Git(t, fx.root, "checkout", "task")
-		fx.deps.State.Batches[1].StartSHA = side
 		fx.deps.State.PreFixHead = side
-		fx.wantRefusal(t, ResetToStart, "not an ancestor of HEAD", "lyx webster run --fresh")
 		fx.wantRefusal(t, ResetToPreFix, "not an ancestor of HEAD", "lyx webster reset --to start")
+	})
+
+	// The orphan commits this step makes sit on no branch, so no later step reads them.
+	fx.step(t, "start with no common ancestor archives without moving", func(t *testing.T) {
+		const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+		orphan1 := gitkit.Git(t, fx.root, "commit-tree", emptyTree, "-m", "orphan 1")
+		orphan2 := gitkit.Git(t, fx.root, "commit-tree", emptyTree, "-m", "orphan 2")
+		fx.deps.State.Batches = map[int]*BatchState{
+			1: {Slug: "one", StartSHA: orphan1},
+			2: {Slug: "two", StartSHA: orphan2},
+		}
+		plan, err := PlanReset(fx.deps, ResetToStart, 0)
+		if err != nil {
+			t.Fatalf("PlanReset error = %v, want an archive-only plan", err)
+		}
+		if !plan.ArchiveOnly || plan.SHA != "" || !strings.Contains(plan.Reason, "no common ancestor") {
+			t.Errorf("plan = %+v, want an archive-only plan whose reason names the missing common ancestor", plan)
+		}
 	})
 
 	fx.step(t, "foreign dirt refuses and names the path", func(t *testing.T) {
@@ -128,7 +159,7 @@ func TestPlanReset(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = os.Remove(scratch) })
-		plan, err := PlanReset(fx.deps, ResetToStart)
+		plan, err := PlanReset(fx.deps, ResetToStart, 0)
 		if err != nil {
 			t.Fatalf("PlanReset error = %v, want a plan", err)
 		}
@@ -148,7 +179,7 @@ func TestPlanReset(t *testing.T) {
 			1: {Slug: "one", StartSHA: s1},
 			2: {Slug: "two", StartSHA: s2},
 		}
-		plan, err := PlanReset(fx.deps, ResetToStart)
+		plan, err := PlanReset(fx.deps, ResetToStart, 0)
 		if err != nil {
 			t.Fatalf("PlanReset error = %v, want a plan", err)
 		}
@@ -177,7 +208,7 @@ func TestPlanReset(t *testing.T) {
 		fx.wantRefusal(t, ResetToPreFix, "b.txt")
 
 		gitkit.Git(t, fx.root, "checkout", "--", "b.txt")
-		plan, err := PlanReset(fx.deps, ResetToPreFix)
+		plan, err := PlanReset(fx.deps, ResetToPreFix, 0)
 		if err != nil {
 			t.Fatalf("PlanReset error = %v, want a plan", err)
 		}
@@ -187,5 +218,43 @@ func TestPlanReset(t *testing.T) {
 		if plan.SHA != fx.first {
 			t.Errorf("plan.SHA = %s, want %s", plan.SHA, fx.first)
 		}
+	})
+
+	fx.step(t, "last-batch-head resolves to the last recorded batch head", func(t *testing.T) {
+		fx.deps.State.Batches[1].Terminal = true
+		fx.deps.State.Batches[1].Digest = &Digest{HeadSHA: fx.first}
+		fx.wantPlanSHA(t, ResetToLastBatchHead, 0, fx.first)
+	})
+
+	fx.step(t, "batch-start resolves to the batch's recorded start", func(t *testing.T) {
+		fx.wantPlanSHA(t, ResetToBatchStart, 1, fx.first)
+	})
+
+	// The side branch this step leaves holds a commit outside "task", which no later step reads.
+	fx.step(t, "report-head resolves to the report head and keeps the ancestry and dirt guards", func(t *testing.T) {
+		fx.deps.Geom.ReportsDir = t.TempDir()
+		writeReport := func(head string) {
+			t.Helper()
+			path := filepath.Join(fx.deps.Geom.ReportsDir, ReportFileName(1, "one"))
+			if err := WriteReport(path, &Report{Status: ReportStatusOK, HeadSHA: head}); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		writeReport(fx.head)
+		fx.wantPlanSHA(t, ResetToReportHead, 1, fx.head)
+
+		gitkit.Git(t, fx.root, "checkout", "-b", "report-side", fx.first)
+		side := gitkit.CommitFile(t, fx.root, "d.txt", "side", "side")
+		gitkit.Git(t, fx.root, "checkout", "task")
+		writeReport(side)
+		fx.wantBatchRefusal(t, ResetToReportHead, 1, "not an ancestor of HEAD", "lyx webster reset --to start")
+
+		writeReport(fx.first)
+		t.Cleanup(func() { gitkit.Git(t, fx.root, "checkout", "--", "b.txt") })
+		if err := os.WriteFile(filepath.Join(fx.root, "b.txt"), []byte("edited"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fx.wantBatchRefusal(t, ResetToReportHead, 1, "b.txt", "re-run `lyx webster reset --to report-head --batch 01`")
 	})
 }

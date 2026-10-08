@@ -82,7 +82,7 @@ func unbegunCards(batches []batcher.Batch, st *State) []planparser.Card {
 // Recovery cannot change the plan, so the way forward edits it; a record recovery would refuse as uncheckable restarts the run instead.
 func deleteReferencedWayForward(number int, uncheckable bool) string {
 	if uncheckable {
-		return freshRestartSteps
+		return freshRestartSteps(stepRun)
 	}
 	return fmt.Sprintf("move the delete to a card after the one that still references it, run `lyx webster rebaseline --card NN` naming each card you edited, then `lyx webster recover-batch %02d`", number)
 }
@@ -416,7 +416,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	}
 
 	// Cross-check report's head_sha against the worktree's actual HEAD, tolerating a parent merge-in.
-	moved, err := reconcileReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, report.HeadSHA, "batch report "+reportPath, deps.ParentBranch)
+	moved, err := reconcileReportHead(deps.Geom.git(), deps.Geom.WorktreeRoot, report.HeadSHA, "batch report "+reportPath, deps.ParentBranch, number)
 	if err != nil {
 		return nil, err
 	}
@@ -471,6 +471,25 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 			HeadSHA: report.HeadSHA,
 			Verb:    "record-batch",
 		}, err)
+		if ferr != nil {
+			return nil, ferr
+		}
+		return &RecordResult{Digest: bs.Digest, Failed: true, Warnings: warnings}, bfe
+	}
+
+	// An amendment accepted while this attempt ran means the attempt built the old card, so the batch fails whatever the report says and recovery re-runs it.
+	if len(amendedReasons(bs)) > 0 {
+		bfe, ferr := failBatch(failBatchInput{
+			State:        deps.State,
+			Batch:        bs,
+			Number:       number,
+			Slug:         slug,
+			ReportsDir:   deps.Geom.ReportsDir,
+			WorktreeRoot: deps.Geom.WorktreeRoot,
+			Git:          deps.Geom.Git,
+			HeadSHA:      report.HeadSHA,
+			Now:          time.Now,
+		})
 		if ferr != nil {
 			return nil, ferr
 		}

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -117,7 +118,11 @@ func (p *planWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 // so the producer aborts before spawning a session that would silently rewrite the plan.
 // The plan stays in place on that failure,
 // so the next attempt renders the block again rather than finding nothing to announce.
-func NewPlanDirRotator(anchorPath, stencilsDir string, now func() time.Time) func() (string, error) {
+//
+// archiveWebster is told by the caller and archives webster's run record into the directory it is handed.
+// The closure calls it once with the archive's webster subdirectory, after the block renders and before any plan file moves, and only when stale files are being rotated.
+// A failure of it, including a webster run holding its run lock, is returned as the closure's error with the plan left in place, so a retry rotates again.
+func NewPlanDirRotator(anchorPath, stencilsDir string, archiveWebster func(dest string) error, now func() time.Time) func() (string, error) {
 	if now == nil {
 		now = time.Now
 	}
@@ -133,11 +138,31 @@ func NewPlanDirRotator(anchorPath, stencilsDir string, now func() time.Time) fun
 		if err != nil {
 			return "", fmt.Errorf("loomshed: announce prior plan: %w", err)
 		}
+		if err := archiveWebster(filepath.Join(archiveDir, reworkPriorWebster)); err != nil {
+			return "", fmt.Errorf("loomshed: archive webster run record: %w", err)
+		}
 		if err := rotateStalePlanDir(planDir, archiveDir, staleFiles); err != nil {
 			return "", fmt.Errorf("loomshed: rotate stale plan directory: %w", err)
 		}
 		return "\n" + block, nil
 	}
+}
+
+// ArchivedPlanWebsterDirs returns the webster subdirectory of every archive-* directory under planDir, each the place NewPlanDirRotator archives webster's run record into.
+// A subdirectory is listed whether or not it exists, since a rotation with no record to move creates none.
+func ArchivedPlanWebsterDirs(planDir string) []string {
+	entries, err := os.ReadDir(planDir)
+	if err != nil {
+		return nil
+	}
+	archivePrefix := planparser.ArchiveDirName("", "")
+	var dirs []string
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), archivePrefix) {
+			dirs = append(dirs, filepath.Join(planDir, e.Name(), reworkPriorWebster))
+		}
+	}
+	return dirs
 }
 
 // stalePlanRotation plans a rotation without performing it: it returns the plan directory resolved from anchorPath, the first free archive-<stamp>[-N] path under it, and the names of the plan directory's top-level ".md" files.

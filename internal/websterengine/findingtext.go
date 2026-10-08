@@ -38,8 +38,8 @@ const (
 	stepRestorePlan = "lyx webster restore-plan (or lyx webster rebaseline --card NN for an edit to a card no batch has begun)"
 	// stepResetToStart is the step that moves the task branch back to the run's start commit.
 	stepResetToStart = "lyx webster reset --to start"
-	// stepRunFresh is the step that starts the run over.
-	stepRunFresh = "lyx webster run --fresh"
+	// stepRun is the plain step that runs, or starts, the run.
+	stepRun = "lyx webster run"
 )
 
 // findingItem is one correctness finding as the findings clause names it.

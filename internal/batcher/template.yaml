@@ -7,8 +7,8 @@ profiles:   # named batchifier settings, each chosen by active:; the operator ma
     max_cards: 6   # most cards one batch holds, at least 2
     budget: 450000   # a batch of two or more cards never exceeds this peak context, in tokens; a card over it runs alone
     weights:   # the estimator's coefficients, in context tokens or messages
-      master_base: 52000   # context Merriam holds when it spawns its first fork
-      batch_growth: 7000   # context Merriam gains per finished batch, so a fork at position k starts at master_base + (k-1) * batch_growth
+      orientation: 31400   # context Merriam gains between loading its start base and spawning its first fork; the start base itself is computed from what Merriam loads
+      batch_growth: 7000   # context Merriam gains per finished batch, so a fork at position k starts at the start base + orientation + (k-1) * batch_growth
       fork_messages: 4   # messages a fork spends before its first card
       message_context: 300   # context one message adds: its tool call and output
       target_messages: 6   # messages per target a card edits

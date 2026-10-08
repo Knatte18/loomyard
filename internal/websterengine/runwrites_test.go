@@ -1,11 +1,13 @@
 // runwrites_test.go covers loadRunWrites: every recorded Master session is audited and its events merged,
-// a session id recorded twice is audited once, and an audit error surfaces naming the session.
+// a session id recorded twice is audited once, an audit error surfaces naming the session,
+// and writtenWorktreePaths turns the events into worktree-relative paths.
 // Untagged, with a shuttlefake.Engine — no git, no subprocess spawns.
 
 package websterengine
 
 import (
 	"errors"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -82,6 +84,31 @@ func TestLoadRunWrites(t *testing.T) {
 		}
 		if len(got.Master) != 1 {
 			t.Errorf("Master = %v, want one event", got.Master)
+		}
+	})
+
+	t.Run("written worktree paths keep untracked files and drop failed and outside writes", func(t *testing.T) {
+		t.Parallel()
+
+		worktree := t.TempDir()
+		writes := RunWrites{
+			Master: []shuttleengine.WriteEvent{
+				{Path: filepath.Join(worktree, "b", "new.go"), Succeeded: true},
+				{Path: filepath.Join(worktree, "failed.go")},
+				{Path: filepath.Join(t.TempDir(), "outside.go"), Succeeded: true},
+			},
+			Forks: []shuttleengine.WriteEvent{
+				{Path: "a.go", Succeeded: true},
+				{Path: filepath.Join(worktree, "b", "new.go"), Succeeded: true},
+			},
+		}
+
+		got, err := writtenWorktreePaths(writes, worktree)
+		if err != nil {
+			t.Fatalf("writtenWorktreePaths: %v", err)
+		}
+		if want := []string{"a.go", "b/new.go"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("writtenWorktreePaths = %v, want %v", got, want)
 		}
 	})
 

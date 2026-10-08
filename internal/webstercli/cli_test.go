@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
@@ -129,6 +130,8 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 		refMatcher: fabricengine.NewRefScanner(layout),
 		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) },
 	}
+	// A verb run with no state computes Merriam's start base, which reads the Master stencil.
+	stencilkit.SeedInto(t, c.geom.StencilsDir)
 	return c, hub
 }
 
@@ -346,7 +349,7 @@ func TestValidateCmd_BatchesFlag(t *testing.T) {
 	cost := batcher.NewCost("pair", batcher.CostParams{
 		Budget:   1e9,
 		MaxCards: 2,
-		Weights:  batcher.Weights{MasterBase: 1000},
+		Weights:  batcher.Weights{Orientation: 1000},
 	})
 
 	for _, tc := range []struct {
@@ -374,6 +377,16 @@ func TestValidateCmd_BatchesFlag(t *testing.T) {
 			c, _ := newTestCLI(t)
 			c.batcher = cost
 			plankit.Write(t, c.geom.PlanDir, twoCardUsesPlan(2, 1))
+
+			// With no recorded state the partition is priced from Merriam's start base, and this profile's context_per_line is zero, so the base adds its fixed context alone.
+			if batches, ok := tc.want["batches"].([]any); ok {
+				base, err := websterengine.MerriamBase(c.geom)
+				if err != nil {
+					t.Fatalf("MerriamBase() error = %v", err)
+				}
+				batch := batches[0].(map[string]any)
+				batch["estimate"] = batch["estimate"].(float64) + base.Fixed
+			}
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(c.validateCmd(), &out, tc.args)
@@ -1061,9 +1074,11 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 			t.Fatalf("seed SaveState() error = %v", err)
 		}
 		st := &websterengine.State{
-			RunGUID:             "g3",
-			PlanFingerprint:     "after the rewrite",
-			SeenForkTranscripts: []string{"/transcripts/fork-a.jsonl"},
+			RunGUID:               "g3",
+			PlanFingerprint:       "after the rewrite",
+			PlanFileHashes:        map[string]string{"00-overview.md": "overview-hash"},
+			PlanOverviewFrameHash: "frame-hash",
+			SeenForkTranscripts:   []string{"/transcripts/fork-a.jsonl"},
 		}
 
 		if err := persistPlanFingerprintRebaseline(geom, st, "before the rewrite"); err != nil {
@@ -1078,6 +1093,9 @@ func TestPersistPlanFingerprintRebaseline(t *testing.T) {
 		}
 		if loaded.PlanFingerprint != "after the rewrite" {
 			t.Errorf("LoadState().PlanFingerprint = %q; want %q", loaded.PlanFingerprint, "after the rewrite")
+		}
+		if loaded.PlanFileHashes["00-overview.md"] != "overview-hash" || loaded.PlanOverviewFrameHash != "frame-hash" {
+			t.Errorf("LoadState() hashes = %v, frame %q; want the file hashes and the overview frame hash carried beside the fingerprint", loaded.PlanFileHashes, loaded.PlanOverviewFrameHash)
 		}
 		if len(loaded.SeenForkTranscripts) != 0 {
 			t.Errorf("LoadState().SeenForkTranscripts = %v; want empty — persisting it marks the fork's transcript consumed on a call that FAILED, and the resumed record-batch then finds nothing to attribute", loaded.SeenForkTranscripts)
@@ -1296,9 +1314,9 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 						Intent:  "replacement card.",
 					}},
 				})
-				return []string{}
+				return []string{"--card", "1"}
 			},
-			wantIn: []string{"--fresh"},
+			wantIn: []string{"1) lyx webster reset --to start; 2) lyx webster run"},
 		},
 		{
 			name: "named card of a done batch",
@@ -1317,7 +1335,7 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 				}
 				return []string{"--card", "1"}
 			},
-			wantIn: []string{"01-only changed since it was begun", "batch is done", "--fresh"},
+			wantIn: []string{"01-only changed since it was begun", "batch is done", "add a follow-up card after the last begun batch", "rebaseline --card NN"},
 		},
 	}
 	for _, tc := range cases {

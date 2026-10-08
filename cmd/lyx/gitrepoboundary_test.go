@@ -68,6 +68,7 @@ var gitrepoPinnedRunBoundMethods = []string{
 	"Fetch",
 	"IsAncestor",
 	"ResetHard",
+	"ResetKeep",
 	"pushWithRebaseRetry",
 	"PushRebaseFree",
 	"HasUnpushed",

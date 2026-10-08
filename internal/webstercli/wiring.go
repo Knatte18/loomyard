@@ -9,10 +9,12 @@ package webstercli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/cliwire"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -139,11 +141,11 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	}
 	websterCfg, err := websterengine.LoadConfig(anchorPath, "webster")
 	if err != nil {
-		return err
+		return configLoadError("webster.yaml", err)
 	}
 	activeBatcher, err := batcher.Active(anchorPath)
 	if err != nil {
-		return batcherLoadError(err)
+		return configLoadError("batcher.yaml", err)
 	}
 	registry, err := modelspec.LoadRegistry(anchorPath)
 	if err != nil {
@@ -265,11 +267,11 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	}
 	websterCfg, err := websterengine.LoadConfig(res.StateDir, "webster")
 	if err != nil {
-		return err
+		return configLoadError("webster.yaml", err)
 	}
 	activeBatcher, err := batcher.Active(res.StateDir)
 	if err != nil {
-		return batcherLoadError(err)
+		return configLoadError("batcher.yaml", err)
 	}
 	registry, err := modelspec.LoadRegistry(res.StateDir)
 	if err != nil {
@@ -326,10 +328,32 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	return nil
 }
 
-// batcherLoadError wraps a batcher.Active error as a refusal naming batcher.yaml and the way forward.
-// Both wiring prologues return it before any verb's body runs, so a profile that does not load leaves the recorded partition and state untouched.
-func batcherLoadError(cause error) error {
-	return fmt.Errorf("webster: batcher.yaml did not load: %w; way forward: fix batcher.yaml under _lyx/config, then re-run the verb", cause)
+// configLoadRefusal is the refusal a verb's config load returns before its body runs: the message, and whether the cause was a content failure of the config file.
+// configLoadError is the only code that constructs one.
+type configLoadRefusal struct {
+	message string
+	invalid bool
+	cause   error
+}
+
+func (r configLoadRefusal) Error() string { return r.message }
+
+func (r configLoadRefusal) Unwrap() error { return r.cause }
+
+// configLoadError wraps the error of loading the named config file (such as "batcher.yaml") as a configLoadRefusal that names the file and the way forward.
+// A content failure (configengine.ErrInvalid) is invalid and names the fix, or the reconcile run when the cause is a retired batcher key;
+// any other cause is a file that exists but cannot be read, which is transient.
+// Both wiring prologues return it before any verb's body runs, so a config that does not load leaves the recorded partition and state untouched.
+func configLoadError(file string, cause error) error {
+	switch {
+	case errors.Is(cause, batcher.ErrRetiredKey):
+		// The retired-key cause already ends in the reconcile way forward.
+		return configLoadRefusal{message: fmt.Sprintf("webster: %s did not load: %v, then re-run the verb", file, cause), invalid: true, cause: cause}
+	case errors.Is(cause, configengine.ErrInvalid):
+		return configLoadRefusal{message: fmt.Sprintf("webster: %s did not load: %v; way forward: fix %s under _lyx/config, then re-run the verb", file, cause, file), invalid: true, cause: cause}
+	default:
+		return configLoadRefusal{message: fmt.Sprintf("webster: %s could not be read: %v; way forward: transient, re-run the verb", file, cause), cause: cause}
+	}
 }
 
 // setRunner stores runner and its adapted seams (starter, masterStarter) plus the claude/reed engines onto c, shared by both wireHub and wireStandalone so the adaptation is named once.

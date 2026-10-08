@@ -88,7 +88,7 @@ func TestAcceptBatchFabricReference_ClearsAfterCommitsDiscarded(t *testing.T) {
 	t.Parallel()
 	st, geom, g := acceptBatchFixture(t)
 	start := g.head
-	// The batch committed, then the operator ran `git reset --keep <start>`.
+	// The batch committed, then the operator moved HEAD back to the batch's start.
 	st.Batches[8].Digest.HeadSHA = g.commit()
 	g.head = start
 
@@ -150,18 +150,18 @@ func TestAcceptBatchFabricReference_Refusals(t *testing.T) {
 			st.Batches[8].Uncheckable = append(st.Batches[8].Uncheckable, ".lyx/webster/pause")
 		}, want: "not a pathless fabric reference"},
 		{name: "no start commit", batch: 8, mutate: func(st *websterengine.State, _ *fakeGit) { st.Batches[8].StartSHA = "" }, want: "recorded no start commit"},
-		{name: "HEAD moved past the start on a command that is not a reader", batch: 8, mutate: func(_ *websterengine.State, g *fakeGit) { g.commit() }, want: "reset --to start"},
-		{name: "committed batch with a redirection", batch: 8, mutate: committedWith(readOnlyEntry("cat a > b")), want: "reset --to start"},
-		{name: "committed batch with tee", batch: 8, mutate: committedWith(readOnlyEntry("cat a | tee b")), want: "reset --to start"},
-		{name: "committed batch with sort", batch: 8, mutate: committedWith(readOnlyEntry("cat a | sort")), want: "reset --to start"},
-		{name: "committed batch with uniq", batch: 8, mutate: committedWith(readOnlyEntry("cat a | uniq")), want: "reset --to start"},
-		{name: "committed batch with no recorded command", batch: 8, mutate: committedWith("fabric-reference: an older record without the command"), want: "reset --to start"},
+		{name: "HEAD moved past the start on a command that is not a reader", batch: 8, mutate: func(_ *websterengine.State, g *fakeGit) { g.commit() }, want: "reset --to batch-start --batch 08"},
+		{name: "committed batch with a redirection", batch: 8, mutate: committedWith(readOnlyEntry("cat a > b")), want: "reset --to batch-start --batch 08"},
+		{name: "committed batch with tee", batch: 8, mutate: committedWith(readOnlyEntry("cat a | tee b")), want: "reset --to batch-start --batch 08"},
+		{name: "committed batch with sort", batch: 8, mutate: committedWith(readOnlyEntry("cat a | sort")), want: "reset --to batch-start --batch 08"},
+		{name: "committed batch with uniq", batch: 8, mutate: committedWith(readOnlyEntry("cat a | uniq")), want: "reset --to batch-start --batch 08"},
+		{name: "committed batch with no recorded command", batch: 8, mutate: committedWith("fabric-reference: an older record without the command"), want: "reset --to batch-start --batch 08"},
 		{name: "one entry among read-only ones refuses all", batch: 8, mutate: committedWith(readOnlyEntry("cat a"), readOnlyEntry("cat a > b")), want: "is not: "},
 		{name: "start is not an ancestor of HEAD", batch: 8, mutate: func(st *websterengine.State, g *fakeGit) {
 			g.commit()
 			g.parents["unrelated"] = nil
 			st.Batches[8].StartSHA = "unrelated"
-		}, want: "git reset --keep unrelated"},
+		}, want: "1) lyx webster reset --to start; 2) lyx webster run"},
 		{name: "committed batch on a dirty worktree", batch: 8, mutate: func(st *websterengine.State, g *fakeGit) {
 			committedWith(readOnlyEntry("cat a"))(st, g)
 			g.dirtyPaths = []string{"internal/x/x.go"}

@@ -31,7 +31,7 @@ func TestIdentityBatcher_Batch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := Identity().Batch(nil, tt.cards, nil, tt.before)
+			got, err := Identity().Batch(nil, tt.cards, nil, tt.before, StartBase{})
 			if err != nil {
 				t.Fatalf("Batch: %v", err)
 			}

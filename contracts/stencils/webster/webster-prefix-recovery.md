@@ -2,7 +2,7 @@
      by RenderRecoveryPrompt (render.go) via internal/stencil, then written to a prompt file under _lyx/webster/prompts/ and handed to the SEPARATE, cold recovery-strand process recover-batch spawns when a fork reports stuck or writes no report — see the fork-context-hygiene Shared Decision.
      Unlike a fork prefix, this strand inherits NOTHING from Master's session: no codebase orientation, no plan framing, no constraints.
      It must earn its own orientation before the shared implementer body runs.
-     Its markers are {{.pattern_directive}}, {{.friction_directive}} and {{.failure_digest}}, all optional (filled via stencil.FillOptional); the first two render as nothing when their own tier is inactive, and failure_digest renders as `none` when the batch was not failed.
+     Its markers are {{.pattern_directive}}, {{.friction_directive}}, {{.failure_digest}} and {{.uncommitted_paths}}, all optional (filled via stencil.FillOptional); the first two render as nothing when their own tier is inactive, failure_digest renders as `none` when the batch was not failed, and uncommitted_paths renders as `none` on a clean worktree.
      parent_directive is a fourth optional marker, rendered by internal/parentdirective. -->
 
 # Webster cold recovery implementer — starting COLD, inheriting nothing
@@ -35,4 +35,14 @@ those are Master's own verbs, driven by a session you are not part of.
 
 If the text above is not `none`, webster rejected this batch's earlier report, and the text lists why.
 Treat every path named as a suspect path as suspect: revert it or re-derive it before you finish the card.
-You continue from the committed tree, not from scratch.
+You continue from the committed tree plus the uncommitted work listed under "What the worktree holds" below, not from scratch.
+
+## What the worktree holds
+
+{{.uncommitted_paths}}
+
+If the text above is not `none`, the worktree holds uncommitted work, and the text groups each path by who wrote it:
+
+- Under "Written by this run": the earlier attempt's unfinished work.
+  Keep it as the starting point, check it against the card before building on it, and apply the suspect rule above to any path the failure digest names.
+- Under "Not written by this run": leave it untouched, and never stage or commit it.

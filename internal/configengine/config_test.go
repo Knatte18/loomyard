@@ -36,6 +36,8 @@ const (
 	baseConfigDir
 	// baseWithFile creates _lyx/config/ and writes content as the module's config file.
 	baseWithFile
+	// baseUnreadable creates _lyx/config/ with a directory where the module's config file belongs, so reading it fails without the file being absent.
+	baseUnreadable
 )
 
 // newBase builds a fresh temp base directory in the given state and returns it with the module's config file path.
@@ -49,9 +51,14 @@ func newBase(t *testing.T, state baseState, module, content string) (baseDir, pa
 		if err := os.Mkdir(filepath.Join(baseDir, lyxdirs.LyxDirName), 0755); err != nil {
 			t.Fatalf("failed to create _lyx: %v", err)
 		}
-	case baseConfigDir, baseWithFile:
+	case baseConfigDir, baseWithFile, baseUnreadable:
 		if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0755); err != nil {
 			t.Fatalf("failed to create _lyx/config: %v", err)
+		}
+		if state == baseUnreadable {
+			if err := os.Mkdir(configengine.ConfigFile(baseDir, module), 0755); err != nil {
+				t.Fatalf("failed to create %s.yaml as a directory: %v", module, err)
+			}
 		}
 		if state == baseWithFile {
 			if err := os.WriteFile(configengine.ConfigFile(baseDir, module), []byte(content), 0644); err != nil {
@@ -230,6 +237,8 @@ func TestLoad_Refusals(t *testing.T) {
 		openMaps   []string
 		wantErr    []string
 		wantNotErr []string
+		// wantInvalid is whether the error is marked ErrInvalid, under Load and, for a present path, under LoadOrTemplate.
+		wantInvalid bool
 	}{
 		{
 			name:     "uninitialized base directory",
@@ -244,52 +253,64 @@ func TestLoad_Refusals(t *testing.T) {
 			wantErr:  []string{"not found", "lyx config reconcile"},
 		},
 		{
-			name:       "null where the template holds a mapping",
-			state:      baseWithFile,
-			template:   "server:\n  host: localhost\n",
-			content:    "server:\n",
-			wantErr:    []string{"server"},
-			wantNotErr: []string{"lyx config reconcile"},
+			name:     "config file that cannot be read",
+			state:    baseUnreadable,
+			template: "path: _board\n",
+			wantErr:  []string{"read config file"},
 		},
 		{
-			name:       "mapping where the template holds a scalar",
-			state:      baseWithFile,
-			template:   "server: localhost\n",
-			content:    "server:\n  host: x\n",
-			wantErr:    []string{"server"},
-			wantNotErr: []string{"lyx config reconcile"},
+			name:        "null where the template holds a mapping",
+			state:       baseWithFile,
+			template:    "server:\n  host: localhost\n",
+			content:     "server:\n",
+			wantErr:     []string{"server"},
+			wantNotErr:  []string{"lyx config reconcile"},
+			wantInvalid: true,
 		},
 		{
-			name:       "key missing inside a present list element",
-			state:      baseWithFile,
-			template:   "items:\n  - name: a\n    size: 1\n",
-			content:    "items:\n  - name: a\n",
-			wantErr:    []string{"missing keys", "items"},
-			wantNotErr: []string{"lyx config reconcile"},
+			name:        "mapping where the template holds a scalar",
+			state:       baseWithFile,
+			template:    "server: localhost\n",
+			content:     "server:\n  host: x\n",
+			wantErr:     []string{"server"},
+			wantNotErr:  []string{"lyx config reconcile"},
+			wantInvalid: true,
 		},
 		{
-			name:       "unparseable file",
-			state:      baseWithFile,
-			template:   "path: _board\n",
-			content:    "path: [unclosed\n",
-			wantErr:    []string{"board.yaml"},
-			wantNotErr: []string{"lyx config reconcile"},
+			name:        "key missing inside a present list element",
+			state:       baseWithFile,
+			template:    "items:\n  - name: a\n    size: 1\n",
+			content:     "items:\n  - name: a\n",
+			wantErr:     []string{"missing keys", "items"},
+			wantNotErr:  []string{"lyx config reconcile"},
+			wantInvalid: true,
 		},
 		{
-			name:       "filled env marker whose variable is unset",
-			state:      baseWithFile,
-			template:   "path: _board\ntoken: ${env:TEST_FILL_UNSET_VAR}\n",
-			content:    "path: custom\n",
-			wantErr:    []string{"TEST_FILL_UNSET_VAR"},
-			wantNotErr: []string{"lyx config reconcile"},
+			name:        "unparseable file",
+			state:       baseWithFile,
+			template:    "path: _board\n",
+			content:     "path: [unclosed\n",
+			wantErr:     []string{"board.yaml"},
+			wantNotErr:  []string{"lyx config reconcile"},
+			wantInvalid: true,
 		},
 		{
-			name:       "list at an undeclared open map",
-			state:      baseWithFile,
-			template:   openMapTemplate,
-			content:    "name: x\nlabels:\n  - bug\n  - docs\n",
-			wantErr:    []string{"labels"},
-			wantNotErr: []string{"lyx config reconcile"},
+			name:        "filled env marker whose variable is unset",
+			state:       baseWithFile,
+			template:    "path: _board\ntoken: ${env:TEST_FILL_UNSET_VAR}\n",
+			content:     "path: custom\n",
+			wantErr:     []string{"TEST_FILL_UNSET_VAR"},
+			wantNotErr:  []string{"lyx config reconcile"},
+			wantInvalid: true,
+		},
+		{
+			name:        "list at an undeclared open map",
+			state:       baseWithFile,
+			template:    openMapTemplate,
+			content:     "name: x\nlabels:\n  - bug\n  - docs\n",
+			wantErr:     []string{"labels"},
+			wantNotErr:  []string{"lyx config reconcile"},
+			wantInvalid: true,
 		},
 	}
 
@@ -312,7 +333,42 @@ func TestLoad_Refusals(t *testing.T) {
 					t.Errorf("a refusal reconcile cannot fix must not hint at %q, got: %v", unwanted, err)
 				}
 			}
+			if got := errors.Is(err, configengine.ErrInvalid); got != tc.wantInvalid {
+				t.Errorf("Load error marked ErrInvalid = %v; want %v: %v", got, tc.wantInvalid, err)
+			}
+
+			// An absent file or _lyx/ degrades under LoadOrTemplate; a present path errors exactly as under Load.
+			if tc.state != baseWithFile && tc.state != baseUnreadable {
+				return
+			}
+			_, err = configengine.LoadOrTemplate(baseDir, "board", []byte(tc.template), tc.openMaps...)
+			if err == nil {
+				t.Fatalf("LoadOrTemplate: expected error, got nil")
+			}
+			if got := errors.Is(err, configengine.ErrInvalid); got != tc.wantInvalid {
+				t.Errorf("LoadOrTemplate error marked ErrInvalid = %v; want %v: %v", got, tc.wantInvalid, err)
+			}
 		})
+	}
+}
+
+// TestMarkInvalid pins the mark's contract: the error text is unchanged, the wrapped error stays reachable, and a nil error stays nil.
+func TestMarkInvalid(t *testing.T) {
+	t.Parallel()
+	cause := errors.New("bad value")
+
+	marked := configengine.MarkInvalid(cause)
+	if !errors.Is(marked, configengine.ErrInvalid) {
+		t.Errorf("MarkInvalid result does not match ErrInvalid: %v", marked)
+	}
+	if !errors.Is(marked, cause) {
+		t.Errorf("MarkInvalid result lost the wrapped error: %v", marked)
+	}
+	if marked.Error() != cause.Error() {
+		t.Errorf("MarkInvalid changed the text: got %q, want %q", marked.Error(), cause.Error())
+	}
+	if configengine.MarkInvalid(nil) != nil {
+		t.Errorf("MarkInvalid(nil) = non-nil")
 	}
 }
 

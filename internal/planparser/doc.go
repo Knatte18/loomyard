@@ -100,6 +100,11 @@
 // ParsePlan fails loud only on document-structure errors — a missing or undecodable overview file, an unparseable Card Index line, a missing card file, an unparseable card heading, or an inline value where a field admits only a bullet list.
 // The plan format's validation checks (card type presence, card-custom-not-alone, path malformation, the bare package-qualified symbol, directory-target and glyph-malformed hard rules, the Rename pair grammar, the plan: handle consistency checks, on-disk existence, and so on) are implemented by Validate in validate.go, not by ParsePlan itself.
 //
+// # Reads beside ParsePlan
+//
+// OverviewWithoutCardIndex returns the overview's bytes with the Card Index section cut out, bounded exactly as ParsePlan reads the index lines.
+// A caller that compares overviews across plan edits hashes that form, so a change confined to the Card Index is told apart from a change anywhere else without the caller parsing the overview.
+//
 // # Checks outside both entry points
 //
 // CheckFirstCard and CheckCardFabricReference sit outside ValidateFormat and Validate, since only a caller holding the rework round's first card number, or a matcher for the fabric-reference rule, can run them.

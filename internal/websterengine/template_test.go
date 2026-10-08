@@ -337,7 +337,12 @@ func renderFork(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest str
 // renderRecovery renders the recovery prompt for batch with the shared placeholder paths; the plan
 // directory and prompt worktree root derive from anchorRoot, and PATTERN.md is read from repoRoot.
 func renderRecovery(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, notePath, parent string) (string, error) {
-	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", failureDigest, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, specsDir, 2, notePath, parent)
+	return renderRecoveryWithUncommitted(batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, "", notePath, parent)
+}
+
+// renderRecoveryWithUncommitted is renderRecovery with the caller-rendered uncommitted-paths block.
+func renderRecoveryWithUncommitted(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, uncommittedPaths, notePath, parent string) (string, error) {
+	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, "", failureDigest, uncommittedPaths, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lyx", "plan"), anchorRoot, stencilsDir, specsDir, 2, notePath, parent)
 	return string(got), err
 }
 
@@ -461,7 +466,7 @@ func TestTemplates_FillRequiresEveryRequiredMarker(t *testing.T) {
 			name:     "recovery",
 			template: mustRecoveryTemplate,
 			values:   recoveryTemplateMarkerValues,
-			optional: []string{"pattern_directive", "failure_digest", "friction_directive", "parent_directive"},
+			optional: []string{"pattern_directive", "failure_digest", "uncommitted_paths", "friction_directive", "parent_directive"},
 			required: []string{"card_pointers", "card_gates", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir"},
 		},
 	}
@@ -729,6 +734,17 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
 			return promptCheck{text: text, err: err, contains: []string{"Why this batch is being recovered\n\nnone\n"}}
+		}},
+		{"recovery renders the uncommitted-paths block verbatim", func(t *testing.T) promptCheck {
+			const block = "Written by this run:\n- internal/x/y.go\n\nNot written by this run:\n- notes.txt"
+			root, stencilsDir := testLayout(t)
+			text, err := renderRecoveryWithUncommitted(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", block, "", "")
+			return promptCheck{text: text, err: err, contains: []string{"What the worktree holds\n\n" + block + "\n"}, notContains: []string{"{{.uncommitted_paths}}"}}
+		}},
+		{"recovery renders none for a clean worktree", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
+			return promptCheck{text: text, err: err, contains: []string{"What the worktree holds\n\nnone\n"}}
 		}},
 		{"master never fills worktree_root", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)

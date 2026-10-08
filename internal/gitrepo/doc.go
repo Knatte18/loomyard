@@ -23,7 +23,7 @@
 // exit is a failure at both sites too, but the package's test-enforced
 // no-`fatal:`-leak surface forbids folding git's stderr into their
 // messages, which is what run's raw form lets them keep working around.
-// Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push, PushCoalesced, ResetHard, IsAncestor, CommitsNotIn, UpdateRemoteBranchLeased, HasUnpulled, and HasUnpushed (measured and reverted from a go-git ancestry walk; see HasUnpushed's own godoc in push.go for the reversal criterion) — sits on runChecked.
+// Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push, PushCoalesced, ResetHard, ResetKeep, IsAncestor, CommitsNotIn, UpdateRemoteBranchLeased, HasUnpulled, and HasUnpushed (measured and reverted from a go-git ancestry walk; see HasUnpushed's own godoc in push.go for the reversal criterion) — sits on runChecked.
 // See PATTERN-gitrepo-client-boundary for the enforced, exhaustive version of this split and the review obligation any new CLI call inside this package carries.
 // gitexec itself stays a zero-dependency leaf regardless of which side of the boundary a gitrepo method is on — it has roughly seventy non-test call sites across gitrepo, fabricengine, fabriccli, lyxcwd, and websterengine,
 // and gitrepo remains one of its many consumers, not merged into it.
@@ -63,9 +63,10 @@
 //   - UpdateRemoteBranchLeased moves a remote branch to a SHA, backwards included, only while the remote branch still sits at the SHA the caller read;
 //     a moved branch is ErrLeaseRejected, distinct from any other push failure.
 //   - ResetHard is the SHA-validated hard-reset surface (see below).
+//   - ResetKeep moves HEAD and the index to a SHA and carries uncommitted changes across, refusing with nothing changed when one sits in a path the move would rewrite.
 //   - CurrentBranch reads the branch HEAD points to, and errors on a detached HEAD.
 //
-// Caller-supplied SHA arguments (SHAExists, ChangedFilesSince, ResetHard) are
+// Caller-supplied SHA arguments (SHAExists, ChangedFilesSince, ResetHard, ResetKeep) are
 // validated as plain hex object names before ever reaching git, so an
 // option-shaped string (a value with a leading '-', e.g. "--hard") can never
 // be parsed as a git flag; invalid SHAs surface as ErrInvalidSHA, or as false
@@ -200,6 +201,11 @@
 // option-shaped string can never reach `git reset` as a flag instead of a
 // target commit — ResetHard rejects it as ErrInvalidSHA before any git
 // spawn, exactly like ChangedFilesSince.
+//
+// ResetKeep is its keep-form counterpart, via `git reset --keep`, for a caller whose checkout holds uncommitted work to preserve:
+// it validates the SHA the same way and moves HEAD and the index, leaves every uncommitted change in place,
+// and returns git's refusal (wrapped, as the checked *gitexec.GitError) with nothing changed when an uncommitted change sits in a path the move would rewrite.
+// Like ResetHard it mutates the working tree and so stays CLI-bound.
 //
 // # Evidence for the two-backend boundary
 //

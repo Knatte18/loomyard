@@ -166,7 +166,7 @@ func TestAcceptAuditCmd_Refusals(t *testing.T) {
 				}
 				gitkit.Git(t, fx.Worktree, "commit", "-am", "restore content")
 			},
-			wantIn: []string{"move HEAD back"},
+			wantIn: []string{"1) lyx webster reset --to last-batch-head"},
 		},
 	}
 	for _, tc := range cases {
