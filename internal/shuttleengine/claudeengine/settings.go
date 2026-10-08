@@ -33,6 +33,19 @@ const steerAskUserQuestionDeny = "you cannot open an interactive dialog here. If
 // It refuses `lyx webster` commands inside forks (detected by top-level agent_id in the payload). Must contain no single/double quote or backslash (checked at init).
 const steerWebsterForkDeny = "lyx webster verbs belong to the Master session, never a fork. You are an implementer fork: do your batch work and write your report, and do NOT run any lyx webster command (not await-batch, not anything) — polling for the report you must write only deadlocks the run. This call is refused."
 
+// steerPythonDeny refuses a Bash python invocation; it must contain no single/double quote or backslash (checked at init).
+const steerPythonDeny = "lyx agents never run Python; edit files with Edit or Write, search and read with grep, awk or cat"
+
+// noticePythonDeny announces the python deny in the same wording as its steer.
+const noticePythonDeny = steerPythonDeny + "."
+
+// pythonCommandPattern is the grep -E pattern the python deny matches against the raw PreToolUse payload JSON.
+// It matches python, python3 or python3.<minor>, optionally path-prefixed, as a whole word in command position:
+// right after the "command" key's opening quote, after a JSON-escaped newline, after ; & | ( or a backtick (which also covers $( ),
+// or after one of env, exec, xargs, sudo, time.
+// The shell single quotes around it forbid a single quote in the pattern.
+const pythonCommandPattern = `("command"[[:space:]]*:[[:space:]]*"|\\n|[;&|(` + "`" + `]|(^|[^A-Za-z0-9_-])(env|exec|xargs|sudo|time)[[:space:]]+)[[:space:]]*([^[:space:]"\\;&|()` + "`" + `]*/)?python(3(\.[0-9]+)?)?([^A-Za-z0-9_./-]|$)`
+
 // noticeAgentDeny announces the Agent deny in a non-fork run;
 // it must hold for every session that receives it.
 const noticeAgentDeny = "The Agent tool is unavailable in this session: do all exploration and work in this session, with no subagents."
@@ -145,6 +158,17 @@ var standingDenies = []standingDeny{
 		steer:     steerAskUserQuestionDeny,
 		notice:    noticeAskUserQuestionDeny,
 		installed: func(in denyInputs) bool { return !in.interactive && in.cfg.ClaudeDenyAskUserQuestion },
+	},
+	{
+		// A guardrail, not a barrier.
+		// The pattern lets through python as an argument, behind bash -c, sh -c or eval, after a prefix it does not list (env FOO=1, nohup, command, timeout), and through a launcher such as py or uv run.
+		// It falsely denies python after a listed separator inside a quoted argument, a heredoc body or another payload field such as description.
+		// Ending with `; true` guarantees exit 0 so a non-match allows the call.
+		matcher:   "Bash",
+		command:   "grep -Eq '" + pythonCommandPattern + "' && echo '" + denyJSON(steerPythonDeny) + "'; true",
+		steer:     steerPythonDeny,
+		notice:    noticePythonDeny,
+		installed: func(in denyInputs) bool { return in.cfg.ClaudeDenyPython },
 	},
 }
 

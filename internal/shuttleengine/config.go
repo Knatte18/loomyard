@@ -34,6 +34,7 @@ type Config struct {
 	Claude                    string `yaml:"claude"`
 	ClaudeDenyAgentTool       bool   `yaml:"claude_deny_agent_tool"`
 	ClaudeDenyAskUserQuestion bool   `yaml:"claude_deny_ask_user_question"`
+	ClaudeDenyPython          bool   `yaml:"claude_deny_python"`
 
 	// ClaudePromptCacheTTL is Claude Code's prompt-cache TTL for a role without a map entry; the claude engine validates it, not LoadConfig.
 	ClaudePromptCacheTTL string `yaml:"claude_prompt_cache_ttl"`

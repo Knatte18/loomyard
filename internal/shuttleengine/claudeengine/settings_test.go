@@ -117,22 +117,28 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 		interactive      bool
 		wantAgentEntry   bool
 		wantAskUserEntry bool
+		pythonDeny       bool
+		fork             bool
 	}{
-		{"both_off_autonomous", false, false, false, false, false},
-		{"agent_only_autonomous", true, false, false, true, false},
-		{"askuser_only_autonomous", false, true, false, false, true},
-		{"both_on_autonomous", true, true, false, true, true},
+		{"both_off_autonomous", false, false, false, false, false, false, false},
+		{"agent_only_autonomous", true, false, false, true, false, false, false},
+		{"askuser_only_autonomous", false, true, false, false, true, false, false},
+		{"both_on_autonomous", true, true, false, true, true, false, false},
 		// Interactive runs always carry the non-denying AskUserQuestion
 		// marker entry, regardless of ClaudeDenyAskUserQuestion — the deny
 		// is autonomous-only and the two are mutually exclusive.
-		{"both_on_interactive_marker_not_deny", true, true, true, true, true},
-		{"askuser_only_interactive_marker_not_deny", false, true, true, false, true},
-		{"both_off_interactive_marker_still_present", false, false, true, false, true},
+		{"both_on_interactive_marker_not_deny", true, true, true, true, true, false, false},
+		{"askuser_only_interactive_marker_not_deny", false, true, true, false, true, false, false},
+		{"both_off_interactive_marker_still_present", false, false, true, false, true, false, false},
+		// The python deny is independent of the other two and installed in every run mode.
+		{"python_only_autonomous", false, false, false, false, false, true, false},
+		{"python_only_interactive", false, false, true, false, true, true, false},
+		{"python_only_fork", false, false, false, false, false, true, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := shuttleengine.Config{ClaudeDenyAgentTool: tt.agentDeny, ClaudeDenyAskUserQuestion: tt.askUserDeny}
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, false, false)
+			cfg := shuttleengine.Config{ClaudeDenyAgentTool: tt.agentDeny, ClaudeDenyAskUserQuestion: tt.askUserDeny, ClaudeDenyPython: tt.pythonDeny}
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, tt.fork, false)
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -193,7 +199,14 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 					t.Errorf("autonomous AskUserQuestion command = %q; want the deny JSON payload", command)
 				}
 			}
-			if !tt.wantAgentEntry && !tt.wantAskUserEntry && len(preToolUse) != 0 {
+			pythonInstalled := false
+			for _, command := range matcherCommands(doc, "Bash") {
+				pythonInstalled = pythonInstalled || strings.Contains(command, steerPythonDeny)
+			}
+			if pythonInstalled != tt.pythonDeny {
+				t.Errorf("python Bash PreToolUse entry present = %v; want %v (preToolUse: %v)", pythonInstalled, tt.pythonDeny, preToolUse)
+			}
+			if !tt.wantAgentEntry && !tt.wantAskUserEntry && !tt.pythonDeny && len(preToolUse) != 0 {
 				t.Errorf("PreToolUse = %v with no denies/marker configured; want none", preToolUse)
 			}
 		})
@@ -480,35 +493,37 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 	for _, agentDeny := range []bool{false, true} {
 		for _, askUserDeny := range []bool{false, true} {
-			for _, interactive := range []bool{false, true} {
-				for _, fork := range []bool{false, true} {
-					cfg := shuttleengine.Config{ClaudeDenyAgentTool: agentDeny, ClaudeDenyAskUserQuestion: askUserDeny}
-					data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, fork, false)
-					if err != nil {
-						t.Fatalf("buildSettings() error: %v", err)
-					}
-					var wantSentences []string
-					for _, e := range hooksFor(parseSettings(t, data), "PreToolUse") {
-						entry, _ := e.(map[string]any)
-						hooks, _ := entry["hooks"].([]any)
-						cmd, _ := hooks[0].(map[string]any)
-						command, _ := cmd["command"].(string)
-						for _, deny := range standingDenies {
-							if deny.command == command && deny.notice != "" {
-								wantSentences = append(wantSentences, deny.notice)
+			for _, pythonDeny := range []bool{false, true} {
+				for _, interactive := range []bool{false, true} {
+					for _, fork := range []bool{false, true} {
+						cfg := shuttleengine.Config{ClaudeDenyAgentTool: agentDeny, ClaudeDenyAskUserQuestion: askUserDeny, ClaudeDenyPython: pythonDeny}
+						data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, fork, false)
+						if err != nil {
+							t.Fatalf("buildSettings() error: %v", err)
+						}
+						var wantSentences []string
+						for _, e := range hooksFor(parseSettings(t, data), "PreToolUse") {
+							entry, _ := e.(map[string]any)
+							hooks, _ := entry["hooks"].([]any)
+							cmd, _ := hooks[0].(map[string]any)
+							command, _ := cmd["command"].(string)
+							for _, deny := range standingDenies {
+								if deny.command == command && deny.notice != "" {
+									wantSentences = append(wantSentences, deny.notice)
+								}
 							}
 						}
-					}
-					want := strings.Join(wantSentences, " ")
-					notice := buildDenyNotice(interactive, cfg, fork, false)
-					if notice != want {
-						t.Errorf("agent=%v ask=%v interactive=%v fork=%v: notice = %q; want the sentences of the installed denies %q", agentDeny, askUserDeny, interactive, fork, notice, want)
-					}
-					if strings.ContainsAny(notice, noticeTextForbiddenChars) {
-						t.Errorf("notice contains a forbidden character: %q", notice)
-					}
-					if strings.Contains(notice, "lyx"+" webster") {
-						t.Errorf("notice mentions the webster verbs: %q", notice)
+						want := strings.Join(wantSentences, " ")
+						notice := buildDenyNotice(interactive, cfg, fork, false)
+						if notice != want {
+							t.Errorf("agent=%v ask=%v python=%v interactive=%v fork=%v: notice = %q; want the sentences of the installed denies %q", agentDeny, askUserDeny, pythonDeny, interactive, fork, notice, want)
+						}
+						if strings.ContainsAny(notice, noticeTextForbiddenChars) {
+							t.Errorf("notice contains a forbidden character: %q", notice)
+						}
+						if strings.Contains(notice, "lyx"+" webster") {
+							t.Errorf("notice mentions the webster verbs: %q", notice)
+						}
 					}
 				}
 			}

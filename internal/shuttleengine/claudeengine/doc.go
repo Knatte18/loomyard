@@ -78,8 +78,12 @@
 // A missing transcript_path, an unreadable file, a transcript with no matching message or one with no skill listing degrades to an unverified report.
 //
 // The engine also announces each standing tool deny to the session through --append-system-prompt, on both the launch and the resume line.
-// The notice is built from the same inputs as the PreToolUse hooks, so the two cannot drift.
-// The webster fork guard is not announced.
+// Both the hooks and the notice are built from one deny table in settings.go, so the two cannot drift:
+// each row names its tool matcher, hook command, notice sentence and the run inputs that install it.
+// The webster fork guard has no notice sentence and is not announced.
+// The python row denies a Bash command that runs `python`, `python3` or `python3.<minor>` in command position, in every run mode;
+// `shuttle.yaml`'s `claude_deny_python` switches it off for a Python target repo.
+// It is a guardrail, not a barrier: its hook greps the payload, so a quoted argument or heredoc body can trip it falsely, and python behind `bash -c`, `eval` or a launcher passes.
 //
 // A replay corpus of real turn ends lives under testdata/corpus, one directory per case:
 // transcript.jsonl holds the source transcript's lines the parsers read, trimmed to the fields they read;
