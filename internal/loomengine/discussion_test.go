@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -64,6 +65,9 @@ func TestDiscussionSpec(t *testing.T) {
 			}
 			if spec.Role != "discussion" {
 				t.Errorf("DiscussionSpec(...).Role = %q; want %q", spec.Role, "discussion")
+			}
+			if spec.Segment != segmentcolor.Discussion {
+				t.Errorf("DiscussionSpec(...).Segment = %q; want %q", spec.Segment, segmentcolor.Discussion)
 			}
 			if spec.Model == "" {
 				t.Error("DiscussionSpec(...).Model = \"\"; want non-empty")

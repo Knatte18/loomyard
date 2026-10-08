@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -37,6 +38,8 @@ var frictionSkills = []string{"scribe:prose"}
 // spec would hang waiting for a human who is not there. ForkSubagents is false because the reflection
 // agent has nothing to fan out over, and authorizing forks with no user present is authorization for
 // nothing.
+//
+// Segment is the landing segment, because the reflection runs while the run lands.
 func buildReflectionSpec(deps Deps, notes []string, reportPath string) (shuttleengine.Spec, error) {
 	parsed, err := modelspec.Parse(deps.FrictionSpec)
 	if err != nil {
@@ -76,6 +79,7 @@ func buildReflectionSpec(deps Deps, notes []string, reportPath string) (shuttlee
 		Interactive:   false,
 		ForkSubagents: false,
 		Role:          frictionRole,
+		Segment:       segmentcolor.Landing,
 		Skills:        frictionSkills,
 		Timeout:       deps.Timeout,
 	}, nil

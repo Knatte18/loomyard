@@ -6,6 +6,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
 // TestDriverSpec pins driverSpec's whole output shape, each field as its own named assertion.
@@ -70,6 +71,9 @@ func TestDriverSpec(t *testing.T) {
 	t.Run("Role", func(t *testing.T) {
 		if got.Role != "driver" {
 			t.Errorf(`driverSpec().Role = %q; want "driver"`, got.Role)
+		}
+		if got.Segment != segmentcolor.Coordinator {
+			t.Errorf("driverSpec().Segment = %q; want %q", got.Segment, segmentcolor.Coordinator)
 		}
 	})
 	t.Run("Round", func(t *testing.T) {
