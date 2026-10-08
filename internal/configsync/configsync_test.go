@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/loggerconfig"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -41,6 +42,11 @@ type moduleWant struct {
 	wantFile        *string
 	fileContains    []string
 	fileNotContains []string
+	// migratedAll lists the rewrites Result.Migrated must hold; migratedNone pins it empty.
+	migratedAll  []string
+	migratedNone bool
+	// loadsAsBatcher pins that batcher.Active loads the file after the run.
+	loadsAsBatcher bool
 }
 
 // TestReconcileAll pins what a run does to each module's file and Result: a dry run reports and writes nothing, an apply adds the template's missing keys and prunes stale ones, an absent file is seeded from the template, and a seed-only module ("models" today) is materialized verbatim exactly once and never rewritten after -- not even to resurrect a key the operator removed -- while a non-seed-only module in the same run is still pruned.
@@ -51,6 +57,9 @@ func TestReconcileAll(t *testing.T) {
 	const modelsTrimmed = "sonnet:\n  engine: claude\n  model: sonnet\n"
 	loggerTemplate := loggerconfig.ConfigTemplate()
 	modelsTemplate := modelspec.ConfigTemplate()
+	batcherTemplate := batcher.ConfigTemplate()
+	retiredBatcher := strings.Replace(batcherTemplate, "orientation: 31400", "master_base: 52000", 1)
+	masterBaseRewrites := []string{"profiles.cautious.weights.master_base: removed", "profiles.cautious.weights.orientation: added 31400"}
 
 	tests := []struct {
 		name  string
@@ -105,6 +114,29 @@ func TestReconcileAll(t *testing.T) {
 					fileNotContains: []string{"header:"},
 				},
 			},
+		},
+		{
+			name:  "dry run lists a batcher file's retired-key rewrites and writes nothing",
+			seed:  map[string]string{"batcher": retiredBatcher},
+			apply: false,
+			want:  map[string]moduleWant{"batcher": {applied: false, migratedAll: masterBaseRewrites, wantFile: &retiredBatcher}},
+		},
+		{
+			name:  "apply writes a migrated batcher file that batcher.Active loads",
+			seed:  map[string]string{"batcher": retiredBatcher},
+			apply: true,
+			want: map[string]moduleWant{"batcher": {
+				applied:         true,
+				migratedAll:     masterBaseRewrites,
+				fileContains:    []string{"orientation: 31400"},
+				fileNotContains: []string{"master_base"},
+				loadsAsBatcher:  true,
+			}},
+		},
+		{
+			name:  "absent batcher file is seeded from the template and not migrated",
+			apply: true,
+			want:  map[string]moduleWant{"batcher": {applied: true, migratedNone: true, fileContains: []string{"orientation: 31400"}, loadsAsBatcher: true}},
 		},
 		{
 			name:  "absent seed-only file is materialized verbatim",
@@ -164,6 +196,19 @@ func TestReconcileAll(t *testing.T) {
 				for _, key := range want.removedAll {
 					if !slices.Contains(result.Removed, key) {
 						t.Errorf("%s.Removed = %v; want it to contain %q", module, result.Removed, key)
+					}
+				}
+				if want.migratedNone && len(result.Migrated) != 0 {
+					t.Errorf("%s.Migrated = %v; want empty", module, result.Migrated)
+				}
+				for _, rewrite := range want.migratedAll {
+					if !slices.Contains(result.Migrated, rewrite) {
+						t.Errorf("%s.Migrated = %v; want it to contain %q", module, result.Migrated, rewrite)
+					}
+				}
+				if want.loadsAsBatcher {
+					if _, err := batcher.Active(baseDir); err != nil {
+						t.Errorf("batcher.Active after the run = %v; want nil error", err)
 					}
 				}
 

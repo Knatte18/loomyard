@@ -62,6 +62,8 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 	if !t.Run("dry run writes nothing and reports every module's shape", func(t *testing.T) {
 		const originalContent = "discussion_timeout_min: 480\nstale_key: old_value\n"
 		seedModuleConfig(t, tmpDir, "loom", originalContent)
+		const retiredBatcher = "profiles:\n  cautious:\n    batchifier: cost\n    weights:\n      master_base: 52000\n"
+		seedModuleConfig(t, tmpDir, "batcher", retiredBatcher)
 
 		code, result := runReconcileCLI(t, tmpDir)
 
@@ -79,6 +81,16 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		}
 		if _, err := os.Stat(reedPath); !os.IsNotExist(err) {
 			t.Errorf("reed.yaml written by a dry run (stat err = %v)", err)
+		}
+		migrated, _ := reconcileModule(t, result, "batcher")["migrated"].([]any)
+		if !slices.Contains(migrated, any("profiles.cautious.weights.master_base: removed")) {
+			t.Errorf("batcher module's migrated = %v; want it to list the master_base removal", migrated)
+		}
+		if content, err := os.ReadFile(configengine.ConfigFile(tmpDir, "batcher")); err != nil || string(content) != retiredBatcher {
+			t.Errorf("batcher.yaml = %q, %v; want it unchanged by a dry run", content, err)
+		}
+		if _, has := reconcileModule(t, result, "loom")["migrated"]; has {
+			t.Error("loom module entry carries migrated; want it omitted without a migration")
 		}
 		modules, _ := result["modules"].([]any)
 		if len(modules) == 0 {
