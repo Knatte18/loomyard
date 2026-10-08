@@ -53,8 +53,9 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 		// jump is the clock advance per Sleep, zero for the scripted steps below.
 		jump time.Duration
 		// script returns the agent's actions between ticks, run once per Sleep;
-		// markInterrupt makes the transcript mark every turn start as interrupted, a no-op on an engine without a SessionProber.
-		script func(appendLine func(string), touchOutput func(), markInterrupt func()) []func()
+		// markInterrupt makes the transcript mark every turn start as interrupted, and markAPIError marks the turn end whose line is line as an API error;
+		// both are no-ops on an engine without the session capabilities.
+		script func(appendLine func(string), touchOutput func(), markInterrupt func(), markAPIError func(line string)) []func()
 
 		wantChanges       []string
 		wantDisagreements int
@@ -62,7 +63,7 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 		{
 			name:   "a turn start, a waiting turn end, a held turn end and done log one line each with the loop's classification",
 			events: "START\n", outstanding: shadowPayloadShell, liveness: LivenessAlive, timeout: time.Hour,
-			script: func(appendLine func(string), touchOutput func(), _ func()) []func() {
+			script: func(appendLine func(string), touchOutput func(), _ func(), _ func(string)) []func() {
 				return []func(){
 					func() { appendLine("WAIT:background work") },
 					func() { appendLine("STOP:what now?") },
@@ -74,7 +75,7 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 		{
 			name:   "an interrupt marker that lands after its turn start was folded is read at a later refresh",
 			events: "START\n", liveness: LivenessAlive, livenessEvery: 1, timeout: time.Hour,
-			script: func(appendLine func(string), touchOutput func(), markInterrupt func()) []func() {
+			script: func(appendLine func(string), touchOutput func(), markInterrupt func(), _ func(string)) []func() {
 				return []func(){
 					markInterrupt,
 					func() {},
@@ -83,6 +84,19 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 			},
 			wantChanges:       []string{"busy/turn running", "idle-stalled/interrupt running", "idle-done/done done"},
 			wantDisagreements: 1,
+		},
+		{
+			name:   "an API-error marker that lands after its turn end was folded is read at a later refresh",
+			events: "START\n", liveness: LivenessAlive, livenessEvery: 1, timeout: time.Hour,
+			script: func(appendLine func(string), touchOutput func(), _ func(), markAPIError func(string)) []func() {
+				return []func(){
+					func() { appendLine("STOP:what now?") },
+					func() { markAPIError("STOP:what now?") },
+					func() {},
+					func() { touchOutput(); appendLine("STOP:finished") },
+				}
+			},
+			wantChanges: []string{"busy/turn running", "idle-stalled/no-output held", "idle-stalled/api-error held", "idle-done/done done"},
 		},
 		{
 			name:   "a dead reading while the loop reads running logs one disagreement across several ticks",
@@ -149,6 +163,11 @@ func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
 						func() {
 							if prober, ok := engine.(*sessionFakeEngine); ok {
 								prober.interrupted, prober.interruptAt = true, fc.Now()
+							}
+						},
+						func(line string) {
+							if reader, ok := engine.(*sessionFakeEngine); ok {
+								reader.apiErrorLine = line
 							}
 						})
 				}
