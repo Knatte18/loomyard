@@ -408,8 +408,9 @@ func containsArg(args []string, want string) bool {
 }
 
 // TestResizePinHookArgvs pins the pure argv shape resizePinHookArgvs builds:
-// the unconditional clear always leads (exactly "set-hook -u -w -t <target> window-resized"),
-// then one entry per pin whose body is exactly "resize-pane -t <pane> -y <height>", then the watchdog's own touch entry last when a signal command is told,
+// the unconditional clear always leads (exactly "set-hook -u -w -t <target> window-resized").
+// Then, when there is any pin, come the zoom record entry, one entry per pin whose body is exactly "resize-pane -t <pane> -y <height>", and the zoom restore entry.
+// Then the watchdog's own touch entry comes last when a signal command is told,
 // so a resize fires the pin fixups before the watcher is told about it and a zero-pin session still installs the touch.
 // The "-a" flag appears on every content entry after the first, none carries a bare ";" element, and no repaint entry ships:
 // neither measured repaint candidate cleared the repaint-must-not-self-retrigger decision's exactly-one-fire criterion
@@ -430,12 +431,12 @@ func TestResizePinHookArgvs(t *testing.T) {
 		{
 			name:       "OnePin",
 			pins:       []render.Pin{{PaneID: "%1", Height: 3}},
-			wantBodies: []string{"resize-pane -t %1 -y 3"},
+			wantBodies: []string{zoomRecordHookBody, "resize-pane -t %1 -y 3", zoomRestoreHookBody},
 		},
 		{
 			name:       "ThreePins",
 			pins:       []render.Pin{{PaneID: "%1", Height: 3}, {PaneID: "%2", Height: 2}, {PaneID: "%3", Height: 4}},
-			wantBodies: []string{"resize-pane -t %1 -y 3", "resize-pane -t %2 -y 2", "resize-pane -t %3 -y 4"},
+			wantBodies: []string{zoomRecordHookBody, "resize-pane -t %1 -y 3", "resize-pane -t %2 -y 2", "resize-pane -t %3 -y 4", zoomRestoreHookBody},
 		},
 		{
 			name:       "ZeroPinsStillInstallsTheSignalEntry",
@@ -446,12 +447,12 @@ func TestResizePinHookArgvs(t *testing.T) {
 			name:       "PinsThenTheSignalEntryLast",
 			pins:       []render.Pin{{PaneID: "%1", Height: 3}, {PaneID: "%2", Height: 2}},
 			signal:     signalCommand,
-			wantBodies: []string{"resize-pane -t %1 -y 3", "resize-pane -t %2 -y 2", signalCommand},
+			wantBodies: []string{zoomRecordHookBody, "resize-pane -t %1 -y 3", "resize-pane -t %2 -y 2", zoomRestoreHookBody, signalCommand},
 		},
 		{
 			name:       "EmptySignalCommandEmitsNoEntry",
 			pins:       []render.Pin{{PaneID: "%1", Height: 3}},
-			wantBodies: []string{"resize-pane -t %1 -y 3"},
+			wantBodies: []string{zoomRecordHookBody, "resize-pane -t %1 -y 3", zoomRestoreHookBody},
 		},
 	}
 	for _, tt := range tests {
@@ -563,8 +564,8 @@ func TestInstallResizePinsLocked_IssuesTheSignalEntryLast(t *testing.T) {
 		e.installResizePinsLocked(exactSessionWindowTarget(e.SessionName()), []render.Pin{{PaneID: "%1", Height: 3}})
 		calls := fake.Calls()
 
-		if len(calls) != 3 {
-			t.Fatalf("installResizePinsLocked calls = %v, want 3 (clear + 1 pin + signal)", calls)
+		if len(calls) != 5 {
+			t.Fatalf("installResizePinsLocked calls = %v, want 5 (clear + zoom record + 1 pin + zoom restore + signal)", calls)
 		}
 		last := calls[len(calls)-1]
 		want := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
@@ -581,8 +582,8 @@ func TestInstallResizePinsLocked_IssuesTheSignalEntryLast(t *testing.T) {
 		e.installResizePinsLocked(exactSessionWindowTarget(e.SessionName()), []render.Pin{{PaneID: "%1", Height: 3}})
 		calls := fake.Calls()
 
-		if len(calls) != 2 {
-			t.Fatalf("installResizePinsLocked calls = %v, want 2 (clear + 1 pin, no signal entry)", calls)
+		if len(calls) != 4 {
+			t.Fatalf("installResizePinsLocked calls = %v, want 4 (clear + zoom record + 1 pin + zoom restore, no signal entry)", calls)
 		}
 		own := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
 		for i, argv := range calls {
@@ -602,8 +603,8 @@ func TestInstallResizePinsLocked_IssuesTheSignalEntryLast(t *testing.T) {
 		// propagates (Shared Decision hook-failure-is-non-fatal-everywhere).
 		e.installResizePinsLocked(exactSessionWindowTarget(e.SessionName()), []render.Pin{{PaneID: "%1", Height: 3}})
 
-		if calls := fake.Calls(); len(calls) != 3 {
-			t.Fatalf("installResizePinsLocked calls = %v, want all 3 attempted despite every one erroring", calls)
+		if calls := fake.Calls(); len(calls) != 5 {
+			t.Fatalf("installResizePinsLocked calls = %v, want all 5 attempted despite every one erroring", calls)
 		}
 	})
 }
@@ -656,7 +657,12 @@ func TestPinsForContent(t *testing.T) {
 				t.Errorf("pinsForContent modified its input: %v, want %v", tt.pins, input)
 			}
 			var bodies []string
-			for _, argv := range resizePinHookArgvs("@1", got, "")[1:] {
+			entries := resizePinHookArgvs("@1", got, "")[1:]
+			if len(got) > 0 {
+				// The first and last entries are the zoom record and restore bracket.
+				entries = entries[1 : len(entries)-1]
+			}
+			for _, argv := range entries {
 				bodies = append(bodies, argv[len(argv)-1])
 			}
 			if !slices.Equal(bodies, tt.wantBodys) {

@@ -237,37 +237,48 @@ func (e *Engine) sessionSubstrateLocked() (up bool, usable bool, err error) {
 	return true, len(live) > 0, nil
 }
 
-// ensureServerAndSessionLocked ensures this hub's tmux server and this
-// worktree's session exist. Reports booted=true on fresh spawn; validates
-// capability, debug_log, mouse, watchdog, segment colors, and status-line template before any tmux round trip.
-func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
+// validateBootConfig refuses a boot-time config value that is wrong on its own, before any tmux round trip.
+// It validates debug_log, mouse, watchdog and the segment colors, and returns the tmux global flags debug_log selects and the mouse option value.
+// The boot path calls it, and so does an op that reads the strands' window's zoom before booting, so a pure config error surfaces ahead of that read.
+func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err error) {
 	// Validate debug_log before anything else touches tmux: a misconfigured
 	// value is a pure config error, unrelated to server/session state, so it
 	// must surface before the capability probe or any spawn attempt.
-	debugArgs, err := debugLogArgs(e.cfg.DebugLog)
+	debugArgs, err = debugLogArgs(e.cfg.DebugLog)
 	if err != nil {
-		return false, nil, err
+		return nil, "", err
 	}
 
 	// Validate mouse alongside debug_log, at the same early point: this too
 	// is a pure config error that must surface before the capability probe
 	// or any spawn attempt, not partway through a boot.
-	mouse, err := mouseOption(e.cfg.Mouse)
+	mouse, err = mouseOption(e.cfg.Mouse)
 	if err != nil {
-		return false, nil, err
+		return nil, "", err
 	}
 
 	// The boolean is discarded here: this is the one consumer of watchdogOption with an error
 	// channel, and its only job is to make a typo fail `lyx reed up` loudly and by name — the hook
 	// install (pinGeometryOptionsLocked) and the watch loop each read the key again and fail safe
 	// toward "no watchdog" instead.
-	if _, err := watchdogOption(e.cfg.Watchdog); err != nil {
-		return false, nil, err
+	if _, err = watchdogOption(e.cfg.Watchdog); err != nil {
+		return nil, "", err
 	}
 
 	// A segment color outside the palette is a pure config error too.
 	// This is the only refusal; every other reader goes through segmentColor and degrades to no color.
-	if err := validateSegmentColors(e.cfg.SegmentColors); err != nil {
+	if err = validateSegmentColors(e.cfg.SegmentColors); err != nil {
+		return nil, "", err
+	}
+	return debugArgs, mouse, nil
+}
+
+// ensureServerAndSessionLocked ensures this hub's tmux server and this
+// worktree's session exist. Reports booted=true on fresh spawn; validates
+// capability, debug_log, mouse, watchdog, segment colors, and status-line template before any tmux round trip.
+func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
+	debugArgs, mouse, err := e.validateBootConfig()
+	if err != nil {
 		return false, nil, err
 	}
 
@@ -584,7 +595,7 @@ func (e *Engine) upLocked() (UpResult, bool, error) {
 // Resume rebuilds content after a server restart.
 func (e *Engine) Up() (UpResult, error) {
 	var result UpResult
-	err := e.withOpLock(func() error {
+	err := e.withBootOpLockKeepingZoom(func() error {
 		var err error
 		result, _, err = e.upLocked()
 		return err
@@ -618,10 +629,10 @@ func (e *Engine) ensureSessionLocked() (bool, error) {
 
 // EnsureSession boots this worktree's session only when there is nothing usable to attach to, and
 // reports whether a session was actually created.
-// It reads no persisted state on the warm path, so a caller needing reed's state-level refusals must
+// It raises no state-level refusal on the warm path, since the only state it reads is the zoom bracket's, which swallows its errors, so a caller needing reed's state-level refusals must
 // still make its own Status call.
 func (e *Engine) EnsureSession() (booted bool, err error) {
-	err = e.withOpLock(func() error {
+	err = e.withOpLockKeepingZoom(func() error {
 		var innerErr error
 		booted, innerErr = e.ensureSessionLocked()
 		return innerErr
@@ -633,7 +644,7 @@ func (e *Engine) EnsureSession() (booted bool, err error) {
 // drops non-live strands whose done-when paths all exist, relaunches the other non-live strands, and re-applies the layout.
 func (e *Engine) Resume() (ResumeResult, error) {
 	var result ResumeResult
-	err := e.withOpLock(func() error {
+	err := e.withBootOpLockKeepingZoom(func() error {
 		dropped := 0
 		booted, stripped, err := e.ensureServerAndSessionLocked()
 		if err != nil {

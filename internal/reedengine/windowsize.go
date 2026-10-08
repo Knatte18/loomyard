@@ -273,8 +273,10 @@ func (e *Engine) runResizePinsLocked(pins []render.Pin) {
 // {"set-hook", "-w", "-t", windowTarget, "window-resized", body} for the entry that establishes the array at index 0 (a plain set-hook replaces),
 // and {"set-hook", "-a", "-w", "-t", windowTarget, "window-resized", body} for every entry after it (-a appends).
 //
-// The entries are the pins, in pins order, each with the body "resize-pane -t <pane> -y <height>",
-// and then — when signalCommand is non-empty — signalCommand itself, verbatim, as the array's LAST
+// The entries are the pins, in pins order, each with the body "resize-pane -t <pane> -y <height>".
+// When there is any pin, the zoom record entry comes first and the zoom restore entry follows the last pin (zoom.go),
+// so a zoomed strand is unzoomed while the pins run and zoomed again behind them.
+// Then — when signalCommand is non-empty — signalCommand itself, verbatim, is the array's LAST
 // entry. Ordering the signal entry last is what makes the watcher's re-apply plan against a window
 // tmux has already finished fixing up: the signal says "this resize is handled as far as the server
 // itself can handle it", so the watcher's own corrective apply starts from the pinned state rather
@@ -296,7 +298,7 @@ func (e *Engine) runResizePinsLocked(pins []render.Pin) {
 // rest of a single command list, while array entries are independent. The Selvage pin is always pin
 // index 0 so it fires before any strip pin can go wrong.
 func resizePinHookArgvs(target string, pins []render.Pin, signalCommand string) [][]string {
-	argvs := make([][]string, 0, len(pins)+2)
+	argvs := make([][]string, 0, len(pins)+4)
 	argvs = append(argvs, []string{"set-hook", "-u", "-w", "-t", target, "window-resized"})
 	appendEntry := func(body string) {
 		// len(argvs) == 1 means only the clear has been emitted so far, so this entry is the one that
@@ -307,8 +309,14 @@ func resizePinHookArgvs(target string, pins []render.Pin, signalCommand string) 
 		}
 		argvs = append(argvs, []string{"set-hook", "-a", "-w", "-t", target, "window-resized", body})
 	}
+	if len(pins) > 0 {
+		appendEntry(zoomRecordHookBody)
+	}
 	for _, pin := range pins {
 		appendEntry(fmt.Sprintf("resize-pane -t %s -y %d", pin.PaneID, pin.Height))
+	}
+	if len(pins) > 0 {
+		appendEntry(zoomRestoreHookBody)
 	}
 	if signalCommand != "" {
 		appendEntry(signalCommand)

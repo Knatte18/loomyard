@@ -35,10 +35,11 @@ func bareAttachArgv(socket, session string) []string {
 }
 
 // chainedAttachArgv returns the argv that chains a client-sized select-layout onto the bare attach:
-// the five elements of bareAttachArgv, then the literal one-character element ";", then
-// "select-layout", "-t", the strands' window target, and layout.
-// Each pin then appends ";", "resize-pane", "-t", its pane id and "-y", its height.
+// the five elements of bareAttachArgv, then the literal one-character element ";" and the zoom record entry (zoomRecordChainArgv).
+// Then ";" again, and "select-layout", "-t", the strands' window target and layout.
+// Each pin then appends ";", "resize-pane", "-t", its pane id, "-y" and its height, and the zoom restore entry (zoomRestoreChainArgv) ends the chain.
 // That makes the heights hold from the first frame and not only after the next resize fires the hook.
+// A zoomed strand is unzoomed for the layout and zoomed again behind the pins.
 //
 // The separator is a literal single-character ";" argv element, never "\\;" — exec.Command passes
 // argv directly and never sees a shell, so a backslash would be passed through as a literal
@@ -49,12 +50,16 @@ func bareAttachArgv(socket, session string) []string {
 // call site follows.
 func chainedAttachArgv(socket, session, windowTarget, layout string, pins []render.Pin) []string {
 	bare := bareAttachArgv(socket, session)
-	out := make([]string, 0, len(bare)+5+6*len(pins))
+	out := make([]string, 0, len(bare)+19+6*len(pins))
 	out = append(out, bare...)
+	out = append(out, ";")
+	out = append(out, zoomRecordChainArgv(windowTarget)...)
 	out = append(out, ";", "select-layout", "-t", windowTarget, layout)
 	for _, pin := range pins {
 		out = append(out, ";", "resize-pane", "-t", pin.PaneID, "-y", strconv.Itoa(pin.Height))
 	}
+	out = append(out, ";")
+	out = append(out, zoomRestoreChainArgv(windowTarget)...)
 	return out
 }
 
@@ -89,7 +94,7 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 	}
 
 	var chained []string
-	err := e.withOpLock(func() error {
+	err := e.withOpLockKeepingZoom(func() error {
 		if err := e.requireSessionLocked(); err != nil {
 			return err
 		}

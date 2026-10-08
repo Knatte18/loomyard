@@ -74,6 +74,17 @@
 // Every binding is non-fatal: a failed `bind-key` is logged and the rest are still issued, and an unresolvable executable, socket path or tmux path logs a named warning and leaves only Alt+Left and Alt+Right unbound.
 // The capability probe checks bind-key, run-shell, if-shell and switch-client as optional verbs after the required set: a missing one logs one warning naming it and never fails the probe, so a psmux without them still boots.
 //
+// A zoomed strand survives every reed step (zoom.go).
+// tmux clears a window's zoom on resize-pane -y, select-layout, split-window, select-pane without -Z and kill-pane of another pane, so every step that changes panes runs inside keepZoomLocked, under the op lock.
+// It reads the strands' window's `#{window_zoomed_flag} #{pane_id}` through the stored-state window seam; for a zoomed window it unzooms the active pane with `resize-pane -Z`, runs the step, and zooms the same pane again, also when the step failed.
+// The call sites are Up, EnsureSession, Resume, AddStrand and AddStrandUnless, UpdateStrand, RemoveStrand, ReplaceStrand, the watchdog's reapplyLayout and AttachArgv's pre-flight, so every pane list a layout or a pin is planned from is read on the unzoomed window.
+// An op that refuses a bad config value or an unformable name does so before the bracket's first read.
+// Bound: a step re-zooms only a window that was zoomed when it started, and only the pane that was zoomed; a pane gone by then leaves the window in the overview.
+// No session, a failed read, an unparseable answer and a failed unzoom all mean "run plain", logged and never fatal.
+// The two executions tmux runs after reed returns carry the same bracket as tmux commands that test the zoom when they run:
+// the window-resized hook array, when it holds any pin, starts with an entry that records a zoomed window in the window option @lyx_rezoom and unzooms it, and ends its pins with an entry that zooms the active pane again and clears the record, ahead of the watchdog's signal entry;
+// the attach chain runs the same two entries around its select-layout and pins, each naming the strands' window, since the chain runs in the client's context.
+//
 // A second package-level invariant: every session also carries exactly one
 // additional, permanent pane beyond its strands — Selvage
 // (ReedState.SelvagePaneID). It is a first-class construct, deliberately

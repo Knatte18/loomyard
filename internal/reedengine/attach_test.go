@@ -106,6 +106,16 @@ func wantBareAttachArgv(e *Engine) []string {
 	return []string{"-L", e.Socket(), "attach-session", "-t", "=" + e.SessionName()}
 }
 
+// wantZoomBracketedChain builds the expected chained argv: the bare attach, the zoom record entry, then middle (the select-layout and the pins, each led by its ";"), then the zoom restore entry.
+func wantZoomBracketedChain(e *Engine, middle ...string) []string {
+	out := append(wantBareAttachArgv(e), ";")
+	out = append(out, zoomRecordChainArgv(fakeStrandWindow)...)
+	out = append(out, ";")
+	out = append(out, middle...)
+	out = append(out, ";")
+	return append(out, zoomRestoreChainArgv(fakeStrandWindow)...)
+}
+
 func assertBareArgv(t *testing.T, e *Engine, got []string) {
 	t.Helper()
 	want := wantBareAttachArgv(e)
@@ -120,8 +130,8 @@ func assertBareArgv(t *testing.T, e *Engine, got []string) {
 }
 
 // TestAttachArgv_ChainedArgv pins the chained argv on a known-good pre-flight, element by element:
-// the five bare elements, the one-character ";" separator (compared exactly, so "\\;" cannot pass),
-// select-layout/-t/target, then the layout planLayout itself would produce for the told box.
+// the five bare elements, the one-character ";" separator (compared exactly, so "\\;" cannot pass) and the zoom record entry.
+// Then select-layout/-t/target, the layout planLayout itself would produce for the told box, and the zoom restore entry.
 // The box comes from the client's told cols/rows, never from a live display-message query and never from the configured size;
 // the #{status} readback is the reserved-row source (off reserves zero rows, on one, a non-negative integer that many),
 // clamped to rows-1 so a multi-line status bar cannot drive the planned height to zero or below.
@@ -155,7 +165,7 @@ func TestAttachArgv_ChainedArgv(t *testing.T) {
 			if err != nil {
 				t.Fatalf("planLayout() unexpected error: %v", err)
 			}
-			want := append(wantBareAttachArgv(e), ";", "select-layout", "-t", fakeStrandWindow, wantLayout)
+			want := wantZoomBracketedChain(e, "select-layout", "-t", fakeStrandWindow, wantLayout)
 			if !slices.Equal(got, want) {
 				t.Errorf("AttachArgv() = %v, want %v", got, want)
 			}
@@ -198,8 +208,8 @@ func TestAttachArgv_ChainGate(t *testing.T) {
 				assertBareArgv(t, e, got)
 				return
 			}
-			if len(got) != 10 {
-				t.Fatalf("AttachArgv() = %v, want the 10-element chained argv (this case must not suppress)", got)
+			if !slices.Contains(got, "select-layout") {
+				t.Fatalf("AttachArgv() = %v, want the chained argv (this case must not suppress)", got)
 			}
 		})
 	}
@@ -263,8 +273,8 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	}
 
 	want := e.AttachArgv(80, 24)
-	if len(want) != 10 {
-		t.Fatalf("AttachArgv() = %v, want the 10-element chained argv on this known-good script", want)
+	if !slices.Contains(want, "select-layout") {
+		t.Fatalf("AttachArgv() = %v, want the chained argv on this known-good script", want)
 	}
 
 	// The six bar and border pins plus the pre-existing window-size pin, the window marker and the strand pane's two options.
@@ -351,10 +361,7 @@ func wantChainedAttachArgv(t *testing.T, e *Engine, cols, rows int) []string {
 	if err != nil {
 		t.Fatalf("planLayout() unexpected error: %v", err)
 	}
-	bare := wantBareAttachArgv(e)
-	out := append([]string{}, bare...)
-	out = append(out, ";", "select-layout", "-t", fakeStrandWindow, layout)
-	return out
+	return wantZoomBracketedChain(e, "select-layout", "-t", fakeStrandWindow, layout)
 }
 
 // assertChainedArgv asserts got is byte-identical to wantChainedAttachArgv(e, cols, rows).
@@ -462,7 +469,7 @@ func TestAttachArgv_MultiClientWarning(t *testing.T) {
 }
 
 // TestAttachArgv_ChainCarriesTheAdjustedPinsAfterSelectLayout pins the chain's pin tail and the hook it installs:
-// `attach-session ; select-layout ... ; resize-pane -t <pane> -y <n>` per pin, the row-0 pane taken from the physical pane order and its pin one row shorter under a title row.
+// `attach-session ; <zoom record> ; select-layout ... ; resize-pane -t <pane> -y <n>` per pin, then the zoom restore, the row-0 pane taken from the physical pane order and its pin one row shorter under a title row.
 func TestAttachArgv_ChainCarriesTheAdjustedPinsAfterSelectLayout(t *testing.T) {
 	const cols, rows = 80, 24
 	strands := []Strand{
@@ -487,10 +494,13 @@ func TestAttachArgv_ChainCarriesTheAdjustedPinsAfterSelectLayout(t *testing.T) {
 
 			got := e.AttachArgv(cols, rows)
 
-			wantTail := []string{";", "resize-pane", "-t", "%1", "-y", strconv.Itoa(tt.wantHeight)}
 			layoutAt := slices.Index(got, "select-layout")
-			if layoutAt != len(wantBareAttachArgv(e))+1 || len(got) != layoutAt+4+len(wantTail) || !slices.Equal(got[layoutAt+4:], wantTail) {
-				t.Fatalf("AttachArgv() = %v, want the bare attach, ; select-layout -t <window> <layout>, then %v", got, wantTail)
+			if layoutAt == -1 {
+				t.Fatalf("AttachArgv() = %v, want a chained select-layout", got)
+			}
+			want := wantZoomBracketedChain(e, "select-layout", "-t", fakeStrandWindow, got[layoutAt+3], ";", "resize-pane", "-t", "%1", "-y", strconv.Itoa(tt.wantHeight))
+			if !slices.Equal(got, want) {
+				t.Fatalf("AttachArgv() = %v, want %v", got, want)
 			}
 			wantBody := "resize-pane -t %1 -y " + strconv.Itoa(tt.wantHeight)
 			var bodies []string
@@ -501,5 +511,29 @@ func TestAttachArgv_ChainCarriesTheAdjustedPinsAfterSelectLayout(t *testing.T) {
 				t.Errorf("hook entries = %v, want %q among them", bodies, wantBody)
 			}
 		})
+	}
+}
+
+// TestAttachArgv_PreflightListsPanesOnTheUnzoomedWindow pins the pre-flight's bracket: a zoomed strand window is unzoomed before the pane list the layout is planned from, and zoomed again after it, the same pane both times.
+func TestAttachArgv_PreflightListsPanesOnTheUnzoomedWindow(t *testing.T) {
+	e, fake := newAttachTestEngine(t, goodAttachStrands())
+	fake.answerFormat(zoomStateFormat, "1 %2", nil)
+
+	got := e.AttachArgv(80, 24)
+
+	if !slices.Contains(got, "select-layout") {
+		t.Fatalf("AttachArgv() = %v, want the chained argv", got)
+	}
+	var steps []string
+	for _, argv := range fake.Calls() {
+		switch {
+		case slices.Equal(argv, []string{"resize-pane", "-Z", "-t", "%2"}):
+			steps = append(steps, "zoom-toggle")
+		case callVerb(argv) == "list-panes":
+			steps = append(steps, "list-panes")
+		}
+	}
+	if len(steps) < 3 || steps[0] != "zoom-toggle" || steps[len(steps)-1] != "zoom-toggle" || slices.Index(steps, "list-panes") < 1 {
+		t.Errorf("pre-flight steps = %v, want the unzoom toggle first, the pane lists after it and the re-zoom toggle last", steps)
 	}
 }

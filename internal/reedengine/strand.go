@@ -490,105 +490,108 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 			}
 		}
 
-		booted, err := e.ensureSessionLocked()
-		if err != nil {
-			return err
-		}
-		if booted {
-			// Attributable in the log: a session appearing out of a bare `lyx reed add` must name
-			// the verb that caused it, alongside this engine's socket and session name.
-			logger.Info("reed: add self-healed a cold worktree's session", "socket", e.Socket(), "session", e.SessionName())
-		}
-
-		st, err := e.loadOrInitStateLocked()
-		if err != nil {
-			return err
-		}
-
-		if unlessFull != "" {
-			if idx := strandNamed(st.Strands, unlessFull); idx != -1 {
-				result = st.Strands[idx]
-				skipped = true
-				return nil
-			}
-		}
-
-		if spec.IfAbsent {
-			live, err := e.listStrandPanes(st)
+		// Everything past the naming refusals runs in the zoom bracket, so a refused call reads no tmux state.
+		return e.keepZoomLocked(func() error {
+			booted, err := e.ensureSessionLocked()
 			if err != nil {
-				return fmt.Errorf("list panes: %w", err)
+				return err
 			}
-			// aliveIDSet, not liveIDSet: see classifyIfAbsent's own doc comment for why.
-			decision, idx := classifyIfAbsent(st.Strands, explicitName, aliveIDSet(live))
-			switch decision {
-			case ifAbsentNoOpAlive, ifAbsentNoOpHidden:
-				// Neither no-op branch mutates anything: no SaveState, no reconcile/apply, and
-				// no rewrite of Cmd/ResumeCmd/Parent/Display from this invocation's flags — an
-				// add that silently rewrote a matched strand's recorded command would be an
-				// update verb wearing add's name (Shared Decision
-				// matched-branches-never-rewrite-persisted-spec).
-				result = st.Strands[idx]
-				return nil
-			case ifAbsentRelaunch:
-				strand := &st.Strands[idx]
-				// The identical stored-ResumeCmd-else-Cmd fallback Resume applies in
-				// lifecycle.go, so a name-matched relaunch is identical to what "resume" would
-				// have done for the same strand.
-				launchCmd := strand.ResumeCmd
-				if launchCmd == "" {
-					launchCmd = strand.Cmd
-				}
-				if err := e.launchStrandLocked(st, strand, launchCmd); err != nil {
-					return fmt.Errorf("launch strand: %w", err)
-				}
-				// Persist immediately after the launch succeeds and before the layout apply —
-				// the identical ordering this function's own ordinary add path and Resume both
-				// already use, for the identical reason: if apply then fails, the strand is
-				// already tracked with its new PaneID, so the next reconcile repairs the layout
-				// instead of treating the launched pane as an untracked orphan.
-				if err := SaveState(e.stateDir(), st); err != nil {
-					return fmt.Errorf("persist strand: %w", err)
-				}
-				// A deliberate, scoped exception, not an emerging inconsistency: the three
-				// sibling paths through launchStrandLocked (ordinary AddStrand below,
-				// UpdateStrand's hidden->visible surface, and each per-strand replay inside
-				// Resume) carry no equivalent per-strand Info log today, relying on the generic
-				// tmux Debug trace instead. The discussion for this task settled the question
-				// for this branch alone, per
-				// PATTERN-spawn-observability; widening or narrowing the sibling paths' logging is
-				// separate work and stays out of this plan.
-				logger.Info("reed: relaunched strand for --if-absent reopen",
-					"socket", e.Socket(), "session", e.SessionName(), "guid", strand.GUID, "name", strand.Name)
-				if _, err := e.reconcileApplyPersistLocked(st); err != nil {
-					return err
-				}
-				result, _ = strandByGUID(st.Strands, strand.GUID)
-				return nil
+			if booted {
+				// Attributable in the log: a session appearing out of a bare `lyx reed add` must name
+				// the verb that caused it, alongside this engine's socket and session name.
+				logger.Info("reed: add self-healed a cold worktree's session", "socket", e.Socket(), "session", e.SessionName())
 			}
-			// ifAbsentAdd: no matching strand at all — fall through to the ordinary add path below.
-		}
 
-		strand, err := e.addStrandLocked(st, spec)
-		if err != nil {
-			return err
-		}
+			st, err := e.loadOrInitStateLocked()
+			if err != nil {
+				return err
+			}
 
-		// Persist immediately after the launch succeeds, before the layout
-		// apply. If apply then fails, the strand is already tracked (with its
-		// new PaneID), so the next reconcile repairs the layout — the launched
-		// pane never becomes an untracked orphan the next select-layout would
-		// silently reap.
-		if err := SaveState(e.stateDir(), st); err != nil {
-			removeLaunchScripts(shell.ForGOOS(), e.stateDir(), []string{strand.GUID})
-			return fmt.Errorf("persist strand: %w", err)
-		}
+			if unlessFull != "" {
+				if idx := strandNamed(st.Strands, unlessFull); idx != -1 {
+					result = st.Strands[idx]
+					skipped = true
+					return nil
+				}
+			}
 
-		if _, err := e.reconcileApplyPersistLocked(st); err != nil {
-			return err
-		}
+			if spec.IfAbsent {
+				live, err := e.listStrandPanes(st)
+				if err != nil {
+					return fmt.Errorf("list panes: %w", err)
+				}
+				// aliveIDSet, not liveIDSet: see classifyIfAbsent's own doc comment for why.
+				decision, idx := classifyIfAbsent(st.Strands, explicitName, aliveIDSet(live))
+				switch decision {
+				case ifAbsentNoOpAlive, ifAbsentNoOpHidden:
+					// Neither no-op branch mutates anything: no SaveState, no reconcile/apply, and
+					// no rewrite of Cmd/ResumeCmd/Parent/Display from this invocation's flags — an
+					// add that silently rewrote a matched strand's recorded command would be an
+					// update verb wearing add's name (Shared Decision
+					// matched-branches-never-rewrite-persisted-spec).
+					result = st.Strands[idx]
+					return nil
+				case ifAbsentRelaunch:
+					strand := &st.Strands[idx]
+					// The identical stored-ResumeCmd-else-Cmd fallback Resume applies in
+					// lifecycle.go, so a name-matched relaunch is identical to what "resume" would
+					// have done for the same strand.
+					launchCmd := strand.ResumeCmd
+					if launchCmd == "" {
+						launchCmd = strand.Cmd
+					}
+					if err := e.launchStrandLocked(st, strand, launchCmd); err != nil {
+						return fmt.Errorf("launch strand: %w", err)
+					}
+					// Persist immediately after the launch succeeds and before the layout apply —
+					// the identical ordering this function's own ordinary add path and Resume both
+					// already use, for the identical reason: if apply then fails, the strand is
+					// already tracked with its new PaneID, so the next reconcile repairs the layout
+					// instead of treating the launched pane as an untracked orphan.
+					if err := SaveState(e.stateDir(), st); err != nil {
+						return fmt.Errorf("persist strand: %w", err)
+					}
+					// A deliberate, scoped exception, not an emerging inconsistency: the three
+					// sibling paths through launchStrandLocked (ordinary AddStrand below,
+					// UpdateStrand's hidden->visible surface, and each per-strand replay inside
+					// Resume) carry no equivalent per-strand Info log today, relying on the generic
+					// tmux Debug trace instead. The discussion for this task settled the question
+					// for this branch alone, per
+					// PATTERN-spawn-observability; widening or narrowing the sibling paths' logging is
+					// separate work and stays out of this plan.
+					logger.Info("reed: relaunched strand for --if-absent reopen",
+						"socket", e.Socket(), "session", e.SessionName(), "guid", strand.GUID, "name", strand.Name)
+					if _, err := e.reconcileApplyPersistLocked(st); err != nil {
+						return err
+					}
+					result, _ = strandByGUID(st.Strands, strand.GUID)
+					return nil
+				}
+				// ifAbsentAdd: no matching strand at all — fall through to the ordinary add path below.
+			}
 
-		result, _ = strandByGUID(st.Strands, strand.GUID)
-		return nil
+			strand, err := e.addStrandLocked(st, spec)
+			if err != nil {
+				return err
+			}
+
+			// Persist immediately after the launch succeeds, before the layout
+			// apply. If apply then fails, the strand is already tracked (with its
+			// new PaneID), so the next reconcile repairs the layout — the launched
+			// pane never becomes an untracked orphan the next select-layout would
+			// silently reap.
+			if err := SaveState(e.stateDir(), st); err != nil {
+				removeLaunchScripts(shell.ForGOOS(), e.stateDir(), []string{strand.GUID})
+				return fmt.Errorf("persist strand: %w", err)
+			}
+
+			if _, err := e.reconcileApplyPersistLocked(st); err != nil {
+				return err
+			}
+
+			result, _ = strandByGUID(st.Strands, strand.GUID)
+			return nil
+		})
 	})
 	return e.withColor(result), skipped, err
 }
@@ -603,7 +606,7 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 // UpdateStrand is engine-API-only in v1 — there is no CLI verb for it.
 func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, error) {
 	var result Strand
-	err := e.withOpLock(func() error {
+	err := e.withOpLockKeepingZoom(func() error {
 		if err := e.requireSessionLocked(); err != nil {
 			return err
 		}
@@ -786,7 +789,7 @@ func (e *Engine) MarkRetiring(guid string, retiring bool) error {
 // state" gap Down's reap closed).
 func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 	var result Removed
-	err := e.withOpLock(func() error {
+	err := e.withOpLockKeepingZoom(func() error {
 		if err := e.requireSessionLocked(); err != nil {
 			return err
 		}
