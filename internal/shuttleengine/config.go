@@ -31,9 +31,9 @@ type Config struct {
 
 	SubmitRedrawSettleMS int `yaml:"submit_redraw_settle_ms"` // First step of the doubling interval at which the input box is read after an Enter to confirm the send; 0 reads at once, LoadConfig refuses negative.
 
-	SendReadyTimeoutS int `yaml:"send_ready_timeout_s"` // Seconds a verified send waits for an idle session before it fails busy; LoadConfig refuses non-positive.
+	SendReadyTimeoutS int `yaml:"send_ready_timeout_s"` // Seconds a verified send waits for an idle session before it fails busy, ending at the run's deadline for a gate send; binds only an engine with the SessionCycler idle reading. LoadConfig refuses non-positive.
 
-	SubmitConfirmTimeoutS int `yaml:"submit_confirm_timeout_s"` // Seconds from the moment a verified send begins typing within which it must be seen to land before it fails; LoadConfig refuses non-positive.
+	SubmitConfirmTimeoutS int `yaml:"submit_confirm_timeout_s"` // Seconds from the moment a verified send begins typing within which it must be seen to land before it fails, ending at the run's deadline for a gate send; binds only an engine with InputBoxReader. LoadConfig refuses non-positive.
 
 	Claude                    string `yaml:"claude"`
 	ClaudeDenyAgentTool       bool   `yaml:"claude_deny_agent_tool"`
