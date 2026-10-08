@@ -491,7 +491,6 @@ func TestGlyphChain_CrossCard(t *testing.T) {
 	cases := []struct {
 		name  string
 		cards []string
-		want  []findingKey
 	}{
 		{
 			name:  "member on one card and its file on another",
@@ -518,7 +517,7 @@ func TestGlyphChain_CrossCard(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, plan := writeGlyphPlan(t, tc.cards)
-			assertPlanGate(t, plan, copyGlyphChainFixture(t), tc.want)
+			assertPlanGate(t, plan, copyGlyphChainFixture(t), nil)
 		})
 	}
 }
