@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -250,6 +251,10 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 	}
 	if !found {
 		t.Errorf("RemoveStrand calls = %v; want the prior live strand %q stopped", fx.Reed.RemovedGUIDs, "orphan-1")
+	}
+
+	if len(fx.Reed.AddedSpecs) != 1 || fx.Reed.AddedSpecs[0].Segment != string(segmentcolor.Webster) {
+		t.Errorf("AddStrand specs = %+v; want exactly one carrying Segment %q", fx.Reed.AddedSpecs, segmentcolor.Webster)
 	}
 
 	// The fresh BatchState's strand fields are recorded.

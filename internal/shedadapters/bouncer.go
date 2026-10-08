@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/pattern"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -30,12 +31,14 @@ const bouncerEngineLabel = "bouncer"
 // bouncerJudgeRole is the shuttleengine.Spec.Role every judge pass carries, pinned as a constant
 // because the judge spawn and the entry-time probe for a live judge must describe the same run for
 // a logged attach to be attributable to the pass that started it.
+// The judge's specs name the review segment.
 const bouncerJudgeRole = "bouncer-judge"
 
 // bouncerSeedRole is the shuttleengine.Spec.Role every seed pass carries, pinned as a constant for
 // exactly the reason bouncerJudgeRole is: the seed spawn and the re-bounce branch's probe for a live
 // seed must describe the same run, because Attach matches on the role, round, and OutputFiles alone.
 // A literal in one place and a constant in the other is how the two silently stop matching.
+// The seed's specs name the review segment.
 const bouncerSeedRole = "bouncer-seed"
 
 // bouncerJudgeSkills and bouncerSeedSkills are the skills the judge and seed spawns load, in order.
@@ -432,6 +435,7 @@ func (b *Bouncer) awaitLiveJudge(round int) (bool, error) {
 	spec := shuttleengine.Spec{
 		OutputFiles: judgeOutputs(b.cfg.RunDir, round),
 		Role:        bouncerJudgeRole,
+		Segment:     segmentcolor.Review,
 		Round:       strconv.Itoa(round),
 	}
 
@@ -458,6 +462,7 @@ func (b *Bouncer) awaitLiveSeed() (bool, error) {
 	spec := shuttleengine.Spec{
 		OutputFiles: []string{focusPath(b.cfg.RunDir, 1)},
 		Role:        bouncerSeedRole,
+		Segment:     segmentcolor.Review,
 		Round:       "1",
 	}
 
@@ -848,6 +853,7 @@ func (b *Bouncer) runSeedSpawn(focusPathValue string) error {
 		Effort:      b.cfg.Effort,
 		Version:     b.cfg.Version,
 		Role:        bouncerSeedRole,
+		Segment:     segmentcolor.Review,
 		Round:       "1",
 		Skills:      bouncerSeedSkills,
 	}
@@ -972,6 +978,7 @@ func (b *Bouncer) judgeCall(ctx context.Context, n int) (shedengine.Outcome, she
 		Effort:      b.cfg.Effort,
 		Version:     b.cfg.Version,
 		Role:        bouncerJudgeRole,
+		Segment:     segmentcolor.Review,
 		Round:       strconv.Itoa(n),
 		Skills:      bouncerJudgeSkills,
 	}

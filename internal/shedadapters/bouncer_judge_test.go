@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -152,6 +153,9 @@ func TestBouncer_PromptComposition(t *testing.T) {
 				}
 				if strings.Contains(prompt, "{{.specs_dir}}") {
 					t.Errorf("%s prompt contains a literal \"{{.specs_dir}}\" marker; want it rendered", role)
+				}
+				if shuttle.GotSpec.Segment != segmentcolor.Review {
+					t.Errorf("%s spec.Segment = %q; want %q", role, shuttle.GotSpec.Segment, segmentcolor.Review)
 				}
 				if got := shuttle.GotSpec.Skills; len(got) != 1 || got[0] != "scribe:prose" {
 					t.Errorf("%s spec.Skills = %v; want [scribe:prose]", role, got)
