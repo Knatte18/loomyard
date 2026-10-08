@@ -83,8 +83,8 @@ internal/shedtransient: 2
 internal/shedverbs: 65
 internal/shell: 11
 internal/shuttlecli: 19
-internal/shuttleengine: 143
-internal/shuttleengine/claudeengine: 91
+internal/shuttleengine: 145
+internal/shuttleengine/claudeengine: 92
 internal/standalonegeom: 7
 internal/standalonestate: 6
 internal/state: 8

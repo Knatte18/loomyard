@@ -382,6 +382,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	strand, err := r.reed.AddStrand(reedengine.AddSpec{
 		Role:         spec.Role,
 		NameOverride: spec.NameOverride,
+		Segment:      string(spec.Segment),
 		Parent:       spec.Parent,
 		Cmd:          launch.Cmd,
 		ResumeCmd:    launch.ResumeCmd,
@@ -470,6 +471,12 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	result, err := run.awaitStartup()
 	if err != nil {
 		return nil, result, err
+	}
+	if strand.Color != "" && !spec.ColorByCaller {
+		// The color is display only, like the pane title, so a failed play never fails the launch.
+		if err := playInputs(r.reed, strand.GUID, r.engine.ColorSequence(strand.Color)); err != nil {
+			logger.Warn("shuttle: could not type the segment color", "strandGUID", strand.GUID, "color", strand.Color, "error", err)
+		}
 	}
 	if launch.PromptLine != "" {
 		if result, err := run.loadSkillsThenPrompt(launch.PromptLine); err != nil {

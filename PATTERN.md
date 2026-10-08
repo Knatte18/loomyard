@@ -67,6 +67,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-pane-binary-resolution` — Creating a strand pane or a detached `lyx` window in reed, or pinning a key binding that runs `lyx`: it resolves `lyx` to the spawning binary through the one chokepoint in `panebin.go`. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading a skill into a spawned session: the spawning module names it on the launch spec and lyx types it; no stencil asks an agent to load a skill. (test)
 - `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive, and no stencil tells an agent to ask the operator; the discussion role's interactive questions come from the `{{.mode_rules}}` marker, not stencil text, and the orch stencils are outside the rule. (test)
+- `PATTERN-spawn-color` — Coloring a spawned session: its spawning module names a segment on the launch spec, reed tints its bar button and border, and lyx types the provider's color command; no stencil asks an agent to set a color.
 - `PATTERN-wait-mark-display-only` — Marking a wait on screen: the `@lyx_wait` and `@lyx_wait_start` pane options are set only through reed's `SetWaitMark`, by `shuttleengine` and the landing verify callback, and no Go decision reads them.
 - `PATTERN-spawn-observability` — Starting a real OS process from a `lyx` command: log the spawn, and the teardown where it waits, via `internal/logger`. — [background](pattern/PATTERN-spawn-observability.md)
 

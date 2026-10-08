@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
 // Spec describes one shuttle run: the prompt handed to the provider as the launch argument, the
@@ -87,6 +88,14 @@ type Spec struct {
 	// shuttle config's claude_deny_agent_tool / claude_deny_ask_user_question
 	// keys).
 	Interactive bool
+	// Segment is the loom segment the spawning module names for its role.
+	// It is forwarded to reed, which resolves the segment's palette color for the strand's bar button and border,
+	// and shuttle types the provider's color command for that color after startup.
+	// validate does not inspect it.
+	Segment segmentcolor.Segment
+	// ColorByCaller, when true, makes shuttle type no color command, because the caller types the color itself.
+	// validate does not inspect it.
+	ColorByCaller bool
 	// Role is the role segment of the strand's name; it may be empty.
 	// Round is not part of the name; it names the run's directory.
 	Role  string
