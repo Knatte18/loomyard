@@ -59,7 +59,7 @@
 //
 // Every strand pane carries the user options @strand (the role segment of its name, or the full name when it does not parse) and @strand_color (the tmux color of its segment, unset when it has none),
 // and the strand window carries @lyx_strands.
-// Launch sets the pane options; boot and every attach pre-flight re-assert all three, so a session or strand spawned by an older lyx gets them at its next attach.
+// Launch sets the pane options and boot marks the strand window; every attach pre-flight marks the window and re-asserts both pane options on every strand bound to a live pane, so a session or strand spawned by an older lyx gets them at its next attach.
 // They are display only: the status bar and the key bindings read them, no Go decision does, and Selvage never gets either pane option.
 // A strand's Segment is an opaque field its spawner names through AddSpec.Segment; reed reads it only to look up the segment's color, which the strand an add or replace returns and Status carry as Color.
 //
