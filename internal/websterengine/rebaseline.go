@@ -179,7 +179,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 			if name == planOverviewFile {
 				indexOnly, overviewErr := overviewIndexOnly(deps.State, deps.Plan.Dir)
 				if overviewErr != nil {
-					return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster rebaseline`", overviewErr)
+					return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster rebaseline` with the same `--card` flags", overviewErr)
 				}
 				if !indexOnly {
 					return nil, overviewRefusal(deps.State)

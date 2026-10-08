@@ -646,7 +646,7 @@ func TestRebaseline_OverviewFrameUnreadable(t *testing.T) {
 		clearHashes bool
 		wantText    string
 	}{
-		{name: "a state with plan-file hashes", wantText: "way forward: transient, re-run `lyx webster rebaseline`"},
+		{name: "a state with plan-file hashes", wantText: "way forward: transient, re-run `lyx webster rebaseline` with the same `--card` flags"},
 		{name: "a state without plan-file hashes", clearHashes: true, wantText: "way forward: transient, re-run the verb"},
 	}
 	for _, tt := range tests {
