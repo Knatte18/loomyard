@@ -91,6 +91,7 @@ func templateConfig() Config {
 		ParentReviewWaitMin:      60,
 		ReviewCirclingCheckpoint: 3,
 		ReviewMaxBounces:         3,
+		FixStart:                 "parallel",
 	}
 }
 
@@ -143,6 +144,11 @@ review_timeout_min: 240
 			name:   "empty segment list takes the run-wide list",
 			values: map[string]string{"discussion_fix": "[]"},
 			mutate: func(c *Config) { c.DiscussionFix = ModelSpecList{} },
+		},
+		{
+			name:   "fix_start after-review",
+			values: map[string]string{"fix_start": "after-review"},
+			mutate: func(c *Config) { c.FixStart = "after-review" },
 		},
 		{
 			name:   "discussion_interactive true",
@@ -264,6 +270,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed plan_fix spec", "plan_fix", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
 		{"malformed webster_review spec", "webster_review", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}},
 		{"malformed later webster_fix entry", "webster_fix", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}},
+		{"unknown fix_start", "fix_start", "sideways", []string{`"parallel"`, `"after-review"`}},
 		{"mapping review value", "review", "\n  model: opus", []string{"a non-empty list of model-specs"}},
 		{"mapping inside a fix list", "fix", "\n  - model: opus", []string{"a non-empty list of model-specs"}},
 		{"malformed judge spec", "judge", `"sonnet[medium"`, nil},

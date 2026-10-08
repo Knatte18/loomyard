@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -655,20 +656,24 @@ func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
 	}
 }
 
-// seedLoomConfigWithKey overwrites <anchorPath>/_lyx/config/loom.yaml with the embedded template, its key line's value replaced by value.
-func seedLoomConfigWithKey(t *testing.T, anchorPath, key, value string) {
+// seedLoomConfigWithKeys overwrites <anchorPath>/_lyx/config/loom.yaml with the embedded template, each key line's value replaced by its entry in values.
+func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]string) {
 	t.Helper()
 	var contents strings.Builder
-	replaced := false
+	replaced := map[string]bool{}
 	for _, line := range strings.Split(loomengine.ConfigTemplate(), "\n") {
-		if strings.HasPrefix(line, key+":") {
-			line = key + ": " + value
-			replaced = true
+		for key, value := range values {
+			if strings.HasPrefix(line, key+":") {
+				line = key + ": " + value
+				replaced[key] = true
+			}
 		}
 		contents.WriteString(line + "\n")
 	}
-	if !replaced {
-		t.Fatalf("key %q not present in loomengine.ConfigTemplate(); the fixture would silently test nothing", key)
+	for key := range values {
+		if !replaced[key] {
+			t.Fatalf("key %q not present in loomengine.ConfigTemplate(); the fixture would silently test nothing", key)
+		}
 	}
 	cfgPath := filepath.Join(anchorPath, "_lyx", "config", "loom.yaml")
 	if err := os.WriteFile(cfgPath, []byte(contents.String()), 0o644); err != nil {
@@ -676,12 +681,13 @@ func seedLoomConfigWithKey(t *testing.T, anchorPath, key, value string) {
 	}
 }
 
-// TestWire_PlanReviewReachesOnlyThePlanBurlerRow verifies a loom.yaml setting plan_review lands in the Plan-Burler row's RowReviewModels entry alone, the other two BurlerRound rows keeping the run-wide models.
-func TestWire_PlanReviewReachesOnlyThePlanBurlerRow(t *testing.T) {
+// TestWire_ReviewKeysReachTheEnv verifies the loom.yaml keys that tune a review round reach the Env:
+// plan_review lands in the Plan-Burler row's RowReviewModels entry alone, the other two BurlerRound rows keeping the run-wide models, and fix_start lands in Env.FixStart.
+func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	t.Parallel()
 
 	loc := hubLocation(t, "pair", ".")
-	seedLoomConfigWithKey(t, loc.AnchorPath(), "plan_review", "opus[effort=low]")
+	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"plan_review": "opus[effort=low]", "fix_start": "after-review"})
 
 	c := &loomCLI{runID: shedrun.SelfRunID}
 	if err := c.wire(loc, loc.AnchorPath()); err != nil {
@@ -699,5 +705,8 @@ func TestWire_PlanReviewReachesOnlyThePlanBurlerRow(t *testing.T) {
 		if got := c.env.RowReviewModels[row]; !reflect.DeepEqual(got, c.env.ReviewModels) {
 			t.Errorf("RowReviewModels[%q] = %+v; want the run-wide %+v", row, got, c.env.ReviewModels)
 		}
+	}
+	if c.env.FixStart != burlerengine.FixStartAfterReview {
+		t.Errorf("c.env.FixStart = %q; want %q", c.env.FixStart, burlerengine.FixStartAfterReview)
 	}
 }

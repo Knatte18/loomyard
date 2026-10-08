@@ -53,8 +53,9 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 	}
 
 	opts := burlerengine.RunOpts{
-		Timeout: timeout,
-		Gate:    gate,
+		Timeout:  timeout,
+		Gate:     gate,
+		FixStart: env.FixStart,
 	}
 
 	if err := requireAbsRoot("BurlerRound", "RunRoot", env.RunRoot); err != nil {

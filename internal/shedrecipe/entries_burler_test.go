@@ -271,9 +271,13 @@ func TestBurlerRoundEntry_EnvReviewFallback(t *testing.T) {
 			Fix:    []burlerengine.ModelChoice{{Model: "env-fix-model", Effort: "env-fix-effort"}},
 		}
 		env.ReviewTimeout = 45 * time.Second
+		env.FixStart = burlerengine.FixStartAfterReview
 		cfg := minimalBurlerConfig()
 
 		_, opts := callAndCaptureProfile(t, "review-round", cfg, env)
+		if opts.FixStart != burlerengine.FixStartAfterReview {
+			t.Errorf("opts.FixStart = %q; want %q", opts.FixStart, burlerengine.FixStartAfterReview)
+		}
 		if want := (burlerengine.ModelChoice{Model: "env-model", Effort: "env-effort"}); opts.Review != want {
 			t.Errorf("opts.Review = %+v; want %+v", opts.Review, want)
 		}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -153,6 +154,8 @@ func (p *Profile) roundHalves(opts RunOpts, reviewPrompt, fixPrompt string) (rev
 // remove any stale ready marker, since no caller carries that duty;
 // start the reviewer, then the fixer, through the Shuttle seam, each as an autonomous run (Interactive/Parent/Display/KeepPane stay zero-valued);
 // and join them (see join).
+// Under FixStartAfterReview the fixer starts only after the reviewer ended with an accepted review and the ready marker was written, and the round is decided from the two ends (see decideRound);
+// a reviewer that ends without an accepted review starts no fixer.
 //
 // A half that never starts because its provider never came up is that half's OutcomeDied with NotStarted set and a nil error.
 // StartGated returns only the error there, so the half carries its StartError text and no identity.
@@ -165,6 +168,11 @@ func (p *Profile) roundHalves(opts RunOpts, reviewPrompt, fixPrompt string) (rev
 // — deliberately fail-loud — a verdict parse failure on a done review, since a defaulted verdict could
 // silently terminate a caller's round loop on a malformed round.
 func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
+	switch opts.FixStart {
+	case "", FixStartParallel, FixStartAfterReview:
+	default:
+		return Result{}, fmt.Errorf("burler: unknown fix start %q; set it to %q or %q", opts.FixStart, FixStartParallel, FixStartAfterReview)
+	}
 	if err := p.validate(e.geom.WorktreeRoot, e.cfg); err != nil {
 		return Result{}, err
 	}
@@ -230,6 +238,16 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		return Result{}, fmt.Errorf("burler: shuttle run: %w", err)
 	}
 
+	afterReview := opts.FixStart == FixStartAfterReview
+	var reviewEnd reviewerEnd
+	if afterReview {
+		var markerReleased atomic.Bool
+		reviewEnd = awaitReview(&p, reviewHandle, &markerReleased)
+		if !reviewEnd.accepted() {
+			return e.decideRound(&p, opts, reviewHandle, nil, reviewEnd, fixerEnd{}, false, false, nil)
+		}
+	}
+
 	fixHandle, err := e.shuttle.StartGated(fixSpec.spec, fixSpec.gate)
 	if err != nil {
 		if stopErr := e.stopHalf(reviewHandle); stopErr != nil {
@@ -241,6 +259,11 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		return Result{}, fmt.Errorf("burler: shuttle run: %w", err)
 	}
 
+	if afterReview {
+		var fixEnd fixerEnd
+		fixEnd.result, fixEnd.err = fixHandle.Wait()
+		return e.decideRound(&p, opts, reviewHandle, fixHandle, reviewEnd, fixEnd, false, false, nil)
+	}
 	return e.join(&p, opts, reviewHandle, fixHandle)
 }
 

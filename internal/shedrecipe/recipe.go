@@ -80,6 +80,8 @@ type Env struct {
 	// RowReviewModels holds a BurlerRound row's own reviewer and fixer model lists, keyed by row name like SegmentBounces.
 	// A row with no entry, and a nil map, take ReviewModels.
 	RowReviewModels map[string]burlerengine.RoundModels
+	// FixStart is the run-wide start order of every BurlerRound row's fixer, set on each round's RunOpts; empty is parallel.
+	FixStart burlerengine.FixStart
 
 	// ReviewMaxBounces is the run-wide bounce budget of every review segment, read by loomrecipe alone.
 	// It is set on each row of a segment holding a Bouncer row, because the recipe declares no max_bounces there.
