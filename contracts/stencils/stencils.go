@@ -364,7 +364,7 @@ var entries = []registryEntry{
 }
 
 // roleOpeningStencils maps each spawned role other than the orch to the stencils that open its session.
-// Each carries the parent directive marker, which parentdirective_test.go enforces.
+// Each carries both the parent directive marker and the edit directive marker, which parentdirective_test.go enforces.
 var roleOpeningStencils = map[string][]string{
 	"driver":            {"shed-template-driver"},
 	"discussion":        {"loom-template-discussion"},
@@ -391,6 +391,14 @@ var askOperatorPhrases = []string{
 	"ask your operator",
 	"check with the operator",
 	"confirm with the operator",
+}
+
+// editRulePhrases is the closed list of phrases distinctive to the no-script edit rule's statement, matched case-insensitively.
+var editRulePhrases = []string{
+	"`sed`",
+	"heredoc",
+	"replace_all",
+	"edit or write",
 }
 
 // askOperatorBounds are the words that make an ask-the-operator sentence a prohibition rather than an instruction.
