@@ -56,6 +56,9 @@
 //
 // Segment colors are read from reed.yaml's segment_colors block, resolved only through Engine.segmentColor, and refused only at boot.
 //
+// SwitchClient (switch.go) is the engine-less function behind `lyx reed switch`: it addresses a told server by socket path and issues list-sessions, display-message and switch-client on it, and nothing else.
+// It is the only reed code that issues switch-client.
+//
 // Every strand pane carries the user options @strand (the role segment of its name, or the full name when it does not parse) and @strand_color (the tmux color of its segment, unset when it has none),
 // and the strand window carries @lyx_strands.
 // Launch sets the pane options; boot and every attach pre-flight re-assert all three, so a session or strand spawned by an older lyx gets them at its next attach.
