@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync/atomic"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -65,6 +66,11 @@ type Half struct {
 	// StartError is the text of the start error of a half that never started, which names the run dir, the strand and whether the strand was removed.
 	// It is empty for a half that started.
 	StartError string
+	// StartedAt and EndedAt are the half's shuttle run times, zero for a half that produced no terminal result.
+	StartedAt time.Time
+	EndedAt   time.Time
+	// Usage is the half's session token reading, forks included, unknown unless the half's run was done on an engine that reads usage.
+	Usage shuttleengine.SessionUsage
 }
 
 // Result is one round's outcome.
@@ -83,6 +89,8 @@ type Result struct {
 	// shuttleengine.OutcomeDone. nil for a non-cluster round or a
 	// non-done reviewer.
 	ForkAudit *shuttleengine.ForkAudit
+	// Lenses names the lenses the reviewer ran, in fan order after exclusion; nil for a solo round.
+	Lenses []string
 	// ClusterWarnings carries the non-fatal audit findings auditClusterRound
 	// returns for a cluster round (e.g. a fork that never returned a
 	// report) — sloppiness no mechanism prevents in advance, surfaced here

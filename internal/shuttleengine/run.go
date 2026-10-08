@@ -213,6 +213,13 @@ type Result struct {
 	// ExpiredShells holds the labels of the background shells the wait stopped waiting on, in order:
 	// transcript-reported shells it waited out past background_shell_wait_min, and payload-reported shells a gated run's turn end left behind at once.
 	ExpiredShells []string
+	// StartedAt is the run's creation time from its state, zero when the record's time does not parse.
+	StartedAt time.Time
+	// EndedAt is the run clock's time when the run was classified.
+	EndedAt time.Time
+	// Usage is the session's token reading, forks included.
+	// It is known only for an OutcomeDone run on an engine implementing UsageReader that could read the session.
+	Usage SessionUsage
 }
 
 // Run is the handle to one in-progress or completed shuttle run, returned by Start once its provider

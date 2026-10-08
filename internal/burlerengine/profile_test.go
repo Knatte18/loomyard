@@ -401,7 +401,7 @@ func TestProfile_Validate(t *testing.T) {
 	}
 }
 
-// TestProfileValidate_ClusterExclude table-drives Profile.ClusterExclude through validate: the no-exclusion happy path, a single-name drop, an absent-name no-op, a duplicate-name no-op, an exclude-everything no-op, the ClusterExclude-without-ClusterFan error, and an empty ClusterFan leaving the lenses nil -- clustering is never on unless a profile names a fan.
+// TestProfileValidate_ClusterExclude table-drives Profile.ClusterExclude through validate: the no-exclusion happy path, a single-name drop, an absent-name no-op, a duplicate-name no-op, an exclude-everything no-op, an exclude-everything falling back to the held set or to the full fan, the ClusterExclude and ClusterExcludeHeld without-ClusterFan errors, and an empty ClusterFan leaving the lenses nil -- clustering is never on unless a profile names a fan.
 //
 //testtiming:keep pins the exclusion semantics, the resolved lens order and text and the ClusterExclude-without-ClusterFan error, which the Validate table covering its blocks does not assert
 func TestProfileValidate_ClusterExclude(t *testing.T) {
@@ -411,6 +411,7 @@ func TestProfileValidate_ClusterExclude(t *testing.T) {
 		name          string
 		clusterFan    string
 		excludeLenses []string
+		heldLenses    []string
 		wantErr       bool
 		errSubstr     string
 		wantNames     []string
@@ -446,6 +447,27 @@ func TestProfileValidate_ClusterExclude(t *testing.T) {
 			wantNames:     []string{"style", "security"},
 		},
 		{
+			name:          "excluding every lens falls back to the held set",
+			clusterFan:    "standard",
+			excludeLenses: []string{"style", "security"},
+			heldLenses:    []string{"style"},
+			wantNames:     []string{"security"},
+		},
+		{
+			name:          "a held set that also empties the fan keeps the full fan",
+			clusterFan:    "standard",
+			excludeLenses: []string{"style", "security"},
+			heldLenses:    []string{"style", "security"},
+			wantNames:     []string{"style", "security"},
+		},
+		{
+			name:       "clusterexcludeheld without clusterfan is an error",
+			clusterFan: "",
+			heldLenses: []string{"style"},
+			wantErr:    true,
+			errSubstr:  "ClusterExcludeHeld",
+		},
+		{
 			name:          "clusterexclude without clusterfan is an error",
 			clusterFan:    "",
 			excludeLenses: []string{"style"},
@@ -466,6 +488,7 @@ func TestProfileValidate_ClusterExclude(t *testing.T) {
 			root, p := newValidProfileFixture(t)
 			p.ClusterFan = tt.clusterFan
 			p.ClusterExclude = tt.excludeLenses
+			p.ClusterExcludeHeld = tt.heldLenses
 
 			err := p.validate(root, cfg)
 

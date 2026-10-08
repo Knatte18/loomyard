@@ -344,10 +344,10 @@ producers:
         # tool-use is required: the round reads _lyx/shed/<slug>/status.json and runs read-only git to
         # obtain the diff, which is its entire subject.
         tool-use: true
-        # No cluster-fan key: fork reviewers are read-only and may never run any git command,
-        # which burlerengine's fork boilerplate states and its own round audit enforces, so under
-        # a fan the forks could not reach a subject that exists only through git. Single reviewer,
-        # matching both shipped segments.
+        # No cluster-fan key: Webster-Review stays solo, because fork reviewers are read-only and
+        # may never run any git command, which burlerengine's fork boilerplate states and its own
+        # round audit enforces, so under a fan the forks could not reach a subject that exists
+        # only through git. Discussion-Review and Plan-Review take their fan from loom.yaml.
       # No model/effort key: model choice lives in loom.yaml's review and fix keys only.
       # No timeout_s key, for the same Env fallback reason as Webster-Bouncer.
 
