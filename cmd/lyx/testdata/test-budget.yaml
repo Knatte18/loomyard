@@ -66,7 +66,7 @@ internal/pattern: 7
 internal/planglyph: 82
 internal/planparser: 82
 internal/preflight: 7
-internal/preflightshed: 7
+internal/preflightshed: 8
 internal/proc: 12
 internal/quarrycli: 7
 internal/reedcli: 36

@@ -103,14 +103,10 @@ func reconcileRefusal(err error) string {
 
 	var worktreeErr *hubreconcile.WorktreeError
 	if errors.As(err, &worktreeErr) {
-		switch {
-		case worktreeErr.File == "":
+		if worktreeErr.File == "" {
 			return fmt.Sprintf("hub config reconcile failed in %s: %v; way forward: fix the cause named above, then %s", worktreeErr.Worktree, worktreeErr.Err, resume)
-		case worktreeErr.Module == "":
-			return fmt.Sprintf("hub config reconcile failed in %s: %s: %v; way forward: fix %s, then %s", worktreeErr.Worktree, worktreeErr.File, worktreeErr.Err, worktreeErr.File, resume)
-		default:
-			return fmt.Sprintf("hub config reconcile failed in %s: %s: %v; way forward: fix %s (or run \"lyx config %s\" on it), then %s", worktreeErr.Worktree, worktreeErr.File, worktreeErr.Err, worktreeErr.File, worktreeErr.Module, resume)
 		}
+		return fmt.Sprintf("hub config reconcile failed in %s: %s: %v; way forward: fix %s (or run \"lyx config %s\" on it), then %s", worktreeErr.Worktree, worktreeErr.File, worktreeErr.Err, worktreeErr.File, worktreeErr.Module, resume)
 	}
 
 	var lockErr *hubreconcile.LockTimeoutError
