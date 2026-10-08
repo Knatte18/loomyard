@@ -47,7 +47,9 @@ func (f Finding) Error() string {
 // An infrastructure failure of the index is an error wrapping ErrQuarryUnavailable, distinct from any finding.
 type Index interface {
 	// ValidateFormat resolves the plan's refs against the tree at worktreeRoot, as a freshly written plan is checked.
-	ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, error)
+	// done names the cards whose batch webster already recorded done: their work is in the tree, so they are history, and the tree-dependent checks skip them.
+	// A nil done checks the whole plan.
+	ValidateFormat(plan *planparser.Plan, worktreeRoot string, done []planparser.Card) ([]Finding, error)
 	// ValidateRework resolves the plan's refs for a rework round that told the given number of completed cards.
 	ValidateRework(plan *planparser.Plan, worktreeRoot string, told int) ([]Finding, error)
 	// ValidateDispatch resolves the plan's refs for a batch about to run, after the completed cards and before the forthcoming ones.

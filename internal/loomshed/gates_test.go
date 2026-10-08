@@ -279,6 +279,75 @@ func TestNewPlanGate(t *testing.T) {
 			t.Fatalf("gate() Passed = true; want false for a set carrying one blocking finding")
 		}
 	})
+
+	// The cards of a batch webster's run record holds done are history:
+	// a run moved back to the plan review after Webster built card 1 must not wedge on card 1's own landed Create.
+	builtRepo := map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"}
+	doneBatchOne := &websterengine.State{Batches: map[int]*websterengine.BatchState{
+		1: {Slug: "first-card", Cards: []string{"01-first-card"}, Terminal: true, Status: websterengine.DigestStatusDone},
+	}}
+	saveState := func(t *testing.T, anchorPath string, st *websterengine.State) {
+		t.Helper()
+		if err := websterengine.SaveState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath), st); err != nil {
+			t.Fatalf("SaveState: %v", err)
+		}
+	}
+
+	t.Run("DoneCardCreateThatExistsPasses", func(t *testing.T) {
+		t.Parallel()
+		anchorPath := t.TempDir()
+		worktreeRoot := plankit.Repo(t, builtRepo)
+		seedGlyphPlanFixture(t, anchorPath, true, "sub#Foo", "")
+		saveState(t, anchorPath, doneBatchOne)
+
+		result, err := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))()
+		if err != nil {
+			t.Fatalf("gate() error = %v; want nil", err)
+		}
+		if !result.Passed {
+			t.Errorf("gate() = %+v; want a pass, card 1's batch is done", result)
+		}
+	})
+
+	t.Run("NoRunRecordFailsCreateAlreadyExists", func(t *testing.T) {
+		t.Parallel()
+		anchorPath := t.TempDir()
+		worktreeRoot := plankit.Repo(t, builtRepo)
+		seedGlyphPlanFixture(t, anchorPath, true, "sub#Foo", "")
+
+		result, err := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))()
+		if err != nil {
+			t.Fatalf("gate() error = %v; want nil", err)
+		}
+		if result.Passed || !strings.Contains(result.Findings, "create-already-exists") {
+			t.Errorf("gate() = %+v; want a create-already-exists failure", result)
+		}
+	})
+
+	t.Run("PendingCardIsStillChecked", func(t *testing.T) {
+		t.Parallel()
+		anchorPath := t.TempDir()
+		worktreeRoot := plankit.Repo(t, builtRepo)
+		plan := firstCardPlan(true, "go", "sub#Foo", "")
+		plan.Cards = append(plan.Cards, plankit.Card{
+			Number: 2,
+			Slug:   "second-card",
+			Groups: []plankit.Group{{Label: "Edit", Targets: []string{"sub#Missing"}}},
+		})
+		plankit.Write(t, planparser.PlanDir(anchorPath), plan)
+		saveState(t, anchorPath, doneBatchOne)
+
+		result, err := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))()
+		if err != nil {
+			t.Fatalf("gate() error = %v; want nil", err)
+		}
+		if result.Passed || !strings.Contains(result.Findings, "glyph-not-found") {
+			t.Errorf("gate() = %+v; want card 2's glyph-not-found failure", result)
+		}
+		if strings.Contains(result.Findings, "create-already-exists") {
+			t.Errorf("gate() Findings = %q; want no finding on done card 1", result.Findings)
+		}
+	})
 }
 
 // writeOverviewOnlyPlanDir creates the plan directory under anchorPath and writes only overview

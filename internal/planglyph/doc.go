@@ -10,6 +10,9 @@
 // planglyph composes internal/planparser's pure checks rather than reimplementing any of them:
 // ValidateFormat calls planparser.ValidateFormat and Validate calls planparser.Validate, converts every finding, and appends the same resolve-backed findings on top via one shared resolvePass and then planGatePass — no check exists in both packages.
 // ValidateDispatch shares resolvePass but never runs planGatePass, whose checks run at the plan gates only.
+// ValidateFormatAfter is the plan gates' form for a plan some of whose cards webster already ran, the cards the index's ValidateFormat is told are done:
+// ValidateDispatch's answer with those cards completed, plus planGatePass over the cards not done, so a done card's landed work is never reported as a defect of the plan.
+// With no done card it is ValidateFormat.
 //
 // A caller's own answer is therefore a three-way split, never a two-way one: pure findings (from
 // planparser, stamped SeverityBlocking), resolve findings (from this package's own passes, either
@@ -47,14 +50,14 @@
 //   - resign-head-mismatch (blocking) — CanonicalizeHandles (handle.go), an Edit re-sign arrow whose head quarry.Name cannot name or names as a member other than the arrow's own glyph.
 //     It reads plan text alone, so it runs wherever resolvePass does, ValidateDispatch included.
 //   - redundant-file-target (blocking) — planGatePass (plangate.go), a card listing a file self glyph beside a member glyph that resolves into that file.
-//     It runs at the plan gates only (ValidateFormat, Validate and so ValidateRework), never at ValidateDispatch.
+//     It runs at the plan gates only (ValidateFormat, ValidateFormatAfter over its cards not done, Validate and so ValidateRework), never at ValidateDispatch.
 //     The rule the pass exists for: a check whose verdict depends on state the run itself changes runs at the plan gates only, because dispatch re-validates a plan against a tree the run has already changed.
 //   - resign-interface-method (blocking) — planGatePass (plangate.go), an Edit re-sign arrow on a member that resolves to an interface method, whose own spec is no declaration.
 //     It reads the tree, so like redundant-file-target it runs at the plan gates only.
 //   - caller-uncovered (blocking for a package-level member, informational for a method) — callerCoverageFindings (callercoverage.go), reached through planGatePass: a deleted or re-signed member that Go code still references with no admissible card's target covering that code.
 //     It walks every Go file under the worktree root by token, so it runs only when a subject exists and at the plan gates only.
 //     A re-signed member admits its own card's targets; a deleted member admits its own card and every earlier one, and its reference inside a later card's Edit code stays delete-before-reference's.
-//   - delete-target-gone (informational) — downgradeGoneDeleteTargets (planglyph.go), a Delete target of a pending card that is already absent, reported by ValidateDispatch alone once a batch is begun instead of the blocking path-missing or glyph-not-found finding for it.
+//   - delete-target-gone (informational) — downgradeGoneDeleteTargets (planglyph.go), a Delete target of a pending card that is already absent, reported by ValidateDispatch alone, and so by ValidateFormatAfter, once a batch is begun or done instead of the blocking path-missing or glyph-not-found finding for it.
 //   - handle-name-failed, handle-canonical-collision (both blocking) — CanonicalizeHandles
 //     (handle.go), a declaration that fails to parse or two draft handles that canonicalize to the
 //     same glyph.

@@ -64,7 +64,7 @@ var nilLegal = map[string]bool{
 // Its Delta panics: a test that needs a delta supplies its own index.
 type noFindingsIndex struct{ planindex.Index }
 
-func (noFindingsIndex) ValidateFormat(*planparser.Plan, string) ([]planindex.Finding, error) {
+func (noFindingsIndex) ValidateFormat(*planparser.Plan, string, []planparser.Card) ([]planindex.Finding, error) {
 	return nil, nil
 }
 

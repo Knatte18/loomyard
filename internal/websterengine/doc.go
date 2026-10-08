@@ -131,6 +131,9 @@
 // That card was fully validated at its first begin-batch, its bytes stay pinned by its recorded CardHashes, and record-batch and recover-batch still run its done-checks and drift detection.
 // A forthcoming target that never lands keeps the run from outcome done, because the run-exit check requires a terminal done record for every batch.
 //
+// loom's plan gate takes a narrower scope from DoneCards: only the cards of a batch recorded terminal with status done, read from the batch records alone, with no batchifier.
+// A run moved back to the plan review keeps its run record, and those cards are history whose work is in the tree.
+//
 // # the plan-staleness guard re-baselines at the rewrite, not at the return
 //
 // begin-batch compares the plan directory's fingerprint against the one

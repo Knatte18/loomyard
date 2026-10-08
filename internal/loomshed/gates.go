@@ -1,6 +1,6 @@
 // gates.go implements this package's three gate closures: NewDiscussionGate, NewPlanGate and NewReworkPlanGate.
 // Each is the gate half of the Gate Self-Check Parity Invariant -- each calls the identical package
-// function its CLI self-check verb does (discussionparser.Validate, the index's ValidateFormat and
+// function its CLI self-check verb does (discussionparser.Validate, ValidatePlan and
 // ValidateReworkPlan, respectively), so the operator's own self-check verb and the automated gate can never disagree
 // about what "valid" means.
 
@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // formatDiscussionFindings renders findings as a single semicolon-separated list, using each
@@ -98,9 +99,9 @@ func NewDiscussionGate(decisionRecordPath, supportLogPath string) shuttleengine.
 	}
 }
 
-// NewPlanGate returns the Plan-Write row's gate closure, a shuttleengine.Gate that parses the plan through planparser.ParsePlan(planparser.PlanDir(anchorPath)) and then runs index.ValidateFormat(plan, worktreeRoot), mapping the result onto the gate contract.
+// NewPlanGate returns the Plan-Write row's gate closure, a shuttleengine.Gate that parses the plan through planparser.ParsePlan(planparser.PlanDir(anchorPath)) and then runs ValidatePlan(plan, anchorPath, worktreeRoot, index), mapping the result onto the gate contract.
 //
-// The two path parameters are separate because planparser.PlanDir takes the anchor path while index.ValidateFormat takes the worktree root, and they are not the same value.
+// The two path parameters are separate because planparser.PlanDir and webster's run record take the anchor path while index.ValidateFormat takes the worktree root, and they are not the same value.
 //
 // ValidateFormat is called, never the require_approved-aware validation.
 // Both plan gate sites run strictly before the Plan-Review segment's approve seam writes the approval flag, so demanding it would fail every single fix round.
@@ -137,8 +138,20 @@ func NewDiscussionGate(decisionRecordPath, supportLogPath string) shuttleengine.
 // It encodes a crucible-round finding that planindex.Severity is an open string type, so testing not-informational rather than equals-blocking is what keeps an unrecognized or zero-valued severity from silently passing.
 func NewPlanGate(anchorPath, worktreeRoot string, index planindex.Index) shuttleengine.Gate {
 	return planGate("Plan-Gate", anchorPath, func(plan *planparser.Plan) ([]planindex.Finding, error) {
-		return index.ValidateFormat(plan, worktreeRoot)
+		return ValidatePlan(plan, anchorPath, worktreeRoot, index)
 	})
+}
+
+// ValidatePlan is the plan gate's check set: index.ValidateFormat over plan, told the cards webster's run record under anchorPath holds done.
+// A run moved back to the plan review after Webster executed batches keeps its run record, and a done card's work is already in the tree, so the index skips its tree-dependent checks.
+// With no run record every card is checked.
+// A run record that cannot be read is a returned error, never a finding.
+func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index planindex.Index) ([]planindex.Finding, error) {
+	st, err := websterengine.LoadState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath))
+	if err != nil {
+		return nil, err
+	}
+	return index.ValidateFormat(plan, worktreeRoot, websterengine.DoneCards(plan, st))
 }
 
 // NewReworkPlanGate returns the PR-Rework row's gate closure: a shuttleengine.Gate that parses the plan under anchorPath and checks it with ValidateReworkPlan over index.
