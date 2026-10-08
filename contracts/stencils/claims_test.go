@@ -302,7 +302,13 @@ var wordingClaims = []stencilClaims{
 		wantNone("the superseded report grammar is gone, the report is deliberately minimal", "out_of_scope:", "tests: green"),
 		droppedConceptClaims(),
 	)},
-	{"webster-prefix-recovery.md", WebsterPrefixRecovery, droppedConceptClaims()},
+	{"webster-prefix-recovery.md", WebsterPrefixRecovery, joinClaims(
+		wantAll("a recovery strand continues from the committed tree plus the listed uncommitted work, and a dirty tree is not a contradiction of its first sentence",
+			"You continue from the committed tree plus the uncommitted work listed under \"What the worktree holds\" below, not from scratch."),
+		wantAll("a path no session of the run wrote is left untouched and never staged or committed, so the strand cannot sweep foreign work into its commits",
+			"Under \"Not written by this run\": leave it untouched, and never stage or commit it."),
+		droppedConceptClaims(),
+	)},
 	{"webster-body-verify-fix.md", WebsterBodyVerifyFix, joinClaims(
 		wantAll("the fixer reads the gate report and fixes the cause in source",
 			"{{.report_path}}", "Fix the cause in source"),

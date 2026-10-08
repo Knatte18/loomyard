@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -159,6 +160,56 @@ func failureDigestBlock(prior *BatchState) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// uncommittedPathsBlock renders the worktree's uncommitted paths for the recovery prompt, grouped by whether some session of the run wrote them.
+// A path the run's write evidence cannot attribute counts as not written by this run, the side the strand leaves untouched;
+// a collapsed untracked directory counts as written when any written path lies under it.
+// A clean tree renders "none".
+func uncommittedPathsBlock(deps RecoverDeps) (string, error) {
+	uncommitted, err := UncommittedPaths(deps.Geom)
+	if err != nil {
+		return "", err
+	}
+	if len(uncommitted) == 0 {
+		return "none", nil
+	}
+	var written []string
+	if deps.Engine != nil {
+		writes, err := loadRunWrites(deps.Engine, deps.State, deps.Geom.WorktreeRoot)
+		if err != nil {
+			return "", err
+		}
+		if written, err = writtenWorktreePaths(writes, deps.Geom.WorktreeRoot); err != nil {
+			return "", err
+		}
+	}
+	var own, foreign []string
+	for _, p := range uncommitted {
+		if writtenUnder(written, p) {
+			own = append(own, p)
+		} else {
+			foreign = append(foreign, p)
+		}
+	}
+	var sections []string
+	for _, group := range []struct {
+		heading string
+		paths   []string
+	}{{"Written by this run:", own}, {"Not written by this run:", foreign}} {
+		if len(group.paths) > 0 {
+			sections = append(sections, group.heading+"\n- "+strings.Join(group.paths, "\n- "))
+		}
+	}
+	return strings.Join(sections, "\n\n"), nil
+}
+
+// writtenUnder reports whether uncommitted, a path git status names, is one of written or a directory holding one.
+func writtenUnder(written []string, uncommitted string) bool {
+	if dir, isDir := strings.CutSuffix(uncommitted, "/"); isDir {
+		return slices.ContainsFunc(written, func(w string) bool { return strings.HasPrefix(w, dir+"/") })
+	}
+	return slices.Contains(written, uncommitted)
+}
+
 // recoverSpawn archives any stale report, stops a live prior strand, renders
 // the recovery prompt, and starts the recovery strand, returning a fresh BatchState.
 // clk stamps SpawnedAt so elapsed-since-spawn is measured against the same clock.
@@ -197,7 +248,11 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 
 	notePath := friction.NotePath(deps.FrictionDir, batchName+"-recovery")
 	cardGates := renderCardGates(deps.Plan, batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Geom.WorktreeRoot)
-	prompt, err := RenderRecoveryPrompt(batch, cardGates, prevDigest, failureDigestBlock(prior), reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
+	uncommittedPaths, err := uncommittedPathsBlock(deps)
+	if err != nil {
+		return nil, fmt.Errorf("webster: list the worktree's uncommitted paths for batch %s: %w; way forward: transient, re-run `lyx webster recover-batch %d`", batchName, err, number)
+	}
+	prompt, err := RenderRecoveryPrompt(batch, cardGates, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
 	if err != nil {
 		return nil, err
 	}
