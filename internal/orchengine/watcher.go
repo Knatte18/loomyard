@@ -147,12 +147,16 @@ func NewWatcher(session Session, cfg Config, paths Paths, stencilsDir string, sk
 }
 
 // renderRoleFile fetches the command index and renders the role file with it.
+// Its error is worded as an abort reason naming the failing source, the index or the role stencil.
 func (w *Watcher) renderRoleFile() error {
 	index, err := w.index()
 	if err != nil {
 		return fmt.Errorf("command index unavailable: %w", err)
 	}
-	return RenderRoleFile(w.stencilsDir, w.paths.RolePath, index)
+	if err := RenderRoleFile(w.stencilsDir, w.paths.RolePath, index); err != nil {
+		return fmt.Errorf("role stencil %s failed to render: %w", roleStencilName, err)
+	}
+	return nil
 }
 
 // isTurnEnd reports whether ev ends a turn.
@@ -770,7 +774,7 @@ func handoffWritten(path string) (bool, error) {
 // The caller must have seen the session idle on this tick.
 func (w *Watcher) startClearing(st State, now time.Time) error {
 	if err := w.renderRoleFile(); err != nil {
-		return w.toIdle(st, fmt.Sprintf("role stencil %s failed to render: %v", roleStencilName, err))
+		return w.toIdle(st, err.Error())
 	}
 	resume, err := RenderResumePrompt(w.stencilsDir, w.paths.RolePath, st.PendingHandoff)
 	if err != nil {
@@ -847,7 +851,7 @@ func (w *Watcher) startAutoReload(st State, now time.Time) error {
 	}
 	if err := w.renderRoleFile(); err != nil {
 		w.compactedAt = time.Time{}
-		return w.toIdle(st, fmt.Sprintf("role stencil %s failed to render: %v", roleStencilName, err))
+		return w.toIdle(st, err.Error())
 	}
 	pointer, err := RenderReloadPrompt(w.stencilsDir, w.paths.RolePath)
 	if err != nil {
@@ -1090,7 +1094,7 @@ func (w *Watcher) startCompacting(st State, now time.Time) error {
 // A stencil failure returns to idle with the reason, as a clear cycle's does.
 func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
 	if err := w.renderRoleFile(); err != nil {
-		return w.toIdle(st, fmt.Sprintf("role stencil %s failed to render: %v", roleStencilName, err))
+		return w.toIdle(st, err.Error())
 	}
 	resume, err := RenderResumePrompt(w.stencilsDir, w.paths.RolePath, st.LastHandoff)
 	if err != nil {

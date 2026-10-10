@@ -1505,8 +1505,8 @@ func TestWatcher_AutoCompactionReloadGoesIdleWhenTheIndexSourceFails(t *testing.
 	e.s.usage["a"] = 100
 	e.endTurn("a")
 	st := e.state()
-	if st.Phase != PhaseIdle || !strings.Contains(st.LastAbortReason, roleStencilName) || !strings.Contains(st.LastAbortReason, errBoom.Error()) {
-		t.Fatalf("state = %+v, want idle with a reason naming the role stencil and the index failure", st)
+	if want := "command index unavailable: " + errBoom.Error(); st.Phase != PhaseIdle || st.LastAbortReason != want {
+		t.Fatalf("state = %+v, want idle with the reason %q", st, want)
 	}
 	e.tick()
 	if e.indexCalls != 1 {
@@ -1621,10 +1621,12 @@ func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
 		content string
 		// indexErr makes the index source fail instead of the stencil, which stays as shipped.
 		indexErr error
+		// wantReason is the abort reason's prefix, which names the failing source.
+		wantReason string
 	}{
-		{name: "role", stencil: roleStencilName, content: "{{.nope}}"},
-		{name: "resume", stencil: resumeStencilName, content: "line one\nline two\n"},
-		{name: "index source", stencil: roleStencilName, indexErr: errBoom},
+		{name: "role", stencil: roleStencilName, content: "{{.nope}}", wantReason: "role stencil " + roleStencilName},
+		{name: "resume", stencil: resumeStencilName, content: "line one\nline two\n", wantReason: "resume stencil " + resumeStencilName},
+		{name: "index source", stencil: roleStencilName, indexErr: errBoom, wantReason: "command index unavailable: " + errBoom.Error()},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -1640,7 +1642,7 @@ func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
 			e.s.events = append(e.s.events, stop("handoff"))
 			e.tick()
 			st := e.state()
-			if st.Phase != PhaseIdle || e.s.count("clear") != 0 || !strings.Contains(st.LastAbortReason, c.stencil) {
+			if st.Phase != PhaseIdle || e.s.count("clear") != 0 || !strings.HasPrefix(st.LastAbortReason, c.wantReason) {
 				t.Fatalf("state = %+v calls = %v", st, e.s.calls)
 			}
 		})
