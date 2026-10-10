@@ -1,3 +1,5 @@
+// allow_none.go holds the switch that allows tmux servers in a test binary, off by default.
+
 package tmuxkit
 
 // tmuxAllowed reports whether this test binary's tests may start tmux servers.

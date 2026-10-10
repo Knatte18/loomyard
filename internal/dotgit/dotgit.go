@@ -1,3 +1,5 @@
+// dotgit.go holds the `.git` reader: a directory's Geometry, the repository check over it and the walk up to a worktree root.
+
 package dotgit
 
 import (
