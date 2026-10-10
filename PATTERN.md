@@ -74,6 +74,10 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-wait-mark-display-only` — Marking a wait on screen: the `@lyx_wait` and `@lyx_wait_start` pane options are set only through reed's `SetWaitMark`, by `shuttleengine` and the landing verify callback, and no Go decision reads them.
 - `PATTERN-spawn-observability` — Starting a real OS process from a `lyx` command: log the spawn, and the teardown where it waits, via `internal/logger`. — [background](pattern/PATTERN-spawn-observability.md)
 
+## Daemons and waits
+
+- `PATTERN-daemon-wakeups` — An unbounded wait wakes at most once a second and backs off while idle. (test) — [background](pattern/PATTERN-daemon-wakeups.md)
+
 ## Packages
 
 - `PATTERN-leaf-packages` — Importing into `gitkit`, `modelspec`, `buildinfo`, `standalonestate`, `segmentcolor`, `pattern`, `friction` or `fswatch`: each admits a closed import set. — [background](pattern/PATTERN-leaf-packages.md)
