@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -24,9 +23,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // TestStencilSeedTarget_PlainRepoHasNoHub is the negative row and the defect this task exists to
@@ -51,34 +50,6 @@ func TestStencilSeedTarget_PlainRepoHasNoHub(t *testing.T) {
 	if _, err := os.Stat(wantAbsent); !os.IsNotExist(err) {
 		t.Errorf("stat %s after stencilSeedTarget(plain repo) = %v; want it still absent -- a plain repo with no hub-level sibling must never cause a hub-level _board directory to be created", wantAbsent, err)
 	}
-}
-
-// logSink is a log writer safe to share with the package's other parallel tests.
-type logSink struct {
-	mu  sync.Mutex
-	buf strings.Builder
-}
-
-func (s *logSink) Write(p []byte) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.buf.Write(p)
-}
-
-func (s *logSink) String() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.buf.String()
-}
-
-// captureLogs routes the logger into the returned sink until the test ends.
-func captureLogs(t *testing.T) *logSink {
-	t.Helper()
-
-	sink := &logSink{}
-	logger.SetOutput(sink)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-	return sink
 }
 
 // TestStencilSeeding_HubScenario drives seedStencilsAt and stencilSeedTarget against one hubforge hub.
@@ -203,7 +174,7 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 		gitkit.Git(t, board, "push", "origin", branch)
 		gitkit.Git(t, board, "remote", "set-url", "origin", unreachableOrigin)
 		tip := gitkit.RevParse(t, board, "HEAD")
-		logs := captureLogs(t)
+		logs := logcapture.Capture(t)
 
 		seed()
 
@@ -232,7 +203,7 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 		if err := os.Remove(discussionPath); err != nil {
 			t.Fatalf("delete the seeded stencil: %v", err)
 		}
-		logs := captureLogs(t)
+		logs := logcapture.Capture(t)
 
 		seed()
 
@@ -299,7 +270,7 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 		if err := os.Remove(discussionPath); err != nil {
 			t.Fatalf("delete the seeded stencil: %v", err)
 		}
-		logs := captureLogs(t)
+		logs := logcapture.Capture(t)
 
 		seed()
 

@@ -22,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 const retiredKey = "master_base"
@@ -155,35 +155,6 @@ func newStaleHub(t *testing.T, slug string) *hubforge.Hub {
 
 // staleHubWideConfig is a fabric config carrying a key the registry no longer knows, so the hub-wide reconcile rewrites it.
 const staleHubWideConfig = "branch_prefix: \"\"\nretired_fixture_key: 1\n"
-
-// logSink is a log writer safe to share with the package's other parallel tests.
-type logSink struct {
-	mu  sync.Mutex
-	buf strings.Builder
-}
-
-func (s *logSink) Write(p []byte) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.buf.Write(p)
-}
-
-func (s *logSink) String() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.buf.String()
-}
-
-// captureLogs routes the logger into the returned sink until the test ends.
-// The logger's output is process-global, so a caller does not call t.Parallel.
-func captureLogs(t *testing.T) *logSink {
-	t.Helper()
-
-	sink := &logSink{}
-	logger.SetOutput(sink)
-	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
-	return sink
-}
 
 // pushBoardFromSecondClone pushes the board's current branch to its origin, then lands a commit on that origin from a second clone, and returns the board's branch name.
 // The board is left behind its upstream by exactly that commit.
@@ -623,7 +594,7 @@ func TestEnsure_UnwiredPairIsLeftUnwrittenAndStampIsWritten(t *testing.T) {
 
 // The logger's output is process-global, so this test does not call t.Parallel.
 func TestEnsure_UnreachableBoardRemoteSkipsHubWideConfigAndLeavesStampAbsent(t *testing.T) {
-	logs := captureLogs(t)
+	logs := logcapture.Capture(t)
 
 	h := hubforge.NewHub(t, ".")
 	geom := geometryOf(h)
@@ -649,7 +620,7 @@ func TestEnsure_UnreachableBoardRemoteSkipsHubWideConfigAndLeavesStampAbsent(t *
 
 // The logger's output is process-global, so this test does not call t.Parallel.
 func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testing.T) {
-	logs := captureLogs(t)
+	logs := logcapture.Capture(t)
 
 	h := hubforge.NewHub(t, ".")
 	geom := geometryOf(h)
