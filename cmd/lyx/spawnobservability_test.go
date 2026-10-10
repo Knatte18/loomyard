@@ -108,6 +108,10 @@ var spawnObservabilityAllowedSpawners = []scankit.Entry{
 		Key: "cmd/testtiming/redundancy.go",
 		Why: "not governed: the redundancy mode of the test-timing harness, not a code path reachable from a lyx command",
 	},
+	{
+		Key: "cmd/testtiming/resources.go",
+		Why: "not governed: the resource mode of the test-timing harness, not a code path reachable from a lyx command",
+	},
 }
 
 // spawnObservabilityMinScannedFiles is the vacuous-scan floor for this guard's two-root walk of
