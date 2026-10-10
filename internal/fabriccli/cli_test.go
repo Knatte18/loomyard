@@ -346,12 +346,11 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	}
 }
 
-// TestRunCLI_ReconcileBackfillFailureIsNonFatal points the weft remote at an unreachable path so the
-// backfill's push fails after its commit succeeds, then asserts the envelope reports "record_failed"
-// with a non-empty detail while the exit code stays 0 — a failed backfill commit or push is non-fatal,
-// mirroring the board-junction precedent that a convenience repair may never downgrade a reconcile
-// verdict. The exit-code assertion is the point of this test.
-func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
+// TestRunCLI_ReconcileBackfillFailureFailsTheVerb points the weft remote at an unreachable path, so the hub-wide heal is skipped and the backfill's commit lands but its push fails.
+// It then asserts the exit code is non-zero while the envelope is kept:
+// it still carries "pairs" and reports "record_failed" with a non-empty detail.
+// The exit-code assertion is the point of this test.
+func TestRunCLI_ReconcileBackfillFailureFailsTheVerb(t *testing.T) {
 	fixtures := t.TempDir()
 	warpBare := makeCLICloneWarpBare(t, fixtures, "reconcilecli-fail-warp")
 	weftBare := makeCLICloneWeftBare(t, fixtures, "reconcilecli-fail-weft")
@@ -383,11 +382,17 @@ func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
 	// per-call rather than hoisted to a shared variable.
 	var reconcileOut bytes.Buffer
 	exitCode = fabriccli.RunCLIIn(filepath.Join(hubPath, "reconcilecli-fail-warp"), &reconcileOut, []string{"reconcile"})
-	if exitCode != 0 {
-		t.Fatalf("RunCLI(reconcile) = %d; want 0 (a failed backfill push must be non-fatal)\noutput: %s", exitCode, reconcileOut.String())
+	if exitCode == 0 {
+		t.Fatalf("RunCLI(reconcile) = 0; want non-zero (a failed backfill push fails the verb)\noutput: %s", reconcileOut.String())
 	}
 
-	result := envelope.RequireOK(t, reconcileOut.String())
+	result := envelope.RequireErr(t, reconcileOut.String(), "warp binding record failed")
+	if _, ok := result.Raw["pairs"]; !ok {
+		t.Errorf("RunCLI(reconcile) envelope lacks \"pairs\"; want the envelope kept on failure")
+	}
+	if detail, _ := result.Raw["hub_config_detail"].(string); detail == "" {
+		t.Errorf("RunCLI(reconcile) hub_config_detail is empty; want the skipped heal's fetch failure")
+	}
 	if binding, _ := result.Raw["warp_binding"].(string); binding != string(fabricengine.WarpBindingOutcomeRecordFailed) {
 		t.Errorf("RunCLI(reconcile) warp_binding = %q; want %q", binding, fabricengine.WarpBindingOutcomeRecordFailed)
 	}
