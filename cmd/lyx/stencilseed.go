@@ -156,8 +156,7 @@ func seedStencilsAt(hub, worktree string, mode stencilstore.Mode, running buildv
 	logger.Info("stencilseed: seeded", "commits", len(res.SHAs), "shas", res.SHAs)
 }
 
-// seedSubtree reports whether reconciling baseDir (the subtreeRel-rooted subtree of the board) against registry would write anything,
-// and returns the board write that does it, committed under the seed subject for label ("stencils" or "specs") and the running binary.
+// seedSubtree reports whether reconciling baseDir (the subtreeRel-rooted subtree of the board) against registry would write anything, and returns the board write that does it, committed under the seed subject for label ("stencils" or "specs") and the running binary.
 // The write reconciles against the copy the pull-first Bolt write has just brought up to date, and returns the paths it wrote prefixed with subtreeRel.
 // A due-check failure is logged at Warn and reports nothing due, since the root pre-run runs before every lyx invocation.
 func seedSubtree(baseDir, subtreeRel string, registry stencilstore.Registry, mode stencilstore.Mode, source stencilstore.Source, label string) (fabricengine.BoltWrite, bool) {

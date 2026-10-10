@@ -306,8 +306,7 @@ func (b *Bolt) divergedDetail() string {
 	return fmt.Sprintf("the board at %s holds commits its upstream lacks and the upstream has moved; run `git pull --rebase` in %s and `lyx board sync`, then re-run the command", b.path, b.path)
 }
 
-// seedCommitsAhead splits ahead, a list of commits, into the ones IsSeedCommit admits and the rest, each in ahead's order,
-// and returns the sorted union of the paths every commit in ahead changes.
+// seedCommitsAhead splits ahead, a list of commits, into the ones IsSeedCommit admits and the rest, each in ahead's order, and returns the sorted union of the paths every commit in ahead changes.
 func seedCommitsAhead(repo *gitrepo.Repo, ahead []string) (seed, other, touched []string, err error) {
 	for _, sha := range ahead {
 		detail, err := repo.CommitDetail(sha)

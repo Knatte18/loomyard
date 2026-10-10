@@ -2,8 +2,7 @@
 // flows (Fabric.Pull's rebase-reconciliation among them) build on: point HEAD (and the working
 // tree) at a caller-supplied commit exactly, discarding any local commits or uncommitted changes
 // the checkout previously had past that SHA.
-// It also implements ResetKeep, the SHA-validated reset that moves HEAD and keeps uncommitted changes,
-// and CherryPick with its CherryPickAbort, the tree-mutating replay of one commit onto HEAD.
+// It also implements ResetKeep, the SHA-validated reset that moves HEAD and keeps uncommitted changes, and CherryPick with its CherryPickAbort, the tree-mutating replay of one commit onto HEAD.
 
 package gitrepo
 

@@ -481,8 +481,7 @@ type pathDirtiness struct {
 	onPaths []string
 }
 
-// dirtyTrackedOn declares that the pipeline's dirtiness step probes tracked files only,
-// and refuses only on a dirty tracked path in paths (worktree-relative, slash-separated).
+// dirtyTrackedOn declares that the pipeline's dirtiness step probes tracked files only, and refuses only on a dirty tracked path in paths (worktree-relative, slash-separated).
 // A dirty path anywhere else is carried across by the act and never refuses.
 // The refusal names each such path.
 func dirtyTrackedOn(paths []string) pathDirtiness {

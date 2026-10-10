@@ -74,8 +74,7 @@ func run(dev bool) error {
 	tag := gitTag(root)
 	fmt.Printf("Building lyx @ %s -> %s\n", tag, dest)
 
-	// Stamp internal/buildinfo.Channel so a dev-installed binary seeds but does not refresh an untouched stencil,
-	// and only a production-stamped binary refreshes one.
+	// Stamp internal/buildinfo.Channel so a dev-installed binary seeds but does not refresh an untouched stencil, and only a production-stamped binary refreshes one.
 	ldflags := "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=production"
 	if dev {
 		ldflags = "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev"
