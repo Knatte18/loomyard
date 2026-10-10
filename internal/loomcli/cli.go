@@ -99,6 +99,9 @@ type loomCLI struct {
 	// recordedParentBranch is the seam through which start and resume read the pair's recorded parent branch, to tell a parked merge-in of that branch from any other merge state.
 	// A test substitutes a canned branch or error.
 	recordedParentBranch func(*lyxcwd.Location) (string, error)
+	// parentDirtyPaths is the seam through which a halt whose reason names a dirty worktree reads the parent pair's dirty tracked paths for its halt note.
+	// A test substitutes canned paths or an error; a nil value adds no section.
+	parentDirtyPaths func() ([]string, error)
 	// spec is the shedverbs.Spec the pre-run fills in place (arm.go) and the four shedverbs
 	// verbs read at run time. It is always non-nil after newLoomCLI, so Command() can hand the
 	// same pointer to shedverbs.Verbs before the pre-run has ever run.
@@ -151,13 +154,15 @@ type loomCLI struct {
 // of this package's two constructors (Command, StartAliasCommand) can forget one and leave a nil
 // spawnWatchdog to panic rather than degrade.
 func newLoomCLI() *loomCLI {
-	return &loomCLI{
+	c := &loomCLI{
 		suppressWatchdogSpawn: testing.Testing(),
 		spawnWatchdog:         reedengine.SpawnWatchdog,
 		midMerge:              fabricengine.MidMerge,
 		recordedParentBranch:  readRecordedParentBranch,
 		spec:                  &shedverbs.Spec{},
 	}
+	c.parentDirtyPaths = c.parentDirtyPathsFromFabric
+	return c
 }
 
 // runnerMasterStarter adapts *shuttleengine.Runner to websterengine.MasterStarter.
