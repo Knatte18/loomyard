@@ -9,6 +9,7 @@ package main
 
 import (
 	"fmt"
+	"go/build/constraint"
 	"go/token"
 	"strings"
 	"testing"
@@ -33,6 +34,11 @@ var allowedSpawners = []scankit.Entry{
 	{Key: "cmd/lyx/rawgitmutation_test.go", Why: "contains the banned `gitexec.Run`/`exec.Command` token strings as its own scan data (Fabric Git Invariant raw-git-mutation guard)"},
 	{Key: "cmd/lyx/checkedcall_test.go", Why: "contains the banned `gitexec.RunGit`/`exec.Command` token strings as its own scan data (gitexec Checked-Call Invariant guard)"},
 	{Key: "cmd/lyx/spawnobservability_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Live-Substrate Spawn Observability guard)"},
+}
+
+// allowedTmuxkitOutsideTmuxTier lists tagged files that compile in tier 2 and reference a tmuxkit export, each with a reason it starts no server there.
+var allowedTmuxkitOutsideTmuxTier = []scankit.Entry{
+	{Key: "internal/loomcli/smoke_helpers_test.go", Why: "reads /proc through the kit's spawn-free Pids and ProcCwd probes to wait out a fixture's git child; starts no server"},
 }
 
 // knownTierTags are the `//go:build` constraint substrings that mark a *_test.go file
@@ -82,10 +88,17 @@ var bannedTokens = []string{
 func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 	spawners := scankit.NewAllowlist(allowedSpawners)
 	sleepers := scankit.NewAllowlist(allowedLongSleepers)
+	tmuxless := scankit.NewAllowlist(allowedTmuxkitOutsideTmuxTier)
 	var failures []string
 
 	scanned := scankit.Walk(t, scankit.Options{Filter: scankit.Test}, func(f *scankit.File) {
 		if isTierTagged(f.Data) {
+			if ref, found := tmuxkitSpawnReference(string(f.Data)); found && !isTmuxTier(f.Data) && !tmuxless.Allowed(f.Rel) {
+				failures = append(failures, fmt.Sprintf(
+					"%s: references tmuxkit spawn %q in a file that compiles in the untagged or integration build — constrain the file to `tmux` and `llm` only, or split the reed-starting half into a `tmux` file",
+					f.Rel, ref,
+				))
+			}
 			return
 		}
 
@@ -116,6 +129,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 	scankit.RequireFloor(t, scanned, 20, "tier purity guard")
 	spawners.RequireNoStale(t)
 	sleepers.RequireNoStale(t)
+	tmuxless.RequireNoStale(t)
 
 	if len(failures) > 0 {
 		t.Errorf("`PATTERN-test-speed` violated:\n%s", strings.Join(failures, "\n"))
@@ -142,10 +156,82 @@ func isTierTagged(data []byte) bool {
 	return false
 }
 
-// TestIsTierTagged_RecognizesKnownTagsList verifies isTierTagged recognizes all known tier tags.
+// isTmuxTier reports whether data's `//go:build` constraint is false in every build that lacks the `tmux` and `llm` tags.
+// It evaluates the expression under every assignment of its other tags, platform tags included, so the host's GOOS plays no part.
+// A file with no constraint line compiles everywhere and is never tmux-tier.
+func isTmuxTier(data []byte) bool {
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if !constraint.IsGoBuild(trimmed) {
+			return false
+		}
+		expr, err := constraint.Parse(trimmed)
+		if err != nil {
+			return false
+		}
+		var others []string
+		seen := map[string]bool{}
+		walkTags(expr, func(tag string) {
+			if tag != "tmux" && tag != "llm" && !seen[tag] {
+				seen[tag] = true
+				others = append(others, tag)
+			}
+		})
+		for assignment := 0; assignment < 1<<len(others); assignment++ {
+			enabled := map[string]bool{}
+			for i, tag := range others {
+				enabled[tag] = assignment&(1<<i) != 0
+			}
+			if expr.Eval(func(tag string) bool { return enabled[tag] }) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// walkTags calls visit for every tag leaf of expr.
+func walkTags(expr constraint.Expr, visit func(tag string)) {
+	switch e := expr.(type) {
+	case *constraint.TagExpr:
+		visit(e.Tag)
+	case *constraint.NotExpr:
+		walkTags(e.X, visit)
+	case *constraint.AndExpr:
+		walkTags(e.X, visit)
+		walkTags(e.Y, visit)
+	case *constraint.OrExpr:
+		walkTags(e.X, visit)
+		walkTags(e.Y, visit)
+	}
+}
+
+// TestIsTierTagged_RecognizesKnownTagsList verifies isTierTagged recognizes all known tier tags, and isTmuxTier separates the tmux-only constraints from those that compile in tier 2.
 //
 //testtiming:keep proves the TestTierPurity_UntaggedTestsSpawnNothing guard classifies every known tier tag as tagged
 func TestIsTierTagged_RecognizesKnownTagsList(t *testing.T) {
+	tmuxTier := []struct {
+		line string
+		want bool
+	}{
+		{"//go:build integration", false},
+		{"//go:build integration || tmux", false},
+		{"//go:build integration && windows", false},
+		{"//go:build tmux", true},
+		{"//go:build llm", true},
+		{"//go:build tmux || llm", true},
+		{"//go:build tmux && !windows", true},
+	}
+	for _, tt := range tmuxTier {
+		if got := isTmuxTier([]byte(tt.line)); got != tt.want {
+			t.Errorf("isTmuxTier(%q) = %v; want %v", tt.line, got, tt.want)
+		}
+	}
+
 	tests := []struct {
 		name string
 		line string

@@ -57,6 +57,9 @@ Bound: a forged value misleads only an ungated raw run, since `lyx gate test` se
 - Any `lyxbin.` reference, which builds the `lyx` binary, is likewise barred outside tier-tagged files.
 - Every `tmuxkit` export except `tmuxkit.Main` counts as a tmux spawn and is barred outside tier-tagged files, defined once in `cmd/lyx/tmuxkitspawn_test.go`.
   That covers the `/proc` probes although they spawn nothing, which costs nothing because an untagged test has no process to probe.
+- A file referencing a `tmuxkit` spawn is further constrained to the `tmux` tier: it compiles in neither the untagged nor the `integration` build on any platform, so `tmux`, `llm`, `tmux || llm` and `tmux && !windows` pass while `integration || tmux` fails.
+  An allowlist entry with a reason admits a tier-2 file that uses only the spawn-free `/proc` probes.
+  The scan evaluates the build line under every assignment of its tags other than `tmux` and `llm`, so the host's GOOS plays no part.
 - `time.Sleep(...)` of one second or more in an untagged file is flagged unless allowlisted.
 - Enforced by `cmd/lyx/tierpurity_test.go`.
 
