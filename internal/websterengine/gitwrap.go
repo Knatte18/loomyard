@@ -460,23 +460,46 @@ var ErrHeadSHAUnresolved = errors.New("webster: report head_sha unresolved")
 // commitsNamedBy returns, sorted, the full SHA of every commit in worktree's repository whose object name starts with prefix, and an empty slice when none does.
 // Only object names match, never ref names.
 // `git rev-parse --disambiguate` lists every object the prefix names and prints nothing, exiting 0, for a prefix that names none;
-// each listed object is kept only when `git cat-file -t` answers commit.
+// all listed objects are classified in one `git cat-file --batch-check` run, and only those it types commit are kept.
 func commitsNamedBy(worktree, prefix string) ([]string, error) {
 	stdout, err := gitexec.Run([]string{"rev-parse", "--disambiguate=" + prefix}, worktree)
 	if err != nil {
 		return nil, fmt.Errorf("websterengine: git rev-parse --disambiguate=%s in %s: %w", prefix, worktree, err)
 	}
-	var commits []string
-	for _, sha := range strings.Fields(stdout) {
-		kind, err := gitexec.Run([]string{"cat-file", "-t", sha}, worktree)
-		if err != nil {
-			return nil, fmt.Errorf("websterengine: git cat-file -t %s in %s: %w", sha, worktree, err)
-		}
-		if strings.TrimSpace(kind) == "commit" {
-			commits = append(commits, sha)
-		}
+	named := strings.Fields(stdout)
+	if len(named) == 0 {
+		return nil, nil
+	}
+	checked, err := gitexec.RunStdin([]string{"cat-file", "--batch-check"}, worktree, strings.Join(named, "\n")+"\n")
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: git cat-file --batch-check in %s: %w", worktree, err)
+	}
+	commits, err := commitsFromBatchCheck(checked)
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: git cat-file --batch-check in %s: %w", worktree, err)
 	}
 	sort.Strings(commits)
+	return commits, nil
+}
+
+// commitsFromBatchCheck returns the object names typed commit in `git cat-file --batch-check` output, one `<name> <type> <size>` line per object.
+// A `<name> missing` line is an error naming the object, since the caller just listed it, and any other malformed line is an error too.
+func commitsFromBatchCheck(output string) ([]string, error) {
+	var commits []string
+	for _, line := range strings.Split(output, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		switch {
+		case len(fields) == 2 && fields[1] == "missing":
+			return nil, fmt.Errorf("object %s is missing", fields[0])
+		case len(fields) != 3:
+			return nil, fmt.Errorf("malformed batch-check line %q", line)
+		case fields[1] == "commit":
+			commits = append(commits, fields[0])
+		}
+	}
 	return commits, nil
 }
 
