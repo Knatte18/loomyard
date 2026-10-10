@@ -59,7 +59,7 @@
 //     Before archiving anything Call probes the table's seats through its SeatRunner: a live chair is resumed and its result mapped,
 //     and otherwise the probe has stopped every live advisor, so Call archives every seat's stale outputs and runs the table fresh.
 //     A probe, resume or run error returns the context error when the context is cancelled and otherwise the error wrapped with the producer's name and engine label;
-//     an error wrapping seatengine.ErrSeatNotStopped keeps its way forward and is returned without archiving.
+//     an error wrapping seatengine.ErrSeatNotStopped keeps its way forward even under cancellation, a probe's halting Call before the archive and a run's after it.
 //   - Bouncer: Call clears an already-approved round ahead of its own four-mode branch -- seed, re-bounce, judge, or replay --
 //     and its harvest step acts on a judgment that provably happened (a verdict and ledger that both exist and parse) regardless of what the shuttle run itself reported.
 //     The judge's verdict is exactly CONVERGED, CONTINUE or CIRCLING.
