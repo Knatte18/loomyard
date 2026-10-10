@@ -87,7 +87,7 @@ func templateConfig() Config {
 		DiscussionInteractive:    false,
 		DiscussionProducer:       "single",
 		DiscussionAdvisors:       ModelSpecList{"sonnet[high]"},
-		Plan:                    "opus[medium]",
+		Plan:                     "opus[medium]",
 		PlanTimeoutMin:           120,
 		Review:                   ModelSpecList{"opus[medium]"},
 		Fix:                      ModelSpecList{"opus[medium]"},

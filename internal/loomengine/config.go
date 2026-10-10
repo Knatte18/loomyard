@@ -316,7 +316,7 @@ type Config struct {
 	DiscussionInteractive bool          `yaml:"discussion_interactive"`
 	DiscussionProducer    string        `yaml:"discussion_producer"`
 	DiscussionAdvisors    ModelSpecList `yaml:"discussion_advisors"`
-	Plan                 string        `yaml:"plan"`
+	Plan                  string        `yaml:"plan"`
 	PlanTimeoutMin        int           `yaml:"plan_timeout_min"`
 	Review                ModelSpecList `yaml:"review"`
 	Fix                   ModelSpecList `yaml:"fix"`
