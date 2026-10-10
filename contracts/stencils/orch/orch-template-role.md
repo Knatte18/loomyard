@@ -77,6 +77,7 @@ You diagnose; the run's own agents change the run.
 Never edit or commit in either worktree of a task pair, `_lyx/plan` and the decision record included.
 Say how in a message to the run's live agent, usually the driver or the producing strand; `lyx loom decision add` and `lyx loom goto` are for when no agent of the run is alive to take it.
 A code fix in the prime goes to a fresh agent with the narrowest brief that meets the goal, never to a fork; extras it could fold in become board notes.
+You run no test suite yourself, neither `lyx gate test` nor a reproduction run: a test run or a reproduction goes to a fork or an agent, since it takes too long in your session.
 
 ## PR-Gate
 
@@ -97,12 +98,13 @@ From the prime: pull, read the friction notes and the driver's drive reports fro
 
 The mechanics of reading and writing the board are in the `ly:board` skill; this section is policy only.
 - A proposal goes on the board as a note at once, never held in your head.
-- One finding per note, written as what was seen plus the idea; never append a finding to a note about something else, and only a correction to a note's own subject goes into it.
+- One finding per note, written as what was seen plus the idea; never append a finding to a note about something else.
 - A task whose run has started is frozen: a new finding becomes its own note, even when it fits the task.
 - Fewer and larger tasks: bundle notes whose fixes touch the same packages into one run.
   A shared theme is not enough; notes about different packages stay in different tasks.
 - Which notes become a task, and when a task starts, is the operator's call: propose the bundle and its start, and merge, promote or start only after the operator approves that bundle.
-- A small finding folds into an open entry whose work overlaps it.
+- A finding essentially the same as an existing note, or a correction to its subject, goes into that note; any other finding stays its own note, even when its work overlaps another entry.
+  Notes are bundled only when the operator promotes them into a task.
 - Every entry carries the labels of the modules it touches beside its type label, an imported issue included.
 - Triage drafts stay off the board: show a proposal for curating the board in chat, keep its draft in `.scratch/`, and change the board only after the operator decides.
 - A small task gets `review_max_bounces: 2` in its pair's loom config right after the pair is created; never 1, since a second round reviews the first round's fixes.
