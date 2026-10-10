@@ -23,10 +23,17 @@ const (
 // MidMergeState is MidMerge's answer.
 // Conflicts lists the still-conflicted paths in the pair's one-repo form, the same form a fabric merge verb's conflicts use, so every listed path is accepted by `lyx fabric merge-stage`;
 // it is empty-never-nil.
+// Verb, Source, SourceSHA and StartSHA are filled only when Kind is MidMergeParked, and are empty otherwise:
+// the parked record's verb (`merge-in` or `merge`), its caller-supplied source branch,
+// and the code side's resolved source SHA and pre-merge HEAD SHA.
 // It carries no MutationRecord: a read-only probe must not (Mutation Record Invariant).
 type MidMergeState struct {
 	Kind      MidMergeKind
 	Conflicts []string
+	Verb      string
+	Source    string
+	SourceSHA string
+	StartSHA  string
 }
 
 // MidMerge reports whether l's pair carries an unfinished merge, and which conflicted paths remain.
@@ -44,7 +51,7 @@ func MidMerge(l *lyxcwd.Location) (MidMergeState, error) {
 	if err != nil {
 		return MidMergeState{}, fmt.Errorf("fabricengine: mid-merge probe: open pair: %w", err)
 	}
-	recordExists, err := f.mergeRecordExists()
+	record, err := f.loadMergeState()
 	if err != nil {
 		return MidMergeState{}, fmt.Errorf("fabricengine: mid-merge probe: read merge record: %w", err)
 	}
@@ -55,8 +62,12 @@ func MidMerge(l *lyxcwd.Location) (MidMergeState, error) {
 
 	state := MidMergeState{Kind: MidMergeNone, Conflicts: []string{}}
 	switch {
-	case recordExists:
+	case record != nil:
 		state.Kind = MidMergeParked
+		state.Verb = record.Verb
+		state.Source = record.Source
+		state.SourceSHA = record.WarpSource
+		state.StartSHA = record.WarpStart
 	case r.warpMergeHead || r.weftMergeHead || len(r.warpConflicted) > 0 || len(r.weftConflicted) > 0:
 		state.Kind = MidMergeForeign
 	}
