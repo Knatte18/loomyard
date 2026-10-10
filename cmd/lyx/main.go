@@ -93,7 +93,10 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 		SilenceErrors: true,
 		// Modules' PersistentPreRunE hooks run after root's via EnableTraverseRunHooks.
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			logger.SetVerbosity(verbosity)
+			// With no -v the level LYX_LOG_LEVEL set at init stands, so a spawned daemon keeps its spawner's Debug trace.
+			if verbosity > 0 {
+				logger.SetVerbosity(verbosity)
+			}
 			// Suppress trace minting/export and sink arming under testing.Testing().
 			if !testing.Testing() {
 				logger.MintOrAdoptAndExport()

@@ -1,7 +1,7 @@
 # Top-level test functions per package, in its _test.go files under every build tag.
 # TestTestBudget_PackagesStayWithinBudget fails when a package exceeds its row or has tests and no row.
 # Raise a row in the commit that adds the tests that need it.
-cmd/lyx: 72
+cmd/lyx: 73
 cmd/testtiming: 21
 contracts/specs: 3
 contracts/stencils: 16

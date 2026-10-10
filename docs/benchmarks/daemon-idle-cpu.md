@@ -98,4 +98,5 @@ The name-repair pass as the remainder is not separable in these counts.
 
 - The scratch hub was held open by a throwaway test over `hubforge.NewHub`, with three worktrees added through `AddPair`, and removed afterwards; it was not committed.
 - At `LYX_LOG_LEVEL=debug` the foreground daemon wrote no Debug lines to stderr and none to the durable log, because the CLI's root hook calls `SetVerbosity` with the `-v` count, which resets the level the variable set; the shim run at `LYX_LOG_LEVEL=debug` produced the same counts as the `-vv` run, and the log cross-check comes from the `-vv` run.
+  The root hook has since stopped calling `SetVerbosity` when no `-v` is given, so `LYX_LOG_LEVEL=debug` now stands.
 - The CPU figures come from the `LYX_LOG_LEVEL=debug` run.

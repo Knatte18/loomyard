@@ -402,7 +402,7 @@ func Error(msg string, args ...any) {
 
 // SetVerbosity maps a -v repeat count to a log level: count<=0 keeps the default Warn threshold
 // (silent normal run), count==1 lowers it to Info, and count>=2 lowers it to Debug.
-// cmd/lyx/main.go calls this once at startup from the root -v/--verbose flag.
+// cmd/lyx/main.go calls this once at startup when the root -v/--verbose flag is given.
 func SetVerbosity(count int) {
 	switch {
 	case count <= 0:
