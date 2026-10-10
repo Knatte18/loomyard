@@ -5,12 +5,10 @@
 package fabricengine_test
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -18,26 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
-
-// lockedBuffer is a bytes.Buffer safe for the logger's writes from any goroutine.
-type lockedBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *lockedBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
-}
-
-func (b *lockedBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
-}
 
 // hubStorePaths returns h's code store and records store working directories, the two places the housekeeping keys live.
 func hubStorePaths(t *testing.T, h *hubforge.Hub) (code, records string) {
@@ -121,13 +101,7 @@ func writeUnreachableObject(t *testing.T, dir, content string) string {
 // It is not parallel: it lowers fabricengine's gc threshold and captures the logger's output at Info, all process-global state.
 // hubforge's clones may or may not carry the keys, so each subtest unsets them in both stores right before the step whose write it checks.
 func TestStoreHousekeeping(t *testing.T) {
-	var logs lockedBuffer
-	logger.SetOutput(&logs)
-	logger.SetVerbosity(1)
-	t.Cleanup(func() {
-		logger.SetOutput(os.Stderr)
-		logger.SetVerbosity(0)
-	})
+	logs := logcapture.CaptureVerbose(t)
 
 	const slug = "gc-pair"
 

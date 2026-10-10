@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 const boltTestLabel = "(0123456789ab production /bin/lyx)"
@@ -179,9 +179,7 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 		tip := gitkit.CommitFile(t, f.board, "notes/local.md", "local\n", "local work")
 		f.moveUpstream("notes/up.md", "up\n")
 		var runs int
-		var logs lockedBuffer
-		logger.SetOutput(&logs)
-		t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+		logs := logcapture.Capture(t)
 
 		res, err := f.bolt.PullThenCommitWritten([]fabricengine.BoltWrite{f.writeOf("notes/a.md", "a\n", "write a", &runs)}, fabricengine.NewMutations(f.hub.Path))
 		if err != nil {

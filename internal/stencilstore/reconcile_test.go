@@ -5,7 +5,6 @@
 package stencilstore
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // fakeRegistry implements Registry over a plain map, so no test in this package depends on the real
@@ -479,13 +478,7 @@ func TestReconcile_ModeDevRefusalNamesItsRemedy(t *testing.T) {
 			}
 			registry.defaults["family-one"] = []byte("updated shipped body\n")
 
-			var buf bytes.Buffer
-			logger.SetOutput(&buf)
-			logger.SetVerbosity(1)
-			t.Cleanup(func() {
-				logger.SetOutput(os.Stderr)
-				logger.SetVerbosity(0)
-			})
+			buf := logcapture.CaptureVerbose(t)
 
 			if _, err := Reconcile(baseDir, registry, tt.mode, Source{Writer: Writer{Revision: "running-rev"}, Older: tt.older}); err != nil {
 				t.Fatalf("Reconcile(%v) returned error: %v", tt.mode, err)
