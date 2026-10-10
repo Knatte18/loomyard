@@ -50,9 +50,24 @@ func (r *Repo) Push() error {
 	return r.pushWithRebaseRetry()
 }
 
+// ErrPullRebaseFailed is matched with errors.Is against the error a push returns after its recovery rebase failed and was aborted, telling a replayable conflict from every other push failure.
+var ErrPullRebaseFailed = errors.New("gitrepo: pull --rebase failed")
+
+// abortedRebaseError carries the failed rebase's message unchanged and unwraps to ErrPullRebaseFailed.
+type abortedRebaseError struct {
+	message string
+}
+
+// Error returns the failed rebase's message.
+func (e abortedRebaseError) Error() string { return e.message }
+
+// Unwrap returns ErrPullRebaseFailed.
+func (e abortedRebaseError) Unwrap() error { return ErrPullRebaseFailed }
+
 // pushWithRebaseRetry runs git push and on rebaseRetryTrigger matches, runs
 // git pull --rebase once and retries, aborting if rebase fails. Sets
 // push.autoSetupRemote=true so first push establishes tracking.
+// A rebase that failed and was aborted returns an error satisfying errors.Is(err, ErrPullRebaseFailed).
 func (r *Repo) pushWithRebaseRetry() error {
 	_, err := r.runChecked("-c", "push.autoSetupRemote=true", "push")
 	if err == nil {
@@ -86,7 +101,7 @@ func (r *Repo) pushWithRebaseRetry() error {
 		default:
 			return fmt.Errorf("gitrepo: git pull --rebase: %s (and rebase --abort could not run, repository may be left mid-rebase: %v)", rebaseGitErr.Stderr, abortErr)
 		}
-		return fmt.Errorf("gitrepo: git pull --rebase: %s", rebaseGitErr.Stderr)
+		return abortedRebaseError{message: fmt.Sprintf("gitrepo: git pull --rebase: %s", rebaseGitErr.Stderr)}
 	}
 
 	_, err = r.runChecked("-c", "push.autoSetupRemote=true", "push")

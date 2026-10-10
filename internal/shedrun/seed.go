@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -34,6 +35,9 @@ type Seed struct {
 	// Params carries the run's seed-time parameters, keyed by name.
 	// It is omitted from the encoded JSON entirely when empty.
 	Params map[string]string `json:"params,omitempty"`
+	// StartedAt is the time the run was seeded, RFC 3339 in UTC.
+	// WriteSeed stamps it when empty; a seed file written before the field existed has none.
+	StartedAt string `json:"started_at,omitempty"`
 }
 
 // seedWire is the decode-only shape of seed.json.
@@ -149,7 +153,8 @@ func decodeSeed(data []byte) (Seed, error) {
 // against a byte-identical existing seed -- calling WriteSeed twice with the same seed is a no-op the
 // second time -- while refusing a disagreeing existing seed with an ErrDisagreeingSeed-wrapped
 // message naming both the existing and the incoming values.
-// Agreement means recipe, driver and params only.
+// Agreement means recipe, driver and params only, so a re-written agreeing seed keeps its original StartedAt.
+// A seed with no StartedAt is stamped with the current time before it is encoded; a given one is kept.
 func WriteSeed(l *lyxcwd.Location, runID string, seed Seed) error {
 	if err := ValidateRunID(ResolveRunID(l, runID)); err != nil {
 		return err
@@ -163,6 +168,10 @@ func WriteSeed(l *lyxcwd.Location, runID string, seed Seed) error {
 
 	if err := os.MkdirAll(RunDir(l, runID), 0o755); err != nil {
 		return fmt.Errorf("shedrun: create run directory for run %q: %w", runID, err)
+	}
+
+	if seed.StartedAt == "" {
+		seed.StartedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 
 	path := SeedFile(l, runID)

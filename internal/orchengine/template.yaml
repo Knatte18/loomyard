@@ -7,4 +7,4 @@ soft_idle_s: 300  # seconds the newest turn end must be quiet before a soft cycl
 threshold_tokens: 400000  # hard cap: context-token count at which the watcher cycles the session; an absolute count because the transcript does not state the model's window, and a value above the model's auto-compaction point lets Claude Code compact first; non-positive is floored back to 400000
 idle_grace_s: 30  # seconds the session must stay idle after its newest event before the watcher acts; non-positive is floored back to 30
 handoff_timeout_s: 600  # seconds the session gets to write its handoff before the cycle aborts; non-positive is floored back to 600
-poll_interval_ms: 2000  # milliseconds between watcher polls; non-positive is floored back to 2000 (an unfloored 0 would busy-spin the watcher)
+poll_interval_ms: 2000  # milliseconds between watcher polls; a value below 1000 is floored to 1000 with one warning (an unfloored 0 would busy-spin the watcher)

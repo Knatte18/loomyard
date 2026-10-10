@@ -13,6 +13,7 @@
 // and every verb prints JSON through `internal/output`, one object per line, errors included.
 // `list` and `find` take `--text` to print the compact one-line-per-entry listing instead;
 // errors stay JSON.
+// The listing carries a priority column after the kind, `high`, `low` or blank, only when some listed entry is not normal.
 //
 // `upsert` takes `--body-file <path>` to read `body` from a file, or from stdin when the path is `-`.
 // It is refused when the payload also carries `body`, and when the payload argument is itself `-`.

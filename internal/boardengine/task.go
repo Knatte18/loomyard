@@ -19,6 +19,7 @@ type Task struct {
 	Labels    []string `json:"labels"`           // type and plain labels, validated against the board's Vocabulary
 	Issues    []int    `json:"issues"`           // numbers of the inbox issues this entry records; a number is not checked against GitHub
 	Recipe    string   `json:"recipe,omitempty"` // recipe name for the task's child worktree; empty means "loom". Resolved (and validated against the recipe vocabulary) at the seeding site, not here.
+	Priority  string   `json:"priority,omitempty"`
 	DependsOn []string `json:"depends_on"`
 	Isolated  bool     `json:"isolated"`
 	Brief     string   `json:"brief"`
@@ -33,10 +34,37 @@ const (
 	KindNote = "note"
 )
 
-// validateTask checks that the Kind of a built Task is one of the two kinds.
-func validateTask(t Task) error {
+// The priority values an entry accepts.
+// Task.Priority holds PriorityHigh, PriorityLow or the empty value for normal, so a write of PriorityNormal stores no key.
+const (
+	PriorityHigh   = "high"
+	PriorityNormal = "normal"
+	PriorityLow    = "low"
+)
+
+// priorityRank orders priority values for sorting: high before normal before low, with the empty value as normal.
+func priorityRank(priority string) int {
+	switch priority {
+	case PriorityHigh:
+		return 0
+	case PriorityLow:
+		return 2
+	default:
+		return 1
+	}
+}
+
+// normalizeTask stores a normal priority as the empty value, then checks that the Kind is one of the two kinds and the Priority one of the accepted values.
+func normalizeTask(t *Task) error {
 	if t.Kind != KindTask && t.Kind != KindNote {
 		return fmt.Errorf("kind %q is not one of %s, %s", t.Kind, KindTask, KindNote)
+	}
+	if t.Priority == PriorityNormal {
+		t.Priority = ""
+	}
+	if t.Priority != "" && t.Priority != PriorityHigh && t.Priority != PriorityLow {
+		return fmt.Errorf("entry %q has priority %q, and a priority is one of %s, %s, %s: correct it, or set %q to clear it",
+			t.Slug, t.Priority, PriorityHigh, PriorityNormal, PriorityLow, PriorityNormal)
 	}
 	return nil
 }
@@ -109,7 +137,7 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 		task.Issues = []int{}
 	}
 
-	if err := validateTask(task); err != nil {
+	if err := normalizeTask(&task); err != nil {
 		return Task{}, err
 	}
 
@@ -161,7 +189,7 @@ func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
 		return Task{}, err
 	}
 
-	if err := validateTask(result); err != nil {
+	if err := normalizeTask(&result); err != nil {
 		return Task{}, err
 	}
 

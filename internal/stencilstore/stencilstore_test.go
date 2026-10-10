@@ -2,7 +2,10 @@
 
 package stencilstore
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 //testtiming:keep pins that CRLF and a changed banner hash like their LF and old-banner twins while a changed body does not, which no covering test asserts
 func TestBodyHash(t *testing.T) {
@@ -199,6 +202,57 @@ func TestRelPath(t *testing.T) {
 				t.Errorf("RelPath(%q) = %q; want %q", tt.name, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestApplyWriter_RoundTripsThroughParseWriter covers setting, rewriting and removing the writer keys in a stamp line, on a one-line and a multi-line banner, and the body never changing.
+func TestApplyWriter_RoundTripsThroughParseWriter(t *testing.T) {
+	t.Parallel()
+
+	hash := fakeHash('a')
+	first := Writer{Revision: "rev-one", Time: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}
+	second := Writer{Revision: "rev-two", Time: time.Date(2026, 6, 7, 8, 9, 10, 0, time.UTC)}
+	oneLine := []byte("<!-- lyx-stencil: sha256=" + hash + " -->\n\nbody\n")
+	multiLine := []byte("<!-- note\nlyx-stencil: sha256=" + hash + "\n-->\n\nbody\n")
+
+	tests := []struct {
+		name    string
+		content []byte
+		apply   []Writer
+		want    Writer
+	}{
+		{"set on one-line banner", oneLine, []Writer{first}, first},
+		{"set on multi-line banner", multiLine, []Writer{first}, first},
+		{"rewrite", oneLine, []Writer{first, second}, second},
+		{"remove with zero writer", oneLine, []Writer{first, {}}, Writer{}},
+		{"banner with no keys", oneLine, nil, Writer{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := tt.content
+			for _, writer := range tt.apply {
+				got = ApplyWriter(got, writer)
+			}
+			parsed := ParseWriter(got)
+			if parsed.Revision != tt.want.Revision || !parsed.Time.Equal(tt.want.Time) {
+				t.Errorf("ParseWriter(ApplyWriter(...)) = %+v; want %+v", parsed, tt.want)
+			}
+			if stamp, ok := ParseStamp(got); !ok || stamp != hash {
+				t.Errorf("ParseStamp after ApplyWriter = (%q, %v); want the original hash", stamp, ok)
+			}
+			if BodyHash(got) != BodyHash(tt.content) {
+				t.Errorf("ApplyWriter changed the body hash")
+			}
+			if tt.want == (Writer{}) && string(got) != string(tt.content) {
+				t.Errorf("a keyless result = %q; want the original content %q", got, tt.content)
+			}
+		})
+	}
+
+	if got := ApplyWriter([]byte("no banner\n"), first); string(got) != "no banner\n" {
+		t.Errorf("ApplyWriter on content with no stamp = %q; want it unchanged", got)
 	}
 }
 

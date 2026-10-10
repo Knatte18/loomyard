@@ -190,8 +190,12 @@ func TestPush(t *testing.T) {
 			commitAll(t, cloneAPath, "A conflicting edit")
 			localHead := requireCurrentSHA(t, repoA)
 
-			if err := repoA.Push(); err == nil {
+			err := repoA.Push()
+			if err == nil {
 				t.Fatal("Push() with a genuine rebase conflict error = nil; want an error")
+			}
+			if !errors.Is(err, gitrepo.ErrPullRebaseFailed) {
+				t.Errorf("Push() rebase-conflict error = %v; want it to satisfy errors.Is(err, gitrepo.ErrPullRebaseFailed)", err)
 			}
 
 			// The abort must have restored a fully clean, non-rebasing state.
@@ -399,6 +403,9 @@ func TestPush_NoRemoteConfigured_SurfacesGitError(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), "gitrepo: git push:") {
 				t.Errorf("%s() error = %q; want it to wrap git's own push error unchanged", tt.name, err)
+			}
+			if errors.Is(err, gitrepo.ErrPullRebaseFailed) {
+				t.Errorf("%s() plain push failure satisfies ErrPullRebaseFailed; want only an aborted rebase to", tt.name)
 			}
 		})
 	}

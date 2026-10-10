@@ -600,3 +600,9 @@ func CleanupRemoteWarpWithHookForTest(t *Topology, l *lyxcwd.Location, apply boo
 func SetPushSeamForTest(t *Topology, run func(args []string, cwd string) (string, error), sleep func(delay time.Duration)) {
 	t.push = pushSeam{run: run, sleep: sleep}
 }
+
+// DropSeedCommitsForTest re-exports dropSeedCommits for package fabricengine_test integration tests that drive the board seed-commit drop's gate directly.
+var DropSeedCommitsForTest = dropSeedCommits
+
+// BoardDropRequestForTest re-exports boardDropRequest, so a package fabricengine_test file builds the drop's gate request without naming the unexported request type.
+var BoardDropRequestForTest = boardDropRequest

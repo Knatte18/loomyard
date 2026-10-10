@@ -714,7 +714,7 @@
 //
 // # The destruction chokepoint
 //
-// `destroy.go` is the one file in this package permitted to perform a destructive primitive — `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, deleting a branch on a remote (`git push <remote> --delete`), moving a task branch on a remote (a leased force push), and a warp checkout's `ResetHard` — and every one of them runs its shared four-check pipeline first.
+// `destroy.go` is the one file in this package permitted to perform a destructive primitive — `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, deleting a branch on a remote (`git push <remote> --delete`), moving a task branch on a remote (a leased force push), a warp checkout's `ResetHard`, and the board checkout's seed-commit drop — and every one of them runs its shared four-check pipeline first.
 // See `PATTERN-fabric-destruction-chokepoint` for the rules;
 // this section is the rationale the invariant deliberately omits.
 //
@@ -733,6 +733,27 @@
 // `opts.SkipPush` skips the remote half; `opts.SkipGit` does not, so the remote update is the one push-shaped step that ignores `SkipGit`.
 // The bound is that it rewrites only the pair's own task branch, only to `sha`, only when every commit it drops is reachable from HEAD, and under a lease on the tip the ancestry read saw.
 //
+// **The board seed-commit drop.** `dropSeedCommits(rec, req, repo, upstream, ahead)` resets the hub's own `_board` checkout to its upstream with `reset --keep` and replays the commits of `ahead` that are not seed commits, oldest first, through `cherry-pick --empty=drop`, so Bolt can be brought up to date when seed commits sit ahead of a moved upstream.
+// Its request, built by `boardDropRequest`, declares the board dir's parent as container and the board dir as target;
+// ownership `ownedBoardWorktree`, which holds only when the target is named `_board` and a weft repo of the same hub, a sibling whose name `WeftWarpSlug` admits, registers it as a linked worktree, so no other directory named `_board` can be reset;
+// dirtiness `dirtyTrackedOn(touched)`, which refuses only on a tracked change on a path the ahead commits changed, so a pending board write elsewhere is carried across;
+// and force always false.
+// A replay that conflicts aborts the cherry-pick and restores the tip the drop started from.
+// The bound is that only commits `IsSeedCommit` admits are dropped, only in a hub's own `_board`; a non-seed commit is replayed or, on conflict, kept at its original tip.
+// It appends `commits_dropped` once HEAD observably moved.
+//
+// **Pull-first.** `Bolt.PullThenCommitWritten(writes, rec)` brings Bolt up to date with its upstream before running an ordered list of writes, and commits each write's paths as its own commit.
+// It sits beside `CommitWritten`, which stays offline-capable for `configcli`'s hub-wide edit.
+// A Bolt with no upstream writes as before; one only behind is fast-forwarded (`repo_advanced`); one with seed commits ahead of a moved upstream has them dropped by the executor above.
+// When Bolt cannot be brought up to date, no write runs and the result's `Skipped` names why: `fetch_failed`, `diverged` (a non-seed commit ahead of a moved upstream, a drop refused on containment or ownership, or a replay conflict) or `dirty` (a tracked change blocking the reset or the fast-forward).
+// Each skip is logged at Warn once, inside `Bolt.pullFirst`, with a detail naming the way forward; callers only read the result.
+// The lock order is the board write lock, then the push lock (`gitrepo.PushLockFileName`) in the board dir, across every reset, replay and fast-forward of Bolt;
+// a coalesced push holds the push lock across its own rebase and never takes the board write lock, so the order cannot deadlock.
+//
+// **Push retry.** `Bolt.PushRecorded(opts, rec)` retries a push once when its recovery rebase conflicted (`gitrepo.ErrPullRebaseFailed`).
+// Under the same lock order it drops the seed commits ahead of the upstream by the executor above, then pushes again; with no seed commits ahead, or when the drop refuses or its replay conflicts, the original error is returned, and a second failure is never retried.
+// A push whose caller holds a mutation record passes it to `PushRecorded`, which records the drop there as `commits_dropped`; `Bolt.Push` takes no record, so it only logs the drop at Info.
+//
 // **Why a chokepoint at all.**
 // Eight data-loss defects across five review rounds were one shape, not eight mistakes: a
 // destructive operation acting on a path it does not own, or destroying it without checking
@@ -745,7 +766,7 @@
 //
 // **Why the gate executes rather than approves.**
 // A gate a caller consults and then acts on independently is advice, not enforcement — the caller can still reach `os.RemoveAll` directly, and nothing distinguishes "checked, then destroyed" from "destroyed".
-// `destroy.go`'s executors (`removePath`, `removeGitWorktree`, `removeLink`, `repointLink`, `deleteBranch`, `deleteRemoteBranch`, `updateRemoteBranch`, `resetHardTo`) run the pipeline and then perform the primitive themselves, so the two can never come apart.
+// `destroy.go`'s executors (`removePath`, `removeGitWorktree`, `removeLink`, `repointLink`, `deleteBranch`, `deleteRemoteBranch`, `updateRemoteBranch`, `resetHardTo`, `dropSeedCommits`) run the pipeline and then perform the primitive themselves, so the two can never come apart.
 // This is also what makes the bypass guard meaningful: a raw call to any of the primitives is mechanically bannable everywhere else in this package precisely because there is no legitimate reason for one to exist there — the gate is not one way to destroy something, it is the only way.
 //
 // **Why ownership is a closed enum with no caller-supplied predicate.**
@@ -1340,7 +1361,8 @@
 // `Topology.Add` therefore sets `gc.auto=0` and `maintenance.auto=false` in both stores' shared config once its pre-flight refusals have passed, and `Topology.Remove` sets them again and runs a foreground `git gc --auto` in each store after a successful teardown.
 // `maintenance.auto=false` is what stops git's post-command `git maintenance run --auto`, whose repack tasks under a `geometric` or `incremental` `maintenance.strategy` `gc.auto` does not govern.
 // The removal's gc is best-effort: a failure is logged as a warning and never fails the Remove, and a store another gc already holds is skipped silently until a later removal.
-// It never prunes a worktree's admin entry, so what it deletes is unreachable objects and expired reflog entries past git's own default expiry, nothing `destroy.go`'s gate protects.
+// The gc is skipped, with the keys still written, while the `InFlightProbe` set through `Topology.SetInFlightProbe` reports another pair's live reed session, logged at Info with the sessions, or fails, logged at Warn; a nil probe reports none, and production sets the real probe through `pairteardown`, the only route to `Remove`.
+// It prunes unreachable loose objects older than a day (`gc.pruneExpire=1.day.ago`) and never prunes a worktree's admin entry, so what it deletes is unreachable objects past that expiry and reflog entries past git's own default expiry, nothing `destroy.go`'s gate protects.
 // An existing hub picks the keys up at its next pair create or removal.
 // The keys disable git's automatic gc and maintenance for everyone using the store, the operator's manual git included: lyx's housekeeping is the replacement, a manual `git gc` still works, and maintenance an operator registers with `git maintenance start` stays outside lyx's control.
 // The gc threshold is not operator configuration.

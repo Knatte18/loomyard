@@ -31,7 +31,7 @@ const defaultInnerRunDriverExitGraceS = 900
 
 // defaultInnerRunNoticeQuietMin is innerRunEntry's own default for the notice_quiet_min Config key, in minutes, used when the extracted value is zero, exactly as defaultInnerRunPollIntervalS is.
 // It agrees with the batten recipe's own explicit notice_quiet_min.
-const defaultInnerRunNoticeQuietMin = 45
+const defaultInnerRunNoticeQuietMin = 30
 
 // worktreeCreateEntry is the Constructor for the "WorktreeCreate" registry row: it validates
 // Env.Slug, Env.ScratchDir, Env.CreateWorktree, Env.PrimeLock.Acquire, and Env.PrimeLock.Path, and

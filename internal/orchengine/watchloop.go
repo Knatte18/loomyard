@@ -20,7 +20,7 @@ const (
 
 	// watchLockAttempts and watchLockRetryInterval bound how long Run waits for a watch lock that WatcherLive holds for the instant of its probe.
 	watchLockAttempts      = 5
-	watchLockRetryInterval = 200 * time.Millisecond
+	watchLockRetryInterval = 200 * time.Millisecond //lyx:one-shot bounded lock retry of watchLockAttempts
 )
 
 // ErrWatcherRunning reports that another watcher already holds the watch lock.

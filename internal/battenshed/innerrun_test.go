@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -489,6 +490,45 @@ func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
 	}
 	producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
 	shedfake.RequireOutcome(t, producer, shedengine.Done)
+}
+
+// TestNewInnerRun_FloorsPollInterval pins that a told poll interval below one second sleeps one second between checks and logs one Warn naming poll_interval_s, and that one second passes through unwarned.
+func TestNewInnerRun_FloorsPollInterval(t *testing.T) {
+	tests := []struct {
+		name     string
+		told     time.Duration
+		wantWarn bool
+	}{
+		{"sub-second is floored with one warning", time.Millisecond, true},
+		{"one second passes through", time.Second, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := logcapture.Capture(t)
+			scratchDir := t.TempDir()
+			clock := &fakeClock{}
+			statuses := []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}
+			_, _, deps := newInnerRunDeps(t, nil, nil, statuses, clock)
+			if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), pidMarker(os.Getpid()), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var slept []time.Duration
+			deps.Sleep = func(ctx context.Context, d time.Duration) {
+				slept = append(slept, d)
+				clock.Sleep(ctx, d)
+			}
+
+			shedfake.CallOK(t, NewInnerRun("innerrun", "myslug", deps, tt.told, scratchDir, testGrace))
+
+			if !slices.Equal(slept, []time.Duration{time.Second}) {
+				t.Errorf("slept %v between checks; want one second", slept)
+			}
+			warned := strings.Count(logs.String(), "key=poll_interval_s") == 1 && strings.Contains(logs.String(), "floor_s=1")
+			if warned != tt.wantWarn {
+				t.Errorf("warned = %v, want %v; log = %q", warned, tt.wantWarn, logs.String())
+			}
+		})
+	}
 }
 
 // TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext asserts the production sleep value does

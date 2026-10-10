@@ -251,7 +251,7 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force, remote bool) (
 
 	// Both worktrees are gone: reclaim the stores' unreferenced objects while lyx is already doing slow work.
 	// A refused or failed Remove returned above and runs no housekeeping.
-	housekeepStores(l)
+	housekeepStores(l, slug, t.inFlight)
 
 	strayPath := ""
 	if pair.strayPath {

@@ -629,13 +629,25 @@ type Report struct {
 	Orch *OrchTally
 }
 
-// WriteMarkdown writes the total first, each role summed over all runs, then one table per run.
+// WriteMarkdown writes the total first, each role summed over all runs, then the orchestrator section, then one table per run.
+// When the orch was counted, each role table gains an orch row of the orch usage charged to its runs.
 func (r Report) WriteMarkdown(w io.Writer) error {
 	total := map[string]*RoleTally{}
 	duplicates := 0
 	grand := 0.0
+	var orchTotal *OrchCharge
+	if r.Orch != nil {
+		orchTotal = &OrchCharge{}
+	}
 	for _, run := range r.Runs {
 		duplicates += run.Duplicates
+		if orchTotal != nil {
+			charge := r.Orch.Charges[run.Slug]
+			orchTotal.Tokens += charge.Tokens
+			orchTotal.Weight += charge.Weight
+			orchTotal.Cost.add(charge.Cost)
+			grand += charge.Weight
+		}
 		for role, t := range run.Roles {
 			grand += t.Usage.Weight()
 			sum := total[role]
@@ -653,19 +665,29 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	}
 
 	fmt.Fprintf(w, "## All runs\n\n")
-	writeTable(w, total)
+	writeTable(w, total, orchTotal)
 	fmt.Fprintf(w, "Total weight %.1fM; %d repeated transcript lines skipped.\n\n", grand/1e6, duplicates)
 	var cost Cost
 	for _, t := range total {
 		cost.add(t.Cost)
 	}
+	if orchTotal != nil {
+		cost.add(orchTotal.Cost)
+	}
 	if len(cost.Unpriced) > 0 {
 		fmt.Fprintf(w, "Unpriced models (messages), in no cost figure: %s.\n\n", models(cost.Unpriced))
+	}
+	if r.Orch != nil {
+		r.Orch.WriteMarkdown(w, r.Runs)
 	}
 
 	for _, run := range r.Runs {
 		fmt.Fprintf(w, "## %s\n\n", run.Slug)
-		writeTable(w, run.Roles)
+		var charge *OrchCharge
+		if r.Orch != nil {
+			charge = r.Orch.Charges[run.Slug]
+		}
+		writeTable(w, run.Roles, charge)
 	}
 
 	fmt.Fprintf(w, "## Webster forks\n\n")
@@ -681,13 +703,12 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 		}
 	}
 	fmt.Fprintln(w)
-	if r.Orch != nil {
-		r.Orch.WriteMarkdown(w, r.Runs)
-	}
 	return nil
 }
 
-func writeTable(w io.Writer, roles map[string]*RoleTally) {
+// writeTable writes one role table, and below its roles an orch row of the charge orch when orch is not nil;
+// the shares divide by the table's total weight, the orch row's included.
+func writeTable(w io.Writer, roles map[string]*RoleTally, orch *OrchCharge) {
 	tallies := make([]*RoleTally, 0, len(roles))
 	for _, t := range roles {
 		tallies = append(tallies, t)
@@ -702,16 +723,24 @@ func writeTable(w io.Writer, roles map[string]*RoleTally) {
 	for _, t := range tallies {
 		tableWeight += t.Usage.Weight()
 	}
+	if orch != nil {
+		tableWeight += orch.Weight
+	}
+	share := func(weight float64) float64 {
+		if tableWeight == 0 {
+			return 0
+		}
+		return 100 * weight / tableWeight
+	}
 	fmt.Fprintln(w, "| role | sessions | output | cache write | cache read | input | weight | share | est. cost | models (messages) |")
 	fmt.Fprintln(w, "|---|---|---|---|---|---|---|---|---|---|")
 	for _, t := range tallies {
 		u := t.Usage
-		share := 0.0
-		if tableWeight > 0 {
-			share = 100 * u.Weight() / tableWeight
-		}
 		fmt.Fprintf(w, "| %s | %d | %d | %d | %d | %d | %.1fM | %.1f%% | %s | %s |\n",
-			t.Role, t.Sessions, u.Output, u.CacheCreate, u.CacheRead, u.Input, u.Weight()/1e6, share, t.Cost, models(t.Models))
+			t.Role, t.Sessions, u.Output, u.CacheCreate, u.CacheRead, u.Input, u.Weight()/1e6, share(u.Weight()), t.Cost, models(t.Models))
+	}
+	if orch != nil {
+		fmt.Fprintf(w, "| %s | | | | | | %.1fM | %.1f%% | %s | |\n", orchRole, orch.Weight/1e6, share(orch.Weight), orch.Cost)
 	}
 	fmt.Fprintln(w)
 }
