@@ -118,7 +118,7 @@ func seedStencilsAt(hub, worktree string) {
 		sourceDir = ""
 	}
 
-	mode := stencilstore.ModeFor(buildinfo.IsDev())
+	mode := stencilstore.ModeFor(buildinfo.IsDev(), buildinfo.IsProduction(), buildvcs.Running().Clean())
 
 	seedSubtree(hub, fabricengine.StencilsDir(hub), fabricengine.StencilsSubtreeRel(), stencils.Registry(), mode, fabricengine.StencilSource(worktree, sourceDir, buildvcs.Running().Revision), "stencils")
 

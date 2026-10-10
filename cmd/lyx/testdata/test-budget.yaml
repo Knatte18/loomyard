@@ -94,7 +94,7 @@ internal/state: 8
 internal/statuscommit: 6
 internal/stencil: 3
 internal/stencilcli: 1
-internal/stencilstore: 16
+internal/stencilstore: 18
 internal/summaryparser: 8
 internal/testkit: 2
 internal/testkit/envelope: 6
