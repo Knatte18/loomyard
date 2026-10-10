@@ -50,6 +50,13 @@
 // A turn end without every output file never ends a run: Wait holds it, logs it at Info and keeps polling the same agent,
 // whether the turn end is a Stop or a live ask.
 // A run ends only as done (every output file present at a turn end, or at the deadline or a pane's death), died, timeout or a mechanism failure.
+// A turn end that precedes the start prompt's own turn start is not a task turn end:
+// Wait logs it at Warn as `turn end before the prompt's turn start; not held` and neither holds nor notifies it.
+// The hold guard arms when the events file holds a turn start before `promptOffset`, which proves the provider writes turn starts for typed turns.
+// It lifts at the first turn start read from the prompt offset on, or at once for a Wait attached past it.
+// An engine without SessionSignalParser, a zero `promptOffset`, a file with no turn start before it and an unreadable file leave the guard off, so every turn end is held as before.
+// Bound: the guard skips only turn ends before the first post-prompt turn start,
+// and a provider that writes a turn start for the load turns and none for the prompt turn skips every turn end of the run, each with a Warn, and waits out the deadline with no hold notice.
 // A hold never extends the run's deadline: it is bounded by the caller's own Spec.Timeout (run_timeout_min only where that is zero, so the bound differs per caller),
 // each Attach starts a fresh deadline, and the liveness check still classifies a dead pane.
 // RunState.Outcome records whether a run ever ended, seeded "running" and overwritten on every terminal
@@ -190,8 +197,8 @@
 // otherwise, for an engine with both the idle reading and the optional InputBoxClearer capability, a box that shows this send's own text, or the provider's collapsed paste placeholder, is cleared and read again;
 // a box holding anything else gets no key, and a box the clear did not empty is named in the error.
 // An engine without the capability keeps the appearance-only check.
-// The run's events offset ends past every load turn end, the retry's included,
-// so Wait never reads one as a held turn end.
+// The run's events offset is the events file's size at the moment before the prompt is sent.
+// That lies past every load turn end, the retry's included, and past any line appended after them.
 // run.json records that offset as `promptOffset` before the prompt goes out,
 // and every reader that replays the events file without Waiting on the Run starts there: Attach, and webster's recovery classification through its batch record.
 // A pane that dies meanwhile is a died startup.
@@ -221,7 +228,8 @@
 // a WaitMarker file, `wait.yaml` in the run's own directory, carrying the label, the start time and the pid of the process running Wait,
 // and a pane mark that ReedOps.SetWaitMark puts on the run's strand.
 // A running gate entry ranks first, then the background-shell wait, then the held wait.
-// The held wait starts at a held turn end, stamped with the run clock's time, and the next tick that reads a new event clears it, so the following turn start, turn end or ask ends it.
+// The held wait starts at a held turn end, stamped with the run clock's time, and the next tick that reads a new event or a turn start past the held turn end clears it, so the following turn start, turn end or ask ends it.
+// A held turn end read in the same batch as a turn start past it is logged and notified, and shows no hold, since the next turn is already under way.
 // ReadWaitMarker returns the first marker with a live pid among a run-directory root's runs, which is how `lyx loom status` reads it.
 // ReadWaitMarkers returns every such marker, and WaitMarker.Held tells the held label, so batten's wait reading can skip a held wait: a held run is idle, and its quiet notice still fires.
 // Both exist only for display and status: no shuttle decision reads either,
@@ -262,7 +270,8 @@
 // The wait loop folds the same signals on a cursor of its own: it starts at the prompt offset on every path, never at the loop's event offset, and stops before an unpaired trailing stamp, so the stamp is read again with its payload.
 // At every liveness tick it re-reads the markers of the newest turn start and turn end folded so far, since the transcript can mark them after the tick that folded them.
 // Each tick, and once more just before a classified outcome is finalized, it logs every state change at Info as `shuttle: session state` with the loop's classification: running, waiting, held, done or died.
-// It logs `shuttle: session state disagrees` at Warn once per disagreement, again only after either side changed, when the pair is outside the fixed mapping:
+// The session state is a shadow reading the loop never acts on.
+// It logs `shuttle: session state disagrees` at Warn once per disagreement, again only after either side changed, when the pair is outside the fixed mapping, and the line carries `stands=loop`:
 // waiting and running read busy, held reads idle-stalled or asking, done reads idle-done, died reads dead.
 // Two pairings are expected and log nothing: a gate wait with every output present beside idle-done, and done beside busy on background work.
 // The loop never branches on the state; an engine without the parser, an unreadable events file or a failed fact read logs once at Debug and changes no verdict, notice, wait mark or return.

@@ -95,6 +95,7 @@ func loopAgreesWithState(loop string, state SessionState, gatePending bool) bool
 // logSessionState reads the signals appended since the shadow cursor, folds them with this tick's facts and logs a changed state and a new disagreement with the loop's classification.
 // outcome is the outcome Wait is about to finalize, empty on an ordinary tick;
 // refreshFacts re-reads the liveness and the transcript markers of the newest turn start and turn end folded so far, which are otherwise reused until new signals arrive.
+// A disagreement logs `stands=loop`: the loop's classification is the one every decision follows, and no action follows a disagreement.
 // It returns nothing Wait reads: an engine without a SessionSignalParser, an unreadable events file or a missing fact logs once at Debug and changes nothing.
 func (run *Run) logSessionState(outcome Outcome, refreshFacts bool) {
 	shadow := &run.shadow
@@ -168,7 +169,7 @@ func (run *Run) logSessionState(outcome Outcome, refreshFacts bool) {
 		return
 	}
 	shadow.disagreement, shadow.hasDisagreement = pair, true
-	logger.Warn("shuttle: session state disagrees", "strandGUID", run.state.StrandGUID, "loop", loop, "state", string(state.Name), "cause", state.Cause)
+	logger.Warn("shuttle: session state disagrees", "strandGUID", run.state.StrandGUID, "loop", loop, "state", string(state.Name), "cause", state.Cause, "stands", "loop")
 }
 
 // logSessionUnavailable logs at Debug, once per Wait, why the session state could not be read.

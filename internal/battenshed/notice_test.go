@@ -52,6 +52,10 @@ type noticeHarness struct {
 	quiet time.Duration
 	probe time.Duration
 	poll  time.Duration
+
+	// started is the fake clock's time when the harness was built, and asleep the time suspend has taken out of the awake clock since.
+	started time.Time
+	asleep  time.Duration
 }
 
 func newNoticeHarness(t *testing.T) *noticeHarness {
@@ -69,8 +73,15 @@ func newNoticeHarness(t *testing.T) *noticeHarness {
 		quiet:        45 * time.Minute,
 		poll:         time.Second,
 	}
-	h.touch(h.clock.Now())
+	h.started = h.clock.Now()
+	h.touch(h.started)
 	return h
+}
+
+// suspend moves the fake wall clock forward by d without moving the awake clock, as a machine sleeping for d does.
+func (h *noticeHarness) suspend(d time.Duration) {
+	h.clock.advance(d)
+	h.asleep += d
 }
 
 // touch sets the status file's modification time, creating the file when absent.
@@ -112,6 +123,7 @@ func (h *noticeHarness) producer() shedengine.ShedProducer {
 		},
 		Sleep:          h.clock.Sleep,
 		Now:            h.clock.Now,
+		Awake:          func() time.Duration { return h.clock.Now().Sub(h.started) - h.asleep },
 		PauseRequested: h.clock.pauseRequested,
 		NoticeProbe:    h.probe,
 		ReadDecision: func() (ChildDecision, bool, error) {
@@ -414,6 +426,108 @@ func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
 			t.Fatalf("notified = %v; want none with the quiet window off", h.notified)
 		}
 	})
+
+	// The sleep subtests run one Call, since the suspended time is kept per Call: onCheck runs fn at the nth check's sleep, before that check judges.
+	onCheck := func(h *noticeHarness, fns map[int]func()) {
+		h.clock.onSleep = func(call int) {
+			if fn := fns[call]; fn != nil {
+				fn()
+			}
+		}
+	}
+
+	t.Run("ASleepGapRaisesNoNoticeUntilTheAwakeIdleTimeReachesTheWindow", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}}
+		sentBefore := -1
+		onCheck(h, map[int]func(){
+			2: func() { h.suspend(3 * time.Hour) },
+			3: func() { sentBefore = len(h.notified); h.clock.advance(h.quiet) },
+		})
+		h.run(p, 6)
+		if sentBefore != 0 || len(h.notified) != 1 || !strings.Contains(h.notified[0], "agents idle for 45m") || strings.Contains(h.notified[0], "3h") {
+			t.Fatalf("notified = %v, %d before the window; want one quiet notice reporting the awake idle time, none during the sleep", h.notified, sentBefore)
+		}
+	})
+
+	t.Run("AMovedNewestActivityDropsTheGapObservedWithIt", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}}
+		onCheck(h, map[int]func(){
+			2: func() {
+				h.suspend(3 * time.Hour)
+				h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}}
+			},
+			3: func() { h.clock.advance(h.quiet) },
+		})
+		h.run(p, 6)
+		if len(h.notified) != 1 || !strings.Contains(h.notified[0], "agents idle for 45m") {
+			t.Fatalf("notified = %v; want one quiet notice at the window measured from the new activity", h.notified)
+		}
+	})
+
+	t.Run("TheNoLiveRunFallbackDropsTheGapWhenItsStampMoves", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		onCheck(h, map[int]func(){
+			2: func() {
+				h.suspend(3 * time.Hour)
+				h.status.History = []shedengine.HistoryEntry{{At: h.clock.Now().Format(time.RFC3339)}}
+			},
+			3: func() { h.clock.advance(h.quiet) },
+		})
+		h.run(p, 6)
+		if len(h.notified) != 1 || !strings.Contains(h.notified[0], "no agent activity readable for 45m") {
+			t.Fatalf("notified = %v; want one fallback notice at the window measured from the new history entry", h.notified)
+		}
+	})
+
+	t.Run("AnUnreadableActivityKeepsTheGapForALaterReadableCheck", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}}
+		onCheck(h, map[int]func(){
+			2: func() {
+				h.activityErr = errors.New("shuttle config unreadable")
+				h.suspend(3 * time.Hour)
+			},
+			3: func() {
+				h.activityErr = nil
+				h.clock.advance(30 * time.Minute)
+			},
+		})
+		h.run(p, 6)
+		if len(h.notified) != 0 {
+			t.Fatalf("notified = %v; want none: the gap seen on the unreadable check is subtracted at the readable one", h.notified)
+		}
+	})
+}
+
+func TestSleepGap(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		prevWall, wall   time.Duration
+		prevAwake, awake time.Duration
+		want             time.Duration
+	}{
+		{name: "HoursOfWallAgainstSecondsAwake", prevWall: 0, wall: 3 * time.Hour, prevAwake: 0, awake: 5 * time.Second, want: 3*time.Hour - 5*time.Second},
+		{name: "ExcessAtTheToleranceIsZero", prevWall: 0, wall: time.Hour, prevAwake: 0, awake: time.Hour - sleepGapTolerance, want: 0},
+		{name: "ExcessJustOverTheToleranceCounts", prevWall: 0, wall: time.Hour, prevAwake: 0, awake: time.Hour - sleepGapTolerance - time.Second, want: sleepGapTolerance + time.Second},
+		{name: "EqualDeltasAreZero", prevWall: time.Hour, wall: 2 * time.Hour, prevAwake: 10 * time.Second, awake: time.Hour + 10*time.Second, want: 0},
+		{name: "WallBehindAwakeIsZero", prevWall: 0, wall: time.Minute, prevAwake: 0, awake: time.Hour, want: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := sleepGap(int64(tt.prevWall), int64(tt.wall), tt.prevAwake, tt.awake); got != tt.want {
+				t.Errorf("sleepGap = %s; want %s", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestNotice_APIErrorStall(t *testing.T) {
@@ -450,6 +564,27 @@ func TestNotice_APIErrorStall(t *testing.T) {
 	if len(h.notified) != 2 || !strings.Contains(h.notified[1], "API error") {
 		t.Fatalf("notified = %v; want a second api-error notice and no quiet one", h.notified)
 	}
+
+	// A sleep after the stall is not time the error has stood: the notice waits for the awake idle time, within one Call.
+	t.Run("ASleepGapRaisesNoNoticeUntilTheAwakeIdleTimeReachesTheIdle", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now(), APIError: true, APIErrorText: "overloaded"}}
+		sentBefore := -1
+		h.clock.onSleep = func(call int) {
+			switch call {
+			case 2:
+				h.suspend(3 * time.Hour)
+			case 3:
+				sentBefore = len(h.notified)
+				h.clock.advance(noticeAPIErrorIdle)
+			}
+		}
+		h.run(p, 6)
+		if sentBefore != 0 || len(h.notified) != 1 || !strings.Contains(h.notified[0], "API error") {
+			t.Fatalf("notified = %v, %d before the idle time; want one api-error notice, none during the sleep", h.notified, sentBefore)
+		}
+	})
 }
 
 func TestNotice_RestartDoesNotRenotify(t *testing.T) {

@@ -116,8 +116,8 @@ type RunState struct {
 	// Wait persists it before calling the notifier and never notifies a held turn end at or below it,
 	// so a crash between the write and the call loses that one notice and never repeats it.
 	NotifiedOffset int64 `json:"notifiedOffset,omitempty"`
-	// PromptOffset is the events-file byte offset past the skill-load turns Start ran before sending the prompt,
-	// zero when Start loaded no skills or for a record that predates the field.
+	// PromptOffset is the events-file size at the moment before Start sends the prompt, past the skill-load turns it ran and any line appended after them.
+	// It is zero when Start loaded no skills or for a record that predates the field.
 	// Every reader that replays the events file from its start begins here instead, so a load turn's end is never read as the run's own.
 	PromptOffset int64 `json:"promptOffset,omitempty"`
 	// PID is the pid of the process that waits on the run: Start records the starting process, and an attach rewrites it to the attaching process.

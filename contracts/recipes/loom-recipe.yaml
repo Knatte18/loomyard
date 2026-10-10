@@ -32,8 +32,10 @@
 #
 # Publish still escalates: its failures are merge, verify and push faults nothing in the list
 # produces. PR-Gate bounces to PR-Rework, the row that produces the diff it guards. PR-Rework joins
-# the writer rows whose Stuck halts for a human. The gate's episode Stuck count never resets between
-# rounds, so the budget is five rejection rounds per task. A rework round starts a new plan
+# the writer rows whose Stuck halts for a human. A Done by any row of segment PR-Review ends the
+# gate's episode, so PR-Rework's Done resets the count after every rework; max_bounces bounds
+# consecutive gate Stucks with no rework Done between them, which this recipe never produces, since
+# every gate Stuck routes to PR-Rework. A rework round starts a new plan
 # generation that walks the whole main line again, Plan-Review included; Plan-Bouncer skips its
 # judge only for a generation whose live cards are all exempt.
 #

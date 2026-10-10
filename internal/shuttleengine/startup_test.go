@@ -928,12 +928,32 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 		wantDied   bool
 		wantOffset bool
 		elapsed    string
+		// afterClassify, when set, runs with the events file's path after each load turn is classified.
+		afterClassify func(t *testing.T, eventsPath string)
 	}{
 		{
 			name:       "every skill loads in one turn before the prompt",
 			spec:       Spec{Skills: []string{"a", "b"}},
 			reports:    []SkillLoadReport{loaded("a", "b")},
 			wantTyped:  "LOAD:a,b|do the task",
+			wantOffset: true,
+			elapsed:    zero,
+		},
+		{
+			name:      "a line appended after the last load turn end lies before the prompt offset",
+			spec:      Spec{Skills: []string{"a"}},
+			reports:   []SkillLoadReport{loaded("a")},
+			wantTyped: "LOAD:a|do the task",
+			afterClassify: func(t *testing.T, eventsPath string) {
+				f, err := os.OpenFile(eventsPath, os.O_APPEND|os.O_WRONLY, 0o644)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer f.Close()
+				if _, err := f.WriteString("START\n"); err != nil {
+					t.Fatal(err)
+				}
+			},
 			wantOffset: true,
 			elapsed:    zero,
 		},
@@ -1004,7 +1024,11 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			buf := logcapture.Capture(t)
-			run, reed, elapsed, err := skillStartFixture(t, tt.spec, tt.reports, tt.hangs, tt.dies)
+			run, reed, elapsed, err := skillStartFixtureWith(t, reedengine.Strand{GUID: "strand-1"}, tt.spec, tt.reports, tt.hangs, tt.dies, func(reed *skillReed, engine *skillFakeEngine) {
+				if tt.afterClassify != nil {
+					engine.OnClassify = func() { tt.afterClassify(t, reed.EventsPath()) }
+				}
+			})
 			if tt.wantDied {
 				if !errors.Is(err, ErrNotStarted) {
 					t.Fatalf("Start() error = %v; want one wrapping ErrNotStarted", err)

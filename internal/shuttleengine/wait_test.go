@@ -391,6 +391,19 @@ func (c *multiStepClock) Sleep(d time.Duration) {
 
 var _ Clock = (*multiStepClock)(nil)
 
+// skillLoadEvents is an events file holding one skill-load turn, and skillLoadOffset the prompt offset past it.
+const (
+	skillLoadEvents       = "START\nSTOP:loaded\n"
+	skillLoadOffset int64 = int64(len(skillLoadEvents))
+)
+
+// sessionEngine returns a builder of a sessionFakeEngine whose liveness probe answers liveness.
+func sessionEngine(liveness Liveness) func() Engine {
+	return func() Engine {
+		return &sessionFakeEngine{waitingEngine: waitingEngine{fakeEngine: fakeEngine{StartupScript: []StartupState{StartupReady}}}, liveness: liveness}
+	}
+}
+
 // TestRun_Wait_HeldTurnEnd drives Run.Wait over turn ends that leave the output files missing:
 // each is held and polling continues, so the run ends only through done, died or timeout.
 // A later Stop with every output file finalizes done, also through a gate.
@@ -416,6 +429,13 @@ func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 		timeout     time.Duration
 		wantOutcome Outcome
 		wantGate    bool
+		// engine builds the run's engine, a fakeEngine when nil.
+		engine func() Engine
+		// promptOffset is the run's persisted PromptOffset and readOffset the byte offset it starts reading from.
+		promptOffset, readOffset int64
+		// wantHeld is, per script step, whether the held marker is on show when the step runs;
+		// nil means every step shows a hold, each stamped later than the one before.
+		wantHeld []bool
 	}{
 		{
 			name: "a stop with output missing keeps polling until a later stop with outputs", events: "STOP:need operator input\n", status: live,
@@ -461,6 +481,140 @@ func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 			timeout:     heldTestTimeout,
 			wantOutcome: OutcomeTimeout,
 		},
+		{
+			name: "a stray stop before the prompt's turn start holds nothing, and the turn start read alone lifts the guard", events: skillLoadEvents, status: live,
+			engine: sessionEngine(LivenessAlive), promptOffset: skillLoadOffset, readOffset: skillLoadOffset,
+			script: func(a agentActions) []func() {
+				return []func(){
+					func() { a.appendLine("STOP:stray") },
+					func() { a.appendLine("START") },
+					func() { a.appendLine("STOP:question") },
+					func() { a.writeOutput(); a.appendLine("STOP:done") },
+				}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+			wantHeld:    []bool{false, false, false, true},
+		},
+		{
+			name: "a turn start and a stop read in one batch hold at once", events: skillLoadEvents, status: live,
+			engine: sessionEngine(LivenessAlive), promptOffset: skillLoadOffset, readOffset: skillLoadOffset,
+			script: func(a agentActions) []func() {
+				return []func(){
+					func() { a.appendLine("START"); a.appendLine("STOP:question") },
+					func() { a.writeOutput(); a.appendLine("STOP:done") },
+				}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+			wantHeld:    []bool{false, true},
+		},
+		{
+			name: "a run attached past the prompt's turn start holds its first stop", events: skillLoadEvents + "START\n", status: live,
+			engine: sessionEngine(LivenessAlive), promptOffset: skillLoadOffset, readOffset: skillLoadOffset + int64(len("START\n")),
+			script: func(a agentActions) []func() {
+				return []func(){
+					func() { a.appendLine("STOP:question") },
+					func() { a.writeOutput(); a.appendLine("STOP:done") },
+				}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+			wantHeld:    []bool{false, true},
+		},
+		{
+			name: "unproven liveness leaves the shadow's facts incomplete and changes no hold", events: skillLoadEvents, status: live,
+			engine: sessionEngine(LivenessUnproven), promptOffset: skillLoadOffset, readOffset: skillLoadOffset,
+			script: func(a agentActions) []func() {
+				return []func(){
+					func() { a.appendLine("STOP:stray") },
+					func() { a.appendLine("START") },
+					func() { a.appendLine("STOP:question") },
+					func() { a.writeOutput(); a.appendLine("STOP:done") },
+				}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+			wantHeld:    []bool{false, false, false, true},
+		},
+		{
+			name: "an engine without the session capability holds the first stop whatever the prompt offset", events: skillLoadEvents, status: live,
+			promptOffset: skillLoadOffset, readOffset: skillLoadOffset,
+			script: func(a agentActions) []func() {
+				return []func(){
+					func() { a.appendLine("STOP:question") },
+					func() { a.writeOutput(); a.appendLine("STOP:done") },
+				}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+			wantHeld:    []bool{false, true},
+		},
+		{
+			name: "a turn start read alone ends the hold and shows no new one", events: "STOP:question\n", status: live,
+			engine: sessionEngine(LivenessAlive),
+			script: func(a agentActions) []func() {
+				return []func(){
+					func() { a.appendLine("START") },
+					func() { a.writeOutput(); a.appendLine("STOP:done") },
+				}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+			wantHeld:    []bool{true, false},
+		},
+		{
+			name: "a stop and the turn start past it read in one batch show no hold", events: "START\n", status: live,
+			engine: sessionEngine(LivenessAlive),
+			script: func(a agentActions) []func() {
+				return []func(){
+					func() { a.appendLine("STOP:question"); a.appendLine("START") },
+					func() { a.writeOutput(); a.appendLine("STOP:done") },
+				}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+			wantHeld:    []bool{false, false},
+		},
+		{
+			name: "a turn start before a new stop in one batch leaves the new hold on show", events: "STOP:question\n", status: live,
+			engine: sessionEngine(LivenessAlive),
+			script: func(a agentActions) []func() {
+				return []func(){
+					func() { a.appendLine("START"); a.appendLine("STOP:question again") },
+					func() { a.writeOutput(); a.appendLine("STOP:done") },
+				}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+			wantHeld:    []bool{true, true},
+		},
+		{
+			name: "a zero prompt offset holds the first stop", events: skillLoadEvents, status: live,
+			engine: sessionEngine(LivenessAlive), readOffset: skillLoadOffset,
+			script: func(a agentActions) []func() {
+				return []func(){
+					func() { a.appendLine("STOP:question") },
+					func() { a.writeOutput(); a.appendLine("STOP:done") },
+				}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+			wantHeld:    []bool{false, true},
+		},
+		{
+			name: "no turn start before the prompt offset leaves the guard off", events: "STOP:loaded\n", status: live,
+			engine: sessionEngine(LivenessAlive), promptOffset: int64(len("STOP:loaded\n")), readOffset: int64(len("STOP:loaded\n")),
+			script: func(a agentActions) []func() {
+				return []func(){
+					func() { a.appendLine("STOP:question") },
+					func() { a.writeOutput(); a.appendLine("STOP:done") },
+				}
+			},
+			timeout:     time.Minute,
+			wantOutcome: OutcomeDone,
+			wantHeld:    []bool{false, true},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -473,7 +627,11 @@ func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 			}
 
 			reed := &fakeReed{StatusQueue: tt.status}
-			fx := newFixture(t, reed, &fakeEngine{StartupScript: []StartupState{StartupReady}}, withConfig(fastConfig))
+			var engine Engine = &fakeEngine{StartupScript: []StartupState{StartupReady}}
+			if tt.engine != nil {
+				engine = tt.engine()
+			}
+			fx := newFixture(t, reed, engine, withConfig(fastConfig))
 			fc := newFakeClock(time.Now())
 			var clk Clock = fc
 			// holds is the wait marker on disk at each step, where the agent acts between two ticks.
@@ -500,7 +658,8 @@ func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 			firstTick := clk.Now()
 			opts := []runOpt{
 				withRunDir(runDir),
-				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath, PromptOffset: tt.promptOffset}),
+				withRunOffset(tt.readOffset),
 				withRunClock(clk, clk.Now().Add(tt.timeout)),
 			}
 			if tt.gate != nil {
@@ -521,7 +680,16 @@ func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 
 			// A held turn end shows the held wait stamped with the hold's time, each later event replaces it with the next hold,
 			// and no return leaves a mark or a marker file behind.
+			if tt.wantHeld != nil && len(holds) != len(tt.wantHeld) {
+				t.Fatalf("script steps run = %d; want %d", len(holds), len(tt.wantHeld))
+			}
 			for i, hold := range holds {
+				if tt.wantHeld != nil {
+					if hold.Held() != tt.wantHeld[i] {
+						t.Errorf("wait marker at step %d = %+v; want held = %v", i, hold, tt.wantHeld[i])
+					}
+					continue
+				}
 				if !hold.Held() {
 					t.Errorf("wait marker at step %d = %+v; want the held label", i, hold)
 				}
@@ -536,8 +704,12 @@ func TestRun_Wait_HeldTurnEnd(t *testing.T) {
 			for _, call := range reed.WaitMarkCalls {
 				labels = append(labels, call.Label)
 			}
-			if !slices.Contains(labels, heldWaitLabel) || labels[len(labels)-1] != "" {
-				t.Errorf("pane mark labels = %q; want the held label set and the mark cleared last", labels)
+			if wantShown := tt.wantHeld == nil || slices.Contains(tt.wantHeld, true); wantShown {
+				if !slices.Contains(labels, heldWaitLabel) || labels[len(labels)-1] != "" {
+					t.Errorf("pane mark labels = %q; want the held label set and the mark cleared last", labels)
+				}
+			} else if slices.Contains(labels, heldWaitLabel) {
+				t.Errorf("pane mark labels = %q; want the held label never set", labels)
 			}
 			if _, err := os.Stat(filepath.Join(runDir, waitMarkerFileName)); !os.IsNotExist(err) {
 				t.Errorf("wait marker file after Wait: stat error = %v; want it removed", err)

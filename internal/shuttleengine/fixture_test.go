@@ -110,6 +110,7 @@ type runSettings struct {
 	clk      Clock
 	deadline time.Time
 	gate     GateSpec
+	offset   int64
 }
 
 type runOpt func(*testing.T, *runSettings)
@@ -139,6 +140,11 @@ func withRunEvents(events string) runOpt {
 			t.Fatalf("seed events: %v", err)
 		}
 	}
+}
+
+// withRunOffset sets the byte offset the Run starts reading its events file from, zero otherwise.
+func withRunOffset(offset int64) runOpt {
+	return func(_ *testing.T, s *runSettings) { s.offset = offset }
 }
 
 // withRunClock sets the Run's clock and the deadline it reads against.
@@ -172,5 +178,6 @@ func (fx *fixture) newRun(spec Spec, opts ...runOpt) *Run {
 		clock:    s.clk,
 		deadline: s.deadline,
 		gate:     s.gate,
+		offset:   s.offset,
 	}
 }

@@ -115,8 +115,8 @@ func TestEscalation_BudgetContinueGrantsOneRoundThenAccept(t *testing.T) {
 	if got := burler.Calls - roundsBefore; got != 1 {
 		t.Errorf("rounds run after the budget continue = %d; want exactly 1", got)
 	}
-	if _, exempt := countStuck(result.History, loomshed.NameDiscussionBurler); exempt != 1 {
-		t.Errorf("Discussion-Burler budget-exempt Stuck entries = %d; want 1 (the granted round)", exempt)
+	if total, exempt := countStuck(result.History, loomshed.NameDiscussionBurler); total != burler.Calls || exempt != total {
+		t.Errorf("Discussion-Burler Stuck entries = %d, budget-exempt = %d; want both %d (every round's hand-back for judgment is exempt)", total, exempt, burler.Calls)
 	}
 	if _, exempt := countStuck(result.History, loomshed.NameDiscussionBouncer); exempt != 1 {
 		t.Errorf("Discussion-Bouncer budget-exempt Stuck entries = %d; want 1 (the continue)", exempt)

@@ -97,9 +97,9 @@ func (r Routing) ProgressAt(current string) Progress {
 	return Progress{Step: idx + 1, Steps: len(steps), Name: names[idx], Remaining: names[idx+1:]}
 }
 
-// Bounces reports the current segment's bounce count and budget. The count is the episode stuck
-// count of the segment's main-line row, whichever of the segment's rows is current: a Burler
-// returns Stuck every round and never Done, so its own episode never resets and is never counted.
+// Bounces reports the current segment's bounce count and budget.
+// The count is the episode stuck count of the segment's main-line row, whichever of the segment's rows is current:
+// a Burler-round row sits off the main line, so the count reported while it is current is its step's main-line row's.
 // inSegment is false, with zero count and budget, when current's row has no Segment.
 func (r Routing) Bounces(current string, history []HistoryEntry) (count int, budget int, inSegment bool) {
 	var cur *ProducerDef
