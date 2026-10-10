@@ -235,6 +235,7 @@
 // A leading tilde is text, so a home path is admitted.
 // The stderr redirections `2>&1` and `2>/dev/null` are dropped before the redirection scan, and every other redirection still fails it.
 // `sed -n` with a line number or a range of two line numbers followed by `p`, then file words, is a read.
+// A trailing `--json` is a help form of a `lyx` segment, since the global flag raises help before the command runs.
 // A policy finding breaks a steering rule without touching correctness, such as a named spawn, a nested agent call or a read-only fabric reference.
 // Each finding carries a stable identity (its Key, prefixed by the session id for a parent finding),
 // and state.json's ledger dispositions it once per run, so the whole-session parent audit repeating earlier findings on every record-batch never re-judges them.

@@ -209,6 +209,9 @@ var substitutionMarkers = []string{"$(", "`", "<(", ">("}
 // A separator or redirection character inside a quoted span is text.
 // A substitution is found with only single-quoted spans blanked, because a shell runs one inside double quotes.
 // A command word is read in its original spelling, so a first word holding a quote or a backslash, quoted whole or only in part, is never read-only: it is not a name the list can match.
+// A trailing `--json` is a help form of a `lyx` segment, except for a command that declares a `--json` of its own, local or persistent on a group, which shadows the global flag and runs.
+// The classifier does not know that set; a test over the real command tree pins it, so a new one is a reviewed change against this rule.
+// Today those are the generic shed `status` verbs under each mount, which only read.
 // The classifier assumes bash or zsh with any glob option set and sees static shape only, so a loop, an expansion, a substitution, a zsh glob qualifier, a bash extglob and a command behind `bash -c` stay non-read-only.
 func IsReadOnlyCommand(cmd string) bool {
 	cmd = strings.TrimSpace(cmd)
@@ -382,7 +385,7 @@ func isLyxCommandWord(word shellWord) bool {
 }
 
 // readOnlyLyxSegment reports whether words, the words of one `lyx` segment, are a help form or a `lyx fabric` reader.
-// The help form is command words then `--help` or `-h` as the last word.
+// The help form is command words then `--help` or `-h` as the last word, or command words alone then `--json` as the last word, or `--help` or `-h` then `--json`, since the global `--json` raises help.
 // A fabric reader is one of FabricReaderVerbs under the argument rule that keeps it from mutating: `diff` takes exactly one word not starting with `-`, and the rest take none.
 // A word holding a glob character, quoted or not, rejects the segment.
 func readOnlyLyxSegment(words []shellWord) bool {
@@ -390,11 +393,21 @@ func readOnlyLyxSegment(words []shellWord) bool {
 		return false
 	}
 	rest := words[1:]
+	trailingJSON := len(rest) > 0 && rest[len(rest)-1].text == "--json"
+	if trailingJSON {
+		rest = rest[:len(rest)-1]
+	}
+	allCommandWords := func(candidates []shellWord) bool {
+		return !slices.ContainsFunc(candidates, func(word shellWord) bool { return !isLyxCommandWord(word) })
+	}
 	if len(rest) > 0 {
 		last := rest[len(rest)-1].text
 		if last == "--help" || last == "-h" {
-			return !slices.ContainsFunc(rest[:len(rest)-1], func(word shellWord) bool { return !isLyxCommandWord(word) })
+			return allCommandWords(rest[:len(rest)-1])
 		}
+	}
+	if trailingJSON {
+		return allCommandWords(rest)
 	}
 	if len(rest) < 2 || !isLyxCommandWord(rest[0]) || rest[0].text != "fabric" || !isLyxCommandWord(rest[1]) || !slices.Contains(FabricReaderVerbs(), rest[1].text) {
 		return false
