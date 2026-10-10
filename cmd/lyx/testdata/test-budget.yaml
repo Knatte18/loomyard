@@ -18,7 +18,7 @@ internal/buildvcs: 2
 internal/burlercli: 19
 internal/burlerengine: 39
 internal/burlermarker: 1
-internal/clihelp: 11
+internal/clihelp: 12
 internal/cliwire: 12
 internal/commentlint: 3
 internal/configcli: 10
@@ -88,7 +88,7 @@ internal/shedengine: 133
 internal/shedrecipe: 100
 internal/shedrun: 22
 internal/shedtransient: 2
-internal/shedverbs: 79
+internal/shedverbs: 80
 internal/shell: 12
 internal/shuttlecli: 22
 internal/shuttleengine: 161
