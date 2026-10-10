@@ -374,11 +374,12 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
 // and an argument that is not a module is refused as an unknown subcommand.
 func Command() *cobra.Command {
 	configCmd := &cobra.Command{
-		Use:       "config [module]",
-		Short:     "edit module configuration",
-		Long:      buildConfigLong(),
-		Args:      cobra.MaximumNArgs(1),
-		ValidArgs: configreg.Names(),
+		Use:         "config [<module>]",
+		Short:       "edit module configuration",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long:        buildConfigLong(),
+		Args:        cobra.MaximumNArgs(1),
+		ValidArgs:   configreg.Names(),
 	}
 	configCmd.Flags().Bool("print", false, "print on-disk config as YAML without launching the editor")
 	configCmd.Flags().StringArray("set", nil, "set config key=value directly, bypassing the editor (repeatable)")
@@ -406,8 +407,9 @@ func Command() *cobra.Command {
 	// "lyx config reconcile" here while "lyx config <module>" continues
 	// to invoke the edit RunE above.
 	reconcileCmd := &cobra.Command{
-		Use:   "reconcile",
-		Short: "reconcile module configs against templates",
+		Use:         "reconcile",
+		Short:       "reconcile module configs against templates",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `reconcile compares all module configuration files in _lyx/config/ against
 their live templates, reporting added keys (new in template) and removed keys
 (deleted from template). By default it is a dry-run: no files are written.
@@ -430,9 +432,10 @@ per-worktree copy is "retired" when the hub file holds everything it holds
 	// which clihelp.WrapRunCtx does not carry,
 	// so its RunE is written by hand.
 	menuCmd := &cobra.Command{
-		Use:   "menu",
-		Short: "pick a module to edit interactively",
-		Args:  cobra.NoArgs,
+		Use:         "menu",
+		Short:       "pick a module to edit interactively",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Args:        cobra.NoArgs,
 	}
 	menuCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if clihelp.ShouldAbort(cmd.Context()) {
