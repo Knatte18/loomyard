@@ -70,12 +70,28 @@ func ReportArmError(out io.Writer, verb string, err error) int {
 	if verb != "step" || errors.As(err, &kindless) {
 		return output.Err(out, err.Error())
 	}
+	msg := bootstrapMessage(err)
+	logger.Warn("shed: step arming refused", "error", msg)
+	return output.ErrFields(out, msg, map[string]any{"kind": KindBootstrap, "trace_file": logger.TraceFile()})
+}
+
+// bootstrapMessage is err's text followed by the generic way-forward clause, unless the text names a way forward already.
+func bootstrapMessage(err error) string {
 	msg := err.Error()
 	if !strings.Contains(msg, "way forward:") {
 		msg += "; " + armWayForward
 	}
-	logger.Warn("shed: step arming refused", "error", msg)
-	return output.ErrFields(out, msg, map[string]any{"kind": KindBootstrap, "trace_file": logger.TraceFile()})
+	return msg
+}
+
+// childArgv builds the command line of a loop's child, after the executable, from where cmd sits in the command tree and its positional arguments:
+// the subcommand names below the root, then the arguments, and no flag.
+func childArgv(cmd *cobra.Command, args []string) []string {
+	var names []string
+	for current := cmd; current.HasParent(); current = current.Parent() {
+		names = append([]string{current.Name()}, names...)
+	}
+	return append(names, args...)
 }
 
 // StepEnvelope builds step's full success envelope, held by the step record and printed under --full or when no record is kept, from res -- the StepResult shed.Step returned -- alongside nextPolicy (spec.Hooks.InterruptPolicyFor(res.Next), or the empty string when the hook is nil), statusFile (the shed's own StatusPath), friction (Hooks.AfterStep's return, or the empty string when the hook is nil) and progress (the recipe progress for res.Next, or nil when none is known).
@@ -260,8 +276,22 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			logger.Info("shed: step", "status_file", spec.StatusPath)
 			ctx := cmd.Context()
+
+			// The loop branch returns before the in-flight record is written.
+			// The invocation carrying the flag therefore keeps no record of its own, and last_step only ever names a child's step.
+			if untilStop, _ := cmd.Flags().GetBool(UntilStopFlag); untilStop {
+				if spec.Loop.EnvelopePath == "" {
+					msg := "shedverbs: this recipe arms no loop; way forward: run the step without --" + UntilStopFlag
+					logger.Warn("shed: step refused", "kind", KindBootstrap, "error", msg)
+					clihelp.SetExit(ctx, output.ErrFields(cmd.OutOrStdout(), msg, map[string]any{"kind": KindBootstrap, "trace_file": logger.TraceFile()}))
+					return nil
+				}
+				clihelp.SetExit(ctx, runLoop(ctx, spec, childArgv(cmd, args), cmd.OutOrStdout()))
+				return nil
+			}
+
+			logger.Info("shed: step", "status_file", spec.StatusPath)
 
 			// The in-flight record is written before anything can refuse, and the full envelope,
 			// success or refusal, is written to its own record before stdout is printed.
@@ -333,5 +363,6 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 		},
 	}
 	cmd.Flags().Bool("full", false, "print the full envelope on stdout instead of the short one; the record, exit code and run state are unchanged")
+	cmd.Flags().Bool(UntilStopFlag, false, "run steps one after another until the run halts, errors or reaches a stop condition, and print the one envelope of that stop")
 	return cmd
 }

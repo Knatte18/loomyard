@@ -399,6 +399,7 @@ User-facing modules each get one `lyx <module>` namespace:
   it reads the driver strand from reed's sessionless directory, and refuses every other state with its way forward, as the loom section of [refusal-spec.md](../contracts/specs/refusal-spec.md) lists.
   `run` is the no-tmux escape hatch that runs the phase machine in the foreground, for debugging and CI.
   `step` bootstraps idempotently, exactly as `start` does, and drives exactly one producer through `shedengine.Shed`'s own `Step`, emitting a JSON envelope; it spawns no detached driver, making it the single-producer primitive an external supervisor drives.
+  `step --until-stop` runs one child step after another in a loop and returns the one envelope of the first stop, with a `loop` object beside the stop step's envelope.
   `status` reports the current phase as a single JSON envelope and, with `--watch`, tails it, printing a line only when the composed activity changes rather than once per poll.
   On a terminal `status` renders a human view instead, and `--json` forces the envelope there; `--watch --json` is refused.
   While a run waits on a verify, a shuttle wait or Discussion-Write's parent-review gate, `status` also carries a waiting note naming the producer, what it waits on and for how long.

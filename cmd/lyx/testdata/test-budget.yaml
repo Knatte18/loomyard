@@ -87,7 +87,7 @@ internal/shedengine: 135
 internal/shedrecipe: 99
 internal/shedrun: 22
 internal/shedtransient: 2
-internal/shedverbs: 66
+internal/shedverbs: 72
 internal/shell: 12
 internal/shuttlecli: 22
 internal/shuttleengine: 161

@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -198,11 +199,32 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 		// arm's own lyxcwd.Resolve error is already self-describing (it IS the "not a git
 		// repository" sentinel); pass it through bare rather than doubling that same text on
 		// top of it -- exactly as every other arm/wire error is reported.
-		clihelp.Abort(ctx, shedverbs.ReportArmError(out, cmd.Name(), err))
+		clihelp.Abort(ctx, c.reportArmFailure(out, cmd, args, err))
 		return nil
 	}
 	*c.spec = armed
 	return nil
+}
+
+// reportArmFailure prints the refusal arm returned and gives the exit code.
+// A step carrying the --until-stop flag whose location was resolved is a loop stop, which writes the run's status file failed;
+// every other verb, a step without the flag, and a failed resolve, which names no run, report the plain arming refusal.
+func (c *loomCLI) reportArmFailure(out io.Writer, cmd *cobra.Command, args []string, err error) int {
+	untilStop, _ := cmd.Flags().GetBool(shedverbs.UntilStopFlag)
+	if cmd.Name() != "step" || !untilStop || c.location == nil {
+		return shedverbs.ReportArmError(out, cmd.Name(), err)
+	}
+	runID := shedrun.SelfRunID
+	if len(args) > 0 {
+		runID = args[0]
+	}
+	return shedverbs.ReportLoopArmError(out, shedverbs.ArmStop{
+		RunID:          shedrun.ResolveRunID(c.location, runID),
+		StatusPath:     shedrun.StatusFile(c.location, runID),
+		RunLockPath:    shedrun.RunLock(c.location, runID),
+		StatusLockPath: shedrun.StatusLock(c.location, runID),
+		LoopLockPath:   shedrun.LoopLock(c.location, runID),
+	}, err)
 }
 
 // inReviewGroup reports whether cmd is loom's review, circling or decision group, or a command under any of them.

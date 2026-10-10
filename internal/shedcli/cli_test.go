@@ -7,15 +7,19 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/spf13/cobra"
 )
 
@@ -41,6 +45,87 @@ func TestArmFromSeed_RunIDDefaultsToSelf(t *testing.T) {
 
 	if _, err := armFromSeed(loc, "status", []string{"other-run"}); err == nil {
 		t.Error("armFromSeed(status, [other-run]) = nil; want a refusal -- \"other-run\" has no seed")
+	}
+}
+
+// loopRun is the world of a row rendered through ReportLoopArmError: whether the run's status file exists and which locks are held.
+type loopRun struct {
+	seedStatus   bool
+	holdRunLock  bool
+	holdLoopLock bool
+	// wantStop is the loop object's stop.
+	wantStop string
+	// wantState is the status file's state afterwards; empty means no status file exists.
+	wantState string
+}
+
+// arrange builds the ArmStop in a fresh directory and puts the world in place.
+func (l *loopRun) arrange(t *testing.T) shedverbs.ArmStop {
+	t.Helper()
+	dir := t.TempDir()
+	stop := shedverbs.ArmStop{
+		RunID:          "run-1",
+		StatusPath:     filepath.Join(dir, "status.json"),
+		RunLockPath:    filepath.Join(dir, "run.lock"),
+		StatusLockPath: filepath.Join(dir, "status.lock"),
+		LoopLockPath:   filepath.Join(dir, "loop.lock"),
+	}
+	if l.seedStatus {
+		if err := state.WriteJSON(stop.StatusPath, stop.StatusLockPath, shedengine.Status{CurrentProducer: "A", State: shedengine.StateRunning, History: []shedengine.HistoryEntry{}}); err != nil {
+			t.Fatalf("seed status = %v; want nil", err)
+		}
+	}
+	for _, held := range []struct {
+		hold bool
+		path string
+	}{{l.holdRunLock, stop.RunLockPath}, {l.holdLoopLock, stop.LoopLockPath}} {
+		if !held.hold {
+			continue
+		}
+		heldLock, locked, err := lock.TryAcquireWriteLock(held.path)
+		if err != nil || !locked {
+			t.Fatalf("hold %s = %v, locked %v; want held", held.path, err, locked)
+		}
+		t.Cleanup(func() { _ = heldLock.Release() })
+	}
+	return stop
+}
+
+// assertStatus checks the status file's state after the refusal was reported.
+func (l *loopRun) assertStatus(t *testing.T, stop shedverbs.ArmStop) {
+	t.Helper()
+	st, found, err := state.ReadJSONStrict[shedengine.Status](stop.StatusPath, stop.StatusLockPath)
+	if err != nil {
+		t.Fatalf("read status = %v; want nil", err)
+	}
+	if l.wantState == "" {
+		if found {
+			t.Errorf("status file exists with state %s; want none written", st.State)
+		}
+		return
+	}
+	if !found || string(st.State) != l.wantState {
+		t.Errorf("status file found %v, state %s; want %s", found, st.State, l.wantState)
+	}
+}
+
+// assertLoop checks the envelope's loop object: the closed key set, no step run and the expected stop.
+func (l *loopRun) assertLoop(t *testing.T, envelope map[string]any) {
+	t.Helper()
+	loop, ok := envelope["loop"].(map[string]any)
+	if !ok {
+		t.Fatalf("envelope %v has no loop object", envelope)
+	}
+	for _, key := range []string{"steps", "first_producer", "stop", "detail", "status_moved", "current_producer", "history_length", "state", "interrupt_policy", "trace_copy", "stderr_path"} {
+		if _, present := loop[key]; !present {
+			t.Errorf("loop %v lacks key %q", loop, key)
+		}
+	}
+	if len(loop) != 11 {
+		t.Errorf("loop %v has %d keys; want the closed set of 11", loop, len(loop))
+	}
+	if loop["stop"] != l.wantStop || loop["steps"] != float64(0) {
+		t.Errorf("loop stop/steps = %v/%v; want %s/0", loop["stop"], loop["steps"], l.wantStop)
 	}
 }
 
@@ -74,6 +159,8 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 		wantSuffix string
 		// wantWayForwardCount is how many "way forward:" clauses the error message holds, when kind is bootstrap.
 		wantWayForwardCount int
+		// loopRun, when set, renders through ReportLoopArmError, the path a step carrying --until-stop takes, over an ArmStop in a fresh directory.
+		loopRun *loopRun
 	}{
 		{
 			name:  "missing run on step",
@@ -111,6 +198,48 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 			setup: seedRecipe("bogus-recipe"),
 			verb:  "status",
 		},
+		{
+			name:                "loop: running status file is written failed",
+			setup:               seedRecipe("bogus-recipe"),
+			verb:                "step",
+			wantKind:            "bootstrap",
+			wantSuffix:          genericWayForward,
+			wantWayForwardCount: 1,
+			loopRun:             &loopRun{wantStop: "error", wantState: "failed", seedStatus: true},
+		},
+		{
+			name:                "loop: held run lock leaves the status file alone",
+			setup:               seedRecipe("bogus-recipe"),
+			verb:                "step",
+			wantKind:            "bootstrap",
+			wantSuffix:          genericWayForward,
+			wantWayForwardCount: 1,
+			loopRun:             &loopRun{wantStop: "busy", wantState: "running", seedStatus: true, holdRunLock: true},
+		},
+		{
+			name:                "loop: held loop lock leaves the status file alone",
+			setup:               seedRecipe("bogus-recipe"),
+			verb:                "step",
+			wantKind:            "bootstrap",
+			wantSuffix:          genericWayForward,
+			wantWayForwardCount: 1,
+			loopRun:             &loopRun{wantStop: "busy", wantState: "running", seedStatus: true, holdLoopLock: true},
+		},
+		{
+			name:                "loop: absent status file writes nothing",
+			setup:               seedRecipe("bogus-recipe"),
+			verb:                "step",
+			wantKind:            "bootstrap",
+			wantSuffix:          genericWayForward,
+			wantWayForwardCount: 1,
+			loopRun:             &loopRun{wantStop: "error"},
+		},
+		{
+			name:    "loop: missing run stays kind-less with no loop object",
+			setup:   func(t *testing.T, loc *lyxcwd.Location) {},
+			verb:    "step",
+			loopRun: &loopRun{seedStatus: true, wantState: "running"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -124,10 +253,19 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 			}
 
 			var buf bytes.Buffer
-			shedverbs.ReportArmError(&buf, tt.verb, err)
+			var stop shedverbs.ArmStop
+			if tt.loopRun != nil {
+				stop = tt.loopRun.arrange(t)
+				shedverbs.ReportLoopArmError(&buf, stop, err)
+			} else {
+				shedverbs.ReportArmError(&buf, tt.verb, err)
+			}
 			var envelope map[string]any
 			if unmarshalErr := json.Unmarshal(buf.Bytes(), &envelope); unmarshalErr != nil {
 				t.Fatalf("json.Unmarshal(%q) = %v; want nil", buf.String(), unmarshalErr)
+			}
+			if tt.loopRun != nil {
+				tt.loopRun.assertStatus(t, stop)
 			}
 
 			if tt.wantKind == "" {
@@ -135,6 +273,9 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 					t.Errorf("envelope = %v; want exactly the two keys \"ok\" and \"error\"", envelope)
 				}
 				return
+			}
+			if tt.loopRun != nil {
+				tt.loopRun.assertLoop(t, envelope)
 			}
 			if envelope["kind"] != tt.wantKind {
 				t.Errorf("kind = %v; want %q (%v)", envelope["kind"], tt.wantKind, envelope)

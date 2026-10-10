@@ -19,6 +19,24 @@
 // A module arming a step subtree reports an arming error through ReportArmError, which prints a bootstrap error on step, with a trace file and a way forward, and a bare error line on any other verb.
 // An error wrapped in KindlessRefusal, such as a missing seed, prints the bare line on step too.
 //
+// step --until-stop runs one child step after another, each under a fresh trace id, and prints one envelope at the first stop.
+// A child's own record under Spec.StepsDir is its step's full envelope; a child that refused before its step body ran left an error envelope on stdout instead, and one that left neither is an interrupted stop.
+// The invocation carrying the flag keeps no in-flight record, so last_step only ever names a child's step.
+// A recipe that arms no loop (an empty Spec.Loop.EnvelopePath) refuses the flag with a bootstrap error.
+//
+// The stop is one of LoopStop's values.
+// halted is a run that is no longer running: blocked, awaiting, done or paused by request.
+// stop-condition is a pause_before or pause_after condition that fired.
+// error is a step that ended in an error, and interrupted a child that ended without an envelope, including a status file that vanished; both write the status file failed while it still reads running.
+// busy is another holder of the run, or of the run lock at the failed write, which writes nothing.
+// A transient error gets one immediate re-step, reported as restep.
+//
+// The final envelope is the stop step's short envelope plus a loop object whose keys are closed:
+// steps, first_producer, stop, detail, status_moved, restep (only when a re-step ran), current_producer, history_length, state, interrupt_policy, trace_copy and stderr_path.
+// detail is the stop's error or reason and the WARN and ERROR lines and last lines of the stop step's trace, capped by lines and bytes.
+// trace_copy is a copy of the stop step's trace files, which outlives a sweep of the trace directory.
+// A refusal of the --until-stop invocation's own arming goes through ReportLoopArmError, which prints the bootstrap error with a loop object that stopped with no step run.
+//
 // progress has two shapes.
 // The step envelope's progress is compact: step, steps and name, with a zero step or steps and an empty name omitted, and no remaining list.
 // The status envelope's progress keeps the full form including remaining, since the driver names producers from it.

@@ -189,11 +189,36 @@ func (c *shedCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 
 	armed, err := armFromSeed(location, cmd.Name(), args)
 	if err != nil {
-		clihelp.Abort(ctx, shedverbs.ReportArmError(out, cmd.Name(), err))
+		clihelp.Abort(ctx, reportArmFailure(out, cmd, location, args, err))
 		return nil
 	}
 	*c.spec = armed
 	return nil
+}
+
+// reportArmFailure prints the refusal armFromSeed returned and gives the exit code.
+// A step carrying the --until-stop flag is a loop stop, which writes the run's status file failed;
+// every other verb, and a step without the flag, reports the plain arming refusal.
+func reportArmFailure(out io.Writer, cmd *cobra.Command, location *lyxcwd.Location, args []string, err error) int {
+	if untilStop, _ := cmd.Flags().GetBool(shedverbs.UntilStopFlag); cmd.Name() == "step" && untilStop {
+		runID := addressedRunID(args)
+		return shedverbs.ReportLoopArmError(out, shedverbs.ArmStop{
+			RunID:          shedrun.ResolveRunID(location, runID),
+			StatusPath:     shedrun.StatusFile(location, runID),
+			RunLockPath:    shedrun.RunLock(location, runID),
+			StatusLockPath: shedrun.StatusLock(location, runID),
+			LoopLockPath:   shedrun.LoopLock(location, runID),
+		}, err)
+	}
+	return shedverbs.ReportArmError(out, cmd.Name(), err)
+}
+
+// addressedRunID is the run-id the positional arguments address: the first one, or shedrun.SelfRunID when there is none.
+func addressedRunID(args []string) string {
+	if len(args) > 0 {
+		return args[0]
+	}
+	return shedrun.SelfRunID
 }
 
 // armFromSeed resolves the addressed run-id from args -- args[0] when present,
@@ -209,10 +234,7 @@ func (c *shedCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 // A missing run is not a seventh value in the closed step vocabulary, and a driver never re-seeds a run.
 // Every other error it returns reaches the driver on step as a bootstrap refusal.
 func armFromSeed(location *lyxcwd.Location, verb string, args []string) (shedverbs.Spec, error) {
-	runID := shedrun.SelfRunID
-	if len(args) > 0 {
-		runID = args[0]
-	}
+	runID := addressedRunID(args)
 
 	seed, found, err := shedrun.ReadSeed(location, runID)
 	if err != nil {

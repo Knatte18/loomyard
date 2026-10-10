@@ -124,6 +124,8 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 		// sentinel); pass it through bare rather than doubling that same text on top of it.
 		return shedverbs.Spec{}, err
 	}
+	// Recorded before the reconcile and armAt so a refusal from any later arming stage finds the location set.
+	c.location = location
 
 	// A start verb reconciles the hub's config after a binary change before armAt loads any module config.
 	// A strict load of a file still carrying a retired key would otherwise refuse the verb before the reconcile that removes the key.
