@@ -405,6 +405,62 @@ func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
 			t.Errorf("record holds %d entries, want none", n)
 		}
 	})
+
+	t.Run("a conflict with no seed commits ahead returns the error without a drop", func(t *testing.T) {
+		t.Parallel()
+		f := newBoltFixture(t)
+		gitkit.CommitFile(t, f.board, "notes/a.md", "mine\n", "board change")
+		tip := f.head()
+		f.moveUpstream("notes/a.md", "theirs\n")
+		rec := fabricengine.NewMutations(f.hub.Path)
+
+		err := f.bolt.PushRecorded(fabricengine.SyncOptions{}, rec)
+
+		if !errors.Is(err, gitrepo.ErrPullRebaseFailed) {
+			t.Errorf("PushRecorded error = %v, want one satisfying ErrPullRebaseFailed", err)
+		}
+		if f.head() != tip {
+			t.Errorf("head = %s, want the original tip %s", f.head(), tip)
+		}
+		if n := rec.Snapshot().Len(); n != 0 {
+			t.Errorf("record holds %d entries, want none", n)
+		}
+	})
+
+	t.Run("a retry that also fails returns its error and leaves the dropped board clean", func(t *testing.T) {
+		t.Parallel()
+		f := newBoltFixture(t)
+		seed := f.seedCommitLocal(stencilPath, "local\n")
+		gitkit.CommitFile(t, f.board, "notes/a.md", "a\n", "board change")
+		upstream := f.moveUpstream(stencilPath, "upstream\n")
+		rejectPushes := filepath.Join(f.hub.RecordsBare, "hooks", "pre-receive")
+		if err := os.WriteFile(rejectPushes, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+			t.Fatalf("write pre-receive hook: %v", err)
+		}
+		rec := fabricengine.NewMutations(f.hub.Path)
+
+		err := f.bolt.PushRecorded(fabricengine.SyncOptions{}, rec)
+
+		if err == nil || errors.Is(err, gitrepo.ErrPullRebaseFailed) {
+			t.Errorf("PushRecorded error = %v, want the retry's own push failure", err)
+		}
+		if gitkit.IsAncestor(t, f.board, seed, "HEAD") || !gitkit.IsAncestor(t, f.board, upstream, "HEAD") {
+			t.Errorf("seed %s under HEAD or upstream %s missing from it; want the drop kept", seed, upstream)
+		}
+		if status := gitkit.GitStatusPorcelain(t, f.board); status != "" {
+			t.Errorf("board status = %q, want a clean tree", status)
+		}
+		for _, state := range []string{"rebase-merge", "rebase-apply"} {
+			path := gitkit.Git(t, f.board, "rev-parse", "--path-format=absolute", "--git-path", state)
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				t.Errorf("stat %s = %v, want no rebase in progress", path, err)
+			}
+		}
+		entries := rec.Snapshot().Entries()
+		if len(entries) != 1 || entries[0].Kind != fabricengine.KindCommitsDropped || !strings.Contains(entries[0].Detail, seed) {
+			t.Errorf("record = %+v, want one commits_dropped entry naming %s", entries, seed)
+		}
+	})
 }
 
 func TestBoardDropRequest_RefusesForeignBoard(t *testing.T) {
