@@ -7,12 +7,8 @@ import (
 	"syscall"
 )
 
-// ConfigureGroupKill starts cmd in its own process group and makes a context cancel or expiry SIGKILL the whole group,
-// so a descendant of the command cannot outlive it.
-// When the group kill fails it kills the command alone.
-// It calls report with the command's pid after each kill: a nil groupErr when the group was killed, otherwise the group kill's error.
-// proc cannot log, so the caller's report callback is where a kill is logged.
-func ConfigureGroupKill(cmd *exec.Cmd, report func(pid int, groupErr error)) {
+// configurePlatformGroupKill starts cmd in its own process group and makes a cancel SIGKILL the whole group, killing the command alone when the group kill fails.
+func configurePlatformGroupKill(cmd *exec.Cmd, report func(pid int, groupErr error)) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		pid := cmd.Process.Pid
