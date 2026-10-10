@@ -772,6 +772,7 @@ func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 // the second call ATTACHES to the already-spawned strand and, once the report has landed in
 // between, classifies terminal, proving the digest envelope and that state.json/the report were
 // both committed to the records side by then.
+// A last stretch drives the recovery count: a dead recovery that committed offers its retry, a third counted spawn refuses and a new amendment spawns anyway.
 func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
@@ -804,6 +805,10 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	if !ok || bs.Kind != "recovery" || bs.StrandGUID == "" {
 		t.Fatalf("loaded.Batches[1] = %+v; want a recorded recovery strand after the spawn call", bs)
 	}
+	if bs.Recoveries != 1 || bs.RecoveryStartSHA == "" {
+		t.Fatalf("loaded.Batches[1] Recoveries, RecoveryStartSHA = %d, %q; want 1 and the HEAD at the spawn", bs.Recoveries, bs.RecoveryStartSHA)
+	}
+	spawnStart := bs.RecoveryStartSHA
 
 	// Between the two calls, the recovery implementer "finishes": its
 	// report lands on disk, self-reporting the worktree's real HEAD (the
@@ -863,6 +868,58 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	}
 	if !loaded.Batches[1].Terminal {
 		t.Error("loaded.Batches[1].Terminal = false; want true after a done digest")
+	}
+
+	// The recovery strand dies without a report, after committing past the HEAD it was spawned at:
+	// the terminal envelope counts the spawn and offers the one retry.
+	rec := loaded.Batches[1]
+	rec.Terminal, rec.Status, rec.Digest, rec.AmendedCards = false, "", nil, nil
+	rec.Recoveries, rec.RecoveryStartSHA = 1, spawnStart
+	if err := os.Remove(filepath.Join(fx.CLI.geom.ReportsDir, websterengine.ReportFileName(1, "only"))); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("remove the recovery's report: %v", err)
+	}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, loaded); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	var outDead strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outDead, []string{"1", "--wait", "1ns"}); code != 0 {
+		t.Fatalf("recover-batch 1 over a dead recovery = %d; want 0, output: %s", code, outDead.String())
+	}
+	for _, want := range []string{`"status":"dead"`, `"recovery_retry":true`, `"recoveries":1`} {
+		if !strings.Contains(outDead.String(), want) {
+			t.Errorf("dead recovery output missing %q; got %q", want, outDead.String())
+		}
+	}
+
+	// A third counted spawn is refused with its own flag; an amendment no spawn rendered still spawns at two recoveries.
+	loaded, err = websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() after the dead recovery = %v, %v; want a state, nil", loaded, err)
+	}
+	loaded.Batches[1].Recoveries = 2
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, loaded); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	var outExhausted strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outExhausted, []string{"1", "--wait", "1ns"}); code == 0 {
+		t.Fatalf("recover-batch 1 at two recoveries = 0; want non-zero, output: %s", outExhausted.String())
+	}
+	if want := `"recovery_exhausted":true`; !strings.Contains(outExhausted.String(), want) {
+		t.Errorf("exhausted output missing %s; got %q", want, outExhausted.String())
+	}
+	if fx.Engine.PrepareCalls != 2 {
+		t.Errorf("Engine.prepareCalls after the exhausted refusal = %d; want still 2", fx.Engine.PrepareCalls)
+	}
+	loaded.Batches[1].AmendedCards = []websterengine.AmendedCard{{Card: "01-only"}}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, loaded); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	var outAmended strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outAmended, []string{"1", "--wait", "1ns"}); code != 0 || !strings.Contains(outAmended.String(), `"status":"running"`) {
+		t.Fatalf("recover-batch 1 over a new amendment at two recoveries = %d, output: %s; want a running respawn", code, outAmended.String())
+	}
+	if fx.Engine.PrepareCalls != 3 {
+		t.Errorf("Engine.prepareCalls after the amendment respawn = %d; want 3", fx.Engine.PrepareCalls)
 	}
 }
 

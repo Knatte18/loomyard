@@ -59,7 +59,11 @@ spawns the recovery strand first waits for its provider to come up
 (normally seconds), and every call then blocks for up to --wait watching it
 for a terminal classification. A terminal
 call fabric-commits the batch report and state.json and returns the digest
-envelope, exactly like record-batch's own terminal envelope. A recovery
+envelope, exactly like record-batch's own terminal envelope plus "recoveries",
+the batch's counted recovery spawns, and "recovery_retry", true when the
+recovery is dead, committed work of its own and the batch has a recovery left
+to run. A call that would spawn a third counted recovery refuses with
+{"recovery_exhausted": true}. A recovery
 the post-batch checks reject takes the batch terminal failed: the failed
 state and archived report are saved and committed, and the call exits
 non-zero with {"batch_failed": true, "batch": "NN-<slug>", "warnings": [...]};
@@ -189,6 +193,10 @@ Example:
 					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"audit_not_acceptable": true}))
 					return nil
 				}
+				if errors.Is(err, websterengine.ErrRecoveryExhausted) {
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"recovery_exhausted": true}))
+					return nil
+				}
 				if errors.Is(err, websterengine.ErrRecoveryDeleteReferenced) {
 					clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), map[string]any{"batch_failed": true}))
 					return nil
@@ -298,6 +306,7 @@ Example:
 				}
 
 				fields := digestFields(*result.Digest)
+				fields["recovery_retry"], fields["recoveries"] = websterengine.RecoveryRetry(c.geom, fresh, batchNumber)
 				fields["warnings"] = ownerlessRunWarnings(c.geom.ScratchDir, result.Warnings)
 				clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 				return nil

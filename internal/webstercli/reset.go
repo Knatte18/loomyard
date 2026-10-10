@@ -51,7 +51,8 @@ to tracked paths the run wrote, and moves the remote task branch back to the
 target so a later push is not rejected; it leaves untracked files, the records side and every
 other branch alone, takes no raw SHA and has no force flag.
 FABRIC_SKIP_PUSH=1 leaves the remote task branch alone.
-It clears the persisted pre-fix head and changes no other webster state, except
+It clears the persisted pre-fix head, and with --to batch-start the batch's
+recovery count and recovery start, and changes no other webster state, except
 that --to start also archives the run record (state.json and the reports dir
 renamed with a stamp, the rendered prompts cleared) behind a pending-findings
 guard judged against HEAD, so a following "lyx webster run" starts a new run.
@@ -167,6 +168,12 @@ Example:
 				}
 
 				st.PreFixHead = ""
+				if target == websterengine.ResetToBatchStart {
+					if bs := st.Batches[batch]; bs != nil {
+						bs.Recoveries = 0
+						bs.RecoveryStartSHA = ""
+					}
+				}
 				if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
 					return fail(fmt.Sprintf("webster: the branch was reset to %s but state.json could not be saved: %v; way forward: re-run `lyx webster reset --to %s`", plan.SHA, err, target))
 				}

@@ -377,6 +377,9 @@
 // HEAD descends from its start through a first-parent range holding a non-merge commit.
 // An empty start, a HEAD a reset moved off the start, a range of merge-ins only and a failed git read, which is logged at Warn, all give no retry.
 // begin-batch reads the same function, so its report-present remedy names recover-batch once more for such a batch.
+// recover-batch's terminal envelope and status's batch entries carry the count as recoveries and the verdict as recovery_retry, and the refusal wrapping ErrRecoveryExhausted carries recovery_exhausted.
+// reset --to batch-start clears the batch's count and start; reset --to start archives the whole record.
+// Merriam runs the second recovery on recovery_retry: true and stops stuck on false or on recovery_exhausted.
 //
 // # digest persistence carries batch context forward
 //

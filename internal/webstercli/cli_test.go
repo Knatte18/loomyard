@@ -841,7 +841,19 @@ func TestStatusCmd(t *testing.T) {
 				`"kind":"fork"`, `"kind":"recovery"`,
 				`"has_digest":true`, `"has_digest":false`,
 				`"terminal":true`, `"terminal":false`,
+				`"recoveries":0`, `"recovery_retry":false`,
 			},
+		},
+		{
+			// The worktree is no repository here, so the commit read behind recovery_retry fails; the verb still answers.
+			name: "a failed git read under a dead recovery gives recovery_retry false and keeps the count",
+			state: &websterengine.State{
+				RunGUID: "guid-2",
+				Batches: map[int]*websterengine.BatchState{
+					1: {Slug: "only", Kind: "recovery", Status: websterengine.DigestStatusDead, Terminal: true, Recoveries: 1, RecoveryStartSHA: "0123456789abcdef0123456789abcdef01234567"},
+				},
+			},
+			wantIn: []string{`"recoveries":1`, `"recovery_retry":false`},
 		},
 	}
 	for _, tc := range cases {
