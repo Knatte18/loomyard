@@ -2131,8 +2131,8 @@ func TestValidate_PatternEntryLineCap(t *testing.T) {
 		want []int
 	}{
 		{name: "one rune over the cap fails", text: "```\n" + entryLine(limit+1, "x") + "\n```\n", want: []int{limit + 1}},
-		{name: "exactly the cap passes", text: "```\n" + entryLine(limit,"x") + "\n```\n"},
-		{name: "multibyte runes under the rune cap pass", text: "```\n" + entryLine(limit,"é") + "\n```\n"},
+		{name: "exactly the cap passes", text: "```\n" + entryLine(limit, "x") + "\n```\n"},
+		{name: "multibyte runes under the rune cap pass", text: "```\n" + entryLine(limit, "é") + "\n```\n"},
 		{name: "over-cap line outside a fence passes", text: entryLine(limit+1, "x") + "\n"},
 		{name: "over-cap line in an inline span passes", text: "`" + entryLine(limit+1, "x") + "`\n"},
 		{name: "fence with an info string fails", text: "```markdown\n" + entryLine(limit+1, "x") + "\n```\n", want: []int{limit + 1}},
