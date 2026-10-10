@@ -216,8 +216,9 @@ Example:
 	}
 
 	add := &cobra.Command{
-		Use:   "add [slug]",
-		Short: "append one decision to the decision record and commit it",
+		Use:         "add [<slug>]",
+		Short:       "append one decision to the decision record and commit it",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `add appends one entry under an "Added after Discussion" heading, carrying the
 --by label and today's date, to the end of the decision record's Decisions
 section. It re-runs the discussion check over the record, restores the record

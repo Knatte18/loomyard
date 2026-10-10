@@ -1,7 +1,7 @@
 //go:build tmux
 
 // smoke_starttail_test.go covers the two live-substrate properties of `lyx loom start`'s tail against a real wired hub and a real tmux session:
-// that the verb never attaches or switches a tmux client, and that the strand set it leaves -- on the unseeded fixture, which resolveSeedDriver seeds llm, no loom-operator strand and one status strand -- is unchanged by that.
+// that the verb never attaches or switches a tmux client, and that the strand set it leaves -- on the unseeded fixture, which resolveSeedDriver seeds llm, neither a loom-operator strand nor a status strand -- is unchanged by that.
 // It also pins the watchdog spawn's gate position -- that it fires on every start, the one thing start_watchdog_test.go's Tier 1 file cannot reach through the real RunE (see its own doc comment) because reed Up needs a live tmux server.
 //
 // It reuses this package's existing smoke fixtures throughout: lyxbin.Build, newWiredPairFixture,
@@ -36,9 +36,9 @@ func reedAttachedClients(t *testing.T, tmuxPath string, eng *reedengine.Engine) 
 }
 
 // TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand pins that `lyx loom start` exits 0 with an ok envelope and attaches no client, with or without --no-attach and with or without $TMUX naming reed's own server,
-// and that it leaves no strand named "loom-operator" and exactly one status strand:
+// and that it leaves no strand named "loom-operator" and no status strand:
 // the fixture is unseeded, so resolveSeedDriver seeds it llm,
-// and an llm-driven start keeps the status strand too.
+// and an llm-driven start carries no status strand.
 // The literal is spelled inline as a guard against the removed operator strand coming back: Selvage is the operator's terminal, not a strand.
 // The smoke run has no TTY,
 // so a start that still attached would exit non-zero.
@@ -81,8 +81,8 @@ func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 	if count := statusStrandCount(t, eng, "loom-operator"); count != 0 {
 		t.Errorf("loom-operator strands after start = %d; want 0 -- Selvage is the operator's terminal, not a strand", count)
 	}
-	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {
-		t.Errorf("status strands after an llm-driven start = %d; want exactly 1", count)
+	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 0 {
+		t.Errorf("status strands after an llm-driven start = %d; want 0", count)
 	}
 
 	// $TMUX names reed's own server, the case that used to switch the caller's client.

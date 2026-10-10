@@ -333,23 +333,21 @@ type MergeStatusUpdate struct {
 	Status   *string
 }
 
-// upsertAllowedKeys is the authoritative set of field names accepted by all upsert paths,
-// enforced at the store boundary. "id" is auto-assigned; "phase" and "group" are excluded.
-var upsertAllowedKeys = map[string]bool{
-	"slug":       true,
-	"title":      true,
-	"depends_on": true,
-	"isolated":   true,
-	"brief":      true,
-	"body":       true,
-	"status":     true,
-	"kind":       true,
-	"labels":     true,
-	"issues":     true,
-	"recipe":     true,
-	"priority":   true,
-	"short_name": true,
+// UpsertPayloadKeys returns the keys a task payload carries on every upsert path: the required keys and the optional ones.
+// "id" is auto-assigned and never accepted; "phase" and "group" are retired.
+func UpsertPayloadKeys() (required, optional []string) {
+	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues"}
 }
+
+// upsertAllowedKeys is the set of field names every upsert path accepts, enforced at the store boundary.
+var upsertAllowedKeys = func() map[string]bool {
+	required, optional := UpsertPayloadKeys()
+	allowed := map[string]bool{}
+	for _, key := range append(required, optional...) {
+		allowed[key] = true
+	}
+	return allowed
+}()
 
 // validateUpsertFields reports an error for any field not in upsertAllowedKeys, with a hint for "phase" typos.
 func validateUpsertFields(fields map[string]any) error {
@@ -527,19 +525,28 @@ func (s *Store) SetStatus(idOrSlug any, status *string) error {
 	return fmt.Errorf("task not found: %v", idOrSlug)
 }
 
-// SetDeps replaces the depends_on list for slug, running full validation.
-// Returns error if slug not found.
-func (s *Store) SetDeps(slug string, dependsOn []string) error {
+// SetDeps replaces the depends_on list of the task selector names, a slug string or a numeric id, running full validation.
+// Returns fmt.Errorf("task not found: %v", selector) when no task matches.
+func (s *Store) SetDeps(selector any, dependsOn []string) error {
 	var task *Task
 	for i := range s.tasks {
-		if s.tasks[i].Slug == slug {
+		match := false
+		switch v := selector.(type) {
+		case int:
+			match = s.tasks[i].ID == v
+		case float64:
+			match = s.tasks[i].ID == int(v)
+		case string:
+			match = s.tasks[i].Slug == v
+		}
+		if match {
 			task = &s.tasks[i]
 			break
 		}
 	}
 
 	if task == nil {
-		return fmt.Errorf("task not found: %v", slug)
+		return fmt.Errorf("task not found: %v", selector)
 	}
 
 	incoming := *task

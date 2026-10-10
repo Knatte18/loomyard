@@ -83,8 +83,13 @@ func TestJSONHelp_Schema(t *testing.T) {
 		{
 			name:         "root lists every module",
 			args:         []string{"--json"},
-			wantCommands: []string{"board", "config", "ide", "reed", "selfreport"},
+			wantCommands: []string{"board", "config", "help", "ide", "reed", "selfreport"},
 			absentFlags:  []string{"--json", "--help"},
+		},
+		{
+			name:         "help lists its index child",
+			args:         []string{"help", "--help", "--json"},
+			wantCommands: []string{"index"},
 		},
 		{
 			name:             "verb module names its subcommands and hides --board-path",

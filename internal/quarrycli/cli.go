@@ -28,7 +28,7 @@ func Command() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "quarry",
-		Short: "Query the repository's glyph alphabet -- the planner's only source of glyph spellings",
+		Short: "query the repository's glyph alphabet -- the planner's only source of glyph spellings",
 		Long: `quarry answers four read-only repository queries against the current worktree's own
 glyph alphabet: glyphs, resolve, toc and expand. Every answer is quarry's own
 rendering, emitted verbatim -- these verbs never re-shape, filter, or re-key an

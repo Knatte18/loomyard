@@ -51,8 +51,9 @@ func (c *orchCLI) requestCmd(cmd *cobra.Command, mode string) error {
 // refreshCmd builds the `refresh` subcommand.
 func (c *orchCLI) refreshCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "refresh",
-		Short: "ask the watcher to clear the orchestrator session now",
+		Use:         "refresh",
+		Short:       "ask the watcher to clear the orchestrator session now",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `refresh writes a clear-cycle request the watcher picks up at the session's next
 idle moment, whatever cycle_mode says. The session writes a note first; only
 then does the watcher clear it and resume it from the note. The envelope's

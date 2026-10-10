@@ -49,6 +49,8 @@ func TestExitCode_HelpPaths(t *testing.T) {
 		{"bare lyx", nil, "board"},
 		{"lyx board (no subcommand)", []string{"board"}, ""},
 		{"lyx --help", []string{"--help"}, ""},
+		{"bare lyx help names the modules", []string{"help"}, "board"},
+		{"lyx help board names a board verb", []string{"help", "board"}, "upsert"},
 		{"lyx config --help lists the reconcile verb", []string{"config", "--help"}, "reconcile"},
 		{"lyx orch start --help lists the --adopt flag", []string{"orch", "start", "--help"}, "--adopt"},
 	}

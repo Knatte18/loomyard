@@ -105,11 +105,13 @@ type VerbTexts struct {
 	Goto   VerbText
 }
 
-// VerbText is one verb's cobra Use/Short/Long triple.
+// VerbText is one verb's cobra Use/Short/Long triple and the audience annotation its mount gives it.
 type VerbText struct {
 	Use   string
 	Short string
 	Long  string
+	// Audience is the clihelp audience the verb's command carries under this mount.
+	Audience string
 }
 
 // Spec carries every resolution-dependent value the four generic verb bodies read, told rather

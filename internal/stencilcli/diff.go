@@ -38,8 +38,9 @@ func newDiffCmd(loc func() *lyxcwd.Location) *cobra.Command {
 	var exitCode bool
 
 	cmd := &cobra.Command{
-		Use:   "diff [name]",
-		Short: "Show upstream changes not yet taken, or (--all) board edits not yet ported back",
+		Use:         "diff [<name>]",
+		Short:       "show upstream changes not yet taken, or (--all) board edits not yet ported back",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/spf13/cobra"
 )
 
 // fakeStarter records the specs it is asked to start and answers a fixed guid and warning.
@@ -38,6 +39,8 @@ func (f *fakeStarter) StartSession(spec shuttleengine.Spec) (string, string, err
 
 // startHarness bundles a receiver with its fakes.
 type startHarness struct {
+	// root is the command tree the last run executed.
+	root    *cobra.Command
 	cli     *orchCLI
 	strands *fakeStrands
 	starter *fakeStarter
@@ -76,7 +79,10 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 func (h *startHarness) run(t *testing.T, args ...string) (int, map[string]any) {
 	t.Helper()
 	var out bytes.Buffer
-	code := clihelp.Execute(h.cli.startCmd(), &out, args)
+	// start renders the operator index of its root, so the verb runs under a root that has it as a child.
+	h.root = &cobra.Command{Use: "lyx"}
+	h.root.AddCommand(h.cli.startCmd())
+	code := clihelp.Execute(h.root, &out, append([]string{"start"}, args...))
 	var env map[string]any
 	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
 		t.Fatalf("output %q is not one JSON object: %v", out.String(), err)
@@ -110,8 +116,13 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if !strings.Contains(spec.Prompt, h.cli.paths.RolePath) {
 		t.Errorf("prompt = %q; want the start pointer at the role file", spec.Prompt)
 	}
-	if _, err := os.Stat(h.cli.paths.RolePath); err != nil {
-		t.Errorf("role file not rendered before launch: %v", err)
+	wantIndex := clihelp.RenderIndex(h.root, clihelp.AudienceOperator)
+	role, err := os.ReadFile(h.cli.paths.RolePath)
+	if err != nil {
+		t.Fatalf("role file not rendered before launch: %v", err)
+	}
+	if wantIndex == "" || !strings.Contains(string(role), "## Commands") || !strings.Contains(string(role), wantIndex) {
+		t.Errorf("role file = %q; want a Commands section carrying the root's operator index %q", role, wantIndex)
 	}
 	if st := h.state(t); st.Strand != "new-guid" || st.Phase != orchengine.PhaseIdle {
 		t.Errorf("state = %+v; want strand new-guid in idle", st)

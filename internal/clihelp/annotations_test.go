@@ -19,6 +19,11 @@ func TestAnnotationLiterals(t *testing.T) {
 	}{
 		{"SkipStencilSeedAnnotation", SkipStencilSeedAnnotation, "lyx.skip-stencil-seed"},
 		{"AnnotationEnabled", AnnotationEnabled, "true"},
+		{"AudienceAnnotation", AudienceAnnotation, "lyx.audience"},
+		{"AudienceOperator", AudienceOperator, "operator"},
+		{"AudienceRole", AudienceRole, "role"},
+		{"AudienceInternal", AudienceInternal, "internal"},
+		{"IndexNoteAnnotation", IndexNoteAnnotation, "lyx.index-note"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

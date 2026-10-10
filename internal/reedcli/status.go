@@ -15,8 +15,9 @@ import (
 // statusCmd builds the `status` subcommand.
 func (c *reedCLI) statusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status",
-		Short: "show this worktree's tracked strands and their live/dead state",
+		Use:         "status",
+		Short:       "show this worktree's tracked strands and their live/dead state",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `status cross-references the live pane set and reports every strand
 tracked for this worktree's session: guid, name, pane id, whether its
 pane is currently alive, and whether it is retiring (a "reed remove --detach"

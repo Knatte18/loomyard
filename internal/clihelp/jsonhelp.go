@@ -50,8 +50,7 @@ var metaFlags = map[string]bool{
 }
 
 // renderCmdJSON builds the cmdJSON representation of cmd.
-// It collects only non-hidden immediate subcommands (skipping cobra's auto
-// "help" and "completion" commands) and local non-hidden non-meta flags.
+// It collects only non-hidden immediate subcommands (skipping cobra's auto "completion" command) and local non-hidden non-meta flags.
 func renderCmdJSON(cmd *cobra.Command) cmdJSON {
 	result := cmdJSON{
 		Name:  cmd.CommandPath(),
@@ -59,14 +58,13 @@ func renderCmdJSON(cmd *cobra.Command) cmdJSON {
 		Long:  cmd.Long,
 	}
 
-	// Collect non-hidden immediate subcommands, excluding cobra's built-in
-	// "help" and "completion" commands which are infrastructure, not domain.
+	// Collect non-hidden immediate subcommands, excluding cobra's built-in "completion" command which is infrastructure, not domain.
 	for _, child := range cmd.Commands() {
 		if child.Hidden {
 			continue
 		}
 		name := child.Name()
-		if name == "help" || name == "completion" {
+		if name == "completion" {
 			continue
 		}
 		result.Commands = append(result.Commands, cmdChild{
