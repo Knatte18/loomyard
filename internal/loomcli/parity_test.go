@@ -32,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // parityVerdict is the shared three-valued outcome both the producer side and the CLI side map
@@ -357,6 +358,29 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantGate:    verdictStuck,
 			wantCLI:     verdictStuck,
 			wantFinding: "verify-module-wide",
+		},
+		{
+			// DoneCardEdited records a done batch whose card hash differs from the card file: the gate and the verb both report done-card-edited.
+			name: "DoneCardEdited",
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				c := planFixture(t, anchorPath, worktreeRoot, true)
+				st := &websterengine.State{Batches: map[int]*websterengine.BatchState{
+					1: {
+						Slug:       "validate-fixture",
+						Cards:      []string{"01-validate-fixture"},
+						Terminal:   true,
+						Status:     websterengine.DigestStatusDone,
+						CardHashes: map[string]string{"01-validate-fixture": "hash-of-an-earlier-card-file"},
+					},
+				}}
+				if err := websterengine.SaveState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath), st); err != nil {
+					t.Fatalf("SaveState: %v", err)
+				}
+				return c
+			},
+			wantGate:    verdictStuck,
+			wantCLI:     verdictStuck,
+			wantFinding: "done-card-edited",
 		},
 		{
 			// NoPlanDirectory is the one expected divergence the Gate Self-Check Parity Invariant's

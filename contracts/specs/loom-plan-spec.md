@@ -362,6 +362,7 @@ Machine checks this format is designed to support, in this fixed order, one row 
 The IDs are split across two entry points, `ValidateFormat` and `Validate`: every one but `plan-unapproved` (row 3 below) is in the format-only set `ValidateFormat` runs, and `plan-unapproved` is additionally checked by `Validate`, the full entry point.
 The rows that name `internal/planglyph` as their emitter are an exception: that package's resolve pass adds them on top of both entry points.
 `card-fabric-reference` is the other exception: it is a `planparser` function outside both entry points, which the plan index appends to its own format validation.
+`done-card-edited` is the third: `loomshed.ValidatePlan` appends it after the index's validation.
 The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-three slot in that order even though it alone belongs to the wider entry point:
 
 1. `format-unrecognized` — `format:` is a recognized version (currently only `5`); else refuse to run.
@@ -475,6 +476,12 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Its way forward is `lyx gate test [-C <module>] [--tags <tags>] <packages>` over the card's own packages, run as a background Bash call.
     Runs under any `language:` and is reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
     It only refuses: it misses a command built from a variable or behind `bash -c`.
+39. `done-card-edited` — a card of a batch webster's run record holds done whose file no longer hashes to what the batch recorded at begin.
+    `loomshed.ValidatePlan` appends it outside both planparser entry points, from the run record and the card bytes alone, so both plan gates and `lyx loom validate-plan` report it.
+    A plan with no run record, a record without recorded hashes and a card of a batch that is not done report nothing; an unreadable card file is a returned error.
+    The finding names the card.
+    Its way forward is to restore the card file, because a done card is frozen: a finding against its work goes in a follow-up card placed after the last begun batch, with its Card Index line in `00-overview.md`.
+    It gates the done-card edit only; a begun batch's card-set change, a failed batch with uncheckable findings and an overview change outside the Card Index pass the plan gate and block at the Webster row.
 
 One further check, `rework-first-card`, is outside both entry points and has no row above.
 Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.

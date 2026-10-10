@@ -15,6 +15,8 @@
 // The plan gate and `lyx loom validate-plan` share ValidatePlan, which reads webster's run record under the anchor and tells the index the cards of every batch it holds done.
 // Those cards are history, not targets: a run moved back to the plan review after Webster executed batches has their work in the tree, so their tree-dependent checks are skipped.
 // Every other card, and every card of a plan with no run record, is checked against the tree.
+// A done card is also frozen: ValidatePlan appends a blocking `done-card-edited` finding for each one whose file no longer hashes to what its batch recorded at begin, naming the follow-up card as the way forward.
+// A plan with no run record or no recorded hashes reports nothing, and an unreadable card file is a returned error.
 //
 // The Webster-Burler round gate (NewVerifyGate) runs less than the plan's `## verify:`.
 // It lints the comments added since the plan verify's last recorded pass, then runs the command impactset derives from that diff through verifytree.Verify, falling back to the plan's own command wherever impactset cannot narrow.
