@@ -129,7 +129,25 @@ func TestPublishFailure(t *testing.T) {
 					{Package: "example.com/m/b", Test: "TestB"},
 				}},
 				packages: []string{"./a"},
-				want:     `go test -tags integration -run '^TestA$/^sub\.case$' example.com/m/a && go test -tags integration -run '^TestB$' example.com/m/b`,
+				want:     `go test -tags integration -run '^TestA$' example.com/m/a && go test -tags integration -run '^TestB$' example.com/m/b`,
+			},
+			{
+				name: "subtests of one top-level test emit one step",
+				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Tests: []verifytree.FailedTest{
+					{Package: "example.com/m/a", Test: "TestA/sub_1"},
+					{Package: "example.com/m/a", Test: "TestA/sub_2"},
+				}},
+				want: `go test -tags integration -run '^TestA$' example.com/m/a`,
+			},
+			{
+				name: "steps keep the record's order of first appearance",
+				failure: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Tests: []verifytree.FailedTest{
+					{Package: "example.com/m/a", Test: "TestA/s1"},
+					{Package: "example.com/m/a", Test: "TestB"},
+					{Package: "example.com/m/a", Test: "TestA/s2"},
+					{Package: "example.com/m/b", Test: "TestA/s1"},
+				}},
+				want: `go test -tags integration -run '^TestA$' example.com/m/a && go test -tags integration -run '^TestB$' example.com/m/a && go test -tags integration -run '^TestA$' example.com/m/b`,
 			},
 			{
 				name: "publish_verify runs its tests then the impacted set under tmux",
@@ -180,10 +198,10 @@ func TestPublishFailureNote(t *testing.T) {
 			name: "plan verify failure names its tests and log",
 			record: &verifytree.PublishFailure{
 				Kind:    verifytree.FailureKindPlanVerify,
-				Tests:   []verifytree.FailedTest{{Package: "example.com/m/a", Test: "TestA/sub"}},
+				Tests:   []verifytree.FailedTest{{Package: "example.com/m/a", Test: "TestA/sub_1"}, {Package: "example.com/m/a", Test: "TestA/sub_2"}},
 				LogPath: paths.PublishFailureLog,
 			},
-			want: "Publish failed on the plan's `## verify:` command.\n\nFailing tests:\n\n- `TestA/sub` in `example.com/m/a`\n\nLog of the failing run: " + paths.PublishFailureLog,
+			want: "Publish failed on the plan's `## verify:` command.\n\nFailing tests:\n\n- `TestA/sub_1` in `example.com/m/a`\n- `TestA/sub_2` in `example.com/m/a`\n\nLog of the failing run: " + paths.PublishFailureLog,
 		},
 		{
 			name:   "publish_verify failure without tests names only the verify",

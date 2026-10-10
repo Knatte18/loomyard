@@ -78,17 +78,25 @@ func isMergeCommit(worktreeRoot, sha string) bool {
 }
 
 // publishFailureCommand builds the round gate's extra steps from a checked record, joined by ` && `, or "" when there are none.
-// Each failing test runs by name in its package under the failing verify's tier: `integration` for the plan verify, `tmux` for `publish_verify`.
+// Each failing top-level test runs by name in its package under the failing verify's tier: `integration` for the plan verify, `tmux` for `publish_verify`.
+// The subtests of one top-level test collapse into one step, since a whole test re-runs and a subtest filter can miss a failure the test's setup caused; steps keep the record's order of first appearance.
 // For `publish_verify` the `tmux` tier also runs over packages, the impacted set; with no packages that pass is skipped.
-// Nothing from the record is run as shell text: every argument is a checked identifier, and each `-run` segment is quoted.
+// Nothing from the record is run as shell text: every argument is a checked identifier, and the `-run` name is quoted.
 func publishFailureCommand(failure verifytree.PublishFailure, packages []string) string {
 	tag := "integration"
 	if failure.Kind == verifytree.FailureKindPublishVerify {
 		tag = "tmux"
 	}
 	var steps []string
+	seen := map[string]bool{}
 	for _, test := range failure.Tests {
-		steps = append(steps, fmt.Sprintf("go test -tags %s -run '%s' %s", tag, anchoredRunPattern(test.Test), test.Package))
+		pattern := anchoredRunPattern(test.Test)
+		key := test.Package + " " + pattern
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		steps = append(steps, fmt.Sprintf("go test -tags %s -run '%s' %s", tag, pattern, test.Package))
 	}
 	if failure.Kind == verifytree.FailureKindPublishVerify && len(packages) > 0 {
 		steps = append(steps, "go test -tags tmux "+strings.Join(packages, " "))
@@ -126,13 +134,10 @@ func PublishFailureNote(worktreeRoot, verifyDir string) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// anchoredRunPattern spells a test path as a `-run` pattern matching exactly that test: each `/`-separated segment is quoted for regexp and anchored.
+// anchoredRunPattern spells a test path as a `-run` pattern matching exactly its top-level test: the first `/`-separated segment is quoted for regexp and anchored, and the subtest path is dropped.
 func anchoredRunPattern(testPath string) string {
-	segments := strings.Split(testPath, "/")
-	for i, segment := range segments {
-		segments[i] = "^" + regexp.QuoteMeta(segment) + "$"
-	}
-	return strings.Join(segments, "/")
+	topLevel, _, _ := strings.Cut(testPath, "/")
+	return "^" + regexp.QuoteMeta(topLevel) + "$"
 }
 
 // WebsterRecordNote renders webster's run record under anchorPath as markdown for the Plan-Review rubric, or `none` when there is no record or it holds no begun batch.
