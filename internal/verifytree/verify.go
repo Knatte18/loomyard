@@ -235,7 +235,8 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 	}
 	defer os.Remove(p.Marker)
 
-	var env []string
+	// A verify command never inherits the prebuilt-lyx variable: its own go test builds lyx once per test binary.
+	env := gateslot.StripPrebuilt(os.Environ())
 	if slots != nil {
 		lease, err := slots.Acquire(ctx, gateslot.Holder{Worktree: p.Worktree, Site: site.Label})
 		if err != nil {
@@ -246,7 +247,7 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 				logger.Warn("verifytree: release gate slot", "worktree", p.Worktree, "cause", err)
 			}
 		}()
-		env = lease.Env(os.Environ())
+		env = lease.Env(env)
 		marker.State = MarkerStateRunning
 		marker.Started = time.Now()
 		if err := writeMarker(p.Marker, marker); err != nil {

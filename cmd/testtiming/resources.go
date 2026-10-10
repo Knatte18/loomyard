@@ -68,7 +68,12 @@ func runResources(tags, pkgFlag string) error {
 	if err != nil {
 		return fmt.Errorf("read the working directory: %w", err)
 	}
-	env, parallel, release, err := takeGateSlot(context.Background(), cwd)
+	baseEnv, cleanupLyx, err := prebuildLyx(tags)
+	if err != nil {
+		return err
+	}
+	defer cleanupLyx()
+	env, parallel, release, err := takeGateSlot(context.Background(), cwd, baseEnv)
 	if err != nil {
 		return err
 	}
@@ -111,16 +116,16 @@ func runResources(tags, pkgFlag string) error {
 	return nil
 }
 
-// takeGateSlot returns the environment and -p cap one measured run uses.
+// takeGateSlot returns the environment and -p cap one measured run uses: baseEnv, plus the slot's variables inside a hub.
 // Inside a hub it holds one slot of the hub's pool until release and writes no wait record; outside a hub it returns the template's cap with no slot.
-func takeGateSlot(ctx context.Context, cwd string) (env []string, parallel int, release func(), err error) {
+func takeGateSlot(ctx context.Context, cwd string, baseEnv []string) (env []string, parallel int, release func(), err error) {
 	location, err := lyxcwd.ResolveWorktree(cwd)
 	if errors.Is(err, lyxcwd.ErrNotAGitRepo) || (err == nil && !preflight.BoardLyxPresent(location)) {
 		template, err := gateslot.TemplateConfig()
 		if err != nil {
 			return nil, 0, nil, fmt.Errorf("read the gate template: %w", err)
 		}
-		return os.Environ(), template.GoParallel, func() {}, nil
+		return baseEnv, template.GoParallel, func() {}, nil
 	}
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("resolve the worktree of %s: %w", cwd, err)
@@ -142,7 +147,7 @@ func takeGateSlot(ctx context.Context, cwd string) (env []string, parallel int, 
 			fmt.Fprintln(os.Stderr, "testtiming: release the gate slot:", err)
 		}
 	}
-	return lease.Env(os.Environ()), limits.GoParallel, release, nil
+	return lease.Env(baseEnv), limits.GoParallel, release, nil
 }
 
 // measurePackageResources runs `go test` over importPath with its temp directory pointed at tmpDir and returns what the run cost.

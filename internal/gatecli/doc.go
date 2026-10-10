@@ -8,6 +8,10 @@
 // The -C directory is made absolute against the seam cwd, never the process cwd when -C is given, and must exist.
 // At least one package is required; a module-wide pattern is accepted and slotted.
 // The output streams through and the exit code is go test's own.
+// With `--tags` non-empty the verb first builds `lyx` once, inside the held slot: `go build -C <root> -o <tmp>/lyx ./cmd/lyx`, where <root> is the worktree root inside a hub and the -C directory outside one, and <tmp> is a per-invocation temporary directory removed after go test ends.
+// go test's environment then carries `gateslot.PrebuiltLyxEnv` naming that binary, so every package of the run shares it instead of building its own.
+// A root without `cmd/lyx` builds nothing, and a nested module inside a hub still builds the worktree's `lyx`, which that module's tests may leave unused.
+// A build failure is a JSON error with the build's output and exit code 1, before go test runs.
 //
 // # Hub resolution
 //
@@ -28,6 +32,9 @@
 // When the slot variable gateslot.InheritEnv names a slot of the pool that is held, the run goes inside that slot without acquiring, so a verify command that calls `lyx gate test` cannot deadlock.
 // Bound: a forged variable naming any held slot runs unslotted inside that holder's slot.
 // The standing agent deny refuses an agent command that names the variable, and an operator shell or a script that hides the name is outside the bound.
+//
+// The prebuilt-binary variable is set or stripped on every path: a run that exports no fresh build, untagged or tagged with the build skipped, removes an inherited value from go test's environment through `gateslot.StripPrebuilt`.
+// A forged value therefore never reaches a gated run, and can mislead only an ungated raw `go test`.
 //
 // # Outside every hub
 //

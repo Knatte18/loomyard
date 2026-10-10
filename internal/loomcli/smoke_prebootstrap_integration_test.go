@@ -184,6 +184,7 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 
 	exe := lyxbin.Build(t)
 	loc, worktree := newBadReedUpFixture(t, commitRetiredBatcherKey)
+	waitForFixtureProcessesToExit(t)
 	recordsDir := fabricengine.RecordsWorktree(loc)
 	batcherPath := configengine.ConfigFile(worktree, "batcher")
 

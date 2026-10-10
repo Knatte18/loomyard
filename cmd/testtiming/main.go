@@ -165,7 +165,14 @@ func run(tags string, top int) error {
 	args = append(args, "./...", "-json", "-count=1")
 	cmdline += " ./... -count=1"
 
+	env, cleanup, err := prebuildLyx(tags)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	cmd := exec.Command("go", args...)
+	cmd.Env = env
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("pipe stdout: %w", err)

@@ -27,6 +27,18 @@ const InheritEnv = "LYX_GATE_SLOT"
 // PrebuiltLyxEnv names the environment variable that carries the path of the `lyx` binary a gate run built once for every package of a tagged run, so a test binary runs it instead of building its own.
 const PrebuiltLyxEnv = "LYX_PREBUILT_LYX"
 
+// StripPrebuilt returns env without PrebuiltLyxEnv.
+// A command that is not given a fresh build from the same tree must not inherit a stale one.
+func StripPrebuilt(env []string) []string {
+	stripped := make([]string, 0, len(env))
+	for _, entry := range env {
+		if key, _, _ := strings.Cut(entry, "="); key != PrebuiltLyxEnv {
+			stripped = append(stripped, entry)
+		}
+	}
+	return stripped
+}
+
 // defaultPoll is the pause between acquire attempts while every slot is held.
 const defaultPoll = 2 * time.Second
 

@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -225,6 +226,28 @@ func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lyxcwd.Location)) 
 	}
 	seed(t, loc)
 	return loc, worktree
+}
+
+// waitForFixtureProcessesToExit registers a cleanup that waits for every process whose working directory lies under the test's temp directories to exit.
+// A push into a bare repository leaves a git process of its own there for a moment, which would otherwise write into a directory the temp-dir removal is deleting.
+// It is registered after the fixture, so it runs before the fixture's removal; the wait is best effort and the removal reports what is still left.
+func waitForFixtureProcessesToExit(t *testing.T) {
+	t.Helper()
+	root := filepath.Dir(t.TempDir())
+	t.Cleanup(func() {
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			running := false
+			for _, pid := range tmuxkit.Pids() {
+				if cwd, ok := tmuxkit.ProcCwd(pid); ok && pid != os.Getpid() && strings.HasPrefix(cwd, root+string(filepath.Separator)) {
+					running = true
+					break
+				}
+			}
+			if !running {
+				return
+			}
+		}
+	})
 }
 
 // hubStampPath returns the hub's build stamp file.
