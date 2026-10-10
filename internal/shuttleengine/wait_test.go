@@ -67,19 +67,24 @@ func (c *scriptedClock) Sleep(d time.Duration) {
 
 var _ Clock = (*scriptedClock)(nil)
 
-// TestPollInterval_FloorsNonPositive pins the busy-spin guard: a configured poll_interval_ms of 0
-// or below must fall back to the template default rather than making Wait tick with a zero sleep.
+// TestPollInterval_FloorsNonPositive pins the busy-spin guard: a configured poll_interval_ms below one second, zero and negative included, is floored to one second rather than making Wait tick with a short sleep.
+// The template default sits at or above the floor.
 //
-//testtiming:keep pins the busy-spin guard: a non-positive poll_interval_ms falls back to the template default, which no Wait test measures
+//testtiming:keep pins the busy-spin guard: a poll_interval_ms below one second is floored to one second, which no Wait test measures
 func TestPollInterval_FloorsNonPositive(t *testing.T) {
+	if defaultPollIntervalMS*time.Millisecond < pollFloor {
+		t.Errorf("defaultPollIntervalMS = %d, want at or above the %v floor", defaultPollIntervalMS, pollFloor)
+	}
 	tests := []struct {
 		name       string
 		intervalMS int
 		want       time.Duration
 	}{
-		{"zero_floored", 0, defaultPollIntervalMS * time.Millisecond},
-		{"negative_floored", -100, defaultPollIntervalMS * time.Millisecond},
-		{"positive_passthrough", 250, 250 * time.Millisecond},
+		{"zero_floored", 0, pollFloor},
+		{"negative_floored", -100, pollFloor},
+		{"sub_second_floored", 250, pollFloor},
+		{"floor_passthrough", 1000, time.Second},
+		{"above_floor_passthrough", 2500, 2500 * time.Millisecond},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -128,7 +133,7 @@ func TestRun_Wait_MechanismFailure_KeepsRunIdentity(t *testing.T) {
 }
 
 // heldTestTimeout is the short run deadline a held-run test lets expire, in virtual time.
-const heldTestTimeout = 50 * time.Millisecond
+const heldTestTimeout = 10 * time.Second
 
 // cleanupExpectation says what a Wait that finalized must have done to the strand and run dir.
 type cleanupExpectation int
@@ -275,7 +280,7 @@ func TestRun_Wait_Classification(t *testing.T) {
 			parseEventsErr: errors.New("parse events: malformed"), wantOutcome: OutcomeDone,
 		},
 		{
-			name: "timeout keeps the strand", cfg: Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 30}, timeout: time.Second,
+			name: "timeout keeps the strand", cfg: Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1, StartupTimeoutS: 30}, timeout: time.Second,
 			status: liveStrands, startup: ready, wantOutcome: OutcomeTimeout, wantCleanup: cleanupSkipped,
 		},
 	}
@@ -687,7 +692,7 @@ func TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout(t *testing.T)
 	// StartupScript deliberately left empty: with started seeded true the startup probe must never
 	// run, so any Startup call at all would mean this test is measuring the wrong deadline.
 	engine := &fakeEngine{}
-	fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 300}))
+	fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1, StartupTimeoutS: 300}))
 	fc := newFakeClock(time.Now())
 	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
 		withRunDir(runDir),
@@ -1030,11 +1035,7 @@ func TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome(t *testing.T) 
 
 			reed := &fakeReed{StatusQueue: tt.statusQueue}
 			engine := &fakeEngine{StartupScript: tt.startup}
-			pollMS := 1
-			if tt.name == "timeout" {
-				pollMS = 600
-			}
-			fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: pollMS, LivenessEveryNPolls: 1, StartupTimeoutS: 30}))
+			fx := newFixture(t, reed, engine, withConfig(Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1, StartupTimeoutS: 30}))
 			fc := newFakeClock(time.Now())
 			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: tt.timeout, KeepPane: tt.keepPane},
 				withRunDir(runDir),

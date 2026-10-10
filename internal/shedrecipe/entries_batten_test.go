@@ -215,6 +215,9 @@ func TestInnerRunEntry_NilNowIsAccepted(t *testing.T) {
 // rather than silently read.
 func TestInnerRunEntry_PollConfigKeys(t *testing.T) {
 	t.Run("AbsentBuildsSuccessfully", func(t *testing.T) {
+		if defaultInnerRunPollIntervalS < 1 {
+			t.Errorf("defaultInnerRunPollIntervalS = %d; want at least one second, the producer's poll floor", defaultInnerRunPollIntervalS)
+		}
 		producer, err := innerRunEntry("InnerRun", Config{}, newTestEnv(t))
 		if err != nil {
 			t.Fatalf("innerRunEntry() error = %v; want nil", err)

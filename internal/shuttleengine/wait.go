@@ -112,15 +112,19 @@ func (realClock) Now() time.Time        { return time.Now() }
 func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
 
 // defaultPollIntervalMS is the template.yaml default poll interval.
-const defaultPollIntervalMS = 500
+const defaultPollIntervalMS = 1000
 
-// pollInterval returns Wait's tick interval, flooring non-positive values
-// to the template default to prevent busy-spinning.
+// pollFloor is the shortest poll interval; a configured value below it is floored to it.
+const pollFloor = time.Second
+
+// pollInterval returns Wait's tick interval, flooring a value below pollFloor (non-positive included) to pollFloor to prevent busy-spinning.
+// It floors silently; LoadConfig logs the one warning.
 func pollInterval(cfg Config) time.Duration {
-	if cfg.PollIntervalMS <= 0 {
-		return defaultPollIntervalMS * time.Millisecond
+	interval := time.Duration(cfg.PollIntervalMS) * time.Millisecond
+	if interval < pollFloor {
+		return pollFloor
 	}
-	return time.Duration(cfg.PollIntervalMS) * time.Millisecond
+	return interval
 }
 
 // maxEventsReadRetries bounds consecutive event-read failures before reporting a mechanism failure.
@@ -471,8 +475,8 @@ func startupTickCap(startupTimeout, interval time.Duration) int {
 //
 // Probe cadence: awaitStartup calls checkLivenessTick once per probe interval, where the probe
 // interval is pollInterval(cfg) times LivenessEveryNPolls (floored to 1 exactly as Wait floors it),
-// so it probes, and replays any trust-gate dismissal, at the same cadence Wait does (every 5s under
-// the shipped template's poll_interval_ms: 500 and liveness_every_n_polls: 10) and never faster.
+// so it probes, and replays any trust-gate dismissal, at the same cadence Wait does (every 10s under
+// the shipped template's poll_interval_ms: 1000 and liveness_every_n_polls: 10) and never faster.
 // awaitStartup has no events file to poll between probes, so it sleeps the whole probe interval at
 // once rather than ticking at the poll interval. This is deliberate: checkLivenessTick replays the
 // trust-dismiss sequence on every probe whose capture still shows a gate, and probing every 500ms
