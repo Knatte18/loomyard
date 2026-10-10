@@ -59,10 +59,15 @@ func (r *Repo) FileAtRevision(rev, relPath string) ([]byte, error) {
 	return []byte(contents), nil
 }
 
+// headContainsCommitterSlack is how much older than the target commit's committer time HeadContains lets a walked commit be before it stops walking.
+const headContainsCommitterSlack = 24 * time.Hour
+
 // HeadContains reports whether sha names HEAD's commit or one of its ancestors.
 // An unborn HEAD, and a sha whose commit is absent from the local object store, report false with no error;
 // an invalid sha is ErrInvalidSHA.
 // It reads the object store through go-git and never runs git.
+// The walk goes newest committer time first and stops once a commit's committer time is more than 24 hours older than the target's, so a target absent from HEAD's history costs a bounded read.
+// A descendant of the target whose committer time is more than 24 hours older than the target's, from clock skew on the committing machine, therefore makes it answer false for a commit that is in HEAD.
 func (r *Repo) HeadContains(sha string) (bool, error) {
 	if !validSHA(sha) {
 		return false, ErrInvalidSHA
@@ -93,14 +98,18 @@ func (r *Repo) HeadContains(sha string) (bool, error) {
 		}
 		return false, fmt.Errorf("gitrepo: read HEAD: %w", err)
 	}
-	commitIter, err := repo.Log(&git.LogOptions{From: head.Hash()})
+	commitIter, err := repo.Log(&git.LogOptions{From: head.Hash(), Order: git.LogOrderCommitterTime})
 	if err != nil {
 		return false, fmt.Errorf("gitrepo: log from HEAD: %w", err)
 	}
+	oldestWalked := target.Committer.When.Add(-headContainsCommitterSlack)
 	found := false
 	err = commitIter.ForEach(func(commit *object.Commit) error {
 		if commit.Hash == target.Hash {
 			found = true
+			return storer.ErrStop
+		}
+		if commit.Committer.When.Before(oldestWalked) {
 			return storer.ErrStop
 		}
 		return nil

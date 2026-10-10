@@ -8,6 +8,7 @@ package gitrepo_test
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -16,6 +17,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
+
+// commitAllAt makes an empty commit in dir whose committer date is committerDate, which gitkit.Git cannot set without a process-global env change.
+func commitAllAt(t *testing.T, dir, message, committerDate string) {
+	t.Helper()
+
+	cmd := exec.Command("git", "commit", "--allow-empty", "-m", message)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_COMMITTER_DATE="+committerDate, "GIT_AUTHOR_DATE="+committerDate)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit %q in %s: %v; output: %s", message, dir, err, out)
+	}
+}
 
 // TestHistoryReads drives the history reads over one repository: commit A writes a.txt as "version one", commit B rewrites it as "version two" and commit C adds an unrelated file and a directory holding two files and a subdirectory;
 // a second branch and a tag then point at commit C.
@@ -215,6 +228,29 @@ func TestHistoryReads(t *testing.T) {
 				if !errors.Is(err, tc.wantErr) || got != tc.want {
 					t.Errorf("%s: HeadContains() = (%v, %v); want (%v, %v)", tc.name, got, err, tc.want, tc.wantErr)
 				}
+			}
+		}},
+		// The target sits on a side branch, dated days after three old commits, and HEAD sits after the target;
+		// deleting the oldest old commit's object means only a walk that stops at the bound can answer.
+		{"HeadContains stops walking at the committer-time bound", func(t *testing.T) {
+			boundDir, boundRepo := newRepo(t)
+			commitAllAt(t, boundDir, "old one", "2024-01-01T12:00:00Z")
+			oldestSHA := requireCurrentSHA(t, boundRepo)
+			commitAllAt(t, boundDir, "old two", "2024-01-02T12:00:00Z")
+			commitAllAt(t, boundDir, "old three", "2024-01-03T12:00:00Z")
+			gitkit.Git(t, boundDir, "checkout", "-b", "side")
+			commitAllAt(t, boundDir, "target", "2024-01-10T12:00:00Z")
+			shaTarget := requireCurrentSHA(t, boundRepo)
+			gitkit.Git(t, boundDir, "checkout", "main")
+			commitAllAt(t, boundDir, "head", "2024-01-11T12:00:00Z")
+
+			if err := os.Remove(filepath.Join(boundDir, ".git", "objects", oldestSHA[:2], oldestSHA[2:])); err != nil {
+				t.Fatalf("delete the oldest commit's loose object: %v", err)
+			}
+
+			got, err := boundRepo.HeadContains(shaTarget)
+			if err != nil || got {
+				t.Errorf("HeadContains(target on a side branch) = (%v, %v); want (false, nil) without reading below the bound", got, err)
 			}
 		}},
 		{"PathRevisions returns an empty slice for a path with no history", func(t *testing.T) {
