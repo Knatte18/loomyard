@@ -230,6 +230,11 @@ func measurePackageResources(tags, importPath, tmpDir string, env []string, para
 	return row, nil
 }
 
+// rusageStats returns the CPU time of a finished process and its waited descendants, and the largest max RSS among them in bytes, zero where the platform does not report it.
+func rusageStats(state *os.ProcessState) (cpu time.Duration, maxRSS int64) {
+	return state.UserTime() + state.SystemTime(), maxRSSBytes(state)
+}
+
 var (
 	systemdScopeOnce   sync.Once
 	systemdScopeResult bool

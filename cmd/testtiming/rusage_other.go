@@ -1,15 +1,12 @@
 //go:build !linux
 
-// rusage_other.go reads a finished child's CPU time where the largest resident set is not available; it reports zero for memory.
+// rusage_other.go stands in for the largest resident set where the platform's rusage does not report it in a known unit.
 
 package main
 
-import (
-	"os"
-	"time"
-)
+import "os"
 
-// rusageStats returns the CPU time of a finished process and its waited descendants; the max RSS is not read on this platform.
-func rusageStats(state *os.ProcessState) (cpu time.Duration, maxRSS int64) {
-	return state.UserTime() + state.SystemTime(), 0
+// maxRSSBytes returns zero: this platform's max RSS is not read.
+func maxRSSBytes(state *os.ProcessState) int64 {
+	return 0
 }
