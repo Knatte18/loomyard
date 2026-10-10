@@ -193,6 +193,7 @@ func TestSocket_StartsHermeticNonLoginServer(t *testing.T) {
 }
 
 func TestPackageServer_OneKeyPerBinary(t *testing.T) {
+	t.Parallel()
 	tmux := requireTmux(t)
 
 	first := PackageServer(t, tmux)
@@ -211,6 +212,7 @@ func TestPackageServer_OneKeyPerBinary(t *testing.T) {
 }
 
 func TestAfterRun_LeftoverProcesses(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS != "linux" {
 		t.Skip("the leftover scan reads /proc")
 	}
