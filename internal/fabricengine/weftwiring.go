@@ -4,12 +4,9 @@
 // These unexported helpers handle the weft-side lifecycle: creating weft worktrees, pushing to the
 // weft remote, and tearing down both the weft worktree and branch.
 // Every git operation here runs with an explicit cwd (RecordsRepoRoot or RecordsWorktreePath), never an
-// inherited process cwd, and all but two of them go through gitexec.Run, the checked entry point.
-// The two exceptions are this file's bool-returning predicates, weftRepoExists and
-// weftBranchExists, which are the whole of internal/fabricengine's pinned raw-site allowance under
-// PATTERN-gitexec-checked-call: each carries its own //gitexec:raw marker, and
-// each is raw because its signature has no error channel, so every outcome — including an
-// exec-level failure git never got to answer — must collapse to a bool.
+// inherited process cwd, and all but one of them go through gitexec.Run, the checked entry point.
+// The exception is this file's bool-returning predicate weftBranchExists, which is the whole of internal/fabricengine's pinned raw-site allowance under PATTERN-gitexec-checked-call.
+// It carries its own //gitexec:raw marker, and is raw because its signature has no error channel, so every outcome — including an exec-level failure git never got to answer — must collapse to a bool.
 // Every branch argument here is ALWAYS a concrete, already-suffixed weft branch name produced by RecordsBranchName.
 // This file never derives a branch name itself, so the "-weft" literal never
 // appears in this file's Go source (see branchname.go for the single derivation point).
@@ -76,13 +73,8 @@ func weftRepoExists(l *lyxcwd.Location) bool {
 		return false
 	}
 
-	//gitexec:raw — bool-returning predicate: the signature has no error channel, so every outcome must collapse to a bool.
-	_, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--is-inside-work-tree"}, weftRepoRoot)
-	if err != nil {
-		return false
-	}
-
-	return exitCode == 0
+	_, err = gitrepo.New(weftRepoRoot).GitDir()
+	return err == nil
 }
 
 // weftBranchExists reports whether the weft branch exists in the weft repo.

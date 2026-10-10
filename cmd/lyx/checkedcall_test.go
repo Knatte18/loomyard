@@ -33,8 +33,8 @@
 //
 // # Why the walk covers cmd/ too, even though zero production sites live there today
 //
-// Every one of the five pinned raw sites lives under internal/ (three in internal/gitrepo, two in
-// internal/fabricengine); cmd/ carries none. The walk still covers cmd/ because that absence is
+// Every pinned raw site lives under internal/, in internal/gitrepo and internal/fabricengine; cmd/ carries none.
+// The walk still covers cmd/ because that absence is
 // exactly the fact the pinned-zero design is meant to keep true: a new command package reaching
 // straight for gitexec.RunGit or a bespoke r.run( helper, bypassing gitrepo's own checked pair
 // entirely, is precisely the drift this invariant exists to catch — and it can only catch it in a
@@ -83,12 +83,12 @@ var checkedCallRawTokens = []string{
 // see checkedCallCountDiff.
 var checkedCallPinnedRawSites = map[string]int{
 	"internal/gitrepo":       3, // run's own body, Pull, Fetch
-	"internal/fabricengine":  2, // the repo-exists and branch-exists helpers
+	"internal/fabricengine":  1, // the branch-exists helper
 	"internal/lyxcwd":        0,
 	"internal/fabriccli":     0,
 	"internal/websterengine": 0,
 
-	"internal/gitrepo/internal/gitoracle": 4, // CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch
+	"internal/gitrepo/internal/gitoracle": 6, // CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch, HeadRef, verifyQuiet
 }
 
 // checkedCallScanRoots are the module-relative directories this guard walks. cmd/ carries zero
