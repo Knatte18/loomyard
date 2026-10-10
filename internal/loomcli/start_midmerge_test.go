@@ -43,6 +43,23 @@ func writeTestRunStateAt(t *testing.T, c *loomCLI, st shedengine.State, producer
 	}
 }
 
+// Undecodable status files the spawned driver's own read gate diagnoses: one with a field the status type lacks, and one cut off mid-object.
+const (
+	unknownFieldStatusBody = `{"state":"running","current_producer":"Publish","__unknown_field__":true}`
+	truncatedStatusBody    = `{"state":"running","current_pro`
+)
+
+// writeTestRunStateRaw writes body verbatim as the run's status file.
+func writeTestRunStateRaw(t *testing.T, c *loomCLI, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(c.shedPaths.StatusPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(c.shedPaths.StatusPath, []byte(body), 0o644); err != nil {
+		t.Fatalf("write status: %v", err)
+	}
+}
+
 // fakeMidMerge records its calls and answers a canned state or error.
 type fakeMidMerge struct {
 	calls int
@@ -122,6 +139,8 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 		producer string
 		// parentErr makes the recorded-parent-branch seam fail, so a refusal that is still a merge_in_progress one pins that the guard never read it.
 		parentErr error
+		// statusBody, when set, is written verbatim as the status file instead of one naming producer.
+		statusBody string
 	}{
 		{name: "llm fabric-parked with conflicts", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a.go", "b/c.go"}}, want: []string{"a.go", "b/c.go"}, wantIn: fabricMsg},
 		{name: "go arm fabric-parked", driver: shedrun.DriverGo, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg},
@@ -133,6 +152,7 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 		{name: "parked merge verb at Publish", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: "merge", Source: "main", Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NamePublish, parentErr: errors.New("origin record unreadable")},
 		{name: "merge-in of another source at Publish", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: fabricengine.MergeVerbMergeIn, Source: "other", Conflicts: []string{"a.go"}}, want: []string{"a.go"}, wantIn: fabricMsg, producer: loomshed.NamePublish},
 		{name: "foreign state at Finalize", driver: shedrun.DriverLLM, state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeForeign, Conflicts: []string{"x"}}, want: []string{"x"}, wantIn: []string{"git"}, wantNotIn: []string{"merge-stage"}, producer: loomshed.NameFinalize, parentErr: errors.New("origin record unreadable")},
+		{name: "own leftover under an undecodable status file", driver: shedrun.DriverLLM, state: ownLeftoverState, want: []string{"a.go"}, wantIn: fabricMsg, statusBody: unknownFieldStatusBody, parentErr: errors.New("origin record unreadable")},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -148,7 +168,10 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 				c.driverSender = sender
 				c.frictionDir = t.TempDir()
 				writeTestRunStateAt(t, c, shedengine.StateRunning, tc.producer)
-				marker = shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
+				if tc.statusBody != "" {
+					writeTestRunStateRaw(t, c, tc.statusBody)
+				}
+				marker =shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
 				if tc.staleMark {
 					if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
 						t.Fatal(err)
@@ -293,8 +316,12 @@ func TestRunDriverSpawnAndWait_MidMerge_CleanPairProceeds(t *testing.T) {
 		// an empty runState writes no status file.
 		runState shedengine.State
 		producer string
+		// statusBody, when set, is written verbatim as the status file instead.
+		statusBody string
 	}{
 		{name: "clean pair", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}},
+		{name: "clean pair with a status file carrying an unknown field", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, statusBody: unknownFieldStatusBody},
+		{name: "clean pair with a truncated status file", state: fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone}, statusBody: truncatedStatusBody},
 		{name: "own leftover at Publish on a halted run", state: ownLeftoverState, runState: shedengine.StateBlocked, producer: loomshed.NamePublish},
 		{name: "own leftover at Finalize on a running run with a dead driver", state: ownLeftoverState, runState: shedengine.StateRunning, producer: loomshed.NameFinalize},
 	}
@@ -307,6 +334,9 @@ func TestRunDriverSpawnAndWait_MidMerge_CleanPairProceeds(t *testing.T) {
 			c.recordedParentBranch = parentBranchSeam(nil)
 			if tt.runState != "" {
 				writeTestRunStateAt(t, c, tt.runState, tt.producer)
+			}
+			if tt.statusBody != "" {
+				writeTestRunStateRaw(t, c, tt.statusBody)
 			}
 
 			bl := acquireTestBootstrapLock(t, lockPath)

@@ -162,9 +162,14 @@ func readRecordedParentBranch(l *lyxcwd.Location) (string, error) {
 	return origin.ParentBranch, nil
 }
 
-// currentProducer returns the producer the run's status file names as current, or "" when the run has no status file.
+// currentProducer returns the producer the run's status file names as current, or "" when the run has no status file or the file does not decode.
+// An undecodable file names no producer rather than refusing the spawn, since the spawned driver's own read gate diagnoses it in the driver log.
 func (c *loomCLI) currentProducer() (string, error) {
 	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	if errors.Is(err, state.ErrDecode) {
+		logger.Warn("loom: the status file does not decode; deferring its diagnosis to the driver", "path", c.shedPaths.StatusPath, "error", err)
+		return "", nil
+	}
 	if err != nil {
 		return "", err
 	}
