@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -47,7 +49,7 @@ into an entry and closes it with a pointer, and close closes noise with a stated
 		Long: `List the open issues of the inbox repository that no board entry records, pull requests excluded.
 Takes no payload.
 
-Prints {"issues":[...]}, each with number, title, body, labels, url and created_at.
+Prints {"issues":[...]}, each with number, title, body, labels, url, comments (the comment count) and created_at.
 
 Example:
   lyx board intake list`,
@@ -72,7 +74,8 @@ Fields:
   "into"   string  — fold the issue into this existing entry instead
 
 A new note carries the issue's configured labels and needs exactly one type label. A fold appends the
-issue to the entry's body and issues list. An issue an entry already records is a no-op that prints the
+issue to the entry's body and issues list. Either way the issue's comments, oldest first and without
+lyx's own import pointers, are carried in the body. An issue an entry already records is a no-op that prints the
 recording entries and touches nothing on GitHub. The board is written before GitHub is touched; when
 the comment or close then fails, the error carries the written entry and the "close" payload to run.
 
@@ -114,6 +117,23 @@ Example:
 	return cmd
 }
 
+// importPointerFormat is the comment lyx posts on an issue after importing it, with the entry slug in backticks.
+const importPointerFormat = "Imported into the board as `%s`."
+
+// importPointerPattern matches a whole comment body that is an import pointer for any slug.
+var importPointerPattern = regexp.MustCompile(`^` + strings.Replace(regexp.QuoteMeta(importPointerFormat), "%s", "[^`]*", 1) + `$`)
+
+// importPointer builds the comment lyx posts on an issue after importing it as the entry named slug.
+func importPointer(slug string) string {
+	return fmt.Sprintf(importPointerFormat, slug)
+}
+
+// isImportPointer reports whether the whole of body, trimmed, is an import pointer for some slug.
+// A comment that quotes the pointer sentence inside other text is not one.
+func isImportPointer(body string) bool {
+	return importPointerPattern.MatchString(strings.TrimSpace(body))
+}
+
 // intakeIssueView is the view of an inbox issue that list prints.
 type intakeIssueView struct {
 	Number    int       `json:"number"`
@@ -121,6 +141,7 @@ type intakeIssueView struct {
 	Body      string    `json:"body"`
 	Labels    []string  `json:"labels"`
 	URL       string    `json:"url"`
+	Comments  int       `json:"comments"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -145,6 +166,7 @@ func intakeList(out io.Writer, b *boardengine.Board) int {
 			Body:      issue.Body,
 			Labels:    issue.Labels,
 			URL:       issue.URL,
+			Comments:  issue.Comments,
 			CreatedAt: issue.CreatedAt,
 		})
 	}
@@ -187,9 +209,18 @@ func decodeIssueNumber(fields map[string]json.RawMessage) (int, error) {
 	return number, nil
 }
 
-// inboxIssue converts a fetched issue to the boardengine view of it.
-func inboxIssue(issue selfreportengine.Issue) boardengine.InboxIssue {
+// inboxIssue converts a fetched issue and its comments, oldest first, to the boardengine view of it.
+// A comment that is an import pointer is dropped, since lyx posted it and it carries nothing.
+func inboxIssue(issue selfreportengine.Issue, comments []selfreportengine.IssueComment) boardengine.InboxIssue {
+	var carried []boardengine.IssueComment
+	for _, comment := range comments {
+		if isImportPointer(comment.Body) {
+			continue
+		}
+		carried = append(carried, boardengine.IssueComment{Body: comment.Body, CreatedAt: comment.CreatedAt})
+	}
 	return boardengine.InboxIssue{
+		Comments:    carried,
 		Number:      issue.Number,
 		Title:       issue.Title,
 		Body:        issue.Body,
@@ -223,7 +254,11 @@ func intakeImport(out io.Writer, b *boardengine.Board, payload string) int {
 	if err != nil {
 		return outputError(out, err.Error())
 	}
-	req.Issue = inboxIssue(issue)
+	comments, err := selfreportengine.ListIssueComments(number)
+	if err != nil {
+		return outputError(out, err.Error())
+	}
+	req.Issue = inboxIssue(issue, comments)
 
 	result, err := b.ImportIssue(req)
 	if err != nil {
@@ -237,7 +272,7 @@ func intakeImport(out io.Writer, b *boardengine.Board, payload string) int {
 	if dropped == nil {
 		dropped = []string{}
 	}
-	comment := fmt.Sprintf("Imported into the board as `%s`.", result.Entry.Slug)
+	comment := importPointer(result.Entry.Slug)
 	if err := selfreportengine.CommentAndClose(number, comment, true); err != nil {
 		return output.ErrFields(out, err.Error(), map[string]any{
 			"entry":   result.Entry,

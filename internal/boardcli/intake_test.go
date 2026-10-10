@@ -32,6 +32,10 @@ type fakeIssue struct {
 	stateReason string
 	pullRequest bool
 	labels      []string
+	// thread is the issue's comments, oldest first, each served with the given body and a creation time of 2026-01-02 plus its index in days.
+	thread []string
+	// failThread makes the comments endpoint answer with a server error.
+	failThread bool
 }
 
 // fakeInbox is a fake GitHub inbox repository that records every mutation it receives.
@@ -40,7 +44,9 @@ type fakeInbox struct {
 	failClose bool
 	comments  []string
 	closes    []string
-	server    *httptest.Server
+	// perIssueGets records every GET naming one issue, so a test sees whether a handler made a per-issue call.
+	perIssueGets []string
+	server       *httptest.Server
 }
 
 // mutations returns every comment and close the inbox received.
@@ -70,6 +76,7 @@ func (f *fakeInbox) issueJSON(issue fakeIssue) map[string]any {
 		"state":        issue.state,
 		"state_reason": issue.stateReason,
 		"labels":       labels,
+		"comments":     len(issue.thread),
 		"created_at":   "2026-01-02T03:04:05Z",
 	}
 	if issue.pullRequest {
@@ -88,6 +95,9 @@ func (f *fakeInbox) handle(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		f.comments = append(f.comments, strings.TrimSuffix(strings.TrimPrefix(rest, "/"), "/comments")+": "+body["body"])
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": 1})
+	case strings.HasSuffix(rest, "/comments") && r.Method == http.MethodGet:
+		f.perIssueGets = append(f.perIssueGets, rest)
+		f.serveComments(w, r, strings.TrimSuffix(strings.TrimPrefix(rest, "/"), "/comments"))
 	case r.Method == http.MethodPatch:
 		if f.failClose {
 			http.Error(w, `{"message":"boom"}`, http.StatusInternalServerError)
@@ -98,6 +108,7 @@ func (f *fakeInbox) handle(w http.ResponseWriter, r *http.Request) {
 		f.closes = append(f.closes, strings.TrimPrefix(rest, "/")+": "+body["state_reason"])
 		_ = json.NewEncoder(w).Encode(map[string]any{"number": 1})
 	case r.Method == http.MethodGet:
+		f.perIssueGets = append(f.perIssueGets, rest)
 		number, _ := strconv.Atoi(strings.TrimPrefix(rest, "/"))
 		issue, ok := f.find(number)
 		if !ok {
@@ -108,6 +119,34 @@ func (f *fakeInbox) handle(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// serveComments serves the comments of the issue numbered number in pages of two, or fails when the issue's failThread is set.
+func (f *fakeInbox) serveComments(w http.ResponseWriter, r *http.Request, number string) {
+	n, _ := strconv.Atoi(number)
+	issue, _ := f.find(n)
+	if issue.failThread {
+		http.Error(w, `{"message":"boom"}`, http.StatusInternalServerError)
+		return
+	}
+	page := 1
+	if p := r.URL.Query().Get("page"); p != "" {
+		page, _ = strconv.Atoi(p)
+	}
+	const perPage = 2
+	start := min((page-1)*perPage, len(issue.thread))
+	end := min(start+perPage, len(issue.thread))
+	if end < len(issue.thread) {
+		w.Header().Set("Link", fmt.Sprintf(`<%s%s/%d/comments?page=%d>; rel="next"`, f.server.URL, fakeIssuesPath, n, page+1))
+	}
+	views := []map[string]any{}
+	for i := start; i < end; i++ {
+		views = append(views, map[string]any{
+			"body":       issue.thread[i],
+			"created_at": fmt.Sprintf("2026-01-%02dT12:00:00Z", 2+i),
+		})
+	}
+	_ = json.NewEncoder(w).Encode(views)
 }
 
 // list serves the open issues in pages of two.
@@ -197,8 +236,8 @@ func runHandler(t *testing.T, fn func(out *bytes.Buffer) int) (int, map[string]a
 }
 
 func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.T) {
-	newFakeInbox(t,
-		fakeIssue{number: 1, state: "open"},
+	inbox := newFakeInbox(t,
+		fakeIssue{number: 1, state: "open", thread: []string{"one", "two"}},
 		fakeIssue{number: 2, state: "open", pullRequest: true},
 		fakeIssue{number: 3, state: "closed"},
 		fakeIssue{number: 4, state: "open"},
@@ -226,10 +265,22 @@ func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.
 	if first["title"] != "Issue 1" || first["body"] != "Body 1." || first["url"] != "https://example.test/issues/1" || first["created_at"] != "2026-01-02T03:04:05Z" {
 		t.Errorf("first issue = %v, want its fields carried over", first)
 	}
+	if first["comments"] != 2.0 || issues[1].(map[string]any)["comments"] != 0.0 {
+		t.Errorf("comment counts = %v and %v, want 2 and 0", first["comments"], issues[1].(map[string]any)["comments"])
+	}
+	if len(inbox.perIssueGets) != 0 {
+		t.Errorf("per-issue requests = %v, want none", inbox.perIssueGets)
+	}
 }
 
+// quotedPointerComment quotes the import pointer sentence inside other text, so it is kept.
+const quotedPointerComment = "Earlier it said: Imported into the board as `old`. Please re-check."
+
+// threadWithPointer is three comments across two fake pages: the middle one is a whole-body import pointer, which is dropped.
+var threadWithPointer = []string{"First comment.", " Imported into the board as `old-slug`.\n", quotedPointerComment}
+
 func TestIntakeImport_NewNoteCommentsAndCloses(t *testing.T) {
-	inbox := newFakeInbox(t, fakeIssue{number: 7, state: "open", labels: []string{"bug", "stray"}})
+	inbox := newFakeInbox(t, fakeIssue{number: 7, state: "open", labels: []string{"bug", "stray"}, thread: threadWithPointer})
 	b, path := newIntakeBoard(t)
 
 	code, envelope := runHandler(t, func(out *bytes.Buffer) int {
@@ -245,6 +296,12 @@ func TestIntakeImport_NewNoteCommentsAndCloses(t *testing.T) {
 	if fmt.Sprint(envelope["dropped"]) != "[stray]" {
 		t.Errorf("dropped = %v, want [stray]", envelope["dropped"])
 	}
+	wantBody := "Imported from [issue #7](https://example.test/issues/7).\n\nBody 7." +
+		"\n\n## Issue comment, 2026-01-02\n\nFirst comment." +
+		"\n\n## Issue comment, 2026-01-04\n\n" + quotedPointerComment
+	if entry["body"] != wantBody {
+		t.Errorf("body = %q, want %q", entry["body"], wantBody)
+	}
 	if got := fmt.Sprint(inbox.comments); got != "[7: Imported into the board as `from-inbox`.]" {
 		t.Errorf("comments = %v", inbox.comments)
 	}
@@ -257,7 +314,7 @@ func TestIntakeImport_NewNoteCommentsAndCloses(t *testing.T) {
 }
 
 func TestIntakeImport_FoldIntoEntry(t *testing.T) {
-	inbox := newFakeInbox(t, fakeIssue{number: 8, state: "open"})
+	inbox := newFakeInbox(t, fakeIssue{number: 8, state: "open", thread: threadWithPointer})
 	b, _ := newIntakeBoard(t)
 	if _, err := b.UpsertTask(map[string]any{"slug": "target", "labels": []string{"bug"}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -272,6 +329,11 @@ func TestIntakeImport_FoldIntoEntry(t *testing.T) {
 	entry := envelope["entry"].(map[string]any)
 	if fmt.Sprint(entry["issues"]) != "[8]" || !strings.Contains(entry["body"].(string), "## From issue #8") {
 		t.Errorf("entry = %v, want the issue folded in", entry)
+	}
+	wantTail := "\n\n### Issue comment, 2026-01-02\n\nFirst comment." +
+		"\n\n### Issue comment, 2026-01-04\n\n" + quotedPointerComment
+	if !strings.HasSuffix(entry["body"].(string), wantTail) {
+		t.Errorf("body = %q, want it to end with %q", entry["body"], wantTail)
 	}
 	if got := fmt.Sprint(inbox.comments); got != "[8: Imported into the board as `target`.]" {
 		t.Errorf("comments = %v", inbox.comments)
@@ -319,6 +381,7 @@ func TestIntakeImport_RefusedBeforeAnyWrite(t *testing.T) {
 		{"neither slug nor into", fakeIssue{number: 13, state: "open"}, `{"issue":13}`, "neither slug nor into"},
 		{"unknown key", fakeIssue{number: 14, state: "open"}, `{"issue":14,"slug":"x","slugg":"y"}`, "unknown field"},
 		{"pull request", fakeIssue{number: 15, state: "open", pullRequest: true}, `{"issue":15,"slug":"x"}`, "pull request"},
+		{"comment fetch fails", fakeIssue{number: 18, state: "open", labels: []string{"bug"}, failThread: true}, `{"issue":18,"slug":"x"}`, "issue comment list failed"},
 		{"into a run-held entry", fakeIssue{number: 17, state: "open"}, `{"issue":17,"into":"held"}`, "lyx batten status held"},
 	}
 	for _, tc := range cases {
