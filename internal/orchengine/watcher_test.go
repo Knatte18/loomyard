@@ -28,6 +28,7 @@ type fakeSession struct {
 	idle       bool
 	idleSeq    []bool // Consumed before idle.
 	tooShort   bool   // Reported with every probe that is not idle.
+	reason     string // Reported with every probe that is not idle.
 	sendErrs   []error
 	clearErr   error // Returned by every ClearSession while set.
 	clearErrs  []error
@@ -44,13 +45,14 @@ type fakeSession struct {
 
 	sessionState    shuttleengine.SessionState // Answered by SessionState while stateErr is nil.
 	sessionStateErr error                      // Returned by every SessionState while set.
+	sessionStartAt  time.Time                  // Answered by SessionState as the newest session-start time.
 }
 
 func (f *fakeSession) SessionState(string) (shuttleengine.RunSessionState, error) {
 	if f.sessionStateErr != nil {
 		return shuttleengine.RunSessionState{}, f.sessionStateErr
 	}
-	return shuttleengine.RunSessionState{State: f.sessionState}, nil
+	return shuttleengine.RunSessionState{State: f.sessionState, SessionStartAt: f.sessionStartAt}, nil
 }
 
 func (f *fakeSession) LoadSkills(_ string, skills []string) error {
@@ -96,7 +98,11 @@ func (f *fakeSession) SessionIdle(string) (shuttleengine.IdleProbe, error) {
 		idle = f.idleSeq[0]
 		f.idleSeq = f.idleSeq[1:]
 	}
-	return shuttleengine.IdleProbe{Idle: idle, TooShort: !idle && f.tooShort}, nil
+	probe := shuttleengine.IdleProbe{Idle: idle}
+	if !idle {
+		probe.TooShort, probe.Reason = f.tooShort, f.reason
+	}
+	return probe, nil
 }
 
 func (f *fakeSession) Send(_, text string) error {
@@ -386,13 +392,16 @@ func TestWatcher_TooShortProbeRecordsStuckInIdlePhaseAndPassingProbeClearsIt(t *
 
 	e.s.tooShort = false
 	e.tick()
-	if st := e.state(); st.Stuck != "" {
-		t.Errorf("Stuck = %q after a probe that is not too short, want cleared", st.Stuck)
+	if st := e.state(); st.Stuck != paneNotIdleReason {
+		t.Errorf("Stuck = %q after a probe that is not too short, want the pane fallback reason", st.Stuck)
 	}
 	e.assertNoCalls()
 
 	e.s.idle = true
 	e.tick()
+	if st := e.state(); st.Stuck != "" {
+		t.Errorf("Stuck = %q after a passing probe, want cleared", st.Stuck)
+	}
 	if e.s.count("send:") != 1 {
 		t.Errorf("calls = %v, want the handoff request once the pane is idle", e.s.calls)
 	}
@@ -1261,6 +1270,57 @@ func TestWatcher_ReloadTypesNothingWhenIdleProbeFails(t *testing.T) {
 	}
 }
 
+func TestWatcher_HeldReloadStepRecordsReasonLogsOncePerChangeAndTypedLogsWait(t *testing.T) {
+	// Not parallel: it captures the process-global logger.
+	buf := logcapture.CaptureVerbose(t)
+	e := newWatchEnv(t)
+	e.reachClearing()
+	count := func(msg string) int { return strings.Count(buf.String(), msg) }
+
+	e.s.idle, e.s.reason = false, "a turn is running"
+	e.s.sessionStartAt = e.clock.now
+	e.tick()
+	e.tick()
+	if st := e.state(); st.Stuck != "a turn is running" {
+		t.Errorf("Stuck = %q, want the probe's reason", st.Stuck)
+	}
+	if got := count("orch: injection held"); got != 1 {
+		t.Errorf("held logged %d times for an unchanged reason, want once", got)
+	}
+	if got := count("orch: session start signal read"); got != 1 {
+		t.Errorf("session start logged %d times for one time, want once", got)
+	}
+
+	e.s.reason = "a tool is running"
+	e.tick()
+	if st := e.state(); st.Stuck != "a tool is running" {
+		t.Errorf("Stuck = %q, want the changed reason", st.Stuck)
+	}
+	if got := count("orch: injection held"); got != 2 {
+		t.Errorf("held logged %d times after the reason changed, want 2", got)
+	}
+
+	e.s.idle = true
+	e.tick() // the color step
+	e.s.sessionStartAt = e.clock.now.Add(time.Second)
+	e.s.idle = false
+	e.tick()
+	if got := count("orch: session start signal read"); got != 2 {
+		t.Errorf("session start logged %d times for a second time, want 2", got)
+	}
+	e.clock.advance(7 * time.Second)
+	e.s.idle = true
+	e.tick() // the plugins step, held for 7s
+	if st := e.state(); st.Stuck != "" {
+		t.Errorf("Stuck = %q after the step was typed, want cleared", st.Stuck)
+	}
+	for _, want := range []string{"orch: injection typed", "step=plugins", "waited=7s"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("log lacks %q:\n%s", want, buf.String())
+		}
+	}
+}
+
 func TestWatcher_AutoCompactionReloadsPluginsThenPointer(t *testing.T) {
 	t.Parallel()
 
@@ -1312,17 +1372,20 @@ func TestWatcher_AutoCompactionBoundaryAtOrBeforeBaselineTriggersNothing(t *test
 }
 
 func TestWatcher_AutoCompactionWaitsForIdleProbe(t *testing.T) {
-	t.Parallel()
-
+	// Not parallel: it captures the process-global logger.
+	buf := logcapture.CaptureVerbose(t)
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(e.clock.now.Add(time.Second))}
 	e.s.usage["a"] = 100
-	e.s.idle = false
+	e.s.idle, e.s.reason = false, "a turn is running"
 	e.endTurn("a")
 	e.assertNoCalls()
-	if st := e.state(); st.Phase != PhaseIdle || !st.CompactionBaseline.IsZero() {
-		t.Fatalf("state = %+v, want idle with the baseline unmoved", st)
+	if st := e.state(); st.Phase != PhaseIdle || !st.CompactionBaseline.IsZero() || st.Stuck != "a turn is running" {
+		t.Fatalf("state = %+v, want idle with the baseline unmoved and the hold recorded", st)
+	}
+	if got := strings.Count(buf.String(), "orch: compaction boundary found"); got != 1 {
+		t.Errorf("boundary found logged %d times, want once when read at the turn end", got)
 	}
 	e.s.idle = true
 	e.tick()

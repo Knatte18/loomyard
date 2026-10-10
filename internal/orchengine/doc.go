@@ -121,14 +121,18 @@
 //     A requested cycle waits no grace: the operator chose the moment, and the idle probe below still guards the pane.
 //   - Session.SessionIdle reports an empty input box with no turn running.
 //
+// The probe is the shuttle engine's readiness reading: the session state the hooks derived decides, and the pane decides only while that reading is unknown.
 // Every idle probe goes through one watcher helper.
-// A probe that reports the pane too short to draw an input box records `orch pane too short for the idle probe; resize or use the larger client` in State.Stuck, saved and logged once, and holds cycles and notice delivery like any failing probe.
-// The next probe that does not report it clears that reason and only that reason, so `lyx orch status` shows the hold in the idle phase too.
+// A probe that is not idle holds cycles and notice delivery, and records why in State.Stuck:
+// its own reason when the reading decided, `orch pane too short for the idle probe; resize or use the larger client` for a pane too short to draw an input box, else a fixed pane text.
+// The reason is saved and logged as `orch: injection held` at Info with the phase, the reload step, the reason and the time since the phase began, once per change of reason; the last reason is watcher memory and not State.
+// A passing probe clears a State.Stuck that a hold wrote and only that, so `lyx orch status` shows the hold in the idle phase too, and a Stuck written by anything else is never overwritten by a hold.
 //
 // Session.SessionState reads the orch session's state from its shuttle run record, which is interactive with a never-written sentinel output, so its turn ends read `asking`.
 // The watcher only logs it: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled` or `asking`, logs `orch: session state disagrees with the idle probe` at Warn.
 // A disagreement is logged once and again only after either side changes, the last pair being watcher memory and not State.
 // A state that cannot be read is logged at Debug, and no probe result, cycle, delivery or State write depends on the state.
+// The same read logs the hook's session-start event as `orch: session start signal read` at Info, once per new time.
 //
 // A soft cycle holds the same gates with `soft_idle_s` in place of the idle grace, and adds one:
 // State.LastDeferral is zero or at least `soft_idle_s` before now.
@@ -246,6 +250,10 @@
 //     Its timeout runs from its first typing and returns to idle with `resume timed out`.
 //   - A step typed before a restart and not confirmed is typed again once the idle probe passes, without a fresh timeout.
 //     Loading a skill twice costs one turn and changes nothing.
+//
+// Each successful typing of a step logs `orch: injection typed` at Info with the phase, the step name, the length of the hold before it and the time since the phase began, and forgets the hold.
+// A boundary found is logged as `orch: compaction boundary found` with its time, when a fresh one is read at a turn end and again when a qualifying one completes a requested compaction,
+// so the delay from boundary to reload is readable from `watch.log` alone.
 //
 // The sequence has three entry points, each entered only on a tick whose idle probe passed:
 //

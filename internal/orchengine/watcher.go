@@ -101,6 +101,13 @@ type Watcher struct {
 	// It is memory only, and binding to another strand clears it.
 	idleDisagreement    idleStatePair
 	hasIdleDisagreement bool
+
+	// lastHeld is the reason the idle probe last held an injection for, as logged and recorded in State.Stuck; empty when none.
+	// heldSince is when that hold began, zero when none, and sessionStartLogged the newest session-start time logged.
+	// All three are memory only: binding to another strand clears them, and a restarted watcher logs again.
+	lastHeld           string
+	heldSince          time.Time
+	sessionStartLogged time.Time
 }
 
 // idleStatePair is one idle probe answer beside the session state it disagreed with.
@@ -221,6 +228,7 @@ func (w *Watcher) tick() (done bool, err error) {
 				logger.Info("orch: stale compaction boundary passed without a reload", "strandGUID", st.Strand, "boundaryAt", boundary.At, "turnEndsAfter", boundary.TurnEndsAfter)
 				st.CompactionBaseline = boundary.At
 			case boundary.TurnEndsAfter == 1 && boundary.ReadTurnEndAfter:
+				logger.Info("orch: compaction boundary found", "strandGUID", st.Strand, "boundaryAt", boundary.At)
 				compactedAt = boundary.At
 			}
 		}
@@ -320,6 +328,7 @@ func (w *Watcher) initCursor(st State) (State, error) {
 	w.compactedAt = time.Time{}
 	w.colorPending = true
 	w.idleDisagreement, w.hasIdleDisagreement = idleStatePair{}, false
+	w.lastHeld, w.heldSince, w.sessionStartLogged = "", time.Time{}, time.Time{}
 	switch {
 	case st.Phase == PhaseIdle:
 		w.cursor = st.LastInjectionOffset
@@ -359,6 +368,7 @@ func (w *Watcher) enter(st State, phase Phase, now time.Time) (State, error) {
 	st.PhaseEventsOffset = w.cursor
 	st.PhaseInjected = false
 	st.Stuck = ""
+	w.heldSince = time.Time{}
 	w.seen = phaseEvents{}
 	return st, w.save(st)
 }
@@ -383,37 +393,119 @@ func (w *Watcher) markStuck(st State, reason string) error {
 // paneTooShortReason is the State.Stuck text recorded while the idle probe reports a pane too short to draw an input box.
 const paneTooShortReason = "orch pane too short for the idle probe; resize or use the larger client"
 
+// paneNotIdleReason is the hold reason of a probe that is not idle and gives no reason of its own: the pane probe decided.
+const paneNotIdleReason = "the pane does not show an empty input box with no turn in progress"
+
+// heldReason returns why probe holds an injection: its own reason, else the pane-too-short text, else the pane fallback.
+func heldReason(probe shuttleengine.IdleProbe) string {
+	switch {
+	case probe.Reason != "":
+		return probe.Reason
+	case probe.TooShort:
+		return paneTooShortReason
+	}
+	return paneNotIdleReason
+}
+
 // probeIdle runs the idle probe, the one door every watcher probe goes through.
-// A probe reporting TooShort records paneTooShortReason in st.Stuck, saved and logged once;
-// the next probe that does not report it clears that reason, and only that reason.
+// A probe that is not idle is logged and recorded in st.Stuck through logHeld;
+// a passing probe clears a Stuck that a hold wrote, and only that.
 func (w *Watcher) probeIdle(st *State) (shuttleengine.IdleProbe, error) {
 	probe, err := w.session.SessionIdle(st.Strand)
 	if err != nil {
 		return probe, err
 	}
 	w.logIdleStateDisagreement(st.Strand, probe)
-	switch {
-	case probe.TooShort && st.Stuck != paneTooShortReason:
-		logger.Warn("orch: pane too short for the idle probe", "phase", string(st.Phase), "strandGUID", st.Strand)
-		st.Stuck = paneTooShortReason
-		return probe, w.save(*st)
-	case !probe.TooShort && st.Stuck == paneTooShortReason:
+	if !probe.Idle {
+		return probe, w.logHeld(st, probe)
+	}
+	if w.lastHeld != "" && st.Stuck == w.lastHeld {
 		st.Stuck = ""
 		return probe, w.save(*st)
 	}
 	return probe, nil
 }
 
+// logHeld logs why the probe holds the injection, once per change of reason, and records the reason in st.Stuck.
+// A Stuck written by anything but a hold is left alone.
+func (w *Watcher) logHeld(st *State, probe shuttleengine.IdleProbe) error {
+	reason := heldReason(probe)
+	now := w.clock.Now()
+	if w.heldSince.IsZero() {
+		w.heldSince = now
+	}
+	if reason != w.lastHeld {
+		logger.Info("orch: injection held", "strandGUID", st.Strand, "phase", string(st.Phase), "step", w.stepName(*st), "reason", reason, "sincePhase", w.sincePhase(*st, now))
+	}
+	record := st.Stuck == "" || st.Stuck == w.lastHeld
+	w.lastHeld = reason
+	if !record || st.Stuck == reason {
+		return nil
+	}
+	st.Stuck = reason
+	return w.save(*st)
+}
+
+// logTyped logs that step was typed into the session, with how long the hold before it lasted, and forgets the hold.
+func (w *Watcher) logTyped(st State, step string) {
+	now := w.clock.Now()
+	var waited time.Duration
+	if !w.heldSince.IsZero() {
+		waited = now.Sub(w.heldSince)
+	}
+	logger.Info("orch: injection typed", "strandGUID", st.Strand, "phase", string(st.Phase), "step", step, "waited", waited, "sincePhase", w.sincePhase(st, now))
+	w.lastHeld, w.heldSince = "", time.Time{}
+}
+
+// stepName names the reload step st is in while it is resuming, and is empty in every other phase.
+func (w *Watcher) stepName(st State) string {
+	if st.Phase != PhaseResuming {
+		return ""
+	}
+	return reloadStepName(w.reloadStep(st))
+}
+
+// sincePhase returns how long st's phase has run at now, or since the newest event was read while idle.
+func (w *Watcher) sincePhase(st State, now time.Time) time.Duration {
+	switch {
+	case st.Phase != PhaseIdle:
+		return now.Sub(st.PhaseEnteredAt)
+	case w.newest != nil:
+		return now.Sub(w.newestRead)
+	}
+	return 0
+}
+
+// reloadStepName returns the name of a reload step as the logs spell it.
+func reloadStepName(step int) string {
+	switch step {
+	case ReloadStepColor:
+		return "color"
+	case ReloadStepPlugins:
+		return "plugins"
+	case ReloadStepSkills:
+		return "skills"
+	case ReloadStepRetry:
+		return "retry"
+	}
+	return "pointer"
+}
+
 // logIdleStateDisagreement warns once when probe reads idle beside the state busy, or not idle beside idle-done, idle-stalled or asking, and again only after either side changes.
-// A probe that reports the pane too short says nothing and is not compared.
+// It also logs the hook's session-start event once per new time.
+// A probe that reports the pane too short is not compared.
 // A state that cannot be read is logged at Debug, and nothing the watcher decides depends on the state.
 func (w *Watcher) logIdleStateDisagreement(strand string, probe shuttleengine.IdleProbe) {
-	if probe.TooShort {
-		return
-	}
 	reading, err := w.session.SessionState(strand)
 	if err != nil {
 		logger.Debug("orch: session state unreadable", "strandGUID", strand, "cause", err)
+		return
+	}
+	if at := reading.SessionStartAt; !at.IsZero() && !at.Equal(w.sessionStartLogged) {
+		w.sessionStartLogged = at
+		logger.Info("orch: session start signal read", "strandGUID", strand, "sessionStartAt", at)
+	}
+	if probe.TooShort {
 		return
 	}
 	state := reading.State
@@ -795,9 +887,11 @@ func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 		}
 	}
 	var err error
-	switch w.reloadStep(st) {
+	step := w.reloadStep(st)
+	switch step {
 	case ReloadStepColor:
 		w.typeColor(st.Strand)
+		w.logTyped(st, reloadStepName(step))
 		st.ReloadStep, st.ReloadTypedAt = ReloadStepPlugins, time.Time{}
 		st.PhaseEventsOffset = w.cursor
 		st.PhaseInjected = false
@@ -807,6 +901,7 @@ func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 		if err := w.session.ReloadPlugins(st.Strand); err != nil {
 			return err
 		}
+		w.logTyped(st, reloadStepName(step))
 		next := ReloadStepSkills
 		if st.ReloadSkipsSkills {
 			next = ReloadStepPointer
@@ -826,6 +921,7 @@ func (w *Watcher) typeReloadStep(st State, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	w.logTyped(st, reloadStepName(step))
 	return w.confirm(st)
 }
 
@@ -1013,6 +1109,7 @@ func (w *Watcher) tickCompacting(st State, now time.Time) error {
 			return err
 		}
 		if idle {
+			logger.Info("orch: compaction boundary found", "strandGUID", st.Strand, "boundaryAt", boundary.At)
 			if err := storeCurrentReading(); err != nil {
 				return err
 			}
