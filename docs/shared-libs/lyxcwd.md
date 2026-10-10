@@ -31,6 +31,7 @@ On failure, an error (e.g. the cwd no longer exists).
 ### `Resolve(cwd string) (*Location, error)`
 
 Builds a `Location` from `cwd` by finding the worktree root in-process through `internal/dotgit`, reading the recorded `.lyx-anchor` marker for `AnchorRel` (defaulting to `"."` when none is recorded), and then requires `cwd` to equal the anchored directory exactly — the strict cwd gate.
+The worktree root has its symlinks resolved, as `git rev-parse --show-toplevel` resolves them, so a hub reached through a symlinked path gets the same `Location` as through its real path.
 
 **Returns:** On success, the resolved `*Location`.
 On failure, `ErrNotAGitRepo` when `cwd` is outside a git repo, or sits in a pruned worktree or one whose gitfile names a missing git dir, or `ErrCwdOutsideAnchor` when `cwd` is not exactly the anchored directory.

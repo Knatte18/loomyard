@@ -66,6 +66,7 @@ func IsRepository(g Geometry) bool {
 // A directory whose `.git` is a directory ends the walk only when IsRepository holds; otherwise the walk skips it, as git does.
 // A directory whose `.git` is a file ends the walk too, but one whose target is missing or fails IsRepository is ErrNotRepository and never resolves to an enclosing repository.
 // Reaching the filesystem root without a repository is ErrNotRepository.
+// The root is returned as walked from start, with symlinks unresolved, where git resolves them.
 func FindRoot(start string) (root string, g Geometry, err error) {
 	dir := filepath.Clean(start)
 	for {

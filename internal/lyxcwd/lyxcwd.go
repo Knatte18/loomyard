@@ -141,7 +141,8 @@ func resolveWithAnchorCore(cwd, anchor string, applyGate bool) (*Location, error
 	return buildLocation(cwd, workTreeRoot, hubPath, anchor, applyGate)
 }
 
-// gitWorktreeRoot finds the worktree root at or above cwd in-process and returns it cleaned.
+// gitWorktreeRoot finds the worktree root at or above cwd in-process and returns it with symlinks resolved, as `git rev-parse --show-toplevel` does.
+// A worktree reached through a symlinked path thus gets the same hub path, and with it the same reed socket key, as through its real path.
 // Any failure, including a pruned worktree or a gitfile naming a missing git dir, is the bare sentinel.
 // It is returned unwrapped, so errors.Is(err, ErrNotAGitRepo) keeps matching at every consumer that pins its exact rendering.
 func gitWorktreeRoot(cwd string) (string, error) {
@@ -149,7 +150,11 @@ func gitWorktreeRoot(cwd string) (string, error) {
 	if err != nil {
 		return "", ErrNotAGitRepo
 	}
-	return filepath.Clean(workTreeRoot), nil
+	resolved, err := filepath.EvalSymlinks(workTreeRoot)
+	if err != nil {
+		return "", ErrNotAGitRepo
+	}
+	return resolved, nil
 }
 
 // buildLocation assembles the Location from its resolved parts and optionally

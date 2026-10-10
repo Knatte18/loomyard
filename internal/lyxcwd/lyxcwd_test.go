@@ -8,10 +8,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
@@ -189,6 +191,28 @@ func TestResolve_AnchorScenario(t *testing.T) {
 			writeAnchor(t, base.HubPath, ".")
 			requireAnchorRel(t, root, ".")
 		})
+	}) {
+		return
+	}
+
+	// A start reached through a symlink resolves to the real root's Location, as `git rev-parse --show-toplevel` resolves it, so one hub never gets two hub paths.
+	// Windows links are junctions, which filepath.EvalSymlinks leaves unresolved as a mount point.
+	if !t.Run("symlinked start", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("fslink creates a junction on Windows, which is not resolved")
+		}
+		link := filepath.Join(t.TempDir(), "link")
+		if err := fslink.CreateDirLink(link, root); err != nil {
+			t.Fatalf("link %s -> %s: %v", link, root, err)
+		}
+
+		got, err := lyxcwd.Resolve(link)
+		if err != nil {
+			t.Fatalf("Resolve(%q) error = %v; want nil", link, err)
+		}
+		if want := (lyxcwd.Location{RepoName: base.RepoName, HubPath: base.HubPath, WorktreeName: base.WorktreeName, AnchorRel: "."}); *got != want {
+			t.Errorf("Resolve(%q) = %+v; want %+v", link, *got, want)
+		}
 	}) {
 		return
 	}
