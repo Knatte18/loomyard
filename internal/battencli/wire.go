@@ -303,8 +303,9 @@ func finishRemoval(res fabricengine.RemoveResult, err error, slug string) error 
 // teardownRequest is the composite's request for a batten-driven teardown.
 // Remote is true: a batten-driven teardown is the task's own final removal, never a step toward re-adopting the pair, so nothing will ever need the pair's other-side branch again, and a remote copy left behind makes a later create of this slug refuse its push.
 // It never forces, and it neither waits for a quiet driver nor refuses a busy one, since the InnerRun done arm already waited its driver_exit_grace_s.
+// Landed is true: the row runs only after a done child, so the task's board entry is marked done once the pair is removed.
 func teardownRequest(slug string) pairteardown.Request {
-	return pairteardown.Request{Slug: slug, Force: false, Remote: true, QuietWait: 0, RefuseWhenBusy: false}
+	return pairteardown.Request{Slug: slug, Force: false, Remote: true, QuietWait: 0, RefuseWhenBusy: false, Landed: true}
 }
 
 // teardownRefusal rewords the teardown refusal for content in the pair's sibling the teardown could not commit, names the resume for a failed archive of the run records, and passes every other error through unchanged.

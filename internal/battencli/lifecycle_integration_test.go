@@ -479,11 +479,27 @@ func stepFourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T, h *hubforge.Hub)
 		t.Fatalf("pair does not exist after Run-Shed: %s", pairPath)
 	}
 
+	// The entry stands at a run status, as a run holds it.
+	// Only the teardown request's landed flag can turn it done, since the stubbed child status holds no Finalize Done and batten's own run is still running.
+	boardConfig, err := boardengine.LoadConfig(h.BoardDir(), "board")
+	if err != nil {
+		t.Fatalf("load board config: %v", err)
+	}
+	boardConfig.Path = h.BoardDir()
+	board := boardengine.New(boardConfig)
+	runStatus := boardengine.RunStatus("running", "Run-Shed")
+	if err := board.SetStatus(slug, &runStatus); err != nil {
+		t.Fatalf("hold the board entry at a run status: %v", err)
+	}
+
 	if _, err := shed.Step(ctx); err != nil {
 		t.Fatalf("Step (Worktree-Teardown): %v", err)
 	}
 	if pathExists(pairPath) {
 		t.Errorf("pair still exists after Worktree-Teardown: %s", pairPath)
+	}
+	if task, found, err := board.GetTask(slug); err != nil || !found || task.Status == nil || *task.Status != "done" {
+		t.Errorf("board entry after Worktree-Teardown = (%+v, %v, %v); want status done", task, found, err)
 	}
 
 	// Teardown's own top.Remove call passes remote: true -- a batten-driven teardown is the task's

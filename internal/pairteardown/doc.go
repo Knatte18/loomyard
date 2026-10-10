@@ -28,6 +28,17 @@
 // RemovePair then calls Topology.Remove.
 // It repeats the probe's checks, so a refusal raised only by Remove means the pair changed between probe and removal, and the session is already ended.
 //
+// # Board claim
+//
+// After a successful removal, RemovePair settles the board entry of the removed pair's slug, so no route leaves a run's claim behind.
+// Whether the work landed is read before the removal, since the task worktree's status file goes with it: the request's Landed flag, or a Finalize with outcome Done in that status file's history.
+// A task worktree already gone is not landed, and a failed read of the answer leaves the board alone.
+// An entry with no status, a done status or a status without the run form is kept.
+// A landed run's entry is marked done.
+// Otherwise an entry whose run batten never seeded, or whose batten run is paused, blocked, failed or awaiting, is cleared; a batten run that is done marks it done; a running one holds it, and the settle only warns, naming `lyx batten status <slug>` and `lyx batten pause <slug>`.
+// A board or status read failure warns and writes nothing, and a failed removal settles nothing.
+// A run whose Finalize merged but failed its done mark and stopped on its push holds no Finalize Done, so its entry ends cleared, for the operator to mark done with `lyx board set-status`.
+//
 // # Quiet rule
 //
 // A pair is quiet when its run lock and its loop lock are free and its driver strand is absent, dead, retiring or parked.
