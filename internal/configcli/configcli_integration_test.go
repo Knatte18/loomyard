@@ -12,11 +12,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -176,6 +180,33 @@ func TestConfigOverRealHub(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("hub-wide write guard: the menu from a task pair is refused naming the prime", func(t *testing.T) {
+		t.Setenv(agentname.StrandNameEnv, "")
+		// An editor that exits at once keeps a missing guard from opening a real one; the refusal is what the test pins.
+		t.Setenv("VISUAL", "true")
+		boardChoice := slices.IndexFunc(configreg.Modules(), func(m configreg.Module) bool { return m.Name == "board" }) + 1
+		hubFile := configengine.ConfigFile(boardDir, "board")
+		before, err := os.ReadFile(hubFile)
+		if err != nil {
+			t.Fatalf("read hub board.yaml: %v", err)
+		}
+
+		cmd := Command()
+		cmd.SetIn(strings.NewReader(strconv.Itoa(boardChoice) + "\n"))
+		var out bytes.Buffer
+		if code := clihelp.ExecuteIn(cmd, codeWorktreePath, &out, []string{"menu"}); code != 1 {
+			t.Fatalf("lyx config menu = %d; want 1; output: %s", code, out.String())
+		}
+		menuListing, envelope, _ := strings.Cut(out.String(), "{")
+		if !strings.Contains(menuListing, "board") {
+			t.Errorf("menu listing = %q; want it to list board", menuListing)
+		}
+		assertJSONErrContains(t, "{"+envelope, "prime worktree")
+		if after, err := os.ReadFile(hubFile); err != nil || !bytes.Equal(before, after) {
+			t.Errorf("hub board.yaml = %q, %v after a refused menu edit; want it unchanged", after, err)
+		}
+	})
 
 	for _, row := range rows {
 		t.Run("hub-wide "+row.module+" --set commits in _board", func(t *testing.T) {
