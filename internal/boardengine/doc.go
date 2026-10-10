@@ -37,6 +37,7 @@
 // # README
 //
 // Every write renders README.md, with a Tasks section split into dependency layers, a Notes section grouped by type label in the order of the types list with the remainder under Other, and a Done section.
+// A task a run holds, by IsRunStatus as the run lock decides it, goes under a Running subsection written before the layers and in no layer; the subsection is omitted when no task runs.
 // Each entry line carries its labels and status, and the After and Before lists come from depends_on.
 //
 // # Intake

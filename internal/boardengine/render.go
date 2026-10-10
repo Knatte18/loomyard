@@ -1,7 +1,7 @@
 // render.go — turns the entry list into the wiki's output files.
 //
 // Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderTasksSection, plus design-*.md for any entry with a body).
-// The README reads like a roadmap: Tasks split into dependency layers, Notes with one subsection per type label, then Done, each entry one numbered item showing its labels.
+// The README reads like a roadmap: Tasks split into a Running subsection and dependency layers, Notes with one subsection per type label, then Done, each entry one numbered item showing its labels.
 // The section names and their meaning lines are declared here alone;
 // the data holds only the kind and the labels.
 // No I/O — the caller writes the files.
@@ -104,11 +104,12 @@ type readmeSection struct {
 	meaning string
 }
 
-// The README's Tasks, Notes and Done sections, declared here alone.
+// The README's Tasks, Notes and Done sections and the Running subsection of Tasks, declared here alone.
 var (
-	tasksSection = readmeSection{"Tasks", "Concrete and claimable; only a task can run."}
-	notesSection = readmeSection{"Notes", "Not tasks: ideas and observations, merged into a task when one is promoted."}
-	doneSection  = readmeSection{"Done", "Finished, awaiting `lyx board prune`."}
+	tasksSection   = readmeSection{"Tasks", "Concrete and claimable; only a task can run."}
+	runningSection = readmeSection{"Running", "Held by a run; its scope is locked until the run ends."}
+	notesSection   = readmeSection{"Notes", "Not tasks: ideas and observations, merged into a task when one is promoted."}
+	doneSection    = readmeSection{"Done", "Finished, awaiting `lyx board prune`."}
 )
 
 // otherNotesHeading is the Notes subsection for a note whose type label is no longer configured.
@@ -157,7 +158,7 @@ func metaLineWithSlug(t Task, slug string, middle ...string) string {
 	return strings.Join(parts, " · ")
 }
 
-// renderTasksSection builds the README: a title, an intro, Tasks split into dependency layers, Notes split by type label, then Done when any entry is done.
+// renderTasksSection builds the README: a title, an intro, Tasks split into Running and dependency layers, Notes split by type label, then Done when any entry is done.
 func renderTasksSection(ordered []TaskWithLayer, designPrefix string, types []string) string {
 	lines := []string{
 		"# Board",
@@ -190,11 +191,21 @@ func renderTasksSection(ordered []TaskWithLayer, designPrefix string, types []st
 	}
 
 	lines = append(lines, "## "+tasksSection.name, "", tasksSection.meaning, "")
-	var tasks []TaskWithLayer
+	// A task a run holds goes under Running, split on the run lock's own predicate so README and lock agree.
+	var running, tasks []TaskWithLayer
 	for _, twl := range ordered {
-		if !isDone(twl.Task) && twl.Kind == KindTask {
+		if isDone(twl.Task) || twl.Kind != KindTask {
+			continue
+		}
+		if IsRunStatus(twl.Status) {
+			running = append(running, twl)
+		} else {
 			tasks = append(tasks, twl)
 		}
+	}
+	if len(running) > 0 {
+		lines = append(lines, "### "+runningSection.name, "", runningSection.meaning, "")
+		writeEntries(running)
 	}
 	for start := 0; start < len(tasks); {
 		end := start
