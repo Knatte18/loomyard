@@ -993,22 +993,60 @@ func TestRun_AutoRebaseline(t *testing.T) {
 		}
 	})
 
-	t.Run("a blocking plan-validation finding after the rebaseline blocks the row", func(t *testing.T) {
-		fx := seed(t, 1, nil)
-		writeWorktreeFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n")
-		addCards(t, fx, 2)
-		addCardUses(t, fx.PlanDir, 2, "sub#Missing")
+	// The zero-batch refusal is not among the rows: a plan with no card fails to load, and the batches a rebaseline records cover every card, so no plan reaches it after an accepted rebaseline.
+	t.Run("a plan refusal or quarry transient after the rebaseline blocks the row", func(t *testing.T) {
+		cases := []struct {
+			name string
+			// arrange seeds the run and changes its plan so the accepted rebaseline is followed by the refusal.
+			arrange func(t *testing.T) *runFixture
+			// wantIs is a sentinel the error also wraps.
+			wantIs error
+			want   []string
+		}{
+			{
+				name: "a blocking plan-validation finding",
+				arrange: func(t *testing.T) *runFixture {
+					fx := seed(t, 1, nil)
+					writeWorktreeFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n")
+					addCards(t, fx, 2)
+					addCardUses(t, fx.PlanDir, 2, "sub#Missing")
+					return fx
+				},
+				want: []string{"glyph-not-found", "then " + reStep},
+			},
+			{
+				name: "quarry unable to answer",
+				arrange: func(t *testing.T) *runFixture {
+					fx := seed(t, 1, nil)
+					addCards(t, fx, 2)
+					fx.Deps.Geom.WorktreeRoot = filepath.Join(t.TempDir(), "no-such-tree")
+					return fx
+				},
+				wantIs: planglyph.ErrQuarryUnavailable,
+				want:   []string{"quarry could not answer", "way forward: transient, " + reStep + " once quarry answers"},
+			},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				fx := tc.arrange(t)
 
-		_, err := autoRun(fx)
-		if !errors.Is(err, websterengine.ErrAutoRebaseline) || !strings.HasPrefix(err.Error(), warningLead) {
-			t.Fatalf("Run() error = %v; want ErrAutoRebaseline opening with the rebaseline warning", err)
-		}
-		if !strings.Contains(err.Error(), "glyph-not-found") || !strings.Contains(err.Error(), "then "+reStep) {
-			t.Errorf("Run() error = %q; want the finding and re-stepping the row", err)
-		}
-		requireNoManualVerb(t, err)
-		if got := fx.Starter.callCount(); got != 0 {
-			t.Errorf("Starter calls = %d; want none", got)
+				_, err := autoRun(fx)
+				if !errors.Is(err, websterengine.ErrAutoRebaseline) || !strings.HasPrefix(err.Error(), warningLead) {
+					t.Fatalf("Run() error = %v; want ErrAutoRebaseline opening with the rebaseline warning", err)
+				}
+				if tc.wantIs != nil && !errors.Is(err, tc.wantIs) {
+					t.Errorf("Run() error = %v; want it to wrap %v too", err, tc.wantIs)
+				}
+				for _, want := range tc.want {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("Run() error = %q; want it to contain %q", err, want)
+					}
+				}
+				requireNoManualVerb(t, err)
+				if got := fx.Starter.callCount(); got != 0 {
+					t.Errorf("Starter calls = %d; want none", got)
+				}
+			})
 		}
 	})
 
