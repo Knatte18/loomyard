@@ -60,6 +60,7 @@ var InterruptPolicies = map[string]string{
 	NamePublish:           InterruptPolicyReinvoke,
 	NamePRGate:            InterruptPolicyReinvoke, // spawns nothing
 	NamePRRework:          InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
+	NameDarn:              InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
 	NameFinalize:          InterruptPolicyReinvoke,
 	NameFrictionReflect:   InterruptPolicyReinvoke,
 }

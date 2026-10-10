@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/google/go-github/v75/github"
 )
 
@@ -62,10 +63,42 @@ func rejectFixture() (rejectDeps, *rejectCalls) {
 			calls.written = append(calls.written, r)
 			return nil
 		},
-		routing: rejectRouting(),
-		now:     func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) },
+		routing:          rejectRouting(),
+		reworkRow:        loomshed.NamePRRework,
+		rejectionPending: func() (bool, error) { return false, nil },
+		now:              func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) },
 	}
 	return d, calls
+}
+
+// darnRejectRouting is the darn recipe's PR-Review pair: the gate bounces to the Darn row.
+func darnRejectRouting() shedengine.Routing {
+	return shedengine.Routing{
+		Entry: loomshed.NamePRGate,
+		Producers: []shedengine.ProducerDef{
+			{Name: loomshed.NamePRGate, Segment: "PR-Review", MaxBounces: 2, OnStuck: loomshed.NameDarn},
+			{Name: loomshed.NameDarn, Segment: "PR-Review"},
+		},
+	}
+}
+
+// asDarn turns d into the deps of a darn run, whose rework row is Darn and whose rejection record is pending as given.
+func asDarn(d *rejectDeps, pending bool) {
+	d.routing = darnRejectRouting()
+	d.reworkRow = loomshed.NameDarn
+	d.rejectionPending = func() (bool, error) { return pending, nil }
+}
+
+func TestReworkRowFor(t *testing.T) {
+	for recipe, want := range map[string]string{
+		"":                 loomshed.NamePRRework,
+		shedrun.RecipeLoom: loomshed.NamePRRework,
+		shedrun.RecipeDarn: loomshed.NameDarn,
+	} {
+		if got := reworkRowFor(recipe); got != want {
+			t.Errorf("reworkRowFor(%q) = %q; want %q", recipe, got, want)
+		}
+	}
 }
 
 // stuckHistory returns n Stuck entries for the gate row.
@@ -116,6 +149,26 @@ func TestRejectVerb_Refusals(t *testing.T) {
 				}
 			},
 			wantMsg: "not awaiting or blocked",
+		},
+		{
+			name: "DarnBlockedWithNoRejectionPending",
+			mutate: func(d *rejectDeps) {
+				asDarn(d, false)
+				d.readStatus = func() (shedengine.Status, bool, error) {
+					return shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NameDarn}, true, nil
+				}
+			},
+			wantMsg: "no rejection pending",
+		},
+		{
+			name: "DarnRunAtPRReworkNamesBothRows",
+			mutate: func(d *rejectDeps) {
+				asDarn(d, true)
+				d.readStatus = func() (shedengine.Status, bool, error) {
+					return shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NamePRRework}, true, nil
+				}
+			},
+			wantMsg: "blocked at PR-Gate, nor blocked at Darn",
 		},
 		{
 			name: "BudgetExhaustedAtGate",
@@ -197,14 +250,21 @@ func TestRejectVerb_Success(t *testing.T) {
 	tests := []struct {
 		name   string
 		status shedengine.Status
+		// darn makes the deps a darn run's with a rejection pending.
+		darn bool
 	}{
-		{"AwaitingGate", shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: loomshed.NamePRGate}},
+		{"AwaitingGate", shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: loomshed.NamePRGate}, false},
 		// The budget is not consulted at the rework row, so a record is replaced past it.
-		{"BlockedReworkPastBudget", shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NamePRRework, History: stuckHistory(2)}},
+		{"BlockedReworkPastBudget", shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NamePRRework, History: stuckHistory(2)}, false},
+		{"DarnAwaitingGate", shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: loomshed.NamePRGate}, true},
+		{"DarnBlockedWithRejectionPending", shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: loomshed.NameDarn, History: stuckHistory(2)}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			d, calls := rejectFixture()
+			if tt.darn {
+				asDarn(&d, true)
+			}
 			d.readStatus = func() (shedengine.Status, bool, error) { return tt.status, true, nil }
 			var out bytes.Buffer
 			if code := rejectVerb(context.Background(), &out, d, "review.md"); code != 0 {

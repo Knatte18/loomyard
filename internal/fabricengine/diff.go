@@ -96,6 +96,20 @@ func (f *Fabric) Diff(sinceWarpSHA string) (DiffResult, error) {
 	return DiffResult{Entries: entries}, nil
 }
 
+// DirtyPaths returns the tracked uncommitted paths of both checkouts of the pair, each as an absolute path under its own checkout, with no side label.
+// It reads the tracked scope the dirty-worktree merge guard reads, so an untracked file the guard never objected to is not listed.
+func (f *Fabric) DirtyPaths() ([]string, error) {
+	warpPaths, err := trackedDirtyPaths(f.warpPath)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: dirty paths warp side: %w", err)
+	}
+	weftPaths, err := trackedDirtyPaths(f.weftPath)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: dirty paths weft side: %w", err)
+	}
+	return append(warpPaths, weftPaths...), nil
+}
+
 // Status reports every currently-uncommitted path across both sides of the warp<->weft pair, merged
 // into one side-labelled slice.
 // Unlike Diff, there is no correspondence anchor involved — this is a live worktree read.

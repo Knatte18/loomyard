@@ -34,6 +34,7 @@ func minimalEntries() map[string]minimalEntry {
 			cfg: emptyConfig,
 		},
 		"PRRework":        {reworkTestEnv, emptyConfig},
+		"DarnWrite":       {darnTestEnv, emptyConfig},
 		"Finalize":        {withLanding, emptyConfig},
 		"FrictionReflect": {newTestEnv, emptyConfig},
 		"LoomPreflight":   {newTestEnv, emptyConfig},

@@ -2,9 +2,11 @@ package websterengine
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -22,11 +24,14 @@ type gateFake struct {
 	rejection [2]string
 	// results are the verify results, consumed one per verify call.
 	// The last one repeats.
+	// Each call's result names its own log, `/verify/verify-<call>.log`.
 	results []verifytree.Result
-	// logs are the verify logs, consumed one per read.
+	// logs are the contents of the verify logs, one per verify call in call order.
 	// The last one repeats.
 	logs []string
 
+	// issuedLogs are the log paths the verify calls named, in call order.
+	issuedLogs     []string
 	verifyCalls    int
 	rejectionBases []string
 	sites          []verifytree.Site
@@ -38,7 +43,6 @@ type gateFake struct {
 }
 
 func (f *gateFake) seams() verifyGateSeams {
-	logIdx := 0
 	return verifyGateSeams{
 		outcome:       func() (string, error) { return f.outcome, nil },
 		verifyCommand: func() (string, error) { return f.command, nil },
@@ -53,14 +57,17 @@ func (f *gateFake) seams() verifyGateSeams {
 			f.sites = append(f.sites, site)
 			res := f.results[min(f.verifyCalls, len(f.results)-1)]
 			f.verifyCalls++
+			res.Log = fmt.Sprintf("/verify/verify-%d.log", f.verifyCalls)
+			f.issuedLogs = append(f.issuedLogs, res.Log)
 			return res, nil
 		},
-		readLog: func() (string, error) {
-			log := f.logs[min(logIdx, len(f.logs)-1)]
-			logIdx++
-			return log, nil
+		readLog: func(path string) (string, error) {
+			run := slices.Index(f.issuedLogs, path)
+			if run < 0 {
+				return "", fmt.Errorf("no verify call named log %s", path)
+			}
+			return f.logs[min(run, len(f.logs)-1)], nil
 		},
-		logPath: "/verify/verify.log",
 		trail: func() ([]string, []string, error) {
 			return []string{"c1", "c2"}, []string{"01-first", "02-second"}, nil
 		},
@@ -169,9 +176,11 @@ func TestVerifyGate_TimedOutVerifyFailsAtOnceWithoutRerun(t *testing.T) {
 		results       []verifytree.Result
 		logs          []string
 		wantVerifyRun int
+		// wantLog is the timed-out run's own log.
+		wantLog string
 	}{
-		{name: "first run times out", results: []verifytree.Result{timedOut}, logs: []string{"hung in TestSlow\n"}, wantVerifyRun: 1},
-		{name: "rerun times out", results: []verifytree.Result{failedResult(), timedOut}, logs: []string{failingPackageLog, "hung in TestSlow\n"}, wantVerifyRun: 2},
+		{name: "first run times out", results: []verifytree.Result{timedOut}, logs: []string{"hung in TestSlow\n"}, wantVerifyRun: 1, wantLog: "/verify/verify-1.log"},
+		{name: "rerun times out", results: []verifytree.Result{failedResult(), timedOut}, logs: []string{failingPackageLog, "hung in TestSlow\n"}, wantVerifyRun: 2, wantLog: "/verify/verify-2.log"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -198,10 +207,10 @@ func TestVerifyGate_TimedOutVerifyFailsAtOnceWithoutRerun(t *testing.T) {
 			if err != nil {
 				t.Fatalf("readVerifyGateReport() error = %v", err)
 			}
-			if report.TimedOut != verifytree.Timeout.String() || report.LogPath != "/verify/verify.log" || !strings.Contains(report.LogTail, "hung in TestSlow") || len(report.Failures) != 0 {
-				t.Errorf("report = %+v; want the timeout, the log path and the log tail, with no failures", report)
+			if report.TimedOut != verifytree.Timeout.String() || report.LogPath != tt.wantLog || !strings.Contains(report.LogTail, "hung in TestSlow") || len(report.Failures) != 0 {
+				t.Errorf("report = %+v; want the timeout, the log path %s and the log tail, with no failures", report, tt.wantLog)
 			}
-			for _, want := range []string{"did not finish within 1h0m0s and was killed", "/verify/verify.log", "hung in TestSlow"} {
+			for _, want := range []string{"did not finish within 1h0m0s and was killed", tt.wantLog, "hung in TestSlow"} {
 				if !strings.Contains(res.Findings, want) {
 					t.Errorf("findings = %q; want %q in it", res.Findings, want)
 				}
@@ -248,8 +257,9 @@ func TestVerifyGate_FailedEvaluationWritesReport(t *testing.T) {
 	if want := []string{"fix1", "fix2"}; !reflect.DeepEqual(report.FixCommits, want) {
 		t.Errorf("report fix commits = %v; want %v", report.FixCommits, want)
 	}
-	if report.LogPath != "/verify/verify.log" {
-		t.Errorf("report log path = %q; want the verify log", report.LogPath)
+	// The second evaluation's rerun is the fourth verify call, and the report names its log.
+	if report.LogPath != "/verify/verify-4.log" {
+		t.Errorf("report log path = %q; want the log of the run it reports on, /verify/verify-4.log", report.LogPath)
 	}
 	for _, want := range []string{"example.com/mod/internal/a", "02-second", "attempt 2 of 3"} {
 		if !strings.Contains(second.Findings, want) {

@@ -78,27 +78,31 @@ func TestNew_ShapeMatchesRecipe(t *testing.T) {
 	}
 }
 
-// TestRecipe_StructuralCheckHasNoFindings parses recipes.LoomRecipe through shedbuild.Parse, builds
+// TestRecipe_StructuralCheckHasNoFindings parses each embedded recipe through shedbuild.Parse, builds
 // it through shedbuild.Build against testEnv(t)'s Env, and asserts shedbuild.Check(recipe, built)
 // returns no findings.
 //
 // This goes through Parse/Build rather than through New deliberately: it needs the parsed Recipe
 // value, which New does not return, so it must not be "simplified" back onto New.
 func TestRecipe_StructuralCheckHasNoFindings(t *testing.T) {
-	env, _ := testEnv(t)
+	for name, source := range map[string][]byte{"loom": recipes.LoomRecipe, "darn": recipes.DarnRecipe} {
+		t.Run(name, func(t *testing.T) {
+			env, _ := testEnv(t)
 
-	recipe, err := shedbuild.Parse(recipes.LoomRecipe)
-	if err != nil {
-		t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
-	}
+			recipe, err := shedbuild.Parse(source)
+			if err != nil {
+				t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
+			}
 
-	built, err := shedbuild.Build(recipe, env)
-	if err != nil {
-		t.Fatalf("shedbuild.Build() error = %v; want nil", err)
-	}
+			built, err := shedbuild.Build(recipe, env)
+			if err != nil {
+				t.Fatalf("shedbuild.Build() error = %v; want nil", err)
+			}
 
-	if findings := shedbuild.Check(recipe, built); len(findings) != 0 {
-		t.Errorf("shedbuild.Check() = %v; want no findings", findings)
+			if findings := shedbuild.Check(recipe, built); len(findings) != 0 {
+				t.Errorf("shedbuild.Check() = %v; want no findings", findings)
+			}
+		})
 	}
 }
 
@@ -199,14 +203,14 @@ func TestRecipe_SeedAndResumeRowNamesExist(t *testing.T) {
 }
 
 // TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet asserts RecipeEngines() reports exactly loom's
-// own recipe's engine set plus the substituted discussionSeatsEngine, sorted and de-duplicated -- derived from wantProducerTable's own engine
+// own recipe's engine set plus the substituted discussionSeatsEngine and the darn recipe's DarnWrite, sorted and de-duplicated -- derived from wantProducerTable's own engine
 // column rather than a second hand-written literal, for the same reason its battenrecipe twin
 // gets this test: a silently empty return would disable the cross-consumer coverage guard rather
 // than fail it.
 func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
-	// The Discussion-Write row's substituted engine is one a loom row can reach, beside the default build's.
-	seen := map[string]bool{discussionSeatsEngine: true}
-	want := []string{discussionSeatsEngine}
+	// The Discussion-Write row's substituted engine and the darn recipe's writer are ones a loom row can reach, beside the default build's.
+	seen := map[string]bool{discussionSeatsEngine: true, "DarnWrite": true}
+	want := []string{discussionSeatsEngine, "DarnWrite"}
 	for _, row := range wantProducerTable {
 		engine := row.engine
 		if seen[engine] {

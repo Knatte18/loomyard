@@ -58,6 +58,7 @@ func newTestEnv(t *testing.T) Env {
 		AnchorPath:     mustMkdir("anchor"),
 		WorktreeRoot:   mustMkdir("worktree"),
 		VerifyDir:      mustMkdir("verify"),
+		VerifyCommand:  func() (string, error) { return "go test ./...", nil },
 		StatusPath:     filepath.Join(dir, "status.json"),
 		StatusLockPath: filepath.Join(dir, "status.json.lock"),
 		StencilsDir:    mustMkdir("stencils"),

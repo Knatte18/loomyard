@@ -25,6 +25,7 @@ internal/configcli: 10
 internal/configengine: 13
 internal/configreg: 7
 internal/configsync: 6
+internal/darnengine: 4
 internal/discussionparser: 16
 internal/dotgit: 3
 internal/editdirective: 2
@@ -41,7 +42,7 @@ internal/gateslot: 11
 internal/gitexec: 7
 internal/githubclient: 11
 internal/gitkit: 9
-internal/gitrepo: 40
+internal/gitrepo: 41
 internal/gitrepo/internal/gitoracle: 1
 internal/helpcli: 1
 internal/hubforge: 7
@@ -54,10 +55,10 @@ internal/landingshed: 67
 internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
-internal/loomcli: 187
+internal/loomcli: 195
 internal/loomengine: 41
-internal/loomrecipe: 46
-internal/loomshed: 73
+internal/loomrecipe: 50
+internal/loomshed: 76
 internal/lyxcwd: 23
 internal/mergeresolve: 17
 internal/modelspec: 11
@@ -86,7 +87,7 @@ internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
 internal/shedengine: 133
-internal/shedrecipe: 100
+internal/shedrecipe: 102
 internal/shedrun: 22
 internal/shedtransient: 2
 internal/shedverbs: 80

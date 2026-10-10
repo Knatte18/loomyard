@@ -85,6 +85,7 @@ func TestNames(t *testing.T) {
 			"Batchifier",
 			"Bouncer",
 			"BurlerRound",
+			"DarnWrite",
 			"Describe",
 			"DiscussionSeats",
 			"DiscussionWrite",

@@ -175,6 +175,12 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return outcome, out, err
 	}
 
+	// Step 2b: commit the parent pair's own run records,
+	// so a sibling run's uncommitted status record does not trip the parent-side merge guard.
+	if outcome, out, err, done := fz.commitParentRecords(ctx); done {
+		return outcome, out, err
+	}
+
 	// Step 3: obtain the parent pair's handle. This producer never creates a worktree to merge
 	// into; materializing a pair is a separate command's job and a human's decision.
 	parentHandle, err := fz.parentOpener()
@@ -199,6 +205,9 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	var mergeInRequired *fabricengine.ErrMergeInRequired
 	if errors.As(mergeErr, &mergeInRequired) {
 		if outcome, out, err, done := fz.mergeInStep(ctx); done {
+			return outcome, out, err
+		}
+		if outcome, out, err, done := fz.commitParentRecords(ctx); done {
 			return outcome, out, err
 		}
 		_, retryErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
@@ -379,6 +388,21 @@ func (fz *Finalize) mergeInStep(ctx context.Context) (shedengine.Outcome, sheden
 		return outcome, out, err, true
 	}
 	return "", shedengine.OutputPointer{}, nil, false
+}
+
+// commitParentRecords commits the parent pair's run records through Deps.CommitParentRecords, and is a no-op when no seam is wired.
+// done is true when the step ends the Call: a Stuck verdict naming the parent pair and its run records, or a cancellation.
+func (fz *Finalize) commitParentRecords(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	if fz.deps.CommitParentRecords == nil {
+		return "", shedengine.OutputPointer{}, nil, false
+	}
+	err := fz.deps.CommitParentRecords()
+	if err == nil {
+		return "", shedengine.OutputPointer{}, nil, false
+	}
+	reason := fmt.Sprintf("the parent pair's run records could not be committed: %v; way forward: run \"lyx fabric commit\" in the parent pair, then \"lyx loom resume\"", err)
+	outcome, out, stuckErr := fz.stuckOrCancelled(ctx, reason, "error", err)
+	return outcome, out, stuckErr, true
 }
 
 // gateStop maps one gate call's result onto mergeInStep's return.

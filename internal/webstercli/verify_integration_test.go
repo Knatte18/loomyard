@@ -85,9 +85,10 @@ func TestVerifyVerb_SecondCallOnTheSameTreeSkips(t *testing.T) {
 	if code, _ := fx.run(t); code != 0 {
 		t.Fatalf("first verify = %d; want 0", code)
 	}
-	paths := verifytree.NewPaths(fx.Worktree, fx.CLI.geom.VerifyDir)
-	if err := os.Remove(paths.Log); err != nil {
-		t.Fatalf("remove the first run's log: %v", err)
+	logPattern := filepath.Join(fx.CLI.geom.VerifyDir, "verify-*.log")
+	logsBefore, err := filepath.Glob(logPattern)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	code, env := fx.run(t)
@@ -95,8 +96,8 @@ func TestVerifyVerb_SecondCallOnTheSameTreeSkips(t *testing.T) {
 	if code != 0 || env.Raw["status"] != string(verifytree.StatusSkipped) {
 		t.Errorf("second verify = %d, envelope %+v; want 0 and status %q", code, env, verifytree.StatusSkipped)
 	}
-	if _, err := os.Stat(paths.Log); err == nil {
-		t.Errorf("the second verify ran the command: it wrote %s", paths.Log)
+	if logs, err := filepath.Glob(logPattern); err != nil || len(logs) != len(logsBefore) {
+		t.Errorf("verify logs after the second verify = %q, %v; want %q, the command not to have run", logs, err, logsBefore)
 	}
 }
 
@@ -115,8 +116,8 @@ func TestVerifyVerb_FailureExitsOneWithFindings(t *testing.T) {
 	if findings["exit_code"] != float64(3) {
 		t.Errorf("findings exit_code = %v; want 3", findings["exit_code"])
 	}
-	if _, ok := findings["log"].(string); !ok {
-		t.Errorf("findings carry no log path: %+v", findings)
+	if want := filepath.Join(fx.CLI.geom.VerifyDir, "verify-1.log"); findings["log"] != want {
+		t.Errorf("findings log = %v; want the run's own log %s", findings["log"], want)
 	}
 }
 

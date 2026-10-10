@@ -75,6 +75,7 @@ func TestWire_Real_PublishRejectedPushNamesRemoteTip(t *testing.T) {
 		"",
 		nil,
 		nil,
+		planVerifySource(location),
 	)
 	// The pair has no run status file to commit and no plan to read a verify command from.
 	deps.CommitStatus = nil

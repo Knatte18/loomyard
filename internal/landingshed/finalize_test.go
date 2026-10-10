@@ -253,7 +253,19 @@ func TestFinalize_UnusableSummaryArtifact_ErrorBeforeMergeOrCommit(t *testing.T)
 	}
 }
 
+// orderedResolver is a recordingResolver that also appends "merge-in" to order on each Resolve.
+type orderedResolver struct {
+	recordingResolver
+	order *[]string
+}
+
+func (r *orderedResolver) Resolve(ctx context.Context, source string) (mergeresolve.Result, error) {
+	*r.order = append(*r.order, "merge-in")
+	return r.recordingResolver.Resolve(ctx, source)
+}
+
 // TestFinalize_MergeInRequiredRetry pins that an ErrMergeInRequired merge is retried exactly once with the same composed message, and that the board seam runs once, after the retry that lands, never after a failed attempt.
+// It also pins that the parent run records are committed after each merge-in and before the parent-side merge, on the first pass and on the retry alike.
 func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -261,19 +273,20 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 		wantOutcome shedengine.Outcome
 		wantOrder   string
 	}{
-		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge,merge,mark,push"},
-		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge,merge"},
+		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,push"},
+		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,records,merge,merge-in,records,merge"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var order []string
 			deps := newTestDeps(t)
 			deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
+			deps.CommitParentRecords = func() error { order = append(order, "records"); return nil }
 			summary, err := summaryparser.Parse(deps.DescriptionPath)
 			if err != nil {
 				t.Fatalf("summaryparser.Parse() error = %v; want nil", err)
 			}
-			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+			res := &orderedResolver{recordingResolver: recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, order: &order}
 			merger := &recordingParentMerger{
 				results: []mergeCallResult{{err: &fabricengine.ErrMergeInRequired{Source: deps.TaskBranch}}, tt.secondTry},
 				order:   &order,
@@ -304,10 +317,12 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 func TestFinalize_StuckReasons(t *testing.T) {
 	guardErr := &fabricengine.MergeGuardError{Reasons: []string{"worktree dirty"}}
 	tests := []struct {
-		name       string
-		resolved   mergeresolve.Result
-		openerErr  error
-		mergeErr   error
+		name      string
+		resolved  mergeresolve.Result
+		openerErr error
+		mergeErr  error
+		// recordsErr is what the parent run-records seam returns.
+		recordsErr error
 		wantMerges int
 		// wantInReason names what the stuck reason must carry, given the deps the case ran under.
 		wantInReason func(d Deps) string
@@ -333,6 +348,14 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			wantInReason: func(Deps) string { return "some unrecognized failure" },
 		},
 		{
+			name:       "parent run records commit failure names the parent pair and its way forward and merges nothing",
+			resolved:   mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			recordsErr: errors.New("git refused"),
+			wantInReason: func(Deps) string {
+				return `the parent pair's run records could not be committed: git refused; way forward: run "lyx fabric commit" in the parent pair, then "lyx loom resume"`
+			},
+		},
+		{
 			name:         "merge-in stuck surfaces the resolver's reason and never reaches the parent-side merge",
 			resolved:     mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "conflict could not be resolved"},
 			wantInReason: func(Deps) string { return "conflict could not be resolved" },
@@ -343,6 +366,9 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			deps := newTestDeps(t)
 			markCalled := false
 			deps.MarkTaskDone = func() error { markCalled = true; return nil }
+			if tt.recordsErr != nil {
+				deps.CommitParentRecords = func() error { return tt.recordsErr }
+			}
 			res := &recordingResolver{result: tt.resolved}
 			merger := &recordingParentMerger{}
 			if tt.mergeErr != nil {

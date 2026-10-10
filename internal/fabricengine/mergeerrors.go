@@ -70,6 +70,12 @@ func (e *MergeGuardError) WorktreeDirty() bool {
 	return false
 }
 
+// IsWorktreeDirtyReason reports whether text contains the dirty-worktree guard reason.
+// It is for a caller holding a reason as plain text, such as a halt reason, and keeps the guard-reason constant inside this package like WorktreeDirty does.
+func IsWorktreeDirtyReason(text string) bool {
+	return strings.Contains(text, mergeReasonWorktreeDirty)
+}
+
 // newMergeGuardError builds a *MergeGuardError from reasons, sorting and deduplicating them first
 // so the reported list never reveals evaluation order or arity.
 func newMergeGuardError(reasons []string) *MergeGuardError {

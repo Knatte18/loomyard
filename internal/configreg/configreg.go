@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -65,6 +66,7 @@ func Modules() []Module {
 		{Name: "batcher", Template: batcher.ConfigTemplate, OpenMaps: batcher.ConfigOpenMaps(), Migrate: batcher.MigrateConfig},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true},
 		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true},
+		{Name: "darn", Template: darnengine.ConfigTemplate, HubWide: true},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true},
 		{Name: "gate", Template: gateslot.ConfigTemplate, HubWide: true},
 		{Name: "landing", Template: landingshed.ConfigTemplate, HubWide: true, SeedsFromPrime: true},

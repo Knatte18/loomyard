@@ -174,6 +174,7 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 // WorktreeChangedFiles' doc comment documents, not an unexercised assumption.
 // The push lock file is created explicitly here because CommitWeft never writes it — only
 // PushCoalesced does — so leaving it out would make the exclude assertion vacuous.
+// It also covers Fabric.DirtyPaths: both sides' modified tracked paths come back absolute under their checkouts, and an untracked file does not.
 func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testing.T) {
 	t.Parallel()
 
@@ -203,6 +204,21 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 	pushLockPath := filepath.Join(weftFixture.PrimeRecords(), gitrepo.PushLockFileName)
 	if err := os.WriteFile(pushLockPath, nil, 0o644); err != nil {
 		t.Fatalf("WriteFile(push lock): %v", err)
+	}
+
+	// A tracked file modified on the warp side, so DirtyPaths has a tracked path there beside the untracked one.
+	warpTrackedPath := filepath.Join(warpPath, "README")
+	if err := os.WriteFile(warpTrackedPath, []byte("warp tracked, modified"), 0o644); err != nil {
+		t.Fatalf("WriteFile(README): %v", err)
+	}
+
+	dirty, err := f.DirtyPaths()
+	if err != nil {
+		t.Fatalf("DirtyPaths() error = %v", err)
+	}
+	weftTrackedPath := filepath.Join(weftFixture.PrimeRecords(), "_lyx", "config.yaml")
+	if want := []string{warpTrackedPath, weftTrackedPath}; !slices.Equal(dirty, want) {
+		t.Errorf("DirtyPaths() = %v; want exactly the modified tracked paths %v, with the untracked %s and %s omitted", dirty, want, warpDirtyPath, pushLockPath)
 	}
 
 	entries, err := f.Status()

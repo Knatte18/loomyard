@@ -41,6 +41,8 @@ type Request struct {
 	QuietWait time.Duration
 	// RefuseWhenBusy makes a spent bound an ErrDriverBusy refusal instead of ending the driver.
 	RefuseWhenBusy bool
+	// Landed says the caller knows the pair's work landed, so its board entry is marked done after the removal.
+	Landed bool
 }
 
 // SessionResult reports EndSession's outcome.
@@ -81,6 +83,15 @@ type Teardown struct {
 	remove     func(req Request) (fabricengine.RemoveResult, error)
 	sleep      func(ctx context.Context, d time.Duration) error
 
+	// landed reports whether the present task worktree's run finished a Finalize.
+	landed func(slug string) (bool, error)
+	// battenRun reports whether batten seeded a run for the slug on the prime, and that run's state.
+	battenRun func(slug string) (seeded bool, state string, err error)
+	// readClaim reads the status of the slug's board entry; found is false when the board holds no such entry.
+	readClaim func(slug string) (status *string, found bool, err error)
+	// writeClaim sets the status of the slug's board entry, or clears it with a nil status.
+	writeClaim func(slug string, status *string) error
+
 	// killLoop kills the pair's loop and its in-flight step tree.
 	killLoop func(slug string) (bool, error)
 	// seizeLoop runs kill, takes the pair's loop lock and leaves the teardown's mark in the pid file;
@@ -109,6 +120,10 @@ func New(prime *lyxcwd.Location) (*Teardown, error) {
 	t.killLoop = t.killPairLoop
 	t.seizeLoop = t.holdPairLoopLock
 	t.awaitRunLock = t.awaitPairRunLock
+	t.landed = t.childLanded
+	t.battenRun = t.battenRunState
+	t.readClaim = t.readBoardClaim
+	t.writeClaim = t.writeBoardClaim
 	t.remove = func(req Request) (fabricengine.RemoveResult, error) {
 		top, err := t.topology()
 		if err != nil {
@@ -165,10 +180,38 @@ func (t *Teardown) EndSession(ctx context.Context, req Request) (SessionResult, 
 	return res, nil
 }
 
-// RemovePair removes the pair.
+// RemovePair removes the pair, then settles the pair's board claim.
 // It runs only after EndSession succeeded for the same request: Run and batten's one-row producer are its only sequencers.
+//
+// Whether the pair's work landed is req.Landed, or else read before the removal from the task worktree's status file, since the file goes with the worktree;
+// a task worktree already gone is not landed, and its claim falls to the batten-state rule.
+// A failed read of that answer leaves the board alone.
+// A failed removal returns its result and error with the board untouched, and the settle only warns on a failure.
 func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
-	return t.remove(req)
+	landed, landedKnown := req.Landed, true
+	if !landed {
+		gone, err := t.gone(req.Slug)
+		switch {
+		case err != nil:
+			logger.Warn("pairteardown: could not tell whether the task worktree is gone, so the board claim is left alone", "slug", req.Slug, "cause", err)
+			landedKnown = false
+		case !gone:
+			landed, err = t.landed(req.Slug)
+			if err != nil {
+				logger.Warn("pairteardown: could not read whether the run landed, so the board claim is left alone", "slug", req.Slug, "cause", err)
+				landedKnown = false
+			}
+		}
+	}
+
+	res, err := t.remove(req)
+	if err != nil {
+		return res, err
+	}
+	if landedKnown {
+		t.settleBoardClaim(req.Slug, landed)
+	}
+	return res, nil
 }
 
 // Run is EndSession then RemovePair; a failed EndSession never reaches RemovePair.

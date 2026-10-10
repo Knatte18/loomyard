@@ -16,18 +16,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -108,6 +112,46 @@ func writeFile(t *testing.T, path, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+// holdBoardEntry upserts a board entry named slug at a run status, as a run holds it, and returns the board.
+func holdBoardEntry(t *testing.T, h *hubforge.Hub, slug string) *boardengine.Board {
+	t.Helper()
+	boardConfig, err := boardengine.LoadConfig(h.BoardDir(), "board")
+	if err != nil {
+		t.Fatalf("load board config: %v", err)
+	}
+	boardConfig.Path = h.BoardDir()
+	board := boardengine.New(boardConfig)
+	if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": slug, "kind": "task", "labels": []string{"bug"}}); err != nil {
+		t.Fatalf("seed board entry %q: %v", slug, err)
+	}
+	status := boardengine.RunStatus("running", "Run-Shed")
+	if err := board.SetStatus(slug, &status); err != nil {
+		t.Fatalf("hold board entry %q at a run status: %v", slug, err)
+	}
+	return board
+}
+
+// boardStatus returns the status of the board entry named slug, which must exist.
+func boardStatus(t *testing.T, board *boardengine.Board, slug string) *string {
+	t.Helper()
+	task, found, err := board.GetTask(slug)
+	if err != nil || !found {
+		t.Fatalf("GetTask(%q) = %v, %v; want the entry", slug, found, err)
+	}
+	return task.Status
+}
+
+// writeStatus writes a shed status file and the directory its lock sits in.
+func writeStatus(t *testing.T, l *lyxcwd.Location, runID string, status shedengine.Status) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(shedrun.StatusLock(l, runID)), 0o755); err != nil {
+		t.Fatalf("create the status lock directory: %v", err)
+	}
+	if err := state.WriteJSON(shedrun.StatusFile(l, runID), shedrun.StatusLock(l, runID), status); err != nil {
+		t.Fatalf("write the status of run %q: %v", runID, err)
 	}
 }
 
@@ -339,6 +383,48 @@ func TestRun_TeardownScenario(t *testing.T) {
 				t.Fatalf("the run lock after EndSession: ok = %v, err = %v; want it free", ok, err)
 			}
 			_ = held.Release()
+		}},
+		{"BoardClaimIsClearedWhenBattenNeverSeededTheRun", func(t *testing.T) {
+			p := addLivePair(t, h, cfg.Tmux, "pt-claim-clear")
+			board := holdBoardEntry(t, h, p.slug)
+
+			if _, err := p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug}); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if status := boardStatus(t, board, p.slug); status != nil {
+				t.Errorf("board status after Run = %q, want it cleared", *status)
+			}
+		}},
+		{"BoardEntryIsMarkedDoneWhenTheChildHistoryHoldsAFinalizeDone", func(t *testing.T) {
+			p := addLivePair(t, h, cfg.Tmux, "pt-claim-done")
+			board := holdBoardEntry(t, h, p.slug)
+			task, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(p.h.Location, p.slug))
+			if err != nil {
+				t.Fatalf("ResolveWorktree: %v", err)
+			}
+			writeStatus(t, task, shedrun.SelfRunID, shedengine.Status{State: shedengine.StateDone, History: []shedengine.HistoryEntry{{Producer: loomshed.NameFinalize, Outcome: shedengine.Done}}})
+
+			if _, err := p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug}); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if status := boardStatus(t, board, p.slug); status == nil || *status != "done" {
+				t.Errorf("board status after Run = %v, want done", status)
+			}
+		}},
+		{"BoardClaimIsLeftWhileBattensRunIsRunning", func(t *testing.T) {
+			p := addLivePair(t, h, cfg.Tmux, "pt-claim-held")
+			board := holdBoardEntry(t, h, p.slug)
+			if err := shedrun.WriteSeed(h.Location, p.slug, shedrun.Seed{Recipe: "batten", Driver: shedrun.DriverGo}); err != nil {
+				t.Fatalf("write batten's seed: %v", err)
+			}
+			writeStatus(t, h.Location, p.slug, shedengine.Status{State: shedengine.StateRunning})
+
+			if _, err := p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug}); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if status := boardStatus(t, board, p.slug); status == nil || *status != boardengine.RunStatus("running", "Run-Shed") {
+				t.Errorf("board status after Run = %v, want the run status left unchanged", status)
+			}
 		}},
 		{"TaskWorktreeRemovedByHandEndsTheSessionByName", func(t *testing.T) {
 			// Runs last: it ends the only live session on the hub's server, so the server's socket file must go.

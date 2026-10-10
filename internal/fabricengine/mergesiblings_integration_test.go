@@ -69,6 +69,7 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 	pairWarpBranch := gitkit.CurrentBranch(t, warpDir)
 	pairWeftBranch := gitkit.CurrentBranch(t, weftDir)
 
+	forkSHA := fabricengine.CurrentSHAForTest(t, warpDir)
 	setupConflictingDivergence(t, warpDir, "feature", "conflict.txt")
 	branchAtCurrentHEAD(t, weftDir, fabricengine.RecordsBranchName("feature"))
 
@@ -216,6 +217,9 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 		}
 		if _, err := f.Diff(preWarpSHA); err != nil {
 			t.Errorf("Diff(%s) error = %v; want nil during a live merge record", preWarpSHA, err)
+		}
+		if got, err := f.MergeBase("main"); err != nil || got != forkSHA {
+			t.Errorf("MergeBase(main) = (%q, %v); want the pair's fork commit %q during a live merge record", got, err, forkSHA)
 		}
 		if _, err := h.Topology.List(warpDir); err != nil {
 			t.Errorf("List() error = %v; want nil during a live merge record", err)

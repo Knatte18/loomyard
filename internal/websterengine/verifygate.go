@@ -91,10 +91,8 @@ type verifyGateSeams struct {
 	commitsSince func(base string) ([]string, error)
 	// verify runs the verify command through verifytree.
 	verify func(site verifytree.Site, command string) (verifytree.Result, error)
-	// readLog returns the verify log of the latest verify call.
-	readLog func() (string, error)
-	// logPath is the verify log's path.
-	logPath string
+	// readLog returns the content of the verify log at path.
+	readLog func(path string) (string, error)
 	// trail returns the card commit trail and its parallel NN-slug labels.
 	trail func() (shas, labels []string, err error)
 	// changedPaths returns the paths one commit changed.
@@ -150,11 +148,10 @@ func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentB
 		verify: func(site verifytree.Site, command string) (verifytree.Result, error) {
 			return verifytree.Verify(context.Background(), paths, site, command, verifytree.Timeout, geom.GateSlots)
 		},
-		readLog: func() (string, error) {
-			data, err := os.ReadFile(paths.Log)
+		readLog: func(path string) (string, error) {
+			data, err := os.ReadFile(path)
 			return string(data), err
 		},
-		logPath: paths.Log,
 		trail: func() ([]string, []string, error) {
 			st, err := LoadState(geom.WebsterDir, geom.ScratchDir)
 			if err != nil || st == nil {
@@ -242,23 +239,23 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 		return shuttleengine.GateResult{Passed: true}, nil
 	}
 
-	// failures parses the latest verify log into failing identities.
-	failures := func() ([]VerifyFailure, error) {
-		output, err := s.readLog()
+	// failures parses the verify log of res into failing identities.
+	failures := func(res verifytree.Result) ([]VerifyFailure, error) {
+		output, err := s.readLog(res.Log)
 		if err != nil {
-			return nil, fmt.Errorf("websterengine: read verify log %s: %w", s.logPath, err)
+			return nil, fmt.Errorf("websterengine: read verify log %s: %w", res.Log, err)
 		}
 		return parseVerifyFailures(output, false), nil
 	}
 
-	// failTimedOut fails the gate for a verify that outlived its timeout: a hang is not flakiness,
+	// failTimedOut fails the gate for res, a verify that outlived its timeout: a hang is not flakiness,
 	// so it is never rerun.
-	failTimedOut := func() (shuttleengine.GateResult, error) {
-		output, err := s.readLog()
+	failTimedOut := func(res verifytree.Result) (shuttleengine.GateResult, error) {
+		output, err := s.readLog(res.Log)
 		if err != nil {
-			return shuttleengine.GateResult{}, fmt.Errorf("websterengine: read verify log %s: %w", s.logPath, err)
+			return shuttleengine.GateResult{}, fmt.Errorf("websterengine: read verify log %s: %w", res.Log, err)
 		}
-		return fail(VerifyGateReport{TimedOut: verifytree.Timeout.String(), LogPath: s.logPath, LogTail: logTail(output)})
+		return fail(VerifyGateReport{TimedOut: verifytree.Timeout.String(), LogPath: res.Log, LogTail: logTail(output)})
 	}
 
 	return func() (shuttleengine.GateResult, error) {
@@ -314,10 +311,10 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 			return fail(VerifyGateReport{Dirty: res.Dirty})
 		}
 		if res.TimedOut {
-			return failTimedOut()
+			return failTimedOut(res)
 		}
 
-		first, err := failures()
+		first, err := failures(res)
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
@@ -334,13 +331,13 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 			return fail(VerifyGateReport{Dirty: res.Dirty})
 		}
 		if res.TimedOut {
-			return failTimedOut()
+			return failTimedOut(res)
 		}
-		surviving, err := failures()
+		surviving, err := failures(res)
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
-		return fail(VerifyGateReport{Failures: surviving, LogPath: s.logPath})
+		return fail(VerifyGateReport{Failures: surviving, LogPath: res.Log})
 	}
 }
 

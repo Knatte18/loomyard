@@ -13,6 +13,11 @@ import (
 //go:embed loom-recipe.yaml
 var LoomRecipe []byte
 
+// DarnRecipe is the darn task recipe's producer graph, in internal/shedbuild's recipe format.
+//
+//go:embed darn-recipe.yaml
+var DarnRecipe []byte
+
 // BattenRecipe is the task-worktree batten's producer graph, in internal/shedbuild's recipe
 // format.
 //

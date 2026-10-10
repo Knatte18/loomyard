@@ -37,6 +37,7 @@ func TestPublishFailure(t *testing.T) {
 
 		verifyDir := t.TempDir()
 		paths := verifytree.NewPaths(t.TempDir(), verifyDir)
+		goodLog := filepath.Join(verifyDir, "verify-7.log")
 		goodTest := verifytree.FailedTest{Package: "example.com/m/a", Test: "TestA/sub_case=1"}
 		tests := []struct {
 			name      string
@@ -46,9 +47,9 @@ func TestPublishFailure(t *testing.T) {
 		}{
 			{
 				name:      "well-formed record without a merge commit is kept whole",
-				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Tests: []verifytree.FailedTest{goodTest}, LogPath: paths.PublishFailureLog, Head: "abc"},
+				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Tests: []verifytree.FailedTest{goodTest}, LogPath: goodLog, Head: "abc"},
 				wantKept:  true,
-				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Tests: []verifytree.FailedTest{goodTest}, LogPath: paths.PublishFailureLog, Head: "abc"},
+				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Tests: []verifytree.FailedTest{goodTest}, LogPath: goodLog, Head: "abc"},
 			},
 			{
 				name:      "merge field that is an option is dropped",
@@ -199,9 +200,9 @@ func TestPublishFailureNote(t *testing.T) {
 			record: &verifytree.PublishFailure{
 				Kind:    verifytree.FailureKindPlanVerify,
 				Tests:   []verifytree.FailedTest{{Package: "example.com/m/a", Test: "TestA/sub_1"}, {Package: "example.com/m/a", Test: "TestA/sub_2"}},
-				LogPath: paths.PublishFailureLog,
+				LogPath: filepath.Join(verifyDir, "verify-2.log"),
 			},
-			want: "Publish failed on the plan's `## verify:` command.\n\nFailing tests:\n\n- `TestA/sub_1` in `example.com/m/a`\n- `TestA/sub_2` in `example.com/m/a`\n\nLog of the failing run: " + paths.PublishFailureLog,
+			want: "Publish failed on the plan's `## verify:` command.\n\nFailing tests:\n\n- `TestA/sub_1` in `example.com/m/a`\n- `TestA/sub_2` in `example.com/m/a`\n\nLog of the failing run: " + filepath.Join(verifyDir, "verify-2.log"),
 		},
 		{
 			name:   "publish_verify failure without tests names only the verify",

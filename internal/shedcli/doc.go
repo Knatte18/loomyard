@@ -8,14 +8,12 @@
 // Splitting them puts the bodies at a leaf (internal/shedverbs) and the table at the composition
 // layer (this package), which is what the dependency direction already demands.
 //
-// The table this package declares (table.go) is a different table from internal/shedrecipe's own
-// registry, and the two must never be merged: this package's table maps recipe names ("loom",
-// "batten") to arming functions, while internal/shedrecipe's registry maps engine names to
-// shedengine.ShedProducer constructors. The two tables answer different questions for different
-// callers — this one is read by shedcli's own pre-run to decide which module arms a given "lyx shed"
-// invocation, the other is read by every recipe's own row list to decide which producer constructor
-// backs a given row — and collapsing them would conflate a recipe name with an engine name, which
-// are drawn from disjoint vocabularies today and have no reason to start colliding.
+// The table this package declares (table.go) is a different table from internal/shedrecipe's own registry, and the two must never be merged:
+// this package's table maps the three recipe names ("loom", "batten", "darn") to arming functions, while internal/shedrecipe's registry maps engine names to shedengine.ShedProducer constructors.
+// The two tables answer different questions for different callers.
+// This one is read by shedcli's own pre-run to decide which module arms a given "lyx shed" invocation.
+// The other is read by every recipe's own row list to decide which producer constructor backs a given row.
+// Collapsing them would conflate a recipe name with an engine name, which are drawn from disjoint vocabularies today and have no reason to start colliding.
 //
 // The table binds a recipe name to an arming *function* rather than to a recipe file path, for two
 // reasons. First, a recipe alone cannot arm a Shed: shedverbs.Spec's BuildShed closure needs

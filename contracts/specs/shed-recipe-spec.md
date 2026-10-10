@@ -58,7 +58,8 @@ The row drives `Env.Seats`, and a nil seam is a construction error.
 
 A gate-capable row's `gates` key selects validators by name from a closed vocabulary, in order, each element carrying its own `attempts` budget (0 means off) and an optional `pass_on_cap`.
 An absent key is ungated, while an empty list, a duplicate name, or a negative budget is a construction error.
-The vocabulary is `discussion`, `plan`, `rework-plan`, `description` and `parent-review`.
+The vocabulary is `discussion`, `plan`, `rework-plan`, `description`, `verify` and `parent-review`.
+`verify` lints the comments, then runs the verify command the wiring tells in `Env.VerifyCommand`, which it requires, and takes the whole-diff form when `Env.VerifyMergeBase` is set and the round form when it is nil.
 `parent-review` waits for the run's parent to review the discussion, so it can return a pending result that the wait loop holds without stalling its liveness and deadline checks, and it carries a `Final` closure that `finalize` evaluates in its place.
 The entry is must-pass and may hold the run, and its `attempts` is the reject cap: the gate fails terminally at that many rejected rounds.
 With `pass_on_cap: true` the cap's reject instead goes to the writer like any other, and the rewrite after it passes without another round, so `attempts: 1` gives one parent review whose findings the writer addresses before the row below reviews in detail.

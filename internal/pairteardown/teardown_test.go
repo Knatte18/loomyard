@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -28,6 +29,18 @@ type fakeSubstrates struct {
 	seizeErr   error
 	awaitErr   error
 	sleeps     int
+
+	// removeErr is returned by the removal.
+	removeErr error
+	// childLanded is what the landed read answers.
+	childLanded bool
+	// battenSeeded and battenState are what batten's run reads answer.
+	battenSeeded bool
+	battenState  string
+	// claim is the board entry's status when claimFound; claimReadErr fails the read.
+	claim        *string
+	claimFound   bool
+	claimReadErr error
 }
 
 func (f *fakeSubstrates) teardown() *Teardown {
@@ -53,7 +66,27 @@ func (f *fakeSubstrates) teardown() *Teardown {
 		},
 		remove: func(Request) (fabricengine.RemoveResult, error) {
 			f.calls = append(f.calls, "remove")
-			return fabricengine.RemoveResult{}, nil
+			return fabricengine.RemoveResult{}, f.removeErr
+		},
+		landed: func(string) (bool, error) {
+			f.calls = append(f.calls, "landed")
+			return f.childLanded, nil
+		},
+		battenRun: func(string) (bool, string, error) {
+			f.calls = append(f.calls, "battenRun")
+			return f.battenSeeded, f.battenState, nil
+		},
+		readClaim: func(string) (*string, bool, error) {
+			f.calls = append(f.calls, "readClaim")
+			return f.claim, f.claimFound, f.claimReadErr
+		},
+		writeClaim: func(_ string, status *string) error {
+			if status == nil {
+				f.calls = append(f.calls, "write=clear")
+			} else {
+				f.calls = append(f.calls, "write="+*status)
+			}
+			return nil
 		},
 		sleep: func(context.Context, time.Duration) error {
 			f.sleeps++
@@ -86,10 +119,14 @@ func (f *fakeSubstrates) teardown() *Teardown {
 var busy = quietState{driver: "tst:slug:driver"}
 
 // TestTeardown_CallSequence drives EndSession and Run through the fake substrates and pins which substrate calls each makes, in what order, and what it returns.
+// The board-claim rows pin the settlement rule through Run: which reads precede the removal and the write, and what is written.
 func TestTeardown_CallSequence(t *testing.T) {
 	t.Parallel()
 
 	refusal := errors.New("worktree has uncommitted changes")
+	text := func(s string) *string { return &s }
+	runClaim := text(boardengine.RunStatus("running", "Webster-Burler"))
+	const sessionEnd = "quiet,refusal,kill,seize,await,end,release(ended=true)"
 	tests := []struct {
 		name string
 		// run selects Teardown.Run over Teardown.EndSession.
@@ -99,6 +136,15 @@ func TestTeardown_CallSequence(t *testing.T) {
 		endErr     error
 		seizeErr   error
 		awaitErr   error
+		// removeErr fails the removal.
+		removeErr error
+		// childLanded, battenSeeded, battenState, claim, claimFound and claimReadErr script the board-claim reads.
+		childLanded  bool
+		battenSeeded bool
+		battenState  string
+		claim        *string
+		claimFound   bool
+		claimReadErr error
 		// gone makes the task worktree read as gone.
 		gone    bool
 		request Request
@@ -157,11 +203,153 @@ func TestTeardown_CallSequence(t *testing.T) {
 			wantCalls:    "quiet,refusal,kill,seize,await,end,release(ended=false)",
 		},
 		{
-			name:      "CallsQuietProbeLoopKillEndAndRemoveInOrder",
+			name:      "CallsQuietProbeLoopKillEndAndRemoveInOrderThenReadsTheClaim",
 			run:       true,
 			quiets:    []quietState{{quiet: true}},
 			request:   Request{Slug: "slug"},
-			wantCalls: "quiet,refusal,kill,seize,await,end,release(ended=true),remove",
+			wantCalls: sessionEnd + ",landed,remove,readClaim",
+		},
+		{
+			name:       "DoneEntryIsKept",
+			run:        true,
+			quiets:     []quietState{{quiet: true}},
+			request:    Request{Slug: "slug"},
+			claim:      text("done"),
+			claimFound: true,
+			wantCalls:  sessionEnd + ",landed,remove,readClaim",
+		},
+		{
+			name:       "EntryWithoutTheRunFormIsKept",
+			run:        true,
+			quiets:     []quietState{{quiet: true}},
+			request:    Request{Slug: "slug"},
+			claim:      text("wip"),
+			claimFound: true,
+			wantCalls:  sessionEnd + ",landed,remove,readClaim",
+		},
+		{
+			name:       "LandedFromTheRequestMarksDoneWithoutReadingTheChild",
+			run:        true,
+			quiets:     []quietState{{quiet: true}},
+			request:    Request{Slug: "slug", Landed: true},
+			claim:      runClaim,
+			claimFound: true,
+			wantCalls:  sessionEnd + ",remove,readClaim,write=done",
+		},
+		{
+			name:        "LandedFromTheChildReadMarksDone",
+			run:         true,
+			quiets:      []quietState{{quiet: true}},
+			request:     Request{Slug: "slug"},
+			childLanded: true,
+			claim:       runClaim,
+			claimFound:  true,
+			wantCalls:   sessionEnd + ",landed,remove,readClaim,write=done",
+		},
+		{
+			name:       "UnseededRunIsCleared",
+			run:        true,
+			quiets:     []quietState{{quiet: true}},
+			request:    Request{Slug: "slug"},
+			claim:      runClaim,
+			claimFound: true,
+			wantCalls:  sessionEnd + ",landed,remove,readClaim,battenRun,write=clear",
+		},
+		{
+			name:         "PausedBattenRunIsCleared",
+			run:          true,
+			quiets:       []quietState{{quiet: true}},
+			request:      Request{Slug: "slug"},
+			battenSeeded: true,
+			battenState:  "paused",
+			claim:        runClaim,
+			claimFound:   true,
+			wantCalls:    sessionEnd + ",landed,remove,readClaim,battenRun,write=clear",
+		},
+		{
+			name:         "BlockedBattenRunIsCleared",
+			run:          true,
+			quiets:       []quietState{{quiet: true}},
+			request:      Request{Slug: "slug"},
+			battenSeeded: true,
+			battenState:  "blocked",
+			claim:        runClaim,
+			claimFound:   true,
+			wantCalls:    sessionEnd + ",landed,remove,readClaim,battenRun,write=clear",
+		},
+		{
+			name:         "FailedBattenRunIsCleared",
+			run:          true,
+			quiets:       []quietState{{quiet: true}},
+			request:      Request{Slug: "slug"},
+			battenSeeded: true,
+			battenState:  "failed",
+			claim:        runClaim,
+			claimFound:   true,
+			wantCalls:    sessionEnd + ",landed,remove,readClaim,battenRun,write=clear",
+		},
+		{
+			name:         "AwaitingBattenRunIsCleared",
+			run:          true,
+			quiets:       []quietState{{quiet: true}},
+			request:      Request{Slug: "slug"},
+			battenSeeded: true,
+			battenState:  "awaiting",
+			claim:        runClaim,
+			claimFound:   true,
+			wantCalls:    sessionEnd + ",landed,remove,readClaim,battenRun,write=clear",
+		},
+		{
+			name:         "DoneBattenRunMarksDone",
+			run:          true,
+			quiets:       []quietState{{quiet: true}},
+			request:      Request{Slug: "slug"},
+			battenSeeded: true,
+			battenState:  "done",
+			claim:        runClaim,
+			claimFound:   true,
+			wantCalls:    sessionEnd + ",landed,remove,readClaim,battenRun,write=done",
+		},
+		{
+			name:         "RunningBattenRunIsHeldWithNoWrite",
+			run:          true,
+			quiets:       []quietState{{quiet: true}},
+			request:      Request{Slug: "slug"},
+			battenSeeded: true,
+			battenState:  "running",
+			claim:        runClaim,
+			claimFound:   true,
+			wantCalls:    sessionEnd + ",landed,remove,readClaim,battenRun",
+		},
+		{
+			name:         "ClaimReadFailureWritesNothing",
+			run:          true,
+			quiets:       []quietState{{quiet: true}},
+			request:      Request{Slug: "slug"},
+			claimReadErr: errors.New("board unreadable"),
+			wantCalls:    sessionEnd + ",landed,remove,readClaim",
+		},
+		{
+			name:        "GoneTaskWorktreeOverAnUnseededRunClearsWithoutReadingLanded",
+			run:         true,
+			quiets:      []quietState{busy},
+			gone:        true,
+			request:     Request{Slug: "slug", RefuseWhenBusy: true},
+			claim:       runClaim,
+			claimFound:  true,
+			wantCalls:   "refusal,remove,readClaim,battenRun,write=clear",
+			wantSawGone: true,
+		},
+		{
+			name:         "FailedRemovalRunsNoClaimSubstrateAfterIt",
+			run:          true,
+			quiets:       []quietState{{quiet: true}},
+			request:      Request{Slug: "slug"},
+			removeErr:    errors.New("removal refused"),
+			claim:        runClaim,
+			claimFound:   true,
+			wantAnyError: true,
+			wantCalls:    sessionEnd + ",landed,remove",
 		},
 		{
 			name:            "HeldLoopLockReadsAsBusyAndNamesTheLoop",
@@ -200,7 +388,11 @@ func TestTeardown_CallSequence(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			f := &fakeSubstrates{quiets: tt.quiets, refusalErr: tt.refusalErr, endErr: tt.endErr, seizeErr: tt.seizeErr, awaitErr: tt.awaitErr}
+			f := &fakeSubstrates{
+				quiets: tt.quiets, refusalErr: tt.refusalErr, endErr: tt.endErr, seizeErr: tt.seizeErr, awaitErr: tt.awaitErr,
+				removeErr: tt.removeErr, childLanded: tt.childLanded, battenSeeded: tt.battenSeeded, battenState: tt.battenState,
+				claim: tt.claim, claimFound: tt.claimFound, claimReadErr: tt.claimReadErr,
+			}
 			td := f.teardown()
 			var sawGone bool
 			if tt.gone {

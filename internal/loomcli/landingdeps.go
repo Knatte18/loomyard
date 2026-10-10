@@ -7,6 +7,7 @@ package loomcli
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -51,6 +52,7 @@ func landingDeps(
 	parentName string,
 	verifyWaitMark func(label string, start time.Time) error,
 	stopConflictSession func() (string, error),
+	verify verifySource,
 ) landingshed.Deps {
 	return landingshed.Deps{
 		ParentName:      parentName,
@@ -94,6 +96,7 @@ func landingDeps(
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{shedrun.StatusRel(l, shedrun.SelfRunID)}, fmt.Sprintf("loom: status checkpoint for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
+		CommitParentRecords: parentRecordsCommitter(l, seedSlug(l.WorktreeName)),
 		// The pre-merge step probes the pair's merge state, aborts the row's own parked merge-in and stops the run's conflict sessions first.
 		MergeState: func() (fabricengine.MidMergeState, error) {
 			return fabricengine.MidMerge(l)
@@ -136,25 +139,68 @@ func landingDeps(
 		Notify: func(line string) error {
 			return orchcli.NotifyPrime(l, line)
 		},
-		// VerifyCommand reads the plan's verify command each time it is called, never at construction:
-		// landingDeps runs at bootstrap, before the plan exists on a fresh run,
-		// so a value captured here would be empty and the gate would silently skip.
-		// A read or parse error is returned, not mapped to an empty command;
-		// only a parsed plan with no "## verify:" section yields "".
-		VerifyCommand: func() (string, error) {
+		VerifyCommand:          verify.command,
+		VerifyFailedWayForward: verify.failedWayForward,
+		FailingTests:           failingTestsOf,
+		VerifyDir:              verifytree.Dir(l.AnchorPath()),
+		GateSlots:              hubgeom.GateSlots(l),
+		VerifyWaitMark:         verifyWaitMark,
+		Shuttle:                runner,
+		Registry:               registry,
+		Config:                 cfg,
+	}
+}
+
+// verifySource pairs the verify-command reader and the failed-verify way-forward clause one recipe tells its verify gate and landing producers.
+type verifySource struct {
+	// command returns the verify command line, read each time it is called.
+	command func() (string, error)
+	// failedWayForward is the clause a recorded failed-verify Stuck reason ends with.
+	failedWayForward string
+}
+
+// planVerifySource returns loom's verify source: the plan's `## verify:` command, and the Webster-Burler route back to a fix.
+// command reads the plan each time it is called, never at construction:
+// landingDeps runs at bootstrap, before the plan exists on a fresh run,
+// so a value captured there would be empty and the gate would silently skip.
+// A read or parse error is returned, not mapped to an empty command;
+// only a parsed plan with no "## verify:" section yields "".
+func planVerifySource(l *lyxcwd.Location) verifySource {
+	return verifySource{
+		command: func() (string, error) {
 			plan, err := planparser.ParsePlan(planparser.PlanDir(l.AnchorPath()))
 			if err != nil {
 				return "", fmt.Errorf("loom: read plan verify command: %w", err)
 			}
 			return plan.Verify, nil
 		},
-		FailingTests:   failingTestsOf,
-		VerifyDir:      verifytree.Dir(l.AnchorPath()),
-		GateSlots:      hubgeom.GateSlots(l),
-		VerifyWaitMark: verifyWaitMark,
-		Shuttle:        runner,
-		Registry:       registry,
-		Config:         cfg,
+		failedWayForward: `run "lyx loom goto --to Webster-Burler", then "lyx loom resume", in the task worktree; the Webster-Review round reads the Publish failure record and its gate runs the failing tests`,
+	}
+}
+
+// parentRecordsCommitter returns the seam Finalize commits the parent pair's own run records through before its parent-side merge.
+// The parent pair is resolved at call time, so a parent that came or went after bootstrap is read as it stands.
+// A pair with no parent, and a parent whose run-records directory holds no file, commit nothing: git refuses a pathspec that matches nothing.
+// slug names the landing run in the commit message.
+func parentRecordsCommitter(l *lyxcwd.Location, slug string) func() error {
+	return func() error {
+		parent, err := hubgeom.ResolveParent(l)
+		if err != nil {
+			return fmt.Errorf("resolve the parent pair: %w", err)
+		}
+		if parent.Worktree == "" {
+			return nil
+		}
+		parentLocation, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(l, parent.Worktree))
+		if err != nil {
+			return fmt.Errorf("locate the parent pair %q: %w", parent.Worktree, err)
+		}
+		runsRoot := shedrun.RunsRootRel()
+		if !holdsFile(filepath.Join(parentLocation.AnchorPath(), runsRoot)) {
+			return nil
+		}
+		_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), parentLocation, []string{runsRoot}, fmt.Sprintf("loom: run records checkpoint for landing %s", slug), fabricengine.EnvSyncOptions())
+		return err
 	}
 }
 

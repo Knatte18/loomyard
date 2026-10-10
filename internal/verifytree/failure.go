@@ -34,7 +34,7 @@ type PublishFailure struct {
 	Kind FailureKind `yaml:"kind"`
 	// Tests are the failing tests the verify's log names.
 	Tests []FailedTest `yaml:"tests,omitempty"`
-	// LogPath is the copy of the verify log taken when the record was written.
+	// LogPath is the failing run's own verify log, which pruning keeps while the record names it.
 	LogPath string `yaml:"log_path"`
 	// Head is the commit the verify ran at.
 	Head string `yaml:"head"`
@@ -42,17 +42,8 @@ type PublishFailure struct {
 	MergeCommit string `yaml:"merge_commit,omitempty"`
 }
 
-// WritePublishFailure copies the current p.Log to p.PublishFailureLog and writes f, with its LogPath set to that copy, to p.PublishFailure.
-// The copy keeps a later verify in the same directory from overwriting the evidence.
+// WritePublishFailure writes f as given to p.PublishFailure.
 func WritePublishFailure(p Paths, f PublishFailure) error {
-	log, err := os.ReadFile(p.Log)
-	if err != nil {
-		return fmt.Errorf("verifytree: read verify log %s: %w", p.Log, err)
-	}
-	if err := os.WriteFile(p.PublishFailureLog, log, 0o644); err != nil {
-		return fmt.Errorf("verifytree: write failure log %s: %w", p.PublishFailureLog, err)
-	}
-	f.LogPath = p.PublishFailureLog
 	data, err := yaml.Marshal(f)
 	if err != nil {
 		return fmt.Errorf("verifytree: encode publish failure: %w", err)
@@ -80,12 +71,10 @@ func ReadPublishFailure(p Paths) (PublishFailure, bool, error) {
 	return f, true, nil
 }
 
-// RemovePublishFailure removes the record and its log copy; an absent file is not an error.
+// RemovePublishFailure removes the record and leaves the log it names in place; an absent record is not an error.
 func RemovePublishFailure(p Paths) error {
-	for _, path := range []string{p.PublishFailure, p.PublishFailureLog} {
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("verifytree: remove %s: %w", path, err)
-		}
+	if err := os.Remove(p.PublishFailure); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("verifytree: remove %s: %w", p.PublishFailure, err)
 	}
 	return nil
 }

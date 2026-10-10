@@ -80,7 +80,7 @@ func TestGateParity_VerifyGate(t *testing.T) {
 
 			burlerFx := prepare()
 			geom := burlerFx.CLI.geom
-			burler := gateVerdict(loomshed.NewVerifyGate(geom.AnchorRoot, geom.WorktreeRoot, geom.VerifyDir, "Webster-Burler gate", nil)())
+			burler := gateVerdict(loomshed.NewVerifyGate(geom.WorktreeRoot, geom.VerifyDir, "Webster-Burler gate", func() (string, error) { return tc.command, nil }, nil, nil)())
 
 			websterFx := prepare()
 			wgeom := websterFx.CLI.geom

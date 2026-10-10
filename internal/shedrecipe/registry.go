@@ -22,6 +22,7 @@ var registry = map[string]Constructor{
 	"Publish":          publishEntry,
 	"PRGate":           prGateEntry,
 	"PRRework":         prReworkEntry,
+	"DarnWrite":        darnWriteEntry,
 	"Finalize":         finalizeEntry,
 	"FrictionReflect":  frictionReflectEntry,
 	"LoomPreflight":    loomPreflightEntry,

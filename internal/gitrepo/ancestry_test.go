@@ -44,6 +44,36 @@ func TestIsAncestor_RejectsInvalidArgs(t *testing.T) {
 	}
 }
 
+// TestMergeBase_RejectsInvalidArgs asserts a validSHA-failing a or b returns ErrInvalidSHA and no SHA, without opening the repository, for the same untagged Tier-1 reason as TestIsAncestor_RejectsInvalidArgs.
+func TestMergeBase_RejectsInvalidArgs(t *testing.T) {
+	t.Parallel()
+
+	const valid = "0123456789abcdef0123456789abcdef01234567"
+	repo := New(t.TempDir())
+
+	tests := []struct {
+		name string
+		a    string
+		b    string
+	}{
+		{"InvalidA_TooShort", "abc", valid},
+		{"InvalidB_LongOption", valid, "--help"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := repo.MergeBase(tt.a, tt.b)
+			if !errors.Is(err, ErrInvalidSHA) {
+				t.Errorf("MergeBase(%q, %q) error = %v; want errors.Is(err, ErrInvalidSHA)", tt.a, tt.b, err)
+			}
+			if got != "" {
+				t.Errorf("MergeBase(%q, %q) = %q; want empty alongside the error", tt.a, tt.b, got)
+			}
+		})
+	}
+}
+
 // TestCommitsNotIn_RejectsInvalidArgs asserts a validSHA-failing tip or base returns ErrInvalidSHA and no commits, without spawning git, for the same untagged Tier-1 reason as TestIsAncestor_RejectsInvalidArgs.
 func TestCommitsNotIn_RejectsInvalidArgs(t *testing.T) {
 	t.Parallel()

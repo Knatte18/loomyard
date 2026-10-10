@@ -1,0 +1,65 @@
+# darn-recipe.yaml is the darn task recipe: one gated writer reads the board entry, edits, tests and
+# commits, then Publish, PR-Gate and Finalize land it. It is embedded into the binary by the sibling
+# recipes.go rather than read from disk. The row names below are the durable on-disk identities
+# pinned against internal/loomshed's Name* constants -- a rename here without a matching constant
+# rename breaks resume for any in-flight task.
+#
+# Preflight, Publish and Finalize carry no on_stuck: nothing in the list produces what each of them
+# gates, so a human is the only thing that can fix them. Darn carries none either: its exhausted
+# gate halts the run for the parent, which resumes it with a fresh verify budget.
+#
+# PR-Gate bounces to Darn, the row that produces the diff it guards. The edge's bound is
+# max_bounces: each traversal is one operator rejection, and a Darn Done ends the gate's bounce
+# episode, so the budget counts consecutive rejections the writer failed to answer rather than
+# rejections over the task's life.
+
+version: 1
+entry: Preflight
+terminals:
+  - Friction-Reflect
+
+producers:
+  - name: Preflight
+    engine: Preflight
+    on_done: Darn
+
+  - name: Darn
+    engine: DarnWrite
+    segment: PR-Review
+    on_done: Publish
+    config:
+      # gates holds this row's handoff until it is mechanically valid: each entry names a gate and
+      # re-prompts the live session up to its attempts times. The verify gate's attempts here is a
+      # placeholder: the builder stamps the verify budget from darn.yaml at every build.
+      gates:
+        - name: verify
+          attempts: 3
+        - name: description
+          attempts: 3
+
+  - name: Publish
+    engine: Publish
+    on_done: PR-Gate
+
+  # PR-Gate owns every review decision on the pull request Publish opened: it returns Done on an
+  # approval or a merge, Awaiting while the operator has not decided, and Stuck only for a matching
+  # rejection, which bounces to the writer row that produces the diff it guards.
+  - name: PR-Gate
+    engine: PRGate
+    segment: PR-Review
+    max_bounces: 5
+    on_stuck: Darn
+    on_done: Finalize
+
+  - name: Finalize
+    engine: Finalize
+    # Hands off to the reflection row rather than ending the run.
+    on_done: Friction-Reflect
+
+  # Friction-Reflect runs the Tier 2 friction reflection under the run lock and is the recipe's
+  # sole terminal, so the engine persists state.
+  - name: Friction-Reflect
+    engine: FrictionReflect
+    # on_done is explicitly empty: the empty value is load-bearing and is what ends the whole run
+    # quietly, per shedengine.ProducerDef.OnDone's own field doc.
+    on_done: ""

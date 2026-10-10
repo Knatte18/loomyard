@@ -14,8 +14,9 @@ import (
 // discussionSeatsEngine is the engine New gives the Discussion-Write row when env.DiscussionSeats is true.
 const discussionSeatsEngine = "DiscussionSeats"
 
-// RecipeEngines parses recipes.LoomRecipe, collects each row's engine name, adds discussionSeatsEngine, de-duplicates, and returns the result sorted.
+// RecipeEngines parses recipes.LoomRecipe and recipes.DarnRecipe, collects each row's engine name, adds discussionSeatsEngine, de-duplicates, and returns the result sorted.
 // discussionSeatsEngine joins the set because New substitutes it for the Discussion-Write row's engine, so a loom row can reach it.
+// Both recipes are the loom module's, so the set is their union.
 // It exists as the input to the cross-consumer coverage guard, which
 // unions every recipe consumer's engine set -- deriving the set from the recipe rather than
 // writing it down is what keeps that union honest without a second hand-maintained table alongside
@@ -25,19 +26,20 @@ const discussionSeatsEngine = "DiscussionSeats"
 // package, since a recipe that fails to parse is a build-time defect in an embedded file rather
 // than a runtime condition.
 func RecipeEngines() []string {
-	recipe, err := shedbuild.Parse(recipes.LoomRecipe)
-	if err != nil {
-		panic(fmt.Sprintf("loomrecipe: RecipeEngines: %v", err))
-	}
-
 	seen := map[string]bool{discussionSeatsEngine: true}
 	engines := []string{discussionSeatsEngine}
-	for _, row := range recipe.Producers {
-		if seen[row.Engine] {
-			continue
+	for _, source := range [][]byte{recipes.LoomRecipe, recipes.DarnRecipe} {
+		recipe, err := shedbuild.Parse(source)
+		if err != nil {
+			panic(fmt.Sprintf("loomrecipe: RecipeEngines: %v", err))
 		}
-		seen[row.Engine] = true
-		engines = append(engines, row.Engine)
+		for _, row := range recipe.Producers {
+			if seen[row.Engine] {
+				continue
+			}
+			seen[row.Engine] = true
+			engines = append(engines, row.Engine)
+		}
 	}
 
 	sort.Strings(engines)

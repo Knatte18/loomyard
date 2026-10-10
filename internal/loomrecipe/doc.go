@@ -12,6 +12,11 @@
 // The second value New takes from the env is the Discussion-Write producer: when shedrecipe.Env.DiscussionSeats is true, New runs that row on the DiscussionSeats engine instead of the recipe's DiscussionWrite.
 // The row keeps its name, gates and routing, and Routing never reads the choice.
 //
+// NewDarn is the second builder: it builds the embedded darn recipe, and DarnRouting projects that recipe's routing.
+// The recipe has no review segment, so no review budget applies.
+// Its verify budget is not declared in the recipe either: NewDarn stamps shedrecipe.Env.DarnVerifyAttempts, the `verify_attempts` of `darn.yaml`, onto the Darn row's verify gate at every build and refuses a value below 1.
+// DarnRouting reads no budget, so a caller that never builds a Shed is never refused by it.
+//
 // This package sits above internal/loomshed rather than inside it because internal/shedrecipe's
 // registry already imports loomshed for six of its constructors -- a loomshed -> shedbuild ->
 // shedrecipe -> loomshed production import cycle would not compile.

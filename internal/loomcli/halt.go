@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -28,6 +29,20 @@ type haltNote struct {
 	Reason    string
 	History   []shedengine.HistoryEntry
 	TraceFile string
+	// ParentFabricStatus is the rendered dirty state of the parent pair, set only for a halt whose reason names a dirty worktree; empty writes no section.
+	ParentFabricStatus string
+}
+
+// renderParentFabricStatus renders the parent pair's dirty tracked paths as one path per line, or the error text when the read failed.
+// A parent with no dirty path says so, since that clears the parent and points at the task's own tree.
+func renderParentFabricStatus(paths []string, err error) string {
+	if err != nil {
+		return "could not be read: " + err.Error()
+	}
+	if len(paths) == 0 {
+		return "the parent pair has no uncommitted tracked path"
+	}
+	return strings.Join(paths, "\n")
 }
 
 // writeHistoryRows appends the history section of a friction note: one `- <producer> / <outcome> / <at>` row per entry, or a single line saying there are none.
@@ -65,6 +80,9 @@ func writeHaltNote(frictionDir string, n haltNote) error {
 	b.WriteString("history_entries: " + strconv.Itoa(len(n.History)) + "\n")
 	b.WriteString("trace_file: " + n.TraceFile + "\n")
 	writeHistoryRows(&b, n.History)
+	if n.ParentFabricStatus != "" {
+		b.WriteString("\nparent fabric status:\n" + n.ParentFabricStatus + "\n")
+	}
 
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		return fmt.Errorf("loom: write halt note %s: %w", path, err)
@@ -83,6 +101,10 @@ func (c *loomCLI) reflectHalt(n haltNote) string {
 	if c.frictionDir == "" {
 		return frictionengine.StatusSkipped
 	}
+	if c.parentDirtyPaths != nil && fabricengine.IsWorktreeDirtyReason(n.Reason) {
+		paths, err := c.parentDirtyPaths()
+		n.ParentFabricStatus = renderParentFabricStatus(paths, err)
+	}
 	if err := writeHaltNote(c.frictionDir, n); err != nil {
 		logger.Warn("loom: could not write the halt note", "dir", c.frictionDir, "error", err)
 	}
@@ -91,6 +113,19 @@ func (c *loomCLI) reflectHalt(n haltNote) string {
 		return frictionengine.StatusSkipped
 	}
 	return c.reflectFriction(false)
+}
+
+// parentDirtyPathsFromFabric returns the tracked uncommitted paths of the parent pair the pair's origin record names.
+func (c *loomCLI) parentDirtyPathsFromFabric() ([]string, error) {
+	parentBranch, err := c.recordedParentBranch(c.location)
+	if err != nil {
+		return nil, err
+	}
+	parent, err := fabricengine.OpenParent(c.location, parentBranch)
+	if err != nil {
+		return nil, err
+	}
+	return parent.DirtyPaths()
 }
 
 // failedHalt reports the halt behind err when it is a `failed` one.

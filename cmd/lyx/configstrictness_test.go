@@ -67,6 +67,7 @@ var configStrictnessStrictSet = map[string]bool{
 	"internal/boardengine":  true,
 	"internal/loomengine":   true,
 	"internal/landingshed":  true,
+	"internal/darnengine":   true,
 	"internal/gateslot":     true,
 	"internal/configcli":    true,
 }

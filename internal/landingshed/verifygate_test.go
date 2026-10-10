@@ -6,6 +6,7 @@ package landingshed
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -34,6 +35,8 @@ type fakeVerifyTree struct {
 	sites    []verifytree.Site
 	// resultByCommand overrides result for a command it names.
 	resultByCommand map[string]verifytree.Result
+	// writeLog, when set, makes every passed or failed call name `verify-<call>.log` in the verify directory on its result and write it there, as a real run does.
+	writeLog func(path string)
 }
 
 // dirtyAt scripts the dirty paths the i-th (zero-based) clean-tree check reports.
@@ -67,10 +70,15 @@ func (f *fakeVerifyTree) verify(ctx context.Context, p verifytree.Paths, site ve
 	if f.onVerify != nil {
 		f.onVerify()
 	}
-	if result, ok := f.resultByCommand[command]; ok {
-		return result, f.verifyErr
+	result := f.result
+	if scripted, ok := f.resultByCommand[command]; ok {
+		result = scripted
 	}
-	return f.result, f.verifyErr
+	if f.writeLog != nil && (result.Status == verifytree.StatusPassed || result.Status == verifytree.StatusFailed) {
+		result.Log = filepath.Join(p.Dir, fmt.Sprintf("verify-%d.log", f.verifyCalls))
+		f.writeLog(result.Log)
+	}
+	return result, f.verifyErr
 }
 
 // gateFixture builds a gate over t.TempDir() paths with fake verifytree seams and a counting command closure.
@@ -176,12 +184,15 @@ func TestVerifyGate_WaitMark(t *testing.T) {
 func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 	t.Parallel()
 
+	// failedLog is the run's own log every failed result names, which the reason must quote.
+	const failedLog = "/verify/verify-4.log"
+
 	cases := []struct {
 		name    string
 		command string
 		site    string
 		result  verifytree.Result
-		// wantReasonExact, when set, is the whole reason for the log path the fixture gave the gate.
+		// wantReasonExact, when set, is the whole reason for the log path the result names.
 		wantReasonExact func(logPath string) string
 		wantReasonHas   []string
 		wantErrHas      string
@@ -191,7 +202,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 		{name: "skipped proceeds", command: "true", site: "Finalize", result: verifytree.Result{Status: verifytree.StatusSkipped, Tree: "abc"}},
 		{
 			name: "failed", command: "false", site: "Publish",
-			result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 3},
+			result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 3, Log: failedLog},
 			wantReasonExact: func(logPath string) string {
 				return `verify failed after merging parent branch "main" (exit code 3); output: ` + logPath +
 					`; fix forward on the task branch, then resume`
@@ -199,12 +210,12 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 		},
 		{
 			name: "could not start", command: "true", site: "Publish",
-			result:        verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, Detail: "exec: sh not found"},
+			result:        verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, Detail: "exec: sh not found", Log: failedLog},
 			wantReasonHas: []string{"could not start", "exec: sh not found", `"main"`},
 		},
 		{
 			name: "timed out", command: "true", site: "Publish",
-			result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true, Detail: "the verify command did not finish within 1h0m0s and was killed"},
+			result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true, Detail: "the verify command did not finish within 1h0m0s and was killed", Log: failedLog},
 			wantReasonExact: func(logPath string) string {
 				return `verify did not finish within 1h0m0s after merging parent branch "main"; output: ` + logPath +
 					`; fix the hanging test on the task branch, then resume`
@@ -238,7 +249,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if tc.wantReasonExact != nil {
-				if want := tc.wantReasonExact(f.paths.Log); reason != want {
+				if want := tc.wantReasonExact(tc.result.Log); reason != want {
 					t.Fatalf("reason = %q, want %q", reason, want)
 				}
 				return
@@ -251,8 +262,8 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 					t.Errorf("reason %q lacks %q", reason, want)
 				}
 			}
-			if tc.result.Status == verifytree.StatusFailed && tc.wantReasonHas != nil && !strings.Contains(reason, f.paths.Log) {
-				t.Errorf("reason %q lacks the log path %q", reason, f.paths.Log)
+			if tc.result.Status == verifytree.StatusFailed && tc.wantReasonHas != nil && !strings.Contains(reason, tc.result.Log) {
+				t.Errorf("reason %q lacks the log path %q", reason, tc.result.Log)
 			}
 		})
 	}
