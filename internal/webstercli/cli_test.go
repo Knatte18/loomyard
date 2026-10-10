@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -125,7 +126,7 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "backend"}
 	c := &websterCLI{
 		cfg:        websterengine.Config{},
-		geom:       hubgeom.WebsterGeometry(layout),
+		geom:       hubGeometryWithIndex(layout),
 		anchorRel:  layout.AnchorRel,
 		refMatcher: fabricengine.NewRefScanner(layout),
 		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) },
@@ -133,6 +134,13 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 	// A verb run with no state computes Merriam's start base, which reads the Master stencil.
 	stencilkit.SeedInto(t, c.geom.StencilsDir)
 	return c, hub
+}
+
+// hubGeometryWithIndex returns the hub geometry of layout with the real code index the CLI layer wires.
+func hubGeometryWithIndex(layout *lyxcwd.Location) websterengine.Geometry {
+	geom := hubgeom.WebsterGeometry(layout)
+	geom.Index = planglyph.NewIndex(fabricengine.NewReferenceRule())
+	return geom
 }
 
 // onlyCreatePlan returns a one-card plan whose card Creates target.

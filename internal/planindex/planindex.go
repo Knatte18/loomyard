@@ -46,6 +46,8 @@ func (f Finding) Error() string {
 // Index is the code index a plan gate calls.
 // An infrastructure failure of the index is an error wrapping ErrQuarryUnavailable, distinct from any finding.
 type Index interface {
+	// Validate resolves the whole plan's refs against the tree at worktreeRoot, as ValidateFormat with a nil done does, and also reports a plan not yet approved.
+	Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error)
 	// ValidateFormat resolves the plan's refs against the tree at worktreeRoot, as a freshly written plan is checked.
 	// done names the cards whose batch webster already recorded done: their work is in the tree, so they are history, and the tree-dependent checks skip them.
 	// A nil done checks the whole plan.

@@ -428,72 +428,98 @@ func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 		})
 	}
 
-	t.Run("a slotted load waits for its slot and answers as the unslotted load", func(t *testing.T) {
-		t.Parallel()
-		root := copyGlyphChainFixture(t)
-		_, plan := writeGlyphPlan(t, []string{deleteCard("callees#Target")})
+	slottedEntries := []struct {
+		name      string
+		unslotted func(plan *planparser.Plan, root string) ([]Finding, error)
+		slotted   func(plan *planparser.Plan, root string, pool *gateslot.Pool, waitDir string) ([]Finding, error)
+	}{
+		{
+			name: "plan gate pass",
+			unslotted: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return planGatePass(plan, root, goListLoader{timeout: time.Minute})
+			},
+			slotted: func(plan *planparser.Plan, root string, pool *gateslot.Pool, waitDir string) ([]Finding, error) {
+				return planGatePass(plan, root, goListLoader{timeout: time.Minute, slots: pool, waitDir: waitDir})
+			},
+		},
+		{
+			name: "whole-plan Validate through a slotted index",
+			unslotted: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return validate(plan, root, goListLoader{timeout: time.Minute})
+			},
+			slotted: func(plan *planparser.Plan, root string, pool *gateslot.Pool, waitDir string) ([]Finding, error) {
+				return NewSlottedIndex(nil, pool, waitDir).Validate(plan, root)
+			},
+		},
+	}
+	for _, entry := range slottedEntries {
+		t.Run(entry.name+": a slotted load waits for its slot and answers as the unslotted load", func(t *testing.T) {
+			t.Parallel()
+			root := copyGlyphChainFixture(t)
+			_, plan := writeGlyphPlan(t, []string{deleteCard("callees#Target")})
 
-		want, err := planGatePass(plan, root, goListLoader{timeout: time.Minute})
-		if err != nil {
-			t.Fatalf("unslotted planGatePass(...) returned error: %v", err)
-		}
+			want, err := entry.unslotted(plan, root)
+			if err != nil {
+				t.Fatalf("unslotted load returned error: %v", err)
+			}
 
-		pool := &gateslot.Pool{
-			Dir:    t.TempDir(),
-			Limits: func() (gateslot.Limits, error) { return gateslot.Limits{Slots: 1, GoParallel: 1}, nil },
-			Poll:   5 * time.Millisecond,
-		}
-		held, err := pool.Acquire(context.Background(), gateslot.Holder{Worktree: root, Site: "test holder"})
-		if err != nil {
-			t.Fatalf("Acquire(...) returned error: %v", err)
-		}
-		releaseHeld := sync.OnceFunc(func() {
-			if err := held.Release(); err != nil {
-				t.Errorf("Release() returned error: %v", err)
+			pool := &gateslot.Pool{
+				Dir:    t.TempDir(),
+				Limits: func() (gateslot.Limits, error) { return gateslot.Limits{Slots: 1, GoParallel: 1}, nil },
+				Poll:   5 * time.Millisecond,
+			}
+			held, err := pool.Acquire(context.Background(), gateslot.Holder{Worktree: root, Site: "test holder"})
+			if err != nil {
+				t.Fatalf("Acquire(...) returned error: %v", err)
+			}
+			releaseHeld := sync.OnceFunc(func() {
+				if err := held.Release(); err != nil {
+					t.Errorf("Release() returned error: %v", err)
+				}
+			})
+			defer releaseHeld()
+
+			waitDir := t.TempDir()
+			type outcome struct {
+				findings []Finding
+				err      error
+			}
+			done := make(chan outcome, 1)
+			go func() {
+				findings, err := entry.slotted(plan, root, pool, waitDir)
+				done <- outcome{findings, err}
+			}()
+
+			var waits []gateslot.Wait
+			for deadline := time.Now().Add(30 * time.Second); len(waits) == 0; {
+				if time.Now().After(deadline) {
+					t.Fatal("no wait record appeared while the slot was held")
+				}
+				if waits, err = gateslot.ReadWaits(waitDir); err != nil {
+					t.Fatalf("ReadWaits(...) returned error: %v", err)
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+			if waits[0].Site != typesLoadSite {
+				t.Errorf("wait record site = %q; want %q", waits[0].Site, typesLoadSite)
+			}
+			select {
+			case got := <-done:
+				t.Fatalf("the load returned %+v while the only slot was held", got)
+			default:
+			}
+
+			releaseHeld()
+			got := <-done
+			if got.err != nil {
+				t.Fatalf("slotted load returned error: %v", got.err)
+			}
+			if !reflect.DeepEqual(got.findings, want) {
+				t.Errorf("slotted findings = %+v; want the unslotted %+v", got.findings, want)
+			}
+			if waits, err = gateslot.ReadWaits(waitDir); err != nil || len(waits) != 0 {
+				t.Errorf("ReadWaits after the load = (%+v, %v); want no records", waits, err)
 			}
 		})
-		defer releaseHeld()
-
-		waitDir := t.TempDir()
-		type outcome struct {
-			findings []Finding
-			err      error
-		}
-		done := make(chan outcome, 1)
-		go func() {
-			findings, err := planGatePass(plan, root, goListLoader{timeout: time.Minute, slots: pool, waitDir: waitDir})
-			done <- outcome{findings, err}
-		}()
-
-		var waits []gateslot.Wait
-		for deadline := time.Now().Add(30 * time.Second); len(waits) == 0; {
-			if time.Now().After(deadline) {
-				t.Fatal("no wait record appeared while the slot was held")
-			}
-			if waits, err = gateslot.ReadWaits(waitDir); err != nil {
-				t.Fatalf("ReadWaits(...) returned error: %v", err)
-			}
-			time.Sleep(5 * time.Millisecond)
-		}
-		if waits[0].Site != typesLoadSite {
-			t.Errorf("wait record site = %q; want %q", waits[0].Site, typesLoadSite)
-		}
-		select {
-		case got := <-done:
-			t.Fatalf("the load returned %+v while the only slot was held", got)
-		default:
-		}
-
-		releaseHeld()
-		got := <-done
-		if got.err != nil {
-			t.Fatalf("slotted planGatePass(...) returned error: %v", got.err)
-		}
-		if !reflect.DeepEqual(got.findings, want) {
-			t.Errorf("slotted findings = %+v; want the unslotted %+v", got.findings, want)
-		}
-		if waits, err = gateslot.ReadWaits(waitDir); err != nil || len(waits) != 0 {
-			t.Errorf("ReadWaits after the load = (%+v, %v); want no records", waits, err)
-		}
-	})
+	}
 }

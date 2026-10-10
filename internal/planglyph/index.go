@@ -38,6 +38,11 @@ type index struct {
 	loader  typesLoader
 }
 
+// Validate is the package's Validate, its type load run through the index's loader.
+func (i index) Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
+	return validate(plan, worktreeRoot, i.loader)
+}
+
 // ValidateFormat is the package's ValidateFormatAfter plus the card-fabric-reference findings, which sit outside planparser's entry points.
 func (i index) ValidateFormat(plan *planparser.Plan, worktreeRoot string, done []planparser.Card) ([]Finding, error) {
 	findings, err := validateFormatAfter(plan, worktreeRoot, done, i.loader)

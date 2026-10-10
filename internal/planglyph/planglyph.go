@@ -82,13 +82,18 @@ func validateRework(plan *planparser.Plan, worktreeRoot string, told int, loader
 // approval gate, converts every finding, and appends the same resolve-backed findings on top,
 // with the same error contract ValidateFormat documents.
 func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
+	return validate(plan, worktreeRoot, defaultTypesLoader)
+}
+
+// validate is Validate's body, its caller-uncovered type load run through loader.
+func validate(plan *planparser.Plan, worktreeRoot string, loader typesLoader) ([]Finding, error) {
 	findings := convertAll(planparser.Validate(plan, worktreeRoot))
 	resolveFindings, err := resolvePass(plan, worktreeRoot, nil, nil)
 	findings = append(findings, resolveFindings...)
 	if err != nil {
 		return findings, err
 	}
-	gateFindings, err := planGatePass(plan, worktreeRoot, defaultTypesLoader)
+	gateFindings, err := planGatePass(plan, worktreeRoot, loader)
 	return append(findings, gateFindings...), err
 }
 
