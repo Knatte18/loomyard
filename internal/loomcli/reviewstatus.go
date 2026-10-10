@@ -4,9 +4,12 @@ package loomcli
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentreview"
@@ -52,10 +55,63 @@ func formatWaitNote(producer, what string, elapsed time.Duration, detail string)
 	return note + " (" + detail + ")"
 }
 
-// verifyWaiting returns the Waiting hook that reports a running verify from the marker at markerPath, and falls through to next otherwise.
+// formatHolders renders the gate-slot holders as `<worktree> <site>, <worktree> <site>`.
+func formatHolders(holders []gateslot.Holder) string {
+	named := make([]string, len(holders))
+	for i, holder := range holders {
+		named[i] = holder.Worktree + " " + holder.Site
+	}
+	return strings.Join(named, ", ")
+}
+
+// readHolders returns the holders clause body, empty when the read fails or no slot is held, since the clause only explains a wait and status must not fail on it.
+func readHolders(holders func() ([]gateslot.Holder, error)) string {
+	held, err := holders()
+	if err != nil {
+		return ""
+	}
+	return formatHolders(held)
+}
+
+// gateWaiting returns the Waiting hook that reports each live gate wait record in waitDir, and appends next's note.
+// Each record renders as `<producer>: <site> waiting for a gate slot <elapsed>`, oldest first and joined with `; `, followed once by `(holders: <worktree> <site>, ...)` when holders names any.
+// With no live record the note is next's; with one or more, next's non-empty note follows after `; `.
+// A record whose process is dead reads as absent, so a crashed wait never sticks in the status line.
+func gateWaiting(waitDir string, holders func() ([]gateslot.Holder, error), now func() time.Time, next func(st shedengine.Status) (string, error)) func(st shedengine.Status) (string, error) {
+	return func(st shedengine.Status) (string, error) {
+		waits, err := gateslot.ReadWaits(waitDir)
+		if err != nil {
+			return "", err
+		}
+		if len(waits) == 0 {
+			return next(st)
+		}
+		sort.SliceStable(waits, func(i, j int) bool { return waits[i].Started.Before(waits[j].Started) })
+		clauses := make([]string, len(waits))
+		for i, wait := range waits {
+			clauses[i] = fmt.Sprintf("%s: %s waiting for a gate slot %s", st.CurrentProducer, wait.Site, formatElapsed(now().Sub(wait.Started)))
+		}
+		note := strings.Join(clauses, "; ")
+		if named := readHolders(holders); named != "" {
+			note += " (holders: " + named + ")"
+		}
+		rest, err := next(st)
+		if err != nil {
+			return "", err
+		}
+		if rest != "" {
+			note += "; " + rest
+		}
+		return note, nil
+	}
+}
+
+// verifyWaiting returns the Waiting hook that reports a verify from the marker at markerPath, and falls through to next otherwise.
+// A running verify reads as `<producer>: verify running <elapsed> (<detail>)`, and one still waiting for a gate slot as `<producer>: verify waiting for a gate slot <elapsed> (<site>; holders: <worktree> <site>, ...)`, elapsed measured from the wait start.
+// The holders clause is dropped when holders names none or fails.
 // The note names the run's current producer and measures elapsed time from now.
 // A marker whose pid is dead reads as absent, so a crashed verify never sticks in the status line.
-func verifyWaiting(markerPath string, now func() time.Time, next func(st shedengine.Status) (string, error)) func(st shedengine.Status) (string, error) {
+func verifyWaiting(markerPath string, holders func() ([]gateslot.Holder, error), now func() time.Time, next func(st shedengine.Status) (string, error)) func(st shedengine.Status) (string, error) {
 	return func(st shedengine.Status) (string, error) {
 		m, live, err := verifytree.ReadMarker(markerPath)
 		if err != nil {
@@ -63,6 +119,13 @@ func verifyWaiting(markerPath string, now func() time.Time, next func(st shedeng
 		}
 		if !live {
 			return next(st)
+		}
+		if m.State == verifytree.MarkerStateWaiting {
+			detail := m.Site
+			if named := readHolders(holders); named != "" {
+				detail += "; holders: " + named
+			}
+			return fmt.Sprintf("%s: verify waiting for a gate slot %s (%s)", st.CurrentProducer, formatElapsed(now().Sub(m.WaitStarted)), detail), nil
 		}
 		var detail []string
 		if m.Attempt > 0 {
@@ -91,7 +154,7 @@ func shuttleWaiting(readMarker func() (shuttleengine.WaitMarker, bool, error), n
 }
 
 // reviewWaitingFor builds the Waiting hook for loc's worktree, or nil when no location is wired.
-// A running verify is reported first, then a shuttle wait, then the parent-review note.
+// A gate wait is reported first, then a verify, then a shuttle wait, then the parent-review note.
 func reviewWaitingFor(loc *lyxcwd.Location) func(st shedengine.Status) (string, error) {
 	if loc == nil {
 		return nil
@@ -106,5 +169,7 @@ func reviewWaitingFor(loc *lyxcwd.Location) func(st shedengine.Status) (string, 
 		return shuttleengine.ReadWaitMarker(cfg, loc.AnchorPath())
 	}
 	markerPath := verifytree.NewPaths(loc.WorktreePath(), verifytree.Dir(loc.AnchorPath())).Marker
-	return verifyWaiting(markerPath, time.Now, shuttleWaiting(readShuttleMarker, time.Now, review))
+	holders := hubgeom.GateSlots(loc).Holders
+	verify := verifyWaiting(markerPath, holders, time.Now, shuttleWaiting(readShuttleMarker, time.Now, review))
+	return gateWaiting(gateslot.WaitDir(loc.AnchorPath()), holders, time.Now, verify)
 }
