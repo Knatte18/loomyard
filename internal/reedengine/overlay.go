@@ -26,6 +26,9 @@ type TmuxCmd struct {
 	socket   string
 	// socketPath, when non-empty, addresses the server by `-S <path>` instead of `-L <socket>`.
 	socketPath string
+	// configFile, when non-empty, leads the server flags with `-f <configFile>`, so a server this command starts reads that config and not the operator's.
+	// A running server ignores the flag.
+	configFile string
 	// execHook, when non-nil, replaces the real subprocess exec for BOTH run
 	// and output — the single white-box seam a test can stub to drive a
 	// composed engine call site (e.g. ensureSelvagePaneLocked's Selvage-rebuild
@@ -52,10 +55,14 @@ func newTmuxCmdForSocketPath(tmuxPath, socketPath string) TmuxCmd {
 
 // serverArgs returns the leading flags that address this command's server.
 func (p TmuxCmd) serverArgs() []string {
-	if p.socketPath != "" {
-		return []string{"-S", p.socketPath}
+	var args []string
+	if p.configFile != "" {
+		args = append(args, "-f", p.configFile)
 	}
-	return []string{"-L", p.socket}
+	if p.socketPath != "" {
+		return append(args, "-S", p.socketPath)
+	}
+	return append(args, "-L", p.socket)
 }
 
 // run builds and runs a command with the server flags prepended,

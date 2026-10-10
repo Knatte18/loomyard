@@ -8,7 +8,10 @@
 
 package reedengine
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestSpawnWatchdog_ReturnsWithoutSpawning(t *testing.T) {
 	tests := []struct {
@@ -22,6 +25,34 @@ func TestSpawnWatchdog_ReturnsWithoutSpawning(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			SpawnWatchdog(tt.hubPath, "tmux", "shell", tt.suppress)
+		})
+	}
+}
+
+func TestSpawnWatchdogEnv_DropsLogFileOnly(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		environ []string
+		want    []string
+	}{
+		{
+			name:    "DropsOnlyTheExactKey",
+			environ: []string{"PATH=/bin", "LYX_LOG_FILE=/tmp/x.log", "LYX_LOG_LEVEL=debug", "LYX_LOG_FILE_EXTRA=keep", "HOME=/home/u"},
+			want:    []string{"PATH=/bin", "LYX_LOG_LEVEL=debug", "LYX_LOG_FILE_EXTRA=keep", "HOME=/home/u"},
+		},
+		{
+			name:    "AbsentKeyReturnedAsIs",
+			environ: []string{"PATH=/bin", "LYX_LOG_LEVEL=debug"},
+			want:    []string{"PATH=/bin", "LYX_LOG_LEVEL=debug"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := spawnWatchdogEnv(tt.environ)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("spawnWatchdogEnv(%q) = %q, want %q", tt.environ, got, tt.want)
+			}
 		})
 	}
 }

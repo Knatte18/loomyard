@@ -57,6 +57,7 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 - Reed's `sessionlessSocketHolderPersists` is the one production accommodation: before its grace loop it asks the holder `show-options -gqv @lyx_test_server`, and a holder answering `on` is never stale.
   Without it, reed would reap the session-less pre-started server after `staleSocketGrace` and replace it with a config-less one.
   Bound: only the kit's config sets the option, and reed's own boots never do; an operator config that sets it disables the reap for its own servers, and a server that sets `exit-empty off` without it is reaped as before.
-- Bound: a server reed starts itself carries no `-f`, so it reads the operator's `~/.tmux.conf` and its strand panes start login shells.
-  That covers a test that registers its key after reed's boot, and every boot after a test's own `down` or `kill-server` on its key, as those tests pin reed's own server start, teardown or recovery, which a pre-started server would bypass.
-  The pre-started server also runs without reed's `-v` debug flags and with the kit's directory as its cwd, so it writes no `tmux-server-<pid>.log` into the hub logs dir; a test that asserts on those artefacts registers its key after reed's boot.
+- A server reed starts itself reads no `~/.tmux.conf` either: its spawn and its capability probe carry `-f /dev/null` on every platform but Windows, and reed pins `default-shell` and an equal `default-command` on each session, so strand panes start non-login shells.
+  The kit's server differs from reed's own only by `exit-empty off` and the `@lyx_test_server` marker, which reed's boots never set.
+  Reed's server is started by a test that registers its key after reed's boot, and by every boot after a test's own `down` or `kill-server` on its key, as those tests pin reed's own server start, teardown or recovery, which a pre-started server would bypass.
+  The pre-started server runs without reed's `-v` debug flags and with the kit's directory as its cwd, so it writes no `tmux-server-<pid>.log` into the hub logs dir; a test that asserts on those artefacts registers its key after reed's boot.

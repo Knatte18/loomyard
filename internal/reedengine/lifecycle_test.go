@@ -11,12 +11,15 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
 
@@ -28,17 +31,40 @@ func guids(strands []Strand) []string {
 	return out
 }
 
-// TestUp_BootValidation pins the eager boot validation of Up: a segment color outside the palette or an invalid watchdog value
+// TestUp_BootValidation pins the eager boot validation of Up: an over-long socket path, an unresolvable shell, a segment color outside the palette or an invalid watchdog value
 // fails with an error naming it before any tmux round trip (validation ORDER, not just existence),
 // while "on" and "off" do not trip the watchdog check (the fixture's nonexistent tmux binary is expected to fail Up() past this point,
 // so the assertion is only that the error is NOT the watchdog validation error).
+// Each refusal is asserted at both boot entries: Up, whose op-lock bracket refuses before its zoom read, and ensureServerAndSessionLocked, which every other boot path reaches without that bracket.
 func TestUp_BootValidation(t *testing.T) {
 	tests := []struct {
 		name      string
 		configure func(cfg *Config)
 		wantErr   string // the validation error Up must fail with before any tmux contact; empty when the value must pass the check
 		notErr    string // an error text Up must not fail with
+		setup     func(t *testing.T)
 	}{
+		{
+			name: "SocketPathTooLong",
+			setup: func(t *testing.T) {
+				if runtime.GOOS == "windows" {
+					t.Skip("psmux keeps no socket file")
+				}
+				t.Setenv("TMUX_TMPDIR", filepath.Join(t.TempDir(), strings.Repeat("a", unixSocketPathLimit("linux"))))
+			},
+			configure: func(cfg *Config) {},
+			wantErr:   "TMUX_TMPDIR",
+		},
+		{
+			name: "ShellUnresolvable",
+			setup: func(t *testing.T) {
+				if runtime.GOOS == "windows" {
+					t.Skip("Windows keeps its current shell handling")
+				}
+			},
+			configure: func(cfg *Config) { cfg.Shell = "lyx-no-such-shell-for-this-test" },
+			wantErr:   "key shell",
+		},
 		{
 			name:      "SegmentColorOutsidePalette",
 			configure: func(cfg *Config) { cfg.SegmentColors = map[string]string{"review": "crimson"} },
@@ -52,6 +78,9 @@ func TestUp_BootValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup(t)
+			}
 			e := newTestEngine(t)
 			e.cfg.DebugLog = "0"
 			e.cfg.Mouse = "off"
@@ -64,14 +93,20 @@ func TestUp_BootValidation(t *testing.T) {
 			_, err := e.Up()
 
 			if tt.wantErr != "" {
-				if err == nil {
-					t.Fatalf("Up() = nil error, want the eager validation error containing %q", tt.wantErr)
-				}
-				if !strings.Contains(err.Error(), tt.wantErr) {
-					t.Errorf("Up() error = %q, want it to contain %q; any other error means validation ran after tmux contact", err, tt.wantErr)
+				_, _, ensureErr := e.ensureServerAndSessionLocked()
+				for _, entry := range []struct {
+					name string
+					err  error
+				}{{"Up()", err}, {"ensureServerAndSessionLocked()", ensureErr}} {
+					if entry.err == nil {
+						t.Fatalf("%s = nil error, want the eager validation error containing %q", entry.name, tt.wantErr)
+					}
+					if !strings.Contains(entry.err.Error(), tt.wantErr) {
+						t.Errorf("%s error = %q, want it to contain %q; any other error means validation ran after tmux contact", entry.name, entry.err, tt.wantErr)
+					}
 				}
 				if calls := fake.Calls(); len(calls) != 0 {
-					t.Errorf("Up() issued %d tmux calls before failing, want zero: %v", len(calls), calls)
+					t.Errorf("Up() and ensureServerAndSessionLocked() issued %d tmux calls before failing, want zero: %v", len(calls), calls)
 				}
 				return
 			}
@@ -80,6 +115,99 @@ func TestUp_BootValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestServerSpawnArgv pins the argv of the server-starting invocation: the debug flags first, `-f /dev/null` ahead of `-L` everywhere but Windows, then new-session with the configured shell last.
+func TestServerSpawnArgv(t *testing.T) {
+	e := newTestEngine(t)
+	session := []string{
+		"-L", e.Socket(),
+		"new-session", "-d", "-s", e.SessionName(),
+		"-c", e.geom.PaneCwd,
+		"-x", strconv.Itoa(e.cfg.Width),
+		"-y", strconv.Itoa(e.cfg.Height),
+		e.cfg.Shell,
+	}
+	tests := []struct {
+		name      string
+		goos      string
+		debugArgs []string
+		want      []string
+	}{
+		{"LinuxWithoutDebugFlags", "linux", nil, append([]string{"-f", os.DevNull}, session...)},
+		{"LinuxWithDebugFlags", "linux", []string{"-vv"}, append([]string{"-vv", "-f", os.DevNull}, session...)},
+		{"WindowsHasNoConfigFlag", "windows", nil, session},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := e.serverSpawnArgv(tt.goos, tt.debugArgs); !slices.Equal(got, tt.want) {
+				t.Errorf("serverSpawnArgv(%q, %v) = %v, want %v", tt.goos, tt.debugArgs, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPinBootOptionsLocked_InstallsTheSignalEntry pins that a fresh boot's pins end in a zero-pin rebuild of the window-resized hook array when the watchdog is on, the clear and the signal entry alone,
+// and that watchdog off leaves the one unset and installs no entry.
+// Windows issues no hook call and cannot be faked, so both steps skip there.
+func TestPinBootOptionsLocked_InstallsTheSignalEntry(t *testing.T) {
+	bootPins := func(t *testing.T, watchdog string) (*Engine, [][]string) {
+		t.Helper()
+		if runtime.GOOS == "windows" {
+			t.Skip("the window-resized hook is never installed on Windows")
+		}
+		e := newTestEngine(t)
+		e.cfg.Watchdog = watchdog
+		fake := installFakeTmux(t, e)
+		if err := e.pinBootOptionsLocked("off", ""); err != nil {
+			t.Fatalf("pinBootOptionsLocked() = %v, want nil", err)
+		}
+		return e, fake.Calls()
+	}
+
+	t.Run("WatchdogOn", func(t *testing.T) {
+		e, calls := bootPins(t, "on")
+		target := exactSessionWindowTarget(e.SessionName())
+
+		var hooks [][]string
+		lastOption, firstHook := -1, -1
+		for i, call := range calls {
+			switch call[0] {
+			case "set-option":
+				lastOption = i
+			case "set-hook":
+				hooks = append(hooks, call)
+				if firstHook == -1 {
+					firstHook = i
+				}
+			}
+		}
+		want := [][]string{
+			{"set-hook", "-u", "-w", "-t", target, windowResizedHookName},
+			{"set-hook", "-w", "-t", target, windowResizedHookName, resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())},
+		}
+		if !slices.EqualFunc(hooks, want, slices.Equal[[]string]) {
+			t.Errorf("set-hook calls = %v, want the clear and the signal entry alone: %v", hooks, want)
+		}
+		if firstHook < lastOption {
+			t.Errorf("first set-hook call at %d precedes the last set-option call at %d, want the install after the geometry pins", firstHook, lastOption)
+		}
+	})
+
+	t.Run("WatchdogOff", func(t *testing.T) {
+		e, calls := bootPins(t, "off")
+
+		var hooks [][]string
+		for _, call := range calls {
+			if call[0] == "set-hook" {
+				hooks = append(hooks, call)
+			}
+		}
+		want := [][]string{{"set-hook", "-u", "-t", exactSessionWindowTarget(e.SessionName()), windowResizedHookName}}
+		if !slices.EqualFunc(hooks, want, slices.Equal[[]string]) {
+			t.Errorf("set-hook calls = %v, want the one unset %v", hooks, want)
+		}
+	})
 }
 
 // TestStatus_ReportsSegmentColor pins that Status carries each strand's resolved segment color, and none for a strand recorded without a segment.

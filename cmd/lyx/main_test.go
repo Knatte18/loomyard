@@ -1,6 +1,6 @@
 // main_test.go — tests for the module dispatcher (main.go).
 //
-// Drives run() directly: module routing from an uninitialized repo, and that the root hook mints nothing under test.
+// Drives run() directly: module routing from an uninitialized repo, that the root hook mints nothing under test, and that it keeps the init-time log level when no -v is given.
 // Help paths and unknown modules live in exitcode_test.go.
 // The three tests that spawn gitexec's RunGit(["init"], …) to seed a real git repo live in main_integration_test.go per the Test Tier Purity Invariant.
 
@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // These tests cover module routing, not board behaviour (that lives in internal/boardcli).
@@ -77,5 +78,23 @@ func TestRootHookSuppressedUnderTest(t *testing.T) {
 
 	if !testing.Testing() {
 		t.Fatalf("testing.Testing() = false inside a test binary; the root hook's suppression wiring relies on it being true here")
+	}
+}
+
+// TestRootHook_NoVerboseFlagKeepsTheLevelSetAtInit asserts a run with no -v leaves the level the logger held before the hook, so a Debug record still reaches stderr.
+// SetVerbosity(2) stands in for LYX_LOG_LEVEL=debug, which the logger reads only at package init.
+// It mutates the process-global logger level and output, so it does not run in parallel.
+func TestRootHook_NoVerboseFlagKeepsTheLevelSetAtInit(t *testing.T) {
+	buf := logcapture.Capture(t)
+	logger.SetVerbosity(2)
+
+	root := newRoot()
+	if err := root.PersistentPreRunE(root, nil); err != nil {
+		t.Fatalf("PersistentPreRunE(root, nil) returned error: %v", err)
+	}
+	logger.Debug("debug after the root hook")
+
+	if !strings.Contains(buf.String(), "debug after the root hook") {
+		t.Errorf("stderr output = %q after the root hook with no -v; want the Debug record", buf.String())
 	}
 }

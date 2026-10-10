@@ -24,7 +24,7 @@ func withCapturedOutput(t *testing.T) *bytes.Buffer {
 
 var originalOut = out
 
-// TestLogging_RoutesRecordsByLevelAndVerbosity pins the dual-handler fan-out: Warn reaches stderr and the durable sink at every verbosity, Info reaches the durable sink always and stderr from -v, Debug reaches stderr only at -vv and never the durable sink.
+// TestLogging_RoutesRecordsByLevelAndVerbosity pins the dual-handler fan-out: Warn reaches stderr and the durable sink at every verbosity, Info reaches the durable sink always and stderr from -v, Debug reaches stderr and the durable sink only at -vv.
 // Every record a half receives carries the current trace ID, and a Warn with no durable sink armed still reaches stderr.
 func TestLogging_RoutesRecordsByLevelAndVerbosity(t *testing.T) {
 	tests := []struct {
@@ -37,7 +37,7 @@ func TestLogging_RoutesRecordsByLevelAndVerbosity(t *testing.T) {
 	}{
 		{name: "debug at default", emit: Debug, verbosity: 0, wantStderr: false, wantDurable: false},
 		{name: "debug at -v", emit: Debug, verbosity: 1, wantStderr: false, wantDurable: false},
-		{name: "debug at -vv", emit: Debug, verbosity: 2, wantStderr: true, wantDurable: false},
+		{name: "debug at -vv", emit: Debug, verbosity: 2, wantStderr: true, wantDurable: true},
 		{name: "info at default", emit: Info, verbosity: 0, wantStderr: false, wantDurable: true},
 		{name: "info at -v", emit: Info, verbosity: 1, wantStderr: true, wantDurable: true},
 		{name: "info at -vv", emit: Info, verbosity: 2, wantStderr: true, wantDurable: true},

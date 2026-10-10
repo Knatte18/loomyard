@@ -52,3 +52,51 @@ The task's spawn reduction is real on the discovery loop; its effect on idle CPU
 
 - The scratch hub was built from local bare repositories through `hubforge`, not cloned with `lyx fabric clone --into`, so that no verb ran against the operator's hub or its remotes.
 - The durable log holds Info and above only, and the Debug spawn lines never appear in it; a run at `LYX_LOG_LEVEL=debug` with `LYX_LOG_FILE` wrote five warning lines and no tmux lines, so the spawn counts come from the shim instead.
+
+## After the hygiene task
+
+The same procedure re-run on the reed-hygiene task's binary.
+Every number is a single sample.
+
+### Binaries
+
+| Figure | Binary | Commit |
+|---|---|---|
+| After hygiene | `./deploy-dev` build of the task branch | `c6c54c6f3`, the branch at card 10 |
+
+### Results
+
+| Figure | Daemon CPU (utime + stime) | Children CPU (cutime + cstime) | Total | `list-sessions` per minute |
+|---|---|---|---|---|
+| After hygiene | 0.08 s per 600 s, 0.5 s per hour | 0.41 s per 600 s, 2.5 s per hour | 2.9 s per hour | 1.6 |
+
+The `/proc/<pid>/stat` fields read 0 0 0 0 at three seconds and 5 3 20 21 ticks at 603 seconds.
+
+### Per-subcommand counts
+
+The 300-second shim run counted 101 invocations through `--tmux`.
+A second 300-second run at `-vv`, with the Debug spawn lines read back from the durable log in the hub's logs directory and from the daemon's stderr, counted 101 `tmux` spawn lines in each.
+The shim run and that cross-check were separate runs and agreed on the total; the second run's shim file repeated the first run's per-subcommand counts exactly.
+
+| Subcommand | Invocations in 300 s |
+|---|---|
+| `list-panes` | 45 |
+| `display-message` | 24 |
+| `has-session` | 21 |
+| `list-sessions` | 8 |
+| `show-options` | 3 |
+
+### What the children are
+
+The counts and the children CPU are consistent with the working hypothesis, and they do not prove it.
+Of the 101 invocations, 93 are the per-session watchers' round trips (`list-panes`, `display-message`, `has-session`, `show-options`), and 8 are the discovery loop's `list-sessions`; nothing outside the daemon's `--tmux` is visible to the shim.
+The children's CPU fell from 14.44 s to 0.41 s per 600 s, and the daemon's logs show all three idle sessions promoted to signal mode, so the poll-mode round trips the hypothesis names no longer run at two seconds per session.
+The hypothesis cannot be confirmed directly, because the earlier rows' shim saw only `list-sessions`: before the watchers spawned through `--tmux` their invocations were invisible, so there is no earlier per-subcommand count to compare.
+The name-repair pass as the remainder is not separable in these counts.
+
+## Deviations from the card's procedure, after hygiene
+
+- The scratch hub was held open by a throwaway test over `hubforge.NewHub`, with three worktrees added through `AddPair`, and removed afterwards; it was not committed.
+- At `LYX_LOG_LEVEL=debug` the foreground daemon wrote no Debug lines to stderr and none to the durable log, because the CLI's root hook calls `SetVerbosity` with the `-v` count, which resets the level the variable set; the shim run at `LYX_LOG_LEVEL=debug` produced the same counts as the `-vv` run, and the log cross-check comes from the `-vv` run.
+  The root hook has since stopped calling `SetVerbosity` when no `-v` is given, so `LYX_LOG_LEVEL=debug` now stands.
+- The CPU figures come from the `LYX_LOG_LEVEL=debug` run.

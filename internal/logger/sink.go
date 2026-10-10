@@ -1,7 +1,7 @@
 // sink.go implements the durable second sink: a per-process trace file opened lazily on one of two
-// triggers (discussion.md's `sink-open-triggers` decision) — the first Info-or-above record,
-// or the process exiting with a non-zero code — and written to under a size cap with a single
-// truncation marker once that cap is crossed.
+// triggers (discussion.md's `sink-open-triggers` decision):
+// the first record the durable half admits, or the process exiting with a non-zero code.
+// It is written to under a size cap with a single truncation marker once that cap is crossed.
 // Unlike the stderr sink logger.go already provides, this file is never the default
 // `Debug`/`Info`/`Warn` output path itself;
 // batch 5 wires those helpers to fan out to it via ensureDurableSink once this file's open logic

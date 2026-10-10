@@ -228,7 +228,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		fake := installFakeTmux(t, e)
 
 		target := exactSessionWindowTarget(e.SessionName())
-		e.pinGeometryOptionsLocked(target)
+		e.pinGeometryOptionsLocked(target, "")
 		calls := fake.ArgvFor("set-option")
 
 		wantOptions := [][]string{
@@ -246,11 +246,37 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		}
 	})
 
+	t.Run("ShellPinsFollowTheOptionPins", func(t *testing.T) {
+		e := newTestEngine(t)
+		fake := installFakeTmux(t, e)
+		target := exactSessionWindowTarget(e.SessionName())
+
+		e.pinGeometryOptionsLocked(target, "/bin/sh")
+		calls := fake.ArgvFor("set-option")
+
+		wantTail := [][]string{
+			{"set-option", "-w", "-t", target, "window-size", "latest"},
+			{"set-option", "-t", target, "default-shell", "/bin/sh"},
+			{"set-option", "-t", target, "default-command", "/bin/sh"},
+		}
+		if len(calls) < len(wantTail) || !slices.EqualFunc(calls[len(calls)-len(wantTail):], wantTail, slices.Equal[[]string]) {
+			t.Errorf("pinGeometryOptionsLocked set-option calls = %v, want them to end with the window-size pin and the two session-scoped shell pins %v", calls, wantTail)
+		}
+
+		fake = installFakeTmux(t, e)
+		e.pinGeometryOptionsLocked(target, "")
+		for _, call := range fake.ArgvFor("set-option") {
+			if slices.Contains(call, "default-shell") || slices.Contains(call, "default-command") {
+				t.Errorf("pinGeometryOptionsLocked with an empty shell path issued %v, want no shell pin", call)
+			}
+		}
+	})
+
 	t.Run("BindingsAreIssuedAfterTheOptionPins", func(t *testing.T) {
 		e := newTestEngine(t)
 		fake := installFakeTmux(t, e)
 
-		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 
 		lastOption, firstBinding, bindings := -1, -1, 0
 		for i, call := range fake.Calls() {
@@ -283,7 +309,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			return "", nil
 		})
 
-		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 		calls := fake.ArgvFor("set-option")
 
 		const wantCalls = 8
@@ -296,7 +322,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		e.cfg.Watchdog = "on"
 		fake := installFakeTmux(t, e)
 
-		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 		calls := fake.Calls()
 
 		// With the new resize-pin mechanism, pinGeometryOptionsLocked no longer installs the
@@ -336,7 +362,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 
 		fake := installFakeTmux(t, e)
 
-		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 		calls := fake.Calls()
 
 		wantTarget := exactSessionWindowTarget(e.SessionName())
@@ -369,7 +395,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		installFakeTmux(t, e)
 		// Must not panic and pinGeometryOptionsLocked returns nothing, so simply calling it and
 		// returning normally is the assertion.
-		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 	})
 
 	t.Run("SetHookErrorIsNonFatalWhenWatchdogOff", func(t *testing.T) {
@@ -378,7 +404,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		fake := installFakeTmux(t, e)
 		fake.answer("set-hook", "", errors.New("boom"))
 
-		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 
 		if setOptionCalls := fake.Count("set-option"); setOptionCalls != 8 {
 			t.Errorf("set-option calls = %d, want 8(all preceding pins still attempted despite the later set-hook error)", setOptionCalls)
@@ -394,7 +420,7 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 		installFakeTmux(t, e)
 		// The signal file's parent dir may not even exist yet; removeResizeSignalFileLocked must not
 		// panic or log anything above Warn-worthy for a genuinely absent file.
-		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
+		e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), "")
 	})
 }
 

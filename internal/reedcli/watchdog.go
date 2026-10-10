@@ -19,7 +19,6 @@ package reedcli
 import (
 	"context"
 	"errors"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -314,6 +313,11 @@ func resolveWatchedSession(hub, sessionName string) (*lyxcwd.Location, error) {
 // starting one here would cost a goroutine per disabled worktree to do nothing — while keeping the
 // entry still keeps the session known and keeps departure bookkeeping (runWatchdogLoop) uniform
 // across enabled and disabled worktrees.
+//
+// The engine drives tmuxPath, the binary the daemon was told, whatever the worktree's own config names,
+// so a --tmux shim counts every subcommand of every watcher.
+// That told binary is the tmux value of the worktree whose spawn started the daemon, and the watchers ignore every other worktree's tmux value, a debugging wrapper included.
+// Nothing compares the two, since a config value and a resolved path to one binary differ as text.
 func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 	location, err := resolveWatchedSession(hub, sessionName)
 	if err != nil {
@@ -328,6 +332,7 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 	if err != nil {
 		return watchedSession{}, err
 	}
+	cfg.Tmux = tmuxPath
 	eng := reedengine.New(cfg, geom)
 
 	// A worktree reaches the daemon's discovery loop only after "lyx reed up" already booted it,
@@ -581,7 +586,7 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 // guarantee behind the discussion's the-daemon-is-told-its-shell decision: --shell is accepted on
 // every GOOS but never validated, and having no shell parameter to inspect makes that a property of
 // the signature rather than a branch someone can add later. A hard --shell pre-flight would have a
-// real consequence: ensureWatchdogSpawned is best-effort and its child's stderr is discarded, so a
+// real consequence: ensureWatchdogSpawned is best-effort and detached with no stderr anyone watches, so a
 // rejection there would silently cost the hub its entire watchdog daemon, resize self-heal for every
 // worktree included, over one empty config value.
 func validateWatchdogFlags(hubPath, tmuxPath string) error {
@@ -653,8 +658,17 @@ up, resume and attach each attempt to spawn this daemon detached after
 their own engine op returns without error; a spawn that finds the lock
 already held exits 0 immediately. Running it directly in the foreground
 is a real diagnosis path: its diagnostics land in the hub's durable log
-directory rather than nowhere, since its own stdio is discarded before it
-starts polling.
+directory, and the foreground run honours -v, -vv, LYX_LOG_LEVEL and
+LYX_LOG_FILE like every other verb.
+
+A detached daemon's stderr reaches nothing, so its Debug trace reaches only
+the durable log directory. Two routes give a Debug trace of the daemon: run
+it in the foreground with -vv, whose Debug lines then go to stderr or to the
+LYX_LOG_FILE set for that run; or, while no daemon runs for the hub, run
+lyx reed up, attach or resume with LYX_LOG_LEVEL=debug set, so the daemon
+that verb spawns starts at Debug and writes its trace to the hub logs
+directory. A daemon already running keeps the level it started with, since a
+new spawn finds the hub lock held and exits.
 
 Example:
   lyx reed watchdog --hub-path /abs/path/to/hub --tmux /usr/bin/tmux --shell /bin/bash`,
@@ -669,14 +683,11 @@ Example:
 				return nil
 			}
 
-			// The durable sink is pointed FIRST, before stderr is discarded: its cwd-anchored
+			// The durable sink is pointed FIRST, before the lock: its cwd-anchored
 			// fallback arms only inside a lyx-owned worktree and never from a hub cwd, which is
 			// exactly where cmd.Dir pins this process when it is spawned detached — without this
 			// explicit call, every diagnostic the design leans on would go nowhere.
 			logger.SetDurableSinkDir(fabricengine.HubLogsDir(hubPath))
-			// The daemon's own stdio is not a screen anyone watches; only the durable sink matters
-			// from here on.
-			logger.SetOutput(io.Discard)
 
 			lockPath := filepath.Join(fabricengine.HubScratchDir(hubPath), watchdogLockFileName)
 			fl, acquired, err := lock.TryAcquireWriteLock(lockPath)

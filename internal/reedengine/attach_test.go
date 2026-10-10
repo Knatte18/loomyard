@@ -13,6 +13,7 @@ package reedengine
 
 import (
 	"errors"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -203,7 +204,7 @@ func TestAttachArgv_ChainGate(t *testing.T) {
 
 			got := e.AttachArgv(cols, rows)
 
-			assertStrandOptionsReasserted(t, fake)
+			assertStrandOptionsReasserted(t, fake, 0)
 			if tt.wantBare {
 				assertBareArgv(t, e, got)
 				return
@@ -266,6 +267,12 @@ func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	e, fake := newAttachTestEngine(t, goodAttachStrands())
 	fake.mustNotCall("select-layout", "select-pane", "kill-pane", "split-window")
+	// Where the shell resolves, the pre-flight also pins the session's two shell options.
+	wantShellPins := 0
+	if runtime.GOOS != "windows" {
+		e.cfg.Shell = "sh"
+		wantShellPins = len(shellOptionArgvs("", "sh"))
+	}
 
 	stateBefore, err := LoadState(e.stateDir())
 	if err != nil {
@@ -278,12 +285,12 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 	}
 
 	// The seven bar and border pins plus the pre-existing window-size pin, the window marker and the strand pane's two options.
-	const wantSetOptionCalls = 11
+	wantSetOptionCalls := 11 + wantShellPins
 	if setOptions := fake.ArgvFor("set-option"); len(setOptions) != wantSetOptionCalls {
 		t.Fatalf("AttachArgv() issued %d set-option calls, want %d: %v", len(setOptions), wantSetOptionCalls, setOptions)
 	}
 
-	assertStrandOptionsReasserted(t, fake)
+	assertStrandOptionsReasserted(t, fake, wantShellPins)
 
 	calls := fake.Calls()
 	statusPinIdx, statusReadbackIdx, listPanesIdx, firstSetHookIdx := -1, -1, -1, -1
@@ -333,11 +340,15 @@ func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
 }
 
 // assertStrandOptionsReasserted asserts the pre-flight marked the strand window and set the pane options on the live bound pane %1, and none on the unbound pane %2.
-func assertStrandOptionsReasserted(t *testing.T, fake *fakeTmux) {
+// It also asserts the pre-flight issued exactly wantShellPins session shell pins, none where the configured shell does not resolve.
+func assertStrandOptionsReasserted(t *testing.T, fake *fakeTmux, wantShellPins int) {
 	t.Helper()
 	var marked, labeled bool
+	shellPins := 0
 	for _, argv := range fake.ArgvFor("set-option") {
 		switch {
+		case containsArg(argv, "default-shell"), containsArg(argv, "default-command"):
+			shellPins++
 		case containsArg(argv, "@lyx_strands"):
 			marked = true
 		case containsArg(argv, "@strand"):
@@ -349,6 +360,9 @@ func assertStrandOptionsReasserted(t *testing.T, fake *fakeTmux) {
 	}
 	if !marked || !labeled {
 		t.Errorf("set-option calls = %v, want the window marked (%v) and the bound pane labeled (%v)", fake.ArgvFor("set-option"), marked, labeled)
+	}
+	if shellPins != wantShellPins {
+		t.Errorf("set-option calls = %v, want %d session shell pins, got %d", fake.ArgvFor("set-option"), wantShellPins, shellPins)
 	}
 }
 

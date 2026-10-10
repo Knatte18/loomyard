@@ -115,7 +115,13 @@
 // default — as its own trailing shell-command argument, the same way
 // new-session already launches the session's first pane: Selvage is an
 // ordinary, typeable interactive shell, never a re-exec of lyx and never
-// sent a command of reed's own choosing. A Selvage pane whose shell process
+// sent a command of reed's own choosing.
+// A strand pane keeps its split with no trailing command and starts the shell from the session's own pins:
+// the boot and the attach pre-flight set `default-shell` and an equal non-empty `default-command` to the resolved shell on the session, never globally, because one server serves every worktree of the hub.
+// A non-empty `default-command` makes tmux start the shell without the login flag, so a strand pane runs the shell's rc files and not the login profile.
+// The boot refuses a configured shell that does not resolve, naming the `shell` key;
+// the attach pre-flight logs a warning and leaves the session's earlier values.
+// Windows keeps its current boot and pins no session shell. A Selvage pane whose shell process
 // dies (pane_dead=1) is deliberately kept as an enumerable corpse by
 // reconcile — never killed there — and healed (corpse killed, a fresh
 // Selvage split back in at the physical bottom, carrying e.cfg.Shell on
@@ -195,9 +201,11 @@
 // launchStrandLocked exports it to the strand's process as LYX_STRAND_NAME, with LYX_PARENT when a parent is told, ahead of the launch command.
 // It also sets the pane title to the full name after `set-option -p allow-set-title off`, so the program in the pane cannot overwrite it.
 // A provider session name is the other mirror, passed by the launch line as `--name`.
-// The resize loop (watchloop.go) polls at a two-second cycle until the window-resized hook is seen installed, then blocks on a file event for the signal file through a FileWatchOpener, whose production value OpenFileWatch wraps internal/fswatch.
+// The resize loop (watchloop.go) polls until the window-resized hook is seen installed, its wait doubling from two seconds to a minute across ticks that change nothing and returning to two seconds on an applied layout, a changed box or a deferral, then blocks on a file event for the signal file through a FileWatchOpener, whose production value OpenFileWatch wraps internal/fswatch.
 // An event stats the signal file, removes it when found and arms a one-shot debounce timer; a failed apply arms a one-shot retry timer on an escalating delay, bounded by the retry cap.
 // When the watcher cannot be opened the loop logs that once and stays in poll mode for good.
+// A resize while a poll-mode watcher is backed off heals at the next tick, up to a minute late.
+// Windows is poll-only, and on POSIX a watcher stays in poll mode when its file watch failed at promotion or until a later attach or apply installs the hook.
 // The hub watchdog daemon runs a name-repair tick (namerepair.go) beside its resize loop: it resets a drifted pane title itself and repairs a drifted provider session name through the SessionNamer seam, which the provider package implements and cliwire fills.
 // The name-repair tick backs off: its wait starts at ten seconds, doubles through NextWakeCadence up to a minute across passes that repair nothing, and returns to ten seconds after a pass that repaired a title or a session name.
 // NextWakeCadence is the one backoff rule the daemon's loops share.
@@ -215,6 +223,15 @@
 // the canary for both version drift in the on-box binary and the eventual
 // tmux swap, since the same test runs unmodified against whichever binary
 // LoadConfig resolves.
+//
+// Operator config: a server reed starts reads no `~/.tmux.conf`.
+// The server spawn (serverSpawnArgv) and the capability probe's two invocations carry `-f /dev/null` on every platform but Windows;
+// the probe needs it because `list-commands` can start a transient server on reed's socket, and a config that creates a session would keep that server alive for the boot's `new-session` to join.
+// A running server ignores the flag, and every other engine call keeps its argv.
+// The skip covers the operator's whole `~/.tmux.conf` on reed's per-hub servers only, every option, key binding and hook in it, and leaves the operator's own servers alone.
+// It takes effect at a hub server's next start, so a server an older lyx started keeps the operator's config until it exits.
+// Reed sets every option it depends on itself, and no `reed.yaml` key carries an operator tmux setting;
+// an operator who wants one sources it by hand into the running server, where it lasts until that server exits.
 //
 // Pane enumeration: listPanes (overlay.go) always runs
 //
@@ -370,7 +387,7 @@
 //     watch loop (watchloop.go) itself learns its told worktree root is
 //     gone — via errWorktreeRootGone surfacing from a re-apply attempt — it
 //     logs exactly one warning and drops to a sixty-second dormant cadence
-//     rather than the ordinary two-second poll, so a session abandoned by
+//     rather than the ordinary poll, so a session abandoned by
 //     `down` costs one log line instead of a warning every two seconds for
 //     the rest of its life. It automatically returns to whichever mode
 //     (poll or signal) it was in before dormancy, logging exactly one more
@@ -483,6 +500,8 @@
 //     A server restarting on the same key between the check and the removal is the accepted residual race.
 //     A removal failure is logged at Debug and never fails the teardown.
 //     It is a no-op on Windows, where psmux keeps no socket file.
+//     The boot path also measures the socket path, with the base's symlinks resolved, before any tmux round trip, and refuses one over the OS limit (107 bytes on linux, 103 elsewhere) naming `TMUX_TMPDIR` as the way forward.
+//     The bound: the check runs on the boot path only, so a verb run later under a longer `TMUX_TMPDIR` than the server booted with still gets tmux's own error.
 //   - Mouse boot pin (lifecycle.go): the engine pins "-g mouse" to the
 //     configured mouse value (default "on") on a fresh boot, right
 //     alongside remain-on-exit. Like remain-on-exit and debug_log, this is
@@ -589,6 +608,9 @@
 //     return, issue no set-hook at all — not even the clear — so a
 //     previously installed array survives them on purpose, since a clear
 //     with no rebuild behind it would drift on the very next resize.
+//     The boot (pinBootOptionsLocked) is the one path that installs for every session:
+//     with the watchdog on, a fresh boot rebuilds the array with no pins, the clear and the signal entry alone.
+//     That install sits in the boot path and not in pinGeometryOptionsLocked, which the attach pre-flight also runs, because a degrading attach returns before its own install and a zero-pin rebuild there would wipe the session's resize pins.
 //     That is safe in both guard cases. resize-pane -y against a window's
 //     sole pane is a verified silent no-op (exit 0, height unchanged), so
 //     the len(live) < 2 case's surviving Selvage pin cannot contradict
@@ -600,10 +622,9 @@
 //     collapsed placements at the budgets reed last
 //     computed for them.
 //     Since the signal entry rides the same array, the same rule decides it:
-//     a session that has never reached an install keeps no touch entry and
-//     so keeps its watcher in poll mode until the first real apply, and a
-//     session that has reached one keeps it across every later guard-skip
-//     and degrade.
+//     the boot installs it for every session, so a session with fewer than two panes or no placed strand
+//     promotes its watcher out of poll mode without waiting for a layout apply,
+//     and a session keeps it across every later guard-skip and degrade until an apply or a successful attach rebuilds the array with its pins.
 //     The ~50-row threshold in the original bug report is
 //     template_posix.yaml's "height: 50" boot box showing through the BARE
 //     (unchained) attach path, not evidence of a miscomputed layout — a
@@ -849,15 +870,11 @@
 //     second return value — otherwise a fallback that happens to equal the
 //     last applied box skips forever and one that differs re-applies
 //     forever.
-//   - The watchdog daemon's own stderr is discarded, not watched
+//   - The watchdog daemon's own stderr is watched by no one
 //     (reedcli/watchdog.go): the daemon points the logger's durable sink at
-//     fabricengine.HubLogsDir(hub) FIRST, then rebinds the logger's stderr
-//     half to a discarding writer before it starts polling — the ordering is
-//     what keeps its diagnostics reachable at all, since nothing reads a
-//     detached process's stdio. This is also the long-lived process that
-//     holds the logger's rebound output for its whole life: unlike a
-//     one-shot verb, the daemon's SetOutput call persists for as long as the
-//     process runs.
+//     fabricengine.HubLogsDir(hub) FIRST, before it takes its lock — the
+//     ordering is what keeps its diagnostics reachable at all, since nothing
+//     reads a detached process's stdio.
 //
 // requiredSubcommands (probe.go) still does not grow for the live-geometry
 // rule, the attach chain, or the two option pins: display-message,

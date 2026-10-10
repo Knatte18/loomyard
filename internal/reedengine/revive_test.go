@@ -4,6 +4,7 @@ package reedengine
 
 import (
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -15,6 +16,10 @@ func reviveTestEngine(t *testing.T) (*Engine, *fakeTmux) {
 	e := newTestEngine(t)
 	e.cfg.DebugLog = "0"
 	e.cfg.Mouse = "off"
+	// The boot refuses a shell that does not resolve before any tmux round trip.
+	if runtime.GOOS != "windows" {
+		e.cfg.Shell = "sh"
+	}
 	fake := installFakeTmux(t, e)
 	fake.answer("-V", fakeVersionOutput, nil)
 	fake.answer("list-commands", fakeFullCommandsOutput(), nil)

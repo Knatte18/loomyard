@@ -13,6 +13,7 @@ package reedengine
 
 import (
 	"errors"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -125,7 +126,14 @@ func (e *Engine) AttachArgv(cols, rows int) []string {
 		// told box is only correct once the status-line pins have landed AND been read back, because
 		// readStatusRowsLocked a few statements later is what turns whatever #{status} actually became
 		// into the reserved-row count the box is computed from.
-		e.pinGeometryOptionsLocked(windowTarget)
+		shellPath := ""
+		if runtime.GOOS != "windows" {
+			var err error
+			if shellPath, err = resolveShellPath(e.cfg.Shell); err != nil {
+				logger.Warn("reed: cannot resolve the configured shell, leaving the session's shell pins as they are", "key", "shell", "shell", e.cfg.Shell, "err", err)
+			}
+		}
+		e.pinGeometryOptionsLocked(windowTarget, shellPath)
 
 		if !e.readWindowSizeLatestLocked(windowTarget) {
 			// Anything other than "latest" means the post-attach window will not become the client's
