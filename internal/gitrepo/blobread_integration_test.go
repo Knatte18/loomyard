@@ -232,6 +232,7 @@ func TestHistoryReads(t *testing.T) {
 		}},
 		// The target sits on a side branch, dated days after three old commits, and HEAD sits after the target;
 		// deleting the oldest old commit's object means only a walk that stops at the bound can answer.
+		// A second target under skewed descendants pins that the bound lets a walk through commits within the slack.
 		{"HeadContains stops walking at the committer-time bound", func(t *testing.T) {
 			boundDir, boundRepo := newRepo(t)
 			commitAllAt(t, boundDir, "old one", "2024-01-01T12:00:00Z")
@@ -251,6 +252,18 @@ func TestHistoryReads(t *testing.T) {
 			got, err := boundRepo.HeadContains(shaTarget)
 			if err != nil || got {
 				t.Errorf("HeadContains(target on a side branch) = (%v, %v); want (false, nil) without reading below the bound", got, err)
+			}
+
+			// Two descendants of a second target carry committer times hours before it, as a skewed clock writes them;
+			// the walk goes on through them within the slack and finds the target.
+			commitAllAt(t, boundDir, "skewed target", "2024-01-12T12:00:00Z")
+			shaSkewedTarget := requireCurrentSHA(t, boundRepo)
+			commitAllAt(t, boundDir, "skewed child", "2024-01-12T02:00:00Z")
+			commitAllAt(t, boundDir, "skewed head", "2024-01-12T01:00:00Z")
+
+			got, err = boundRepo.HeadContains(shaSkewedTarget)
+			if err != nil || !got {
+				t.Errorf("HeadContains(target under descendants 10 and 11 hours older) = (%v, %v); want (true, nil) within the slack", got, err)
 			}
 		}},
 		{"PathRevisions returns an empty slice for a path with no history", func(t *testing.T) {
