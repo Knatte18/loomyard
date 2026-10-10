@@ -7,6 +7,9 @@
 // The one resolving import it admits is internal/logger, for boundary logging and the two
 // sink-location accessors, per the Shed Verb-Set Invariant.
 //
+// pause with no flag requests a pause at the next producer boundary.
+// --before <producer> and --after <producer> record a stop condition the engine fires at that producer, and --clear removes both; none of the three touches the bare request, and --clear refuses beside the other two.
+//
 // step prints a short envelope by default.
 // Before printing, it writes the full envelope to its per-invocation record under Spec.StepsDir, and the short envelope names that record's path as "envelope_path".
 // The --full flag, or a record that could not be written, makes step print the full envelope instead, byte-identical to the record.

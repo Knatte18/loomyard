@@ -85,9 +85,17 @@ Example:
 pause at its next producer boundary, exactly as that recipe's own "pause"
 verb does. The run-id positional defaults to "self" when omitted.
 
+--before <producer> records a stop condition instead: the run pauses before
+that producer runs. --after <producer> pauses after that producer returns a
+routed running outcome, at the row it routed to. Either replaces a recorded
+one, and neither touches the request above. --clear removes both
+conditions, and refuses beside --before or --after.
+
 Example:
   lyx shed pause
-  lyx shed pause some-slug`,
+  lyx shed pause some-slug
+  lyx shed pause --before Plan-Write
+  lyx shed pause --clear`,
 	},
 	Goto: shedverbs.VerbText{
 		Use:   "goto [<run-id>] --to <producer>",

@@ -177,6 +177,8 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | goto on a running run | `goto` names a run whose status is running | correctness halt | `lyx shed pause <run-id>` then `lyx shed step <run-id>` leaves the run paused at its next producer boundary, then re-run goto |
 | goto target past the current row | `goto` names a row after the run's current row, or a target the awaiting narrowing excludes | correctness halt | re-run goto with --to naming one of: `<admitted rows>` |
 | goto target unknown | `goto` has no `--to`, or the target names no producer | correctness halt | re-run goto with `--to` naming one of the producers the message lists |
+| pause target unknown | `pause --before` or `--after` names a target that is no producer of the recipe | correctness halt | re-run pause with `--before` or `--after` naming one of the producers the message lists |
+| pause flags contradictory | `pause --clear` is given beside `--before` or `--after` | correctness halt | run `pause --clear` alone, then `pause --before` or `--after` |
 | status watch as JSON | `status` is given both `--watch` and `--json` | correctness halt | drop `--json`, or drop `--watch` for the JSON envelope |
 | seed disagrees | `seed` finds the run-id already seeded with different values | correctness halt | keep the existing seed and drive it (`lyx shed status <run-id>` shows it), or address a different run-id |
 | seed refuses here | the seed verb runs outside the worktree the recipe drives | correctness halt | run `lyx shed seed` from the worktree the recipe drives, which the cause names |

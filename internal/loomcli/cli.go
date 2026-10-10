@@ -328,9 +328,17 @@ An optional run-id positional addresses a run other than this worktree's
 own default ("self"); pause refuses when no seed already exists at that
 run-id.
 
+--before <producer> records a stop condition instead: the run pauses before
+that producer runs. --after <producer> pauses after that producer returns a
+routed running outcome, at the row it routed to. Either replaces a recorded
+one, and neither touches the request above. --clear removes both
+conditions, and refuses beside --before or --after.
+
 Example:
   lyx loom pause
-  lyx loom pause <run-id>`,
+  lyx loom pause <run-id>
+  lyx loom pause --before Plan-Write
+  lyx loom pause --clear`,
 	},
 	Goto: shedverbs.VerbText{
 		Use:   "goto [run-id] --to <producer>",
