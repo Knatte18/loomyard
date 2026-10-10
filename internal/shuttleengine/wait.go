@@ -475,10 +475,8 @@ func startupTickCap(startupTimeout, interval time.Duration) int {
 // so it probes, and replays any trust-gate dismissal, at the same cadence Wait does (every 10s under
 // the shipped template's poll_interval_ms: 1000 and liveness_every_n_polls: 10) and never faster.
 // awaitStartup has no events file to poll between probes, so it sleeps the whole probe interval at
-// once rather than ticking at the poll interval. This is deliberate: checkLivenessTick replays the
-// trust-dismiss sequence on every probe whose capture still shows a gate, and probing at every poll
-// would let a capture taken before the provider redraws after the first Enter drive a second key
-// into the next gate — the stray-keypress hazard the capture-driven dismissal exists to prevent;
+// once rather than ticking at the poll interval.
+// This is deliberate: checkLivenessTick replays the trust-dismiss sequence on every probe whose capture still shows a gate, and probing at every poll would let a capture taken before the provider redraws after the first Enter drive a second key into the next gate — the stray-keypress hazard the capture-driven dismissal exists to prevent;
 // matching Wait's cadence keeps awaitStartup on the one cadence already proven live for producers.
 //
 // Manual live-substrate verification recipe: docs/reference/claude-trust-dialog-repro.md.
