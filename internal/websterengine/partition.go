@@ -37,7 +37,7 @@ func formBatches(plan *planparser.Plan, active batcher.Batcher, sizes batcher.Si
 	if err != nil {
 		return nil, err
 	}
-	if err := CheckBatchOrder(batches); err != nil {
+	if err := CheckBatchOrder(batches, ""); err != nil {
 		return nil, err
 	}
 	return batches, nil
@@ -69,7 +69,7 @@ func ExecutionBatches(plan *planparser.Plan, st *State, active batcher.Batcher, 
 	if err != nil {
 		return nil, err
 	}
-	if err := CheckBatchOrder(batches); err != nil {
+	if err := CheckBatchOrder(batches, ""); err != nil {
 		return nil, err
 	}
 	return batches, nil

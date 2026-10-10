@@ -199,6 +199,9 @@
 // What passes besides is a reworded one-line intent of a begun card in a later Master render, while that card's file stays pinned by its recorded hash.
 // A state without the frame hash takes the recorded frame from the stored baseline copy of the overview until the first restamp.
 // A run with neither refuses any overview change, and a change outside the Card Index refuses naming the overview outside its Card Index.
+// An empty recorded frame has one of three causes, no overview hash recorded, the baseline copy absent, or a copy without a parseable Card Index;
+// Rebaseline logs the cause once at Info, with the copy's path where there is one, and the no-frame refusal names both.
+// Every refusal and transient of Rebaseline is keyed on RebaselineDeps.Step: empty keeps the manual verbs, and a set step, the loom's Webster row re-step, replaces them, so no text on that path tells an agent to run a verb by hand.
 // A done batch's card and a changed frame refuse with the follow-up card landing as their way forward:
 // add a follow-up card after the last begun batch that carries the decision, with its Card Index line, then `lyx webster rebaseline --card NN` naming it.
 // The fingerprint refusals in begin-batch and run name the landing too, and for an index-only change name rebaseline with the added cards' flags.

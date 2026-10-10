@@ -57,7 +57,7 @@ func fingerprintMismatchWayForward(st *State, planDir, websterDir, reentry strin
 	indexChanged := false
 	for _, name := range changed {
 		if name == planOverviewFile {
-			recorded, err := recordedOverviewFrame(st, websterDir)
+			recorded, _, _, err := recordedOverviewFrame(st, websterDir)
 			indexOnly := false
 			if err == nil {
 				indexOnly, err = overviewIndexOnly(recorded, planDir)

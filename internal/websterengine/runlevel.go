@@ -163,10 +163,15 @@ type RunDeps struct {
 
 // reentryStep returns the step that re-enters the run, defaulting to `lyx webster run`.
 func (d RunDeps) reentryStep() string {
-	if d.ReentryStep == "" {
+	return stepOrRun(d.ReentryStep)
+}
+
+// stepOrRun returns step, or `lyx webster run` when step is empty.
+func stepOrRun(step string) string {
+	if step == "" {
 		return stepRun
 	}
-	return d.ReentryStep
+	return step
 }
 
 // RunOptions carries one `run` invocation's caller-supplied choices.

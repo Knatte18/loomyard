@@ -9,11 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -65,6 +67,36 @@ func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
 	got := fx.Deps.State.Batches[1]
 	if got.Status != before.Status || got.StartSHA != before.StartSHA || got.Digest != before.Digest {
 		t.Errorf("batch 1 record changed: got %+v, want %+v", *got, before)
+	}
+}
+
+// reStep is the step a row under the loom's Webster row tells Rebaseline to name in place of the manual verbs.
+const reStep = "re-step the webster row"
+
+// recordPlanFileHashes records, as the state's plan-file hashes, the hash of every markdown file in the deps' plan directory.
+func recordPlanFileHashes(t *testing.T, deps *websterengine.RebaselineDeps) {
+	t.Helper()
+	entries, err := os.ReadDir(deps.Plan.Dir)
+	if err != nil {
+		t.Fatalf("read the plan directory: %v", err)
+	}
+	hashes := make(map[string]string)
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+			hashes[e.Name()] = fileSHA(t, filepath.Join(deps.Plan.Dir, e.Name()))
+		}
+	}
+	deps.State.PlanFileHashes = hashes
+}
+
+// makeUnreadable removes path's read permission, skipping the test where permissions do not bind: on Windows and for root.
+func makeUnreadable(t *testing.T, path string) {
+	t.Helper()
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("file permissions do not make a file unreadable here")
+	}
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatalf("make %s unreadable: %v", path, err)
 	}
 }
 
@@ -139,6 +171,13 @@ func TestRebaseline_CardSet(t *testing.T) {
 		wantPartition []websterengine.PartitionBatch
 		// wantTailPosition, when set, is the position the regrouped tail's first batch records in its Breakdown, and wantPartition is not compared.
 		wantTailPosition int
+		// step is the way forward the call is told; a refusal under a set step names it and neither manual verb.
+		step string
+		// prepare adjusts the deps before the call.
+		prepare func(t *testing.T, deps *websterengine.RebaselineDeps)
+		// wantText lists what a refusal names beyond the default fresh-restart steps, which a row under a set step does not have;
+		// a row with wantText expects an error even without wantErr.
+		wantText []string
 	}{
 		{
 			name:             "a tail regrouped by a cost profile is priced after the kept batches",
@@ -235,6 +274,113 @@ func TestRebaseline_CardSet(t *testing.T) {
 			active: grouped,
 			edit:   func(rec *websterengine.BatchState) { rec.Cards = nil },
 		},
+		{
+			name:          "a set step keys the fresh restart of a removed begun card",
+			cards:         []planparser.Card{card(2, "list-tests")},
+			partition:     recorded,
+			active:        grouped,
+			step:          reStep,
+			wantErr:       websterengine.ErrRebaselineCardSetChanged,
+			wantPartition: recorded,
+			wantText:      []string{"batch 1", "01-json-flag", "or 1) lyx webster reset --to start; 2) " + reStep},
+		},
+		{
+			name:          "a set step keys the order violation of a tail",
+			cards:         []planparser.Card{card(1, "json-flag"), card(2, "list-tests"), card(3, "added")},
+			partition:     recorded,
+			active:        unordered,
+			step:          reStep,
+			wantErr:       websterengine.ErrBatchOrder,
+			wantPartition: recorded,
+			wantText:      []string{"then " + reStep},
+		},
+		{
+			name:     "a set step keys the order violation of a record without a partition",
+			cards:    []planparser.Card{{Number: 1, Slug: "json-flag", Uses: []string{"x.go"}}, {Number: 2, Slug: "list-tests", Targets: []string{"x.go"}}},
+			active:   grouped,
+			step:     reStep,
+			wantErr:  websterengine.ErrBatchOrder,
+			wantText: []string{"then " + reStep},
+		},
+		{
+			name:          "a set step keys the landing of a done batch's edited card",
+			cards:         []planparser.Card{card(1, "json-flag"), card(2, "list-tests")},
+			partition:     recorded,
+			active:        fixedBatcher{[]batcher.Batch{{Cards: []planparser.Card{card(2, "list-tests")}}}},
+			edit:          func(rec *websterengine.BatchState) { rec.CardHashes = map[string]string{"01-json-flag": "stale"} },
+			step:          reStep,
+			wantErr:       websterengine.ErrRebaselineCardSetChanged,
+			wantPartition: recorded,
+			wantText:      []string{"batch 1 card 01-json-flag changed since it was begun", "fix the plan: move a done card's edit to a follow-up card after the last begun batch", "then " + reStep},
+		},
+		{
+			name:      "a set step keys the mixed done-and-card-set refusal",
+			cards:     []planparser.Card{card(1, "json-flag"), card(2, "list-tests")},
+			partition: recorded,
+			active:    fixedBatcher{[]batcher.Batch{{Cards: []planparser.Card{card(2, "list-tests")}}}},
+			edit:      func(rec *websterengine.BatchState) { rec.CardHashes = map[string]string{"01-json-flag": "stale"} },
+			prepare: func(t *testing.T, deps *websterengine.RebaselineDeps) {
+				deps.State.Batches[2] = &websterengine.BatchState{Slug: "other", Cards: []string{"02-other"}, Terminal: true, Status: "done"}
+			},
+			step:          reStep,
+			wantErr:       websterengine.ErrRebaselineCardSetChanged,
+			wantPartition: recorded,
+			wantText:      []string{"batch 2 recorded [02-other]", "for a done batch's card, fix the plan: move a done card's edit", "or 1) lyx webster reset --to start; 2) " + reStep},
+		},
+		{
+			name:      "a set step keys the unnamed changed card",
+			cards:     []planparser.Card{card(1, "json-flag"), card(2, "list-tests")},
+			partition: recorded,
+			active:    fixedBatcher{[]batcher.Batch{{Cards: []planparser.Card{card(2, "list-tests")}}}},
+			prepare: func(t *testing.T, deps *websterengine.RebaselineDeps) {
+				recordPlanFileHashes(t, deps)
+				deps.State.PlanFileHashes["01-json-flag.md"] = "stale"
+			},
+			step:          reStep,
+			wantErr:       websterengine.ErrRebaselineCardSetChanged,
+			wantPartition: recorded,
+			wantText:      []string{"01-json-flag.md changed but not named", "then " + reStep},
+		},
+		{
+			name:      "a set step keys the changed-file read transient",
+			cards:     []planparser.Card{card(1, "json-flag"), card(2, "list-tests")},
+			partition: recorded,
+			active:    fixedBatcher{[]batcher.Batch{{Cards: []planparser.Card{card(2, "list-tests")}}}},
+			prepare: func(t *testing.T, deps *websterengine.RebaselineDeps) {
+				recordPlanFileHashes(t, deps)
+				makeUnreadable(t, filepath.Join(deps.Plan.Dir, "01-json-flag.md"))
+			},
+			step:          reStep,
+			wantPartition: recorded,
+			wantText:      []string{"way forward: transient, " + reStep},
+		},
+		{
+			name:      "a set step keys the card-hash read transient",
+			cards:     []planparser.Card{card(1, "json-flag"), card(2, "list-tests")},
+			partition: recorded,
+			active:    fixedBatcher{[]batcher.Batch{{Cards: []planparser.Card{card(2, "list-tests")}}}},
+			edit:      func(rec *websterengine.BatchState) { rec.CardHashes = map[string]string{"01-json-flag": "recorded"} },
+			prepare: func(t *testing.T, deps *websterengine.RebaselineDeps) {
+				makeUnreadable(t, filepath.Join(deps.Plan.Dir, "01-json-flag.md"))
+			},
+			step:          reStep,
+			wantPartition: recorded,
+			wantText:      []string{"way forward: transient, " + reStep},
+		},
+		{
+			name:      "a set step keys the restamp transient",
+			cards:     []planparser.Card{card(1, "json-flag"), card(2, "list-tests")},
+			partition: recorded,
+			active:    fixedBatcher{[]batcher.Batch{{Cards: []planparser.Card{card(2, "list-tests")}}}},
+			prepare: func(t *testing.T, deps *websterengine.RebaselineDeps) {
+				if err := os.WriteFile(filepath.Join(deps.Geom.WebsterDir, "plan-baseline"), []byte("not a directory"), 0o644); err != nil {
+					t.Fatalf("plant a file in place of the plan baseline store: %v", err)
+				}
+			},
+			step:          reStep,
+			wantPartition: recorded,
+			wantText:      []string{"way forward: transient, " + reStep},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -246,6 +392,10 @@ func TestRebaseline_CardSet(t *testing.T) {
 			}
 			deps := rebaselineDeps(t, tc.cards, tc.partition, tc.active, map[int]*websterengine.BatchState{1: rec})
 			deps.Base = tc.base
+			deps.Step = tc.step
+			if tc.prepare != nil {
+				tc.prepare(t, &deps)
+			}
 			_, err := websterengine.Rebaseline(deps)
 			if tc.wantTailPosition > 0 {
 				if len(deps.State.Partition) < 2 || deps.State.Partition[1].Breakdown == nil || deps.State.Partition[1].Breakdown.Position != tc.wantTailPosition {
@@ -254,7 +404,7 @@ func TestRebaseline_CardSet(t *testing.T) {
 			} else if !reflect.DeepEqual(deps.State.Partition, tc.wantPartition) && len(deps.State.Partition)+len(tc.wantPartition) > 0 {
 				t.Errorf("Partition = %+v; want %+v", deps.State.Partition, tc.wantPartition)
 			}
-			if tc.wantErr == nil {
+			if tc.wantErr == nil && len(tc.wantText) == 0 {
 				if err != nil {
 					t.Fatalf("Rebaseline() error = %v; want nil", err)
 				}
@@ -263,15 +413,20 @@ func TestRebaseline_CardSet(t *testing.T) {
 				}
 				return
 			}
-			if !errors.Is(err, tc.wantErr) {
+			if err == nil || (tc.wantErr != nil && !errors.Is(err, tc.wantErr)) {
 				t.Fatalf("Rebaseline() error = %v; want errors.Is(err, %v)", err, tc.wantErr)
 			}
-			if tc.wantErr == websterengine.ErrRebaselineCardSetChanged {
-				for _, want := range []string{"batch 1", "01-json-flag", "or 1) lyx webster reset --to start; 2) lyx webster run"} {
-					if !strings.Contains(err.Error(), want) {
-						t.Errorf("error %q lacks %q", err.Error(), want)
-					}
+			wantText := tc.wantText
+			if tc.wantErr == websterengine.ErrRebaselineCardSetChanged && tc.step == "" {
+				wantText = []string{"batch 1", "01-json-flag", "or 1) lyx webster reset --to start; 2) lyx webster run"}
+			}
+			for _, want := range wantText {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q lacks %q", err.Error(), want)
 				}
+			}
+			if tc.step != "" {
+				requireNoManualVerb(t, err)
 			}
 			if deps.State.PlanFingerprint != "old-fingerprint" {
 				t.Errorf("PlanFingerprint = %q; want it unchanged on refusal", deps.State.PlanFingerprint)
@@ -583,20 +738,6 @@ func TestRebaseline_EditedPlan(t *testing.T) {
 			wantText:    []string{"00-overview.md", "outside its Card Index", followUpWayForward},
 			wantNotText: []string{"recorded no overview frame"},
 		},
-		{
-			name: "a state without the overview frame hash and without the baseline copy refuses any overview change",
-			prepare: func(t *testing.T, fx *beginFixture) {
-				beginAndFinishBatchOne(t, fx)
-				fx.Deps.State.PlanOverviewFrameHash = ""
-				if err := os.RemoveAll(filepath.Join(fx.Deps.Geom.WebsterDir, "plan-baseline")); err != nil {
-					t.Fatalf("remove the plan baseline store: %v", err)
-				}
-				editOverview(t, fx, func(text string) string {
-					return strings.Replace(text, "add the json flag", "add the json flag, reworded", 1)
-				})
-			},
-			wantText: []string{"00-overview.md", "recorded no overview frame", "1) lyx webster reset --to start; 2) lyx webster run"},
-		},
 	}
 	// Every change outside the Card Index refuses with the follow-up card landing, whichever part of the frame it touches.
 	for name, edit := range map[string]func(text string) string{
@@ -664,40 +805,127 @@ func TestRebaseline_EditedPlan(t *testing.T) {
 	}
 }
 
-// TestRebaseline_OverviewFrameUnreadable proves an overview that loses its Card Index after the verb parsed the plan refuses as transient, naming the re-run:
-// through the index-only check when the state records plan-file hashes, and through the restamp when it records none.
+// TestRebaseline_OverviewFrameUnreadable proves an overview Rebaseline cannot read a frame from refuses with the reason:
+// an overview that loses its Card Index after the verb parsed the plan refuses as transient, naming the re-run or, with a step set, the re-step, through the index-only check when the state records plan-file hashes and through the restamp when it records none;
+// and a changed overview in a run with an empty recorded frame refuses with the cause, one of no recorded overview hash, an absent baseline copy or a copy without a Card Index, the last two naming the copy's path, and logs that cause once at Info.
+// The log capture swaps the logger's process-global output and verbosity, so no row runs in parallel.
 func TestRebaseline_OverviewFrameUnreadable(t *testing.T) {
-	t.Parallel()
+	const freshRestart = "1) lyx webster reset --to start; 2) lyx webster run"
+	baselineCopy := func(fx *beginFixture) string {
+		return filepath.Join(fx.Deps.Geom.WebsterDir, "plan-baseline", fx.Deps.State.PlanFileHashes["00-overview.md"])
+	}
+	// clearFrame leaves the state without a recorded overview frame hash and edits the overview, so the change cannot be judged against a frame.
+	clearFrame := func(t *testing.T, fx *beginFixture) {
+		t.Helper()
+		fx.Deps.State.PlanOverviewFrameHash = ""
+		editOverview(t, fx, func(text string) string {
+			return strings.Replace(text, "add the json flag", "add the json flag, reworded", 1)
+		})
+	}
 
 	tests := []struct {
 		name        string
 		clearHashes bool
-		wantText    string
+		step        string
+		// wantSuffix is how a transient refusal ends; it is unused by an empty-frame row.
+		wantSuffix string
+		// setup marks an empty-frame row: it prepares the run and returns the texts the refusal names beside the fixed ones, the cause first.
+		setup func(t *testing.T, fx *beginFixture) []string
 	}{
-		{name: "a state with plan-file hashes", wantText: "way forward: transient, re-run `lyx webster rebaseline` with the same `--card` flags"},
-		{name: "a state without plan-file hashes", clearHashes: true, wantText: "way forward: transient, re-run the verb"},
+		{name: "a state with plan-file hashes", wantSuffix: "way forward: transient, re-run `lyx webster rebaseline` with the same `--card` flags"},
+		{name: "a state without plan-file hashes", clearHashes: true, wantSuffix: "way forward: transient, re-run the verb"},
+		{name: "a set step names the re-step", step: reStep, wantSuffix: "way forward: transient, " + reStep},
+		{
+			name: "no recorded overview hash refuses naming the cause",
+			setup: func(t *testing.T, fx *beginFixture) []string {
+				delete(fx.Deps.State.PlanFileHashes, "00-overview.md")
+				clearFrame(t, fx)
+				return []string{"no overview hash was recorded"}
+			},
+		},
+		{
+			name: "an absent baseline copy refuses naming the cause and the path",
+			setup: func(t *testing.T, fx *beginFixture) []string {
+				path := baselineCopy(fx)
+				if err := os.RemoveAll(filepath.Dir(path)); err != nil {
+					t.Fatalf("remove the plan baseline store: %v", err)
+				}
+				clearFrame(t, fx)
+				return []string{"the baseline copy of the recorded overview is absent", path}
+			},
+		},
+		{
+			name: "a baseline copy without a Card Index refuses naming the cause and the path",
+			setup: func(t *testing.T, fx *beginFixture) []string {
+				path := baselineCopy(fx)
+				if err := os.WriteFile(path, []byte("# Plan: no index\n"), 0o644); err != nil {
+					t.Fatalf("overwrite the baseline copy: %v", err)
+				}
+				clearFrame(t, fx)
+				return []string{"the baseline copy of the recorded overview has no parseable Card Index", path}
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			logs := captureLogs(t)
+			logger.SetVerbosity(1)
+			t.Cleanup(func() { logger.SetVerbosity(0) })
 
 			fx := newBeginFixture(t)
 			beginAndFinishBatchOne(t, fx)
 			if tt.clearHashes {
 				fx.Deps.State.PlanFileHashes = nil
 			}
+			var wantText []string
+			if tt.setup != nil {
+				wantText = tt.setup(t, fx)
+			}
 			fingerprint := fx.Deps.State.PlanFingerprint
 			deps := rebaselineFixtureDeps(t, fx)
-			editOverview(t, fx, func(text string) string { return strings.Replace(text, "## Card Index", "## Cards", 1) })
+			deps.Step = tt.step
+			if tt.setup == nil {
+				editOverview(t, fx, func(text string) string { return strings.Replace(text, "## Card Index", "## Cards", 1) })
+			}
 
 			_, err := websterengine.Rebaseline(deps)
-			if err == nil || !strings.Contains(err.Error(), `missing "## Card Index" heading`) || !strings.HasSuffix(err.Error(), tt.wantText) {
-				t.Fatalf("Rebaseline() error = %v; want the missing Card Index ending in %q", err, tt.wantText)
-			}
 			if fx.Deps.State.PlanFingerprint != fingerprint {
 				t.Errorf("PlanFingerprint = %q; want it unchanged on refusal", fx.Deps.State.PlanFingerprint)
 			}
+			if tt.setup == nil {
+				if err == nil || !strings.Contains(err.Error(), `missing "## Card Index" heading`) || !strings.HasSuffix(err.Error(), tt.wantSuffix) {
+					t.Fatalf("Rebaseline() error = %v; want the missing Card Index ending in %q", err, tt.wantSuffix)
+				}
+				if tt.step != "" {
+					requireNoManualVerb(t, err)
+				}
+				return
+			}
+			if !errors.Is(err, websterengine.ErrRebaselineCardSetChanged) {
+				t.Fatalf("Rebaseline() error = %v; want errors.Is(err, ErrRebaselineCardSetChanged)", err)
+			}
+			for _, want := range append(wantText, "recorded no overview frame", freshRestart) {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q lacks %q", err.Error(), want)
+				}
+			}
+			if got := strings.Count(logs.String(), "no recorded overview frame"); got != 1 {
+				t.Errorf("logged the empty-frame cause %d times; want exactly once in %q", got, logs.String())
+			}
+			if cause := wantText[0]; !strings.Contains(logs.String(), cause) {
+				t.Errorf("log %q lacks the cause %q", logs.String(), cause)
+			}
 		})
+	}
+}
+
+// requireNoManualVerb fails the test when err's text names a verb an agent would run by hand, which no refusal on the Webster row's path may do.
+func requireNoManualVerb(t *testing.T, err error) {
+	t.Helper()
+	for _, manual := range []string{"lyx webster rebaseline", "lyx webster run"} {
+		if strings.Contains(err.Error(), manual) {
+			t.Errorf("error %q names %q; want a step-keyed text naming neither manual verb", err.Error(), manual)
+		}
 	}
 }
 
