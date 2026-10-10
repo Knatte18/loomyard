@@ -419,12 +419,22 @@ func TestPauseCmd_ResolvesSameFileAsBeginBatchGate(t *testing.T) {
 // and the {"no_report": true} ladder signal (not an error) when the report has not landed yet.
 func TestRecordBatchCmd_Envelope(t *testing.T) {
 	tests := []struct {
-		name          string
-		writeReport   bool
+		name        string
+		writeReport bool
+		// bashCommand, when set, is the one command the fork's audit records.
+		bashCommand   string
 		wantSubstrs   []string
 		wantTerminal  bool
 		wantDigestSet bool
 	}{
+		{
+			name:          "ReadOnlyFabricReferenceEnvelope",
+			writeReport:   true,
+			bashCommand:   "lyx fabric list",
+			wantSubstrs:   []string{`"batch":"01-only"`, `"status":"done"`, `audit warning (fabric-reference)`},
+			wantTerminal:  true,
+			wantDigestSet: true,
+		},
 		{
 			name:          "DigestEnvelope",
 			writeReport:   true,
@@ -467,6 +477,9 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 			}
 			fx.Engine.Audit = shuttleengine.ForkAudit{
 				Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/fork1.jsonl", ReportReturned: true}},
+			}
+			if tt.bashCommand != "" {
+				fx.Engine.Audit.Forks[0].BashCommands = []string{tt.bashCommand}
 			}
 			if tt.writeReport {
 				writeBatchReport(t, fx.CLI.geom.ReportsDir, startSHA)
@@ -673,6 +686,21 @@ func TestRecoverBatchCmd_NeedsFreshEnvelope(t *testing.T) {
 	if bs := loaded.Batches[1]; !bs.Terminal || bs.Status != websterengine.DigestStatusFailed || bs.StrandGUID != "" {
 		t.Errorf("loaded.Batches[1] = %+v; want the failed record unchanged", bs)
 	}
+
+	// Read-only fabric references recover in line, so a batch that recorded no start commit refuses with the evidence text and its own flag.
+	loaded.Batches[1].Uncheckable = []string{`fabric-reference: ran a fabric-referencing command ("lyx fabric list") that can rewrite run state`}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, loaded); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	out.Reset()
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code == 0 {
+		t.Fatalf("recover-batch 1 over a read-only fabric reference with no start commit = 0; want non-zero, output: %s", out.String())
+	}
+	for _, want := range []string{`"audit_not_acceptable":true`, "recorded no start commit"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q; got %q", want, out.String())
+		}
+	}
 }
 
 // TestRebaselineCmd_EditedCardOfFailedBatchThenRecover proves a one-card fix needs no reset:
@@ -744,6 +772,7 @@ func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 // the second call ATTACHES to the already-spawned strand and, once the report has landed in
 // between, classifies terminal, proving the digest envelope and that state.json/the report were
 // both committed to the records side by then.
+// A last stretch drives the recovery count: a dead recovery that committed offers its retry, a third counted spawn refuses and a new amendment spawns anyway.
 func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
@@ -776,6 +805,10 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	if !ok || bs.Kind != "recovery" || bs.StrandGUID == "" {
 		t.Fatalf("loaded.Batches[1] = %+v; want a recorded recovery strand after the spawn call", bs)
 	}
+	if bs.Recoveries != 1 || bs.RecoveryStartSHA == "" {
+		t.Fatalf("loaded.Batches[1] Recoveries, RecoveryStartSHA = %d, %q; want 1 and the HEAD at the spawn", bs.Recoveries, bs.RecoveryStartSHA)
+	}
+	spawnStart := bs.RecoveryStartSHA
 
 	// Between the two calls, the recovery implementer "finishes": its
 	// report lands on disk, self-reporting the worktree's real HEAD (the
@@ -836,6 +869,58 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	if !loaded.Batches[1].Terminal {
 		t.Error("loaded.Batches[1].Terminal = false; want true after a done digest")
 	}
+
+	// The recovery strand dies without a report, after committing past the HEAD it was spawned at:
+	// the terminal envelope counts the spawn and offers the one retry.
+	rec := loaded.Batches[1]
+	rec.Terminal, rec.Status, rec.Digest, rec.AmendedCards = false, "", nil, nil
+	rec.Recoveries, rec.RecoveryStartSHA = 1, spawnStart
+	if err := os.Remove(filepath.Join(fx.CLI.geom.ReportsDir, websterengine.ReportFileName(1, "only"))); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("remove the recovery's report: %v", err)
+	}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, loaded); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	var outDead strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outDead, []string{"1", "--wait", "1ns"}); code != 0 {
+		t.Fatalf("recover-batch 1 over a dead recovery = %d; want 0, output: %s", code, outDead.String())
+	}
+	for _, want := range []string{`"status":"dead"`, `"recovery_retry":true`, `"recoveries":1`} {
+		if !strings.Contains(outDead.String(), want) {
+			t.Errorf("dead recovery output missing %q; got %q", want, outDead.String())
+		}
+	}
+
+	// A third counted spawn is refused with its own flag; an amendment no spawn rendered still spawns at two recoveries.
+	loaded, err = websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() after the dead recovery = %v, %v; want a state, nil", loaded, err)
+	}
+	loaded.Batches[1].Recoveries = 2
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, loaded); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	var outExhausted strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outExhausted, []string{"1", "--wait", "1ns"}); code == 0 {
+		t.Fatalf("recover-batch 1 at two recoveries = 0; want non-zero, output: %s", outExhausted.String())
+	}
+	if want := `"recovery_exhausted":true`; !strings.Contains(outExhausted.String(), want) {
+		t.Errorf("exhausted output missing %s; got %q", want, outExhausted.String())
+	}
+	if fx.Engine.PrepareCalls != 2 {
+		t.Errorf("Engine.prepareCalls after the exhausted refusal = %d; want still 2", fx.Engine.PrepareCalls)
+	}
+	loaded.Batches[1].AmendedCards = []websterengine.AmendedCard{{Card: "01-only"}}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, loaded); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	var outAmended strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outAmended, []string{"1", "--wait", "1ns"}); code != 0 || !strings.Contains(outAmended.String(), `"status":"running"`) {
+		t.Fatalf("recover-batch 1 over a new amendment at two recoveries = %d, output: %s; want a running respawn", code, outAmended.String())
+	}
+	if fx.Engine.PrepareCalls != 3 {
+		t.Errorf("Engine.prepareCalls after the amendment respawn = %d; want 3", fx.Engine.PrepareCalls)
+	}
 }
 
 // TestRunCmd_ErrRunBusySkipsRecordsBackstop proves the ErrRunBusy refusal never reaches Master's own
@@ -884,7 +969,7 @@ func TestRunCmd_ErrRunBusySkipsRecordsBackstop(t *testing.T) {
 	}
 }
 
-// verbsDiedMaster is a websterengine.MasterStarter double whose Master ends died with one expired background shell.
+// verbsDiedMaster is a websterengine.MasterStarter double whose Master ends died with one background shell outstanding.
 type verbsDiedMaster struct {
 	strandGUID string
 	sessionID  string
@@ -897,7 +982,7 @@ func (m *verbsDiedMaster) StartMaster(shuttleengine.Spec, shuttleengine.GateSpec
 func (m *verbsDiedMaster) StrandGUID() string { return m.strandGUID }
 
 func (m *verbsDiedMaster) Wait() (shuttleengine.Result, error) {
-	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, SessionID: m.sessionID, ExpiredShells: []string{"sleep 9999"}}, nil
+	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDied, SessionID: m.sessionID, EndedShells: []shuttleengine.EndedShell{{Label: "sleep 9999", ID: "sh-1", Signal: shuttleengine.SignalTranscript, Outstanding: 90 * time.Second}}}, nil
 }
 
 var (
@@ -905,12 +990,11 @@ var (
 	_ websterengine.MasterHandle  = (*verbsDiedMaster)(nil)
 )
 
-// TestRunCmd_DiedMasterNotesExpiredShellOutcome drives `run` through its cobra command with a Master that dies after one background shell ran past the wait, and asserts the friction note on disk states the error outcome and that the next run reclaims the strand.
+// TestRunCmd_DiedMasterNotesExpiredShellOutcome drives `run` through its cobra command with a Master that dies with one background shell outstanding, and asserts the friction note on disk states the error outcome and that the next run reclaims the strand.
 func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.CLI.frictionDir = t.TempDir()
-	fx.CLI.shuttleCfg.BackgroundShellWaitMin = 15
 	fx.CLI.cfg.VerifyGateAttempts = 3
 	master := &verbsDiedMaster{strandGUID: "master-strand-died", sessionID: "master-session-died"}
 	fx.CLI.masterStarter = master
@@ -939,7 +1023,7 @@ func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
 	}
 	for _, want := range []string{
 		"`sleep 9999`",
-		"`background_shell_wait_min` (15 minutes)",
+		"outstanding for 1m30s",
 		"lyx did not stop the shell",
 		"the next `lyx webster run` reclaims it at entry",
 		"the run's final outcome: error (",
@@ -1264,7 +1348,7 @@ func TestBeginBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"}); code == 0 {
 		t.Fatalf("begin-batch 1 = 0; want non-zero, output: %s", out.String())
 	}
-	wantWayForward(t, out.String(), "lyx fabric commit")
+	wantFabricSyncWayForward(t, out.String())
 	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
 	if err != nil || loaded == nil || loaded.Batches[1] == nil {
 		t.Fatalf("LoadState() = %v, %v; want the saved batch record", loaded, err)
@@ -1299,7 +1383,7 @@ func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.recordBatchCmd(), &out, []string{"1"}); code == 0 {
 		t.Fatalf("record-batch 1 = 0; want non-zero, output: %s", out.String())
 	}
-	wantWayForward(t, out.String(), "lyx fabric commit")
+	wantFabricSyncWayForward(t, out.String())
 	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
 	if err != nil || loaded == nil || !loaded.Batches[1].Terminal {
 		t.Fatalf("LoadState() = %v, %v; want batch 1 terminal on disk despite the sync failure", loaded, err)
@@ -1328,7 +1412,7 @@ func TestRecoverBatchCmd_FabricSyncAndReedBootWayForward(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code == 0 {
 		t.Fatalf("recover-batch 1 with a failing sync = 0; want non-zero, output: %s", out.String())
 	}
-	wantWayForward(t, out.String(), "lyx fabric commit")
+	wantFabricSyncWayForward(t, out.String())
 
 	fx.CLI.openFabric = nil
 	out.Reset()

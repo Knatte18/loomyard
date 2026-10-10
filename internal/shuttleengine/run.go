@@ -231,9 +231,8 @@ type Result struct {
 	// it is false on every other return, including a died or timeout outcome reached in Wait.
 	// RunGated folds that branch into (result, nil), so this field is how a caller tells a never-ready start from an agent that died mid-run.
 	NotStarted bool
-	// ExpiredShells holds the labels of the background shells the wait stopped waiting on, in order:
-	// transcript-reported shells it waited out past background_shell_wait_min, and payload-reported shells a gated run's turn end left behind at once.
-	ExpiredShells []string
+	// EndedShells holds each background shell outstanding when the run ended, whatever ended it, in the order its turn end listed them.
+	EndedShells []EndedShell
 	// StartedAt is the run's creation time from its state, zero when the record's time does not parse.
 	StartedAt time.Time
 	// EndedAt is the run clock's time when the run was classified.
@@ -241,6 +240,18 @@ type Result struct {
 	// Usage is the session's token reading, forks included.
 	// It is known only for an OutcomeDone run on an engine implementing UsageReader that could read the session.
 	Usage SessionUsage
+}
+
+// EndedShell is one background shell that was still outstanding when a run ended.
+type EndedShell struct {
+	// Label is the shell's command, empty when the provider reported none.
+	Label string
+	// ID is the provider's id for the shell.
+	ID string
+	// Signal is SignalPayload or SignalTranscript, whichever reported the shell.
+	Signal string
+	// Outstanding is how long the shell had been outstanding, from when the run first saw it to the run's end.
+	Outstanding time.Duration
 }
 
 // Run is the handle to one in-progress or completed shuttle run, returned by Start once its provider
@@ -272,20 +283,18 @@ type Run struct {
 	// directory as the diagnosis artifact a later operator or attach reads.
 	lastStartupCapture string
 
-	// waitingTasks is the outstanding list of the latest EventWaiting, cleared by any later non-waiting event and by an expiry.
+	// waitingTasks is the outstanding list of the latest EventWaiting, cleared by any later non-waiting event and when expiredTurnEnd counts the turn end at once.
 	waitingTasks []BackgroundTask
-	// waitingMessage is that EventWaiting's message, which an expiry's held turn end carries.
-	waitingMessage string
-	// waitingOffset is the events-file offset just past that EventWaiting's line, which an expiry's held turn end carries.
-	waitingOffset int64
+	// countedTasks is the outstanding list of the turn end expiredTurnEnd counted at once, kept for finalize's record until a newer turn end is read.
+	countedTasks []BackgroundTask
 	// shellFirstSeen records when each shell id was first seen outstanding.
 	shellFirstSeen map[string]time.Time
-	// expiredShells holds the shell ids already waited out in this run, so a later turn end listing one again does not restart its wait.
-	expiredShells map[string]bool
-	// payloadShellLogged holds the payload-reported shell ids already logged as outstanding past background_shell_wait_min, so each is logged once.
+	// payloadShellLogged holds the shell ids, of either signal, already logged as outstanding past background_shell_wait_min, so each is logged once.
 	payloadShellLogged map[string]bool
-	// expiredLabels is the labels of expiredShells in expiry order, reported as Result.ExpiredShells.
-	expiredLabels []string
+	// startedFresh is true when Runner.start built this run with no ResumeSessionID, so the output files on disk cannot predate it.
+	startedFresh bool
+	// gatedArrival is true once Wait has taken a gated Done arrival of this run to the gate; nothing clears it.
+	gatedArrival bool
 	// wait is the wait marker and pane mark this run has on show, display only.
 	wait waitState
 	// eventsRead is true when the latest pollEventsTick parsed at least one event, which ends a held wait.
@@ -511,6 +520,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		deadline: clk.Now().Add(spec.Timeout),
 		gate:     gate,
 
+		startedFresh:  spec.ResumeSessionID == "",
 		resumeWarning: resumeWarning,
 	}
 

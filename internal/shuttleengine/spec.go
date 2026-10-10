@@ -129,7 +129,7 @@ type Spec struct {
 	// "done" outcome instead of the default RemoveStrand + run-dir cleanup.
 	KeepPane bool
 	// AwaitedShellPrefixes names the background shells the run waits on like a fork:
-	// a shell whose label starts with one of them is bounded only by Timeout, never by background_shell_wait_min.
+	// a shell whose label starts with one of them holds even a gated run's turn end with every output file present, and is bounded only by Timeout.
 	// It is caller data, not provider knowledge, and validate does not inspect it.
 	AwaitedShellPrefixes []string
 	// Skills names the provider-neutral skills shuttle loads into the fresh session, all in one turn, before it delivers the prompt.

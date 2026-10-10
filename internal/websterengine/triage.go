@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // triageWarnings returns the warning naming the flaky identities, or nil when there are none.
@@ -44,7 +46,7 @@ func writeTriageFrictionNote(frictionDir string, flaky []string) error {
 	return nil
 }
 
-// backgroundShellOutcome is how a run ended after Master's wait stopped waiting on a background shell at a turn end, and so what finally ends the shell.
+// backgroundShellOutcome is how a run ended with a background shell still outstanding, and so what finally ends the shell.
 type backgroundShellOutcome struct {
 	// description is the run's final outcome.
 	description string
@@ -71,28 +73,22 @@ func errorShellOutcome(err error, strandReclaimed bool) backgroundShellOutcome {
 	return backgroundShellOutcome{description: "error (" + err.Error() + ")", strandReclaimed: strandReclaimed}
 }
 
-// expiredShellWarning states what happened to one background shell the Master wait stopped waiting on at a turn end, what ends it, and the run's final outcome.
-// That turn end finished the run when Master's output files existed and otherwise held it for the parent.
+// expiredShellWarning states what happened to one background shell Master's run ended over, what ends it, and the run's final outcome.
+// It names the shell's label, the signal that reported it and how long it was outstanding.
 // It is both the run warning and the friction note's line for that shell, so the two carry the same wording.
-// waitMin is the bound in minutes; a non-positive value names the key alone.
-func expiredShellWarning(label string, waitMin int, outcome backgroundShellOutcome) string {
-	bound := "`background_shell_wait_min`"
-	if waitMin > 0 {
-		bound = fmt.Sprintf("`background_shell_wait_min` (%d minutes)", waitMin)
-	}
-	ends := "shuttle removes Master's strand when the run finishes, which ends the session and the shell with it"
+func expiredShellWarning(shell shuttleengine.EndedShell, outcome backgroundShellOutcome) string {
+	ends := "shuttle removes Master's strand when the run finishes, which ends the session and the shell with it where the shell is in the pane's process tree"
 	if outcome.strandReclaimed {
-		ends = "Master's strand stays alive until the next `lyx webster run` reclaims it at entry, which ends the session and the shell with it"
+		ends = "Master's strand stays alive until the next `lyx webster run` reclaims it at entry, which ends the session and the shell with it where the shell is in the pane's process tree"
 	}
-	return fmt.Sprintf("background shell `%s` was still running when the wait counted Master's turn end, which comes after %s for a shell only the transcript reports and at once for one the Stop payload reports when Master's output files exist: the wait stopped waiting on the shell at a turn end, which finished the run when Master's output files existed and otherwise held it for the parent, and lyx did not stop the shell; %s; the run's final outcome: %s", label, bound, ends, outcome.description)
+	return fmt.Sprintf("background shell `%s` (reported by the %s signal) was still running, outstanding for %s, when the run ended, and lyx did not stop the shell; %s; the run's final outcome: %s", shell.Label, shell.Signal, shell.Outstanding.Round(time.Second), ends, outcome.description)
 }
 
-// writeBackgroundShellFrictionNote records the shells Master's wait stopped waiting on at a turn end and the run's final outcome,
+// writeBackgroundShellFrictionNote records the shells Master's run ended over and the run's final outcome,
 // so reflection has the evidence a hang otherwise leaves only in events.jsonl.
-// waitMin is the bound in minutes; a non-positive value names the key alone.
-// It is a no-op when frictionDir is empty or labels is empty.
-func writeBackgroundShellFrictionNote(frictionDir string, labels []string, waitMin int, outcome backgroundShellOutcome) error {
-	if frictionDir == "" || len(labels) == 0 {
+// It is a no-op when frictionDir is empty or shells is empty.
+func writeBackgroundShellFrictionNote(frictionDir string, shells []shuttleengine.EndedShell, outcome backgroundShellOutcome) error {
+	if frictionDir == "" || len(shells) == 0 {
 		return nil
 	}
 	friction.EnsureDir(frictionDir)
@@ -102,9 +98,9 @@ func writeBackgroundShellFrictionNote(frictionDir string, labels []string, waitM
 	}
 
 	var b strings.Builder
-	b.WriteString("Master's wait stopped waiting on a background shell at a turn end\n\n")
-	for _, l := range labels {
-		b.WriteString("- " + expiredShellWarning(l, waitMin, outcome) + "\n")
+	b.WriteString("Master's run ended with a background shell outstanding\n\n")
+	for _, shell := range shells {
+		b.WriteString("- " + expiredShellWarning(shell, outcome) + "\n")
 	}
 	b.WriteString("\n")
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {

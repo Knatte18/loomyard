@@ -841,7 +841,19 @@ func TestStatusCmd(t *testing.T) {
 				`"kind":"fork"`, `"kind":"recovery"`,
 				`"has_digest":true`, `"has_digest":false`,
 				`"terminal":true`, `"terminal":false`,
+				`"recoveries":0`, `"recovery_retry":false`,
 			},
+		},
+		{
+			// The worktree is no repository here, so the commit read behind recovery_retry fails; the verb still answers.
+			name: "a failed git read under a dead recovery gives recovery_retry false and keeps the count",
+			state: &websterengine.State{
+				RunGUID: "guid-2",
+				Batches: map[int]*websterengine.BatchState{
+					1: {Slug: "only", Kind: "recovery", Status: websterengine.DigestStatusDead, Terminal: true, Recoveries: 1, RecoveryStartSHA: "0123456789abcdef0123456789abcdef01234567"},
+				},
+			},
+			wantIn: []string{`"recoveries":1`, `"recovery_retry":false`},
 		},
 	}
 	for _, tc := range cases {
@@ -1003,6 +1015,16 @@ func wantWayForward(t *testing.T, got, substr string) {
 	if !strings.Contains(got[i:], substr) {
 		t.Errorf("way forward clause missing %q; got %q", substr, got[i:])
 	}
+}
+
+// refusedVerbClause is the clause every way forward that names a fabric verb a sandboxed session cannot run carries.
+const refusedVerbClause = "a session lyx refuses the verb from reports status: FAILED and the orch runs it"
+
+// wantFabricSyncWayForward fails unless got carries a way forward that names the fabric commit and the refused-verb clause.
+func wantFabricSyncWayForward(t *testing.T, got string) {
+	t.Helper()
+	wantWayForward(t, got, "lyx fabric commit")
+	wantWayForward(t, got, refusedVerbClause)
 }
 
 // TestAwaitBatchCmd_ReportPresenceEnvelope proves await-batch's two envelopes: {"report": true} the moment the batch's report file exists, and {"report": false} once the bounded wait elapses with no report -- the first step passes --wait 1ns explicitly to keep the window near-instant, versus the production default (websterengine.DefaultAwaitWaitS) used whenever --wait is omitted -- with no state.json ever read or written, since the verb is deliberately stateless.
@@ -1429,7 +1451,7 @@ func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
 	if code := clihelp.Execute(c.rebaselineCmd(), &out, []string{"--card", "02"}); code == 0 {
 		t.Fatalf("rebaseline with a failing sync = 0; want non-zero, output: %s", out.String())
 	}
-	wantWayForward(t, out.String(), "lyx fabric commit")
+	wantFabricSyncWayForward(t, out.String())
 	loaded, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() = %v, %v; want the saved state", loaded, err)

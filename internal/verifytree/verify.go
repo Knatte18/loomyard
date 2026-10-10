@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -235,8 +237,9 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 	}
 	defer os.Remove(p.Marker)
 
-	// A verify command never inherits the prebuilt-lyx variable: its own go test builds lyx once per test binary.
-	env := gateslot.StripPrebuilt(os.Environ())
+	// The verify command runs without the strand name, so a test driving `lyx fabric` never meets a role guard that reads it.
+	// It never inherits the prebuilt-lyx variable either: its own go test builds lyx once per test binary.
+	env := slices.DeleteFunc(gateslot.StripPrebuilt(os.Environ()), func(entry string) bool { return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") })
 	if slots != nil {
 		lease, err := slots.Acquire(ctx, gateslot.Holder{Worktree: p.Worktree, Site: site.Label})
 		if err != nil {

@@ -27,7 +27,7 @@ type Config struct {
 
 	StartupTimeoutS int `yaml:"startup_timeout_s"` // Startup probe timeout; 0 fast-fails as died and zeroes orphan sweep's protection window.
 
-	BackgroundShellWaitMin int `yaml:"background_shell_wait_min"` // Minutes a turn end waits on an outstanding transcript-reported background shell; a shell the turn-end payload reports never expires. LoadConfig refuses non-positive.
+	BackgroundShellWaitMin int `yaml:"background_shell_wait_min"` // Minutes an outstanding background shell of either signal may run before the wait logs it and shows it in the wait marker; it expires nothing. LoadConfig refuses non-positive.
 
 	SubmitSettleMS int `yaml:"submit_settle_ms"` // Interval between the two input-box reads that must agree before a verified send's Enter, and the pause before a slash command's Enter; 0 reads back to back, LoadConfig refuses negative.
 

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -57,7 +58,7 @@ func fingerprintMismatchWayForward(st *State, planDir, websterDir, reentry strin
 	indexChanged := false
 	for _, name := range changed {
 		if name == planOverviewFile {
-			recorded, err := recordedOverviewFrame(st, websterDir)
+			recorded, _, _, err := recordedOverviewFrame(st, websterDir)
 			indexOnly := false
 			if err == nil {
 				indexOnly, err = overviewIndexOnly(recorded, planDir)
@@ -227,6 +228,47 @@ func DoneCards(plan *planparser.Plan, st *State) []planparser.Card {
 	return cards
 }
 
+// EditedDoneCards returns, sorted, the NN-slug ids of the cards of every batch st records terminal with status done whose card file under planDir no longer hashes to the CardHashes entry the batch recorded at begin.
+// It hashes the card files as batchCardHashes does and reads the record and those bytes alone, never parsing the plan.
+// A nil state, a record without CardHashes, a batch not terminal done and a recorded id plan lacks each contribute nothing;
+// an unreadable card file is returned as an error.
+//
+// It is what the loom plan gate reads to refuse an edit to a card whose work has landed.
+func EditedDoneCards(plan *planparser.Plan, st *State, planDir string) ([]string, error) {
+	if st == nil {
+		return nil, nil
+	}
+
+	cardsByID := make(map[string]planparser.Card, len(plan.Cards))
+	for _, c := range plan.Cards {
+		cardsByID[cardID(c)] = c
+	}
+
+	var edited []string
+	for _, bs := range st.Batches {
+		if bs == nil || !bs.Terminal || bs.Status != DigestStatusDone {
+			continue
+		}
+		var recorded []planparser.Card
+		for id := range bs.CardHashes {
+			if c, ok := cardsByID[id]; ok {
+				recorded = append(recorded, c)
+			}
+		}
+		now, err := batchCardHashes(batcher.Batch{Cards: recorded}, planDir)
+		if err != nil {
+			return nil, err
+		}
+		for id, hash := range now {
+			if hash != bs.CardHashes[id] {
+				edited = append(edited, id)
+			}
+		}
+	}
+	sort.Strings(edited)
+	return edited, nil
+}
+
 // findBatch returns the batcher.Batch in batches whose identity matches number.
 func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
 	for _, b := range batches {
@@ -282,7 +324,8 @@ func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) 
 }
 
 // existingReportRemedy names the one step the recorded state of batch number calls for when begin-batch finds the batch's report already on disk.
-func existingReportRemedy(number int, recorded *BatchState) string {
+// retry is RecoveryRetry's verdict: a dead recovery that committed and is below the cap names recover-batch once more.
+func existingReportRemedy(number int, recorded *BatchState, retry bool) string {
 	if !recorded.Terminal {
 		if recorded.Kind == "recovery" {
 			return fmt.Sprintf("`lyx webster recover-batch %d`", number)
@@ -293,6 +336,9 @@ func existingReportRemedy(number int, recorded *BatchState) string {
 	case DigestStatusDone:
 		return "the batch is finished, so begin the next batch"
 	case DigestStatusDead:
+		if retry {
+			return fmt.Sprintf("`lyx webster recover-batch %d`, once more, since the dead recovery committed work of its own", number)
+		}
 		return fmt.Sprintf("the recovery of batch %d is exhausted, so end the run stuck naming the batch", number)
 	default:
 		return fmt.Sprintf("`lyx webster recover-batch %d`", number)
@@ -406,7 +452,8 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 			if recorded.Terminal {
 				seen = "terminal with status " + recorded.Status
 			}
-			return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s and state.json records the batch as %s — begin-batch never overwrites finished work; way forward: %s", number, slug, existingReport, seen, existingReportRemedy(number, recorded))
+			retry, _ := RecoveryRetry(deps.Geom, deps.State, number)
+			return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s and state.json records the batch as %s — begin-batch never overwrites finished work; way forward: %s", number, slug, existingReport, seen, existingReportRemedy(number, recorded, retry))
 		}
 	} else if !os.IsNotExist(statErr) {
 		return nil, fmt.Errorf("webster: stat batch report %s: %w", existingReport, statErr)
@@ -475,22 +522,29 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	}
 	// Recorded warnings carry over too: their identities stay dispositioned, so no later call would record them again.
 	// So do the fork transcripts already attributed to the batch, so the run-exit audit still knows which report each of those forks owns.
+	// The recovery count and its start commit carry over as well, so a re-begin does not hand a batch a fresh pair of recoveries.
 	var priorWarnings []AuditWarning
 	var priorTranscripts []string
+	var priorRecoveries int
+	var priorRecoveryStart string
 	if prior != nil {
 		priorWarnings = prior.AuditWarnings
 		priorTranscripts = prior.ForkTranscripts
+		priorRecoveries = prior.Recoveries
+		priorRecoveryStart = prior.RecoveryStartSHA
 	}
 
 	deps.State.Batches[number] = &BatchState{
-		Slug:            slug,
-		Cards:           batchCardIDs(batch),
-		CardHashes:      cardHashes,
-		StartSHA:        startSHA,
-		Kind:            "fork",
-		AuditWarnings:   priorWarnings,
-		ForkTranscripts: priorTranscripts,
-		SpawnedAt:       time.Now().UTC().Format(time.RFC3339),
+		Slug:             slug,
+		Cards:            batchCardIDs(batch),
+		CardHashes:       cardHashes,
+		StartSHA:         startSHA,
+		Kind:             "fork",
+		AuditWarnings:    priorWarnings,
+		ForkTranscripts:  priorTranscripts,
+		Recoveries:       priorRecoveries,
+		RecoveryStartSHA: priorRecoveryStart,
+		SpawnedAt:        time.Now().UTC().Format(time.RFC3339),
 		// Stamp the opening Master session so the run-exit audit cross-check
 		// can scope its begun-batch count to the session whose forks the
 		// whole-session audit actually covers.

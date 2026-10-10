@@ -57,7 +57,7 @@ func wayForward(report preflight.Report) string {
 	if len(steps) == 0 {
 		return ""
 	}
-	return "; way forward: " + strings.Join(steps, "; ")
+	return "; way forward: " + strings.Join(steps, "; ") + "; a session lyx refuses the verb from reports status: FAILED and the orch runs it"
 }
 
 // preflightProducer is the general Preflight producer: it wraps preflight.Check, mapping its

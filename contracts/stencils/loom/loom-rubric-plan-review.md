@@ -23,6 +23,14 @@ Sitting behind a mechanical gate over this round's own output makes this gate's 
 It appears in neither the artifact list nor the answer key, and it must not be read or reasoned from.
 `Plan-Write` provably never reads it, so a finding grounded in its content cannot be satisfied except by inventing the missing link.
 
+## Write surface
+
+{{.webster_record}}
+
+`none` means webster has begun no batch, and no card is frozen.
+Otherwise a done card is frozen: a fix never edits its file.
+A fix to its work is a follow-up card placed after the last begun batch, with its Card Index line in `00-overview.md`, in the format `{{.specs_dir}}/loom/loom-plan-spec.md` defines.
+
 ## Do not flag
 
 Do not flag any of the following as a finding:

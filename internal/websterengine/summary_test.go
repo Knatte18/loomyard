@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -63,9 +65,14 @@ func TestAppendSummarySections(t *testing.T) {
 			want:   "# S\n",
 		},
 		{
-			name:   "background shells: one bullet per label in order",
-			append: func(dir string) error { return websterengine.AppendBackgroundShells(dir, []string{"first", "second"}) },
-			want:   "# S\n\n\n## Background shells waited out\n\nMaster's turn end was counted while these background shells were still running, which comes after `background_shell_wait_min` for a shell only the transcript reports and at once for one the Stop payload reports when Master's output files exist; they may still be running in the session.\n\n- `first`\n- `second`\n",
+			name: "background shells: one bullet per shell in order with signal and duration",
+			append: func(dir string) error {
+				return websterengine.AppendBackgroundShells(dir, []shuttleengine.EndedShell{
+					{Label: "first", Signal: shuttleengine.SignalPayload, Outstanding: 2 * time.Minute},
+					{Label: "second", Signal: shuttleengine.SignalTranscript, Outstanding: 90 * time.Second},
+				})
+			},
+			want: "# S\n\n\n## Background shells at the run's end\n\nMaster's run ended while these background shells were still outstanding; they may still be running in the session.\n\n- `first` (payload signal, outstanding 2m0s)\n- `second` (transcript signal, outstanding 1m30s)\n",
 		},
 		{
 			name:   "integration triage: empty is a no-op",

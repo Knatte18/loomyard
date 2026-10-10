@@ -21,9 +21,10 @@
 // this interview waiting for me, or is it wedged?" reads the trace sink.
 // A hold never extends run.deadline: a held run is bounded by its caller's own Spec.Timeout (run_timeout_min only where that is zero),
 // and by the liveness check, which still classifies a dead pane.
-// A turn end that leaves a payload-reported background shell outstanding is a wait, never a held stop: the shell is live work the provider itself reported, so it never expires into a hold or a notice.
+// A turn end that leaves background work outstanding while an output file is missing is a wait, never a held stop: a shell of either signal and a fork are live work, so none expires into a hold or a notice.
 // It is bounded only by the run's own deadline and the liveness check, so a shell that never ends ends the run OutcomeTimeout, and lyx reaps no shell.
-// A gated run whose output files all exist and whose outstanding tasks are all unawaited payload-reported shells finishes Done at once, through the gate, with those shells in Result.ExpiredShells.
+// A gated run whose output files all exist, started fresh, with no gated arrival yet and only unawaited shells outstanding, finishes Done at once, through the gate.
+// Every shell outstanding when the run ends, by whatever exit, is recorded in Result.EndedShells.
 //
 // The events-tick Done branch splits in two, on whether run.gate is empty:
 // an ungated run's Done finalizes exactly as before the gate existed, unaware the gate exists at all.
@@ -89,7 +90,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -267,7 +267,7 @@ func (run *Run) Wait() (Result, error) {
 			if held != nil {
 				// A turn end without every output file never ends the run.
 				// Log it so the durable trace records each one, and keep polling the same agent.
-				logger.Info("shuttle: turn end held, output files missing", "strandGUID", run.state.StrandGUID, "offset", held.offset, "outstanding", len(held.tasks), "lastAssistantMessage", held.message)
+				logger.Info("shuttle: turn end held, output files missing", "strandGUID", run.state.StrandGUID, "offset", held.offset, "lastAssistantMessage", held.message)
 				run.beginHeldWait()
 				run.notifyHeld(held)
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
@@ -275,6 +275,7 @@ func (run *Run) Wait() (Result, error) {
 				return run.finalize(outcome)
 			} else if outcome == OutcomeDone {
 				// A gated Done is the writer's turn boundary: let the shared helper judge it.
+				run.gatedArrival = true
 				run.gateAtBoundary = true
 				run.startCleared = false
 				run.unsentReprompt = false
@@ -611,18 +612,11 @@ func (run *Run) abandonStartup(outcome Outcome, cause error) (Result, error) {
 // an EventStop and an EventAsk with output files missing return a held turn end carrying the event's message and the offset just past its line, and Wait keeps polling the same agent.
 // Kind only selects Message's source, inside ParseEvents, not this branch.
 // An EventWaiting is the one Kind that is not held at once: the session is waiting on its own background work,
-// so the tick returns what expiredTurnEnd answers, which is nothing while the work is outstanding.
-// The exception is a gated run (len(run.gate) > 0): its waiting turn end is not an arrival even when every output file exists,
-// because the files may be left over from an earlier arrival while the session works on in the background,
-// and the next real turn end is the boundary.
-// The deferral holds only while the session is live.
-// The run deadline and the liveness checks still classify Done from the files and evaluate the gate one final time.
-// A waiting turn end that leaves only transcript-reported background shells outstanding is the one case that does not wait forever:
-// on every tick, with or without new bytes, expiredTurnEnd counts it as a turn end once each non-awaited shell has been outstanding for background_shell_wait_min.
-// A shell the turn-end payload itself reported is live work and never expires: the turn keeps waiting, never held and never notified.
-// It is bounded only by the run's own deadline and the liveness check, so a shell that never ends ends the run OutcomeTimeout, and lyx reaps no shell.
-// A gated run whose output files all exist and whose outstanding tasks are all unawaited payload-reported shells finishes Done at once instead, so its gate runs, with those shells listed in Result.ExpiredShells.
+// so the tick returns what expiredTurnEnd answers, which is nothing while the work is outstanding and the files are missing;
+// an ungated one with an empty outstanding list and every output file present is done at once.
 // A hold never extends run.deadline, so a held run is bounded by its caller's own deadline and by the liveness check.
+// A waiting turn end never expires: a shell of either signal and a fork keep the turn waiting however long they run.
+// It is bounded only by the run's own deadline and the liveness check, so a shell that never ends ends the run OutcomeTimeout, and lyx reaps no shell.
 // Returns outcome == "" and a nil held turn end when there is nothing new to classify yet.
 func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	run.eventsRead = false
@@ -648,32 +642,26 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	}
 
 	run.eventsRead = true
+	run.countedTasks = nil
 	last := events[len(events)-1]
-	turnEndOffset := offsetPastEvent(data, startOffset, newOffset, last)
 	if last.Kind == EventWaiting {
-		run.recordWaiting(last, turnEndOffset)
-	} else {
-		run.waitingTasks = nil
-	}
-	if last.Kind == EventWaiting && len(run.gate) > 0 {
+		run.recordWaiting(last)
+		if len(run.waitingTasks) == 0 && len(run.gate) == 0 && allOutputFilesExist(run.spec.OutputFiles) {
+			return OutcomeDone, nil, nil
+		}
 		return run.expiredTurnEnd()
 	}
+	run.waitingTasks = nil
 	if allOutputFilesExist(run.spec.OutputFiles) {
 		return OutcomeDone, nil, nil
 	}
-	if last.Kind == EventWaiting {
-		return run.expiredTurnEnd()
-	}
-	return "", &heldTurnEnd{message: last.Message, offset: turnEndOffset}, nil
+	return "", &heldTurnEnd{message: last.Message, offset: offsetPastEvent(data, startOffset, newOffset, last)}, nil
 }
 
-// heldTurnEnd is a turn end that left the run's output files missing, so the run is held rather than ended.
-// A plain Stop or a live ask carries no tasks; an expired-shell turn end carries the expired shells.
+// heldTurnEnd is a plain Stop or a live ask that left the run's output files missing, so the run is held rather than ended.
 type heldTurnEnd struct {
 	// message is the agent's last message at the turn end.
 	message string
-	// tasks are the outstanding tasks the turn end waited on, empty for a plain Stop.
-	tasks []BackgroundTask
 	// offset is the events-file byte offset just past the turn end's line.
 	offset int64
 }
@@ -693,12 +681,9 @@ func offsetPastEvent(data []byte, startOffset, batchEnd int64, ev Event) int64 {
 	return startOffset + int64(end)
 }
 
-// recordWaiting keeps a waiting turn end's outstanding list, message and the offset just past its line, logs what it waits on once, and stamps each shell id not seen before with now.
-// The offset stays with the turn end, so expiredTurnEnd reports the same one on a later tick with no new bytes.
-func (run *Run) recordWaiting(ev Event, offset int64) {
+// recordWaiting keeps a waiting turn end's outstanding list, logs what it waits on once, and stamps each shell id not seen before with now.
+func (run *Run) recordWaiting(ev Event) {
 	run.waitingTasks = ev.Outstanding
-	run.waitingMessage = ev.Message
-	run.waitingOffset = offset
 	tasks := make([]string, 0, len(ev.Outstanding))
 	for _, task := range ev.Outstanding {
 		tasks = append(tasks, fmt.Sprintf("kind=%s id=%s label=%q signal=%s", task.Kind, task.ID, task.Label, task.Signal))
@@ -718,12 +703,13 @@ func (run *Run) recordWaiting(ev Event, offset int64) {
 	}
 }
 
-// shellWaitBound returns how long a non-awaited shell may stay outstanding at a turn end.
+// shellWaitBound returns how long a shell may stay outstanding before it is logged and shown in the wait marker.
 func (run *Run) shellWaitBound() time.Duration {
 	return ShellWaitBound(run.runner.cfg)
 }
 
-// ShellWaitBound returns how long a turn end waits on an outstanding transcript-reported background shell, cfg.BackgroundShellWaitMin, flooring a non-positive hand-built value to the template default as pollInterval does.
+// ShellWaitBound returns how long a background shell of either signal stays outstanding before the wait logs it and shows it in the wait marker, cfg.BackgroundShellWaitMin, flooring a non-positive hand-built value to the template default as pollInterval does.
+// The bound expires nothing: a turn end waiting on a shell keeps waiting until its output files exist, the run's deadline or the liveness check.
 func ShellWaitBound(cfg Config) time.Duration {
 	minutes := cfg.BackgroundShellWaitMin
 	if minutes <= 0 {
@@ -750,32 +736,14 @@ func awaitedLabel(label string, prefixes []string) bool {
 	return false
 }
 
-// ShellWaitExpires reports whether a waiting turn end with outstanding tasks counts as a turn end once ShellWaitBound has passed, the rule expiredTurnEnd applies to an ungated run:
-// true when every task is a background shell that neither the turn-end payload reported nor a label in awaitedPrefixes names.
-// A fork, an awaited shell or a payload-reported shell keeps the turn waiting however long it runs, bounded only by the caller's own timeout.
-// An empty list reports false: a turn end with nothing outstanding is a plain turn end, not a waiting one.
-func ShellWaitExpires(tasks []BackgroundTask, awaitedPrefixes []string) bool {
-	for _, task := range tasks {
-		if task.Kind != BackgroundShell || payloadShell(task) || awaitedLabel(task.Label, awaitedPrefixes) {
-			return false
-		}
-	}
-	return len(tasks) > 0
-}
-
-// payloadShell reports whether the task is a background shell the provider's turn-end payload reported, which is live work and never expires.
-func payloadShell(task BackgroundTask) bool {
-	return task.Kind == BackgroundShell && task.Signal == SignalPayload
-}
-
-// expiredTurnEnd counts the recorded waiting turn end as a turn end once every outstanding task is a non-awaited shell that is already expired or has been outstanding for the bound.
-// A fork, or an awaited shell, keeps the turn waiting.
-// A payload-reported shell never expires, so it keeps the turn waiting however long it has been outstanding, bounded only by the run's own deadline and the liveness check;
-// once it has been outstanding for the bound, the first tick logs that once, and the log changes no decision.
-// The one exception is a gated run whose output files all exist and whose outstanding tasks are all payload-reported shells: the turn end is a Done at once,
-// so the gate runs, and those shells are logged as waited out and listed in Result.ExpiredShells.
-// It marks each newly expired shell, logs it and clears the waiting list, then classifies as a Stop would:
-// OutcomeDone when every output file exists, otherwise a held turn end carrying the waiting event's message, the expired shells and the offset the waiting turn end was recorded with.
+// expiredTurnEnd decides the recorded waiting turn end: it either counts it as a Done at once or keeps it waiting, and never holds it.
+// An ungated run counts it at once whenever every output file exists, whatever is outstanding.
+// A gated run's turn end with every output file present is, as a rule, not an arrival, because the files may be left over from an earlier arrival while the session works on in the background;
+// it counts at once only when every outstanding task is an unawaited shell of either signal, the run was started fresh rather than attached or resumed, and no gated arrival of this run has reached the gate yet.
+// A turn end with an output file missing waits on every outstanding task, a shell or a fork, until the run's deadline and the liveness check.
+// It reads startedFresh and gatedArrival, never the gate's failure counts, since an arrival whose re-prompt was not delivered, was deferred or answered pending leaves those counts at zero.
+// A shell outstanding past the bound is logged once per shell, and that changes no decision.
+// Counting a turn end at once clears the waiting list and keeps its tasks in countedTasks for the run's record.
 // Returns outcome == "" and a nil held turn end while the turn keeps waiting.
 func (run *Run) expiredTurnEnd() (Outcome, *heldTurnEnd, error) {
 	if len(run.waitingTasks) == 0 {
@@ -783,49 +751,36 @@ func (run *Run) expiredTurnEnd() (Outcome, *heldTurnEnd, error) {
 	}
 	now := run.clock.Now()
 	bound := run.shellWaitBound()
-	filesExist := allOutputFilesExist(run.spec.OutputFiles)
-	var newlyExpired []BackgroundTask
-	payloadShells := 0
 	for _, task := range run.waitingTasks {
-		if task.Kind != BackgroundShell || run.awaitedShell(task) {
-			return "", nil, nil
-		}
-		if payloadShell(task) {
-			payloadShells++
+		if task.Kind == BackgroundShell {
 			run.logPayloadShellPastBound(task, now.Sub(run.shellFirstSeen[task.ID]), bound)
-			if !run.expiredShells[task.ID] {
-				newlyExpired = append(newlyExpired, task)
-			}
-			continue
 		}
-		if run.expiredShells[task.ID] {
-			continue
-		}
-		if now.Sub(run.shellFirstSeen[task.ID]) < bound {
-			return "", nil, nil
-		}
-		newlyExpired = append(newlyExpired, task)
 	}
-	if payloadShells > 0 && (payloadShells != len(run.waitingTasks) || len(run.gate) == 0 || !filesExist) {
+	if !allOutputFilesExist(run.spec.OutputFiles) || !run.countsAtOnce() {
 		return "", nil, nil
 	}
-	for _, task := range newlyExpired {
-		if run.expiredShells == nil {
-			run.expiredShells = map[string]bool{}
-		}
-		run.expiredShells[task.ID] = true
-		run.expiredLabels = append(run.expiredLabels, task.Label)
-		logger.Warn("shuttle: background shell waited out; counting the turn end", "runDir", run.runDir, "shell", task.Label)
-	}
-	held := &heldTurnEnd{message: run.waitingMessage, tasks: run.waitingTasks, offset: run.waitingOffset}
+	run.countedTasks = run.waitingTasks
 	run.waitingTasks = nil
-	if filesExist {
-		return OutcomeDone, nil, nil
-	}
-	return "", held, nil
+	return OutcomeDone, nil, nil
 }
 
-// logPayloadShellPastBound logs at Info, once per shell id, that a payload-reported shell has been outstanding for at least the bound.
+// countsAtOnce reports whether the recorded waiting turn end, whose output files all exist, counts as an arrival without a later turn end.
+func (run *Run) countsAtOnce() bool {
+	if len(run.gate) == 0 {
+		return true
+	}
+	if !run.startedFresh || run.gatedArrival {
+		return false
+	}
+	for _, task := range run.waitingTasks {
+		if task.Kind != BackgroundShell || run.awaitedShell(task) {
+			return false
+		}
+	}
+	return true
+}
+
+// logPayloadShellPastBound logs at Warn, once per shell id, that a background shell of either signal has been outstanding for at least the bound.
 // It names the run and the shell's label and changes no decision.
 func (run *Run) logPayloadShellPastBound(task BackgroundTask, outstanding, bound time.Duration) {
 	if outstanding < bound || run.payloadShellLogged[task.ID] {
@@ -835,7 +790,42 @@ func (run *Run) logPayloadShellPastBound(task BackgroundTask, outstanding, bound
 		run.payloadShellLogged = map[string]bool{}
 	}
 	run.payloadShellLogged[task.ID] = true
-	logger.Info("shuttle: background shell past wait min", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "shell", task.Label)
+	logger.Warn("shuttle: background shell past wait min", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "signal", task.Signal, "shell", task.Label)
+}
+
+// logEndedShells logs at Info the shells outstanding at the run's end.
+// With the strand removed it says the removal ended them; on every other end it says the run ended with them outstanding and the strand is left to its caller.
+// lyx kills no shell itself, so a shell detached from the pane's process tree survives the removal.
+func (run *Run) logEndedShells(ended []EndedShell, strandRemoved bool) {
+	if len(ended) == 0 {
+		return
+	}
+	labels := make([]string, 0, len(ended))
+	for _, shell := range ended {
+		labels = append(labels, fmt.Sprintf("%s (%s, outstanding %s)", shell.Label, shell.Signal, shell.Outstanding.Round(time.Second)))
+	}
+	message := "shuttle: run ended with background shells outstanding; the strand is left to its caller"
+	if strandRemoved {
+		message = "shuttle: strand removal ended the background shells it could"
+	}
+	logger.Info(message, "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "shells", strings.Join(labels, "; "))
+}
+
+// endedShells lists each shell outstanding when the run ends, from the recorded waiting turn end, or from the turn end counted at once when none is recorded.
+// Each entry's duration runs from the shell's first sighting to now.
+func (run *Run) endedShells(now time.Time) []EndedShell {
+	tasks := run.waitingTasks
+	if len(tasks) == 0 {
+		tasks = run.countedTasks
+	}
+	var ended []EndedShell
+	for _, task := range tasks {
+		if task.Kind != BackgroundShell {
+			continue
+		}
+		ended = append(ended, EndedShell{Label: task.Label, ID: task.ID, Signal: task.Signal, Outstanding: now.Sub(run.shellFirstSeen[task.ID])})
+	}
+	return ended
 }
 
 // readEventsFrom reads path from byte offset onward, returning bytes up to
@@ -1228,12 +1218,12 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 func (run *Run) finalize(outcome Outcome) (Result, error) {
 	run.logSessionState(outcome, true)
 	result := Result{
-		Outcome:       outcome,
-		SessionID:     run.state.SessionID,
-		StrandGUID:    run.state.StrandGUID,
-		RunDir:        run.runDir,
-		ExpiredShells: slices.Clone(run.expiredLabels),
-		EndedAt:       run.clock.Now(),
+		Outcome:     outcome,
+		SessionID:   run.state.SessionID,
+		StrandGUID:  run.state.StrandGUID,
+		RunDir:      run.runDir,
+		EndedShells: run.endedShells(run.clock.Now()),
+		EndedAt:     run.clock.Now(),
 	}
 	if createdAt, err := time.Parse(time.RFC3339, run.state.CreatedAt); err == nil {
 		result.StartedAt = createdAt
@@ -1279,15 +1269,19 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 	}
 
 	cleaned := outcome == OutcomeDone && !run.spec.KeepPane
+	strandRemoved := false
 	if cleaned {
 		if _, err := run.runner.reed.RemoveStrand(run.state.StrandGUID, false); err != nil {
 			logger.Warn("shuttle: cleanup: remove strand failed (non-fatal)", "strandGUID", run.state.StrandGUID, "error", err)
+		} else {
+			strandRemoved = true
 		}
 		if err := os.RemoveAll(run.runDir); err != nil {
 			logger.Warn("shuttle: cleanup: remove run dir failed (non-fatal)", "runDir", run.runDir, "error", err)
 		}
 	}
 
+	run.logEndedShells(result.EndedShells, strandRemoved)
 	logger.Info("shuttle: run finished", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "outcome", string(outcome), "cleanedUp", cleaned)
 	return result, nil
 }

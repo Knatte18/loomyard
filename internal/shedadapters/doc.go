@@ -34,7 +34,8 @@
 //     It deliberately cannot be a decorator wrapping this producer: a decorator runs before Call and therefore before the probe, which is the same archive-before-probe hazard stated above, reintroduced one layer up.
 //   - WebsterProducer: Webster's own "done" outcome maps to Done, reporting Webster's summary path
 //     (summaryparser.Path) as the pointer's path.
-//     Webster's own "stuck" outcome and a websterengine.ErrPendingAuditFindings error both map to Stuck with an empty Path and a Reason: Master's own stuck_reason or the run-entry refusal's text, whose way forward already ends in this row's re-entry step (NewWebsterProducer sets RunDeps.ReentryStep to "re-step the <row> row" when it is empty).
+//     Its run is handed two options: Fresh is always false, and AutoRebaseline is always true, so a plan changed between steps is rebaselined on entry.
+//     Webster's own "stuck" outcome, a websterengine.ErrPendingAuditFindings error and a websterengine.ErrAutoRebaseline error all map to Stuck with an empty Path and a Reason: Master's own stuck_reason or the run-entry refusal's text, whose way forward already ends in this row's re-entry step (NewWebsterProducer sets RunDeps.ReentryStep to "re-step the <row> row" when it is empty).
 //     Webster's own "paused" outcome reaching Call out of band is an engine-level error.
 //   - BurlerProducer: a completed round -- shuttleengine.OutcomeDone reached within the bounded
 //     retry -- maps to Stuck, never Done, reporting the round's own review path as the pointer.

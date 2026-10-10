@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -908,6 +909,34 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:   "a read-only fabric reference records done with an audit warning",
+			audits: forkWithCommand("cat FABRICREF/webster/state.json"),
+			prepare: func(t *testing.T, fx *recordFixture) {
+				fx.Deps.RefMatcher = fabricMatcher{}
+				fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
+			},
+			report: okReport,
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				requireDone(t, result)
+				if got := fx.Deps.State.Batches[1].AuditWarnings; len(got) != 1 || got[0].Class != string(websterengine.ClassFabricReference) {
+					t.Errorf("AuditWarnings = %v; want one fabric-reference warning", got)
+				}
+			},
+		},
+		{
+			name:   "a mutating fabric reference still fails the batch under a read-only classifier",
+			audits: forkWithCommand("lyx fabric add FABRICREF"),
+			prepare: func(t *testing.T, fx *recordFixture) {
+				fx.Deps.RefMatcher = fabricMatcher{}
+				fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
+			},
+			report:     okReport,
+			wantFailed: true,
+			check: func(t *testing.T, fx *recordFixture, result *websterengine.RecordResult, err error) {
+				requireUncheckableFabricReference(t, fx)
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -1289,8 +1318,22 @@ func TestRecordBatch_ForgedTerminalRecordFails(t *testing.T) {
 		t.Fatalf("status after the plain refusal = %q; want it unchanged (done)", got)
 	}
 
+	// A new transcript holding only a read-only fabric reference is a policy finding: the batch stays done.
+	fx.Deps.State.SeenForkTranscripts = nil
+	fx.Deps.RefMatcher = fabricMatcher{}
+	fx.Deps.ReadOnly = fabricengine.IsReadOnlyCommand
+	fx.Audit.scripted[0].Forks[0].BashCommands = []string{"cat FABRICREF/webster/state.json"}
+	_, err = websterengine.RecordBatch(fx.Deps, 1)
+	if err == nil || !strings.Contains(err.Error(), "already terminal") {
+		t.Fatalf("RecordBatch() over a read-only fabric reference error = %v; want the already-terminal refusal", err)
+	}
+	if bs := fx.Deps.State.Batches[1]; bs.Status != websterengine.DigestStatusDone || len(bs.Uncheckable) != 0 {
+		t.Fatalf("record after a read-only fabric reference = status %q, uncheckable %v; want it still done with none", bs.Status, bs.Uncheckable)
+	}
+
 	// A new transcript that wrote state.json fails the batch.
 	fx.Deps.State.SeenForkTranscripts = nil
+	fx.Audit.scripted[0].Forks[0].BashCommands = nil
 	fx.Audit.scripted[0].Forks[0].WritePaths = []string{filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")}
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
 	if !errors.Is(err, websterengine.ErrBatchFailed) {
@@ -1531,6 +1574,40 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); !os.IsNotExist(statErr) {
 		t.Errorf("report still at its live path (stat err %v); want it archived", statErr)
 	}
+
+	t.Run("ReasonsOpenWithTheBatchAndItsCards", func(t *testing.T) {
+		fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+			{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+		})
+		writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+		creating := func(number int, slug, target string) planparser.Card {
+			return planparser.Card{
+				Number: number, Slug: slug, Title: slug, Intent: slug,
+				TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{target}}},
+			}
+		}
+		// Card 3 of the batch never landed its Create, and the unbegun cards 4 and 5 have no work in the tree either.
+		batch := []planparser.Card{creating(1, "json-flag", "internal/foo#Landed"), creating(2, "second", "internal/foo#Landed"), creating(3, "proc-group-kill", "internal/foo#NeverLanded")}
+		unbegun := []planparser.Card{creating(4, "later-a", "internal/foo#LaterA"), creating(5, "later-b", "internal/foo#LaterB")}
+		fx.Deps.Plan.Cards = append(append([]planparser.Card(nil), batch...), unbegun...)
+		fx.Deps.Batches = []batcher.Batch{{Cards: batch}, {Cards: unbegun[:1]}, {Cards: unbegun[1:]}}
+		writeWorktreeFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Landed() {}\n")
+
+		if _, err := websterengine.RecordBatch(fx.Deps, 1); !errors.Is(err, websterengine.ErrBatchFailed) {
+			t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrBatchFailed)", err)
+		}
+		reasons := fx.Deps.State.Batches[1].Digest.Reasons
+		if len(reasons) == 0 || reasons[0] != "batch 01-json-flag holds cards 1-json-flag, 2-second, 3-proc-group-kill" {
+			t.Fatalf("reasons = %q; want them to open with the batch and its three cards", reasons)
+		}
+		joined := strings.Join(reasons, "; ")
+		if !strings.Contains(joined, "NeverLanded") {
+			t.Errorf("reasons = %q; want the finding on the batch's third card", reasons)
+		}
+		if strings.Contains(joined, "LaterA") || strings.Contains(joined, "LaterB") {
+			t.Errorf("reasons = %q; want no finding on the unbegun cards", reasons)
+		}
+	})
 }
 
 // deleteReferencedBatches returns two batches, card 1 (json-flag) that deletes internal/foo#Gone and the unbegun card 2 (later) that edits internal/foo/user.go, and writes both files into worktree: impl.go still declares Gone, and user.go calls it on line 4 when referenced is true.

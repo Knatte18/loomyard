@@ -155,7 +155,7 @@ func (run *Run) endGateWait() {
 }
 
 // syncShellWait turns the background-shell wait on or off to match the recorded waiting turn end:
-// it is on exactly while every outstanding task is a non-awaited background shell and at least one has not been waited out.
+// it is on exactly while every outstanding task is a non-awaited background shell and at least one has been outstanding for the bound.
 func (run *Run) syncShellWait() {
 	active := run.shellWaitActive()
 	switch {
@@ -169,21 +169,24 @@ func (run *Run) syncShellWait() {
 	run.showWait()
 }
 
-// shellWaitActive reports whether the recorded waiting turn end holds only non-awaited background shells, at least one a payload-reported shell or not yet waited out.
+// shellWaitActive reports whether the recorded waiting turn end holds only non-awaited background shells of either signal, at least one outstanding for the bound by its first-seen stamp.
+// It is display only: the wait it shows expires nothing.
 func (run *Run) shellWaitActive() bool {
 	if len(run.waitingTasks) == 0 {
 		return false
 	}
-	pending := false
+	now := run.clock.Now()
+	bound := run.shellWaitBound()
+	pastBound := false
 	for _, task := range run.waitingTasks {
 		if task.Kind != BackgroundShell || run.awaitedShell(task) {
 			return false
 		}
-		if payloadShell(task) || !run.expiredShells[task.ID] {
-			pending = true
+		if now.Sub(run.shellFirstSeen[task.ID]) >= bound {
+			pastBound = true
 		}
 	}
-	return pending
+	return pastBound
 }
 
 // beginHeldWait shows `held` from the run clock's now, when a held turn end is read.

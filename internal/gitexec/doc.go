@@ -1,5 +1,6 @@
 // Package gitexec runs git as a subprocess and reports the outcome in one of two shapes.
 // Run is the checked default: a non-zero git exit is a failure, returned as *GitError.
+// RunStdin is the second checked form, Run with a stdin text fed to git, for a command such as `cat-file --batch-check` that reads its operands there.
 // RunGit is the raw form, for the sites where a non-zero exit is an answer rather than a failure.
 // Both wrap one unexported exec core, and an exec-level failure, git not being runnable at all, is returned unwrapped so errors.As on *GitError means "git ran and rejected this".
 //

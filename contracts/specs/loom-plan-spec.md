@@ -362,6 +362,7 @@ Machine checks this format is designed to support, in this fixed order, one row 
 The IDs are split across two entry points, `ValidateFormat` and `Validate`: every one but `plan-unapproved` (row 3 below) is in the format-only set `ValidateFormat` runs, and `plan-unapproved` is additionally checked by `Validate`, the full entry point.
 The rows that name `internal/planglyph` as their emitter are an exception: that package's resolve pass adds them on top of both entry points.
 `card-fabric-reference` is the other exception: it is a `planparser` function outside both entry points, which the plan index appends to its own format validation.
+`done-card-edited` is the third: `loomshed.ValidatePlan` appends it after the index's validation.
 The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-three slot in that order even though it alone belongs to the wider entry point:
 
 1. `format-unrecognized` — `format:` is a recognized version (currently only `5`); else refuse to run.
@@ -420,7 +421,8 @@ The rows below stay in one fixed order regardless of which entry point runs them
     `Custom` stays exempt on its own targets — and from the `prosa-symbol-target` rule above, restated in group terms: a `Custom` group's own targets are exempt from both rules — and from nothing else, since every other group and every card-generic check still binds it.
 29. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix. Card-generic.
 30. `verify-nested-module` — a `go` command in a card's `**Verify:**` value or the overview's `## verify:` section whose relative package argument lies in a nested module other than the one the command runs in, so the go tool cannot resolve it from there.
-    It splits a chain at `&&` and `;`, follows a literal `cd <dir>` and a `go -C <dir>`, and ends the scan of a chain at a `cd` or `-C` to an absolute path or out of the worktree root.
+    It joins a backslash-newline continuation into one line, then splits a chain at `&&`, `||`, `;`, `|` and a newline, reading `||` as one separator and a separator inside a quoted span as text.
+    It follows a literal `cd <dir>` and a `go -C <dir>`, and ends the scan of a chain at a `cd` or `-C` to an absolute path or out of the worktree root, or at a `cd` in a pipeline stage or after `||`, which may not have run.
     A field after the subcommand that opens with `-` is a flag, taking the next field when the flag takes a value; a package argument is `.`, `..` or a field opening with `./` or `../`, with a trailing `/...` dropped.
     A nested module is a directory below the root holding a `go.mod`, on disk or created by a card's `Create` (or the New side of a `Rename`) at or below the card, minus those a `Delete` or a `Rename` Old side removes; the overview's line is judged against the whole plan.
     So `./...` from the root, which the go tool limits to the root module, is silent.
@@ -470,11 +472,22 @@ The rows below stay in one fixed order regardless of which entry point runs them
     It only refuses and removes no guard: it misses a spelling in `bash -c "…"` or built from a variable, the rest of a span after an unterminated quote, a spelling in an inline span or prose, and a fabric-repo path not spelled as a name ending in the suffix, and the implementer audit stays the guard for those.
 38. `verify-module-wide` — a `go test`, `go build` or `go vet` in a card's `**Verify:**` value whose package argument holds `...` or equals `all`, or a `go test` whose `-tags` value names `tmux` or `llm`.
     An agent's settings deny such a command, so it can never run under a fork.
-    It splits a chain at `&&` and `;`, skips a `go -C <dir>` and a leading environment assignment, and stops reading a command at `--` or `-args`; a flag that takes a value takes the next field.
+    It splits a chain as `verify-nested-module` does, at `&&`, `||`, `;`, `|` and a newline after joining line continuations, skips a `go -C <dir>` and a leading environment assignment, and stops reading a command at `--` or `-args`; a flag that takes a value takes the next field.
     One finding per command, attributed to the card; the overview's `## verify:` section is never read, since Go runs it itself.
     Its way forward is `lyx gate test [-C <module>] [--tags <tags>] <packages>` over the card's own packages, run as a background Bash call.
     Runs under any `language:` and is reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
     It only refuses: it misses a command built from a variable or behind `bash -c`.
+39. `pattern-entry-line-cap` — a card that prescribes a verbatim `PATTERN.md` entry line over the cap: a line inside a fenced code block of the card file that opens with ``- `PATTERN-`` and exceeds `pattern.MaxEntryLineChars` runes.
+    It scans fenced blocks only, whatever the fence's info string and including an unclosed fence; inline spans and prose are never scanned, since an entry line carries backticks of its own.
+    One finding per line, attributed to the card, naming the entry, the length and the cap; its way forward is to shorten the line or move the detail to the entry's background file.
+    Runs under any `language:` and is reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
+    It measures verbatim lines only: a prose instruction to append a sentence to an entry passes, and the plan-writer stencil states that rule.
+40. `done-card-edited` — a card of a batch webster's run record holds done whose file no longer hashes to what the batch recorded at begin.
+    `loomshed.ValidatePlan` appends it outside both planparser entry points, from the run record and the card bytes alone, so both plan gates and `lyx loom validate-plan` report it.
+    A plan with no run record, a record without recorded hashes and a card of a batch that is not done report nothing; an unreadable card file is a returned error.
+    The finding names the card.
+    Its way forward is to restore the card file, because a done card is frozen: a finding against its work goes in a follow-up card placed after the last begun batch, with its Card Index line in `00-overview.md`.
+    It gates the done-card edit only; a begun batch's card-set change, a failed batch with uncheckable findings and an overview change outside the Card Index pass the plan gate and block at the Webster row.
 
 One further check, `rework-first-card`, is outside both entry points and has no row above.
 Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.

@@ -24,7 +24,7 @@ type Config struct {
 }
 
 // ErrConfigAbsent is LoadConfig's error for a baseDir with no gate.yaml; its way forward is `lyx fabric reconcile`, which writes the file from the template.
-var ErrConfigAbsent = errors.New("gate config absent; run \"lyx fabric reconcile\"")
+var ErrConfigAbsent = errors.New("gate config absent; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it")
 
 // LoadConfig loads gate.yaml from baseDir strictly: an absent file is ErrConfigAbsent, and a value below 1 fails naming its key.
 // Every other failure names its way forward, fixing the file with `lyx config gate` from the prime, so each gate site that wraps it carries the clause.

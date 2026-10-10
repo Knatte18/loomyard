@@ -26,6 +26,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -37,6 +38,12 @@ var ErrRecoveryNeedsFresh = errors.New("webster: recovery cannot check the batch
 
 // ErrRecoveryDeleteReferenced is the sentinel RecoverSpawnOrAttach's refusal of a batch whose Delete target an unbegun later card still references unwraps to.
 var ErrRecoveryDeleteReferenced = errors.New("webster: recovery cannot clear a delete a later card still references")
+
+// ErrRecoveryExhausted is the sentinel RecoverSpawnOrAttach's refusal of a counted recovery spawn past the cap unwraps to.
+var ErrRecoveryExhausted = errors.New("webster: the batch's recoveries are exhausted")
+
+// maxRecoveries is how many counted recovery spawns one batch gets.
+const maxRecoveries = 2
 
 // recoveryNeedsFreshError carries the refusal text verbatim and unwraps to ErrRecoveryNeedsFresh.
 type recoveryNeedsFreshError struct{ msg string }
@@ -73,6 +80,8 @@ type RecoverDeps struct {
 	Stopper    StrandStopper
 	ShuttleCfg shuttleengine.Config
 	Geom       Geometry
+	// ReadOnly classifies a fabric-referencing command as read-only, which makes its finding a policy warning; nil accepts nothing.
+	ReadOnly func(cmd string) bool
 
 	// FrictionDir is the told absolute friction directory (see internal/friction), empty when Tier 2
 	// is off. It lives here rather than on Geometry because internal/hubgeom and
@@ -213,11 +222,23 @@ func writtenUnder(written []string, uncommitted string) bool {
 	return slices.Contains(written, uncommitted)
 }
 
+// rendersNewAmendment reports whether prior holds an amendment no earlier recovery spawn rendered into its prompt.
+func rendersNewAmendment(prior *BatchState) bool {
+	return prior != nil && slices.ContainsFunc(prior.AmendedCards, func(a AmendedCard) bool { return !a.Rendered })
+}
+
 // recoverSpawn archives any stale report, stops a live prior strand, renders
 // the recovery prompt, and starts the recovery strand, returning a fresh BatchState.
 // clk stamps SpawnedAt so elapsed-since-spawn is measured against the same clock.
+// The record counts the spawn in Recoveries unless the prompt renders an amendment no earlier spawn rendered, and carries HEAD at the spawn as RecoveryStartSHA.
+// HEAD is read before anything is stopped or started, so a failed read starts nothing and counts nothing.
 func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
 	number, slug := batchIdentity(batch)
+
+	head, err := deps.Geom.git().HeadSHA(deps.Geom.WorktreeRoot)
+	if err != nil {
+		return nil, fmt.Errorf("webster: read HEAD before spawning the recovery of batch %02d: %w; way forward: transient, re-run `lyx webster recover-batch %d`", number, err, number)
+	}
 
 	cardHashes, err := batchCardHashes(batch, deps.Geom.PlanDir)
 	if err != nil {
@@ -290,11 +311,6 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, fmt.Errorf("webster: resolve spawned recovery run: %w", err)
 	}
 
-	head, err := deps.Geom.git().HeadSHA(deps.Geom.WorktreeRoot)
-	if err != nil {
-		return nil, err
-	}
-
 	// The recovery record inherits the ORIGINAL bracket's start SHA when there is one, rather than
 	// re-capturing the head at spawn time. A recovery exists because the batch's own fork got stuck,
 	// frequently after committing part of its work, so a start SHA captured here would exclude
@@ -315,6 +331,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	var priorTranscripts []string
 	// The prompt above rendered every amended card, so the fresh record carries the entries as rendered: only an edit made after this spawn forces it failed.
 	var amended []AmendedCard
+	recoveries := 0
 	if prior != nil {
 		for _, a := range prior.AmendedCards {
 			amended = append(amended, AmendedCard{Card: a.Card, Rendered: true})
@@ -322,24 +339,70 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		priorWarnings = prior.AuditWarnings
 		priorSuspects = prior.SuspectPaths
 		priorTranscripts = prior.ForkTranscripts
+		recoveries = prior.Recoveries
+	}
+	if !rendersNewAmendment(prior) {
+		recoveries++
 	}
 
 	return &BatchState{
-		Slug:            slug,
-		Cards:           batchCardIDs(batch),
-		CardHashes:      cardHashes,
-		AmendedCards:    amended,
-		StartSHA:        start,
-		AuditWarnings:   priorWarnings,
-		SuspectPaths:    priorSuspects,
-		ForkTranscripts: priorTranscripts,
-		Kind:            "recovery",
-		SpawnedAt:       clk.Now().UTC().Format(time.RFC3339),
-		StrandGUID:      run.StrandGUID(),
-		ShuttleRunDir:   runDir,
-		EventsPath:      runState.EventsPath,
-		EventsOffset:    runState.PromptOffset,
+		Slug:             slug,
+		Cards:            batchCardIDs(batch),
+		CardHashes:       cardHashes,
+		AmendedCards:     amended,
+		StartSHA:         start,
+		AuditWarnings:    priorWarnings,
+		SuspectPaths:     priorSuspects,
+		ForkTranscripts:  priorTranscripts,
+		Kind:             "recovery",
+		SpawnedAt:        clk.Now().UTC().Format(time.RFC3339),
+		StrandGUID:       run.StrandGUID(),
+		ShuttleRunDir:    runDir,
+		EventsPath:       runState.EventsPath,
+		EventsOffset:     runState.PromptOffset,
+		Recoveries:       recoveries,
+		RecoveryStartSHA: head,
 	}, nil
+}
+
+// RecoveryRetry reports whether batch n's dead recovery earns one more recovery, and how many counted recoveries the batch has.
+// It is true for a terminal dead recovery record below the cap whose recovery committed work of its own:
+// HEAD descends from the record's non-empty RecoveryStartSHA and the first-parent range from it to HEAD holds a commit that is not a merge.
+// An empty start, a HEAD a reset moved off it and a range of merge-ins only give false.
+// A git read that fails, a start the store does not hold included, gives false and is logged at Warn.
+// Both recover-batch and begin-batch read it, so one rule decides the retry.
+func RecoveryRetry(geom Geometry, st *State, n int) (retry bool, recoveries int) {
+	var bs *BatchState
+	if st != nil {
+		bs = st.Batches[n]
+	}
+	if bs == nil {
+		return false, 0
+	}
+	recoveries = bs.Recoveries
+	if bs.Kind != "recovery" || !bs.Terminal || bs.Status != DigestStatusDead || recoveries >= maxRecoveries || bs.RecoveryStartSHA == "" {
+		return false, recoveries
+	}
+	committed, err := committedSince(geom, bs.RecoveryStartSHA)
+	if err != nil {
+		logger.Warn("websterengine: could not tell whether the dead recovery committed, so no retry is offered", "batch", n, "recoveryStartSha", bs.RecoveryStartSHA, "error", err)
+		return false, recoveries
+	}
+	return committed, recoveries
+}
+
+// committedSince reports whether HEAD descends from start through a first-parent range holding a commit that is not a merge.
+func committedSince(geom Geometry, start string) (bool, error) {
+	git := geom.git()
+	head, err := git.HeadSHA(geom.WorktreeRoot)
+	if err != nil {
+		return false, err
+	}
+	descends, err := git.IsAncestor(geom.WorktreeRoot, start, head)
+	if err != nil || !descends {
+		return false, err
+	}
+	return git.NonMergeCommitsBetween(geom.WorktreeRoot, start, head)
 }
 
 // RecoverSpawnOrAttach decides spawn-or-attach: if a recorded, non-terminal recovery BatchState
@@ -373,6 +436,16 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	prior := deps.State.Batches[batchNumber]
 	if prior != nil && prior.Kind == "recovery" && !prior.Terminal && prior.StrandGUID != "" {
 		return prior, false, nil
+	}
+	if prior != nil && prior.Recoveries >= maxRecoveries && !rendersNewAmendment(prior) {
+		return nil, false, fmt.Errorf("%w: batch %02d has had %d recoveries; %s; or %s", ErrRecoveryExhausted, batchNumber, prior.Recoveries,
+			wayForwardSteps(resetVerb(ResetToBatchStart, batchNumber), fmt.Sprintf("lyx webster recover-batch %d", batchNumber)), freshRestartSteps(stepRun))
+	}
+	if prior != nil && prior.Terminal && prior.Status == DigestStatusFailed && allReadOnlyFabricReferences(prior.Uncheckable, deps.ReadOnly) {
+		// An evidence failure returns the wrap unchanged: its way forward names this verb for the re-run.
+		if _, err := AcceptBatchFabricReference(deps.State, deps.Geom, batchNumber, deps.ReadOnly, "recover-batch"); err != nil {
+			return nil, false, err
+		}
 	}
 	if prior != nil && prior.Terminal && prior.Status == DigestStatusFailed && len(prior.Uncheckable) > 0 {
 		writes, err := contractWritesFor(deps.Engine, deps.State, deps.Geom, prior.Uncheckable)
@@ -633,7 +706,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 			return Digest{}, false, fmt.Errorf("webster: stat batch report %s: %w", reportPath, statErr)
 		}
 
-		turnEnded, err := TurnEndedAfter(bs.EventsPath, bs.EventsOffset, deps.Engine, TurnEndRead{Now: clk.Now(), ShellWait: shuttleengine.ShellWaitBound(deps.ShuttleCfg)})
+		turnEnded, err := TurnEndedAfter(bs.EventsPath, bs.EventsOffset, deps.Engine, TurnEndRead{Now: clk.Now()})
 		if err != nil {
 			return Digest{}, false, err
 		}

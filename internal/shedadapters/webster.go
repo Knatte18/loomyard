@@ -37,7 +37,7 @@ const (
 )
 
 // WebsterProducer is the shedadapters adapter over websterengine's Run seam: it invokes run once per
-// Call with Fresh always false, and maps the resulting RunResult/error onto shedengine's contract.
+// Call with Fresh always false and AutoRebaseline always true, and maps the resulting RunResult/error onto shedengine's contract.
 type WebsterProducer struct {
 	name string
 	run  WebsterRunner
@@ -59,11 +59,13 @@ func NewWebsterProducer(name string, run WebsterRunner, deps websterengine.RunDe
 }
 
 // Call runs one WebsterProducer iteration: entry-check the context, invoke the run seam with
-// Fresh: false, and map its RunResult/error onto shedengine's contract.
+// Fresh: false and AutoRebaseline: true, and map its RunResult/error onto shedengine's contract.
 //
 // RunOptions.Fresh is fixed false and is never configurable here: Fresh: true is the destructive
 // fingerprint-mismatch escape (it archives state and reports and clears the rendered prompts), and
 // must stay an explicit human act via the CLI, never something a Shed resume triggers.
+// AutoRebaseline is the non-destructive counterpart this row sets: a plan changed between steps is rebaselined on entry.
+// Every failure of that path, a refusal or a transient alike, maps to Stuck with its text, whose way forward re-steps this row.
 //
 // No mid-run bridge is installed: Webster's pause is an operator-owned flag file the batch loop
 // polls, and writing it from a context watcher would conflate the two pause channels, race the
@@ -75,10 +77,10 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	result, err := p.run(p.deps, websterengine.RunOptions{Fresh: false})
+	result, err := p.run(p.deps, websterengine.RunOptions{Fresh: false, AutoRebaseline: true})
 	if err != nil {
-		if errors.Is(err, websterengine.ErrPendingAuditFindings) {
-			// A correctness halt only the operator can clear: the run blocks with the entry refusal's own text, whose way forward already ends in this row's re-entry step.
+		if errors.Is(err, websterengine.ErrPendingAuditFindings) || errors.Is(err, websterengine.ErrAutoRebaseline) {
+			// A halt only the operator can clear: the run blocks with the refusal's own text, whose way forward already ends in this row's re-entry step.
 			if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}

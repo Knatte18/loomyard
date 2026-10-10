@@ -9,6 +9,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // failOutput renders go test output failing the named tests in pkg, each at its subtest nesting depth.
@@ -75,8 +78,9 @@ func TestWriteTriageFrictionNote(t *testing.T) {
 	})
 }
 
-// TestBackgroundShellNoteAndWarning asserts the friction note and the warning for an expired shell state, per outcome, the shell, that it was still running when the wait counted Master's turn end, the bound, that the wait stopped waiting on it at a turn end, that lyx did not stop the shell, what ends it and the final outcome, in the same words.
+// TestBackgroundShellNoteAndWarning asserts the friction note and the warning for an ended shell state, per outcome, the shell with its signal and time outstanding, that it was still running when the run ended, that lyx did not stop the shell, what ends it and the final outcome, in the same words.
 func TestBackgroundShellNoteAndWarning(t *testing.T) {
+	endedShell := shuttleengine.EndedShell{Label: "sleep 9999", ID: "sh-1", Signal: shuttleengine.SignalTranscript, Outstanding: 90 * time.Second}
 	const removal = "shuttle removes Master's strand when the run finishes"
 	const reclaim = "the next `lyx webster run` reclaims it at entry"
 	cases := []struct {
@@ -95,23 +99,24 @@ func TestBackgroundShellNoteAndWarning(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
-			if err := writeBackgroundShellFrictionNote(dir, []string{"sleep 9999"}, 15, tc.outcome); err != nil {
+			if err := writeBackgroundShellFrictionNote(dir, []shuttleengine.EndedShell{endedShell}, tc.outcome); err != nil {
 				t.Fatalf("writeBackgroundShellFrictionNote() error = %v", err)
 			}
 			note, err := os.ReadFile(filepath.Join(dir, "webster-background-shell.md"))
 			if err != nil {
 				t.Fatalf("read note: %v", err)
 			}
-			warning := expiredShellWarning("sleep 9999", 15, tc.outcome)
+			warning := expiredShellWarning(endedShell, tc.outcome)
 
 			if !strings.Contains(string(note), "- "+warning+"\n") {
 				t.Errorf("note = %q; want the warning %q as a bullet", note, warning)
 			}
 			for _, want := range []string{
 				"`sleep 9999`",
-				"was still running when the wait counted Master's turn end",
-				"`background_shell_wait_min` (15 minutes)",
-				"stopped waiting on the shell at a turn end, which finished the run when Master's output files existed and otherwise held it for the parent",
+				"(reported by the transcript signal)",
+				"outstanding for 1m30s",
+				"was still running",
+				"when the run ended",
 				"lyx did not stop the shell",
 				tc.wantEnds,
 				tc.wantTail,

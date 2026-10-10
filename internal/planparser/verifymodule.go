@@ -100,9 +100,8 @@ func checkVerifyModuleWide(plan *Plan) []ValidationError {
 func moduleWideCommands(chain string) []string {
 	var found []string
 
-	separated := strings.NewReplacer(";", "&&", "\n", "&&").Replace(chain)
-	for _, segment := range strings.Split(separated, "&&") {
-		fields := strings.Fields(segment)
+	for _, segment := range splitChain(chain) {
+		fields := strings.Fields(segment.Text)
 		for len(fields) > 0 && isEnvAssignment(fields[0]) {
 			fields = fields[1:]
 		}
@@ -169,9 +168,8 @@ func crossModuleCommands(chain string, modules []string) []crossModuleCommand {
 	var found []crossModuleCommand
 	runDir := "."
 
-	separated := strings.NewReplacer(";", "&&", "\n", "&&").Replace(chain)
-	for _, segment := range strings.Split(separated, "&&") {
-		fields := strings.Fields(segment)
+	for _, segment := range splitChain(chain) {
+		fields := strings.Fields(segment.Text)
 		for len(fields) > 0 && isEnvAssignment(fields[0]) {
 			fields = fields[1:]
 		}
@@ -180,7 +178,8 @@ func crossModuleCommands(chain string, modules []string) []crossModuleCommand {
 		}
 		switch fields[0] {
 		case "cd":
-			if len(fields) != 2 {
+			// A cd in a pipeline stage or after `||` may not have run, so the directory is unknown from here on.
+			if len(fields) != 2 || segment.Separator == "|" || segment.Separator == "||" {
 				return found
 			}
 			next, ok := resolveRunDir(runDir, fields[1])
@@ -274,4 +273,68 @@ func isEnvAssignment(field string) bool {
 	return !slices.ContainsFunc([]rune(name), func(r rune) bool {
 		return !(r == '_' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
 	})
+}
+
+// chainSegment is one command of a shell chain.
+type chainSegment struct {
+	// Text is the segment's text, separators removed.
+	Text string
+
+	// Separator is what preceded the segment: `&&`, `||`, `;`, `|` or a newline, and empty for the first segment.
+	// `|` marks a pipeline stage; the others sequence commands.
+	Separator string
+}
+
+// chainContinuation joins a backslash-newline line continuation into one line.
+var chainContinuation = strings.NewReplacer("\\\r\n", " ", "\\\n", " ")
+
+// splitChain splits a shell chain into its commands at `&&`, `||`, `;`, `|` and a newline, after joining line continuations.
+// `||` is one separator, never two pipes, and a separator inside a single- or double-quoted span is text.
+func splitChain(chain string) []chainSegment {
+	runes := []rune(chainContinuation.Replace(chain))
+	var segments []chainSegment
+	var current strings.Builder
+	separator := ""
+	var quote rune
+
+	cut := func(next string) {
+		segments = append(segments, chainSegment{Text: current.String(), Separator: separator})
+		current.Reset()
+		separator = next
+	}
+	followedBy := func(i int, r rune) bool { return i+1 < len(runes) && runes[i+1] == r }
+
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		switch {
+		case quote == '"' && r == '\\' && i+1 < len(runes):
+			current.WriteRune(r)
+			i++
+			current.WriteRune(runes[i])
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+			current.WriteRune(r)
+		case r == '\'' || r == '"':
+			quote = r
+			current.WriteRune(r)
+		case r == '&' && followedBy(i, '&'):
+			cut("&&")
+			i++
+		case r == '|' && followedBy(i, '|'):
+			cut("||")
+			i++
+		case r == '|':
+			cut("|")
+		case r == ';':
+			cut(";")
+		case r == '\n':
+			cut("\n")
+		default:
+			current.WriteRune(r)
+		}
+	}
+	cut("")
+	return segments
 }

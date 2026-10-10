@@ -36,3 +36,18 @@ func TestDispatchScope(t *testing.T) {
 		t.Fatalf("DispatchScope(nil state) = %+v, %+v; want nil, nil", begun, forthcoming)
 	}
 }
+
+// TestEditedDoneCards pins what the plan gate's rows do not reach: a done batch's recorded id the plan lacks reports nothing.
+func TestEditedDoneCards(t *testing.T) {
+	t.Parallel()
+
+	planDir := t.TempDir()
+	plan := &planparser.Plan{Dir: planDir}
+	st := &State{Batches: map[int]*BatchState{
+		1: {Slug: "gone", Terminal: true, Status: "done", Cards: []string{"01-gone"}, CardHashes: map[string]string{"01-gone": "recorded-at-begin"}},
+	}}
+
+	if got, err := EditedDoneCards(plan, st, planDir); err != nil || len(got) != 0 {
+		t.Errorf("EditedDoneCards() = %v, %v; want nothing for an id the plan lacks", got, err)
+	}
+}

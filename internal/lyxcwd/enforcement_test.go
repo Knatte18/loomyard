@@ -102,6 +102,10 @@ var enforcementAllowlist = []scankit.Entry{
 		Key: "cmd/lyx/main.go",
 		Why: "the CLI entry point resolves the process cwd once",
 	},
+	{
+		Key: "internal/fabricengine/refscanner.go",
+		Why: "the read-only classifier lists the flag a session's own git read may pass; it resolves no root",
+	},
 }
 
 // TestEnforcement walks the repo source tree and verifies that no source file outside

@@ -31,6 +31,8 @@ import (
 type fakeGit struct {
 	// head is the SHA HeadSHA returns.
 	head string
+	// headErr, when set, is the error HeadSHA returns in place of head.
+	headErr error
 	// isDirty is what Dirty returns.
 	isDirty bool
 	// dirtyPaths is what DirtyPaths returns.
@@ -160,7 +162,12 @@ func (g *fakeGit) merge(rejection string) (mergeSHA, parentTip string) {
 	return mergeSHA, parentTip
 }
 
-func (g *fakeGit) HeadSHA(string) (string, error) { return g.head, nil }
+func (g *fakeGit) HeadSHA(string) (string, error) {
+	if g.headErr != nil {
+		return "", g.headErr
+	}
+	return g.head, nil
+}
 
 func (g *fakeGit) Dirty(string) (bool, error) { return g.isDirty, nil }
 
@@ -216,6 +223,21 @@ func (g *fakeGit) IsAncestor(_, sha, ref string) (bool, error) {
 		}
 		seen[cur] = true
 		queue = append(queue, g.parents[cur]...)
+	}
+	return false, nil
+}
+
+// NonMergeCommitsBetween walks head's first-parent chain down to base, which must be a registered commit, and reports whether a commit with fewer than two parents lies on it.
+func (g *fakeGit) NonMergeCommitsBetween(_, base, head string) (bool, error) {
+	if !g.SHAExists("", base) || !g.SHAExists("", head) {
+		return false, errors.New("fakeGit: unknown commit")
+	}
+	for cur := head; cur != base; {
+		parents := g.parents[cur]
+		if len(parents) < 2 {
+			return true, nil
+		}
+		cur = parents[0]
 	}
 	return false, nil
 }

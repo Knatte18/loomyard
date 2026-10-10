@@ -61,6 +61,9 @@ type Env struct {
 	// PublishFailure returns the Publish failure note the Webster-Review rubric renders, read by the BurlerRound and Bouncer entries each time a segment builds its producers.
 	// Nil renders `none`.
 	PublishFailure func() string
+	// WebsterRecord returns the webster run-record note the Plan-Review rubric renders, read by the BurlerRound and Bouncer entries each time a segment builds its producers.
+	// Nil renders `none`.
+	WebsterRecord func() string
 	// StatusPath is the told status file path, read by LoomPreflight.
 	StatusPath string
 	// StatusLockPath is the told status lock file path, read by LoomPreflight.

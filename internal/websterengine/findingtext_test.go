@@ -1,4 +1,4 @@
-// findingtext_test.go pins the findings clause and the way forward of the board-model findings as golden text, and the reason a path cannot be checked.
+// findingtext_test.go pins the findings clause and the way forward of the board-model findings and the zero-batch refusal as golden text, and the reason a path cannot be checked.
 // Untagged, with a shuttlefake.Engine: no git, no subprocess spawns, so the cases that need git (a git-ignored path, a tracked path) are covered by the integration tests of the sites.
 
 package websterengine
@@ -182,6 +182,30 @@ func TestWayForwardSteps(t *testing.T) {
 			t.Parallel()
 			if got := wayForwardSteps(tt.steps...); got != tt.want {
 				t.Errorf("wayForwardSteps(%v) = %q, want %q", tt.steps, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestZeroBatchesErrorText pins the zero-batch refusal as golden text: an empty step names the manual rebaseline and run verbs, and a set step replaces both.
+// The step-keyed text is pinned here because no plan reaches it through Run: a plan with no card fails to load, and the batches an accepted rebaseline records cover every card.
+func TestZeroBatchesErrorText(t *testing.T) {
+	t.Parallel()
+
+	const lead = "webster: plan /plan produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done; way forward: "
+	tests := []struct {
+		name string
+		step string
+		want string
+	}{
+		{"no step", "", lead + "fix the plan's cards, run `lyx webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lyx webster run`"},
+		{"a step", "re-step the webster row", lead + "fix the plan's cards, then re-step the webster row"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := zeroBatchesError("/plan", tt.step).Error(); got != tt.want {
+				t.Errorf("zeroBatchesError(%q) = %q, want %q", tt.step, got, tt.want)
 			}
 		})
 	}

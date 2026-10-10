@@ -69,6 +69,24 @@ func TestBouncerEntry_HappyPath(t *testing.T) {
 	if producer == nil {
 		t.Fatal("bouncerEntry() producer = nil; want non-nil")
 	}
+
+	// The config carries the env's WebsterRecord closure: BouncerConfig is not reachable on the returned producer,
+	// so the note is read off the seed prompt through a rubric that carries the marker.
+	const note = "Webster has begun these batches."
+	env.WebsterRecord = func() string { return note }
+	writeStencil(t, env.StencilsDir, "bouncer-template-seed", "{{.rubric}}\n")
+	writeStencil(t, env.StencilsDir, "bouncer-rubric", "Record: {{.webster_record}}\n")
+	producer, err = bouncerEntry("review-bounce", cfg, env)
+	if err != nil {
+		t.Fatalf("bouncerEntry() error = %v; want nil", err)
+	}
+	if _, _, err := producer.Call(context.Background()); err != nil {
+		t.Fatalf("Call() error = %v; want nil", err)
+	}
+	fake := env.Shuttle.(*shedfake.Shuttle)
+	if len(fake.Specs) != 1 || !strings.Contains(fake.Specs[0].Prompt, "Record: "+note) {
+		t.Errorf("seed specs = %+v; want one whose prompt carries the env's webster record note", fake.Specs)
+	}
 }
 
 func TestBouncerEntry_RunDirectory(t *testing.T) {

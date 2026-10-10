@@ -222,6 +222,9 @@ func TestWire_StandaloneMode(t *testing.T) {
 	if _, ok := c.refMatcher.(websterengine.NeverMatches); !ok {
 		t.Errorf("refMatcher = %T; want websterengine.NeverMatches in standalone", c.refMatcher)
 	}
+	if c.runDeps().ReadOnly == nil {
+		t.Error("runDeps().ReadOnly = nil; want the read-only classifier supplied for `lyx webster run`")
+	}
 	if c.openFabric != nil {
 		t.Error("openFabric != nil; want nil in standalone -- there is no fabric repo to reach")
 	}

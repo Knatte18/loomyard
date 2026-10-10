@@ -41,6 +41,8 @@ func TestCheckBatchOrder(t *testing.T) {
 		// wantFindings lists the substrings a refusal's message holds;
 		// none means the list is accepted.
 		wantFindings []string
+		// step is the way forward the call is told; a set step replaces the manual verbs.
+		step string
 	}{
 		{
 			name: "an empty list is accepted",
@@ -97,11 +99,20 @@ func TestCheckBatchOrder(t *testing.T) {
 			},
 			wantFindings: []string{`batch 1 (card 1) uses "BFunc", which batch 2 (card 2) targets, but batch 1 runs first`},
 		},
+		{
+			name: "a set step replaces the manual verbs in the way forward",
+			in: []batcher.Batch{
+				oneCardBatch(1, "consumer", nil, []string{"FooFunc"}),
+				oneCardBatch(2, "producer", []string{"FooFunc"}, nil),
+			},
+			wantFindings: []string{`batch 1 (card 1) uses "FooFunc"`},
+			step:         "re-step the webster row",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := websterengine.CheckBatchOrder(tc.in)
+			err := websterengine.CheckBatchOrder(tc.in, tc.step)
 			if len(tc.wantFindings) == 0 {
 				if err != nil {
 					t.Fatalf("CheckBatchOrder() error = %v; want nil", err)
@@ -111,7 +122,16 @@ func TestCheckBatchOrder(t *testing.T) {
 			if !errors.Is(err, websterengine.ErrBatchOrder) {
 				t.Fatalf("CheckBatchOrder() error = %v; want errors.Is(err, ErrBatchOrder)", err)
 			}
-			for _, want := range append(tc.wantFindings, wayForward) {
+			clause := wayForward
+			if tc.step != "" {
+				clause = "way forward: fix the plan's card order so every card follows the cards whose targets it uses, then " + tc.step
+				for _, manual := range []string{"lyx webster rebaseline", "lyx webster run"} {
+					if strings.Contains(err.Error(), manual) {
+						t.Errorf("CheckBatchOrder() error = %q; want it to name neither manual verb, found %q", err.Error(), manual)
+					}
+				}
+			}
+			for _, want := range append(tc.wantFindings, clause) {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("CheckBatchOrder() error = %q; want it to contain %q", err.Error(), want)
 				}

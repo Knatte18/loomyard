@@ -55,6 +55,9 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("lyxcwd.Resolve(%q): %v", codeWorktreePath, err)
 		}
 
+		// A task session's own edit syncs through fabriccli.RunCLIIn, which runs without a parent and so passes the role guard.
+		t.Setenv(agentname.StrandNameEnv, "ly:"+slug+":webster")
+
 		// loom is per-worktree, so this exercises the fabric-sync path.
 		validYAML := "discussion_timeout_min: 60\n"
 		fakeEdit := func(path string) error {

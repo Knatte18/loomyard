@@ -128,6 +128,21 @@ func TestBurlerRoundEntry_RubricStencil(t *testing.T) {
 		}
 	})
 
+	t.Run("FillsTheWebsterRecordNote", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.WebsterRecord = func() string { return "A known note." }
+		writeStencil(t, env.StencilsDir, "round-rubric", "Record: {{.webster_record}}\n")
+		cfg := Config{
+			"run_subdir": "review-segment",
+			"profile":    map[string]any{"rubric_stencil": "round-rubric"},
+		}
+
+		profile, _ := callAndCaptureProfile(t, "review-round", cfg, env)
+		if profile.Rubric != "Record: A known note.\n" {
+			t.Errorf("profile.Rubric = %q; want the env's webster record note filled into the marker", profile.Rubric)
+		}
+	})
+
 	t.Run("StripsLeadingStampBanner", func(t *testing.T) {
 		env := newTestEnv(t)
 		writeStencil(t, env.StencilsDir, "round-rubric", "<!-- lyx-stencil: sha256=aaaa -->\nBLOCKING: a round bug.\n")

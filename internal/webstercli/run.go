@@ -14,6 +14,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
@@ -31,6 +32,7 @@ func (c *websterCLI) runDeps() websterengine.RunDeps {
 		Batcher:      c.batcher,
 		Geom:         c.geom,
 		RefMatcher:   c.refMatcher,
+		ReadOnly:     fabricengine.IsReadOnlyCommand,
 		FrictionDir:  c.frictionDir,
 		ParentBranch: c.parentBranch,
 	}

@@ -82,6 +82,9 @@ func TestWebsterProducer_OutcomeDone(t *testing.T) {
 			if fake.gotOptions.Fresh {
 				t.Error("Call() invoked the run seam with RunOptions.Fresh = true; want false (a safety property, not a default)")
 			}
+			if !fake.gotOptions.AutoRebaseline {
+				t.Error("Call() invoked the run seam with RunOptions.AutoRebaseline = false; want true")
+			}
 		})
 	}
 }
@@ -141,16 +144,20 @@ func TestWebsterProducer_UnrecognizedOutcome(t *testing.T) {
 // --- Error mapping table ---
 
 func TestWebsterProducer_OtherEngineErrors(t *testing.T) {
+	autoRebaselineErr := fmt.Errorf("%w: %w; way forward: transient, re-step the loom row", websterengine.ErrAutoRebaseline, errors.New("save the restamped state"))
 	tests := []struct {
 		name string
 		err  error
+		// wantStuck marks a sentinel that blocks the row resumable, with the error text as the reason.
+		wantStuck bool
 	}{
-		{"MasterDied", &websterengine.MasterDiedError{SessionID: "sess-1", RunDir: "/tmp/run"}},
-		{"MasterTimeout", &websterengine.MasterTimeoutError{SessionID: "sess-1", RunDir: "/tmp/run"}},
-		{"RunBusy", websterengine.ErrRunBusy},
-		{"FingerprintMismatch", websterengine.ErrFingerprintMismatch},
-		{"NilBatcher", websterengine.ErrNilBatcher},
-		{"PlainUnmatchedError", errors.New("webster: plan validation refused this run")},
+		{name: "MasterDied", err: &websterengine.MasterDiedError{SessionID: "sess-1", RunDir: "/tmp/run"}},
+		{name: "MasterTimeout", err: &websterengine.MasterTimeoutError{SessionID: "sess-1", RunDir: "/tmp/run"}},
+		{name: "RunBusy", err: websterengine.ErrRunBusy},
+		{name: "FingerprintMismatch", err: websterengine.ErrFingerprintMismatch},
+		{name: "NilBatcher", err: websterengine.ErrNilBatcher},
+		{name: "PlainUnmatchedError", err: errors.New("webster: plan validation refused this run")},
+		{name: "AutoRebaselineWrap", err: autoRebaselineErr, wantStuck: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -159,12 +166,18 @@ func TestWebsterProducer_OtherEngineErrors(t *testing.T) {
 			fake := &fakeWebsterRunner{err: tt.err}
 			p := NewWebsterProducer("loom", fake.run, deps)
 
-			outcome, _, err := p.Call(context.Background())
+			outcome, ptr, err := p.Call(context.Background())
+			if tt.wantStuck {
+				if err != nil || outcome != shedengine.Stuck || ptr.Reason != tt.err.Error() {
+					t.Errorf("Call() = %q, %+v, %v; want %q with the error text %q as the reason and no error", outcome, ptr, err, shedengine.Stuck, tt.err.Error())
+				}
+				return
+			}
 			if err == nil {
 				t.Fatal("Call() error = nil; want non-nil")
 			}
 			if outcome == shedengine.Stuck {
-				t.Errorf("Call() outcome = %q; want the error, not %q (only the pending-audit-findings sentinel maps to Stuck)", outcome, shedengine.Stuck)
+				t.Errorf("Call() outcome = %q; want the error, not %q (only the pending-audit-findings and auto-rebaseline sentinels map to Stuck)", outcome, shedengine.Stuck)
 			}
 		})
 	}

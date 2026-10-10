@@ -43,7 +43,8 @@ func refuseMidMerge(git Git, worktree string) error {
 	if present {
 		return fmt.Errorf("webster: worktree %s has a git merge in progress; conclude it first "+
 			"(`lyx fabric merge --continue` / `lyx fabric merge --abort` in a hub, "+
-			"`git merge --continue` / `git merge --abort` for a standalone run)", worktree)
+			"`git merge --continue` / `git merge --abort` for a standalone run); "+
+			"a session lyx refuses the verb from reports status: FAILED and the orch runs it", worktree)
 	}
 	return nil
 }
@@ -416,6 +417,17 @@ func isAncestor(worktree, sha, ref string) (bool, error) {
 	return gitrepo.New(worktree).IsAncestor(sha, ref)
 }
 
+// nonMergeCommitsBetween reports whether the first-parent range base..head holds a commit that is not a merge.
+// A base the repository does not hold is an error, as is any other failed git call.
+// It wraps gitexec.Run directly since gitrepo.Repo exposes no first-parent range walk.
+func nonMergeCommitsBetween(worktree, base, head string) (bool, error) {
+	stdout, err := gitexec.Run([]string{"rev-list", "--first-parent", "--no-merges", "--max-count=1", base + ".." + head}, worktree)
+	if err != nil {
+		return false, fmt.Errorf("websterengine: git rev-list --first-parent --no-merges %s..%s in %s: %w", base, head, worktree, err)
+	}
+	return strings.TrimSpace(stdout) != "", nil
+}
+
 // dirtyTrackedPaths returns the slash-separated worktree-relative paths of tracked files whose content differs from HEAD, staged or not, sorted.
 // Untracked files are not listed.
 // It wraps gitexec.Run directly for the same reason dirty does.
@@ -460,23 +472,46 @@ var ErrHeadSHAUnresolved = errors.New("webster: report head_sha unresolved")
 // commitsNamedBy returns, sorted, the full SHA of every commit in worktree's repository whose object name starts with prefix, and an empty slice when none does.
 // Only object names match, never ref names.
 // `git rev-parse --disambiguate` lists every object the prefix names and prints nothing, exiting 0, for a prefix that names none;
-// each listed object is kept only when `git cat-file -t` answers commit.
+// all listed objects are classified in one `git cat-file --batch-check` run, and only those it types commit are kept.
 func commitsNamedBy(worktree, prefix string) ([]string, error) {
 	stdout, err := gitexec.Run([]string{"rev-parse", "--disambiguate=" + prefix}, worktree)
 	if err != nil {
 		return nil, fmt.Errorf("websterengine: git rev-parse --disambiguate=%s in %s: %w", prefix, worktree, err)
 	}
-	var commits []string
-	for _, sha := range strings.Fields(stdout) {
-		kind, err := gitexec.Run([]string{"cat-file", "-t", sha}, worktree)
-		if err != nil {
-			return nil, fmt.Errorf("websterengine: git cat-file -t %s in %s: %w", sha, worktree, err)
-		}
-		if strings.TrimSpace(kind) == "commit" {
-			commits = append(commits, sha)
-		}
+	named := strings.Fields(stdout)
+	if len(named) == 0 {
+		return nil, nil
+	}
+	checked, err := gitexec.RunStdin([]string{"cat-file", "--batch-check"}, worktree, strings.Join(named, "\n")+"\n")
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: git cat-file --batch-check in %s: %w", worktree, err)
+	}
+	commits, err := commitsFromBatchCheck(checked)
+	if err != nil {
+		return nil, fmt.Errorf("websterengine: git cat-file --batch-check in %s: %w", worktree, err)
 	}
 	sort.Strings(commits)
+	return commits, nil
+}
+
+// commitsFromBatchCheck returns the object names typed commit in `git cat-file --batch-check` output, one `<name> <type> <size>` line per object.
+// A `<name> missing` line is an error naming the object, since the caller just listed it, and any other malformed line is an error too.
+func commitsFromBatchCheck(output string) ([]string, error) {
+	var commits []string
+	for _, line := range strings.Split(output, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		switch {
+		case len(fields) == 2 && fields[1] == "missing":
+			return nil, fmt.Errorf("object %s is missing", fields[0])
+		case len(fields) != 3:
+			return nil, fmt.Errorf("malformed batch-check line %q", line)
+		case fields[1] == "commit":
+			commits = append(commits, fields[0])
+		}
+	}
 	return commits, nil
 }
 

@@ -19,7 +19,8 @@ var ErrBatchOrder = errors.New("webster: batch order: dependency on a later batc
 // CheckBatchOrder returns an error wrapping ErrBatchOrder that names every dependency edge running from a batch to an earlier one, and nil when every batch follows the batches it depends on.
 // Each finding names both batch numbers and the card and ref that make the dependency.
 // A cycle between batches always holds such an edge, so it is refused by the same rule.
-func CheckBatchOrder(batches []batcher.Batch) error {
+// The way forward names step: an empty step keeps the manual text naming `lyx webster rebaseline --card NN` and `lyx webster run --fresh`, and a set step says to fix the plan's card order and take step.
+func CheckBatchOrder(batches []batcher.Batch, step string) error {
 	edges := deriveEdges(batches)
 	var findings []string
 	for from, successors := range edges {
@@ -34,8 +35,12 @@ func CheckBatchOrder(batches []batcher.Batch) error {
 		return nil
 	}
 	sort.Strings(findings)
-	return fmt.Errorf("%w: %s; way forward: fix the plan's card order so every card follows the cards whose targets it uses, then `lyx webster rebaseline --card NN` naming each card you edited, or `lyx webster run --fresh` for a run that has not begun a batch",
-		ErrBatchOrder, strings.Join(findings, "; "))
+	wayForward := "then `lyx webster rebaseline --card NN` naming each card you edited, or `lyx webster run --fresh` for a run that has not begun a batch"
+	if step != "" {
+		wayForward = "then " + step
+	}
+	return fmt.Errorf("%w: %s; way forward: fix the plan's card order so every card follows the cards whose targets it uses, %s",
+		ErrBatchOrder, strings.Join(findings, "; "), wayForward)
 }
 
 // backwardEdgeFinding describes why the batch that runs first must run after the batch that runs later, naming both batch numbers and the first card pair and ref that make the dependency.

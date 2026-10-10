@@ -7,12 +7,16 @@ package websterengine
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
+
+// readsOnlyCat is a stand-in read-only classifier that accepts a command starting with `cat `.
+func readsOnlyCat(cmd string) bool { return strings.HasPrefix(cmd, "cat ") }
 
 func TestClassifyViolation(t *testing.T) {
 	root := gitwrapNewScratchRepo(t)
@@ -91,7 +95,8 @@ func TestClassifyViolation(t *testing.T) {
 		{"fork-plan-write", AuditViolation{Class: ClassForkPlanWrite, Path: "x"}, geom, AuditSeverityCorrectness},
 		{"fork-state-write", AuditViolation{Class: ClassForkStateWrite, Path: "x"}, geom, AuditSeverityCorrectness},
 		{"fabric-reference", AuditViolation{Class: ClassFabricReference}, geom, AuditSeverityCorrectness},
-		{"fabric-reference read-only command", AuditViolation{Class: ClassFabricReference, Command: "cat <dir>/webster/state.json"}, geom, AuditSeverityCorrectness},
+		{"fabric-reference the classifier accepts", AuditViolation{Class: ClassFabricReference, Command: "cat <dir>/webster/state.json"}, geom, AuditSeverityPolicy},
+		{"fabric-reference the classifier rejects", AuditViolation{Class: ClassFabricReference, Command: "lyx fabric add x"}, geom, AuditSeverityCorrectness},
 		{"named-spawn", AuditViolation{Class: ClassNamedSpawn}, geom, AuditSeverityPolicy},
 		{"nested-agent", AuditViolation{Class: ClassNestedAgent}, geom, AuditSeverityPolicy},
 		{"tracked file", AuditViolation{Class: ClassParentWrite, Path: filepath.Join(root, "tracked.txt")}, geom, AuditSeverityCorrectness},
@@ -116,7 +121,7 @@ func TestClassifyViolation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ClassifyViolation(tt.v, tt.geom)
+			got, err := ClassifyViolation(tt.v, tt.geom, readsOnlyCat)
 			if err != nil {
 				t.Fatalf("ClassifyViolation: %v", err)
 			}
@@ -125,6 +130,13 @@ func TestClassifyViolation(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a nil classifier accepts nothing", func(t *testing.T) {
+		got, err := ClassifyViolation(AuditViolation{Class: ClassFabricReference, Command: "cat x"}, geom, nil)
+		if err != nil || got != AuditSeverityCorrectness {
+			t.Errorf("ClassifyViolation with a nil classifier = %q, %v; want correctness", got, err)
+		}
+	})
 }
 
 func TestCheckParent_KeysDistinctAndStable(t *testing.T) {

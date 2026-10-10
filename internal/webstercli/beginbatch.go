@@ -26,7 +26,7 @@ import (
 
 // fabricSyncWayForward is the trailing clause of every refusal raised because the fabric sync failed.
 // The state is already saved locally, and fabricSync only commits the scoped _lyx pathspec and never pushes.
-const fabricSyncWayForward = "way forward: the state is saved locally; `lyx fabric commit` commits it, or the next bracket verb's own sync carries it"
+const fabricSyncWayForward = "way forward: the state is saved locally; `lyx fabric commit` commits it, or the next bracket verb's own sync carries it; a session lyx refuses the verb from reports status: FAILED and the orch runs it"
 
 // rebaselineWayForward is the trailing clause of every refusal raised because persisting the plan-fingerprint re-baseline failed.
 const rebaselineWayForward = "way forward: re-run the same verb; the re-baseline is recomputed from the plan on disk"

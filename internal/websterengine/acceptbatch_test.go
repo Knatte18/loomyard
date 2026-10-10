@@ -5,6 +5,7 @@
 package websterengine_test
 
 import (
+	"cmp"
 	"errors"
 	"path/filepath"
 	"slices"
@@ -16,6 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// acceptAuditVerb is the verb the accept-audit command passes to AcceptBatchFabricReference.
+const acceptAuditVerb = "accept-audit --batch"
 
 // fabricEntry is an Uncheckable entry as record-batch writes it for a pathless fabric reference.
 const fabricEntry = "fabric-reference: ran a fabric-referencing command (\"go run ./tools/tokencount -history ../x-records\")"
@@ -56,7 +60,7 @@ func TestAcceptBatchFabricReference_ToleratesTheRunsOwnState(t *testing.T) {
 	st, geom, g := acceptBatchFixture(t)
 	g.dirtyPaths = []string{"_lyx/", "_lyx/webster/state.json"}
 
-	if _, err := websterengine.AcceptBatchFabricReference(st, geom, 8, fabricengine.IsReadOnlyCommand); err != nil {
+	if _, err := websterengine.AcceptBatchFabricReference(st, geom, 8, fabricengine.IsReadOnlyCommand, acceptAuditVerb); err != nil {
 		t.Fatalf("AcceptBatchFabricReference() error = %v; want nil over the run's own untracked state", err)
 	}
 }
@@ -65,7 +69,7 @@ func TestAcceptBatchFabricReference_ClearsOnNoCommitCleanTree(t *testing.T) {
 	t.Parallel()
 	st, geom, _ := acceptBatchFixture(t)
 
-	accepted, err := websterengine.AcceptBatchFabricReference(st, geom, 8, fabricengine.IsReadOnlyCommand)
+	accepted, err := websterengine.AcceptBatchFabricReference(st, geom, 8, fabricengine.IsReadOnlyCommand, acceptAuditVerb)
 	if err != nil {
 		t.Fatalf("AcceptBatchFabricReference() error = %v; want nil", err)
 	}
@@ -92,7 +96,7 @@ func TestAcceptBatchFabricReference_ClearsAfterCommitsDiscarded(t *testing.T) {
 	st.Batches[8].Digest.HeadSHA = g.commit()
 	g.head = start
 
-	accepted, err := websterengine.AcceptBatchFabricReference(st, geom, 8, fabricengine.IsReadOnlyCommand)
+	accepted, err := websterengine.AcceptBatchFabricReference(st, geom, 8, fabricengine.IsReadOnlyCommand, acceptAuditVerb)
 	if err != nil {
 		t.Fatalf("AcceptBatchFabricReference() error = %v; want nil once HEAD is back at the start on a clean tree", err)
 	}
@@ -109,7 +113,7 @@ func TestAcceptBatchFabricReference_ClearsCommittedReadOnly(t *testing.T) {
 	// The batch committed and its commits stay: the start is an ancestor of HEAD.
 	g.commit()
 
-	accepted, err := websterengine.AcceptBatchFabricReference(st, geom, 8, fabricengine.IsReadOnlyCommand)
+	accepted, err := websterengine.AcceptBatchFabricReference(st, geom, 8, fabricengine.IsReadOnlyCommand, acceptAuditVerb)
 	if err != nil {
 		t.Fatalf("AcceptBatchFabricReference() error = %v; want nil over a committed batch whose commands only read", err)
 	}
@@ -121,8 +125,8 @@ func TestAcceptBatchFabricReference_ClearsCommittedReadOnly(t *testing.T) {
 		t.Fatalf("Uncheckable = %v, AuditWarnings = %+v; want it cleared with one warning per entry", bs.Uncheckable, bs.AuditWarnings)
 	}
 	for _, w := range bs.AuditWarnings {
-		if w.Class != "fabric-reference" || !strings.Contains(w.Detail, "commits were kept") {
-			t.Errorf("warning = %+v; want a fabric-reference warning saying the commits were kept", w)
+		if w.Class != "fabric-reference" || !strings.Contains(w.Detail, "accepted by "+acceptAuditVerb+", ") || !strings.Contains(w.Detail, "commits were kept") {
+			t.Errorf("warning = %+v; want a fabric-reference warning naming %s and saying the commits were kept", w, acceptAuditVerb)
 		}
 	}
 }
@@ -143,6 +147,8 @@ func TestAcceptBatchFabricReference_Refusals(t *testing.T) {
 		mutate func(st *websterengine.State, g *fakeGit)
 		batch  int
 		want   string
+		// verb is the accepting verb; empty means the accept-audit command's.
+		verb string
 	}{
 		{name: "unrecorded batch", batch: 3, want: "batch 03 is not a failed batch"},
 		{name: "done batch", batch: 8, mutate: func(st *websterengine.State, _ *fakeGit) { st.Batches[8].Status = websterengine.DigestStatusDone }, want: "is not a failed batch"},
@@ -167,6 +173,9 @@ func TestAcceptBatchFabricReference_Refusals(t *testing.T) {
 			g.dirtyPaths = []string{"internal/x/x.go"}
 		}, want: "untracked changes: internal/x/x.go;"},
 		{name: "dirty worktree", batch: 8, mutate: func(_ *websterengine.State, g *fakeGit) { g.dirtyPaths = []string{"_lyx/", "internal/x/x.go"} }, want: "untracked changes: internal/x/x.go;"},
+		{name: "dirty worktree names the accept-audit re-run", batch: 8, mutate: func(_ *websterengine.State, g *fakeGit) { g.dirtyPaths = []string{"internal/x/x.go"} }, want: `re-run "lyx webster accept-audit --batch 8"`},
+		{name: "dirty worktree names the recover-batch re-run", batch: 8, verb: "recover-batch", mutate: func(_ *websterengine.State, g *fakeGit) { g.dirtyPaths = []string{"internal/x/x.go"} }, want: `re-run "lyx webster recover-batch 8"`},
+		{name: "committed batch with a redirection names the recover-batch re-run", batch: 8, verb: "recover-batch", mutate: committedWith(readOnlyEntry("cat a > b")), want: `re-run "lyx webster recover-batch 8"`},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -177,7 +186,9 @@ func TestAcceptBatchFabricReference_Refusals(t *testing.T) {
 			}
 			before := slices.Clone(st.Batches[8].Uncheckable)
 
-			_, err := websterengine.AcceptBatchFabricReference(st, geom, tt.batch, fabricengine.IsReadOnlyCommand)
+			verb := cmp.Or(tt.verb, acceptAuditVerb)
+
+			_, err := websterengine.AcceptBatchFabricReference(st, geom, tt.batch, fabricengine.IsReadOnlyCommand, verb)
 			if !errors.Is(err, websterengine.ErrAuditNotAcceptable) {
 				t.Fatalf("AcceptBatchFabricReference() error = %v; want ErrAuditNotAcceptable", err)
 			}

@@ -119,7 +119,7 @@ func assertNothingPutToWork(t *testing.T, c *loomCLI, starter *fakeDriverStarter
 }
 
 func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
-	fabricMsg := []string{"lyx fabric merge-stage", "lyx fabric merge --continue", "lyx fabric merge --abort"}
+	fabricMsg := []string{"lyx fabric merge-stage", "lyx fabric merge --continue", "lyx fabric merge --abort", "a session lyx refuses the verb from reports status: FAILED and the orch runs it"}
 	tests := []struct {
 		name      string
 		driver    string
