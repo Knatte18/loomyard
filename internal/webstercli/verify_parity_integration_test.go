@@ -90,7 +90,7 @@ func TestGateParity_VerifyGate(t *testing.T) {
 			if err := os.WriteFile(websterengine.OutcomePath(wgeom.WebsterDir), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
 				t.Fatalf("write outcome.yaml: %v", err)
 			}
-			gate, _ := websterengine.NewVerifyGate(wgeom, 3, nil, nil, "")
+			gate, _ := websterengine.NewVerifyGate(wgeom, 3, nil, nil, "", "/prompts/verify-fix.md")
 			webster := gateVerdict(gate())
 
 			if verb != tc.want || burler != tc.want || webster != tc.want {

@@ -457,6 +457,7 @@
 //
 // A gate failure reaches Merriam as a `Gate findings recorded at …` message naming the verify-gate report (VerifyGateReportPath).
 // Merriam spawns one fixer fork in the background with the prompt Run rendered at entry (RenderVerifyFixPrompt, into the prompts dir as verify-fix.md), ends its turn, and on the fork's notification rewrites its outcome and summary files, which re-arrives at the gate.
+// The gate's re-prompt line and its findings both open with the way forward, naming the fixer-fork step and the prompt file's path, so the rule stands where Merriam reads the failure.
 // The waiting turn end in between is no arrival.
 // The fixer fixes the cause in source, never deletes, skips or weakens a test, never touches the plan directory or `_lyx`, commits each fix as `fix: <summary>` and does not run the plan-level verify.
 // Its commits skip record-batch's done-checks, drift detection and glyph scope guard.

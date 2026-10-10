@@ -717,8 +717,8 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// The state-mutation lease acquired above is held across this call, which now includes the
 	// provider's startup window (bounded by startup_timeout_s) — see AcquireStateMutation's own
 	// contract. At run entry no batch forks exist yet, so the hold stalls nothing in practice.
-	verifyGate, gateNotes := NewVerifyGate(deps.Geom, deps.Config.VerifyGateAttempts, batches, deps.ParentBranch, deps.FrictionDir)
-	gate := append(slices.Clone(deps.Gate), shuttleengine.GateEntry{Name: verifyGateName, Gate: verifyGate, Attempts: deps.Config.VerifyGateAttempts})
+	verifyGate, gateNotes := NewVerifyGate(deps.Geom, deps.Config.VerifyGateAttempts, batches, deps.ParentBranch, deps.FrictionDir, verifyFixPromptPath)
+	gate := append(slices.Clone(deps.Gate), shuttleengine.GateEntry{Name: verifyGateName, Gate: verifyGate, Attempts: deps.Config.VerifyGateAttempts, Reprompt: verifyGateReprompt(verifyFixPromptPath)})
 	handle, err := deps.Starter.StartMaster(spec, gate)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("webster: start master: %w; way forward: transient, re-run `lyx webster run`", err)
