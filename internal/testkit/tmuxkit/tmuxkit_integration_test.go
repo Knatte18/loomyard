@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 func requireTmux(t *testing.T) string {
@@ -95,8 +96,12 @@ func TestSocket_LandsUnderMainDirectory(t *testing.T) {
 	}
 }
 
-func TestSweep_KillsServersUnderItsDirectoryOnly(t *testing.T) {
+// TestSweep_KillsServersAndPaneTreesUnderItsDirectoryOnly pins the sweep's reach: the server under its directory goes, with a pane child that ignores the hangup `kill-server` sends, and a server elsewhere stays.
+func TestSweep_KillsServersAndPaneTreesUnderItsDirectoryOnly(t *testing.T) {
 	tmux := requireTmux(t)
+	if runtime.GOOS != "linux" {
+		t.Skip("the pane child is found through /proc")
+	}
 
 	dir, err := os.MkdirTemp("", dirPrefix)
 	if err != nil {
@@ -104,7 +109,10 @@ func TestSweep_KillsServersUnderItsDirectoryOnly(t *testing.T) {
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 
-	start := exec.Command(tmux, "-L", "swept", "new-session", "-d", "-s", "kit")
+	// A sleep length unique to this process names the pane child among every process on the host.
+	payload := []string{"sleep", strconv.Itoa(1_000_000 + os.Getpid())}
+	immune := fmt.Sprintf("trap '' HUP; %s & wait", strings.Join(payload, " "))
+	start := exec.Command(tmux, "-L", "swept", "new-session", "-d", "-s", "kit", "sh", "-c", immune)
 	start.Env = append(os.Environ(), "TMUX_TMPDIR="+dir)
 	if out, err := start.CombinedOutput(); err != nil {
 		t.Fatalf("start server: %v\n%s", err, out)
@@ -113,6 +121,22 @@ func TestSweep_KillsServersUnderItsDirectoryOnly(t *testing.T) {
 	has.Env = start.Env
 	if err := has.Run(); err != nil {
 		t.Fatalf("server not running before the sweep: %v", err)
+	}
+	runsPayload := func(pid int) bool {
+		argv, ok := ProcArgv(pid)
+		return ok && slices.Equal(argv, payload)
+	}
+	child := 0
+	for deadline := time.Now().Add(5 * time.Second); child == 0 && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		for _, pid := range Pids() {
+			if runsPayload(pid) {
+				child = pid
+				t.Cleanup(func() { _ = proc.KillPID(pid) })
+			}
+		}
+	}
+	if child == 0 {
+		t.Fatalf("pane child %q never started", payload)
 	}
 
 	other := Socket(t, tmux)
@@ -126,6 +150,13 @@ func TestSweep_KillsServersUnderItsDirectoryOnly(t *testing.T) {
 	after.Env = start.Env
 	if after.Run() == nil {
 		t.Error("server under the swept directory survived the sweep")
+	}
+	// A killed process lingers until the kernel delivers the signal, so its exit is awaited briefly.
+	for deadline := time.Now().Add(2 * time.Second); runsPayload(child); time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Errorf("pane child %d ignoring the hangup survived the sweep", child)
+			break
+		}
 	}
 	if !hasServer(tmux, other) {
 		t.Error("the sweep killed a server outside its own directory")

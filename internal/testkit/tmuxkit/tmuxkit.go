@@ -8,7 +8,7 @@
 // The config marks its servers with the user option `@lyx_test_server`, which reed's stale-holder probe reads to leave such a server alone.
 // Reed starts a server itself, carrying no such config, only after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
 //
-// Main also points `TMPDIR` at that directory, so every temp file a test creates lands there, and after the run it sweeps the servers, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory.
+// Main also points `TMPDIR` at that directory, so every temp file a test creates lands there, and after the run it sweeps the servers, killing every process their panes' sessions still hold, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory.
 // A test binary re-executed as a helper inherits that environment, and its own Main creates its directory beside the inherited one, never inside it, so its socket paths do not grow past the limit.
 // A reed watchdog daemon is killed without failing the package, because it idles out on its own schedule after the test that spawned it.
 // Before the sweep it also fails the package for a socket it finds: any socket in a test binary built without the `tmux` and `llm` tags, and in one built with either only a socket whose key no test registered.
@@ -183,7 +183,7 @@ func underDir(dir, path string) bool {
 	return path == dir || strings.HasPrefix(path, dir+string(filepath.Separator))
 }
 
-// sweep kills the tmux server behind every socket under dir's per-user socket directory.
+// sweep kills the tmux server behind every socket under dir's per-user socket directory, with its panes' process trees.
 // It does nothing when tmux is not on PATH.
 func sweep(dir string, uid int) {
 	tmux, err := exec.LookPath("tmux")
@@ -191,8 +191,47 @@ func sweep(dir string, uid int) {
 		return
 	}
 	for _, sock := range listSockets(dir, uid) {
-		_ = exec.Command(tmux, "-S", sock, "kill-server").Run()
-		removeDeadSocket(sock, deadSocketWait)
+		killServer(tmux, sock, "-S", sock)
+	}
+}
+
+// killServer kills the tmux server that address, a `-L` or `-S` flag and its value, names, removes its socket file sock once it refuses connections, then kills every process still in a session one of its panes led.
+// Each pane leads its own session, and the hangup tmux sends it on exit misses a process that ignores SIGHUP or that the pane forked outside the terminal's foreground, so `kill-server` alone can leave such a process running.
+func killServer(tmux, sock string, address ...string) {
+	panes := panePIDs(tmux, address...)
+	_ = exec.Command(tmux, append(address, "kill-server")...).Run()
+	removeDeadSocket(sock, deadSocketWait)
+	killSessionMembers(panes)
+}
+
+// panePIDs returns the pid of every pane on the server address names, none when the server is not running.
+func panePIDs(tmux string, address ...string) []int {
+	out, err := exec.Command(tmux, append(address, "list-panes", "-a", "-F", "#{pane_pid}")...).Output()
+	if err != nil {
+		return nil
+	}
+	var pids []int
+	for _, field := range strings.Fields(string(out)) {
+		if pid, err := strconv.Atoi(field); err == nil && pid > 0 {
+			pids = append(pids, pid)
+		}
+	}
+	return pids
+}
+
+// killSessionMembers force-kills every process whose session id is one of sessions.
+func killSessionMembers(sessions []int) {
+	if len(sessions) == 0 {
+		return
+	}
+	wanted := make(map[int]bool, len(sessions))
+	for _, sid := range sessions {
+		wanted[sid] = true
+	}
+	for _, pid := range Pids() {
+		if sid, ok := procSession(pid); ok && wanted[sid] {
+			_ = proc.KillPID(pid)
+		}
 	}
 }
 
@@ -233,7 +272,7 @@ func PackageServer(t *testing.T, tmux string) string {
 	return packageServerKey
 }
 
-// KillOnCleanup pre-starts a hermetic server on the `-L` key key, registers the key, and registers in t.Cleanup a `kill-server` on it, then the removal of that key's socket file.
+// KillOnCleanup pre-starts a hermetic server on the `-L` key key, registers the key, and registers in t.Cleanup a `kill-server` on it, then the removal of that key's socket file and the kill of every process its panes' sessions still hold.
 // It is the helper for a key a test did not mint itself, such as a `reedengine.ServerName` key of a fixture hub.
 // The server reads the kit's own config instead of `~/.tmux.conf`, starts non-login panes, and survives having no session; a start failure fails the test.
 // The cleanup removes the one path for key under the current `TMUX_TMPDIR`'s per-user directory, never a glob, and only a socket that no longer accepts connections.
@@ -241,10 +280,7 @@ func PackageServer(t *testing.T, tmux string) string {
 func KillOnCleanup(t *testing.T, tmux, key string) {
 	t.Helper()
 	registerKey(key)
-	t.Cleanup(func() {
-		_ = exec.Command(tmux, "-L", key, "kill-server").Run()
-		removeDeadSocket(socketPath(key), deadSocketWait)
-	})
+	t.Cleanup(func() { killServer(tmux, socketPath(key), "-L", key) })
 	if err := startServer(tmux, key); err != nil {
 		t.Fatalf("tmuxkit: %v", err)
 	}

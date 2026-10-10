@@ -26,6 +26,7 @@ A test package never reaches the operator's global gitconfig or default tmux soc
   The registration sits in the `tmux`- or `llm`-constrained file or a helper only such files compile, never in a helper an `integration` build shares, since that would start a server in tier 2.
   A test that asserts on the log files of a server reed starts itself registers its key after its first boot instead.
 - Both `Socket` and `KillOnCleanup` run `kill-server` at cleanup and then remove that key's socket file, so a run leaves none behind.
+  Every kit kill of a server, at cleanup or in `Main`'s sweep, then kills each process still in a session one of its panes led, because the hangup `kill-server` sends misses a pane child that ignores SIGHUP or sits outside the terminal's foreground.
   The removal touches only the one path for the key, under the current `TMUX_TMPDIR`'s per-user directory, and only a socket that refuses connections.
 - A test that builds a subprocess environment from scratch passes `TMUX_TMPDIR` through, so the subprocess's tmux lands in the isolated directory.
 - Bound: socket files already in `/tmp/tmux-$UID/` from earlier runs are not cleaned.

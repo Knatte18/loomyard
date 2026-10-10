@@ -183,9 +183,11 @@ func TestRemoveDeadSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, path := range []string{live, plain, dead, filepath.Join(dir, "absent")} {
+	for _, path := range []string{live, plain, filepath.Join(dir, "absent")} {
 		removeDeadSocket(path, 0)
 	}
+	// A parallel test's fork holds a copy of the closed listener until its exec, so the dead socket gets the wait a killed server gets.
+	removeDeadSocket(dead, deadSocketWait)
 	if _, err := os.Lstat(live); err != nil {
 		t.Errorf("a socket that accepts connections was removed: %v", err)
 	}

@@ -1,4 +1,4 @@
-// proc.go holds the kit's read-only /proc probes: the process list, a process's argv, cwd and executable, and the recognizer for a reed watchdog daemon.
+// proc.go holds the kit's read-only /proc probes: the process list, a process's argv, cwd, executable and session id, and the recognizer for a reed watchdog daemon.
 // Each probe reports nothing where /proc does not exist.
 
 package tmuxkit
@@ -47,6 +47,30 @@ func ProcCwd(pid int) (string, bool) {
 // ProcExe reads pid's executable path from the /proc/<pid>/exe link.
 func ProcExe(pid int) (string, bool) {
 	return readProcLink(pid, "exe")
+}
+
+// procSession reads pid's session id, field 6 of /proc/<pid>/stat.
+// The bool is false when the process is gone or its stat cannot be parsed.
+func procSession(pid int) (int, bool) {
+	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if err != nil {
+		return 0, false
+	}
+	// The command name in field 2 may hold spaces or parentheses, so count fields after the last ')': state, ppid, pgrp, session.
+	stat := string(raw)
+	end := strings.LastIndexByte(stat, ')')
+	if end < 0 {
+		return 0, false
+	}
+	fields := strings.Fields(stat[end+1:])
+	if len(fields) < 4 {
+		return 0, false
+	}
+	session, err := strconv.Atoi(fields[3])
+	if err != nil {
+		return 0, false
+	}
+	return session, true
 }
 
 func readProcLink(pid int, name string) (string, bool) {
