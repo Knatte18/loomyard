@@ -273,6 +273,7 @@ github.com/Knatte18/loomyard/
 ├── internal/gitrepo/             typed Repo over one local git checkout: go-git for local reads, gitexec for remote-auth/mutation
 ├── internal/githubclient/        GitHub token resolution, caching, and authenticated *github.Client construction — auth only, no per-operation wrappers
 ├── internal/lock/                shared file locking
+├── internal/gateslot/            the hub-wide pool of gate slots: file-lock slots, holder records, the inherited-slot environment and wait records
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf
 ├── internal/pattern/             PATTERN directive leaf (root PATTERN.md inlined per role) + format checker
