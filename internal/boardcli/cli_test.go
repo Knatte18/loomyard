@@ -569,7 +569,7 @@ func stepStrictPayloadShapes(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepLookupContract covers the slug-or-id lookup contract on get, set-status, and remove: both key forms succeed;
+// stepLookupContract covers the slug-or-id lookup contract on get, set-status, remove and set-deps: both key forms succeed;
 // id=0 resolves the first-created task;
 // neither key and both keys error;
 // unknown keys (e.g.
@@ -785,6 +785,41 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 			wantExitCode: 1,
 			wantOK:       false,
 			wantError:    "unknown field",
+		},
+		{
+			name: "set_deps_by_id",
+			setup: func(t *testing.T) {
+				f.reset(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","kind":"task","labels":["bug"]}`)
+				runCLI(t, "upsert", `{"slug":"task-b","title":"B","kind":"task","labels":["bug"]}`)
+			},
+			verb:         "set-deps",
+			payload:      `{"id":1,"depends_on":["task-a"]}`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertResult: func(t *testing.T, _ map[string]any) {
+				_, out := runCLI(t, "get", `{"slug":"task-b"}`)
+				var r map[string]any
+				if err := json.Unmarshal([]byte(out), &r); err != nil {
+					t.Fatalf("parse: %v", err)
+				}
+				task, _ := r["task"].(map[string]any)
+				deps, _ := task["depends_on"].([]any)
+				if len(deps) != 1 || deps[0] != "task-a" {
+					t.Errorf("task-b depends_on = %v; want [task-a]", deps)
+				}
+			},
+		},
+		{
+			name: "set_deps_both_keys_errors",
+			setup: func(t *testing.T) {
+				f.reset(t)
+			},
+			verb:         "set-deps",
+			payload:      `{"slug":"x","id":1,"depends_on":[]}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "only one of slug or id may be given",
 		},
 	}
 

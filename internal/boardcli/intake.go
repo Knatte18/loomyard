@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"slices"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -20,11 +19,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// intakeImportPayload is the payload of `intake import`.
+var intakeImportPayload = payloadKeys{
+	required:  []string{"issue"},
+	optional:  []string{"title", "brief", "labels"},
+	exclusive: [][2]string{{"slug", "into"}},
+}
+
+// intakeClosePayload is the payload of `intake close`.
+var intakeClosePayload = payloadKeys{required: []string{"issue", "reason"}, optional: []string{"completed"}}
+
 // intakeCommand builds the `intake` group over the board that board returns.
 func intakeCommand(board func() *boardengine.Board) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "intake",
-		Short: "Bring GitHub inbox issues onto the board",
+		Short: "bring GitHub inbox issues onto the board",
 		Long: `intake moves issues from the inbox repository onto the board. It does the mechanics and never
 triages: list shows the open issues no entry records yet, import records one as a note or folds it
 into an entry and closes it with a pointer, and close closes noise with a stated reason.`,
@@ -32,8 +41,9 @@ into an entry and closes it with a pointer, and close closes noise with a stated
 	}
 
 	listCmd := &cobra.Command{
-		Use:   "list",
-		Short: "List open inbox issues no board entry records",
+		Use:         "list",
+		Short:       "list open inbox issues no board entry records, to triage them",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `List the open issues of the inbox repository that no board entry records, pull requests excluded.
 Takes no payload.
 
@@ -48,10 +58,10 @@ Example:
 	}
 
 	importCmd := &cobra.Command{
-		Use:   "import [json-payload]",
-		Short: "Import an inbox issue as a note or fold it into an entry, then close it",
+		Use:         "import {issue, slug|into, title?, brief?, labels?}",
+		Short:       "import an inbox issue as a note or fold it into an entry, then close it",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Record an open inbox issue on the board, then comment on it and close it as completed.
-Unknown keys are rejected. Exactly one of "slug" or "into" is required.
 
 Fields:
   "issue"  integer — issue number (required)
@@ -78,9 +88,10 @@ Examples:
 	}
 
 	closeCmd := &cobra.Command{
-		Use:   "close [json-payload]",
-		Short: "Close an inbox issue with a stated reason",
-		Long: `Comment on an open inbox issue with the reason and close it. Unknown keys are rejected.
+		Use:         "close {issue, reason, completed?}",
+		Short:       "close an inbox issue that is noise, with a stated reason",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Comment on an open inbox issue with the reason and close it.
 It writes nothing to the board and never edits the issue's content. A pull request and an
 already closed issue are refused. It also closes an issue left open by a failed import close.
 
@@ -140,16 +151,14 @@ func intakeList(out io.Writer, b *boardengine.Board) int {
 	return output.Ok(out, map[string]any{"issues": views})
 }
 
-// decodeIntakePayload decodes payload into a map, refusing any key outside allowed.
-func decodeIntakePayload(payload string, allowed ...string) (map[string]json.RawMessage, error) {
+// decodeIntakePayload decodes payload into a map, refusing any key keys does not declare.
+func decodeIntakePayload(payload string, keys payloadKeys) (map[string]json.RawMessage, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(payload), &fields); err != nil {
 		return nil, fmt.Errorf("invalid json: %v", err)
 	}
-	for key := range fields {
-		if !slices.Contains(allowed, key) {
-			return nil, fmt.Errorf("unknown field: %q", key)
-		}
+	if err := refuseUnknownKey(keys, fields); err != nil {
+		return nil, err
 	}
 	return fields, nil
 }
@@ -193,7 +202,7 @@ func inboxIssue(issue selfreportengine.Issue) boardengine.InboxIssue {
 
 // intakeImport records the issue named by payload on the board, then comments on it and closes it as completed.
 func intakeImport(out io.Writer, b *boardengine.Board, payload string) int {
-	fields, err := decodeIntakePayload(payload, "issue", "slug", "title", "brief", "labels", "into")
+	fields, err := decodeIntakePayload(payload, intakeImportPayload)
 	if err != nil {
 		return outputError(out, err.Error())
 	}
@@ -241,7 +250,7 @@ func intakeImport(out io.Writer, b *boardengine.Board, payload string) int {
 
 // intakeClose comments on the open issue named by payload with the reason and closes it.
 func intakeClose(out io.Writer, payload string) int {
-	fields, err := decodeIntakePayload(payload, "issue", "reason", "completed")
+	fields, err := decodeIntakePayload(payload, intakeClosePayload)
 	if err != nil {
 		return outputError(out, err.Error())
 	}
