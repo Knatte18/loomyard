@@ -22,20 +22,98 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
+// denyHookCommand returns the hook command of the standing deny whose steer is steer.
+func denyHookCommand(t *testing.T, steer string) string {
+	t.Helper()
+	for _, deny := range standingDenies {
+		if deny.steer == steer {
+			return deny.command
+		}
+	}
+	t.Fatalf("standingDenies has no row with steer %q", steer)
+	return ""
+}
+
+// preToolUseOutput runs hookCommand under sh over a PreToolUse payload carrying the Bash command and returns what the hook printed, failing the test on a non-zero exit.
+func preToolUseOutput(t *testing.T, hookCommand, command string) string {
+	t.Helper()
+
+	var payload bytes.Buffer
+	encoder := json.NewEncoder(&payload)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(map[string]any{
+		"hook_event_name": "PreToolUse",
+		"tool_name":       "Bash",
+		"tool_input":      map[string]any{"command": command},
+	}); err != nil {
+		t.Fatalf("encode payload: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sh", "-c", hookCommand)
+	cmd.Stdin = &payload
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("hook exited with %v (ctx: %v); stdout=%q", err, ctx.Err(), out.String())
+	}
+	return out.String()
+}
+
+// TestRawGoDenyHook_DeniesModuleWideAndTierRunsOnly feeds the raw go row's hook command a PreToolUse payload per Bash command and asserts the deny JSON, or empty output for a command it lets through.
+func TestRawGoDenyHook_DeniesModuleWideAndTierRunsOnly(t *testing.T) {
+	t.Parallel()
+
+	hookCommand := denyHookCommand(t, steerRawGoDeny)
+	tests := []struct {
+		name    string
+		command string
+		denied  bool
+	}{
+		{"test_module_wide", "go test ./...", true},
+		{"build_module_wide", "go build ./...", true},
+		{"vet_module_wide", "go vet ./...", true},
+		{"subtree_pattern", "go test ./internal/x/...", true},
+		{"all_pattern", "cd x && go test all", true},
+		{"module_wide_after_a_flag", "go test -count=1 ./...", true},
+		{"module_wide_after_dash_c", "go test -C backend ./...", true},
+		{"path_prefixed_go", "/usr/local/go/bin/go test ./...", true},
+		{"second_line", "echo hi\ngo vet ./...", true},
+		{"tmux_tier_tags", "go test -tags tmux ./internal/x", true},
+		{"llm_tier_in_a_tag_list", "go test -tags=integration,llm ./internal/x", true},
+		{"long_tags_flag", "go test --tags tmux ./internal/x", true},
+		{"names_the_slot_variable", "LYX_GATE_SLOT=/x lyx gate test ./internal/x", true},
+		{"names_the_strand_variable", "echo $LYX_STRAND_NAME", true},
+		{"package_scoped_test", "go test ./internal/x", false},
+		{"integration_tier_with_a_filter", "go test -tags integration ./internal/x -run Foo", false},
+		{"gate_route_module_wide", "lyx gate test ./...", false},
+		{"gate_route_tmux_tier", "lyx gate test --tags tmux ./internal/x", false},
+		{"build_of_one_main_package", "go build -o bin/lyx ./cmd/lyx", false},
+		{"go_as_an_argument", "grep -r go ./...", false},
+		{"pattern_after_a_separator", "go test ./internal/x && ls ./...", false},
+		{"pattern_on_the_next_line", "go test ./internal/x\nls ./...", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			want := ""
+			if tt.denied {
+				want = denyJSON(steerRawGoDeny) + "\n"
+			}
+			if got := preToolUseOutput(t, hookCommand, tt.command); got != want {
+				t.Errorf("hook output for %q = %q; want %q", tt.command, got, want)
+			}
+		})
+	}
+}
+
 // TestPythonDenyHook_DeniesCommandPositionPythonOnly feeds the python row's hook command a PreToolUse payload per Bash command and asserts the deny JSON, or empty output and exit 0 for a command it lets through.
 func TestPythonDenyHook_DeniesCommandPositionPythonOnly(t *testing.T) {
 	t.Parallel()
 
-	var hookCommand string
-	for _, deny := range standingDenies {
-		if deny.steer == steerPythonDeny {
-			hookCommand = deny.command
-		}
-	}
-	if hookCommand == "" {
-		t.Fatal("standingDenies has no python row")
-	}
-
+	hookCommand := denyHookCommand(t, steerPythonDeny)
 	tests := []struct {
 		name    string
 		command string
@@ -55,32 +133,11 @@ func TestPythonDenyHook_DeniesCommandPositionPythonOnly(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var payload bytes.Buffer
-			encoder := json.NewEncoder(&payload)
-			encoder.SetEscapeHTML(false)
-			if err := encoder.Encode(map[string]any{
-				"hook_event_name": "PreToolUse",
-				"tool_name":       "Bash",
-				"tool_input":      map[string]any{"command": tt.command},
-			}); err != nil {
-				t.Fatalf("encode payload: %v", err)
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctx, "sh", "-c", hookCommand)
-			cmd.Stdin = &payload
-			var out bytes.Buffer
-			cmd.Stdout = &out
-			if err := cmd.Run(); err != nil {
-				t.Fatalf("hook exited with %v (ctx: %v); stdout=%q", err, ctx.Err(), out.String())
-			}
-
 			want := ""
 			if tt.denied {
 				want = denyJSON(steerPythonDeny) + "\n"
 			}
-			if got := out.String(); got != want {
+			if got := preToolUseOutput(t, hookCommand, tt.command); got != want {
 				t.Errorf("hook output for %q = %q; want %q", tt.command, got, want)
 			}
 		})

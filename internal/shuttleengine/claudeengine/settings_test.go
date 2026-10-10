@@ -219,15 +219,20 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 					t.Errorf("autonomous AskUserQuestion command = %q; want the deny JSON payload", command)
 				}
 			}
-			pythonInstalled := false
+			pythonInstalled, rawGoInstalled := false, false
 			for _, command := range matcherCommands(doc, "Bash") {
 				pythonInstalled = pythonInstalled || strings.Contains(command, steerPythonDeny)
+				rawGoInstalled = rawGoInstalled || strings.Contains(command, steerRawGoDeny)
 			}
 			if pythonInstalled != tt.pythonDeny {
 				t.Errorf("python Bash PreToolUse entry present = %v; want %v (preToolUse: %v)", pythonInstalled, tt.pythonDeny, preToolUse)
 			}
-			if !tt.wantAgentEntry && !tt.wantAskUserEntry && !tt.pythonDeny && len(preToolUse) != 0 {
-				t.Errorf("PreToolUse = %v with no denies/marker configured; want none", preToolUse)
+			// The raw go deny has no toggle: every run mode installs it.
+			if !rawGoInstalled {
+				t.Errorf("raw go Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
+			}
+			if !tt.wantAgentEntry && !tt.wantAskUserEntry && !tt.pythonDeny && len(preToolUse) != 1 {
+				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go deny", preToolUse)
 			}
 		})
 	}
@@ -338,7 +343,18 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 				}
 			}
 
-			bashCommands := matcherCommands(doc, "Bash")
+			// The raw go deny is installed under every input; the rest of the Bash entries are the fork guard.
+			var bashCommands, rawGoCommands []string
+			for _, command := range matcherCommands(doc, "Bash") {
+				if strings.Contains(command, steerRawGoDeny) {
+					rawGoCommands = append(rawGoCommands, command)
+				} else {
+					bashCommands = append(bashCommands, command)
+				}
+			}
+			if len(rawGoCommands) != 1 {
+				t.Errorf("raw go Bash PreToolUse entries = %q; want exactly one (data: %s)", rawGoCommands, data)
+			}
 			if !tt.wantBashGuard {
 				if len(bashCommands) != 0 {
 					t.Errorf("Bash PreToolUse entries = %q; want none (data: %s)", bashCommands, data)

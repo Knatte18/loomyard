@@ -122,6 +122,15 @@
 // `shuttle.yaml`'s `claude_deny_python` switches it off for a Python target repo.
 // It is a guardrail, not a barrier: its hook greps the payload, so a quoted argument or heredoc body can trip it falsely, and python behind `bash -c`, `eval` or a launcher passes.
 //
+// The raw go row keeps a session from reaching the hub's gate slots around `lyx gate test`, and every run installs it, the orch included.
+// It denies a Bash `go test`, `go build` or `go vet`, with or without `-C <dir>` before the subcommand, whose arguments include a pattern holding `...` or the word `all`;
+// a `go test` whose `-tags` value names `tmux` or `llm`;
+// and any command naming the slot-inheritance variable or the strand-name variable, each spelled into the pattern from its constant.
+// `go` must stand in command position directly before the subcommand, so `go test ./internal/x` and `lyx gate test ./...` pass.
+// The steer names `lyx gate test` as the route, run as a background Bash call.
+// It is a guardrail, not a barrier: its hook sees static text only, so a run hidden behind a script, `bash -c`, a `cd` plus a relative pattern it does not cover, or a shell variable passes, as does any raw package-scoped `go test`,
+// and a matching spelling inside a quoted argument, a commit message or a `grep` is falsely denied.
+//
 // A replay corpus of real turn ends lives under testdata/corpus, one directory per case:
 // transcript.jsonl holds the source transcript's lines the parsers read, trimmed to the fields they read;
 // events.jsonl is the run's events file, or one rebuilt from the transcript's turn ends when the run directory is gone;
