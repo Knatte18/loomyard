@@ -1,10 +1,4 @@
-// stencilcommit.go declares CommitSeededStencils, the locked, pathspec-scoped commit verb that
-// lands a seeding pass' written files as one commit under the board write lock, whatever seeded
-// subtree it is told about — the stencils subtree, or the deployed-specs subtree.
-// It deliberately does not build on Bolt: Bolt.Sync takes board.push.lock while board's own file
-// writes take board.lock, so seeding under Bolt would not exclude a concurrent
-// boardCriticalSection, and Bolt.Commit stages everything in the board repo via
-// StageAllAndCommit, which could capture a half-written board.
+// stencilcommit.go declares the board's seeded-subtree vocabulary: the stencils and specs subtree prefixes, the commit subjects that name the writing binary, the test for a droppable seed commit, and CommitSeededStencils, the locked, pathspec-scoped commit an operator-requested `lyx stencil sync` lands its written files through.
 
 package fabricengine
 
@@ -22,16 +16,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
-// StencilsSubtreeRel returns the board-repo-relative, slash-separated prefix the stencils subtree's
-// written paths hang off — the subtreeRel argument a caller pairs with StencilsDir(hub) when calling
-// CommitSeededStencils for a stencil-seeding pass.
+// StencilsSubtreeRel returns the board-repo-relative, slash-separated prefix every path of the stencils subtree hangs off, the board-relative counterpart of StencilsDir(hub).
 func StencilsSubtreeRel() string {
 	return path.Join(lyxdirs.LyxDirName, stencilsDirName)
 }
 
-// SpecsSubtreeRel returns the board-repo-relative, slash-separated prefix the deployed-specs
-// subtree's written paths hang off — the subtreeRel argument a caller pairs with SpecsDir(hub) when
-// calling CommitSeededStencils for a specs-seeding pass.
+// SpecsSubtreeRel returns the board-repo-relative, slash-separated prefix every path of the deployed-specs subtree hangs off, the board-relative counterpart of SpecsDir(hub).
 func SpecsSubtreeRel() string {
 	return path.Join(lyxdirs.LyxDirName, specsDirName)
 }
