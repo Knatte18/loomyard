@@ -229,6 +229,40 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 		}
 	})
 
+	t.Run("a board with no upstream writes and commits", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			name       string
+			fetchFails bool
+		}{
+			{name: "fetch succeeds"},
+			{name: "fetch fails", fetchFails: true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				f := newBoltFixture(t)
+				gitkit.Git(t, f.board, "branch", "--unset-upstream")
+				if tc.fetchFails {
+					gitkit.Git(t, f.board, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone"))
+				}
+				var runs int
+				rec := fabricengine.NewMutations(f.hub.Path)
+
+				res, err := f.bolt.PullThenCommitWritten([]fabricengine.BoltWrite{f.writeOf("notes/a.md", "a\n", "write a", &runs)}, rec)
+				if err != nil {
+					t.Fatalf("PullThenCommitWritten: %v", err)
+				}
+				if res.Skipped != "" || runs != 1 || len(res.SHAs) != 1 || res.SHAs[0] != f.head() {
+					t.Errorf("result = %+v after %d write runs, head %s; want one landed commit at head and no skip", res, runs, f.head())
+				}
+				want := []fabricengine.Kind{fabricengine.KindFileWritten, fabricengine.KindCommitCreated}
+				if got := kindsOf(rec); !slices.Equal(got, want) {
+					t.Errorf("record kinds = %v, want %v", got, want)
+				}
+			})
+		}
+	})
+
 	t.Run("a replay conflict restores the original tip", func(t *testing.T) {
 		t.Parallel()
 		f := newBoltFixture(t)
