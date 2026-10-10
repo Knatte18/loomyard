@@ -2,7 +2,8 @@
 //
 // Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderReadme, plus design-*.md for any entry with a body).
 // The README reads like a roadmap: Tasks split into Running, Ready, dependency layers and Independent, Notes with one subsection per type label, then Done.
-// Each subsection is one markdown table numbered from 1, whose rows show the bold title with a high or low priority after it and the brief as a bullet under it, the linked slug, and the labels that are not type labels;
+// Each open subsection holds one markdown table per priority present, high, normal, low, each under a `#### <Priority> priority` heading, numbered on from 1 across them, and Done one table numbered from 1;
+// the rows show the bold title with the brief as a bullet under it, the linked slug, and the labels that are not type labels;
 // Running adds where its run stands, and Ready and the layers add the open entries each waits on.
 // The section names, their meaning lines and the table columns are declared here alone;
 // the data holds only the kind and the labels.
@@ -197,15 +198,35 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string) 
 	for _, twl := range ordered {
 		finished[twl.Slug] = isDone(twl.Task)
 	}
-	writeTable := func(entries []TaskWithLayer, table readmeTable) {
+	// writeTable writes one table whose rows are numbered from first.
+	writeTable := func(entries []TaskWithLayer, table readmeTable, first int) {
 		// The slug goes second among the middle columns, right after the entry.
 		header := append(append([]string{columnNumber}, slices.Insert(slices.Clone(table.columns), 1, columnSlug)...), columnLabels)
 		lines = append(lines, tableRow(header), tableRow(slices.Repeat([]string{"---"}, len(header))))
 		for i, twl := range entries {
-			row := append([]string{fmt.Sprint(i + 1)}, slices.Insert(table.cells(twl.Task), 1, slugCell(twl.Task, designPrefix))...)
+			row := append([]string{fmt.Sprint(first + i)}, slices.Insert(table.cells(twl.Task), 1, slugCell(twl.Task, designPrefix))...)
 			lines = append(lines, tableRow(append(row, labelsCell(twl.Task, types))))
 		}
 		lines = append(lines, "")
+	}
+	// writeGroup writes one table per priority present in an open group, high, normal, low, each under its priority heading;
+	// the rows number on across the group's tables, so each entry keeps the number it has in the group.
+	writeGroup := func(entries []TaskWithLayer, table readmeTable) {
+		first := 1
+		for _, priority := range []string{PriorityHigh, PriorityNormal, PriorityLow} {
+			var tier []TaskWithLayer
+			for _, twl := range entries {
+				if priorityRank(twl.Priority) == priorityRank(priority) {
+					tier = append(tier, twl)
+				}
+			}
+			if len(tier) == 0 {
+				continue
+			}
+			lines = append(lines, priorityHeading(priority), "")
+			writeTable(tier, table, first)
+			first += len(tier)
+		}
 	}
 	waitTable := readmeTable{[]string{columnTask, columnAfter}, func(t Task) []string {
 		var after []string
@@ -235,13 +256,13 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string) 
 	}
 	if running := byLayer(runningLayer); len(running) > 0 {
 		lines = append(lines, "### "+runningSection.name, "", runningSection.meaning, "")
-		writeTable(running, readmeTable{[]string{columnTask, columnAt}, func(t Task) []string {
+		writeGroup(running, readmeTable{[]string{columnTask, columnAt}, func(t Task) []string {
 			return []string{entryCell(t), atCell(*t.Status)}
 		}})
 	}
 	lines = append(lines, "### "+readySection.name, "", readySection.meaning, "")
 	if ready := byLayer(readyLayer); len(ready) > 0 {
-		writeTable(ready, waitTable)
+		writeGroup(ready, waitTable)
 	} else {
 		lines = append(lines, emptySectionLine, "")
 	}
@@ -254,7 +275,7 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string) 
 		if layer := tasks[start].Layer; layer != runningLayer && layer != readyLayer {
 			section := layerSection(layer)
 			lines = append(lines, "### "+section.name, "", section.meaning, "")
-			writeTable(tasks[start:end], waitTable)
+			writeGroup(tasks[start:end], waitTable)
 		}
 		start = end
 	}
@@ -278,7 +299,7 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string) 
 			heading = typeHeading(typeLabel)
 		}
 		lines = append(lines, "### "+heading, "")
-		writeTable(entries, noteTable)
+		writeGroup(entries, noteTable)
 	}
 
 	var done []TaskWithLayer
@@ -289,7 +310,7 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string) 
 	}
 	if len(done) > 0 {
 		lines = append(lines, "## "+doneSection.name, "", doneSection.meaning, "")
-		writeTable(done, readmeTable{[]string{columnEntry}, func(t Task) []string { return []string{entryCell(t)} }})
+		writeTable(done, readmeTable{[]string{columnEntry}, func(t Task) []string { return []string{entryCell(t)} }}, 1)
 	}
 
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
@@ -326,12 +347,14 @@ func slugCell(t Task, designPrefix string) string {
 	return "`" + t.Slug + "`"
 }
 
-// entryCell is the bold title, followed by the priority in italics when it is high or low, with the brief as one bullet under it when there is one.
+// priorityHeading is the heading over an open group's table of one priority, one level below the group's `###` heading.
+func priorityHeading(priority string) string {
+	return "#### " + strings.ToUpper(priority[:1]) + priority[1:] + " priority"
+}
+
+// entryCell is the bold title, with the brief as one bullet under it when there is one.
 func entryCell(t Task) string {
 	cell := "**" + cellText(t.Title) + "**"
-	if t.Priority != "" {
-		cell += " _(" + t.Priority + " priority)_"
-	}
 	if t.Brief != "" {
 		cell += cellBullet + cellText(t.Brief)
 	}

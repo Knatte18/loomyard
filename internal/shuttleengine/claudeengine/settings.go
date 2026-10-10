@@ -1,7 +1,6 @@
 // settings.go composes the Claude Code settings.json document Prepare writes for each run:
 // a Stop hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents reads).
-// The UserPromptSubmit, StopFailure, Notification and SessionEnd hooks append their payloads to the same file for ParseSessionSignals,
-// and so does the SessionStart hook of a run whose spec sets a context-after-compaction command, which then runs that command so its output joins the session's context.
+// The UserPromptSubmit, StopFailure, Notification and SessionEnd hooks append their payloads to the same file for ParseSessionSignals, and so does the SessionStart hook of a run whose spec sets a context-after-compaction command, which then runs that command so its output joins the session's context.
 // Every recording hook writes a stamp line with the hook-side time before its payload, which ParseEvents skips.
 // The document also carries the PreToolUse guardrails that keep a run's work visible in its own pane —
 // denying the in-process Agent tool (or, in a fork-mode run, letting fork subagents through it while still denying every other subagent type; a run with Spec.AllowAgentTool set installs no Agent deny at all),

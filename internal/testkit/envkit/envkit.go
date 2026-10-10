@@ -23,6 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -33,37 +35,40 @@ import (
 
 // nilLegal holds the dotted paths NilSeams skips: seams whose nil is a documented default rather than a missing wiring.
 var nilLegal = map[string]bool{
-	"Now":                         true,
-	"GateSlots":                   true,
-	"PublishFailure":              true,
-	"Landing.CommitStatus":        true,
-	"Landing.MarkTaskDone":        true,
-	"Landing.ConfigChanges":       true,
-	"Landing.Notify":              true,
-	"Landing.VerifyCommand":       true,
-	"Landing.VerifyWaitMark":      true,
-	"Landing.GateSlots":           true,
-	"Landing.FailingTests":        true,
-	"Landing.Registry":            true,
-	"ParentReview.Store":          true,
-	"ParentReview.ReviewerLive":   true,
-	"ParentReview.RenderDelivery": true,
-	"ParentReview.RenderBrief":    true,
-	"WebsterDeps.Batcher":         true,
-	"WebsterDeps.Roles":           true,
-	"WebsterDeps.ParentBranch":    true,
-	"WebsterDeps.Geom.Git":        true,
-	"WebsterDeps.Geom.GateSlots":  true,
+	"Now":                                              true,
+	"GateSlots":                                        true,
+	"PublishFailure":                                   true,
+	"Landing.CommitStatus":                             true,
+	"Landing.MergeState":                               true,
+	"Landing.AbortMerge":                               true,
+	"Landing.StopConflictSession":                      true,
+	"Landing.MarkTaskDone":                             true,
+	"Landing.ConfigChanges":                            true,
+	"Landing.Notify":                                   true,
+	"Landing.VerifyCommand":                            true,
+	"Landing.VerifyWaitMark":                           true,
+	"Landing.GateSlots":                                true,
+	"Landing.FailingTests":                             true,
+	"Landing.Registry":                                 true,
+	"ParentReview.Store":                               true,
+	"ParentReview.ReviewerLive":                        true,
+	"ParentReview.RenderDelivery":                      true,
+	"ParentReview.RenderBrief":                         true,
+	"WebsterDeps.Batcher":                              true,
+	"WebsterDeps.Roles":                                true,
+	"WebsterDeps.ParentBranch":                         true,
+	"WebsterDeps.Geom.Git":                             true,
+	"WebsterDeps.Geom.GateSlots":                       true,
 	"WebsterDeps.ShuttleCfg.ClaudePromptCacheTTLRoles": true,
-	"InnerRun.Sleep":      true,
-	"InnerRun.ReviewWait": true,
-	"InnerRun.Now":        true,
-	"InnerRun.Notify":     true,
-	"InnerRun.AttachDir":  true,
-	"PrimeLock.Sleep":     true,
-	"SegmentBounces":      true,
-	"RowReviewModels":     true,
-	"RowClusterFans":      true,
+	"InnerRun.Sleep":                                   true,
+	"InnerRun.ReviewWait":                              true,
+	"InnerRun.Now":                                     true,
+	"InnerRun.Notify":                                  true,
+	"InnerRun.AttachDir":                               true,
+	"PrimeLock.Sleep":                                  true,
+	"SegmentBounces":                                   true,
+	"RowReviewModels":                                  true,
+	"RowClusterFans":                                   true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
@@ -159,10 +164,21 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 			return websterengine.RunResult{}, nil
 		},
-		WebsterDeps:       shedfake.WebsterSeams(),
-		CommitWebster:     func() error { return nil },
-		Landing:           LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
-		DiscussionSpec:    specOver("test discussion prompt", "discussion-output.md"),
+		WebsterDeps:    shedfake.WebsterSeams(),
+		CommitWebster:  func() error { return nil },
+		Landing:        LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
+		DiscussionSpec: specOver("test discussion prompt", "discussion-output.md"),
+		DiscussionTable: func() (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "discussion",
+				Segment:    segmentcolor.Discussion,
+				Seats: []seatengine.Seat{{
+					Name:    seatengine.RoleChair,
+					Stencil: "loom-template-discussion-chair",
+					Outputs: []string{filepath.Join(dir, "discussion-output.md")},
+				}},
+			}, nil
+		},
 		CommitDiscussion:  func() error { return nil },
 		DescribeSpec:      specOver("test describe prompt", "description.md"),
 		CommitDescription: func() error { return nil },

@@ -111,7 +111,7 @@ func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
 
 // TestNewLoomCLI_SetsInjectedSeams pins newLoomCLI's own fields, since neither Command() nor StartAliasCommand() exposes the receiver each constructs and neither may grow an accessor purely for a test.
 //
-//testtiming:keep pins newLoomCLI setting spawnWatchdog, midMerge and suppressWatchdogSpawn, fields neither constructor's callers expose; its covering tests build the CLI without asserting them
+//testtiming:keep pins newLoomCLI setting spawnWatchdog, midMerge, recordedParentBranch and suppressWatchdogSpawn, fields neither constructor's callers expose; its covering tests build the CLI without asserting them
 func TestNewLoomCLI_SetsInjectedSeams(t *testing.T) {
 	c := newLoomCLI()
 
@@ -120,6 +120,9 @@ func TestNewLoomCLI_SetsInjectedSeams(t *testing.T) {
 	}
 	if c.midMerge == nil {
 		t.Error("newLoomCLI().midMerge = nil; want fabricengine.MidMerge")
+	}
+	if c.recordedParentBranch == nil {
+		t.Error("newLoomCLI().recordedParentBranch = nil; want the origin-record reader")
 	}
 	if c.suppressWatchdogSpawn != testing.Testing() {
 		t.Errorf("newLoomCLI().suppressWatchdogSpawn = %v; want %v (testing.Testing())", c.suppressWatchdogSpawn, testing.Testing())

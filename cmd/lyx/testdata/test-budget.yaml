@@ -48,13 +48,13 @@ internal/hubreconcile: 18
 internal/idecli: 2
 internal/ideengine: 4
 internal/impactset: 5
-internal/landingshed: 66
+internal/landingshed: 67
 internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
-internal/loomcli: 182
-internal/loomengine: 39
-internal/loomrecipe: 45
+internal/loomcli: 184
+internal/loomengine: 41
+internal/loomrecipe: 46
 internal/loomshed: 72
 internal/lyxcwd: 23
 internal/mergeresolve: 17
@@ -84,7 +84,7 @@ internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
 internal/shedengine: 133
-internal/shedrecipe: 99
+internal/shedrecipe: 100
 internal/shedrun: 22
 internal/shedtransient: 2
 internal/shedverbs: 79

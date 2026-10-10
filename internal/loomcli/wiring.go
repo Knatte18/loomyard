@@ -494,14 +494,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		RefMatcher: fabricengine.NewRefScanner(location),
 		// ParentBranch lets the verify gate's fix-commit check accept a clean parent merge made while fixing, as webstercli's own wiring does.
 		ParentBranch: func() (string, error) {
-			origin, found, err := fabricengine.ReadOrigin(location)
-			if err != nil {
-				return "", err
-			}
-			if !found {
-				return "", fmt.Errorf("the pair has no fabric origin record")
-			}
-			return origin.ParentBranch, nil
+			return readRecordedParentBranch(location)
 		},
 	}
 
@@ -599,6 +592,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// benign -- it means only that the next spawn is interviewed differently.
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
 			return loomengine.DiscussionSpec(location, websterGeom.StencilsDir, c.parentName, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
+		},
+		// DiscussionTable is evaluated per Call for the same stencil-ownership reason as DiscussionSpec.
+		// It is wired whatever discussion_producer holds; only a row built on DiscussionSeats evaluates it.
+		DiscussionTable: func() (seatengine.Table, error) {
+			return loomengine.DiscussionTable(location, websterGeom.StencilsDir, loomCfg, registry, seedSlug(location.WorktreeName))
 		},
 		// CommitDiscussion mirrors the seed commit start.go already performs, including its
 		// NewMutations("") record and its EnvSyncOptions(). The pathspec is the whole discussion
@@ -729,6 +727,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		SegmentBounces: segmentBounces(statusPath, statusLockPath, loomCfg.ReviewMaxBounces),
 
 		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
+		DiscussionSeats:          loomCfg.DiscussionProducer == loomengine.DiscussionProducerSeats,
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 
 		ReviewModels:  reviewSettings.Models,

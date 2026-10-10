@@ -8,6 +8,9 @@
 // discussion_fan and plan_fan each name a fan from burler.yaml and turn the lens fan on for Discussion-Review and Plan-Review; empty, the default, runs that segment solo.
 // fan_review is the reviewer model-spec list of a fanned segment, and the forks' model too, since forks run on the reviewer session's model.
 // There is no webster_fan key: Webster-Review always runs solo.
+// discussion_producer selects the Discussion-Write row's producer and must be single or seats.
+// discussion_advisors lists the seats producer's advisor model-specs; every entry is resolved through the model registry at load, whatever discussion_producer holds, and an unset list loads as no advisors.
+// Under seats, no advisors runs the chair alone, deciding each question itself.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
 // driver, and both must load cleanly, unlike the other role keys, which are always required.
@@ -305,11 +308,20 @@ func LoomFrictionLock(l *lyxcwd.Location) string {
 	return filepath.Join(LoomScratchDir(l), frictionDirName+".lock")
 }
 
+const (
+	// DiscussionProducerSingle selects the single-agent writer for the Discussion-Write row.
+	DiscussionProducerSingle = "single"
+	// DiscussionProducerSeats selects the chair with its advisors for the Discussion-Write row.
+	DiscussionProducerSeats = "seats"
+)
+
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
 type Config struct {
 	Discussion            string        `yaml:"discussion"`
 	DiscussionTimeoutMin  int           `yaml:"discussion_timeout_min"`
 	DiscussionInteractive bool          `yaml:"discussion_interactive"`
+	DiscussionProducer    string        `yaml:"discussion_producer"`
+	DiscussionAdvisors    ModelSpecList `yaml:"discussion_advisors"`
 	Plan                  string        `yaml:"plan"`
 	PlanTimeoutMin        int           `yaml:"plan_timeout_min"`
 	Review                ModelSpecList `yaml:"review"`
@@ -377,7 +389,7 @@ func (l *ModelSpecList) UnmarshalYAML(node *yaml.Node) error {
 
 // ConfigOpenMaps returns the loom.yaml keys whose value is a scalar or a per-round list, which configengine carries whole through reconcile and --set.
 func ConfigOpenMaps() []string {
-	return []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix", "fan_review"}
+	return []string{"review", "fix", "discussion_review", "discussion_fix", "plan_review", "plan_fix", "webster_review", "webster_fix", "fan_review", "discussion_advisors"}
 }
 
 // segmentModelList is one per-segment reviewer or fixer model-spec list with the loom.yaml key it came from.
@@ -433,6 +445,26 @@ func validateModelSpecList(key string, specs ModelSpecList) error {
 	return nil
 }
 
+// discussionAdvisorsKey is the loom.yaml key holding the seat-table producer's advisor model-specs.
+const discussionAdvisorsKey = "discussion_advisors"
+
+// advisorWayForward is the way forward every discussion_advisors refusal about its entries ends with.
+const advisorWayForward = "set the key to a list of model-specs the registry defines, one per advisor, or to an empty list for no advisors"
+
+// validateAdvisorSpecs rejects an empty entry, one that is not a model-spec and one the registry does not define, naming key and the 1-based entry index.
+func validateAdvisorSpecs(key string, specs ModelSpecList, reg modelspec.Registry) error {
+	for i, raw := range specs {
+		spec, err := modelspec.Parse(raw)
+		if err != nil {
+			return fmt.Errorf("loom config key %q entry %d: %w; %s", key, i+1, err, advisorWayForward)
+		}
+		if _, err := reg.Resolve(spec); err != nil {
+			return fmt.Errorf("loom config key %q entry %d: %w; %s", key, i+1, err, advisorWayForward)
+		}
+	}
+	return nil
+}
+
 // validateFanKeys resolves each non-empty fan key of cfg through burler.yaml, which falls back per name to the embedded template.
 // A fan that does not resolve is refused naming the key, the unknown name and the fans that exist,
 // and an unreadable burler.yaml is refused naming the first set key.
@@ -478,7 +510,11 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		var shape *modelSpecShapeError
 		if errors.As(err, &shape) {
-			return Config{}, fmt.Errorf("loom config key %q: %w", keyAtLine(resolved, shape.line), err)
+			key := keyAtLine(resolved, shape.line)
+			if key == discussionAdvisorsKey {
+				return Config{}, fmt.Errorf("loom config key %q: value at line %d is neither a model-spec nor a list of model-specs; %s", key, shape.line, advisorWayForward)
+			}
+			return Config{}, fmt.Errorf("loom config key %q: %w", key, err)
 		}
 		return Config{}, fmt.Errorf("unmarshal loom config: %w", err)
 	}
@@ -514,6 +550,18 @@ func LoadConfig(baseDir, module string) (Config, error) {
 
 	if err := validateFanKeys(baseDir, cfg); err != nil {
 		return Config{}, err
+	}
+
+	if isUnsetModelSpecList(cfg.DiscussionAdvisors) {
+		cfg.DiscussionAdvisors = nil
+	} else {
+		reg, err := modelspec.LoadRegistry(baseDir)
+		if err != nil {
+			return Config{}, fmt.Errorf("loom config key %q: %w; fix models.yaml, or set the key to an empty list for no advisors", discussionAdvisorsKey, err)
+		}
+		if err := validateAdvisorSpecs(discussionAdvisorsKey, cfg.DiscussionAdvisors, reg); err != nil {
+			return Config{}, err
+		}
 	}
 
 	if _, err := modelspec.Parse(cfg.Judge); err != nil {
@@ -589,6 +637,12 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	case burlerengine.FixStartParallel, burlerengine.FixStartAfterReview:
 	default:
 		return Config{}, fmt.Errorf("loom config key %q: unknown value %q; set it to %q or %q", "fix_start", cfg.FixStart, burlerengine.FixStartParallel, burlerengine.FixStartAfterReview)
+	}
+
+	switch cfg.DiscussionProducer {
+	case DiscussionProducerSingle, DiscussionProducerSeats:
+	default:
+		return Config{}, fmt.Errorf("loom config key %q: unknown value %q; set it to %q or %q", "discussion_producer", cfg.DiscussionProducer, DiscussionProducerSingle, DiscussionProducerSeats)
 	}
 
 	return cfg, nil

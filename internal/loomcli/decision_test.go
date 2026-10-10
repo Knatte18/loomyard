@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -28,10 +29,14 @@ type decisionFake struct {
 	findings  []discussionparser.Finding
 	appendErr error
 	commitErr error
-	appends   int
-	commits   int
-	lastAdded discussionparser.AddedDecision
-	clock     time.Time
+	// strandName is the caller's exported strand name, empty for an unnamed shell.
+	strandName string
+	parent     hubgeom.Parent
+	parentErr  error
+	appends    int
+	commits    int
+	lastAdded  discussionparser.AddedDecision
+	clock      time.Time
 }
 
 func newDecisionFake(t *testing.T) *decisionFake {
@@ -45,6 +50,8 @@ func newDecisionFake(t *testing.T) *decisionFake {
 
 func (f *decisionFake) deps() decisionDeps {
 	return decisionDeps{
+		strandName: f.strandName,
+		parent:     func() (hubgeom.Parent, error) { return f.parent, f.parentErr },
 		readStatus: func() (shedengine.Status, bool, error) { return f.status, f.found, f.statusErr },
 		recordPath: f.path,
 		append: func(d discussionparser.AddedDecision) ([]discussionparser.Finding, error) {
@@ -81,11 +88,25 @@ func readDecisionRecord(t *testing.T, path string) string {
 	return string(data)
 }
 
-// TestDecisionVerb_AppendsAndCommits asserts an entry from the parent or the operator is appended after the prior record byte-identical and committed once, with no status file.
+// TestDecisionVerb_AppendsAndCommits asserts an entry from an unnamed shell or from the run's recorded parent is appended after the prior record byte-identical and committed once, with no status file.
 func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
-	for _, by := range []string{"parent", "operator"} {
-		t.Run(by, func(t *testing.T) {
+	tests := []struct {
+		name       string
+		by         string
+		strandName string
+		parentName string
+	}{
+		{name: "parent label from an unnamed shell", by: "parent"},
+		{name: "operator label from an unnamed shell", by: "operator"},
+		{name: "recorded parent's own name", by: "parent", strandName: "hub:orch", parentName: "hub:orch"},
+		{name: "slug-bearing recorded parent's own name", by: "parent", strandName: "hub:other:orch", parentName: "hub:other:orch"},
+	}
+	for _, tc := range tests {
+		by := tc.by
+		t.Run(tc.name, func(t *testing.T) {
 			f := newDecisionFake(t)
+			f.strandName = tc.strandName
+			f.parent = hubgeom.Parent{Name: tc.parentName}
 			input := goodDecisionInput()
 			input.by = by
 			var out bytes.Buffer
@@ -117,7 +138,7 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 		name  string
 		setup func(f *decisionFake, in *decisionInput)
 		want  []string
-		// inputRefusal marks a refusal of the input itself, which must not reach the append.
+		// inputRefusal marks a refusal of the input or the caller, which must not reach the append.
 		inputRefusal bool
 	}{
 		{
@@ -162,6 +183,30 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 			setup:        func(_ *decisionFake, in *decisionInput) { in.by = "" },
 			inputRefusal: true,
 			want:         []string{"--by is \"\"", "way forward:", "--by parent", "--by operator"},
+		},
+		{
+			name: "named caller differing from the recorded parent",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.strandName = "hub:slug:plan"
+				f.parent = hubgeom.Parent{Name: "hub:orch"}
+			},
+			inputRefusal: true,
+			want:         []string{`"hub:slug:plan"`, "way forward:", "ask hub:orch to run the verb", "operator's own unnamed shell"},
+		},
+		{
+			name:         "named caller in a run with no recorded parent",
+			setup:        func(f *decisionFake, _ *decisionInput) { f.strandName = "hub:slug:plan" },
+			inputRefusal: true,
+			want:         []string{`"hub:slug:plan"`, "way forward:", "the operator's to record", "operator's own unnamed shell"},
+		},
+		{
+			name: "named caller whose parent cannot be resolved",
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.strandName = "hub:slug:plan"
+				f.parentErr = errors.New("origin boom")
+			},
+			inputRefusal: true,
+			want:         []string{`"hub:slug:plan"`, "way forward:", "could not be resolved (origin boom)", "operator's own unnamed shell"},
 		},
 		{
 			name: "check finding after the append",

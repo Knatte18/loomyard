@@ -28,6 +28,16 @@ var LandingTemplateDescribe []byte
 //go:embed loom/loom-template-discussion.md
 var LoomTemplateDiscussion []byte
 
+// LoomTemplateDiscussionChair is the chair's shipped-default opening prompt when the Discussion-Write row runs as a seat table.
+//
+//go:embed loom/loom-template-discussion-chair.md
+var LoomTemplateDiscussionChair []byte
+
+// LoomTemplateDiscussionAdvisor is an advisor's shipped-default opening prompt when the Discussion-Write row runs as a seat table.
+//
+//go:embed loom/loom-template-discussion-advisor.md
+var LoomTemplateDiscussionAdvisor []byte
+
 // LoomTemplatePlan is the loom Plan producer's shipped-default autonomous prompt.
 //
 //go:embed loom/loom-template-plan.md
@@ -324,6 +334,8 @@ var entries = []registryEntry{
 	{"landing-template-conflict", &LandingTemplateConflict},
 	{"landing-template-describe", &LandingTemplateDescribe},
 	{"loom-template-discussion", &LoomTemplateDiscussion},
+	{"loom-template-discussion-chair", &LoomTemplateDiscussionChair},
+	{"loom-template-discussion-advisor", &LoomTemplateDiscussionAdvisor},
 	{"loom-template-plan", &LoomTemplatePlan},
 	{"loom-template-rework", &LoomTemplateRework},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
@@ -384,21 +396,23 @@ var entries = []registryEntry{
 // roleOpeningStencils maps each spawned role other than the orch to the stencils that open its session.
 // Each carries both the parent directive marker and the edit directive marker, which parentdirective_test.go enforces.
 var roleOpeningStencils = map[string][]string{
-	"driver":            {"shed-template-driver"},
-	"discussion":        {"loom-template-discussion"},
-	"plan":              {"loom-template-plan"},
-	"rework":            {"loom-template-rework"},
-	"webster-master":    {"webster-template-master"},
-	"webster-recovery":  {"webster-prefix-recovery"},
-	"burler-review":     {"burler-template-review-orchestrator"},
-	"burler-fix":        {"burler-template-fix-orchestrator"},
-	"conflict":          {"landing-template-conflict"},
-	"bouncer-judge":     {"bouncer-template-judge"},
-	"bouncer-seed":      {"bouncer-template-seed"},
-	"treadle-targeting": {"treadle-template-targeting"},
-	"treadle-judge":     {"treadle-template-judge-circling", "treadle-template-judge-milestone"},
-	"friction":          {"friction-template-reflection"},
-	"describe":          {"landing-template-describe"},
+	"driver":             {"shed-template-driver"},
+	"discussion":         {"loom-template-discussion"},
+	"discussion-chair":   {"loom-template-discussion-chair"},
+	"discussion-advisor": {"loom-template-discussion-advisor"},
+	"plan":               {"loom-template-plan"},
+	"rework":             {"loom-template-rework"},
+	"webster-master":     {"webster-template-master"},
+	"webster-recovery":   {"webster-prefix-recovery"},
+	"burler-review":      {"burler-template-review-orchestrator"},
+	"burler-fix":         {"burler-template-fix-orchestrator"},
+	"conflict":           {"landing-template-conflict"},
+	"bouncer-judge":      {"bouncer-template-judge"},
+	"bouncer-seed":       {"bouncer-template-seed"},
+	"treadle-targeting":  {"treadle-template-targeting"},
+	"treadle-judge":      {"treadle-template-judge-circling", "treadle-template-judge-milestone"},
+	"friction":           {"friction-template-reflection"},
+	"describe":           {"landing-template-describe"},
 }
 
 // askOperatorPhrases is the closed list of phrases that tell an agent to put a question to the operator in its pane.

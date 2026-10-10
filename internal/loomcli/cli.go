@@ -96,6 +96,9 @@ type loomCLI struct {
 	// midMerge is the seam through which start reads the pair's merge state before spawning or resuming a driver.
 	// The Test Tier Purity Invariant bars an untagged test from building a real mid-merge pair, so a test substitutes a canned state or error.
 	midMerge func(*lyxcwd.Location) (fabricengine.MidMergeState, error)
+	// recordedParentBranch is the seam through which start and resume read the pair's recorded parent branch, to tell a parked merge-in of that branch from any other merge state.
+	// A test substitutes a canned branch or error.
+	recordedParentBranch func(*lyxcwd.Location) (string, error)
 	// spec is the shedverbs.Spec the pre-run fills in place (arm.go) and the four shedverbs
 	// verbs read at run time. It is always non-nil after newLoomCLI, so Command() can hand the
 	// same pointer to shedverbs.Verbs before the pre-run has ever run.
@@ -152,6 +155,7 @@ func newLoomCLI() *loomCLI {
 		suppressWatchdogSpawn: testing.Testing(),
 		spawnWatchdog:         reedengine.SpawnWatchdog,
 		midMerge:              fabricengine.MidMerge,
+		recordedParentBranch:  readRecordedParentBranch,
 		spec:                  &shedverbs.Spec{},
 	}
 }

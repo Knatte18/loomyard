@@ -23,6 +23,7 @@ import (
 // use.
 var loomrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/contracts/recipes",
+	"github.com/Knatte18/loomyard/internal/loomshed",
 	"github.com/Knatte18/loomyard/internal/shedbuild",
 	"github.com/Knatte18/loomyard/internal/shedrecipe",
 	"github.com/Knatte18/loomyard/internal/shedengine",
