@@ -297,6 +297,7 @@ Optional fields:
   "kind"       string — "task" or "note", default "note"; only a task can be claimed or depend on tasks
   "labels"     array  — configured labels replacing the whole list; a task needs a type label, a note exactly one
   "recipe"    string — recipe the task's child worktree runs; empty means "loom"
+  "priority"   string — "high", "normal" or "low"; absent means normal, and "normal" clears it
   "short_name" string — short display label; falls back to the slug
 
 Flag:

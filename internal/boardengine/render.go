@@ -2,7 +2,7 @@
 //
 // Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderReadme, plus design-*.md for any entry with a body).
 // The README reads like a roadmap: Tasks split into Running, Ready, dependency layers and Independent, Notes with one subsection per type label, then Done.
-// Each subsection is one markdown table numbered from 1, whose rows show the bold title with the brief as a bullet under it, the linked slug, and the labels that are not type labels;
+// Each subsection is one markdown table numbered from 1, whose rows show the bold title with a high or low priority after it and the brief as a bullet under it, the linked slug, and the labels that are not type labels;
 // Running adds where its run stands, and Ready and the layers add the open entries each waits on.
 // The section names, their meaning lines and the table columns are declared here alone;
 // the data holds only the kind and the labels.
@@ -326,9 +326,12 @@ func slugCell(t Task, designPrefix string) string {
 	return "`" + t.Slug + "`"
 }
 
-// entryCell is the bold title, with the brief as one bullet under it when there is one.
+// entryCell is the bold title, followed by the priority in italics when it is high or low, with the brief as one bullet under it when there is one.
 func entryCell(t Task) string {
 	cell := "**" + cellText(t.Title) + "**"
+	if t.Priority != "" {
+		cell += " _(" + t.Priority + " priority)_"
+	}
 	if t.Brief != "" {
 		cell += cellBullet + cellText(t.Brief)
 	}

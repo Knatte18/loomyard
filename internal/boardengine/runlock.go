@@ -91,6 +91,7 @@ func scopeChanged(before, now Task, removedDone map[string]bool) bool {
 	return before.Title != now.Title ||
 		before.Kind != now.Kind ||
 		before.Recipe != now.Recipe ||
+		before.Priority != now.Priority ||
 		before.Isolated != now.Isolated ||
 		before.Brief != now.Brief ||
 		before.Body != now.Body ||

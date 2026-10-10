@@ -717,13 +717,14 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 }
 
 // TestListAndFindReadmeOrder verifies ListTasksBrief and Find return entries in README order:
-// open tasks first, then open notes, done last.
+// open tasks first, then open notes, done last, with priority ordering within a group, and that each listed entry carries its priority.
 func TestListAndFindReadmeOrder(t *testing.T) {
 	s := boardengine.NewStore("")
 	for _, f := range []map[string]any{
+		{"slug": "x-low", "kind": "task", "priority": "low"},
 		{"slug": "x-note", "kind": "note"},
 		{"slug": "x-task", "kind": "task"},
-		{"slug": "x-note2", "kind": "note"},
+		{"slug": "x-note2", "kind": "note", "priority": "high"},
 		{"slug": "x-done", "kind": "task"},
 	} {
 		if _, err := s.UpsertTask(f); err != nil {
@@ -734,10 +735,14 @@ func TestListAndFindReadmeOrder(t *testing.T) {
 		t.Fatalf("SetStatus: %v", err)
 	}
 
-	want := "x-task,x-note,x-note2,x-done"
+	want := "x-task,x-low:low,x-note2:high,x-note,x-done"
 	slugs := func(bs []boardengine.BriefTask) string {
 		var out []string
 		for _, b := range bs {
+			if b.Priority != "" {
+				out = append(out, b.Slug+":"+b.Priority)
+				continue
+			}
 			out = append(out, b.Slug)
 		}
 		return strings.Join(out, ",")

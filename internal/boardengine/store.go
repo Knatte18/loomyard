@@ -34,6 +34,7 @@ type BriefTask struct {
 	Labels      []string `json:"labels"`
 	Isolated    bool     `json:"isolated"`
 	Brief       string   `json:"brief"`
+	Priority    string   `json:"priority,omitempty"`
 	Status      *string  `json:"status,omitempty"`
 	Layer       string   `json:"layer"`
 	HasProposal bool     `json:"has_proposal"`
@@ -346,6 +347,7 @@ var upsertAllowedKeys = map[string]bool{
 	"labels":     true,
 	"issues":     true,
 	"recipe":     true,
+	"priority":   true,
 	"short_name": true,
 }
 
@@ -605,6 +607,7 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 			Labels:      t.Labels,
 			Isolated:    t.Isolated,
 			Brief:       t.Brief,
+			Priority:    t.Priority,
 			Status:      t.Status,
 			Layer:       layerMap[t.Slug],
 			HasProposal: t.Body != "",

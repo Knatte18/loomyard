@@ -11,7 +11,7 @@ internal/battencli: 58
 internal/battenrecipe: 8
 internal/battenshed: 90
 internal/boardcli: 12
-internal/boardengine: 75
+internal/boardengine: 76
 internal/boardengine/boardtest: 3
 internal/buildinfo: 2
 internal/buildvcs: 1

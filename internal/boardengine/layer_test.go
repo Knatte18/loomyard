@@ -124,7 +124,7 @@ func TestComputeLayers(t *testing.T) {
 	}
 }
 
-// TestRenderOrder asserts RenderOrder's bucket order, tasks before notes with done entries last, and ID order within a bucket.
+// TestRenderOrder asserts RenderOrder's bucket order, tasks before notes with done entries last, priority order within a task layer, among open notes and among done entries, and ID order within a bucket.
 //
 //testtiming:keep pins the bucket order, the task-before-note order and the ID sort within a bucket, which the render goldens do not assert
 func TestRenderOrder(t *testing.T) {
@@ -174,6 +174,30 @@ func TestRenderOrder(t *testing.T) {
 					got = append(got, r.Slug)
 				}
 				want := []string{"t1a", "t1b", "n2", "n1", "done1", "done-note"}
+				if strings.Join(got, ",") != strings.Join(want, ",") {
+					t.Errorf("RenderOrder() order = %v, want %v", got, want)
+				}
+			},
+		},
+		{
+			name: "priority orders within a task layer, ahead of layer among notes, and within done",
+			tasks: []boardengine.Task{
+				{ID: 1, Slug: "t-low", Kind: boardengine.KindTask, Priority: boardengine.PriorityLow},
+				{ID: 2, Slug: "t-normal", Kind: boardengine.KindTask},
+				{ID: 3, Slug: "t-high", Kind: boardengine.KindTask, Priority: boardengine.PriorityHigh},
+				{ID: 4, Slug: "t-after-high", Kind: boardengine.KindTask, Priority: boardengine.PriorityHigh, DependsOn: []string{"t-normal"}},
+				{ID: 5, Slug: "n-normal", Kind: boardengine.KindNote},
+				{ID: 6, Slug: "n-isolated-high", Kind: boardengine.KindNote, Isolated: true, Priority: boardengine.PriorityHigh},
+				{ID: 7, Slug: "n-low", Kind: boardengine.KindNote, Priority: boardengine.PriorityLow},
+				{ID: 8, Slug: "d-normal", Kind: boardengine.KindTask, Status: stringPtr("done")},
+				{ID: 9, Slug: "d-high", Kind: boardengine.KindTask, Status: stringPtr("done"), Priority: boardengine.PriorityHigh},
+			},
+			check: func(t *testing.T, result []boardengine.TaskWithLayer) {
+				var got []string
+				for _, r := range result {
+					got = append(got, r.Slug)
+				}
+				want := []string{"t-high", "t-normal", "t-low", "t-after-high", "n-isolated-high", "n-normal", "n-low", "d-high", "d-normal"}
 				if strings.Join(got, ",") != strings.Join(want, ",") {
 					t.Errorf("RenderOrder() order = %v, want %v", got, want)
 				}

@@ -56,6 +56,7 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 				"kind",
 				"labels",
 				"recipe",
+				"priority",
 				"Example",
 			},
 			mustNotContain: []string{"deferred", "tier", `"type"`},
