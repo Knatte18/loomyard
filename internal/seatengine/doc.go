@@ -30,7 +30,31 @@
 // StartGated and ProbeGated return a Handle, the seat's unwaited run.
 // RunnerShuttle adapts a shuttleengine.Runner to it, and *shuttleengine.Run satisfies Handle.
 //
+// # Running a table fresh
+//
+// Engine.Run validates the table, forms every seat's strand name from the geometry's shortname and slug and the seat's role, and starts the advisors in table order and the chair last.
+// Each seat's prompt is its stencil filled, with the blocks it includes, from a value map holding the table's values, the seat's own and every reserved marker.
+// The chair starts with the table's gate and is the only interactive seat; an advisor starts ungated, keeps its pane and holds a turn end quietly.
+// A started seat whose strand took a different name than expected, which is reed numbering a name an earlier strand still holds, is stopped and reported as a start error naming the holder and the way forward.
+// An advisor that fails to start is recorded on its SeatResult and named in the chair's failed advisors, and the step goes on without it.
+// A chair that fails to start stops every started advisor and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.
+//
+// # The notice sender
+//
+// Each started advisor is waited on from the moment it starts.
+// An advisor that reaches done queues nothing, since it stays reachable and the chair reads its file.
+// An advisor that dies, times out or whose wait errors queues one line for the chair.
+// One goroutine per chair types the queued lines through the chair's handle, one at a time, so two lines are never interleaved.
+// It retries a busy or unlanded send after the engine's notice interval until the line lands, the chair's outputs all exist or the sender is stopped, and logs a line that never lands rather than failing the step.
+//
+// # The stop rule
+//
+// Run waits on the chair, stops the sender, then stops every started advisor, a kept done one included, before it returns.
+// A chair whose wait errored carries no terminal outcome and may still be running, so it is stopped as well.
+// A stop that fails is an error wrapping ErrSeatNotStopped whose message names the way forward; it is never retried and the seat is not waited for.
+// The result carries the chair's outcome, gate and NotStarted as shuttle reported them: the engine judges nothing about finishing itself (PATTERN-completion-signal).
+//
 // # Imports
 //
-// The package imports shuttleengine, stencil, stencilstore, agentname, segmentcolor and the standard library.
+// The package imports shuttleengine, stencil, stencilstore, agentname, segmentcolor, logger, the directive renderers and the standard library.
 package seatengine
