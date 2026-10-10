@@ -10,32 +10,36 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
 // TestInterruptPolicies_MatchAssembledRows asserts, in both directions, that
-// loomshed.InterruptPolicies covers exactly the rows New assembles: every row New's real,
+// loomshed.InterruptPolicies covers exactly the rows New and NewDarn assemble: every row either's real,
 // current output has must carry an entry in the table (the direction that catches a row added to
-// the recipe with no policy assigned), and every key in the table must name a row New actually
+// a recipe with no policy assigned), and every key in the table must name a row one of them actually
 // has (the direction that keeps the table from accumulating dead entries for a renamed or removed
 // row).
 func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 	env, paths := testEnv(t)
-	shed, err := New(env, paths)
-	if err != nil {
-		t.Fatalf("New() error = %v, want nil", err)
-	}
-
-	rowNames := make(map[string]bool, len(shed.Producers))
-	for _, p := range shed.Producers {
-		rowNames[p.Name] = true
-		if _, ok := loomshed.InterruptPolicies[p.Name]; !ok {
-			t.Errorf("New() row %q has no entry in loomshed.InterruptPolicies", p.Name)
+	rowNames := map[string]bool{}
+	for name, build := range map[string]func(shedrecipe.Env, shedbuild.ShedPaths) (*shedengine.Shed, error){"New": New, "NewDarn": NewDarn} {
+		shed, err := build(env, paths)
+		if err != nil {
+			t.Fatalf("%s() error = %v, want nil", name, err)
+		}
+		for _, p := range shed.Producers {
+			rowNames[p.Name] = true
+			if _, ok := loomshed.InterruptPolicies[p.Name]; !ok {
+				t.Errorf("%s() row %q has no entry in loomshed.InterruptPolicies", name, p.Name)
+			}
 		}
 	}
 
 	for rowName := range loomshed.InterruptPolicies {
 		if !rowNames[rowName] {
-			t.Errorf("loomshed.InterruptPolicies names row %q, which New() does not have", rowName)
+			t.Errorf("loomshed.InterruptPolicies names row %q, which neither New() nor NewDarn() has", rowName)
 		}
 	}
 }

@@ -77,11 +77,11 @@ func (c *websterCLI) runVerify(cmd *cobra.Command) int {
 			map[string]any{"findings": map[string]any{"dirty": res.Dirty}})
 	}
 
-	findings := map[string]any{"exit_code": res.ExitCode, "log": paths.Log}
+	findings := map[string]any{"exit_code": res.ExitCode, "log": res.Log}
 	if res.Detail != "" {
 		findings["detail"] = res.Detail
 	}
-	if log, readErr := os.ReadFile(paths.Log); readErr == nil {
+	if log, readErr := os.ReadFile(res.Log); readErr == nil {
 		failures := make([]map[string]string, 0)
 		for _, f := range websterengine.ParseVerifyFailures(string(log)) {
 			failures = append(failures, map[string]string{"id": f.ID, "kind": f.Kind, "package": f.Package})

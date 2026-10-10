@@ -44,6 +44,7 @@ intake filters later.
 For a `loom-halt` or `loom-crash-resume` note, file an issue only when the notes, the reason or the trace show a lyx problem behind the event.
 A halt caused by the task's own code, or a review segment that did not converge, is dropped; a process signal such as a spent budget or an escalation is not a defect.
 A dropped event stays recoverable: the note names the trace file, the run's status and history stay on disk, and the operator can still file through `lyx selfreport create`.
+A halt note with a `parent fabric status:` section lists the parent pair's dirty tracked paths, so attribute a dirty-tree halt to the tree that section names.
 
 ## Step 3 — File each issue
 

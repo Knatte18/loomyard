@@ -22,16 +22,28 @@
 // A gate told no scratch directory, such as a standalone validate, and a gate whose file cannot be written keep the findings inline in the log line.
 // The blocking path is unchanged: the findings go to the writer and the log line in full.
 //
-// The Webster-Burler round gate (NewVerifyGate) runs less than the plan's `## verify:`.
-// It lints the comments added since the plan verify's last recorded pass, then runs the command impactset derives from that diff through verifytree.Verify, falling back to the plan's own command wherever impactset cannot narrow.
+// The verify gate (NewVerifyGate) is told its verify command by the recipe's wiring and reads it at each arrival; it never parses the plan itself.
+// Told no merge base, it takes the round form the Webster-Burler row runs, which runs less than the full command.
+// It lints the comments added since the told command's last recorded pass, then runs the command impactset derives from that diff through verifytree.Verify, falling back to the told command wherever impactset cannot narrow.
 // The narrowing is impactset's; Webster's gate, Publish and Finalize keep the full plan verify on the tree that lands.
 // The round compiles the `tmux` and `llm` tiers and never runs `llm`.
 // It runs the `tmux` tier only while a checked Publish failure record is present, as the failing top-level tests the record names, one step per package and test with the subtests collapsed into it, and, for a `publish_verify` failure, the impacted-set pass, to confirm the fix.
 // Publish reruns both verifies in full regardless, and stays the guard.
+// Told a merge base reader, it takes the whole-diff form the `Darn` row runs:
+// the comment lint runs from the task branch's merge base with the parent to HEAD, and the told command runs in full as the site's base command, so Publish skips on the same tree and command.
+// That form has no skip path: an empty told command, a command read error and a merge base read error are each the gate's returned error.
+// With a checked Publish failure record present it appends the failing tests and, for a `publish_verify` failure, `./...` under `tmux`.
 //
 // The Plan-Write rotation archives the prior plan and appends a prior-plan block naming that archive to the respawned session's prompt.
 // It first archives webster's run record into the archive's `webster` subdirectory through a told seam, so the next Webster run starts a new run over the new plan instead of refusing the old record's plan drift.
 // A run holding webster's run lock refuses the archive before any plan file moves, and ArchivedPlanWebsterDirs lists the subdirectories a rotation writes the record into.
+//
+// The Darn row's producer (NewDarnWrite) wraps the gated darn writer session and tells it two texts, each empty when absent:
+// the pending rejection's findings, and a prior-work note, written in Go, that the change is already under way on the task branch, naming the latest Darn history entry's halt reason and the Publish failure record's path.
+// On a non-empty output pointer, Done or a gate-failed Stuck, it commits the landing directory;
+// on Done of a spawn that was told a rejection it then removes the pending rejection.
+// A gate-failed Stuck keeps its record and gains the resume way forward.
+// A failed commit or removal is a returned error, since re-running the session cannot fix a git or filesystem fault.
 //
 // It declares its own unexported cancellation helpers (entryErr/cancelErr in ctx.go) rather than
 // reusing internal/shedadapters' identically-shaped, unexported ones: shedadapters' versions are
