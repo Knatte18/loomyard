@@ -459,7 +459,7 @@ func TestNewPlanGate(t *testing.T) {
 				appendToCard(t, anchorPath)
 			}
 
-			result, err := NewPlanGate(anchorPath, t.TempDir(), planglyph.NewIndex(fabricengine.NewReferenceRule()))()
+			result, err := NewPlanGate(anchorPath, t.TempDir(), "", planglyph.NewIndex(fabricengine.NewReferenceRule()))()
 			if err != nil {
 				t.Fatalf("gate() error = %v; want nil", err)
 			}
