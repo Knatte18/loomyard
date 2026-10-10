@@ -165,6 +165,7 @@ var wordingClaims = []stencilClaims{
 		{must: "A line width is never inferred from the surrounding code", why: "a line width is never inferred from surrounding code"},
 		{must: "assert-no-callers", why: "the per-card mechanical check names assert-no-callers for a Delete card"},
 		{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"},
+		{must: "Raise each failing test named above as a BLOCKING finding", why: "a failing test of a Publish failure record is a BLOCKING finding"},
 	}},
 	{"loom-template-rework.md", LoomTemplateRework, []claim{
 		{must: "never plan an entry as scope", why: "a carry-over entry in the record's Open risks lists unreviewed fixes, never scope for a rework generation"},

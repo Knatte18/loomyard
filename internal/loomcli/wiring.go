@@ -547,12 +547,15 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	}
 
 	c.env = shedrecipe.Env{
-		ParentReview:       parentReviewCfg,
-		Cwd:                cwd,
-		AnchorPath:         anchorPath,
-		WorktreeRoot:       location.WorktreePath(),
-		VerifyDir:          verifytree.Dir(anchorPath),
-		GateSlots:          hubgeom.GateSlots(location),
+		ParentReview: parentReviewCfg,
+		Cwd:          cwd,
+		AnchorPath:   anchorPath,
+		WorktreeRoot: location.WorktreePath(),
+		VerifyDir:    verifytree.Dir(anchorPath),
+		GateSlots:    hubgeom.GateSlots(location),
+		PublishFailure: func() string {
+			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath))
+		},
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),

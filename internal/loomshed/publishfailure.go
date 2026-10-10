@@ -93,6 +93,36 @@ func publishFailureCommand(failure verifytree.PublishFailure, packages []string)
 	return strings.Join(steps, " && ")
 }
 
+// PublishFailureNote renders the checked Publish failure record of the verify directory as markdown for the Webster-Review rubric, or `none` when there is no record.
+// The note names the failing verify, the failing tests, the log path, and the merge-in commit with the command that reads what it brought in.
+// A field that failed its shape check is absent, so no free text from the record reaches the prompt.
+func PublishFailureNote(worktreeRoot, verifyDir string) string {
+	failure, ok := checkedPublishFailure(verifytree.NewPaths(worktreeRoot, verifyDir), worktreeRoot)
+	if !ok {
+		return "none"
+	}
+	var b strings.Builder
+	switch failure.Kind {
+	case verifytree.FailureKindPlanVerify:
+		b.WriteString("Publish failed on the plan's `## verify:` command.\n")
+	case verifytree.FailureKindPublishVerify:
+		b.WriteString("Publish failed on landing config's `publish_verify` command.\n")
+	}
+	if len(failure.Tests) > 0 {
+		b.WriteString("\nFailing tests:\n\n")
+		for _, test := range failure.Tests {
+			fmt.Fprintf(&b, "- `%s` in `%s`\n", test.Test, test.Package)
+		}
+	}
+	if failure.LogPath != "" {
+		fmt.Fprintf(&b, "\nLog of the failing run: %s\n", failure.LogPath)
+	}
+	if failure.MergeCommit != "" {
+		fmt.Fprintf(&b, "\nMerge-in commit Publish made: %s\nRead what it brought in with `git diff %s^1 %s`.\n", failure.MergeCommit, failure.MergeCommit, failure.MergeCommit)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
 // anchoredRunPattern spells a test path as a `-run` pattern matching exactly that test: each `/`-separated segment is quoted for regexp and anchored.
 func anchoredRunPattern(testPath string) string {
 	segments := strings.Split(testPath, "/")

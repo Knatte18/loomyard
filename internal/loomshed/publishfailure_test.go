@@ -155,3 +155,50 @@ func TestPublishFailure(t *testing.T) {
 		}
 	})
 }
+
+func TestPublishFailureNote(t *testing.T) {
+	t.Parallel()
+
+	verifyDir := t.TempDir()
+	worktree := t.TempDir()
+	paths := verifytree.NewPaths(worktree, verifyDir)
+	tests := []struct {
+		name   string
+		record *verifytree.PublishFailure
+		want   string
+	}{
+		{name: "no record renders none", want: "none"},
+		{
+			name: "plan verify failure names its tests and log",
+			record: &verifytree.PublishFailure{
+				Kind:    verifytree.FailureKindPlanVerify,
+				Tests:   []verifytree.FailedTest{{Package: "example.com/m/a", Test: "TestA/sub"}},
+				LogPath: paths.PublishFailureLog,
+			},
+			want: "Publish failed on the plan's `## verify:` command.\n\nFailing tests:\n\n- `TestA/sub` in `example.com/m/a`\n\nLog of the failing run: " + paths.PublishFailureLog,
+		},
+		{
+			name:   "publish_verify failure without tests names only the verify",
+			record: &verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify},
+			want:   "Publish failed on landing config's `publish_verify` command.",
+		},
+		{
+			name: "fields that failed their checks do not render",
+			record: &verifytree.PublishFailure{
+				Kind:        verifytree.FailureKindPlanVerify,
+				Tests:       []verifytree.FailedTest{{Package: "example.com/m/a", Test: "TestA; rm -rf x"}},
+				LogPath:     filepath.Join(t.TempDir(), "elsewhere.log"),
+				MergeCommit: "HEAD --output=x",
+			},
+			want: "Publish failed on the plan's `## verify:` command.",
+		},
+	}
+	for _, tt := range tests {
+		if tt.record != nil {
+			writeRecord(t, paths, *tt.record)
+		}
+		if got := PublishFailureNote(worktree, verifyDir); got != tt.want {
+			t.Errorf("%s: note = %q; want %q", tt.name, got, tt.want)
+		}
+	}
+}

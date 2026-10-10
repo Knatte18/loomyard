@@ -34,6 +34,7 @@ import (
 var nilLegal = map[string]bool{
 	"Now":                         true,
 	"GateSlots":                   true,
+	"PublishFailure":              true,
 	"Landing.CommitStatus":        true,
 	"Landing.MarkTaskDone":        true,
 	"Landing.ConfigChanges":       true,
