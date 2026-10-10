@@ -10,9 +10,13 @@ package fabricengine
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
+	"github.com/Knatte18/loomyard/internal/buildinfo"
+	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -94,4 +98,68 @@ func CommitSeededStencils(hub, subtreeRel, subtreeDir string, writtenRelPaths []
 	}
 
 	return StencilSeedResult{SHA: sha, Committed: committed}, nil
+}
+
+const (
+	seedSubjectPrefix = "lyx: seed "
+	syncSubjectPrefix = "lyx: sync "
+)
+
+// BinaryLabel renders the running binary for a commit subject:
+// `(<revision label> <channel> <executable path>)`, from the binary's VCS stamp, its build channel and its resolved path.
+// Every lyx commit that names its writer shares this one label.
+func BinaryLabel() string {
+	executable, err := os.Executable()
+	if err != nil {
+		executable = "unknown"
+	}
+	return binaryLabel(buildvcs.Running(), buildinfo.Channel, executable)
+}
+
+// binaryLabel renders the parenthesised label for an identity, a channel string (`unstamped` when empty) and an executable path.
+func binaryLabel(id buildvcs.Identity, channel, executable string) string {
+	if channel == "" {
+		channel = "unstamped"
+	}
+	return fmt.Sprintf("(%s %s %s)", id.Label(), channel, executable)
+}
+
+// SeedCommitMessage returns the subject of a seeding commit for a subtree (`stencils` or `specs`).
+// label is the already-parenthesised BinaryLabel.
+func SeedCommitMessage(subtree, label string) string {
+	return seedSubjectPrefix + subtree + " " + label
+}
+
+// SyncCommitMessage returns the subject of an operator-requested `lyx stencil sync` commit for a subtree.
+// label is the already-parenthesised BinaryLabel.
+func SyncCommitMessage(subtree, label string) string {
+	return syncSubjectPrefix + subtree + " " + label
+}
+
+// IsSeedCommit reports whether a commit is a droppable seeding commit:
+// its first line is `lyx: seed <subtree>` followed by one space and a non-empty parenthesised label, and every path lies under the stencils or specs subtree.
+// A bare `lyx: seed <subtree>` subject, a sync commit, a hub-wide config commit and a commit touching any other path all answer false.
+func IsSeedCommit(message string, paths []string) bool {
+	subject, _, _ := strings.Cut(message, "\n")
+	rest, found := strings.CutPrefix(subject, seedSubjectPrefix)
+	if !found {
+		return false
+	}
+	subtree, label, found := strings.Cut(rest, " ")
+	if !found || subtree == "" || len(label) <= len("()") || !strings.HasPrefix(label, "(") || !strings.HasSuffix(label, ")") {
+		return false
+	}
+	if len(paths) == 0 {
+		return false
+	}
+	for _, p := range paths {
+		if !underSubtree(p, StencilsSubtreeRel()) && !underSubtree(p, SpecsSubtreeRel()) {
+			return false
+		}
+	}
+	return true
+}
+
+func underSubtree(p, subtreeRel string) bool {
+	return strings.HasPrefix(p, subtreeRel+"/")
 }
