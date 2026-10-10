@@ -426,43 +426,49 @@ func ArmAt(location *lyxcwd.Location, verb string, runID string) (shedverbs.Spec
 	return c.armAt(location, runID, true, verb)
 }
 
-// battenPreRun implements the PreRun hook for batten's spec: run's whole existing
-// pre-flight, in today's order -- decode the status file, refuse a done slug, resume silently
-// over every other found state, and seed a fresh status when absent -- each step's error becoming
-// a returned error the generic body reports on the error envelope exactly as run's own inline
-// handling did.
+// checkRunStatus is the read-only half of run's pre-flight: decode the status file, refuse a done slug, and resume silently over every other found state.
+// It reports found false for an absent status file and never seeds one.
+// A decode failure, an unrecognized state and a done slug come back as the error.
 //
-// This seed-when-absent behaviour is batten's alone and must not leak into the generic body:
-// loom refuses in exactly the situation batten seeds here, because only "lyx loom start" may
-// seed loom's own status file.
-//
-// It MkdirAlls the status lock's own ephemeral directory before the first read, mirroring
-// battenPreStep's own MkdirAll(filepath.Dir(LockPath)) call: StatusPath is durable and
-// StatusLockPath is ephemeral, the two no longer share a directory the way they did before this
-// task's durable/ephemeral split, and state.ReadJSONStrict deliberately never creates one itself
-// (see its own "no MkdirAll" contract) -- so on a run-id that has never stepped on this machine,
-// the very first read here would otherwise fail to acquire the lock with a bare "no such file or
-// directory", before the run ever reaches shedengine's own run-lock probe.
-func (c *battenCLI) battenPreRun(ctx context.Context) error {
+// It MkdirAlls the status lock's own ephemeral directory before the first read, mirroring battenPreStep's own MkdirAll(filepath.Dir(LockPath)) call:
+// StatusPath is durable and StatusLockPath is ephemeral, the two no longer share a directory the way they did before this task's durable/ephemeral split, and state.ReadJSONStrict deliberately never creates one itself (see its own "no MkdirAll" contract).
+// On a run-id that has never stepped on this machine, the very first read here would otherwise fail to acquire the lock with a bare "no such file or directory", before the run ever reaches shedengine's own run-lock probe.
+func (c *battenCLI) checkRunStatus() (found bool, err error) {
 	if err := os.MkdirAll(filepath.Dir(c.shedPaths.StatusLockPath), 0o755); err != nil {
-		return err
+		return false, err
 	}
 	st, found, err := state.ReadJSONStrict[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if err != nil {
-		return errors.New("battencli: decode status file " + c.shedPaths.StatusPath + ": " + err.Error())
+		return false, errors.New("battencli: decode status file " + c.shedPaths.StatusPath + ": " + err.Error())
+	}
+	if !found {
+		return false, nil
+	}
+	switch st.State {
+	case shedengine.StateDone:
+		return true, c.doneSlugRefusal()
+	case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateAwaiting, shedengine.StateFailed, shedengine.StatePaused:
+		// Each of these resumes silently from the persisted current producer, with no
+		// re-seed, no prompt, and no flag: the engine itself already resumes from blocked
+		// and failed, and StateBlocked is the everyday path, since every operator-fixable
+		// refusal in this task lands there.
+		return true, nil
+	default:
+		return true, fmt.Errorf("battencli: unrecognized status state %q", st.State)
+	}
+}
+
+// battenPreRun implements the PreRun hook for batten's spec: run's whole existing pre-flight, in today's order: checkRunStatus, then seeding a fresh status when absent.
+// Each step's error becomes a returned error the generic body reports on the error envelope exactly as run's own inline handling did.
+//
+// This seed-when-absent behaviour is batten's alone and must not leak into the generic body:
+// loom refuses in exactly the situation batten seeds here, because only "lyx loom start" may seed loom's own status file.
+func (c *battenCLI) battenPreRun(ctx context.Context) error {
+	found, err := c.checkRunStatus()
+	if err != nil {
+		return err
 	}
 	if found {
-		switch st.State {
-		case shedengine.StateDone:
-			return c.doneSlugRefusal()
-		case shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateAwaiting, shedengine.StateFailed, shedengine.StatePaused:
-			// Each of these resumes silently from the persisted current producer, with no
-			// re-seed, no prompt, and no flag: the engine itself already resumes from blocked
-			// and failed, and StateBlocked is the everyday path, since every operator-fixable
-			// refusal in this task lands there.
-		default:
-			return fmt.Errorf("battencli: unrecognized status state %q", st.State)
-		}
 		return nil
 	}
 
@@ -487,9 +493,10 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 // completed, naming the whole abandon path rather than the run directory alone: a torn-down pair
 // keeps its task branch locally and on the remote, so deleting only the run directory leads straight
 // into the create row's leftover-branch refusal on the re-run.
+// It also names the other way forward: giving the new task a different slug.
 func (c *battenCLI) doneSlugRefusal() error {
 	return fmt.Errorf(
-		"battencli: %q has already completed; to run it again, delete its run directory %s (a change on the pair's fabric sibling) and the task branch its torn-down pair left behind, locally and on the remote (\"lyx fabric cleanup --apply --remote\" removes any orphaned sibling branch)",
+		"battencli: %q has already completed; to run it again, delete its run directory %s (a change on the pair's fabric sibling) and the task branch its torn-down pair left behind, locally and on the remote (\"lyx fabric cleanup --apply --remote\" removes any orphaned sibling branch), or give the new task a different slug",
 		c.slug, shedrun.RunDir(c.location, c.slug),
 	)
 }

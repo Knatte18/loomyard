@@ -311,7 +311,7 @@ User-facing modules each get one `lyx <module>` namespace:
   One `board.json` store holds every entry, and each entry is a task or a note with labels; only a task runs.
   `types` and `labels` in `board.yaml` are maps from label to description, and `lyx board labels` prints both in file order.
   `lyx board intake` lists open inbox issues not yet on the board, imports one as a note or folds it into an entry, and closes noise with a stated reason.
-  The README renders Tasks split into dependency layers whose entries can run in parallel, then Notes grouped by type label, and links each slug to its design doc.
+  The README renders Tasks split into Running, Ready (waiting on nothing open) and dependency layers whose entries can run in parallel, then Notes grouped by type label, each subsection one numbered table that links each slug to its design doc.
   Agents use the board through the `ly:board` skill.
   ✅ Implemented.
 - **config** — bare `lyx config` lists modules and verbs, `lyx config menu` picks a module to edit interactively, and `lyx config <module>` edits that module's config;

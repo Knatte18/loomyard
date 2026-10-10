@@ -48,6 +48,9 @@ type Repo struct {
 	goGitRepo           *git.Repository
 	goGitOK             bool
 	lastPackFingerprint string
+
+	// reindexCount counts the storer reindexes readGoGit has run, incremented under the exclusive goGitMu and read only by this package's tests.
+	reindexCount int
 }
 
 // New returns a Repo wrapping the git checkout at path. It performs no I/O.
@@ -70,22 +73,16 @@ func (r *Repo) runChecked(args ...string) (string, error) {
 
 // CurrentSHA returns the SHA of HEAD, or ErrNoCommits if no commits exist.
 func (r *Repo) CurrentSHA() (string, error) {
-	repo, err := r.goGit()
-	if err != nil {
-		return "", err
-	}
-
-	r.goGitMu.RLock()
-	defer r.goGitMu.RUnlock()
-
-	head, err := repo.Head()
-	if err != nil {
-		if errors.Is(err, plumbing.ErrReferenceNotFound) {
-			return "", ErrNoCommits
+	return readGoGit(r, func(repo *git.Repository) (string, error) {
+		head, err := repo.Head()
+		if err != nil {
+			if errors.Is(err, plumbing.ErrReferenceNotFound) {
+				return "", ErrNoCommits
+			}
+			return "", fmt.Errorf("gitrepo: resolve HEAD: %w", err)
 		}
-		return "", fmt.Errorf("gitrepo: resolve HEAD: %w", err)
-	}
-	return head.Hash().String(), nil
+		return head.Hash().String(), nil
+	})
 }
 
 // StageAndCommit stages the given files and commits them with msg.
@@ -204,12 +201,7 @@ func (r *Repo) SHAExists(sha string) bool {
 		return false
 	}
 
-	repo, err := r.goGit()
-	if err != nil {
-		return false
-	}
-
-	_, err = lookupObjectRetrying(r, repo, func() (*object.Commit, error) {
+	_, err := readGoGit(r, func(repo *git.Repository) (*object.Commit, error) {
 		return commitByHash(repo, sha)
 	})
 	return err == nil
@@ -235,22 +227,16 @@ func commitByHash(repo *git.Repository, sha string) (*object.Commit, error) {
 // CurrentBranch returns the short name of the branch HEAD points to,
 // or an error if HEAD is detached.
 func (r *Repo) CurrentBranch() (string, error) {
-	repo, err := r.goGit()
-	if err != nil {
-		return "", err
-	}
-
-	r.goGitMu.RLock()
-	defer r.goGitMu.RUnlock()
-
-	head, err := repo.Reference(plumbing.HEAD, false)
-	if err != nil {
-		return "", fmt.Errorf("gitrepo: read HEAD reference: %w", err)
-	}
-	if head.Type() != plumbing.SymbolicReference {
-		return "", fmt.Errorf("gitrepo: HEAD is detached at %s, not on a branch", head.Hash())
-	}
-	return head.Target().Short(), nil
+	return readGoGit(r, func(repo *git.Repository) (string, error) {
+		head, err := repo.Reference(plumbing.HEAD, false)
+		if err != nil {
+			return "", fmt.Errorf("gitrepo: read HEAD reference: %w", err)
+		}
+		if head.Type() != plumbing.SymbolicReference {
+			return "", fmt.Errorf("gitrepo: HEAD is detached at %s, not on a branch", head.Hash())
+		}
+		return head.Target().Short(), nil
+	})
 }
 
 // ChangedFilesSince returns repo-relative paths that differ between sha and HEAD, considering
@@ -262,54 +248,45 @@ func (r *Repo) ChangedFilesSince(sha string) ([]string, error) {
 		return nil, ErrInvalidSHA
 	}
 
-	repo, err := r.goGit()
-	if err != nil {
-		return nil, err
-	}
-
-	fromTree, err := lookupObjectRetrying(r, repo, func() (*object.Tree, error) {
-		return treeForRev(repo, sha)
-	})
-	if err != nil {
-		return nil, fmt.Errorf("gitrepo: resolve tree for %s: %w", sha, err)
-	}
-
-	r.goGitMu.RLock()
-	head, err := repo.Head()
-	r.goGitMu.RUnlock()
-	if err != nil {
-		return nil, fmt.Errorf("gitrepo: resolve HEAD: %w", err)
-	}
-
-	headTree, err := lookupObjectRetrying(r, repo, func() (*object.Tree, error) {
-		return treeForRev(repo, head.Hash().String())
-	})
-	if err != nil {
-		return nil, fmt.Errorf("gitrepo: resolve tree for HEAD: %w", err)
-	}
-
-	changes, err := object.DiffTree(fromTree, headTree)
-	if err != nil {
-		return nil, fmt.Errorf("gitrepo: diff trees: %w", err)
-	}
-
-	var files []string
-	for _, change := range changes {
-		action, err := change.Action()
+	return readGoGit(r, func(repo *git.Repository) ([]string, error) {
+		fromTree, err := treeForRev(repo, sha)
 		if err != nil {
-			return nil, fmt.Errorf("gitrepo: classify change: %w", err)
+			return nil, fmt.Errorf("gitrepo: resolve tree for %s: %w", sha, err)
 		}
-		switch action {
-		case merkletrie.Delete:
-			files = append(files, change.From.Name)
-		default:
-			// Insert and Modify both carry the current path on the To side;
-			// DiffTree never reports renames (see above), so Modify's From
-			// and To names are always identical.
-			files = append(files, change.To.Name)
+
+		head, err := repo.Head()
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: resolve HEAD: %w", err)
 		}
-	}
-	return files, nil
+
+		headTree, err := treeForRev(repo, head.Hash().String())
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: resolve tree for HEAD: %w", err)
+		}
+
+		changes, err := object.DiffTree(fromTree, headTree)
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: diff trees: %w", err)
+		}
+
+		var files []string
+		for _, change := range changes {
+			action, err := change.Action()
+			if err != nil {
+				return nil, fmt.Errorf("gitrepo: classify change: %w", err)
+			}
+			switch action {
+			case merkletrie.Delete:
+				files = append(files, change.From.Name)
+			default:
+				// Insert and Modify both carry the current path on the To side;
+				// DiffTree never reports renames (see above), so Modify's From
+				// and To names are always identical.
+				files = append(files, change.To.Name)
+			}
+		}
+		return files, nil
+	})
 }
 
 // treeForRev resolves rev to its commit's tree.
