@@ -44,7 +44,7 @@ The shim saw no other subcommand in either run.
 ## What the numbers say
 
 The discovery loop's tmux spawns fell from one every five seconds to eight in five minutes, the doubling to the 60-second ceiling working as designed, yet the daemon's CPU did not move: 100 s per hour before and 102 s after, a difference inside the noise of a single sample.
-The stat tick that the daemon itself runs is a few seconds per hour, so it is not the cost; nearly all the CPU is in children the daemon waits for, and those children are not the discovery loop's `list-sessions`, which the shim counts and which fell by a factor of seven.
+The daemon's own CPU is unchanged at about 16 s per hour in both rows; nearly all the CPU is in children the daemon waits for, and those children are not the discovery loop's `list-sessions`, which the shim counts and which fell by a factor of seven.
 This run does not identify them: the shim sees only invocations through `--tmux`, and the three idle sessions' own watchers may spawn through another path.
 The task's spawn reduction is real on the discovery loop; its effect on idle CPU is not visible in this measurement, and the remaining cost needs its own measurement.
 
