@@ -31,7 +31,7 @@ The question the discussion worked through was whether the *other* rows (the loo
 
 **Geometry** (absolute paths — `AnchorPath`, `WorktreeRoot`, `StencilsDir`, `PlanDir`, etc.) is resolved once, centrally, by whichever caller invokes the recipe-builder — `lyx loom start` for hub mode, a standalone CLI entry point for told mode (mirroring the existing `hubgeom`/`standalonegeom` dual-constructor split) — and merged with each row's `Config` when its `ProducerDef` is constructed. The recipe itself never names a geometry mode and never contains a path; it stays portable across every worktree of the product it describes. This follows directly from the existing Told-Geometry Invariant — nothing new, just extending the same discipline to the recipe layer.
 
-**Live seams**, alongside geometry, are the other thing never in a recipe: `shedadapters.Shuttle`, `shedadapters.BurlerRunner`, `shedadapters.WebsterRunner`, `websterengine.RunDeps`, `landingshed.Deps`'s closures and its `modelspec.Registry`, and the injected clock.
+**Live seams**, alongside geometry, are the other thing never in a recipe: `shedadapters.Shuttle`, `shedadapters.BurlerRunner`, `shedadapters.WebsterRunner`, `shedadapters.SeatRunner` (`Env.Seats`), `websterengine.RunDeps`, `landingshed.Deps`'s closures and its `modelspec.Registry`, and the injected clock.
 None of these can be written in a file at all — a recipe row names an `Engine` and carries `Config`, and a seam is neither.
 They travel in the same told bundle as geometry, `shedrecipe.Env`, filled once by whichever caller invokes the registry — this extends the existing discipline rather than inventing a second one.
 The rule that makes the `Env`-versus-`Config` split decidable: `Env` holds roots and run-wide values only, never a value that differs between two rows, and anything per-row is a relative path or scalar in `Config`, resolved against one of those roots by the entry that reads it.
@@ -46,6 +46,12 @@ An unknown value is a construction error naming `rework-exempt`.
 A `Bouncer` row's optional `carry_over` key is a scalar naming the row's own review segment, for example `Plan-Review`, and selects `Env.CarryOver`, the closure that writes and commits the segment's carry-over entry into the decision record.
 It follows the same two rules as `commit_seam` and `skip_seam`: absent leaves the seam nil, and a present key naming a closure the `Env` does not carry is a construction error.
 The value is the segment name the entry is filed under, so a recipe test pins it equal to the row's `segment`.
+
+A `MultiLLM` row runs one chair and its advisors as seats.
+Its keys are `role`, `segment` and `seats`, and the optional `gates`, `timeout_min`, `interactive` and `tokens`.
+Each `seats` element carries `name`, `stencil`, `model` and `outputs`, and the optional `inputs`, `skills` and `values`; `inputs` and `outputs` are worktree-relative paths.
+A seat's `model` is a model-spec string resolved against `Env.Models`, the run-wide registry, and an unknown alias is a construction error naming the seat.
+The row drives `Env.Seats`, and a nil seam is a construction error.
 
 A gate-capable row's `gates` key selects validators by name from a closed vocabulary, in order, each element carrying its own `attempts` budget (0 means off) and an optional `pass_on_cap`.
 An absent key is ungated, while an empty list, a duplicate name, or a negative budget is a construction error.

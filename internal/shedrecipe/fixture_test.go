@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -65,6 +66,8 @@ func newTestEnv(t *testing.T) Env {
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
 		Shuttle:            &shedfake.Shuttle{},
 		Burler:             &shedfake.BurlerRunner{},
+		Seats:              &shedfake.SeatRunner{},
+		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
 		WebsterRun:         fakeWebsterRun,
 		CommitWebster:      func() error { return nil },
 		ReflectFriction:    func() string { return "skipped" },

@@ -13,4 +13,12 @@
 // Env is the told bundle: the caller-filled roots and injected seams every entry may read from.
 // Config is the portable per-row half: the recipe row's own static, already-decoded configuration,
 // which never contains an absolute path and which this package never learns the file format of.
+//
+// # The MultiLLM row
+//
+// The MultiLLM entry builds a seatengine.Table from its row: a role prefix, a loom segment, an ordered list of seats, and optional gates, timeout, interactivity and table tokens.
+// Each seat names its stencil, its model spec and its worktree-relative inputs and outputs, and optionally its skills and values.
+// A seat's model spec is parsed and resolved against Env.Models at construction, so an unknown alias fails before any call.
+// Table.Validate runs at construction against Env.StencilsDir, so an unreadable stencil, an unresolvable include and a reserved or blank value fail there too.
+// The producer drives Env.Seats, the seat runner the caller wires over its shuttle runner; the entry reads no other seam.
 package shedrecipe

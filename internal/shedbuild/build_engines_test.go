@@ -14,8 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
-// engineMinimalConfig maps an engine name to its minimal Config, covering only the three engines
-// that need one. Every other engine takes no config at all and are given none in this test,
+// engineMinimalConfig maps an engine name to its minimal Config, covering only the four engines that need one.
+// They are SingleLLM, Bouncer, BurlerRound and MultiLLM, whose chair and advisor both take the stencil name and the "opus" alias FullEnv's Models carries.
+// Every other engine takes no config at all and are given none in this test,
 // since a non-empty config block on any of them is an error from the constructor. All three
 // lifecycle engines join them: WorktreeCreate and WorktreeTeardown take no Config keys at
 // all, and Loom-Run's own two Config keys (poll_interval_s, poll_attempts) both default, so an
@@ -39,6 +40,25 @@ func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[s
 		"BurlerRound": {
 			"run_subdir": "review-segment",
 			"profile":    map[string]any{"rubric": "a rubric"},
+		},
+		"MultiLLM": {
+			"role":    "coverage",
+			"segment": "plan",
+			"seats": []any{
+				map[string]any{
+					"name":    "chair",
+					"stencil": stencilName,
+					"model":   "opus",
+					"inputs":  []string{"out/advisor.md"},
+					"outputs": []string{"out/chair.md"},
+				},
+				map[string]any{
+					"name":    "advisor-1",
+					"stencil": stencilName,
+					"model":   "opus",
+					"outputs": []string{"out/advisor.md"},
+				},
+			},
 		},
 	}
 }

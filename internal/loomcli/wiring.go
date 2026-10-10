@@ -33,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -572,6 +573,16 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// Shuttle is runner, already built above: *shuttleengine.Runner already satisfies
 		// shedadapters.Shuttle, and row 3 (Discussion-Write) reads it now.
 		Shuttle: runner,
+		// Seats runs the MultiLLM rows' seats over the same runner.
+		Seats: seatengine.New(seatengine.RunnerShuttle(runner), seatengine.Geometry{
+			WorktreeRoot: location.WorktreePath(),
+			AnchorPath:   anchorPath,
+			StencilsDir:  websterGeom.StencilsDir,
+			ParentName:   c.parentName,
+			Shortname:    reedGeom.NameShortname,
+			Slug:         reedGeom.NameSlug,
+		}),
+		Models: registry,
 		// DiscussionSpec is evaluated per Call, not resolved here, so the stencil is read at call
 		// time -- what the Stencil Ownership Invariant requires. autonomous is now
 		// !loomCfg.DiscussionInteractive, read fresh on every wire() call. Nothing compares it

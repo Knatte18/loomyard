@@ -61,6 +61,14 @@ func minimalEntries() map[string]minimalEntry {
 			env: newTestEnv,
 			cfg: func(*testing.T, Env) Config { return minimalBurlerConfig() },
 		},
+		"MultiLLM": {
+			env: func(t *testing.T) Env {
+				env := newTestEnv(t)
+				writeStencilFile(t, env.StencilsDir, "multillm-seat", "Body text with no markers.\n")
+				return env
+			},
+			cfg: func(*testing.T, Env) Config { return validMultiLLMConfig() },
+		},
 		"WorktreeCreate":   {newTestEnv, emptyConfig},
 		"InnerRun":         {newTestEnv, emptyConfig},
 		"SeedChild":        {newTestEnvWithSeedChild, emptyConfig},

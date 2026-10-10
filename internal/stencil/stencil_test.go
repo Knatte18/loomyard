@@ -1,4 +1,4 @@
-// stencil_test.go is the black-box contract test for stencil.Fill and stencil.FillOptional:
+// stencil_test.go is the black-box contract test for stencil.Fill, stencil.FillOptional and stencil.FillWith:
 // one table covers the happy path, the unfilled-top-level-marker guard (including sorting/dedup), the incremental branch-internal guard, conditional sections, the leading-comment strip, the no-HTML-escaping guarantee, and FillOptional's optional-marker exemption from both guards.
 
 package stencil_test
@@ -13,10 +13,12 @@ import (
 
 // fillCase is one row of TestFill: a template and values rendered through stencil.Fill, or through stencil.FillOptional when optional is non-nil.
 type fillCase struct {
-	name       string
-	template   string
-	values     map[string]string
-	optional   []string
+	name     string
+	template string
+	values   map[string]string
+	optional []string
+	// includes, when non-nil, renders the row through stencil.FillWith.
+	includes   map[string]string
 	wantOutput string
 	wantErr    bool
 	// errExact, errContains and errLacks each apply only when non-empty, and only with wantErr.
@@ -26,6 +28,13 @@ type fillCase struct {
 }
 
 func render(tt fillCase) ([]byte, error) {
+	if tt.includes != nil {
+		includes := make(map[string][]byte, len(tt.includes))
+		for name, body := range tt.includes {
+			includes[name] = []byte(body)
+		}
+		return stencil.FillWith([]byte(tt.template), includes, tt.values, tt.optional)
+	}
 	if tt.optional != nil {
 		return stencil.FillOptional([]byte(tt.template), tt.values, tt.optional)
 	}
@@ -279,6 +288,59 @@ func TestFill(t *testing.T) {
 			wantErr:  true,
 			errExact: "stencil: unfilled top-level marker(s): Fasit",
 		},
+		{
+			name:       "include_renders",
+			template:   `A {{template "blk"}} B`,
+			includes:   map[string]string{"blk": "inner"},
+			values:     map[string]string{},
+			wantOutput: "A inner B",
+		},
+		{
+			name:       "include_marker_filled_from_values",
+			template:   `A {{template "blk"}} B`,
+			includes:   map[string]string{"blk": "<!-- header {{.Ghost}} -->\nx={{.X}}"},
+			values:     map[string]string{"X": "1"},
+			wantOutput: "A x=1 B",
+		},
+		{
+			name:       "include_inside_with_body_renders_from_value_map",
+			template:   `{{with .Who}}[{{template "blk"}}]{{end}}`,
+			includes:   map[string]string{"blk": "{{.Who}}-{{.X}}"},
+			values:     map[string]string{"Who": "w", "X": "1"},
+			wantOutput: "[w-1]",
+		},
+		{
+			name:        "include_with_own_pipeline_refused",
+			template:    `A {{template "blk" .}}`,
+			includes:    map[string]string{"blk": "inner"},
+			values:      map[string]string{},
+			wantErr:     true,
+			errContains: `include "blk" carries a pipeline of its own`,
+		},
+		{
+			name:     "unfilled_marker_inside_include_reported",
+			template: `{{.Head}} {{template "blk"}}`,
+			includes: map[string]string{"blk": "{{.X}}"},
+			values:   map[string]string{"Head": "h"},
+			wantErr:  true,
+			errExact: "stencil: unfilled top-level marker(s): X",
+		},
+		{
+			name:        "missing_include_named",
+			template:    `A {{template "blk"}}`,
+			includes:    map[string]string{},
+			values:      map[string]string{},
+			wantErr:     true,
+			errContains: `include "blk" has no entry`,
+		},
+		{
+			name:        "nested_include_refused",
+			template:    `A {{template "blk"}}`,
+			includes:    map[string]string{"blk": `{{template "inner"}}`, "inner": "deep"},
+			values:      map[string]string{},
+			wantErr:     true,
+			errContains: `include "blk" declares an include`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -296,7 +358,7 @@ func TestFill(t *testing.T) {
 				t.Errorf("second call = (%q, %q); first call = (%q, %q); want identical",
 					string(again), errText(againErr), string(got), errText(err))
 			}
-			if tt.optional == nil {
+			if tt.optional == nil && tt.includes == nil {
 				viaOptional, optionalErr := stencil.FillOptional([]byte(tt.template), tt.values, nil)
 				if string(got) != string(viaOptional) || errText(err) != errText(optionalErr) {
 					t.Errorf("FillOptional(nil) = (%q, %q); Fill = (%q, %q); want byte-identical",

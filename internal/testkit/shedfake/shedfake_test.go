@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -171,6 +172,64 @@ func TestBurlerRunner_LastEntryRepeats(t *testing.T) {
 		t.Errorf("unscripted ProbeRound() = %+v, %v; want the zero LiveRound and nil", got, err)
 	}
 
+}
+
+func TestSeatRunner_LastEntryRepeatsAndFnsOverride(t *testing.T) {
+	first, last := errors.New("first"), errors.New("last")
+	table := seatengine.Table{RolePrefix: "multi"}
+	f := &SeatRunner{
+		Results: []seatengine.Result{{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}, {Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}}},
+		Errs:    []error{first, nil, last},
+	}
+	wantOutcomes := []shuttleengine.Outcome{shuttleengine.OutcomeDone, shuttleengine.OutcomeTimeout, shuttleengine.OutcomeTimeout, shuttleengine.OutcomeTimeout}
+	wantErrs := []error{first, nil, last, last}
+	for i := range wantOutcomes {
+		res, err := f.Run(table)
+		if res.Chair.Outcome != wantOutcomes[i] || !errors.Is(err, wantErrs[i]) {
+			t.Errorf("Run call %d = %q, %v; want %q, %v", i, res.Chair.Outcome, err, wantOutcomes[i], wantErrs[i])
+		}
+	}
+	if f.Calls != 4 || len(f.GotTables) != 4 || f.GotTables[0].RolePrefix != "multi" {
+		t.Errorf("Calls %d, GotTables %d; want 4 each, holding the table", f.Calls, len(f.GotTables))
+	}
+
+	// Probe and Resume script the same way, and an unscripted Probe answers a table with no seat live.
+	live := seatengine.LiveTable{Advisors: map[string]seatengine.Handle{"advisor-1": nil}}
+	probing := &SeatRunner{LiveTables: []seatengine.LiveTable{live}, ProbeErrs: []error{nil, first}, ResumeResults: []seatengine.Result{{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}}}
+	for i, wantErr := range []error{nil, first, first} {
+		got, err := probing.Probe(table)
+		if len(got.Advisors) != 1 || !errors.Is(err, wantErr) {
+			t.Errorf("Probe call %d = %+v, %v; want the scripted LiveTable and %v", i, got, err, wantErr)
+		}
+	}
+	res, err := probing.Resume(table, live)
+	if res.Chair.Outcome != shuttleengine.OutcomeDone || err != nil || probing.ProbeCalls != 3 || len(probing.GotProbeTables) != 3 || probing.ResumeCalls != 1 || len(probing.GotLive) != 1 || len(probing.GotResumeTables) != 1 {
+		t.Errorf("Resume() = %+v, %v with ProbeCalls %d, ResumeCalls %d, GotLive %d; want done, nil, 3, 1, 1", res, err, probing.ProbeCalls, probing.ResumeCalls, len(probing.GotLive))
+	}
+	if got, err := (&SeatRunner{}).Probe(table); got.Chair != nil || len(got.Advisors) != 0 || err != nil {
+		t.Errorf("unscripted Probe() = %+v, %v; want the zero LiveTable and nil", got, err)
+	}
+
+	// An override replaces its verb's scripted answer, and the call is still counted.
+	overriding := &SeatRunner{
+		Results: []seatengine.Result{{ChairOutputs: []string{"scripted"}}},
+		RunFn: func(seatengine.Table) (seatengine.Result, error) {
+			return seatengine.Result{ChairOutputs: []string{"fn"}}, nil
+		},
+		ProbeFn: func(seatengine.Table) (seatengine.LiveTable, error) { return live, last },
+		ResumeFn: func(seatengine.Table, seatengine.LiveTable) (seatengine.Result, error) {
+			return seatengine.Result{}, last
+		},
+	}
+	if got, _ := overriding.Run(table); got.ChairOutputs[0] != "fn" || overriding.Calls != 1 {
+		t.Errorf("Run() with RunFn = %+v, Calls %d; want the override's answer, counted", got, overriding.Calls)
+	}
+	if got, err := overriding.Probe(table); len(got.Advisors) != 1 || !errors.Is(err, last) || overriding.ProbeCalls != 1 {
+		t.Errorf("Probe() with ProbeFn = %+v, %v; want the override's answer, counted", got, err)
+	}
+	if _, err := overriding.Resume(table, live); !errors.Is(err, last) || overriding.ResumeCalls != 1 {
+		t.Errorf("Resume() with ResumeFn = %v; want the override's error, counted", err)
+	}
 }
 
 func TestMergeShuttle_ScriptsByCallOrder(t *testing.T) {
