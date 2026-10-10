@@ -15,12 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// TestInterruptPolicies_MatchAssembledRows asserts, in both directions, that
-// loomshed.InterruptPolicies covers exactly the rows New and NewDarn assemble: every row either's real,
-// current output has must carry an entry in the table (the direction that catches a row added to
-// a recipe with no policy assigned), and every key in the table must name a row one of them actually
-// has (the direction that keeps the table from accumulating dead entries for a renamed or removed
-// row).
+// TestInterruptPolicies_MatchAssembledRows asserts, in both directions, that loomshed.InterruptPolicies covers exactly the rows New and NewDarn assemble.
+// Every row either's real, current output has must carry an entry in the table (the direction that catches a row added to a recipe with no policy assigned),
+// and every key in the table must name a row one of them actually has (the direction that keeps the table from accumulating dead entries for a renamed or removed row).
 func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 	env, paths := testEnv(t)
 	rowNames := map[string]bool{}
