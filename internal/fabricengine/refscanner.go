@@ -389,7 +389,7 @@ func isLyxCommandWord(word shellWord) bool {
 // A fabric reader is one of FabricReaderVerbs under the argument rule that keeps it from mutating: `diff` takes exactly one word not starting with `-`, and the rest take none.
 // A word holding a glob character, quoted or not, rejects the segment.
 func readOnlyLyxSegment(words []shellWord) bool {
-	if slices.ContainsFunc(words, func(word shellWord) bool { return word.glob || holdsGlobCharacter(word.text) }) {
+	if slices.ContainsFunc(words, func(word shellWord) bool { return holdsGlobCharacter(word.text) }) {
 		return false
 	}
 	rest := words[1:]
