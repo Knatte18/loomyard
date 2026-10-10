@@ -13,8 +13,8 @@
 // dedicated stderr sink, which defaults to os.Stderr and is silent unless
 // the caller opts in via SetVerbosity. Every Debug/Info/Warn call also fans
 // out to the durable trace-file sink (sink.go), independently gated at Info
-// and above regardless of the stderr threshold -- see dualHandler's doc
-// comment for the composite's exact semantics.
+// and above (Debug too at Debug verbosity) regardless of the stderr threshold.
+// See dualHandler's doc comment for the composite's exact semantics.
 //
 // # Trace identity and spans
 //
@@ -43,12 +43,13 @@
 // # The durable sink and its retention
 //
 // Alongside the stderr sink above, every Info+ record also lands in a
-// second, durable sink (sink.go): one plain-text trace file per process,
+// second, durable sink (sink.go), and so does every Debug record when the process verbosity is Debug:
+// one plain-text trace file per process,
 // under the current worktree's own LogsDir(l) (sink.go)
 // (<AnchorPath>/.lyx/logs/), this package's own declaration of that path. The file opens lazily on whichever of two triggers fires
-// first: (a) the first Info-or-above log record in the process, or (b) the
+// first: (a) the first log record the durable half admits, or (b) the
 // process exiting with a non-zero code, via NotifyExit -- so a run that logs
-// nothing above Debug but still fails leaves a reconstructable trace file
+// nothing the durable half admits but still fails leaves a reconstructable trace file
 // behind. The file's first line is a header record naming the command,
 // argv, trace ID, PID, and worktree root. Each file is capped at 8 MiB;
 // once a write would cross the cap, a single truncation-marker line is
@@ -105,18 +106,18 @@
 //   - LYX_TRACE=1: the test-entry-activation gate for the durable sink only.
 //     Under `go test` (testing.Testing() true), the durable sink stays
 //     closed for the whole process unless LYX_TRACE=1 is explicitly set,
-//     regardless of how many Info+ records are logged or how the process
+//     regardless of how many records the durable half admits or how the process
 //     exits -- this is what keeps ordinary `go test` runs from littering a
 //     worktree's .lyx/logs with test-process trace files. It has no effect
 //     on trace-ID resolution itself: TraceID() and the trace=/span= fields
 //     stamped on stderr output are computed the same way whether or not
 //     LYX_TRACE is set.
 //
-// Note that an Info+ record reaching both LYX_LOG_FILE (if set) and the
+// Note that a record reaching both LYX_LOG_FILE (if set) and the
 // durable trace file is correct behavior, not a bug to "fix" by suppressing
 // one or the other: the two are different artifacts with different
 // lifetimes and different audiences (an operator-chosen, unmanaged,
-// whole-verbosity file vs. a lyx-managed, Info+-only, retention-swept one),
+// whole-verbosity file vs. a lyx-managed, retention-swept one),
 // and neither should suppress the other.
 //
 // # Level policy
@@ -128,8 +129,9 @@
 //     teardown, an error swallowed on a fallback path.
 //   - Info: a real OS-process spawn/teardown lifecycle event,
 //     one recorded durable state mutation, or a shed step boundary.
-//     The durable sink records Info and above only,
-//     and a mutation or step the trace does not record cannot be repaired from.
+//     The durable sink records Info and above always, and Debug too when the process verbosity is Debug,
+//     so a mutation or step the trace does not record cannot be repaired from,
+//     and a -vv run leaves its full trace.
 //   - Debug: everything else worth a line.
 //
 // Hard rule: nothing logs at Warn inside a loop body that can iterate more
@@ -171,7 +173,7 @@ func stderrHandlerSnapshot() slog.Handler {
 // dual_handler in this file), which fans every record out to the stderr
 // half (gated by levelVar, exactly as before) and the durable-sink half
 // (batch 4's ensureDurableSink/writeDurable, gated at Info+ unconditionally
-// of levelVar). log itself is never reassigned by SetOutput; only
+// of levelVar, and at Debug too while levelVar holds Debug). log itself is never reassigned by SetOutput; only
 // currentStderr, which dualHandler reads dynamically, changes.
 var log = slog.New(newDualHandler())
 
@@ -286,11 +288,22 @@ func (durableWriter) Write(p []byte) (int, error) {
 	return writeDurable(p)
 }
 
-// durableHandler is dualHandler's durable-sink half. Its Enabled is
-// unconditional at Info and above -- never gated by levelVar -- which is
-// the property that lets an Info record reach the durable sink at the
-// default Warn verbosity even though the stderr half alone would reject it
-// there.
+// durableLevel is the durable half's threshold: Debug while levelVar holds Debug, Info otherwise.
+// Info and above are therefore admitted unconditionally, and Debug only at Debug verbosity.
+type durableLevel struct{}
+
+// Level implements slog.Leveler.
+func (durableLevel) Level() slog.Level {
+	if levelVar.Level() == slog.LevelDebug {
+		return slog.LevelDebug
+	}
+	return slog.LevelInfo
+}
+
+// durableHandler is dualHandler's durable-sink half.
+// Its Enabled admits Info and above whatever levelVar holds.
+// An Info record therefore reaches the durable sink at the default Warn verbosity, though the stderr half alone would reject it there.
+// It admits Debug too while the process verbosity is Debug.
 type durableHandler struct {
 	inner slog.Handler
 }
@@ -298,13 +311,13 @@ type durableHandler struct {
 // newDurableHandler builds the durable half over durableWriter, formatting
 // exactly as slog.NewTextHandler would.
 func newDurableHandler() durableHandler {
-	return durableHandler{inner: slog.NewTextHandler(durableWriter{}, &slog.HandlerOptions{Level: slog.LevelInfo})}
+	return durableHandler{inner: slog.NewTextHandler(durableWriter{}, &slog.HandlerOptions{Level: durableLevel{}})}
 }
 
-// Enabled reports whether level is Info or above, unconditionally of levelVar -- see the
+// Enabled reports whether level meets the durable threshold -- see the
 // durableHandler doc comment.
 func (d durableHandler) Enabled(_ context.Context, level slog.Level) bool {
-	return level >= slog.LevelInfo
+	return level >= durableLevel{}.Level()
 }
 
 // Handle formats and writes record via the wrapped text handler, which in turn writes through
@@ -358,9 +371,8 @@ func configureFromEnv() {
 
 // Debug logs msg at debug level with the given key/value args, stamping a trace key with
 // TraceID()'s current value (batch 2) on every line as every level does.
-// Debug never reaches the durable sink -- durableHandler.Enabled only accepts Info and above -- so
-// a Debug record is a no-op sink-wise regardless of trace stamping;
-// it reaches the stderr half only once SetVerbosity(2) or higher has been called.
+// Debug reaches the stderr half and the durable sink only at Debug verbosity, set by SetVerbosity(2) or higher or LYX_LOG_LEVEL=debug.
+// At lower verbosity it is a no-op.
 // Calling TraceID() here is also what triggers the trace-ID's own first resolution if nothing has
 // resolved it yet.
 func Debug(msg string, args ...any) {
@@ -368,8 +380,8 @@ func Debug(msg string, args ...any) {
 }
 
 // Info logs msg at info level with the given key/value args, stamping trace= as Debug does.
-// It reaches the durable sink unconditionally (durableHandler.Enabled never consults levelVar),
-// and reaches the stderr half only once SetVerbosity(1) or higher has been called.
+// It reaches the durable sink at every verbosity.
+// It reaches the stderr half only once SetVerbosity(1) or higher has been called.
 func Info(msg string, args ...any) {
 	log.With("trace", TraceID()).Info(msg, args...)
 }
@@ -390,7 +402,7 @@ func Error(msg string, args ...any) {
 
 // SetVerbosity maps a -v repeat count to a log level: count<=0 keeps the default Warn threshold
 // (silent normal run), count==1 lowers it to Info, and count>=2 lowers it to Debug.
-// cmd/lyx/main.go calls this once at startup from the root -v/--verbose flag.
+// cmd/lyx/main.go calls this once at startup when the root -v/--verbose flag is given.
 func SetVerbosity(count int) {
 	switch {
 	case count <= 0:
@@ -411,9 +423,9 @@ func SetVerbosity(count int) {
 // calls SetOutput for LYX_LOG_FILE, independent of anything this package's trace/sink work adds.
 // LYX_LOG_FILE redirects only the stderr half to an operator-chosen, unmanaged, whole-verbosity
 // file;
-// the durable sink independently opens its own Info+-only, lyx-managed, retention-swept trace file
+// the durable sink independently opens its own lyx-managed, retention-swept trace file
 // under this package's own LogsDir(l).
-// An Info+ line therefore lands in both files when LYX_LOG_FILE is set -- that duplication is
+// A record both halves admit therefore lands in both files when LYX_LOG_FILE is set -- that duplication is
 // intended, not a bug to reconcile: the two are different artifacts with different lifetimes, and
 // neither should suppress the other.
 //

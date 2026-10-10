@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -275,11 +276,29 @@ func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err err
 	return debugArgs, mouse, nil
 }
 
+// preflightBootHost refuses, before any tmux round trip, a socket path over the OS limit (naming `TMUX_TMPDIR`) and a configured shell that does not resolve (naming the `shell` key).
+// It returns the resolved shell path the boot pins on the session.
+// On Windows it checks nothing and returns the empty string: psmux keeps no socket file, and the boot keeps its current shell handling.
+func (e *Engine) preflightBootHost() (shellPath string, err error) {
+	if runtime.GOOS == "windows" {
+		return "", nil
+	}
+	if err := checkSocketPathLength(resolvedSocketDir(), e.Socket(), unixSocketPathLimit(runtime.GOOS)); err != nil {
+		return "", err
+	}
+	return resolveShellPath(e.cfg.Shell)
+}
+
 // ensureServerAndSessionLocked ensures this hub's tmux server and this
 // worktree's session exist. Reports booted=true on fresh spawn; validates
 // capability, debug_log, mouse, watchdog and segment colors before any tmux round trip.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
 	debugArgs, mouse, err := e.validateBootConfig()
+	if err != nil {
+		return false, nil, err
+	}
+
+	shellPath, err := e.preflightBootHost()
 	if err != nil {
 		return false, nil, err
 	}
@@ -389,20 +408,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	clean = stripTraceID(clean)
 	clean = stripAgentNameEnv(clean)
 	spawnSession := func() error {
-		// debugArgs are tmux GLOBAL flags (e.g. -v/-vv) and must precede
-		// -L/new-session on the argv; -c pins new-session's pane default cwd
-		// to Geometry.PaneCwd, the told pane spawn directory, even though
-		// the server process's own cwd (cmd.Dir) has moved to logsDir.
-		argv := append([]string{}, debugArgs...)
-		argv = append(argv,
-			"-L", e.Socket(),
-			"new-session", "-d", "-s", session,
-			"-c", e.geom.PaneCwd,
-			"-x", strconv.Itoa(e.cfg.Width),
-			"-y", strconv.Itoa(e.cfg.Height),
-			e.cfg.Shell,
-		)
-		cmd := exec.Command(e.cfg.Tmux, argv...)
+		cmd := exec.Command(e.cfg.Tmux, e.serverSpawnArgv(runtime.GOOS, debugArgs)...)
 		cmd.Dir = logsDir
 		cmd.Env = clean
 		proc.Detach(cmd)
@@ -483,37 +489,68 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 
 	e.touchDiscoverSignal()
 
+	if err := e.pinBootOptionsLocked(mouse, shellPath); err != nil {
+		return false, nil, err
+	}
+
+	return true, stripped, nil
+}
+
+// pinBootOptionsLocked pins the options a fresh boot sets on the server and session it just spawned.
+// The `remain-on-exit` and `mouse` pins are correctness dependencies and fail the boot; the geometry pins and the hook install are non-fatal.
+// Boot options never re-apply to an already-up session, which is why the attach pre-flight re-pins the geometry ones itself.
+// When the watchdog is on (POSIX only), it ends with a zero-pin rebuild of the window-resized hook array, the clear and the signal entry alone, so a session with fewer than two panes or no placed strand promotes its watcher out of poll mode without waiting for a layout apply.
+// That install sits here and not in pinGeometryOptionsLocked, which the attach pre-flight also runs: a degrading attach returns before its own install, and a zero-pin rebuild there would wipe the session's resize pins.
+// Assumes the op lock is already held.
+func (e *Engine) pinBootOptionsLocked(mouse, shellPath string) error {
 	// remain-on-exit keeps a pane whose command exits around as
 	// pane_dead=1 instead of vanishing (which would also kill the session
 	// if it were the last pane) — the mechanism reconcile's dead-pane
 	// detection depends on.
 	if err := e.tmux.run("set-option", "-g", "remain-on-exit", "on"); err != nil {
-		return false, nil, fmt.Errorf("set remain-on-exit: %w", err)
+		return fmt.Errorf("set remain-on-exit: %w", err)
 	}
 	// Pin the mouse mode explicitly, in both directions: this call always
 	// runs on this fresh-boot path, even to set "off", so the live mouse
 	// state is deterministic regardless of the tmux backend's own
-	// default (Shared Decision explicit-set-both-ways-at-boot). Like
-	// remain-on-exit, this never re-applies on an already-up session — the
-	// early return above skips this whole path in that case.
+	// default (Shared Decision explicit-set-both-ways-at-boot).
 	if err := e.tmux.run("set-option", "-g", "mouse", mouse); err != nil {
-		return false, nil, fmt.Errorf("set mouse: %w", err)
+		return fmt.Errorf("set mouse: %w", err)
 	}
 
-	// Unlike the two set-option calls above, this one is non-fatal by design:
-	// remain-on-exit and mouse are correctness dependencies, while status and
-	// window-size are geometry-quality options whose absence degrades to
+	// Unlike the two set-option calls above, the geometry pins are non-fatal by design:
+	// status and window-size are geometry-quality options whose absence degrades to
 	// tmux's own proportional rescale — a working session — and psmux's
 	// support for both is unverified anywhere in this repo, so a capability
 	// reed cannot confirm must not be able to take the boot down (Shared
 	// Decision geometry-tmux-failures-are-non-fatal-everywhere).
-	// Boot options never re-apply to an already-up session (the healthy
-	// already-up path returns early, above this block), which is why
-	// AttachArgv re-pins them in its own pre-flight rather than relying on
-	// this call.
-	e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
+	target := exactSessionWindowTarget(e.SessionName())
+	e.pinGeometryOptionsLocked(target, shellPath)
 
-	return true, stripped, nil
+	if e.resizeSignalHookCommand() != "" {
+		e.installResizePinsLocked(target, nil)
+	}
+	return nil
+}
+
+// serverSpawnArgv is the argv of the invocation that starts this hub's tmux server with its first session.
+// debugArgs are tmux GLOBAL flags (e.g. -v/-vv) and lead the argv.
+// Everywhere but Windows, `-f /dev/null` follows them, so the server reads none of the operator's `~/.tmux.conf`; a running server ignores the flag.
+// `-c` pins new-session's pane default cwd to the told pane spawn directory, even though the server process's own cwd has moved to the logs directory.
+// The configured shell is the first pane's trailing command.
+func (e *Engine) serverSpawnArgv(goos string, debugArgs []string) []string {
+	argv := append([]string{}, debugArgs...)
+	if goos != "windows" {
+		argv = append(argv, "-f", os.DevNull)
+	}
+	return append(argv,
+		"-L", e.Socket(),
+		"new-session", "-d", "-s", e.SessionName(),
+		"-c", e.geom.PaneCwd,
+		"-x", strconv.Itoa(e.cfg.Width),
+		"-y", strconv.Itoa(e.cfg.Height),
+		e.cfg.Shell,
+	)
 }
 
 // touchDiscoverSignal creates or truncates the told discover signal file, waking the watchdog daemon's discovery loop.

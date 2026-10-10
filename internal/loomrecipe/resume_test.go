@@ -313,11 +313,8 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 // Discussion-Validate's budget once was, so this test drives that budget+1 round
 // trips rather than parameterizing a small paths.MaxBounces.
 //
-// The Bouncer is what this test binds its assertion to, never the Burler, even though both segment
-// rows carry the same review budget: Discussion-Bouncer's own Stuck sequence runs one ahead of
-// the round producer's count -- its seed call authors the segment's very first Stuck before
-// Discussion-Burler ever runs once -- so with equal budgets Discussion-Bouncer exhausts first,
-// within the segment's first generation, and Discussion-Burler's own budget is never spent at all.
+// The Bouncer is what this test binds its assertion to, never the Burler.
+// Every Discussion-Burler hand-back for judgment is budget-exempt, so Discussion-Bouncer's own budget is the segment's one budget on judged rounds and Discussion-Burler's is never spent.
 func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	_, env, paths := buildSequenceFixture(t)
 	blockBouncerJudge(env)

@@ -70,9 +70,8 @@ func assertNoArchivedRunDirSibling(t *testing.T, runDir string) {
 // A Bouncer value constructed fresh over a run directory a previous process already settled clears
 // on its very first Call: the trigger reads only what a previous settle wrote to disk.
 // The clear is not cheap: it discards a settled CONVERGED generation and re-seeds from round 1,
-// costing a fresh judge spawn plus a fresh round, and it can spend the leftover budget that halts
-// the run because the round producer's episode never resets, so an operator whose run suddenly
-// cost a second generation needs the log line to read.
+// costing a fresh judge spawn plus a fresh round,
+// so an operator whose run suddenly cost a second generation needs the log line to read.
 //
 //testtiming:keep pins that the whole approved generation moves to one archived sibling, the recreated run dir holds only the seed's focus file, the log line and the collision suffix
 func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {

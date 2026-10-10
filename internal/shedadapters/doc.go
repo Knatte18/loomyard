@@ -41,8 +41,8 @@
 //     retry -- maps to Stuck, never Done, reporting the round's own review path as the pointer.
 //     That Stuck is a routine hand-off to the segment's Bouncer via OnStuck, never a real stuck
 //     condition: a round producer has no independent notion of "finished," only the judge does.
-//     That Stuck is BudgetExempt when the previous round carries a recorded continue decision whose cause is budget,
-//     so the one more round a budget continue grants spends no budget; each further round needs its own decision.
+//     Both hand-backs for judgment, a completed round and an unjudged highest round, are BudgetExempt, so the Bouncer row's own budget check is the segment's one budget on judged rounds.
+//     The gate-failed exit is counted against this row's own MaxBounces.
 //     A round names two strands, the reviewer's and the fixer's, and each round's ready marker is derived from BurlerDeps.AnchorPath with burlermarker.Path.
 //     Each attempt picks both halves' models from BurlerDeps.Models for the round.
 //     A runner error wrapping burlerengine.ErrHalfNotStopped returns without archiving and without the retry, since a live half may still write the round's files.

@@ -91,6 +91,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -242,6 +243,7 @@ func (run *Run) Wait() (Result, error) {
 	// and every return leaves none behind.
 	run.clearWait()
 	defer run.endWait()
+	run.armHoldGuard()
 
 	// The signal cursor starts at the prompt offset on every path, never at run.offset, which an attach may start later.
 	run.shadow = sessionShadow{active: true, cursor: run.state.PromptOffset}
@@ -250,7 +252,7 @@ func (run *Run) Wait() (Result, error) {
 	for tick := 1; ; tick++ {
 		outcome, held, err := run.pollEventsTick()
 		run.syncShellWait()
-		if err == nil && run.eventsRead {
+		if err == nil && (run.eventsRead || run.turnStartRead) {
 			run.endHeldWait()
 		}
 		if err != nil {
@@ -269,7 +271,10 @@ func (run *Run) Wait() (Result, error) {
 				// A turn end without every output file never ends the run.
 				// Log it so the durable trace records each one, and keep polling the same agent.
 				logger.Info("shuttle: turn end held, output files missing", "strandGUID", run.state.StrandGUID, "offset", held.offset, "lastAssistantMessage", held.message)
-				run.beginHeldWait()
+				// A turn start read past this turn end in the same batch means the next turn is already under way, so no hold shows.
+				if !run.turnStartRead {
+					run.beginHeldWait(held.offset)
+				}
 				run.notifyHeld(held)
 			} else if outcome != "" && (outcome != OutcomeDone || len(run.gate) == 0) {
 				// Not a gated Done: finalize exactly as this branch always has.
@@ -624,6 +629,7 @@ func (run *Run) abandonStartup(outcome Outcome, cause error) (Result, error) {
 // Returns outcome == "" and a nil held turn end when there is nothing new to classify yet.
 func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	run.eventsRead = false
+	run.turnStartRead = false
 	startOffset := run.offset
 	data, newOffset, err := readEventsFrom(run.state.EventsPath, startOffset)
 	if err != nil {
@@ -641,6 +647,14 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	// these bytes — a parse failure must leave them for the next tick to
 	// retry rather than discarding them unread.
 	run.offset = newOffset
+	guardArmed := run.holdGuard
+	turnStarts := turnStartOffsets(run.runner.engine, data, startOffset)
+	if len(turnStarts) > 0 {
+		run.holdGuard = false
+		run.promptTurnStarted = true
+	}
+	// The reference is the held turn end on show; a held turn end this tick returns replaces it below.
+	run.turnStartRead = run.wait.heldOffset > 0 && turnStartAfter(turnStarts, run.wait.heldOffset)
 	if len(events) == 0 {
 		return run.expiredTurnEnd()
 	}
@@ -659,7 +673,70 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	if allOutputFilesExist(run.spec.OutputFiles) {
 		return OutcomeDone, nil, nil
 	}
-	return "", &heldTurnEnd{message: last.Message, offset: offsetPastEvent(data, startOffset, newOffset, last)}, nil
+	held := &heldTurnEnd{message: last.Message, offset: offsetPastEvent(data, startOffset, newOffset, last)}
+	if guardArmed && !slices.ContainsFunc(turnStarts, func(start int64) bool { return start < held.offset }) {
+		logger.Warn("shuttle: turn end before the prompt's turn start; not held", "strandGUID", run.state.StrandGUID, "offset", held.offset, "lastAssistantMessage", held.message)
+		return "", nil, nil
+	}
+	run.turnStartRead = turnStartAfter(turnStarts, held.offset)
+	return "", held, nil
+}
+
+// turnStartAfter reports whether any of the turn-start offsets lies past offset.
+func turnStartAfter(turnStarts []int64, offset int64) bool {
+	return slices.ContainsFunc(turnStarts, func(start int64) bool { return start > offset })
+}
+
+// armHoldGuard sets the hold guard for a Wait from the events file as it stands.
+// A turn start before the prompt offset proves the provider writes turn starts for typed turns, so the guard arms;
+// a turn start from the prompt offset up to the run's read offset, which a Wait attached past the prompt's turn start sees, lifts it at once.
+// An engine without SessionSignalParser, a zero prompt offset, a file with no turn start before the prompt offset and an unreadable file leave the guard off.
+func (run *Run) armHoldGuard() {
+	run.holdGuard, run.promptTurnStarted = false, false
+	promptOffset := run.state.PromptOffset
+	if promptOffset <= 0 {
+		return
+	}
+	data, _, err := readEventsFrom(run.state.EventsPath, 0)
+	if err != nil {
+		return
+	}
+	promptOffset = min(promptOffset, int64(len(data)))
+	if len(turnStartOffsets(run.runner.engine, data[:promptOffset], 0)) == 0 {
+		return
+	}
+	run.holdGuard = true
+	if end := min(max(run.offset, promptOffset), int64(len(data))); len(turnStartOffsets(run.runner.engine, data[promptOffset:end], promptOffset)) > 0 {
+		run.holdGuard, run.promptTurnStarted = false, true
+	}
+}
+
+// turnStartOffsets returns the events-file offset just past the line of each turn start the engine reads from data, in file order.
+// data is the slice of the events file that begins at startOffset.
+// An engine without SessionSignalParser reads none.
+func turnStartOffsets(engine Engine, data []byte, startOffset int64) []int64 {
+	parser, ok := engine.(SessionSignalParser)
+	if !ok {
+		return nil
+	}
+	signals, _ := parser.ParseSessionSignals(data)
+	var offsets []int64
+	searchFrom := 0
+	for _, signal := range signals {
+		at := bytes.Index(data[searchFrom:], signal.Raw)
+		if at < 0 || len(signal.Raw) == 0 {
+			continue
+		}
+		end := searchFrom + at + len(signal.Raw)
+		if newline := bytes.IndexByte(data[end:], '\n'); newline >= 0 {
+			end += newline + 1
+		}
+		searchFrom = end
+		if signal.Kind == SessionSignalTurnStart {
+			offsets = append(offsets, startOffset+int64(end))
+		}
+	}
+	return offsets
 }
 
 // heldTurnEnd is a plain Stop or a live ask that left the run's output files missing, so the run is held rather than ended.

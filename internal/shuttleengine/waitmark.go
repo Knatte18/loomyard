@@ -53,6 +53,8 @@ type waitState struct {
 	shellStart time.Time
 	// heldStart is when the held-turn-end wait began, the zero time while it is off.
 	heldStart time.Time
+	// heldOffset is the events-file offset just past the held turn end on show, zero while the held wait is off.
+	heldOffset int64
 	// shown is the label currently on disk and on screen, empty when nothing is.
 	shown string
 }
@@ -189,13 +191,13 @@ func (run *Run) shellWaitActive() bool {
 	return pastBound
 }
 
-// beginHeldWait shows `held` from the run clock's now, when a held turn end is read.
-// A hold already on show keeps its start.
-func (run *Run) beginHeldWait() {
+// beginHeldWait shows `held` from the run clock's now, when a held turn end is read, and records offset, the events-file offset just past that turn end's line.
+// A hold already on show keeps its start and its offset.
+func (run *Run) beginHeldWait(offset int64) {
 	if !run.wait.heldStart.IsZero() {
 		return
 	}
-	run.wait.heldStart = run.clock.Now()
+	run.wait.heldStart, run.wait.heldOffset = run.clock.Now(), offset
 	run.showWait()
 }
 
@@ -204,7 +206,7 @@ func (run *Run) endHeldWait() {
 	if run.wait.heldStart.IsZero() {
 		return
 	}
-	run.wait.heldStart = time.Time{}
+	run.wait.heldStart, run.wait.heldOffset = time.Time{}, 0
 	run.showWait()
 }
 

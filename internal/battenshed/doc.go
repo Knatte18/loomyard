@@ -21,6 +21,8 @@
 // The quiet notice goes when every live run has been idle for the quiet window and no verify or shuttle wait marker is live, and says how long the agents have been idle;
 // with no live run found, it falls back to "no agent activity readable" counted from the later of the child's newest history entry and since.
 // Both episodes are keyed by the newest agent activity, so they end when an agent is active again, with `since` on the line as content only.
+// Both idle clocks measure awake time, read through the injected Awake seam: suspended time observed between two checks is subtracted until the newest activity moves.
+// A sleep under a minute still counts as idle, and the subtraction can delay a notice and never raise one earlier.
 // Limits: a run whose pid is dead is not read, a run that keeps writing or hangs in a live wait is never quiet, and both notices are informational.
 // A marker under the row's scratch directory records the notices sent, and only those queued, so a batten restart sends the notices not yet sent and never one already sent.
 // Every notice carries `since` and `history`, and a notice for a parked stop (blocked, paused, failed, awaiting) carries the driver's stop report, or `report none yet`.
@@ -35,7 +37,8 @@
 // A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window, or by an API-error notice when the stall is one; an operator attaches to the child's session to tell the cases apart.
 //
 // A batten run starts with "lyx batten run <slug>" in a terminal, or with "--window" in its own tmux window of the orch's reed session, which returns at once.
-// The flag only chooses where the same run executes: the window lives as long as the reed session, and a second batten for the slug is refused by the run's own lock inside the window, in batten's own log.
+// The tmux window lives as long as the reed session, and a second batten for the slug is refused by the run's own lock inside the window, in batten's own log.
+// "--window" also asks the run to open the operator's terminal window: the InnerRun row opens it once per run through its OpenTerminal seam, after the child's first successful spawn, gated by a once-marker in its scratch directory.
 //
 // The InnerRun row waits on its child inside its call rather than returning once per poll.
 // Every poll_interval_s it stats the child's status file, and decodes it when its modification time differs from the last decode or notice_probe_s has passed.

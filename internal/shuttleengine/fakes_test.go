@@ -428,6 +428,8 @@ type skillFakeEngine struct {
 
 	Timeout time.Duration
 	Reports []SkillLoadReport
+	// OnClassify, when set, runs after ClassifySkillLoad picked its report, once the load turn's end has been read.
+	OnClassify func()
 
 	mu         sync.Mutex
 	classified int
@@ -440,11 +442,14 @@ func (e *skillFakeEngine) SkillLoadMessage(skills []string) string {
 func (e *skillFakeEngine) ClassifySkillLoad(_ Event, _ []string) SkillLoadReport {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if len(e.Reports) == 0 {
-		return SkillLoadReport{}
+	var report SkillLoadReport
+	if len(e.Reports) > 0 {
+		report = e.Reports[min(e.classified, len(e.Reports)-1)]
+		e.classified++
 	}
-	report := e.Reports[min(e.classified, len(e.Reports)-1)]
-	e.classified++
+	if e.OnClassify != nil {
+		e.OnClassify()
+	}
 	return report
 }
 
