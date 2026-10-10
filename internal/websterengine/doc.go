@@ -417,6 +417,15 @@
 // A report with no begin-batch record is archived by begin-batch itself, which proceeds and returns the archive path as BeginResult.ArchivedReport;
 // only a batch with no record is archived this way, and a recorded batch's report is never archived by begin-batch.
 //
+// A plan edited between runs normally refuses the next run with ErrFingerprintMismatch, and `--fresh` is the escape that archives the record.
+// RunOptions.AutoRebaseline, which only the loom's Webster row sets, is the second: Run rebaselines the changed plan on entry, before anything else acts on the run.
+// It names every changed card file's number as Rebaseline's cards, so it accepts exactly what the operator's `--card` flags accept: a follow-up card after the last begun batch, an unbegun card's edit, and an in-flight card as an amendment recorded unrendered for the next recovery to render;
+// a done card's edit, a begun batch's card-set change, a failed batch with uncheckable findings and an overview change outside its Card Index are refused.
+// An accepted rebaseline is saved before the batch loop starts, so a crash after it re-enters on a matching fingerprint, and the fabric receives it with the run's next sync.
+// Every error of the auto path wraps ErrAutoRebaseline, and its refusals name RunDeps.ReentryStep through Rebaseline's step-keyed texts, never `lyx webster rebaseline`; the shed adapter maps them to Stuck.
+// The accepted rebaseline's warning is logged once at Warn, leads RunResult.Warnings, opens a stuck outcome's reason and every error Run returns afterwards, and the plan refusals that follow it (validation, zero batches, quarry) wrap ErrAutoRebaseline too.
+// `--fresh` beside the option keeps its archive path and runs no rebaseline, and a run without the option keeps ErrFingerprintMismatch.
+//
 // # The verify-gate fixer fork
 //
 // A gate failure reaches Merriam as a `Gate findings recorded at …` message naming the verify-gate report (VerifyGateReportPath).
@@ -474,7 +483,7 @@
 // For each label the note states the bound, that the wait stopped waiting on the shell at a turn end, that lyx did not stop the shell, what ends it and the run's final outcome.
 // Each label is also a `RunResult.Warnings` entry with the same wording on every outcome that returns a `RunResult` (done, stuck and paused), after the verify-gate demotion, so the warning and the note cannot drift;
 // an error outcome returns no `RunResult`, so the note alone carries it.
-// summary.md's "Background shells waited out" section (AppendBackgroundShells) stays done-only.
+// summary.md's "Background shells waited out" section (AppendBackgroundShells) stays done-only, as does its "Plan rebaselined" section, which names an accepted auto-rebaseline beside the "Audit warnings" section so the summary a step's Done points at carries it.
 //
 // # Planning a reset
 //

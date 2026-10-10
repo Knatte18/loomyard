@@ -85,6 +85,15 @@ func AppendBackgroundShells(websterDir string, labels []string) error {
 	return appendToSummary(websterDir, "background shells", b.String())
 }
 
+// appendRebaselineWarning appends warning to the summary as its "Plan rebaselined" section, so the summary a step's Done points at names the rebaseline the run began with.
+// An empty warning appends nothing.
+func appendRebaselineWarning(websterDir, warning string) error {
+	if warning == "" {
+		return nil
+	}
+	return appendToSummary(websterDir, "plan rebaselined", "\n\n## Plan rebaselined\n\n"+warning+"\n")
+}
+
 // writeTriageList writes one titled sub-list of identities, or nothing when ids is empty.
 func writeTriageList(b *strings.Builder, title string, ids []string) {
 	if len(ids) == 0 {

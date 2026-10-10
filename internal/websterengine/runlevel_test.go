@@ -698,6 +698,370 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 	}
 }
 
+// TestRun_AutoRebaseline drives RunOptions.AutoRebaseline over a plan edited after batch 1 began.
+// An accepted rebaseline is saved before Master starts, its warning rides the result, the summary and the log once, and it opens a stuck reason and every error that follows;
+// each refusal, transient and plan refusal after it wraps ErrAutoRebaseline, names re-stepping the row and neither manual verb, and starts nothing;
+// Fresh beside the option keeps its archive path, and an in-flight card's edit is recorded for the next recovery to render.
+// The log capture swaps the logger's process-global output, so no subtest runs in parallel.
+func TestRun_AutoRebaseline(t *testing.T) {
+	const session = "master-session-auto"
+	const warningLead = "webster: the plan changed since the run recorded it and was rebaselined on entry"
+
+	// seed builds a run of numCards cards whose state holds batch 1, shaped by shape (nil keeps it done), over the plan as it stands.
+	seed := func(t *testing.T, numCards int, shape func(bs *websterengine.BatchState)) *runFixture {
+		t.Helper()
+		fx := newRunFixture(t, numCards)
+		fx.Deps.ReentryStep = reStep
+		bs := &websterengine.BatchState{
+			Slug: "batch1", Cards: []string{"01-batch1"}, Kind: "fork", SessionID: session, StartSHA: fx.Git.head,
+			Terminal: true, Status: websterengine.DigestStatusDone,
+			Digest:     &websterengine.Digest{Batch: "01-batch1", Status: websterengine.DigestStatusDone, HeadSHA: fx.Git.head},
+			CardHashes: map[string]string{"01-batch1": fileSHA(t, filepath.Join(fx.PlanDir, "01-batch1.md"))},
+		}
+		if shape != nil {
+			shape(bs)
+		}
+		seedMatchingState(t, fx, &websterengine.State{Batches: map[int]*websterengine.BatchState{1: bs}})
+		return fx
+	}
+	// addCards rewrites the plan to total cards: cards 2 to total are follow-up cards, each with its Card Index line.
+	addCards := func(t *testing.T, fx *runFixture, total int) {
+		t.Helper()
+		plankit.Write(t, fx.PlanDir, runPlan(1, total))
+	}
+	// masterEnds scripts a Master that ends with outcomeYAML after onWait, auditing forks fork transcripts.
+	masterEnds := func(t *testing.T, fx *runFixture, outcomeYAML string, forks int, gate *shuttleengine.GateOutcome, onWait func()) {
+		t.Helper()
+		fx.Starter.handle = &runFakeHandle{
+			strandGUID: "master-strand-auto",
+			result: shuttleengine.Result{
+				Outcome: shuttleengine.OutcomeDone, SessionID: session, RunDir: "/run/dir/auto",
+				ForkAudit: &shuttleengine.ForkAudit{Forks: forkReports(forks)}, Gate: gate,
+			},
+			onWait: func() {
+				if onWait != nil {
+					onWait()
+				}
+				writeContractFiles(t, fx, outcomeYAML, "# Shipped\n\nAll good.\n")
+			},
+		}
+		seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-auto", session)
+	}
+	autoRun := func(fx *runFixture) (websterengine.RunResult, error) {
+		return websterengine.Run(fx.Deps, websterengine.RunOptions{AutoRebaseline: true})
+	}
+	requireNoManualVerb := func(t *testing.T, err error) {
+		t.Helper()
+		for _, manual := range []string{"lyx webster run", "lyx webster rebaseline"} {
+			if strings.Contains(err.Error(), manual) {
+				t.Errorf("Run() error = %q; want it to name neither manual verb, found %q", err, manual)
+			}
+		}
+	}
+
+	t.Run("a follow-up card continues over the kept batches and reports the rebaseline", func(t *testing.T) {
+		logs := captureLogs(t)
+		fx := seed(t, 1, nil)
+		addCards(t, fx, 2)
+		masterEnds(t, fx, "outcome: done\nstuck_reason: null\nbatches_done: 2\n", 2, nil, func() {
+			st := loadRunState(t, fx)
+			if want := mustFingerprint(t, fx.PlanDir); st.PlanFingerprint != want {
+				t.Errorf("on-disk PlanFingerprint = %q when Master starts; want the restamped %q", st.PlanFingerprint, want)
+			}
+			st.Batches[2] = doneBatch("batch2", session)
+			if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
+				t.Fatalf("SaveState() error = %v", err)
+			}
+		})
+
+		result, err := autoRun(fx)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if result.Outcome != "done" || len(result.Warnings) == 0 || !strings.HasPrefix(result.Warnings[0], warningLead) || !strings.Contains(result.Warnings[0], "02-batch2.md") {
+			t.Errorf("RunResult = %+v; want done with the rebaseline warning naming 02-batch2.md first", result)
+		}
+		if got := readSummary(t, fx); !strings.Contains(got, "## Plan rebaselined") || !strings.Contains(got, "02-batch2.md") {
+			t.Errorf("summary.md = %q; want a Plan rebaselined section naming 02-batch2.md", got)
+		}
+		if got := strings.Count(logs.String(), "plan rebaselined on entry"); got != 1 {
+			t.Errorf("logged the rebaseline %d times; want exactly one Warn line in %q", got, logs.String())
+		}
+		if fx.Starter.callCount() != 1 || !strings.Contains(fx.Starter.startCalls[0].Prompt, "batch2") {
+			t.Errorf("Starter calls = %d; want one Master prompt naming the new card batch2", fx.Starter.callCount())
+		}
+		if bs := loadRunState(t, fx).Batches[1]; bs.Status != websterengine.DigestStatusDone || !bs.Terminal {
+			t.Errorf("batch 1 = %+v; want the done record kept", bs)
+		}
+	})
+
+	t.Run("a refusal or transient wraps ErrAutoRebaseline, names re-stepping the row and starts nothing", func(t *testing.T) {
+		cases := []struct {
+			name  string
+			cards int
+			shape func(bs *websterengine.BatchState)
+			edit  func(t *testing.T, fx *runFixture)
+			// wantIs is a sentinel the error also wraps.
+			wantIs error
+			want   []string
+		}{
+			{
+				name:  "a done card's edit",
+				cards: 1,
+				edit:  func(t *testing.T, fx *runFixture) { addCardUses(t, fx.PlanDir, 1, "base.txt") },
+				want:  []string{"batch 1 card 01-batch1 changed since it was begun", "fix the plan: move a done card's edit", "then " + reStep},
+			},
+			{
+				name:  "a begun batch's card-set change",
+				cards: 2,
+				edit: func(t *testing.T, fx *runFixture) {
+					body, err := os.ReadFile(filepath.Join(fx.PlanDir, "01-batch1.md"))
+					if err != nil {
+						t.Fatalf("read card 1: %v", err)
+					}
+					if err := os.Remove(filepath.Join(fx.PlanDir, "01-batch1.md")); err != nil {
+						t.Fatalf("remove card 1: %v", err)
+					}
+					if err := os.WriteFile(filepath.Join(fx.PlanDir, "01-renamed.md"), []byte(strings.ReplaceAll(string(body), "batch1", "renamed")), 0o644); err != nil {
+						t.Fatalf("write renamed card 1: %v", err)
+					}
+					overview := filepath.Join(fx.PlanDir, "00-overview.md")
+					data, err := os.ReadFile(overview)
+					if err != nil {
+						t.Fatalf("read overview: %v", err)
+					}
+					if err := os.WriteFile(overview, []byte(strings.Replace(string(data), "1 — batch1 —", "1 — renamed —", 1)), 0o644); err != nil {
+						t.Fatalf("edit overview: %v", err)
+					}
+				},
+				want: []string{"batch 1 recorded [01-batch1]", "[01-renamed]", "or 1) lyx webster reset --to start; 2) " + reStep},
+			},
+			{
+				name:  "a failed batch with uncheckable findings",
+				cards: 1,
+				shape: func(bs *websterengine.BatchState) {
+					bs.Status = websterengine.DigestStatusFailed
+					bs.Uncheckable = []string{"fabric-reference: cat FABRICREF/webster/state.json"}
+				},
+				edit: func(t *testing.T, fx *runFixture) { addCardUses(t, fx.PlanDir, 1, "base.txt") },
+				want: []string{"cannot check", "or 1) lyx webster reset --to start; 2) " + reStep},
+			},
+			{
+				name:  "an overview change outside its Card Index",
+				cards: 1,
+				edit: func(t *testing.T, fx *runFixture) {
+					overview := filepath.Join(fx.PlanDir, "00-overview.md")
+					data, err := os.ReadFile(overview)
+					if err != nil {
+						t.Fatalf("read overview: %v", err)
+					}
+					if err := os.WriteFile(overview, []byte(strings.Replace(string(data), "Framing.", "Framing, edited.", 1)), 0o644); err != nil {
+						t.Fatalf("edit overview: %v", err)
+					}
+				},
+				want: []string{"00-overview.md changed outside its Card Index", "then " + reStep},
+			},
+			{
+				name:  "a follow-up card ordered before a card it uses",
+				cards: 1,
+				edit: func(t *testing.T, fx *runFixture) {
+					addCards(t, fx, 3)
+					addCardUses(t, fx.PlanDir, 2, "internal/batch3/new.go")
+				},
+				wantIs: websterengine.ErrBatchOrder,
+				want:   []string{"fix the plan's card order", "then " + reStep},
+			},
+			{
+				name:  "a failed save of the restamped state",
+				cards: 1,
+				edit: func(t *testing.T, fx *runFixture) {
+					skipWithoutPermissionBits(t)
+					addCards(t, fx, 2)
+					websterDir := fx.Deps.Geom.WebsterDir
+					if err := os.Chmod(websterDir, 0o555); err != nil {
+						t.Fatalf("make the webster dir read-only: %v", err)
+					}
+					t.Cleanup(func() { _ = os.Chmod(websterDir, 0o755) })
+				},
+				want: []string{"way forward: transient, " + reStep},
+			},
+			{
+				name:  "a failed restamp",
+				cards: 1,
+				edit: func(t *testing.T, fx *runFixture) {
+					addCards(t, fx, 2)
+					store := filepath.Join(fx.Deps.Geom.WebsterDir, "plan-baseline")
+					if err := os.RemoveAll(store); err != nil {
+						t.Fatalf("remove the plan baseline store: %v", err)
+					}
+					if err := os.WriteFile(store, []byte("not a directory"), 0o644); err != nil {
+						t.Fatalf("plant a file in place of the plan baseline store: %v", err)
+					}
+				},
+				want: []string{"way forward: transient, " + reStep},
+			},
+			{
+				name:  "a failed read of Merriam's base",
+				cards: 1,
+				edit: func(t *testing.T, fx *runFixture) {
+					addCards(t, fx, 2)
+					if err := os.Mkdir(filepath.Join(fx.Worktree, "CLAUDE.md"), 0o755); err != nil {
+						t.Fatalf("plant a directory in place of CLAUDE.md: %v", err)
+					}
+				},
+				want: []string{"CLAUDE.md", "way forward: transient, " + reStep},
+			},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				fx := seed(t, tc.cards, tc.shape)
+				fingerprint := loadRunState(t, fx).PlanFingerprint
+				tc.edit(t, fx)
+
+				_, err := autoRun(fx)
+				if !errors.Is(err, websterengine.ErrAutoRebaseline) {
+					t.Fatalf("Run() error = %v; want errors.Is(err, ErrAutoRebaseline)", err)
+				}
+				if tc.wantIs != nil && !errors.Is(err, tc.wantIs) {
+					t.Errorf("Run() error = %v; want it to wrap %v too", err, tc.wantIs)
+				}
+				for _, want := range tc.want {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("Run() error = %q; want it to contain %q", err, want)
+					}
+				}
+				requireNoManualVerb(t, err)
+				if got := fx.Starter.callCount(); got != 0 {
+					t.Errorf("Starter calls = %d; want none after the refusal", got)
+				}
+				if got := loadRunState(t, fx).PlanFingerprint; got != fingerprint {
+					t.Errorf("PlanFingerprint = %q; want the refused rebaseline to leave %q", got, fingerprint)
+				}
+			})
+		}
+	})
+
+	t.Run("Master's stuck outcome opens with the rebaseline warning", func(t *testing.T) {
+		fx := seed(t, 1, nil)
+		addCards(t, fx, 2)
+		masterEnds(t, fx, "outcome: stuck\nstuck_reason: \"blocked on batch 2\"\nbatches_done: 1\n", 1, nil, nil)
+
+		result, err := autoRun(fx)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if result.Outcome != "stuck" || !strings.HasPrefix(result.StuckReason, warningLead) || !strings.HasSuffix(result.StuckReason, "blocked on batch 2") {
+			t.Errorf("RunResult = %+v; want stuck with a reason opening with the rebaseline warning", result)
+		}
+	})
+
+	t.Run("a done demoted by a failed verify gate opens with the rebaseline warning", func(t *testing.T) {
+		fx := seed(t, 1, nil)
+		addCards(t, fx, 2)
+		masterEnds(t, fx, "outcome: done\nstuck_reason: null\nbatches_done: 2\n", 2, &shuttleengine.GateOutcome{Reason: "fix commit rejected"}, func() {
+			st := loadRunState(t, fx)
+			st.Batches[2] = doneBatch("batch2", session)
+			if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
+				t.Fatalf("SaveState() error = %v", err)
+			}
+		})
+
+		result, err := autoRun(fx)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if result.Outcome != "stuck" || !strings.HasPrefix(result.StuckReason, warningLead) || !strings.Contains(result.StuckReason, "verify gate failed: fix commit rejected") {
+			t.Errorf("RunResult = %+v; want a demoted stuck whose reason opens with the rebaseline warning", result)
+		}
+	})
+
+	t.Run("pending audit findings after the rebaseline open with its warning and keep their sentinel", func(t *testing.T) {
+		fx := seed(t, 1, nil)
+		st := loadRunState(t, fx)
+		st.PendingAuditFindings = []websterengine.PendingAuditFinding{{ID: "sess/parent:write:1", Class: "parent-write", Detail: "master wrote a tracked file"}}
+		if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
+			t.Fatalf("SaveState() error = %v", err)
+		}
+		addCards(t, fx, 2)
+
+		_, err := autoRun(fx)
+		if !errors.Is(err, websterengine.ErrPendingAuditFindings) || !strings.HasPrefix(err.Error(), warningLead) {
+			t.Fatalf("Run() error = %v; want ErrPendingAuditFindings opening with the rebaseline warning", err)
+		}
+		if got := fx.Starter.callCount(); got != 0 {
+			t.Errorf("Starter calls = %d; want none", got)
+		}
+	})
+
+	t.Run("a blocking plan-validation finding after the rebaseline blocks the row", func(t *testing.T) {
+		fx := seed(t, 1, nil)
+		writeWorktreeFile(t, fx.Worktree, "sub/a.go", "package sub\n\nfunc Foo() {}\n")
+		addCards(t, fx, 2)
+		addCardUses(t, fx.PlanDir, 2, "sub#Missing")
+
+		_, err := autoRun(fx)
+		if !errors.Is(err, websterengine.ErrAutoRebaseline) || !strings.HasPrefix(err.Error(), warningLead) {
+			t.Fatalf("Run() error = %v; want ErrAutoRebaseline opening with the rebaseline warning", err)
+		}
+		if !strings.Contains(err.Error(), "glyph-not-found") || !strings.Contains(err.Error(), "then "+reStep) {
+			t.Errorf("Run() error = %q; want the finding and re-stepping the row", err)
+		}
+		requireNoManualVerb(t, err)
+		if got := fx.Starter.callCount(); got != 0 {
+			t.Errorf("Starter calls = %d; want none", got)
+		}
+	})
+
+	t.Run("Fresh beside the option archives the record and runs no rebaseline", func(t *testing.T) {
+		logs := captureLogs(t)
+		fx := seed(t, 1, nil)
+		st := loadRunState(t, fx)
+		st.RunGUID = "stale-run"
+		if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
+			t.Fatalf("SaveState() error = %v", err)
+		}
+		addCards(t, fx, 2)
+		diedMaster(t, fx, "fresh")
+
+		_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{Fresh: true, AutoRebaseline: true})
+		requireReachedMaster(t, fx, err)
+		if strings.Contains(err.Error(), "rebaselined") || strings.Contains(logs.String(), "plan rebaselined on entry") {
+			t.Errorf("Run() error = %q, log = %q; want no rebaseline beside Fresh", err, logs.String())
+		}
+		requireReinitialisedRun(t, fx)
+	})
+
+	t.Run("an in-flight card's edit is recorded unrendered and a recovery renders it", func(t *testing.T) {
+		fx := seed(t, 1, func(bs *websterengine.BatchState) {
+			bs.Terminal, bs.Status, bs.Digest = false, "", nil
+		})
+		addCardUses(t, fx.PlanDir, 1, "base.txt")
+		diedMaster(t, fx, "crash")
+
+		_, err := autoRun(fx)
+		if !errors.Is(err, websterengine.ErrMasterDied) || !strings.HasPrefix(err.Error(), warningLead) {
+			t.Fatalf("Run() error = %v; want the Master death opening with the rebaseline warning", err)
+		}
+		st := loadRunState(t, fx)
+		want := []websterengine.AmendedCard{{Card: "01-batch1", Rendered: false}}
+		if got := st.Batches[1].AmendedCards; !slices.Equal(got, want) {
+			t.Fatalf("AmendedCards = %+v; want %+v", got, want)
+		}
+
+		rf := newRecoverFixture(t)
+		rf.Deps.Geom.PlanDir = fx.PlanDir
+		rf.Deps.Batches = []batcher.Batch{{Cards: []planparser.Card{{Number: 1, Slug: "batch1", Title: "batch1", Intent: "placeholder card."}}}}
+		rf.Deps.State = st
+		clk := &recoverFakeClock{now: time.Unix(0, 0)}
+		if _, spawned, err := websterengine.RecoverSpawnOrAttach(rf.Deps, 1, clk); err != nil || !spawned {
+			t.Fatalf("RecoverSpawnOrAttach() = spawned %v, %v; want a spawned recovery", spawned, err)
+		}
+		if !strings.Contains(rf.Engine.LastPrompt, "card 01-batch1 was amended after the previous attempt began") {
+			t.Errorf("recovery prompt lacks the amended card instruction")
+		}
+	})
+}
+
 // TestRun_EntryValidationReachesMaster asserts a run whose state or plan could trip the entry
 // validation gate — a completed or begun Create card whose target already landed, a forthcoming
 // Create target another card Uses, an informational-only findings set, a first init — still reaches the

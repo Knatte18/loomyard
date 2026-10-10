@@ -89,12 +89,18 @@ func recordPlanFileHashes(t *testing.T, deps *websterengine.RebaselineDeps) {
 	deps.State.PlanFileHashes = hashes
 }
 
-// makeUnreadable removes path's read permission, skipping the test where permissions do not bind: on Windows and for root.
-func makeUnreadable(t *testing.T, path string) {
+// skipWithoutPermissionBits skips the test where file permissions do not bind: on Windows and for root.
+func skipWithoutPermissionBits(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-		t.Skip("file permissions do not make a file unreadable here")
+		t.Skip("file permissions do not bind here")
 	}
+}
+
+// makeUnreadable removes path's read permission, skipping the test where permissions do not bind.
+func makeUnreadable(t *testing.T, path string) {
+	t.Helper()
+	skipWithoutPermissionBits(t)
 	if err := os.Chmod(path, 0); err != nil {
 		t.Fatalf("make %s unreadable: %v", path, err)
 	}

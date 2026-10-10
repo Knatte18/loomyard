@@ -179,8 +179,11 @@ func stepOrRun(step string) string {
 // clear the re-renderable prompts dir, and re-init, rather than refusing with
 // ErrFingerprintMismatch.
 // It also discards pending audit findings, on an unchanged plan too, once their suspect paths match the run's start commit.
+// AutoRebaseline lets a plan that changed since the run recorded it be rebaselined on entry instead of refused with ErrFingerprintMismatch, accepting exactly what `lyx webster rebaseline` accepts when it names every changed card;
+// it applies only without Fresh, and `lyx webster run` never sets it.
 type RunOptions struct {
-	Fresh bool
+	Fresh          bool
+	AutoRebaseline bool
 }
 
 // RunResult is what one successful Run call hands back: the parsed outcome.yaml's judgment
@@ -343,7 +346,16 @@ func countBegunForkBatches(st *State, sessionID string) int {
 // and an undispositioned correctness finding demotes the outcome to stuck, the same way a done whose verify gate did not pass does.
 // Run hands Merriam's spawn the plan-level verify as a must-pass gate entry named `verify` (NewVerifyGate), so a red tree re-prompts Merriam's live session and a gate that never passes ends the run stuck.
 // Every recorded audit warning is appended to summary.md's "Audit warnings" section when that file exists.
-func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
+// With RunOptions.AutoRebaseline, a changed plan is rebaselined and saved before anything else acts on the run, and the warning naming the accepted cards joins RunResult.Warnings, summary.md's "Plan rebaselined" section and a stuck outcome's reason;
+// every error Run returns after the accepted rebaseline opens with that warning, and each plan refusal that follows it names re-stepping the row and wraps ErrAutoRebaseline.
+func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
+	var rebaselineWarning string
+	defer func() {
+		if err != nil && rebaselineWarning != "" {
+			err = fmt.Errorf("%s: %w", rebaselineWarning, err)
+		}
+	}()
+
 	if err := os.MkdirAll(deps.Geom.WebsterDir, 0o755); err != nil {
 		return RunResult{}, fmt.Errorf("webster: create webster dir %s: %w", deps.Geom.WebsterDir, err)
 	}
@@ -441,6 +453,8 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// a new state forms and records one with the active batchifier, any other reads its recorded one.
 	sizes := batcher.DiskSizes(deps.Geom.WorktreeRoot)
 	var batches []batcher.Batch
+	// rebaselineStep is the step the plan refusals name once an auto-rebaseline was accepted, and empty otherwise.
+	var rebaselineStep string
 	newPartition := func() ([]batcher.Batch, error) {
 		base, err := MerriamBase(deps.Geom)
 		if err != nil {
@@ -451,9 +465,19 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return nil, err
 		}
 		if len(formed) == 0 {
-			return nil, zeroBatchesError(deps.Geom.PlanDir)
+			return nil, zeroBatchesError(deps.Geom.PlanDir, "")
 		}
 		return formed, nil
+	}
+	recordedBatches := func() ([]batcher.Batch, error) {
+		recorded, err := ExecutionBatches(plan, st, deps.Batcher, sizes, batcher.StartBase{})
+		if err != nil {
+			return nil, err
+		}
+		if len(recorded) == 0 {
+			return nil, blockedByAutoRebaseline(zeroBatchesError(deps.Geom.PlanDir, rebaselineStep), rebaselineStep)
+		}
+		return recorded, nil
 	}
 
 	switch {
@@ -482,6 +506,18 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 
 	case st.PlanFingerprint != fingerprint, freshDrop:
+		if !opts.Fresh && opts.AutoRebaseline {
+			rebaselineWarning, err = autoRebaseline(deps, plan, st, sizes)
+			if err != nil {
+				return RunResult{}, err
+			}
+			rebaselineStep = deps.reentryStep()
+			batches, err = recordedBatches()
+			if err != nil {
+				return RunResult{}, err
+			}
+			break
+		}
 		if !opts.Fresh {
 			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created; %s", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint, fingerprintMismatchWayForward(st, deps.Geom.PlanDir, deps.Geom.WebsterDir, deps.reentryStep()))
 		}
@@ -519,12 +555,9 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 
 	default:
-		batches, err = ExecutionBatches(plan, st, deps.Batcher, sizes, batcher.StartBase{})
+		batches, err = recordedBatches()
 		if err != nil {
 			return RunResult{}, err
-		}
-		if len(batches) == 0 {
-			return RunResult{}, zeroBatchesError(deps.Geom.PlanDir)
 		}
 	}
 
@@ -572,7 +605,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			// Its own returned error, named for quarry rather than the plan — a gate that could not
 			// read the code has not found a plan defect to refuse the run over, matching
 			// internal/loomshed/planvalidate.go's producer-side disposition.
-			return RunResult{}, fmt.Errorf("webster: quarry could not answer validating plan %s: %w; way forward: transient, re-run `lyx webster run` once quarry answers", deps.Geom.PlanDir, err)
+			quarryStep := "re-run `lyx webster run`"
+			if rebaselineStep != "" {
+				quarryStep = rebaselineStep
+			}
+			return RunResult{}, blockedByAutoRebaseline(fmt.Errorf("webster: quarry could not answer validating plan %s: %w; way forward: transient, %s once quarry answers", deps.Geom.PlanDir, err, quarryStep), rebaselineStep)
 		}
 		return RunResult{}, err
 	}
@@ -581,7 +618,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		for i, f := range findings {
 			msgs[i] = f.Error()
 		}
-		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s; way forward: fix the named cards in the plan, run `lyx webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lyx webster run`", len(findings), strings.Join(msgs, "; "))
+		wayForward := "fix the named cards in the plan, run `lyx webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lyx webster run`"
+		if rebaselineStep != "" {
+			wayForward = "fix the named cards in the plan, then " + rebaselineStep
+		}
+		return RunResult{}, blockedByAutoRebaseline(fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s; way forward: %s", len(findings), strings.Join(msgs, "; "), wayForward), rebaselineStep)
 	}
 	// No second re-baseline: the one above already ran immediately after the rewriting call, ahead
 	// of both refusals, and persisted itself.
@@ -724,7 +765,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	switch result.Outcome {
 	case shuttleengine.OutcomeDone:
-		runResult, doneErr := finishMasterDone(deps, batches, outcomePath, summaryPath, result, freshWarnings, gateNotes)
+		runResult, doneErr := finishMasterDone(deps, batches, outcomePath, summaryPath, result, freshWarnings, rebaselineWarning, gateNotes)
 		if doneErr != nil {
 			noteExpiredShells(errorShellOutcome(doneErr, false))
 			return RunResult{}, doneErr
@@ -757,12 +798,18 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 // Every outcome that returns a RunResult (done, stuck, paused) carries one warning per expired shell, stating the run's outcome after the demotion;
 // the summary's background-shell section stays done-only.
 // freshWarnings is the run's entry-time observations, and gateNotes holds the verify gate's flaky-pass notes.
-func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPath string, result shuttleengine.Result, freshWarnings []string, gateNotes *VerifyGateNotes) (RunResult, error) {
+// rebaselineWarning is the warning of an auto-rebaseline accepted at entry, empty when none ran:
+// it leads the warnings, opens a stuck outcome's reason after the verify-gate demotion, and a done outcome writes it into summary.md's "Plan rebaselined" section.
+func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPath string, result shuttleengine.Result, freshWarnings []string, rebaselineWarning string, gateNotes *VerifyGateNotes) (RunResult, error) {
 	runResult, mapErr := mapMasterDone(deps, batches, outcomePath, summaryPath, result)
 	if mapErr != nil {
 		return RunResult{}, mapErr
 	}
-	runResult.Warnings = append(freshWarnings, runResult.Warnings...)
+	entryWarnings := freshWarnings
+	if rebaselineWarning != "" {
+		entryWarnings = append([]string{rebaselineWarning}, freshWarnings...)
+	}
+	runResult.Warnings = append(entryWarnings, runResult.Warnings...)
 	// The plan-level verify ran as a gate on Master's own session, so a flaky pass reaches the run here, after the wait.
 	flakyWarnings, err := gateNotes.Apply(deps.Geom.WebsterDir)
 	if err != nil {
@@ -779,6 +826,9 @@ func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summar
 		runResult.Outcome = outcomeStuck
 		runResult.StuckReason = verifyGateStuckReason(deps.Geom.ReportsDir, result.Gate, deps.reentryStep())
 	}
+	if rebaselineWarning != "" && runResult.Outcome == outcomeStuck {
+		runResult.StuckReason = rebaselineWarning + ": " + runResult.StuckReason
+	}
 	// Each shell the wait counted a turn end past is warned on every outcome that returns a RunResult, stating the outcome after the demotion.
 	shellOutcome := finishedShellOutcome(runResult)
 	for _, label := range result.ExpiredShells {
@@ -786,6 +836,9 @@ func finishMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summar
 	}
 	if masterDone {
 		if err := AppendBackgroundShells(deps.Geom.WebsterDir, result.ExpiredShells); err != nil {
+			return RunResult{}, err
+		}
+		if err := appendRebaselineWarning(deps.Geom.WebsterDir, rebaselineWarning); err != nil {
 			return RunResult{}, err
 		}
 	}
@@ -873,8 +926,13 @@ func batchIdentity(b batcher.Batch) (number int, slug string) {
 }
 
 // zeroBatchesError is the refusal for a plan whose cards form no batch: nothing to build is a malformed plan.
-func zeroBatchesError(planDir string) error {
-	return fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done; way forward: fix the plan's cards, run `lyx webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lyx webster run`", planDir)
+// A set step replaces the manual rebaseline and run verbs in the way forward, an empty one keeps them.
+func zeroBatchesError(planDir, step string) error {
+	wayForward := "fix the plan's cards, run `lyx webster rebaseline --card NN` naming each card you edited when state.json already records this run, then re-run `lyx webster run`"
+	if step != "" {
+		wayForward = "fix the plan's cards, then " + step
+	}
+	return fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done; way forward: %s", planDir, wayForward)
 }
 
 // verifyEveryBatchDone reloads the persisted state and confirms every batch
