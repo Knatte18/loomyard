@@ -134,9 +134,10 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 	var interval time.Duration
 
 	cmd := &cobra.Command{
-		Use:   texts.Status.Use,
-		Short: texts.Status.Short,
-		Long:  texts.Status.Long,
+		Use:         texts.Status.Use,
+		Short:       texts.Status.Short,
+		Long:        texts.Status.Long,
+		Annotations: map[string]string{clihelp.AudienceAnnotation: texts.Status.Audience},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
