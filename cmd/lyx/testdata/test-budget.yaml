@@ -52,7 +52,7 @@ internal/landingshed: 66
 internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
-internal/loomcli: 183
+internal/loomcli: 182
 internal/loomengine: 39
 internal/loomrecipe: 45
 internal/loomshed: 72
@@ -70,7 +70,7 @@ internal/planglyph: 83
 internal/planparser: 85
 internal/preflight: 7
 internal/preflightshed: 8
-internal/proc: 18
+internal/proc: 17
 internal/quarrycli: 7
 internal/reedcli: 38
 internal/reedengine: 242
@@ -83,7 +83,7 @@ internal/shedadapters: 159
 internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
-internal/shedengine: 135
+internal/shedengine: 133
 internal/shedrecipe: 99
 internal/shedrun: 22
 internal/shedtransient: 2
