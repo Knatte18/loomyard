@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/githubclient"
 )
@@ -31,7 +32,7 @@ func TestListOpenIssues_PaginatesAndExcludesPullRequests(t *testing.T) {
 		}
 		w.Header().Set("Link", fmt.Sprintf(`<%s%s?page=2>; rel="next"`, server.URL, issuesPath))
 		_, _ = w.Write([]byte(`[
-			{"number":1,"title":"one","body":"b","html_url":"https://x/1","state":"open","labels":[{"name":"bug"}],"created_at":"2026-01-02T03:04:05Z"},
+			{"number":1,"title":"one","body":"b","html_url":"https://x/1","state":"open","labels":[{"name":"bug"}],"created_at":"2026-01-02T03:04:05Z","comments":4},
 			{"number":2,"title":"pr","state":"open","pull_request":{"url":"https://x/pr"}}
 		]`))
 	}))
@@ -47,8 +48,11 @@ func TestListOpenIssues_PaginatesAndExcludesPullRequests(t *testing.T) {
 		t.Fatalf("ListOpenIssues() = %+v; want issues 1 and 3 with the pull request excluded", got)
 	}
 	if got[0].Title != "one" || got[0].Body != "b" || got[0].URL != "https://x/1" ||
-		len(got[0].Labels) != 1 || got[0].Labels[0] != "bug" || got[0].CreatedAt.Year() != 2026 {
-		t.Errorf("ListOpenIssues()[0] = %+v; want its fields carried over", got[0])
+		len(got[0].Labels) != 1 || got[0].Labels[0] != "bug" || got[0].CreatedAt.Year() != 2026 || got[0].Comments != 4 {
+		t.Errorf("ListOpenIssues()[0] = %+v; want its fields carried over, comments 4 included", got[0])
+	}
+	if got[1].Comments != 0 {
+		t.Errorf("ListOpenIssues()[1].Comments = %d; want 0 for an issue whose response omits the count", got[1].Comments)
 	}
 	if len(paths) != 2 {
 		t.Fatalf("request count = %d; want 2 pages", len(paths))
@@ -58,6 +62,71 @@ func TestListOpenIssues_PaginatesAndExcludesPullRequests(t *testing.T) {
 			t.Errorf("request = %q; want the %s path with state=open", p, issuesPath)
 		}
 	}
+}
+
+// TestListIssueComments_PaginatesOldestFirst follows the Link header across two pages, asserts the exact comments path with the created-ascending sort, and carries bodies and creation times over in order;
+// a rejected response surfaces its message.
+// It swaps the package-level NewGitHubClient seam, so it does not run in parallel.
+func TestListIssueComments_PaginatesOldestFirst(t *testing.T) {
+	t.Run("two pages in order", func(t *testing.T) {
+		commentsPath := issuesPath + "/5/comments"
+		var queries []string
+		var server *httptest.Server
+		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != commentsPath {
+				t.Errorf("request path = %q; want %q", r.URL.Path, commentsPath)
+			}
+			queries = append(queries, r.URL.RawQuery)
+			if r.URL.Query().Get("page") == "2" {
+				_, _ = w.Write([]byte(`[{"body":"third","created_at":"2026-03-01T00:00:00Z"}]`))
+				return
+			}
+			w.Header().Set("Link", fmt.Sprintf(`<%s%s?page=2>; rel="next"`, server.URL, commentsPath))
+			_, _ = w.Write([]byte(`[
+				{"body":"first","created_at":"2026-01-01T00:00:00Z","user":{"login":"a"}},
+				{"body":"second","created_at":"2026-02-01T00:00:00Z","user":{"login":"b"}}
+			]`))
+		}))
+		t.Cleanup(server.Close)
+		installGitHubClient(t, server.URL)
+
+		got, err := ListIssueComments(5)
+		if err != nil {
+			t.Fatalf("ListIssueComments() error = %v; want nil", err)
+		}
+
+		want := []IssueComment{
+			{Body: "first", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
+			{Body: "second", CreatedAt: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)},
+			{Body: "third", CreatedAt: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)},
+		}
+		if len(got) != len(want) {
+			t.Fatalf("ListIssueComments() = %+v; want %+v", got, want)
+		}
+		for i := range want {
+			if got[i].Body != want[i].Body || !got[i].CreatedAt.Equal(want[i].CreatedAt) {
+				t.Errorf("ListIssueComments()[%d] = %+v; want %+v", i, got[i], want[i])
+			}
+		}
+		if len(queries) != 2 {
+			t.Fatalf("request count = %d; want 2 pages", len(queries))
+		}
+		if !strings.Contains(queries[0], "sort=created") || !strings.Contains(queries[0], "direction=asc") {
+			t.Errorf("first query = %q; want sort=created and direction=asc", queries[0])
+		}
+	})
+
+	t.Run("rejected response", func(t *testing.T) {
+		var captured []requestCapture
+		server := newIssueServer(t, http.StatusNotFound, `{"message":"Not Found thing"}`, &captured)
+		installGitHubClient(t, server.URL)
+
+		_, err := ListIssueComments(5)
+
+		if err == nil || !strings.Contains(err.Error(), "Not Found thing") {
+			t.Errorf("ListIssueComments() error = %v; want the response message", err)
+		}
+	})
 }
 
 // TestGetIssue_ReportsPullRequestAndClosedState checks that GetIssue returns a pull request and
@@ -165,15 +234,16 @@ func TestCommentAndClose_FailedCloseNamesPostedComment(t *testing.T) {
 	}
 }
 
-// TestInboxCalls_TokenNotResolvable checks that all three calls surface an unresolvable token.
+// TestInboxCalls_TokenNotResolvable checks that every inbox call surfaces an unresolvable token.
 func TestInboxCalls_TokenNotResolvable(t *testing.T) {
 	installFailingGitHubClientFactory(t, githubclient.ErrTokenUnresolvable)
 
 	_, listErr := ListOpenIssues()
 	_, getErr := GetIssue(1)
+	_, commentsErr := ListIssueComments(1)
 	closeErr := CommentAndClose(1, "c", true)
 
-	for name, err := range map[string]error{"ListOpenIssues": listErr, "GetIssue": getErr, "CommentAndClose": closeErr} {
+	for name, err := range map[string]error{"ListOpenIssues": listErr, "GetIssue": getErr, "ListIssueComments": commentsErr, "CommentAndClose": closeErr} {
 		if !errors.Is(err, githubclient.ErrTokenUnresolvable) {
 			t.Errorf("%s() error = %v; want errors.Is(err, githubclient.ErrTokenUnresolvable)", name, err)
 		}

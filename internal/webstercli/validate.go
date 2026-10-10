@@ -143,48 +143,29 @@ func batchEntries(batches []batcher.Batch) []map[string]any {
 func (c *websterCLI) validateCmd() *cobra.Command {
 	var showBatches bool
 	cmd := &cobra.Command{
-		Use:   "validate",
-		Short: "lint the plan against the plan-format machine checks without running anything",
-		Long: `validate parses the plan at _lyx/plan and runs the plan-format machine
-check set against it -- see contracts/specs/loom-plan-spec.md's own
-"Validation checks" section for the complete list, since it is the source of
-truth rather than a count pinned here. A clean plan, or one carrying only
-informational findings, prints {"valid": true, "cards": N}, with any
-informational findings carried under their own key for visibility. A plan
-carrying at least one blocking finding prints an error envelope carrying
-every finding (check, card, detail, severity) and exits non-zero. validate is
-the lint-without-run pre-flight for a Planner or human; it never spawns
-anything -- but it is not read-only: like every bracket verb, its own
-resolve pass can canonicalize a not-yet-canonical plan: handle, rewriting
-the affected card files on disk, and validate re-baselines state.json's
-plan-fingerprint crash/resume guard afterward, so a rewrite it performs is
-never later mistaken for a foreign edit. With a run in progress, validate
-first checks the plan against the fingerprint the run recorded: a plan edited
-since then is still linted, but validate skips the re-baseline, leaves
-state.json untouched and exits non-zero naming "lyx webster rebaseline" and
-"lyx webster restore-plan", so an edit is never adopted unseen.
+		Use:         "validate",
+		Short:       "lint the plan against the plan-format machine checks without running anything",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `validate parses the plan at _lyx/plan and runs the plan-format machine checks
+listed in contracts/specs/loom-plan-spec.md's "Validation checks" section. A
+plan with no blocking finding prints {"valid": true, "cards": N}, carrying any
+informational findings under their own key; a blocking finding prints an
+error envelope with every finding (check, card, detail, severity) and exits
+non-zero.
 
-Which cards are checked follows the run's own progress, exactly as the
-automatic gate "lyx webster run" applies before forking an implementer does,
-and every envelope reports the answer it gave under a "scope" key:
+Reach for it before handing a plan to a run, or while editing one mid-run. It
+spawns nothing, though it may canonicalize a plan: handle on disk, as every
+bracket verb does. With a run in progress, a plan edited since the run
+recorded it is still linted, and validate exits non-zero naming
+"lyx webster rebaseline" and "lyx webster restore-plan".
 
-  whole-plan  no batch has been begun yet (no run at all, or a run that
-              has begun none). Every card is checked, including the
-              plan-unapproved approval gate.
-  pending     a run has begun at least one batch. The cards of every begun
-              batch are excluded from resolving: their work may have landed,
-              so a Create target may exist and a Delete or Rename-old target
-              may be gone. The Create and Rename-new targets of begun
-              batches that are not yet terminal count as forthcoming, so a
-              later card that Uses one is not reported as missing. Approval
-              is not re-checked, being already an established fact of that
-              run.
+The checked cards follow the run's progress, reported under "scope":
+"whole-plan" before any batch is begun, approval gate included, and "pending"
+once one is, leaving out the cards of begun batches.
 
-With --batches, a passing plan's envelope also carries "profile", the active
-batchifier's name, and "batches", the partition that batchifier forms for the
-plan: one {"cards": [card numbers], "estimate": peak context} per batch, in
-run order. The partition is formed fresh, as a new run would form it, even
-while a run holds its own recorded partition; nothing is started or changed.
+--batches adds "profile", the active batchifier's name, and "batches", the
+partition it forms for the plan, one {"cards": [card numbers], "estimate":
+peak context} per batch in run order, formed fresh as a new run would.
 
 Examples:
   lyx webster validate

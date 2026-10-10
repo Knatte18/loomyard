@@ -15,8 +15,9 @@ import (
 // compose-and-submit choreography into the identified strand (text must be single-line).
 func (c *shuttleCLI) sendCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "send <guid> <text>",
-		Short: "type a one-line update into a shuttle run's pane as its next turn",
+		Use:         "send <guid> <text>",
+		Short:       "type a one-line update into a shuttle run's pane as its next turn",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `send plays the engine's compose-and-submit choreography into the strand
 identified by <guid>, typing <text> as its next turn. <text> must be a
 single line: the file contract carries multiline updates — write a file and

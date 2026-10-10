@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 )
 
 // InboxIssue is the part of a GitHub issue that intake reads.
@@ -21,6 +22,14 @@ type InboxIssue struct {
 	Labels      []string
 	Open        bool
 	PullRequest bool
+	// Comments are the comments to carry onto the board, already filtered and ordered oldest first.
+	Comments []IssueComment
+}
+
+// IssueComment is one comment on an inbox issue, its author not recorded.
+type IssueComment struct {
+	Body      string
+	CreatedAt time.Time
 }
 
 // ImportRequest asks to record Issue on the board, as a new note named Slug or as a fold into the entry named Into.
@@ -129,11 +138,15 @@ func (s *Store) vocabulary() Vocabulary {
 	return *s.vocab
 }
 
-// issueContent is the link-back line followed by the issue body.
-func issueContent(issue InboxIssue) string {
+// issueContent is the link-back line followed by the issue body, then one section per comment, in order.
+// Each comment section is a commentHeading-prefixed heading naming the comment's UTC creation date, then the comment body verbatim.
+func issueContent(issue InboxIssue, commentHeading string) string {
 	content := fmt.Sprintf("Imported from [issue #%d](%s).", issue.Number, issue.URL)
 	if issue.Body != "" {
 		content += "\n\n" + issue.Body
+	}
+	for _, comment := range issue.Comments {
+		content += fmt.Sprintf("\n\n%sIssue comment, %s\n\n%s", commentHeading, comment.CreatedAt.UTC().Format(time.DateOnly), comment.Body)
 	}
 	return content
 }
@@ -180,7 +193,7 @@ func (s *Store) importNote(req ImportRequest) (ImportResult, error) {
 		"slug":   req.Slug,
 		"title":  title,
 		"brief":  req.Brief,
-		"body":   issueContent(issue),
+		"body":   issueContent(issue, "## "),
 		"kind":   KindNote,
 		"labels": labels,
 		"issues": []int{issue.Number},
@@ -211,7 +224,7 @@ func (s *Store) foldIssue(issue InboxIssue, into string) (ImportResult, error) {
 		}
 	}
 
-	body := fmt.Sprintf("## From issue #%d\n\n%s", issue.Number, issueContent(issue))
+	body := fmt.Sprintf("## From issue #%d\n\n%s", issue.Number, issueContent(issue, "### "))
 	if target.Body != "" {
 		body = target.Body + "\n\n" + body
 	}

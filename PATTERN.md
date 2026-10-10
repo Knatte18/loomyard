@@ -14,7 +14,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 ## CLI
 
-- `PATTERN-cli-cobra` — Adding a CLI module: a cobra subtree mounted under one root in `cmd/lyx/main.go`, with `Command`, `RunCLI`, a `Short` and JSON errors. (test) — [background](pattern/PATTERN-cli-cobra.md)
+- `PATTERN-cli-cobra` — Adding a CLI module: a cobra subtree under one root in `cmd/lyx/main.go`, with `Command`, `RunCLI`, `audience`, `Short` and JSON errors. (test) — [background](pattern/PATTERN-cli-cobra.md)
 - `PATTERN-cliwire-sole-wiring` — Wiring a standalone-capable CLI: `internal/cliwire` alone resolves target dir, repository root and state; a module declares a descriptor. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of `configengine.Load` (strict) or `LoadOrTemplate` (degrades to the embedded template). — [background](pattern/PATTERN-config-strictness.md)
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only through `hubreconcile.Ensure`, which owns the build stamp and the hub lock.

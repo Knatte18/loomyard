@@ -81,7 +81,7 @@ func TestRegistration_AllModulesRegistered(t *testing.T) {
 		}
 	})
 
-	// Phase 2: parse main.go and collect packages passed to root.AddCommand.
+	// Phase 2: parse main.go and collect packages passed to root.AddCommand or root.SetHelpCommand.
 	mainPath := filepath.Join(repoRoot, "cmd", "lyx", "main.go")
 	mainSrc, readErr := os.ReadFile(mainPath)
 	if readErr != nil {
@@ -100,9 +100,9 @@ func TestRegistration_AllModulesRegistered(t *testing.T) {
 		if !ok {
 			return true
 		}
-		// Look for a selector call whose method is "AddCommand" (e.g. root.AddCommand).
+		// Look for a selector call whose method is "AddCommand" or "SetHelpCommand" (e.g. root.AddCommand).
 		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok || sel.Sel.Name != "AddCommand" {
+		if !ok || (sel.Sel.Name != "AddCommand" && sel.Sel.Name != "SetHelpCommand") {
 			return true
 		}
 		// Each argument must be of the form <ident>.Command(); collect the ident name.

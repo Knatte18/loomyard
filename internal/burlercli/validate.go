@@ -22,8 +22,9 @@ const validateReviewVerb = "validate-review"
 // A relative path resolves against the seam cwd.
 func (c *burlerCLI) validateReviewCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   validateReviewVerb + " <review-file>",
-		Short: "check that a review file parses, as a round's review gate does",
+		Use:         validateReviewVerb + " <review-file>",
+		Short:       "check that a review file parses, as a round's review gate does",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `validate-review runs the parse every burler round's review gate runs on its
 review file (burlerengine.CheckReviewFile, over ParseReview): YAML frontmatter
 carrying a legal verdict and well-formed findings. It prints ok with the

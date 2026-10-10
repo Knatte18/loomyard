@@ -25,7 +25,7 @@ func Command() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "ide",
-		Short: "VS Code worktree launcher",
+		Short: "open a worktree in VS Code, or pick one from a menu",
 		RunE:  clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.Name() == "ide" {
@@ -54,8 +54,9 @@ func Command() *cobra.Command {
 	}
 
 	spawnCmd := &cobra.Command{
-		Use:   "spawn <slug>",
-		Short: "Spawn a worktree in VS Code",
+		Use:         "spawn <slug>",
+		Short:       "spawn a worktree in VS Code",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -78,8 +79,9 @@ func Command() *cobra.Command {
 	}
 
 	menuCmd := &cobra.Command{
-		Use:   "menu",
-		Short: "Open the interactive worktree picker",
+		Use:         "menu",
+		Short:       "open the interactive worktree picker",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

@@ -35,6 +35,7 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 				Cmd:       "claude --session-id abc",
 				ResumeCmd: "claude --resume abc",
 				SessionID: "abc",
+				LyxBin:    "/opt/lyx/bin/lyx",
 				PaneID:    "%1",
 				Display: render.Display{
 					Anchor: render.AnchorBelowParent,

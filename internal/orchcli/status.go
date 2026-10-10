@@ -56,8 +56,9 @@ func statusFields(st orchengine.State, cfg orchengine.Config, strand reedengine.
 // statusCmd builds the `status` subcommand.
 func (c *orchCLI) statusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status",
-		Short: "report the orchestrator strand, watcher and cycle state",
+		Use:         "status",
+		Short:       "report the orchestrator strand, watcher and cycle state",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `status prints one JSON envelope: the recorded strand and whether it is live,
 whether a watcher holds its lock, the latest context reading against the soft
 threshold (soft_threshold_tokens) and the hard cap (threshold_tokens), and the

@@ -288,8 +288,9 @@ Example:
 	}
 
 	notify := &cobra.Command{
-		Use:   "notify [slug]",
-		Short: "ask the writer to re-prompt the reviewer about the open parent-review request",
+		Use:         "notify [<slug>]",
+		Short:       "ask the writer to re-prompt the reviewer about the open parent-review request",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `notify adds one waiting notify to the latest open review request; the
 parent-review gate carries it to the live writer on its next pass. It changes
 no gate count.
@@ -308,8 +309,9 @@ Example:
 
 	var failed string
 	delivered := &cobra.Command{
-		Use:   "delivered [slug] [--failed <reason>]",
-		Short: "record that the review notice reached the reviewer, or that it could not be sent",
+		Use:         "delivered [<slug>]",
+		Short:       "record that the review notice reached the reviewer, or that it could not be sent",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `delivered stamps the latest open review request as delivered. With --failed
 it records the reason instead, logs a warning and leaves the request
 undelivered, so the wait stays visible in status.
@@ -330,8 +332,9 @@ Example:
 
 	var approveFile string
 	approve := &cobra.Command{
-		Use:   "approve [slug] [--review <file>]",
-		Short: "approve the discussion for the run's parent-review request",
+		Use:         "approve [<slug>]",
+		Short:       "approve the discussion for the run's parent-review request",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `approve records an approve verdict on the latest open review request, so the
 parent-review gate lets the run through. --review copies a review file
 into the round; a relative path resolves against the current directory.
@@ -356,8 +359,9 @@ Example:
 	approve.Flags().StringVar(&approveFile, "review", "", "review file to copy into the round")
 
 	reject := &cobra.Command{
-		Use:   "reject [slug] <review-file>",
-		Short: "reject the discussion with the findings in a review file, re-prompting the writer",
+		Use:         "reject [<slug>] <review-file>",
+		Short:       "reject the discussion with the findings in a review file, re-prompting the writer",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `reject records a reject verdict on the latest open review request with the
 findings in the review file, which must exist and be non-empty. The
 parent-review gate sends the findings to the still-live writer and reviews

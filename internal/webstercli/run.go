@@ -43,8 +43,9 @@ func (c *websterCLI) runCmd() *cobra.Command {
 	var fresh bool
 
 	cmd := &cobra.Command{
-		Use:   "run",
-		Short: "spawn or resume Master and block until the plan reaches a terminal outcome",
+		Use:         "run",
+		Short:       "spawn or resume Master and block until the plan reaches a terminal outcome",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `run takes the webster run-level lock, runs the automatic plan-validation
 gate (including the zero-batch pre-flight refusal), checks the on-disk
 plan's fingerprint against state.json's recorded one (refusing on a mismatch

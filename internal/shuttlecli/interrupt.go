@@ -14,8 +14,9 @@ import (
 // interrupt choreography into the identified strand.
 func (c *shuttleCLI) interruptCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "interrupt <guid>",
-		Short: "stop a shuttle run's in-progress turn without killing its pane",
+		Use:         "interrupt <guid>",
+		Short:       "stop a shuttle run's in-progress turn without killing its pane",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `interrupt plays the engine's interrupt choreography into the strand
 identified by <guid>, stopping its in-progress turn. The pane and session
 stay alive afterward — follow with "lyx shuttle send <guid> <text>" to give

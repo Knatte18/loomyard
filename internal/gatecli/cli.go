@@ -39,14 +39,16 @@ func newCommand(goBinary string) *cobra.Command {
 
 	var dir, tags string
 	testCmd := &cobra.Command{
-		Use:   "test [-C <dir>] [--tags <tags>] <packages...> [-- <go test flags>]",
-		Short: "run go test over packages once a hub gate slot is free",
+		Use:         "test <packages>...",
+		Short:       "run go test over packages once a hub gate slot is free",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `test runs "go test" over the named packages inside one of the hub's gate slots,
 so the hub never runs more gate builds and tests at once than its configured slot count allows.
 It waits for a free slot for up to the hub's cli_wait_sec, then exits with 75 and names the holders.
 Inside a slot already held by an enclosing gate run it runs without acquiring another.
 Outside every hub it runs unslotted under the template's -p cap.
 The output and exit code are go test's own.
+Arguments after "--" are passed to go test unchanged, after the packages.
 
 Examples:
 

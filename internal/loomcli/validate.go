@@ -35,8 +35,9 @@ func renderFindings[T interface{ Error() string }](items []T) []string {
 // before handoff.
 func (c *loomCLI) validateDiscussionCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "validate-discussion",
-		Short: "run the checks Discussion-Write's and Discussion-Burler's own gate runs standalone against the current discussion files",
+		Use:         "validate-discussion",
+		Short:       "run the checks Discussion-Write's and Discussion-Burler's own gate runs standalone against the current discussion files",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `validate-discussion runs discussionparser.Validate against the current
 worktree's decision record and support log -- the identical check
 Discussion-Write's and Discussion-Burler's own gate runs -- and reports the
@@ -77,8 +78,9 @@ Example:
 // check the Describe row's own gate runs, callable by the Describe agent before handoff.
 func (c *loomCLI) validateDescriptionCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "validate-description",
-		Short: "run the check the Describe row's own gate runs standalone against the current change description",
+		Use:         "validate-description",
+		Short:       "run the check the Describe row's own gate runs standalone against the current change description",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `validate-description runs summaryparser.ValidateDescription against the
 current worktree's change description -- the identical check the Describe
 row's own gate runs -- and reports the result as one JSON envelope. It takes
@@ -137,8 +139,9 @@ func (c *loomCLI) validatePlanCmd() *cobra.Command {
 	var requireApproved, rework bool
 
 	cmd := &cobra.Command{
-		Use:   "validate-plan",
-		Short: "run the checks Plan-Write's, Plan-Burler's or PR-Rework's own gate runs standalone against the current plan",
+		Use:         "validate-plan",
+		Short:       "run the checks Plan-Write's, Plan-Burler's or PR-Rework's own gate runs standalone against the current plan",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `validate-plan parses the current worktree's plan and checks it in one of
 three modes. With no flags, it runs the index's ValidateFormat -- the same
 format-only check set Plan-Write's and Plan-Burler's own gate runs before

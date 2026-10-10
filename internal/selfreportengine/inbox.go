@@ -1,5 +1,5 @@
 // inbox.go holds the GitHub calls `lyx board intake` makes against the inbox repository:
-// listing open issues, fetching one, and commenting on and closing one.
+// listing open issues, fetching one, listing one's comments, and commenting on and closing one.
 // They share targetRepo, the NewGitHubClient seam and the error classification with CreateIssue.
 
 package selfreportengine
@@ -12,7 +12,7 @@ import (
 	"github.com/google/go-github/v75/github"
 )
 
-// listPageSize is the page size ListOpenIssues requests, GitHub's maximum.
+// listPageSize is the page size the list calls request, GitHub's maximum.
 const listPageSize = 100
 
 // Issue is the view of an inbox issue that intake prints and decides on.
@@ -26,6 +26,14 @@ type Issue struct {
 	State       string    `json:"state"`
 	StateReason string    `json:"state_reason"`
 	PullRequest bool      `json:"pull_request"`
+	// Comments is the issue's comment count as GitHub reports it on the issue itself.
+	Comments int `json:"comments"`
+}
+
+// IssueComment is one comment on an inbox issue, its author not recorded.
+type IssueComment struct {
+	Body      string
+	CreatedAt time.Time
 }
 
 // ListOpenIssues returns every open issue of the inbox repository, following pagination to the last page.
@@ -79,6 +87,38 @@ func GetIssue(number int) (Issue, error) {
 	return toIssue(raw), nil
 }
 
+// ListIssueComments returns every comment on the inbox issue numbered number, oldest first, following pagination to the last page.
+func ListIssueComments(number int) ([]IssueComment, error) {
+	client, owner, repo, err := repoClient()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
+	defer cancel()
+
+	sort, direction := "created", "asc"
+	opts := &github.IssueListCommentsOptions{
+		Sort:        &sort,
+		Direction:   &direction,
+		ListOptions: github.ListOptions{PerPage: listPageSize},
+	}
+	var comments []IssueComment
+	for {
+		page, resp, listErr := client.Issues.ListComments(ctx, owner, repo, number, opts)
+		if listErr != nil {
+			return nil, classifyCallError("list issue comments", "github issue comment list failed", owner, repo, listErr)
+		}
+		for _, raw := range page {
+			comments = append(comments, IssueComment{Body: raw.GetBody(), CreatedAt: raw.GetCreatedAt().Time})
+		}
+		if resp.NextPage == 0 {
+			return comments, nil
+		}
+		opts.ListOptions.Page = resp.NextPage
+	}
+}
+
 // CommentAndClose posts comment on the issue, then closes it with state reason completed when completed is set and not_planned otherwise.
 // When the comment posts and the close fails, the error says the comment was posted, so a rerun is understood to post a second comment.
 func CommentAndClose(number int, comment string, completed bool) error {
@@ -123,5 +163,6 @@ func toIssue(raw *github.Issue) Issue {
 		State:       raw.GetState(),
 		StateReason: raw.GetStateReason(),
 		PullRequest: raw.IsPullRequest(),
+		Comments:    raw.GetComments(),
 	}
 }

@@ -69,8 +69,9 @@ func writeParkMarker(markerPath, reportPath string) error {
 func (c *loomCLI) commitRecordsCmd() *cobra.Command {
 	var park string
 	cmd := &cobra.Command{
-		Use:   "commit-records",
-		Short: "commit and push the run's records: status, reviews, friction notes and drive reports",
+		Use:         "commit-records",
+		Short:       "commit and push the run's records: status, reviews, friction notes and drive reports",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `commit-records commits and pushes the run's records: the status file, the review
 round record, the friction notes under _lyx/loom/friction/ and the drive reports under
 _lyx/shed/<slug>/drive-reports/. The loom driver's end-of-session command runs it after the

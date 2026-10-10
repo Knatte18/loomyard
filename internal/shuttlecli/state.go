@@ -16,8 +16,9 @@ import (
 func (c *shuttleCLI) stateCmd() *cobra.Command {
 	var strand string
 	cmd := &cobra.Command{
-		Use:   "state",
-		Short: "show what each running shuttle run's agent session is doing",
+		Use:         "state",
+		Short:       "show what each running shuttle run's agent session is doing",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `state lists, for every run of this worktree whose record reads running, the
 state of its agent session, read from the run's files alone: the strand name
 and guid, the state, its cause, the detail (an API error's text), the

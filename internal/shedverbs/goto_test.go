@@ -11,13 +11,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
 func gotoTexts() VerbTexts {
-	return VerbTexts{Goto: VerbText{Use: "goto", Short: "move the fake shed onto a row"}}
+	return VerbTexts{Goto: VerbText{Use: "goto", Short: "move the fake shed onto a row", Audience: clihelp.AudienceOperator}}
 }
 
 func gotoSpec(paths testPaths) *Spec {
@@ -50,7 +51,12 @@ func TestGotoCmd_MovesBlockedRunOntoRow(t *testing.T) {
 	paths := newTestPaths(t)
 	seedBlocked(t, paths, "B")
 
-	env, code := execEnvelope(t, gotoCmd(gotoTexts(), gotoSpec(paths)), []string{"--to", "A"})
+	cmd := gotoCmd(gotoTexts(), gotoSpec(paths))
+	if got := cmd.Annotations[clihelp.AudienceAnnotation]; got != clihelp.AudienceOperator {
+		t.Errorf("audience annotation = %q; want the text's %q", got, clihelp.AudienceOperator)
+	}
+
+	env, code := execEnvelope(t, cmd, []string{"--to", "A"})
 	if code != 0 {
 		t.Fatalf("exit code = %d; want 0 (env %v)", code, env)
 	}

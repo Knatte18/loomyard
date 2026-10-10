@@ -117,8 +117,9 @@ func newSeedCommand() *cobra.Command {
 	var paramFlags []string
 
 	cmd := &cobra.Command{
-		Use:   "seed <run-id> --recipe <name>",
-		Short: "write the first seed for a run, naming its recipe, driver, and parameters",
+		Use:         "seed <run-id> --recipe <name>",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Short:       "write the first seed for a run, naming its recipe, driver, and parameters",
 		Long: `seed writes run-id's seed.json, naming the recipe that arms every subsequent
 "lyx shed" invocation against it. It is not itself a generic verb: it
 belongs to no recipe's Verbs set, and it is exempt from the seed-read

@@ -15,6 +15,7 @@
 // either mode.
 //
 // websterCLI stores TWO adapted views of the one constructed Runner: starter (websterengine.Starter, webster's own local copy of the spawn seam, consumed by recover-batch's cold-strand spawn) and masterStarter (websterengine.MasterStarter, behind the runnerMasterStarter adapter, consumed by run's Master spawn) -- because the two verbs each need a distinct narrow seam onto the same underlying *shuttleengine.Runner, neither of which the other exposes.
+
 package webstercli
 
 import (
@@ -229,44 +230,18 @@ func Command() *cobra.Command {
 		Long: `webster takes a pinned plan-format plan (see contracts/specs/loom-plan-spec.md)
 and drives it through a long-lived Master session that reads the plan once
 and forks one implementer per batch in-session, bracketing each fork with
-begin-batch/record-batch calls, until the plan is built or the run reports
-stuck or paused. A fork that reports stuck (or never reports at all) is
-escalated to a cold recovery strand via recover-batch. The Go verbs below
-are the fat, file-contract-backed primitives Master's own prompt drives.
+begin-batch and record-batch, until the plan is built or the run reports
+stuck or paused. A fork that reports stuck, or never reports, is escalated
+to a cold recovery strand with recover-batch.
 
-Verbs:
-  lyx webster validate                       lint the plan without running anything
-  lyx webster run --fresh                    spawn/resume Master and block until terminal
-  lyx webster status                         an instant snapshot of state.json + reports
-  lyx webster pause                          request a pause at the next batch boundary
-  lyx webster begin-batch 3                  Master's bracket call immediately before forking batch 3
-  lyx webster await-batch 3                  block until batch 3's report lands (forks are backgrounded)
-  lyx webster record-batch 3                 Master's bracket call once batch 3's fork has delivered
-  lyx webster recover-batch 3 --wait 8m      escalate batch 3 to a cold recovery strand
-  lyx webster rebaseline --card NN   accept a mid-run edit of the named cards
-  lyx webster accept-audit                   accept the pending run-exit audit findings once their paths are checked
-  lyx webster accept-audit --batch 8         accept failed batch 8's pathless fabric references, once HEAD is at its start or its commands only read
-  lyx webster restore-plan                   restore every plan file that differs from the plan the run recorded
-  lyx webster reset --to start|pre-fix|report-head|last-batch-head|batch-start   move the task branch back to a commit the run recorded; --batch NN for report-head and batch-start
-  lyx webster verify                         run the plan's verify command over the worktree, as the verify gates do
+Reach for "lyx webster run" to build an approved plan, "lyx webster validate"
+to lint one first, and "lyx webster status" to see where a run stands.
 
-Modes:
-  webster runs in hub mode inside a lyx hub worktree, and in standalone
-  mode anywhere else -- a plain git checkout with no lyx hub beside it.
-  Three persistent flags cross that boundary: --stencils-dir and
-  --plan-dir are optional and read-only in BOTH modes (hub default: the
-  hub's own stencils/plan directories; standalone default: the derived
-  state directory's own _lyx/stencils and _lyx/plan); --target-dir is
-  standalone-only, defaults to the current directory, and is refused in
-  hub mode, where the worktree itself is structurally the target. A
-  relative value for any of the three is resolved against the current
-  directory, and the standalone target is lifted to the root of the git
-  repository containing it, so standing in a subdirectory drives the same
-  repository, state directory and reed session as standing at its root.
-
-  In standalone mode, run boots its own private reed session (socket
-  "lyx-<hash8>", state under the derived state directory) before spawning
-  Master -- "lyx reed up" is a hub verb and cannot reach that geometry.
+webster runs in hub mode inside a lyx hub worktree, and in standalone mode in
+any other git checkout. --stencils-dir and --plan-dir override where it reads
+the stencils and the plan, in both modes; --target-dir names the repository
+to drive, in standalone mode only. In standalone mode run boots its own
+private reed session before spawning Master.
 
 Example (standalone, outside any lyx hub):
   lyx webster run --target-dir /path/to/repo`,

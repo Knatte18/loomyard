@@ -13,8 +13,9 @@ import (
 // resumeCmd builds the `resume` subcommand.
 func (c *reedCLI) resumeCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "resume",
-		Short: "replay stored commands for not-live strands",
+		Use:         "resume",
+		Short:       "replay stored commands for not-live strands",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `resume is the only replayer: for every persisted, non-hidden strand that
 is not currently live, it recreates the pane and runs the strand's stored
 resumeCmd (or cmd, when resumeCmd is empty). Anchor:hidden strands are

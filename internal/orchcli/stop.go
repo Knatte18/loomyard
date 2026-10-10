@@ -12,8 +12,9 @@ import (
 // stopCmd builds the `stop` subcommand.
 func (c *orchCLI) stopCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "stop",
-		Short: "remove the orchestrator strand",
+		Use:         "stop",
+		Short:       "remove the orchestrator strand",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `stop removes the recorded orchestrator strand when reed tracks it. An untracked
 or unrecorded strand reports removed: false rather than an error. The watcher
 exits on its own once the strand is gone, and the next start resets any

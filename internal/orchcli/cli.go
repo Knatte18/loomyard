@@ -67,6 +67,8 @@ type orchCLI struct {
 	starter      sessionStarter
 	spawnWatcher func() error
 	sleep        func(time.Duration)
+	// indexRunner returns the output of `<bin> help index`.
+	indexRunner func(bin string) (string, error)
 }
 
 // Command returns the cobra command tree for the orch module.
@@ -151,6 +153,7 @@ Every verb runs from the hub's prime worktree only.`,
 			c.starter = runnerSessionStarter{runner: c.runner}
 			c.spawnWatcher = c.spawnWatcherProcess
 			c.sleep = time.Sleep
+			c.indexRunner = runHelpIndex
 			return nil
 		},
 	}

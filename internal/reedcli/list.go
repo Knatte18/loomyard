@@ -20,8 +20,9 @@ import (
 // listCmd builds the `list` subcommand.
 func (c *reedCLI) listCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "list every strand in the hub with its full name, pane and title drift",
+		Use:         "list",
+		Short:       "list every strand in the hub with its full name, pane and title drift",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `list enumerates the hub's worktrees and reports every strand tracked in
 each: full name, guid, worktree, pane id, the pane's current title, whether
 the strand is live, and whether its title has drifted from its name. It is

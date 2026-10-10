@@ -18,8 +18,9 @@ import (
 func (c *websterCLI) rebaselineCmd() *cobra.Command {
 	var cardFlags []string
 	cmd := &cobra.Command{
-		Use:   "rebaseline",
-		Short: "accept an on-disk plan edit as the run's plan without dropping batch records",
+		Use:         "rebaseline",
+		Short:       "accept an on-disk plan edit as the run's plan without dropping batch records",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `rebaseline accepts the plan on disk as the run's plan after a mid-run edit,
 keeping every batch record.
 Batches up to the last begun one stay as recorded; the cards after them are

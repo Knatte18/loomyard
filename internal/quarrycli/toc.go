@@ -17,8 +17,9 @@ import (
 // call time.
 func newTOCCmd(root func() string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "toc <path>",
-		Short: "Report the table-of-contents structure under a repository-relative path",
+		Use:         "toc <path>",
+		Short:       "report the table-of-contents structure under a repository-relative path",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `toc answers a table-of-contents query for path -- a repository-relative directory or
 file path, with "" and "." both meaning the repository root -- and emits quarry's
 own JSON rendering unchanged.

@@ -86,8 +86,9 @@ func (c *burlerCLI) runCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "run",
-		Short: "run one review+fix round from a profile YAML file",
+		Use:         "run",
+		Short:       "run one review+fix round from a profile YAML file",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `run reads a profile YAML file describing one review+fix round — what to
 review, what to judge it against, and how the round is allowed to write its
 fixes — drives the round through the real shuttle substrate, and prints its

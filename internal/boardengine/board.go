@@ -156,9 +156,9 @@ func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 	return result.(Task), nil
 }
 
-func (b *Board) SetDeps(slug string, dependsOn []string) error {
+func (b *Board) SetDeps(selector any, dependsOn []string) error {
 	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
-		return nil, store.SetDeps(slug, dependsOn)
+		return nil, store.SetDeps(selector, dependsOn)
 	}, nil)
 	return err
 }

@@ -42,8 +42,9 @@ func Command() *cobra.Command {
 	// local flags from within a cobra RunE.
 	var createCmd *cobra.Command
 	createCmd = &cobra.Command{
-		Use:   "create <title>",
-		Short: "file a self-report issue on the LoomYard repository via the GitHub API",
+		Use:         "create <title>",
+		Short:       "file a self-report issue on the LoomYard repository via the GitHub API",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `create files a new issue on the Knatte18/loomyard GitHub repository via the GitHub REST API.
 A GitHub token must be resolvable before running this command: set GH_TOKEN or
 GITHUB_TOKEN, or have the gh CLI installed and authenticated as a fallback token

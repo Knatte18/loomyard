@@ -19,8 +19,9 @@ import (
 // at call time.
 func newExpandCmd(root func() string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "expand <glyph>",
-		Short: "Report a type glyph's own head plus every member whose owner chain begins with it",
+		Use:         "expand <glyph>",
+		Short:       "report a type glyph's own head plus every member whose owner chain begins with it",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `expand answers target -- the type's own head plus every member whose owner chain
 begins with it -- and emits quarry's own JSON rendering unchanged when target is
 found. A target that is not found, is ambiguous, is rejected by the glyph grammar,

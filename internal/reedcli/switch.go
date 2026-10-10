@@ -47,6 +47,7 @@ tmux's run-shell.
 Example:
   lyx reed switch --next --socket /tmp/tmux-1000/default --client /dev/pts/3 --tmux /usr/bin/tmux`,
 		Annotations: map[string]string{
+			clihelp.AudienceAnnotation:        clihelp.AudienceRole,
 			clihelp.SkipStencilSeedAnnotation: clihelp.AnnotationEnabled,
 		},
 		Args: cobra.NoArgs,

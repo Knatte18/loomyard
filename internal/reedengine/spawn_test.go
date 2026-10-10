@@ -320,7 +320,7 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 			st := &ReedState{SelvagePaneID: selvagePane, PaneGeneration: liveGeneration}
 			names := []string{"first", "second"}
 			for i, paneID := range tt.strandPaneIDs {
-				st.Strands = append(st.Strands, Strand{GUID: names[i], Name: names[i], PaneID: paneID})
+				st.Strands = append(st.Strands, Strand{GUID: names[i], Name: names[i], PaneID: paneID, LyxBin: "/opt/lyx/bin/lyx-" + names[i]})
 			}
 			if err := SaveState(e.stateDir(), st); err != nil {
 				t.Fatalf("SaveState: %v", err)
@@ -335,6 +335,9 @@ func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
 			}
 			for i, want := range tt.wantLive {
 				got := result.Strands[i]
+				if wantBin := "/opt/lyx/bin/lyx-" + got.Name; got.LyxBin != wantBin {
+					t.Errorf("Status strand %q LyxBin = %q; want the recorded %q", got.GUID, got.LyxBin, wantBin)
+				}
 				if got.Live != want {
 					t.Errorf("Status strand %q live = %v on pane %q; want %v — a pane has exactly one owner, and a binding naming a pane another owner claims must be cleared at load",
 						got.GUID, got.Live, got.PaneID, want)
@@ -414,14 +417,16 @@ func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 			name: "PreludeAheadOfTheStrandCommand",
 			cmds: []string{"claude --continue"},
 			want: func(sh shell.Shell, s Strand, e *Engine) string {
-				return composePaneLaunchLine(sh, "claude --continue", s.GUID, s.Name, e.geom.ParentName) + "\n"
+				line, _ := composePaneLaunchLine(sh, "claude --continue", s.GUID, s.Name, e.geom.ParentName)
+				return line + "\n"
 			},
 		},
 		{
 			name: "RelaunchRegeneratesTheScript",
 			cmds: []string{"first cmd", "second cmd"},
 			want: func(sh shell.Shell, s Strand, e *Engine) string {
-				return composePaneLaunchLine(sh, "second cmd", s.GUID, s.Name, e.geom.ParentName) + "\n"
+				line, _ := composePaneLaunchLine(sh, "second cmd", s.GUID, s.Name, e.geom.ParentName)
+				return line + "\n"
 			},
 		},
 		{
@@ -477,6 +482,13 @@ func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 			if got, want := readLaunchScript(t, e, s.GUID), tt.want(sh, *s, e); got != want {
 				t.Errorf("launch script = %q, want %q", got, want)
 			}
+			wantBin := exe
+			if tt.executable != nil {
+				wantBin = ""
+			}
+			if s.LyxBin != wantBin {
+				t.Errorf("strand LyxBin = %q, want %q", s.LyxBin, wantBin)
+			}
 		})
 	}
 }
@@ -502,7 +514,8 @@ func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 	if err := e.launchStrandLocked(st, &st.Strands[0], launchCmd); err != nil {
 		t.Fatalf("launchStrandLocked: %v", err)
 	}
-	want := sendKeysLiteralArg(composePaneLaunchLine(shell.ForGOOS(), launchCmd, "guid-w", st.Strands[0].Name, e.geom.ParentName))
+	line, _ := composePaneLaunchLine(shell.ForGOOS(), launchCmd, "guid-w", st.Strands[0].Name, e.geom.ParentName)
+	want := sendKeysLiteralArg(line)
 	if first := fake.ArgvFor("send-keys")[0]; first[len(first)-1] != want {
 		t.Errorf("first send-keys args = %v, want the full composed line %q", first, want)
 	}

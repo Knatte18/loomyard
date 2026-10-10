@@ -134,8 +134,9 @@ func rejectVerb(ctx context.Context, out io.Writer, d rejectDeps, reviewFile str
 // rejectCmd builds the `reject` subcommand.
 func (c *loomCLI) rejectCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "reject <review-file>",
-		Short: "record rejection of the task's open pull request with findings from a file so the next lyx loom start reworks it",
+		Use:         "reject <review-file>",
+		Short:       "record rejection of the task's open pull request with findings from a file so the next lyx loom start reworks it",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `reject records the operator's rejection of the task's open pull request,
 with the review findings read from <review-file>, and removes any approval.
 It applies to a run awaiting or blocked at PR-Gate, or blocked at PR-Rework

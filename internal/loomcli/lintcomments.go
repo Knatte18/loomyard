@@ -27,8 +27,9 @@ func (c *loomCLI) lintCommentsCmd() *cobra.Command {
 	var base string
 
 	cmd := &cobra.Command{
-		Use:   "lint-comments",
-		Short: "find fixed-column-wrapped line breaks in the comments the current change creates",
+		Use:         "lint-comments",
+		Short:       "find fixed-column-wrapped line breaks in the comments the current change creates",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `lint-comments runs commentlint.Lint over the current worktree -- the check
 every card gate runs after its tests -- and reports the result as one JSON
 envelope. Without --base it lints the working tree against HEAD, untracked Go

@@ -15,8 +15,9 @@ import (
 // upCmd builds the `up` subcommand.
 func (c *reedCLI) upCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "up",
-		Short: "boot the reed substrate (server + session) for this worktree",
+		Use:         "up",
+		Short:       "boot the reed substrate (server + session) for this worktree",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `up ensures this hub's named tmux server and this worktree's session
 exist (booting them if absent, a no-op if already up), then reconciles dead
 panes and re-applies the current strand layout.
@@ -65,8 +66,9 @@ Example:
 // downCmd builds the `down` subcommand.
 func (c *reedCLI) downCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "down",
-		Short: "kill this worktree's reed session and clear its strand state",
+		Use:         "down",
+		Short:       "kill this worktree's reed session and clear its strand state",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `down kills this worktree's tmux session and deletes its persisted
 strand state. Sibling worktrees sharing the hub's server are untouched;
 when this was the server's last session, the now-empty server is shut down

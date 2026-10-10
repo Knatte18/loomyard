@@ -44,8 +44,9 @@ type shedCLI struct {
 // recipe rather than describing only one of them.
 var shedVerbTexts = shedverbs.VerbTexts{
 	Run: shedverbs.VerbText{
-		Use:   "run [<run-id>]",
-		Short: "run the addressed run's phase machine in the foreground",
+		Use:      "run [<run-id>]",
+		Audience: clihelp.AudienceOperator,
+		Short:    "run the addressed run's phase machine in the foreground",
 		Long: `run arms the recipe named by the addressed run's own seed and runs its phase
 machine in the foreground, exactly as that recipe's own "run" verb does. The
 run-id positional defaults to "self" when omitted.
@@ -55,8 +56,9 @@ Example:
   lyx shed run some-slug`,
 	},
 	Step: shedverbs.VerbText{
-		Use:   "step [<run-id>]",
-		Short: "bootstrap idempotently and drive exactly one producer of the addressed run",
+		Use:      "step [<run-id>]",
+		Audience: clihelp.AudienceOperator,
+		Short:    "bootstrap idempotently and drive exactly one producer of the addressed run",
 		Long: `step arms the recipe named by the addressed run's own seed and drives exactly
 one producer, reporting a JSON envelope, exactly as that recipe's own "step"
 verb does. Not every recipe supports step: a recipe whose table entry
@@ -68,8 +70,9 @@ Example:
   lyx shed step some-slug`,
 	},
 	Status: shedverbs.VerbText{
-		Use:   "status [<run-id>]",
-		Short: "report the addressed run's current phase, once or as a live-tailed watch",
+		Use:      "status [<run-id>]",
+		Audience: clihelp.AudienceOperator,
+		Short:    "report the addressed run's current phase, once or as a live-tailed watch",
 		Long: `status arms the recipe named by the addressed run's own seed and reports its
 current phase, exactly as that recipe's own "status" verb does. The run-id
 positional defaults to "self" when omitted.
@@ -79,8 +82,9 @@ Example:
   lyx shed status some-slug`,
 	},
 	Pause: shedverbs.VerbText{
-		Use:   "pause [<run-id>]",
-		Short: "request a pause at the addressed run's next producer boundary",
+		Use:      "pause [<run-id>]",
+		Audience: clihelp.AudienceOperator,
+		Short:    "request a pause at the addressed run's next producer boundary",
 		Long: `pause arms the recipe named by the addressed run's own seed and requests a
 pause at its next producer boundary, exactly as that recipe's own "pause"
 verb does. The run-id positional defaults to "self" when omitted.
@@ -98,8 +102,9 @@ Example:
   lyx shed pause --clear`,
 	},
 	Goto: shedverbs.VerbText{
-		Use:   "goto [<run-id>] --to <producer>",
-		Short: "move a halted run onto a named row, paused, with a fresh segment budget",
+		Use:      "goto [<run-id>]",
+		Audience: clihelp.AudienceOperator,
+		Short:    "move a halted run onto a named row, paused, with a fresh segment budget",
 		Long: `goto arms the recipe named by the addressed run's own seed and moves a halted
 run onto the row named by --to, leaving it paused. It records a "goto" history
 entry that resets that row's segment bounce budget. It refuses while a driver

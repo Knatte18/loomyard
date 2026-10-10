@@ -29,9 +29,10 @@ func resumeContextCommand(primeAnchor string) string {
 // a failure prints the JSON error envelope and writes no delivery mark, so the typed pointer delivers instead.
 func (c *orchCLI) resumeContextCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:    resumeContextVerb,
-		Short:  "print the resume pointer as session-start hook context (run by the hook)",
-		Hidden: true,
+		Use:         resumeContextVerb,
+		Short:       "print the resume pointer as session-start hook context (run by the hook)",
+		Hidden:      true,
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		Long: `resume-context renders the resume pointer from the persisted state and prints it as
 the provider's additional-context JSON, which the session-start hook adds to the session
 after a compaction. It records a delivery mark after a successful render, so the watcher
@@ -42,7 +43,8 @@ does not type the same pointer again.`,
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			text, err := orchengine.ResumeContext(c.paths, c.stencilsDir, time.Now())
+			index := clihelp.RenderIndex(cmd.Root(), clihelp.AudienceOperator)
+			text, err := orchengine.ResumeContext(c.paths, c.stencilsDir, index, time.Now())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil

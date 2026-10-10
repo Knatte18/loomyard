@@ -18,14 +18,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// awaitBatchCmd builds the `await-batch <NN>` subcommand.
+// awaitBatchCmd builds the `await-batch <nn>` subcommand.
 func (c *websterCLI) awaitBatchCmd() *cobra.Command {
 	var wait time.Duration
 
 	cmd := &cobra.Command{
-		Use:   "await-batch <NN>",
-		Short: "block until one batch's report file lands (or the wait window elapses)",
-		Long: `await-batch <NN> blocks for up to --wait watching for batch NN's report
+		Use:         "await-batch <nn>",
+		Short:       "block until one batch's report file lands (or the wait window elapses)",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
+		Long: `await-batch <nn> blocks for up to --wait watching for batch NN's report
 file to appear, returning {"batch": "NN-<slug>", "report": true} the moment
 it lands or {"report": false} when the window elapses first. It reads and
 mutates nothing else -- no state.json, no fabric commit -- so it is safe to call at

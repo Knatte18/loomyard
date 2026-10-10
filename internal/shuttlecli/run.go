@@ -51,8 +51,9 @@ func (c *shuttleCLI) runCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "run",
-		Short: "run one agent turn and block until it reaches a classified outcome",
+		Use:         "run",
+		Short:       "run one agent turn and block until it reaches a classified outcome",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `run starts one shuttle agent, blocks until it reaches a classified
 outcome (done/died/timeout), and prints that outcome as a single JSON
 envelope. A run's output files ARE its return value: "done" means every

@@ -6,7 +6,10 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   Every module but `internal/selfreportcli` also carries `RunCLIIn(cwd, out, args) int`.
 - An alias command may delegate into another module's subtree with no seam function of its own.
 - Every command has a non-empty `Short`.
-- One walk of `newRoot()` in `cmd/lyx/clitree_test.go` enforces `Short`, bare-group listing and unknown-subcommand refusal for every command.
+- Every invocable command carries an `audience` annotation from the closed set in `internal/clihelp`, a hidden one is `internal`, and a non-invocable group carries none.
+- `Use` is the command name, then `<arg>`, `[<arg>]`, `<arg>...`, `[<arg>...]`, `--flag <value>` for a flag cobra marks required, or a brace-balanced `{...}` payload span.
+  `Short` is one lower-case line with no final period, and `Long` stays under the byte cap in `cmd/lyx/clitree_test.go`.
+- One walk of `newRoot()` in `cmd/lyx/clitree_test.go` enforces the audience, `Use`, `Short` and `Long` form, bare-group listing and unknown-subcommand refusal for every command.
   `cmd/lyx/registration_test.go` is the oracle that every `Command()` package is mounted.
   Per-CLI copies are no longer an obligation.
 - Errors are JSON via `internal/output`, one object per line, and every `RunE` checks `clihelp.ShouldAbort` first.

@@ -14,8 +14,9 @@ import (
 // restorePlanCmd builds the `restore-plan` subcommand.
 func (c *websterCLI) restorePlanCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "restore-plan",
-		Short: "restore every plan file that differs from the plan the run recorded",
+		Use:         "restore-plan",
+		Short:       "restore every plan file that differs from the plan the run recorded",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `restore-plan writes back each plan file from the copy webster kept when it
 recorded the plan's hashes, and removes a plan file the run never recorded.
 It never changes state.json or the task worktree.

@@ -17,8 +17,9 @@ import (
 // root at call time.
 func newResolveCmd(root func() string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "resolve <glyph>...",
-		Short: "Check whether one or more copied glyph spellings name something real",
+		Use:         "resolve <glyph>...",
+		Short:       "check whether one or more copied glyph spellings name something real",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `resolve resolves one or more glyphs, positionally, in one call against the current
 worktree, and answers each glyph separately with quarry's own JSON rendering,
 unchanged, in argument order.

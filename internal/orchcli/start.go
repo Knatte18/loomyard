@@ -124,8 +124,9 @@ func (c *orchCLI) startCmd() *cobra.Command {
 	var handoffFlag, adoptFlag string
 
 	cmd := &cobra.Command{
-		Use:   "start",
-		Short: "launch the orchestrator session and its watcher",
+		Use:         "start",
+		Short:       "launch the orchestrator session and its watcher",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `start is idempotent. With a live orchestrator strand and a live watcher it changes
 nothing and reports them. With a live strand and no watcher it spawns the watcher.
 With a dead or absent strand it removes the corpse, launches a fresh session and
@@ -228,7 +229,8 @@ session.`,
 						return fail(err)
 					}
 				}
-				if err := orchengine.RenderRoleFile(c.stencilsDir, c.paths.RolePath); err != nil {
+				// start runs as a fresh process of the binary the pane names, so its own tree is the index source.
+				if err := orchengine.RenderRoleFile(c.stencilsDir, c.paths.RolePath, clihelp.RenderIndex(cmd.Root(), clihelp.AudienceOperator)); err != nil {
 					return fail(err)
 				}
 				var prompt, source string

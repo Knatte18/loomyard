@@ -2,6 +2,7 @@ package orchengine
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,7 +57,7 @@ func TestResumeContext_RendersPointerPerPhaseAndWritesMark(t *testing.T) {
 				}
 			}
 
-			got, err := ResumeContext(p, stencils, now)
+			got, err := ResumeContext(p, stencils, testIndex, now)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -69,6 +70,11 @@ func TestResumeContext_RendersPointerPerPhaseAndWritesMark(t *testing.T) {
 			}
 			if _, err := os.Stat(p.RolePath); (err == nil) != tt.wantRoleFile {
 				t.Errorf("role file rendered = %v, want %v", err == nil, tt.wantRoleFile)
+			}
+			if tt.wantRoleFile {
+				if role, err := os.ReadFile(p.RolePath); err != nil || !strings.Contains(string(role), testIndex) {
+					t.Errorf("role file = %q, %v; want it to carry the index %q", role, err, testIndex)
+				}
 			}
 		})
 	}
@@ -95,7 +101,7 @@ func TestResumeContext_FailureReturnsErrorAndWritesNoMark(t *testing.T) {
 			t.Parallel()
 			p, stencils := testPaths(t), seedStencils(t)
 			tt.setup(t, p, stencils)
-			if text, err := ResumeContext(p, stencils, time.Now()); err == nil {
+			if text, err := ResumeContext(p, stencils, testIndex, time.Now()); err == nil {
 				t.Fatalf("ResumeContext = %q, nil; want an error", text)
 			}
 			if _, found, err := ReadResumeMark(p); err != nil || found {

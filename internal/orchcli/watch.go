@@ -23,9 +23,10 @@ func (realClock) Now() time.Time { return time.Now() }
 // watchCmd builds the `watch` subcommand, hidden because start launches it and an operator never needs to.
 func (c *orchCLI) watchCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:    "watch",
-		Short:  "run the orchestrator watcher daemon (launched by start)",
-		Hidden: true,
+		Use:         "watch",
+		Short:       "run the orchestrator watcher daemon (launched by start)",
+		Hidden:      true,
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		Long: `watch polls the orchestrator session and runs the handoff cycle until the strand
 is gone or it is signalled. start launches it detached with its output in watch.log.
 A second watcher finding the first alive reports already_running and exits.`,
@@ -48,7 +49,7 @@ A second watcher finding the first alive reports already_running and exits.`,
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
-			watcher := orchengine.NewWatcher(runnerSession{runner: c.runner, strands: c.strands}, c.cfg, c.paths, c.stencilsDir, orchSkills, realClock{})
+			watcher := orchengine.NewWatcher(runnerSession{runner: c.runner, strands: c.strands}, c.cfg, c.paths, c.stencilsDir, orchSkills, c.watcherIndexSource(), realClock{})
 			runErr := watcher.Run(ctx, time.Sleep)
 
 			if errors.Is(runErr, orchengine.ErrWatcherRunning) {

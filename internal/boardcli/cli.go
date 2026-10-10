@@ -38,8 +38,10 @@ func Command() *cobra.Command {
 	var config boardengine.Config
 
 	cmd := &cobra.Command{
-		Use:   "board",
-		Short: "task-tracker board",
+		Use:         "board",
+		Short:       "read and write the task-tracker board's tasks and notes",
+		// The dash keeps the legend from reading as a continuation of the Short it follows on the index line.
+		Annotations: map[string]string{clihelp.IndexNoteAnnotation: "— " + payloadLegend},
 		Long: `board manages the task-tracker board for the current lyx worktree.
 
 The board is one store: every entry is a task or a note (its kind) and carries labels. Only a task
@@ -54,7 +56,9 @@ and design_prefix filenames and the types and labels lists. The board data dir (
 derived from the worktree layout via lyxcwd and is not config- or
 env-overridable. The hidden --board-path flag overrides the data dir for the
 detached sync child process. Running "lyx board" with no subcommand lists
-available subcommands without requiring a git repo.`,
+available subcommands without requiring a git repo.
+
+` + payloadLegend,
 	}
 
 	boardPathFlag := cmd.PersistentFlags().String("board-path", "", "internal: injected absolute board dir for the detached sync child")
@@ -109,10 +113,11 @@ available subcommands without requiring a git repo.`,
 	}
 
 	promoteCmd := &cobra.Command{
-		Use:   "promote [json-payload]",
-		Short: "Turn a note into a task",
-		Long: `Turn a note into a task. A task is returned unchanged, and nothing is written. Unknown keys
-are rejected. Demotion goes through "lyx board upsert" with "kind":"note".
+		Use:         "promote {slug|id}",
+		Short:       "turn a note into a task once it is ready to be claimed",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Turn a note into a task. A task is returned unchanged, and nothing is written.
+Demotion goes through "lyx board upsert" with "kind":"note".
 
 Fields (one of):
   "slug" string  — entry slug
@@ -124,7 +129,7 @@ Example:
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
-			lookup, _, err := resolveLookup([]byte(args[0]))
+			lookup, _, err := resolveLookup([]byte(args[0]), lookupPayload)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -137,8 +142,9 @@ Example:
 	}
 
 	pruneCmd := &cobra.Command{
-		Use:   "prune",
-		Short: "Remove every done task",
+		Use:         "prune",
+		Short:       "remove every done task, clearing finished work off the board",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Remove every task whose status is done, strip the removed slugs from the remaining
 tasks' depends_on, and print the removed slugs. Takes no payload.
 
@@ -160,8 +166,9 @@ Example:
 	var findText bool
 	var findLabels []string
 	findCmd := &cobra.Command{
-		Use:   "find <text>...",
-		Short: "Find tasks whose slug, title, brief or body contains the text",
+		Use:         "find <text>...",
+		Short:       "find tasks whose slug, title, brief or body contains the text",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Find tasks whose slug, title, brief or body contains the text, done tasks included.
 The arguments are joined with single spaces into one search text. At least one argument is required.
 Prints the same JSON as "lyx board list"; with --text it prints the compact one-line-per-task
@@ -186,8 +193,9 @@ Examples:
 	findCmd.Flags().StringArrayVar(&findLabels, "label", nil, "keep only entries carrying this label; repeatable, all must match")
 
 	retireLegacyCmd := &cobra.Command{
-		Use:   "retire-legacy",
-		Short: "Delete the legacy tasks.json and notes.json files",
+		Use:         "retire-legacy",
+		Short:       "delete the legacy tasks.json and notes.json files once no pre-upgrade lyx reads them",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `End the compatibility window with a pre-upgrade lyx: fold any last done marks from the
 legacy files into board.json, then delete tasks.json and notes.json. Errors when neither file
 exists. Takes no payload.
@@ -204,8 +212,9 @@ Example:
 	}
 
 	rerenderCmd := &cobra.Command{
-		Use:   "rerender",
-		Short: "Rebuild the README and design docs from board.json",
+		Use:         "rerender",
+		Short:       "rebuild the README and design docs from board.json",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if err := b.Rerender(); err != nil {
 				return outputError(out, err.Error())
@@ -215,8 +224,9 @@ Example:
 	}
 
 	syncCmd := &cobra.Command{
-		Use:   "sync",
-		Short: "Commit and push pending board changes to the remote",
+		Use:         "sync",
+		Short:       "commit and push pending board changes to the remote",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if err := b.Sync(); err != nil {
 				return outputError(out, err.Error())
@@ -226,8 +236,9 @@ Example:
 	}
 
 	labelsCmd := &cobra.Command{
-		Use:   "labels",
-		Short: "Print the configured types and labels with their descriptions",
+		Use:         "labels",
+		Short:       "print the configured types and labels with their descriptions, to pick an entry's labels",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Print the type labels and the other labels configured in board.yaml, each list in file order
 with its descriptions. An empty list prints as []. Takes no payload.
 
@@ -275,14 +286,40 @@ func slugLimitNote() string {
 	return fmt.Sprintf("\n\nA slug is at most %d characters.", boardengine.MaxSlugLength)
 }
 
+// lookupPayload is the payload of get, remove and promote.
+var lookupPayload = payloadKeys{exclusive: [][2]string{{"slug", "id"}}}
+
+// setStatusPayload is the payload of set-status, and merge's set_status object.
+var setStatusPayload = payloadKeys{required: []string{"status"}, exclusive: [][2]string{{"slug", "id"}}}
+
+// setDepsPayload is the payload of set-deps.
+var setDepsPayload = payloadKeys{required: []string{"depends_on"}, exclusive: [][2]string{{"slug", "id"}}}
+
+// upsertPayload is the payload of upsert, the <task> upsert-batch and merge nest; the store enforces it on every upsert path.
+var upsertPayload = func() payloadKeys {
+	required, optional := boardengine.UpsertPayloadKeys()
+	return payloadKeys{required: required, optional: optional}
+}()
+
+// upsertBatchPayload is the payload of upsert-batch.
+var upsertBatchPayload = payloadKeys{required: []string{"tasks"}, nested: map[string]payloadKeys{"tasks": upsertPayload}}
+
+// mergePayload is the payload of merge.
+var mergePayload = payloadKeys{
+	required: []string{"upsert"},
+	optional: []string{"remove_slugs", "set_status"},
+	nested:   map[string]payloadKeys{"upsert": upsertPayload, "set_status": setStatusPayload},
+}
+
 // storeVerbs builds the nine store verbs over the one store board returns.
 func storeVerbs(board func() *boardengine.Board) []*cobra.Command {
 	// upsert subcommand: create or update a single task.
 	var bodyFile string
 	upsertCmd := &cobra.Command{
-		Use:   "upsert [json-payload]",
-		Short: "Create or update a single task",
-		Long: `Create or update a task identified by its slug. Unknown keys are rejected.
+		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?}",
+		Short:       "create or update a single task",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Create or update a task identified by its slug.
 
 Required field:
   "slug"       string — unique task identifier
@@ -299,6 +336,7 @@ Optional fields:
   "recipe"    string — recipe the task's child worktree runs; empty means "loom"
   "priority"   string — "high", "normal" or "low"; absent means normal, and "normal" clears it
   "short_name" string — short display label; falls back to the slug
+  "issues"     array  — inbox issue numbers the entry records
 
 Flag:
   --body-file <path>  read "body" from the file, or from stdin when the path is "-"; every other field still comes from the payload.
@@ -339,14 +377,15 @@ Example:
 	upsertCmd.Flags().StringVar(&bodyFile, "body-file", "", `read the task's "body" from this file, or from stdin when "-"`)
 
 	// upsert-batch subcommand: create or update multiple tasks atomically.
-	// Allowed wrapper key: {tasks}. A typo'd wrapper (e.g. "taks") errors;
+	// A typo'd wrapper (e.g. "taks") errors;
 	// an absent or empty tasks array also errors (nothing to upsert is a mistake).
 	upsertBatchCmd := &cobra.Command{
-		Use:   "upsert-batch [json-payload]",
-		Short: "Create or update multiple tasks atomically",
-		Long: `Create or update multiple tasks in one atomic write. Unknown wrapper keys are rejected.
+		Use:         "upsert-batch {tasks: [<task>]}",
+		Short:       "create or update several tasks in one atomic write",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Create or update multiple tasks in one atomic write.
 An absent or empty "tasks" array is an error. Each task element uses the same fields as
-"lyx board upsert" ("slug" required per element); unknown element keys are also rejected.
+"lyx board upsert" ("slug" required per element).
 
 Required wrapper field:
   "tasks" array — one or more task objects (each with "slug" required)
@@ -364,12 +403,8 @@ Example:
 				return outputError(out, fmt.Sprintf("invalid json: %v", err))
 			}
 
-			// Only "tasks" is permitted at the wrapper level; a typo'd key would
-			// decode silently to count:0 with the old typed-struct approach.
-			for k := range raw {
-				if k != "tasks" {
-					return outputError(out, fmt.Sprintf("unknown field: %q", k))
-				}
+			if err := refuseUnknownKey(upsertBatchPayload, raw); err != nil {
+				return outputError(out, err.Error())
 			}
 
 			// tasks is required and must be a non-empty array.
@@ -402,12 +437,12 @@ Example:
 	}
 
 	// set-status subcommand: set or clear the status field of a task identified by
-	// slug or numeric id. Allowed keys: {slug, id, status}.
+	// slug or numeric id.
 	setStatusCmd := &cobra.Command{
-		Use:   "set-status [json-payload]",
-		Short: "Set or clear the status of a task",
-		Long: `Set or clear the lifecycle status of a task. Unknown keys are rejected.
-Exactly one of "slug" or "id" is required. "status" is always required; use null to clear.
+		Use:         "set-status {slug|id, status}",
+		Short:       "set or clear the status of a task",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Set or clear the lifecycle status of a task. Use null as "status" to clear it.
 
 Fields:
   "slug"   string      — task slug (mutually exclusive with "id")
@@ -421,21 +456,13 @@ Examples:
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
-			// resolveLookup enforces {slug, id, status} allowed keys and exactly-one-of slug/id.
-			selector, m, err := resolveLookup([]byte(args[0]), "status")
+			// An absent status key is refused while an explicit null clears the status, so a typo cannot silently clear it.
+			selector, m, err := resolveLookup([]byte(args[0]), setStatusPayload)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
-
-			// status key is required: an absent key is an error; an explicit null clears
-			// the status. This distinguishes a deliberate clear from a typo that would
-			// otherwise silently clear the status value.
-			sv, hasStatus := m["status"]
-			if !hasStatus {
-				return outputError(out, "missing required field: status")
-			}
 			var status *string
-			if sv != nil {
+			if sv := m["status"]; sv != nil {
 				s, ok := sv.(string)
 				if !ok {
 					return outputError(out, "status must be a string or null")
@@ -452,10 +479,10 @@ Examples:
 
 	// remove subcommand: remove a task by slug or numeric id.
 	removeCmd := &cobra.Command{
-		Use:   "remove [json-payload]",
-		Short: "Remove a task",
-		Long: `Remove a task by slug or numeric ID. Unknown keys are rejected.
-Exactly one of "slug" or "id" is required. Errors if the task is not found.
+		Use:         "remove {slug|id}",
+		Short:       "remove a task",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Remove a task by slug or numeric ID. Errors if the task is not found.
 
 Fields:
   "slug" string  — task slug (mutually exclusive with "id")
@@ -467,8 +494,7 @@ Example:
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
 			}
-			// resolveLookup enforces {slug, id} allowed keys and exactly-one-of.
-			selector, _, err := resolveLookup([]byte(args[0]))
+			selector, _, err := resolveLookup([]byte(args[0]), lookupPayload)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -483,11 +509,10 @@ Example:
 	// for a valid-but-absent target (not an error). Malformed payloads error.
 	var getBody bool
 	getCmd := &cobra.Command{
-		Use:   "get [json-payload]",
-		Short: "Fetch a single task",
-		Long: `Fetch a single task by slug or numeric ID. Unknown keys are rejected.
-Exactly one of "slug" or "id" is required. Returns {"task":null} if not found (not an error).
-Malformed payloads (no identifier key, unknown key) are errors.
+		Use:         "get {slug|id}",
+		Short:       "fetch a single task, or its body alone",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Fetch a single task by slug or numeric ID. Returns {"task":null} if not found (not an error).
 The result is the envelope {"task": {...}}, which the discussion stencil reads.
 --body writes the entry's body alone, verbatim, with no envelope; an empty body writes nothing.
 With --body a target that does not exist is an error, since there is no task:null to print.
@@ -506,8 +531,7 @@ Examples:
 				if len(args) == 0 {
 					return outputError(out, "json payload required")
 				}
-				// resolveLookup enforces {slug, id} allowed keys and exactly-one-of.
-				selector, _, err := resolveLookup([]byte(args[0]))
+				selector, _, err := resolveLookup([]byte(args[0]), lookupPayload)
 				if err != nil {
 					return outputError(out, err.Error())
 				}
@@ -537,8 +561,9 @@ Examples:
 	var listText bool
 	var listLabels []string
 	listCmd := &cobra.Command{
-		Use:   "list",
-		Short: "List all tasks with computed fields",
+		Use:         "list",
+		Short:       "list all tasks with computed fields",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `List all tasks in README order with their computed fields (layer, has_proposal).
 With --text, print the compact one-line-per-task listing (kind, slug, title, labels, [status])
 instead of JSON; errors stay JSON.
@@ -562,8 +587,9 @@ Examples:
 
 	// list-full subcommand: list all tasks as stored in board.json.
 	listFullCmd := &cobra.Command{
-		Use:   "list-full",
-		Short: "List all tasks as stored in board.json",
+		Use:         "list-full",
+		Short:       "list all tasks as stored in board.json",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			tasks, err := board().ListTasksFull()
 			if err != nil {
@@ -574,15 +600,14 @@ Examples:
 	}
 
 	// merge subcommand: remove slugs, upsert one task, and optionally set status — atomically.
-	// Allowed top-level keys: {remove_slugs, upsert, set_status}. The inner set_status
-	// object is validated identically to the set-status command.
+	// The inner set_status object is validated identically to the set-status command.
 	var mergeBodyFile string
 	mergeCmd := &cobra.Command{
-		Use:   "merge [json-payload]",
-		Short: "Atomically remove, upsert, and set-status",
+		Use:         "merge {remove_slugs?, upsert: <task>, set_status?: {slug|id, status}}",
+		Short:       "remove tasks, upsert one and set a status in one atomic write, to fold entries together",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Remove tasks, upsert a task, and optionally set status in one atomic write.
-Unknown top-level keys are rejected. The inner "set_status" object is validated
-identically to the standalone "set-status" command ({slug|id, status}, exactly-one-of).
+The inner "set_status" object takes what the standalone "set-status" command takes.
 
 Fields:
   "remove_slugs" array  — slug strings to remove (optional; omit to skip)
@@ -619,13 +644,10 @@ Example:
 					return outputError(out, fmt.Sprintf("invalid json: %v", decodeErr))
 				}
 
-				// Enforce strict top-level key set;
-				// a stale set_phase errors rather than being silently dropped,
+				// A stale set_phase errors rather than being silently dropped,
 				// which would skip the status step with no feedback.
-				for k := range raw {
-					if k != "remove_slugs" && k != "upsert" && k != "set_status" {
-						return outputError(out, fmt.Sprintf("unknown field: %q", k))
-					}
+				if err := refuseUnknownKey(mergePayload, raw); err != nil {
+					return outputError(out, err.Error())
 				}
 
 				// Parse remove_slugs (optional, default empty).
@@ -658,27 +680,19 @@ Example:
 					}
 				}
 
-				// Parse set_status (optional):
-				// validate using the same resolveLookup logic as the standalone set-status command,
-				// with {slug,id,status} allowed,
-				// exactly-one-of slug/id, and status key required.
+				// Parse set_status (optional) against the standalone set-status command's own declaration.
 				var setStatusPtr *boardengine.MergeStatusUpdate
 				if ssVal, ok := raw["set_status"]; ok && ssVal != nil {
 					ssBytes, err := json.Marshal(ssVal)
 					if err != nil {
 						return outputError(out, fmt.Sprintf("set_status: marshal error: %v", err))
 					}
-					selector, ssMap, err := resolveLookup(ssBytes, "status")
+					selector, ssMap, err := resolveLookup(ssBytes, mergePayload.nested["set_status"])
 					if err != nil {
 						return outputError(out, "set_status: "+err.Error())
 					}
-					// status key is required inside set_status, mirroring the standalone command.
-					sv, hasStatusKey := ssMap["status"]
-					if !hasStatusKey {
-						return outputError(out, "set_status: missing required field: status")
-					}
 					var status *string
-					if sv != nil {
+					if sv := ssMap["status"]; sv != nil {
 						s, ok := sv.(string)
 						if !ok {
 							return outputError(out, "set_status.status must be a string or null")
@@ -699,18 +713,20 @@ Example:
 	mergeCmd.Flags().StringVar(&mergeBodyFile, "body-file", "", `read the upsert's "body" from this file, or from stdin when "-"`)
 
 	// set-deps subcommand: replace the depends_on list for a task.
-	// Allowed keys: {slug, depends_on}. depends_on is required (absent errors;
+	// depends_on is required (absent errors;
 	// explicit [] clears the list, distinguishing intentional clear from a typo
 	// that would otherwise silently wipe the task's dependency list).
 	setDepsCmd := &cobra.Command{
-		Use:   "set-deps [json-payload]",
-		Short: "Replace the depends_on list for a task",
-		Long: `Replace the full depends_on list for a task wholesale. Unknown keys are rejected.
-Both fields are required. An absent "depends_on" is an error; an explicit [] clears the list.
+		Use:         "set-deps {slug|id, depends_on}",
+		Short:       "replace a task's depends_on list",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Replace the full depends_on list for a task wholesale.
+An absent "depends_on" is an error; an explicit [] clears the list.
 
 Fields:
-  "slug"       string — task slug to update (required)
-  "depends_on" array  — complete list of dependency slug strings; replaces existing list (required)
+  "slug"       string  — task slug (mutually exclusive with "id")
+  "id"         integer — numeric task ID (mutually exclusive with "slug")
+  "depends_on" array   — complete list of dependency slug strings; replaces existing list (required)
 
 Example:
   lyx board set-deps '{"slug":"my-task","depends_on":["dep-a","dep-b"]}'` + slugLimitNote(),
@@ -719,34 +735,14 @@ Example:
 				return outputError(out, "json payload required")
 			}
 
-			// Decode into a map to detect unknown keys and key presence.
-			var m map[string]any
-			if err := json.Unmarshal([]byte(args[0]), &m); err != nil {
-				return outputError(out, fmt.Sprintf("invalid json: %v", err))
-			}
-
-			// Reject unknown keys so a typo ("depends") errors instead of silently
-			// clearing the dependency list.
-			for k := range m {
-				if k != "slug" && k != "depends_on" {
-					return outputError(out, fmt.Sprintf("unknown field: %q", k))
-				}
-			}
-
-			// slug is required to identify the target task.
-			slug, ok := m["slug"].(string)
-			if !ok || slug == "" {
-				return outputError(out, "missing required field: slug")
-			}
-
-			// depends_on is required: absent key errors; explicit [] clears the list.
-			depsVal, hasDeps := m["depends_on"]
-			if !hasDeps {
-				return outputError(out, "missing required field: depends_on")
+			// A typo ("depends") is refused as an unknown key instead of silently clearing the list.
+			selector, m, err := resolveLookup([]byte(args[0]), setDepsPayload)
+			if err != nil {
+				return outputError(out, err.Error())
 			}
 
 			var dependsOn []string
-			if depsVal != nil {
+			if depsVal := m["depends_on"]; depsVal != nil {
 				arr, ok := depsVal.([]any)
 				if !ok {
 					return outputError(out, "depends_on must be an array")
@@ -764,7 +760,7 @@ Example:
 				dependsOn = []string{}
 			}
 
-			if err := board().SetDeps(slug, dependsOn); err != nil {
+			if err := board().SetDeps(selector, dependsOn); err != nil {
 				return outputError(out, err.Error())
 			}
 			return outputSuccess(out)
@@ -795,50 +791,56 @@ func writeListing(out io.Writer, tasks []boardengine.BriefTask, text bool) int {
 	return 0
 }
 
-// resolveLookup decodes and validates a JSON payload, returning the selector and decoded map.
-func resolveLookup(raw []byte, extraKeys ...string) (any, map[string]any, error) {
+// resolveLookup decodes a payload addressing one entry by slug or id, validates it against keys, and returns the selector and the decoded map.
+// keys declares the slug|id pair and any further keys; each of its required keys must be present, and a null value counts as present.
+func resolveLookup(raw []byte, keys payloadKeys) (any, map[string]any, error) {
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return nil, nil, fmt.Errorf("invalid json: %v", err)
 	}
-
-	allowed := map[string]bool{"slug": true, "id": true}
-	for _, k := range extraKeys {
-		allowed[k] = true
+	if err := refuseUnknownKey(keys, m); err != nil {
+		return nil, nil, err
 	}
-
-	for k := range m {
-		if !allowed[k] {
-			return nil, nil, fmt.Errorf("unknown field: %q", k)
+	selector, err := lookupSelector(m)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, key := range keys.required {
+		if _, ok := m[key]; !ok {
+			return nil, nil, fmt.Errorf("missing required field: %s", key)
 		}
 	}
+	return selector, m, nil
+}
 
+// lookupSelector returns the slug string or the integral float64 id that m addresses, refusing a payload with neither key or both.
+func lookupSelector(m map[string]any) (any, error) {
 	_, hasSlug := m["slug"]
 	_, hasID := m["id"]
 
 	if !hasSlug && !hasID {
-		return nil, nil, fmt.Errorf("one of slug or id is required")
+		return nil, fmt.Errorf("one of slug or id is required")
 	}
 	if hasSlug && hasID {
-		return nil, nil, fmt.Errorf("only one of slug or id may be given")
+		return nil, fmt.Errorf("only one of slug or id may be given")
 	}
 
 	if hasSlug {
 		slugStr, ok := m["slug"].(string)
 		if !ok || slugStr == "" {
-			return nil, nil, fmt.Errorf("slug must be a non-empty string")
+			return nil, fmt.Errorf("slug must be a non-empty string")
 		}
-		return slugStr, m, nil
+		return slugStr, nil
 	}
 
 	switch v := m["id"].(type) {
 	case float64:
 		if v != math.Trunc(v) {
-			return nil, nil, fmt.Errorf("id must be an integer")
+			return nil, fmt.Errorf("id must be an integer")
 		}
-		return v, m, nil
+		return v, nil
 	default:
-		return nil, nil, fmt.Errorf("id must be a number")
+		return nil, fmt.Errorf("id must be a number")
 	}
 }
 
