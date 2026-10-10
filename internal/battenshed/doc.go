@@ -21,6 +21,8 @@
 // The quiet notice goes when every live run has been idle for the quiet window and no verify or shuttle wait marker is live, and says how long the agents have been idle;
 // with no live run found, it falls back to "no agent activity readable" counted from the later of the child's newest history entry and since.
 // Both episodes are keyed by the newest agent activity, so they end when an agent is active again, with `since` on the line as content only.
+// Both idle clocks measure awake time, read through the injected Awake seam: suspended time observed between two checks is subtracted until the newest activity moves.
+// A sleep under a minute still counts as idle, and the subtraction can delay a notice and never raise one earlier.
 // Limits: a run whose pid is dead is not read, a run that keeps writing or hangs in a live wait is never quiet, and both notices are informational.
 // A marker under the row's scratch directory records the notices sent, and only those queued, so a batten restart sends the notices not yet sent and never one already sent.
 // Every notice carries `since` and `history`, and a notice for a parked stop (blocked, paused, failed, awaiting) carries the driver's stop report, or `report none yet`.

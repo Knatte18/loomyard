@@ -185,6 +185,10 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	if deps.Now == nil {
 		deps.Now = time.Now
 	}
+	if deps.Awake == nil {
+		origin := time.Now()
+		deps.Awake = func() time.Duration { return time.Since(origin) }
+	}
 	notices := deps.Notify != nil
 	if deps.Notify == nil {
 		deps.Notify = func(context.Context, string) (bool, error) { return true, nil }
@@ -462,6 +466,13 @@ type childWait struct {
 	activity      agentReading
 	activityOK    bool
 	activityStale bool
+	// prevWallNanos and prevAwake are the wall and awake readings of the previous idle check, and clocksSeen whether there was one.
+	prevWallNanos int64
+	prevAwake     time.Duration
+	clocksSeen    bool
+	// asleep is the suspended time observed since the newest agent activity last moved, and asleepStamp the activity stamp it belongs to.
+	asleep      time.Duration
+	asleepStamp activityStamp
 	// resumeRetryAt is when the awaiting arm may try a resume again after the child's driver refused one as not parked yet,
 	// and notParkedLogged whether that refusal was logged already.
 	resumeRetryAt   time.Time
