@@ -34,7 +34,7 @@ func MerriamBaseOf(texts ...string) batcher.StartBase {
 }
 
 // MerriamBase returns the start base of the Merriam session geom describes: CLAUDE.md and CLAUDE.local.md at the worktree root when present, the Master stencil with the orchestrator PATTERN directive, and the plan's 00-overview.md.
-// An absent CLAUDE.md or CLAUDE.local.md adds nothing; any other failure is refused as transient, naming the file.
+// An absent CLAUDE.md or CLAUDE.local.md adds nothing; any other failure is refused naming the file and the cause, with no way forward.
 func MerriamBase(geom Geometry) (batcher.StartBase, error) {
 	var texts []string
 	for _, name := range []string{"CLAUDE.md", "CLAUDE.local.md"} {
@@ -65,7 +65,7 @@ func MerriamBase(geom Geometry) (batcher.StartBase, error) {
 	return MerriamBaseOf(texts...), nil
 }
 
-// merriamBaseError refuses a failure to read file for Merriam's start base as transient.
+// merriamBaseError names file and cause of a failed read for Merriam's start base; each caller adds its own way forward.
 func merriamBaseError(file string, cause error) error {
-	return fmt.Errorf("webster: compute Merriam's start base, reading %s: %w; way forward: transient, re-run the verb", file, cause)
+	return fmt.Errorf("webster: compute Merriam's start base, reading %s: %w", file, cause)
 }

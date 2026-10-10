@@ -352,6 +352,7 @@ func TestValidateCmd_Envelopes(t *testing.T) {
 
 // TestValidateCmd_BatchesFlag asserts --batches adds the active batchifier's profile and its partition to the ok envelope,
 // each batch as its card numbers and estimate, and that without the flag the envelope carries neither key.
+// With no recorded state and an unreadable CLAUDE.md the flag refuses naming the file and the way forward.
 func TestValidateCmd_BatchesFlag(t *testing.T) {
 	t.Parallel()
 
@@ -359,6 +360,27 @@ func TestValidateCmd_BatchesFlag(t *testing.T) {
 		Budget:   1e9,
 		MaxCards: 2,
 		Weights:  batcher.Weights{Orientation: 1000},
+	})
+
+	t.Run("an unreadable Merriam start base is refused", func(t *testing.T) {
+		t.Parallel()
+
+		c, _ := newTestCLI(t)
+		c.batcher = cost
+		plankit.Write(t, c.geom.PlanDir, twoCardUsesPlan(2, 1))
+		if err := os.Mkdir(filepath.Join(c.geom.WorktreeRoot, "CLAUDE.md"), 0o755); err != nil {
+			t.Fatalf("plant a directory in place of CLAUDE.md: %v", err)
+		}
+
+		var out bytes.Buffer
+		if code := clihelp.Execute(c.validateCmd(), &out, []string{"--batches"}); code == 0 {
+			t.Fatalf("validate --batches = 0; want non-zero, output: %s", out.String())
+		}
+		for _, want := range []string{"CLAUDE.md", "way forward: transient, re-run the verb"} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("output missing %q; got %q", want, out.String())
+			}
+		}
 	})
 
 	for _, tc := range []struct {
@@ -1345,6 +1367,16 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 				return []string{}
 			},
 			wantIn: []string{"--card"},
+		},
+		{
+			name: "unreadable Merriam start base",
+			arrange: func(t *testing.T, c *websterCLI) []string {
+				if err := os.Mkdir(filepath.Join(c.geom.WorktreeRoot, "CLAUDE.md"), 0o755); err != nil {
+					t.Fatalf("plant a directory in place of CLAUDE.md: %v", err)
+				}
+				return []string{}
+			},
+			wantIn: []string{"CLAUDE.md", "way forward: transient, re-run the verb"},
 		},
 		{
 			name: "non-numeric card",

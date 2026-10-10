@@ -230,6 +230,12 @@
 // It is a fork writing one of Master's two contract files, anything under the plan directory, or anything under webster's run directory but its own report (fork-state-write), or a parent write under the run's `_lyx` directory, into the worktree's tracked (not git-ignored) content, under the run's `.lyx` state directory (webster's pause flag and locks, another module's lock or pause flag, a reed launch script), or into another worktree of the task repository.
 // A fabric reference is correctness too unless its command is read-only, since an agent never touches the fabric repo for a write and the command can rewrite run state the cards' verify commands cannot detect;
 // the read-only classifier is injected (RecordDeps, RunDeps and RecoverDeps carry it as ReadOnly) and sees static shape only, so a command behind `bash -c`, a variable or a substitution stays correctness, and a nil classifier accepts nothing.
+// The classifier splits a `lyx`, `git` or `sed` segment into shell words, so a quoted word is its dequoted text, and a quoted writing flag is still rejected.
+// An unquoted glob character is rejected, except after the `--` of `git log`, `show`, `diff` and `status`, where every word is a pathspec.
+// A leading tilde is text, so a home path is admitted.
+// The stderr redirections `2>&1` and `2>/dev/null` are dropped before the redirection scan, and every other redirection still fails it.
+// `sed -n` with a line number or a range of two line numbers followed by `p`, then file words, is a read.
+// A trailing `--json` is a help form of a `lyx` segment, since the global flag raises help before the command runs.
 // A policy finding breaks a steering rule without touching correctness, such as a named spawn, a nested agent call or a read-only fabric reference.
 // Each finding carries a stable identity (its Key, prefixed by the session id for a parent finding),
 // and state.json's ledger dispositions it once per run, so the whole-session parent audit repeating earlier findings on every record-batch never re-judges them.
@@ -243,6 +249,7 @@
 // recover-batch refuses it with ErrRecoveryNeedsFresh before spawning anything,
 // and the way forward is `lyx webster reset --to start`, which archives the run record, and then `lyx webster run`.
 // `run --fresh` drops such a batch under the same HEAD and path rules as a pending finding.
+// A pathless entry is recognised by its class prefix and never resolved as a path.
 // One narrow exception keeps the batches before it (AcceptBatchFabricReference, `lyx webster accept-audit --batch NN`):
 // when every Uncheckable entry is a pathless fabric reference, the batch recorded a start commit and the worktree is clean apart from the run's own state,
 // the explicit call clears the entries and records each as a batch audit warning, and recover-batch then proceeds;
@@ -377,7 +384,7 @@
 // A terminal dead recovery below the cap earns one more when it committed work of its own (RecoveryRetry):
 // HEAD descends from its start through a first-parent range holding a non-merge commit.
 // An empty start, a HEAD a reset moved off the start, a range of merge-ins only and a failed git read, which is logged at Warn, all give no retry.
-// begin-batch reads the same function, so its report-present remedy names recover-batch once more for such a batch.
+// begin-batch reads the same function, so its report-present remedy names recover-batch once more for such a batch, and its refusal over a batch at the cap wraps ErrRecoveryExhausted and carries recovery_exhausted.
 // recover-batch's terminal envelope and status's batch entries carry the count as recoveries and the verdict as recovery_retry, and the refusal wrapping ErrRecoveryExhausted carries recovery_exhausted.
 // reset --to batch-start clears the batch's count and start; reset --to start archives the whole record.
 // Merriam runs the second recovery on recovery_retry: true and stops stuck on false or on recovery_exhausted.

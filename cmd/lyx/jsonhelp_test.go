@@ -7,8 +7,12 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // helpJSON mirrors the cmdJSON schema produced by clihelp.renderCmdJSON.
@@ -157,5 +161,27 @@ func TestJSONHelp_Schema(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestOwnJSONFlags pins the commands below the root that declare a `--json` of their own, local or persistent on a group.
+// Such a command shadows the global `--json`, which elsewhere raises help before the command runs.
+// The read-only classifier's rule that a trailing `--json` is a help form does not hold for it, so a new entry is a reviewed change against that rule.
+// The pinned verbs are the generic shed `status` verb under each recipe mount, which only reads.
+func TestOwnJSONFlags(t *testing.T) {
+	t.Parallel()
+
+	root := newRoot()
+	var got []string
+	walkCommands(root, func(cmd *cobra.Command) {
+		if cmd != root && cmd.LocalFlags().Lookup("json") != nil {
+			got = append(got, strings.TrimPrefix(cmd.CommandPath(), root.Name()+" "))
+		}
+	})
+	sort.Strings(got)
+
+	want := []string{"batten status", "loom status", "shed status"}
+	if !slices.Equal(got, want) {
+		t.Errorf("commands declaring their own --json = %q; want %q", got, want)
 	}
 }
