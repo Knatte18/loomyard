@@ -150,6 +150,7 @@ func IsSeedCommit(message string, paths []string) bool {
 	return true
 }
 
+// underSubtree reports whether the board-relative, slash-separated path p lies beneath the subtree prefix subtreeRel.
 func underSubtree(p, subtreeRel string) bool {
 	return strings.HasPrefix(p, subtreeRel+"/")
 }
