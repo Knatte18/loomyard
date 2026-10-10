@@ -40,8 +40,9 @@ func TestReadConfigChanges(t *testing.T) {
 		parentFileAfterFork string
 		// parentContent is the content of parentFileAfterFork; empty means "parent change".
 		parentContent string
-		// syncParentIntoTask merges the parent's weft branch into the pair's weft branch after every commit above.
-		syncParentIntoTask bool
+		// pickParentIntoTask cherry-picks the parent's commit after the fork onto the pair's weft branch,
+		// so the task carries the parent's change while its fork point stays where it was.
+		pickParentIntoTask bool
 		parentBranch       string
 		// wantFiles are anchor-relative paths the call reports.
 		wantFiles []string
@@ -84,12 +85,11 @@ func TestReadConfigChanges(t *testing.T) {
 			parentBranch:        "main",
 		},
 		{
-			name:                "a parent change synced into the task is not reported",
+			name:                "a parent change the task carried over is not reported",
 			anchor:              ".",
 			rels:                []string{loomRel},
-			taskFiles:           []string{boardRel},
 			parentFileAfterFork: loomRel,
-			syncParentIntoTask:  true,
+			pickParentIntoTask:  true,
 			parentBranch:        "main",
 		},
 		{
@@ -152,8 +152,8 @@ func TestReadConfigChanges(t *testing.T) {
 				content := cmp.Or(tc.parentContent, "parent change")
 				gitkit.CommitFile(t, weftRoot, filepath.Join(l.AnchorRel, tc.parentFileAfterFork), content, "parent change")
 			}
-			if tc.syncParentIntoTask {
-				gitkit.MustRun(t, pairWeft, "git", "merge", "--no-edit", fabricengine.RecordsBranchName(tc.parentBranch))
+			if tc.pickParentIntoTask {
+				gitkit.MustRun(t, pairWeft, "git", "cherry-pick", fabricengine.RecordsBranchName(tc.parentBranch))
 			}
 
 			got, err := fabricengine.ReadConfigChanges(l, slug, tc.parentBranch, tc.rels)
@@ -186,13 +186,8 @@ func TestReadConfigChanges(t *testing.T) {
 			if !slices.Equal(got.Files, want) {
 				t.Errorf("Files = %v; want %v", got.Files, want)
 			}
-			wantBase := forkPoint
-			if tc.syncParentIntoTask {
-				// A sync makes the parent's tip the common ancestor.
-				wantBase = gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(tc.parentBranch))
-			}
-			if got.Base != wantBase {
-				t.Errorf("Base = %s; want the fork point %s", got.Base, wantBase)
+			if got.Base != forkPoint {
+				t.Errorf("Base = %s; want the fork point %s", got.Base, forkPoint)
 			}
 			if wantTip := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(slug)); got.Tip != wantTip {
 				t.Errorf("Tip = %s; want the task branch tip %s", got.Tip, wantTip)
