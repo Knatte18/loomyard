@@ -30,9 +30,11 @@ type OrchPart struct {
 }
 
 // OrchCharge is the orch usage charged to one run, or left unattributed.
-// Tokens is fractional because a message in several runs' windows is split equally among them.
+// Tokens and Weight are fractional because a message in several runs' windows is split equally among them.
 type OrchCharge struct {
 	Tokens float64
+	// Weight is the charged messages' Usage.Weight, the unit of the role tables' weight and share columns.
+	Weight float64
 	Cost   Cost
 }
 
@@ -118,7 +120,7 @@ func CountOrch(dir string, runs []RunTally) (OrchTally, error) {
 			}
 			for _, m := range messages {
 				if len(named) == 1 {
-					tally.Charges[named[0]].add(float64(m.Usage.Total()), m.Cost)
+					tally.Charges[named[0]].add(m, 1)
 				} else {
 					tally.chargeByTime(m, runs)
 				}
@@ -168,12 +170,12 @@ func (tally *OrchTally) chargeByTime(m orchMessage, runs []RunTally) {
 		}
 	}
 	if len(holders) == 0 {
-		tally.Unattributed.add(float64(m.Usage.Total()), m.Cost)
+		tally.Unattributed.add(m, 1)
 		return
 	}
 	share := 1 / float64(len(holders))
 	for _, slug := range holders {
-		tally.Charges[slug].add(float64(m.Usage.Total())*share, m.Cost.share(share))
+		tally.Charges[slug].add(m, share)
 	}
 }
 
@@ -188,9 +190,11 @@ func (p *OrchPart) add(messages []orchMessage) {
 	}
 }
 
-func (c *OrchCharge) add(tokens float64, cost Cost) {
-	c.Tokens += tokens
-	c.Cost.add(cost)
+// add charges the fraction f of message m.
+func (c *OrchCharge) add(m orchMessage, f float64) {
+	c.Tokens += float64(m.Usage.Total()) * f
+	c.Weight += m.Usage.Weight() * f
+	c.Cost.add(m.Cost.share(f))
 }
 
 // WriteMarkdown writes the "Orchestrator" section: the counted orch usage split into main sessions and sub-agents, then each run's charge beside the run's own cost, the unattributed rest and the attribution rule.

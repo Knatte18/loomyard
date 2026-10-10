@@ -1,4 +1,4 @@
-// orch_test.go drives the orchestrator count and the cost estimate over fixture transcripts: the charge by time, a fork naming one run, the window cut-off, the list prices and an unpriced model.
+// orch_test.go drives the orchestrator count and the cost estimate over fixture transcripts: the charge by time, a fork naming one run, the window cut-off, the orch rows of the role tables, the section order, the list prices and an unpriced model.
 // Tier-1 (no git, no spawn).
 
 package main
@@ -103,6 +103,9 @@ func TestCountOrch(t *testing.T) {
 			if tt.charge.Tokens != tt.want {
 				t.Errorf("charge tokens = %v; want %v", tt.charge.Tokens, tt.want)
 			}
+			if tt.charge.Weight != 5*tt.want {
+				t.Errorf("charge weight = %v; want %v, five per output token", tt.charge.Weight, 5*tt.want)
+			}
 			// Opus 5.5 output is $20 per million tokens.
 			if wantUSD := 20 * tt.want / 1e6; math.Abs(tt.charge.Cost.USD-wantUSD) > 1e-9 {
 				t.Errorf("charge cost = %v; want $%.2f", tt.charge.Cost.USD, wantUSD)
@@ -117,8 +120,19 @@ func TestCountOrch(t *testing.T) {
 	if err := (Report{Runs: runs, Orch: &orch}).WriteMarkdown(&buf); err != nil {
 		t.Fatal(err)
 	}
+	report := buf.String()
+	// The orch section sits between the All runs table and the first run's table.
+	all, orchSection, firstRun := strings.Index(report, "## All runs\n"), strings.Index(report, "## Orchestrator\n"), strings.Index(report, "## run-a\n")
+	if all < 0 || orchSection < all || firstRun < orchSection {
+		t.Errorf("sections at All runs %d, Orchestrator %d, run-a %d; want them in that order:\n%s", all, orchSection, firstRun, report)
+	}
+	// Each output token weighs 5, so the runs' burler rows weigh 5M each and the orch rows five times their charged tokens;
+	// the shares divide by a total that holds the orch row.
 	for _, want := range []string{
-		"## Orchestrator\n",
+		"| burler | 3 | 3000000 | 0 | 0 | 0 | 15.0M | 20.0% | $60.00 | claude-opus-5-5: 3 |\n| orch | | | | | | 60.0M | 80.0% | $240.00 | |\n",
+		"Total weight 75.0M;",
+		"## run-a\n\n| role |",
+		"| burler | 1 | 1000000 | 0 | 0 | 0 | 5.0M | 33.3% | $20.00 | claude-opus-5-5: 1 |\n| orch | | | | | | 10.0M | 66.7% | $40.00 | |\n",
 		"| orch | 2 | 3 | 6.0M | $120.00 |",
 		"| orch+sub | 2 | 2 | 9.0M | $180.00 |",
 		"| total | 4 | 5 | 15.0M | $300.00 |",
@@ -127,8 +141,8 @@ func TestCountOrch(t *testing.T) {
 		"| unattributed | 3.0M | $60.00 | | |",
 		orchAttributionRule,
 	} {
-		if !strings.Contains(buf.String(), want) {
-			t.Errorf("report lacks %q:\n%s", want, buf.String())
+		if !strings.Contains(report, want) {
+			t.Errorf("report lacks %q:\n%s", want, report)
 		}
 	}
 }
