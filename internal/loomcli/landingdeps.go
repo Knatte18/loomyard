@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -131,6 +132,7 @@ func landingDeps(
 			return plan.Verify, nil
 		},
 		VerifyDir:      verifytree.Dir(l.AnchorPath()),
+		GateSlots:      hubgeom.GateSlots(l),
 		VerifyWaitMark: verifyWaitMark,
 		Shuttle:        runner,
 		Registry:       registry,

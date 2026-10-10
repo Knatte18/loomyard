@@ -39,7 +39,7 @@ func newVerifyGate(deps Deps) verifyGate {
 		dirty:    verifytree.DirtyPaths,
 		now:      time.Now,
 		verify: func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error) {
-			return verifytree.Verify(ctx, p, site, command, verifytree.Timeout, nil)
+			return verifytree.Verify(ctx, p, site, command, verifytree.Timeout, deps.GateSlots)
 		},
 	}
 }
