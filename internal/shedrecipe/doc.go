@@ -21,4 +21,11 @@
 // A seat's model spec is parsed and resolved against Env.Models at construction, so an unknown alias fails before any call.
 // Table.Validate runs at construction against Env.StencilsDir, so an unreadable stencil, an unresolvable include and a reserved or blank value fail there too.
 // The producer drives Env.Seats, the seat runner the caller wires over its shuttle runner; the entry reads no other seam.
+//
+// # The DiscussionSeats row
+//
+// The DiscussionSeats entry runs a chair and its advisors on a MultiLLM producer behind the discussion commit decorator.
+// Its table is told rather than built from Config: Env.DiscussionTable is a closure the caller supplies, evaluated once per call, because building the table needs a location this package may not import.
+// The row's "gates" key is stamped onto each table the closure returns, so the gate guards the chair whatever table the closure builds.
+// When the gates hold an enabled "parent-review" entry, the producer's fresh-spawn preparation opens the next review round before any stale output is archived and before any seat starts; a resumed live chair continues the latest round.
 package shedrecipe

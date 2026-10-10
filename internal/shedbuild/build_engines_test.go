@@ -22,10 +22,9 @@ import (
 // all, and Loom-Run's own two Config keys (poll_interval_s, poll_attempts) both default, so an
 // empty Config block is legal there too.
 //
-// DiscussionWrite and PlanWrite are two of them: each wraps a single-LLM producer behind
-// its own commit decorator, but its Spec arrives as an injected Env closure (DiscussionSpec or
-// PlanSpec) rather than as recipe Config, so it has no config keys of its own and its seams are
-// filled by envkit.FullEnv instead.
+// DiscussionWrite, DiscussionSeats and PlanWrite are three of them: each wraps a producer behind its own commit decorator.
+// Its Spec or table arrives as an injected Env closure (DiscussionSpec, DiscussionTable or PlanSpec) rather than as recipe Config.
+// It therefore has no config keys of its own, and its seams are filled by envkit.FullEnv instead.
 func engineMinimalConfig(stencilName, rubricStencilName string) map[string]map[string]any {
 	return map[string]map[string]any{
 		"SingleLLM": {

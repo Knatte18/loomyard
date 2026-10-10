@@ -124,6 +124,23 @@ func TestNewDiscussionGate(t *testing.T) {
 		}
 	})
 
+	// The gate reads the decision record and the support log only, so an advisor's notes file beside them is never judged.
+	t.Run("AdvisorNotesAreNotRead", func(t *testing.T) {
+		dir := t.TempDir()
+		decisionRecordPath, supportLogPath := writeDiscussionFixture(t, dir, validDecisionRecord, "support log")
+		if err := os.WriteFile(filepath.Join(dir, "advisor-1.md"), []byte("not a decision record, no required heading\n"), 0o644); err != nil {
+			t.Fatalf("write advisor notes: %v", err)
+		}
+
+		result, err := NewDiscussionGate(decisionRecordPath, supportLogPath)()
+		if err != nil {
+			t.Fatalf("gate() error = %v; want nil", err)
+		}
+		if !result.Passed || result.Findings != "" {
+			t.Errorf("gate() = %+v; want a pass with no findings", result)
+		}
+	})
+
 	t.Run("FindingsSurfaceAsAFailedGateAndAWarnLine", func(t *testing.T) {
 		dir := t.TempDir()
 		withoutGoal := strings.Replace(validDecisionRecord, "## Goal\n\nGoal text.\n\n", "", 1)

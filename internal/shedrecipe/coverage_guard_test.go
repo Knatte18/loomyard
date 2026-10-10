@@ -28,10 +28,12 @@ import (
 // SingleLLM is the other tolerated entry: the two other "loom: real LLM producers" board items
 // have not yet landed a row that reaches it.
 // MultiLLM is tolerated the same way: no loom row uses it yet.
+// DiscussionSeats is tolerated until loomrecipe selects it for the Discussion-Write row, which removes the entry again.
 var coverageGuardAllowedUnreachableEngines = map[string]bool{
-	"MultiLLM":  true,
-	"SingleLLM": true,
-	"Stub":      true,
+	"DiscussionSeats": true,
+	"MultiLLM":        true,
+	"SingleLLM":       true,
+	"Stub":            true,
 }
 
 // reachedEngines returns the union of every recipe consumer's RecipeEngines().

@@ -145,6 +145,9 @@ type Env struct {
 	// from importing directly. It is named per-producer rather than carried in a generic keyed
 	// map because Env already carries per-producer named fields.
 	DiscussionSpec shedadapters.SpecSource
+	// DiscussionTable is the injected shedadapters.TableSource the DiscussionSeats entry evaluates once per Call.
+	// It arrives as a closure for the same reason DiscussionSpec does: building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly.
+	DiscussionTable shedadapters.TableSource
 	// CommitDiscussion is the injected closure that commits the discussion output directory,
 	// invoked by the DiscussionWrite entry's commit decorator on a Done outcome.
 	CommitDiscussion func() error
