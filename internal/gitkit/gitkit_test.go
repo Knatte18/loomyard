@@ -40,6 +40,16 @@ func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
 		t.Errorf("core.fsmonitor = %q; want %q", got, "false")
 	}
 
+	cmd = exec.Command("git", "config", "gc.autoDetach")
+	cmd.Dir = dir
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git config gc.autoDetach: %v; output: %s", err, output)
+	}
+	if got := strings.TrimSpace(string(output)); got != "false" {
+		t.Errorf("gc.autoDetach = %q; want %q", got, "false")
+	}
+
 	cmd = exec.Command("git", "symbolic-ref", "HEAD")
 	cmd.Dir = dir
 	output, err = cmd.CombinedOutput()

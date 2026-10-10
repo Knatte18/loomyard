@@ -40,5 +40,7 @@
 // before m.Run(), pointing GIT_CONFIG_GLOBAL at a neutral config and setting GIT_CONFIG_NOSYSTEM=1,
 // which also covers git spawned by raw `git init`/`git clone` inside tests and by any child process
 // the test binary launches.
+// The neutral config also sets gc.autoDetach=false, so any gc that still runs is foreground and waited for.
+// The variables reach every `lyx` child a test runs through lyxbin.Run, which inherits the process environment, and reed's clean environment already passes them through.
 // See PATTERN-test-isolation for the machine-enforced half of this contract.
 package gitkit
