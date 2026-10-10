@@ -92,7 +92,7 @@ func TestMerriamBase(t *testing.T) {
 		}
 	})
 
-	t.Run("an absent overview is refused as transient naming the file", func(t *testing.T) {
+	t.Run("an absent overview is refused naming the file and no way forward", func(t *testing.T) {
 		if err := os.Remove(overview); err != nil {
 			t.Fatalf("remove overview: %v", err)
 		}
@@ -101,10 +101,11 @@ func TestMerriamBase(t *testing.T) {
 		if err == nil {
 			t.Fatal("MerriamBase() error = nil; want a refusal for the absent overview")
 		}
-		for _, want := range []string{"00-overview.md", "way forward: transient, re-run the verb"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("MerriamBase() error = %q; want it to contain %q", err.Error(), want)
-			}
+		if !strings.Contains(err.Error(), "00-overview.md") {
+			t.Errorf("MerriamBase() error = %q; want it to contain %q", err.Error(), "00-overview.md")
+		}
+		if strings.Contains(err.Error(), "way forward") {
+			t.Errorf("MerriamBase() error = %q; want no way forward", err.Error())
 		}
 	})
 }

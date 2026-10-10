@@ -705,8 +705,7 @@ func TestStatusStrandAddSpec(t *testing.T) {
 	})
 }
 
-// TestApplyStatusStrandSurface pins start's status-strand branch: an llm-driven run removes the status strand and never ensures one,
-// and a go-driven run, the empty driver value included, ensures it and never removes.
+// TestApplyStatusStrandSurface pins start's status-strand branch: an llm-driven run removes the status strand and never ensures one, and a go-driven run, the empty driver value included, ensures it and never removes.
 func TestApplyStatusStrandSurface(t *testing.T) {
 	ensureErr := errors.New("ensure failed")
 	tests := []struct {

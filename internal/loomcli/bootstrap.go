@@ -201,9 +201,7 @@ func applyStatusStrandSurface(driver string, remove func(), ensure func() error)
 // It removes every match rather than the first, because an older build may have left a duplicate.
 // Removal is never recursive: reed refuses a non-recursive removal of a strand with children and removes nothing,
 // so a status strand with anything parented beneath it stays up instead of cascading through strands this call never meant to touch.
-// It never fails its caller: a failed status read or removal logs a warning and carries on,
-// because a leftover band costs the operator screen rows, not the run
-// (the same stance ensureStatusStrand takes on a failed ReplaceStrand).
+// It never fails its caller: a failed status read or removal logs a warning and carries on, because a leftover band costs the operator screen rows, not the run (the same stance ensureStatusStrand takes on a failed ReplaceStrand).
 func removeStatusStrands(status func() (reedengine.StatusResult, error), remove func(guid string, recursive bool) (reedengine.Removed, error)) {
 	st, err := status()
 	if err != nil {

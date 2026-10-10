@@ -144,6 +144,7 @@ You never read raw fork output beyond its own turn, and you never open a file to
   the refusal names the batch's recorded state and the one remedy that state calls for, and you follow exactly that remedy:
   `record-batch` or `recover-batch` for the batch (the latter backgrounded, per the rung above), or, for a finished batch, beginning the next one.
   A dead batch with `recovery_retry: false` ends the run: write `outcome: stuck` naming the batch, as the dead rungs above do.
+  A refusal carrying `{"recovery_exhausted": true}` ends the run stuck naming the batch, as the recover-batch rung does, and its reset steps are the operator's.
   Then continue the loop from the next batch.
 - Any verb refuses with `{"config_invalid": true}` → a config file under `_lyx/config` has broken content, and the operator's fix is not Master's to make.
   Write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop without calling another verb.

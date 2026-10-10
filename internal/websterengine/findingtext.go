@@ -86,7 +86,7 @@ func pathSuffix(it findingItem, notes map[string]string) string {
 // a finding with no path, a plan path with no recorded hashes, and a path outside the task worktree's tracked tree.
 // The error is a link-resolution or git probe failure.
 func uncheckableReason(geom Geometry, st *State, path string) (reason string, uncheckable bool, err error) {
-	if path == "" {
+	if _, pathless := pathlessEntryClass(path); path == "" || pathless {
 		return reasonNoPath, true, nil
 	}
 	lexical := resolveWritePath(geom.WorktreeRoot, path)

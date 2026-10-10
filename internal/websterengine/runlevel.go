@@ -460,7 +460,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	newPartition := func() ([]batcher.Batch, error) {
 		base, err := MerriamBase(deps.Geom)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w; way forward: transient, %s", err, deps.reentryStep())
 		}
 		formed, err := formBatches(plan, deps.Batcher, sizes, 0, base)
 		if err != nil {

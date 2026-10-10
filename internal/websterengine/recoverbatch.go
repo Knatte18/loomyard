@@ -39,7 +39,7 @@ var ErrRecoveryNeedsFresh = errors.New("webster: recovery cannot check the batch
 // ErrRecoveryDeleteReferenced is the sentinel RecoverSpawnOrAttach's refusal of a batch whose Delete target an unbegun later card still references unwraps to.
 var ErrRecoveryDeleteReferenced = errors.New("webster: recovery cannot clear a delete a later card still references")
 
-// ErrRecoveryExhausted is the sentinel RecoverSpawnOrAttach's refusal of a counted recovery spawn past the cap unwraps to.
+// ErrRecoveryExhausted is the sentinel a refusal unwraps to when the batch has used every counted recovery spawn.
 var ErrRecoveryExhausted = errors.New("webster: the batch's recoveries are exhausted")
 
 // maxRecoveries is how many counted recovery spawns one batch gets.

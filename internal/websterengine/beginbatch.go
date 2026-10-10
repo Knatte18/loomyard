@@ -325,24 +325,28 @@ func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) 
 
 // existingReportRemedy names the one step the recorded state of batch number calls for when begin-batch finds the batch's report already on disk.
 // retry is RecoveryRetry's verdict: a dead recovery that committed and is below the cap names recover-batch once more.
-func existingReportRemedy(number int, recorded *BatchState, retry bool) string {
+// A terminal record other than done is worded in recover-batch's own order: the exhausted case first, which also reports true, then a dead recovery with a retry, any other dead recovery, and a stuck or failed record.
+func existingReportRemedy(number int, recorded *BatchState, retry bool) (string, bool) {
 	if !recorded.Terminal {
 		if recorded.Kind == "recovery" {
-			return fmt.Sprintf("`lyx webster recover-batch %d`", number)
+			return fmt.Sprintf("`lyx webster recover-batch %d`", number), false
 		}
-		return fmt.Sprintf("`lyx webster record-batch %d`, after fixing whatever its last refusal named", number)
+		return fmt.Sprintf("`lyx webster record-batch %d`, after fixing whatever its last refusal named", number), false
 	}
-	switch recorded.Status {
-	case DigestStatusDone:
-		return "the batch is finished, so begin the next batch"
-	case DigestStatusDead:
+	if recorded.Status == DigestStatusDone {
+		return "the batch is finished, so begin the next batch", false
+	}
+	if recorded.Recoveries >= maxRecoveries && !rendersNewAmendment(recorded) {
+		return fmt.Sprintf("the batch's recoveries are exhausted, so end the run stuck naming the batch; for the operator, %s; or %s",
+			strings.TrimPrefix(wayForwardSteps(resetVerb(ResetToBatchStart, number), fmt.Sprintf("lyx webster recover-batch %d", number)), "way forward: "), freshRestartSteps(stepRun)), true
+	}
+	if recorded.Status == DigestStatusDead {
 		if retry {
-			return fmt.Sprintf("`lyx webster recover-batch %d`, once more, since the dead recovery committed work of its own", number)
+			return fmt.Sprintf("`lyx webster recover-batch %d`, once more, since the dead recovery committed work of its own", number), false
 		}
-		return fmt.Sprintf("the recovery of batch %d is exhausted, so end the run stuck naming the batch", number)
-	default:
-		return fmt.Sprintf("`lyx webster recover-batch %d`", number)
+		return fmt.Sprintf("the recovery of batch %d is dead and earns no retry, so end the run stuck naming the batch", number), false
 	}
+	return fmt.Sprintf("`lyx webster recover-batch %d`", number), false
 }
 
 // BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the pause gate, the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
@@ -453,7 +457,12 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 				seen = "terminal with status " + recorded.Status
 			}
 			retry, _ := RecoveryRetry(deps.Geom, deps.State, number)
-			return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s and state.json records the batch as %s — begin-batch never overwrites finished work; way forward: %s", number, slug, existingReport, seen, existingReportRemedy(number, recorded, retry))
+			remedy, exhausted := existingReportRemedy(number, recorded, retry)
+			refusal := fmt.Errorf("webster: batch %02d-%s already has a report at %s and state.json records the batch as %s — begin-batch never overwrites finished work; way forward: %s", number, slug, existingReport, seen, remedy)
+			if exhausted {
+				return nil, fmt.Errorf("%w: %w", ErrRecoveryExhausted, refusal)
+			}
+			return nil, refusal
 		}
 	} else if !os.IsNotExist(statErr) {
 		return nil, fmt.Errorf("webster: stat batch report %s: %w", existingReport, statErr)

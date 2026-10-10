@@ -996,6 +996,33 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 	nilClassifierSetup, nilClassifierCheck := uncheckableRefusal(readOnlyEntry("cat a"))
 	mixedSetup, mixedCheck := uncheckableRefusal(readOnlyEntry("cat a"), ".lyx/webster/pause")
 	withPathSetup, withPathCheck := uncheckableRefusal("internal/fabric/x.go")
+	// A command longer than NAME_MAX would fail link resolution if its entry were ever resolved as a path.
+	longEntry := readOnlyEntry("lyx fabric add " + strings.Repeat("x", 300))
+	longAloneSetup, longAloneBase := uncheckableRefusal(longEntry)
+	// The fixture sets no scratch directory, so the row gives it one and names a path under it.
+	var longBesidePathBase func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error)
+	var scratchPath string
+	longBesidePathSetup := func(fx *recoverFixture) {
+		fx.Deps.Geom.ScratchDir = filepath.Join(fx.Worktree, "scratch")
+		scratchPath = filepath.Join(fx.Deps.Geom.ScratchDir, "pause")
+		var setup func(fx *recoverFixture) *websterengine.BatchState
+		setup, longBesidePathBase = uncheckableRefusal(scratchPath, longEntry)
+		setup(fx)
+	}
+	longBesidePathCheck := func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+		longBesidePathBase(t, fx, bs, spawned, err)
+		if err == nil {
+			return
+		}
+		for _, want := range []string{scratchPath + " (under webster's scratch directory)", longEntry + " (the finding names no path)"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q lacks %q", err, want)
+			}
+		}
+		if strings.Contains(err.Error(), "resolve links") {
+			t.Errorf("error %q resolved the pathless entry as a path", err)
+		}
+	}
 	// readOnlyInLine seeds a failed batch whose uncheckable entries are entries, at HEAD = its start commit, with the real classifier.
 	readOnlyInLine := func(fx *recoverFixture, entries ...string) {
 		rec := failedRecord("correctness finding")
@@ -1196,6 +1223,26 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 				fabricRefusalSetup(fx)
 			},
 			check: fabricRefusalCheck,
+		},
+		{
+			name:  "a pathless entry longer than NAME_MAX beside a scratch path is never resolved as a path",
+			setup: func(fx *recoverFixture) { longBesidePathSetup(fx) },
+			check: longBesidePathCheck,
+		},
+		{
+			name:  "a pathless entry longer than NAME_MAX alone is refused toward the accept-audit route",
+			setup: func(fx *recoverFixture) { longAloneSetup(fx) },
+			check: func(t *testing.T, fx *recoverFixture, bs *websterengine.BatchState, spawned bool, err error) {
+				longAloneBase(t, fx, bs, spawned, err)
+				if err == nil {
+					return
+				}
+				for _, want := range []string{acceptBatchStep, startRouteText, committedRouteText} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q lacks %q", err, want)
+					}
+				}
+			},
 		},
 		{
 			name: "a failed batch on the scratch pause flag recovery cannot check is refused toward the reset-to-start route",
@@ -1600,9 +1647,21 @@ func TestRecoverSpawnOrAttach_ContractFileEvidence(t *testing.T) {
 		name      string
 		master    []shuttleengine.WriteEvent
 		wantSpawn bool
+		// pathless adds a pathless entry longer than NAME_MAX beside the contract path, which the call must never resolve as a path.
+		pathless  string
 		wantInErr []string
 		notInErr  []string
+		// needsFresh expects ErrRecoveryNeedsFresh instead of the delete refusal.
+		needsFresh bool
 	}{
+		{
+			name:       "master wrote after the fork, beside a pathless entry",
+			master:     []shuttleengine.WriteEvent{{At: at.Add(2 * time.Minute), Succeeded: true}},
+			pathless:   readOnlyEntry("lyx fabric add " + strings.Repeat("x", 300)),
+			needsFresh: true,
+			wantInErr:  []string{"the finding names no path"},
+			notInErr:   []string{"outcome.yaml (", "resolve links"},
+		},
 		{
 			name:      "fork wrote last",
 			master:    []shuttleengine.WriteEvent{{At: at, Succeeded: true}},
@@ -1636,6 +1695,9 @@ func TestRecoverSpawnOrAttach_ContractFileEvidence(t *testing.T) {
 			fx.Deps.State.MasterSessionID = "s1"
 			rec := failedRecord("fork wrote the contract file")
 			rec.Uncheckable = []string{contract}
+			if tt.pathless != "" {
+				rec.Uncheckable = append(rec.Uncheckable, tt.pathless)
+			}
 			fx.Deps.State.Batches[1] = rec
 			clk := &recoverFakeClock{now: time.Unix(0, 0)}
 
@@ -1646,8 +1708,8 @@ func TestRecoverSpawnOrAttach_ContractFileEvidence(t *testing.T) {
 				}
 				return
 			}
-			if err == nil || errors.Is(err, websterengine.ErrRecoveryNeedsFresh) {
-				t.Fatalf("RecoverSpawnOrAttach() error = %v; want the delete refusal, not ErrRecoveryNeedsFresh", err)
+			if errors.Is(err, websterengine.ErrRecoveryNeedsFresh) != tt.needsFresh || err == nil {
+				t.Fatalf("RecoverSpawnOrAttach() error = %v; want ErrRecoveryNeedsFresh = %v", err, tt.needsFresh)
 			}
 			for _, want := range tt.wantInErr {
 				if !strings.Contains(err.Error(), want) {

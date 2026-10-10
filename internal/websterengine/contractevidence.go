@@ -103,6 +103,10 @@ type contractSplit struct {
 func splitContractPaths(geom Geometry, writes RunWrites, paths []string) (contractSplit, error) {
 	var s contractSplit
 	for _, p := range paths {
+		if _, pathless := pathlessEntryClass(p); pathless {
+			s.Rest = append(s.Rest, p)
+			continue
+		}
 		contract, cleared, err := contractFileStatus(geom, writes, p)
 		if err != nil {
 			return contractSplit{}, err
@@ -134,6 +138,9 @@ func contractWritesFor(engine shuttleengine.Engine, st *State, geom Geometry, pa
 		return RunWrites{}, nil
 	}
 	for _, p := range paths {
+		if _, pathless := pathlessEntryClass(p); pathless {
+			continue
+		}
 		if _, contract, err := contractCanon(geom, p); err != nil {
 			return RunWrites{}, err
 		} else if contract {

@@ -296,7 +296,7 @@ func allPathlessFabricReference(entries []string) bool {
 		return false
 	}
 	for _, e := range entries {
-		if !strings.HasPrefix(e, fabricReferencePrefix) {
+		if class, ok := pathlessEntryClass(e); !ok || class != ClassFabricReference {
 			return false
 		}
 	}
