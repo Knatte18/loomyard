@@ -298,6 +298,8 @@ everything else is in `internal/`. `main` is the only thing that imports a modul
 Each module contributes a `Command() *cobra.Command` that is passed to `root.AddCommand(...)`, so every module and subcommand is discoverable via `lyx --help` without any central dispatch table.
 The `help` module is the one exception: `newRoot()` mounts it with `root.SetHelpCommand(helpcli.Command())` followed by `root.InitDefaultHelpCmd()`, replacing cobra's built-in help command.
 Adding a module is three steps: import the package, add `<module>.Command()` to `root.AddCommand(...)` in `newRoot()`, and append the module name to `root.Long`.
+Every invocable command also carries an `audience` annotation (`operator`, `role` or `internal`), and `lyx help index` renders the operator commands as a one-line-per-command index of the running binary, which the orch's role file and the `ly:cli` skill carry.
+A tree walk in `cmd/lyx/clitree_test.go` pins the form of `Use`, `Short` and `Long` beside the audience.
 
 `run(args, out)` is the testable seam: it builds a fresh root, merges stdout and stderr into `out`, and calls `root.ExecuteContext`, returning the process exit code without spawning a binary or trapping `os.Exit`.
 Each module also exposes `RunCLI(out io.Writer, args []string) int` — exactly `return RunCLIIn("", out, args)` — as an in-process test seam that drives a module in isolation without involving the cobra root.

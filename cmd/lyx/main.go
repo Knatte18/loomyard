@@ -82,7 +82,7 @@ func newRoot() *cobra.Command {
 
 	root := &cobra.Command{
 		Use:   "lyx",
-		Short: "Loomyard task-tracker CLI",
+		Short: "drive the loomyard task board, worktrees, agents and runs",
 		Long: `lyx is the CLI for the Loomyard task tracker.
 
 It assembles every module's cobra command tree under a single root so that

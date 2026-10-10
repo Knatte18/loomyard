@@ -1,7 +1,7 @@
 # Top-level test functions per package, in its _test.go files under every build tag.
 # TestTestBudget_PackagesStayWithinBudget fails when a package exceeds its row or has tests and no row.
 # Raise a row in the commit that adds the tests that need it.
-cmd/lyx: 71
+cmd/lyx: 72
 cmd/testtiming: 13
 contracts/specs: 3
 contracts/stencils: 16
@@ -60,8 +60,8 @@ internal/loomshed: 72
 internal/lyxcwd: 23
 internal/mergeresolve: 17
 internal/modelspec: 11
-internal/orchcli: 25
-internal/orchengine: 131
+internal/orchcli: 26
+internal/orchengine: 133
 internal/output: 4
 internal/pairteardown: 5
 internal/parentdirective: 4
