@@ -224,7 +224,7 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	code, runErr := verifyrun.Run(runCtx, command, p.Worktree, logFile)
+	code, runErr := verifyrun.Run(runCtx, command, p.Worktree, nil, logFile)
 	if runErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return Result{}, fmt.Errorf("verifytree: verify cancelled: %w", ctxErr)

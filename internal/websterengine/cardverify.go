@@ -33,7 +33,7 @@ func rerunCardVerifies(cards []planparser.Card, worktree string, timeout time.Du
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		code, err := verifyrun.Run(ctx, command, worktree, io.Discard)
+		code, err := verifyrun.Run(ctx, command, worktree, nil, io.Discard)
 		cancel()
 
 		var how string
