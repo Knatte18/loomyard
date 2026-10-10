@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -300,6 +301,7 @@ func TestVerify_Scenario(t *testing.T) {
 // It sets GOFLAGS in the process environment, so it is not parallel.
 func TestVerify_SlotGate(t *testing.T) {
 	t.Setenv("GOFLAGS", "-count=1")
+	t.Setenv(gateslot.PrebuiltLyxEnv, "/stale/lyx")
 	p := newScratch(t)
 	pool := &gateslot.Pool{
 		Dir:    filepath.Join(t.TempDir(), "gate"),
@@ -312,7 +314,7 @@ func TestVerify_SlotGate(t *testing.T) {
 	}
 
 	seenEnv := filepath.Join(t.TempDir(), "env")
-	command := "printf '%s\\n%s\\n' \"$GOFLAGS\" \"$LYX_GATE_SLOT\" > " + seenEnv
+	command := "printf '%s\\n%s\\n%s\\n' \"$GOFLAGS\" \"$LYX_GATE_SLOT\" \"$" + gateslot.PrebuiltLyxEnv + "\" > " + seenEnv
 	const timeout = 300 * time.Millisecond
 	type outcome struct {
 		res Result
@@ -374,9 +376,9 @@ func TestVerify_SlotGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "-count=1 -p=7\n" + filepath.Join(pool.Dir, "slot-1.lock") + "\n"
+	want := "-count=1 -p=7\n" + filepath.Join(pool.Dir, "slot-1.lock") + "\n\n"
 	if string(data) != want {
-		t.Errorf("command saw GOFLAGS and slot variable %q; want %q", data, want)
+		t.Errorf("command saw GOFLAGS, slot variable and prebuilt-lyx variable %q; want %q, the last empty", data, want)
 	}
 
 	unusableBoard := t.TempDir()
@@ -404,5 +406,43 @@ func TestVerify_SlotGate(t *testing.T) {
 	}
 	if fileExists(p.Marker) {
 		t.Error("the marker survived the failed acquire")
+	}
+}
+
+// TestVerify_DropsStrandName proves a verify command never sees the strand name, on the unslotted run and on the slotted one.
+// It sets the variable with t.Setenv, which is process-global state, so it is not parallel.
+func TestVerify_DropsStrandName(t *testing.T) {
+	t.Setenv(agentname.StrandNameEnv, "verify-test-strand")
+
+	tests := []struct {
+		name string
+		pool func(t *testing.T) *gateslot.Pool
+	}{
+		{"an unslotted run", func(*testing.T) *gateslot.Pool { return nil }},
+		{"a slotted run", func(t *testing.T) *gateslot.Pool {
+			return &gateslot.Pool{
+				Dir:    filepath.Join(t.TempDir(), "gate"),
+				Limits: func() (gateslot.Limits, error) { return gateslot.Limits{Slots: 1, GoParallel: 7}, nil },
+				Poll:   10 * time.Millisecond,
+			}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newScratch(t)
+			seen := filepath.Join(t.TempDir(), "strand")
+			command := "printf '%s' \"$" + agentname.StrandNameEnv + "\" > " + seen
+			res, err := Verify(context.Background(), p, Site{Label: "webster verify"}, command, Timeout, tt.pool(t))
+			if err != nil || res.Status != StatusPassed {
+				t.Fatalf("Verify = (%+v, %v); want a pass", res, err)
+			}
+			data, err := os.ReadFile(seen)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(data) != "" {
+				t.Errorf("command saw %s = %q; want it dropped", agentname.StrandNameEnv, data)
+			}
+		})
 	}
 }

@@ -36,7 +36,7 @@ func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-archive-happy"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -63,7 +63,7 @@ func TestRemove_ReusesSameTipArchiveTag(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-archive-reuse"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
@@ -95,7 +95,7 @@ func TestRemove_PendingRecordsAreCommittedAndArchivedOnce(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-archive-weft-dirty"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
@@ -142,7 +142,7 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-archive-unreachable"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
@@ -176,7 +176,7 @@ func TestRemove_ForceStillArchives(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-archive-force"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -200,7 +200,7 @@ func TestRemove_RemoteFalseStillPushesArchiveTag(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-archive-noremote"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
@@ -224,7 +224,7 @@ func TestRemove_NoOriginSkipsArchiveAndCompletes(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-archive-noorigin"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
@@ -248,7 +248,7 @@ func TestAddRollback_LeavesNoArchiveTag(t *testing.T) {
 	t.Parallel()
 
 	const slug = "add-rollback-no-archive"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 

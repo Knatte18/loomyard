@@ -43,7 +43,8 @@ over from its start commit.
   pre-fix          the HEAD the verify gate started its fixes from
   report-head      the head_sha of batch --batch's report
   last-batch-head  the last batch head the run recorded
-  batch-start      batch --batch's recorded start commit
+  batch-start      batch --batch's recorded start commit; also clears that
+                   batch's recovery count and recovery start
 
 --batch is required for report-head and batch-start and refused for the
 others. reset takes no raw SHA and has no force flag; FABRIC_SKIP_PUSH=1
@@ -117,7 +118,7 @@ Example:
 			var parent string
 			if !plan.ArchiveOnly && fab != nil {
 				if parent, err = c.parentBranch(); err != nil {
-					return fail(fmt.Sprintf("webster: reset --to %s refused: the parent branch is unknown (%v); way forward: run `lyx fabric reconcile` to repair the pair, then re-run `lyx webster reset --to %s`", target, err, target))
+					return fail(fmt.Sprintf("webster: reset --to %s refused: the parent branch is unknown (%v); way forward: run `lyx fabric reconcile` to repair the pair, then re-run `lyx webster reset --to %s`; a session lyx refuses the verb from reports status: FAILED and the orch runs it", target, err, target))
 				}
 			}
 			if target == websterengine.ResetToStart {
@@ -144,6 +145,12 @@ Example:
 				}
 
 				st.PreFixHead = ""
+				if target == websterengine.ResetToBatchStart {
+					if bs := st.Batches[batch]; bs != nil {
+						bs.Recoveries = 0
+						bs.RecoveryStartSHA = ""
+					}
+				}
 				if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
 					return fail(fmt.Sprintf("webster: the branch was reset to %s but state.json could not be saved: %v; way forward: re-run `lyx webster reset --to %s`", plan.SHA, err, target))
 				}

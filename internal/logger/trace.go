@@ -44,6 +44,11 @@ func mintTraceID() string {
 	return hex.EncodeToString(buf)
 }
 
+// NewTraceID mints a fresh trace identity for a child process, leaving this process's own identity and the environment untouched.
+func NewTraceID() string {
+	return mintTraceID()
+}
+
 // adoptOrMintTraceID returns LYX_TRACE_ID's value when it matches the minted alphabet exactly, and a
 // freshly minted identity otherwise.
 //

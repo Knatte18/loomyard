@@ -31,7 +31,7 @@ import (
 func newSyncRepo(t *testing.T) (work string, remoteCommits, localCommits func() int) {
 	t.Helper()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	work = h.PrimeRecords()
 
 	if out, err := exec.Command("git", "-C", work, "push", "-u", "origin", "HEAD").CombinedOutput(); err != nil {

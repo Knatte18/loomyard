@@ -5,6 +5,8 @@
 // The weft-git content-sync verbs (status, commit, push, pull, sync, diff) are wired in by
 // weft_verbs.go, which also extends this file's Command() build with the --weft-path bypass flag
 // and its PersistentPreRunE.
+// That pre-run opens with the sandboxed-role guard of roleguard.go.
+// The guard refuses every mutating verb from a task session's strand name before the verb runs.
 
 package fabriccli
 
@@ -118,6 +120,8 @@ branch's name with fabric's uniform suffix appended.
 
 A pair whose weft branch already exists, locally or on origin, is adopted
 rather than forked.
+
+The command pushes the new code branch and the records branches to origin.
 
 The command errors if the worktree is on a detached HEAD or an unborn branch,
 because a fork point cannot be determined in either case.

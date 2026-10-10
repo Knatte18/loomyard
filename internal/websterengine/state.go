@@ -288,6 +288,12 @@ type BatchState struct {
 	// EventsOffset is where the recovery's own events begin in EventsPath, past the skill-load turns shuttle ran at start;
 	// zero for a record written before it existed.
 	EventsOffset int64 `json:"eventsOffset,omitempty"`
+	// Recoveries counts the batch's recovery spawns that count toward the cap of two, carried across a re-begin and a respawn.
+	// A spawn whose prompt renders an amendment no earlier spawn rendered keeps the count, and a start that fails counts nothing.
+	Recoveries int `json:"recoveries,omitempty"`
+	// RecoveryStartSHA is the repo HEAD when the record's recovery was spawned, empty for a fork record and for a record written before the field existed.
+	// RecoveryRetry reads it to tell whether a dead recovery committed work of its own.
+	RecoveryStartSHA string `json:"recoveryStartSha,omitempty"`
 }
 
 // LoadState reads <websterDir>/state.json, locked against

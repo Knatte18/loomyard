@@ -74,10 +74,11 @@ type HistoryEntry struct {
 
 // Status is the whole status file.
 //
-// Field ownership is split three ways: CurrentProducer, State, Error, Activity, and History are
-// Shed-owned and rewritten on every persist; PauseRequested is shared write-to-clear, set true
-// only by an outside actor and written false only by Shed, exactly once, in the persist that
-// records StatePaused; Product is external-writer-owned and only ever carried through.
+// Field ownership is split four ways.
+// CurrentProducer, State, Error, Activity, and History are Shed-owned and rewritten on every persist.
+// PauseRequested is shared write-to-clear, set true only by an outside actor and written false only by Shed, exactly once, in the persist that records StatePaused.
+// PauseBefore and PauseAfter are outside-set and cleared by Shed together, only in the persist that records StatePaused for a fired condition and in Goto's persist.
+// Product is external-writer-owned and only ever carried through.
 type Status struct {
 	CurrentProducer string `json:"current_producer"`
 	State           State  `json:"state"`
@@ -87,10 +88,14 @@ type Status struct {
 	Transient string `json:"transient,omitempty"`
 	// ParentNotice is the one-line notice an awaiting producer handed for the run's parent, empty on every other write.
 	// A status file written before the field existed decodes as empty.
-	ParentNotice   string         `json:"parent_notice,omitempty"`
-	PauseRequested bool           `json:"pause_requested"`
-	Activity       Activity       `json:"activity"`
-	History        []HistoryEntry `json:"history"`
+	ParentNotice   string `json:"parent_notice,omitempty"`
+	PauseRequested bool   `json:"pause_requested"`
+	// PauseBefore names the row the run pauses before running, empty when none is recorded.
+	PauseBefore string `json:"pause_before,omitempty"`
+	// PauseAfter names the row the run pauses after it returns a routed running outcome, empty when none is recorded.
+	PauseAfter string         `json:"pause_after,omitempty"`
+	Activity   Activity       `json:"activity"`
+	History    []HistoryEntry `json:"history"`
 	// Product is an opaque product-owned payload Shed round-trips verbatim and never inspects,
 	// validates, or interprets. It carries no compatibility claim for loom's own schema.
 	Product json.RawMessage `json:"product,omitempty"`

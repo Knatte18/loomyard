@@ -124,7 +124,7 @@ func TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged(t *testing.T) {
 // operator's real state directory. The redirect means this test must not be marked t.Parallel() --
 // t.Setenv panics under a parallel test.
 func TestRunCLIIn_WronglyEnteredHub_Refuses(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	sub := filepath.Join(h.PrimeWorktree(), "sub")
 	if err := os.Mkdir(sub, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", sub, err)

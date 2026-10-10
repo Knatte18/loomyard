@@ -51,6 +51,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 )
 
@@ -220,9 +221,15 @@ func TestSmokeJudgeCirclingToyFixture(t *testing.T) {
 	// registered config: fabriccli.CloneAndWire already reconciled default config for every
 	// registered module when NewHub built h, so seeding them again here would be a no-op duplicate
 	// (outcome 1 of the SeedConfig triage).
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.PrimeWorktree())
 	stencilsDir := seedHubStencils(t, h.Location.HubPath)
+	reedCfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
+	if err != nil {
+		t.Fatalf("load reed config: %v", err)
+	}
+	// Registered before the first boot, so reed's boot finds the kit's hermetic server on the hub's key.
+	tmuxkit.KillOnCleanup(t, reedCfg.Tmux, reedengine.ServerName(h.Path))
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
@@ -266,10 +273,6 @@ The chair is red and the table is blue; they must match.
 
 	// Wire the real stack directly: treadleengine never imports claudeengine
 	// itself, but this test is the caller and may.
-	reedCfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
-	if err != nil {
-		t.Fatalf("load reed config: %v", err)
-	}
 	shuttleCfg, err := shuttleengine.LoadConfig(h.Location.AnchorPath(), "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)

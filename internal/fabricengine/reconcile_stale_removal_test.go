@@ -61,7 +61,7 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 	t.Parallel()
 
 	const slug = "stale-removal-add-remove-noop"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	cfgPath := configengine.ConfigFile(boardDir, "fabric")
@@ -140,7 +140,7 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 	t.Parallel()
 
 	const slug = "stale-removal-correct-noop"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -183,7 +183,7 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 func TestReconcile_ConvergesAllWorktreesToRepoWidePathspec(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 
@@ -237,7 +237,7 @@ func TestReconcile_EmptyDefaultPathspecRemovesOptionalJunctionKeepsStructural(t 
 	t.Parallel()
 
 	const slug = "stale-removal-empty-default"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -278,7 +278,7 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 	t.Parallel()
 
 	const slug = "stale-removal-failclosed"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -327,7 +327,7 @@ func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
 	t.Parallel()
 
 	const slug = "stale-removal-reserved"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -374,7 +374,7 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 	// materializes ONLY the repo-wide fabric.yaml — no per-pair weft-base fabric.yaml exists anywhere
 	// in a real hub either — mirroring the new clone flow this test's own point is about, so no
 	// per-pair SeedConfig call is needed here.
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	l := h.Location
 	topology := h.Topology
@@ -439,7 +439,7 @@ func TestReconcile_PreservesUserSymlinkAtAnchor(t *testing.T) {
 	t.Parallel()
 
 	const slug = "stale-removal-user-symlink"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -489,7 +489,7 @@ func TestUnwire_PreservesUserSymlinkAtAnchor(t *testing.T) {
 	t.Parallel()
 
 	const slug = "unwire-user-symlink"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
 
@@ -539,7 +539,7 @@ func TestReconcile_RefusedStaleRemovalReportsNothing(t *testing.T) {
 	t.Parallel()
 
 	const slug = "stale-removal-refused"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	cfgPath := configengine.ConfigFile(boardDir, "fabric")

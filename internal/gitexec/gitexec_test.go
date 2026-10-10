@@ -78,34 +78,51 @@ func TestRunGit(t *testing.T) {
 }
 
 // TestRun pins Run's contract: a successful command returns its stdout with a nil error; a non-zero exit is recoverable via errors.As as *gitexec.GitError carrying the exit code, the args and dir it was given and non-empty stderr; and an exec-level failure — a cwd that does not exist — returns a non-nil error that errors.As does NOT match as *gitexec.GitError, the distinction every errors.As recovery site depends on.
+// A last row sets GIT_DIR and GIT_WORK_TREE to a second repository and asserts the child still answers the directory it was run in, because git children never inherit those two variables.
+// That row touches process-global state, the environment, so the test does not call t.Parallel; its table rows do.
 func TestRun(t *testing.T) {
-	t.Parallel()
 
 	nonZeroArgs := []string{"log", "--format=stdout-marker", "-1"}
 	nonZeroDir := t.TempDir()
 	tests := []struct {
-		name        string
-		args        []string
-		dir         string
-		wantGitErr  bool
-		wantAnyErr  bool
-		wantStdout  bool
+		name       string
+		args       []string
+		dir        string
+		stdin      string
+		viaStdin   bool
+		wantGitErr bool
+		wantAnyErr bool
+		wantStdout bool
+		// wantExact, when set, is the exact stdout.
+		wantExact   string
 		wantDetails bool
 	}{
 		{name: "success", args: []string{"--version"}, dir: ".", wantStdout: true},
 		{name: "non-zero exit", args: nonZeroArgs, dir: nonZeroDir, wantGitErr: true, wantAnyErr: true, wantDetails: true},
 		{name: "exec failure", args: []string{"status"}, dir: filepath.Join(t.TempDir(), "does-not-exist"), wantAnyErr: true},
+		{name: "stdin reaches git", args: []string{"hash-object", "--stdin"}, dir: nonZeroDir, stdin: "hello\n", viaStdin: true, wantStdout: true, wantExact: "ce013625030ba8dba906f756967f9e9ca394464a\n"},
+		{name: "stdin non-zero exit", args: nonZeroArgs, dir: nonZeroDir, stdin: "ignored\n", viaStdin: true, wantGitErr: true, wantAnyErr: true, wantDetails: true},
+		{name: "empty stdin behaves as Run", args: []string{"--version"}, dir: ".", viaStdin: true, wantStdout: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			stdout, err := gitexec.Run(tt.args, tt.dir)
+			var stdout string
+			var err error
+			if tt.viaStdin {
+				stdout, err = gitexec.RunStdin(tt.args, tt.dir, tt.stdin)
+			} else {
+				stdout, err = gitexec.Run(tt.args, tt.dir)
+			}
 			if (err != nil) != tt.wantAnyErr {
 				t.Fatalf("Run error = %v; wantErr %v", err, tt.wantAnyErr)
 			}
 			if (stdout != "") != tt.wantStdout {
 				t.Errorf("stdout = %q; non-empty want %v", stdout, tt.wantStdout)
+			}
+			if tt.wantExact != "" && stdout != tt.wantExact {
+				t.Errorf("stdout = %q; want %q", stdout, tt.wantExact)
 			}
 			var gitErr *gitexec.GitError
 			if errors.As(err, &gitErr) != tt.wantGitErr {
@@ -128,6 +145,33 @@ func TestRun(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("ignores GIT_DIR and GIT_WORK_TREE", func(t *testing.T) {
+		first, second := t.TempDir(), t.TempDir()
+		for _, dir := range []string{first, second} {
+			if _, err := gitexec.Run([]string{"init", "-q"}, dir); err != nil {
+				t.Fatalf("git init in %s error = %v", dir, err)
+			}
+		}
+		t.Setenv("GIT_DIR", filepath.Join(second, ".git"))
+		t.Setenv("GIT_WORK_TREE", second)
+
+		got, err := gitexec.Run([]string{"rev-parse", "--absolute-git-dir"}, first)
+		if err != nil {
+			t.Fatalf("Run(rev-parse --absolute-git-dir) error = %v", err)
+		}
+		wantDir, err := filepath.EvalSymlinks(filepath.Join(first, ".git"))
+		if err != nil {
+			t.Fatalf("EvalSymlinks error = %v", err)
+		}
+		gotDir, err := filepath.EvalSymlinks(strings.TrimSpace(got))
+		if err != nil {
+			t.Fatalf("EvalSymlinks(%q) error = %v", got, err)
+		}
+		if gotDir != wantDir {
+			t.Errorf("git dir = %q; want %q, the directory the command ran in", gotDir, wantDir)
+		}
+	})
 }
 
 // TestRun_StdoutOnError tests that stdout is still returned alongside a *GitError, using a command that writes to stdout and then exits non-zero:
@@ -156,17 +200,24 @@ func TestRun_StdoutOnError(t *testing.T) {
 		t.Fatalf("failed to modify a.txt: %v", err)
 	}
 
-	stdout, err := gitexec.Run([]string{"diff", "--exit-code", "--", "a.txt"}, tempDir)
-	if err == nil {
-		t.Fatal("expected a non-nil error for a non-empty diff with --exit-code")
+	diffArgs := []string{"diff", "--exit-code", "--", "a.txt"}
+	forms := map[string]func() (string, error){
+		"Run":      func() (string, error) { return gitexec.Run(diffArgs, tempDir) },
+		"RunStdin": func() (string, error) { return gitexec.RunStdin(diffArgs, tempDir, "ignored\n") },
 	}
+	for name, form := range forms {
+		stdout, err := form()
+		if err == nil {
+			t.Fatalf("%s: expected a non-nil error for a non-empty diff with --exit-code", name)
+		}
 
-	var gitErr *gitexec.GitError
-	if !errors.As(err, &gitErr) {
-		t.Fatalf("expected errors.As to recover *gitexec.GitError, got %T: %v", err, err)
-	}
-	if stdout == "" {
-		t.Fatal("expected non-empty stdout containing the diff output")
+		var gitErr *gitexec.GitError
+		if !errors.As(err, &gitErr) {
+			t.Fatalf("%s: expected errors.As to recover *gitexec.GitError, got %T: %v", name, err, err)
+		}
+		if stdout == "" {
+			t.Fatalf("%s: expected non-empty stdout containing the diff output", name)
+		}
 	}
 }
 

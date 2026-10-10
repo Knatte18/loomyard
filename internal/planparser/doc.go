@@ -22,9 +22,9 @@
 // planparser owns not only the plan format but where the plan directory lives.
 // PlanDirName and PlanDirRel declare the worktree-relative token (`_lyx/plan`,
 // forward-slash, a document token used for Card.SourcePath); PlanDir and
-// PlanOverview declare the absolute form. The package never resolves cwd and never
-// imports internal/lyxcwd — the caller supplies the anchor path, which in a lyx
-// worktree is lyxcwd.Location.AnchorPath() and never WorktreePath().
+// PlanOverview declare the absolute form.
+// The package itself never resolves cwd: its loomyard imports are internal/lyxdirs and internal/pattern, the latter for the entry-line cap alone.
+// The caller supplies the anchor path, which in a lyx worktree is lyxcwd.Location.AnchorPath() and never WorktreePath().
 //
 // # Type model
 //
@@ -59,8 +59,9 @@
 // pure classifier (classify.go's classifyRef) and the shape.go ref-shape
 // registry's ledger gates, which every dispatch site consults via lookup
 // rather than comparing classifyRef's return value itself
-// — never `go doc`, never a process spawn, so the package stays a tier1-pure
-// leaf per the Test Tier Purity Invariant. glyphref.go holds the sole
+// — never `go doc`, never a process spawn.
+// planparser itself spawns no process and stays tier1-pure per the Test Tier Purity Invariant.
+// glyphref.go holds the sole
 // path->glyph call (glyph.Self) and the sole glyph->path call
 // (Glyph.UnitPath, used only by validate.go's disk-existence checks), per the
 // glyph-conversion-chokepoint Shared Decision.
@@ -109,6 +110,17 @@
 //
 // CheckFirstCard and CheckCardFabricReference sit outside ValidateFormat and Validate, since only a caller holding the rework round's first card number, or a matcher for the fabric-reference rule, can run them.
 // CheckCardFabricReference scans the raw text the parse step records in Plan.OverviewText and Card.Text, so it reads no file and planparser stays the sole parser.
+//
+// # Entry-line cap
+//
+// pattern-entry-line-cap fails a card whose fenced code block holds a line opening like a PATTERN.md entry line, "- `PATTERN-", longer than pattern.MaxEntryLineChars runes.
+// It reads Card.Text alone and scans fenced blocks only, never inline spans or prose.
+//
+// # Verify chains
+//
+// verify-nested-module and verify-module-wide read a shell chain through one splitter.
+// It joins a backslash-newline continuation into one line, then splits at `&&`, `||`, `;`, `|` and a newline, reading `||` as one separator and a separator inside a single- or double-quoted span as text.
+// A segment carries the separator that preceded it, so verify-nested-module follows a `cd` only after a sequencing separator and ends its scan at a `cd` in a pipeline stage or after `||`.
 //
 // # The language: key and the glyph alphabet
 //

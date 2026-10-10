@@ -32,8 +32,7 @@
 // a write of "normal" clears the field, and a write of any other value is refused.
 // Within each README group, a task layer, a Notes type subsection or Done, entries order high, normal, low, then in their order without priority;
 // RenderOrder applies it, so `lyx board list` and `find` follow the same order.
-// The README splits each open group, Running, Ready, a dependency layer or a Notes type subsection, into one table per priority present, in the order high, normal, low,
-// each under a fourth-level heading, `#### High priority`, `#### Normal priority` or `#### Low priority`, one level below the group's `###` heading;
+// The README splits each open group, Running, Ready, a dependency layer or a Notes type subsection, into one table per priority present, in the order high, normal, low, each under a fourth-level heading, `#### High priority`, `#### Normal priority` or `#### Low priority`, one level below the group's `###` heading;
 // a priority with no entry in the group gets no heading and no table, and Done stays one table.
 // Priority is part of an entry's scope, so the run lock refuses a change to it on a run-held entry.
 //

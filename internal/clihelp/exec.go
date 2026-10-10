@@ -10,6 +10,9 @@
 // It holds per-invocation exit state, a seam adapter that wires a cobra command tree into an
 // io.Writer-based call contract, a RunE wrapper that bridges legacy handler functions into cobra's
 // RunE signature, and helpers that centralise JSON-envelope error wrapping for Cobra-level errors.
+//
+// It also owns the global --json flag (InstallJSONHelp): under it every command, leaf or group, prints its help as structured JSON and exits 0, and no command runs;
+// a command that declares its own local --json flag shadows the global one and keeps its own meaning.
 package clihelp
 
 import (

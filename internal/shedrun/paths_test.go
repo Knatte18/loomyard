@@ -42,6 +42,22 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "status.json") }},
 		{"StepsDir", func(l *lyxcwd.Location) string { return StepsDir(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "steps") }},
+		{"LoopLock", func(l *lyxcwd.Location) string { return LoopLock(l, "self") },
+			func(l *lyxcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "loop.lock") }},
+		{"LoopPIDFile", func(l *lyxcwd.Location) string { return LoopPIDFile(l, "self") },
+			func(l *lyxcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "loop.pid") }},
+		{"LoopLog", func(l *lyxcwd.Location) string { return LoopLog(l, "self") },
+			func(l *lyxcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "loop.log") }},
+		{"LoopEnvelope", func(l *lyxcwd.Location) string { return LoopEnvelope(l, "self") },
+			func(l *lyxcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "loop-envelope.json") }},
+		{"LoopDelivered", func(l *lyxcwd.Location) string { return LoopDelivered(l, "self", "abc") },
+			func(l *lyxcwd.Location) string {
+				return filepath.Join(StepsDir(l, "self"), "loop-envelope.abc.delivered.json")
+			}},
+		{"StepTraceCopy", func(l *lyxcwd.Location) string { return StepTraceCopy(l, "self", "t1") },
+			func(l *lyxcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "t1.trace.log") }},
+		{"StepStderr", func(l *lyxcwd.Location) string { return StepStderr(l, "self", "t1") },
+			func(l *lyxcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "t1.stderr.log") }},
 		{"ScratchDir", func(l *lyxcwd.Location) string { return ScratchDir(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lyx", "shed", worktreeName) }},
 		{"RunLock", func(l *lyxcwd.Location) string { return RunLock(l, "self") },
@@ -149,6 +165,15 @@ func TestLocksAreDistinct(t *testing.T) {
 			}
 			if prime == StatusLock(l, runID) {
 				t.Errorf("PrimeRunLock(l) == StatusLock(l, %q) = %q; must differ", runID, prime)
+			}
+			if got := LoopLock(l, runID); got == RunLock(l, runID) || got == StatusLock(l, runID) {
+				t.Errorf("LoopLock(l, %q) = %q; must differ from RunLock and StatusLock", runID, got)
+			}
+			if LoopDelivered(l, runID, "loop-a") == LoopDelivered(l, runID, "loop-b") {
+				t.Errorf("LoopDelivered(l, %q, ...) is the same file for two loop ids", runID)
+			}
+			if name := LoopJobName(l, runID); strings.ContainsAny(name, `/\`) || name == LoopJobName(syntheticLocation(t), runID) {
+				t.Errorf("LoopJobName(l, %q) = %q; want no path separator and a name that differs between two locations", runID, name)
 			}
 		})
 	}

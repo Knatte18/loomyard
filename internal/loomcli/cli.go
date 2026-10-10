@@ -14,6 +14,7 @@ package loomcli
 import (
 	"io"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -27,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -71,6 +73,12 @@ type loomCLI struct {
 	// runner is the constructed shuttle runner, carried onto the struct so run.go can pass it to
 	// landingDeps as the landing seam's Shuttle value.
 	runner *shuttleengine.Runner
+	// shuttleCfg is the loaded shuttle config, kept so the loop's activity reading finds the worktree's live agent runs;
+	// zero under the lightweight wiring, whose verbs never run the loop.
+	shuttleCfg shuttleengine.Config
+	// stepIdleTimeout is the window after which a --until-stop step showing no activity is killed, from loom.yaml's step_idle_timeout_min;
+	// zero under the lightweight wiring.
+	stepIdleTimeout time.Duration
 	// landingCfg is the loaded landing.yaml configuration, loaded once in wire() per the
 	// landing-config-loads-in-wire decision, so an unreconciled hub's absent-config error reaches
 	// the operator's own terminal on every verb, not only inside run's detached driver log.
@@ -203,12 +211,36 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 		// arm's own lyxcwd.Resolve error is already self-describing (it IS the "not a git
 		// repository" sentinel); pass it through bare rather than doubling that same text on
 		// top of it -- exactly as every other arm/wire error is reported.
-		output.Err(out, err.Error())
-		clihelp.Abort(ctx, 1)
+		clihelp.Abort(ctx, c.reportArmFailure(out, cmd, args, err))
 		return nil
 	}
 	*c.spec = armed
 	return nil
+}
+
+// reportArmFailure prints the refusal arm returned and gives the exit code.
+// A step carrying the --until-stop flag whose location was resolved is a loop stop, which writes the run's status file failed;
+// every other verb, a step without the flag, and a failed resolve, which names no run, report the plain arming refusal.
+func (c *loomCLI) reportArmFailure(out io.Writer, cmd *cobra.Command, args []string, err error) int {
+	untilStop, _ := cmd.Flags().GetBool(shedverbs.UntilStopFlag)
+	if cmd.Name() != "step" || !untilStop || c.location == nil {
+		return shedverbs.ReportArmError(out, cmd.Name(), err)
+	}
+	runID := shedrun.SelfRunID
+	if len(args) > 0 {
+		runID = args[0]
+	}
+	loopID, _ := cmd.Flags().GetString(shedverbs.LoopDetachedFlag)
+	return shedverbs.ReportLoopArmError(out, shedverbs.ArmStop{
+		RunID:          shedrun.ResolveRunID(c.location, runID),
+		StatusPath:     shedrun.StatusFile(c.location, runID),
+		RunLockPath:    shedrun.RunLock(c.location, runID),
+		StatusLockPath: shedrun.StatusLock(c.location, runID),
+		LoopLockPath:   shedrun.LoopLock(c.location, runID),
+		PIDPath:        shedrun.LoopPIDFile(c.location, runID),
+		EnvelopePath:   shedrun.LoopEnvelope(c.location, runID),
+		LoopID:         loopID,
+	}, err)
 }
 
 // inReviewGroup reports whether cmd is loom's review, circling or decision group, or a command under any of them.
@@ -334,9 +366,17 @@ An optional run-id positional addresses a run other than this worktree's
 own default ("self"); pause refuses when no seed already exists at that
 run-id.
 
+--before <producer> records a stop condition instead: the run pauses before
+that producer runs. --after <producer> pauses after that producer returns a
+routed running outcome, at the row it routed to. Either replaces a recorded
+one, and neither touches the request above. --clear removes both
+conditions, and refuses beside --before or --after.
+
 Example:
   lyx loom pause
-  lyx loom pause <run-id>`,
+  lyx loom pause <run-id>
+  lyx loom pause --before Plan-Write
+  lyx loom pause --clear`,
 	},
 	Goto: shedverbs.VerbText{
 		Use:      "goto [<run-id>]",

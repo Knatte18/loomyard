@@ -27,7 +27,7 @@ func TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing(t *testing.T) {
 	t.Parallel()
 
 	const slug = "dirty-warp-remove"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 
@@ -64,7 +64,7 @@ func TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction(t *test
 	t.Parallel()
 
 	const slug = "add-rollback-order"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	// Break the warp origin remote so the push at the very end of Add fails after every earlier

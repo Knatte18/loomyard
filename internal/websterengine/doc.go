@@ -130,6 +130,7 @@
 //
 // loom's plan gate takes a narrower scope from DoneCards: only the cards of a batch recorded terminal with status done, read from the batch records alone, with no batchifier.
 // A run moved back to the plan review keeps its run record, and those cards are history whose work is in the tree.
+// The gate reads EditedDoneCards beside DoneCards: the ids of those cards whose file no longer hashes to the CardHashes entry their batch recorded at begin, from the batch records and the card bytes alone.
 //
 // # the plan-staleness guard re-baselines at the rewrite, not at the return
 //
@@ -199,6 +200,9 @@
 // What passes besides is a reworded one-line intent of a begun card in a later Master render, while that card's file stays pinned by its recorded hash.
 // A state without the frame hash takes the recorded frame from the stored baseline copy of the overview until the first restamp.
 // A run with neither refuses any overview change, and a change outside the Card Index refuses naming the overview outside its Card Index.
+// An empty recorded frame has one of three causes, no overview hash recorded, the baseline copy absent, or a copy without a parseable Card Index;
+// Rebaseline logs the cause once at Info, with the copy's path where there is one, and the no-frame refusal names both.
+// Every refusal and transient of Rebaseline is keyed on RebaselineDeps.Step: empty keeps the manual verbs, and a set step, the loom's Webster row re-step, replaces them, so no text on that path tells an agent to run a verb by hand.
 // A done batch's card and a changed frame refuse with the follow-up card landing as their way forward:
 // add a follow-up card after the last begun batch that carries the decision, with its Card Index line, then `lyx webster rebaseline --card NN` naming it.
 // The fingerprint refusals in begin-batch and run name the landing too, and for an index-only change name rebaseline with the added cards' flags.
@@ -224,12 +228,14 @@
 // The fork and parent audits classify each finding (ClassifyViolation) as correctness or policy.
 // A correctness finding means the delta or the run's own state may be wrong.
 // It is a fork writing one of Master's two contract files, anything under the plan directory, or anything under webster's run directory but its own report (fork-state-write), or a parent write under the run's `_lyx` directory, into the worktree's tracked (not git-ignored) content, under the run's `.lyx` state directory (webster's pause flag and locks, another module's lock or pause flag, a reed launch script), or into another worktree of the task repository.
-// Every fabric reference is correctness too, whatever its command, since an agent never touches the fabric repo and the command can rewrite run state the cards' verify commands cannot detect;
-// a policy finding breaks a steering rule without touching correctness, such as a named spawn or a nested agent call.
+// A fabric reference is correctness too unless its command is read-only, since an agent never touches the fabric repo for a write and the command can rewrite run state the cards' verify commands cannot detect;
+// the read-only classifier is injected (RecordDeps, RunDeps and RecoverDeps carry it as ReadOnly) and sees static shape only, so a command behind `bash -c`, a variable or a substitution stays correctness, and a nil classifier accepts nothing.
+// A policy finding breaks a steering rule without touching correctness, such as a named spawn, a nested agent call or a read-only fabric reference.
 // Each finding carries a stable identity (its Key, prefixed by the session id for a parent finding),
 // and state.json's ledger dispositions it once per run, so the whole-session parent audit repeating earlier findings on every record-batch never re-judges them.
 // A policy finding is recorded as a warning on the batch once the evidence holds:
 // an OK report on a batch that carries policy findings first has its cards' verify commands re-run in-process (rerunCardVerifies), and a failing re-run makes those findings correctness for the batch and fails it.
+// A rerun command never sees gateslot.PrebuiltLyxEnv, slotted or not, so its own `go test` builds lyx once per test binary.
 // A correctness finding fails the batch on its merits instead of wedging it:
 // the batch goes terminal with digest status failed and its reasons, the report is archived, and record-batch returns *BatchFailedError naming `lyx webster recover-batch`.
 // recover-batch proceeds from a failed batch and hands its strand the failure digest,
@@ -245,8 +251,14 @@
 // Either HEAD is that start, so the batch changed nothing (a batch that committed qualifies after `lyx webster reset --to batch-start --batch NN`),
 // or the start is an ancestor of HEAD and every entry's recorded command is read-only (`fabricengine.IsReadOnlyCommand`), so the batch's commits are kept.
 // An entry that is not read-only, or records no command, refuses the whole call with the reset-to-start and fresh-run steps.
-// The evidence shows the start still lies in HEAD's history, nothing uncommitted, and no listed reader able to write; it does not inspect the batch's commits.
+// The evidence shows the start still lies in HEAD's history and nothing uncommitted;
+// no command the classifier accepts writes tracked content, a ref, config or a remote, and `git status` may refresh the index's stat cache, which changes no content.
+// It does not inspect the batch's commits.
 // The fabric repo's own state it cannot show, and the caller vouches for it by running the verb.
+// recover-batch runs the same call in line (RecoverSpawnOrAttach, with RecoverDeps.ReadOnly) before its refusal, when every Uncheckable entry is a pathless fabric reference whose recorded command the classifier accepts:
+// on success the warnings are recorded on the batch, each naming `recover-batch`, and the recovery spawns;
+// an evidence failure returns ErrAuditNotAcceptable, which recover-batch's envelope carries as `audit_not_acceptable` and whose way forward names `recover-batch` for the re-run.
+// A command the classifier rejects, a nil classifier, an entry of another kind or a fabric reference recorded with a path keeps the refusal.
 // record-batch on a batch already terminal as a fork batch first audits the fork transcripts it has not consumed, once and without the settle wait:
 // an undispositioned correctness finding (a fork that marked its own batch done by writing state.json) replaces the terminal record with a failed one,
 // and otherwise the "already terminal" refusal stands.
@@ -355,9 +367,20 @@
 // Only an operator's shorter --wait can return a running snapshot.
 // A recovery strand's turn end with no report classifies dead/asking only when it is the strand's newest turn signal and nothing keeps it waiting (TurnEndedAfter):
 // a later turn start is the strand working again, and a plain turn end counts only after it has stood a few seconds, because a background shell that finished just before the turn ended starts the next turn through its completion notification (issue #498).
-// A turn end left waiting on background work follows Master's background-shell rule through shuttle's ShellWaitBound and ShellWaitExpires:
-// one waiting only on transcript-reported shells counts after `background_shell_wait_min`, and one waiting on a fork or a payload-reported shell never counts, so recovery_timeout_min bounds it.
+// A turn end left waiting on any task, a shell of either signal or a fork, never counts, so recovery_timeout_min bounds that strand and a report present before it classifies done.
 // This mirrors classify.go's dead/timeout/stuck classification.
+//
+// A batch's recovery spawns are counted in BatchState.Recoveries, and the spawn records HEAD as RecoveryStartSHA, read before anything is stopped or started, so a HEAD that cannot be read starts and counts nothing.
+// A re-begin and a rebaseline keep the count.
+// A spawn whose prompt renders an amendment no earlier spawn rendered does not count, so an amendment forces at most one uncounted re-run.
+// A counted spawn is refused with ErrRecoveryExhausted once the batch has two recoveries, whoever asks, with a way forward through `reset --to batch-start` or `reset --to start`.
+// A terminal dead recovery below the cap earns one more when it committed work of its own (RecoveryRetry):
+// HEAD descends from its start through a first-parent range holding a non-merge commit.
+// An empty start, a HEAD a reset moved off the start, a range of merge-ins only and a failed git read, which is logged at Warn, all give no retry.
+// begin-batch reads the same function, so its report-present remedy names recover-batch once more for such a batch.
+// recover-batch's terminal envelope and status's batch entries carry the count as recoveries and the verdict as recovery_retry, and the refusal wrapping ErrRecoveryExhausted carries recovery_exhausted.
+// reset --to batch-start clears the batch's count and start; reset --to start archives the whole record.
+// Merriam runs the second recovery on recovery_retry: true and stops stuck on false or on recovery_exhausted.
 //
 // # digest persistence carries batch context forward
 //
@@ -414,6 +437,15 @@
 // A report with no begin-batch record is archived by begin-batch itself, which proceeds and returns the archive path as BeginResult.ArchivedReport;
 // only a batch with no record is archived this way, and a recorded batch's report is never archived by begin-batch.
 //
+// A plan edited between runs normally refuses the next run with ErrFingerprintMismatch, and `--fresh` is the escape that archives the record.
+// RunOptions.AutoRebaseline, which only the loom's Webster row sets, is the second: Run rebaselines the changed plan on entry, before anything else acts on the run.
+// It names every changed card file's number as Rebaseline's cards, so it accepts exactly what the operator's `--card` flags accept: a follow-up card after the last begun batch, an unbegun card's edit, and an in-flight card as an amendment recorded unrendered for the next recovery to render;
+// a done card's edit, a begun batch's card-set change, a failed batch with uncheckable findings and an overview change outside its Card Index are refused.
+// An accepted rebaseline is saved before the batch loop starts, so a crash after it re-enters on a matching fingerprint, and the fabric receives it with the run's next sync.
+// Every error of the auto path wraps ErrAutoRebaseline, and its refusals name RunDeps.ReentryStep through Rebaseline's step-keyed texts, never `lyx webster rebaseline`; the shed adapter maps them to Stuck.
+// The accepted rebaseline's warning is logged once at Warn, leads RunResult.Warnings, opens a stuck outcome's reason and every error Run returns afterwards, and the plan refusals that follow it (validation, zero batches, quarry) wrap ErrAutoRebaseline too.
+// `--fresh` beside the option keeps its archive path and runs no rebaseline, and a run without the option keeps ErrFingerprintMismatch.
+//
 // # The verify-gate fixer fork
 //
 // A gate failure reaches Merriam as a `Gate findings recorded at …` message naming the verify-gate report (VerifyGateReportPath).
@@ -460,18 +492,17 @@
 //
 // Master's spawn declares one awaited shell prefix, `masterAwaitedShellPrefix` (the backgrounded recovery verb of the failure ladder);
 // recovery_timeout_min already bounds that verb, so shuttle's turn-end wait treats it like a fork.
-// Every other background shell is waited out: after `background_shell_wait_min` for a shell only the transcript reports, and at once, when Master's output files exist, for one the Stop payload reports.
-// The labels come back on shuttle's `Result.ExpiredShells`.
-// lyx does not stop such a shell: the wait only stops waiting on it at a turn end.
-// That turn end finishes the run when Master's output files exist, and otherwise holds the run for the parent until they exist, Master dies or the run times out.
+// No background shell expires: a turn end waiting on a shell of either signal ends on Master's output files, the run's deadline or the liveness check, and `background_shell_wait_min` only sets when a long-running shell is logged and shown in the wait marker.
+// Every shell outstanding when the run ends comes back on shuttle's `Result.EndedShells`, whatever ends the run.
+// lyx does not stop such a shell.
 // What ends the shell follows the run's final outcome.
 // When Master's turn ends shuttle-done (a webster done, Master's own stuck or paused, the verify gate's demotion, or a mapping error after that end), shuttle removes Master's strand as the run finishes, and the session and the shell end with it.
 // When the run returns a died or timeout error, Master's strand stays alive until the next `lyx webster run` reclaims it at entry.
 // Run writes one best-effort `webster-background-shell` friction note once the outcome is known, on every outcome.
-// For each label the note states the bound, that the wait stopped waiting on the shell at a turn end, that lyx did not stop the shell, what ends it and the run's final outcome.
-// Each label is also a `RunResult.Warnings` entry with the same wording on every outcome that returns a `RunResult` (done, stuck and paused), after the verify-gate demotion, so the warning and the note cannot drift;
+// For each shell the note states its label, signal and time outstanding, that lyx did not stop the shell, what ends it and the run's final outcome.
+// Each shell is also a `RunResult.Warnings` entry with the same wording on every outcome that returns a `RunResult` (done, stuck and paused), after the verify-gate demotion, so the warning and the note cannot drift;
 // an error outcome returns no `RunResult`, so the note alone carries it.
-// summary.md's "Background shells waited out" section (AppendBackgroundShells) stays done-only.
+// summary.md's "Background shells at the run's end" section (AppendBackgroundShells) stays done-only, as does its "Plan rebaselined" section, which names an accepted auto-rebaseline beside the "Audit warnings" section so the summary a step's Done points at carries it.
 //
 // # Planning a reset
 //

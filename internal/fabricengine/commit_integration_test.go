@@ -266,9 +266,8 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 	})
 
 	t.Run("TaskPairPushesBothSides", func(t *testing.T) {
-		h := hubforge.NewHub(t, ".")
-		hubforge.AddPairWith(t, h, "recorder-pair", fabricengine.AddOptions{})
-		pairLocation, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("recorder-pair"))
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
+		pairLocation, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(hubforge.TemplatePairSlug))
 		if err != nil {
 			t.Fatalf("ResolveWorktree: %v", err)
 		}
@@ -278,7 +277,7 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 		}
 		recorder := fabricengine.SwapPushRecorderForTest(t)
 
-		fabricengine.WriteWarpFileForTest(t, h.PairCodeWorktree("recorder-pair"), "pair-file.txt", "warp change")
+		fabricengine.WriteWarpFileForTest(t, h.PairCodeWorktree(hubforge.TemplatePairSlug), "pair-file.txt", "warp change")
 
 		if _, err := f.Commit([]string{"pair-file.txt"}, "pair commit", nil, fabricengine.SyncOptions{}); err != nil {
 			t.Fatalf("Commit() error = %v", err)
@@ -288,8 +287,8 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 		if len(calls) != 1 {
 			t.Fatalf("push recorder invocation count = %d; want 1 (calls: %+v)", len(calls), calls)
 		}
-		if calls[0].WarpPath != h.PairCodeWorktree("recorder-pair") || calls[0].WeftPath != h.PairRecordsSibling("recorder-pair") {
-			t.Errorf("push recorder called with (%q, %q); want (%q, %q)", calls[0].WarpPath, calls[0].WeftPath, h.PairCodeWorktree("recorder-pair"), h.PairRecordsSibling("recorder-pair"))
+		if calls[0].WarpPath != h.PairCodeWorktree(hubforge.TemplatePairSlug) || calls[0].WeftPath != h.PairRecordsSibling(hubforge.TemplatePairSlug) {
+			t.Errorf("push recorder called with (%q, %q); want (%q, %q)", calls[0].WarpPath, calls[0].WeftPath, h.PairCodeWorktree(hubforge.TemplatePairSlug), h.PairRecordsSibling(hubforge.TemplatePairSlug))
 		}
 	})
 
@@ -687,7 +686,7 @@ func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
 func TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit(t *testing.T) {
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	warpPath := newUnbornWarpRepo(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 	fabricengine.SwapPushRecorderForTest(t)
@@ -905,7 +904,7 @@ func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"doesnotexist"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}, "raddle")

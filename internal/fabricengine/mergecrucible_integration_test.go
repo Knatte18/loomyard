@@ -262,7 +262,7 @@ func fileExistsInWorktree(t *testing.T, dir, name string) bool {
 func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "merge-crucible-source"
 	hubforge.AddPair(t, h, slug)
 
@@ -767,7 +767,7 @@ func TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord(t *testing.T) {
 func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const consumerSlug = "merge-crucible-consumer"
 	const sourceSlug = "merge-crucible-linked-source"
 	hubforge.AddPair(t, h, consumerSlug)

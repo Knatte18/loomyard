@@ -103,7 +103,7 @@ func (v Vocabulary) Known(label string) bool {
 // An absent `_lyx/` under baseDir and an absent board.yaml under a present one both refuse naming the file and the `lyx fabric reconcile` way forward.
 func LoadConfig(baseDir, module string) (Config, error) {
 	configFile := configengine.ConfigFile(baseDir, module)
-	notInitialized := fmt.Errorf("board config %s not initialized; run \"lyx fabric reconcile\"", configFile)
+	notInitialized := fmt.Errorf("board config %s not initialized; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it", configFile)
 	if _, err := os.Stat(configFile); errors.Is(err, fs.ErrNotExist) {
 		return Config{}, notInitialized
 	}

@@ -4,6 +4,7 @@
 package fabriccli_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
@@ -25,6 +26,18 @@ func TestCommand_VerbDeclarations(t *testing.T) {
 			if sub.Short == "" {
 				t.Errorf("%s.Short is empty; want a non-empty summary", sub.Name())
 			}
+		}
+	})
+
+	t.Run("AddSaysItPushesToOrigin", func(t *testing.T) {
+		t.Parallel()
+
+		add, _, err := fabriccli.Command().Find([]string{"add"})
+		if err != nil {
+			t.Fatalf("Find([add]) error: %v", err)
+		}
+		if !strings.Contains(add.Long, "pushes the new code branch and the records branches to origin") {
+			t.Errorf("add.Long = %q; want it to say the verb pushes to origin", add.Long)
 		}
 	})
 

@@ -16,13 +16,12 @@
 // form that treats a non-zero exit as failure and returns it as *GitError.
 // gitrepo used to route every CLI-bound method through a single unexported
 // run helper over RunGit; it now has a matching pair, run and runChecked.
-// The read surface — CurrentSHA, SHAExists, ChangedFilesSince, and
-// CurrentBranch — resolves state entirely through go-git's own object and
-// ref access (see gogit.go), bypassing both of them completely. Of the
-// CLI-bound methods, only Pull and Fetch sit on the raw run — a non-zero
-// exit is a failure at both sites too, but the package's test-enforced
-// no-`fatal:`-leak surface forbids folding git's stderr into their
-// messages, which is what run's raw form lets them keep working around.
+// The read surface — CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch, BranchExists, RefSHA, HeadRef, RefTree, and Upstream — resolves state entirely through go-git's own object and ref access (see gogit.go), bypassing both of them completely.
+// Of the CLI-bound methods, only Pull and Fetch sit on the raw run — a non-zero exit is a failure at both sites too,
+// but the package's test-enforced no-`fatal:`-leak surface forbids folding git's stderr into their messages, which is what run's raw form lets them keep working around.
+// The geometry reads — GitDir and CommonDir — are the one local read beside go-git:
+// they resolve the checkout's `.git` entry through internal/dotgit once per handle, spawning nothing.
+// The worktree root is not among them: that query belongs to internal/lyxcwd alone.
 // Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push, PushCoalesced, ResetHard, ResetKeep, CherryPick, CherryPickAbort, IsAncestor, CommitsNotIn, UpdateRemoteBranchLeased, HasUnpulled, and HasUnpushed (measured and reverted from a go-git ancestry walk; see HasUnpushed's own godoc in push.go for the reversal criterion) — sits on runChecked.
 // See PATTERN-gitrepo-client-boundary for the enforced, exhaustive version of this split and the review obligation any new CLI call inside this package carries.
 // gitexec itself stays a zero-dependency leaf regardless of which side of the boundary a gitrepo method is on — it has roughly seventy non-test call sites across gitrepo, fabricengine, fabriccli, lyxcwd, and websterengine,

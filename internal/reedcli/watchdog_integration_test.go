@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // watchdogIntegrationTmux resolves the configured multiplexer binary, skipping the calling test when
@@ -133,7 +134,7 @@ func sessionListed(tmuxPath, socket, session string) bool {
 // the last flips the prime worktree's watchdog: key to off across a down and an up.
 // The scenario does not call t.Parallel, because the daemon command points the process-global logger's durable sink at the hub's logs directory.
 func TestWatchdogDaemon(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const pairSlug = "watchdog-second"
 	hubforge.AddPair(t, h, pairSlug)
 	prime := h.PrimeWorktree()
@@ -146,6 +147,7 @@ func TestWatchdogDaemon(t *testing.T) {
 		t.Fatalf("LoadConfig: %v", err)
 	}
 	tmuxPath := watchdogIntegrationTmux(t, cfg)
+	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 
 	// DaemonLockAndLogs drives the daemon command against a hub that has never run one: it points the durable log sink at fabricengine.HubLogsDir(hub) before discarding stderr — the only observable proof of watchdogCmd's documented ordering (sink first, then io.Discard, then the lock) is a trace-*.log file appearing there — and holds the single-instance lock, so a second attempt against the SAME hub exits 0 (contention) without taking it, while an unusable lock path (a hub path whose HubScratchDir cannot be created because a FILE sits where an intermediate directory component must go) exits non-zero.
 	if !t.Run("DaemonLockAndLogs", func(t *testing.T) {

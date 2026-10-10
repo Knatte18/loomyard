@@ -22,7 +22,7 @@ import (
 // Stays serial (no t.Parallel): the dispatch step swaps the package-level ideengine.CodeLauncher and ideengine.KeybindingsPath and restores them in a defer, which under t.Parallel() is both a data race on a production package-level variable and a restore firing while sibling tests still run.
 func TestRunCLI_SpawnScenario(t *testing.T) {
 	// Create a real hub so lyxcwd.Resolve succeeds inside the PersistentPreRunE.
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	if !t.Run("dispatch", func(t *testing.T) {
 		// Stub ideengine.CodeLauncher so the test does not open VS Code, and point the keybindings seam at a temporary file.

@@ -1,6 +1,6 @@
 // gitexec.go implements the package's two-shape entry-point split.
 // Run is the checked default: it treats a non-zero git exit as a failure,
-// returning *GitError.
+// returning *GitError; RunStdin is Run with stdin fed to git.
 // RunGit is the raw form, for the sites where a non-zero exit is an answer
 // rather than a failure — it stays permanently correct there rather than
 // becoming a "legacy" wrapper.
@@ -117,11 +117,13 @@ func renderArg(arg string) string {
 // runCore spawns git with args in cwd and captures its output.
 // A non-nil err means git could not be run at all (not found, permission denied, cwd invalid, …), or that a remote subcommand outlived remoteDeadline, which is a *GitError with exit code -1.
 // A non-zero git exit is reported as exitCode with a nil err.
-// RunGit and Run are both thin wrappers over this shared core and never call each other.
+// RunGit and RunStdin are thin wrappers over this shared core, and Run is RunStdin with an empty stdin.
+// A non-empty stdin is fed to git's standard input; an empty one leaves it unset.
 //
 // A remote subcommand runs under remoteDeadline, in its own process group, with lowSpeedEnv added to the environment;
-// a local one runs unbounded with the inherited environment.
-func runCore(args []string, cwd string) (stdout, stderr string, exitCode int, err error) {
+// a local one runs unbounded.
+// Every child gets the process environment less GIT_DIR and GIT_WORK_TREE.
+func runCore(args []string, cwd, stdin string) (stdout, stderr string, exitCode int, err error) {
 	var cmd *exec.Cmd
 	var ctx context.Context
 	deadline := remoteDeadline
@@ -131,14 +133,18 @@ func runCore(args []string, cwd string) (stdout, stderr string, exitCode int, er
 		defer cancel()
 		cmd = exec.CommandContext(ctx, "git", args...)
 		cmd.WaitDelay = remoteWaitDelay
-		cmd.Env = append(os.Environ(), lowSpeedEnv...)
+		cmd.Env = childEnv(lowSpeedEnv)
 		proc.ConfigureGroupKill(cmd, func(pid int, groupErr error) {
 			reportKill(args, pid, groupErr)
 		})
 	} else {
 		cmd = exec.Command("git", args...)
+		cmd.Env = childEnv(nil)
 	}
 	cmd.Dir = cwd
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
@@ -163,10 +169,24 @@ func runCore(args []string, cwd string) (stdout, stderr string, exitCode int, er
 	return outBuf.String(), errBuf.String(), 0, nil
 }
 
+// childEnv returns the process environment without GIT_DIR and GIT_WORK_TREE, followed by extra.
+// Dropping the two variables makes a git child follow the directory it is run in, so one command never reads one repository and writes another.
+func childEnv(extra []string) []string {
+	environ := os.Environ()
+	env := make([]string, 0, len(environ)+len(extra))
+	for _, entry := range environ {
+		if strings.HasPrefix(entry, "GIT_DIR=") || strings.HasPrefix(entry, "GIT_WORK_TREE=") {
+			continue
+		}
+		env = append(env, entry)
+	}
+	return append(env, extra...)
+}
+
 // RunGit runs a git command and returns stdout, stderr, and exit code.
 // A remote command that outlives its deadline is returned as a *GitError with a non-zero Timeout, though git did not exit on its own.
 func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err error) {
-	stdout, stderr, exitCode, err = runCore(args, cwd)
+	stdout, stderr, exitCode, err = runCore(args, cwd, "")
 	if err != nil {
 		return "", "", -1, err
 	}
@@ -183,7 +203,13 @@ func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err
 // git never ran.
 // A remote command that outlives its deadline is returned as a *GitError with a non-zero Timeout, though git did not exit on its own.
 func Run(args []string, cwd string) (string, error) {
-	stdout, stderr, exitCode, err := runCore(args, cwd)
+	return RunStdin(args, cwd, "")
+}
+
+// RunStdin is Run with stdin fed to git's standard input, for a command such as `cat-file --batch-check` that reads its operands there.
+// It reports a non-zero exit, an exec-level failure and a remote deadline exactly as Run does, and an empty stdin behaves as Run.
+func RunStdin(args []string, cwd, stdin string) (string, error) {
+	stdout, stderr, exitCode, err := runCore(args, cwd, stdin)
 	if err != nil {
 		return "", err
 	}

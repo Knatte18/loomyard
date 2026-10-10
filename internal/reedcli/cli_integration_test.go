@@ -52,7 +52,7 @@ func skipWithoutMultiplexer(t *testing.T, h *hubforge.Hub) {
 // The scenario calls t.Parallel but no step does, because every step shares the one hub.
 func TestRunCLI_ColdHub(t *testing.T) {
 	t.Parallel()
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	worktree := h.PrimeWorktree()
 
 	// ResolvesLayoutAndConfig verifies reed config resolution succeeds against the fixture hub.

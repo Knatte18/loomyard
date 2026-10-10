@@ -50,6 +50,9 @@ type Env struct {
 	// WorktreeRoot is the told worktree root, read by SingleLLM's output_files and by the gate
 	// resolver's "plan" and "verify" gates.
 	WorktreeRoot string
+	// RunScratchDir is the told ephemeral shed scratch directory of the run, read by the gate resolver's "plan" and "rework-plan" gates, which record their informational findings in a file under it.
+	// Empty keeps those findings inline in the log.
+	RunScratchDir string
 	// VerifyDir is the told verify directory, read by the gate resolver's "verify" gate.
 	VerifyDir string
 	// GateSlots is the hub gate-slot pool every Go-side verify a row runs acquires from, read by the gate resolver's "verify" gate.
@@ -58,6 +61,9 @@ type Env struct {
 	// PublishFailure returns the Publish failure note the Webster-Review rubric renders, read by the BurlerRound and Bouncer entries each time a segment builds its producers.
 	// Nil renders `none`.
 	PublishFailure func() string
+	// WebsterRecord returns the webster run-record note the Plan-Review rubric renders, read by the BurlerRound and Bouncer entries each time a segment builds its producers.
+	// Nil renders `none`.
+	WebsterRecord func() string
 	// StatusPath is the told status file path, read by LoomPreflight.
 	StatusPath string
 	// StatusLockPath is the told status lock file path, read by LoomPreflight.

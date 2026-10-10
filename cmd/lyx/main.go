@@ -77,7 +77,6 @@ func run(args []string, out io.Writer) int {
 
 // newRoot builds the lyx cobra root with all module subcommands, --json flag, and JSON help.
 func newRoot() *cobra.Command {
-	var jsonFlag bool
 	var verbosity int
 
 	root := &cobra.Command{
@@ -87,7 +86,8 @@ func newRoot() *cobra.Command {
 
 It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
-its own --help and --json help output.
+its own --help and --json help output; --json prints the help as JSON and
+never runs the command.
 
 Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, gate, help.`,
 		SilenceUsage:  true,
@@ -106,8 +106,7 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 		},
 	}
 
-	root.PersistentFlags().BoolVar(&jsonFlag, "json", false, "emit help as structured JSON instead of plain text")
-	clihelp.InstallJSONHelp(root, &jsonFlag)
+	clihelp.InstallJSONHelp(root)
 
 	root.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "increase log verbosity (-v info, -vv debug)")
 

@@ -58,7 +58,7 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	// branch, a real _board worktree the gate's ownedManagedBranch/primaryWeftBranch read succeeds
 	// against, and the repo-wide fabric.yaml Add's eager RepoWiredNames load needs — so none of that
 	// scaffolding is seeded by hand any more.
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftBranch := fabricengine.RecordsBranchName(slug)
 
@@ -130,7 +130,7 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 			if tc.localBehind {
 				slug = "live-rollback-ff"
 			}
-			h := hubforge.NewHub(t, ".")
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			l := h.Location
 			weftBranch := fabricengine.RecordsBranchName(slug)
 			weftRoot := mustRecordsRepoRoot(t, l)
@@ -185,7 +185,7 @@ func TestAddRollback_WarpBranchDeletedUnderEmptyPrefix(t *testing.T) {
 	t.Parallel()
 
 	const slug = "empty-prefix-rollback"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	// Inject a deterministic post-creation failure: a blocker file at the portal location makes
@@ -227,7 +227,7 @@ func TestAddRollback_WarpBranchDeletedUnderEmptyPrefix(t *testing.T) {
 // its duration with no cross-talk from a concurrently-logging sibling.
 func TestAddRollback_RefusedWarpBranchDeletionLogsWarn(t *testing.T) {
 	const slug = "warn-on-refused-lease"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	pushedTip := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
 
@@ -302,7 +302,7 @@ func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 	t.Parallel()
 
 	const slug = "eager-wire-add"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	// hubforge.NewHub seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
 	// default pathspec; override it to "_extra" so Add's RepoWiredNames-driven wiring below
@@ -351,7 +351,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	const slug = "adopt-rollback-unwire"
 	// See TestAddRollback_AdoptedWeftBranchSurvives's comment: hubforge.NewHub's CloneAndWire
 	// already produces the real-hub shape this fixture used to hand-assemble.
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftBranch := fabricengine.RecordsBranchName(slug)
 
@@ -425,7 +425,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 func TestAdd_GitFailureCarriesGitsOwnReason(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	// Point origin at a path that does not exist, so the push at the end of Add fails for a reason

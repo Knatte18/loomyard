@@ -88,6 +88,9 @@ type Hooks struct {
 	// the --watch line drops the note on an error rather than ending the tail.
 	// The hook closes over whatever location the arming module was told, so shedverbs stays path-free.
 	Waiting func(st shedengine.Status) (string, error)
+	// AfterInterrupt runs when the loop stops on a child step that ended without an envelope, after the stop is classified and before its envelope is written.
+	// It receives the stop row, the cause and the first trace file of the child, and its return is the envelope's friction key, like AfterStep's.
+	AfterInterrupt func(ctx context.Context, producer, cause, traceFile string) string
 }
 
 // VerbTexts carries each verb's cobra Use/Short/Long strings, passed by value at Verbs'
@@ -182,4 +185,6 @@ type Spec struct {
 	// than an unconditional generic step because lifecycle's status is read-only, and creating its
 	// per-slug directory as a side effect of reading it would be a new, unasked-for write.
 	EnsureStatusLockDir bool
+	// Loop is the told arming of step's --until-stop mode; its zero value means the recipe arms no loop.
+	Loop LoopSpec
 }

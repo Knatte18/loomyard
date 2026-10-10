@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -29,6 +30,39 @@ var (
 	warpBareTemplate string
 	weftBareTemplate string
 )
+
+// fixtureBuildMu guards fixtureBuilds, the number of hub builds in flight.
+// The process environment carries gitkit.FixtureGitEnv exactly while that count is above zero.
+var (
+	fixtureBuildMu sync.Mutex
+	fixtureBuilds  int
+)
+
+// markFixtureBuild marks the process environment as building a fixture, so the git a build spawns through production code carries gitkit.FixtureGitEnv.
+// Concurrent builds share the mark: the first starter sets it and the last release unsets it.
+func markFixtureBuild() func() {
+	fixtureBuildMu.Lock()
+	defer fixtureBuildMu.Unlock()
+
+	fixtureBuilds++
+	if fixtureBuilds == 1 {
+		if err := os.Setenv(gitkit.FixtureGitEnv, "1"); err != nil {
+			panic(err)
+		}
+	}
+
+	return func() {
+		fixtureBuildMu.Lock()
+		defer fixtureBuildMu.Unlock()
+
+		fixtureBuilds--
+		if fixtureBuilds == 0 {
+			if err := os.Unsetenv(gitkit.FixtureGitEnv); err != nil {
+				panic(err)
+			}
+		}
+	}
+}
 
 // TestShortname is the repo shortname every hub NewHub builds is cloned with, recorded as .lyx-shortname, so every hub fixture has a shortname.
 const TestShortname = "tst"
@@ -55,6 +89,8 @@ const TestShortname = "tst"
 // trip CloneHub's bootstrap guard at clone.go:172 (`!probe.WeftLooksLikeWeft`), which refuses a weft
 // candidate whose history looks warp-shaped — the warp bare, by contrast, must have content pushed.
 func buildBareTemplate() (warpBare, weftBare string) {
+	defer markFixtureBuild()()
+
 	bareTemplateOnce.Do(func() {
 		tmpDir, err := os.MkdirTemp("", "hubforge-bare-*")
 		if err != nil {
@@ -221,12 +257,33 @@ func (h *Hub) PairLauncherDir(slug string) string {
 // The hub CloneAndWire returns arrives with its weft prime worktree clean: each registered
 // non-"fabric" module's config is committed on the weft primary branch, rather than carried as
 // untracked content.
+// CopyHub and SharedHub hand out a hub of the closed Shapes set from a template built once per test binary, and are the entry points for every hub a test does not need built fresh;
+// NewHub stays for a shape outside that set.
 // It calls tb.Fatalf on any error.
 func NewHub(tb testing.TB, anchor string) *Hub {
 	tb.Helper()
 
+	defer markFixtureBuild()()
+
 	warpBare, weftBare := copyBares(tb)
 	container := tb.TempDir()
+
+	hub, _ := cloneHub(tb, anchor, warpBare, weftBare, container)
+
+	// Registered after both copyBares and the container := tb.TempDir() call above, so LIFO
+	// cleanup ordering runs junction removal before Go's own tb.TempDir() cleanup removes the
+	// container — a junction left wired when os.RemoveAll walks into it is a Win11 correctness bug,
+	// not a POSIX one, so this must hold on every platform even though only Windows can observe it
+	// directly.
+	registerTeardown(tb, hub.Path)
+
+	return hub
+}
+
+// cloneHub drives fabriccli.CloneAndWire at anchor against the given bares into the existing container directory, and returns the Hub with the prime cwd its Location resolved from.
+// It calls tb.Fatalf on any error.
+func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub, string) {
+	tb.Helper()
 
 	subpath := ""
 	if anchor != "." {
@@ -248,13 +305,6 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 		tb.Fatalf("NewHub: lyxcwd.Resolve(%s): %v", res.PrimeCwd, err)
 	}
 
-	// Registered after both copyBares and the container := tb.TempDir() call above, so LIFO
-	// cleanup ordering runs junction removal before Go's own tb.TempDir() cleanup removes the
-	// container — a junction left wired when os.RemoveAll walks into it is a Win11 correctness bug,
-	// not a POSIX one, so this must hold on every platform even though only Windows can observe it
-	// directly.
-	registerTeardown(tb, res.HubPath)
-
 	return &Hub{
 		Path:        res.HubPath,
 		Anchor:      res.Anchor,
@@ -265,7 +315,7 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 		WeftBase:    res.WeftBase,
 		Container:   container,
 		Mutations:   res.Mutated(),
-	}
+	}, res.PrimeCwd
 }
 
 // registerTeardown installs a tb.Cleanup that removes every junction under hubPath before Go's own
@@ -334,6 +384,8 @@ func AddPair(tb testing.TB, h *Hub, slug string) fabricengine.AddResult {
 func AddPairWith(tb testing.TB, h *Hub, slug string, opts fabricengine.AddOptions) fabricengine.AddResult {
 	tb.Helper()
 
+	defer markFixtureBuild()()
+
 	res, err := h.Topology.Add(h.Location, slug, opts)
 	if err != nil {
 		tb.Fatalf("AddPairWith(%s): %v", slug, err)
@@ -396,6 +448,7 @@ func commitAll(dir, message string) {
 func mustGit(dir string, args ...string) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), gitkit.FixtureGitEnv+"=1")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		panic("git " + strings.Join(args, " ") + ": " + err.Error() + "; " + string(output))
 	}

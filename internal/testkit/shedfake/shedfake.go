@@ -389,6 +389,7 @@ func WebsterSeams() websterengine.RunDeps {
 		Stopper:    strandStopper{},
 		Engine:     shuttleEngine{},
 		RefMatcher: refMatcherSeam{},
+		ReadOnly:   func(string) bool { return false },
 		Geom:       websterengine.Geometry{Index: indexSeam{}},
 	}
 }

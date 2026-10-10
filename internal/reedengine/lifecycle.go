@@ -898,7 +898,13 @@ func (e *Engine) Down() (DownResult, error) {
 // sessionlessSocketHolderPersists reports whether a process holds this engine's
 // socket without any session, persisting across staleSocketGrace (grace prevents
 // reaping a sibling worktree's just-spawned server).
+// A holder whose global user option @lyx_test_server answers "on" is never stale.
+// Only the test kit's tmux config sets that option, on a server it pre-starts and keeps alive with no session; reed's own boots never set it.
+// Bound: an operator config that sets the option disables the reap for its own servers.
 func (e *Engine) sessionlessSocketHolderPersists() bool {
+	if out, err := e.tmux.output("show-options", "-gqv", "@lyx_test_server"); err == nil && strings.TrimSpace(out) == "on" {
+		return false
+	}
 	deadline := time.Now().Add(staleSocketGrace)
 	for {
 		// A socket that lists sessions hosts a healthy shared server — never
@@ -996,8 +1002,29 @@ func (e *Engine) removeSocketFile() {
 
 // reapPaneChildren waits for pane child processes to exit, force-killing
 // stragglers. Pane-destroying ops must reap children to avoid worktree dir locks.
+// pids is the descendant closure snapshotted before the kill.
+// Once those are reaped, every other process still in a session one of them led is reaped too:
+// a pane shell can fork a command after the snapshot,
+// and a command it has not yet moved into the terminal's foreground can miss the hangup.
 func reapPaneChildren(pids []int, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
+	reapPIDsBy(pids, deadline)
+
+	snapshotted := make(map[int]bool, len(pids))
+	for _, pid := range pids {
+		snapshotted[pid] = true
+	}
+	var late []int
+	for _, pid := range sessionMemberPIDs(pids) {
+		if !snapshotted[pid] {
+			late = append(late, pid)
+		}
+	}
+	reapPIDsBy(late, deadline)
+}
+
+// reapPIDsBy waits until deadline for each of pids to exit, force-killing and confirming each one still up when it passes.
+func reapPIDsBy(pids []int, deadline time.Time) {
 	for _, pid := range pids {
 		if pid <= 0 {
 			continue

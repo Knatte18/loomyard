@@ -39,7 +39,7 @@ func TestLoadConfig(t *testing.T) {
 		{"zero slots", "slots: 0\ngo_parallel: 4\ncli_wait_sec: 300\n", Config{}, `gate config key "slots": 0; want at least 1; fix it with "lyx config gate" from the prime`},
 		{"zero go_parallel", "slots: 2\ngo_parallel: 0\ncli_wait_sec: 300\n", Config{}, `gate config key "go_parallel": 0; want at least 1; fix it with "lyx config gate" from the prime`},
 		{"zero cli_wait_sec", "slots: 2\ngo_parallel: 4\ncli_wait_sec: 0\n", Config{}, `gate config key "cli_wait_sec": 0; want at least 1; fix it with "lyx config gate" from the prime`},
-		{"absent file names the one way forward", "", Config{}, `gate config absent; run "lyx fabric reconcile"`},
+		{"absent file names the one way forward", "", Config{}, `gate config absent; run "lyx fabric reconcile"; a session lyx refuses the verb from reports status: FAILED and the orch runs it`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

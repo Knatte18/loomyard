@@ -36,10 +36,9 @@ func StrandLive(reed shuttleengine.ReedOps, guid string) (bool, error) {
 // a background shell that finished just before the turn ended queues its completion notification, which starts the strand's next turn an instant after the turn end.
 const turnEndSettle = 5 * time.Second
 
-// TurnEndRead carries what TurnEndedAfter's reading needs besides the events file: the read's time and the background-shell wait bound.
+// TurnEndRead carries what TurnEndedAfter's reading needs besides the events file: the read's time.
 type TurnEndRead struct {
-	Now       time.Time
-	ShellWait time.Duration // shuttleengine.ShellWaitBound of the strand's shuttle config.
+	Now time.Time
 }
 
 // TurnEndedAfter reports whether a strand's newest turn, read from the events at byte offset on, has ended with nothing it still waits on, so the turn end counts.
@@ -47,7 +46,7 @@ type TurnEndRead struct {
 // With an engine that has the SessionSignalParser capability the newest turn start or turn end decides:
 // a turn start, or no turn signal, is a strand still working;
 // a turn end with nothing outstanding counts once it has stood for turnEndSettle, since a just-finished shell's notification starts the next turn;
-// a turn end left waiting on background work counts once read.ShellWait has passed when shuttleengine.ShellWaitExpires says the outstanding list expires, the bound Master's wait applies, and never otherwise, so a fork or a payload-reported shell keeps the strand running until its own timeout.
+// a turn end left waiting on any task, a shell of either signal or a fork, never counts, so that strand keeps running until its report exists or its own timeout.
 // A turn end with no hook time counts at once.
 // An engine without the capability counts the newest ParseEvents event when it is an EventStop, and ParseEvents errors propagate.
 // A missing events file reports (false, nil).
@@ -87,11 +86,10 @@ func TurnEndedAfter(eventsPath string, offset int64, engine shuttleengine.Engine
 	if newest == nil || newest.Kind == shuttleengine.SessionSignalTurnStart {
 		return false, nil
 	}
-	stood := func(d time.Duration) bool { return newest.At.IsZero() || read.Now.Sub(newest.At) >= d }
-	if len(newest.Outstanding) == 0 {
-		return stood(turnEndSettle), nil
+	if len(newest.Outstanding) != 0 {
+		return false, nil
 	}
-	return shuttleengine.ShellWaitExpires(newest.Outstanding, nil) && stood(read.ShellWait), nil
+	return newest.At.IsZero() || read.Now.Sub(newest.At) >= turnEndSettle, nil
 }
 
 // Starter is the seam a batch's implementer or recovery strand spawns through.

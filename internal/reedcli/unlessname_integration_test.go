@@ -63,7 +63,7 @@ func unlessPanes(t *testing.T, tmux, socket, session string) string {
 // The steps run serially in a fixed order and each later step relies on the earlier step's session; the scenario calls t.Parallel but no step does, because every step shares the one hub, session and strand table.
 func TestUnlessName(t *testing.T) {
 	t.Parallel()
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	skipWithoutMultiplexer(t, h)
 	worktree := h.PrimeWorktree()
 	t.Cleanup(func() {

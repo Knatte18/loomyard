@@ -26,12 +26,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // parityVerdict is the shared three-valued outcome both the producer side and the CLI side map
@@ -359,6 +361,49 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantFinding: "verify-module-wide",
 		},
 		{
+			// PatternEntryLineCap fences a PATTERN.md entry line over the cap in the card: the gate and the verb both report pattern-entry-line-cap.
+			name: "PatternEntryLineCap",
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				c := planFixture(t, anchorPath, worktreeRoot, true)
+				cardFile := filepath.Join(anchorPath, "_lyx", "plan", "01-validate-fixture.md")
+				data, err := os.ReadFile(cardFile)
+				if err != nil {
+					t.Fatalf("read card file: %v", err)
+				}
+				overCap := "- `PATTERN-x` — " + strings.Repeat("x", pattern.MaxEntryLineChars)
+				if err := os.WriteFile(cardFile, append(data, []byte("\n```\n"+overCap+"\n```\n")...), 0o644); err != nil {
+					t.Fatalf("write card file: %v", err)
+				}
+				return c
+			},
+			wantGate:    verdictStuck,
+			wantCLI:     verdictStuck,
+			wantFinding: "pattern-entry-line-cap",
+		},
+		{
+			// DoneCardEdited records a done batch whose card hash differs from the card file: the gate and the verb both report done-card-edited.
+			name: "DoneCardEdited",
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				c := planFixture(t, anchorPath, worktreeRoot, true)
+				st := &websterengine.State{Batches: map[int]*websterengine.BatchState{
+					1: {
+						Slug:       "validate-fixture",
+						Cards:      []string{"01-validate-fixture"},
+						Terminal:   true,
+						Status:     websterengine.DigestStatusDone,
+						CardHashes: map[string]string{"01-validate-fixture": "hash-of-an-earlier-card-file"},
+					},
+				}}
+				if err := websterengine.SaveState(websterengine.Dir(anchorPath), websterengine.ScratchDir(anchorPath), st); err != nil {
+					t.Fatalf("SaveState: %v", err)
+				}
+				return c
+			},
+			wantGate:    verdictStuck,
+			wantCLI:     verdictStuck,
+			wantFinding: "done-card-edited",
+		},
+		{
 			// NoPlanDirectory is the one expected divergence the Gate Self-Check Parity Invariant's
 			// own rewrite carves out: it binds the two sides to the same package FUNCTION, which both
 			// still call here -- planglyph.ValidateFormat -- and the divergence lives strictly in the
@@ -426,7 +471,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 			worktreeRoot := t.TempDir()
 			c := tc.build(t, anchorPath, worktreeRoot)
 
-			gate := loomshed.NewPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+			gate := loomshed.NewPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()))
 			result, err := gate()
 			pv := producerVerdict(result, err)
 
@@ -636,7 +681,7 @@ func TestGateParity_ReworkPlanGate(t *testing.T) {
 			plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 			c := reworkParityFixture(t, anchorPath, worktreeRoot, tt.cardNumber, tt.uses, tt.verify, tt.committed)
 
-			result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()), c.env.Rework.ReadCommitted)()
+			result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()), c.env.Rework.ReadCommitted)()
 			pv := producerVerdict(result, err)
 
 			var out bytes.Buffer

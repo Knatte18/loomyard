@@ -293,6 +293,19 @@ func TestBeginBatch_Refusals(t *testing.T) {
 			wantNotText: []string{"record-batch", "recover-batch"},
 		},
 		{
+			name: "a report over a terminal dead recovery that committed names recover-batch once more",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				seedReport(t, fx)
+				start := fx.Git.head
+				fx.Git.commit()
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+					1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 1, RecoveryStartSHA: start},
+				}
+			},
+			wantText:    []string{"terminal with status dead", "way forward: `lyx webster recover-batch 1`, once more"},
+			wantNotText: []string{"exhausted", "record-batch"},
+		},
+		{
 			name: "a geometry with no code index names the missing wiring",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				fx.Deps.Geom.Index = nil
@@ -495,6 +508,16 @@ func TestBeginBatch_Record(t *testing.T) {
 				}
 				if len(bs.BracketTranscripts) != 0 {
 					t.Errorf("Batches[1].BracketTranscripts = %v; want none", bs.BracketTranscripts)
+				}
+			},
+		},
+		{
+			name:      "a re-begin carries the recovery count and its start commit",
+			prior:     &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Recoveries: 2, RecoveryStartSHA: recordedStart},
+			wantStart: func(fx *beginFixture) string { return fx.Git.head },
+			check: func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState) {
+				if bs.Kind != "fork" || bs.Recoveries != 2 || bs.RecoveryStartSHA != recordedStart {
+					t.Errorf("Batches[1] = %+v; want a fork record carrying Recoveries 2 and RecoveryStartSHA %s", bs, recordedStart)
 				}
 			},
 		},

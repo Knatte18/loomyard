@@ -21,7 +21,7 @@ func TestAdd_RetriesATransientlyRefusedWeftPush(t *testing.T) {
 
 	const slug = "retry-weft-push"
 	weftBranch := fabricengine.RecordsBranchName(slug)
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	refused := false
 	fabricengine.SetPushSeamForTest(h.Topology, func(args []string, cwd string) (string, error) {
 		if args[len(args)-1] == weftBranch && !refused {

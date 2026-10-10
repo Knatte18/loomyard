@@ -15,12 +15,18 @@
 // The plan gate and `lyx loom validate-plan` share ValidatePlan, which reads webster's run record under the anchor and tells the index the cards of every batch it holds done.
 // Those cards are history, not targets: a run moved back to the plan review after Webster executed batches has their work in the tree, so their tree-dependent checks are skipped.
 // Every other card, and every card of a plan with no run record, is checked against the tree.
+// A done card is also frozen: ValidatePlan appends a blocking `done-card-edited` finding for each one whose file no longer hashes to what its batch recorded at begin, naming the follow-up card as the way forward.
+// A plan with no run record or no recorded hashes reports nothing, and an unreadable card file is a returned error.
+//
+// A plan gate that passes on informational findings alone records them as a count and a file path in its log line, and writes the findings, one per line, to `<gate>-informational-findings.txt` under the run's told ephemeral scratch directory.
+// A gate told no scratch directory, such as a standalone validate, and a gate whose file cannot be written keep the findings inline in the log line.
+// The blocking path is unchanged: the findings go to the writer and the log line in full.
 //
 // The Webster-Burler round gate (NewVerifyGate) runs less than the plan's `## verify:`.
 // It lints the comments added since the plan verify's last recorded pass, then runs the command impactset derives from that diff through verifytree.Verify, falling back to the plan's own command wherever impactset cannot narrow.
 // The narrowing is impactset's; Webster's gate, Publish and Finalize keep the full plan verify on the tree that lands.
 // The round compiles the `tmux` and `llm` tiers and never runs `llm`.
-// It runs the `tmux` tier only while a checked Publish failure record is present, as the failing tests the record names and, for a `publish_verify` failure, the impacted-set pass, to confirm the fix.
+// It runs the `tmux` tier only while a checked Publish failure record is present, as the failing top-level tests the record names, one step per package and test with the subtests collapsed into it, and, for a `publish_verify` failure, the impacted-set pass, to confirm the fix.
 // Publish reruns both verifies in full regardless, and stays the guard.
 //
 // The Plan-Write rotation archives the prior plan and appends a prior-plan block naming that archive to the respawned session's prompt.

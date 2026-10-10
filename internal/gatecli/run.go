@@ -10,11 +10,13 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -48,13 +50,14 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		return output.Err(out, fmt.Sprintf("gate test: %v; way forward: re-run the same command", err))
 	}
 
-	env := os.Environ()
+	// The tests run without the strand name, so a test driving `lyx fabric` never meets a role guard that reads it.
+	env := slices.DeleteFunc(os.Environ(), func(entry string) bool { return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") })
 	var parallel int
 	if inHub {
 		pool := hubgeom.GateSlots(location)
 		limits, err := pool.Limits()
 		if errors.Is(err, gateslot.ErrConfigAbsent) {
-			return output.Err(out, fmt.Sprintf("gate test: the hub has no gate limits: %v; way forward: run \"lyx fabric reconcile\", then re-run the same command", err))
+			return output.Err(out, fmt.Sprintf("gate test: the hub has no gate limits: %v; way forward: run \"lyx fabric reconcile\", then re-run the same command; a session lyx refuses the verb from reports status: FAILED and the orch runs it", err))
 		}
 		if err != nil {
 			return output.Err(out, fmt.Sprintf("gate test: cannot read the hub's gate limits: %v; way forward: fix the file with \"lyx config gate\" from the prime, then re-run the same command", err))
@@ -79,12 +82,27 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		logger.Info("gate test: no hub bound applies; running unslotted under the template's -p cap", "dir", dir, "parallel", parallel)
 	}
 
+	env = gateslot.StripPrebuilt(env)
+	if request.tags != "" {
+		bin, cleanup, err := prebuildLyx(runCtx, request.goBinary, buildRoot(location, dir), parallel)
+		if err != nil {
+			if caught.Load() != 0 {
+				return exitAfterSignal(caught, 1)
+			}
+			return output.Err(out, fmt.Sprintf("gate test: cannot build lyx for the tagged run: %v; way forward: fix the build, then re-run the same command", err))
+		}
+		defer cleanup()
+		if bin != "" {
+			env = append(env, gateslot.PrebuiltLyxEnv+"="+bin)
+		}
+	}
+
 	cmd := exec.CommandContext(runCtx, request.goBinary, goTestArgs(dir, parallel, request.tags, request.packages, request.flags)...)
 	cmd.Env = env
 	cmd.Stdout = out
 	cmd.Stderr = out
 	logger.Info("gate test: spawning go test", "binary", request.goBinary, "args", strings.Join(cmd.Args[1:], " "))
-	runErr := runChild(cmd)
+	runErr := runTiedChild(cmd)
 	code := exitCodeOf(runErr)
 	logger.Info("gate test: go test ended", "exit", code, "error", runErr)
 	if cmd.Process == nil && caught.Load() == 0 {
@@ -162,7 +180,7 @@ func releaseSlot(lease *gateslot.Lease, dir string) {
 func catchTerminatingSignals(ctx context.Context) (context.Context, *atomic.Int32, func()) {
 	runCtx, cancel := context.WithCancel(ctx)
 	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, terminatingSignals...)
+	signal.Notify(signals, terminatingSignalSet...)
 	var caught atomic.Int32
 	go func() {
 		select {

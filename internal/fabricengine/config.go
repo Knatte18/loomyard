@@ -34,7 +34,7 @@ func LoadConfig(baseDir string) (Config, error) {
 	resolved, err := configengine.Load(baseDir, "fabric", []byte(ConfigTemplate()))
 	if err != nil {
 		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
+			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it")
 		}
 		return Config{}, err
 	}

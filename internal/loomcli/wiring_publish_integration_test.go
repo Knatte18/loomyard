@@ -22,7 +22,7 @@ import (
 // TestWire_Real_PublishRejectedPushNamesRemoteTip asserts a Publish built from the production landingDeps halts at the rejected push with the real remote tip and a count of 1 in its reason.
 // The remote task branch holds a commit the local branch lacks, so the halt precedes any GitHub call.
 func TestWire_Real_PublishRejectedPushNamesRemoteTip(t *testing.T) {
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "publishrejected"
 	hubforge.AddPair(t, hub, slug)
 	worktree := hub.PairCodeWorktree(slug)

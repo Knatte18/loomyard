@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
@@ -24,30 +25,69 @@ var ErrRebaselineCardSetChanged = errors.New("webster: the edited plan changes t
 // It carries no "way forward: " prefix.
 const followUpCardLanding = "add a follow-up card after the last begun batch that carries the decision, with its Card Index line in " + planOverviewFile + ", then run `lyx webster rebaseline --card NN` naming it"
 
+// The three causes of an empty recorded overview frame.
+const (
+	causeNoOverviewHash     = "no overview hash was recorded"
+	causeBaselineCopyAbsent = "the baseline copy of the recorded overview is absent"
+	causeNoCardIndex        = "the baseline copy of the recorded overview has no parseable Card Index"
+)
+
+// followUpLanding renders the landing for a decision that reaches a done batch's card or an overview outside its Card Index.
+// An empty step is the manual landing, followUpCardLanding;
+// a set step says to fix the plan, carry the decision in a follow-up card after the last begun batch with its Card Index line, and take step.
+// It carries no "way forward: " prefix.
+func followUpLanding(step string) string {
+	if step == "" {
+		return followUpCardLanding
+	}
+	return "fix the plan: move a done card's edit to a follow-up card after the last begun batch that carries the decision, with its Card Index line in " + planOverviewFile + ", then " + step
+}
+
+// transientWayForward is the clause of a transient rebaseline failure: manual, the text naming the verb to re-run, when step is empty, and otherwise the instruction to take step.
+// It carries no "way forward: " prefix.
+func transientWayForward(step, manual string) string {
+	if step == "" {
+		return manual
+	}
+	return "transient, " + step
+}
+
 // recordedOverviewFrame returns the overview frame hash the run recorded.
 // A state without State.PlanOverviewFrameHash takes the frame of the stored baseline copy of its recorded 00-overview.md, under websterDir.
 // It returns "" when the run has no recorded frame: no overview hash recorded, the copy absent, or a copy without a parseable Card Index.
+// For an empty frame cause is one of the three fixed texts above and path is the baseline copy's path, empty when no hash was recorded; both are empty beside a frame.
+// It logs nothing.
 // A read failure other than an absent copy is returned.
-func recordedOverviewFrame(st *State, websterDir string) (string, error) {
+func recordedOverviewFrame(st *State, websterDir string) (frame, cause, path string, err error) {
 	if st.PlanOverviewFrameHash != "" {
-		return st.PlanOverviewFrameHash, nil
+		return st.PlanOverviewFrameHash, "", "", nil
 	}
 	hash := st.PlanFileHashes[planOverviewFile]
 	if hash == "" {
-		return "", nil
+		return "", causeNoOverviewHash, "", nil
 	}
-	data, err := os.ReadFile(planBaselinePath(websterDir, hash))
+	path = planBaselinePath(websterDir, hash)
+	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return "", nil
+		return "", causeBaselineCopyAbsent, path, nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("websterengine: recorded overview frame: read plan baseline copy %s: %w", hash, err)
+		return "", "", "", fmt.Errorf("websterengine: recorded overview frame: read plan baseline copy %s: %w", hash, err)
 	}
-	frame, err := overviewFrameHashOf(data)
+	frame, err = overviewFrameHashOf(data)
 	if err != nil {
-		return "", nil
+		return "", causeNoCardIndex, path, nil
 	}
-	return frame, nil
+	return frame, "", "", nil
+}
+
+// logEmptyOverviewFrame logs at Info why the run has no recorded overview frame, naming the baseline copy's path where there is one.
+func logEmptyOverviewFrame(cause, path string) {
+	if path == "" {
+		logger.Info("websterengine: rebaseline: no recorded overview frame", "cause", cause)
+		return
+	}
+	logger.Info("websterengine: rebaseline: no recorded overview frame", "cause", cause, "path", path)
 }
 
 // overviewIndexOnly reports whether 00-overview.md differs from the run's record only inside its Card Index: recorded is the run's overview frame hash and the file's frame hash still equals it.
@@ -64,11 +104,17 @@ func overviewIndexOnly(recorded, planDir string) (bool, error) {
 }
 
 // overviewRefusal is the refusal for a 00-overview.md change Rebaseline cannot accept: one outside the Card Index, or any change in a run whose recorded frame is empty.
-func overviewRefusal(recorded string) error {
+// For an empty frame the refusal names cause and, where there is one, the baseline copy's path.
+// Its way forward names step, empty meaning `lyx webster run`.
+func overviewRefusal(recorded, cause, path, step string) error {
 	if recorded == "" {
-		return fmt.Errorf("%w: %s changed and this run recorded no overview frame, so the change cannot be confined to its Card Index; it carries the plan's integration verify and is never rebaselined; way forward: restore %s, or %s", ErrRebaselineCardSetChanged, planOverviewFile, planOverviewFile, freshRestartSteps(stepRun))
+		where := cause
+		if path != "" {
+			where += " (" + path + ")"
+		}
+		return fmt.Errorf("%w: %s changed and this run recorded no overview frame: %s, so the change cannot be confined to its Card Index; it carries the plan's integration verify and is never rebaselined; way forward: restore %s, or %s", ErrRebaselineCardSetChanged, planOverviewFile, where, planOverviewFile, freshRestartSteps(stepOrRun(step)))
 	}
-	return fmt.Errorf("%w: %s changed outside its Card Index; it carries the plan's integration verify and only its Card Index is rebaselined; way forward: restore %s, or %s", ErrRebaselineCardSetChanged, planOverviewFile, planOverviewFile, followUpCardLanding)
+	return fmt.Errorf("%w: %s changed outside its Card Index; it carries the plan's integration verify and only its Card Index is rebaselined; way forward: restore %s, or %s", ErrRebaselineCardSetChanged, planOverviewFile, planOverviewFile, followUpLanding(step))
 }
 
 // editableTerminalStatus reports whether a batch with this terminal status accepts a named card edit.
@@ -94,6 +140,9 @@ type RebaselineDeps struct {
 	Cards []int
 	// Geom locates the worktree whose history names the run's start commit.
 	Geom Geometry
+	// Step is the step every refusal names as the way to continue; empty means `lyx webster run`, as RunDeps.ReentryStep does.
+	// The loom's Webster row sets its re-step text, so no refusal on that path tells an agent to run a verb by hand.
+	Step string
 }
 
 // RebaselineResult reports what one successful Rebaseline changed.
@@ -121,8 +170,11 @@ type RebaselineResult struct {
 func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 	st, plan := deps.State, deps.Plan
 	if len(st.Partition) == 0 {
-		batches, err := formBatches(plan, batcher.Identity(), deps.Sizes, 0, deps.Base)
-		return batches, false, err
+		batches, err := batchCards(plan, plan.Cards, batcher.Identity(), deps.Sizes, 0, deps.Base)
+		if err != nil {
+			return nil, false, err
+		}
+		return batches, false, CheckBatchOrder(batches, deps.Step)
 	}
 
 	keptCount := 0
@@ -149,7 +201,7 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 		offset = end
 	}
 	if len(changed) > 0 {
-		return nil, false, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or %s", ErrRebaselineCardSetChanged, strings.Join(changed, "; "), freshRestartSteps(stepRun))
+		return nil, false, fmt.Errorf("%w: %s; way forward: restore those cards in the plan, or %s", ErrRebaselineCardSetChanged, strings.Join(changed, "; "), freshRestartSteps(stepOrRun(deps.Step)))
 	}
 
 	if tail := plan.Cards[offset:]; len(tail) > 0 {
@@ -159,7 +211,7 @@ func rebaselineBatches(deps RebaselineDeps) ([]batcher.Batch, bool, error) {
 		}
 		batches = append(batches, tailBatches...)
 	}
-	if err := CheckBatchOrder(batches); err != nil {
+	if err := CheckBatchOrder(batches, deps.Step); err != nil {
 		return nil, false, err
 	}
 	return batches, true, nil
@@ -200,21 +252,24 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 	if len(deps.State.PlanFileHashes) > 0 {
 		changedFiles, err := changedPlanFiles(deps.State, deps.Plan.Dir)
 		if err != nil {
-			return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster rebaseline`", err)
+			return nil, fmt.Errorf("%w; way forward: %s", err, transientWayForward(deps.Step, "transient, re-run `lyx webster rebaseline`"))
 		}
 		var unnamed []string
 		for _, name := range changedFiles {
 			if name == planOverviewFile {
-				recorded, overviewErr := recordedOverviewFrame(deps.State, deps.Geom.WebsterDir)
+				recorded, cause, path, overviewErr := recordedOverviewFrame(deps.State, deps.Geom.WebsterDir)
 				indexOnly := false
 				if overviewErr == nil {
+					if cause != "" {
+						logEmptyOverviewFrame(cause, path)
+					}
 					indexOnly, overviewErr = overviewIndexOnly(recorded, deps.Plan.Dir)
 				}
 				if overviewErr != nil {
-					return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster rebaseline` with the same `--card` flags", overviewErr)
+					return nil, fmt.Errorf("%w; way forward: %s", overviewErr, transientWayForward(deps.Step, "transient, re-run `lyx webster rebaseline` with the same `--card` flags"))
 				}
 				if !indexOnly {
-					return nil, overviewRefusal(recorded)
+					return nil, overviewRefusal(recorded, cause, path, deps.Step)
 				}
 				continue
 			}
@@ -226,7 +281,11 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 			cardsAccepted = append(cardsAccepted, name)
 		}
 		if len(unnamed) > 0 {
-			return nil, fmt.Errorf("%w: %s changed but not named; way forward: re-run \"lyx webster rebaseline\" naming every changed card with --card NN, or restore the unnamed cards", ErrRebaselineCardSetChanged, strings.Join(unnamed, ", "))
+			wayForward := `re-run "lyx webster rebaseline" naming every changed card with --card NN, or restore the unnamed cards`
+			if deps.Step != "" {
+				wayForward = "fix the plan so every changed card is one the rebaseline can name, or restore the unnamed cards, then " + deps.Step
+			}
+			return nil, fmt.Errorf("%w: %s changed but not named; way forward: %s", ErrRebaselineCardSetChanged, strings.Join(unnamed, ", "), wayForward)
 		}
 	}
 
@@ -262,7 +321,7 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 			}
 			got, err := batchCardHashes(batcher.Batch{Cards: currentCards[n]}, deps.Plan.Dir)
 			if err != nil {
-				return nil, fmt.Errorf("%w; way forward: transient, re-run `lyx webster rebaseline`", err)
+				return nil, fmt.Errorf("%w; way forward: %s", err, transientWayForward(deps.Step, "transient, re-run `lyx webster rebaseline`"))
 			}
 			for _, id := range recorded {
 				want, hashed := bs.CardHashes[id]
@@ -292,12 +351,13 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 		changed = append(changed, fmt.Sprintf("batch %d recorded [%s], plan now %s", n, strings.Join(recorded, ", "), nowText))
 	}
 	if len(changed)+len(doneChanged) > 0 {
-		wayForward := "restore those cards in the plan, or " + freshRestartSteps(stepRun)
+		fresh := freshRestartSteps(stepOrRun(deps.Step))
+		wayForward := "restore those cards in the plan, or " + fresh
 		switch {
 		case len(changed) == 0:
-			wayForward = "restore those cards in the plan, or " + followUpCardLanding
+			wayForward = "restore those cards in the plan, or " + followUpLanding(deps.Step)
 		case len(doneChanged) > 0:
-			wayForward = "restore those cards in the plan, or, for a done batch's card, " + followUpCardLanding + ", or " + freshRestartSteps(stepRun)
+			wayForward = "restore those cards in the plan, or, for a done batch's card, " + followUpLanding(deps.Step) + ", or " + fresh
 		}
 		return nil, fmt.Errorf("%w: %s; way forward: %s", ErrRebaselineCardSetChanged, strings.Join(append(changed, doneChanged...), "; "), wayForward)
 	}
@@ -326,7 +386,10 @@ func Rebaseline(deps RebaselineDeps) (*RebaselineResult, error) {
 
 	previous := deps.State.PlanFingerprint
 	if err := restampBaseline(deps.State, deps.Plan.Dir, deps.Geom.WebsterDir); err != nil {
-		return nil, err
+		if deps.Step == "" {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w; way forward: %s", err, transientWayForward(deps.Step, ""))
 	}
 	if partition {
 		RecordPartition(deps.State, batches)

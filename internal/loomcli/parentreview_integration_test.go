@@ -104,7 +104,7 @@ type prFixture struct {
 
 func newPRFixture(t *testing.T) *prFixture {
 	t.Helper()
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "parentreview"
 	hubforge.AddPair(t, hub, slug)
 	location, err := lyxcwd.ResolveWorktree(hub.PairCodeWorktree(slug))

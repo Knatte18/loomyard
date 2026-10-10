@@ -13,6 +13,8 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   `cmd/lyx/registration_test.go` is the oracle that every `Command()` package is mounted.
   Per-CLI copies are no longer an obligation.
 - Errors are JSON via `internal/output`, one object per line, and every `RunE` checks `clihelp.ShouldAbort` first.
+- The global `--json` flag, declared by `clihelp.InstallJSONHelp`, prints a command's help as JSON and never runs the command, so an agent can walk the tree with `lyx <path> --json`.
+  A command whose own local `--json` flag means something else, such as `lyx shed status --json`, shadows the global one and runs.
 
 ## Interactive-handoff exception
 

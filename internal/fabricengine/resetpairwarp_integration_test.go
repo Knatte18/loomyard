@@ -60,7 +60,7 @@ func TestResetPairCode_DiscardsCommitsAndOwnPathDirtKeepsUntracked(t *testing.T)
 	t.Parallel()
 
 	const slug = "rpw-reset"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f, warp := pairFabric(t, h, slug)
 
 	gitkit.CommitFile(t, warp, "own.txt", "base", "own base")
@@ -110,7 +110,7 @@ func TestResetPairCode_DirtyPathOutsideOwnPathsRefuses(t *testing.T) {
 	t.Parallel()
 
 	const slug = "rpw-foreign"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f, warp := pairFabric(t, h, slug)
 
 	gitkit.CommitFile(t, warp, "own.txt", "base", "own base")
@@ -157,7 +157,7 @@ func TestResetPairCode_OwnershipRefusals(t *testing.T) {
 
 	t.Run("PrimeCheckout", func(t *testing.T) {
 		t.Parallel()
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		f, err := fabricengine.Open(h.Location)
 		if err != nil {
 			t.Fatalf("Open: %v", err)
@@ -170,7 +170,7 @@ func TestResetPairCode_OwnershipRefusals(t *testing.T) {
 	t.Run("PairOnParentBranch", func(t *testing.T) {
 		t.Parallel()
 		const slug = "rpw-parent"
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		f, warp := pairFabric(t, h, slug)
 		head := gitkit.RevParse(t, warp, "HEAD")
 		rec := fabricengine.NewMutations("")
@@ -180,7 +180,7 @@ func TestResetPairCode_OwnershipRefusals(t *testing.T) {
 	t.Run("WeftOnAnotherBranch", func(t *testing.T) {
 		t.Parallel()
 		const slug = "rpw-otherweft"
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		f, warp := pairFabric(t, h, slug)
 		gitkit.MustRun(t, h.PairRecordsSibling(slug), "git", "checkout", "-b", "some-other-branch")
 		head := gitkit.RevParse(t, warp, "HEAD")
@@ -191,7 +191,7 @@ func TestResetPairCode_OwnershipRefusals(t *testing.T) {
 	t.Run("DetachedHead", func(t *testing.T) {
 		t.Parallel()
 		const slug = "rpw-detached"
-		h := hubforge.NewHub(t, ".")
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		f, warp := pairFabric(t, h, slug)
 		gitkit.MustRun(t, warp, "git", "checkout", "--detach")
 		head := gitkit.RevParse(t, warp, "HEAD")
@@ -251,7 +251,7 @@ type remoteHalfPair struct {
 func newRemoteHalfPair(t *testing.T, slug string) *remoteHalfPair {
 	t.Helper()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f, warp := pairFabric(t, h, slug)
 	older := gitkit.CommitFile(t, warp, "own.txt", "base", "own base")
 	later := gitkit.CommitFile(t, warp, "later.txt", "later", "later commit")

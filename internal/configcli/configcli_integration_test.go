@@ -1,7 +1,7 @@
 //go:build integration
 
 // configcli_integration_test.go — e2e integration tests for configcli.
-// Tests real fabriccli.RunCLI over a hubforge.NewHub fixture.
+// Tests real fabriccli.RunCLI over a hubforge.CopyHub fixture.
 
 package configcli
 
@@ -34,7 +34,7 @@ func TestConfigOverRealHub(t *testing.T) {
 	const slug = "config-hub-test"
 
 	// fabriccli.CloneAndWire has already materialized every registered module's config plus the repo-wide fabric.yaml at BoardDir, and the records-side primary already sits on its RecordsBranchName-suffixed branch.
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	// Topology.Add wires the new pair's junctions itself, reading the wired name-set from the real repo-wide fabric.yaml.
 	// Without that the worktree has no _lyx, so configengine.Edit→FindBaseDir would error.
@@ -54,6 +54,9 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("lyxcwd.Resolve(%q): %v", codeWorktreePath, err)
 		}
+
+		// A task session's own edit syncs through fabriccli.RunCLIIn, which runs without a parent and so passes the role guard.
+		t.Setenv(agentname.StrandNameEnv, "ly:"+slug+":webster")
 
 		// loom is per-worktree, so this exercises the fabric-sync path.
 		validYAML := "discussion_timeout_min: 60\n"

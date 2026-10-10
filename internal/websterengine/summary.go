@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
@@ -71,18 +72,27 @@ func AppendAuditWarnings(websterDir string, warnings []string) error {
 	return appendToSummary(websterDir, "audit warnings", b.String())
 }
 
-// AppendBackgroundShells appends a "Background shells waited out" section listing the labels of the shells Master's wait counted a turn end past, one bullet each in the order given.
-// It is a no-op when labels is empty.
-func AppendBackgroundShells(websterDir string, labels []string) error {
-	if len(labels) == 0 {
+// AppendBackgroundShells appends a "Background shells at the run's end" section listing the shells Master's run ended over, one bullet each in the order given with the shell's label, signal and time outstanding.
+// It is a no-op when shells is empty.
+func AppendBackgroundShells(websterDir string, shells []shuttleengine.EndedShell) error {
+	if len(shells) == 0 {
 		return nil
 	}
 	var b strings.Builder
-	b.WriteString("\n\n## Background shells waited out\n\nMaster's turn end was counted while these background shells were still running, which comes after `background_shell_wait_min` for a shell only the transcript reports and at once for one the Stop payload reports when Master's output files exist; they may still be running in the session.\n\n")
-	for _, l := range labels {
-		fmt.Fprintf(&b, "- `%s`\n", l)
+	b.WriteString("\n\n## Background shells at the run's end\n\nMaster's run ended while these background shells were still outstanding; they may still be running in the session.\n\n")
+	for _, shell := range shells {
+		fmt.Fprintf(&b, "- `%s` (%s signal, outstanding %s)\n", shell.Label, shell.Signal, shell.Outstanding.Round(time.Second))
 	}
 	return appendToSummary(websterDir, "background shells", b.String())
+}
+
+// appendRebaselineWarning appends warning to the summary as its "Plan rebaselined" section, so the summary a step's Done points at names the rebaseline the run began with.
+// An empty warning appends nothing.
+func appendRebaselineWarning(websterDir, warning string) error {
+	if warning == "" {
+		return nil
+	}
+	return appendToSummary(websterDir, "plan rebaselined", "\n\n## Plan rebaselined\n\n"+warning+"\n")
 }
 
 // writeTriageList writes one titled sub-list of identities, or nothing when ids is empty.

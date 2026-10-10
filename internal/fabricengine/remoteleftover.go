@@ -140,11 +140,11 @@ func probeLiveLocalWeft(weftRoot, slug, weftBranch, originTip string) (weftLefto
 	if _, err := gitexec.Run([]string{"fetch", "--no-tags", "--refmap=", originRemoteName, "refs/heads/" + weftBranch}, weftRoot); err != nil {
 		return weftLeftover{}, fmt.Errorf("fetch weft branch %q from %q: %w", weftBranch, originRemoteName, err)
 	}
-	localTip, err := gitexec.Run([]string{"rev-parse", "refs/heads/" + weftBranch}, weftRoot)
+	localTip, err := gitrepo.New(weftRoot).RefSHA("refs/heads/" + weftBranch)
 	if err != nil {
 		return weftLeftover{}, fmt.Errorf("resolve local weft branch %q: %w", weftBranch, err)
 	}
-	ahead, err := isAncestorOrEqual(weftRoot, strings.TrimSpace(localTip), originTip)
+	ahead, err := isAncestorOrEqual(weftRoot, localTip, originTip)
 	if err != nil {
 		return weftLeftover{}, err
 	}

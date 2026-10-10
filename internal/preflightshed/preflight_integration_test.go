@@ -40,7 +40,7 @@ import (
 func setupPreflightWrapperFixture(t *testing.T) *hubforge.Hub {
 	t.Helper()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	slug := filepath.Base(h.Location.WorktreePath())
 
 	// fabricengine.ConfigTemplate() is already reconciled by fabriccli.CloneAndWire when NewHub

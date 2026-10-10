@@ -1,7 +1,7 @@
 //go:build integration
 
-// warplayout_test.go pins warpLayoutFor's two branches against each other: the spawn-free hub-sibling
-// fast path and the spawning lyxcwd.ResolveWorktree fallback are documented as equivalent, so this
+// warplayout_test.go pins warpLayoutFor's two branches against each other: the hub-sibling
+// fast path and the lyxcwd.ResolveWorktree fallback are documented as equivalent, so this
 // asserts they actually produce the same Location for the same worktree rather than one branch
 // quietly omitting a field.
 //
@@ -26,7 +26,7 @@ import (
 func TestWarpLayoutFor_FastPathMatchesResolveWorktree(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.SharedHub(t, hubforge.Shape{Anchor: "."})
 	worktreeRoot := h.PrimeWorktree()
 
 	fast, err := fabricengine.WarpLayoutForForTest(h.Location, worktreeRoot)

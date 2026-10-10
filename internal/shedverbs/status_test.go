@@ -1,7 +1,7 @@
 // status_test.go covers the generic status body's both told absent-file dispositions,
 // StatusExtras merging and its un-re-prefixed error, the told decode prefix, the told lock-dir
 // boolean's effect over an as-yet-uncreated parent directory, and the --watch tail's rendering,
-// dedupe, and told-label properties.
+// dedupe, and told-label properties, and that status's own --json shadows clihelp's global one.
 
 package shedverbs
 
@@ -14,9 +14,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/buildvcs"
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/spf13/cobra"
 )
 
 func statusTexts() VerbTexts {
@@ -115,6 +117,28 @@ func TestStatusCmd_AbsentFile_FoundFalse(t *testing.T) {
 	}
 	if env["status_path"] != paths.StatusPath {
 		t.Errorf("status_path = %v; want %q", env["status_path"], paths.StatusPath)
+	}
+}
+
+// TestStatusCmd_OwnJSONFlagRunsUnderGlobalJSONHelp mounts status under a root carrying clihelp's global --json, which never runs a command, and checks that status --json still runs: its local flag shadows the global one.
+func TestStatusCmd_OwnJSONFlagRunsUnderGlobalJSONHelp(t *testing.T) {
+	paths := newTestPaths(t)
+	spec := &Spec{
+		StatusPath:      paths.StatusPath,
+		StatusLockPath:  paths.StatusLockPath,
+		DecodeErrPrefix: "shedverbs:",
+		AbsentStatus:    AbsentDisposition{Refuse: false},
+	}
+	root := &cobra.Command{Use: "root", Short: "root short"}
+	clihelp.InstallJSONHelp(root)
+	root.AddCommand(statusCmd(statusTexts(), spec))
+
+	env, code := execEnvelope(t, root, []string{"status", "--json"})
+	if code != 0 {
+		t.Fatalf("exit code = %d; want 0", code)
+	}
+	if env["found"] != false || env["status_path"] != paths.StatusPath {
+		t.Errorf("envelope = %v; want the absent-file status envelope, proving status ran", env)
 	}
 }
 

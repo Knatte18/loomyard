@@ -29,7 +29,7 @@ func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-remote-both"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftBranch := fabricengine.RecordsBranchName(slug)
 
@@ -67,7 +67,7 @@ func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-remote-off"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftBranch := fabricengine.RecordsBranchName(slug)
 
@@ -95,7 +95,7 @@ func TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact(t *testing.T)
 	t.Parallel()
 
 	const slug = "remove-remote-fail"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 
@@ -123,7 +123,7 @@ func TestRemove_NoOriginUnderRemoteReportsSkipReasonAndCompletesTeardown(t *test
 	t.Parallel()
 
 	const slug = "remove-no-origin"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 

@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -34,15 +35,17 @@ const (
 	// helperRoleGate runs `lyx gate test` over helperCwdEnv and the process arguments, with the stand-in as its go binary unless helperGoEnv is empty.
 	helperRoleGate = "gate"
 	// helperRoleStandIn records how it was invoked, then exits with helperExitEnv or, under helperHoldEnv, sleeps until killed with a sleeper child.
+	// A build invocation exits with helperBuildExitEnv instead.
 	helperRoleStandIn = "standin"
 	// helperRoleSleeper sleeps until killed.
 	helperRoleSleeper = "sleeper"
 
-	helperCwdEnv    = "GATECLI_TEST_CWD"
-	helperGoEnv     = "GATECLI_TEST_GO"
-	helperRecordEnv = "GATECLI_TEST_RECORD"
-	helperExitEnv   = "GATECLI_TEST_EXIT"
-	helperHoldEnv   = "GATECLI_TEST_HOLD"
+	helperCwdEnv       = "GATECLI_TEST_CWD"
+	helperGoEnv        = "GATECLI_TEST_GO"
+	helperRecordEnv    = "GATECLI_TEST_RECORD"
+	helperExitEnv      = "GATECLI_TEST_EXIT"
+	helperBuildExitEnv = "GATECLI_TEST_BUILD_EXIT"
+	helperHoldEnv      = "GATECLI_TEST_HOLD"
 )
 
 func init() {
@@ -51,12 +54,16 @@ func init() {
 	helperRoles[helperRoleSleeper] = func() int { select {} }
 }
 
-// standInRecord is what the stand-in go binary writes to helperRecordEnv once it runs.
+// standInRecord is what the stand-in go binary appends to helperRecordEnv, one line of JSON per invocation.
 type standInRecord struct {
 	Args    []string `json:"args"`
 	GoFlags string   `json:"goflags"`
 	// Slot is the inherited-slot variable the stand-in saw.
-	Slot       string `json:"slot"`
+	Slot string `json:"slot"`
+	// Strand is the strand-name variable the stand-in saw; empty when the gate dropped it.
+	Strand string `json:"strand"`
+	// Prebuilt is the prebuilt-lyx variable the stand-in saw.
+	Prebuilt   string `json:"prebuilt"`
 	PID        int    `json:"pid"`
 	Grandchild int    `json:"grandchild"`
 }
@@ -73,8 +80,10 @@ func runGateHelper() int {
 }
 
 func runStandIn() int {
-	record := standInRecord{Args: os.Args[1:], GoFlags: os.Getenv("GOFLAGS"), Slot: os.Getenv(gateslot.InheritEnv), PID: os.Getpid()}
-	hold := os.Getenv(helperHoldEnv) != ""
+	record := standInRecord{Args: os.Args[1:], GoFlags: os.Getenv("GOFLAGS"), Slot: os.Getenv(gateslot.InheritEnv), Strand: os.Getenv(agentname.StrandNameEnv), Prebuilt: os.Getenv(gateslot.PrebuiltLyxEnv), PID: os.Getpid()}
+	// A build invocation only records itself and exits with its own code; the hold belongs to the test invocation.
+	isBuild := len(os.Args) > 1 && os.Args[1] == "build"
+	hold := !isBuild && os.Getenv(helperHoldEnv) != ""
 	if hold {
 		sleeper := exec.Command(os.Args[0])
 		sleeper.Env = append(os.Environ(), helperEnv+"="+helperRoleSleeper)
@@ -87,13 +96,18 @@ func runStandIn() int {
 	if err != nil {
 		return 1
 	}
-	// A rename makes the record appear whole, so a poller never reads half of it.
-	path := os.Getenv(helperRecordEnv)
-	if err := os.WriteFile(path+".tmp", data, 0o644); err != nil {
+	// One write of one whole line to an append-mode file, so a poller never reads half a record.
+	file, err := os.OpenFile(os.Getenv(helperRecordEnv), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
 		return 1
 	}
-	if err := os.Rename(path+".tmp", path); err != nil {
+	_, writeErr := file.Write(append(data, '\n'))
+	if closeErr := file.Close(); writeErr != nil || closeErr != nil {
 		return 1
+	}
+	if isBuild {
+		code, _ := strconv.Atoi(os.Getenv(helperBuildExitEnv))
+		return code
 	}
 	if hold {
 		select {}
@@ -101,6 +115,9 @@ func runStandIn() int {
 	code, _ := strconv.Atoi(os.Getenv(helperExitEnv))
 	return code
 }
+
+// strandEnvEntry is the strand-name entry a gate run is started with, which the gate must not hand to its go binary.
+var strandEnvEntry = agentname.StrandNameEnv + "=gate-test-strand"
 
 // gateRun is one `lyx gate test` process to start.
 type gateRun struct {
@@ -161,20 +178,42 @@ func (g *runningGate) wait(t *testing.T) int {
 	return exitErr.ExitCode()
 }
 
-// standIn waits for the stand-in go binary to record its invocation and returns the record.
+// records returns every complete record the stand-in has appended so far, in invocation order.
+func (g *runningGate) records(t *testing.T) []standInRecord {
+	t.Helper()
+
+	data, err := os.ReadFile(g.record)
+	if err != nil {
+		return nil
+	}
+	var records []standInRecord
+	for _, line := range strings.SplitAfter(string(data), "\n") {
+		if !strings.HasSuffix(line, "\n") {
+			break
+		}
+		var record standInRecord
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatalf("stand-in record %q: %v", line, err)
+		}
+		records = append(records, record)
+	}
+	return records
+}
+
+// standIn waits for the stand-in go binary to record its test invocation and returns the record.
 func (g *runningGate) standIn(t *testing.T) standInRecord {
 	t.Helper()
 
-	var data []byte
-	eventually(t, "the stand-in's record", func() bool {
-		var err error
-		data, err = os.ReadFile(g.record)
-		return err == nil
-	})
 	var record standInRecord
-	if err := json.Unmarshal(data, &record); err != nil {
-		t.Fatalf("stand-in record %q: %v", data, err)
-	}
+	eventually(t, "the stand-in's test record", func() bool {
+		for _, candidate := range g.records(t) {
+			if len(candidate.Args) > 0 && candidate.Args[0] == "test" {
+				record = candidate
+				return true
+			}
+		}
+		return false
+	})
 	return record
 }
 
@@ -211,7 +250,7 @@ func processGone(pid int) bool {
 func TestGateTest_Scenario(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	gateConfig := "slots: 1\ngo_parallel: 3\ncli_wait_sec: 1\n"
 	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), []byte(gateConfig), 0o644); err != nil {
 		t.Fatalf("seed gate.yaml: %v", err)
@@ -232,11 +271,14 @@ func TestGateTest_Scenario(t *testing.T) {
 	}
 
 	t.Run("a free slot runs go test under the cap and exits with its code", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tags", "integration", "./pkg", "--", "-run", "X"}, env: []string{helperExitEnv + "=7"}})
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tags", "integration", "./pkg", "--", "-run", "X"}, env: []string{helperExitEnv + "=7", strandEnvEntry}})
 		if code := g.wait(t); code != 7 {
 			t.Errorf("exit code = %d; want the stand-in's 7", code)
 		}
 		record := g.standIn(t)
+		if record.Strand != "" {
+			t.Errorf("go environment %s = %q; want it dropped", agentname.StrandNameEnv, record.Strand)
+		}
 		if want := []string{"test", "-C", prime, "-p", "3", "-tags", "integration", "./pkg", "-run", "X"}; !slices.Equal(record.Args, want) {
 			t.Errorf("go args = %q; want %q", record.Args, want)
 		}
@@ -283,12 +325,16 @@ func TestGateTest_Scenario(t *testing.T) {
 			t.Errorf("Holders = (%+v, %v); want the holding gate's worktree and site", holders, err)
 		}
 
-		nested := startGate(t, gateRun{cwd: prime, args: []string{"test", "./nested"}, env: []string{gateslot.InheritEnv + "=" + held.Slot}})
+		nested := startGate(t, gateRun{cwd: prime, args: []string{"test", "./nested"}, env: []string{gateslot.InheritEnv + "=" + held.Slot, strandEnvEntry}})
 		if code := nested.wait(t); code != 0 {
 			t.Errorf("nested exit code = %d, stdout %q; want 0 inside the held slot", code, nested.stdout.String())
 		}
-		if got := nested.standIn(t).Slot; got != held.Slot {
-			t.Errorf("nested %s = %q; want the held slot %q", gateslot.InheritEnv, got, held.Slot)
+		nestedRecord := nested.standIn(t)
+		if nestedRecord.Slot != held.Slot {
+			t.Errorf("nested %s = %q; want the held slot %q", gateslot.InheritEnv, nestedRecord.Slot, held.Slot)
+		}
+		if nestedRecord.Strand != "" {
+			t.Errorf("nested go environment %s = %q; want it dropped", agentname.StrandNameEnv, nestedRecord.Strand)
 		}
 
 		_ = holder.cmd.Process.Kill()
@@ -341,13 +387,16 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	t.Run("a target outside every hub runs unslotted and logs it", func(t *testing.T) {
-		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "./pkg"}})
+		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "./pkg"}, env: []string{strandEnvEntry}})
 		if code := g.wait(t); code != 0 {
 			t.Fatalf("exit code = %d; want 0", code)
 		}
 		record := g.standIn(t)
 		if record.Slot != "" || !slices.Contains(record.Args, "4") {
 			t.Errorf("go args = %q, slot %q; want the template's -p 4 and no slot", record.Args, record.Slot)
+		}
+		if record.Strand != "" {
+			t.Errorf("go environment %s = %q; want it dropped", agentname.StrandNameEnv, record.Strand)
 		}
 		if !strings.Contains(g.stderr.String(), "no hub bound applies") {
 			t.Errorf("stderr = %q; want the log that no hub bound applies", g.stderr.String())
@@ -385,6 +434,73 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
+	t.Run("a tagged run builds lyx once, exports it to go test and removes it afterwards", func(t *testing.T) {
+		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lyx"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tags", "integration", "./pkg"}})
+		if code := g.wait(t); code != 0 {
+			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
+		}
+		records := g.records(t)
+		if len(records) != 2 || len(records[0].Args) != 8 || records[0].Args[0] != "build" || records[1].Args[0] != "test" {
+			t.Fatalf("records = %+v; want one build invocation, then the test invocation", records)
+		}
+		bin := records[0].Args[6]
+		if want := []string{"build", "-C", prime, "-p", "3", "-o", bin, "./cmd/lyx"}; !slices.Equal(records[0].Args, want) {
+			t.Errorf("build args = %q; want %q", records[0].Args, want)
+		}
+		if records[1].Prebuilt != bin {
+			t.Errorf("go test saw %s = %q; want the built %q", gateslot.PrebuiltLyxEnv, records[1].Prebuilt, bin)
+		}
+		if _, err := os.Stat(filepath.Dir(bin)); !os.IsNotExist(err) {
+			t.Errorf("the build directory %s survived the gate (stat err=%v); want it removed", filepath.Dir(bin), err)
+		}
+	})
+
+	stale := gateslot.PrebuiltLyxEnv + "=/stale/lyx"
+	t.Run("an untagged run builds nothing and strips an inherited prebuilt variable", func(t *testing.T) {
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg"}, env: []string{stale}})
+		if code := g.wait(t); code != 0 {
+			t.Fatalf("exit code = %d; want 0", code)
+		}
+		records := g.records(t)
+		if len(records) != 1 || records[0].Args[0] != "test" || records[0].Prebuilt != "" {
+			t.Errorf("records = %+v; want the test invocation alone, with no %s", records, gateslot.PrebuiltLyxEnv)
+		}
+	})
+
+	t.Run("a tagged run in a root without cmd/lyx builds nothing and strips an inherited prebuilt variable", func(t *testing.T) {
+		g := startGate(t, gateRun{cwd: t.TempDir(), args: []string{"test", "--tags", "integration", "./pkg"}, env: []string{stale}})
+		if code := g.wait(t); code != 0 {
+			t.Fatalf("exit code = %d; want 0", code)
+		}
+		records := g.records(t)
+		if len(records) != 1 || records[0].Args[0] != "test" || records[0].Prebuilt != "" {
+			t.Errorf("records = %+v; want the test invocation alone, with no %s", records, gateslot.PrebuiltLyxEnv)
+		}
+	})
+
+	t.Run("a tagged run whose lyx build fails refuses before go test", func(t *testing.T) {
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tags", "integration", "./pkg"}, env: []string{helperBuildExitEnv + "=1"}})
+		code := g.wait(t)
+		var envelope struct {
+			OK    bool   `json:"ok"`
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal(g.stdout.Bytes(), &envelope); err != nil {
+			t.Fatalf("stdout %q is not a JSON envelope: %v", g.stdout.String(), err)
+		}
+		const wantError = "cannot build lyx for the tagged run"
+		if code != 1 || envelope.OK || !strings.Contains(envelope.Error, wantError) {
+			t.Errorf("gate = exit %d, %+v; want exit 1, ok false and an error holding %q", code, envelope, wantError)
+		}
+		if records := g.records(t); len(records) != 1 || records[0].Args[0] != "build" {
+			t.Errorf("records = %+v; want the build invocation alone, with no test invocation after it", records)
+		}
+		requireFree(t)
+	})
+
 	// Each row breaks the shared hub in its setup and repairs it in the returned restore, so the rows run in order.
 	refusals := []struct {
 		name      string
@@ -405,7 +521,7 @@ func TestGateTest_Scenario(t *testing.T) {
 					}
 				}
 			},
-			wantError: `way forward: run "lyx fabric reconcile", then re-run the same command`,
+			wantError: `way forward: run "lyx fabric reconcile", then re-run the same command; a session lyx refuses the verb from reports status: FAILED and the orch runs it`,
 		},
 		{
 			name: "a gate.yaml value below 1 names lyx config gate",

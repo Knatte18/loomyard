@@ -27,6 +27,10 @@
 // map[string]string (module name to YAML content), converting configreg.Modules() or a feature's
 // ConfigTemplate() at the test site instead of inside gitkit.
 //
+// Fixture marker: git spawned to build a fixture is told apart from git the code under test runs by the environment variable FixtureGitEnv, value "1".
+// The spawn helpers in gitkit.go set it on the child's environment, and hubforge sets it process-wide for the duration of a hub build.
+// A census of git processes reads it through git's trace2 env-var events.
+//
 // Hermetic Git Test Environment: gitkit also implements the two-layer mechanism that keeps
 // git-spawning tests from depending on the operator's global or system gitconfig.
 // Layer A (template quiet-config) sets core.fsmonitor=false, maintenance.auto=false, and gc.auto=0
@@ -36,5 +40,7 @@
 // before m.Run(), pointing GIT_CONFIG_GLOBAL at a neutral config and setting GIT_CONFIG_NOSYSTEM=1,
 // which also covers git spawned by raw `git init`/`git clone` inside tests and by any child process
 // the test binary launches.
+// The neutral config also sets gc.autoDetach=false, so any gc that still runs is foreground and waited for.
+// The variables reach every `lyx` child a test runs through lyxbin.Run, which inherits the process environment, and reed's clean environment already passes them through.
 // See PATTERN-test-isolation for the machine-enforced half of this contract.
 package gitkit

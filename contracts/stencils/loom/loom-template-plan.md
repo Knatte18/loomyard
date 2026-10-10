@@ -77,6 +77,8 @@ The plan runs strictly in card order, and the Card Index lists the cards in that
 A card that needs a corpus or a fixture takes it from committed test data in the tree, created by an earlier card where it does not exist yet, never from the live files of other worktrees or the fabric repo.
 `card-fabric-reference` in `{{.specs_dir}}/loom/loom-plan-spec.md` names what the plan gate refuses.
 
+A card that prescribes an addition to a `PATTERN.md` entry line leaves the line under the cap, `pattern-entry-line-cap` in the same spec: the gate fails a fenced verbatim entry line over it.
+
 ### On-disk layout
 
 `00-overview.md` + one `NN-<card-slug>.md` per card. `NN` is zero-padded and equals the card's flat heading number `N`;

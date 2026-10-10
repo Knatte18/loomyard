@@ -17,6 +17,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/utils/merkletrie"
 
+	"github.com/Knatte18/loomyard/internal/dotgit"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
@@ -51,6 +52,12 @@ type Repo struct {
 
 	// reindexCount counts the storer reindexes readGoGit has run, incremented under the exclusive goGitMu and read only by this package's tests.
 	reindexCount int
+
+	// geometryOnce guards the one dotgit.Read of this handle's checkout; geometryValue and geometryErr hold its result for the handle's life.
+	// Nothing else is cached: HEAD and refs change under a process, the git and common dirs do not.
+	geometryOnce  sync.Once
+	geometryValue dotgit.Geometry
+	geometryErr   error
 }
 
 // New returns a Repo wrapping the git checkout at path. It performs no I/O.
@@ -69,6 +76,33 @@ func (r *Repo) run(args ...string) (stdout, stderr string, code int, err error) 
 // the command.
 func (r *Repo) runChecked(args ...string) (string, error) {
 	return gitexec.Run(args, r.path)
+}
+
+// geometry reads the checkout's git dir and common dir through dotgit on first use and returns the same result for the handle's life.
+func (r *Repo) geometry() (dotgit.Geometry, error) {
+	r.geometryOnce.Do(func() {
+		r.geometryValue, r.geometryErr = dotgit.Read(r.path)
+	})
+	return r.geometryValue, r.geometryErr
+}
+
+// GitDir returns the absolute directory holding this checkout's HEAD and per-worktree state.
+// It is the checkout's own `.git` directory, or for a linked worktree the directory under the common dir's `worktrees/` that its gitfile names.
+func (r *Repo) GitDir() (string, error) {
+	g, err := r.geometry()
+	if err != nil {
+		return "", fmt.Errorf("gitrepo: git dir of %s: %w", r.path, err)
+	}
+	return g.GitDir, nil
+}
+
+// CommonDir returns the absolute directory holding this checkout's objects and refs, which a linked worktree shares with its primary.
+func (r *Repo) CommonDir() (string, error) {
+	g, err := r.geometry()
+	if err != nil {
+		return "", fmt.Errorf("gitrepo: common dir of %s: %w", r.path, err)
+	}
+	return g.CommonDir, nil
 }
 
 // CurrentSHA returns the SHA of HEAD, or ErrNoCommits if no commits exist.

@@ -143,6 +143,25 @@ func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location 
 	return loc
 }
 
+// TestWire_MissingHubLandingConfigNamesWayForward asserts a hub without the hub-wide landing config fails wire with an error ending in the way forward.
+func TestWire_MissingHubLandingConfigNamesWayForward(t *testing.T) {
+	t.Parallel()
+
+	loc := hubLocation(t, "pair", ".")
+	landingPath := filepath.Join(fabricengine.BoardDir(loc.HubPath), "_lyx", "config", "landing.yaml")
+	if err := os.Remove(landingPath); err != nil {
+		t.Fatalf("Remove(%q) = %v; want nil", landingPath, err)
+	}
+
+	err := (&loomCLI{runID: shedrun.SelfRunID}).wire(loc, loc.AnchorPath())
+	if err == nil {
+		t.Fatal("wire() over a hub with no landing.yaml = nil; want a refusal")
+	}
+	if !strings.HasSuffix(err.Error(), hubConfigWayForward) {
+		t.Errorf("wire() error = %q; want it to end with %q", err.Error(), hubConfigWayForward)
+	}
+}
+
 // TestWire_DefaultConfig drives wire once over the default config and asserts the assembled receiver.
 // The steps read the one wired receiver and run in order.
 // The last step writes a status file into the run directory the wired paths name, which no earlier step reads.
@@ -237,6 +256,9 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 		if deps.RefMatcher == nil {
 			t.Error("runDeps.RefMatcher = nil; want the real fabric reference matcher")
+		}
+		if deps.ReadOnly == nil {
+			t.Error("runDeps.ReadOnly = nil; want the read-only classifier beside the reference matcher")
 		}
 
 		// The same value must also be embedded verbatim in c.env.WebsterDeps.
@@ -842,6 +864,11 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 	if c.env.FixStart != burlerengine.FixStartAfterReview {
 		t.Errorf("c.env.FixStart = %q; want %q", c.env.FixStart, burlerengine.FixStartAfterReview)
+	}
+	if c.env.WebsterRecord == nil {
+		t.Error("c.env.WebsterRecord = nil; want the closure over loomshed.WebsterRecordNote")
+	} else if got := c.env.WebsterRecord(); got != "none" {
+		t.Errorf("c.env.WebsterRecord() = %q; want none for an anchor with no webster run record", got)
 	}
 
 	// The template's empty fans leave every fan entry empty, and Webster rows never carry one.

@@ -4,6 +4,7 @@
 // addWeftVerbs installs two hidden persistent flags — --weft-path and --warp-path — and a
 // PersistentPreRunE scoped to these nine verb names only — the topology verbs built in fabric.go
 // resolve their own layout per invocation and never touch this file's closure state.
+// The pre-run opens with the sandboxed-role guard of roleguard.go, which covers every subcommand.
 // The PersistentPreRunE splits normal mode (resolve cwd → layout → config → pathspec → Fabric
 // handle) from bypass mode (either hidden path flag injected by the detached push child, push-only
 // gate), driving fabricengine.Fabric's Status/Commit/Pull/Diff/MergeIn/Merge/MergeContinue/
@@ -17,6 +18,9 @@
 package fabriccli
 
 import (
+	"os"
+
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -58,7 +62,18 @@ func addWeftVerbs(cmd *cobra.Command) {
 	cmd.PersistentFlags().String("warp-path", "", "internal: injected absolute warp worktree path for the detached push child")
 	cmd.PersistentFlags().MarkHidden("warp-path") //nolint:errcheck
 
+	fabricCmd := cmd
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		// The role guard runs first, ahead of the topology verbs' early return.
+		// It runs only under a parent: configcli's in-process sync runs Command() as its own root and passes.
+		if fabricCmd.HasParent() && cmd != fabricCmd {
+			if refusal := sandboxedRoleRefusal(cmd, os.Getenv(agentname.StrandNameEnv)); refusal != "" {
+				output.Err(cmd.OutOrStdout(), refusal)
+				clihelp.Abort(cmd.Context(), 1)
+				return nil
+			}
+		}
+
 		if !weftVerbNames[cmd.Name()] {
 			return nil
 		}

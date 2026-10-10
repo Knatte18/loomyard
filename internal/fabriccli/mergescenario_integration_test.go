@@ -186,7 +186,7 @@ func assertNoWarnings(t *testing.T, env envelope.Envelope) {
 func TestRunCLI_MergeScenario(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	steps := []struct {
 		name string

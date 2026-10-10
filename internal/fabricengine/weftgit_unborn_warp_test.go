@@ -47,7 +47,7 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newUnbornWarpRepo(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft change, unborn warp")

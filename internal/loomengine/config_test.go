@@ -106,6 +106,7 @@ func templateConfig() Config {
 		FrictionTimeoutMin:       30,
 		Driver:                   "sonnet[medium]",
 		ParentReviewWaitMin:      60,
+		StepIdleTimeoutMin:       60,
 		ReviewCirclingCheckpoint: 3,
 		ReviewMaxBounces:         3,
 		FixStart:                 "parallel",
@@ -245,6 +246,16 @@ review_timeout_min: 240
 			name:   "explicit parent_review_wait_min",
 			values: map[string]string{"parent_review_wait_min": "5"},
 			mutate: func(c *Config) { c.ParentReviewWaitMin = 5 },
+		},
+		{
+			name:   "explicit step_idle_timeout_min",
+			values: map[string]string{"step_idle_timeout_min": "15"},
+			mutate: func(c *Config) { c.StepIdleTimeoutMin = 15 },
+		},
+		{
+			name:   "zero step_idle_timeout_min is floored to one",
+			values: map[string]string{"step_idle_timeout_min": "0"},
+			mutate: func(c *Config) { c.StepIdleTimeoutMin = 1 },
 		},
 		{
 			name:   "explicit review checkpoint and budget",
@@ -435,7 +446,7 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	if err == nil {
 		t.Fatal("LoadConfig() = _, nil; want non-nil error for uninitialized baseDir")
 	}
-	want := `not initialized here; run "lyx fabric reconcile"`
+	want := `not initialized here; run "lyx fabric reconcile"; a session lyx refuses the verb from reports status: FAILED and the orch runs it`
 	if err.Error() != want {
 		t.Errorf("LoadConfig() error = %q; want %q", err.Error(), want)
 	}

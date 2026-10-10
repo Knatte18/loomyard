@@ -214,17 +214,11 @@ func newExitSweepFixture(t *testing.T, loggerYAML string) exitSweepFixture {
 // run executes lyx in the fixture and returns its exit code and combined output.
 func (fx exitSweepFixture) run(t *testing.T, lyxExe string, args ...string) (int, string) {
 	t.Helper()
-	cmd := exec.Command(lyxExe, args...)
-	cmd.Dir = fx.cwd
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		return 0, string(out)
+	out, code, err := lyxbin.Run(lyxExe, fx.cwd, time.Minute, args...)
+	if err != nil {
+		t.Fatalf("lyx %v: %v", args, err)
 	}
-	var exitErr *exec.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("lyx %v: %v; output: %s", args, err, out)
-	}
-	return exitErr.ExitCode(), string(out)
+	return code, out
 }
 
 // logNames lists the file names in the fixture's logs directory.

@@ -430,16 +430,15 @@ func pathPresent(path string) bool {
 // gone by the time it runs.
 func deleteWarpBranch(rec *Mutations, l *lyxcwd.Location, warpBranch, parentBranch string) (deleted bool, keptReason string) {
 	repoDir := l.WorktreePath()
-	if _, err := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + warpBranch}, repoDir); err != nil {
-		// rev-parse --verify --quiet exits 1, and only 1, for a ref that does not exist.
-		var gitErr *gitexec.GitError
-		if errors.As(err, &gitErr) && gitErr.ExitCode == 1 {
-			return false, ""
-		}
+	exists, err := gitrepo.New(repoDir).BranchExists(warpBranch)
+	if err != nil {
 		return false, fmt.Sprintf("look up warp branch %s: %v", warpBranch, err)
 	}
+	if !exists {
+		return false, ""
+	}
 
-	err := deleteBranch(rec, branchRequest{
+	err = deleteBranch(rec, branchRequest{
 		what:      "delete warp branch",
 		repoDir:   repoDir,
 		branch:    warpBranch,
@@ -625,11 +624,11 @@ func recordTrailerSHA(l *lyxcwd.Location, slug, warpBranch, weftTarget string) (
 		return "", err
 	}
 	if exists {
-		sha, err := gitexec.Run([]string{"rev-parse", "--verify", "refs/heads/" + warpBranch + "^{commit}"}, l.WorktreePath())
+		sha, err := gitrepo.New(l.WorktreePath()).RefSHA("refs/heads/" + warpBranch)
 		if err != nil {
 			return "", fmt.Errorf("read the task branch tip: %w", err)
 		}
-		return strings.TrimSpace(sha), nil
+		return sha, nil
 	}
 
 	log, err := gitexec.Run([]string{"log", "-n", "200", "--format=%B%x00", "HEAD"}, weftTarget)
@@ -645,16 +644,13 @@ func recordTrailerSHA(l *lyxcwd.Location, slug, warpBranch, weftTarget string) (
 }
 
 // localBranchExists reports whether refs/heads/<branch> exists in the repo at repoDir.
-// rev-parse --verify --quiet exits 1, and only 1, for a ref that does not exist; any other failure is returned.
+// A missing branch is false with a nil error; a failed read is returned.
 func localBranchExists(repoDir, branch string) (bool, error) {
-	if _, err := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + branch}, repoDir); err != nil {
-		var gitErr *gitexec.GitError
-		if errors.As(err, &gitErr) && gitErr.ExitCode == 1 {
-			return false, nil
-		}
+	exists, err := gitrepo.New(repoDir).BranchExists(branch)
+	if err != nil {
 		return false, fmt.Errorf("look up branch %s: %w", branch, err)
 	}
-	return true, nil
+	return exists, nil
 }
 
 // refuseDirtyWeftWorktree returns an error when the weft worktree at weftTarget carries
