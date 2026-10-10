@@ -88,6 +88,8 @@ type Table struct {
 	Interactive bool
 	// Values are stencil marker values every seat shares; a name may not be reserved and a value may not be blank.
 	Values map[string]string
+	// Optional names the table values that may be empty; such a value renders as nothing wherever its marker stands.
+	Optional []string
 	// Seats are the table's seats in order: the chair once, and advisors named AdvisorName(1), AdvisorName(2) and so on.
 	Seats []Seat
 }
@@ -116,12 +118,17 @@ func (t Table) Outputs() []string {
 // Every seat has an output, no two seats share an output path, and every advisor output is one of the chair's inputs.
 // The role prefix and every seat's formed role are valid agent-name roles.
 // Every seat's stencil is readable from stencilsDir, as is every block it includes, and an included block includes nothing.
-// A table or seat value neither collides with a reserved marker nor is blank.
+// A table or seat value neither collides with a reserved marker nor is blank, except a table value named in Optional, which may be blank; an Optional name may not be a reserved marker.
 func (t Table) Validate(stencilsDir string) error {
 	if err := agentname.ValidateRole(t.RolePrefix); err != nil {
 		return fmt.Errorf("seatengine: role prefix: %w", err)
 	}
-	if err := validateValues("table", t.Values); err != nil {
+	for _, name := range t.Optional {
+		if slices.Contains(reservedMarkers, name) {
+			return fmt.Errorf("seatengine: table: optional value %q collides with a reserved marker", name)
+		}
+	}
+	if err := validateValues("table", t.requiredValues()); err != nil {
 		return err
 	}
 	for _, check := range []func() error{t.validateNames, t.validateOutputs, t.validateRoles} {
@@ -138,6 +145,17 @@ func (t Table) Validate(stencilsDir string) error {
 		}
 	}
 	return nil
+}
+
+// requiredValues returns the table's values without the blank ones named in Optional.
+func (t Table) requiredValues() map[string]string {
+	required := maps.Clone(t.Values)
+	for _, name := range t.Optional {
+		if strings.TrimSpace(required[name]) == "" {
+			delete(required, name)
+		}
+	}
+	return required
 }
 
 // validateNames checks the table has one chair and its other seats are named advisor-1, advisor-2 and so on in order.

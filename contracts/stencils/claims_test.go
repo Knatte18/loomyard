@@ -240,6 +240,22 @@ var wordingClaims = []stencilClaims{
 		{must: "lyx loom review delivered", section: discussionFenceSection, why: "the fence carves out the parent-review delivered verb"},
 		{must: "parent-review entry to `## Review rounds`", section: discussionFenceSection, why: "the fence carves out the parent-review round entry"},
 	}, attackSurfaceClaims...)},
+	{"loom-template-discussion-chair.md", LoomTemplateDiscussionChair, []claim{
+		{must: `{{template "loom-template-discussion"}}`, why: "the chair includes the discussion stencil whole, so its write surface and gates cannot drift from the single writer's"},
+		{must: `{{template "seat-directive-chair"}}`, why: "the chair includes the chair seat directive"},
+		{must: "replaces the single-agent framing at the top of this prompt", why: "the included stencil opens by calling its reader a single agent, and the chair's section overrides that"},
+		{must: "naming the advisor's strand name", section: "## Working with your advisors", why: "the interview record names the advisor whose answer the chair relied on"},
+		{must: "mark a pick that rests on such an answer as advisor-informed, naming the same strand name", section: "## Working with your advisors", why: "the question ledger marks an advisor-informed pick, naming the strand"},
+		{must: "send every batch to every advisor", section: "## Working with your advisors", why: "every advisor sees every question, since each may find a different weakness"},
+		{must: "after weighing every advisor's answer", section: "## Working with your advisors", why: "the chair settles a question on all advisors' answers, not one advisor's area"},
+		{mustNot: "an area of the design", why: "the retired area assignment never returns"},
+	}},
+	{"loom-template-discussion-advisor.md", LoomTemplateDiscussionAdvisor, []claim{
+		{must: "You write only your notes file", why: "the notes file is the advisor's only write"},
+		{must: "You message only the chair, never the operator and never the parent", why: "the chair is the only session an advisor messages"},
+		{must: "you never mutate git", why: "an advisor never mutates git"},
+		{must: "before any question arrives", why: "the notes are written before the chair's questions arrive"},
+	}},
 	{"burler-focus-directive.md", BurlerFocusDirective, []claim{
 		{must: "The rubric binds over the focus directive", why: "precedence: rubric over directive"},
 		{must: "steers attention and order, not verdicts", why: "a focus directive steers, never judges"},

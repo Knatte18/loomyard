@@ -94,8 +94,40 @@ func seatValues(geom Geometry, table Table, seat Seat, names map[string]string, 
 	return values, nil
 }
 
-// composePrompt reads seat's stencil and every block it includes from stencilsDir and fills them from values.
+// Prompts returns the prompt every seat of table reads at a fresh start, keyed by seat name, and starts nothing.
+// It validates table against geom.StencilsDir, so a table that would be refused at start is refused here.
+// No advisor is counted as failed, so a chair's failed-advisors list reads as empty.
+func Prompts(geom Geometry, table Table) (map[string]string, error) {
+	if err := table.Validate(geom.StencilsDir); err != nil {
+		return nil, err
+	}
+	names, err := strandNames(geom, table)
+	if err != nil {
+		return nil, err
+	}
+	prompts := make(map[string]string, len(table.Seats))
+	for _, seat := range table.Seats {
+		values, err := seatValues(geom, table, seat, names, nil)
+		if err != nil {
+			return nil, err
+		}
+		prompt, err := composeSeatPrompt(geom.StencilsDir, seat, values, table.Optional)
+		if err != nil {
+			return nil, err
+		}
+		prompts[seat.Name] = prompt
+	}
+	return prompts, nil
+}
+
+// composePrompt reads seat's stencil and every block it includes from stencilsDir and fills them from values, with no marker optional.
 func composePrompt(stencilsDir string, seat Seat, values map[string]string) (string, error) {
+	return composeSeatPrompt(stencilsDir, seat, values, nil)
+}
+
+// composeSeatPrompt reads seat's stencil and every block it includes from stencilsDir and fills them from values.
+// A marker named in optional renders as nothing when its value is empty, in the stencil and in every block.
+func composeSeatPrompt(stencilsDir string, seat Seat, values map[string]string, optional []string) (string, error) {
 	body, err := stencilstore.Read(stencilsDir, seat.Stencil)
 	if err != nil {
 		return "", fmt.Errorf("seatengine: seat %q: %w", seat.Name, err)
@@ -112,7 +144,7 @@ func composePrompt(stencilsDir string, seat Seat, values map[string]string) (str
 		}
 		blocks[name] = block
 	}
-	filled, err := stencil.FillWith(body, blocks, values, nil)
+	filled, err := stencil.FillWith(body, blocks, values, optional)
 	if err != nil {
 		return "", fmt.Errorf("seatengine: seat %q: fill stencil %q: %w", seat.Name, seat.Stencil, err)
 	}
