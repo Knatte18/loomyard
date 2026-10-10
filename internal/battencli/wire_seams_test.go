@@ -64,6 +64,12 @@ var intentionallyNil = map[string]string{
 	"Rework.ClearRejection":     "loom-only seam, batten has no rework segment",
 	"Rework.ArchiveWebster":     "loom-only seam, batten has no rework segment",
 	"Rework.Commit":             "loom-only seam, batten has no rework segment",
+	"DarnSpec":                  "darn-only seam, batten has no darn segment",
+	"Darn.ReadRejection":        "darn-only seam, batten has no darn segment",
+	"Darn.ClearRejection":       "darn-only seam, batten has no darn segment",
+	"Darn.Commit":               "darn-only seam, batten has no darn segment",
+	"Darn.LatestOutcome":        "darn-only seam, batten has no darn segment",
+	"Darn.PublishFailure":       "darn-only seam, batten has no darn segment",
 }
 
 func TestWire_EverySeamFilled(t *testing.T) {

@@ -386,17 +386,27 @@ func childNotParked(childOutput string) bool {
 	return false
 }
 
+// childRecipeSupported reports whether recipe is one a task worktree's bootstrap verb can run as the child's own run:
+// the two recipes `lyx loom start` serves.
+func childRecipeSupported(recipe string) bool {
+	return recipe == shedrun.RecipeLoom || recipe == shedrun.RecipeDarn
+}
+
+// unsupportedChildRecipeRefusal is the refusal for a recipe childRecipeSupported rejects.
+// It wraps battenshed.ErrUnsupportedChildRecipe and names both admitted recipes.
+func unsupportedChildRecipeRefusal(recipe string) error {
+	return fmt.Errorf("%w: only %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q or empty; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipeLoom, shedrun.RecipeDarn, recipe)
+}
+
 // childSeedParams returns the seed params recipe's own bootstrap verb will itself write, read from
 // childLocation.
 //
 // shedrun.WriteSeed is idempotent only against a seed agreeing on recipe, driver and params, so a
 // child seeded without a param its own bootstrap writes makes that bootstrap refuse.
-// Params are per-recipe: only loom declares one, params.parent, taken from the pair's recorded
-// origin.
-// An absent or empty recorded parent yields no param, leaving loom's own "pass --parent once"
-// refusal as the one an operator sees.
+// Params are per-recipe: loom and darn declare one each, params.parent, taken from the pair's recorded origin.
+// An absent or empty recorded parent yields no param, leaving the bootstrap's own "pass --parent once" refusal as the one an operator sees.
 func childSeedParams(recipe string, childLocation *lyxcwd.Location) (map[string]string, error) {
-	if recipe != shedrun.RecipeLoom {
+	if !childRecipeSupported(recipe) {
 		return nil, nil
 	}
 	origin, found, err := fabricengine.ReadOrigin(childLocation)
@@ -829,7 +839,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return err
 				}
-				// loom's bootstrap verb, not a per-recipe dispatch: the WriteSeed seam below admits
+				// The bootstrap verb of loom and darn alike, not a per-recipe dispatch: the WriteSeed seam below admits
 				// no other child recipe, so the two stay consistent by construction.
 				// Dir is the task worktree's AnchorPath(), never its bare worktree root: the resolver
 				// gates a child's working directory to the anchor, and a bare root fails on any
@@ -897,8 +907,8 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				// unconditionally: a child seeded with any other recipe would carry a committed,
 				// pushed seed that its own bootstrap then refuses as a disagreement, reported from
 				// inside the child as a shedrun fault rather than as this choice.
-				if recipe != shedrun.RecipeLoom {
-					return fmt.Errorf("%w: only %q has a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q or empty; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeLoom, shedrun.RecipeLoom, recipe)
+				if !childRecipeSupported(recipe) {
+					return unsupportedChildRecipeRefusal(recipe)
 				}
 				childLocation, err := locateTask()
 				if err != nil {

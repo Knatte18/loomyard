@@ -419,10 +419,20 @@ func stepRealReadStatus_OnAFreshPairReportsAbsentRatherThanErroring(t *testing.T
 }
 
 // stepFourRowRun_SeedsChildCommitsAndTearsDown drives a spawn stub plus a read-status answering StateDone through the whole four-row list one row at a time: Worktree-Create, Seed-Child, Run-Shed, Worktree-Teardown.
-// It asserts the pair exists on disk after the create row, that the child's own _lyx/shed/<slug>/seed.json exists after the seed row, names the Board task's own "type" as its recipe, and is committed (not merely written) on the child's own records pair, and that the pair is gone after the teardown row.
+// It asserts the pair exists on disk after the create row, that the child's own _lyx/shed/<slug>/seed.json exists after the seed row, names the Board task's own "type" as its recipe, carries the pair's recorded parent branch as params.parent, and is committed (not merely written) on the child's own records pair, and that the pair is gone after the teardown row.
+// It runs once per recipe a child may run.
 func stepFourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T, h *hubforge.Hub) {
-	slug := "batten-four-row"
-	seedBoardTask(t, h, slug, "loom")
+	for _, recipe := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn} {
+		t.Run(recipe, func(t *testing.T) {
+			fourRowRunForRecipe(t, h, recipe)
+		})
+	}
+}
+
+// fourRowRunForRecipe is the four-row run over a Board task whose recipe is recipe.
+func fourRowRunForRecipe(t *testing.T, h *hubforge.Hub, recipe string) {
+	slug := "batten-four-row-" + recipe
+	seedBoardTask(t, h, slug, recipe)
 
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 		return shedengine.Status{State: shedengine.StateDone}, true, nil
@@ -461,8 +471,15 @@ func stepFourRowRun_SeedsChildCommitsAndTearsDown(t *testing.T, h *hubforge.Hub)
 	if err := json.Unmarshal(seedData, &seed); err != nil {
 		t.Fatalf("decode child seed %s: %v", seedPath, err)
 	}
-	if seed.Recipe != "loom" {
-		t.Errorf("child seed recipe = %q; want %q (the Board task's own type)", seed.Recipe, "loom")
+	if seed.Recipe != recipe {
+		t.Errorf("child seed recipe = %q; want %q (the Board task's own type)", seed.Recipe, recipe)
+	}
+	origin, found, err := fabricengine.ReadOrigin(childLocation)
+	if err != nil || !found {
+		t.Fatalf("ReadOrigin(child) = %+v, %v, %v; want the pair's recorded origin", origin, found, err)
+	}
+	if got := seed.Params["parent"]; got == "" || got != origin.ParentBranch {
+		t.Errorf("child seed params.parent = %q; want the pair's recorded parent branch %q", got, origin.ParentBranch)
 	}
 
 	recordsPath := h.PairRecordsSibling(slug)
