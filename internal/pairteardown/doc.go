@@ -1,4 +1,4 @@
-// Package pairteardown is the one sequence that ends a pair: it waits for the pair's loom driver to go quiet, probes for removal refusals, ends the pair's reed session, and only then removes the pair.
+// Package pairteardown is the one sequence that ends a pair: it waits for the pair's loom driver to go quiet, probes for removal refusals, kills the pair's step loop, ends the pair's reed session, and only then removes the pair.
 // `lyx fabric remove` calls Teardown.Run, and batten's Worktree-Teardown row calls the two phases, Teardown.EndSession and Teardown.RemovePair, so the two callers cannot drift.
 //
 // The sequence lives in its own package because reedengine imports fabricengine: fabric cannot end a session itself without an import cycle.
@@ -6,23 +6,32 @@
 //
 // # Sequence
 //
-// EndSession runs three steps in order and stops at the first failure:
+// EndSession runs five steps in order and stops at the first failure:
 //
 //  1. Quiet wait.
 //     It polls until the pair's driver is quiet, bounded by Request.QuietWait.
 //  2. Refusal probe.
 //     Topology.RemoveRefusal answers whether Remove would refuse, with nothing touched.
 //     A refusal is returned unchanged, so a refused removal leaves the session and its strands live.
-//  3. Session end.
+//  3. Loop end.
+//     With the task worktree present, the pair's detached step loop and its in-flight step tree are killed, and the loop lock is taken and held through the session end.
+//     Taking the lock replaces the loop's pid file with the teardown's mark, which bars every later loop up to the removal, so no step starts once the session end begins.
+//     A loop spawned between the kill and the take is killed again and the take retried, for at most runLockWait.
+//  4. Run-lock wait.
+//     It waits, for at most runLockWait, for the run lock to be released, so the session ends only after the in-flight step is dead.
+//     A spent bound names the pid of the run's newest unfinished step as the holder, or an unknown holder.
+//  5. Session end.
 //     With the task worktree present it is Engine.Down, which also tears down the hub's tmux server after the last session.
 //     With the task worktree gone it is reedengine.EndSessionByName, so no path under the gone worktree is recreated.
+//     The loop lock is released after it; a failure before the session end puts the pid file back first, or removes the mark when there was no record.
 //
 // RemovePair then calls Topology.Remove.
 // It repeats the probe's checks, so a refusal raised only by Remove means the pair changed between probe and removal, and the session is already ended.
 //
 // # Quiet rule
 //
-// A pair is quiet when its run lock is free and its driver strand is absent, dead, retiring or parked.
+// A pair is quiet when its run lock and its loop lock are free and its driver strand is absent, dead, retiring or parked.
+// A held loop lock reads as busy, and the refusal names the live loop and the way forward of pausing the run or retrying once it stops.
 // A pair whose task worktree is gone is quiet by exception: neither the run lock nor reed's strand table can be probed there, and the session is ended by exact name with no wait.
 // "Gone" means the task worktree path is not a registered linked worktree.
 //
