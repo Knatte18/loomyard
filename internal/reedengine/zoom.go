@@ -77,6 +77,7 @@ func (e *Engine) withOpLockKeepingZoom(fn func() error) error {
 }
 
 // withBootOpLockKeepingZoom is withOpLockKeepingZoom for an op that always boots: a boot-time config error, an over-long socket path or an unresolvable shell is refused before the bracket's first tmux read.
+// The boot itself makes the same refusals for the paths that reach it without this bracket; they are repeated here because the bracket's zoom read would otherwise reach tmux first.
 func (e *Engine) withBootOpLockKeepingZoom(fn func() error) error {
 	return e.withOpLock(func() error {
 		if _, _, err := e.validateBootConfig(); err != nil {

@@ -31,10 +31,11 @@ func guids(strands []Strand) []string {
 	return out
 }
 
-// TestUp_BootValidation pins the eager boot validation of Up: a segment color outside the palette or an invalid watchdog value
+// TestUp_BootValidation pins the eager boot validation of Up: an over-long socket path, an unresolvable shell, a segment color outside the palette or an invalid watchdog value
 // fails with an error naming it before any tmux round trip (validation ORDER, not just existence),
 // while "on" and "off" do not trip the watchdog check (the fixture's nonexistent tmux binary is expected to fail Up() past this point,
 // so the assertion is only that the error is NOT the watchdog validation error).
+// Each refusal is asserted at both boot entries: Up, whose op-lock bracket refuses before its zoom read, and ensureServerAndSessionLocked, which every other boot path reaches without that bracket.
 func TestUp_BootValidation(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -92,14 +93,20 @@ func TestUp_BootValidation(t *testing.T) {
 			_, err := e.Up()
 
 			if tt.wantErr != "" {
-				if err == nil {
-					t.Fatalf("Up() = nil error, want the eager validation error containing %q", tt.wantErr)
-				}
-				if !strings.Contains(err.Error(), tt.wantErr) {
-					t.Errorf("Up() error = %q, want it to contain %q; any other error means validation ran after tmux contact", err, tt.wantErr)
+				_, _, ensureErr := e.ensureServerAndSessionLocked()
+				for _, entry := range []struct {
+					name string
+					err  error
+				}{{"Up()", err}, {"ensureServerAndSessionLocked()", ensureErr}} {
+					if entry.err == nil {
+						t.Fatalf("%s = nil error, want the eager validation error containing %q", entry.name, tt.wantErr)
+					}
+					if !strings.Contains(entry.err.Error(), tt.wantErr) {
+						t.Errorf("%s error = %q, want it to contain %q; any other error means validation ran after tmux contact", entry.name, entry.err, tt.wantErr)
+					}
 				}
 				if calls := fake.Calls(); len(calls) != 0 {
-					t.Errorf("Up() issued %d tmux calls before failing, want zero: %v", len(calls), calls)
+					t.Errorf("Up() and ensureServerAndSessionLocked() issued %d tmux calls before failing, want zero: %v", len(calls), calls)
 				}
 				return
 			}
