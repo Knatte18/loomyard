@@ -1,9 +1,5 @@
-// gogit.go implements the go-git handle infrastructure every migrated read in later batches builds
-// on: goGit, the lazily-opened and cached *git.Repository accessor, and lookupObjectRetrying, the
-// pack-fingerprint-gated reindex-and-retry helper every migrated object lookup (commit, tree, or
-// blob resolution) must route through.
-// Nothing in this file changes any existing method's backend — see gitrepo.go's Repo struct doc and
-// this file's own godoc for the locking discipline both pieces establish.
+// gogit.go implements the go-git handle infrastructure every go-git read builds on: goGit, the lazily-opened and cached *git.Repository accessor, and readGoGit, the whole-read helper that retries once after a pack-fingerprint-gated reindex.
+// Every go-git read in this package goes through readGoGit, the only caller of goGit.
 
 package gitrepo
 
@@ -22,8 +18,7 @@ import (
 // goGit returns this Repo's cached go-git handle, opening it on first use via
 // git.PlainOpenWithOptions(r.path, &git.PlainOpenOptions{
 // EnableDotGitCommonDir: true}). Failed opens are not cached; new calls may
-// still succeed later. Callers must hold r.goGitMu for the entire duration of
-// their use of the returned handle, not just across the call to goGit.
+// still succeed later. It takes r.goGitMu itself, so readGoGit is its only caller.
 func (r *Repo) goGit() (*git.Repository, error) {
 	r.goGitMu.Lock()
 	defer r.goGitMu.Unlock()
@@ -44,35 +39,56 @@ func (r *Repo) goGit() (*git.Repository, error) {
 	return repo, nil
 }
 
-// lookupObjectRetrying calls lookup; on object-not-found, it checks if the
-// pack fingerprint has changed and reindexes if so, then retries. Held read
-// lock via r.goGitMu throughout. The fingerprint gate keeps genuinely-absent
-// objects from paying a reindex cost on every call.
-func lookupObjectRetrying[T any](r *Repo, repo *git.Repository, lookup func() (T, error)) (T, error) {
+// readGoGit runs read against this Repo's go-git handle under the shared lock and returns its result.
+// A cached handle can read a stale pack index after a repack, so when read fails with plumbing.ErrObjectNotFound and the pack set has changed since the read began, readGoGit reindexes the handle and runs read once more.
+// Every other error, and a not-found over an unchanged pack set, passes through unchanged.
+// read runs whole on each attempt, so it must resolve everything it needs from the handle it is given and must not call another Repo method.
+func readGoGit[T any](r *Repo, read func(repo *git.Repository) (T, error)) (T, error) {
+	var zero T
+
+	repo, err := r.goGit()
+	if err != nil {
+		return zero, err
+	}
+
+	r.goGitMu.RLock()
+	snapshot := r.lastPackFingerprint
+	result, readErr := read(repo)
+	r.goGitMu.RUnlock()
+
+	if readErr == nil || !errors.Is(readErr, plumbing.ErrObjectNotFound) {
+		return result, readErr
+	}
+	if !r.reindexIfPacksChanged(repo, snapshot) {
+		return result, readErr
+	}
+
+	r.goGitMu.RLock()
+	defer r.goGitMu.RUnlock()
+	return read(repo)
+}
+
+// reindexIfPacksChanged reports whether the pack set differs from snapshot, the fingerprint a failed read began under, reindexing repo's storer first unless another caller already did for this pack set.
+// It returns false, leaving the failed read's error to stand, for a storer that is not filesystem-backed and for a fingerprint it cannot read.
+func (r *Repo) reindexIfPacksChanged(repo *git.Repository, snapshot string) bool {
+	storer, ok := repo.Storer.(*filesystem.Storage)
+	if !ok {
+		return false
+	}
+
 	r.goGitMu.Lock()
 	defer r.goGitMu.Unlock()
 
-	result, err := lookup()
-	if err == nil || !errors.Is(err, plumbing.ErrObjectNotFound) {
-		return result, err
+	current, err := packFingerprint(storer)
+	if err != nil || current == snapshot {
+		return false
 	}
-
-	storer, ok := repo.Storer.(*filesystem.Storage)
-	if !ok {
-		return result, err
+	if current != r.lastPackFingerprint {
+		storer.Reindex()
+		r.lastPackFingerprint = current
+		r.reindexCount++
 	}
-
-	fingerprint, fpErr := packFingerprint(storer)
-	if fpErr != nil {
-		return result, err
-	}
-	if fingerprint == r.lastPackFingerprint {
-		return result, err
-	}
-
-	storer.Reindex()
-	r.lastPackFingerprint = fingerprint
-	return lookup()
+	return true
 }
 
 // packFingerprint computes the sorted (name, size) list of every *.idx file

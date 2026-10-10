@@ -37,7 +37,7 @@ internal/fsx: 3
 internal/gitexec: 6
 internal/githubclient: 11
 internal/gitkit: 8
-internal/gitrepo: 36
+internal/gitrepo: 37
 internal/gitrepo/internal/gitoracle: 1
 internal/hubforge: 5
 internal/hubgeom: 11
