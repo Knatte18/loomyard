@@ -57,7 +57,7 @@ internal/loggerconfig: 3
 internal/loomcli: 185
 internal/loomengine: 41
 internal/loomrecipe: 46
-internal/loomshed: 72
+internal/loomshed: 75
 internal/lyxcwd: 23
 internal/mergeresolve: 17
 internal/modelspec: 11
@@ -86,7 +86,7 @@ internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
 internal/shedengine: 133
-internal/shedrecipe: 100
+internal/shedrecipe: 102
 internal/shedrun: 22
 internal/shedtransient: 2
 internal/shedverbs: 79

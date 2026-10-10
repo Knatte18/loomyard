@@ -199,14 +199,14 @@ func TestRecipe_SeedAndResumeRowNamesExist(t *testing.T) {
 }
 
 // TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet asserts RecipeEngines() reports exactly loom's
-// own recipe's engine set plus the substituted discussionSeatsEngine, sorted and de-duplicated -- derived from wantProducerTable's own engine
+// own recipe's engine set plus the substituted discussionSeatsEngine and the darn recipe's DarnWrite, sorted and de-duplicated -- derived from wantProducerTable's own engine
 // column rather than a second hand-written literal, for the same reason its battenrecipe twin
 // gets this test: a silently empty return would disable the cross-consumer coverage guard rather
 // than fail it.
 func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
-	// The Discussion-Write row's substituted engine is one a loom row can reach, beside the default build's.
-	seen := map[string]bool{discussionSeatsEngine: true}
-	want := []string{discussionSeatsEngine}
+	// The Discussion-Write row's substituted engine and the darn recipe's writer are ones a loom row can reach, beside the default build's.
+	seen := map[string]bool{discussionSeatsEngine: true, "DarnWrite": true}
+	want := []string{discussionSeatsEngine, "DarnWrite"}
 	for _, row := range wantProducerTable {
 		engine := row.engine
 		if seen[engine] {

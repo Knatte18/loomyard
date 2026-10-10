@@ -204,6 +204,11 @@ type Env struct {
 	// Rework is a whole-struct passthrough to loomshed.NewPRRework, following Env.Landing's own precedent:
 	// the producer has behaviour of its own -- the generation archive, the round record and the rejection removal -- that per-seam fakes must be able to substitute individually.
 	Rework loomshed.PRReworkDeps
+	// DarnSpec is the injected Spec factory the DarnWrite entry evaluates once per Call, with the token texts the producer tells that session.
+	// It arrives as a closure for the reason ReworkSpec does.
+	DarnSpec func(loomshed.DarnTold) (shuttleengine.Spec, error)
+	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, for the reason Rework is.
+	Darn loomshed.DarnDeps
 	// PlanIndex is the code index the "plan" and "rework-plan" gates resolve plan refs against.
 	// It arrives as an interface so this package, and the recipe packages built on it, link no tree-sitter grammar.
 	PlanIndex planindex.Index

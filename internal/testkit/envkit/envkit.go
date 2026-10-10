@@ -197,7 +197,22 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				OutputFiles: []string{filepath.Join(dir, "rework-coverage.md")},
 			}, nil
 		},
-		Rework:    ReworkDeps(t, dir),
+		Rework: ReworkDeps(t, dir),
+		DarnSpec: func(loomshed.DarnTold) (shuttleengine.Spec, error) {
+			return shuttleengine.Spec{
+				Prompt:      "test darn prompt",
+				OutputFiles: []string{filepath.Join(dir, "darn-description.md")},
+			}, nil
+		},
+		Darn: loomshed.DarnDeps{
+			ReadRejection: func() (loomshed.PendingRejection, bool, error) {
+				return loomshed.PendingRejection{}, false, nil
+			},
+			ClearRejection: func() error { return nil },
+			Commit:         func() error { return nil },
+			LatestOutcome:  func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
+			PublishFailure: func() (string, bool, error) { return "", false, nil },
+		},
 		PlanIndex: noFindingsIndex{},
 
 		Slug:                     "test-slug",

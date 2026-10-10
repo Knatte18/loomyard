@@ -36,6 +36,13 @@
 // It first archives webster's run record into the archive's `webster` subdirectory through a told seam, so the next Webster run starts a new run over the new plan instead of refusing the old record's plan drift.
 // A run holding webster's run lock refuses the archive before any plan file moves, and ArchivedPlanWebsterDirs lists the subdirectories a rotation writes the record into.
 //
+// The Darn row's producer (NewDarnWrite) wraps the gated darn writer session and tells it two texts, each empty when absent:
+// the pending rejection's findings, and a prior-work note, written in Go, that the change is already under way on the task branch, naming the latest Darn history entry's halt reason and the Publish failure record's path.
+// On a non-empty output pointer, Done or a gate-failed Stuck, it commits the landing directory;
+// on Done of a spawn that was told a rejection it then removes the pending rejection.
+// A gate-failed Stuck keeps its record and gains the resume way forward.
+// A failed commit or removal is a returned error, since re-running the session cannot fix a git or filesystem fault.
+//
 // It declares its own unexported cancellation helpers (entryErr/cancelErr in ctx.go) rather than
 // reusing internal/shedadapters' identically-shaped, unexported ones: shedadapters' versions are
 // unexported and Scope forbids changing that package, so every real producer written here honours

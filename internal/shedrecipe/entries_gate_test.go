@@ -22,6 +22,7 @@ func gateCapableEntries() map[string]Constructor {
 		"PlanWrite":       planWriteEntry,
 		"Describe":        describeEntry,
 		"PRRework":        prReworkEntry,
+		"DarnWrite":       darnWriteEntry,
 		"Webster":         websterEntry,
 	}
 }

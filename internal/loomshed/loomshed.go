@@ -34,6 +34,7 @@ const (
 	NamePublish           = "Publish"
 	NamePRGate            = "PR-Gate"
 	NamePRRework          = "PR-Rework"
+	NameDarn              = "Darn"
 	NameFinalize          = "Finalize"
 	NameFrictionReflect   = "Friction-Reflect"
 )
