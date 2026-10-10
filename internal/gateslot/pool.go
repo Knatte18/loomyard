@@ -24,6 +24,9 @@ import (
 // InheritEnv names the environment variable that carries the lock path of the slot a gate run holds, so a nested gate run inside it does not acquire a second slot.
 const InheritEnv = "LYX_GATE_SLOT"
 
+// PrebuiltLyxEnv names the environment variable that carries the path of the `lyx` binary a gate run built once for every package of a tagged run, so a test binary runs it instead of building its own.
+const PrebuiltLyxEnv = "LYX_PREBUILT_LYX"
+
 // defaultPoll is the pause between acquire attempts while every slot is held.
 const defaultPoll = 2 * time.Second
 

@@ -38,6 +38,8 @@ Running it is the operator's call, because an `llm` run is billed, nondeterminis
 
 Every gate build or test run takes a slot of the hub's gate-slot pool, so the hub never runs more at once than its configured count.
 An agent runs a module-wide or `tmux`-tier test only through `lyx gate test`, which takes the slot, and never as a raw `go` run.
+A tagged gate run builds `lyx` once and hands it to every package through the `LYX_PREBUILT_LYX` variable, which `lyxbin` returns instead of building.
+Bound: a forged value misleads only an ungated raw run, since `lyx gate test` sets or strips the variable itself.
 
 ## Only `llm` files reach an LLM
 
