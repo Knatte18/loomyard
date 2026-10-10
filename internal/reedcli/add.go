@@ -31,8 +31,9 @@ func (c *reedCLI) addCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "add",
-		Short: "add a new strand to the reed layout",
+		Use:         "add",
+		Short:       "add a new strand to the reed layout",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `add registers a new strand and, unless --anchor hidden, realizes it into
 a live pane and runs --cmd in it.
 

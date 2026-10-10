@@ -110,10 +110,13 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 **Goal:** "You have `lyx` on PATH and nothing else inside this repo.
 Find out what it can do and report the full command tree."
 
+**Covers:** help
+
 **Watch:** Does `lyx` alone list modules?
 Does `lyx <module>` list subcommands?
 Is each description accurate and useful?
 Any command that cannot be discovered from the binary alone is a help gap.
+Also run `lyx help index` and check that it lists the operator commands one per line.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

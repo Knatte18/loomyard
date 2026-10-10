@@ -269,9 +269,10 @@ func progressOf(routing shedengine.Routing, current string) *shedengine.Progress
 // status-strand work a module needs belongs entirely to its own PreStep hook.
 func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   texts.Step.Use,
-		Short: texts.Step.Short,
-		Long:  texts.Step.Long,
+		Use:         texts.Step.Use,
+		Short:       texts.Step.Short,
+		Long:        texts.Step.Long,
+		Annotations: map[string]string{clihelp.AudienceAnnotation: texts.Step.Audience},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

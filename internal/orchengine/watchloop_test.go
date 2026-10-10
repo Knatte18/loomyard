@@ -245,7 +245,7 @@ func TestRun_StopsAtErrorCap(t *testing.T) {
 	for i := 0; i < maxConsecutiveTickErrors+10; i++ {
 		fs.errs = append(fs.errs, true)
 	}
-	w := NewWatcher(fs, e.cfg, e.paths, e.stDir, nil, e.clock)
+	w := NewWatcher(fs, e.cfg, e.paths, e.stDir, nil, func() (string, error) { return testIndex, nil }, e.clock)
 
 	err := w.Run(context.Background(), noSleep)
 	if !errors.Is(err, errBoom) {
@@ -270,7 +270,7 @@ func TestRun_SuccessfulTickResetsErrorCount(t *testing.T) {
 	for i := 0; i < maxConsecutiveTickErrors+5; i++ {
 		fs.errs = append(fs.errs, true)
 	}
-	w := NewWatcher(fs, e.cfg, e.paths, e.stDir, nil, e.clock)
+	w := NewWatcher(fs, e.cfg, e.paths, e.stDir, nil, func() (string, error) { return testIndex, nil }, e.clock)
 
 	if err := w.Run(context.Background(), noSleep); !errors.Is(err, errBoom) {
 		t.Fatalf("Run = %v, want errBoom", err)

@@ -35,13 +35,17 @@ func (f *fakeStrands) RemoveStrand(guid string) error {
 	return nil
 }
 
+// fakeRunnerIndex is the index the fake index runner returns.
+const fakeRunnerIndex = "- fake-runner-command: from a fake runner\n"
+
 // newTestCLI builds a receiver over a temporary Paths and the given fake.
 func newTestCLI(t *testing.T, fake *fakeStrands) *orchCLI {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "orch")
 	return &orchCLI{
-		cfg:     orchengine.Config{ThresholdTokens: 1234},
-		strands: fake,
+		cfg:         orchengine.Config{ThresholdTokens: 1234},
+		strands:     fake,
+		indexRunner: func(string) (string, error) { return fakeRunnerIndex, nil },
 		paths: orchengine.Paths{
 			Dir:              dir,
 			StatePath:        filepath.Join(dir, "state.json"),
@@ -321,7 +325,20 @@ func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
 				}
 			}
 
-			code, env := runVerb(t, c.resumeContextCmd())
+			// The verb renders the operator index of its root, so it runs under a root that has an operator command.
+			root := &cobra.Command{Use: "lyx"}
+			root.AddCommand(c.resumeContextCmd(), &cobra.Command{
+				Use:         "probe",
+				Short:       "an operator command for the index",
+				Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+				Run:         func(*cobra.Command, []string) {},
+			})
+			var out bytes.Buffer
+			code := clihelp.Execute(root, &out, []string{resumeContextVerb})
+			var env map[string]any
+			if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+				t.Fatalf("output %q is not one JSON object: %v", out.String(), err)
+			}
 
 			_, markFound, err := orchengine.ReadResumeMark(c.paths)
 			if err != nil {
@@ -336,6 +353,13 @@ func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
 			hookOutput, _ := env["hookSpecificOutput"].(map[string]any)
 			if code != 0 || hookOutput["hookEventName"] != "SessionStart" || hookOutput["additionalContext"] != tt.want(c) || !markFound {
 				t.Errorf("exit = %d, env = %v, mark found = %v; want the SessionStart context %q and a mark", code, env, markFound, tt.want(c))
+			}
+			if tt.state.Phase != orchengine.PhaseResuming {
+				wantIndex := clihelp.RenderIndex(root, clihelp.AudienceOperator)
+				role, err := os.ReadFile(c.paths.RolePath)
+				if err != nil || !strings.Contains(string(role), wantIndex) || strings.Contains(string(role), fakeRunnerIndex) {
+					t.Errorf("role file = %q, %v; want it to carry the root's own index %q, not the runner's", role, err, wantIndex)
+				}
 			}
 		})
 	}

@@ -35,7 +35,7 @@ func Command() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "stencil",
-		Short: "Inspect and manage board-copy stencil prompts",
+		Short: "inspect and manage board-copy stencil prompts",
 		Long: `stencil inspects and manages the board's stencil prompts -- the source-of-truth
 prompt files every producer reads from disk at call time.
 
@@ -74,8 +74,9 @@ Examples:
 	}
 
 	listCmd := &cobra.Command{
-		Use:   "list",
-		Short: "List every registered stencil and deployed spec, its board-copy path, and its edit state",
+		Use:         "list",
+		Short:       "list every registered stencil and deployed spec, its board-copy path, and its edit state",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -94,8 +95,9 @@ Examples:
 	}
 
 	validateCmd := &cobra.Command{
-		Use:   "validate",
-		Short: "Report marker mismatches between each board copy and its shipped default",
+		Use:         "validate",
+		Short:       "report marker mismatches between each board copy and its shipped default",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -138,8 +140,9 @@ Examples:
 	}
 
 	syncCmd := &cobra.Command{
-		Use:   "sync",
-		Short: "Force-refresh every stencil and deployed spec against the shipped registry, even from a -dev or unstamped build",
+		Use:         "sync",
+		Short:       "force-refresh every stencil and deployed spec against the shipped registry, even from a -dev or unstamped build",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

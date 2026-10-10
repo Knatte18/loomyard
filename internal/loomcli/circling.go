@@ -191,10 +191,11 @@ Example:
 
 	verb := func(decision shedadapters.CirclingDecision, short, long string) *cobra.Command {
 		return &cobra.Command{
-			Use:   string(decision) + " [slug]",
-			Short: short,
-			Long:  long,
-			Args:  cobra.MaximumNArgs(1),
+			Use:         string(decision) + " [<slug>]",
+			Short:       short,
+			Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+			Long:        long,
+			Args:        cobra.MaximumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				if clihelp.ShouldAbort(cmd.Context()) {
 					return nil

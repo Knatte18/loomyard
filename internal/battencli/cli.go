@@ -94,8 +94,9 @@ const windowNamePrefix = "batten:"
 // the run-id is documented as optional here even though "self" itself always refuses for batten.
 var battenVerbTexts = shedverbs.VerbTexts{
 	Run: shedverbs.VerbText{
-		Use:   "run [<run-id>]",
-		Short: "start or resume a task worktree's whole lifecycle run to its next halt",
+		Use:      "run [<run-id>]",
+		Audience: clihelp.AudienceOperator,
+		Short:    "start or resume a task worktree's whole lifecycle run to its next halt",
 		Long: `run drives the pair's create/run/teardown lifecycle to its next halt: done,
 blocked, or paused. Invoked against a slug with no persisted status, it
 starts a fresh run. Invoked against one already in progress, it resumes
@@ -121,8 +122,9 @@ Example:
   lyx batten run some-slug --window`,
 	},
 	Status: shedverbs.VerbText{
-		Use:   "status [<run-id>]",
-		Short: "report a task worktree's persisted lifecycle status",
+		Use:      "status [<run-id>]",
+		Audience: clihelp.AudienceOperator,
+		Short:    "report a task worktree's persisted lifecycle status",
 		Long: `status reports a slug's persisted lifecycle status: the current producer, the
 state, the error field, the activity, and the history, plus the resolved
 status path so an operator can find the file. A slug with no seed at all
@@ -143,8 +145,9 @@ Example:
   lyx batten status some-slug --watch`,
 	},
 	Pause: shedverbs.VerbText{
-		Use:   "pause [<run-id>]",
-		Short: "request a pause at a task worktree's next lifecycle producer boundary",
+		Use:      "pause [<run-id>]",
+		Audience: clihelp.AudienceOperator,
+		Short:    "request a pause at a task worktree's next lifecycle producer boundary",
 		Long: `pause sets a request the running lifecycle consumes at its next producer
 boundary. It does not kill anything -- the machine itself clears the flag
 in the persist that records the paused state.
@@ -157,8 +160,9 @@ Example:
   lyx batten pause some-slug`,
 	},
 	Step: shedverbs.VerbText{
-		Use:   "step [<run-id>]",
-		Short: "drive a task worktree's lifecycle one producer forward",
+		Use:      "step [<run-id>]",
+		Audience: clihelp.AudienceOperator,
+		Short:    "drive a task worktree's lifecycle one producer forward",
 		Long: `step drives the pair's create/run/teardown lifecycle exactly one producer
 forward from its persisted current producer, seeding a fresh run first when
 none is persisted yet -- the single-producer primitive an external
@@ -172,8 +176,9 @@ Example:
   lyx batten step some-slug`,
 	},
 	Goto: shedverbs.VerbText{
-		Use:   "goto [<run-id>] --to <producer>",
-		Short: "move a halted lifecycle onto a named row, paused, with a fresh segment budget",
+		Use:      "goto [<run-id>]",
+		Audience: clihelp.AudienceOperator,
+		Short:    "move a halted lifecycle onto a named row, paused, with a fresh segment budget",
 		Long: `goto moves a halted lifecycle onto the row named by --to and leaves it
 paused. It records a "goto" history entry that resets that row's segment
 bounce budget. It refuses while a driver holds the run lock and on a done run,

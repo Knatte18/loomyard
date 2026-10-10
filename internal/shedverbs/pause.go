@@ -83,9 +83,10 @@ func applyPauseConditions(cur shedengine.Status, flags pauseFlags, producers []s
 func pauseCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 	var flags pauseFlags
 	cmd := &cobra.Command{
-		Use:   texts.Pause.Use,
-		Short: texts.Pause.Short,
-		Long:  texts.Pause.Long,
+		Use:         texts.Pause.Use,
+		Short:       texts.Pause.Short,
+		Long:        texts.Pause.Long,
+		Annotations: map[string]string{clihelp.AudienceAnnotation: texts.Pause.Audience},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

@@ -9,8 +9,11 @@
 // The hidden `--board-path` flag overrides the data dir for the detached sync child and skips both,
 // so the config is path-only.
 //
-// Payloads are JSON objects with unknown keys rejected,
-// and every verb prints JSON through `internal/output`, one object per line, errors included.
+// A payload command's `Use` names its keys in one `{…}` token, written in the grammar `payloadLegend` states once;
+// the `board` group's `Long` ends with that legend, and the command index's `board` line carries it as an index note.
+// Each parser validates against one `payloadKeys` declared beside its command, a test couples every token to its declaration, and an unknown key is refused.
+// The addressing verbs, `set-deps` included, take a `slug` or a numeric `id`.
+// Every verb prints JSON through `internal/output`, one object per line, errors included.
 // `list` and `find` take `--text` to print the compact one-line-per-entry listing instead;
 // errors stay JSON.
 // The listing carries a priority column after the kind, `high`, `low` or blank, only when some listed entry is not normal.

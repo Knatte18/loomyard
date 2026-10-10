@@ -59,15 +59,17 @@ func nameExports(sh shell.Shell, name, parent string) string {
 // on error it logs a named logger.Warn and drops the prelude, so the pane launches with no prelude rather than failing the strand launch (executable-error-warns-and-degrades Shared Decision).
 // The name exports do not depend on that lookup and stay either way.
 // Because Chain drops empty parts, an empty launchCmd yields the statements alone with no trailing separator and no empty command fragment.
-func composePaneLaunchLine(sh shell.Shell, launchCmd, strandGUID, name, parent string) string {
+// It also returns the executable path the prelude exports, empty when the lookup failed and the prelude was dropped.
+func composePaneLaunchLine(sh shell.Shell, launchCmd, strandGUID, name, parent string) (line, exe string) {
 	prelude := ""
 	exe, err := executablePath()
 	if err != nil {
+		exe = ""
 		logger.Warn("reed: could not resolve this binary, launching strand pane with no lyx-bin prelude", "strand", strandGUID, "err", err)
 	} else {
 		prelude = paneBinPrelude(sh, exe)
 	}
-	return sh.Chain(prelude, nameExports(sh, name, parent), launchCmd)
+	return sh.Chain(prelude, nameExports(sh, name, parent), launchCmd), exe
 }
 
 // composeWindowCommand returns the shell line a detached reed window runs: the pane-binary prelude, then `lyx` invoked with lyxArgs, each quoted, on sh's dialect.

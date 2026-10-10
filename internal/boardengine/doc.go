@@ -66,6 +66,7 @@
 // A merge carries the removed entries' issues: the upserted entry's issues are its own followed by each removed entry's, in remove order, without duplicates.
 // Import writes the board first and then comments with a pointer to the entry and closes the issue, and close alone ends a noise issue with a stated reason and touches no entry.
 // boardengine imports nothing GitHub-specific: the caller converts a fetched issue into InboxIssue and makes every network call outside the board lock.
+// An imported or folded body carries the issue's comments after the issue body, the ones the caller kept, oldest first: each is a heading naming its UTC creation date, one level below the body's own heading, followed by the comment verbatim, its author not recorded.
 //
 // # Run lock
 //
