@@ -141,6 +141,10 @@ type InnerRunDeps struct {
 	// A nil Awake resolves in NewInnerRun to Go's monotonic reading, measured from an origin taken at construction.
 	// That reading stops during suspend on Linux and macOS; on Windows it keeps running, so a nil Awake there leaves the idle clocks counting suspended time as before.
 	Awake func() time.Duration
+	// OpenTerminal opens a terminal window on the task worktree with the child's session attached.
+	// Call invokes it at most once per run, after a spawn that returned success; its error is only warned about and never changes the row's outcome.
+	// A nil OpenTerminal resolves to a no-op returning nil in NewInnerRun, the same way a nil Sleep resolves.
+	OpenTerminal func(ctx context.Context) error
 	// Notify hands one run notice line to whoever tells the orch, queued behind a seam so this package never imports the orch, and reports whether the line was queued.
 	// A notice is recorded as sent only when it was queued.
 	// The wait invokes it once per condition per episode (see notice.go) and retries an error or an unqueued line at most once per notice probe and at most three times; its failure is only warned about and never changes the row's outcome.

@@ -149,13 +149,14 @@ func TestWatchdogDaemon(t *testing.T) {
 	tmuxPath := watchdogIntegrationTmux(t, cfg)
 	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 
-	// DaemonLockAndLogs drives the daemon command against a hub that has never run one: it points the durable log sink at fabricengine.HubLogsDir(hub) before discarding stderr — the only observable proof of watchdogCmd's documented ordering (sink first, then io.Discard, then the lock) is a trace-*.log file appearing there — and holds the single-instance lock, so a second attempt against the SAME hub exits 0 (contention) without taking it, while an unusable lock path (a hub path whose HubScratchDir cannot be created because a FILE sits where an intermediate directory component must go) exits non-zero.
+	// DaemonLockAndLogs drives the daemon command against a hub that has never run one: it points the durable log sink at fabricengine.HubLogsDir(hub) before taking the lock, and keeps the logger's stderr half — the only observable proof of watchdogCmd's documented ordering (sink, then lock, stderr kept) is a trace-*.log file appearing there and the captured stderr half carrying the daemon's "watchdog daemon starting" line — and holds the single-instance lock, so a second attempt against the SAME hub exits 0 (contention) without taking it, while an unusable lock path (a hub path whose HubScratchDir cannot be created because a FILE sits where an intermediate directory component must go) exits non-zero.
 	if !t.Run("DaemonLockAndLogs", func(t *testing.T) {
 		logsDir := fabricengine.HubLogsDir(h.Path)
 		if _, err := os.Stat(logsDir); err == nil {
 			t.Fatalf("hub logs dir %s already exists before the daemon ever ran", logsDir)
 		}
 
+		logs := logcapture.CaptureVerbose(t)
 		cancel1, done1, _ := runWatchdogCmdInBackground(t, h.Path, tmuxPath)
 		defer cancel1()
 
@@ -180,8 +181,11 @@ func TestWatchdogDaemon(t *testing.T) {
 			}
 		}
 		if !sawTrace {
-			t.Errorf("hub logs dir %s entries = %v, want at least one trace-*.log file — this is the only observable proof the durable sink was pointed at HubLogsDir before stderr was discarded", logsDir, entries)
+			t.Errorf("hub logs dir %s entries = %v, want at least one trace-*.log file — this is the only observable proof the durable sink was pointed at HubLogsDir", logsDir, entries)
 		}
+		waitForCondition(t, 10*time.Second, func() bool {
+			return strings.Contains(logs.String(), "reed: watchdog daemon starting")
+		})
 
 		// A second attempt against the SAME hub while the first holds the lock must exit 0 (contention), never taking the lock.
 		c2 := &reedCLI{}

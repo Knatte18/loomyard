@@ -47,6 +47,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/termwindow"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -551,6 +552,28 @@ func markBattenWatched(prime, taskLocation *lyxcwd.Location) (bool, error) {
 	return true, nil
 }
 
+// openTerminal returns the Run-Shed seam that opens a terminal window titled slug, attached to the task worktree's reed session, or nil when the run was not asked to open one.
+func (c *battenCLI) openTerminal(slug string, locateTask func() (*lyxcwd.Location, error)) func(context.Context) error {
+	if !c.openTerminalFlag {
+		return nil
+	}
+	return func(context.Context) error {
+		taskLocation, err := locateTask()
+		if err != nil {
+			return err
+		}
+		launcher, err := termwindow.Resolve()
+		if err != nil {
+			return err
+		}
+		exe, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		return launcher.OpenAttach(taskLocation.AnchorPath(), slug, exe)
+	}
+}
+
 // wire builds and stores the shedrecipe.Env and shedbuild.ShedPaths the run and status verbs
 // need, over the resolved prime location and slug.
 func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
@@ -859,6 +882,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 				return state.ReadJSONStrict[shedengine.Status](statusPath, statusLockPath)
 			},
+			OpenTerminal: c.openTerminal(slug, locateTask),
 		},
 		SeedChild: battenshed.SeedChildDeps{
 			// ReadBoardType opens the Board fresh on every Call, over fabricengine.BoardDir(location.HubPath), and returns the task's own Recipe field -- never a value captured at wiring time, so a recipe corrected after prime was seeded is still honoured.

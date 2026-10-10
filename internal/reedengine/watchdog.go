@@ -37,9 +37,11 @@ const (
 	// watchdogDebounceQuiet is how long the loop waits for resize signals to stop arriving before
 	// treating a burst as one settled event.
 	watchdogDebounceQuiet = 200 * time.Millisecond //lyx:one-shot a debounce armed once after a resize event
-	// watchdogPollCycle is the poll-mode reconcile cadence, used only where the signal-file
+	// watchdogPollCycle is the poll-mode base cadence, used only where the signal-file
 	// mechanism is unavailable.
 	watchdogPollCycle = 2 * time.Second
+	// watchdogPollCeiling is the longest wait poll mode backs off to while nothing changes.
+	watchdogPollCeiling = 60 * time.Second
 	// watchdogRetryBaseDelay is the base of one debounced event's escalating retry delay
 	// (watchdogRetryBaseDelay << (attempt-1)).
 	watchdogRetryBaseDelay = 200 * time.Millisecond //lyx:one-shot a bounded retry after a failed apply, capped by watchdogMaxAttempts
