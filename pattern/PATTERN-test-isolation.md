@@ -38,6 +38,12 @@ A test package never reaches the operator's global gitconfig or default tmux soc
   The directory is then removed.
   Off Linux the scan is skipped.
 - The probes behind the scan are kit exports, `Pids`, `ProcArgv`, `ProcCwd`, `ProcExe` and `IsWatchdog`; they read files only and start nothing.
+- Before the sweep, `Main` checks the sockets under its directory's per-user directory: in a test binary built without the `tmux` and `llm` tags every socket is a finding, and in one built with either only a socket whose key no test registered through `Socket`, `KillOnCleanup` or `PackageServer` is.
+  A finding fails the package with exit 1, naming the key and the way forward: tag the file `tmux`, or register the key.
+  The check runs before the sweep because the sweep removes the socket files it reads.
+- The per-user directory `tmux-<uid>` is no finding by itself: tmux creates it on any invocation that names a `-L` key, a client probe of a server that never started included, and a client probe starts no server.
+- Bound: the check misses a test that points `TMUX_TMPDIR` elsewhere, a server started by a binary other than tmux, and a package with only untagged files, which never calls `Main`.
+  It also misses a server that reed tore down itself within the run, since reed removes its server's socket file, in tier 2 and under any tag alike.
 - Bound: a test binary killed by a panic or timeout skips the post-run check.
 
 ## Hermetic servers

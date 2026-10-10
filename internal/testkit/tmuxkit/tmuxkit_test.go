@@ -1,12 +1,14 @@
 package tmuxkit
 
 import (
+	"bytes"
 	"net"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
@@ -190,4 +192,99 @@ func TestMaxKeyBytes_HoldsReedServerName(t *testing.T) {
 	if got := len(reedengine.ServerName(hub)); got > maxKeyBytes {
 		t.Errorf("reedengine.ServerName of an over-long hub path is %d bytes, over the kit's %d-byte key bound", got, maxKeyBytes)
 	}
+}
+
+// TestCheckSockets pins which sockets under a package's directory the end-of-package check names, and that afterRun reads them before its sweep removes them.
+func TestCheckSockets(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("unix sockets under TMUX_TMPDIR are not used on Windows")
+	}
+
+	newDir := func(t *testing.T) string {
+		t.Helper()
+		dir, err := os.MkdirTemp("", dirPrefix)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.RemoveAll(dir) })
+		return dir
+	}
+	listen := func(t *testing.T, dir, key string) {
+		t.Helper()
+		perUser := socketDir(dir, os.Getuid())
+		if err := os.MkdirAll(perUser, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		l, err := net.Listen("unix", filepath.Join(perUser, key))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { l.Close() })
+	}
+
+	tests := []struct {
+		name      string
+		setup     func(t *testing.T, dir string)
+		allowed   bool
+		wantNamed string
+		wantQuiet bool
+	}{
+		{name: "unregistered socket with tmux disallowed", setup: func(t *testing.T, dir string) { listen(t, dir, "checkunreg1") }, allowed: false, wantNamed: "checkunreg1"},
+		{name: "unregistered socket with tmux allowed", setup: func(t *testing.T, dir string) { listen(t, dir, "checkunreg2") }, allowed: true, wantNamed: "checkunreg2"},
+		{name: "registered socket with tmux allowed", setup: func(t *testing.T, dir string) {
+			registerKey("checkreg1")
+			listen(t, dir, "checkreg1")
+		}, allowed: true, wantQuiet: true},
+		{name: "registered socket with tmux disallowed", setup: func(t *testing.T, dir string) {
+			registerKey("checkreg2")
+			listen(t, dir, "checkreg2")
+		}, allowed: false, wantNamed: "checkreg2"},
+		{name: "no per-user directory", setup: func(t *testing.T, dir string) {}, allowed: false, wantQuiet: true},
+		{name: "per-user directory without a socket, as a client probe leaves it", setup: func(t *testing.T, dir string) {
+			if err := os.MkdirAll(socketDir(dir, os.Getuid()), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}, allowed: false, wantQuiet: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := newDir(t)
+			tt.setup(t, dir)
+
+			got := checkSockets(dir, tt.allowed)
+			if tt.wantQuiet {
+				if len(got) != 0 {
+					t.Fatalf("checkSockets = %q; want no finding", got)
+				}
+				return
+			}
+			if len(got) != 1 || !strings.Contains(got[0], tt.wantNamed) {
+				t.Fatalf("checkSockets = %q; want one finding naming %q", got, tt.wantNamed)
+			}
+		})
+	}
+
+	t.Run("afterRun reads the sockets before the sweep removes them", func(t *testing.T) {
+		t.Parallel()
+		dir := newDir(t)
+		listen(t, dir, "checkafter1")
+		removeAll := func() {
+			sockets, _ := filepath.Glob(filepath.Join(socketDir(dir, os.Getuid()), "*"))
+			for _, sock := range sockets {
+				os.Remove(sock)
+			}
+		}
+
+		var out bytes.Buffer
+		code := afterRun(&out, dir, 0, 100*time.Millisecond, removeAll)
+
+		if code != 1 {
+			t.Errorf("afterRun code = %d; want 1 for an unregistered socket the sweep removed", code)
+		}
+		if !strings.Contains(out.String(), "checkafter1") {
+			t.Errorf("afterRun output = %q; want it to name the key", out.String())
+		}
+	})
 }

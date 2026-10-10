@@ -10,6 +10,7 @@
 //
 // Main also points `TMPDIR` at that directory, so every temp file a test creates lands there, and after the run it sweeps the servers, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory.
 // A reed watchdog daemon is killed without failing the package, because it idles out on its own schedule after the test that spawned it.
+// Before the sweep it also fails the package for a socket it finds: any socket in a test binary built without the `tmux` and `llm` tags, and in one built with either only a socket whose key no test registered.
 // Pids, ProcArgv, ProcCwd, ProcExe and IsWatchdog are the read-only `/proc` probes behind that scan, exported for tests that look for processes themselves.
 //
 // It is the second kit exempt from the Testkit Invariant's `os/exec` ban, after lyxbin.
@@ -85,10 +86,17 @@ func Main(m *testing.M) int {
 	return afterRun(os.Stderr, dir, code, leftoverGrace, func() { sweep(dir, os.Getuid()) })
 }
 
-// afterRun finishes a package's run: it sweeps the servers, then, on Linux, kills every process still referencing dir and fails the run for each that is not a reed watchdog daemon, and finally removes dir.
+// afterRun finishes a package's run: it checks the sockets under dir, sweeps the servers, then, on Linux, kills every process still referencing dir and fails the run for each that is not a reed watchdog daemon, and finally removes dir.
+// The socket check runs before the sweep, because the sweep removes the socket files the check reads.
 // A process that outlives its sweep gets up to grace to exit on its own first.
-// It returns code unless a leftover forces 1, and names each failing leftover's pid and argv on w.
+// It returns code unless a socket finding or a leftover forces 1, and names each on w.
 func afterRun(w io.Writer, dir string, code int, grace time.Duration, sweep func()) int {
+	if findings := checkSockets(dir, tmuxAllowed); len(findings) > 0 {
+		for _, finding := range findings {
+			fmt.Fprintln(w, finding)
+		}
+		code = 1
+	}
 	sweep()
 	if runtime.GOOS == "linux" {
 		var left []leftover
@@ -109,6 +117,25 @@ func afterRun(w io.Writer, dir string, code int, grace time.Duration, sweep func
 	}
 	_ = os.RemoveAll(dir)
 	return code
+}
+
+// checkSockets returns one finding per tmux server socket under dir's per-user socket directory that its package's tests may not leave.
+// With allowed false every socket is a finding; with it true only a socket whose key no test registered is.
+// A finding names the key and the way forward: tag the test file `tmux`, or register the key through Socket, KillOnCleanup or PackageServer.
+func checkSockets(dir string, allowed bool) []string {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	var findings []string
+	for _, sock := range listSockets(dir, os.Getuid()) {
+		key := filepath.Base(sock)
+		switch {
+		case !allowed:
+			findings = append(findings, fmt.Sprintf("tmuxkit: a tmux server on key %q outlived the run in a package without a tmux or llm test tag; tag the test file that starts it `tmux`", key))
+		case !registeredKeys[key]:
+			findings = append(findings, fmt.Sprintf("tmuxkit: a tmux server on unregistered key %q outlived the run; register the key through Socket, KillOnCleanup or PackageServer, or tag the file `tmux`", key))
+		}
+	}
+	return findings
 }
 
 // leftover is a process that references a package's private directory.
