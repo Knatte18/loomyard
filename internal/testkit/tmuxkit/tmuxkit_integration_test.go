@@ -3,6 +3,7 @@
 package tmuxkit
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 )
@@ -87,7 +89,8 @@ func TestSocket_LandsUnderMainDirectory(t *testing.T) {
 	if _, err := os.Stat(own); err != nil {
 		t.Errorf("socket not under Main's directory: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(socketDir(os.TempDir(), os.Getuid()), key)); err == nil {
+	// Main points TMPDIR at its own directory, so tmux's default socket directory is spelled out.
+	if _, err := os.Stat(filepath.Join(socketDir("/tmp", os.Getuid()), key)); err == nil {
 		t.Errorf("socket %q also landed in the default directory", key)
 	}
 }
@@ -204,5 +207,73 @@ func TestPackageServer_OneKeyPerBinary(t *testing.T) {
 	registryMu.Unlock()
 	if !registered {
 		t.Errorf("package server key %q is not registered", first)
+	}
+}
+
+func TestAfterRun_LeftoverProcesses(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the leftover scan reads /proc")
+	}
+
+	dir, err := os.MkdirTemp("", dirPrefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+
+	start := func(args ...string) *exec.Cmd {
+		cmd := exec.Command("sh", args...)
+		cmd.Dir = dir
+		if err := cmd.Start(); err != nil {
+			t.Fatalf("start %v: %v", args, err)
+		}
+		t.Cleanup(func() { _ = cmd.Process.Kill() })
+		return cmd
+	}
+	stray := start("-c", "sleep 60")
+	watchdog := start("-c", "sleep 60", "x", "reed", "watchdog")
+
+	var out strings.Builder
+	code := afterRun(&out, dir, 0, 100*time.Millisecond, func() {})
+
+	if code != 1 {
+		t.Errorf("afterRun code = %d; want 1 for a stray process", code)
+	}
+	if want := fmt.Sprintf("process %d left running", stray.Process.Pid); !strings.Contains(out.String(), want) || !strings.Contains(out.String(), "sleep") {
+		t.Errorf("output %q does not name the stray process by pid and argv (want %q)", out.String(), want)
+	}
+	if strings.Contains(out.String(), fmt.Sprintf("process %d left running", watchdog.Process.Pid)) {
+		t.Errorf("output %q names the watchdog process, which must not fail the package", out.String())
+	}
+	for name, cmd := range map[string]*exec.Cmd{"stray": stray, "watchdog": watchdog} {
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Errorf("%s process exited cleanly; want it killed by afterRun", name)
+			}
+		case <-time.After(10 * time.Second):
+			t.Errorf("%s process still running after afterRun", name)
+		}
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("directory survived afterRun: %v", err)
+	}
+
+	for _, tt := range []struct {
+		argv []string
+		want bool
+	}{
+		{[]string{"lyx", "reed", "watchdog", "--hub", "/x"}, true},
+		{[]string{"sh", "-c", "sleep 60", "x", "reed", "watchdog"}, true},
+		{[]string{"lyx", "reed", "up"}, false},
+		{[]string{"watchdog", "reed"}, false},
+		{[]string{"reed"}, false},
+		{nil, false},
+	} {
+		if got := IsWatchdog(tt.argv); got != tt.want {
+			t.Errorf("IsWatchdog(%q) = %v; want %v", tt.argv, got, tt.want)
+		}
 	}
 }

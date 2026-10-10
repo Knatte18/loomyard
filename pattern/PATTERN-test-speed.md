@@ -54,6 +54,7 @@ An agent runs a module-wide or `tmux`-tier test only through `lyx gate test`, wh
 - Every `gitkit` export except `gitkit.HermeticGitEnv` counts as a gitkit spawn, defined once in `cmd/lyx/gitkitspawn_test.go`.
 - Any `lyxbin.` reference, which builds the `lyx` binary, is likewise barred outside tier-tagged files.
 - Every `tmuxkit` export except `tmuxkit.Main` counts as a tmux spawn and is barred outside tier-tagged files, defined once in `cmd/lyx/tmuxkitspawn_test.go`.
+  That covers the `/proc` probes although they spawn nothing, which costs nothing because an untagged test has no process to probe.
 - `time.Sleep(...)` of one second or more in an untagged file is flagged unless allowlisted.
 - Enforced by `cmd/lyx/tierpurity_test.go`.
 

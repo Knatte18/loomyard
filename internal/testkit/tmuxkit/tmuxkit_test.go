@@ -65,12 +65,25 @@ func TestSetEnv(t *testing.T) {
 	t.Setenv("TMUX", "/outer/tmux,1,0")
 	t.Setenv("TMUX_PANE", "%3")
 	t.Setenv("TMUX_TMPDIR", "/elsewhere")
-
-	setEnv("/tmp/lyxabc")
-
-	if got := os.Getenv("TMUX_TMPDIR"); got != "/tmp/lyxabc" {
-		t.Errorf("TMUX_TMPDIR = %q, want /tmp/lyxabc", got)
+	// TMP and TEMP are the Windows temp variables; setting them first has t.Setenv restore them.
+	for _, name := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(name, os.Getenv(name))
 	}
+	dir := t.TempDir()
+
+	setEnv(dir)
+
+	for _, name := range []string{"TMUX_TMPDIR", "TMPDIR"} {
+		if got := os.Getenv(name); got != dir {
+			t.Errorf("%s = %q, want %q", name, got, dir)
+		}
+	}
+	// A subtest's TempDir resolves its base afresh, so it sees the TMPDIR setEnv just set.
+	t.Run("temp directory lands under TMPDIR", func(t *testing.T) {
+		if got := t.TempDir(); !strings.HasPrefix(got, dir+string(filepath.Separator)) {
+			t.Errorf("t.TempDir() = %q, want it under %q", got, dir)
+		}
+	})
 	for _, name := range []string{"TMUX", "TMUX_PANE"} {
 		if v, ok := os.LookupEnv(name); ok {
 			t.Errorf("%s still set to %q", name, v)

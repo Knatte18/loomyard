@@ -30,6 +30,16 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 - A test that builds a subprocess environment from scratch passes `TMUX_TMPDIR` through, so the subprocess's tmux lands in the isolated directory.
 - Bound: socket files already in `/tmp/tmux-$UID/` from earlier runs are not cleaned.
 
+## Private temp directory and leftovers
+
+- `tmuxkit.Main` points `TMPDIR` (and `TMP` and `TEMP` on Windows) at the directory it owns, as it does `TMUX_TMPDIR`, so every `t.TempDir`, `os.MkdirTemp("")`, `lyxbin` build and child temp file of a tagged package lands there.
+- After the run `Main` sweeps the servers and, on Linux, scans `/proc` for any process whose cwd, executable or an argv element references that directory, waiting up to two seconds for it to exit on its own.
+  A leftover is killed and fails the package with exit 1, naming its pid and argv on stderr; a `lyx reed watchdog` daemon is killed without failing the package, because it idles out on its own schedule.
+  The directory is then removed.
+  Off Linux the scan is skipped.
+- The probes behind the scan are kit exports, `Pids`, `ProcArgv`, `ProcCwd`, `ProcExe` and `IsWatchdog`; they read files only and start nothing.
+- Bound: a test binary killed by a panic or timeout skips the post-run check.
+
 ## Hermetic servers
 
 - `Socket` and `KillOnCleanup` pre-start a server on the key before returning, from `tmux -f <config> -L <key> start-server`, so no pre-started server reads `~/.tmux.conf`.

@@ -8,8 +8,12 @@
 // The config marks its servers with the user option `@lyx_test_server`, which reed's stale-holder probe reads to leave such a server alone.
 // Reed starts a server itself, carrying no such config, only after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
 //
+// Main also points `TMPDIR` at that directory, so every temp file a test creates lands there, and after the run it sweeps the servers, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory.
+// A reed watchdog daemon is killed without failing the package, because it idles out on its own schedule after the test that spawned it.
+// Pids, ProcArgv, ProcCwd, ProcExe and IsWatchdog are the read-only `/proc` probes behind that scan, exported for tests that look for processes themselves.
+//
 // It is the second kit exempt from the Testkit Invariant's `os/exec` ban, after lyxbin.
-// The exemption is bounded to running the `tmux` binary against sockets under the kit's own directory or its own fixture keys, and to starting servers under the kit's own config.
+// The exemption is bounded to running the `tmux` binary against sockets under the kit's own directory or its own fixture keys, to starting servers under the kit's own config, and to the `/proc` scan and the kill of a leftover it finds.
 // A test binary killed by a panic or timeout skips Main's sweep and leaves one `lyx`-prefixed temp directory with its servers;
 // Socket's cleanup still covers ordinary test failures.
 package tmuxkit
@@ -19,6 +23,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -31,6 +36,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 const (
@@ -46,6 +52,11 @@ const (
 	deadSocketWait = 2 * time.Second
 
 	deadSocketPoll = 10 * time.Millisecond
+
+	// leftoverGrace bounds how long afterRun waits for a process referencing the package's directory to exit after the sweep.
+	leftoverGrace = 2 * time.Second
+
+	leftoverPoll = 50 * time.Millisecond
 )
 
 // Main runs m inside an isolated tmux socket directory and returns the run's exit code.
@@ -71,8 +82,75 @@ func Main(m *testing.M) int {
 
 	code := m.Run()
 
-	sweep(dir, os.Getuid())
+	return afterRun(os.Stderr, dir, code, leftoverGrace, func() { sweep(dir, os.Getuid()) })
+}
+
+// afterRun finishes a package's run: it sweeps the servers, then, on Linux, kills every process still referencing dir and fails the run for each that is not a reed watchdog daemon, and finally removes dir.
+// A process that outlives its sweep gets up to grace to exit on its own first.
+// It returns code unless a leftover forces 1, and names each failing leftover's pid and argv on w.
+func afterRun(w io.Writer, dir string, code int, grace time.Duration, sweep func()) int {
+	sweep()
+	if runtime.GOOS == "linux" {
+		var left []leftover
+		for deadline := time.Now().Add(grace); ; time.Sleep(leftoverPoll) {
+			left = leftovers(dir)
+			if len(left) == 0 || time.Now().After(deadline) {
+				break
+			}
+		}
+		for _, l := range left {
+			_ = proc.KillPID(l.pid)
+			if IsWatchdog(l.argv) {
+				continue
+			}
+			fmt.Fprintf(w, "tmuxkit: process %d left running by the package: %q\n", l.pid, l.argv)
+			code = 1
+		}
+	}
+	_ = os.RemoveAll(dir)
 	return code
+}
+
+// leftover is a process that references a package's private directory.
+type leftover struct {
+	pid  int
+	argv []string
+}
+
+// leftovers returns every process other than the caller whose cwd or executable lies under dir or whose argv carries dir.
+func leftovers(dir string) []leftover {
+	var found []leftover
+	for _, pid := range Pids() {
+		if pid == os.Getpid() {
+			continue
+		}
+		argv, argvOK := ProcArgv(pid)
+		cwd, _ := ProcCwd(pid)
+		exe, _ := ProcExe(pid)
+		if !argvOK || !referencesDir(dir, cwd, exe, argv) {
+			continue
+		}
+		found = append(found, leftover{pid: pid, argv: argv})
+	}
+	return found
+}
+
+// referencesDir reports whether cwd or exe lies under dir or any argv element contains dir.
+func referencesDir(dir, cwd, exe string, argv []string) bool {
+	if underDir(dir, cwd) || underDir(dir, exe) {
+		return true
+	}
+	for _, arg := range argv {
+		if strings.Contains(arg, dir) {
+			return true
+		}
+	}
+	return false
+}
+
+// underDir reports whether path is dir or inside it.
+func underDir(dir, path string) bool {
+	return path == dir || strings.HasPrefix(path, dir+string(filepath.Separator))
 }
 
 // sweep kills the tmux server behind every socket under dir's per-user socket directory.
@@ -279,9 +357,14 @@ func checkSocketPath(dir string, uid int) error {
 	return nil
 }
 
-// setEnv points tmux at dir and detaches the process from any enclosing tmux session.
+// setEnv points tmux and every temporary file at dir and detaches the process from any enclosing tmux session.
 func setEnv(dir string) {
 	os.Setenv("TMUX_TMPDIR", dir)
+	os.Setenv("TMPDIR", dir)
+	if runtime.GOOS == "windows" {
+		os.Setenv("TMP", dir)
+		os.Setenv("TEMP", dir)
+	}
 	os.Unsetenv("TMUX")
 	os.Unsetenv("TMUX_PANE")
 }
