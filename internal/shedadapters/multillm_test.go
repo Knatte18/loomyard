@@ -126,11 +126,14 @@ func TestMultiLLMProducer_Cancellation(t *testing.T) {
 	tests := []struct {
 		name        string
 		result      seatengine.Result
+		runErr      error
 		wantOutcome shedengine.Outcome
-		wantErr     bool
+		wantIs      error
 	}{
-		{name: "a cancelled run that died is the context error", result: died, wantErr: true},
+		{name: "a cancelled run that died is the context error", result: died, wantIs: context.Canceled},
 		{name: "a finished chair survives cancellation", result: done, wantOutcome: shedengine.Done},
+		{name: "a cancelled run error is the context error", runErr: errors.New("boom"), wantIs: context.Canceled},
+		{name: "a cancelled run that cannot stop a seat keeps its way forward", runErr: seatengine.ErrSeatNotStopped, wantIs: seatengine.ErrSeatNotStopped},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -138,14 +141,14 @@ func TestMultiLLMProducer_Cancellation(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			runner := &shedfake.SeatRunner{RunFn: func(seatengine.Table) (seatengine.Result, error) {
 				cancel()
-				return tt.result, nil
+				return tt.result, tt.runErr
 			}}
 			producer := NewMultiLLMProducer("multi", multiLLMTable(t.TempDir(), 1), runner, multiLLMFixedNow)
 
 			outcome, _, err := producer.Call(ctx)
 
-			if tt.wantErr != errors.Is(err, context.Canceled) || outcome != tt.wantOutcome {
-				t.Errorf("Call() = %q, %v, want outcome %q and a context error = %v", outcome, err, tt.wantOutcome, tt.wantErr)
+			if !errors.Is(err, tt.wantIs) || outcome != tt.wantOutcome {
+				t.Errorf("Call() = %q, %v, want outcome %q and an error wrapping %v", outcome, err, tt.wantOutcome, tt.wantIs)
 			}
 		})
 	}
