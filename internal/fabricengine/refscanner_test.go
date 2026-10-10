@@ -255,7 +255,7 @@ func TestIsReadOnlyCommand(t *testing.T) {
 		{"git diff external", "git diff --ext-diff", false},
 		{"git remote set-url", "git remote set-url o u", false},
 		{"git branch rename", "git branch -m a b", false},
-		{"git config get with a file", "git config --get --file f k", false},
+		{"git config get with a file", "git config --get --file=f k", false},
 		{"git status branch", "git status -b", true},
 		{"git branch all", "git branch -a", true},
 		{"git branch list pattern", "git branch --list pat", true},
