@@ -605,4 +605,597 @@ The split is exact for a serial package and approximate where a hub build overla
 
 ## After
 
-The last card fills this section.
+```yaml
+commit: 445edf79a
+date: 2026-10-10
+```
+
+The three commands under [Regenerate](#regenerate) ran once each on the finished tree, serially, with the `llm` tier left out as above.
+The machine was loaded: the load average (1 min) ran from 1.78 to 9.22 over the three runs on 12 threads, against 1.33 to 3.15 before, so wall figures read high and the CPU, git and process counts are the steadier comparison.
+Two packages reported a failing test and the harness marks them `FAIL` in its tables: `internal/gitrepo` in tier 2, because its `TestPushCoalesced` re-execs child processes that nest a second kit directory under the harness's per-package `TMPDIR`, which puts a tmux socket path over the 107-byte limit, and `internal/reedcli` in tier 3, which left a `sleep 300` child.
+Both rows still carry the figures the run measured.
+
+### Tier 1 (untagged)
+
+```
+Resources  —  Tier 1 (offline)
+
+PACKAGE                                       WALL       CPU   PEAK_MEM   PROCS  LEFTOVER  GIT_FIXTURE  GIT_CODE
+----------------------------------------  --------  --------  ---------  ------  --------  -----------  --------
+cmd/lyx                                      1.93s     3.25s     191.0M     114         0            0         0
+internal/reedengine                          1.81s     0.91s      99.8M    4184         0            0         0
+internal/loomcli                             1.41s     1.96s     195.5M     443         0            0         0
+internal/websterengine                       1.40s     2.49s     171.8M    2027         0            0         3
+internal/orchcli                             1.38s     0.88s     108.6M     779         0            0         0
+internal/webstercli                          0.96s     1.43s     178.0M     869         0            0         0
+internal/lyxcwd                              0.95s     1.45s     188.3M     113         0            0         0
+internal/orchengine                          0.95s     1.33s     105.6M    1226         0            0         0
+tools/tokencount                             0.95s     1.10s     112.5M    3177         0            0         0
+internal/shedadapters                        0.88s     1.33s     110.7M     318         0            0         0
+internal/shuttleengine                       0.84s     0.86s     100.3M     173         0            0         0
+internal/shedcli                             0.80s     1.22s     180.3M     131         0            0         0
+internal/treadleengine                       0.72s     0.94s     105.3M    2475         0            0         0
+internal/loomshed                            0.68s     1.07s     158.6M     167         0            0         0
+internal/reedcli                             0.68s     0.76s     104.0M    1990         0            0         0
+internal/planglyph                           0.66s     1.15s     137.5M     147         0            0         0
+internal/shedrecipe                          0.63s     0.93s     118.1M     134         0            0         0
+internal/loomrecipe                          0.62s     0.95s     116.0M     162         0            0         0
+internal/gitkit                              0.61s     0.87s     179.9M     149         0            0         0
+internal/landingshed                         0.59s     0.92s     117.3M     171         0            0         0
+internal/quarrycli                           0.56s     0.84s     136.9M     944         0            0         0
+internal/burlerengine                        0.56s     0.95s      91.3M     194         0            0         0
+internal/loomengine                          0.56s     0.87s      96.0M     166         0            0         0
+internal/shedbuild                           0.56s     0.83s     114.5M     159         0            0         0
+internal/shuttleengine/claudeengine          0.55s     0.81s      98.2M     144         0            0         0
+internal/pairteardown                        0.53s     0.82s     102.2M     771         0            0         0
+internal/battencli                           0.51s     0.88s     119.6M     116         0            0         0
+internal/burlercli                           0.51s     0.83s     112.1M     108         0            0         0
+internal/cliwire                             0.50s     0.82s     100.3M     129         0            0         0
+internal/frictionengine                      0.50s     0.78s     106.1M     201         0            0         0
+internal/mergeresolve                        0.50s     0.76s     103.0M     128         0            0         0
+internal/fabricengine                        0.49s     0.74s      98.6M     145         0            0         3
+internal/configreg                           0.48s     0.78s     108.5M     209         0            0         0
+internal/shuttlecli                          0.48s     0.75s     105.1M      98         0            0         0
+internal/hubgeom                             0.48s     0.74s      98.6M     136         0            0         0
+internal/hubforge                            0.47s     0.66s     100.6M     138         0            0         0
+internal/gatecli                             0.46s     0.69s     107.0M     124         0            0         0
+internal/shedverbs                           0.45s     0.67s      98.6M     131         0            0         0
+internal/testkit/tmuxkit                     0.45s     0.67s      87.5M    1863         0            0         0
+internal/battenrecipe                        0.44s     0.81s     109.8M      84         0            0         0
+internal/parentreview                        0.44s     0.65s      96.8M     437         0            0         0
+internal/seatengine                          0.44s     0.77s     103.7M      89         0            0         0
+internal/preflightshed                       0.44s     0.71s      96.1M     488         0            0         0
+contracts/stencils                           0.44s     0.80s     109.6M      84         0            0         0
+internal/fabriccli                           0.42s     0.72s      98.4M     130         0            0         0
+tools/sandbox                                0.42s     0.36s      44.6M     775         0            0         0
+internal/boardengine                         0.41s     0.66s      89.5M     168         0            0         0
+internal/standalonegeom                      0.41s     0.62s      89.5M     106         0            0         0
+internal/battenshed                          0.40s     0.67s      89.3M      90         0            0         0
+internal/planparser                          0.40s     0.63s      96.8M     128         0            0         0
+internal/gitrepo                             0.40s     0.60s      87.1M     148         0            0         0
+internal/hubreconcile                        0.39s     0.63s      93.9M      85         0            0         0
+internal/configcli                           0.39s     0.68s     100.3M     107         0            0         0
+internal/shedtransient                       0.39s     0.63s      93.4M      78         0            0         0
+internal/boardengine/boardtest               0.39s     0.89s      88.6M      87         0            0         0
+internal/ideengine                           0.39s     0.59s      98.5M     142         0            0         0
+internal/testkit/shedfake                    0.38s     0.63s      86.6M     439         0            0         0
+internal/configsync                          0.38s     0.64s     110.0M     123         0            0         0
+internal/boardcli                            0.38s     0.68s      97.5M     102         0            0         0
+internal/githubclient                        0.37s     0.47s      66.9M     199         0            0         0
+internal/idecli                              0.37s     0.53s      94.5M     135         0            0         0
+cmd/testtiming                               0.36s     0.65s      93.3M      95         0            0         0
+internal/testkit/shuttlefake                 0.36s     0.53s      90.6M     449         0            0         0
+internal/preflight                           0.36s     0.53s      86.1M     222         0            0         0
+internal/stencilcli                          0.36s     0.55s      96.2M     100         0            0         0
+internal/statuscommit                        0.35s     0.53s      78.2M     106         0            0         0
+internal/selfreportcli                       0.35s     0.50s      66.7M     100         0            0         0
+internal/testkit/envkit                      0.34s     0.61s     106.9M      97         0            0         0
+internal/selfreportengine                    0.33s     0.49s      67.5M     156         0            0         0
+internal/testkit/lyxbin                      0.28s     0.35s      55.4M     992         0            0         0
+internal/gateslot                            0.26s     0.32s      51.3M     120         0            0         0
+internal/logger                              0.26s     0.39s      89.2M      82         0            0         0
+tools/wordswap                               0.23s     0.27s      43.5M     523         0            0         0
+tools/deploy                                 0.23s     0.27s      52.3M     233         0            0         0
+internal/verifytree                          0.22s     0.33s      54.8M     218         0            0         0
+tools/codestats                              0.22s     0.22s      37.8M     160         0            0         0
+tools/mdreflow                               0.22s     0.21s      41.4M     328         0            0         0
+internal/standalonestate                     0.22s     0.25s      44.1M      94         0            0         0
+internal/gitexec                             0.21s     0.25s      52.5M     106         0            0         0
+internal/impactset                           0.21s     0.26s      50.2M      89         0            0         0
+internal/parentdirective                     0.21s     0.24s      45.6M     251         0            0         0
+internal/pattern                             0.21s     0.26s      51.6M     118         0            0         0
+internal/verifyrun                           0.20s     0.25s      46.3M     212         0            0         0
+internal/shedengine                          0.20s     0.25s      49.1M      88         0            0         0
+internal/friction                            0.20s     0.24s      47.7M     104         0            0         0
+internal/lock                                0.20s     0.21s      42.7M     109         0            0         0
+internal/yamlengine                          0.19s     0.23s      41.3M     184         0            0         0
+tools/godocreflow                            0.19s     0.24s      44.0M     140         0            0         0
+internal/clihelp                             0.18s     0.26s      52.2M      75         0            0         0
+internal/stencil                             0.18s     0.25s      49.4M      86         0            0         0
+internal/testkit/stencilkit                  0.18s     0.26s      53.2M     371         0            0         0
+internal/stencilstore                        0.18s     0.25s      50.9M      99         0            0         0
+tools/internal/devbin                        0.18s     0.23s      45.4M      94         0            0         0
+internal/fsx                                 0.18s     0.23s      42.1M      79         0            0         0
+internal/reedengine/render                   0.17s     0.24s      46.6M      58         0            0         0
+internal/commentlint                         0.17s     0.21s      42.0M      66         0            0         0
+internal/burlermarker                        0.17s     0.18s      36.2M     104         0            0         0
+internal/batcher                             0.16s     0.22s      43.8M      84         0            0         0
+internal/shedrun                             0.16s     0.18s      39.5M      75         0            0         0
+internal/weftname                            0.16s     0.17s      39.0M     192         0            0         0
+internal/testkit/plankit                     0.16s     0.18s      37.1M     382         0            0         0
+internal/testkit/logcapture                  0.16s     0.18s      44.7M      61         0            0         0
+internal/configengine                        0.16s     0.20s      43.5M      63         0            0         0
+internal/editdirective                       0.16s     0.21s      41.7M      94         0            0         0
+internal/testkit/locationkit                 0.16s     0.17s      39.0M     217         0            0         0
+internal/shedcheck                           0.16s     0.18s      42.3M      77         0            0         0
+internal/segmentcolor                        0.16s     0.17s      38.8M      61         0            0         0
+internal/loggerconfig                        0.16s     0.20s      39.8M      64         0            0         0
+internal/vscode                              0.16s     0.20s      41.5M      55         0            0         0
+internal/gitrepo/internal/gitoracle          0.16s     0.19s      42.8M      73         0            0         0
+internal/shell                               0.16s     0.18s      40.3M      75         0            0         0
+internal/agentname                           0.15s     0.19s      39.8M      65         0            0         0
+internal/output                              0.15s     0.18s      40.2M     178         0            0         0
+internal/modelspec                           0.15s     0.20s      42.1M      68         0            0         0
+internal/proc                                0.15s     0.19s      43.1M     332         0            0         0
+internal/fslink                              0.15s     0.18s      43.0M      82         0            0         0
+internal/state                               0.15s     0.18s      39.1M      82         0            0         0
+contracts/specs                              0.15s     0.22s      43.0M      56         0            0         0
+internal/testkit                             0.14s     0.19s      41.7M      74         0            0         0
+internal/buildinfo                           0.14s     0.21s      39.3M      59         0            0         0
+internal/buildvcs                            0.14s     0.19s      41.0M      60         0            0         0
+internal/discussionparser                    0.14s     0.19s      45.4M      63         0            0         0
+internal/testkit/scankit                     0.14s     0.19s      41.1M     182         0            0         0
+internal/summaryparser                       0.13s     0.19s      43.3M      65         0            0         0
+internal/testkit/llmkit                      0.13s     0.19s      43.1M      54         0            0         0
+internal/testkit/envelope                    0.13s     0.18s      45.8M      57         0            0         0
+internal/envsource                           0.13s     0.18s      43.5M      58         0            0         0
+internal/dotgit                              0.12s     0.20s      43.3M      58         0            0         0
+internal/testkit/boardkit                    0.09s     0.22s      27.2M      36         0            0         0
+internal/planindex                           0.05s     0.00s       1.0M      30         0            0         0
+internal/testkit/indexkit                    0.04s     0.01s       7.3M      31         0            0         0
+contracts/recipes                            0.04s     0.00s       0.2M      40         0            0         0
+internal/lyxdirs                             0.03s     0.01s       4.7M      23         0            0         0
+TOTAL                                       51.40s    72.76s              38911                      0         6
+
+CPU and PEAK_MEM: the package's systemd scope cgroup (cpu.stat usage_usec, memory.peak), last sample before the scope ended.
+A row marked rusage fell back to rusage because its scope could not be read.
+PROCS: system-wide processes created while the package ran, so it counts anything else running on the machine.
+Load average (1 min): 1.78 at start, 7.02 at end. A report reads "quiet machine" as a precondition.
+
+Git processes by subcommand
+
+SUBCOMMAND                         TOTAL   FIXTURE      CODE
+------------------------------  --------  --------  --------
+status                                 3         0         3
+unknown                                2         0         2
+clone                                  1         0         1
+TOTAL                                  6         0         6
+
+FIXTURE counts git that carried the fixture marker, CODE all other git.
+The split is exact for a serial package and approximate where a hub build overlaps other tests of the same package, because the marker is process-wide during a build; compare before and after on the total.
+```
+
+### Tier 2 (`integration`)
+
+```
+Resources  —  Tags: integration
+
+PACKAGE                                       WALL       CPU   PEAK_MEM   PROCS  LEFTOVER  GIT_FIXTURE  GIT_CODE
+----------------------------------------  --------  --------  ---------  ------  --------  -----------  --------
+internal/fabricengine                       16.69s    83.20s     330.2M   60224         0        27427      4091
+internal/testkit/lyxbin                      7.30s     6.51s     441.3M    2266         0            0         0
+internal/webstercli                          7.17s     7.74s     184.4M   16089         0         1925       395
+internal/battencli                           6.63s     5.85s     120.2M    7674         0         1023      1584
+internal/fabriccli                           5.54s     8.87s      99.4M   32222         0         1342      1765
+cmd/lyx                                      4.67s     9.70s     465.7M    4767         0           89         7
+internal/gitexec                             3.29s     0.42s      55.6M    1361         0            0        32
+internal/loomcli                             2.96s     5.57s     202.0M    4755         0          979       423
+internal/hubforge                            2.18s     3.63s      97.6M    2117         0          781         6
+internal/loomshed                            1.95s     3.37s     162.3M    2306         0           45        74
+internal/landingshed                         1.94s     2.46s     116.7M    2658         0          321       344
+internal/websterengine                       1.93s     4.64s     174.7M    2651         0          830       429
+internal/gatecli                             1.77s     1.17s     116.7M     653         0           51         0
+internal/gitrepo                             1.61s     3.47s      86.9M    2135         0          668       488  FAIL
+internal/reedengine                          1.61s     0.71s      93.6M    1083         0            0         0
+internal/verifyrun                           1.52s     0.34s      52.5M     989         0            0         0
+internal/ideengine                           1.40s     1.75s     114.0M    2388         0          398       140
+internal/orchcli                             1.37s     1.33s     107.1M    1286         0          183        28
+internal/planglyph                           1.33s     7.02s     195.2M    3181         0            0      1140
+internal/shedcli                             1.33s     1.79s     185.0M    1553         0          310        29
+internal/hubgeom                             1.29s     1.54s     104.9M    1362         0          224        27
+internal/verifytree                          1.25s     0.57s      56.4M     247         0           28        79
+internal/lyxcwd                              1.20s     1.72s     201.3M     982         0           16         0
+internal/hubreconcile                        1.16s     3.70s     100.6M    2331         0         1010       111
+internal/boardengine                         0.97s     1.01s      96.7M    4902         0            3        62
+internal/boardcli                            0.86s     1.07s      99.7M    4626         0            0         1
+internal/shuttleengine                       0.79s     0.76s     106.1M     843         0            0         0
+internal/orchengine                          0.79s     1.21s     107.2M     428         0            0         0
+internal/gitkit                              0.72s     0.95s     187.6M     471         0           46         5
+internal/shedadapters                        0.71s     1.05s     110.7M     642         0            0         0
+internal/burlercli                           0.70s     0.86s     115.5M    1365         0            0         0
+internal/battenshed                          0.70s     0.88s     105.5M    3176         0            0         0
+internal/boardengine/boardtest               0.66s     1.14s     103.2M    1551         0           51       105
+internal/loomrecipe                          0.66s     1.00s     118.5M     706         0            0         0
+internal/configcli                           0.65s     0.94s     104.6M    1136         0           51        86
+internal/preflightshed                       0.64s     1.14s      97.5M     610         0          237        27
+internal/reedcli                             0.63s     0.71s     101.0M     468         0            0         0
+internal/battenrecipe                        0.61s     0.89s     109.3M    1883         0            0         0
+internal/stencilcli                          0.57s     0.83s     116.1M     648         0           51        10
+internal/preflight                           0.57s     1.24s     109.8M     713         0          104       123
+internal/pairteardown                        0.54s     0.82s      98.5M     499         0            0         0
+internal/burlerengine                        0.54s     1.01s      96.7M    1024         0            0         0
+internal/shedrecipe                          0.54s     0.89s     113.3M     145         0            0         0
+internal/shuttleengine/claudeengine          0.53s     0.94s      98.4M     687         0            0         0
+internal/idecli                              0.53s     0.83s     108.3M     541         0           51         1
+internal/shedbuild                           0.52s     0.78s     114.1M     430         0            0         0
+internal/quarrycli                           0.51s     0.76s     122.7M     360         0            0         0
+internal/cliwire                             0.49s     0.80s      99.9M     881         0            0         0
+internal/treadleengine                       0.47s     0.82s      94.4M     162         0            0         0
+tools/tokencount                             0.47s     0.73s     101.6M     130         0            8         0
+internal/loomengine                          0.46s     0.75s      94.5M     262         0            0         0
+contracts/stencils                           0.45s     0.75s     105.9M     387         0            0         0
+internal/configreg                           0.43s     0.75s     108.6M     471         0            0         0
+internal/mergeresolve                        0.43s     0.76s      98.5M     175         0            0         0
+internal/seatengine                          0.43s     0.78s      93.8M     241         0            0         0
+internal/shuttlecli                          0.41s     0.66s     100.0M     375         0            0         0
+internal/standalonegeom                      0.41s     0.61s      88.4M     498         0            0         0
+internal/shedverbs                           0.40s     0.62s      93.6M     424         0            0         0
+internal/parentreview                        0.39s     0.62s      86.2M     607         0            0         0
+internal/frictionengine                      0.39s     0.67s      95.9M      75         0            0         0
+internal/configsync                          0.38s     0.70s     102.7M     421         0            0         0
+cmd/testtiming                               0.37s     0.65s      93.2M     350         0            0         0
+internal/testkit/shedfake                    0.37s     0.61s      79.6M      81         0            0         0
+internal/githubclient                        0.36s     0.49s      63.7M     335         0            0         0
+internal/shedtransient                       0.36s     0.54s      84.6M     104         0            0         0
+internal/testkit/tmuxkit                     0.35s     0.62s      93.5M      90         0            0         0
+internal/planparser                          0.35s     0.57s      88.6M     202         0            0         0
+internal/testkit/envkit                      0.35s     0.60s      97.1M     118         0            0         0
+internal/testkit/shuttlefake                 0.35s     0.63s      76.5M      81         0            0         0
+internal/gitrepo/internal/gitoracle          0.32s     0.30s      41.2M     125         0            0         0
+internal/impactset                           0.31s     0.38s      55.1M     387         0           24        11
+internal/gateslot                            0.30s     0.37s      55.6M     116         0            0         0
+internal/selfreportcli                       0.29s     0.44s      72.1M     265         0            0         0
+internal/statuscommit                        0.28s     0.49s      84.2M      74         0            0         0
+internal/selfreportengine                    0.27s     0.44s      67.2M     155         0            0         0
+internal/logger                              0.27s     0.45s     124.6M     380         0            0         1
+internal/editdirective                       0.26s     0.30s      45.3M    1432         0            0         0
+internal/dotgit                              0.24s     0.28s      42.8M    1449         0            0         0
+internal/envsource                           0.23s     0.28s      45.0M    1358         0            0         0
+internal/commentlint                         0.21s     0.28s      52.9M     450         0           11         8
+internal/pattern                             0.21s     0.26s      48.8M     314         0            0         0
+internal/discussionparser                    0.21s     0.24s      46.7M    1035         0            0         0
+internal/lock                                0.19s     0.22s      44.1M     142         0            0         0
+internal/testkit/plankit                     0.19s     0.24s      44.7M      85         0            0         0
+internal/parentdirective                     0.19s     0.25s      51.1M     185         0            0         0
+internal/output                              0.19s     0.23s      42.3M     127         0            0         0
+internal/clihelp                             0.19s     0.27s      55.2M     364         0            0         0
+internal/standalonestate                     0.18s     0.27s      50.1M      77         0            0         0
+internal/vscode                              0.17s     0.29s      48.1M      66         0            0         0
+internal/testkit/stencilkit                  0.17s     0.23s      44.2M      69         0            0         0
+internal/shedengine                          0.17s     0.18s      43.8M      87         0            0         0
+internal/batcher                             0.17s     0.29s      53.4M     140         0            0         0
+internal/yamlengine                          0.16s     0.16s      39.9M      70         0            0         0
+tools/sandbox                                0.16s     0.19s      40.6M      83         0            0         0
+internal/testkit/scankit                     0.16s     0.21s      41.3M      68         0            0         0
+internal/modelspec                           0.15s     0.20s      42.6M     146         0            0         0
+internal/loggerconfig                        0.15s     0.21s      41.2M     135         0            0         0
+internal/testkit/logcapture                  0.15s     0.20s      41.3M     235         0            0         0
+internal/stencil                             0.15s     0.18s      42.3M      66         0            0         0
+contracts/specs                              0.15s     0.21s      44.1M     151         0            0         0
+internal/configengine                        0.15s     0.20s      44.8M     197         0            0         0
+internal/shedcheck                           0.15s     0.19s      39.7M      61         0            0         0
+internal/reedengine/render                   0.15s     0.18s      38.2M      93         0            0         0
+internal/friction                            0.15s     0.21s      45.0M      57         0            0         0
+internal/stencilstore                        0.14s     0.19s      46.4M      62         0            0         0
+internal/testkit                             0.14s     0.20s      44.2M     140         0            0         0
+tools/codestats                              0.14s     0.19s      42.3M      63         0            0         0
+tools/godocreflow                            0.14s     0.20s      45.0M      67         0            0         0
+tools/wordswap                               0.14s     0.19s      45.7M      57         0            0         0
+internal/proc                                0.14s     0.17s      43.7M     104         0            0         0
+internal/buildinfo                           0.14s     0.20s      43.8M     281         0            0         0
+internal/weftname                            0.14s     0.18s      42.6M      75         0            0         0
+internal/segmentcolor                        0.13s     0.18s      42.3M      94         0            0         0
+tools/mdreflow                               0.13s     0.19s      44.4M      69         0            0         0
+internal/burlermarker                        0.13s     0.17s      40.1M     288         0            0         0
+tools/deploy                                 0.13s     0.20s      45.2M      57         0            0         0
+internal/shell                               0.13s     0.18s      44.8M      95         0            0         0
+internal/shedrun                             0.13s     0.19s      44.6M      67         0            0         0
+tools/internal/devbin                        0.13s     0.18s      43.4M      57         0            0         0
+internal/agentname                           0.13s     0.19s      40.8M     160         0            0         0
+internal/buildvcs                            0.13s     0.18s      44.6M     271         0            0         0
+internal/testkit/locationkit                 0.13s     0.18s      41.3M      94         0            0         0
+internal/state                               0.12s     0.20s      42.1M      97         0            0         0
+internal/fsx                                 0.12s     0.19s      42.7M      64         0            0         0
+internal/testkit/envelope                    0.12s     0.19s      43.7M      56         0            0         0
+internal/fslink                              0.12s     0.20s      44.2M      59         0            0         0
+internal/testkit/llmkit                      0.12s     0.18s      43.9M     103         0            0         0
+internal/summaryparser                       0.12s     0.19s      44.5M      63         0            0         0
+internal/testkit/boardkit                    0.08s     0.26s      29.6M      38         0            0         0
+contracts/recipes                            0.04s     0.00s       0.5M      72         0            0         0
+internal/testkit/indexkit                    0.04s     0.02s       8.7M      73         0            0         0
+internal/planindex                           0.04s     0.02s       8.7M      32         0            0         0
+internal/lyxdirs                             0.03s     0.00s       4.0M      27         0            0         0
+TOTAL                                      113.31s   217.65s             204633                  38287     11632
+
+CPU and PEAK_MEM: the package's systemd scope cgroup (cpu.stat usage_usec, memory.peak), last sample before the scope ended.
+A row marked rusage fell back to rusage because its scope could not be read.
+PROCS: system-wide processes created while the package ran, so it counts anything else running on the machine.
+Load average (1 min): 7.02 at start, 6.80 at end. A report reads "quiet machine" as a precondition.
+
+Git processes by subcommand
+
+SUBCOMMAND                         TOTAL   FIXTURE      CODE
+------------------------------  --------  --------  --------
+worktree                            8473      6575      1898
+rev-parse                           5982      4559      1423
+config                              3362      2890       472
+commit                              2668      2235       433
+add                                 2644      2198       446
+rev-list                            2556      1766       790
+diff                                2310      1118      1192
+branch                              1948      1518       430
+status                              1890      1225       665
+upload-pack                         1700      1297       403
+for-each-ref                        1601      1298       303
+push                                1521      1231       290
+receive-pack                        1515      1230       285
+pack-objects                        1433      1224       209
+unpack-objects                      1418      1210       208
+ls-remote                            868       743       125
+remote                               783       717        66
+reset                                745       643       102
+checkout                             732       699        33
+init                                 717       646        71
+ls-files                             665       519       146
+show                                 488        45       443
+read-tree                            473       442        31
+checkout-index                       436       410        26
+clone                                431       351        80
+fetch                                410       207       203
+merge-base                           342       142       200
+ls-tree                              323       134       189
+show-ref                             308       308         0
+merge                                205       113        92
+gc                                   162        82        80
+stash                                150        78        72
+tag                                  123        78        45
+log                                   95        56        39
+symbolic-ref                          91        78        13
+switch                                63        39        24
+clean                                 39        39         0
+rm                                    35        31         4
+merge-tree                            28        12        16
+check-ignore                          25         3        22
+cat-file                              21         8        13
+unknown                               16         0        16
+repack                                14        13         1
+hash-object                           13         8         5
+pull                                  12         3         9
+write-tree                            12        12         0
+prune-packed                           9         9         0
+reflog                                 8         7         1
+mv                                     6         6         0
+_run_dashed_                           5         4         1
+pack-refs                              5         4         1
+prune                                  5         4         1
+rerere                                 5         4         1
+_query_                                4         4         0
+commit-tree                            4         4         0
+diff-index                             4         4         0
+rebase                                 4         0         4
+diff-tree                              3         0         3
+remote-ext                             2         0         2
+update-ref                             2         2         0
+version                                2         0         2
+_run_shell_alias_                      1         0         1
+merge-ours                             1         1         0
+notes                                  1         0         1
+remote-curl                            1         0         1
+update-index                           1         1         0
+TOTAL                              49919     38287     11632
+
+FIXTURE counts git that carried the fixture marker, CODE all other git.
+The split is exact for a serial package and approximate where a hub build overlaps other tests of the same package, because the marker is process-wide during a build; compare before and after on the total.
+```
+
+### Tier 3 (`tmux`)
+
+```
+Resources  —  Tags: tmux
+
+PACKAGE                                       WALL       CPU   PEAK_MEM   PROCS  LEFTOVER  GIT_FIXTURE  GIT_CODE
+----------------------------------------  --------  --------  ---------  ------  --------  -----------  --------
+internal/loomcli                            70.20s    16.11s     195.1M   14492         0          746       514
+internal/reedcli                            44.55s    35.82s     393.8M   94107         0          521        46  FAIL
+internal/reedengine                         35.15s    22.09s     106.7M   53678         0            0         0
+internal/pairteardown                        3.59s     3.47s     125.4M    2596         0          271       171
+cmd/lyx                                      1.81s     3.04s     210.4M     154         0            0         0
+internal/orchcli                             1.43s     0.98s     106.1M     559         0            0         0
+internal/lyxcwd                              1.33s     1.74s     198.1M     438         0            0         0
+internal/orchengine                          1.03s     1.27s     103.2M     332         0            0         0
+internal/webstercli                          0.96s     1.47s     175.0M     167         0            0         0
+internal/loomshed                            0.95s     1.26s     158.3M     304         0            0         0
+internal/websterengine                       0.90s     2.43s     167.6M     131         0            0         3
+internal/loomrecipe                          0.82s     1.12s     109.4M     333         0            0         0
+internal/shuttleengine                       0.76s     0.74s      96.8M      78         0            0         0
+internal/burlercli                           0.73s     0.92s     114.6M     645         0            0         0
+internal/shedadapters                        0.71s     1.10s     103.0M     121         0            0         0
+internal/shedcli                             0.68s     1.15s     184.9M      95         0            0         0
+internal/testkit/tmuxkit                     0.65s     0.74s      88.7M     177         0            0         0
+internal/standalonegeom                      0.59s     0.85s      88.5M     232         0            0         1
+internal/loomengine                          0.58s     0.99s      90.8M     284         0            0         0
+internal/planglyph                           0.55s     1.07s     131.9M     167         0            0         0
+internal/shedrecipe                          0.54s     0.94s     116.0M      75         0            0         0
+internal/mergeresolve                        0.50s     0.76s      87.4M     164         0            0         0
+internal/burlerengine                        0.50s     0.96s      95.9M      85         0            0         0
+internal/landingshed                         0.50s     0.83s     108.3M      72         0            0         0
+internal/battencli                           0.49s     0.88s     117.9M      81         0            0         0
+internal/gitkit                              0.49s     0.77s     181.7M      72         0            0         0
+internal/battenrecipe                        0.48s     0.85s     116.3M      96         0            0         0
+internal/quarrycli                           0.47s     0.70s     128.3M      99         0            0         0
+internal/cliwire                             0.47s     0.80s      97.2M      74         0            0         0
+internal/shuttleengine/claudeengine          0.47s     0.73s      89.5M      84         0            0         0
+internal/seatengine                          0.47s     0.77s      93.6M      72         0            0         0
+internal/shedbuild                           0.46s     0.80s     112.0M      71         0            0         0
+contracts/stencils                           0.45s     0.81s     103.7M      88         0            0         0
+internal/parentreview                        0.45s     0.66s      81.6M     129         0            0         0
+internal/boardengine/boardtest               0.44s     1.07s      89.0M     210         0            0         0
+internal/treadleengine                       0.44s     0.75s      91.8M      85         0            0         0
+internal/configreg                           0.42s     0.71s      95.8M      71         0            0         0
+tools/tokencount                             0.42s     0.70s      95.5M      72         0            0         0
+internal/configcli                           0.41s     0.71s     110.2M      96         0            0         0
+internal/boardcli                            0.40s     0.67s      93.4M      86         0            0         0
+internal/fabriccli                           0.40s     0.73s     108.8M      79         0            0         0
+internal/frictionengine                      0.39s     0.71s      94.3M      72         0            0         0
+internal/shuttlecli                          0.39s     0.72s      98.5M      66         0            0         0
+internal/shedverbs                           0.39s     0.70s     100.1M     138         0            0         0
+internal/fabricengine                        0.39s     0.68s      95.0M      75         0            0         3
+internal/battenshed                          0.38s     0.65s      87.6M      82         0            0         0
+internal/configsync                          0.37s     0.63s      90.0M      72         0            0         0
+cmd/testtiming                               0.37s     0.61s     105.3M      67         0            0         0
+internal/planparser                          0.36s     0.67s      93.8M      89         0            0         0
+internal/boardengine                         0.36s     0.60s      86.3M      72         0            0         0
+internal/hubgeom                             0.35s     0.64s      92.6M     102         0            0         0
+internal/hubforge                            0.35s     0.66s     108.3M      62         0            0         0
+internal/gatecli                             0.35s     0.65s      94.8M      63         0            0         0
+internal/hubreconcile                        0.35s     0.64s      98.3M      72         0            0         0
+internal/testkit/envkit                      0.35s     0.67s     102.1M      93         0            0         0
+internal/preflightshed                       0.34s     0.59s     110.5M      64         0            0         0
+internal/statuscommit                        0.33s     0.58s      86.2M      62         0            0         0
+internal/testkit/shedfake                    0.33s     0.62s      95.2M     115         0            0         0
+internal/shedtransient                       0.32s     0.62s      88.2M      63         0            0         0
+internal/stencilcli                          0.32s     0.54s      76.4M      71         0            0         0
+internal/selfreportcli                       0.32s     0.45s      60.9M     104         0            0         0
+internal/testkit/shuttlefake                 0.32s     0.52s      80.0M      81         0            0         0
+internal/ideengine                           0.31s     0.58s      83.7M     102         0            0         0
+internal/gitrepo                             0.31s     0.54s      88.7M      81         0            0         0
+internal/idecli                              0.31s     0.55s      92.8M      62         0            0         0
+internal/preflight                           0.30s     0.50s      86.7M      69         0            0         0
+internal/parentdirective                     0.29s     0.36s      47.8M      94         0            0         0
+internal/githubclient                        0.29s     0.45s      68.5M      96         0            0         0
+internal/selfreportengine                    0.26s     0.40s      60.5M      64         0            0         0
+internal/logger                              0.24s     0.44s     131.4M      80         0            0         0
+internal/gateslot                            0.22s     0.31s      51.7M      78         0            0         0
+internal/standalonestate                     0.21s     0.27s      40.2M     184         0            0         0
+internal/pattern                             0.20s     0.26s      54.8M      97         0            0         0
+internal/impactset                           0.20s     0.29s      58.2M      68         0            0         0
+internal/verifytree                          0.19s     0.29s      57.3M      86         0            0         0
+internal/clihelp                             0.18s     0.29s      50.8M      81         0            0         0
+internal/modelspec                           0.18s     0.25s      45.9M      90         0            0         0
+internal/lock                                0.18s     0.21s      42.6M      56         0            0         0
+internal/batcher                             0.18s     0.32s      49.9M      64         0            0         0
+internal/gitexec                             0.18s     0.30s      55.0M      71         0            0         0
+internal/commentlint                         0.18s     0.30s      54.7M      64         0            0         0
+internal/shedengine                          0.18s     0.26s      50.0M      64         0            0         0
+internal/verifyrun                           0.17s     0.28s      51.0M      62         0            0         0
+internal/reedengine/render                   0.17s     0.21s      40.2M      61         0            0         0
+internal/output                              0.17s     0.23s      44.4M     125         0            0         0
+internal/testkit/lyxbin                      0.17s     0.24s      43.7M      62         0            0         0
+internal/loggerconfig                        0.16s     0.22s      38.7M     115         0            0         0
+internal/stencil                             0.16s     0.20s      43.5M      76         0            0         0
+internal/configengine                        0.16s     0.22s      50.3M      62         0            0         0
+internal/stencilstore                        0.16s     0.22s      43.8M      57         0            0         0
+internal/dotgit                              0.16s     0.20s      39.7M      66         0            0         0
+internal/testkit                             0.15s     0.20s      38.5M      67         0            0         0
+internal/segmentcolor                        0.15s     0.20s      39.2M      55         0            0         0
+contracts/specs                              0.15s     0.22s      44.8M      63         0            0         0
+tools/sandbox                                0.15s     0.21s      43.5M      62         0            0         0
+internal/editdirective                       0.15s     0.23s      43.2M      60         0            0         0
+internal/buildinfo                           0.15s     0.19s      38.2M     126         0            0         0
+internal/discussionparser                    0.15s     0.21s      40.7M      61         0            0         0
+internal/weftname                            0.14s     0.20s      40.9M      57         0            0         0
+internal/vscode                              0.14s     0.22s      42.3M      64         0            0         0
+internal/friction                            0.14s     0.23s      48.3M      58         0            0         0
+internal/summaryparser                       0.14s     0.19s      39.8M      59         0            0         0
+tools/codestats                              0.14s     0.20s      42.8M      55         0            0         0
+internal/agentname                           0.14s     0.19s      43.7M      57         0            0         0
+internal/fslink                              0.14s     0.20s      42.7M      76         0            0         0
+internal/state                               0.14s     0.20s      38.2M      88         0            0         0
+internal/shell                               0.14s     0.20s      42.4M      57         0            0         0
+internal/yamlengine                          0.14s     0.21s      46.1M      68         0            0         0
+internal/shedrun                             0.14s     0.20s      42.5M      77         0            0         0
+tools/deploy                                 0.14s     0.21s      45.1M      53         0            0         0
+internal/testkit/stencilkit                  0.14s     0.23s      50.5M      57         0            0         0
+internal/shedcheck                           0.14s     0.21s      45.1M      55         0            0         0
+internal/fsx                                 0.14s     0.20s      43.2M      85         0            0         0
+internal/burlermarker                        0.13s     0.20s      41.1M      55         0            0         0
+internal/gitrepo/internal/gitoracle          0.13s     0.23s      45.8M      55         0            0         0
+internal/testkit/llmkit                      0.13s     0.21s      43.2M      56         0            0         0
+tools/mdreflow                               0.13s     0.20s      43.9M      57         0            0         0
+internal/testkit/locationkit                 0.13s     0.19s      42.8M      57         0            0         0
+internal/testkit/logcapture                  0.13s     0.22s      46.3M      62         0            0         0
+internal/testkit/scankit                     0.13s     0.20s      41.5M      54         0            0         0
+tools/internal/devbin                        0.13s     0.21s      41.6M      55         0            0         0
+internal/testkit/envelope                    0.13s     0.21s      42.1M      66         0            0         0
+internal/testkit/plankit                     0.13s     0.21s      46.0M      55         0            0         0
+tools/godocreflow                            0.13s     0.22s      41.1M      90         0            0         0
+internal/envsource                           0.13s     0.20s      39.6M      56         0            0         0
+tools/wordswap                               0.13s     0.20s      41.4M      56         0            0         0
+internal/buildvcs                            0.13s     0.20s      41.0M      90         0            0         0
+internal/proc                                0.12s     0.13s      38.1M      68         0            0         0
+internal/testkit/boardkit                    0.09s     0.27s      29.9M      37         0            0         0
+internal/planindex                           0.05s     0.02s       8.2M      30         0            0         0
+internal/testkit/indexkit                    0.05s     0.02s       8.2M      45         0            0         0
+contracts/recipes                            0.04s     0.00s       1.8M      30         0            0         0
+internal/lyxdirs                             0.02s     0.01s       6.2M      16         0            0         0
+TOTAL                                      196.46s   145.22s             177623                   1538       738
+
+CPU and PEAK_MEM: the package's systemd scope cgroup (cpu.stat usage_usec, memory.peak), last sample before the scope ended.
+A row marked rusage fell back to rusage because its scope could not be read.
+PROCS: system-wide processes created while the package ran, so it counts anything else running on the machine.
+Load average (1 min): 6.80 at start, 9.22 at end. A report reads "quiet machine" as a precondition.
+
+Git processes by subcommand
+
+SUBCOMMAND                         TOTAL   FIXTURE      CODE
+------------------------------  --------  --------  --------
+worktree                             449       315       134
+config                               199       175        24
+diff                                 178        35       143
+add                                  142        69        73
+rev-parse                            134        64        70
+commit                               129        73        56
+rev-list                             125        67        58
+push                                  93        64        29
+receive-pack                          93        64        29
+for-each-ref                          86        64        22
+pack-objects                          80        64        16
+unpack-objects                        80        64        16
+upload-pack                           80        80         0
+branch                                76        61        15
+status                                67        29        38
+ls-remote                             58        58         0
+remote                                32        32         0
+reset                                 32        32         0
+ls-files                              30        29         1
+checkout-index                        29        29         0
+read-tree                             29        29         0
+clone                                 23        22         1
+init                                  10         9         1
+gc                                     6         0         6
+symbolic-ref                           6         6         0
+checkout                               3         3         0
+tag                                    3         0         3
+unknown                                2         0         2
+rm                                     1         1         0
+show                                   1         0         1
+TOTAL                               2276      1538       738
+
+FIXTURE counts git that carried the fixture marker, CODE all other git.
+The split is exact for a serial package and approximate where a hub build overlaps other tests of the same package, because the marker is process-wide during a build; compare before and after on the total.
+```
+
+## Comparison
+
+Wall and CPU are the tier `TOTAL` rows; `rev-parse` is the census total, fixture and code summed.
+The tier 1 after-census has no `rev-parse` row, so its figure is 0.
+A `FAIL` package in a tier still contributes the figures it measured.
+
+| Tier | Wall before | Wall after | CPU before | CPU after | `rev-parse` before | `rev-parse` after |
+|---|---|---|---|---|---|---|
+| 1 (untagged) | 58.70s | 51.40s | 125.43s | 72.76s | 25 | 0 |
+| 2 (`integration`) | 128.63s | 113.31s | 330.30s | 217.65s | 26989 | 5982 |
+| 3 (`tmux`) | 224.35s | 196.46s | 178.96s | 145.22s | 1664 | 134 |
+
+The fixture split of the after-state `rev-parse` total is 0 fixture and 0 code in tier 1, 4559 fixture and 1423 code in tier 2, and 64 fixture and 70 code in tier 3; it sits beside the comparison and takes no part in it.
+Every after run started at a higher load average than its before run, so a quiet-machine repeat of the commands under [Regenerate](#regenerate) is the fair wall-time comparison.
