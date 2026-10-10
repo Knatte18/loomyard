@@ -527,6 +527,8 @@ var wordingClaims = []stencilClaims{
 			{mustNot: "message by name, telling it to resume", why: "the verb wakes a parked driver itself"},
 			{must: "resume it with `lyx batten run <slug>`", why: "a batten pause or goto is resumed by batten run"},
 			{must: "`lyx loom decision add`", why: "a design call is recorded with decision add"},
+			{must: "`lyx loom goto --to Webster-Burler`", why: "a Publish blocked on a failed verify goes back to the Webster-Burler round"},
+			{mustNot: "goto --to Plan-Bouncer", why: "a failed Publish verify leaves the plan unchanged"},
 			{mustNot: "`lyx fabric add", why: "batten run creates the pair"},
 			{mustNot: "`lyx fabric remove", why: "batten's teardown removes the pair"},
 			{mustNot: "squash-merges", why: "Finalize squashes onto main and closes the PR"},

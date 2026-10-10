@@ -360,12 +360,17 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 		results         map[string]verifytree.Result
 		wantKind        verifytree.FailureKind
 		wantMerge       string
+		// blockRecord pre-creates the record path as a directory, so the write fails.
+		blockRecord bool
+		// wantGoto expects the Stuck reason to name the Webster-Burler goto as the way forward.
+		wantGoto bool
 	}{
-		{"plan verify fails", false, map[string]verifytree.Result{planCommand: failed}, verifytree.FailureKindPlanVerify, "merged-head"},
-		{"publish_verify fails", false, map[string]verifytree.Result{publishCommand: failed}, verifytree.FailureKindPublishVerify, "merged-head"},
-		{"no-op merge-in names no merge commit", true, map[string]verifytree.Result{planCommand: failed}, verifytree.FailureKindPlanVerify, ""},
-		{"dirty tree writes none", false, map[string]verifytree.Result{planCommand: {Status: verifytree.StatusDirty, Dirty: []string{"a.txt"}}}, "", ""},
-		{"timeout writes none", false, map[string]verifytree.Result{planCommand: {Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true}}, "", ""},
+		{"plan verify fails", false, map[string]verifytree.Result{planCommand: failed}, verifytree.FailureKindPlanVerify, "merged-head", false, true},
+		{"publish_verify fails", false, map[string]verifytree.Result{publishCommand: failed}, verifytree.FailureKindPublishVerify, "merged-head", false, true},
+		{"no-op merge-in names no merge commit", true, map[string]verifytree.Result{planCommand: failed}, verifytree.FailureKindPlanVerify, "", false, true},
+		{"dirty tree writes none", false, map[string]verifytree.Result{planCommand: {Status: verifytree.StatusDirty, Dirty: []string{"a.txt"}}}, "", "", false, false},
+		{"timeout writes none", false, map[string]verifytree.Result{planCommand: {Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true}}, "", "", false, false},
+		{"a failed record write names no goto", false, map[string]verifytree.Result{planCommand: failed}, "", "", true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -385,8 +390,32 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 			writeVerifyLog(t, fx.gate, "verify output")
 			failOnGitHubClient(t)
 
-			if outcome, _, err := fx.call(t); err != nil || outcome != shedengine.Stuck {
+			if tt.blockRecord {
+				if err := os.MkdirAll(fx.gate.paths.PublishFailure, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			outcome, reason, err := fx.call(t)
+			if err != nil || outcome != shedengine.Stuck {
 				t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+			}
+			const gotoRoute = `"lyx loom goto --to Webster-Burler", then "lyx loom resume"`
+			if tt.wantGoto {
+				if !strings.HasSuffix(reason, "the Webster-Review round reads the Publish failure record and its gate runs the failing tests") || !strings.Contains(reason, gotoRoute) {
+					t.Errorf("reason %q; want it to end with the goto way forward", reason)
+				}
+				if strings.Contains(reason, "fix forward on the task branch") {
+					t.Errorf("reason %q; want no hand-fix clause beside the goto", reason)
+				}
+			} else if strings.Contains(reason, "goto") {
+				t.Errorf("reason %q; want no goto", reason)
+			}
+			if tt.blockRecord {
+				if info, err := os.Stat(fx.gate.paths.PublishFailure); err != nil || !info.IsDir() {
+					t.Errorf("record path = %v, %v; want the blocking directory left, no record", info, err)
+				}
+				return
 			}
 			got, ok, err := verifytree.ReadPublishFailure(fx.gate.paths)
 			if err != nil {
