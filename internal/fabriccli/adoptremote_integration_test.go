@@ -380,8 +380,11 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			gitkit.MustRun(t, weftRepo, "git", "remote", "remove", "origin")
 			defer gitkit.MustRun(t, weftRepo, "git", "remote", "add", "origin", h.RecordsBare)
 
-			// The board shares the weft repo's remotes, so its pushes fail without an origin and the verb exits non-zero; only the pair's report is asserted here.
-			_, pair := reconcilePair(t, h, slug)
+			// The board shares the weft repo's remotes, so its pushes fail without an origin and the verb exits non-zero while still reporting the pair.
+			code, pair := reconcilePair(t, h, slug)
+			if code == 0 {
+				t.Errorf("reconcile without an origin remote exit = 0; want non-zero, since the board's push fails")
+			}
 			if got := pair["action"]; got != string(fabricengine.ReconcileActionRawAdopted) {
 				t.Errorf("action = %v; want %s", got, fabricengine.ReconcileActionRawAdopted)
 			}
