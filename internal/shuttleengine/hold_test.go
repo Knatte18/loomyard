@@ -33,6 +33,9 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 		noNotifier bool
 		notifyErr  error
 		strand     string
+		// session makes the engine parse session signals, and promptOffset is the run's persisted prompt offset, which is also where it starts reading.
+		session      bool
+		promptOffset int64
 		// script returns the agent's actions between ticks, run once per Sleep.
 		script func(appendLine func(string)) []func()
 		// shellJump is the clock jump per Sleep, nonzero to reach the shell wait bound in a few ticks.
@@ -124,6 +127,27 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			},
 		},
 		{
+			name: "a stray stop before the prompt's turn start sends no notice, and the stop after it sends one", events: skillLoadEvents + "STOP:stray\n",
+			session: true, promptOffset: skillLoadOffset,
+			script: func(appendLine func(string)) []func() {
+				return []func(){func() { appendLine("START") }, func() { appendLine("STOP:real") }}
+			},
+			check: func(t *testing.T, got heldRun) {
+				wantOffset := int64(len(skillLoadEvents + "STOP:stray\nSTART\nSTOP:real\n"))
+				if len(got.notices) != 1 || !strings.HasSuffix(got.notices[0], "«real»") || got.persistedOffsets[0] != wantOffset {
+					t.Errorf("notices = %q, NotifiedOffset = %v; want one for the stop after the turn start, offset %d", got.notices, got.persistedOffsets, wantOffset)
+				}
+			},
+		},
+		{
+			name: "a never-armed guard ignores the turn start that follows the stop in its batch", events: "STOP:question\nSTART\n", session: true,
+			check: func(t *testing.T, got heldRun) {
+				if wantOffset := int64(len("STOP:question\n")); len(got.notices) != 1 || got.persistedOffsets[0] != wantOffset {
+					t.Errorf("notices = %q, NotifiedOffset = %v; want one for the stop line, offset %d", got.notices, got.persistedOffsets, wantOffset)
+				}
+			},
+		},
+		{
 			name:   "the agent's message is single-line, delimited and cut to 200 runes",
 			events: "STOP:a\tb«c»d" + strings.Repeat("é", 300) + "\n",
 			check: func(t *testing.T, got heldRun) {
@@ -147,7 +171,11 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{outstanding: tt.outstand}, withConfig(gateConfig))
+			var engine Engine = &waitingEngine{outstanding: tt.outstand}
+			if tt.session {
+				engine = &sessionFakeEngine{waitingEngine: waitingEngine{outstanding: tt.outstand}}
+			}
+			fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, engine, withConfig(gateConfig))
 			timeout := heldTestTimeout
 			if tt.shellJump > 0 {
 				timeout = time.Hour
@@ -163,8 +191,9 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 				clk = steps
 			}
 			run := fx.newRun(Spec{OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: timeout, Interactive: tt.interact, QuietHold: tt.quiet},
-				withRunState(RunState{StrandGUID: "strand-1", StrandName: tt.strand, SessionID: "session-1"}),
+				withRunState(RunState{StrandGUID: "strand-1", StrandName: tt.strand, SessionID: "session-1", PromptOffset: tt.promptOffset}),
 				withRunEvents(tt.events),
+				withRunOffset(tt.promptOffset),
 				withRunClock(clk, fc.Now().Add(timeout)))
 			if steps != nil {
 				steps.steps = tt.script(func(line string) { appendEventsLine(t, run.state.EventsPath, line) })

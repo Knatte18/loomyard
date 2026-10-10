@@ -166,10 +166,11 @@ type Bouncer struct {
 // and within one generation -- from seed through the Done that settles it -- the episode never resets.
 // It does reset at that Done, though: a segment re-entered after settling clears and re-seeds rather than replaying (see Call),
 // so the Bouncer's own budget is fresh again in the next generation.
-// The two-row consequence is that the BurlerProducer row's episode does not reset the same way,
-// so a second generation runs on that row's leftover budget rather than a fresh one -- documented on BurlerProducer's own doc comment.
-// This offset is documented rather than compensated for in code,
-// because silently adding one here would make MaxBounces mean something different for this producer than for every other row in the list.
+// This row's count is the segment's whole budget on judged rounds, fresh in every generation:
+// the round producer hands back every completed or unjudged round as BudgetExempt, so only this row's Stuck returns are counted.
+// Every degrade exit, the seed and re-bounce Stuck, a CONTINUE with no decision and a circling-cause continue are counted here;
+// only a budget-cause continue is exempt, and an escalation returns Awaiting, which is never counted.
+// So a judge that never recovers halts within MaxBounces counted Stucks, and a budget continue buys exactly one judged round.
 //
 // Wiring obligation: this producer is its segment's entry point, its OnStuck names the round
 // producer for both the seed call and a rejection, and its OnDone is set explicitly to whatever
@@ -352,9 +353,8 @@ func (b *Bouncer) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 			//
 			// Logged before the archive, and at Warn rather than Info, because the clear is not
 			// cheap: it discards a settled generation and re-seeds from round 1, which costs a
-			// fresh judge spawn plus a fresh round -- real sessions, real minutes -- and can spend
-			// the leftover budget that halts the run, since the round producer's own bounce episode
-			// never resets. An operator whose run suddenly costs a second generation would
+			// fresh judge spawn plus a fresh round -- real sessions, real minutes.
+			// An operator whose run suddenly costs a second generation would
 			// otherwise find nothing about it in the driver log, the status file, or the run
 			// directory. A commit-seam failure followed by a resume takes this exact path.
 			logger.Warn("shedadapters: bouncer clearing an already-approved run directory and re-seeding from round 1", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "approvedRound", n, "runDir", b.cfg.RunDir)

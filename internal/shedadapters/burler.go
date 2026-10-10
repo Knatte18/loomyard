@@ -45,25 +45,13 @@ var _ BurlerRunner = (*burlerengine.Engine)(nil)
 // artifacts on disk, and a failed round returning Stuck with no review written would be misread as
 // a seed call.
 //
-// Because the producer never returns Done, its Shed bounce episode never resets, so its
-// effectiveMaxBounces stops being a bounce-loop guard and becomes a cap on review rounds.
+// Both hand-backs for judgment, a completed round and the highest complete round found still unjudged, are BudgetExempt.
+// The segment's budget on judged rounds is the Bouncer row's own budgetReached check, fresh in every generation,
+// so a round the reviewer approved and whose gate passed can never block before the Bouncer judges it.
 //
-// That cap is a two-row relationship, not this row's own MaxBounces to raise, and the two rows are
-// no longer symmetric once a segment can be re-entered after settling: the segment's Bouncer row
-// returns Done on approval, so its own episode resets at that Done, while this row's never does.
-// The Bouncer's budget binds in a segment's first generation -- its Stuck sequence runs one ahead
-// of this producer's round count, and with equal budgets it exhausts first. In any later
-// generation, though, this row's episode has kept counting since the segment's very first round,
-// so the Burler's leftover budget binds instead, not the Bouncer's fresh one.
-//
-// That is a real, accepted limitation, not a hypothetical: with equal max_bounces budgets, a first
-// generation that approves on round k leaves this row max_bounces-k units for every later
-// generation, and a first generation that approves on the last round leaves none -- the segment's
-// very first Burler hand-off in a second generation then halts the run on a bounce-budget-exhausted
-// escalation to a human. It is accepted because it fails safe (a halt and a human escalation, never
-// an unjudged artifact passing the gate), and because compensating for it means changing
-// shedengine's shared episode/budget model, a design change well past a single row's own doc
-// comment. Raising the cap for either generation means raising both rows' budgets together.
+// Only the gate-failed exit is counted against this row.
+// Its MaxBounces therefore caps the gate-failed rounds of one generation.
+// Its episode ends at the segment's Done or a goto into the segment, as episodeStuckCount applies it.
 type BurlerProducer struct {
 	name    string
 	runner  BurlerRunner
@@ -300,16 +288,17 @@ func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengi
 	// So an unjudged highest round hands control straight back to the Bouncer instead, spawning
 	// nothing, archiving nothing, and pointing at the review still waiting for a verdict. That
 	// hand-back is the cheapest correct move rather than a re-run of round N, whose artifacts are
-	// exactly what the Bouncer must judge. It cannot ping-pong forever: the Bouncer's next call is a
-	// genuine judge retry, and each hand-back spends one unit of this row's own bounce budget, so a
-	// judge that never recovers halts the run for a human rather than looping.
+	// exactly what the Bouncer must judge.
+	// It cannot ping-pong forever.
+	// The Bouncer's next call is a genuine judge retry through judgeCall, whose failures exit through degrade and are counted on the Bouncer row,
+	// so a judge that never recovers halts the run within that row's budget.
 	if highest > 0 {
 		if _, judged := recordedVerdict(p.runDir, highest); !judged {
 			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
 			logger.Warn("shedadapters: burler round producer reached with the highest complete round unjudged; handing back for judgment instead of running a fresh round", "producer", p.name, "engine", burlerEngineLabel, "round", highest)
-			return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, highest), Reason: fmt.Sprintf("round %d is complete but unjudged; handing back for judgment", highest)}, nil
+			return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, highest), Reason: fmt.Sprintf("round %d is complete but unjudged; handing back for judgment", highest), BudgetExempt: true}, nil
 		}
 	}
 
@@ -497,7 +486,7 @@ func (p *BurlerProducer) doneExit(ctx context.Context, round int, result burlere
 	if err := writeRoundUsage(p.runDir, round, newRoundUsage(p.profile.ClusterFan, review, fix, result)); err != nil {
 		logger.Warn("shedadapters: burler round's usage record was not written", "producer", p.name, "engine", burlerEngineLabel, "round", round, "error", err)
 	}
-	return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, round), GateAttempts: gateAttemptsPointer(result.Gate), BudgetExempt: p.roundBudgetExempt(round)}, nil
+	return shedengine.Stuck, shedengine.OutputPointer{Path: roundReviewPath(p.runDir, round), GateAttempts: gateAttemptsPointer(result.Gate), BudgetExempt: true}, nil
 }
 
 // describeHalves names both halves of a round for a log line or an error: each half's session and run directory,
@@ -515,22 +504,6 @@ func describeHalf(label string, half burlerengine.Half) string {
 		return label + " not started"
 	}
 	return fmt.Sprintf("%s session %s run dir %s", label, half.SessionID, half.RunDir)
-}
-
-// roundBudgetExempt reports whether the Stuck that hands completed round N back to the Bouncer is exempt from the bounce budget:
-// round N-1 carries a recorded continue decision whose cause is budget, which grants exactly this one more round.
-// The exemption is tied to that one decision file, so each further round needs its own decision.
-// A malformed decision file is warned about and grants no exemption.
-func (p *BurlerProducer) roundBudgetExempt(round int) bool {
-	if round < 2 {
-		return false
-	}
-	decision, cause, _, exists, err := readCirclingDecision(p.runDir, round-1)
-	if err != nil {
-		logger.Warn("shedadapters: unreadable circling decision; the round's Stuck stays counted against the budget", "producer", p.name, "engine", burlerEngineLabel, "round", round-1, "error", err)
-		return false
-	}
-	return exists && decision == CirclingContinue && cause == EscalationBudget
 }
 
 // probeLiveRound asks the runner what became of a previous session's two halves of this round and resumes the round when both are still live.
