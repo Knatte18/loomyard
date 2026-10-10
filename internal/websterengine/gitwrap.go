@@ -43,7 +43,8 @@ func refuseMidMerge(git Git, worktree string) error {
 	if present {
 		return fmt.Errorf("webster: worktree %s has a git merge in progress; conclude it first "+
 			"(`lyx fabric merge --continue` / `lyx fabric merge --abort` in a hub, "+
-			"`git merge --continue` / `git merge --abort` for a standalone run)", worktree)
+			"`git merge --continue` / `git merge --abort` for a standalone run); "+
+			"a session lyx refuses the verb from reports status: FAILED and the orch runs it", worktree)
 	}
 	return nil
 }

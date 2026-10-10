@@ -236,7 +236,7 @@ func TestAcceptAuditCmd_FabricSyncFailureNamesWayForward(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.acceptAuditCmd(), &out, []string{}); code == 0 {
 		t.Fatalf("accept-audit = 0; want non-zero, output: %s", out.String())
 	}
-	for _, want := range []string{"audit findings accepted but the fabric sync failed", syncErr.Error(), "lyx fabric commit"} {
+	for _, want := range []string{"audit findings accepted but the fabric sync failed", syncErr.Error(), "lyx fabric commit", refusedVerbClause} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output missing %q; got %q", want, out.String())
 		}

@@ -421,7 +421,7 @@ func TestGateTest_Scenario(t *testing.T) {
 					}
 				}
 			},
-			wantError: `way forward: run "lyx fabric reconcile", then re-run the same command`,
+			wantError: `way forward: run "lyx fabric reconcile", then re-run the same command; a session lyx refuses the verb from reports status: FAILED and the orch runs it`,
 		},
 		{
 			name: "a gate.yaml value below 1 names lyx config gate",

@@ -140,7 +140,7 @@ Example:
 			var parent string
 			if !plan.ArchiveOnly && fab != nil {
 				if parent, err = c.parentBranch(); err != nil {
-					return fail(fmt.Sprintf("webster: reset --to %s refused: the parent branch is unknown (%v); way forward: run `lyx fabric reconcile` to repair the pair, then re-run `lyx webster reset --to %s`", target, err, target))
+					return fail(fmt.Sprintf("webster: reset --to %s refused: the parent branch is unknown (%v); way forward: run `lyx fabric reconcile` to repair the pair, then re-run `lyx webster reset --to %s`; a session lyx refuses the verb from reports status: FAILED and the orch runs it", target, err, target))
 				}
 			}
 			if target == websterengine.ResetToStart {

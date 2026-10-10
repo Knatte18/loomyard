@@ -1292,7 +1292,7 @@ func TestBeginBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.beginBatchCmd(), &out, []string{"1"}); code == 0 {
 		t.Fatalf("begin-batch 1 = 0; want non-zero, output: %s", out.String())
 	}
-	wantWayForward(t, out.String(), "lyx fabric commit")
+	wantFabricSyncWayForward(t, out.String())
 	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
 	if err != nil || loaded == nil || loaded.Batches[1] == nil {
 		t.Fatalf("LoadState() = %v, %v; want the saved batch record", loaded, err)
@@ -1327,7 +1327,7 @@ func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.recordBatchCmd(), &out, []string{"1"}); code == 0 {
 		t.Fatalf("record-batch 1 = 0; want non-zero, output: %s", out.String())
 	}
-	wantWayForward(t, out.String(), "lyx fabric commit")
+	wantFabricSyncWayForward(t, out.String())
 	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
 	if err != nil || loaded == nil || !loaded.Batches[1].Terminal {
 		t.Fatalf("LoadState() = %v, %v; want batch 1 terminal on disk despite the sync failure", loaded, err)
@@ -1356,7 +1356,7 @@ func TestRecoverBatchCmd_FabricSyncAndReedBootWayForward(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code == 0 {
 		t.Fatalf("recover-batch 1 with a failing sync = 0; want non-zero, output: %s", out.String())
 	}
-	wantWayForward(t, out.String(), "lyx fabric commit")
+	wantFabricSyncWayForward(t, out.String())
 
 	fx.CLI.openFabric = nil
 	out.Reset()

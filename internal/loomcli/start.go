@@ -228,7 +228,7 @@ func (c *loomCLI) refuseOverUnfinishedMerge(ctx context.Context, out io.Writer, 
 				return true
 			}
 		}
-		msg = `loom: a fabric merge is in progress in this worktree; resolve each listed path, mark it resolved with "lyx fabric merge-stage <path>...", then run "lyx fabric merge --continue" (or "lyx fabric merge --abort" to discard the merge), then re-run "` + retry + `"`
+		msg = `loom: a fabric merge is in progress in this worktree; resolve each listed path, mark it resolved with "lyx fabric merge-stage <path>...", then run "lyx fabric merge --continue" (or "lyx fabric merge --abort" to discard the merge), then re-run "` + retry + `"; a session lyx refuses the verb from reports status: FAILED and the orch runs it`
 	default:
 		msg = `loom: a git merge, cherry-pick or squash that fabric did not start is in progress in this worktree; conclude or abort it with git, then re-run "` + retry + `"`
 	}

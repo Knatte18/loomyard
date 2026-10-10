@@ -1005,6 +1005,16 @@ func wantWayForward(t *testing.T, got, substr string) {
 	}
 }
 
+// refusedVerbClause is the clause every way forward that names a fabric verb a sandboxed session cannot run carries.
+const refusedVerbClause = "a session lyx refuses the verb from reports status: FAILED and the orch runs it"
+
+// wantFabricSyncWayForward fails unless got carries a way forward that names the fabric commit and the refused-verb clause.
+func wantFabricSyncWayForward(t *testing.T, got string) {
+	t.Helper()
+	wantWayForward(t, got, "lyx fabric commit")
+	wantWayForward(t, got, refusedVerbClause)
+}
+
 // TestAwaitBatchCmd_ReportPresenceEnvelope proves await-batch's two envelopes: {"report": true} the moment the batch's report file exists, and {"report": false} once the bounded wait elapses with no report -- the first step passes --wait 1ns explicitly to keep the window near-instant, versus the production default (websterengine.DefaultAwaitWaitS) used whenever --wait is omitted -- with no state.json ever read or written, since the verb is deliberately stateless.
 // The scenario calls t.Parallel as a whole and no step does, since the steps share the one CLI.
 func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
@@ -1429,7 +1439,7 @@ func TestRebaselineCmd_FabricSyncFailureWayForward(t *testing.T) {
 	if code := clihelp.Execute(c.rebaselineCmd(), &out, []string{"--card", "02"}); code == 0 {
 		t.Fatalf("rebaseline with a failing sync = 0; want non-zero, output: %s", out.String())
 	}
-	wantWayForward(t, out.String(), "lyx fabric commit")
+	wantFabricSyncWayForward(t, out.String())
 	loaded, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() = %v, %v; want the saved state", loaded, err)

@@ -811,8 +811,8 @@ func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
 		slug      string
 		wantText  string
 	}{
-		{"MissingShortname", "", "tslug", "no strand name can be formed: this hub records no shortname; way forward: lyx fabric shortname <shortname> records it, then retry"},
-		{"BadSlug", "tc", "Bad_Slug", "way forward: lyx fabric add <slug> creates the task under a slug that fits"},
+		{"MissingShortname", "", "tslug", "no strand name can be formed: this hub records no shortname; way forward: lyx fabric shortname <shortname> records it, then retry; a session lyx refuses the verb from reports status: FAILED and the orch runs it"},
+		{"BadSlug", "tc", "Bad_Slug", "way forward: lyx fabric add <slug> creates the task under a slug that fits; a session lyx refuses the verb from reports status: FAILED and the orch runs it"},
 		{"BadShortname", "T-C", "tslug", `"T-C"`},
 	}
 	for _, tt := range tests {

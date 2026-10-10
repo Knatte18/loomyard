@@ -569,7 +569,7 @@ func TestRefuseMidMerge(t *testing.T) {
 	if err == nil {
 		t.Fatal("mid-merge: error = nil; want refusal")
 	}
-	for _, want := range []string{"lyx fabric merge --continue", "lyx fabric merge --abort", "git merge --continue", "git merge --abort"} {
+	for _, want := range []string{"lyx fabric merge --continue", "lyx fabric merge --abort", "git merge --continue", "git merge --abort", "a session lyx refuses the verb from reports status: FAILED and the orch runs it"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q missing %q", err, want)
 		}

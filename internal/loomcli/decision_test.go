@@ -270,7 +270,7 @@ func TestDecisionVerb_CommitFailureNamesWayForward(t *testing.T) {
 		t.Fatalf("exit = 0; want a refusal when the commit fails")
 	}
 	msg := envelope.Decode(t, out.String()).Error
-	if !strings.Contains(msg, "index locked") || !strings.Contains(msg, "way forward:") {
-		t.Errorf("message %q; want the commit error and a way forward", msg)
+	if !strings.Contains(msg, "index locked") || !strings.Contains(msg, "way forward:") || !strings.Contains(msg, "a session lyx refuses the verb from reports status: FAILED and the orch runs it") {
+		t.Errorf("message %q; want the commit error and a way forward naming the orch", msg)
 	}
 }
