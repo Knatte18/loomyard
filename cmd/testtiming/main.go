@@ -68,6 +68,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // testEvent is one line of `go test -json` output (decoded fields only).
@@ -165,7 +167,11 @@ func run(tags string, top int) error {
 	args = append(args, "./...", "-json", "-count=1")
 	cmdline += " ./... -count=1"
 
-	env, cleanup, err := prebuildLyx(tags)
+	root, err := lyxcwd.Getwd()
+	if err != nil {
+		return fmt.Errorf("read the working directory: %w", err)
+	}
+	env, cleanup, err := prebuildLyx(tags, root, os.Environ(), 0)
 	if err != nil {
 		return err
 	}

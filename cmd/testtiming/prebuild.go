@@ -7,24 +7,21 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// prebuildLyx returns the environment every `go test` child of a run takes, and the cleanup that removes what the build left.
-// A tagged run builds `./cmd/lyx` of the module root, the working directory, with go from PATH and exports the binary through gateslot.PrebuiltLyxEnv.
-// An untagged run, or a tagged one whose root has no `cmd/lyx`, builds nothing and strips an inherited value.
+// prebuildLyx returns the environment every `go test` child of a run takes, base less an inherited gateslot.PrebuiltLyxEnv, and the cleanup that removes what the build left.
+// A tagged run builds `<root>/cmd/lyx` with go from PATH and base as its environment, and exports the binary through gateslot.PrebuiltLyxEnv.
+// A positive parallel caps the build's `-p`, as a slotted run caps its `go test`; zero leaves go's default, as an unslotted run leaves its `go test`.
+// An untagged run, or a tagged one whose root has no `cmd/lyx`, builds nothing.
 // A build failure returns an error carrying the build's output.
-func prebuildLyx(tags string) (env []string, cleanup func(), err error) {
-	env = gateslot.StripPrebuilt(os.Environ())
+func prebuildLyx(tags, root string, base []string, parallel int) (env []string, cleanup func(), err error) {
+	env = gateslot.StripPrebuilt(base)
 	if tags == "" {
 		return env, func() {}, nil
-	}
-	root, err := lyxcwd.Getwd()
-	if err != nil {
-		return nil, nil, fmt.Errorf("read the working directory: %w", err)
 	}
 	if info, statErr := os.Stat(filepath.Join(root, "cmd", "lyx")); statErr != nil || !info.IsDir() {
 		return env, func() {}, nil
@@ -34,8 +31,14 @@ func prebuildLyx(tags string) (env []string, cleanup func(), err error) {
 		return nil, nil, fmt.Errorf("create the prebuilt lyx directory: %w", err)
 	}
 	bin := filepath.Join(dir, "lyx")
-	logger.Info("testtiming: spawning go build of lyx", "root", root, "bin", bin)
-	out, buildErr := exec.Command("go", "build", "-C", root, "-o", bin, "./cmd/lyx").CombinedOutput()
+	args := []string{"build", "-C", root}
+	if parallel > 0 {
+		args = append(args, "-p", strconv.Itoa(parallel))
+	}
+	cmd := exec.Command("go", append(args, "-o", bin, "./cmd/lyx")...)
+	cmd.Env = env
+	logger.Info("testtiming: spawning go build of lyx", "root", root, "bin", bin, "parallel", parallel)
+	out, buildErr := cmd.CombinedOutput()
 	logger.Info("testtiming: go build of lyx ended", "error", buildErr)
 	if buildErr != nil {
 		os.RemoveAll(dir)

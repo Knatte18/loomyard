@@ -68,16 +68,16 @@ func runResources(tags, pkgFlag string) error {
 	if err != nil {
 		return fmt.Errorf("read the working directory: %w", err)
 	}
-	baseEnv, cleanupLyx, err := prebuildLyx(tags)
-	if err != nil {
-		return err
-	}
-	defer cleanupLyx()
-	env, parallel, release, err := takeGateSlot(context.Background(), cwd, baseEnv)
+	slotEnv, parallel, release, err := takeGateSlot(context.Background(), cwd, os.Environ())
 	if err != nil {
 		return err
 	}
 	defer release()
+	env, cleanupLyx, err := prebuildLyx(tags, cwd, slotEnv, parallel)
+	if err != nil {
+		return err
+	}
+	defer cleanupLyx()
 
 	tier := "Tier 1 (offline)"
 	if tags != "" {

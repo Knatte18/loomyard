@@ -81,7 +81,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 
 	env = gateslot.StripPrebuilt(env)
 	if request.tags != "" {
-		bin, cleanup, err := prebuildLyx(runCtx, request.goBinary, buildRoot(location, dir))
+		bin, cleanup, err := prebuildLyx(runCtx, request.goBinary, buildRoot(location, dir), parallel)
 		if err != nil {
 			if caught.Load() != 0 {
 				return exitAfterSignal(caught, 1)

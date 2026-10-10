@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -22,10 +23,10 @@ func buildRoot(location *lyxcwd.Location, dir string) string {
 	return dir
 }
 
-// prebuildLyx builds `<root>/cmd/lyx` into a fresh temporary directory with goBinary and returns the binary path and a cleanup that removes the directory.
+// prebuildLyx builds `<root>/cmd/lyx` into a fresh temporary directory with goBinary under the run's `-p` cap and returns the binary path and a cleanup that removes the directory.
 // A root without `cmd/lyx` builds nothing and returns an empty path and a cleanup that does nothing.
 // A build failure returns an error carrying the build's output.
-func prebuildLyx(ctx context.Context, goBinary, root string) (bin string, cleanup func(), err error) {
+func prebuildLyx(ctx context.Context, goBinary, root string, parallel int) (bin string, cleanup func(), err error) {
 	if info, statErr := os.Stat(filepath.Join(root, "cmd", "lyx")); statErr != nil || !info.IsDir() {
 		return "", func() {}, nil
 	}
@@ -36,7 +37,7 @@ func prebuildLyx(ctx context.Context, goBinary, root string) (bin string, cleanu
 	cleanup = func() { os.RemoveAll(dir) }
 
 	bin = filepath.Join(dir, "lyx")
-	cmd := exec.CommandContext(ctx, goBinary, "build", "-C", root, "-o", bin, "./cmd/lyx")
+	cmd := exec.CommandContext(ctx, goBinary, "build", "-C", root, "-p", strconv.Itoa(parallel), "-o", bin, "./cmd/lyx")
 	logger.Info("gate test: spawning go build of lyx", "binary", goBinary, "args", strings.Join(cmd.Args[1:], " "))
 	out, buildErr := cmd.CombinedOutput()
 	logger.Info("gate test: go build of lyx ended", "error", buildErr)

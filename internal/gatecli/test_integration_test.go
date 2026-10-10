@@ -424,11 +424,11 @@ func TestGateTest_Scenario(t *testing.T) {
 			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
 		}
 		records := g.records(t)
-		if len(records) != 2 || len(records[0].Args) != 6 || records[0].Args[0] != "build" || records[1].Args[0] != "test" {
+		if len(records) != 2 || len(records[0].Args) != 8 || records[0].Args[0] != "build" || records[1].Args[0] != "test" {
 			t.Fatalf("records = %+v; want one build invocation, then the test invocation", records)
 		}
-		bin := records[0].Args[4]
-		if want := []string{"build", "-C", prime, "-o", bin, "./cmd/lyx"}; !slices.Equal(records[0].Args, want) {
+		bin := records[0].Args[6]
+		if want := []string{"build", "-C", prime, "-p", "3", "-o", bin, "./cmd/lyx"};!slices.Equal(records[0].Args, want) {
 			t.Errorf("build args = %q; want %q", records[0].Args, want)
 		}
 		if records[1].Prebuilt != bin {

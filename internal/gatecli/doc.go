@@ -8,7 +8,7 @@
 // The -C directory is made absolute against the seam cwd, never the process cwd when -C is given, and must exist.
 // At least one package is required; a module-wide pattern is accepted and slotted.
 // The output streams through and the exit code is go test's own.
-// With `--tags` non-empty the verb first builds `lyx` once, inside the held slot: `go build -C <root> -o <tmp>/lyx ./cmd/lyx`, where <root> is the worktree root inside a hub and the -C directory outside one, and <tmp> is a per-invocation temporary directory removed after go test ends.
+// With `--tags` non-empty the verb first builds `lyx` once, inside the held slot: `go build -C <root> -p <cap> -o <tmp>/lyx ./cmd/lyx`, where <root> is the worktree root inside a hub and the -C directory outside one, and <tmp> is a per-invocation temporary directory removed after go test ends.
 // go test's environment then carries `gateslot.PrebuiltLyxEnv` naming that binary, so every package of the run shares it instead of building its own.
 // A root without `cmd/lyx` builds nothing, and a nested module inside a hub still builds the worktree's `lyx`, which that module's tests may leave unused.
 // A build failure is a JSON error with the build's output and exit code 1, before go test runs.
