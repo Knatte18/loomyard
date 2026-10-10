@@ -35,7 +35,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-agent-filed-issues` — Filing a GitHub issue from lyx: only through `lyx selfreport create`, run by an agent or the operator; no other production package calls `selfreportengine.CreateIssue`. (test)
 - `PATTERN-hub-store-gc` — Hub stores carry `gc.auto=0` and `maintenance.auto=false`: only `fabricengine/housekeeping.go` runs `gc` or writes those keys. — [background](pattern/PATTERN-hub-store-gc.md)
 - `PATTERN-gogit-read-helper` — Reading through go-git in `internal/gitrepo`: only through `readGoGit`, the sole caller of `goGit()`. (test) — [background](pattern/PATTERN-gogit-read-helper.md)
-- `PATTERN-gitrepo-client-boundary` — Reading or mutating git state in `internal/gitrepo`: go-git owns local reads, `gitexec` owns remote-authenticating or tree-mutating work. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
+- `PATTERN-gitrepo-client-boundary` — Reading or mutating git state in `internal/gitrepo`: go-git and the `dotgit` geometry read own local reads, `gitexec` remote-authenticating or tree-mutating work. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
 - `PATTERN-gitexec-checked-call` — Running git: use `gitexec.Run`/`runChecked`; the raw `RunGit`/`r.run` forms survive only at pinned `//gitexec:raw` call sites.
 - `PATTERN-never-force-add` — Keeping transients out of the index: each repo's own `.git/info/exclude`; fabric and gitrepo never run `git add -f`.
 
@@ -98,5 +98,5 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 ## Docs
 
 - `PATTERN-markdown-link-integrity` — Linking in a `.md` file under `docs/`: every inline link resolves, file part and `#anchor`. (test) — [background](pattern/PATTERN-markdown-link-integrity.md)
-- `PATTERN-comment-line-breaks` — Writing or changing a Go comment: semantic line breaks, one sentence per line, with no column limit, checked on new breaks by `lyx loom lint-comments` alone; a comment's line break is never a review finding. (test) — [background](pattern/PATTERN-comment-line-breaks.md)
+- `PATTERN-comment-line-breaks` — Writing or changing a Go comment: semantic line breaks, one sentence per line, checked on new breaks by `lyx loom lint-comments` alone; a comment's line break is never a review finding. (test) — [background](pattern/PATTERN-comment-line-breaks.md)
 - `PATTERN-documentation-lifecycle` — Deciding which docs are kept or deleted: no design doc for unbuilt work is kept in the repo, and a built design lives in its package's `doc.go`, see [docs/overview.md#documentation-lifecycle](docs/overview.md#documentation-lifecycle).

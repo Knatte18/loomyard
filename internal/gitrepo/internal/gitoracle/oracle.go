@@ -21,6 +21,7 @@ package gitoracle
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -94,6 +95,37 @@ func ChangedFilesSince(t testing.TB, dir, sha string) ([]string, error) {
 		files = append(files, path)
 	}
 	return files, nil
+}
+
+// GitDir reimplements gitrepo's GitDir on `git rev-parse --git-dir`, absolutized against dir when git answers a relative path.
+func GitDir(t testing.TB, dir string) (string, error) {
+	t.Helper()
+	return revParsePath(dir, "--git-dir")
+}
+
+// CommonDir reimplements gitrepo's CommonDir on `git rev-parse --git-common-dir`, absolutized against dir when git answers a relative path.
+func CommonDir(t testing.TB, dir string) (string, error) {
+	t.Helper()
+	return revParsePath(dir, "--git-common-dir")
+}
+
+// Toplevel reimplements gitrepo's Toplevel on `git rev-parse --show-toplevel`.
+func Toplevel(t testing.TB, dir string) (string, error) {
+	t.Helper()
+	return revParsePath(dir, "--show-toplevel")
+}
+
+// revParsePath runs `git rev-parse <flag>` in dir and returns the path it prints, joined onto dir when git prints it relative.
+func revParsePath(dir, flag string) (string, error) {
+	stdout, err := gitexec.Run([]string{"rev-parse", flag}, dir)
+	if err != nil {
+		return "", fmt.Errorf("oracle: git rev-parse %s: %w", flag, err)
+	}
+	path := strings.TrimSpace(stdout)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(dir, path)
+	}
+	return path, nil
 }
 
 // CurrentBranch reimplements gitrepo's CurrentBranch directly on `git symbolic-ref --short HEAD`, which fails on a detached HEAD and succeeds — printing the branch name — even on an unborn or orphan HEAD that has never been committed.

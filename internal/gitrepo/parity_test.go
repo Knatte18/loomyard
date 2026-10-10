@@ -8,6 +8,7 @@ package gitrepo_test
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -199,6 +200,45 @@ func TestParity(t *testing.T) {
 			assertParityString(t, oracleBranch, implBranch)
 			if implBranch != "main" {
 				t.Errorf("CurrentBranch() = %q, want %q", implBranch, "main")
+			}
+		}},
+		// The linked worktree's git dir sits under the primary's common dir, so the two reads differ there and agree on the primary.
+		{"GitDir, CommonDir and Toplevel agree on the primary and on a linked worktree", func(t *testing.T) {
+			linkedDir := filepath.Join(t.TempDir(), "linked")
+			gitkit.MustRun(t, dir, "git", "worktree", "add", "-b", "linked-geometry", linkedDir)
+
+			for _, checkout := range []struct {
+				name string
+				dir  string
+			}{{"primary", dir}, {"linked", linkedDir}} {
+				handle := gitrepo.New(checkout.dir)
+				reads := []struct {
+					name   string
+					oracle func(testing.TB, string) (string, error)
+					impl   func() (string, error)
+				}{
+					{"GitDir", gitoracle.GitDir, handle.GitDir},
+					{"CommonDir", gitoracle.CommonDir, handle.CommonDir},
+					{"Toplevel", gitoracle.Toplevel, handle.Toplevel},
+				}
+				for _, read := range reads {
+					oracleValue, oracleErr := read.oracle(t, checkout.dir)
+					if oracleErr != nil {
+						t.Fatalf("gitoracle.%s() on the %s checkout error = %v", read.name, checkout.name, oracleErr)
+					}
+					implValue, implErr := read.impl()
+					if implErr != nil {
+						t.Fatalf("%s() on the %s checkout error = %v", read.name, checkout.name, implErr)
+					}
+					assertParityString(t, oracleValue, implValue)
+				}
+			}
+
+			linked := gitrepo.New(linkedDir)
+			linkedGitDir, _ := linked.GitDir()
+			linkedCommonDir, _ := linked.CommonDir()
+			if linkedGitDir == linkedCommonDir {
+				t.Errorf("linked worktree GitDir() = CommonDir() = %q; want them to differ", linkedGitDir)
 			}
 		}},
 		// Each side returns its own ErrInvalidSHA-class sentinel before either ever resolves or diffs anything.
