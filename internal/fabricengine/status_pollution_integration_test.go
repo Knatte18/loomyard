@@ -32,7 +32,7 @@ func TestStatus_DetectsWarpPollutionUnderSubpathAnchor(t *testing.T) {
 
 	const anchor = "backend"
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	// Record the subpath anchor so every resolver agrees the hub is anchored at <anchor>.

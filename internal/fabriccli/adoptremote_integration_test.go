@@ -138,7 +138,7 @@ func requireAdoptedFromOrigin(t *testing.T, h *hubforge.Hub, slug string) {
 func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	steps := []struct {
 		name string

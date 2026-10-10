@@ -23,6 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -152,6 +154,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		StencilsDir:        mustMkdir(t, filepath.Join(dir, "stencils")),
 		SpecsDir:           mustMkdir(t, filepath.Join(dir, "specs")),
 		RunRoot:            mustMkdir(t, filepath.Join(dir, "run-root")),
+		RunScratchDir:      mustMkdir(t, filepath.Join(dir, "run-scratch")),
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		SupportLogPath:     filepath.Join(dir, "support-log.md"),
 		DescriptionPath:    filepath.Join(dir, "description.md"),
@@ -162,10 +165,21 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 			return websterengine.RunResult{}, nil
 		},
-		WebsterDeps:       shedfake.WebsterSeams(),
-		CommitWebster:     func() error { return nil },
-		Landing:           LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
-		DiscussionSpec:    specOver("test discussion prompt", "discussion-output.md"),
+		WebsterDeps:    shedfake.WebsterSeams(),
+		CommitWebster:  func() error { return nil },
+		Landing:        LandingDeps(mustMkdir(t, filepath.Join(dir, "landing"))),
+		DiscussionSpec: specOver("test discussion prompt", "discussion-output.md"),
+		DiscussionTable: func() (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "discussion",
+				Segment:    segmentcolor.Discussion,
+				Seats: []seatengine.Seat{{
+					Name:    seatengine.RoleChair,
+					Stencil: "loom-template-discussion-chair",
+					Outputs: []string{filepath.Join(dir, "discussion-output.md")},
+				}},
+			}, nil
+		},
 		CommitDiscussion:  func() error { return nil },
 		DescribeSpec:      specOver("test describe prompt", "description.md"),
 		CommitDescription: func() error { return nil },

@@ -209,7 +209,7 @@ func runCell(t *testing.T, anchor string, state State, vc VerbCase) {
 
 	// Build: the factory clones a fresh hub at the cell's anchor. Every cell owns its hub, so pushes
 	// across parallel cells never race.
-	h := hubforge.NewHub(t, anchor)
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
 
 	// Arrange: the verb's own fixture.
 	fixture := vc.Arrange(t, h)
@@ -337,7 +337,7 @@ func TestCloneHubReset(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
 
-				h := hubforge.NewHub(t, anchor)
+				h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
 				fixture := verbCase.Arrange(t, h)
 
 				before := CaptureManifest(t, fixture.ResetHubPath)

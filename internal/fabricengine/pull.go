@@ -13,9 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -124,18 +122,10 @@ var ErrWarpDirty = errors.New("fabricengine: warp worktree has uncommitted chang
 
 // weftHasUpstream reports whether the weft worktree's current branch has a configured upstream
 // tracking ref.
-// A nonzero exit from rev-parse @{u} means no upstream (or a detached HEAD), which for Pull's weft
-// step is the nothing-to-pull-from case, never an error.
+// No upstream (or a detached HEAD) is, for Pull's weft step, the nothing-to-pull-from case, never an error.
 func (f *Fabric) weftHasUpstream() (bool, error) {
-	_, err := gitexec.Run([]string{"rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"}, f.weftPath)
-	if err == nil {
-		return true, nil
-	}
-	var gitErr *gitexec.GitError
-	if errors.As(err, &gitErr) {
-		return false, nil
-	}
-	return false, fmt.Errorf("fabricengine: resolve weft upstream in %s: %w", f.weftPath, err)
+	_, hasUpstream, err := upstreamSHAAt(f.weftPath)
+	return hasUpstream, err
 }
 
 // warpWorktreeDirty reports whether the warp worktree carries uncommitted TRACKED changes — the
@@ -180,18 +170,18 @@ func (f *Fabric) recordWarpAdvance(rec *Mutations, before string) {
 	rec.Append(KindRepoAdvanced, f.warpPath, after)
 }
 
-// warpUpstreamSHA resolves the warp repo's already-fetched upstream tracking
-// ref (`@{u}`) to a plain hex SHA, via `git rev-parse @{u}` in f.warpPath.
-// Fabric.Pull calls this AFTER f.code.Fetch has refreshed the remote-tracking
-// ref, so the SHA it returns is the freshly fetched upstream tip — usable
-// directly by ResetHard and IsAncestor, which both require a plain commit
-// SHA rather than symbolic revision syntax.
+// warpUpstreamSHA resolves the warp repo's already-fetched upstream tracking ref to a plain hex SHA.
+// Fabric.Pull calls this AFTER f.code.Fetch has refreshed the remote-tracking ref, so the SHA it returns is the freshly fetched upstream tip — usable directly by ResetHard and IsAncestor, which both require a plain commit SHA rather than symbolic revision syntax.
+// A branch with no resolvable upstream is an error.
 func (f *Fabric) warpUpstreamSHA() (string, error) {
-	stdout, err := gitexec.Run([]string{"rev-parse", "@{u}"}, f.warpPath)
+	sha, hasUpstream, err := upstreamSHAAt(f.warpPath)
 	if err != nil {
-		return "", fmt.Errorf("fabricengine: rev-parse @{u} in %s: %w", f.warpPath, err)
+		return "", err
 	}
-	return strings.TrimSpace(stdout), nil
+	if !hasUpstream {
+		return "", fmt.Errorf("fabricengine: no upstream tracking ref for the checked-out branch in %s", f.warpPath)
+	}
+	return sha, nil
 }
 
 // Pull is fabric's unified pull entry point: it attempts the weft ff-pull first, then fetches and

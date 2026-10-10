@@ -169,6 +169,13 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 |---|---|---|---|
 | shed busy | another driver holds the run lock, at `run`, `step` or `goto` | transient | `lyx shed pause <run-id>` asks the live driver to stop at its next producer boundary; check the holder with `lyx shed status <run-id>`, then retry |
 | seed missing | a verb addresses a run-id with no seed | correctness halt | run `lyx shed seed <run-id> --recipe <name>` first |
+| step arming refused | `step` fails while arming the run's recipe before any producer ran, such as an unknown recipe or a config the recipe cannot load; the envelope carries `kind: bootstrap` and a trace file | correctness halt | fix the cause the error names, then run the step again, escalating when the fix lies outside the repair verbs |
+| hub config missing | arming a loom run finds the hub-wide `landing.yaml` absent or unreadable | correctness halt | run `lyx config reconcile --apply` in the hub, then step again |
+| loop unarmed | `step --until-stop` on a recipe that arms no loop | correctness halt | run the step without `--until-stop` |
+| step interrupted | the loop's child step ended without an envelope: it was killed or exited without one, or the status file vanished; the stop is `interrupted`, `loop.stop` reports it and the status file is written `failed` | transient | read `loop.trace_copy` and `loop.stderr_path`, apply the interrupted rule under `loop.interrupt_policy`, then re-run `lyx shed step <run-id> --until-stop` |
+| loop exited | `step --until-stop` finds the run's loop gone without an envelope: it died while a waiter followed it, left its pid file with no envelope, exited before it recorded itself, or the pair's session end put the teardown mark in its place; the stop is `interrupted` with cause `loop-exited`, the loop's step tree is killed and the status file is written `failed` | transient | read `loop.trace_copy` and `loop.stderr_path`, apply the interrupted rule under `loop.interrupt_policy`, then re-run `lyx shed step <run-id> --until-stop` |
+| loop busy at a dead-loop stop | the dead-loop stop finds the run lock held by another holder, so it writes nothing, keeps the pid file and reports `busy` | transient | re-run `lyx shed step <run-id> --until-stop` once the holder ends |
+| loop id unusable | `step` carries `--loop-detached` with a value that is no loop id | correctness halt | run the step with `--until-stop` alone |
 | status file missing | `step` or `goto` finds no status file; Shed never seeds one | correctness halt | the recipe's own, as the message names it: `lyx loom start` for loom, `lyx batten run <slug>` for batten, `lyx shed seed` otherwise |
 | current producer missing | the status file's `current_producer` names no row in the list | correctness halt | `lyx shed goto <run-id> --to <producer>` moves the run onto a row that exists |
 | bounce budget exhausted | a segment's bounce budget runs out and the run halts Stuck | correctness halt | `lyx shed goto <run-id> --to <row>` gives the segment or row a fresh budget |
@@ -184,6 +191,8 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | goto on a running run | `goto` names a run whose status is running | correctness halt | `lyx shed pause <run-id>` then `lyx shed step <run-id>` leaves the run paused at its next producer boundary, then re-run goto |
 | goto target past the current row | `goto` names a row after the run's current row, or a target the awaiting narrowing excludes | correctness halt | re-run goto with --to naming one of: `<admitted rows>` |
 | goto target unknown | `goto` has no `--to`, or the target names no producer | correctness halt | re-run goto with `--to` naming one of the producers the message lists |
+| pause target unknown | `pause --before` or `--after` names a target that is no producer of the recipe | correctness halt | re-run pause with `--before` or `--after` naming one of the producers the message lists |
+| pause flags contradictory | `pause --clear` is given beside `--before` or `--after` | correctness halt | run `pause --clear` alone, then `pause --before` or `--after` |
 | status watch as JSON | `status` is given both `--watch` and `--json` | correctness halt | drop `--json`, or drop `--watch` for the JSON envelope |
 | seed disagrees | `seed` finds the run-id already seeded with different values | correctness halt | keep the existing seed and drive it (`lyx shed status <run-id>` shows it), or address a different run-id |
 | seed refuses here | the seed verb runs outside the worktree the recipe drives | correctness halt | run `lyx shed seed` from the worktree the recipe drives, which the cause names |
@@ -193,7 +202,7 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | seat not stopped | a `MultiLLM` row cannot stop a seat's strand: a misnamed seat at start, a started advisor when the step ends or fails to start its chair, or a chair whose wait errored | transient | run "lyx reed remove <guid>", then re-step the row |
 | llm driver without bootstrap | `--driver llm` on a recipe with no bootstrap verb | correctness halt | re-run with `--driver go` |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
-| raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed or lock file fails | transient | re-run the refused verb; nothing is mutated |
+| raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed, lock or loop file fails, or the loop process cannot be started | transient | re-run the refused verb; nothing is mutated |
 
 ## loom
 
@@ -212,6 +221,9 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | config: unknown fan | `loom.yaml`'s `discussion_fan` or `plan_fan` names a fan that neither `burler.yaml` nor the embedded template defines, or whose lens is undefined | correctness halt | set the key to one of the fans the message lists, or to empty to run the segment solo |
 | config: burler.yaml unreadable | `loom.yaml`'s `discussion_fan` or `plan_fan` is set and `burler.yaml` cannot be read or parsed | correctness halt | fix burler.yaml, or set the key to empty to run the segment solo |
 | config: unknown fix_start | `loom.yaml`'s `fix_start` is neither `parallel` nor `after-review` | correctness halt | set `fix_start` to `parallel` or `after-review` in loom.yaml |
+| config: discussion_advisors entry not a model-spec | `loom.yaml`'s `discussion_advisors` holds an empty entry beside another, an entry that is not a model-spec or that the registry does not define, or a mapping value | correctness halt | set the key to a list of model-specs the registry defines, one per advisor, or to an empty list for no advisors |
+| config: models.yaml unreadable for discussion_advisors | `loom.yaml`'s `discussion_advisors` holds entries and `models.yaml` cannot be read or parsed | correctness halt | fix models.yaml, or set the key to an empty list for no advisors |
+| config: unknown discussion_producer | `loom.yaml`'s `discussion_producer` is neither `single` nor `seats` | correctness halt | set `discussion_producer` to `single` or `seats` in loom.yaml |
 | config: review key below 1 | `loom.yaml`'s `review_circling_checkpoint` or `review_max_bounces` is 0 or negative | correctness halt | set it to a positive integer in loom.yaml |
 | approve: no pull request | no pull request from the task branch to its parent exists | correctness halt | `lyx loom goto --to Publish` moves the run back to Publish, then `lyx loom step` opens a new pull request |
 | approve: pull request not open | the pull request is closed or merged | correctness halt | `lyx loom goto --to Publish` moves the run back to Publish, then `lyx loom step` opens a new pull request |

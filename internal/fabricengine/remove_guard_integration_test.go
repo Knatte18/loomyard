@@ -25,7 +25,7 @@ import (
 func TestRemove_RefusesPrimeWorktreeAndLeavesItIntact(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	primeSlug := filepath.Base(l.WorktreePath())
 	topology := h.Topology
@@ -57,7 +57,7 @@ func TestRemove_RefusesPrimeWorktreeAndLeavesItIntact(t *testing.T) {
 func TestRemove_RefusesForeignWorktreeWithoutDeletingIt(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	const slug = "sidecar"

@@ -20,8 +20,11 @@ func verifyCard(n int, slug, command string) planparser.Card {
 	return planparser.Card{Number: n, Slug: slug, Verify: command, HasVerify: command != ""}
 }
 
+// TestRerunCardVerifies_AllPass sets the prebuilt-lyx variable through t.Setenv, the process environment being the global state that keeps it from calling t.Parallel.
+// The third card passes only when the rerun stripped the variable.
 func TestRerunCardVerifies_AllPass(t *testing.T) {
-	cards := []planparser.Card{verifyCard(1, "a", "true"), verifyCard(2, "b", "")}
+	t.Setenv(gateslot.PrebuiltLyxEnv, "/stale/lyx")
+	cards := []planparser.Card{verifyCard(1, "a", "true"), verifyCard(2, "b", ""), verifyCard(3, "c", `test -z "$`+gateslot.PrebuiltLyxEnv+`"`)}
 	if got := rerunCardVerifies(cards, t.TempDir(), 0, nil, ""); len(got) != 0 {
 		t.Fatalf("failures = %v, want none", got)
 	}

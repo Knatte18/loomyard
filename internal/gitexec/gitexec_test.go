@@ -78,8 +78,9 @@ func TestRunGit(t *testing.T) {
 }
 
 // TestRun pins Run's contract: a successful command returns its stdout with a nil error; a non-zero exit is recoverable via errors.As as *gitexec.GitError carrying the exit code, the args and dir it was given and non-empty stderr; and an exec-level failure — a cwd that does not exist — returns a non-nil error that errors.As does NOT match as *gitexec.GitError, the distinction every errors.As recovery site depends on.
+// A last row sets GIT_DIR and GIT_WORK_TREE to a second repository and asserts the child still answers the directory it was run in, because git children never inherit those two variables.
+// That row touches process-global state, the environment, so the test does not call t.Parallel; its table rows do.
 func TestRun(t *testing.T) {
-	t.Parallel()
 
 	nonZeroArgs := []string{"log", "--format=stdout-marker", "-1"}
 	nonZeroDir := t.TempDir()
@@ -144,6 +145,33 @@ func TestRun(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("ignores GIT_DIR and GIT_WORK_TREE", func(t *testing.T) {
+		first, second := t.TempDir(), t.TempDir()
+		for _, dir := range []string{first, second} {
+			if _, err := gitexec.Run([]string{"init", "-q"}, dir); err != nil {
+				t.Fatalf("git init in %s error = %v", dir, err)
+			}
+		}
+		t.Setenv("GIT_DIR", filepath.Join(second, ".git"))
+		t.Setenv("GIT_WORK_TREE", second)
+
+		got, err := gitexec.Run([]string{"rev-parse", "--absolute-git-dir"}, first)
+		if err != nil {
+			t.Fatalf("Run(rev-parse --absolute-git-dir) error = %v", err)
+		}
+		wantDir, err := filepath.EvalSymlinks(filepath.Join(first, ".git"))
+		if err != nil {
+			t.Fatalf("EvalSymlinks error = %v", err)
+		}
+		gotDir, err := filepath.EvalSymlinks(strings.TrimSpace(got))
+		if err != nil {
+			t.Fatalf("EvalSymlinks(%q) error = %v", got, err)
+		}
+		if gotDir != wantDir {
+			t.Errorf("git dir = %q; want %q, the directory the command ran in", gotDir, wantDir)
+		}
+	})
 }
 
 // TestRun_StdoutOnError tests that stdout is still returned alongside a *GitError, using a command that writes to stdout and then exits non-zero:

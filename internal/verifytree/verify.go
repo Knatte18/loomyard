@@ -238,7 +238,8 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 	defer os.Remove(p.Marker)
 
 	// The verify command runs without the strand name, so a test driving `lyx fabric` never meets a role guard that reads it.
-	env := slices.DeleteFunc(os.Environ(), func(entry string) bool { return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") })
+	// It never inherits the prebuilt-lyx variable either: its own go test builds lyx once per test binary.
+	env := slices.DeleteFunc(gateslot.StripPrebuilt(os.Environ()), func(entry string) bool { return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") })
 	if slots != nil {
 		lease, err := slots.Acquire(ctx, gateslot.Holder{Worktree: p.Worktree, Site: site.Label})
 		if err != nil {

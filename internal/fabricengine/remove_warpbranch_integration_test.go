@@ -32,7 +32,7 @@ func TestRemove_PushedWarpBranchIsDeleted(t *testing.T) {
 	t.Parallel()
 
 	const slug = "wb-pushed"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
@@ -57,7 +57,7 @@ func TestRemove_SquashLandedWarpBranchIsDeleted(t *testing.T) {
 	t.Parallel()
 
 	const slug = "wb-landed"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
@@ -93,7 +93,7 @@ func TestRemove_UnlandedWarpBranchIsKept(t *testing.T) {
 			t.Parallel()
 
 			slug := "wb-unlanded-" + name
-			h := hubforge.NewHub(t, ".")
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 			l := h.Location
 			topology := h.Topology
 			if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
@@ -122,7 +122,7 @@ func TestRemove_MissingWeftWorktreeRecreatesNothing(t *testing.T) {
 	t.Parallel()
 
 	const slug = "wb-noweft"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {
@@ -152,7 +152,7 @@ func TestRemove_AddSucceedsAfterWarpBranchDeleted(t *testing.T) {
 	t.Parallel()
 
 	const slug = "wb-readd"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err != nil {

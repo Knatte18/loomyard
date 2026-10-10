@@ -62,8 +62,10 @@ type Result struct {
 // quietState is one quiet probe's answer.
 type quietState struct {
 	quiet bool
-	// driver names the live driver strand blocking quiet; empty when only the run lock is held.
+	// driver names the live driver strand blocking quiet; empty when no driver strand blocks.
 	driver string
+	// loop is true when the pair's loop lock is held, so a detached step loop is live or starting.
+	loop bool
 }
 
 // Teardown runs the pair-teardown sequence.
@@ -78,6 +80,14 @@ type Teardown struct {
 	endSession func(slug string, gone bool) (ended bool, abandoned string, err error)
 	remove     func(req Request) (fabricengine.RemoveResult, error)
 	sleep      func(ctx context.Context, d time.Duration) error
+
+	// killLoop kills the pair's loop and its in-flight step tree.
+	killLoop func(slug string) (bool, error)
+	// seizeLoop runs kill, takes the pair's loop lock and leaves the teardown's mark in the pid file;
+	// its release function drops the lock, and with sessionEnded false first restores the pid file.
+	seizeLoop func(ctx context.Context, slug string, kill func() (bool, error)) (release func(sessionEnded bool) error, err error)
+	// awaitRunLock waits for the pair's run lock to be released and names its holder when the bound passes.
+	awaitRunLock func(ctx context.Context, slug string) error
 }
 
 // New wires the production substrates from the hub's prime location.
@@ -96,6 +106,9 @@ func New(prime *lyxcwd.Location) (*Teardown, error) {
 		return top.RemoveRefusal(prime, slug, force)
 	}
 	t.endSession = t.endReedSession
+	t.killLoop = t.killPairLoop
+	t.seizeLoop = t.holdPairLoopLock
+	t.awaitRunLock = t.awaitPairRunLock
 	t.remove = func(req Request) (fabricengine.RemoveResult, error) {
 		top, err := t.topology()
 		if err != nil {
@@ -106,8 +119,10 @@ func New(prime *lyxcwd.Location) (*Teardown, error) {
 	return t, nil
 }
 
-// EndSession waits for the pair's driver to go quiet, probes for removal refusals and ends the pair's session.
+// EndSession waits for the pair's driver to go quiet, probes for removal refusals, ends the pair's loop and step tree, waits for the run lock and ends the pair's session.
 // A refusal or a busy driver leaves the session and its strands untouched.
+// The loop lock is held from the kill until the session has ended, and the teardown's mark stays in the loop's pid file after it, so no step starts once the session end begins.
+// A failure before the session end puts the pid file back.
 func (t *Teardown) EndSession(ctx context.Context, req Request) (SessionResult, error) {
 	var res SessionResult
 
@@ -126,9 +141,23 @@ func (t *Teardown) EndSession(ctx context.Context, req Request) (SessionResult, 
 		return res, err
 	}
 
+	var releaseLoopLock func(sessionEnded bool) error
+	if !gone {
+		releaseLoopLock, err = t.seizeLoop(ctx, req.Slug, func() (bool, error) { return t.killLoop(req.Slug) })
+		if err != nil {
+			return res, err
+		}
+		if err := t.awaitRunLock(ctx, req.Slug); err != nil {
+			return res, errors.Join(err, releaseLoopLock(false))
+		}
+	}
+
 	ended, abandoned, err := t.endSession(req.Slug, gone)
 	res.Ended = ended
 	res.AbandonedSession = abandoned
+	if releaseLoopLock != nil {
+		err = errors.Join(err, releaseLoopLock(err == nil))
+	}
 	if err != nil {
 		return res, err
 	}
@@ -179,11 +208,18 @@ func (t *Teardown) waitQuiet(ctx context.Context, req Request) (driverWasLive bo
 // busyError builds the ErrDriverBusy refusal naming the blocker and the way forward.
 func (t *Teardown) busyError(slug string, st quietState) error {
 	blocker := "the run lock is held"
-	if st.driver != "" {
+	switch {
+	case st.driver != "":
 		blocker = fmt.Sprintf("driver strand %q is live", st.driver)
+	case st.loop:
+		blocker = "the loop is live"
 	}
 	attach := fmt.Sprintf("lyx reed attach, run from %s", t.taskAnchor(slug))
-	return fmt.Errorf("%w: %s in pair %q; attach with %s; retry once the driver has written its report, or end it with `lyx reed down` in the pair", ErrDriverBusy, blocker, slug, attach)
+	wayForward := "retry once the driver has written its report, or end it with `lyx reed down` in the pair"
+	if st.loop {
+		wayForward = fmt.Sprintf("pause the run with `lyx shed pause %s`, or retry once the loop stops; %s", slug, wayForward)
+	}
+	return fmt.Errorf("%w: %s in pair %q; attach with %s; %s", ErrDriverBusy, blocker, slug, attach, wayForward)
 }
 
 // taskAnchor returns the task worktree's anchor path.
@@ -278,7 +314,7 @@ func (t *Teardown) reedEngine(task *lyxcwd.Location) (*reedengine.Engine, error)
 	return reedengine.New(cfg, geom), nil
 }
 
-// probeQuiet answers whether the present task worktree's driver is quiet: the run lock is free, and the driver strand is absent, dead, retiring or parked.
+// probeQuiet answers whether the present task worktree's driver is quiet: the run lock and the loop lock are free, and the driver strand is absent, dead, retiring or parked.
 func (t *Teardown) probeQuiet(slug string) (quietState, error) {
 	task, err := t.taskLocation(slug)
 	if err != nil {
@@ -286,6 +322,10 @@ func (t *Teardown) probeQuiet(slug string) (quietState, error) {
 	}
 
 	lockFree, err := runLockFree(shedrun.RunLock(task, shedrun.SelfRunID))
+	if err != nil {
+		return quietState{}, err
+	}
+	loopFree, err := runLockFree(shedrun.LoopLock(task, shedrun.SelfRunID))
 	if err != nil {
 		return quietState{}, err
 	}
@@ -307,7 +347,39 @@ func (t *Teardown) probeQuiet(slug string) (quietState, error) {
 			}
 		}
 	}
-	return quietState{quiet: lockFree && driver == "", driver: driver}, nil
+	return quietState{quiet: lockFree && loopFree && driver == "", driver: driver, loop: !loopFree}, nil
+}
+
+// killPairLoop kills the present task worktree's loop and its in-flight step tree.
+func (t *Teardown) killPairLoop(slug string) (bool, error) {
+	task, err := t.taskLocation(slug)
+	if err != nil {
+		return false, err
+	}
+	return killLoop(shedrun.LoopPIDFile(task, shedrun.SelfRunID), shedrun.LoopLock(task, shedrun.SelfRunID), shedrun.LoopJobName(task, shedrun.SelfRunID))
+}
+
+// holdPairLoopLock takes the present task worktree's loop lock after kill and leaves the teardown's mark in its loop pid file.
+// The steps directory is created first, since the lock file lives in it.
+func (t *Teardown) holdPairLoopLock(ctx context.Context, slug string, kill func() (bool, error)) (func(sessionEnded bool) error, error) {
+	task, err := t.taskLocation(slug)
+	if err != nil {
+		return nil, err
+	}
+	lockPath := shedrun.LoopLock(task, shedrun.SelfRunID)
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		return nil, err
+	}
+	return holdLoopLock(ctx, kill, shedrun.LoopPIDFile(task, shedrun.SelfRunID), lockPath, int(runLockWait/quietPollInterval), t.sleep)
+}
+
+// awaitPairRunLock waits for the present task worktree's run lock to be released.
+func (t *Teardown) awaitPairRunLock(ctx context.Context, slug string) error {
+	task, err := t.taskLocation(slug)
+	if err != nil {
+		return err
+	}
+	return awaitRunLockNamingHolder(ctx, shedrun.RunLock(task, shedrun.SelfRunID), shedrun.StepsDir(task, shedrun.SelfRunID), slug, int(runLockWait/quietPollInterval), t.sleep)
 }
 
 // endReedSession ends the pair's session: Engine.Down while the task worktree is present, EndSessionByName once it is gone.

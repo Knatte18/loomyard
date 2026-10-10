@@ -14,10 +14,13 @@
 //
 // Table.Validate applies every rule as a loud error naming the seat.
 // The table has exactly one chair, and its other seats are advisors named from 1 contiguously in table order.
+// A table may hold no advisors: the chair then runs alone, and seat-directive-chair tells it to decide each question itself.
 // Every seat has at least one output and no two seats share an output path, and every advisor output is among the chair's inputs.
 // The role prefix and every seat's formed role pass the agent-name role grammar.
 // Every seat's stencil is readable from the told stencils directory, as is every block it includes (stencil.IncludeNames over the bytes read), and an included block declares no include of its own.
 // A table or seat value neither collides with a name in ReservedMarkers nor is empty or whitespace-only.
+// A table value named in Table.Optional may be empty and then renders as nothing in the stencil and in every block it includes; an Optional name may not be a reserved marker, and a seat value is never exempt.
+// Prompts composes every seat's prompt from a table without starting anything, so a table builder can test what its seats will read.
 // The list ReservedMarkers returns is declared once in this package; the table's collision check and the seats' value maps read that declaration, and a caller that builds a table reaches it through Table.Validate.
 //
 // # Told geometry

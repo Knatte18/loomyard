@@ -12,11 +12,8 @@
 package fabricengine
 
 import (
-	"errors"
 	"fmt"
-	"strings"
 
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -121,20 +118,22 @@ func pairDirtyReason(f *Fabric) ([]string, error) {
 	return nil, nil
 }
 
-// upstreamSHAAt resolves dir's checked-out branch's upstream tracking ref (`@{u}`) to a plain SHA
-// via `git rev-parse @{u}`, classifying a *gitexec.GitError (no upstream configured) as
-// hasUpstream=false rather than an error — following weftHasUpstream's classification in pull.go.
-// It is consumed by batch 4's sync guard; declared here so batch 4 does not reshape this file.
+// upstreamSHAAt resolves dir's checked-out branch's upstream tracking ref to a plain SHA.
+// No configured upstream, an upstream ref that does not exist and a detached HEAD are hasUpstream=false rather than an error.
 func upstreamSHAAt(dir string) (sha string, hasUpstream bool, err error) {
-	stdout, runErr := gitexec.Run([]string{"rev-parse", "@{u}"}, dir)
-	if runErr == nil {
-		return strings.TrimSpace(stdout), true, nil
+	repo := gitrepo.New(dir)
+	branch, detached, err := repo.HeadRef()
+	if err != nil {
+		return "", false, fmt.Errorf("fabricengine: resolve upstream in %s: %w", dir, err)
 	}
-	var gitErr *gitexec.GitError
-	if errors.As(runErr, &gitErr) {
+	if detached {
 		return "", false, nil
 	}
-	return "", false, fmt.Errorf("fabricengine: resolve upstream in %s: %w", dir, runErr)
+	sha, hasUpstream, err = repo.Upstream(branch)
+	if err != nil {
+		return "", false, fmt.Errorf("fabricengine: resolve upstream in %s: %w", dir, err)
+	}
+	return sha, hasUpstream, nil
 }
 
 // detachedHeadReason reports mergeReasonDetachedHead when f's warp checkout has HEAD pointing

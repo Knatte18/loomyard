@@ -80,7 +80,7 @@ func seedRepoWideExtraFabricConfig(t testing.TB, hub string) {
 func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	l := h.Location
 	slug := l.WorktreeName
@@ -128,7 +128,7 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 func TestWireJunctions_RefusesRealWarpDirectory(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	l := h.Location
 	slug := l.WorktreeName
@@ -181,7 +181,7 @@ func TestWireJunctions_RefusesRealWarpDirectory(t *testing.T) {
 func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	l := h.Location
 	slug := l.WorktreeName
@@ -230,7 +230,7 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 func TestUnwireJunctions_AlreadyUnwiredIsNoOp(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	l := h.Location
 	slug := l.WorktreeName
@@ -275,7 +275,7 @@ func containsLine(lines []string, name string) bool {
 func TestDetectWarpPollution_LyxTrackedAsRestorable(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	// The hub's prime pair already has _lyx wired (a junction) and excluded (a
@@ -337,7 +337,7 @@ func TestDetectWarpPollution_LyxTrackedAsRestorable(t *testing.T) {
 func TestDetectWarpPollution_ScanErrorIsNonFatal(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	// Corrupt only the warp worktree's index file so `git ls-files` fails
@@ -386,7 +386,7 @@ func TestDetectWarpPollution_ScanErrorIsNonFatal(t *testing.T) {
 func TestDetectWarpPollution_RaddleNoLongerReported(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
 	warpRaddleDir := filepath.Join(l.WorktreePath(), "_raddle")
@@ -507,7 +507,7 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 			t.Run(j.name+"_"+tt.name, func(t *testing.T) {
 				t.Parallel()
 
-				h := hubforge.NewHub(t, ".")
+				h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 				hubforge.SeedFabricConfig(t, h, extraFabricConfigYAML)
 
 				l := h.Location
@@ -549,7 +549,7 @@ func TestReconcile_RepairsOptionalJunctionOnlyDrift(t *testing.T) {
 	t.Parallel()
 
 	const slug = "reconcile-extra-only-drift"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	// hubforge.NewHub seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
 	// default pathspec; override it to "_extra" so Add's own RepoWiredNames-driven wiring (and
@@ -609,7 +609,7 @@ func TestStatus_ReportsOptionalJunctionUnhealthy(t *testing.T) {
 	t.Parallel()
 
 	const slug = "status-extra-unhealthy"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	// hubforge.NewHub seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
 	// default pathspec; override it to "_extra" so Add's own RepoWiredNames-driven wiring (and
@@ -677,7 +677,7 @@ func TestStatus_ReportsOptionalJunctionUnhealthy(t *testing.T) {
 func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	l := h.Location
 	slug := l.WorktreeName
@@ -729,7 +729,7 @@ func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 func TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	l := h.Location
 	slug := l.WorktreeName

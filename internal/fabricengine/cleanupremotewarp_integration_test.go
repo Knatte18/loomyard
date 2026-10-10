@@ -3,7 +3,7 @@
 // cleanupremotewarp_integration_test.go covers Topology.CleanupRemoteWarp against hubforge bare origins:
 // a dry run classifies every branch on the warp origin, apply deletes only the candidate, and a tip that moves after it was observed keeps the branch.
 //
-// Every hub is built through hubforge.NewHub with an empty branch_prefix, so a branch is fabric-managed when the weft origin holds its weft branch.
+// Every hub is built through hubforge.CopyHub with an empty branch_prefix, so a branch is fabric-managed when the weft origin holds its weft branch.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -58,7 +58,7 @@ func remoteWarpEntries(res fabricengine.RemoteWarpCleanupResult) map[string]fabr
 func sweepFixture(t *testing.T) *hubforge.Hub {
 	t.Helper()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, "live", fabricengine.AddOptions{})
 	gitkit.MustRun(t, fabricengine.WorktreePath(h.Location, "live"), "git", "push", "origin", "live")
 

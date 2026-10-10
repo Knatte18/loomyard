@@ -414,7 +414,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// landing is hub-wide: Publish and Finalize read the hub's file, never a pair's copy.
 	landingCfg, err := landingshed.LoadConfig(fabricengine.BoardDir(location.HubPath), "landing")
 	if err != nil {
-		return err
+		return fmt.Errorf("%w; %s", err, hubConfigWayForward)
 	}
 	// burlerengine.LoadConfig takes one argument, not the (baseDir, module) shape every other
 	// loader above takes: it is an optional-file loader, so an absent burler.yaml yields a zero
@@ -542,8 +542,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Cwd:          cwd,
 		AnchorPath:   anchorPath,
 		WorktreeRoot: location.WorktreePath(),
-		VerifyDir:    verifytree.Dir(anchorPath),
-		GateSlots:    hubgeom.GateSlots(location),
+		// RunScratchDir is the directory the step envelope reports as scratch_dir.
+		RunScratchDir: shedrun.ScratchDir(location, c.runID),
+		VerifyDir:     verifytree.Dir(anchorPath),
+		GateSlots:     hubgeom.GateSlots(location),
 		PublishFailure: func() string {
 			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath))
 		},
@@ -595,6 +597,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// benign -- it means only that the next spawn is interviewed differently.
 		DiscussionSpec: func() (shuttleengine.Spec, error) {
 			return loomengine.DiscussionSpec(location, websterGeom.StencilsDir, c.parentName, loomCfg, registry, seedSlug(location.WorktreeName), !loomCfg.DiscussionInteractive)
+		},
+		// DiscussionTable is evaluated per Call for the same stencil-ownership reason as DiscussionSpec.
+		// It is wired whatever discussion_producer holds; only a row built on DiscussionSeats evaluates it.
+		DiscussionTable: func() (seatengine.Table, error) {
+			return loomengine.DiscussionTable(location, websterGeom.StencilsDir, loomCfg, registry, seedSlug(location.WorktreeName))
 		},
 		// CommitDiscussion mirrors the seed commit start.go already performs, including its
 		// NewMutations("") record and its EnvSyncOptions(). The pathspec is the whole discussion
@@ -725,6 +732,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		SegmentBounces: segmentBounces(statusPath, statusLockPath, loomCfg.ReviewMaxBounces),
 
 		ReviewMaxBounces:         loomCfg.ReviewMaxBounces,
+		DiscussionSeats:          loomCfg.DiscussionProducer == loomengine.DiscussionProducerSeats,
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 
 		ReviewModels:  reviewSettings.Models,
@@ -780,6 +788,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	c.location = location
 	c.cwd = cwd
 	c.cfg = loomCfg
+	c.shuttleCfg = shuttleCfg
+	c.stepIdleTimeout = time.Duration(loomCfg.StepIdleTimeoutMin) * time.Minute
 	c.reed = reedEngine
 	c.runDeps = runDeps
 	c.registry = registry
@@ -822,3 +832,6 @@ func segmentBounces(statusPath, statusLockPath string, reviewMaxBounces int) fun
 
 // loomMissingStatusWayForward is the told trailing clause for a missing status file: loom's own start verb is what bootstraps one.
 const loomMissingStatusWayForward = "way forward: run \"lyx loom start\" first to bootstrap this task"
+
+// hubConfigWayForward is the trailing clause for a failed load of the hub-wide landing config: reconciling the hub's config is what restores it.
+const hubConfigWayForward = "way forward: run lyx config reconcile --apply in the hub, then step again"

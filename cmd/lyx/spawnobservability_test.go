@@ -64,9 +64,9 @@ var spawnObservabilityScanRoots = []string{"internal", "cmd"}
 // cmd/lyx/tierpurity_test.go's allowedSpawners and cmd/lyx/sandbox_coverage_test.go's
 // excludedModules style.
 //
-// The first three entries are exemptions INSIDE the rule: each owes a written reason because it is a
-// real spawn site the invariant would otherwise require logged, but is structurally barred from doing
-// so. The last two are OUTSIDE the rule: the walk reaches them because they live under internal/ or
+// The structurally barred entries are exemptions INSIDE the rule: each owes a written reason because it
+// is a real spawn site the invariant would otherwise require logged, but is barred from doing
+// so. The "not governed" entries are OUTSIDE the rule: the walk reaches them because they live under internal/ or
 // cmd/, but they were never governed by this invariant in the first place — a test-fixture builder and
 // a test-timing harness, neither reachable from a lyx command. tools/ sites need no entry at all: the
 // walk never visits tools/.
@@ -89,6 +89,11 @@ var spawnObservabilityAllowedSpawners = []scankit.Entry{
 			"callers instead, internal/selfreportengine/selfreport.go and internal/landingshed/publish.go",
 	},
 	{
+		Key: "internal/proc/tied.go",
+		Why: "structurally barred: internal/logger imports internal/proc, so importing logger here would " +
+			"close an import cycle; the callers of StartTied log the spawn and the teardown",
+	},
+	{
 		Key: "internal/hubforge/hub.go",
 		Why: "not governed: a test-fixture builder, not a code path reachable from a lyx command",
 	},
@@ -107,6 +112,10 @@ var spawnObservabilityAllowedSpawners = []scankit.Entry{
 	{
 		Key: "cmd/testtiming/redundancy.go",
 		Why: "not governed: the redundancy mode of the test-timing harness, not a code path reachable from a lyx command",
+	},
+	{
+		Key: "cmd/testtiming/resources.go",
+		Why: "not governed: the resource mode of the test-timing harness, not a code path reachable from a lyx command",
 	},
 }
 

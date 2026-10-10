@@ -471,7 +471,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 			worktreeRoot := t.TempDir()
 			c := tc.build(t, anchorPath, worktreeRoot)
 
-			gate := loomshed.NewPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+			gate := loomshed.NewPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()))
 			result, err := gate()
 			pv := producerVerdict(result, err)
 
@@ -681,7 +681,7 @@ func TestGateParity_ReworkPlanGate(t *testing.T) {
 			plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 			c := reworkParityFixture(t, anchorPath, worktreeRoot, tt.cardNumber, tt.uses, tt.verify, tt.committed)
 
-			result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()), c.env.Rework.ReadCommitted)()
+			result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()), c.env.Rework.ReadCommitted)()
 			pv := producerVerdict(result, err)
 
 			var out bytes.Buffer

@@ -48,6 +48,7 @@ var intentionallyNil = map[string]string{
 	"Landing.TaskHead":          "loom-only seam, batten lands no branch",
 	"Landing.Shuttle":           "loom-only seam, batten lands no branch",
 	"DiscussionSpec":            "loom-only seam, batten has no discussion segment",
+	"DiscussionTable":           "loom-only seam, batten has no discussion segment",
 	"CommitDiscussion":          "loom-only seam, batten has no discussion segment",
 	"DescribeSpec":              "loom-only seam, batten has no describe segment",
 	"CommitDescription":         "loom-only seam, batten has no describe segment",

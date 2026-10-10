@@ -17,7 +17,7 @@ import (
 func TestFabricHeadSHA_TracksWorktreeHead(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f, err := fabricengine.Open(h.Location)
 	if err != nil {
 		t.Fatalf("fabricengine.Open: %v", err)

@@ -42,7 +42,7 @@ func seedStencil(t *testing.T, hub *hubforge.Hub, name string, content []byte, m
 func TestStencilBaseByStamp(t *testing.T) {
 	t.Parallel()
 
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const name = "loom-template-discussion"
 
 	// A file stamped from an older default is found by that stamp, returning the older default's body.

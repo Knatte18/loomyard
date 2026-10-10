@@ -49,6 +49,9 @@ func TestDiscussionPaths(t *testing.T) {
 			if got, want := DiscussionSupportLog(l), filepath.Join(wantDir, "support-log.md"); got != want {
 				t.Errorf("DiscussionSupportLog() = %q; want %q", got, want)
 			}
+			if got, want := DiscussionAdvisorNotes(l, 2), filepath.Join(wantDir, "advisor-2.md"); got != want {
+				t.Errorf("DiscussionAdvisorNotes(2) = %q; want %q", got, want)
+			}
 			if got, want := DiscussionDir(l), filepath.Join(l.AnchorPath(), DiscussionDirRel()); got != want {
 				t.Errorf("DiscussionDir() = %q; want it to equal the anchor joined with DiscussionDirRel(), %q", got, want)
 			}

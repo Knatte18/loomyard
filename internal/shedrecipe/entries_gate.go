@@ -1,4 +1,4 @@
-// entries_gate.go implements resolveGateSpec, the shared resolver every gate-capable entry (DiscussionWrite, PlanWrite, Describe, BurlerRound, Webster, PRRework) calls to turn its row's "gates" Config key into a shuttleengine.GateSpec.
+// entries_gate.go implements resolveGateSpec, the shared resolver every gate-capable entry calls to turn its row's "gates" Config key into a shuttleengine.GateSpec.
 //
 // Each element selects a validator by a declared name resolved against Env, exactly as bouncerEntry already resolves "commit_seam"/"approve_seam" against Env.CommitPlan/Env.CommitDiscussion/Env.ApprovePlan.
 // Selecting the validator by switching on the row's own Name was rejected: that would make row
@@ -178,7 +178,7 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 		if err := requireSeam(entry, "PlanIndex", env.PlanIndex); err != nil {
 			return nil, err
 		}
-		return loomshed.NewPlanGate(env.AnchorPath, env.WorktreeRoot, env.PlanIndex), nil
+		return loomshed.NewPlanGate(env.AnchorPath, env.WorktreeRoot, env.RunScratchDir, env.PlanIndex), nil
 	case "rework-plan":
 		if err := requireAbsRoot(entry, "AnchorPath", env.AnchorPath); err != nil {
 			return nil, err
@@ -192,7 +192,7 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 		if err := requireSeam(entry, "Rework.ReadCommitted", env.Rework.ReadCommitted); err != nil {
 			return nil, err
 		}
-		return loomshed.NewReworkPlanGate(env.AnchorPath, env.WorktreeRoot, env.PlanIndex, env.Rework.ReadCommitted), nil
+		return loomshed.NewReworkPlanGate(env.AnchorPath, env.WorktreeRoot, env.RunScratchDir, env.PlanIndex, env.Rework.ReadCommitted), nil
 	case "description":
 		if err := requireAbsRoot(entry, "DescriptionPath", env.DescriptionPath); err != nil {
 			return nil, err

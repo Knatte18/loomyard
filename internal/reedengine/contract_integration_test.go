@@ -399,7 +399,7 @@ func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	socket := tmuxkit.Socket(t, cfg.Tmux)
+	socket := tmuxkit.PackageServer(t, cfg.Tmux)
 	// sibling's name deliberately extends session's, so any prefix-match
 	// fallback in the binary would resolve session-targets onto the sibling
 	// once the exact-named session is gone.
@@ -475,7 +475,7 @@ func TestDisplayMessageDoesNotErrorForAnAbsentSession(t *testing.T) {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	socket := tmuxkit.Socket(t, cfg.Tmux)
+	socket := tmuxkit.PackageServer(t, cfg.Tmux)
 	const present = "absent-probe-present"
 	const absent = "absent-probe-missing"
 	reed := NewTmuxCmd(cfg.Tmux, socket)
@@ -541,7 +541,7 @@ func TestSessionNameRewriteIsSilentAndExactTargetsMissIt(t *testing.T) {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	socket := tmuxkit.Socket(t, cfg.Tmux)
+	socket := tmuxkit.PackageServer(t, cfg.Tmux)
 	reed := NewTmuxCmd(cfg.Tmux, socket)
 
 	tests := []struct {
@@ -588,8 +588,8 @@ func TestSessionNameRewriteIsSilentAndExactTargetsMissIt(t *testing.T) {
 			// new-session then races that asynchronous teardown ("server exited
 			// unexpectedly", observed while writing this test — the same
 			// async-kill hazard lifecycle.go's own doc comment describes).
-			// Every case's session is torn down together by the kill-server in
-			// t.Cleanup above.
+			// Every case's session is torn down together by the package
+			// server's kill-server when the package ends.
 		})
 	}
 }

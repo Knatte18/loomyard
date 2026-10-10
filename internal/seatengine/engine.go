@@ -176,7 +176,7 @@ func (e *Engine) startSeat(table Table, seat Seat, names map[string]string, fail
 	if err != nil {
 		return nil, err
 	}
-	prompt, err := composePrompt(e.geom.StencilsDir, seat, values)
+	prompt, err := composeSeatPrompt(e.geom.StencilsDir, seat, values, table.Optional)
 	if err != nil {
 		return nil, err
 	}

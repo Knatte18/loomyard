@@ -1,7 +1,6 @@
 // settings.go composes the Claude Code settings.json document Prepare writes for each run:
 // a Stop hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents reads).
-// The UserPromptSubmit, StopFailure, Notification and SessionEnd hooks append their payloads to the same file for ParseSessionSignals,
-// and so does the SessionStart hook of a run whose spec sets a context-after-compaction command, which then runs that command so its output joins the session's context.
+// The UserPromptSubmit, StopFailure, Notification and SessionEnd hooks append their payloads to the same file for ParseSessionSignals, and so does the SessionStart hook of a run whose spec sets a context-after-compaction command, which then runs that command so its output joins the session's context.
 // Every recording hook writes a stamp line with the hook-side time before its payload, which ParseEvents skips.
 // The document also carries the PreToolUse guardrails that keep a run's work visible in its own pane —
 // denying the in-process Agent tool (or, in a fork-mode run, letting fork subagents through it while still denying every other subagent type; a run with Spec.AllowAgentTool set installs no Agent deny at all),
@@ -55,7 +54,7 @@ const commandPositionPattern = `("command"[[:space:]]*:[[:space:]]*"|\\n|[;&|(` 
 const pythonCommandPattern = commandPositionPattern + `python(3(\.[0-9]+)?)?([^A-Za-z0-9_./-]|$)`
 
 // steerRawGoDeny refuses a Bash go run that bypasses the gate slots; it must contain no single/double quote or backslash (checked at init).
-const steerRawGoDeny = "raw module-wide, tmux-tier and llm-tier go runs are refused here. Run the package-scoped command through lyx gate test as a background Bash call, for example lyx gate test ./internal/x, and use its --tags flag for a tag. The slot and strand environment variables belong to lyx, and a command naming either is refused"
+const steerRawGoDeny = "raw module-wide, tmux-tier and llm-tier go runs are refused here. Run the package-scoped command through lyx gate test as a background Bash call, for example lyx gate test ./internal/x, and use its --tags flag for a tag. The slot, strand and prebuilt-binary environment variables belong to lyx, and a command naming any of them is refused"
 
 // noticeRawGoDeny announces the raw go deny in the same wording as its steer.
 const noticeRawGoDeny = steerRawGoDeny + "."
@@ -73,13 +72,13 @@ const goWordPattern = `[^[:space:]"\\;&|()` + "`" + `]*`
 // It matches three shapes.
 // A go test, build or vet whose arguments include a word holding ... or the word all.
 // A go test whose -tags value names tmux or llm.
-// Any command naming the slot-inheritance variable or the strand-name variable.
+// Any command naming the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable.
 // It sees static text only, so it is a guardrail and not a barrier:
 // a run hidden behind a script, bash -c, a cd plus a relative pattern it does not cover, or a shell variable passes, as does any raw package-scoped go test.
 // It falsely denies a matching spelling inside a quoted argument, a commit message or a grep.
 const rawGoCommandPattern = `(` + goSubcommandPattern + `(test|build|vet)[[:space:]]` + goArgumentsPattern + `(` + goWordPattern + `\.\.\.` + goWordPattern + `|all)([[:space:]"\\;&|()` + "`" + `]|$))` +
 	`|(` + goSubcommandPattern + `test[[:space:]]` + goArgumentsPattern + `-{1,2}tags[[:space:]=]+[^[:space:];&|]*(tmux|llm))` +
-	`|` + gateslot.InheritEnv + `|` + agentname.StrandNameEnv
+	`|` + gateslot.InheritEnv + `|` + agentname.StrandNameEnv + `|` + gateslot.PrebuiltLyxEnv
 
 // noticeAgentDeny announces the Agent deny in a non-fork run;
 // it must hold for every session that receives it.

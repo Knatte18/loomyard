@@ -1,7 +1,7 @@
 //go:build tmux
 
 // smoke_drivingsurface_test.go pins the live-substrate properties behind a run's driving surface.
-// On the start side, an llm-seeded start removes every status strand.
+// On the start side, an llm-seeded start leaves exactly one status strand.
 // On the step side, "lyx loom step" and "lyx shed step" bring reed up and never add, replace or remove a status strand, whatever driver the run was seeded with.
 // ensureStatusStrand's branches are pinned at Tier 1 through resolveStatusStrandAction;
 // what only a real tmux server can show is that a step leaves reed's strand table without a status strand, and leaves a pre-existing one alone.
@@ -17,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 // verbSmokeTimeout bounds one step or `start --no-attach` invocation.
@@ -28,7 +29,7 @@ const verbSmokeTimeout = 60 * time.Second
 // The step that adds a status strand builds on the reed session the step before it brought up, and the strand it adds stays for the steps after it.
 func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 
 	requireNoStatusStrandAfter := func(t *testing.T, loc *lyxcwd.Location, worktree, verb string, args ...string) {
 		t.Helper()
@@ -103,10 +104,10 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 			requireNoStatusStrandAfter(t, loc, worktree, "shed step", "shed", "step")
 		})
 
-		// An llm-seeded start removes the status strand the session holds.
+		// An llm-seeded start leaves exactly one status strand, as a go-seeded one does.
 		// Reed refuses a second strand under the same agent name, so a duplicate can no longer be built here.
-		// The providerless shuttle config makes the driver launch fail, which the step ignores: the removal runs before the driver spawn.
-		t.Run("start removes every status strand", func(t *testing.T) {
+		// The providerless shuttle config makes the driver launch fail, which the step ignores: the status strand is ensured before the driver spawn.
+		t.Run("start keeps one status strand", func(t *testing.T) {
 			eng := probeReedEngine(t, loc)
 			if _, err := eng.Up(); err != nil {
 				t.Fatalf("reed up: %v", err)
@@ -123,8 +124,8 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 				t.Fatalf("lyx loom start --no-attach: %v; output: %s", err, out)
 			}
 
-			if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 0 {
-				t.Errorf("status strands after an llm-seeded start = %d; want 0; output: %s", count, out)
+			if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {
+				t.Errorf("status strands after an llm-seeded start = %d; want exactly 1; output: %s", count, out)
 			}
 		})
 	})

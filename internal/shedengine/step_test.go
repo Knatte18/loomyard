@@ -575,3 +575,104 @@ func TestStep_ToldMissingStatusWayForward(t *testing.T) {
 		t.Errorf("Step(...) error = %q; want the told clause and not lyx shed seed", err.Error())
 	}
 }
+
+func TestStep_PauseBeforeCondition(t *testing.T) {
+	tests := []struct {
+		name           string
+		current        string
+		pauseRequested bool
+		wantPaused     bool
+	}{
+		{"fires at the target and clears the condition", "B", false, true},
+		{"fires at the target and consumes a set pause_requested", "B", true, true},
+		{"does not fire at another row", "A", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shed, statusPath, _, statusLockPath := newTestShed(t)
+			b := fixedOutcomeProducer(Done, "")
+			shed.Producers = []ProducerDef{
+				{Name: "A", Producer: fixedOutcomeProducer(Done, ""), OnDone: "B"},
+				{Name: "B", Producer: b},
+			}
+			seed := commonSeed(tt.current)
+			seed.PauseBefore = "B"
+			seed.PauseRequested = tt.pauseRequested
+			seedStatus(t, statusPath, statusLockPath, seed)
+
+			res, err := shed.Step(context.Background())
+			if err != nil {
+				t.Fatalf("Step(...) = _, %v; want nil error", err)
+			}
+			got := readStatus(t, statusPath, statusLockPath)
+			if !tt.wantPaused {
+				if res.State != StateRunning || got.PauseBefore != "B" {
+					t.Errorf("State, persisted PauseBefore = %q, %q; want running with the condition still recorded", res.State, got.PauseBefore)
+				}
+				return
+			}
+			if res.State != StatePaused || res.Next != "B" || res.Reason != "paused before B, as requested" {
+				t.Errorf("State, Next, Reason = %q, %q, %q; want paused, B, %q", res.State, res.Next, res.Reason, "paused before B, as requested")
+			}
+			if got.State != StatePaused || got.PauseBefore != "" || got.PauseAfter != "" || got.PauseRequested {
+				t.Errorf("persisted State, PauseBefore, PauseAfter, PauseRequested = %q, %q, %q, %v; want paused with both conditions and the flag cleared", got.State, got.PauseBefore, got.PauseAfter, got.PauseRequested)
+			}
+			if b.calls != 0 {
+				t.Errorf("producer B calls = %d; want 0", b.calls)
+			}
+		})
+	}
+}
+
+func TestStep_PauseAfterCondition(t *testing.T) {
+	tests := []struct {
+		name          string
+		outcome       Outcome
+		pauseAfter    string
+		wantState     State
+		wantNext      string
+		wantCondition string
+	}{
+		{"a Done routed on fires", Done, "A", StatePaused, "B", ""},
+		{"a bounced Stuck fires at its OnStuck row", Stuck, "A", StatePaused, "C", ""},
+		{"a halting outcome leaves the condition recorded", Awaiting, "A", StateAwaiting, "A", "A"},
+		{"a target the run has not reached fires on the pass that reaches it", Done, "B", StateRunning, "B", "B"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shed, statusPath, _, statusLockPath := newTestShed(t)
+			shed.Producers = []ProducerDef{
+				{Name: "A", Producer: fixedOutcomeProducer(tt.outcome, ""), OnDone: "B", OnStuck: "C"},
+				{Name: "B", Producer: fixedOutcomeProducer(Done, ""), OnDone: "C"},
+				{Name: "C", Producer: fixedOutcomeProducer(Done, "")},
+			}
+			seed := commonSeed("A")
+			seed.PauseAfter = tt.pauseAfter
+			seedStatus(t, statusPath, statusLockPath, seed)
+
+			res, err := shed.Step(context.Background())
+			if err != nil {
+				t.Fatalf("Step(...) = _, %v; want nil error", err)
+			}
+			if res.State != tt.wantState || res.Next != tt.wantNext {
+				t.Errorf("State, Next = %q, %q; want %q, %q", res.State, res.Next, tt.wantState, tt.wantNext)
+			}
+			if got := readStatus(t, statusPath, statusLockPath); got.PauseAfter != tt.wantCondition || got.PauseBefore != "" {
+				t.Errorf("persisted PauseAfter = %q; want %q", got.PauseAfter, tt.wantCondition)
+			}
+			if tt.wantState == StatePaused && res.Reason != "paused after A, as requested" {
+				t.Errorf("Reason = %q; want %q", res.Reason, "paused after A, as requested")
+			}
+			if tt.wantCondition == "B" {
+				// The target B has not run yet: the next pass runs it and fires the condition.
+				next, err := shed.Step(context.Background())
+				if err != nil {
+					t.Fatalf("second Step(...) = _, %v; want nil error", err)
+				}
+				if next.State != StatePaused || next.Reason != "paused after B, as requested" {
+					t.Errorf("second Step State, Reason = %q, %q; want paused after B", next.State, next.Reason)
+				}
+			}
+		})
+	}
+}

@@ -992,6 +992,15 @@
 // `record()`'s side of the race is closed; the reverse direction, against `RebuildIndex`'s own
 // scan-to-write span, is not.
 //
+// # Git geometry and ref reads
+//
+// Geometry and ref lookups run in-process through `gitrepo`: the git dir, common dir, branch existence, a ref's SHA, the current branch, a branch's upstream and a ref's tree.
+// A `rev-parse` spawn survives only where git derives the answer from config or revision syntax:
+//
+//   - `InstallPostCheckoutHook` asks `--git-path hooks`, which honours `core.hooksPath`.
+//   - `resolveArchiveTip` resolves `FETCH_HEAD^{commit}`, revision syntax over git's fetch output.
+//   - websterengine's `--disambiguate` and `<commit>:<path>` probes are git's own disambiguation.
+//
 // # The merge surface
 //
 // **The two verbs, and why there are two.** `MergeIn(source)` (merge.go) merges `source` into the

@@ -42,7 +42,7 @@ func TestCorrespondenceIndex(t *testing.T) {
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := hubforge.NewHub(t, ".")
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	// weftGitDir returns a path genuinely inside the weft worktree's own .git directory — the

@@ -108,11 +108,9 @@ func (c *loomCLI) resolveRunID(location *lyxcwd.Location, verb string, args []st
 		return err
 	}
 	// Rendered through shedrun.MissingSeedMessage, the shared renderer batch 1 card 3 declares, so
-	// this refusal words identically to battencli's own. The rendered text carries no "kind" field:
-	// it surfaces through resolvePersistentPreRun's own output.Err(out, err.Error()) path, which is
-	// kind-less by construction, never through step's own output.ErrFields envelope -- this refusal
-	// fires before PreStep ever runs.
-	return errors.New(shedrun.MissingSeedMessage("loom", runID, existing, `run "lyx loom start" first to bootstrap this task`))
+	// this refusal words identically to battencli's own.
+	// KindlessRefusal keeps it kind-less on step too, since resolvePersistentPreRun reports it through shedverbs.ReportArmError.
+	return shedverbs.KindlessRefusal{Err: errors.New(shedrun.MissingSeedMessage("loom", runID, existing, `run "lyx loom start" first to bootstrap this task`))}
 }
 
 // arm resolves cwd into a *lyxcwd.Location and delegates to armAt with the raw positional args,
@@ -126,6 +124,8 @@ func (c *loomCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec, e
 		// sentinel); pass it through bare rather than doubling that same text on top of it.
 		return shedverbs.Spec{}, err
 	}
+	// Recorded before the reconcile and armAt so a refusal from any later arming stage finds the location set.
+	c.location = location
 
 	// A start verb reconciles the hub's config after a binary change before armAt loads any module config.
 	// A strict load of a file still carrying a retired key would otherwise refuse the verb before the reconcile that removes the key.
@@ -259,6 +259,8 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		spec.ScratchDir = shedrun.ScratchDir(c.location, c.runID)
 		spec.StepsDir = shedrun.StepsDir(c.location, c.runID)
 		spec.RunID = shedrun.ResolveRunID(c.location, c.runID)
+		spec.Loop = loopSpecFor(c.location, c.runID, c.stepIdleTimeout, agentActivityFor(c.location, c.shuttleCfg))
+		spec.Hooks.AfterInterrupt = c.loomAfterInterrupt
 	}
 	spec.Routing = c.routing
 
@@ -421,9 +423,8 @@ func (c *loomCLI) loomPostRun(ctx context.Context, result shedengine.Result, run
 // loomPreStep implements the PreStep hook for loom's spec: the early run-lock probe, then step's bootstrap, then reed Up -- today's stepCmd body, in today's order, each returned error paired with its refusal kind.
 //
 // Up stays because the producers under step spawn agents into reed panes.
-// Step never adds or removes the status strand:
-// removal needs the driver, which step must not read,
-// and an unconditional removal would strip the band from a halted go run an operator steps by hand.
+// Step never adds or removes the status strand, which `start` ensures on every run,
+// and an unconditional removal would strip the band from a halted run an operator steps by hand.
 //
 // On success it takes the entry observation (noteCrashResumeAtEntry), after the busy probe, the bootstrap and reed Up and still before shed.Step, so a refused step never spends the handoff voucher and the previous step's completed aftermath matches it rather than reading as a crash.
 //

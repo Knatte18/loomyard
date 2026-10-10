@@ -1,8 +1,8 @@
 # Top-level test functions per package, in its _test.go files under every build tag.
 # TestTestBudget_PackagesStayWithinBudget fails when a package exceeds its row or has tests and no row.
 # Raise a row in the commit that adds the tests that need it.
-cmd/lyx: 71
-cmd/testtiming: 13
+cmd/lyx: 72
+cmd/testtiming: 21
 contracts/specs: 3
 contracts/stencils: 16
 internal/agentname: 7
@@ -18,7 +18,7 @@ internal/buildvcs: 2
 internal/burlercli: 19
 internal/burlerengine: 39
 internal/burlermarker: 1
-internal/clihelp: 11
+internal/clihelp: 12
 internal/cliwire: 12
 internal/commentlint: 3
 internal/configcli: 10
@@ -26,6 +26,7 @@ internal/configengine: 13
 internal/configreg: 7
 internal/configsync: 6
 internal/discussionparser: 16
+internal/dotgit: 3
 internal/editdirective: 2
 internal/envsource: 3
 internal/fabriccli: 21
@@ -39,10 +40,10 @@ internal/gatecli: 3
 internal/gateslot: 11
 internal/gitexec: 7
 internal/githubclient: 11
-internal/gitkit: 8
+internal/gitkit: 9
 internal/gitrepo: 40
 internal/gitrepo/internal/gitoracle: 1
-internal/hubforge: 5
+internal/hubforge: 7
 internal/hubgeom: 11
 internal/hubreconcile: 18
 internal/idecli: 2
@@ -52,9 +53,9 @@ internal/landingshed: 67
 internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
-internal/loomcli: 183
-internal/loomengine: 39
-internal/loomrecipe: 45
+internal/loomcli: 185
+internal/loomengine: 41
+internal/loomrecipe: 46
 internal/loomshed: 73
 internal/lyxcwd: 23
 internal/mergeresolve: 17
@@ -62,7 +63,7 @@ internal/modelspec: 11
 internal/orchcli: 25
 internal/orchengine: 131
 internal/output: 4
-internal/pairteardown: 5
+internal/pairteardown: 6
 internal/parentdirective: 4
 internal/parentreview: 53
 internal/pattern: 7
@@ -70,7 +71,7 @@ internal/planglyph: 83
 internal/planparser: 86
 internal/preflight: 7
 internal/preflightshed: 8
-internal/proc: 12
+internal/proc: 17
 internal/quarrycli: 7
 internal/reedcli: 38
 internal/reedengine: 242
@@ -83,11 +84,11 @@ internal/shedadapters: 159
 internal/shedbuild: 13
 internal/shedcheck: 3
 internal/shedcli: 17
-internal/shedengine: 130
-internal/shedrecipe: 99
+internal/shedengine: 133
+internal/shedrecipe: 100
 internal/shedrun: 22
 internal/shedtransient: 2
-internal/shedverbs: 65
+internal/shedverbs: 80
 internal/shell: 12
 internal/shuttlecli: 22
 internal/shuttleengine: 161
@@ -106,13 +107,13 @@ internal/testkit/envkit: 4
 internal/testkit/llmkit: 1
 internal/testkit/locationkit: 2
 internal/testkit/logcapture: 5
-internal/testkit/lyxbin: 3
+internal/testkit/lyxbin: 5
 internal/testkit/plankit: 4
 internal/testkit/scankit: 10
 internal/testkit/shedfake: 9
 internal/testkit/shuttlefake: 8
 internal/testkit/stencilkit: 3
-internal/testkit/tmuxkit: 9
+internal/testkit/tmuxkit: 14
 internal/treadleengine: 34
 internal/verifyrun: 4
 internal/verifytree: 7
