@@ -5,6 +5,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -39,8 +40,10 @@ type resourceRow struct {
 	procsKnown bool
 	// leftovers lists every process still referencing the package's temp directory after the child exited, as "pid argv".
 	leftovers []string
-	failed    bool
-	noTests   bool
+	// census counts the git processes the package ran, split on the fixture marker.
+	census  gitCensus
+	failed  bool
+	noTests bool
 }
 
 // cgroupPollInterval is how often a running scope's cgroup counters are sampled; the scope vanishes with its last process, so the last sample is the reading.
@@ -79,7 +82,8 @@ func runResources(tags, pkgFlag string) error {
 	loadBefore := readLoadAverage()
 	rows := make([]resourceRow, 0, len(packages))
 	for _, importPath := range packages {
-		tmpDir, err := os.MkdirTemp("", "testtiming-resources-*")
+		// The prefix stays short because a tmux socket path under the child's TMPDIR must fit sun_path.
+		tmpDir, err := os.MkdirTemp("", "ttr-*")
 		if err != nil {
 			return fmt.Errorf("create a temp directory for %s: %w", importPath, err)
 		}
@@ -93,6 +97,7 @@ func runResources(tags, pkgFlag string) error {
 	loadAfter := readLoadAverage()
 
 	fmt.Print(renderResources(tier, rows, loadBefore, loadAfter, systemdScopeUsable()))
+	fmt.Print("\n", renderCensus(rows))
 
 	var failed []string
 	for _, row := range rows {
@@ -155,7 +160,14 @@ func measurePackageResources(tags, importPath, tmpDir string, env []string, para
 		name, args = "systemd-run", append([]string{"--user", "--scope", "--quiet", "--", "go"}, goArgs...)
 	}
 	cmd := exec.Command(name, args...)
+	traceDir, err := os.MkdirTemp("", "ttt-*")
+	if err != nil {
+		return resourceRow{}, fmt.Errorf("create a trace directory for %s: %w", importPath, err)
+	}
+	defer os.RemoveAll(traceDir)
+
 	cmd.Env = append(append([]string(nil), env...), "TMPDIR="+tmpDir, "TMP="+tmpDir, "TEMP="+tmpDir)
+	cmd.Env = append(cmd.Env, traceEnv(traceDir)...)
 	cmd.Stderr = os.Stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -171,11 +183,16 @@ func measurePackageResources(tags, importPath, tmpDir string, env []string, para
 	sampler := newScopeSampler(cmd.Process.Pid, scoped)
 	pkgs := map[string]*pkgResult{}
 	var tests []testResult
+	var transcript strings.Builder
 	reader := bufio.NewReader(stdout)
 	for {
 		line, readErr := reader.ReadBytes('\n')
 		if len(line) > 0 {
 			parseLine(line, pkgs, &tests)
+			var event testEvent
+			if json.Unmarshal(line, &event) == nil && event.Action == "output" {
+				transcript.WriteString(event.Output)
+			}
 		}
 		if readErr != nil {
 			if !errors.Is(readErr, io.EOF) {
@@ -194,6 +211,9 @@ func measurePackageResources(tags, importPath, tmpDir string, env []string, para
 		row.failed = row.failed || result.action == "fail"
 		row.noTests = result.noTests
 	}
+	if row.failed {
+		fmt.Fprintf(os.Stderr, "testtiming: %s failed; go test output:\n%s", importPath, transcript.String())
+	}
 	if sampled {
 		row.cpu, row.peakBytes = cpu, peak
 	} else {
@@ -204,6 +224,9 @@ func measurePackageResources(tags, importPath, tmpDir string, env []string, para
 		row.procs, row.procsKnown = forksAfter-forksBefore, true
 	}
 	row.leftovers = leftoverProcesses(tmpDir)
+	if row.census, err = readCensus(traceDir); err != nil {
+		return resourceRow{}, fmt.Errorf("census of %s: %w", importPath, err)
+	}
 	return row, nil
 }
 
@@ -417,16 +440,19 @@ func renderResources(tier string, rows []resourceRow, loadBefore, loadAfter stri
 
 	var out strings.Builder
 	fmt.Fprintf(&out, "Resources  —  %s\n\n", tier)
-	fmt.Fprintf(&out, "%-40s  %8s  %8s  %9s  %6s  %8s\n", "PACKAGE", "WALL", "CPU", "PEAK_MEM", "PROCS", "LEFTOVER")
-	fmt.Fprintf(&out, "%-40s  %8s  %8s  %9s  %6s  %8s\n", strings.Repeat("-", 40), "--------", "--------", "---------", "------", "--------")
+	fmt.Fprintf(&out, "%-40s  %8s  %8s  %9s  %6s  %8s  %11s  %8s\n", "PACKAGE", "WALL", "CPU", "PEAK_MEM", "PROCS", "LEFTOVER", "GIT_FIXTURE", "GIT_CODE")
+	fmt.Fprintf(&out, "%-40s  %8s  %8s  %9s  %6s  %8s  %11s  %8s\n", strings.Repeat("-", 40), "--------", "--------", "---------", "------", "--------", "-----------", "--------")
 
 	var wall, cpu time.Duration
 	var procs int64
+	var gitFixture, gitCode int
 	var leftoverLines []string
 	for _, row := range ordered {
 		wall += row.wall
 		cpu += row.cpu
 		procs += row.procs
+		gitFixture += row.census.fixture
+		gitCode += row.census.code
 		marks := ""
 		if row.rusage {
 			marks += "  rusage"
@@ -434,13 +460,13 @@ func renderResources(tier string, rows []resourceRow, loadBefore, loadAfter stri
 		if row.failed {
 			marks += "  FAIL"
 		}
-		fmt.Fprintf(&out, "%-40s  %8s  %8s  %9s  %6s  %8d%s\n",
-			shortPkg(row.pkg), formatSeconds(row.wall), formatSeconds(row.cpu), formatMegabytes(row.peakBytes), formatProcs(row), len(row.leftovers), marks)
+		fmt.Fprintf(&out, "%-40s  %8s  %8s  %9s  %6s  %8d  %11d  %8d%s\n",
+			shortPkg(row.pkg), formatSeconds(row.wall), formatSeconds(row.cpu), formatMegabytes(row.peakBytes), formatProcs(row), len(row.leftovers), row.census.fixture, row.census.code, marks)
 		for _, leftover := range row.leftovers {
 			leftoverLines = append(leftoverLines, fmt.Sprintf("  %s: %s", shortPkg(row.pkg), leftover))
 		}
 	}
-	fmt.Fprintf(&out, "%-40s  %8s  %8s  %9s  %6d  %8s\n", "TOTAL", formatSeconds(wall), formatSeconds(cpu), "", procs, "")
+	fmt.Fprintf(&out, "%-40s  %8s  %8s  %9s  %6d  %8s  %11d  %8d\n", "TOTAL", formatSeconds(wall), formatSeconds(cpu), "", procs, "", gitFixture, gitCode)
 
 	if len(leftoverLines) > 0 {
 		out.WriteString("\nLeftover processes (pid argv):\n")

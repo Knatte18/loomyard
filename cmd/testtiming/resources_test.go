@@ -85,7 +85,8 @@ func TestRenderResources(t *testing.T) {
 	t.Parallel()
 
 	rows := []resourceRow{
-		{pkg: testPkgPrefix + "internal/quick", wall: time.Second, cpu: 2 * time.Second, peakBytes: 64 << 20, procs: 10, procsKnown: true},
+		{pkg: testPkgPrefix + "internal/quick", wall: time.Second, cpu: 2 * time.Second, peakBytes: 64 << 20, procs: 10, procsKnown: true,
+			census: gitCensus{fixture: 5, code: 7}},
 		{pkg: testPkgPrefix + "internal/slow", wall: 3 * time.Second, cpu: 4 * time.Second, peakBytes: 128 << 20, rusage: true, failed: true,
 			leftovers: []string{"4321 tmux -S /tmp/x/sock"}},
 	}
@@ -94,7 +95,7 @@ func TestRenderResources(t *testing.T) {
 
 	for _, want := range []string{
 		"Resources  —  Tags: tmux",
-		"PACKAGE", "WALL", "CPU", "PEAK_MEM", "PROCS", "LEFTOVER",
+		"PACKAGE", "WALL", "CPU", "PEAK_MEM", "PROCS", "LEFTOVER", "GIT_FIXTURE", "GIT_CODE",
 		"internal/slow", "3.00s", "128.0M", "rusage  FAIL",
 		"internal/quick", "64.0M",
 		"TOTAL", "4.00s", "6.00s",

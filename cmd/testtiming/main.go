@@ -27,6 +27,9 @@
 // CPU and PEAK_MEM come from the child's cgroup when `systemd-run --user --scope` works, read from cpu.stat's usage_usec and memory.peak while the scope lives, and from the child's rusage otherwise, where PEAK_MEM is the largest single process's max RSS and the row carries a rusage mark.
 // PROCS is the delta of the `processes` line of /proc/stat across the child, so it is system-wide and blank where /proc/stat is unreadable.
 // LEFTOVER counts the processes still referencing the package's temp directory through cwd, executable or argv after the child exited; a trailing list names each as `pid argv`.
+// GIT_FIXTURE and GIT_CODE count the git processes the package ran, split on the fixture marker `LYX_FIXTURE_GIT`: git that gitkit's spawn helpers or a hub build started carries it, and all other git is code under test.
+// The census reads git's trace2 event files, one per git process, from a trace directory the child's environment points at, and a second table after the first lists the processes by subcommand with total, fixture and code counts.
+// The split is exact for a serial package and approximate where a hub build overlaps other tests of the same package, so a before-to-after comparison reads the total.
 // The table ends with the one-minute load average at start and at end, so a report reads "quiet machine" as a precondition.
 // The measurements are Linux-first: elsewhere the cgroup and /proc readings are absent and the columns that need them stay blank.
 // -resources together with -redundancy is refused.
