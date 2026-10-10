@@ -5,11 +5,15 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // Bolt is a handle over a single weft:main-backed repo path with no paired warp side — the
@@ -64,4 +68,194 @@ func (b *Bolt) Push(opts SyncOptions) error {
 // Sync drives step to completion under an absorbing push lock, looping while step reports progress.
 func (b *Bolt) Sync(step func() (progressed bool, err error)) error {
 	return coalescePush(filepath.Join(b.path, "board.push.lock"), step)
+}
+
+// BoltSkip names why a pull-first write did not run: Bolt could not be brought up to date.
+// The empty value means Bolt is up to date and the writes ran.
+type BoltSkip string
+
+const (
+	// BoltSkipFetchFailed means the fetch from the remote failed.
+	BoltSkipFetchFailed BoltSkip = "fetch_failed"
+	// BoltSkipDiverged means Bolt holds commits the moved upstream lacks and they could not be replayed onto it.
+	BoltSkipDiverged BoltSkip = "diverged"
+	// BoltSkipDirty means an uncommitted change in Bolt blocked bringing it up to date.
+	BoltSkipDirty BoltSkip = "dirty"
+)
+
+// BoltWrite is one write PullThenCommitWritten runs: Write returns the board-relative paths it wrote, committed under Message.
+type BoltWrite struct {
+	Message string
+	Write   func() ([]string, error)
+}
+
+// BoltWriteResult reports what PullThenCommitWritten did.
+// SHAs lists the landed commits in order, Committed is true when any landed, and a non-empty Skipped means no write ran, with SkipDetail naming the way forward.
+type BoltWriteResult struct {
+	MutationRecord
+	SHAs       []string
+	Committed  bool
+	Skipped    BoltSkip
+	SkipDetail string
+}
+
+// PullThenCommitWritten brings Bolt up to date with its upstream, then runs each write in order and commits each one's paths as its own commit.
+// It is CommitWritten's pull-first sibling for callers that must not write over a stale copy: when Bolt cannot be brought up to date, nothing is written and the result's Skipped says why.
+// Bolt without an upstream writes as CommitWritten does.
+//
+// The board write lock is held across the pull and every write.
+// A write or commit error stops the sequence and is returned with the commits already landed kept in the result.
+// An empty path list commits nothing.
+// It never pushes.
+func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res BoltWriteResult, err error) {
+	l, err := lock.AcquireWriteLock(filepath.Join(b.path, BoardWriteLockFile))
+	if err != nil {
+		return BoltWriteResult{}, fmt.Errorf("fabricengine: acquire board write lock: %w", err)
+	}
+	defer func() { _ = l.Release() }()
+
+	defer func() { res.Mutations = rec.Snapshot() }()
+
+	skip, detail, err := b.pullFirst(rec)
+	if err != nil {
+		return BoltWriteResult{}, err
+	}
+	if skip != "" {
+		return BoltWriteResult{Skipped: skip, SkipDetail: detail}, nil
+	}
+
+	repo := gitrepo.New(b.path)
+	for _, write := range writes {
+		paths, err := write.Write()
+		if err != nil {
+			return res, err
+		}
+		for _, path := range paths {
+			rec.Append(KindFileWritten, filepath.Join(b.path, path), "")
+		}
+		if len(paths) == 0 {
+			continue
+		}
+		sha, committed, err := repo.StageAndCommit(write.Message, ScopedPathspec(".", paths))
+		if err != nil {
+			return res, err
+		}
+		if committed {
+			rec.Append(KindCommitCreated, b.path, sha)
+			res.SHAs = append(res.SHAs, sha)
+			res.Committed = true
+		}
+	}
+	return res, nil
+}
+
+// pullFirst brings Bolt up to date with its upstream and reports why it could not, as a skip with a detail naming the way forward.
+// The caller holds the board write lock.
+// pullFirst also holds the push lock in the board dir for its whole run, taken after the board write lock.
+// A coalesced push rebases the board under that lock and never takes the write lock, so without it a push could rebase the board mid-drop.
+//
+// A Bolt with no upstream is left alone.
+// Seed commits ahead of a moved upstream are dropped and the remaining commits replayed;
+// a Bolt only behind is fast-forwarded.
+// Each skip is logged at Warn here, once, so no caller repeats the text.
+func (b *Bolt) pullFirst(rec *Mutations) (BoltSkip, string, error) {
+	pushLock, err := lock.AcquireWriteLock(filepath.Join(b.path, gitrepo.PushLockFileName))
+	if err != nil {
+		return "", "", fmt.Errorf("fabricengine: acquire push lock: %w", err)
+	}
+	defer func() { _ = pushLock.Release() }()
+
+	repo := gitrepo.New(b.path)
+	if err := repo.Fetch(); err != nil {
+		if _, upstreamErr := repo.UpstreamSHA(); errors.Is(upstreamErr, gitrepo.ErrNoUpstream) {
+			return "", "", nil
+		}
+		return b.skip(BoltSkipFetchFailed, fmt.Sprintf("fetching %s for the board at %s failed (%v); re-run the command once the remote is reachable", originRemoteName, b.path, err))
+	}
+	upstream, err := repo.UpstreamSHA()
+	if errors.Is(err, gitrepo.ErrNoUpstream) {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	head, err := repo.CurrentSHA()
+	if err != nil {
+		return "", "", err
+	}
+	ahead, err := repo.CommitsNotIn(head, upstream)
+	if err != nil {
+		return "", "", err
+	}
+	behind, err := repo.CommitsNotIn(upstream, head)
+	if err != nil {
+		return "", "", err
+	}
+	if len(behind) == 0 {
+		return "", "", nil
+	}
+
+	if len(ahead) == 0 {
+		if err := repo.MergeFFOnly(upstream); err != nil {
+			return b.skip(BoltSkipDirty, b.dirtyDetail(err))
+		}
+		rec.Append(KindRepoAdvanced, b.path, upstream)
+		return "", "", nil
+	}
+
+	seed, _, touched, err := seedCommitsAhead(repo, ahead)
+	if err != nil {
+		return "", "", err
+	}
+	if len(seed) == 0 {
+		return b.skip(BoltSkipDiverged, b.divergedDetail())
+	}
+	err = dropSeedCommits(rec, boardDropRequest(b.path, touched), repo, upstream, ahead)
+	var refusal *destructiveRefusal
+	switch {
+	case err == nil:
+		logger.Info("fabricengine: dropped seed commits from the board", "path", b.path, "commits", strings.Join(seed, " "))
+		return "", "", nil
+	case errors.As(err, &refusal) && refusal.Check == CheckDirtiness, errors.Is(err, errDropResetRefused):
+		return b.skip(BoltSkipDirty, b.dirtyDetail(err))
+	case errors.As(err, &refusal), errors.Is(err, errDropReplayFailed):
+		return b.skip(BoltSkipDiverged, b.divergedDetail())
+	default:
+		return "", "", err
+	}
+}
+
+// skip logs a pull-first skip at Warn and returns it.
+func (b *Bolt) skip(skip BoltSkip, detail string) (BoltSkip, string, error) {
+	logger.Warn("fabricengine: board not brought up to date, nothing written", "skip", string(skip), "detail", detail)
+	return skip, detail, nil
+}
+
+// dirtyDetail words the way forward for a board an uncommitted change keeps from being brought up to date.
+func (b *Bolt) dirtyDetail(cause error) string {
+	return fmt.Sprintf("an uncommitted change in the board at %s blocks bringing it up to date (%v); run `lyx board sync` to commit it, then re-run the command", b.path, cause)
+}
+
+// divergedDetail words the way forward for a board whose own commits cannot be replayed onto its moved upstream.
+func (b *Bolt) divergedDetail() string {
+	return fmt.Sprintf("the board at %s holds commits its upstream lacks and the upstream has moved; run `git pull --rebase` in %s and `lyx board sync`, then re-run the command", b.path, b.path)
+}
+
+// seedCommitsAhead splits ahead, a list of commits, into the ones IsSeedCommit admits and the rest, each in ahead's order,
+// and returns the sorted union of the paths every commit in ahead changes.
+func seedCommitsAhead(repo *gitrepo.Repo, ahead []string) (seed, other, touched []string, err error) {
+	for _, sha := range ahead {
+		detail, err := repo.CommitDetail(sha)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if IsSeedCommit(detail.Message, detail.Paths) {
+			seed = append(seed, sha)
+		} else {
+			other = append(other, sha)
+		}
+		touched = append(touched, detail.Paths...)
+	}
+	slices.Sort(touched)
+	return seed, other, slices.Compact(touched), nil
 }

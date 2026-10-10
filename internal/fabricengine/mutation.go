@@ -92,6 +92,9 @@ const (
 	// KindTagPushed records archiveWeftTip's push of an archive tag to the weft origin, recorded only after the push observably succeeded.
 	// Its Target is the weft repo root and its Detail is the tag name.
 	KindTagPushed Kind = "tag_pushed"
+	// KindCommitsDropped records dropSeedCommits' reset of the board checkout past its seed commits, recorded only after HEAD observably moved.
+	// Its Target is the board checkout and its Detail is the dropped commits' SHAs, space-separated.
+	KindCommitsDropped Kind = "commits_dropped"
 )
 
 // Mutation is one flat entry in a Mutations record, naming one primitive that observably changed
