@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -182,6 +183,13 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 		if want := shedrun.StatusLock(loc, shedrun.SelfRunID); c.env.StatusLockPath != want {
 			t.Errorf("c.env.StatusLockPath = %q; want %q", c.env.StatusLockPath, want)
+		}
+	})
+
+	t.Run("gate pool is the hub's slot directory", func(t *testing.T) {
+		want := gateslot.Dir(fabricengine.BoardDir(loc.HubPath))
+		if c.env.GateSlots == nil || c.env.GateSlots.Dir != want {
+			t.Errorf("c.env.GateSlots = %+v; want a pool over %q", c.env.GateSlots, want)
 		}
 	})
 

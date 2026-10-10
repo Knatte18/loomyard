@@ -550,6 +550,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		AnchorPath:         anchorPath,
 		WorktreeRoot:       location.WorktreePath(),
 		VerifyDir:          verifytree.Dir(anchorPath),
+		GateSlots:          hubgeom.GateSlots(location),
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),

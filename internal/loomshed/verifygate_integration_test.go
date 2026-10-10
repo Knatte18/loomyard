@@ -41,7 +41,7 @@ func TestVerifyGate_Scenario(t *testing.T) {
 	}
 	runGate := func(t *testing.T) (passed bool, findings string) {
 		t.Helper()
-		got, err := NewVerifyGate(anchor, worktree, verifyDir, "Webster-Burler gate")()
+		got, err := NewVerifyGate(anchor, worktree, verifyDir, "Webster-Burler gate", nil)()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -129,7 +129,7 @@ func (f roundGateFixture) commitFiles(t *testing.T, files map[string]string) str
 
 func (f roundGateFixture) runGate(t *testing.T) (passed bool, findings string) {
 	t.Helper()
-	got, err := NewVerifyGate(f.anchor, f.worktree, f.verifyDir, "Webster-Burler gate")()
+	got, err := NewVerifyGate(f.anchor, f.worktree, f.verifyDir, "Webster-Burler gate", nil)()
 	if err != nil {
 		t.Fatalf("gate() error = %v; want nil", err)
 	}

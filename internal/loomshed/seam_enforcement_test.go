@@ -24,6 +24,7 @@ import (
 // use.
 var loomshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/shedengine",
+	"github.com/Knatte18/loomyard/internal/gateslot",
 	"github.com/Knatte18/loomyard/internal/shedadapters",
 	"github.com/Knatte18/loomyard/internal/websterengine",
 	"github.com/Knatte18/loomyard/internal/loomengine",
