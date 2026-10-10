@@ -608,7 +608,7 @@ func reapHarnessServer(t *testing.T, tmuxPath, socket string) {
 	_ = exec.Command(tmuxPath, "-L", socket, "kill-server").Run()
 	deadline := time.Now().Add(20 * time.Second)
 	for _, pid := range subtree {
-		if runtime.GOOS != "windows" && linuxIsWatchdogDaemon(pid) {
+		if argv, ok := tmuxkit.ProcArgv(pid); runtime.GOOS != "windows" && ok && tmuxkit.IsWatchdog(argv) {
 			if p, err := os.FindProcess(pid); err == nil {
 				_ = p.Kill()
 			}
