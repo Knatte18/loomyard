@@ -7,6 +7,8 @@ package fabricengine
 import (
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -141,7 +143,7 @@ const (
 	BoltSkipDirty BoltSkip = "dirty"
 )
 
-// BoltWrite is one write PullThenCommitWritten runs: Write returns the board-relative paths it wrote, committed under Message.
+// BoltWrite is one write PullThenCommitWritten runs: Write returns the board-relative paths it wrote or deleted, committed under Message.
 type BoltWrite struct {
 	Message string
 	Write   func() ([]string, error)
@@ -164,6 +166,7 @@ type BoltWriteResult struct {
 // The board write lock is held across the pull and every write.
 // A write or commit error stops the sequence and is returned with the commits already landed kept in the result.
 // An empty path list commits nothing.
+// A path that no longer exists stages its deletion and is not recorded as a written file.
 // It never pushes.
 func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res BoltWriteResult, err error) {
 	l, err := lock.AcquireWriteLock(filepath.Join(b.path, BoardWriteLockFile))
@@ -189,7 +192,11 @@ func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res Bo
 			return res, err
 		}
 		for _, path := range paths {
-			rec.Append(KindFileWritten, filepath.Join(b.path, path), "")
+			abs := filepath.Join(b.path, path)
+			if _, err := os.Lstat(abs); errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			rec.Append(KindFileWritten, abs, "")
 		}
 		if len(paths) == 0 {
 			continue

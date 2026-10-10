@@ -229,6 +229,42 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 		}
 	})
 
+	t.Run("a deleted path is committed but not recorded as written", func(t *testing.T) {
+		t.Parallel()
+		f := newBoltFixture(t)
+		gitkit.CommitFile(t, f.board, "notes/old.md", "old\n", "add old")
+		write := fabricengine.BoltWrite{
+			Message: "replace old",
+			Write: func() ([]string, error) {
+				if err := os.Remove(filepath.Join(f.board, "notes", "old.md")); err != nil {
+					return nil, err
+				}
+				return []string{"notes/new.md", "notes/old.md"}, os.WriteFile(filepath.Join(f.board, "notes", "new.md"), []byte("new\n"), 0o644)
+			},
+		}
+		rec := fabricengine.NewMutations(f.hub.Path)
+
+		if _, err := f.bolt.PullThenCommitWritten([]fabricengine.BoltWrite{write}, rec); err != nil {
+			t.Fatalf("PullThenCommitWritten: %v", err)
+		}
+		if got := gitkit.Git(t, f.board, "show", "--name-status", "--format=", "HEAD"); strings.TrimSpace(got) != "A\tnotes/new.md\nD\tnotes/old.md" {
+			t.Errorf("HEAD's changes = %q, want notes/new.md added and notes/old.md deleted", got)
+		}
+		var written []string
+		for _, m := range rec.Snapshot().Entries() {
+			if m.Kind == fabricengine.KindFileWritten {
+				written = append(written, m.Target)
+			}
+		}
+		boardRel, err := filepath.Rel(f.hub.Path, f.board)
+		if err != nil {
+			t.Fatalf("board relative to hub: %v", err)
+		}
+		if want := []string{filepath.ToSlash(filepath.Join(boardRel, "notes", "new.md"))}; !slices.Equal(written, want) {
+			t.Errorf("file_written targets = %v, want %v", written, want)
+		}
+	})
+
 	t.Run("a board with no upstream writes and commits", func(t *testing.T) {
 		t.Parallel()
 		for _, tc := range []struct {
