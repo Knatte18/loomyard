@@ -151,7 +151,7 @@ func TestResolve_AnchorScenario(t *testing.T) {
 
 	// The read side refuses a hub that recorded its subpath under the pre-rename marker name and never migrated.
 	// Falling back to "." there re-anchors the whole repo at its root, after which fabric's own repair verb wires a second junction set at that root, so both the gated and the gate-free resolver must refuse instead.
-	t.Run("stale marker", func(t *testing.T) {
+	if !t.Run("stale marker", func(t *testing.T) {
 		boardDir := fabricengine.BoardDir(base.HubPath)
 		if err := os.Remove(filepath.Join(boardDir, lyxcwd.AnchorFileName)); err != nil {
 			t.Fatalf("remove %s: %v", lyxcwd.AnchorFileName, err)
@@ -189,6 +189,80 @@ func TestResolve_AnchorScenario(t *testing.T) {
 			writeAnchor(t, base.HubPath, ".")
 			requireAnchorRel(t, root, ".")
 		})
+	}) {
+		return
+	}
+
+	// A linked worktree added beside the checkout resolves to its own root with the same Location fields a clone would give, including after its gitfile is rewritten to a relative gitdir.
+	linkedDir := filepath.Join(filepath.Dir(root), "linked")
+	adminDir := filepath.Join(root, ".git", "worktrees", "linked")
+	if !t.Run("linked worktree", func(t *testing.T) {
+		gitkit.MustRun(t, root, "worktree", "add", "-b", "linked", linkedDir)
+
+		want := &lyxcwd.Location{RepoName: base.RepoName, HubPath: base.HubPath, WorktreeName: "linked", AnchorRel: "."}
+		requireLocation := func(t *testing.T) {
+			t.Helper()
+			got, err := lyxcwd.Resolve(linkedDir)
+			if err != nil {
+				t.Fatalf("Resolve(%q) error = %v; want nil", linkedDir, err)
+			}
+			if *got != *want {
+				t.Errorf("Resolve(%q) = %+v; want %+v", linkedDir, *got, *want)
+			}
+		}
+
+		t.Run("absolute gitdir", requireLocation)
+		t.Run("relative gitdir", func(t *testing.T) {
+			relative, err := filepath.Rel(linkedDir, adminDir)
+			if err != nil {
+				t.Fatalf("rel %s: %v", adminDir, err)
+			}
+			if err := os.WriteFile(filepath.Join(linkedDir, ".git"), []byte("gitdir: "+filepath.ToSlash(relative)+"\n"), 0o644); err != nil {
+				t.Fatalf("rewrite gitfile: %v", err)
+			}
+			requireLocation(t)
+		})
+	}) {
+		return
+	}
+
+	// An empty .git directory in a subdirectory is skipped as git skips it, so the walk reaches the enclosing root, where the strict gate still rejects the subdirectory.
+	if !t.Run("empty .git directory in a subdirectory", func(t *testing.T) {
+		if err := os.MkdirAll(filepath.Join(subDir, ".git"), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		requireOutsideAnchor(t, subDir)
+	}) {
+		return
+	}
+
+	// A gitfile naming a removed git dir, and a linked worktree whose commondir target was removed, are both refused with the bare sentinel rather than resolved to the enclosing checkout.
+	t.Run("pruned gitfile and missing commondir", func(t *testing.T) {
+		prunedDir := filepath.Join(root, "pruned")
+		if err := os.MkdirAll(prunedDir, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(prunedDir, ".git"), []byte("gitdir: "+filepath.Join(root, "gone")+"\n"), 0o644); err != nil {
+			t.Fatalf("write gitfile: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(adminDir, "commondir"), []byte("../gone\n"), 0o644); err != nil {
+			t.Fatalf("rewrite commondir: %v", err)
+		}
+
+		for name, cwd := range map[string]string{
+			"gitfile naming a removed git dir":              prunedDir,
+			"linked worktree with a removed commondir path": linkedDir,
+		} {
+			t.Run(name, func(t *testing.T) {
+				layout, err := lyxcwd.Resolve(cwd)
+				if layout != nil {
+					t.Errorf("Resolve(%q) returned non-nil layout; want nil", cwd)
+				}
+				if !errors.Is(err, lyxcwd.ErrNotAGitRepo) || err.Error() != lyxcwd.ErrNotAGitRepo.Error() {
+					t.Errorf("Resolve(%q) error = %v; want the bare ErrNotAGitRepo", cwd, err)
+				}
+			})
+		}
 	})
 }
 

@@ -11,12 +11,11 @@ package lyxcwd
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/dotgit"
 )
 
 // Location and geometry constants define directory and file names used by lyx
@@ -64,7 +63,7 @@ func Getwd() (string, error) {
 	return os.Getwd()
 }
 
-// Resolve builds a Location from the given cwd by running git rev-parse --show-toplevel and reading
+// Resolve builds a Location from the given cwd by finding the worktree root in-process and reading
 // the recorded .lyx-anchor marker for AnchorRel, then requires cwd to equal the anchored directory
 // exactly.
 //
@@ -72,7 +71,7 @@ func Getwd() (string, error) {
 // when no anchor is recorded.
 // Resolve does NOT check for _lyx/ (that stays in internal/configengine).
 //
-// Returns the Location on success, ErrNotAGitRepo when git fails or cwd is outside a git repo, or
+// Returns the Location on success, ErrNotAGitRepo when cwd is outside a git repo, or
 // ErrCwdOutsideAnchor when cwd is not exactly the anchored directory.
 func Resolve(cwd string) (*Location, error) {
 	return resolveCore(cwd, true)
@@ -101,11 +100,10 @@ func ResolveWithAnchor(cwd, anchor string) (*Location, error) {
 	return resolveWithAnchorCore(cwd, anchor, false)
 }
 
-// resolveCore is the shared body behind Resolve and ResolveWorktree: it runs
-// git rev-parse --show-toplevel, reads the recorded anchor for AnchorRel, and
-// optionally applies the strict cwd gate. applyGate is true only for
-// Resolve's entry-point cwd; ResolveWorktree passes false because its input is
-// a worktree root, not an acting cwd, and must never be gated against itself.
+// resolveCore is the shared body behind Resolve and ResolveWorktree.
+// It finds the worktree root, reads the recorded anchor for AnchorRel, and optionally applies the strict cwd gate.
+// applyGate is true only for Resolve's entry-point cwd.
+// ResolveWorktree passes false because its input is a worktree root, not an acting cwd, and must never be gated against itself.
 func resolveCore(cwd string, applyGate bool) (*Location, error) {
 	workTreeRoot, err := gitWorktreeRoot(cwd)
 	if err != nil {
@@ -130,8 +128,8 @@ func resolveCore(cwd string, applyGate bool) (*Location, error) {
 	return buildLocation(cwd, workTreeRoot, hubPath, anchorRel, applyGate)
 }
 
-// resolveWithAnchorCore is the shared body behind ResolveWithAnchor: it runs
-// git rev-parse --show-toplevel exactly as resolveCore does, but takes anchor
+// resolveWithAnchorCore is the shared body behind ResolveWithAnchor.
+// It finds the worktree root exactly as resolveCore does, but takes anchor
 // as a parameter instead of reading the recorded marker.
 func resolveWithAnchorCore(cwd, anchor string, applyGate bool) (*Location, error) {
 	workTreeRoot, err := gitWorktreeRoot(cwd)
@@ -143,26 +141,14 @@ func resolveWithAnchorCore(cwd, anchor string, applyGate bool) (*Location, error
 	return buildLocation(cwd, workTreeRoot, hubPath, anchor, applyGate)
 }
 
-// gitWorktreeRoot runs git rev-parse --show-toplevel at cwd and returns the
-// cleaned, OS-native worktree root path.
+// gitWorktreeRoot finds the worktree root at or above cwd in-process and returns it cleaned.
+// Any failure, including a pruned worktree or a gitfile naming a missing git dir, is the bare sentinel.
+// It is returned unwrapped, so errors.Is(err, ErrNotAGitRepo) keeps matching at every consumer that pins its exact rendering.
 func gitWorktreeRoot(cwd string) (string, error) {
-	stdout, err := gitexec.Run([]string{"rev-parse", "--show-toplevel"}, cwd)
+	workTreeRoot, _, err := dotgit.FindRoot(cwd)
 	if err != nil {
-		// A *GitError means git ran and rejected the command (cwd is not
-		// inside a git repo): return the bare sentinel, unwrapped, so
-		// errors.Is(err, ErrNotAGitRepo) keeps matching at every consumer
-		// that pins its exact rendering. Anything else is an exec-level
-		// failure (git could not run at all), reported with the sentinel
-		// still leading via %w so errors.Is still matches, and the
-		// underlying error appended for diagnosis.
-		var gitErr *gitexec.GitError
-		if errors.As(err, &gitErr) {
-			return "", ErrNotAGitRepo
-		}
-		return "", fmt.Errorf("%w: %v", ErrNotAGitRepo, err)
+		return "", ErrNotAGitRepo
 	}
-
-	workTreeRoot := filepath.FromSlash(strings.TrimSpace(stdout))
 	return filepath.Clean(workTreeRoot), nil
 }
 

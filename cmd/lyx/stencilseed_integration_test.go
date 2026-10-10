@@ -55,7 +55,7 @@ func TestStencilSeedTarget_PlainRepoHasNoHub(t *testing.T) {
 func TestStencilSeeding_HubScenario(t *testing.T) {
 	t.Parallel()
 
-	// A copy's relocation rewrites the tracked .lyx-warp binding, which the clean-tree assertions would find dirty.
+	// A copy's relocation rewrites the tracked worktree binding file, which the clean-tree assertions would find dirty.
 	hub := hubforge.NewHub(t, ".")
 	worktree := hub.PrimeWorktree()
 	stencilsDir := fabricengine.StencilsDir(hub.Path)

@@ -20,7 +20,7 @@
 //
 // # Kill outcome
 //
-// gitexec cannot import internal/logger, which reaches gitexec through internal/lyxcwd, so a kill's outcome reaches the logs through SetKillReporter.
+// A kill's outcome reaches the logs through SetKillReporter.
 // The process owner installs a reporter once; it receives the command's args, its pid and the group kill's error after each kill, and it cannot stop, delay or retry the kill or change the call's result.
 // With no reporter installed the outcome is dropped.
 package gitexec
