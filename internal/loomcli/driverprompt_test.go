@@ -81,6 +81,9 @@ func TestDriverPrompt(t *testing.T) {
 					t.Errorf("driverPrompt() does not carry the %s %q", name, want)
 				}
 			}
+			if guide := stencilstore.Path(dir, driverGuideStencilName); !strings.Contains(got, guide) {
+				t.Errorf("driverPrompt() does not carry the deployed guide path %q", guide)
+			}
 			if strings.Contains(got, "{{") {
 				t.Errorf("driverPrompt() left a marker unfilled")
 			}

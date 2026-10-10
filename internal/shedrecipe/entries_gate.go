@@ -178,7 +178,7 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 		if err := requireSeam(entry, "PlanIndex", env.PlanIndex); err != nil {
 			return nil, err
 		}
-		return loomshed.NewPlanGate(env.AnchorPath, env.WorktreeRoot, env.PlanIndex), nil
+		return loomshed.NewPlanGate(env.AnchorPath, env.WorktreeRoot, env.RunScratchDir, env.PlanIndex), nil
 	case "rework-plan":
 		if err := requireAbsRoot(entry, "AnchorPath", env.AnchorPath); err != nil {
 			return nil, err
@@ -192,7 +192,7 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 		if err := requireSeam(entry, "Rework.ReadCommitted", env.Rework.ReadCommitted); err != nil {
 			return nil, err
 		}
-		return loomshed.NewReworkPlanGate(env.AnchorPath, env.WorktreeRoot, env.PlanIndex, env.Rework.ReadCommitted), nil
+		return loomshed.NewReworkPlanGate(env.AnchorPath, env.WorktreeRoot, env.RunScratchDir, env.PlanIndex, env.Rework.ReadCommitted), nil
 	case "description":
 		if err := requireAbsRoot(entry, "DescriptionPath", env.DescriptionPath); err != nil {
 			return nil, err

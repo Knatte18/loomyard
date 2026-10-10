@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
@@ -45,6 +47,22 @@ func formatPlanFindings(findings []planindex.Finding) string {
 		parts[i] = f.Error()
 	}
 	return strings.Join(parts, "; ")
+}
+
+// writeInformationalFindings writes findings, one per line, to <gateName>-informational-findings.txt under dir, creating dir when it is missing, and returns the file's path.
+func writeInformationalFindings(dir, gateName string, findings []planindex.Finding) (string, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	lines := make([]string, len(findings))
+	for i, f := range findings {
+		lines[i] = formatPlanFindings([]planindex.Finding{f})
+	}
+	path := filepath.Join(dir, gateName+"-informational-findings.txt")
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // hasBlockingFinding reports whether findings carries at least one entry that is not explicitly
@@ -136,8 +154,10 @@ func NewDiscussionGate(decisionRecordPath, supportLogPath string) shuttleengine.
 //
 // hasBlockingFinding is called, never re-derived.
 // It encodes a crucible-round finding that planindex.Severity is an open string type, so testing not-informational rather than equals-blocking is what keeps an unrecognized or zero-valued severity from silently passing.
-func NewPlanGate(anchorPath, worktreeRoot string, index planindex.Index) shuttleengine.Gate {
-	return planGate("Plan-Gate", anchorPath, func(plan *planparser.Plan) ([]planindex.Finding, error) {
+//
+// scratchDir is the run's told ephemeral scratch directory, where an informational pass records its findings; empty keeps them inline in the log line.
+func NewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.Index) shuttleengine.Gate {
+	return planGate("Plan-Gate", anchorPath, scratchDir, func(plan *planparser.Plan) ([]planindex.Finding, error) {
 		return ValidatePlan(plan, anchorPath, worktreeRoot, index)
 	})
 }
@@ -160,8 +180,8 @@ func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index 
 //
 // Parse failures, the blocking-versus-informational split and the logging follow the plan gate's contract.
 // A plan that cannot be read as committed at HEAD is a returned error, never a finding: the rework session cannot fix a missing baseline.
-func NewReworkPlanGate(anchorPath, worktreeRoot string, index planindex.Index, readCommitted func(anchorRel string) ([]byte, bool, error)) shuttleengine.Gate {
-	return planGate("Rework-Plan-Gate", anchorPath, func(plan *planparser.Plan) ([]planindex.Finding, error) {
+func NewReworkPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.Index, readCommitted func(anchorRel string) ([]byte, bool, error)) shuttleengine.Gate {
+	return planGate("Rework-Plan-Gate", anchorPath, scratchDir, func(plan *planparser.Plan) ([]planindex.Finding, error) {
 		return ValidateReworkPlan(plan, worktreeRoot, index, readCommitted)
 	})
 }
@@ -179,7 +199,9 @@ func ValidateReworkPlan(plan *planparser.Plan, worktreeRoot string, index planin
 }
 
 // planGate builds a plan gate closure named gateName in its log lines: it parses the plan under anchorPath, runs validate over it, and maps the result onto the gate contract.
-func planGate(gateName, anchorPath string, validate func(*planparser.Plan) ([]planindex.Finding, error)) shuttleengine.Gate {
+// On an informational pass it records the findings in a file under scratchDir and logs their count and the file's path;
+// with no scratchDir, or when the file cannot be written, the log line carries the findings inline.
+func planGate(gateName, anchorPath, scratchDir string, validate func(*planparser.Plan) ([]planindex.Finding, error)) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
 		planDir := planparser.PlanDir(anchorPath)
 		plan, err := planparser.ParsePlan(planDir)
@@ -196,6 +218,14 @@ func planGate(gateName, anchorPath string, validate func(*planparser.Plan) ([]pl
 		}
 
 		if !hasBlockingFinding(findings) {
+			if scratchDir != "" {
+				path, writeErr := writeInformationalFindings(scratchDir, gateName, findings)
+				if writeErr == nil {
+					logger.Warn("loomshed: plan gate surfaced informational findings", "gate", gateName, "planDir", planDir, "count", len(findings), "file", path)
+					return shuttleengine.GateResult{Passed: true}, nil
+				}
+				logger.Warn("loomshed: plan gate could not record its informational findings", "gate", gateName, "error", writeErr.Error())
+			}
 			logger.Warn("loomshed: plan gate surfaced informational findings", "gate", gateName, "planDir", planDir, "findings", formatPlanFindings(findings))
 			return shuttleengine.GateResult{Passed: true}, nil
 		}

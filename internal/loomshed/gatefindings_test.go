@@ -98,7 +98,7 @@ func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
 	}
 
 	buf := logcapture.Capture(t)
-	gate := NewPlanGate(anchorPath, anchorPath, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+	gate := NewPlanGate(anchorPath, anchorPath, "", planglyph.NewIndex(fabricengine.NewReferenceRule()))
 
 	result, err := gate()
 	if err != nil {

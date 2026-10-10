@@ -5,6 +5,7 @@ package shedengine
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -30,6 +31,8 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 		State:           StateRunning,
 		Error:           "",
 		PauseRequested:  true,
+		PauseBefore:     "Plan-Write",
+		PauseAfter:      "Preflight",
 		Activity: Activity{
 			Now:  "Plan-Write",
 			Last: "Preflight → done",
@@ -63,6 +66,16 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 	}
 	if got.PauseRequested != want.PauseRequested {
 		t.Errorf("PauseRequested = %v; want %v", got.PauseRequested, want.PauseRequested)
+	}
+	if got.PauseBefore != want.PauseBefore || got.PauseAfter != want.PauseAfter {
+		t.Errorf("PauseBefore, PauseAfter = %q, %q; want %q, %q", got.PauseBefore, got.PauseAfter, want.PauseBefore, want.PauseAfter)
+	}
+	empty, err := json.Marshal(Status{})
+	if err != nil {
+		t.Fatalf("json.Marshal(Status{}) = %v", err)
+	}
+	if strings.Contains(string(empty), "pause_before") || strings.Contains(string(empty), "pause_after") {
+		t.Errorf("empty Status marshals as %s; want pause_before and pause_after omitted", empty)
 	}
 	if got.Activity != want.Activity {
 		t.Errorf("Activity = %+v; want %+v", got.Activity, want.Activity)

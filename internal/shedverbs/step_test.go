@@ -1,4 +1,4 @@
-// step_test.go covers the generic step body's closed envelope key set, the five-kind closed vocabulary, PreStep's kind threading, PostStep's success-only, before-the-envelope ordering, and AfterStep's every-Step-return placement and friction key.
+// step_test.go covers the generic step body's closed envelope key set, the six-kind closed vocabulary, PreStep's kind threading, PostStep's success-only, before-the-envelope ordering, and AfterStep's every-Step-return placement and friction key.
 
 package shedverbs
 
@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -200,15 +201,18 @@ func TestStepEnvelope_FieldMapping(t *testing.T) {
 			if got := env["status_file"]; got != "/some/status.json" {
 				t.Errorf("envelope[\"status_file\"] = %v; want %v", got, "/some/status.json")
 			}
+			if got, present := env["progress"]; !present || got != nil {
+				t.Errorf("envelope[\"progress\"] = %v (present=%v); want null for a nil progress", got, present)
+			}
 		})
 	}
 }
 
-// TestStepKinds_IsExactlyFive asserts the closed refusal-kind vocabulary is exactly the five declared constants and no larger, each non-empty and distinct.
+// TestStepKinds_IsExactlySix asserts the closed refusal-kind vocabulary is exactly the six declared constants and no larger, each non-empty and distinct.
 //
-//testtiming:keep pins the closed five-kind refusal vocabulary, a guard that fires when a kind is added or duplicated
-func TestStepKinds_IsExactlyFive(t *testing.T) {
-	want := []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, KindProducer}
+//testtiming:keep pins the closed six-kind refusal vocabulary, a guard that fires when a kind is added or duplicated
+func TestStepKinds_IsExactlySix(t *testing.T) {
+	want := []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, KindProducer, KindInterrupted}
 	if len(StepKinds) != len(want) {
 		t.Fatalf("StepKinds = %v; want exactly %v", StepKinds, want)
 	}
@@ -840,8 +844,9 @@ func TestStepCmd_SuccessEnvelopeCarriesIdentityAndProgress(t *testing.T) {
 		if !ok {
 			t.Fatalf("progress = %v; want an object", env["progress"])
 		}
-		if got["step"] != float64(want.Step) || got["steps"] != float64(want.Steps) || got["name"] != want.Name {
-			t.Errorf("progress = %v; want %+v", got, want)
+		wantCompact := map[string]any{"step": float64(want.Step), "steps": float64(want.Steps), "name": want.Name}
+		if !reflect.DeepEqual(got, wantCompact) {
+			t.Errorf("progress = %v; want the compact %v without remaining", got, wantCompact)
 		}
 	})
 

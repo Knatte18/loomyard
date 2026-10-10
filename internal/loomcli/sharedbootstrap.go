@@ -225,7 +225,7 @@ func ensureFrictionDirAfterSeed(frictionDir string, seedErr error) {
 	friction.EnsureDir(frictionDir)
 }
 
-// ensureStatusStrand is the go arm's status-strand work: it keeps, replaces or adds the worktree's status strand.
+// ensureStatusStrand is the bootstrap's status-strand work on every run: it keeps, replaces or adds the worktree's status strand.
 // The caller has already brought reed up,
 // and only `start` calls it.
 // It runs after the bootstrap-lock acquisition and ends before the run-lock probe.

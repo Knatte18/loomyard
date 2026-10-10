@@ -21,8 +21,8 @@ func TestDriverStencil_ShowsOneBareStepCall(t *testing.T) {
 	t.Parallel()
 
 	stencil := string(stencils.ShedTemplateDriver)
-	if !strings.Contains(stencil, "```\nlyx shed step {{.run_id}}\n```") {
-		t.Errorf("shed-template-driver.md has no fenced block whose only line is `lyx shed step {{.run_id}}`")
+	if !strings.Contains(stencil, "```\nlyx shed step {{.run_id}} --until-stop\n```") {
+		t.Errorf("shed-template-driver.md has no fenced block whose only line is `lyx shed step {{.run_id}} --until-stop`")
 	}
 	if strings.Contains(stencil, "(cd <drive-dir> && lyx") {
 		t.Errorf("shed-template-driver.md still carries the `(cd <drive-dir> && lyx` subshell form")

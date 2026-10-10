@@ -501,7 +501,7 @@ func stepDriftWarningNeverBlocksExitCode(t *testing.T, h *hubforge.Hub, worktree
 		t.Fatalf("stencil sync = %d; want 0 even though the board copy has drifted from the worktree source. output: %s", code, raw)
 	}
 
-	if !strings.Contains(buf.String(), "board copy has drifted from worktree source") {
+	if !strings.Contains(buf.String(), "drifted from worktree source") {
 		t.Errorf("expected a port-back drift warning on stderr; got %q", buf.String())
 	}
 }

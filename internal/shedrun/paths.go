@@ -4,6 +4,8 @@
 package shedrun
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -148,4 +150,48 @@ func RunsRootRel() string {
 // hub addresses, not scoped to one.
 func PrimeRunLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, shedDirName, "run.lock")
+}
+
+// LoopLock returns the path to the loop's liveness lock, loop.lock under StepsDir(l, runID), which the detached loop holds for its whole life.
+func LoopLock(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(StepsDir(l, runID), "loop.lock")
+}
+
+// LoopPIDFile returns the path to loop.pid under StepsDir(l, runID), the record of the loop's process.
+func LoopPIDFile(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(StepsDir(l, runID), "loop.pid")
+}
+
+// LoopLog returns the path to loop.log under StepsDir(l, runID), the detached loop's stdout and stderr.
+func LoopLog(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(StepsDir(l, runID), "loop.log")
+}
+
+// LoopEnvelope returns the path to loop-envelope.json under StepsDir(l, runID), the file the waiter prints and retires.
+func LoopEnvelope(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(StepsDir(l, runID), "loop-envelope.json")
+}
+
+// LoopDelivered returns the path a retired loop envelope is renamed into, one slot per loop id under StepsDir(l, runID).
+// Every waiter on that loop can still print it, and a later loop's delivery never replaces it.
+func LoopDelivered(l *lyxcwd.Location, runID, loopID string) string {
+	return filepath.Join(StepsDir(l, runID), "loop-envelope."+loopID+".delivered.json")
+}
+
+// LoopJobName returns the Windows job-object name of a run's loop: "lyx-loop-" followed by a hex hash of the steps directory's absolute path.
+// It is unique across hubs and free of path separators.
+func LoopJobName(l *lyxcwd.Location, runID string) string {
+	sum := sha256.Sum256([]byte(StepsDir(l, runID)))
+	return "lyx-loop-" + hex.EncodeToString(sum[:8])
+}
+
+// StepTraceCopy returns the path to the copy of a step's trace the loop writes beside the step record, <traceID>.trace.log under StepsDir(l, runID).
+// Retention sweeps the trace directory alone, so it never reaches the copy.
+func StepTraceCopy(l *lyxcwd.Location, runID, traceID string) string {
+	return filepath.Join(StepsDir(l, runID), traceID+".trace.log")
+}
+
+// StepStderr returns the path to a step child's captured stderr, <traceID>.stderr.log under StepsDir(l, runID).
+func StepStderr(l *lyxcwd.Location, runID, traceID string) string {
+	return filepath.Join(StepsDir(l, runID), traceID+".stderr.log")
 }

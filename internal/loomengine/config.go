@@ -4,6 +4,7 @@
 // then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the review and fix model-spec lists' grammar via modelspec.Parse, plus every entry of the six per-segment lists (discussion_review, discussion_fix, plan_review, plan_fix, webster_review, webster_fix) that are set, an empty value meaning the run-wide list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_max_bounces below 1, and rejects a fix_start that is neither parallel nor after-review,
 // and every entry of fan_review, and resolves each non-empty discussion_fan and plan_fan through burlerengine.ResolveFan,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
+// step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
 // discussion_fan and plan_fan each name a fan from burler.yaml and turn the lens fan on for Discussion-Review and Plan-Review; empty, the default, runs that segment solo.
 // fan_review is the reviewer model-spec list of a fanned segment, and the forks' model too, since forks run on the reviewer session's model.
 // There is no webster_fan key: Webster-Review always runs solo.
@@ -24,11 +25,15 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"gopkg.in/yaml.v3"
 )
+
+// stepIdleTimeoutFloorMin is the smallest step_idle_timeout_min LoadConfig returns, in minutes.
+const stepIdleTimeoutFloorMin = 1
 
 // discussionDirName is the relative-path segment loomengine joins onto
 // lyxdirs.LyxDirName to form the discussion phase's output directory.
@@ -336,6 +341,7 @@ type Config struct {
 	FrictionTimeoutMin    int           `yaml:"friction_timeout_min"`
 	Driver                string        `yaml:"driver"`
 	ParentReviewWaitMin   int           `yaml:"parent_review_wait_min"`
+	StepIdleTimeoutMin    int           `yaml:"step_idle_timeout_min"`
 
 	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
 	ReviewMaxBounces         int `yaml:"review_max_bounces"`
@@ -606,6 +612,12 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	// so the one off switch is the gate entry's own attempts, not this key.
 	if cfg.ParentReviewWaitMin < 1 {
 		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set attempts: 0 on Discussion-Write's parent-review gate entry to turn the review off", "parent_review_wait_min", cfg.ParentReviewWaitMin)
+	}
+
+	// step_idle_timeout_min is a wake interval's cousin: a value below the floor is raised to it with one Warn and never refused.
+	if cfg.StepIdleTimeoutMin < stepIdleTimeoutFloorMin {
+		logger.Warn("loom config key is below its floor and is raised to it", "key", "step_idle_timeout_min", "value", cfg.StepIdleTimeoutMin, "floor", stepIdleTimeoutFloorMin)
+		cfg.StepIdleTimeoutMin = stepIdleTimeoutFloorMin
 	}
 
 	// A checkpoint above the budget is accepted: such a run never rules CIRCLING and reaches the budget escalation instead.

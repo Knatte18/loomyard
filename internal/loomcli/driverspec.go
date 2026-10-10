@@ -14,15 +14,15 @@ import (
 // driverRole is the agent-name role this module's driver spawn carries.
 const driverRole = "driver"
 
-// driverSkills is the skill list the driver loads before its launch prompt.
-var driverSkills = []string{"scribe:prose"}
+// driverSkills is the skill list the driver loads before its launch prompt: none, since the prompt is the driver's whole procedure.
+var driverSkills = []string{}
 
 // driverSpec composes the shuttleengine.Spec the loom driver session launches from, from an already-
 // composed prompt, an already-composed report path, and the resolved driver-role settings.
 //
 // Every non-default field is pinned here with its own reason -- the standard this package holds.
 //
-// Prompt is the argument verbatim. Skills is driverSkills, which shuttle loads before delivering the prompt. OutputFiles is a single-entry slice holding reportPath: the file
+// Prompt is the argument verbatim. Skills is driverSkills, empty. OutputFiles is a single-entry slice holding reportPath: the file
 // contract Spec enforces treats a run's output file as its return value, and this run has exactly
 // one. Model, Effort, and Version come from settings, which carries the RESOLVED triple -- a provider
 // model id plus its effort and version, never a raw config alias -- since only the resolved values
@@ -34,8 +34,9 @@ var driverSkills = []string{"scribe:prose"}
 //
 // Interactive is false, which is shuttle's autonomous posture: it is what adds the
 // --dangerously-skip-permissions flag and the operator-prompt deny an unattended session needs.
-// ForkSubagents is false, because the driving loop reads envelopes and invokes a CLI and has no
-// research fan-out to delegate. Role is the literal "driver", which is what the run directory
+// ForkSubagents is true, so the claude engine permits fork subagents and still denies every other subagent type:
+// at an error or interrupted stop the driver spawns one fork of itself to read the traces and repair, which keeps the trace material out of the driver's own context.
+// Role is the literal "driver", which is what the run directory
 // records and what makes a driver run distinguishable from a producer round. Round is empty, because
 // a driver is not one round of anything. Parent is empty, because the driver is top-level and the
 // panes loom's producers spawn while it runs are its siblings.
@@ -62,7 +63,7 @@ func driverSpec(prompt string, reportPath string, settings loomengine.DriverSett
 		Version:       settings.Version,
 		NameOverride:  driverStrandDisplayName,
 		Interactive:   false,
-		ForkSubagents: false,
+		ForkSubagents: true,
 		Role:          driverRole,
 		Segment:       segmentcolor.Coordinator,
 		Round:         "",

@@ -19,7 +19,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of `configengine.Load` (strict) or `LoadOrTemplate` (degrades to the embedded template). — [background](pattern/PATTERN-config-strictness.md)
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only through `hubreconcile.Ensure`, which owns the build stamp and the hub lock.
 - `PATTERN-refusal-way-forward` — Adding a refusal in webster, shed or loom: its message names the way forward, its spec row lands in the same commit, and a test reaches it. — [background](pattern/PATTERN-refusal-way-forward.md)
-- `PATTERN-no-denied-recovery` — Naming a way forward or a step in a refusal, stencil or spec: never a command the agents' settings deny (`git reset --hard`, `git push --force`/`-f`, `rm -rf`); lyx performs that step itself. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
+- `PATTERN-no-denied-recovery` — Naming a way forward or a step in a refusal, stencil or spec: never a command the agents' settings deny; lyx performs that step itself. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
 
 ## Fabric and git
 
@@ -34,7 +34,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-github-auth` — Calling GitHub: all authentication goes through `internal/githubclient`, and no other production package shells out to `gh`.
 - `PATTERN-agent-filed-issues` — Filing a GitHub issue from lyx: only through `lyx selfreport create`, run by an agent or the operator; no other production package calls `selfreportengine.CreateIssue`. (test)
 - `PATTERN-hub-store-gc` — Hub stores carry `gc.auto=0` and `maintenance.auto=false`: only `fabricengine/housekeeping.go` sets them or runs `gc`, skipped while another pair's session is live. — [background](pattern/PATTERN-hub-store-gc.md)
-- `PATTERN-gogit-read-helper` — Reading through go-git in `internal/gitrepo`: only through `readGoGit`, the sole caller of `goGit()`, which retries a whole read once after a repack. (test) — [background](pattern/PATTERN-gogit-read-helper.md)
+- `PATTERN-gogit-read-helper` — Reading through go-git in `internal/gitrepo`: only through `readGoGit`, which retries a read once after a repack. (test) — [background](pattern/PATTERN-gogit-read-helper.md)
 - `PATTERN-gitrepo-client-boundary` — Reading or mutating git state in `internal/gitrepo`: go-git owns local reads, `gitexec` owns remote-authenticating or tree-mutating work. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
 - `PATTERN-gitexec-checked-call` — Running git: use `gitexec.Run`/`runChecked`; the raw `RunGit`/`r.run` forms survive only at pinned `//gitexec:raw` call sites.
 - `PATTERN-never-force-add` — Keeping transients out of the index: each repo's own `.git/info/exclude`; fabric and gitrepo never run `git add -f`.
@@ -43,9 +43,10 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 - `PATTERN-shed-producer-seam` — Importing into `internal/shedengine`: only stdlib, `state` and `lock`, and its status and lock paths are caller-supplied.
 - `PATTERN-shed-recipe-registry` — Registering a shed producer: one `map[string]Constructor` in `internal/shedrecipe`, reached through `Lookup`/`Names`, with no `init()`, no `Register`, no `lyxcwd`.
-- `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: the generic bodies live in `internal/shedverbs` only, which derives no path. (test) — [background](pattern/PATTERN-shed-verb-set.md)
+- `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: the generic bodies live in `internal/shedverbs` only, which derives no path, imports only its allowlist and closes the step kinds at six. (test) — [background](pattern/PATTERN-shed-verb-set.md)
 - `PATTERN-shed-run-directory` — Touching run directories or `seed.json`: `internal/shedrun` is the sole declarer of the `shed` segment, the run-id vocabulary and the `Seed` codec. — [background](pattern/PATTERN-shed-run-directory.md)
 - `PATTERN-transient-stop` — Marking a failure transient: the mark is declared in `internal/shedengine` and set only at a producer or step-bootstrap boundary, never on a verdict. — [background](pattern/PATTERN-transient-stop.md)
+- `PATTERN-failure-stop-visible` — Stopping a `--until-stop` loop on a failure with no other run-lock holder: the status file is non-running before its waiter returns. (test) — [background](pattern/PATTERN-failure-stop-visible.md)
 - `PATTERN-driver-choice-single-site` — Reading a recorded seed driver: once per recipe, in its own bootstrap verb, selecting the driving surface and nothing else. (test) — [background](pattern/PATTERN-driver-choice-single-site.md)
 - `PATTERN-treadle-runner-seam` — Importing into `internal/treadleengine`: never `burlerengine` or an `internal/*cli` package, and only its allowlist, not `lyxcwd`.
 - `PATTERN-plan-generation` — Archiving a plan: `_lyx/plan/`'s top-level files hold exactly one generation, and a retired one lives under `round-<N>/prior-generation/`. — [background](pattern/PATTERN-plan-generation.md)
@@ -54,24 +55,24 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 - `PATTERN-gate-self-check-parity` — Adding a mechanical gate: its closure and its CLI self-check verb call the same package function, and both land in one task. — [background](pattern/PATTERN-gate-self-check-parity.md)
 - `PATTERN-verified-tree` — Running a verify command: through `verifytree.Verify` only, never on a dirty tree, skipping only on a record of HEAD's tree. (test) — [background](pattern/PATTERN-verified-tree.md)
 - `PATTERN-gate-slot` — Running a gate build or test: only in a `-p`-capped hub slot of `internal/gateslot`.
-- `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active profile's batchifier derives, its kind chosen by `internal/batcher`'s registry and the profile by `batcher.yaml`'s `active:`; the partition is recorded in `state.json` at first init, replaced only by a rebaseline.
-- `PATTERN-review-round` — Running a review and fix round: review on disk before any target is touched, every finding fixed or disputed with evidence its premise is false, converged only on a judge verdict, from round 2 on over a fresh-key fix carried to `## Open risks`. — [background](pattern/PATTERN-review-round.md)
+- `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active `batcher.yaml` profile derives through `internal/batcher`'s registry, recorded in `state.json` at first init. — [background](pattern/PATTERN-batcher-registry.md)
+- `PATTERN-review-round` — Running a review and fix round: review on disk before any target is touched, every finding fixed or disputed with evidence, converged on a judge verdict. — [background](pattern/PATTERN-review-round.md)
 - `PATTERN-sole-parsers` — Reading or writing plan, discussion, summary or recipe files: only `planparser`, `discussionparser`, `summaryparser` and `shedbuild` parse them. (test) — [background](pattern/PATTERN-sole-parsers.md)
 
 ## Agents and prompts
 
-- `PATTERN-agent-name` — Forming or parsing an agent name: only `internal/agentname`, as `<shortname>:<role>` or `<shortname>:<slug>:<role>`, formed once by reed, and the spawning module owns its role names as constants. — [background](pattern/PATTERN-agent-name.md)
+- `PATTERN-agent-name` — Forming or parsing an agent name: only `internal/agentname`, formed once by reed; the spawning module owns its role names. — [background](pattern/PATTERN-agent-name.md)
 - `PATTERN-stencil-ownership` — Reading a producer prompt or normative spec: from a told absolute directory at call time through `internal/stencilstore`, never embedded bytes. — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-producer-pointer-rule` — Writing an instruction file: it points at another producer's format contract and never duplicates or paraphrases it.
 - `PATTERN-friction-capture` — Halting a loom run or refusing in webster: a Go-authored friction note is written, and none is archived before a reflection covers it. (test) — [background](pattern/PATTERN-friction-capture.md)
 - `PATTERN-completion-signal` — Finalizing a negative "did this run finish" answer in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
 - `PATTERN-shuttle-provider-seam` — Referencing a provider: its specifics live only under `internal/shuttleengine/claudeengine`, never in `shuttleengine` or `reedengine`. — [background](pattern/PATTERN-shuttle-provider-seam.md)
-- `PATTERN-shuttle-stop` — Stopping a shuttle run's strand from Go outside `internal/shuttleengine`: only through shuttle's stop verb, which settles the run's record first; `loomcli`'s removal of the loom driver's strand and `orchcli`'s of the orch strand are exempt, as no attach probe or Wait reads their records.
+- `PATTERN-shuttle-stop` — Stopping a shuttle run's strand from Go outside `internal/shuttleengine`: only through shuttle's stop verb, which settles the run's record first. — [background](pattern/PATTERN-shuttle-stop.md)
 - `PATTERN-orch-pane-single-writer` — Typing into the orch session from Go: only the orch watcher does it, idle-gated; another module queues a notice through `orchengine` instead.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only through `internal/shell`, which imports the standard library alone.
 - `PATTERN-pane-binary-resolution` — Creating a strand pane or a detached `lyx` window in reed: it resolves `lyx` to the spawning binary through the one chokepoint in `panebin.go`. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading a skill into a spawned session: the spawning module names it on the launch spec and lyx types it; no stencil asks an agent to load a skill. (test)
-- `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive, and no stencil tells an agent to ask the operator; the discussion role's interactive questions come from the `{{.mode_rules}}` marker, and the orch stencils are exempt. (test)
+- `PATTERN-parent-directive` — Writing a spawned role's top-level stencil: it renders the parent directive, and no stencil tells an agent to ask the operator. (test) — [background](pattern/PATTERN-parent-directive.md)
 - `PATTERN-edit-directive` — Writing a spawned role's opening stencil: it renders the edit directive through `internal/editdirective`, and the `edit-directive` stencil is the no-script edit rule's only statement; the orch stencils are exempt. (test)
 - `PATTERN-spawn-color` — Coloring a spawned session: its spawning module names a segment on the launch spec, reed tints its bar button and border, and lyx types the provider's color command; no stencil asks an agent to set a color.
 - `PATTERN-wait-mark-display-only` — Marking a wait on screen: the `@lyx_wait` and `@lyx_wait_start` pane options are set only through reed's `SetWaitMark`, by `shuttleengine` and the landing verify callback, and no Go decision reads them.
@@ -102,5 +103,5 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 ## Docs
 
 - `PATTERN-markdown-link-integrity` — Linking in a `.md` file under `docs/`: every inline link resolves, file part and `#anchor`. (test) — [background](pattern/PATTERN-markdown-link-integrity.md)
-- `PATTERN-comment-line-breaks` — Writing or changing a Go comment: semantic line breaks, one sentence per line, with no column limit, checked on new breaks by `lyx loom lint-comments` alone; a comment's line break is never a review finding. (test) — [background](pattern/PATTERN-comment-line-breaks.md)
+- `PATTERN-comment-line-breaks` — Writing a Go comment: semantic line breaks, one sentence per line, checked by `lyx loom lint-comments` alone and never a review finding. (test) — [background](pattern/PATTERN-comment-line-breaks.md)
 - `PATTERN-documentation-lifecycle` — Deciding which docs are kept or deleted: no design doc for unbuilt work is kept in the repo, and a built design lives in its package's `doc.go`, see [overview](docs/overview.md#documentation-lifecycle).

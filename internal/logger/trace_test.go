@@ -78,6 +78,29 @@ func TestTraceID_AdoptsOnlyMintedAlphabetValuesElseMints(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("NewTraceID mints without touching the process identity", func(t *testing.T) {
+		resetTraceState(t)
+		t.Setenv("LYX_TRACE_ID", "deadbeefcafef00d")
+		own := TraceID()
+
+		first, second := NewTraceID(), NewTraceID()
+
+		for _, got := range []string{first, second} {
+			if !traceIDPattern.MatchString(got) {
+				t.Errorf("NewTraceID() = %q; want 16 lowercase hex characters", got)
+			}
+		}
+		if first == second {
+			t.Errorf("two NewTraceID() calls both returned %q; want distinct values", first)
+		}
+		if got := TraceID(); got != own {
+			t.Errorf("TraceID() = %q after NewTraceID(); want it unchanged at %q", got, own)
+		}
+		if got := os.Getenv("LYX_TRACE_ID"); got != "deadbeefcafef00d" {
+			t.Errorf("LYX_TRACE_ID = %q after NewTraceID(); want it unchanged", got)
+		}
+	})
 }
 
 // assertTraceIDAdoption checks that got is exactly the adopted value when adoption was expected, and

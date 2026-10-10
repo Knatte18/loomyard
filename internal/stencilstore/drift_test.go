@@ -134,10 +134,11 @@ func TestClassifyPortBackDrift(t *testing.T) {
 	}
 }
 
-// TestWarnPortBackDrift_EmitsClassAndRemedyPerDifferingStencil drives the warning end to end:
-// a differing stencil warns once naming the stencil and its class, an equal one warns nothing.
+// TestWarnPortBackDrift_EmitsOneLineListingTheDriftedStencils drives the warning end to end:
+// the differing stencils are listed with their classes on one line, with their remedies once, and an equal one is not listed.
+// The line is a Warn unless every differing stencil is in the behind class, when it is an Info.
 // It captures the logger's output, which is process-global state, so it stays serial.
-func TestWarnPortBackDrift_EmitsClassAndRemedyPerDifferingStencil(t *testing.T) {
+func TestWarnPortBackDrift_EmitsOneLineListingTheDriftedStencils(t *testing.T) {
 	baseDir := t.TempDir()
 	sourceDir := t.TempDir()
 	registry := newFakeRegistry(map[string][]byte{
@@ -182,26 +183,37 @@ func TestWarnPortBackDrift_EmitsClassAndRemedyPerDifferingStencil(t *testing.T) 
 	if buildCalls != 1 {
 		t.Errorf("build calls = %d; want 1, from the source-ahead stencil alone", buildCalls)
 	}
-	for _, want := range []string{"family-older", "neither", "lyx stencil sync", "family-ahead", "class=behind"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("warning log = %q; want it to contain %q", got, want)
-		}
+	if !strings.Contains(got, "lyx stencil sync") {
+		t.Errorf("warning log = %q; want it to name the sync remedy of the neither class", got)
 	}
-	for _, line := range strings.Split(got, "\n") {
-		if strings.Contains(line, "class=behind") && !strings.Contains(line, "level=INFO") {
-			t.Errorf("behind line = %q; want level=INFO", line)
-		}
-		if strings.Contains(line, "family-older") && !strings.Contains(line, "level=WARN") {
-			t.Errorf("neither line = %q; want level=WARN", line)
+	if lines := strings.Split(strings.TrimSpace(got), "\n"); len(lines) != 1 {
+		t.Fatalf("warning log = %q; want exactly one line for the whole pass", got)
+	}
+	if !strings.Contains(got, "level=WARN") || !strings.Contains(got, "2 stencils") {
+		t.Errorf("warning log = %q; want a Warn naming the count 2 because a stencil outside the behind class differs", got)
+	}
+	for _, want := range []string{"family-older: neither", "family-ahead: behind"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("warning log = %q; want it to list %q", got, want)
 		}
 	}
 	if strings.Contains(got, "family-same") {
-		t.Errorf("warning log = %q; a board copy equal to its source must warn nothing", got)
+		t.Errorf("warning log = %q; a board copy equal to its source must not be listed", got)
 	}
 	if strings.Contains(got, "promote") {
 		t.Errorf("warning log = %q; an untouched older copy must never name promote", got)
 	}
-	if n := strings.Count(got, "board copy has drifted"); n != 2 {
-		t.Errorf("warning count = %d; want exactly 2", n)
+	if n := strings.Count(got, "syncing this worktree with main"); n != 1 {
+		t.Errorf("remedy count = %d; want the behind remedy named once", n)
+	}
+
+	// A pass where only the behind class differs logs its one line at Info.
+	buf.Reset()
+	warnPortBackDrift(baseDir, newFakeRegistry(map[string][]byte{
+		"family-same":  []byte("embedded body\n"),
+		"family-ahead": []byte("embedded body\n"),
+	}), Source{Dir: sourceDir, Build: func() BuildAncestry { return BuildNotInHead }})
+	if only := buf.String(); !strings.Contains(only, "level=INFO") || !strings.Contains(only, "1 stencil ") || strings.Contains(only, "level=WARN") {
+		t.Errorf("behind-only log = %q; want one Info line naming the count 1", only)
 	}
 }

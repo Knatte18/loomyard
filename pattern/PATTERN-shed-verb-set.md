@@ -10,6 +10,9 @@ That first clause is review discipline, not a scan: "reimplements" has no static
 - `shedverbs` does import `internal/logger`, for step-boundary logging, and `logger.TraceFile` and `logger.TraceDir` are the only path sources admitted into it.
   They are not derived paths here: each returns the logger's own sink location, which `shedverbs` reports verbatim on the envelope and never joins, reads, writes or uses to locate run state.
 - Every run-state path (`StatusPath`, `ScratchDir`, `FrictionDir`, …) stays told through `Spec`, and the `lyxcwd` import stays denied.
+- The detached loop and its waiter behind `step --until-stop` live in `internal/shedverbs` (`loop.go`, `loopwait.go`, `looppid.go`, `loopenvelope.go`).
+  Its loop paths reach it told through `Spec.Loop`, and a child's trace files through the told `TraceFiles` and `StopFiles` closures; the loop reads and copies only the paths they tell it, while `logger.TraceFile` and `logger.TraceDir` stay reported verbatim.
+- Its non-standard-library imports are an allowlist: `buildvcs`, `clihelp`, `fswatch`, `lock`, `logger`, `output`, `proc` (the child record type, the tied start, the tree kill and the named job), `shedengine`, `state` and `cobra`.
 - Enforced by `internal/shedverbs/seam_enforcement_test.go`.
 
 ## Recipe table
@@ -19,7 +22,7 @@ Enforced by `internal/shedcli/table_test.go`.
 
 ## Step envelope
 
-- The `step` refusal-kind vocabulary stays closed at its five values.
+- The `step` refusal-kind vocabulary stays closed at its six values; `KindInterrupted` is the one the loop emits, for a child step that ended without an envelope.
 - The full step envelope's key set is closed by doc comment and test, and is the one the step record holds.
   Stdout prints a short envelope by default, whose two closed key sets (success and error) are stated in `internal/shedverbs`; `--full`, or a record that could not be written, prints the full envelope instead.
   The full envelope carries `trace_file`, `friction_dir`, `scratch_dir`, `trace_id` and `run_id` on the success and every error envelope.

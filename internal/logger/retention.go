@@ -6,6 +6,7 @@
 package logger
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -20,6 +21,33 @@ import (
 const traceFileTimestampLayout = "20060102T150405Z"
 
 var traceFilePattern = regexp.MustCompile(`^trace-(\d{8}T\d{6}Z)-([0-9a-f]{16})-(\d+)\.log$`)
+
+// TraceFilesFor lists the sink files of the trace group traceID in dir as absolute paths, sorted by name so the oldest file comes first.
+// A group may span several files, because a sink file is named by its timestamp and pid, which no caller can spell from the id alone.
+// An absent dir or a group with no file yields an empty list and no error.
+func TraceFilesFor(dir, traceID string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, entry := range entries {
+		match := traceFilePattern.FindStringSubmatch(entry.Name())
+		if entry.IsDir() || match == nil || match[2] != traceID {
+			continue
+		}
+		paths = append(paths, filepath.Join(absDir, entry.Name()))
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
 
 // RetentionBounds is the pair of limits Sweep enforces.
 // Count is the number of non-live trace groups to keep,

@@ -201,7 +201,7 @@ func TestNewPlanGate(t *testing.T) {
 		worktreeRoot := t.TempDir()
 		seedPlanFormatFixture(t, anchorPath, false)
 
-		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+		gate := NewPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()))
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
@@ -217,7 +217,7 @@ func TestNewPlanGate(t *testing.T) {
 		seedFormatInvalidPlanFixture(t, anchorPath)
 
 		buf := logcapture.Capture(t)
-		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+		gate := NewPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()))
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
@@ -244,7 +244,7 @@ func TestNewPlanGate(t *testing.T) {
 		// so the gate must return an error rather than reporting GateResult{Passed: false}.
 		worktreeRoot := filepath.Join(t.TempDir(), "does-not-exist")
 
-		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+		gate := NewPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()))
 		result, err := gate()
 		if err == nil {
 			t.Fatalf("gate() error = nil; want a non-nil error for a quarry-unavailable worktreeRoot")
@@ -264,18 +264,46 @@ func TestNewPlanGate(t *testing.T) {
 		// informational create-new-unit finding -- no blocking finding in this plan.
 		seedGlyphPlanFixture(t, anchorPath, true, "newpkg#Bar", "")
 
-		buf := logcapture.Capture(t)
-		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))
-		result, err := gate()
-		if err != nil {
-			t.Fatalf("gate() error = %v; want nil", err)
+		told := t.TempDir()
+		// A scratch directory that cannot be created: its parent is a regular file.
+		blocker := filepath.Join(t.TempDir(), "blocker")
+		if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+			t.Fatalf("write the blocking file: %v", err)
 		}
-		if !result.Passed {
-			t.Fatalf("gate() Passed = false; want true for an informational-only findings set")
+		cases := []struct {
+			name       string
+			scratchDir string
+			// wantFile is the path the log must carry and the file that must hold the finding; empty means the finding stays inline.
+			wantFile string
+		}{
+			{name: "told directory records a file and logs its count and path", scratchDir: told, wantFile: filepath.Join(told, "Plan-Gate-informational-findings.txt")},
+			{name: "empty directory keeps the findings inline", scratchDir: ""},
+			{name: "unwritable directory falls back to the findings inline", scratchDir: filepath.Join(blocker, "scratch")},
 		}
-		logged := buf.String()
-		if !strings.Contains(logged, "create-new-unit") {
-			t.Errorf("log = %q; want it to surface the informational finding for visibility on the pass path", logged)
+		for _, tc := range cases {
+			buf := logcapture.Capture(t)
+			gate := NewPlanGate(anchorPath, worktreeRoot, tc.scratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+			result, err := gate()
+			if err != nil {
+				t.Fatalf("%s: gate() error = %v; want nil", tc.name, err)
+			}
+			if !result.Passed {
+				t.Fatalf("%s: gate() Passed = false; want true for an informational-only findings set", tc.name)
+			}
+			logged := buf.String()
+			if tc.wantFile == "" {
+				if !strings.Contains(logged, "create-new-unit") {
+					t.Errorf("%s: log = %q; want it to carry the informational finding inline", tc.name, logged)
+				}
+				continue
+			}
+			if strings.Contains(logged, "create-new-unit") || !strings.Contains(logged, "count=1") || !strings.Contains(logged, tc.wantFile) {
+				t.Errorf("%s: log = %q; want the count and the file path, and not the finding text", tc.name, logged)
+			}
+			recorded, err := os.ReadFile(tc.wantFile)
+			if err != nil || !strings.Contains(string(recorded), "create-new-unit") {
+				t.Errorf("%s: file %s = %q, %v; want it to hold the finding", tc.name, tc.wantFile, recorded, err)
+			}
 		}
 	})
 
@@ -287,7 +315,7 @@ func TestNewPlanGate(t *testing.T) {
 		// blocking finding is enough to fail the gate.
 		seedGlyphPlanFixture(t, anchorPath, true, "newpkg#Bar", "sub#Missing")
 
-		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+		gate := NewPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()))
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
@@ -317,7 +345,7 @@ func TestNewPlanGate(t *testing.T) {
 		seedGlyphPlanFixture(t, anchorPath, true, "sub#Foo", "")
 		saveState(t, anchorPath, doneBatchOne)
 
-		result, err := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))()
+		result, err := NewPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()))()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -332,7 +360,7 @@ func TestNewPlanGate(t *testing.T) {
 		worktreeRoot := plankit.Repo(t, builtRepo)
 		seedGlyphPlanFixture(t, anchorPath, true, "sub#Foo", "")
 
-		result, err := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))()
+		result, err := NewPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()))()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -354,7 +382,7 @@ func TestNewPlanGate(t *testing.T) {
 		plankit.Write(t, planparser.PlanDir(anchorPath), plan)
 		saveState(t, anchorPath, doneBatchOne)
 
-		result, err := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))()
+		result, err := NewPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()))()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -402,7 +430,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 		// fmt.Errorf, never a *fs.PathError.
 		writeOverviewOnlyPlanDir(t, anchorPath, "---\nformat: [not, valid\n---\n\n## Card Index\n\n1 — c — c\n")
 
-		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+		gate := NewPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()))
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil (a malformed overview is findings, not a returned error)", err)
@@ -425,7 +453,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 		}
 		writeOverviewOnlyPlanDir(t, anchorPath, overview)
 
-		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+		gate := NewPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()))
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil (an unparseable card index line is findings, not a returned error)", err)
@@ -445,7 +473,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 		// fmt.Errorf, never wrapping the underlying *fs.PathError with %w -- so it is findings, the same
 		// disposition discussionparser.Validate already gives a missing file.
 
-		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+		gate := NewPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()))
 		result, err := gate()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil (an absent overview is findings, not a returned error)", err)
@@ -471,7 +499,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 			t.Fatalf("mkdir overview path: %v", err)
 		}
 
-		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+		gate := NewPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()))
 		result, err := gate()
 		if err == nil {
 			t.Fatalf("gate() error = nil; want a non-nil error for an unreadable overview file")
@@ -495,7 +523,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 			t.Fatalf("mkdir card file path: %v", err)
 		}
 
-		gate := NewPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()))
+		gate := NewPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()))
 		result, err := gate()
 		if err == nil {
 			t.Fatalf("gate() error = nil; want a non-nil error for an unreadable card file")
@@ -583,7 +611,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 		worktreeRoot := plankit.Repo(t, builtRepo)
 		committed := seedReworkGlyphPlan(t, anchorPath, 2, "newpkg#Bar", "")
 
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed))()
+		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed))()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -597,7 +625,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 		worktreeRoot := plankit.Repo(t, builtRepo)
 		committed := seedReworkGlyphPlan(t, anchorPath, 1, "newpkg#Bar", "")
 
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed))()
+		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed))()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -611,7 +639,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 		worktreeRoot := plankit.Repo(t, builtRepo)
 		committed := seedReworkGlyphPlan(t, anchorPath, 2, "newpkg#Bar", "sub#Missing")
 
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed))()
+		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed))()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -625,7 +653,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 		worktreeRoot := plankit.Repo(t, builtRepo)
 		committed := seedReworkGlyphPlan(t, anchorPath, 2, "sub#Foo", "")
 
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed))()
+		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed))()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -639,7 +667,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 		worktreeRoot := plankit.Repo(t, builtRepo)
 		seedReworkGlyphPlan(t, anchorPath, 2, "newpkg#Bar", "")
 
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(nil))()
+		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(nil))()
 		if err == nil {
 			t.Fatalf("gate() = %+v, nil; want an error when HEAD carries no plan", result)
 		}

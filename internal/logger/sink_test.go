@@ -96,6 +96,17 @@ func TestEnsureDurableSink_CreatesOneNamedFileWithHeader(t *testing.T) {
 				t.Fatalf("listSinkDirFiles(dir) = %v; want exactly one file", files)
 			}
 
+			listed, err := TraceFilesFor(dir, TraceID())
+			if err != nil || len(listed) != 1 || listed[0] != filepath.Join(dir, files[0]) {
+				t.Errorf("TraceFilesFor(dir, own id) = %v, %v; want exactly [%q]", listed, err, filepath.Join(dir, files[0]))
+			}
+			if other, err := TraceFilesFor(dir, "0000000000000000"); err != nil || len(other) != 0 {
+				t.Errorf("TraceFilesFor(dir, another id) = %v, %v; want none", other, err)
+			}
+			if absent, err := TraceFilesFor(filepath.Join(dir, "absent"), TraceID()); err != nil || len(absent) != 0 {
+				t.Errorf("TraceFilesFor(absent dir) = %v, %v; want none and no error", absent, err)
+			}
+
 			match := sinkTestFilePattern.FindStringSubmatch(files[0])
 			if match == nil {
 				t.Fatalf("filename %q does not match trace-<ts>-<16hex>-<pid>.log grammar", files[0])
