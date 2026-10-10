@@ -1,5 +1,5 @@
 // start.go implements the `start` loom verb: the session bootstrap.
-// It resolves the recorded parent branch, seeds the status file when absent, commits that seed into the fabric, ensures the reed substrate and picks the session's status strand by the recorded driver (kept on a go-driven run, removed on an llm-driven one), spawns the detached driver when none is already alive, waits for the handshake that confirms the driver took the run lock, and finally prints the success envelope.
+// It resolves the recorded parent branch, seeds the status file when absent, commits that seed into the fabric, ensures the reed substrate and the session's status strand on every run, spawns the detached driver when none is already alive, waits for the handshake that confirms the driver took the run lock, and finally prints the success envelope.
 // The verb never attaches or switches a tmux client;
 // every step runs on the envelope.
 
@@ -37,7 +37,7 @@ const (
 )
 
 // mustUseLLMDriverArm reports whether the run takes the llm arm, from the run's recorded driver.
-// It selects step 4's strand branch (the llm arm removes the status strand, the go arm keeps it) and step 5's spawn (the llm arm's strand launch rather than the go arm's detached spawn).
+// It selects step 5's spawn: the llm arm's strand launch rather than the go arm's detached spawn.
 //
 // An unseeded run is seeded with the llm driver (resolveSeedDriver), while a seed file with no driver
 // value still reads as the go driver, so this is a two-value switch -- any value other than
@@ -407,10 +407,8 @@ func (c *loomCLI) startCmd() *cobra.Command {
 
   1. resolve the recorded parent branch, seed the status file when it is
      absent, and commit that seed into the fabric before anything else touches it
-  2. ensure the worktree's tmux session is up; on a go-driven run ensure its
-     status strand exists, and on an llm-driven run remove any status strand
-     the session still holds; then spawn the per-hub watchdog daemon,
-     best-effort
+  2. ensure the worktree's tmux session is up and its status strand exists;
+     then spawn the per-hub watchdog daemon, best-effort
   3. read this run's seed and, unless a driver is already alive, spawn the
      driver its recorded choice selects -- the detached Go runner, or a
      Claude strand running the loom driver in this worktree's own reed session --
@@ -487,7 +485,7 @@ Example:
 			// any failure regardless of which sub-step produced it, exactly as before this
 			// extraction; `step` is the caller that maps the stage onto its own refusal-kind
 			// vocabulary.
-			// The returned driver is the branch condition for step 4's strand branch and step 5's spawn below -- this call is the only read of it:
+			// The returned driver is the branch condition for step 5's spawn below -- this call is the only read of it:
 			// seedAndCommitBootstrap has just written or found this run's seed,
 			// so a second shedrun.ReadSeed here would re-read a value already in hand.
 			_, driver, _, err := c.seedAndCommitBootstrap(slug, parentFlag)
@@ -496,7 +494,7 @@ Example:
 				return nil
 			}
 
-			// Step 4: take the bootstrap lock, then bring the reed substrate up and choose the session's driving surface by the recorded driver.
+			// Step 4: take the bootstrap lock, then bring the reed substrate up and ensure the session's status strand.
 			// The lock's parent directory is the same ephemeral-tree directory the run lock and driver log also live in,
 			// so creating it here also covers those.
 			bootstrapLockPath := loomengine.LoomBootstrapLock(c.location)
@@ -519,11 +517,8 @@ Example:
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			if mustUseLLMDriverArm(driver) {
-				// The loom driver strand is the driving surface, so the status band goes;
-				// a failed removal never fails start.
-				removeStatusStrands(c.reed.Status, c.reed.RemoveStrand)
-			} else if err := c.ensureStatusStrand(); err != nil {
+			// Both arms keep the status strand: the driver's pane no longer shows the run's steps once the loop runs detached.
+			if err := c.ensureStatusStrand(); err != nil {
 				_ = bootstrapLock.Release()
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -535,7 +530,7 @@ Example:
 			// Three placement facts matter here.
 			// First, the daemon is per-hub and reconciles a session that exists on every invocation,
 			// where the detached driver still spawns agent strands that need reconciling.
-			// Second, it sits after the strand branch, outside it, so both arms reach it,
+			// Second, it sits after the status strand, so every run reaches it,
 			// and `step` does not spawn the watchdog.
 			// Third, it stays inside the region where the bootstrap lock is still held, deliberately: the
 			// spawn is a MkdirAll, an os.Executable(), and a detached Start with no Wait, so it is
