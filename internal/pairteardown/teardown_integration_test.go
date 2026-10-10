@@ -112,7 +112,7 @@ func writeFile(t *testing.T, path, content string) {
 func TestRun_TeardownScenario(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	cfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
 	if err != nil {
 		t.Fatalf("reedengine.LoadConfig: %v", err)

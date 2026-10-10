@@ -241,7 +241,7 @@ func processGone(pid int) bool {
 func TestGateTest_Scenario(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	gateConfig := "slots: 1\ngo_parallel: 3\ncli_wait_sec: 1\n"
 	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "gate"), []byte(gateConfig), 0o644); err != nil {
 		t.Fatalf("seed gate.yaml: %v", err)

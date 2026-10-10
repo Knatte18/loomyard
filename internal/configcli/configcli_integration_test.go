@@ -34,7 +34,7 @@ func TestConfigOverRealHub(t *testing.T) {
 	const slug = "config-hub-test"
 
 	// fabriccli.CloneAndWire has already materialized every registered module's config plus the repo-wide fabric.yaml at BoardDir, and the records-side primary already sits on its RecordsBranchName-suffixed branch.
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	// Topology.Add wires the new pair's junctions itself, reading the wired name-set from the real repo-wide fabric.yaml.
 	// Without that the worktree has no _lyx, so configengine.Edit→FindBaseDir would error.

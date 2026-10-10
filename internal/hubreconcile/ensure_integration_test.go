@@ -144,7 +144,7 @@ func markForeignMerge(t *testing.T, codeDir string) (clear func()) {
 func newStaleHub(t *testing.T, slug string) *hubforge.Hub {
 	t.Helper()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, h, slug)
 	seedRetiredKey(t, h.PrimeRecords())
 	seedRetiredKey(t, h.PairRecordsSibling(slug))
@@ -414,7 +414,7 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 func TestEnsure_HeldLockTimesOutWithoutStamping(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	geom := geometryOf(h)
 	if err := os.MkdirAll(filepath.Dir(geom.LockPath()), 0o755); err != nil {
 		t.Fatalf("mkdir lock dir: %v", err)
@@ -466,7 +466,7 @@ func TestEnsure_ConcurrentCallsLandOneCommitPerBranch(t *testing.T) {
 func TestEnsure_PairRegisteredDuringTheWalkIsReconciledBeforeTheStamp(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	geom := geometryOf(h)
 	listings := 0
 	hook := func() {
@@ -538,7 +538,7 @@ func TestEnsure_UnwiredPairIsLeftUnwrittenAndStampIsWritten(t *testing.T) {
 func TestEnsure_UnreachableBoardRemoteStillCommitsHubWideConfig(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	geom := geometryOf(h)
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\nretired_fixture_key: 1\n")
 	gitkit.Git(t, h.BoardDir(), "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing.git"))
