@@ -1,7 +1,7 @@
 //go:build integration
 
 // hubmutation_integration_test.go drives the fabric CLI's mutating verbs — the two-sided bypass push, "push" from a task pair and from the prime, "add", "remove" and "reconcile" — against one real hub as an ordered scenario, asserting each verb's envelope and exit-code contract:
-// a pre-flight failure is a bare error carrying neither "mutations" nor "partial", reconcile heals missing hub-wide config and treats a failed config push as non-fatal, a pair that vanished mid-walk is not a failure, and a pair reconcile could not repair is.
+// a pre-flight failure is a bare error carrying neither "mutations" nor "partial", reconcile heals missing hub-wide config and skips the heal while the board remote is unreachable, a pair that vanished mid-walk is not a failure, and a pair reconcile could not repair is.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
 package fabriccli_test
@@ -324,9 +324,11 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 				t.Errorf("warp bare %s = %s; want unchanged %s (the prime's code side is never pushed)", warpBranch, got, warpBareBefore)
 			}
 		}},
-		{"Reconcile_HubConfigPushFailureIsNonFatal", func(t *testing.T) {
-			// With the committed hub-wide configs removed and the board remote pointing at an unreachable path, the healing commit lands but its push fails; reconcile still exits 0 and reports the failure under hub_config_detail, leaving the files healed on disk.
+		{"Reconcile_UnreachableBoardRemoteSkipsTheHeal", func(t *testing.T) {
+			// With the committed hub-wide configs removed and the board remote pointing at an unreachable path, the heal is skipped and writes nothing: hub_config_detail names the fetch, and the strict config load fails on the files left absent, so the exit is non-zero.
+			// The remote is pointed back afterwards and a re-run heals the files, which the later rows rely on.
 			boardDir := h.BoardDir()
+			reachable := gitkit.Git(t, boardDir, "remote", "get-url", "origin")
 
 			for _, module := range []string{"fabric", "board"} {
 				if err := os.Remove(configengine.ConfigFile(boardDir, module)); err != nil {
@@ -339,18 +341,28 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			gitkit.MustRun(t, boardDir, "git", "remote", "set-url", "origin", unreachable)
 
 			code, output := runFabric(t, h.PrimeWorktree(), "reconcile")
-			if code != 0 {
-				t.Fatalf("RunCLI(reconcile) = %d; want 0 (a failed hub config push must be non-fatal)\noutput: %s", code, output)
+			if code == 0 {
+				t.Fatalf("RunCLI(reconcile) = 0; want non-zero (the config loader fails on the unhealed files)\noutput: %s", output)
 			}
 
-			result := envelope.RequireOK(t, output)
+			result := envelope.RequireErr(t, output, "")
 			detail, _ := result.Raw["hub_config_detail"].(string)
-			if !strings.Contains(detail, "hub-wide config committed but push failed") {
-				t.Errorf("hub_config_detail = %q; want it to report the committed-but-unpushed config", detail)
+			if !strings.Contains(detail, "fetching origin") {
+				t.Errorf("hub_config_detail = %q; want it to name the failed fetch", detail)
+			}
+			for _, module := range []string{"fabric", "board"} {
+				if _, err := os.Stat(configengine.ConfigFile(boardDir, module)); !os.IsNotExist(err) {
+					t.Errorf("hub-wide %s config stat err = %v; want it still absent after the skipped heal", module, err)
+				}
+			}
+
+			gitkit.Git(t, boardDir, "remote", "set-url", "origin", reachable)
+			if code, output := runFabric(t, h.PrimeWorktree(), "reconcile"); code != 0 {
+				t.Fatalf("RunCLI(reconcile) after the remote is reachable = %d; want 0\noutput: %s", code, output)
 			}
 			for _, module := range []string{"fabric", "board"} {
 				if _, err := os.Stat(configengine.ConfigFile(boardDir, module)); err != nil {
-					t.Errorf("hub-wide %s config not healed: %v", module, err)
+					t.Errorf("hub-wide %s config not healed once the remote is reachable: %v", module, err)
 				}
 			}
 		}},

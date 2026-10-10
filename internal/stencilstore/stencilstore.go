@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
@@ -134,24 +135,119 @@ func ApplyStamp(content []byte, hash string) []byte {
 // Mode selects how Reconcile treats an untouched stencil (StateUntouched).
 type Mode int
 
-// ModeProduction refreshes an untouched stencil whose shipped default has changed; ModeDev seeds but
-// never refreshes, warning instead.
-// ModeProduction is the zero value, so an unstamped binary and a zero Mode both classify as
-// production.
+// ModeUnstamped and ModeDev seed an absent stencil but never refresh an untouched one, warning instead;
+// ModeProduction refreshes an untouched stencil whose shipped default is newer than the recorded writer.
+// ModeUnstamped is the zero value, so an unset Mode never refreshes.
 const (
-	ModeProduction Mode = iota
-	ModeDev
+	ModeUnstamped  Mode = 0
+	ModeDev        Mode = 1
+	ModeProduction Mode = 2
 )
 
-// ModeFor is the single mapping site from "is this a dev build" to a Mode: callers pass
-// buildinfo.IsDev() into it, getting ModeDev when dev is true and ModeProduction otherwise.
-// ModeProduction being iota's zero value is what makes an unstamped binary safely classify as
-// production even before this function ever runs.
-func ModeFor(dev bool) Mode {
-	if dev {
+// ModeFor is the single three-way mapping from a build's channel and VCS stamp to a Mode:
+// ModeProduction only when production and cleanStamp both hold, else ModeDev when dev, else ModeUnstamped.
+// Callers pass buildinfo.IsDev(), buildinfo.IsProduction() and buildvcs.Running().Clean().
+func ModeFor(dev, production, cleanStamp bool) Mode {
+	switch {
+	case production && cleanStamp:
+		return ModeProduction
+	case dev:
 		return ModeDev
+	default:
+		return ModeUnstamped
 	}
-	return ModeProduction
+}
+
+// Writer names the binary that wrote a board copy: its VCS revision and commit time.
+// The zero Writer means no recorded writer.
+type Writer struct {
+	Revision string
+	Time     time.Time
+}
+
+// writerKeyBuild and writerKeyTime prefix the two writer tokens that follow the hex in a banner's stamp line.
+const (
+	writerKeyBuild = "build="
+	writerKeyTime  = "time="
+)
+
+// stampTail locates the writer tokens that follow the stamp's hex in content's leading banner:
+// the byte range [hexEnd, tailEnd) runs from the hex's end to the end of the stamp line or to the banner's close.
+// closing reports that the range ends at the banner's close, so a rebuilt tail must keep a space before it.
+// ok is false when content has no leading banner or the banner carries no stamp line.
+func stampTail(content []byte) (hexEnd, tailEnd int, closing, ok bool) {
+	banner, start, end, hasBanner := leadingBanner(content)
+	if !hasBanner {
+		return 0, 0, false, false
+	}
+	idx := strings.Index(string(banner), stampKey)
+	if idx == -1 {
+		return 0, 0, false, false
+	}
+	hexEnd = start + idx + len(stampKey)
+	for hexEnd < end && isLowerHexDigit(content[hexEnd]) {
+		hexEnd++
+	}
+	closeStart := end - len("-->")
+	tailEnd = hexEnd
+	for tailEnd < closeStart && content[tailEnd] != '\n' && content[tailEnd] != '\r' {
+		tailEnd++
+	}
+	return hexEnd, tailEnd, tailEnd == closeStart, true
+}
+
+// ApplyWriter returns content with the writer keys after the hex in its stamp line set to writer:
+// existing `build=` and `time=` keys are rewritten, and a zero writer removes them.
+// The body is never touched, and content without a stamp line comes back unchanged.
+func ApplyWriter(content []byte, writer Writer) []byte {
+	hexEnd, tailEnd, closing, ok := stampTail(content)
+	if !ok {
+		return content
+	}
+
+	var tail strings.Builder
+	for _, token := range strings.Fields(string(content[hexEnd:tailEnd])) {
+		if !strings.HasPrefix(token, writerKeyBuild) && !strings.HasPrefix(token, writerKeyTime) {
+			tail.WriteString(" " + token)
+		}
+	}
+	if writer.Revision != "" {
+		tail.WriteString(" " + writerKeyBuild + writer.Revision)
+	}
+	if !writer.Time.IsZero() {
+		tail.WriteString(" " + writerKeyTime + writer.Time.UTC().Format(time.RFC3339))
+	}
+	if closing {
+		tail.WriteString(" ")
+	}
+
+	result := make([]byte, 0, len(content)+tail.Len())
+	result = append(result, content[:hexEnd]...)
+	result = append(result, tail.String()...)
+	result = append(result, content[tailEnd:]...)
+	return result
+}
+
+// ParseWriter reads the writer keys from content's stamp line, and returns the zero Writer when they are absent.
+// A time that is not RFC 3339 leaves Time zero.
+func ParseWriter(content []byte) Writer {
+	hexEnd, tailEnd, _, ok := stampTail(content)
+	if !ok {
+		return Writer{}
+	}
+
+	var writer Writer
+	for _, token := range strings.Fields(string(content[hexEnd:tailEnd])) {
+		switch {
+		case strings.HasPrefix(token, writerKeyBuild):
+			writer.Revision = strings.TrimPrefix(token, writerKeyBuild)
+		case strings.HasPrefix(token, writerKeyTime):
+			if parsed, err := time.Parse(time.RFC3339, strings.TrimPrefix(token, writerKeyTime)); err == nil {
+				writer.Time = parsed
+			}
+		}
+	}
+	return writer
 }
 
 // Registry supplies the name-to-shipped-default lookup Reconcile and Validate classify and seed

@@ -2,8 +2,8 @@
 // from newRoot's PersistentPreRunE: seedStencils resolves geometry and is a deliberate no-op under go
 // test, stencilSeedTarget decides whether this process should seed at all and against which hub and
 // worktree, and seedStencilsAt does the work of reconciling the board's stencils and specs subtrees
-// against their shipped registries and committing whatever each wrote, via the shared seedSubtree
-// helper.
+// against their shipped registries.
+// The shared seedSubtree helper yields each subtree's write, and both land through one pull-first Bolt write.
 // Neither function references internal/output or any envelope key: the mutation record this pass
 // produces is logged, never surfaced in a command's JSON envelope, per the
 // mutation-record-is-logged-not-enveloped-at-the-pre-run Shared Decision.
@@ -12,7 +12,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 
@@ -45,7 +47,7 @@ func seedStencils(cmd *cobra.Command) {
 
 	// A command that carries the skip annotation reads no stencils, so the pass is pure waste for
 	// it -- and skipping also keeps a long-lived process (e.g. lyx reed watchdog, the detached
-	// per-hub daemon) from ever reaching fabricengine.CommitSeededStencils and performing a git
+	// per-hub daemon) from ever reaching fabricengine.Bolt.PullThenCommitWritten and performing a git
 	// commit in the hub. This
 	// early return sits ahead of stencilSeedTarget so an opted-out command resolves no geometry and
 	// spawns no `git rev-parse`.
@@ -57,7 +59,8 @@ func seedStencils(cmd *cobra.Command) {
 	if !ok {
 		return
 	}
-	seedStencilsAt(hub, worktree)
+	running := buildvcs.Running()
+	seedStencilsAt(hub, worktree, stencilstore.ModeFor(buildinfo.IsDev(), buildinfo.IsProduction(), running.Clean()), running)
 }
 
 // skipStencilSeed reports whether cmd carries clihelp.SkipStencilSeedAnnotation set to
@@ -107,10 +110,14 @@ func stencilSeedTarget(ctx context.Context) (hub, worktree string, ok bool) {
 
 // seedStencilsAt reconciles the board's stencils and deployed-specs subtrees against their shipped
 // registries and commits whatever each one wrote.
-// It takes no context, so a test can drive it directly against a real hub without going through
-// seedStencils' testing.Testing() guard.
-// The two passes are independent: a failure in one is logged and does not skip the other.
-func seedStencilsAt(hub, worktree string) {
+// It takes no context, so a test can drive it directly against a real hub without going through seedStencils' testing.Testing() guard.
+// It takes the mode and the running identity as parameters, so a test can drive a production mode under a chosen identity without a stamped test binary.
+//
+// With neither subtree due it runs no git and touches no network.
+// With either due, one pull-first Bolt write carries both subtrees' writes, stencils then specs:
+// one pull and one seed-commit drop precede both writes, so the specs write never drops the stencils commit the same pass made.
+// The pass is best-effort: a skipped pull or a failed write is logged and never fails the command.
+func seedStencilsAt(hub, worktree string, mode stencilstore.Mode, running buildvcs.Identity) {
 	sourceDir := filepath.Join(worktree, "contracts", "stencils")
 	if _, err := os.Stat(sourceDir); err != nil {
 		// The empty string means "no source tree here", which is what keeps the port-back drift
@@ -118,9 +125,10 @@ func seedStencilsAt(hub, worktree string) {
 		sourceDir = ""
 	}
 
-	mode := stencilstore.ModeFor(buildinfo.IsDev())
-
-	seedSubtree(hub, fabricengine.StencilsDir(hub), fabricengine.StencilsSubtreeRel(), stencils.Registry(), mode, fabricengine.StencilSource(worktree, sourceDir, buildvcs.Running().Revision), "stencils")
+	var writes []fabricengine.BoltWrite
+	if write, due := seedSubtree(fabricengine.StencilsDir(hub), fabricengine.StencilsSubtreeRel(), stencils.Registry(), mode, fabricengine.StencilSource(worktree, sourceDir, running), "stencils"); due {
+		writes = append(writes, write)
+	}
 
 	// sourceDir is deliberately empty here rather than derived from worktree: sourceDir exists only
 	// to drive the port-back drift warning, which serves an authoring workflow specs do not have --
@@ -128,29 +136,51 @@ func seedStencilsAt(hub, worktree string) {
 	// A per-name source mapping is deliberately not built either: the two travelling docs live in
 	// different directories and one's basename differs from its registered name, so no single
 	// sourceDir shape fits.
-	seedSubtree(hub, fabricengine.SpecsDir(hub), fabricengine.SpecsSubtreeRel(), specs.Registry(), mode, stencilstore.Source{}, "specs")
+	if write, due := seedSubtree(fabricengine.SpecsDir(hub), fabricengine.SpecsSubtreeRel(), specs.Registry(), mode, fabricengine.StencilSource(worktree, "", running), "specs"); due {
+		writes = append(writes, write)
+	}
+
+	if len(writes) == 0 {
+		return
+	}
+
+	res, err := fabricengine.NewBolt(fabricengine.BoardDir(hub)).PullThenCommitWritten(writes, fabricengine.NewMutations(hub))
+	if err != nil {
+		logger.Warn("stencilseed: seeding the board failed", "error", err)
+		return
+	}
+	if res.Skipped != "" {
+		logger.Info("stencilseed: seeding skipped, the board could not be brought up to date", "skip", string(res.Skipped))
+		return
+	}
+	logger.Info("stencilseed: seeded", "commits", len(res.SHAs), "shas", res.SHAs)
 }
 
-// seedSubtree reconciles baseDir (the subtreeRel-rooted subtree under hub's board) against registry
-// and commits whatever it wrote, labelling its log lines with label so the two seeding passes
-// (stencils, specs) are distinguishable in the log.
-// It is best-effort, exactly as seedStencilsAt's single pass was before this subtree split: a
-// reconcile or commit failure logs a logger.Warn and returns without failing the command, since the
-// root pre-run runs before every single lyx invocation.
-func seedSubtree(hub, baseDir, subtreeRel string, registry stencilstore.Registry, mode stencilstore.Mode, source stencilstore.Source, label string) {
-	written, err := stencilstore.Reconcile(baseDir, registry, mode, source)
+// seedSubtree reports whether reconciling baseDir (the subtreeRel-rooted subtree of the board) against registry would write anything, and returns the board write that does it, committed under the seed subject for label ("stencils" or "specs") and the running binary.
+// The write reconciles against the copy the pull-first Bolt write has just brought up to date, and returns the paths it wrote prefixed with subtreeRel.
+// A due-check failure is logged at Warn and reports nothing due, since the root pre-run runs before every lyx invocation.
+func seedSubtree(baseDir, subtreeRel string, registry stencilstore.Registry, mode stencilstore.Mode, source stencilstore.Source, label string) (fabricengine.BoltWrite, bool) {
+	due, err := stencilstore.WritesDue(baseDir, registry, mode, source)
 	if err != nil {
-		logger.Warn("stencilseed: reconcile failed", "subtree", label, "error", err)
-		return
+		logger.Warn("stencilseed: checking for due writes failed", "subtree", label, "error", err)
+		return fabricengine.BoltWrite{}, false
 	}
-	if len(written) == 0 {
-		return
+	if !due {
+		return fabricengine.BoltWrite{}, false
 	}
 
-	res, err := fabricengine.CommitSeededStencils(hub, subtreeRel, baseDir, written, "lyx: seed "+label, fabricengine.NewMutations(filepath.Dir(hub)))
-	if err != nil {
-		logger.Warn("stencilseed: commit seeded files failed", "subtree", label, "error", err)
-		return
-	}
-	logger.Info("stencilseed: seeded", "subtree", label, "written", len(written), "committed", res.Committed, "sha", res.SHA)
+	return fabricengine.BoltWrite{
+		Message: fabricengine.SeedCommitMessage(label, fabricengine.BinaryLabel()),
+		Write: func() ([]string, error) {
+			written, err := stencilstore.Reconcile(baseDir, registry, mode, source)
+			if err != nil {
+				return nil, fmt.Errorf("reconcile the %s subtree: %w", label, err)
+			}
+			paths := make([]string, len(written))
+			for i, rel := range written {
+				paths[i] = path.Join(subtreeRel, rel)
+			}
+			return paths, nil
+		},
+	}, true
 }

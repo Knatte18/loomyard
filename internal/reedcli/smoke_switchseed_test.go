@@ -33,8 +33,7 @@ import (
 // at all for an opted-out command.
 func TestSmokeSwitchDeclinesStencilSeedPass(t *testing.T) {
 	t.Parallel()
-	// The dev channel stamp makes stencilstore.ModeFor(buildinfo.IsDev()) return ModeDev;
-	// an unstamped binary is production mode and never emits the dev-refusal warn.
+	// The dev channel stamp makes stencilstore.ModeFor return ModeDev, which warns instead of refreshing an untouched stencil.
 	lyxExe := lyxbin.BuildWithLDFlags(t, "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev")
 
 	h := hubforge.NewHub(t, ".")

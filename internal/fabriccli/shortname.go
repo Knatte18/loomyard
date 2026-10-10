@@ -49,8 +49,8 @@ func runShortname(ctx context.Context, out io.Writer, args []string) int {
 	if _, _, err := fabricengine.CommitShortname(l.HubPath, shortname, "fabric shortname: record the repo's shortname", rec); err != nil {
 		return errWithRecord(out, rec.Snapshot(), err)
 	}
-	// Bolt.Push records nothing, for the reason CloneAndWire spells out.
-	if err := fabricengine.NewBolt(boardDir).Push(fabricengine.SyncOptions{}); err != nil {
+	// The push records no branch_pushed entry, for the reason CloneAndWire spells out, but a seed-commit drop behind it is recorded in rec.
+	if err := fabricengine.NewBolt(boardDir).PushRecorded(fabricengine.SyncOptions{}, rec); err != nil {
 		return errWithRecord(out, rec.Snapshot(), err)
 	}
 	return okWithRecord(out, rec.Snapshot(), map[string]any{"shortname": shortname})

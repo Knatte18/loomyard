@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/specs"
 	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/buildinfo"
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -138,7 +139,7 @@ Examples:
 
 	syncCmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Force-refresh every stencil and deployed spec against the shipped registry, even from a -dev build",
+		Short: "Force-refresh every stencil and deployed spec against the shipped registry, even from a -dev or unstamped build",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -155,14 +156,17 @@ Examples:
 			// pre-flight-style failure: a bare output.Err deliberately, not errWithRecord's
 			// mutations/partial pair. Any partially-written state is re-detected and completed by
 			// the next sync via Classify, so this is a reporting gap, not a correctness bug.
-			written, err := stencilstore.ForceRefresh(stencilsDir, stencils.Registry(), fabricengine.StencilSource(l.WorktreePath(), sourceDir, buildvcs.Running().Revision))
+			running := buildvcs.Running()
+			binaryLabel := fabricengine.BinaryLabel()
+			mode := stencilstore.ModeFor(buildinfo.IsDev(), buildinfo.IsProduction(), running.Clean())
+			written, err := stencilstore.ForceRefresh(stencilsDir, stencils.Registry(), mode, fabricengine.StencilSource(l.WorktreePath(), sourceDir, running))
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
 
 			rec := fabricengine.NewMutations(filepath.Dir(l.HubPath))
-			res, commitErr := fabricengine.CommitSeededStencils(l.HubPath, fabricengine.StencilsSubtreeRel(), stencilsDir, written, "lyx: seed stencils", rec)
+			res, commitErr := fabricengine.CommitSeededStencils(l.HubPath, fabricengine.StencilsSubtreeRel(), stencilsDir, written, fabricengine.SyncCommitMessage("stencils", binaryLabel), rec)
 			if commitErr != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), commitErr))
 				return nil
@@ -179,12 +183,12 @@ Examples:
 			// includes the stencils half's own mutations. Both return early, leaving the stencils
 			// commit landed and reported as partial.
 			specsDir := fabricengine.SpecsDir(l.HubPath)
-			specsWritten, specsErr := stencilstore.ForceRefresh(specsDir, specs.Registry(), stencilstore.Source{})
+			specsWritten, specsErr := stencilstore.ForceRefresh(specsDir, specs.Registry(), mode, fabricengine.StencilSource(l.WorktreePath(), "", running))
 			if specsErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, specsErr.Error()))
 				return nil
 			}
-			specsRes, specsCommitErr := fabricengine.CommitSeededStencils(l.HubPath, fabricengine.SpecsSubtreeRel(), specsDir, specsWritten, "lyx: seed specs", rec)
+			specsRes, specsCommitErr := fabricengine.CommitSeededStencils(l.HubPath, fabricengine.SpecsSubtreeRel(), specsDir, specsWritten, fabricengine.SyncCommitMessage("specs", binaryLabel), rec)
 			if specsCommitErr != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), specsCommitErr))
 				return nil

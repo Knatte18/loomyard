@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -196,7 +197,52 @@ func (t *Teardown) topology() (*fabricengine.Topology, error) {
 	if err != nil {
 		return nil, err
 	}
-	return fabricengine.NewTopology(cfg), nil
+	top := fabricengine.NewTopology(cfg)
+	top.SetInFlightProbe(t.otherPairSessions)
+	return top, nil
+}
+
+// otherPairSessions returns the live reed sessions of the hub's pairs other than slug's.
+// A hub socket with no tmux server behind it has no sessions.
+// The prime's own sessions, the orch among them, are never in the pair set and never count.
+func (t *Teardown) otherPairSessions(slug string) ([]string, error) {
+	cfg, err := reedengine.LoadConfig(t.prime.AnchorPath(), "reed")
+	if err != nil {
+		return nil, err
+	}
+	live, err := reedengine.ListSessions(cfg.Tmux, reedengine.ServerName(t.prime.HubPath))
+	if err != nil {
+		if reedengine.IsNoServer(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("list the hub's live sessions: %w", err)
+	}
+
+	entries, err := fabricengine.List(t.prime.WorktreePath())
+	if err != nil {
+		return nil, fmt.Errorf("list worktrees: %w", err)
+	}
+	removed := filepath.Clean(fabricengine.WorktreePath(t.prime, slug))
+	var pairSessions []string
+	for _, entry := range entries {
+		path := filepath.Clean(filepath.FromSlash(entry.Path))
+		if entry.Main || path == removed {
+			continue
+		}
+		pairSessions = append(pairSessions, reedengine.SessionName(path))
+	}
+	return sessionsOfOtherPairs(live, pairSessions), nil
+}
+
+// sessionsOfOtherPairs returns the sessions of live that are named in pairSessions, in live's order.
+func sessionsOfOtherPairs(live, pairSessions []string) []string {
+	var others []string
+	for _, session := range live {
+		if slices.Contains(pairSessions, session) {
+			others = append(others, session)
+		}
+	}
+	return others
 }
 
 // taskWorktreeGone reports whether the task worktree path is not a registered linked worktree of the prime's repo.

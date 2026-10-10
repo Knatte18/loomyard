@@ -26,13 +26,14 @@ import (
 )
 
 // cliwireAllowedImports are the only non-stdlib import paths production code in this package may
-// use -- exactly the six named in doc.go's own "production dependency set is fixed" claim.
+// use -- exactly those named in doc.go's own "production dependency set is fixed" claim.
 var cliwireAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/standalonestate",
 	"github.com/Knatte18/loomyard/internal/standalonegeom",
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/stencilstore",
 	"github.com/Knatte18/loomyard/internal/buildinfo",
+	"github.com/Knatte18/loomyard/internal/buildvcs",
 	"github.com/Knatte18/loomyard/contracts/stencils",
 	"github.com/Knatte18/loomyard/contracts/specs",
 	"github.com/Knatte18/loomyard/internal/reedengine",

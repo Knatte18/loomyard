@@ -64,7 +64,7 @@ var destructiveGuardScanPackages = []string{
 
 // destructiveGuardBannedTokens are the raw substrings a non-test .go file in
 // destructiveGuardScanPackages may not contain, unless the file is on destructiveGuardAllowlist.
-// This is the discussion's final seven tokens plus "createdToken{" and "createdBranchToken{" (added per the overview's decision that the token's unforgeability is guard-enforced rather than type-enforced) plus ".DeleteRemoteBranch(" (added alongside the remote-branch-deletion primitive, so a file other than destroy.go cannot reach it) plus ".UpdateRemoteBranchLeased(" (the same for the remote-branch-moving force push).
+// This is the discussion's final seven tokens plus "createdToken{" and "createdBranchToken{" (added per the overview's decision that the token's unforgeability is guard-enforced rather than type-enforced) plus ".DeleteRemoteBranch(" (added alongside the remote-branch-deletion primitive, so a file other than destroy.go cannot reach it) plus ".UpdateRemoteBranchLeased(" (the same for the remote-branch-moving force push) plus ".CherryPick(" and ".ResetKeep(" (the board seed-commit drop's replay and reset).
 var destructiveGuardBannedTokens = []string{
 	"RemoveAll(",
 	"os.Remove(",
@@ -77,6 +77,8 @@ var destructiveGuardBannedTokens = []string{
 	"createdBranchToken{",
 	".DeleteRemoteBranch(",
 	".UpdateRemoteBranchLeased(",
+	".CherryPick(",
+	".ResetKeep(",
 }
 
 // destructiveGuardAllowlist is this guard's per-file allowlist (path module-relative,
@@ -134,6 +136,7 @@ var destructiveGuardRecordingExecutors = []struct {
 	{"createExclusiveDir", "func createExclusiveDir(rec *Mutations, "},
 	{"createGitWorktree", "func createGitWorktree(rec *Mutations, "},
 	{"resetHardTo", "func resetHardTo(rec *Mutations, "},
+	{"dropSeedCommits", "func dropSeedCommits(rec *Mutations, "},
 }
 
 // destructiveGuardRecordingExecutorsMin is the vacuous-scan floor for destructiveGuardRecordingExecutors: this floors well below the table's row count so a table that silently stopped matching (e.g. a rename that broke every declPrefix at once) fails loudly rather than passing on zero found declarations.
@@ -160,6 +163,7 @@ var destructiveGuardMutatingResultTypes = []struct {
 	{"PushResult", "internal/fabricengine/recordsgit.go"},
 	{"MergeResult", "internal/fabricengine/merge.go"},
 	{"StageResult", "internal/fabricengine/mergestage.go"},
+	{"BoltWriteResult", "internal/fabricengine/bolt.go"},
 }
 
 // destructiveGuardReadOnlyResultTypes is the companion table of the read-only verbs' result types

@@ -82,8 +82,7 @@ func FillWith(template []byte, includes map[string][]byte, values map[string]str
 	return buf.Bytes(), nil
 }
 
-// attachIncludes parses every include that t's include actions name into t's template set under its name,
-// and points each bare include action at the root variable $ so the block renders from the values Execute is given.
+// attachIncludes parses every include that t's include actions name into t's template set under its name, and points each bare include action at the root variable $ so the block renders from the values Execute is given.
 // It returns the attached include templates, in name order.
 func attachIncludes(t *tmpl.Template, includes map[string][]byte) ([]*tmpl.Template, error) {
 	if t.Tree == nil {

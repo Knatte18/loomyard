@@ -326,9 +326,13 @@ skipped: it never had either, so there is nothing there to repair.
 It also heals every hub-wide config file, such as fabric.yaml or gate.yaml, at
 the hub's board dir: an absent board.yaml is seeded from the prime worktree's copy
 when it has one, and the written files are committed in _board and pushed. The
-envelope reports each module under hub_config, a commit or push failure under
-hub_config_detail without changing the exit code, and a board.yaml started from
-the template, which carries no custom types or labels, under warnings.`,
+board is pulled first; when it cannot be brought up to date nothing is written
+and the reason is reported under hub_config_detail without failing the verb.
+The envelope reports each module under hub_config, a commit or push failure of
+the hub-wide config or the warp-binding record under hub_config_detail or
+warp_binding_detail and fails the verb with the envelope kept, and a board.yaml
+started from the template, which carries no custom types or labels, under
+warnings.`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runReconcile(ctx, out, args) }),
 	})
 
@@ -701,9 +705,9 @@ func runPairs(ctx context.Context, out io.Writer, _ []string) int {
 // written record through Bolt, and on both "recorded" and "present" it attempts a push, so a
 // previously committed-but-unpushed record is retried on every subsequent reconcile. Either step
 // failing downgrades the reported outcome to WarpBindingOutcomeRecordFailed — a CLI-only value
-// Topology.Reconcile itself never returns — but never the exit code: a failed backfill commit or push
-// is non-fatal, mirroring the board-junction-wiring precedent that a convenience repair may never
-// downgrade a reconcile verdict.
+// Topology.Reconcile itself never returns — and fails the verb with the envelope kept, as does a commit or push failure of the hub-wide config.
+// A heal skipped because the board could not be brought up to date is reported under hub_config_detail and is no failure.
+// A pair failure takes precedence over these as the error the verb returns.
 func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation(ctx)
@@ -730,49 +734,54 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		primeBaseDir = filepath.Join(l.HubPath, primeName, l.AnchorRel)
 	}
 
-	// The files are written and committed in _board under the board write lock.
-	// A commit or push failure never changes the exit code and leaves the file for the next board sync, mirroring the warp-binding backfill below.
+	// The board is pulled first, and the files are written and committed in _board under the board write lock.
+	// A skipped heal writes nothing and is reported under hub_config_detail without failing the verb.
+	// A commit or push failure leaves the file for the next board sync and fails the verb once the envelope is built.
 	var hubWideResults []configsync.Result
 	var reconcileErr error
+	var firstFailure error
 	hubConfigBolt := fabricengine.NewBolt(boardDir)
-	commitSHA, hubConfigCommitted, commitErr := hubConfigBolt.CommitWritten("fabric reconcile: hub-wide config", func() ([]string, error) {
-		results, err := configsync.ReconcileHubWideAt(boardDir, primeBaseDir, true)
-		if err != nil {
-			reconcileErr = err
-			return nil, err
-		}
-		hubWideResults = results
-		var written []string
-		for _, result := range results {
-			if !result.Applied {
-				continue
+	healed, commitErr := hubConfigBolt.PullThenCommitWritten([]fabricengine.BoltWrite{{
+		Message: "fabric reconcile: hub-wide config",
+		Write: func() ([]string, error) {
+			results, err := configsync.ReconcileHubWideAt(boardDir, primeBaseDir, true)
+			if err != nil {
+				reconcileErr = err
+				return nil, err
 			}
-			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(boardDir, result.Module), "")
-			written = append(written, configengine.ConfigFileRel(result.Module))
-			for _, legacy := range result.MigratedFrom {
-				written = append(written, configengine.ConfigFileRel(legacy))
+			hubWideResults = results
+			var written []string
+			for _, result := range results {
+				if !result.Applied {
+					continue
+				}
+				written = append(written, configengine.ConfigFileRel(result.Module))
+				for _, legacy := range result.MigratedFrom {
+					written = append(written, configengine.ConfigFileRel(legacy))
+				}
 			}
-		}
-		return written, nil
-	}, fabricengine.SyncOptions{})
+			return written, nil
+		},
+	}}, rec)
 	if reconcileErr != nil {
 		// ReconcileHubWideAt can fail after a partial write, so this emits whatever rec holds rather
 		// than a bare error.
 		return errWithRecord(out, rec.Snapshot(), reconcileErr)
 	}
 	hubConfigDetail := ""
-	if hubWideResults == nil && commitErr != nil {
-		// The write step never ran: the board write lock could not be taken.
+	switch {
+	case commitErr != nil && hubWideResults == nil:
+		// The write step never ran: the board write lock could not be taken, or the pull failed outright.
 		return errWithRecord(out, rec.Snapshot(), commitErr)
-	}
-	if commitErr != nil {
+	case commitErr != nil:
 		hubConfigDetail = commitErr.Error()
-	} else {
-		if hubConfigCommitted {
-			rec.Append(fabricengine.KindCommitCreated, boardDir, commitSHA)
-		}
-		if pushErr := hubConfigBolt.Push(fabricengine.SyncOptions{}); pushErr != nil {
+		firstFailure = hubConfigFailure(hubConfigDetail, boardDir)
+	case healed.Skipped != "":
+		hubConfigDetail = healed.SkipDetail
+	default:
+		if pushErr := hubConfigBolt.PushRecorded(fabricengine.SyncOptions{}, rec); pushErr != nil {
 			hubConfigDetail = fmt.Sprintf("hub-wide config committed but push failed: %v", pushErr)
+			firstFailure = hubConfigFailure(hubConfigDetail, boardDir)
 		}
 	}
 
@@ -789,16 +798,22 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		}
 	}
 
+	// A failure past the heal still reports why the heal did not run, since a strict config load fails on exactly the file a skipped heal left absent.
+	var healFields map[string]any
+	if hubConfigDetail != "" {
+		healFields = map[string]any{"hub_config_detail": hubConfigDetail}
+	}
+
 	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
-		return errWithRecord(out, rec.Snapshot(), err)
+		return errWithRecordFields(out, rec.Snapshot(), err, healFields)
 	}
 
 	top := fabricengine.NewTopology(cfg)
 
 	r, err := top.Reconcile(l)
 	if err != nil {
-		return errWithRecord(out, rec.Snapshot(), err)
+		return errWithRecordFields(out, rec.Snapshot(), err, healFields)
 	}
 	rec.Extend(r.Mutated())
 
@@ -813,6 +828,9 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 			if commitErr != nil {
 				binding = fabricengine.WarpBindingOutcomeRecordFailed
 				detail = commitErr.Error()
+				if firstFailure == nil {
+					firstFailure = warpBindingFailure(detail, fabricengine.BoardDir(l.HubPath))
+				}
 			} else if committed {
 				rec.Append(fabricengine.KindCommitCreated, fabricengine.BoardDir(l.HubPath), sha)
 			}
@@ -833,19 +851,21 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		// with no upstream at all. The attempt is harmless: it either succeeds or yields
 		// record_failed with the error in the detail.
 		//
-		// This push records nothing, and that is deliberate: a nil error from Bolt.Push means either
-		// a push landed or nothing was unpushed to begin with, an unobservable-outcome distinction
-		// that makes a KindBranchPushed entry here a lie of commission — the commit above is already
-		// recorded, and branch_pushed is exempt from the truthfulness oracle's commission direction,
-		// so omitting it costs the cross-check nothing.
+		// This push records no branch_pushed entry, and that is deliberate:
+		// a nil error from Bolt.PushRecorded means either a push landed or nothing was unpushed to begin with, an unobservable-outcome distinction that makes a KindBranchPushed entry here a lie of commission.
+		// The commit above is already recorded, and branch_pushed is exempt from the truthfulness oracle's commission direction, so omitting it costs the cross-check nothing.
+		// A seed-commit drop behind the push is recorded in rec as commits_dropped.
 		if binding == fabricengine.WarpBindingOutcomeRecorded || binding == fabricengine.WarpBindingOutcomePresent {
-			if pushErr := b.Push(fabricengine.SyncOptions{}); pushErr != nil {
+			if pushErr := b.PushRecorded(fabricengine.SyncOptions{}, rec); pushErr != nil {
 				wasPresent := binding == fabricengine.WarpBindingOutcomePresent
 				binding = fabricengine.WarpBindingOutcomeRecordFailed
 				if wasPresent {
 					detail = fmt.Sprintf("a previously committed warp binding record could not be pushed: %v", pushErr)
 				} else {
 					detail = fmt.Sprintf("commit succeeded but push failed: %v", pushErr)
+				}
+				if firstFailure == nil {
+					firstFailure = warpBindingFailure(detail, fabricengine.BoardDir(l.HubPath))
 				}
 			}
 		}
@@ -878,8 +898,26 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	if pairErr := failedReconcilePairs(r.Pairs); pairErr != nil {
 		return errWithRecordFields(out, rec.Snapshot(), pairErr, envelope)
 	}
+	if firstFailure != nil {
+		return errWithRecordFields(out, rec.Snapshot(), firstFailure, envelope)
+	}
 
 	return okWithRecord(out, rec.Snapshot(), envelope)
+}
+
+// reconcileFailureWayForward words the way forward of a board commit or push failure in boardDir.
+func reconcileFailureWayForward(boardDir string) string {
+	return fmt.Sprintf("re-run \"lyx fabric reconcile\" once the remote is reachable, or for a rejected push run `git pull --rebase` in %s and then `lyx board sync`", boardDir)
+}
+
+// hubConfigFailure is the error that fails the verb when the hub-wide config's commit or push failed.
+func hubConfigFailure(detail, boardDir string) error {
+	return fmt.Errorf("fabric reconcile: %s; %s", detail, reconcileFailureWayForward(boardDir))
+}
+
+// warpBindingFailure is the error that fails the verb when the warp-binding record's commit or push failed.
+func warpBindingFailure(detail, boardDir string) error {
+	return fmt.Errorf("fabric reconcile: warp binding record failed: %s; %s", detail, reconcileFailureWayForward(boardDir))
 }
 
 // failedReconcilePairs returns an error summarising every pair whose reconcile step failed, or nil

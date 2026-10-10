@@ -19,6 +19,13 @@ type Topology struct {
 	cfg Config
 	// push is the seam behind Add's branch pushes; its zero value is production.
 	push pushSeam
+	// inFlight answers which other pairs' sessions are live when a pair is removed; nil answers none.
+	inFlight InFlightProbe
+}
+
+// SetInFlightProbe sets the probe Remove's store housekeeping consults before it runs gc.
+func (t *Topology) SetInFlightProbe(probe InFlightProbe) {
+	t.inFlight = probe
 }
 
 // NewTopology returns a Topology operating with the given config.

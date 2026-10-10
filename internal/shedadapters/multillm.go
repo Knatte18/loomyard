@@ -31,8 +31,7 @@ type SeatRunner interface {
 var _ SeatRunner = (*seatengine.Engine)(nil)
 
 // MultiLLMProducer is the shedadapters adapter over one seatengine table:
-// it probes for a live chair, resumes it or archives every seat's stale outputs and runs the table fresh,
-// and maps the chair's result onto the shedengine.ShedProducer contract.
+// it probes for a live chair, resumes it or archives every seat's stale outputs and runs the table fresh, and maps the chair's result onto the shedengine.ShedProducer contract.
 // The advisors' results are logged and never judged: an advisor's death weakens nothing the chair decided.
 type MultiLLMProducer struct {
 	name  string
@@ -53,8 +52,7 @@ func NewMultiLLMProducer(name string, table seatengine.Table, seats SeatRunner, 
 	return &MultiLLMProducer{name: name, table: table, seats: seats, now: now}
 }
 
-// Call runs one MultiLLMProducer iteration: entry-check the context, probe the table's seats, and either resume a live chair and map its result,
-// or archive every seat's stale outputs, run the table fresh and map the chair's result.
+// Call runs one MultiLLMProducer iteration: entry-check the context, probe the table's seats, and either resume a live chair and map its result, or archive every seat's stale outputs, run the table fresh and map the chair's result.
 // The probe runs before anything is archived, because archiving renames files a live seat may be about to write.
 // A probe that finds the chair not live has already stopped every live advisor, so the archive never runs beside a live seat.
 func (p *MultiLLMProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {

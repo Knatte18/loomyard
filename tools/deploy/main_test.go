@@ -171,18 +171,24 @@ func repoRoot(t *testing.T) string {
 func TestLdflagsPath_MatchesBuildinfoChannel(t *testing.T) {
 	root := repoRoot(t)
 
-	const wantLdflag = "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev"
+	wantLdflags := []string{
+		"-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev",
+		"-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=production",
+	}
 
 	mainSrc, err := os.ReadFile(filepath.Join(root, "tools", "deploy", "main.go"))
 	if err != nil {
 		t.Fatalf("read tools/deploy/main.go: %v", err)
 	}
-	if !strings.Contains(string(mainSrc), wantLdflag) {
-		t.Errorf("tools/deploy/main.go does not contain %q; the linker silently ignores an "+
-			"unmatched -X, so a rename of internal/buildinfo.Channel or its package would leave "+
-			"a -dev build behaving as production with no build error, no test failure, and no "+
-			"visible symptom until someone notices stencils refreshing when they should not", wantLdflag)
+	for _, wantLdflag := range wantLdflags {
+		if !strings.Contains(string(mainSrc), wantLdflag) {
+			t.Errorf("tools/deploy/main.go does not contain %q; the linker silently ignores an "+
+				"unmatched -X, so a rename of internal/buildinfo.Channel or its package would leave "+
+				"a build unstamped with no build error, no test failure, and no "+
+				"visible symptom until someone notices stencils refreshing when they should not", wantLdflag)
+		}
 	}
+	wantLdflag := wantLdflags[0]
 
 	buildinfoPath := filepath.Join(root, "internal", "buildinfo", "buildinfo.go")
 	fset := token.NewFileSet()

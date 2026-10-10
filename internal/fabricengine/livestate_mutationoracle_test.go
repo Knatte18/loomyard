@@ -50,6 +50,7 @@ var manifestObservableKind = map[fabricengine.Kind]bool{
 	fabricengine.KindMergeStaged:         false,
 	fabricengine.KindMergeCommitted:      false,
 	fabricengine.KindTagPushed:           false,
+	fabricengine.KindCommitsDropped:      false,
 }
 
 // invertedBy maps a constructive kind to the kinds of a later entry, at the same Target, that undo it
