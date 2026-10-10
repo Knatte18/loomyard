@@ -26,7 +26,7 @@ func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-refusal-intact"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
@@ -66,7 +66,7 @@ func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
 	t.Parallel()
 
 	const slug = "remove-probe-failure"
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
@@ -139,7 +139,7 @@ func assertNoArchiveTag(t *testing.T, repoRoots ...string) {
 func TestRemove_StatusFailureNamesPathAndCommandOnce(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 	topology := h.Topology
 

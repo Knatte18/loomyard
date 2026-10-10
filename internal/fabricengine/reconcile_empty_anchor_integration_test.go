@@ -36,7 +36,7 @@ func TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot(t *testing.T
 
 	const anchor = "sub"
 
-	h := hubforge.NewHub(t, "backend")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
 	l := h.Location
 
 	subDir := filepath.Join(l.WorktreePath(), anchor)

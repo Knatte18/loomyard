@@ -28,7 +28,7 @@ import (
 func TestFabricWarp_IsAncestorOrdersWarpCommits(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f, err := fabricengine.Open(h.Location)
 	if err != nil {
 		t.Fatalf("fabricengine.Open: %v", err)
@@ -54,7 +54,7 @@ func TestFabricWarp_IsAncestorOrdersWarpCommits(t *testing.T) {
 func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f, err := fabricengine.Open(h.Location)
 	if err != nil {
 		t.Fatalf("fabricengine.Open: %v", err)
@@ -89,7 +89,7 @@ func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
 func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f, err := fabricengine.Open(h.Location)
 	if err != nil {
 		t.Fatalf("fabricengine.Open: %v", err)
@@ -132,7 +132,7 @@ func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
 func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	f, err := fabricengine.Open(h.Location)
 	if err != nil {
 		t.Fatalf("fabricengine.Open: %v", err)
@@ -150,7 +150,7 @@ func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
 func TestStencilSource_BuildAncestryFollowsTheRevision(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	prime := h.PrimeWorktree()
 	headSHA := gitkit.RevParse(t, prime, "HEAD")
 	absentSHA := strings.Repeat("a", len(headSHA))
