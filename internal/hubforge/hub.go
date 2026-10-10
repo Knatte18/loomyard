@@ -257,6 +257,8 @@ func (h *Hub) PairLauncherDir(slug string) string {
 // The hub CloneAndWire returns arrives with its weft prime worktree clean: each registered
 // non-"fabric" module's config is committed on the weft primary branch, rather than carried as
 // untracked content.
+// CopyHub and SharedHub hand out a hub of the closed Shapes set from a template built once per test binary, and are the entry points for every hub a test does not need built fresh;
+// NewHub stays for a shape outside that set.
 // It calls tb.Fatalf on any error.
 func NewHub(tb testing.TB, anchor string) *Hub {
 	tb.Helper()
@@ -265,6 +267,23 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 
 	warpBare, weftBare := copyBares(tb)
 	container := tb.TempDir()
+
+	hub, _ := cloneHub(tb, anchor, warpBare, weftBare, container)
+
+	// Registered after both copyBares and the container := tb.TempDir() call above, so LIFO
+	// cleanup ordering runs junction removal before Go's own tb.TempDir() cleanup removes the
+	// container — a junction left wired when os.RemoveAll walks into it is a Win11 correctness bug,
+	// not a POSIX one, so this must hold on every platform even though only Windows can observe it
+	// directly.
+	registerTeardown(tb, hub.Path)
+
+	return hub
+}
+
+// cloneHub drives fabriccli.CloneAndWire at anchor against the given bares into the existing container directory, and returns the Hub with the prime cwd its Location resolved from.
+// It calls tb.Fatalf on any error.
+func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub, string) {
+	tb.Helper()
 
 	subpath := ""
 	if anchor != "." {
@@ -286,13 +305,6 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 		tb.Fatalf("NewHub: lyxcwd.Resolve(%s): %v", res.PrimeCwd, err)
 	}
 
-	// Registered after both copyBares and the container := tb.TempDir() call above, so LIFO
-	// cleanup ordering runs junction removal before Go's own tb.TempDir() cleanup removes the
-	// container — a junction left wired when os.RemoveAll walks into it is a Win11 correctness bug,
-	// not a POSIX one, so this must hold on every platform even though only Windows can observe it
-	// directly.
-	registerTeardown(tb, res.HubPath)
-
 	return &Hub{
 		Path:        res.HubPath,
 		Anchor:      res.Anchor,
@@ -303,7 +315,7 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 		WeftBase:    res.WeftBase,
 		Container:   container,
 		Mutations:   res.Mutated(),
-	}
+	}, res.PrimeCwd
 }
 
 // registerTeardown installs a tb.Cleanup that removes every junction under hubPath before Go's own

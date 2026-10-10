@@ -47,10 +47,13 @@ var allowedNonHermetic = []scankit.Entry{
 // hubforge.NewHub joins the set because it drives a real fabriccli.CloneAndWire clone internally,
 // and hubforge.SeedConfig/SeedFabricConfig both take a *Hub only NewHub can produce,
 // so this one token already covers every package that can reach any of the three.
+// hubforge.CopyHub and hubforge.SharedHub join it because each builds a real hub on first use.
 var gitSpawnTokens = []string{
 	"gitexec.Run",
 	"exec.Command",
 	"hubforge.NewHub",
+	"hubforge.CopyHub",
+	"hubforge.SharedHub",
 }
 
 // hermeticPresenceToken is the raw substring proving a package runs under the

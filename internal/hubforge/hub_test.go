@@ -6,9 +6,12 @@
 package hubforge
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"gopkg.in/yaml.v3"
 )
 
@@ -498,4 +502,162 @@ func TestNewHub_TeardownSurvivesCorruptHub(t *testing.T) {
 		// Teardown runs automatically when this subtest returns; a hand-removed warp worktree must
 		// not fail the test that already passed above.
 	})
+}
+
+// TestCopyHub copies the "." shape with its one pair and asserts the copy is a working hub of its own:
+// fabric status is clean on its prime, every worktree git lists resolves, the pair's portal link and launcher directory resolve, and no file or link names the template root.
+func TestCopyHub(t *testing.T) {
+	t.Parallel()
+
+	shape := Shape{Anchor: ".", Pairs: []string{TemplatePairSlug}}
+	h := CopyHub(t, shape)
+
+	assertRealHub(t, h)
+
+	var out bytes.Buffer
+	if code := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"status"}); code != 0 {
+		t.Fatalf("fabric status on the copy = %d; want 0\noutput: %s", code, out.String())
+	}
+	status := envelope.Decode(t, out.String())
+	if changes, _ := status.Raw["changes"].([]any); len(changes) != 0 {
+		t.Errorf("fabric status changes on the copy = %v; want none", changes)
+	}
+
+	listing := gitkit.Git(t, h.PrimeWorktree(), "worktree", "list", "--porcelain")
+	worktrees := 0
+	for _, line := range strings.Split(listing, "\n") {
+		path, ok := strings.CutPrefix(line, "worktree ")
+		if !ok {
+			continue
+		}
+		worktrees++
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("git lists worktree %s but it does not resolve: %v", path, err)
+		}
+		if !strings.HasPrefix(path, h.Container) {
+			t.Errorf("git lists worktree %s outside the copy's container %s", path, h.Container)
+		}
+	}
+	if want := 1 + len(shape.Pairs); worktrees != want {
+		t.Errorf("git lists %d worktrees on the copy; want %d", worktrees, want)
+	}
+
+	for _, slug := range shape.Pairs {
+		if _, err := os.Stat(h.PairPortalLink(slug)); err != nil {
+			t.Errorf("portal link of pair %s does not resolve: %v", slug, err)
+		}
+		if _, err := os.Stat(h.PairLauncherDir(slug)); err != nil {
+			t.Errorf("launcher dir of pair %s does not resolve: %v", slug, err)
+		}
+	}
+
+	templateRoot := templateFor(t, shape).root
+	copyRoot := filepath.Dir(h.Container)
+	stale, err := findRootReference(copyRoot, templateRoot)
+	if err != nil {
+		t.Fatalf("scan the copy for the template root: %v", err)
+	}
+	if stale != "" {
+		t.Errorf("%s names the template root %s; want no file or link in the copy to", stale, templateRoot)
+	}
+}
+
+// recordingTB stands in for a test: Fatalf and Errorf record instead of failing, Fatalf ends the calling goroutine as the real one does, and cleanups wait for runCleanups.
+type recordingTB struct {
+	testing.TB
+	mu       sync.Mutex
+	failures []string
+	cleanups []func()
+}
+
+func (r *recordingTB) Helper() {}
+
+func (r *recordingTB) Errorf(format string, args ...any) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.failures = append(r.failures, fmt.Sprintf(format, args...))
+}
+
+func (r *recordingTB) Fatalf(format string, args ...any) {
+	r.Errorf(format, args...)
+	runtime.Goexit()
+}
+
+func (r *recordingTB) Cleanup(f func()) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cleanups = append(r.cleanups, f)
+}
+
+// run calls f on its own goroutine, so a Fatalf inside it ends only that goroutine, and waits for it.
+func (r *recordingTB) run(f func()) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		f()
+	}()
+	<-done
+}
+
+// runCleanups runs the registered cleanups last-in first-out.
+func (r *recordingTB) runCleanups() {
+	for len(r.cleanups) > 0 {
+		last := r.cleanups[len(r.cleanups)-1]
+		r.cleanups = r.cleanups[:len(r.cleanups)-1]
+		r.run(last)
+	}
+}
+
+// failedNaming reports whether some recorded failure contains fixture.
+func (r *recordingTB) failedNaming(fixture string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, failure := range r.failures {
+		if strings.Contains(failure, fixture) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestSharedHub writes into the shared hub of a shape no other test uses and asserts the test's cleanup fails naming the fixture, after which a later SharedHub and CopyHub of the same shape fail naming it too.
+// A read-only sharer first passes cleanly.
+func TestSharedHub(t *testing.T) {
+	t.Parallel()
+
+	shape := Shape{Anchor: "backend"}
+	fixture := shape.name()
+
+	reader := &recordingTB{TB: t}
+	reader.run(func() { SharedHub(reader, shape) })
+	reader.runCleanups()
+	if len(reader.failures) != 0 {
+		t.Fatalf("a read-only sharer failed: %v", reader.failures)
+	}
+
+	writer := &recordingTB{TB: t}
+	var hub *Hub
+	writer.run(func() { hub = SharedHub(writer, shape) })
+	if hub == nil {
+		t.Fatalf("SharedHub returned no hub: %v", writer.failures)
+	}
+	if err := os.WriteFile(filepath.Join(hub.PrimeRecords(), "stray.txt"), []byte("written\n"), 0o644); err != nil {
+		t.Fatalf("write into the shared hub: %v", err)
+	}
+	writer.runCleanups()
+	if !writer.failedNaming(fixture) {
+		t.Errorf("failures after a write into the shared hub = %v; want one naming %q", writer.failures, fixture)
+	}
+
+	laterShared := &recordingTB{TB: t}
+	laterShared.run(func() { SharedHub(laterShared, shape) })
+	if !laterShared.failedNaming(fixture) {
+		t.Errorf("SharedHub after the poisoning: failures = %v; want one naming %q", laterShared.failures, fixture)
+	}
+
+	laterCopy := &recordingTB{TB: t}
+	laterCopy.run(func() { CopyHub(laterCopy, shape) })
+	if !laterCopy.failedNaming(fixture) {
+		t.Errorf("CopyHub after the poisoning: failures = %v; want one naming %q", laterCopy.failures, fixture)
+	}
 }

@@ -41,7 +41,7 @@ internal/githubclient: 11
 internal/gitkit: 9
 internal/gitrepo: 37
 internal/gitrepo/internal/gitoracle: 1
-internal/hubforge: 5
+internal/hubforge: 7
 internal/hubgeom: 11
 internal/hubreconcile: 16
 internal/idecli: 2

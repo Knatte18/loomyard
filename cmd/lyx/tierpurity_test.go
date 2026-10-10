@@ -51,6 +51,7 @@ var knownTierTags = []string{"integration", "tmux", "llm"}
 // untagged test calling it is exactly the expensive-spawn violation this guard exists to catch.
 // hubforge.SeedConfig and hubforge.SeedFabricConfig need no separate entries — both take a *Hub that
 // only NewHub can produce, so this token already covers every package that can reach them.
+// hubforge.CopyHub and hubforge.SharedHub are banned the same way, since each builds a real hub on first use.
 // DeltaGit is deliberately narrow and deliberately NOT quarry.Open: only DeltaGit spawns a
 // process, while Resolve, TOC, Glyphs and Expand read files and Name performs no I/O at all, so
 // banning the constructor would force integration tags onto tests that spawn nothing. Raw-substring
@@ -64,6 +65,8 @@ var bannedTokens = []string{
 	"gitexec.Run",
 	"exec.Command",
 	"hubforge.NewHub",
+	"hubforge.CopyHub",
+	"hubforge.SharedHub",
 	"DeltaGit",
 	"lyxbin.",
 }

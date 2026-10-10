@@ -52,7 +52,7 @@ Bound: a forged value misleads only an ungated raw run, since `lyx gate test` se
 
 ## Untagged tests spawn nothing
 
-- No `gitexec.Run` or `RunGit`, `exec.Command` or `CommandContext`, `hubforge.NewHub` or gitkit spawn outside tier-tagged files.
+- No `gitexec.Run` or `RunGit`, `exec.Command` or `CommandContext`, `hubforge.NewHub`, `hubforge.CopyHub`, `hubforge.SharedHub` or gitkit spawn outside tier-tagged files.
 - Every `gitkit` export except `gitkit.HermeticGitEnv` counts as a gitkit spawn, defined once in `cmd/lyx/gitkitspawn_test.go`.
 - Any `lyxbin.` reference, which builds the `lyx` binary, is likewise barred outside tier-tagged files.
 - Every `tmuxkit` export except `tmuxkit.Main` counts as a tmux spawn and is barred outside tier-tagged files, defined once in `cmd/lyx/tmuxkitspawn_test.go`.
