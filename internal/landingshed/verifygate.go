@@ -7,6 +7,7 @@ package landingshed
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -28,6 +29,52 @@ type verifyGate struct {
 	dirty    func(worktree string) ([]string, error)
 	verify   func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error)
 	now      func() time.Time
+	// recorder is set only by Publish: nil leaves a failed verify unrecorded.
+	recorder *failureRecorder
+}
+
+// failureRecorder holds what the gate needs to write the Publish failure record.
+// mergeCommit is set by Publish after its merge-in and read when a verify fails.
+type failureRecorder struct {
+	failingTests func(log string) []verifytree.FailedTest
+	head         func() (string, error)
+	mergeCommit  string
+}
+
+// recordFailure writes the Publish failure record for a verify of the given kind that ended in result.
+// A result that is not a failed run, a timeout and a shell that could not start write none, since none of them names a failing test.
+// A write failure is logged and changes nothing else.
+func (g verifyGate) recordFailure(kind verifytree.FailureKind, result verifytree.Result) {
+	if g.recorder == nil || result.Status != verifytree.StatusFailed || result.TimedOut || result.ExitCode < 0 {
+		return
+	}
+	failure := verifytree.PublishFailure{Kind: kind, MergeCommit: g.recorder.mergeCommit}
+	if g.recorder.head != nil {
+		head, err := g.recorder.head()
+		if err != nil {
+			logger.Warn("landingshed: could not read HEAD for the publish failure record", "cause", err)
+		}
+		failure.Head = head
+	}
+	if g.recorder.failingTests != nil {
+		if log, err := os.ReadFile(g.paths.Log); err == nil {
+			failure.Tests = g.recorder.failingTests(string(log))
+		}
+	}
+	if err := verifytree.WritePublishFailure(g.paths, failure); err != nil {
+		logger.Warn("landingshed: could not write the publish failure record", "kind", kind, "cause", err)
+	}
+}
+
+// clearFailure removes the Publish failure record of an earlier failed verify.
+// It does nothing for a gate with no recorder, and a removal failure is logged.
+func (g verifyGate) clearFailure() {
+	if g.recorder == nil {
+		return
+	}
+	if err := verifytree.RemovePublishFailure(g.paths); err != nil {
+		logger.Warn("landingshed: could not remove the publish failure record", "cause", err)
+	}
 }
 
 // newVerifyGate copies the gate's told values from deps and wires the real verifytree functions.
@@ -118,6 +165,7 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
+	g.recordFailure(verifytree.FailureKindPlanVerify, result)
 	return g.verdict(result, "verify", producer, parentBranch)
 }
 
@@ -144,6 +192,7 @@ func (g verifyGate) checkPublishVerify(ctx context.Context, producer, parentBran
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
+	g.recordFailure(verifytree.FailureKindPublishVerify, result)
 	return g.verdict(result, "publish_verify", producer, parentBranch)
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // resolver is the single-method seam both Publish and Finalize hold their constructed
@@ -169,6 +170,11 @@ type Deps struct {
 	// internal/loomcli's landingDeps fills it,
 	// and its drift guard keeps it filled.
 	VerifyWaitMark func(label string, start time.Time) error
+	// FailingTests parses a failed verify's log into the failing tests Publish's failure record names.
+	// It is told so this package stays free of the module that owns the log format.
+	// Nil records no tests.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	FailingTests func(log string) []verifytree.FailedTest
 	// VerifyDir is the told directory internal/verifytree keeps the verified-tree record, the running marker and the verify log in.
 	// Every plan-verify site of the worktree shares it, so a pass at one site lets the next skip.
 	// Told, never derived, per the Told-Geometry Invariant.
