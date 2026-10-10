@@ -22,8 +22,8 @@ import (
 // conflictStencilName is the registered name of the conflict-resolution prompt (card 18/19).
 const conflictStencilName = "landing-template-conflict"
 
-// conflictRole is the agent-name role this module's conflict-resolution spawn carries.
-const conflictRole = "conflict"
+// ConflictRole is the agent-name role this module's conflict-resolution spawn carries.
+const ConflictRole = "conflict"
 
 // conflictSkills are the skills the conflict-resolution session loads before its prompt.
 var conflictSkills = []string{"scribe:prose", "scribe:code-quality"}
@@ -104,7 +104,7 @@ func buildConflictSpec(deps Deps, paths []string, attempt int) (shuttleengine.Sp
 		Effort:      resolved.Params["effort"],
 		Version:     resolved.Params["version"],
 		Interactive: false,
-		Role:        conflictRole,
+		Role:        ConflictRole,
 		Segment:     segmentcolor.Landing,
 		Skills:      conflictSkills,
 		Timeout:     deps.Timeout,

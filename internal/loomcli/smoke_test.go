@@ -409,6 +409,22 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 		}
 	}
 
+	// bootstrapUnlessSeeded runs a genuine "loom start" when no earlier step has seeded the run,
+	// so a rigged step selected alone with -run still finds the seeded status file and run directory its rig builds on.
+	bootstrapUnlessSeeded := func(t *testing.T) {
+		t.Helper()
+		_, err := os.Stat(shedrun.StatusFile(loc, shedrun.SelfRunID))
+		if err == nil {
+			return
+		}
+		if !os.IsNotExist(err) {
+			t.Fatalf("stat status file: %v", err)
+		}
+		if stdout, _, err := runLoomCLINoFatal(exe, worktree, 30*time.Second, "loom", "start"); err != nil {
+			t.Fatalf("seeding loom start: %v; output: %s", err, stdout)
+		}
+	}
+
 	// The spawn handshake -- two bootstrap invocations started concurrently produce exactly one
 	// driver process and no already-running refusal in the driver log. This is a named regression
 	// guard: the pre-fix defect was the run lock being taken by the child long after the spawn call
@@ -598,6 +614,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 	// Seed, CommitRecordsPaths) that tolerate the poisoned field, so only the spawned CHILD's strict read
 	// gate ever sees the failure.
 	t.Run("died driver proceeds to the success envelope and logs why", func(t *testing.T) {
+		bootstrapUnlessSeeded(t)
 		killDriversAndClearLog(t)
 		poisonStatusFile(t, loc)
 
@@ -648,6 +665,7 @@ func TestSmokeBootstrapLifecycle(t *testing.T) {
 	// spawned driver's own Shed.Run step-1 read gate diagnoses the decode failure in the driver log,
 	// exactly as the died-driver step pins for the unknown-field shape.
 	t.Run("malformed status proceeds to the success envelope and logs why", func(t *testing.T) {
+		bootstrapUnlessSeeded(t)
 		killDriversAndClearLog(t)
 		poisonStatusFileMalformed(t, loc)
 
