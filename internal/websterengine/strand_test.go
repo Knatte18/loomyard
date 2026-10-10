@@ -1,4 +1,4 @@
-// strand_test.go covers StrandLive against a shuttlefake.Reed (present/live, present/not-live, absent) and TurnEnded against a shuttlefake.Engine (stop event, no stop event, missing events file, a ParseEvents error).
+// strand_test.go covers StrandLive against a shuttlefake.Reed (present/live, present/not-live, absent) and TurnEndedAfter against a shuttlefake.Engine (newest stop event, no stop event, missing events file, a ParseEvents error, the load-turn offset).
 // Tier 1: no git, only local fakes.
 
 package websterengine
@@ -68,14 +68,19 @@ func TestStrandLive(t *testing.T) {
 	})
 }
 
+// TestTurnEnded pins TurnEndedAfter over an engine without the SessionSignalParser capability: the newest ParseEvents event decides, and the offset skips the load turns.
 func TestTurnEnded(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	eventsPath := dir + "/events.jsonl"
+	// turnEnded reads the events from the start of the file.
+	turnEnded := func(path string, engine shuttleengine.Engine) (bool, error) {
+		return TurnEndedAfter(path, 0, engine, TurnEndRead{})
+	}
 
 	t.Run("missing events file is false, nil", func(t *testing.T) {
-		ended, err := TurnEnded(eventsPath, &shuttlefake.Engine{})
+		ended, err := turnEnded(eventsPath, &shuttlefake.Engine{})
 		if err != nil {
 			t.Fatalf("TurnEnded() error = %v; want nil", err)
 		}
@@ -89,7 +94,7 @@ func TestTurnEnded(t *testing.T) {
 	}
 
 	t.Run("no Stop event is false", func(t *testing.T) {
-		ended, err := TurnEnded(eventsPath, &shuttlefake.Engine{Events: []shuttleengine.Event{{Kind: shuttleengine.EventAsk, Message: "still working"}}})
+		ended, err := turnEnded(eventsPath, &shuttlefake.Engine{Events: []shuttleengine.Event{{Kind: shuttleengine.EventAsk, Message: "still working"}}})
 		if err != nil {
 			t.Fatalf("TurnEnded() error = %v; want nil", err)
 		}
@@ -98,8 +103,8 @@ func TestTurnEnded(t *testing.T) {
 		}
 	})
 
-	t.Run("a Stop event anywhere in the batch is true", func(t *testing.T) {
-		ended, err := TurnEnded(eventsPath, &shuttlefake.Engine{Events: []shuttleengine.Event{
+	t.Run("a newest Stop event is true", func(t *testing.T) {
+		ended, err := turnEnded(eventsPath, &shuttlefake.Engine{Events: []shuttleengine.Event{
 			{Kind: shuttleengine.EventAsk, Message: "mid-turn probe"},
 			{Kind: shuttleengine.EventStop, Message: "final message"},
 		}})
@@ -113,7 +118,7 @@ func TestTurnEnded(t *testing.T) {
 
 	t.Run("a ParseEvents error propagates", func(t *testing.T) {
 		wantErr := errors.New("boom")
-		_, err := TurnEnded(eventsPath, &shuttlefake.Engine{EventsErr: wantErr})
+		_, err := turnEnded(eventsPath, &shuttlefake.Engine{EventsErr: wantErr})
 		if err == nil {
 			t.Fatalf("TurnEnded() error = nil; want a wrapped error")
 		}
@@ -134,10 +139,10 @@ func TestTurnEnded(t *testing.T) {
 			}
 			return nil, nil
 		}}
-		if ended, err := TurnEndedAfter(path, 0, engine); err != nil || !ended {
+		if ended, err := TurnEndedAfter(path, 0, engine, TurnEndRead{}); err != nil || !ended {
 			t.Fatalf("TurnEndedAfter(offset 0) = %v, %v; want true, nil (the load turn's Stop is in range)", ended, err)
 		}
-		if ended, err := TurnEndedAfter(path, int64(len(loadTurn)), engine); err != nil || ended {
+		if ended, err := TurnEndedAfter(path, int64(len(loadTurn)), engine, TurnEndRead{}); err != nil || ended {
 			t.Errorf("TurnEndedAfter(past the load turn) = %v, %v; want false, nil", ended, err)
 		}
 	})

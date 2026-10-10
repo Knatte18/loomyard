@@ -219,6 +219,7 @@
 // The prefixes are caller data, which Spec.validate does not inspect.
 // A shell once waited out stays expired for the rest of the run, so a later turn end listing it again ends at once.
 // Result.ExpiredShells names the waited-out shells' labels in expiry order, and each expiry is logged as a warning.
+// ShellWaitBound and ShellWaitExpires export that bound and which outstanding lists it applies to, so a reader that replays an events file without Waiting on the Run, such as webster's recovery classification, waits on the same shells for the same time.
 //
 // Wait shows its three Go-side waits, a gate entry's closure (`gate <entry name>`), the background-shell wait above (`background shells`) and a held turn end (`held`), in two places:
 // a WaitMarker file, `wait.yaml` in the run's own directory, carrying the label, the start time and the pid of the process running Wait,

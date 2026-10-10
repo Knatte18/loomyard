@@ -19,7 +19,7 @@ type ClassifyInputs struct {
 	BatchSlug    string
 	ReportPath   string
 	Report       *Report // Non-nil always wins; nil when caller found none
-	TurnEnded    bool    // True if Stop event was observed
+	TurnEnded    bool    // True if the strand's newest turn end counts (TurnEndedAfter)
 	StrandLive   bool    // True if fork's reed strand is still live
 	Elapsed      time.Duration
 	BatchTimeout time.Duration

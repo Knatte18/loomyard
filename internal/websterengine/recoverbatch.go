@@ -1,12 +1,4 @@
-// recoverbatch.go implements webster's re-entrant, blocking exception-path verb as three
-// lease-scoped phases: RecoverSpawnOrAttach (the only place webster spawns a genuinely separate
-// process — escalating a batch a fork reported stuck, or never reported at all, to a cold
-// implementer strand at the recovery role, rendering the SEPARATE, full cold-start recovery prompt
-// via RenderRecoveryPrompt — deliberately distinct from RenderForkPrompt's thin in-session fork
-// prompt, since the recovery strand inherits no session context, per the fork-context-hygiene
-// Shared Decision), RecoverAwait (the bounded wait, over webster's own classification machinery —
-// Classify/PollUntilTerminal/ TurnEnded/StrandLive), and PersistRecoveryTerminal (the terminal
-// digest merge into a freshly reloaded state).
+// recoverbatch.go implements webster's re-entrant, blocking exception-path verb as three lease-scoped phases: RecoverSpawnOrAttach (the only place webster spawns a genuinely separate process — escalating a batch a fork reported stuck, or never reported at all, to a cold implementer strand at the recovery role, rendering the SEPARATE, full cold-start recovery prompt via RenderRecoveryPrompt — deliberately distinct from RenderForkPrompt's thin in-session fork prompt, since the recovery strand inherits no session context, per the fork-context-hygiene Shared Decision), RecoverAwait (the bounded wait, over webster's own classification machinery — Classify/PollUntilTerminal/TurnEndedAfter/StrandLive), and PersistRecoveryTerminal (the terminal digest merge into a freshly reloaded state).
 // First call spawns and records;
 // the call that spawns the recovery strand first waits for its provider to come up (normally
 // seconds, bounded by startup_timeout_s), and every call then blocks for RecoveryWaitBudget and
@@ -641,7 +633,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 			return Digest{}, false, fmt.Errorf("webster: stat batch report %s: %w", reportPath, statErr)
 		}
 
-		turnEnded, err := TurnEndedAfter(bs.EventsPath, bs.EventsOffset, deps.Engine)
+		turnEnded, err := TurnEndedAfter(bs.EventsPath, bs.EventsOffset, deps.Engine, TurnEndRead{Now: clk.Now(), ShellWait: shuttleengine.ShellWaitBound(deps.ShuttleCfg)})
 		if err != nil {
 			return Digest{}, false, err
 		}

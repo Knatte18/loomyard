@@ -4,6 +4,7 @@
 package websterengine_test
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -21,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -140,6 +142,25 @@ func writeRecoverReport(t *testing.T, reportsDir, content string) {
 	path := filepath.Join(reportsDir, websterengine.ReportFileName(1, "json-flag"))
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write batch report: %v", err)
+	}
+}
+
+// appendClaudeHook appends one recorded Claude hook, its stamp line at at and its payload line, to batch 1's recovery events file.
+func appendClaudeHook(t *testing.T, fx *recoverFixture, hook string, at time.Time, payload map[string]any) {
+	t.Helper()
+	payload["hook_event_name"] = hook
+	line, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal %s payload: %v", hook, err)
+	}
+	path := fx.Deps.State.Batches[1].EventsPath
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatalf("open events file %s: %v", path, err)
+	}
+	defer f.Close()
+	if _, err := fmt.Fprintf(f, "{\"lyx_stamp\":%q,\"lyx_at\":%q}\n%s\n", hook, at.UTC().Format(time.RFC3339), line); err != nil {
+		t.Fatalf("append %s hook to %s: %v", hook, path, err)
 	}
 }
 
@@ -367,6 +388,7 @@ func recoverAtReportHead(t *testing.T, fx *recoverFixture, clk *recoverFakeClock
 // TestRecoverBatch_SecondCall asserts how a re-entrant second call classifies a recovery strand the first call spawned:
 // a landed report attaches (never re-spawns) and persists the done digest, a report disagreeing with the worktree or a HEAD moved by anything but a clean parent merge is refused and leaves the batch non-terminal,
 // the recovery timeout is measured from the recorded SpawnedAt across calls, and the default wait budget ends a silent strand dead inside one call but returns at a report that landed.
+// Over real Claude hook lines, a turn end counts dead/asking only when no later turn start follows it, it has stood past the settle, and no background shell keeps it waiting under Master's background-shell bound.
 func TestRecoverBatch_SecondCall(t *testing.T) {
 	t.Parallel()
 
@@ -389,6 +411,24 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 		head := fx.Head(t)
 		writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+head+"\n")
 		return head
+	}
+	// checkRecoveryRunning asserts the second call left the recovery strand running: no digest and the strand not stopped.
+	checkRecoveryRunning := func(t *testing.T, fx *recoverFixture, a attempt) {
+		if !a.second.Running || a.second.Digest != nil {
+			t.Fatalf("second call = %+v (digest %+v); want Running with no digest", a.second, a.second.Digest)
+		}
+		if slices.Contains(fx.Reed.RemovedGUIDs, a.strandGUID) {
+			t.Errorf("RemoveStrand calls = %v; want the running strand %q kept", fx.Reed.RemovedGUIDs, a.strandGUID)
+		}
+	}
+	// checkRecoveryAsking asserts the second call classified the strand dead/asking.
+	checkRecoveryAsking := func(t *testing.T, _ *recoverFixture, a attempt) {
+		if a.second.Running || a.second.Digest == nil {
+			t.Fatalf("second call = %+v; want a terminal digest", a.second)
+		}
+		if a.second.Digest.Status != websterengine.DigestStatusDead || a.second.Digest.DeadReason != websterengine.DeadReasonAsking {
+			t.Errorf("Digest = %+v; want dead/%s", a.second.Digest, websterengine.DeadReasonAsking)
+		}
 	}
 
 	cases := []struct {
@@ -601,6 +641,58 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 					t.Fatalf("second call = %+v; want a done digest", a.second)
 				}
 			},
+		},
+		{
+			// Issue #498: the strand's gate shell finished just before its turn ended, so the Stop lists it completed,
+			// and the queued completion notification started the next turn, which writes the report.
+			name: "a turn end whose finished shell's notification starts the next turn keeps the strand running",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				fx.Deps.Engine = claudeengine.New()
+				appendClaudeHook(t, fx, "Stop", clk.now, map[string]any{"background_tasks": []any{
+					map[string]any{"id": "bgate0001", "type": "shell", "status": "completed", "command": "lyx gate test ./x"},
+				}})
+				appendClaudeHook(t, fx, "UserPromptSubmit", clk.now, map[string]any{"prompt": "<task-notification>bgate0001 completed</task-notification>"})
+				return secondCall{}
+			},
+			check: checkRecoveryRunning,
+		},
+		{
+			// The bound Master's wait applies: a shell the Stop payload reports running is live work and never expires.
+			name: "a turn end waiting on a payload-reported shell keeps the strand running past background_shell_wait_min",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				fx.Deps.Engine = claudeengine.New()
+				appendClaudeHook(t, fx, "Stop", clk.now, map[string]any{"background_tasks": []any{
+					map[string]any{"id": "bgate0001", "type": "shell", "status": "running", "command": "lyx gate test ./x"},
+				}})
+				clk.now = clk.now.Add(20 * time.Minute)
+				return secondCall{}
+			},
+			check: checkRecoveryRunning,
+		},
+		{
+			// A shell only the transcript reports counts as a turn end once background_shell_wait_min has passed, as in Master's wait.
+			name: "a turn end waiting on a transcript-reported shell is dead once background_shell_wait_min has passed",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				fx.Deps.Engine = claudeengine.New()
+				transcript := filepath.Join(t.TempDir(), "session.jsonl")
+				launch := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"lyx gate test ./x","run_in_background":true}}]}}` + "\n" +
+					`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1"}]},"toolUseResult":{"backgroundTaskId":"bgate0001"}}` + "\n"
+				if err := os.WriteFile(transcript, []byte(launch), 0o644); err != nil {
+					t.Fatalf("write transcript: %v", err)
+				}
+				appendClaudeHook(t, fx, "Stop", clk.now.Add(-11*time.Minute), map[string]any{"transcript_path": transcript})
+				return secondCall{}
+			},
+			check: checkRecoveryAsking,
+		},
+		{
+			name: "a plain turn end that has stood past the settle is dead asking",
+			afterFirst: func(t *testing.T, fx *recoverFixture, clk *recoverFakeClock) secondCall {
+				fx.Deps.Engine = claudeengine.New()
+				appendClaudeHook(t, fx, "Stop", clk.now.Add(-10*time.Second), map[string]any{"background_tasks": []any{}})
+				return secondCall{}
+			},
+			check: checkRecoveryAsking,
 		},
 	}
 

@@ -718,10 +718,14 @@ func (run *Run) recordWaiting(ev Event, offset int64) {
 	}
 }
 
-// shellWaitBound returns how long a non-awaited shell may stay outstanding at a turn end,
-// flooring a non-positive hand-built value to the template default as pollInterval does.
+// shellWaitBound returns how long a non-awaited shell may stay outstanding at a turn end.
 func (run *Run) shellWaitBound() time.Duration {
-	minutes := run.runner.cfg.BackgroundShellWaitMin
+	return ShellWaitBound(run.runner.cfg)
+}
+
+// ShellWaitBound returns how long a turn end waits on an outstanding transcript-reported background shell, cfg.BackgroundShellWaitMin, flooring a non-positive hand-built value to the template default as pollInterval does.
+func ShellWaitBound(cfg Config) time.Duration {
+	minutes := cfg.BackgroundShellWaitMin
 	if minutes <= 0 {
 		minutes = defaultBackgroundShellWaitMin
 	}
@@ -733,12 +737,30 @@ const defaultBackgroundShellWaitMin = 10
 
 // awaitedShell reports whether the shell's label starts with one of the spec's awaited prefixes.
 func (run *Run) awaitedShell(task BackgroundTask) bool {
-	for _, prefix := range run.spec.AwaitedShellPrefixes {
-		if strings.HasPrefix(task.Label, prefix) {
+	return awaitedLabel(task.Label, run.spec.AwaitedShellPrefixes)
+}
+
+// awaitedLabel reports whether label starts with one of prefixes.
+func awaitedLabel(label string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(label, prefix) {
 			return true
 		}
 	}
 	return false
+}
+
+// ShellWaitExpires reports whether a waiting turn end with outstanding tasks counts as a turn end once ShellWaitBound has passed, the rule expiredTurnEnd applies to an ungated run:
+// true when every task is a background shell that neither the turn-end payload reported nor a label in awaitedPrefixes names.
+// A fork, an awaited shell or a payload-reported shell keeps the turn waiting however long it runs, bounded only by the caller's own timeout.
+// An empty list reports false: a turn end with nothing outstanding is a plain turn end, not a waiting one.
+func ShellWaitExpires(tasks []BackgroundTask, awaitedPrefixes []string) bool {
+	for _, task := range tasks {
+		if task.Kind != BackgroundShell || payloadShell(task) || awaitedLabel(task.Label, awaitedPrefixes) {
+			return false
+		}
+	}
+	return len(tasks) > 0
 }
 
 // payloadShell reports whether the task is a background shell the provider's turn-end payload reported, which is live work and never expires.
