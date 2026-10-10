@@ -89,13 +89,15 @@
 // relative figure for ranking roles, not a price, and blind to the per-model price
 // difference shown in the models column.
 // The share column is a role's weight as a percentage of its table's total weight.
+// When the orchestrator was counted, the "All runs" table and each run's table end with an orch row: the orch weight and cost charged to the table's runs, the "Orchestrator" section's attributed part, never its unattributed rest;
+// its weight counts in the table's total, so its share is orch's percentage of all the weight spent on those runs.
 //
 // The est. cost column prices each message at its model's Claude API list price, from the price table in cost.go, which cites its source;
 // a cache write is priced by its lifetime, five minutes or one hour, as the transcript's usage splits it,
 // and a model with a long-prompt rate card, Haiku 5.5 above 100K tokens of input + cache write + cache read, is priced per message on the card its prompt selects.
 // A message with usage whose model the table lacks is unpriced, never free: its cell reads "unpriced" or "$x + unpriced", and the "All runs" section names the unpriced models.
 //
-// The report ends with an "Orchestrator" section: the hub orchestrator's own session, which runs in the prime and spans many runs, charged to the counted runs.
+// Right after the "All runs" section, before the per-run sections, comes the "Orchestrator" section: the hub orchestrator's own session, which runs in the prime and spans many runs, charged to the counted runs.
 // An orch session is a session in the prime's project directory whose role is orch (ly:orch, lyxhub:orch), and its sub-agents, the orch's review, gate and stop forks, count as orch+sub;
 // usage is counted once per message id across them.
 // A run's active window runs from its earliest to its latest user or assistant line over all its transcripts,
