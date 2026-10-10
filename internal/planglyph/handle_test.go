@@ -144,8 +144,9 @@ func TestCanonicalizeHandles_Rewrites(t *testing.T) {
 			t.Parallel()
 
 			var results []quarry.ResolveResult
+			root := ""
 			if tc.files != nil {
-				root := writeFixtureRepo(t, tc.files)
+				root = writeFixtureRepo(t, tc.files)
 				repo, err := openRepo(root)
 				if err != nil {
 					t.Fatalf("openRepo(%q) returned error: %v", root, err)
@@ -161,7 +162,7 @@ func TestCanonicalizeHandles_Rewrites(t *testing.T) {
 				t.Fatalf("plan.Dir = %q; want %q", plan.Dir, dir)
 			}
 
-			findings, _, err := CanonicalizeHandles(plan, dir, results)
+			findings, _, err := CanonicalizeHandles(plan, dir, root, results)
 			if err != nil {
 				t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 			}
@@ -213,7 +214,7 @@ func TestCanonicalizeHandles_OneDraftTwoCanonicalsRewritesNothing(t *testing.T) 
 	before1 := readCardFile(t, dir, 1, "card1")
 	before2 := readCardFile(t, dir, 2, "card2")
 
-	findings, rewrote, err := CanonicalizeHandles(plan, dir, results)
+	findings, rewrote, err := CanonicalizeHandles(plan, dir, root, results)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -319,7 +320,7 @@ func TestCanonicalizeHandles_RenameOldUnresolved(t *testing.T) {
 	})
 
 	// No result at all for "sub#DoesNotExist": the same as it never resolving found.
-	findings, _, err := CanonicalizeHandles(plan, dir, nil)
+	findings, _, err := CanonicalizeHandles(plan, dir, "", nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -331,6 +332,52 @@ func TestCanonicalizeHandles_RenameOldUnresolved(t *testing.T) {
 	if !strings.Contains(got, "plan:sub#New") {
 		t.Errorf("card was rewritten despite an unresolved old side: %s", got)
 	}
+
+	// An old side declared once per build-constraint set stays unresolved, and its finding names the candidates and the two routes that do work.
+	t.Run("old side partitioned by build constraints", func(t *testing.T) {
+		root := writeFixtureRepo(t, map[string]string{
+			"sub/a.go": "//go:build linux\n\npackage sub\n\nfunc Old() {}\n",
+			"sub/b.go": "//go:build !linux\n\npackage sub\n\nfunc Old() {}\n",
+		})
+		repo, err := openRepo(root)
+		if err != nil {
+			t.Fatalf("openRepo(%q) returned error: %v", root, err)
+		}
+		results, err := resolveTargets(repo, []string{"sub#Old"})
+		if err != nil {
+			t.Fatalf("resolveTargets(...) returned error: %v", err)
+		}
+		if results[0].Status != quarry.StatusAmbiguous {
+			t.Fatalf("Status = %q; want %q (fixture assumption broken)", results[0].Status, quarry.StatusAmbiguous)
+		}
+		dir, plan := writePlanFixture(t, map[int]string{
+			1: "**Rename:**\n- `sub#Old` -> `plan:sub#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
+		})
+
+		findings, rewrote, err := CanonicalizeHandles(plan, dir, root, results)
+		if err != nil {
+			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
+		}
+		if len(findings) != 1 || findings[0].Check != "rename-old-unresolved" {
+			t.Fatalf("findings = %+v; want exactly one rename-old-unresolved finding", findings)
+		}
+		for _, want := range []string{
+			"sub/a.go, //go:build linux", "sub/b.go, //go:build !linux",
+			"delete the old member and create the new member's handle once",
+			"or edit each file's body",
+			"a Create per file is no way forward",
+		} {
+			if !strings.Contains(findings[0].Detail, want) {
+				t.Errorf("finding detail = %q; want it to contain %q", findings[0].Detail, want)
+			}
+		}
+		if rewrote {
+			t.Errorf("CanonicalizeHandles(...) rewrote = true; want false for an unresolved old side")
+		}
+		if got := readCardFile(t, dir, 1, "card1"); !strings.Contains(got, "plan:sub#New") {
+			t.Errorf("card was rewritten despite an unresolved old side: %s", got)
+		}
+	})
 }
 
 // TestCanonicalizeHandles_RenameOldSelfGlyphNamesTheShapeMistake pins F5's detail split (crucible
@@ -345,7 +392,7 @@ func TestCanonicalizeHandles_RenameOldSelfGlyphNamesTheShapeMistake(t *testing.T
 	// A found self glyph's answer carries a Listing and no Symbols; only the Symbols absence
 	// matters to renameDeclSource.
 	results := []quarry.ResolveResult{{Target: "sub/a.go#", Status: quarry.StatusFound}}
-	findings, _, err := CanonicalizeHandles(plan, dir, results)
+	findings, _, err := CanonicalizeHandles(plan, dir, "", results)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -369,7 +416,7 @@ func TestCanonicalizeHandles_OneFailingDeclarationLeavesOthersRewritten(t *testi
 		2: "**Create:**\n- `plan:sub#Bad` -> `this is not valid go at all {{{`\n\n**Intent:** two\n",
 	})
 
-	findings, _, err := CanonicalizeHandles(plan, dir, nil)
+	findings, _, err := CanonicalizeHandles(plan, dir, "", nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -400,7 +447,7 @@ func TestCanonicalizeHandles_CanonicalCollisionRewritesNeither(t *testing.T) {
 		2: "**Create:**\n- `plan:sub#Two` -> `func Same() {}`\n\n**Intent:** two\n",
 	})
 
-	findings, _, err := CanonicalizeHandles(plan, dir, nil)
+	findings, _, err := CanonicalizeHandles(plan, dir, "", nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}
@@ -426,7 +473,7 @@ func TestCanonicalizeHandles_LanguageNoneNoOp(t *testing.T) {
 	dir := t.TempDir()
 	plan := &planparser.Plan{Dir: dir, Language: "none"}
 
-	findings, _, err := CanonicalizeHandles(plan, dir, nil)
+	findings, _, err := CanonicalizeHandles(plan, dir, "", nil)
 	if err != nil {
 		t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 	}

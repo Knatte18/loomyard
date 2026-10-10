@@ -94,13 +94,19 @@ func renameSignature(signature, oldName, newName string) (string, bool) {
 // mean arbitrarily choosing r.Symbols[0] as "the" declaration to rename from, out of several
 // declarations the language itself allows to differ from each other. A Rename pair's old side must
 // name exactly one declaration for renameSignature to have anything unambiguous to derive from.
-func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.ResolveResult) (declSource, Finding, bool) {
+func renameDeclSource(card, oldRef, newHandle, worktreeRoot string, results map[string]quarry.ResolveResult) (declSource, Finding, bool) {
 	r, resolved := results[oldRef]
 	if !resolved || r.Status != quarry.StatusFound {
+		detail := fmt.Sprintf("Rename pair's old side %q did not resolve found; nothing to derive the new declaration from", oldRef)
+		if resolved && r.Status == quarry.StatusAmbiguous {
+			if classified := classifyAmbiguity(worktreeRoot, r.Candidates); classified.Partitioned {
+				detail = partitionedRenameOldDetail(oldRef, classified.Candidates)
+			}
+		}
 		return declSource{}, Finding{
 			Check:    "rename-old-unresolved",
 			Card:     card,
-			Detail:   fmt.Sprintf("Rename pair's old side %q did not resolve found; nothing to derive the new declaration from", oldRef),
+			Detail:   detail,
 			Severity: SeverityBlocking,
 		}, false
 	}
@@ -151,6 +157,17 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 	return declSource{handle: newHandle, decl: quarry.Declaration{Unit: sym.Glyph.Unit, Decl: decl}}, Finding{}, true
 }
 
+// partitionedRenameOldDetail is the rename-old-unresolved detail for an old side declared once per build-constraint set: it names each candidate's file and constraint, and the two ways forward.
+// One declaration head serves every file, since the head only computes the new glyph and partitioned declarations share one glyph, so a Create per file is never the way forward.
+func partitionedRenameOldDetail(oldRef string, candidates []constrainedCandidate) string {
+	return fmt.Sprintf(
+		"Rename pair's old side %q is declared once per build-constraint set (%s), and a rename derives its new declaration from exactly one; "+
+			"delete the old member and create the new member's handle once, with one declaration head, on a card that edits each of the old member's files, or edit each file's body instead; "+
+			"a Create per file is no way forward, since a second claim on the handle is handle-collision",
+		oldRef, candidateList(candidates),
+	)
+}
+
 // CanonicalizeHandles turns every draft plan: handle plan declares into its canonical
 // plan:<expected-glyph> form, mechanically, via one batched quarry.Name call, and rewrites every
 // occurrence across planDir's card files. results is the same single batched Resolve answer
@@ -174,7 +191,7 @@ func renameDeclSource(card, oldRef, newHandle string, results map[string]quarry.
 // resolvePass knows whether re-reading the plan from disk can tell it anything new -- and therefore
 // whether a failure to re-read it is a real infrastructure failure or merely an in-memory plan that
 // was never on disk to begin with.
-func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry.ResolveResult) ([]Finding, bool, error) {
+func CanonicalizeHandles(plan *planparser.Plan, planDir, worktreeRoot string, results []quarry.ResolveResult) ([]Finding, bool, error) {
 	lang, ok := plan.GlyphLanguage()
 	if !ok {
 		return nil, false, nil
@@ -198,7 +215,7 @@ func CanonicalizeHandles(plan *planparser.Plan, planDir string, results []quarry
 			if !planparser.IsHandleRef(p.New) {
 				continue
 			}
-			src, finding, ok := renameDeclSource(card, p.Old, p.New, resultIndex)
+			src, finding, ok := renameDeclSource(card, p.Old, p.New, worktreeRoot, resultIndex)
 			if !ok {
 				findings = append(findings, finding)
 				continue

@@ -80,6 +80,8 @@
 //     same glyph.
 //   - rename-old-unresolved (blocking) — renameDeclSource (handle.go), a Rename pair's Old side
 //     that does not resolve found, so no declaration can be derived for its handle-shaped New side.
+//     An old side declared once per build-constraint set stays unresolved, since a rename derives from exactly one declaration;
+//     its detail names each candidate's file and constraint and the way forward: a Delete of the old member and one Create declaration of the new member's handle on a card that edits each of the old member's files, or an Edit of each file's body.
 //   - bind-count-mismatch (blocking) — BindHandles (handle.go), a card whose own handles (its
 //     Create declarations AND any Rename pair's still-handle-shaped New side, per cardOwnHandles)
 //     the record-batch delta matched fewer of than it owns.
