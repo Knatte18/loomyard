@@ -243,6 +243,7 @@
 // recover-batch refuses it with ErrRecoveryNeedsFresh before spawning anything,
 // and the way forward is `lyx webster reset --to start`, which archives the run record, and then `lyx webster run`.
 // `run --fresh` drops such a batch under the same HEAD and path rules as a pending finding.
+// A pathless entry is recognised by its class prefix and never resolved as a path.
 // One narrow exception keeps the batches before it (AcceptBatchFabricReference, `lyx webster accept-audit --batch NN`):
 // when every Uncheckable entry is a pathless fabric reference, the batch recorded a start commit and the worktree is clean apart from the run's own state,
 // the explicit call clears the entries and records each as a batch audit warning, and recover-batch then proceeds;
