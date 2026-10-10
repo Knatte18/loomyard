@@ -71,7 +71,13 @@ func TestSetEnv(t *testing.T) {
 	for _, name := range []string{"TMPDIR", "TMP", "TEMP"} {
 		t.Setenv(name, os.Getenv(name))
 	}
-	dir := t.TempDir()
+	dir := filepath.Join(t.TempDir(), dirPrefix+"0")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := kitBase(); got != "" {
+		t.Errorf("kitBase() before setEnv = %q, want \"\", the system temp directory", got)
+	}
 
 	setEnv(dir)
 
@@ -79,6 +85,10 @@ func TestSetEnv(t *testing.T) {
 		if got := os.Getenv(name); got != dir {
 			t.Errorf("%s = %q, want %q", name, got, dir)
 		}
+	}
+	// A helper re-executed under this environment creates its directory beside dir, never inside it.
+	if got := kitBase(); got != filepath.Dir(dir) {
+		t.Errorf("kitBase() after setEnv = %q, want %q", got, filepath.Dir(dir))
 	}
 	// A subtest's TempDir resolves its base afresh, so it sees the TMPDIR setEnv just set.
 	t.Run("temp directory lands under TMPDIR", func(t *testing.T) {

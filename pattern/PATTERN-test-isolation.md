@@ -33,6 +33,7 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 ## Private temp directory and leftovers
 
 - `tmuxkit.Main` points `TMPDIR` (and `TMP` and `TEMP` on Windows) at the directory it owns, as it does `TMUX_TMPDIR`, so every `t.TempDir`, `os.MkdirTemp("")`, `lyxbin` build and child temp file of a tagged package lands there.
+  A test binary re-executed as a helper inherits that directory, and its own `Main` creates its directory beside it rather than inside it, so nesting never pushes a socket path past the `sun_path` limit.
 - After the run `Main` sweeps the servers and, on Linux, scans `/proc` for any process whose cwd, executable or an argv element references that directory, waiting up to two seconds for it to exit on its own.
   A leftover is killed and fails the package with exit 1, naming its pid and argv on stderr; a `lyx reed watchdog` daemon is killed without failing the package, because it idles out on its own schedule.
   The directory is then removed.

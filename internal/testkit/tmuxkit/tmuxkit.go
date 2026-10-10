@@ -9,6 +9,7 @@
 // Reed starts a server itself, carrying no such config, only after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
 //
 // Main also points `TMPDIR` at that directory, so every temp file a test creates lands there, and after the run it sweeps the servers, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory.
+// A test binary re-executed as a helper inherits that environment, and its own Main creates its directory beside the inherited one, never inside it, so its socket paths do not grow past the limit.
 // A reed watchdog daemon is killed without failing the package, because it idles out on its own schedule after the test that spawned it.
 // Before the sweep it also fails the package for a socket it finds: any socket in a test binary built without the `tmux` and `llm` tags, and in one built with either only a socket whose key no test registered.
 // Pids, ProcArgv, ProcCwd, ProcExe and IsWatchdog are the read-only `/proc` probes behind that scan, exported for tests that look for processes themselves.
@@ -68,7 +69,7 @@ func Main(m *testing.M) int {
 		return m.Run()
 	}
 
-	dir, err := os.MkdirTemp("", dirPrefix)
+	dir, err := os.MkdirTemp(kitBase(), dirPrefix)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tmuxkit: create socket directory: %v\n", err)
 		return 1
@@ -382,6 +383,17 @@ func checkSocketPath(dir string, uid int) error {
 		return fmt.Errorf("socket directory %q is too long: its longest socket path would be %d bytes, over the %d-byte limit; set TMPDIR to a shorter path", dir, len(longest), maxSocketPath)
 	}
 	return nil
+}
+
+// kitBase returns the directory Main creates its own under, "" meaning the system temp directory.
+// A process that inherited another Main's directory as both TMPDIR and TMUX_TMPDIR, such as a test binary re-executed as a helper, gets that directory's parent instead,
+// so its directory sits beside the inherited one at the same depth and its socket paths stay as short as the ones checkSocketPath already admitted.
+func kitBase() string {
+	inherited := os.Getenv("TMPDIR")
+	if inherited != "" && os.Getenv("TMUX_TMPDIR") == inherited && strings.HasPrefix(filepath.Base(inherited), dirPrefix) {
+		return filepath.Dir(inherited)
+	}
+	return ""
 }
 
 // setEnv points tmux and every temporary file at dir and detaches the process from any enclosing tmux session.
