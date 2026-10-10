@@ -104,7 +104,8 @@ func TestMultiLLMEntry_ComposedTable(t *testing.T) {
 	env := newTestEnv(t)
 	writeStencilFile(t, env.StencilsDir, "multillm-seat", "Body text with no markers.\n")
 	fake := &shedfake.SeatRunner{Results: []seatengine.Result{{
-		Chair:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+		// The scripted chair carries a passing GateOutcome, so the fake never evaluates the real plan gate: this test pins the table's shape only.
+		Chair:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 1}},
 		ChairOutputs: []string{filepath.Join(env.WorktreeRoot, "out/chair.md")},
 	}}}
 	env.Seats = fake
