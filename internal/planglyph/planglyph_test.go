@@ -129,7 +129,7 @@ func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
 			1: "**Edit:**\n- `sub/other.go`\n\n**Intent:** one\n\n**ImpactSummary:** none\n",
 		})
 
-		_, rewrote, err := CanonicalizeHandles(plan, dir, nil)
+		_, rewrote, err := CanonicalizeHandles(plan, dir, "", nil)
 		if err != nil {
 			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 		}
@@ -144,7 +144,7 @@ func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
 			2: "**Uses:**\n- `plan:sub#Draft`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n\n**ImpactSummary:** none\n",
 		})
 
-		_, rewrote, err := CanonicalizeHandles(plan, dir, nil)
+		_, rewrote, err := CanonicalizeHandles(plan, dir, "", nil)
 		if err != nil {
 			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 		}
@@ -168,7 +168,7 @@ func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
 		})
 		before := readCardFile(t, dir, 1, "card1")
 
-		_, rewrote, err := CanonicalizeHandles(plan, dir, nil)
+		_, rewrote, err := CanonicalizeHandles(plan, dir, "", nil)
 		if err != nil {
 			t.Fatalf("CanonicalizeHandles(...) returned error: %v", err)
 		}

@@ -314,7 +314,7 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 		return nil, err
 	}
 
-	handleFindings, rewrote, err := CanonicalizeHandles(pending, planDir, results)
+	handleFindings, rewrote, err := CanonicalizeHandles(pending, planDir, worktreeRoot, results)
 	if err != nil {
 		// NOT wrapped in ErrQuarryUnavailable: CanonicalizeHandles' error comes from
 		// planparser.RewriteRefs, which parses the plan and writes card files, so a read-only
@@ -387,8 +387,8 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 		createIndex[handle] = r
 	}
 
-	findings = append(findings, statusFindings(current, nonCreateResults)...)
-	findings = append(findings, createFindings(current, createIndex)...)
+	findings = append(findings, statusFindings(current, worktreeRoot, nonCreateResults)...)
+	findings = append(findings, createFindings(current, worktreeRoot, createIndex)...)
 
 	deleteOrderFindings, err := LaterDeleteReferences(plan, current.Cards, current.Cards, worktreeRoot)
 	findings = append(findings, deleteOrderFindings...)

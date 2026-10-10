@@ -53,6 +53,9 @@ A scratch hub is a Go test fixture over local bare repositories (`hubforge`).
 `lyx fabric` refuses its mutating verbs from your strand; the refusal is the rule's owner.
 When the work itself needs a refused verb, stop and report `status: FAILED`, so the orch runs the verb.
 
+The card gate steps, the batch gate steps, `lyx loom lint-comments` and `lyx quarry resolve` are always allowed from any strand, and none of them is a fabric reference.
+The sandbox ban covers mutating `lyx fabric` verbs only.
+
 ## The batch gate — once, after the last card
 
 {{.batch_gate}}
@@ -67,6 +70,9 @@ It costs no self-fix attempt, never makes the report `FAILED`, and you re-run th
 
 You may run raw `go test` on the batch's listed packages only.
 A module-wide run or a `tmux`-tier run goes through `lyx gate test`, never a raw `go` command.
+A `lyx gate test` step runs as written, whatever its `--tags`.
+A test under the `tmux` or `llm` tag that no gate step names is compiled, never run, through `lyx gate test --tags <tag> <packages> -- -run '^$'`;
+running those tiers is left to the gates after webster.
 
 ## Bounded self-fix, then stop
 

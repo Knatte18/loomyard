@@ -23,7 +23,8 @@
 // and by the liveness check, which still classifies a dead pane.
 // A turn end that leaves background work outstanding while an output file is missing is a wait, never a held stop: a shell of either signal and a fork are live work, so none expires into a hold or a notice.
 // It is bounded only by the run's own deadline and the liveness check, so a shell that never ends ends the run OutcomeTimeout, and lyx reaps no shell.
-// A gated run whose output files all exist, started fresh, with no gated arrival yet and only unawaited shells outstanding, finishes Done at once, through the gate.
+// A gated run's waiting turn end is never an arrival: it waits until the task's completion starts the next turn, bounded by the run deadline and the liveness check.
+// At the deadline classifyDeadlineExpiry ends the run OutcomeDone when the output files exist, and finalize evaluates the gate once more over the tree as it stands.
 // Every shell outstanding when the run ends, by whatever exit, is recorded in Result.EndedShells.
 //
 // The events-tick Done branch splits in two, on whether run.gate is empty:
@@ -280,7 +281,6 @@ func (run *Run) Wait() (Result, error) {
 				return run.finalize(outcome)
 			} else if outcome == OutcomeDone {
 				// A gated Done is the writer's turn boundary: let the shared helper judge it.
-				run.gatedArrival = true
 				run.gateAtBoundary = true
 				run.startCleared = false
 				run.unsentReprompt = false
@@ -388,7 +388,11 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 		return result, true, ferr
 	}
 	// An entry failed with budget remaining: re-prompt the agent and keep polling.
-	if serr := run.sendWithin(gateRepromptText(run.gateFindingsPath)); serr != nil {
+	reprompt := gateRepromptText(run.gateFindingsPath)
+	if render := run.gate[failed].Reprompt; render != nil {
+		reprompt = render(run.gateFindingsPath)
+	}
+	if serr := run.sendWithin(reprompt); serr != nil {
 		if errors.Is(serr, ErrSessionBusy) || errors.Is(serr, ErrSubmissionNotLanded) {
 			// No attempt was spent: keep the writer at the boundary and re-send on a later tick.
 			// The send cleared its own text where it could, but for an engine with the idle reading a box it left occupied fails that re-send busy, until the run deadline ends the loop.
@@ -815,10 +819,9 @@ func awaitedLabel(label string, prefixes []string) bool {
 
 // expiredTurnEnd decides the recorded waiting turn end: it either counts it as a Done at once or keeps it waiting, and never holds it.
 // An ungated run counts it at once whenever every output file exists, whatever is outstanding.
-// A gated run's turn end with every output file present is, as a rule, not an arrival, because the files may be left over from an earlier arrival while the session works on in the background;
-// it counts at once only when every outstanding task is an unawaited shell of either signal, the run was started fresh rather than attached or resumed, and no gated arrival of this run has reached the gate yet.
-// A turn end with an output file missing waits on every outstanding task, a shell or a fork, until the run's deadline and the liveness check.
-// It reads startedFresh and gatedArrival, never the gate's failure counts, since an arrival whose re-prompt was not delivered, was deferred or answered pending leaves those counts at zero.
+// A gated run's waiting turn end is never an arrival, because the output files may be left over from an earlier arrival while the session works on in the background;
+// it waits on every outstanding task, a shell or a fork, until the task's completion starts the next turn, the run's deadline or the liveness check.
+// A turn end with an output file missing waits the same way.
 // A shell outstanding past the bound is logged once per shell, and that changes no decision.
 // Counting a turn end at once clears the waiting list and keeps its tasks in countedTasks for the run's record.
 // Returns outcome == "" and a nil held turn end while the turn keeps waiting.
@@ -833,28 +836,12 @@ func (run *Run) expiredTurnEnd() (Outcome, *heldTurnEnd, error) {
 			run.logPayloadShellPastBound(task, now.Sub(run.shellFirstSeen[task.ID]), bound)
 		}
 	}
-	if !allOutputFilesExist(run.spec.OutputFiles) || !run.countsAtOnce() {
+	if len(run.gate) != 0 || !allOutputFilesExist(run.spec.OutputFiles) {
 		return "", nil, nil
 	}
 	run.countedTasks = run.waitingTasks
 	run.waitingTasks = nil
 	return OutcomeDone, nil, nil
-}
-
-// countsAtOnce reports whether the recorded waiting turn end, whose output files all exist, counts as an arrival without a later turn end.
-func (run *Run) countsAtOnce() bool {
-	if len(run.gate) == 0 {
-		return true
-	}
-	if !run.startedFresh || run.gatedArrival {
-		return false
-	}
-	for _, task := range run.waitingTasks {
-		if task.Kind != BackgroundShell || run.awaitedShell(task) {
-			return false
-		}
-	}
-	return true
 }
 
 // logPayloadShellPastBound logs at Warn, once per shell id, that a background shell of either signal has been outstanding for at least the bound.

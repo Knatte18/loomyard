@@ -78,7 +78,7 @@ func TestWriteTriageFrictionNote(t *testing.T) {
 	})
 }
 
-// TestBackgroundShellNoteAndWarning asserts the friction note and the warning for an ended shell state, per outcome, the shell with its signal and time outstanding, that it was still running when the run ended, that lyx did not stop the shell, what ends it and the final outcome, in the same words.
+// TestBackgroundShellNoteAndWarning asserts the friction note and the warning for an ended shell state, per outcome, the shell with its signal and time outstanding, that it was still running when the run ended, that the run never read its result, that lyx did not stop the shell, what ends it and the final outcome, in the same words.
 func TestBackgroundShellNoteAndWarning(t *testing.T) {
 	endedShell := shuttleengine.EndedShell{Label: "sleep 9999", ID: "sh-1", Signal: shuttleengine.SignalTranscript, Outstanding: 90 * time.Second}
 	const removal = "shuttle removes Master's strand when the run finishes"
@@ -117,6 +117,7 @@ func TestBackgroundShellNoteAndWarning(t *testing.T) {
 				"outstanding for 1m30s",
 				"was still running",
 				"when the run ended",
+				"the run never read the shell's result",
 				"lyx did not stop the shell",
 				tc.wantEnds,
 				tc.wantTail,

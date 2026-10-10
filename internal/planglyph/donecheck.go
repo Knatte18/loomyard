@@ -126,16 +126,35 @@ func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot str
 	}
 	index := resultByTarget(results)
 
-	return doneCheckVerdicts(entries, index)
+	return doneCheckVerdicts(worktreeRoot, entries, index)
+}
+
+// lookupDescription renders what a done-check looked up and what quarry answered, for a finding detail.
+// It names the resolve key and quarry's status, for not_found whether the unit exists, and for ambiguous each candidate's file and build constraint.
+func lookupDescription(key string, status quarry.Status, unitFound bool, candidates []constrainedCandidate) string {
+	description := fmt.Sprintf("looked up %q, quarry answered %s", key, status)
+	switch status {
+	case quarry.StatusNotFound:
+		if unitFound {
+			description += " (the unit exists and the member is missing)"
+		} else {
+			description += " (the unit is missing)"
+		}
+	case quarry.StatusAmbiguous:
+		description += " among " + candidateList(candidates)
+	}
+	return description
 }
 
 // doneCheckVerdicts applies the three done rules to entries against index, the batched resolve's
-// answers keyed by target.
+// answers keyed by target, reading ambiguous candidates' files under worktreeRoot.
+// Each finding's detail names the lookup: the resolve key, quarry's status, the unit status of a
+// missing member, and each candidate's file and build constraint for an ambiguous answer.
 //
 // It is split out from DoneChecks so the coverage guard below is reachable from a unit test: every
 // other path into it runs a real quarry.Repo, and the one condition worth pinning -- an answer set
 // that does not cover a target the caller asked about -- cannot be produced through one.
-func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.ResolveResult) ([]Finding, error) {
+func doneCheckVerdicts(worktreeRoot string, entries []doneCheckEntry, index map[string]quarry.ResolveResult) ([]Finding, error) {
 	var findings []Finding
 	for _, e := range entries {
 		r, ok := index[e.key]
@@ -176,8 +195,16 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 		// declaration with that name is still present — INCLUDING ambiguous, whose candidates are
 		// exactly such declarations, so an ambiguous answer must block a deletion verdict rather
 		// than pass it (the old boolean passed it; crucible round fable-high-r10, F1).
-		resolved := r.Status == quarry.StatusFound || r.Status == quarry.StatusMultipart
+		//
+		// An ambiguous answer whose candidates sit in files no single build environment selects together is one member declared per constraint set, so it counts as resolved.
+		// The Delete direction still blocks on it, since each of those declarations is still present.
+		var classified ambiguity
+		if r.Status == quarry.StatusAmbiguous {
+			classified = classifyAmbiguity(worktreeRoot, r.Candidates)
+		}
+		resolved := r.Status == quarry.StatusFound || r.Status == quarry.StatusMultipart || classified.Partitioned
 		stillExists := r.Status != quarry.StatusNotFound
+		lookup := lookupDescription(e.key, r.Status, r.Unit == quarry.StatusFound, classified.Candidates)
 
 		switch e.checkID {
 		case "create-not-done":
@@ -185,7 +212,7 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 				findings = append(findings, Finding{
 					Check:    "create-not-done",
 					Card:     e.card.ID(),
-					Detail:   fmt.Sprintf("Create target %q still does not resolve", e.display),
+					Detail:   fmt.Sprintf("Create target %q still does not resolve: %s", e.display, lookup),
 					Severity: SeverityBlocking,
 				})
 			}
@@ -194,7 +221,7 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 				findings = append(findings, Finding{
 					Check:    "delete-not-done",
 					Card:     e.card.ID(),
-					Detail:   fmt.Sprintf("Delete target %q still resolves %s", e.display, r.Status),
+					Detail:   fmt.Sprintf("Delete target %q still resolves: %s", e.display, lookup),
 					Severity: SeverityBlocking,
 				})
 			}
@@ -203,7 +230,7 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 				findings = append(findings, Finding{
 					Check:    "rename-not-done",
 					Card:     e.card.ID(),
-					Detail:   fmt.Sprintf("Rename pair's old side %q still resolves %s — the rename did not happen", e.display, r.Status),
+					Detail:   fmt.Sprintf("Rename pair's old side %q still resolves — the rename did not happen: %s", e.display, lookup),
 					Severity: SeverityBlocking,
 				})
 			}
@@ -212,7 +239,7 @@ func doneCheckVerdicts(entries []doneCheckEntry, index map[string]quarry.Resolve
 				findings = append(findings, Finding{
 					Check:    "rename-not-done",
 					Card:     e.card.ID(),
-					Detail:   fmt.Sprintf("Rename pair's new side %q still does not resolve — the rename did not happen", e.display),
+					Detail:   fmt.Sprintf("Rename pair's new side %q still does not resolve — the rename did not happen: %s", e.display, lookup),
 					Severity: SeverityBlocking,
 				})
 			}

@@ -79,7 +79,7 @@ func AppendBackgroundShells(websterDir string, shells []shuttleengine.EndedShell
 		return nil
 	}
 	var b strings.Builder
-	b.WriteString("\n\n## Background shells at the run's end\n\nMaster's run ended while these background shells were still outstanding; they may still be running in the session.\n\n")
+	b.WriteString("\n\n## Background shells at the run's end\n\nMaster's run ended while these background shells were still outstanding, and the run never read their results.\n\n")
 	for _, shell := range shells {
 		fmt.Fprintf(&b, "- `%s` (%s signal, outstanding %s)\n", shell.Label, shell.Signal, shell.Outstanding.Round(time.Second))
 	}

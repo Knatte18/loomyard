@@ -536,7 +536,9 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	var priorTranscripts []string
 	var priorRecoveries int
 	var priorRecoveryStart string
+	var priorRecoverySessions []string
 	if prior != nil {
+		priorRecoverySessions = prior.RecoverySessions
 		priorWarnings = prior.AuditWarnings
 		priorTranscripts = prior.ForkTranscripts
 		priorRecoveries = prior.Recoveries
@@ -552,6 +554,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		AuditWarnings:    priorWarnings,
 		ForkTranscripts:  priorTranscripts,
 		Recoveries:       priorRecoveries,
+		RecoverySessions: priorRecoverySessions,
 		RecoveryStartSHA: priorRecoveryStart,
 		SpawnedAt:        time.Now().UTC().Format(time.RFC3339),
 		// Stamp the opening Master session so the run-exit audit cross-check

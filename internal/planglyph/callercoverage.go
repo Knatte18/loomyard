@@ -86,8 +86,8 @@ func importPathOf(worktreeRoot string, modules []string, dir string) (string, er
 // The walk runs only when a subject exists.
 // References come from a type-checked load through loader where it answers, and from the import-path scan elsewhere: in every file the load did not check, and on each line of a checked file that has an identifier without type information.
 // A load that fails leaves every file to the scan and is never an error.
-func callerCoverageFindings(plan *planparser.Plan, lang glyph.Language, worktreeRoot string, answers map[string]quarry.ResolveResult, loader typesLoader) ([]Finding, error) {
-	subjects, err := coverageSubjects(plan, lang, worktreeRoot, answers)
+func callerCoverageFindings(plan *planparser.Plan, lang glyph.Language, worktreeRoot string, answers map[string]quarry.ResolveResult, partitioned map[string]bool, loader typesLoader) ([]Finding, error) {
+	subjects, err := coverageSubjects(plan, lang, worktreeRoot, answers, partitioned)
 	if err != nil || len(subjects) == 0 {
 		return nil, err
 	}
@@ -108,11 +108,11 @@ func callerCoverageFindings(plan *planparser.Plan, lang glyph.Language, worktree
 		return nil, err
 	}
 
-	regions, _ := buildEditRegions(collectEditTargets(lang, plan.Cards), answers)
+	regions, _ := buildEditRegions(collectEditTargets(lang, plan.Cards), answers, partitioned)
 	uncovered := func(subject coverageSubject, file string, lines []int) []int {
 		var kept []int
 		for _, line := range lines {
-			if coveredByTarget(plan, lang, subject, file, line, answers) {
+			if coveredByTarget(plan, lang, subject, file, line, answers, partitioned) {
 				continue
 			}
 			if subject.deleted && insideLaterEditRegion(regions, subject.card.Number, file, line) {
@@ -192,7 +192,7 @@ func hasUnresolvedLine(unresolved []map[string][]int, file string) bool {
 
 // coverageSubjects returns, in card and body order, every member glyph a card deletes or re-signs whose answer holds its declaration.
 // A member listed more than once on one card is one subject.
-func coverageSubjects(plan *planparser.Plan, lang glyph.Language, worktreeRoot string, answers map[string]quarry.ResolveResult) ([]coverageSubject, error) {
+func coverageSubjects(plan *planparser.Plan, lang glyph.Language, worktreeRoot string, answers map[string]quarry.ResolveResult, partitioned map[string]bool) ([]coverageSubject, error) {
 	// modules is read on the first subject, since the walk costs a tree read.
 	var modules []string
 	modulesRead := false
@@ -211,7 +211,7 @@ func coverageSubjects(plan *planparser.Plan, lang glyph.Language, worktreeRoot s
 		if err != nil || g.IsSelf() {
 			return nil
 		}
-		symbols, readable := answerSymbols(answers[ref])
+		symbols, readable := answerSymbols(answers[ref], partitioned[ref])
 		if !readable || len(symbols) == 0 {
 			return nil
 		}
@@ -465,7 +465,7 @@ func insideOwnSpan(subject coverageSubject, file string, line int) bool {
 // coveredByTarget reports whether a target of an admissible card covers line of file.
 // A re-signed member admits only its own card, since no earlier card can call a signature that does not exist yet; a deleted member admits its own card and every earlier one.
 // A target covers the line when it is the file's self glyph, the self glyph of the file's directory, or a member glyph whose resolved span holds the line.
-func coveredByTarget(plan *planparser.Plan, lang glyph.Language, subject coverageSubject, file string, line int, answers map[string]quarry.ResolveResult) bool {
+func coveredByTarget(plan *planparser.Plan, lang glyph.Language, subject coverageSubject, file string, line int, answers map[string]quarry.ResolveResult, partitioned map[string]bool) bool {
 	for _, c := range plan.Cards {
 		admissible := c.Number == subject.card.Number || (subject.deleted && c.Number < subject.card.Number)
 		if !admissible {
@@ -486,7 +486,7 @@ func coveredByTarget(plan *planparser.Plan, lang glyph.Language, subject coverag
 				}
 				continue
 			}
-			symbols, _ := answerSymbols(answers[target])
+			symbols, _ := answerSymbols(answers[target], partitioned[target])
 			if slices.ContainsFunc(symbols, func(s quarry.Symbol) bool { return s.File == file && s.Start <= line && line <= s.End }) {
 				return true
 			}

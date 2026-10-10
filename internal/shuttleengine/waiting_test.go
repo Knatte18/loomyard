@@ -201,23 +201,19 @@ var (
 // TestPollEventsTick_OutstandingBackgroundWork covers a waiting turn end whose outstanding list is background work, one rule for a shell of either signal:
 // with an output file missing the turn end keeps waiting on a shell, a fork or an awaited shell however long they run, and is never held;
 // with every output file present an ungated run finishes done at once whatever is outstanding;
-// a gated run finishes done at once only when it was started fresh, no gated arrival has reached the gate yet and every outstanding task is an unawaited shell, and otherwise waits for the next real turn end.
+// a gated run with every output file present waits on any outstanding task until the next real turn end.
 //
-//testtiming:keep pins that no shell or fork expires at a waiting turn end, and the files-present rules of an ungated and a gated run
+//testtiming:keep pins that no shell or fork expires at a waiting turn end, and that a gated run with every output file present waits on any outstanding task
 func TestPollEventsTick_OutstandingBackgroundWork(t *testing.T) {
 	passingGate := GateSpec{{Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}
 	fork := BackgroundTask{Kind: BackgroundFork, ID: "fork-1"}
 	awaitedShell := BackgroundTask{Kind: BackgroundShell, ID: "sh-2", Label: "await-me 03", Signal: SignalTranscript}
 	awaitedSpec := Spec{AwaitedShellPrefixes: []string{"await-me"}}
 	tests := []struct {
-		name  string
-		tasks []BackgroundTask
-		spec  Spec
-		gated bool
-		// fresh marks the gated run as started rather than attached or resumed.
-		fresh bool
-		// arrived marks the gated run as having taken a gated arrival to the gate already.
-		arrived     bool
+		name        string
+		tasks       []BackgroundTask
+		spec        Spec
+		gated       bool
 		touchOutput bool
 		// wantDone expects the first tick to finish done, with the tasks counted for the run's record and the waiting list cleared.
 		wantDone bool
@@ -229,12 +225,10 @@ func TestPollEventsTick_OutstandingBackgroundWork(t *testing.T) {
 		{name: "an ungated run with outputs and a transcript-reported shell finishes done", tasks: []BackgroundTask{transcriptShellTask}, touchOutput: true, wantDone: true},
 		{name: "an ungated run with outputs and a fork finishes done", tasks: []BackgroundTask{fork}, touchOutput: true, wantDone: true},
 		{name: "an ungated run with outputs and nothing outstanding finishes done", touchOutput: true, wantDone: true},
-		{name: "a fresh gated run with outputs and a transcript-reported shell finishes done before any gated arrival", tasks: []BackgroundTask{transcriptShellTask}, gated: true, fresh: true, touchOutput: true, wantDone: true},
-		{name: "a fresh gated run with outputs and a payload-reported shell finishes done before any gated arrival", tasks: []BackgroundTask{payloadShellTask}, gated: true, fresh: true, touchOutput: true, wantDone: true},
-		{name: "a gated run waits once a gated arrival has reached the gate", tasks: []BackgroundTask{transcriptShellTask}, gated: true, fresh: true, arrived: true, touchOutput: true},
-		{name: "an attached or resumed gated run waits", tasks: []BackgroundTask{transcriptShellTask}, gated: true, touchOutput: true},
-		{name: "a fork beside a shell keeps the gated run waiting", tasks: []BackgroundTask{payloadShellTask, fork}, gated: true, fresh: true, touchOutput: true},
-		{name: "an awaited shell beside a shell keeps the gated run waiting", tasks: []BackgroundTask{payloadShellTask, awaitedShell}, spec: awaitedSpec, gated: true, fresh: true, touchOutput: true},
+		{name: "a gated run with outputs and a transcript-reported shell waits", tasks: []BackgroundTask{transcriptShellTask}, gated: true, touchOutput: true},
+		{name: "a gated run with outputs and a payload-reported shell waits", tasks: []BackgroundTask{payloadShellTask}, gated: true, touchOutput: true},
+		{name: "a fork beside a shell keeps the gated run waiting", tasks: []BackgroundTask{payloadShellTask, fork}, gated: true, touchOutput: true},
+		{name: "an awaited shell beside a shell keeps the gated run waiting", tasks: []BackgroundTask{payloadShellTask, awaitedShell}, spec: awaitedSpec, gated: true, touchOutput: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -246,8 +240,6 @@ func TestPollEventsTick_OutstandingBackgroundWork(t *testing.T) {
 			if tt.gated {
 				run.gate = passingGate
 			}
-			run.startedFresh = tt.fresh
-			run.gatedArrival = tt.arrived
 
 			outcome, held, err := run.pollEventsTick()
 			if tt.wantDone {
@@ -275,56 +267,6 @@ type jumpClock struct {
 
 func (c *jumpClock) Sleep(time.Duration) { c.fakeClock.Sleep(c.jump) }
 
-// TestWait_GatedFreshRunWithOutstandingShellEvaluatesGateAtOnce pins that a fresh gated run whose waiting turn end has every output file and a shell outstanding is a gated arrival at once:
-// the gate runs once, the run finishes done, the shell is recorded in Result.EndedShells, and the cleaned end logs that the strand removal ended it.
-// It captures the process-global logger, so it does not run in parallel.
-//
-//testtiming:keep pins the gated at-once finish end to end: one gate evaluation, the recorded shell and the removal line
-func TestWait_GatedFreshRunWithOutstandingShellEvaluatesGateAtOnce(t *testing.T) {
-	buf := logcapture.CaptureVerbose(t)
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, eventsFileName)
-	outputFile := filepath.Join(runDir, "out.md")
-	touchOutputFile(t, outputFile)
-	if err := os.WriteFile(eventsPath, []byte("WAIT:background work\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
-	}
-	gateCalls := 0
-	gate := func() (GateResult, error) {
-		gateCalls++
-		return GateResult{Passed: true}, nil
-	}
-
-	fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &waitingEngine{outstanding: []BackgroundTask{transcriptShellTask}}, withConfig(gateConfig))
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Hour)),
-		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
-	run.startedFresh = true
-
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
-	}
-	if gateCalls != 1 {
-		t.Errorf("gate evaluated %d times, want 1 at the at-once arrival", gateCalls)
-	}
-	if want := []EndedShell{{Label: "sleep 9999", ID: "sh-1", Signal: SignalTranscript}}; !slices.Equal(result.EndedShells, want) {
-		t.Errorf("EndedShells = %+v, want %+v", result.EndedShells, want)
-	}
-	if !run.gatedArrival {
-		t.Error("gatedArrival = false after a gated Done arrival, want true")
-	}
-	if !strings.Contains(buf.String(), "strand removal ended the background shells it could") {
-		t.Errorf("log lacks the removal line; log:\n%s", buf.String())
-	}
-}
-
 // TestWait_RecordsEndedShells pins that every end of a run with a shell outstanding records it in Result.EndedShells with its time outstanding:
 // an ungated at-once finish logs that the strand removal ended the shell,
 // and a run deadline and a liveness end log that the run ended with the shell outstanding and the strand left to its caller.
@@ -347,9 +289,9 @@ func TestWait_RecordsEndedShells(t *testing.T) {
 		started     bool
 		// tasks is what the waiting turn end reports outstanding, the transcript-reported shell when nil.
 		tasks []BackgroundTask
-		// gated runs the wait under a passing gate, fresh marks that run as started rather than attached, and awaitedPrefixes are the spec's awaited shell prefixes.
+		// gated runs the wait under a passing gate, wantGateCalls is how many times that gate is evaluated, and awaitedPrefixes are the spec's awaited shell prefixes.
 		gated           bool
-		fresh           bool
+		wantGateCalls   int
 		awaitedPrefixes []string
 		// steps runs one per clock tick, after the tick's sleep, with the events path.
 		steps []func(t *testing.T, eventsPath string)
@@ -377,19 +319,37 @@ func TestWait_RecordsEndedShells(t *testing.T) {
 		},
 		{
 			name: "an awaited shell never lands in EndedShells", cfg: gateConfig, touchOutput: true, status: liveStrandStatus(true),
-			tasks: []BackgroundTask{awaitedShell}, gated: true, fresh: true, awaitedPrefixes: []string{"await-me"},
+			tasks: []BackgroundTask{awaitedShell}, gated: true, wantGateCalls: 1, awaitedPrefixes: []string{"await-me"},
 			steps: []func(t *testing.T, eventsPath string){
 				func(t *testing.T, eventsPath string) { appendEventsLine(t, eventsPath, "STOP:done") },
 			},
 			wantOutcome: OutcomeDone, wantNoShells: true,
 			wantNoLog: []string{removed, left},
 		},
+		{
+			name: "an unawaited shell never lands in EndedShells once the next turn ends", cfg: gateConfig, touchOutput: true, status: liveStrandStatus(true),
+			tasks: []BackgroundTask{transcriptShellTask}, gated: true, wantGateCalls: 1,
+			steps: []func(t *testing.T, eventsPath string){
+				func(t *testing.T, eventsPath string) { appendEventsLine(t, eventsPath, "STOP:done") },
+			},
+			wantOutcome: OutcomeDone, wantNoShells: true,
+			wantNoLog: []string{removed, left},
+		},
+		{
+			name: "a gated run with its outputs present holds the shell to the deadline and records it", cfg: gateConfig, touchOutput: true, status: liveStrandStatus(true),
+			gated: true, wantGateCalls: 1, jump: 40 * time.Minute,
+			wantOutcome: OutcomeDone, wantOutstanding: 80 * time.Minute,
+		},
 		{name: "the run deadline", cfg: gateConfig, status: liveStrandStatus(true), jump: 40 * time.Minute, wantOutcome: OutcomeTimeout, wantOutstanding: 80 * time.Minute, wantLog: []string{left}, wantNoLog: []string{removed}},
 		{name: "the liveness check", cfg: livenessConfig, status: liveStrandStatus(false), started: true, wantOutcome: OutcomeDied, wantLog: []string{left}, wantNoLog: []string{removed}},
 	}
-	passingGate := GateSpec{{Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			gateCalls := 0
+			countingGate := GateSpec{{Gate: func() (GateResult, error) {
+				gateCalls++
+				return GateResult{Passed: true}, nil
+			}, Attempts: 1}}
 			buf := logcapture.CaptureVerbose(t)
 			runDir := t.TempDir()
 			eventsPath := filepath.Join(runDir, eventsFileName)
@@ -423,10 +383,9 @@ func TestWait_RecordsEndedShells(t *testing.T) {
 				withRunClock(clk, fc.Now().Add(time.Hour)),
 			}
 			if tt.gated {
-				opts = append(opts, withRunGate(passingGate))
+				opts = append(opts, withRunGate(countingGate))
 			}
 			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour, AwaitedShellPrefixes: tt.awaitedPrefixes}, opts...)
-			run.startedFresh = tt.fresh
 
 			result, err := run.Wait()
 			if err != nil {
@@ -434,6 +393,9 @@ func TestWait_RecordsEndedShells(t *testing.T) {
 			}
 			if result.Outcome != tt.wantOutcome {
 				t.Errorf("Outcome = %q, want %q", result.Outcome, tt.wantOutcome)
+			}
+			if gateCalls != tt.wantGateCalls {
+				t.Errorf("gate evaluated %d times, want %d", gateCalls, tt.wantGateCalls)
 			}
 			want := tt.wantShells
 			if want == nil && !tt.wantNoShells {

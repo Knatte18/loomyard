@@ -9,6 +9,8 @@ what_went_wrong: >-
   Nothing in the first four turn ends: each lists the running batch fork in background_tasks and reads waiting.
   The last turn end lists only a shell the batch 10 fork left running after it returned;
   the old code counted that turn end once the shell passed background_shell_wait_min and read it as asking, the outcome the run directory still records.
+  The turn end stays waiting on the shell whether or not Master's output files exist;
+  only the run deadline, the liveness check or a stop ends such a run.
 events_reconstructed: false
 events_note: The real events file's Stop lines after the skill-load turn end, unchanged.
 gated: true
@@ -37,7 +39,7 @@ turn_ends:
     outputs_exist: false
     tasks:
       - {kind: shell, id: bm80315xg, signal: payload}
-    old_reading: waiting on the shell, then asking once the shell expired
+    old_reading: waiting on the shell, then asking once the shell expired; now waiting on the shell until the deadline, the liveness check or a stop
 states:
   - {state: busy, cause: background}
   - {state: busy, cause: background}

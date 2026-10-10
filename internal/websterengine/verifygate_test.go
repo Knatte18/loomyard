@@ -89,6 +89,9 @@ func (f *gateFake) seams() verifyGateSeams {
 	}
 }
 
+// testFixPromptPath is the verify-fix prompt path the gate tests hand the gate.
+const testFixPromptPath = "/prompts/verify-fix.md"
+
 const failingPackageLog = "FAIL\texample.com/mod/internal/a\t0.01s\n"
 
 func failedResult() verifytree.Result {
@@ -125,7 +128,7 @@ func TestVerifyGate_PassesWithoutVerifying(t *testing.T) {
 			if tt.outcomeErr != nil {
 				s.outcome = func() (string, error) { return "", tt.outcomeErr }
 			}
-			gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, s)
+			gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, testFixPromptPath, s)
 
 			res, err := gate()
 			if err != nil || !res.Passed {
@@ -147,7 +150,7 @@ func TestVerifyGate_FlakyFailurePassesOnRerunWithNote(t *testing.T) {
 		logs:    []string{failingPackageLog},
 	}
 	notes := &VerifyGateNotes{}
-	gate := newVerifyGate(t.TempDir(), 3, notes, f.seams())
+	gate := newVerifyGate(t.TempDir(), 3, notes, testFixPromptPath, f.seams())
 
 	res, err := gate()
 	if err != nil || !res.Passed {
@@ -194,7 +197,7 @@ func TestVerifyGate_TimedOutVerifyFailsAtOnceWithoutRerun(t *testing.T) {
 				results: tt.results,
 				logs:    tt.logs,
 			}
-			gate := newVerifyGate(reports, 3, &VerifyGateNotes{}, f.seams())
+			gate := newVerifyGate(reports, 3, &VerifyGateNotes{}, testFixPromptPath, f.seams())
 
 			res, err := gate()
 			if err != nil || res.Passed || res.Terminal {
@@ -229,7 +232,7 @@ func TestVerifyGate_FailedEvaluationWritesReport(t *testing.T) {
 		results: []verifytree.Result{failedResult()},
 		logs:    []string{failingPackageLog},
 	}
-	gate := newVerifyGate(reports, 3, &VerifyGateNotes{}, f.seams())
+	gate := newVerifyGate(reports, 3, &VerifyGateNotes{}, testFixPromptPath, f.seams())
 
 	first, err := gate()
 	if err != nil || first.Passed || first.Terminal {
@@ -266,6 +269,9 @@ func TestVerifyGate_FailedEvaluationWritesReport(t *testing.T) {
 			t.Errorf("findings = %q; want %q in it", second.Findings, want)
 		}
 	}
+	if !strings.HasPrefix(second.Findings, verifyGateWayForward(testFixPromptPath)+"\n") {
+		t.Errorf("findings = %q; want them to open with the way forward naming %s", second.Findings, testFixPromptPath)
+	}
 }
 
 // TestVerifyGate_DirtyTreeRecordsPreFixHead walks one fake through dirty-tree failures: a dirty tree
@@ -285,7 +291,7 @@ func TestVerifyGate_DirtyTreeRecordsPreFixHead(t *testing.T) {
 		dirty:   []string{"loose.go"},
 		results: []verifytree.Result{passedResult()},
 	}
-	gate := newVerifyGate(reports, 5, &VerifyGateNotes{}, f.seams())
+	gate := newVerifyGate(reports, 5, &VerifyGateNotes{}, testFixPromptPath, f.seams())
 
 	for i := 0; i < 2; i++ {
 		if res, err := gate(); err != nil || res.Passed {
@@ -310,7 +316,7 @@ func TestVerifyGate_DirtyTreeRecordsPreFixHead(t *testing.T) {
 	}
 
 	f.head = "head1"
-	second := newVerifyGate(t.TempDir(), 5, &VerifyGateNotes{}, f.seams())
+	second := newVerifyGate(t.TempDir(), 5, &VerifyGateNotes{}, testFixPromptPath, f.seams())
 	if res, err := second(); err != nil || res.Passed {
 		t.Fatalf("second closure's gate() = %+v, %v; want a failure", res, err)
 	}
@@ -341,7 +347,7 @@ func TestVerifyGate_PersistFailureIsTheGatesError(t *testing.T) {
 		dirty:     []string{"loose.go"},
 		recordErr: errors.New("disk full"),
 	}
-	gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, f.seams())
+	gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, testFixPromptPath, f.seams())
 
 	if _, err := gate(); err == nil || !strings.Contains(err.Error(), "disk full") {
 		t.Fatalf("gate() error = %v; want the persist failure", err)
@@ -358,7 +364,7 @@ func TestVerifyGate_RejectedFixCommitFailsTerminal(t *testing.T) {
 		rejection: [2]string{"mergeabc", "it merged a commit that is not on the run's parent branch"},
 		results:   []verifytree.Result{passedResult()},
 	}
-	gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, f.seams())
+	gate := newVerifyGate(t.TempDir(), 3, &VerifyGateNotes{}, testFixPromptPath, f.seams())
 	if res, err := gate(); err != nil || res.Passed {
 		t.Fatalf("first gate() = %+v, %v; want a dirty failure", res, err)
 	}

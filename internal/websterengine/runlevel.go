@@ -40,8 +40,9 @@ import (
 // Master spawn at once.
 const runLockName = "run.lock"
 
-// masterAwaitedShellPrefix is the background shell Master's wait treats like a fork:
-// the backgrounded recovery verb of the failure ladder.
+// masterAwaitedShellPrefix is the backgrounded recovery verb of the failure ladder.
+// The prefix keeps that verb out of the background-shell wait marker;
+// it does not change when a turn end counts, since every shell holds a gated turn end alike.
 const masterAwaitedShellPrefix = "lyx webster recover-batch"
 
 // ErrRunBusy marks Run's fail-fast refusal when another invocation already holds scratchDir's
@@ -705,7 +706,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		Version:       resolved.Params["version"],
 		Skills:        roleSkills,
 		ForkSubagents: true,
-		// The failure ladder backgrounds recover-batch and recovery_timeout_min bounds it, so the gate waits on it like a fork.
+		// The failure ladder backgrounds recover-batch and recovery_timeout_min bounds it, so the wait marker leaves it out.
 		AwaitedShellPrefixes: []string{masterAwaitedShellPrefix},
 		Role:                 MerriamStrandRole,
 		Segment:              segmentcolor.Webster,
@@ -716,8 +717,8 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// The state-mutation lease acquired above is held across this call, which now includes the
 	// provider's startup window (bounded by startup_timeout_s) — see AcquireStateMutation's own
 	// contract. At run entry no batch forks exist yet, so the hold stalls nothing in practice.
-	verifyGate, gateNotes := NewVerifyGate(deps.Geom, deps.Config.VerifyGateAttempts, batches, deps.ParentBranch, deps.FrictionDir)
-	gate := append(slices.Clone(deps.Gate), shuttleengine.GateEntry{Name: verifyGateName, Gate: verifyGate, Attempts: deps.Config.VerifyGateAttempts})
+	verifyGate, gateNotes := NewVerifyGate(deps.Geom, deps.Config.VerifyGateAttempts, batches, deps.ParentBranch, deps.FrictionDir, verifyFixPromptPath)
+	gate := append(slices.Clone(deps.Gate), shuttleengine.GateEntry{Name: verifyGateName, Gate: verifyGate, Attempts: deps.Config.VerifyGateAttempts, Reprompt: verifyGateReprompt(verifyFixPromptPath)})
 	handle, err := deps.Starter.StartMaster(spec, gate)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("webster: start master: %w; way forward: transient, re-run `lyx webster run`", err)
@@ -1159,7 +1160,7 @@ func pendingFindingsText(engine shuttleengine.Engine, st *State, geom Geometry, 
 // A finding with no path, or a path nothing the run recorded can check (see uncheckableReason) other than a cleared contract file, clears only through the reset route,
 // so the steps are then the reset to start, then reentry:
 // accept-audit refuses every finding while any one of them cannot be checked.
-// Otherwise the steps are the restores first (git checkout of the differing tracked paths to the last batch head, restore-plan for plan paths that differ, rm for a contract path a fork wrote last),
+// Otherwise the steps are the restores first (git checkout of the differing tracked paths to the last batch head, restore-plan for plan paths that differ, rm for a contract path a fork or a recovery session wrote last),
 // then accept-audit, then reentry.
 // The error is a link-resolution or git probe failure.
 func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []string, pathless bool, reentry string) (steps []string, notes map[string]string, err error) {
@@ -1171,8 +1172,10 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 	for _, p := range contracts.Cleared {
 		notes[p] = noteClearedContract
 	}
-	for _, p := range contracts.Uncleared {
-		notes[p] = noteForkWroteLast
+	var unclearedPaths []string
+	for _, u := range contracts.Uncleared {
+		notes[u.Path] = noteWroteLast(u.Writer)
+		unclearedPaths = append(unclearedPaths, u.Path)
 	}
 	plan, rest, err := splitPlanPaths(geom, contracts.Rest)
 	if err != nil {
@@ -1214,8 +1217,8 @@ func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []
 	if len(plan) > 0 {
 		steps = append(steps, stepRestorePlan)
 	}
-	if len(contracts.Uncleared) > 0 {
-		steps = append(steps, "rm "+strings.Join(contracts.Uncleared, " "))
+	if len(unclearedPaths) > 0 {
+		steps = append(steps, "rm "+strings.Join(unclearedPaths, " "))
 	}
 	return append(steps, stepAcceptAudit, reentry), notes, nil
 }

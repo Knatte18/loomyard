@@ -120,76 +120,95 @@ func TestGate_FirstDoneSettlesWithoutReprompt(t *testing.T) {
 
 // TestGate_FailsOnceThenPassesOnNextTurn covers the core re-prompt loop: a failed first attempt sends
 // exactly one re-prompt naming the findings file, and the agent's next turn passing settles the run.
+// The re-prompt is the default line, or the line the failing entry's Reprompt renders.
 //
-//testtiming:keep pins that the re-prompt is a single line naming the findings file, and that the findings file holds the failed attempt's findings
+//testtiming:keep pins that the re-prompt is a single line naming the findings file, that an entry's own renderer replaces the default line, and that the findings file holds the failed attempt's findings
 func TestGate_FailsOnceThenPassesOnNextTurn(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, eventsFileName)
-	outputFile := filepath.Join(runDir, "out.md")
-	touchOutputFile(t, outputFile)
-	if err := os.WriteFile(eventsPath, []byte("STOP:turn1\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
+	customReprompt := func(findingsPath string) string { return "custom line: open " + findingsPath }
+	tests := []struct {
+		name string
+		// reprompt is the entry's renderer, nil for the default line.
+		reprompt   func(findingsPath string) string
+		wantPrompt func(findingsPath string) string
+	}{
+		{name: "the default line", wantPrompt: gateRepromptText},
+		{name: "an entry's own line", reprompt: customReprompt, wantPrompt: customReprompt},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, eventsFileName)
+			outputFile := filepath.Join(runDir, "out.md")
+			touchOutputFile(t, outputFile)
+			if err := os.WriteFile(eventsPath, []byte("STOP:turn1\n"), 0o644); err != nil {
+				t.Fatalf("seed events: %v", err)
+			}
 
-	findingsPath := filepath.Join(runDir, gateFindingsFileName)
-	wantFindings := "fix the thing"
-	gateCalls := 0
-	gate := func() (GateResult, error) {
-		gateCalls++
-		if gateCalls == 1 {
-			return GateResult{Passed: false, Findings: wantFindings}, nil
-		}
-		return GateResult{Passed: true}, nil
-	}
+			findingsPath := filepath.Join(runDir, gateFindingsFileName)
+			wantFindings := "fix the thing"
+			wantSent := tt.wantPrompt(findingsPath)
+			gateCalls := 0
+			gate := func() (GateResult, error) {
+				gateCalls++
+				if gateCalls == 1 {
+					return GateResult{Passed: false, Findings: wantFindings}, nil
+				}
+				return GateResult{Passed: true}, nil
+			}
 
-	reed := &fakeReed{
-		StatusQueue:  liveStrandStatus(true),
-		CaptureQueue: repromptCaptureSequence(findingsPath, 1),
-	}
-	engine := readyAgentEngine()
-	fx := newFixture(t, reed, engine, withConfig(gateConfig))
-	stubInputSleep(t)
+			reed := &fakeReed{
+				StatusQueue:  liveStrandStatus(true),
+				CaptureQueue: []string{"idle pane", "idle pane", wantSent},
+			}
+			engine := readyAgentEngine()
+			fx := newFixture(t, reed, engine, withConfig(gateConfig))
+			stubInputSleep(t)
 
-	fc := newFakeClock(time.Now())
-	mc := &multiStepClock{fakeClock: fc, steps: []func(){
-		func() { appendEventsLine(t, eventsPath, "STOP:turn2") },
-	}}
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour, KeepPane: true},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
-		withRunClock(mc, mc.Now().Add(time.Hour)),
-		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
+			fc := newFakeClock(time.Now())
+			mc := &multiStepClock{fakeClock: fc, steps: []func(){
+				func() { appendEventsLine(t, eventsPath, "STOP:turn2") },
+			}}
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour, KeepPane: true},
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+				withRunClock(mc, mc.Now().Add(time.Hour)),
+				withRunGate(GateSpec{{Gate: gate, Attempts: 3, Reprompt: tt.reprompt}}))
 
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
-	}
-	if result.Gate == nil || !result.Gate.Passed {
-		t.Errorf("Gate = %+v, want a passed verdict", result.Gate)
-	}
-	if result.Gate != nil && result.Gate.Attempts != 1 {
-		t.Errorf("Attempts = %d, want 1", result.Gate.Attempts)
-	}
-	if len(reed.SendTextCalls) != 1 {
-		t.Fatalf("SendText calls = %+v, want exactly one", reed.SendTextCalls)
-	}
-	sent := reed.SendTextCalls[0].Text
-	if strings.ContainsAny(sent, "\n\r") {
-		t.Errorf("re-prompt text = %q, want a single line", sent)
-	}
-	if !strings.Contains(sent, findingsPath) {
-		t.Errorf("re-prompt text = %q, want it to name the findings file %q", sent, findingsPath)
-	}
+			result, err := run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != OutcomeDone {
+				t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
+			}
+			if result.Gate == nil || !result.Gate.Passed {
+				t.Errorf("Gate = %+v, want a passed verdict", result.Gate)
+			}
+			if result.Gate != nil && result.Gate.Attempts != 1 {
+				t.Errorf("Attempts = %d, want 1", result.Gate.Attempts)
+			}
+			if len(reed.SendTextCalls) != 1 {
+				t.Fatalf("SendText calls = %+v, want exactly one", reed.SendTextCalls)
+			}
+			sent := reed.SendTextCalls[0].Text
+			if sent != wantSent {
+				t.Errorf("re-prompt text = %q, want %q", sent, wantSent)
+			}
+			if strings.ContainsAny(sent, "\n\r") {
+				t.Errorf("re-prompt text = %q, want a single line", sent)
+			}
+			if !strings.Contains(sent, findingsPath) {
+				t.Errorf("re-prompt text = %q, want it to name the findings file %q", sent, findingsPath)
+			}
 
-	gotFindings, err := os.ReadFile(findingsPath)
-	if err != nil {
-		t.Fatalf("read findings file: %v", err)
-	}
-	if string(gotFindings) != wantFindings {
-		t.Errorf("findings file = %q, want the first attempt's findings %q", gotFindings, wantFindings)
+			gotFindings, err := os.ReadFile(findingsPath)
+			if err != nil {
+				t.Fatalf("read findings file: %v", err)
+			}
+			if string(gotFindings) != wantFindings {
+				t.Errorf("findings file = %q, want the first attempt's findings %q", gotFindings, wantFindings)
+			}
+		})
 	}
 }
 
@@ -376,50 +395,64 @@ func TestGate_EvaluateOncePerAttempt_Memoized(t *testing.T) {
 
 // TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar covers a re-prompt Send that itself fails: the
 // loop ends there rather than retrying, and the failed send charges no attempt.
+// A pane that swallows the input fails the send after it was typed; a renderer returning two lines fails it before anything is typed.
 //
-//testtiming:keep pins that a failed re-prompt send ends the loop without a retry and charges no attempt
+//testtiming:keep pins that a failed re-prompt send ends the loop without a retry and charges no attempt, and that an invalid rendered line sends nothing
 func TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar(t *testing.T) {
-	runDir := t.TempDir()
-	eventsPath := filepath.Join(runDir, eventsFileName)
-	outputFile := filepath.Join(runDir, "out.md")
-	touchOutputFile(t, outputFile)
-	if err := os.WriteFile(eventsPath, []byte("STOP:turn1\n"), 0o644); err != nil {
-		t.Fatalf("seed events: %v", err)
+	tests := []struct {
+		name          string
+		sendTextErr   error
+		reprompt      func(findingsPath string) string
+		wantSendCalls int
+	}{
+		{name: "the pane swallows the input", sendTextErr: errors.New("pane swallowed input"), wantSendCalls: 1},
+		{name: "an entry's renderer returns two lines", reprompt: func(findingsPath string) string { return "line one\nline two " + findingsPath }},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, eventsFileName)
+			outputFile := filepath.Join(runDir, "out.md")
+			touchOutputFile(t, outputFile)
+			if err := os.WriteFile(eventsPath, []byte("STOP:turn1\n"), 0o644); err != nil {
+				t.Fatalf("seed events: %v", err)
+			}
 
-	gate := func() (GateResult, error) { return GateResult{Passed: false, Findings: "bad"}, nil }
+			gate := func() (GateResult, error) { return GateResult{Passed: false, Findings: "bad"}, nil }
 
-	reed := &fakeReed{
-		StatusQueue:  liveStrandStatus(true),
-		CaptureQueue: []string{"idle pane", "idle pane"},
-		SendTextErr:  errors.New("pane swallowed input"),
-	}
-	engine := readyAgentEngine()
-	fx := newFixture(t, reed, engine, withConfig(gateConfig))
-	stubInputSleep(t)
+			reed := &fakeReed{
+				StatusQueue:  liveStrandStatus(true),
+				CaptureQueue: []string{"idle pane", "idle pane"},
+				SendTextErr:  tt.sendTextErr,
+			}
+			engine := readyAgentEngine()
+			fx := newFixture(t, reed, engine, withConfig(gateConfig))
+			stubInputSleep(t)
 
-	fc := newFakeClock(time.Now())
-	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
-		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
-		withRunClock(fc, fc.Now().Add(time.Hour)),
-		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
+			fc := newFakeClock(time.Now())
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", EventsPath: eventsPath}),
+				withRunClock(fc, fc.Now().Add(time.Hour)),
+				withRunGate(GateSpec{{Gate: gate, Attempts: 3, Reprompt: tt.reprompt}}))
 
-	result, err := run.Wait()
-	if err != nil {
-		t.Fatalf("Wait() error: %v", err)
-	}
-	if result.Outcome != OutcomeDone {
-		t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
-	}
-	if result.Gate == nil || result.Gate.Passed {
-		t.Errorf("Gate = %+v, want a failed verdict", result.Gate)
-	}
-	if result.Gate != nil && result.Gate.Attempts != 0 {
-		t.Errorf("Attempts = %d, want 0 (the failed send charges no attempt)", result.Gate.Attempts)
-	}
-	if len(reed.SendTextCalls) != 1 {
-		t.Errorf("SendText calls = %d, want 1 (no retry after a failed send)", len(reed.SendTextCalls))
+			result, err := run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != OutcomeDone {
+				t.Errorf("Outcome = %q, want %q", result.Outcome, OutcomeDone)
+			}
+			if result.Gate == nil || result.Gate.Passed {
+				t.Errorf("Gate = %+v, want a failed verdict", result.Gate)
+			}
+			if result.Gate != nil && result.Gate.Attempts != 0 {
+				t.Errorf("Attempts = %d, want 0 (the failed send charges no attempt)", result.Gate.Attempts)
+			}
+			if len(reed.SendTextCalls) != tt.wantSendCalls {
+				t.Errorf("SendText calls = %d, want %d (no retry after a failed send)", len(reed.SendTextCalls), tt.wantSendCalls)
+			}
+		})
 	}
 }
 

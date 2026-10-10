@@ -291,6 +291,9 @@ type BatchState struct {
 	// Recoveries counts the batch's recovery spawns that count toward the cap of two, carried across a re-begin and a respawn.
 	// A spawn whose prompt renders an amendment no earlier spawn rendered keeps the count, and a start that fails counts nothing.
 	Recoveries int `json:"recoveries,omitempty"`
+	// RecoverySessions is the session id of every recovery strand spawned for the batch, in spawn order, carried across a re-begin and a respawn.
+	// The run's write evidence audits each, so a recovery's writes count as the run's own.
+	RecoverySessions []string `json:"recoverySessions,omitempty"`
 	// RecoveryStartSHA is the repo HEAD when the record's recovery was spawned, empty for a fork record and for a record written before the field existed.
 	// RecoveryRetry reads it to tell whether a dead recovery committed work of its own.
 	RecoveryStartSHA string `json:"recoveryStartSha,omitempty"`

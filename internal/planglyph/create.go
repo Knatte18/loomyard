@@ -120,8 +120,9 @@ func matchHandleResults(expected map[string]string, results []quarry.ResolveResu
 // through the answer createHandleResults collected for the glyph it stands for. A found or
 // multipart result is the blocking finding create-already-exists, naming the target and the status
 // that contradicts it. An ambiguous result is the same blocking create-already-exists finding,
-// naming every candidate: several existing declarations occupy that name, which contradicts a card
-// creating it exactly as one existing declaration does.
+// naming every candidate's file and build constraint, partitioned by build constraints or not:
+// several existing declarations occupy that name, which contradicts a card creating it exactly as
+// one existing declaration does.
 // A not_found result with unit: found passes with no finding: creating a
 // package is creating its first symbol, so demanding unit: found is incoherent for a Create target
 // — the package does not exist apart from its files. A not_found result with unit: not_found
@@ -136,7 +137,7 @@ func matchHandleResults(expected map[string]string, results []quarry.ResolveResu
 // carry on" (crucible round opus-high-r9, R9-6). The same arm covers a status outside quarry's
 // four-value vocabulary, so that vocabulary can only ever widen deliberately — the disposition
 // crucible round opus-medium-r6's R6-27 already settled for an unrecognized plan-finding severity.
-func createFindings(plan *planparser.Plan, index map[string]quarry.ResolveResult) []Finding {
+func createFindings(plan *planparser.Plan, worktreeRoot string, index map[string]quarry.ResolveResult) []Finding {
 	var findings []Finding
 
 	for _, c := range plan.Cards {
@@ -162,7 +163,7 @@ func createFindings(plan *planparser.Plan, index map[string]quarry.ResolveResult
 					findings = append(findings, Finding{
 						Check:    "create-already-exists",
 						Card:     c.ID(),
-						Detail:   fmt.Sprintf("Create target %q already resolves ambiguous among existing declarations: %s", t, candidateList(r.Candidates)),
+						Detail:   fmt.Sprintf("Create target %q already resolves ambiguous among existing declarations: %s", t, candidateList(classifyAmbiguity(worktreeRoot, r.Candidates).Candidates)),
 						Severity: SeverityBlocking,
 					})
 				case quarry.StatusNotFound:

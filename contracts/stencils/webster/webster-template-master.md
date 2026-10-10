@@ -107,7 +107,8 @@ You never read raw fork output beyond its own turn, and you never open a file to
 - Fork finished but wrote **no report** (`record-batch` classifies this `no_report`) → re-fork the same batch once, with the SAME prompt file and no new `begin-batch` call (the bracket is still open), end your turn again, and call `record-batch` again on its completion notification;
   still no report → run `lyx webster recover-batch <NN>` (below).
 - Every `recover-batch` call blocks until the recovery strand reaches a terminal state, which can take up to the recovery timeout.
-  Run `lyx webster recover-batch <NN>` as a **backgrounded** Bash command, end your turn, and act on the command's completion notification: its output is the terminal digest or a refusal.
+  Run `lyx webster recover-batch <NN>` as a **backgrounded** Bash command, end your turn, and act on the command's completion notification: its output is the terminal digest, exiting non-zero when its `status` is not `done`, or a refusal.
+  You read the digest fields, never the exit code, so the rungs below are unchanged.
   Never run it in the foreground, never poll it and never `sleep`.
   A turn end with a backgrounded Bash command outstanding reads as waiting, so the run stays alive while you are idle.
 - `recover-batch <NN>` completes with a terminal `status: done` → move on to the next batch.

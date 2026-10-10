@@ -894,10 +894,10 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 	var outDead strings.Builder
-	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outDead, []string{"1", "--wait", "1ns"}); code != 0 {
-		t.Fatalf("recover-batch 1 over a dead recovery = %d; want 0, output: %s", code, outDead.String())
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outDead, []string{"1", "--wait", "1ns"}); code == 0 {
+		t.Fatalf("recover-batch 1 over a dead recovery = 0; want non-zero, output: %s", outDead.String())
 	}
-	for _, want := range []string{`"status":"dead"`, `"recovery_retry":true`, `"recoveries":1`} {
+	for _, want := range []string{`"ok":false`, `"status":"dead"`, `"recovery_retry":true`, `"recoveries":1`, "lyx webster recover-batch 1"} {
 		if !strings.Contains(outDead.String(), want) {
 			t.Errorf("dead recovery output missing %q; got %q", want, outDead.String())
 		}
@@ -932,6 +932,21 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	}
 	if fx.Engine.PrepareCalls != 3 {
 		t.Errorf("Engine.prepareCalls after the amendment respawn = %d; want 3", fx.Engine.PrepareCalls)
+	}
+
+	// The respawned recovery reports FAILED: a stuck digest exits non-zero, and with two recoveries spent the way forward ends the run stuck.
+	stuckReport := &websterengine.Report{Status: websterengine.ReportStatusFailed, HeadSHA: head}
+	if err := websterengine.WriteReport(filepath.Join(fx.CLI.geom.ReportsDir, websterengine.ReportFileName(1, "only")), stuckReport); err != nil {
+		t.Fatalf("write the stuck report: %v", err)
+	}
+	var outStuck strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outStuck, []string{"1", "--wait", "1ns"}); code == 0 {
+		t.Fatalf("recover-batch 1 over a stuck recovery = 0; want non-zero, output: %s", outStuck.String())
+	}
+	for _, want := range []string{`"ok":false`, `"status":"stuck"`, `"recovery_retry":false`, `"recoveries":2`, `"batch":"01-only"`, "end the run stuck, naming batch 01-only"} {
+		if !strings.Contains(outStuck.String(), want) {
+			t.Errorf("stuck recovery output missing %q; got %q", want, outStuck.String())
+		}
 	}
 }
 
@@ -1036,6 +1051,7 @@ func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
 	for _, want := range []string{
 		"`sleep 9999`",
 		"outstanding for 1m30s",
+		"the run never read the shell's result",
 		"lyx did not stop the shell",
 		"the next `lyx webster run` reclaims it at entry",
 		"the run's final outcome: error (",

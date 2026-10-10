@@ -19,7 +19,7 @@ import (
 // One finding per file and member, attributed to the card, with Ref the member.
 // It also reports resign-interface-method: a re-sign arrow whose member resolves to an interface method.
 // It also reports caller-uncovered: a deleted or re-signed member that Go code still references, with no admissible card's target covering that code.
-// A member that resolves not_found, ambiguous or unreadably is skipped, since the status policy already reports it.
+// A member that resolves not_found, ambiguous without being partitioned by build constraints, or unreadably is skipped, since the status policy already reports it.
 // Under a non-glyph language it returns nothing and opens no repository.
 // An infrastructure error is wrapped in ErrQuarryUnavailable; a failed type load is not one, since caller-uncovered then answers from its scan.
 // loader supplies the type information caller-uncovered resolves references with.
@@ -39,6 +39,7 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 		return nil, err
 	}
 	answers := resultByTarget(results)
+	partitioned := partitionedAnswers(worktreeRoot, answers)
 
 	var findings []Finding
 	for _, c := range plan.Cards {
@@ -64,7 +65,7 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 
 		for _, file := range files {
 			for _, member := range members {
-				symbols, readable := answerSymbols(answers[member])
+				symbols, readable := answerSymbols(answers[member], partitioned[member])
 				if !readable || !slices.ContainsFunc(symbols, func(s quarry.Symbol) bool { return s.File == file }) {
 					continue
 				}
@@ -82,7 +83,7 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 		}
 
 		for _, r := range c.Resigns {
-			symbols, readable := answerSymbols(answers[r.Target])
+			symbols, readable := answerSymbols(answers[r.Target], partitioned[r.Target])
 			if !readable || !slices.ContainsFunc(symbols, isInterfaceMethod) {
 				continue
 			}
@@ -99,7 +100,7 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 		}
 	}
 
-	coverage, err := callerCoverageFindings(plan, lang, worktreeRoot, answers, loader)
+	coverage, err := callerCoverageFindings(plan, lang, worktreeRoot, answers, partitioned, loader)
 	return append(findings, coverage...), err
 }
 

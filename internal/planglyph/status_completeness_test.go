@@ -78,7 +78,7 @@ func runDoneCheckVerdict(t *testing.T, checkID string, r quarry.ResolveResult) [
 	entries := []doneCheckEntry{{card: card, checkID: checkID, key: key, display: key}}
 	index := map[string]quarry.ResolveResult{key: r}
 
-	findings, err := doneCheckVerdicts(entries, index)
+	findings, err := doneCheckVerdicts("", entries, index)
 	if err != nil {
 		t.Fatalf("doneCheckVerdicts(%s) error = %v; want nil", checkID, err)
 	}

@@ -69,7 +69,7 @@ func TestVerifyGate_DirtyTreeFailsWithPathsAndRunsNoVerify(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(r.geom.WorktreeRoot, "loose.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatalf("write loose file: %v", err)
 	}
-	gate, _ := NewVerifyGate(r.geom, 3, nil, nil, "")
+	gate, _ := NewVerifyGate(r.geom, 3, nil, nil, "", testFixPromptPath)
 
 	res, err := gate()
 	if err != nil {
@@ -88,7 +88,7 @@ func TestVerifyGate_DirtyTreeFailsWithPathsAndRunsNoVerify(t *testing.T) {
 
 func TestVerifyGate_CleanTreePassesAndRecordsTheTree(t *testing.T) {
 	r := newVerifyGateRepo(t)
-	gate, _ := NewVerifyGate(r.geom, 3, nil, nil, "")
+	gate, _ := NewVerifyGate(r.geom, 3, nil, nil, "", testFixPromptPath)
 
 	res, err := gate()
 	if err != nil || !res.Passed {
@@ -122,7 +122,7 @@ func failFirstThenFixerMerge(t *testing.T, r verifyGateRepo, gate shuttleengine.
 
 func TestVerifyGate_MergeAboveTheFixBaseOtherThanACleanParentMergeFailsTerminal(t *testing.T) {
 	r := newVerifyGateRepo(t)
-	gate, _ := NewVerifyGate(r.geom, 3, nil, gitwrapParent, "")
+	gate, _ := NewVerifyGate(r.geom, 3, nil, gitwrapParent, "", testFixPromptPath)
 
 	res := failFirstThenFixerMerge(t, r, gate, func() {
 		gitwrapParentCommit(t, r.geom.WorktreeRoot, "p.txt", "p")
@@ -141,7 +141,7 @@ func TestVerifyGate_MergeAboveTheFixBaseOtherThanACleanParentMergeFailsTerminal(
 
 func TestVerifyGate_CleanParentMergeAboveTheFixBasePasses(t *testing.T) {
 	r := newVerifyGateRepo(t)
-	gate, _ := NewVerifyGate(r.geom, 3, nil, gitwrapParent, "")
+	gate, _ := NewVerifyGate(r.geom, 3, nil, gitwrapParent, "", testFixPromptPath)
 
 	res := failFirstThenFixerMerge(t, r, gate, func() {
 		gitkit.CommitFile(t, r.geom.WorktreeRoot, "fix.txt", "fix", "fix")
@@ -157,7 +157,7 @@ func TestVerifyGate_CleanParentMergeAboveTheFixBasePasses(t *testing.T) {
 
 func TestVerifyGate_NoParentBranchAcceptsNoMerge(t *testing.T) {
 	r := newVerifyGateRepo(t)
-	gate, _ := NewVerifyGate(r.geom, 3, nil, nil, "")
+	gate, _ := NewVerifyGate(r.geom, 3, nil, nil, "", testFixPromptPath)
 
 	res := failFirstThenFixerMerge(t, r, gate, func() {
 		gitwrapMergeSide(t, r.geom.WorktreeRoot, gitwrapParentBranch)

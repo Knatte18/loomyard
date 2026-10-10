@@ -27,8 +27,6 @@ const (
 	// reasonNoBatchHead is the reason of a tracked path when the run recorded no batch head to compare it with.
 	reasonNoBatchHead = "no batch head recorded to compare against"
 
-	// noteForkWroteLast is the note of a contract file a fork wrote after Master's last write.
-	noteForkWroteLast = "a fork wrote it after Master's last write"
 	// noteClearedContract is the note of a contract file the evidence clears.
 	noteClearedContract = "cleared: absent, or Master wrote it last"
 
@@ -41,6 +39,11 @@ const (
 	// stepRun is the plain step that runs, or starts, the run.
 	stepRun = "lyx webster run"
 )
+
+// noteWroteLast is the note of a contract file that writer, writerFork or writerRecovery, wrote after Master's last write.
+func noteWroteLast(writer string) string {
+	return writer + " wrote it after Master's last write"
+}
 
 // findingItem is one correctness finding as the findings clause names it.
 type findingItem struct {

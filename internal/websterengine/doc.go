@@ -289,7 +289,8 @@
 // and end in one ordered list: the restores, then `lyx webster accept-audit`, then exactly one re-entry step, RunDeps.ReentryStep (`lyx webster run` when empty);
 // the reset route ends in that same re-entry step, since the reset archives the run record and a plain run starts over.
 // A suspect path that is one of the run's two contract files, outcome.yaml or summary.md, is the exception, since it lies outside the tracked tree and has no blob to compare:
-// contractFileStatus clears it on evidence, when the file is absent or the latest successful Master write to it (from RunWrites) is later than every fork write to it.
+// contractFileStatus clears it on evidence, when the file is absent or the latest successful Master write to it (from RunWrites) is later than every fork write and every recovery write to it;
+// an uncleared path is one a fork or a recovery session wrote last, and the refusal names which.
 // A Master write whose result failed is not evidence, and an acknowledgement never clears it.
 // Every other path under `_lyx`, `.lyx` or the scratch directory stays uncheckable.
 // Four sites consult it before checkSuspectPaths: AcceptPendingAudit, RecoverSpawnOrAttach, the way forward of a pending finding (pendingPathsWayForward) and `run --fresh`.
@@ -359,7 +360,7 @@
 // The master and the recovery strand both load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn spec's skills (`roleSkills`), and their opening prompts render the parent directive (internal/parentdirective) from Geometry.ParentName, which hubgeom.WebsterGeometry fills from the worktree's origin record.
 // Forks get no skills and no directive: they inherit the master's context.
 // The recovery prompt also carries a block of the worktree's uncommitted paths (the optional uncommitted_paths marker, `none` on a clean tree), taken from UncommittedPaths when the strand is spawned.
-// Each path is grouped by the run's write evidence (loadRunWrites): "Written by this run" is the earlier attempt's unfinished work, which the strand keeps as its starting point after checking it against the card, and "Not written by this run", which includes every path the evidence cannot attribute, the strand leaves untouched and never stages or commits.
+// Each path is grouped by the run's write evidence (loadRunWrites), which covers Master, every fork and every recovery session: "Written by this run" is the earlier attempt's unfinished work, which the strand keeps as its starting point after checking it against the card, and "Not written by this run", which includes every path the evidence cannot attribute, the strand leaves untouched and never stages or commits.
 // The call that spawns the recovery strand first waits for its provider to come up (normally seconds, bounded by startup_timeout_s),
 // and every call then blocks for RecoveryWaitBudget (recovery_timeout_min plus one poll tick) and returns a terminal digest:
 // the budget outlasts the timeout measured from spawn, so a strand that never reports classifies dead on its timeout and the call returns.
@@ -377,7 +378,8 @@
 // A turn end left waiting on any task, a shell of either signal or a fork, never counts, so recovery_timeout_min bounds that strand and a report present before it classifies done.
 // This mirrors classify.go's dead/timeout/stuck classification.
 //
-// A batch's recovery spawns are counted in BatchState.Recoveries, and the spawn records HEAD as RecoveryStartSHA, read before anything is stopped or started, so a HEAD that cannot be read starts and counts nothing.
+// A batch's recovery spawns are counted in BatchState.Recoveries, and BatchState.RecoverySessions records every recovery strand's session id in spawn order, so the batch records every recovery session.
+// The spawn records HEAD as RecoveryStartSHA, read before anything is stopped or started, so a HEAD that cannot be read starts and counts nothing.
 // A re-begin and a rebaseline keep the count.
 // A spawn whose prompt renders an amendment no earlier spawn rendered does not count, so an amendment forces at most one uncounted re-run.
 // A counted spawn is refused with ErrRecoveryExhausted once the batch has two recoveries, whoever asks, with a way forward through `reset --to batch-start` or `reset --to start`.
@@ -457,6 +459,7 @@
 //
 // A gate failure reaches Merriam as a `Gate findings recorded at …` message naming the verify-gate report (VerifyGateReportPath).
 // Merriam spawns one fixer fork in the background with the prompt Run rendered at entry (RenderVerifyFixPrompt, into the prompts dir as verify-fix.md), ends its turn, and on the fork's notification rewrites its outcome and summary files, which re-arrives at the gate.
+// The gate's re-prompt line and its findings both open with the way forward, naming the fixer-fork step and the prompt file's path, so the rule stands where Merriam reads the failure.
 // The waiting turn end in between is no arrival.
 // The fixer fixes the cause in source, never deletes, skips or weakens a test, never touches the plan directory or `_lyx`, commits each fix as `fix: <summary>` and does not run the plan-level verify.
 // Its commits skip record-batch's done-checks, drift detection and glyph scope guard.
@@ -498,15 +501,18 @@
 // # Background shells in Master's wait
 //
 // Master's spawn declares one awaited shell prefix, `masterAwaitedShellPrefix` (the backgrounded recovery verb of the failure ladder);
-// recovery_timeout_min already bounds that verb, so shuttle's turn-end wait treats it like a fork.
-// No background shell expires: a turn end waiting on a shell of either signal ends on Master's output files, the run's deadline or the liveness check, and `background_shell_wait_min` only sets when a long-running shell is logged and shown in the wait marker.
+// recovery_timeout_min already bounds that verb, so the prefix only keeps it out of the background-shell wait marker.
+// No background shell expires, and every shell holds a gated turn end alike: a gated turn end waiting on a shell is never an arrival.
+// The run ends on the next turn end with nothing outstanding, the run deadline, the liveness check or a stop;
+// a deadline still ends it done through shuttle's satisfied file contract with the gate run once at finalize, and the shell's result is then never read.
+// `background_shell_wait_min` only sets when a long-running shell is logged and shown in the wait marker.
 // Every shell outstanding when the run ends comes back on shuttle's `Result.EndedShells`, whatever ends the run.
 // lyx does not stop such a shell.
 // What ends the shell follows the run's final outcome.
 // When Master's turn ends shuttle-done (a webster done, Master's own stuck or paused, the verify gate's demotion, or a mapping error after that end), shuttle removes Master's strand as the run finishes, and the session and the shell end with it.
 // When the run returns a died or timeout error, Master's strand stays alive until the next `lyx webster run` reclaims it at entry.
 // Run writes one best-effort `webster-background-shell` friction note once the outcome is known, on every outcome.
-// For each shell the note states its label, signal and time outstanding, that lyx did not stop the shell, what ends it and the run's final outcome.
+// For each shell the note states its label, signal and time outstanding, that the run never read its result, that lyx did not stop the shell, what ends it and the run's final outcome.
 // Each shell is also a `RunResult.Warnings` entry with the same wording on every outcome that returns a `RunResult` (done, stuck and paused), after the verify-gate demotion, so the warning and the note cannot drift;
 // an error outcome returns no `RunResult`, so the note alone carries it.
 // summary.md's "Background shells at the run's end" section (AppendBackgroundShells) stays done-only, as does its "Plan rebaselined" section, which names an accepted auto-rebaseline beside the "Audit warnings" section so the summary a step's Done points at carries it.
@@ -526,7 +532,7 @@
 // `--batch` is required for `report-head` and `batch-start` and refused for the other three, before any git read.
 // The refusals run in order: the `--batch` pairing, run lock held (transient, except for `report-head`), no state, a merge in progress, a checked-out branch that is not the task branch,
 // no recorded target, a recorded commit missing from the repository, a target that is not an ancestor of HEAD, and a dirty tracked path outside the run's own writes.
-// The own paths are the tracked paths that loadRunWrites records a successful write to, Master's and every fork's; a failed write is not evidence.
+// The own paths are the tracked paths that loadRunWrites records a successful write to, Master's, every fork's and every recovery session's; a failed write is not evidence.
 // Each refusal ends in wayForwardSteps' numbered list.
 // The plan carries the SHA and the own paths, and reads no force flag.
 // `start` is the one start-over verb, so it does not refuse where the start cannot be moved to:

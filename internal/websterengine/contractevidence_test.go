@@ -60,6 +60,7 @@ func TestContractFileStatus(t *testing.T) {
 		writes       RunWrites
 		wantContract bool
 		wantCleared  bool
+		wantWriter   string
 	}{
 		{name: "absent file is cleared", path: absent, wantContract: true, wantCleared: true},
 		{
@@ -68,22 +69,37 @@ func TestContractFileStatus(t *testing.T) {
 			wantContract: true, wantCleared: true,
 		},
 		{
+			name: "master's later write clears over a recovery write too", path: present,
+			writes:       RunWrites{Master: []shuttleengine.WriteEvent{succeeded(present, 3*time.Minute)}, Forks: []shuttleengine.WriteEvent{fork}, Recoveries: []shuttleengine.WriteEvent{succeeded(present, 2*time.Minute)}},
+			wantContract: true, wantCleared: true,
+		},
+		{
+			name: "a recovery write after master's does not clear", path: present,
+			writes:       RunWrites{Master: []shuttleengine.WriteEvent{succeeded(present, 0)}, Recoveries: []shuttleengine.WriteEvent{succeeded(present, time.Minute)}},
+			wantContract: true, wantWriter: writerRecovery,
+		},
+		{
+			name: "the later of a fork and a recovery write is named", path: present,
+			writes:       RunWrites{Master: []shuttleengine.WriteEvent{succeeded(present, 0)}, Forks: []shuttleengine.WriteEvent{fork}, Recoveries: []shuttleengine.WriteEvent{succeeded(present, 2*time.Minute)}},
+			wantContract: true, wantWriter: writerRecovery,
+		},
+		{
 			name: "master's later failed write does not clear", path: present,
 			writes: RunWrites{
 				Master: []shuttleengine.WriteEvent{{Path: present, At: evidenceEpoch.Add(2 * time.Minute)}},
 				Forks:  []shuttleengine.WriteEvent{fork},
 			},
-			wantContract: true,
+			wantContract: true, wantWriter: writerFork,
 		},
 		{
 			name: "the fork's write last does not clear", path: present,
 			writes:       RunWrites{Master: []shuttleengine.WriteEvent{succeeded(present, 0)}, Forks: []shuttleengine.WriteEvent{fork}},
-			wantContract: true,
+			wantContract: true, wantWriter: writerFork,
 		},
 		{
 			name: "no master write does not clear", path: present,
 			writes:       RunWrites{Forks: []shuttleengine.WriteEvent{fork}},
-			wantContract: true,
+			wantContract: true, wantWriter: writerFork,
 		},
 		{
 			name: "a non-contract _lyx path is no contract path", path: filepath.Join(geom.WebsterDir, "state.json"),
@@ -92,12 +108,12 @@ func TestContractFileStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			contract, cleared, err := contractFileStatus(geom, tt.writes, tt.path)
+			contract, cleared, writer, err := contractFileStatus(geom, tt.writes, tt.path)
 			if err != nil {
 				t.Fatalf("contractFileStatus: %v", err)
 			}
-			if contract != tt.wantContract || cleared != tt.wantCleared {
-				t.Errorf("contractFileStatus = (%v, %v), want (%v, %v)", contract, cleared, tt.wantContract, tt.wantCleared)
+			if contract != tt.wantContract || cleared != tt.wantCleared || writer != tt.wantWriter {
+				t.Errorf("contractFileStatus = (%v, %v, %q), want (%v, %v, %q)", contract, cleared, writer, tt.wantContract, tt.wantCleared, tt.wantWriter)
 			}
 		})
 	}

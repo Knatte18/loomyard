@@ -558,12 +558,15 @@ func TestBeginBatch_Record(t *testing.T) {
 			},
 		},
 		{
-			name:      "a re-begin carries the recovery count and its start commit",
-			prior:     &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Recoveries: 2, RecoveryStartSHA: recordedStart},
+			name:      "a re-begin carries the recovery count, its sessions and its start commit",
+			prior:     &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Recoveries: 2, RecoverySessions: []string{"r1", "r2"}, RecoveryStartSHA: recordedStart},
 			wantStart: func(fx *beginFixture) string { return fx.Git.head },
 			check: func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState) {
 				if bs.Kind != "fork" || bs.Recoveries != 2 || bs.RecoveryStartSHA != recordedStart {
 					t.Errorf("Batches[1] = %+v; want a fork record carrying Recoveries 2 and RecoveryStartSHA %s", bs, recordedStart)
+				}
+				if want := []string{"r1", "r2"}; !slices.Equal(bs.RecoverySessions, want) {
+					t.Errorf("Batches[1].RecoverySessions = %v; want %v", bs.RecoverySessions, want)
 				}
 			},
 		},
