@@ -81,7 +81,7 @@ func newLiveFixture(t *testing.T, orchCfg string, extraCfg map[string]string) *l
 
 	exe := lyxbin.Build(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	cfgs := map[string]string{
 		"orch":    orchCfg,
 		"reed":    reedengine.ConfigTemplate(),

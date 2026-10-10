@@ -120,7 +120,7 @@ func startReapLoop(fx reapFixture, shellPath string, timing watchdogTiming) (con
 // The steps run serially in a fixed order and do not rely on each other's results; the scenario calls t.Parallel but no step does, because every step shares the one hub, its tmux server and the prime session.
 func TestWatchdogReap(t *testing.T) {
 	t.Parallel()
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	socket := reedengine.ServerName(h.Path)
 	cfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
 	if err != nil {

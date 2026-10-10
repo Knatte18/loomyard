@@ -87,7 +87,7 @@ func waitTranscriptStable(t *testing.T, projectDir string, before map[string]boo
 func TestSmokeCrashRecovery(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.PrimeWorktree())
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	t.Chdir(h.PrimeWorktree())
@@ -201,7 +201,7 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	claudePath := llmkit.Claude(t, "LYX_REED_CLAUDE")
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.PrimeWorktree())
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	t.Chdir(h.PrimeWorktree())

@@ -116,7 +116,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 	t.Parallel()
 	tmuxPath := tmuxBinaryPath(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	prime := h.PrimeWorktree()
 	deferHubRelease(t, prime)
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))

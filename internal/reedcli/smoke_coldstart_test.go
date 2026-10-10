@@ -44,7 +44,7 @@ func TestSmokeColdStart(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	lyxExe := lyxbin.Build(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.PrimeWorktree())
 	socket := reedengine.ServerName(h.Path)
 	tmuxkit.KillOnCleanup(t, tmuxPath, socket)

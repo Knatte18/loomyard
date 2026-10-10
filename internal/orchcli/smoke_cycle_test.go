@@ -166,7 +166,7 @@ func TestSmokeOrch_OneFullCycle(t *testing.T) {
 
 	exe := lyxbin.Build(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	// The soft threshold sits above the hard one, so the manual cycle stays the only trigger.
 	orchCfg := smokeOrchConfig("clear", "bypass", 200000000, 100000000, 300)
 	hubforge.SeedConfig(t, h, map[string]string{

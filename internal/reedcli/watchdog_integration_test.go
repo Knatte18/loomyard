@@ -129,7 +129,7 @@ func sessionListed(tmuxPath, socket, session string) bool {
 // the last flips the prime worktree's watchdog: key to off across a down and an up.
 // The scenario does not call t.Parallel, because the daemon command points the process-global logger's durable sink at the hub's logs directory.
 func TestWatchdogDaemon(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const pairSlug = "watchdog-second"
 	hubforge.AddPair(t, h, pairSlug)
 	prime := h.PrimeWorktree()

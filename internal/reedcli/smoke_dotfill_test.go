@@ -158,7 +158,7 @@ func newDotFillHarness(t *testing.T, cols, rows int) *dotFillHarness {
 	t.Setenv("LYX_REED_WATCHDOG", "off")
 
 	tmuxPath := tmuxBinaryPath(t)
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	worktree := h.PrimeWorktree()
 	deferHubRelease(t, worktree)
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
@@ -332,7 +332,7 @@ func TestSmokeDotFill(t *testing.T) {
 	t.Setenv("LYX_REED_WATCHDOG", "off")
 
 	tmuxPath := tmuxBinaryPath(t)
-	hub := hubforge.NewHub(t, ".")
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	prime := hub.PrimeWorktree()
 	deferHubRelease(t, prime)
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(hub.Path))

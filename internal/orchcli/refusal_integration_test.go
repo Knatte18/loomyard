@@ -23,7 +23,7 @@ import (
 func TestOrchIntegration_Refusals(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPair(t, h, "orch-task")
 	anchor := h.Location.AnchorPath()
 

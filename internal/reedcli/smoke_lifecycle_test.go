@@ -49,7 +49,7 @@ func TestSmokeLifecycle(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	lyxExe := lyxbin.Build(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	prime := h.PrimeWorktree()
 	deferHubRelease(t, prime)
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
@@ -526,7 +526,7 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 		t.Skip("removing-the-last-strand-then-add is already exercised on the tmux backend by TestRemoveStrand_SoleStrandEmptiesSessionSucceeds; this real-tmux-session variant runs only on the psmux (Windows) backend to avoid redundant coverage")
 	}
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.PrimeWorktree())
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	t.Chdir(h.PrimeWorktree())
@@ -602,7 +602,7 @@ func TestSmokeUpRefusesAWorktreeNameTmuxWouldRewrite(t *testing.T) {
 	t.Parallel()
 	tmuxPath := tmuxBinaryPath(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	prime := h.PrimeWorktree()
 	deferHubRelease(t, prime)
 	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))

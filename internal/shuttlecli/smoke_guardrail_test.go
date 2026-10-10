@@ -39,7 +39,7 @@ import (
 func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.Path)
 	registerReedServer(t, h)
 	t.Chdir(h.PrimeWorktree())
@@ -97,7 +97,7 @@ func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 func TestSmokeGuardrailQuestionHoldsRunUntilAnswered(t *testing.T) {
 	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.Path)
 	registerReedServer(t, h)
 	t.Chdir(h.PrimeWorktree())

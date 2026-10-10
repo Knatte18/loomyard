@@ -56,7 +56,7 @@ func copyTestdataStencil(t *testing.T, stencilsDir, name, file string) {
 func TestSmokeSeatsChairAsksAdvisor(t *testing.T) {
 	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	stencilsDir := fabricengine.StencilsDir(h.Location.HubPath)
 	stencilkit.SeedInto(t, stencilsDir)
 	copyTestdataStencil(t, stencilsDir, smokeChairStencil, "smoke-chair.md")

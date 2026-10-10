@@ -37,7 +37,7 @@ func TestSmokeSwitchDeclinesStencilSeedPass(t *testing.T) {
 	// an unstamped binary is production mode and never emits the dev-refusal warn.
 	lyxExe := lyxbin.BuildWithLDFlags(t, "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev")
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.PrimeWorktree())
 
 	registry := stencils.Registry()

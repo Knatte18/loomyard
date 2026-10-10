@@ -26,7 +26,7 @@ import (
 func TestSmokeDebugLog(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	prime := h.PrimeWorktree()
 	deferHubRelease(t, prime)
 	t.Cleanup(func() {

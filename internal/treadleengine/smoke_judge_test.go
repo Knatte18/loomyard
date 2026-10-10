@@ -221,7 +221,7 @@ func TestSmokeJudgeCirclingToyFixture(t *testing.T) {
 	// registered config: fabriccli.CloneAndWire already reconciled default config for every
 	// registered module when NewHub built h, so seeding them again here would be a no-op duplicate
 	// (outcome 1 of the SeedConfig triage).
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.PrimeWorktree())
 	stencilsDir := seedHubStencils(t, h.Location.HubPath)
 	reedCfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")

@@ -105,7 +105,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	t.Helper()
 	llmkit.Claude(t, "LYX_REED_CLAUDE")
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	deferHubRelease(t, h.Path)
 	registerReedServer(t, h)
 	seedHubStencils(t, h.Location.HubPath)
