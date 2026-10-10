@@ -297,6 +297,16 @@ var ParentDirectiveNone []byte
 //go:embed edit/edit-directive.md
 var EditDirective []byte
 
+// SeatDirectiveChair is the chair seat block's shipped default: the channel rules a multi-seat step's chair works under, pulled into a seat stencil as an include.
+//
+//go:embed seat/seat-directive-chair.md
+var SeatDirectiveChair []byte
+
+// SeatDirectiveAdvisor is the advisor seat block's shipped default: the channel rules an advisor works under, pulled into a seat stencil as an include.
+//
+//go:embed seat/seat-directive-advisor.md
+var SeatDirectiveAdvisor []byte
+
 // registryEntry pairs one stencil's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -361,6 +371,8 @@ var entries = []registryEntry{
 	{"parent-directive-operator-ban", &ParentDirectiveOperatorBan},
 	{"parent-directive-none", &ParentDirectiveNone},
 	{"edit-directive", &EditDirective},
+	{"seat-directive-chair", &SeatDirectiveChair},
+	{"seat-directive-advisor", &SeatDirectiveAdvisor},
 }
 
 // roleOpeningStencils maps each spawned role other than the orch to the stencils that open its session.

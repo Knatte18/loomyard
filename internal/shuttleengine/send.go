@@ -432,6 +432,8 @@ func (run *Run) sendWithin(text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
 	}
+	run.sendMu.Lock()
+	defer run.sendMu.Unlock()
 	sc := run.newSendContext()
 	sc.deadline = run.deadline
 	sc.hold = &run.startHold

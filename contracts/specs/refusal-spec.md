@@ -182,6 +182,8 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | seed refuses here | the seed verb runs outside the worktree the recipe drives | correctness halt | run `lyx shed seed` from the worktree the recipe drives, which the cause names |
 | strand spawn: no shortname | a producer's strand spawn on a hub whose `.lyx-shortname` records no shortname | correctness halt | `lyx fabric shortname <shortname>` records it, then retry |
 | strand spawn: worktree name not a slug | a producer's strand spawn in a worktree whose name does not fit the name grammar | correctness halt | `lyx fabric add <slug>` creates the task under a slug that fits |
+| seat strand name held | a `MultiLLM` row's chair starts under a numbered strand name because an earlier strand still holds its own, so its advisors could not address it; the misnamed strand is stopped, and an advisor in the same case is recorded as not started while the step goes on without it | correctness halt | run "lyx reed remove --name <name>", then re-step the row |
+| seat not stopped | a `MultiLLM` row cannot stop a seat's strand: a misnamed seat at start, a started advisor when the step ends or fails to start its chair, or a chair whose wait errored | transient | run "lyx reed remove <guid>", then re-step the row |
 | llm driver without bootstrap | `--driver llm` on a recipe with no bootstrap verb | correctness halt | re-run with `--driver go` |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
 | raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed or lock file fails | transient | re-run the refused verb; nothing is mutated |

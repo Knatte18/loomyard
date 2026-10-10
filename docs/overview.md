@@ -243,7 +243,8 @@ github.com/Knatte18/loomyard/
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
 ├── internal/shedtransient/       the one translation from lower-level failure classifications into the shed engine's transient mark
 ├── internal/burlermarker/        the one derivation of a burler round's machine-local ready marker path from its review path
-├── internal/shedadapters/        the three Shed engine adapters (SingleLLMProducer, Webster, the burler round producer) over shuttle/websterengine/burlerengine, plus the Bouncer adapter
+├── internal/seatengine/          the seat runner: starts, joins, probes, resumes and stops a chair and its advisors over shuttle, each seat in its own strand
+├── internal/shedadapters/        the five Shed engine adapters (SingleLLMProducer, Webster, the burler round producer, MultiLLMProducer, and the Bouncer) over shuttle/websterengine/burlerengine/seatengine
 ├── internal/shedcheck/           authoring-time structural checker over an assembled OnDone/OnStuck producer graph
 ├── internal/loomcli/             loom's cobra module: the session bootstrap, arming `internal/shedverbs`' generic driver, status, and pause verb bodies
 ├── internal/parentreview/        the parent-review round store and gate closures behind `lyx loom review`, over told directories
@@ -452,9 +453,9 @@ User-facing modules each get one `lyx <module>` namespace:
   The Planner producer, the same way (`contracts/stencils/loom/loom-template-plan.md`), composed by `internal/loomengine`'s `prompt.go` + `plan.go`.
   See the `internal/loomengine` and `internal/loomcli` package documentation.
 - **shed** — the generic outer phase-FSM `loom` and the eventual `Hardener` are each built on: a Go engine that walks one flat, ordered producer list, honoring resume, crash-recovery, and pause uniformly at producer granularity, with no predefined slots (`internal/shedengine`).
-  The four shipped engine adapters — `SingleLLMProducer` over `shuttle`, the `Webster` adapter, the burler round producer, and the Bouncer (the generic review-gate producer rather than a wrapper over an engine) — live in one package, `internal/shedadapters`, alongside their shared context and archive helpers.
+  The five shipped engine adapters — `SingleLLMProducer` over `shuttle`, the `Webster` adapter, the burler round producer, `MultiLLMProducer` over `seatengine`, and the Bouncer (the generic review-gate producer rather than a wrapper over an engine) — live in one package, `internal/shedadapters`, alongside their shared context and archive helpers.
   No `lyx shed` verb of its own by design — a product's own CLI constructs a `Shed` with its own producer list and calls `Run`, and a bare verb would be a command with no list to walk.
-  The skeleton (the loop, the status file, the `ShedProducer` interface) is ✅ **implemented**; the four engine adapters (`SingleLLMProducer`, the `Webster` adapter, the burler round producer, and the Bouncer) are ✅ **implemented** too, shipped as `internal/shedadapters`.
+  The skeleton (the loop, the status file, the `ShedProducer` interface) is ✅ **implemented**; the five engine adapters (`SingleLLMProducer`, the `Webster` adapter, the burler round producer, `MultiLLMProducer`, and the Bouncer) are ✅ **implemented** too, shipped as `internal/shedadapters`.
   `internal/shedcheck` is the shipped structural checker over an assembled producer list, enforced by a `go test` invariant over loom's own list rather than called from any production constructor — see its own package documentation for the finding kinds it reports.
   The Shed recipe group's engine registry (piece 1 of that group) is ✅ **implemented** too, as `internal/shedrecipe`; its `registry` map literal declares every engine name a recipe row may use.
   The recipe file format and the loader/builder shipped too, as `internal/shedbuild`, and loom's own conversion to a recipe file has now shipped as well: `contracts/recipes/loom-recipe.yaml` plus `internal/loomrecipe`, which assembles it into the `*shedengine.Shed` `internal/loomcli` runs.
@@ -541,6 +542,8 @@ internal/reed     the window to the world — overlay + strand bookkeeping +    
                   them, persists to .lyx/reed.json
 internal/shuttle  run ONE LLM agent in a strand via a swappable engine over    [builds on reed]    ✅
                   the file contract; Stop-hook completion
+seats             one step as a chair and its advisors, each in its own       [builds on shuttle] ✅
+                  strand, talking over the session message
 burler            one review+fix round: reviewer (+cluster) → fixer           [builds on shuttle] ✅
 shed              generic outer phase-FSM: walk one flat producer list,        [stdlib +           ✅
                   honoring resume/crash-recovery/pause at producer granularity  internal/state,lock

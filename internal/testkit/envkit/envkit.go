@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -152,6 +153,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		DescriptionPath:    filepath.Join(dir, "description.md"),
 		Shuttle:            &shedfake.Shuttle{},
 		Burler:             &shedfake.BurlerRunner{},
+		Seats:              &shedfake.SeatRunner{},
+		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 			return websterengine.RunResult{}, nil
 		},

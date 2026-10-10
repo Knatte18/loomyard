@@ -23,6 +23,8 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 	}{
 		{"burler-focus-directive", BurlerFocusDirective, []string{"focus_path"}},
 		{"loom-template-prior-plan", LoomTemplatePriorPlan, []string{"archive_dir", "moved_files"}},
+		{"seat-directive-chair", SeatDirectiveChair, []string{"advisor_names", "failed_advisors", "inputs", "output_files"}},
+		{"seat-directive-advisor", SeatDirectiveAdvisor, []string{"chair_name", "output_files", "seat_name"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

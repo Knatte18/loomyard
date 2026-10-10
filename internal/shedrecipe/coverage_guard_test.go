@@ -27,7 +27,9 @@ import (
 // reference with a future product's producer list rather than loom's private property.
 // SingleLLM is the other tolerated entry: the two other "loom: real LLM producers" board items
 // have not yet landed a row that reaches it.
+// MultiLLM is tolerated the same way: no loom row uses it yet.
 var coverageGuardAllowedUnreachableEngines = map[string]bool{
+	"MultiLLM":  true,
 	"SingleLLM": true,
 	"Stub":      true,
 }

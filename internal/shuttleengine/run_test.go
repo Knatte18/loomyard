@@ -11,7 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1485,4 +1487,173 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 			}
 		})
 	}
+}
+
+// paneReed is a fakeReed whose pane shows every text typed so far, so each Send's delivery check passes whatever order sends arrive in.
+// Every call yields the processor first, so an unordered pair of sends would interleave.
+type paneReed struct {
+	*fakeReed
+}
+
+func (p *paneReed) SendKey(guid, key string) error {
+	runtime.Gosched()
+	return p.fakeReed.SendKey(guid, key)
+}
+
+func (p *paneReed) SendText(guid, text string, submit bool) error {
+	runtime.Gosched()
+	return p.fakeReed.SendText(guid, text, submit)
+}
+
+func (p *paneReed) CapturePane(guid string) (string, error) {
+	runtime.Gosched()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.CallLog = append(p.CallLog, "CapturePane")
+	lines := []string{"idle pane"}
+	for _, call := range p.SendTextCalls {
+		lines = append(lines, "❯ "+call.Text)
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
+// typedCalls returns the pane-typing calls in the reed's call log, in order.
+func (p *paneReed) typedCalls() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var typed []string
+	for _, call := range p.CallLog {
+		if strings.HasPrefix(call, "SendKey:") || strings.HasPrefix(call, "SendText:") {
+			typed = append(typed, call)
+		}
+	}
+	return typed
+}
+
+// onceStepClock is a fakeClock that runs step once, on the first Sleep, safe under concurrent sleepers.
+type onceStepClock struct {
+	*fakeClock
+	once sync.Once
+	step func()
+}
+
+func (c *onceStepClock) Sleep(d time.Duration) {
+	c.fakeClock.Sleep(d)
+	c.once.Do(c.step)
+}
+
+// gatedRunWithNotice drives a gated Wait that fails its gate once and then passes, with notice, when non-empty, sent through Run.Send beside it.
+// It returns the Wait result, the reed and the notice's Send error.
+func gatedRunWithNotice(t *testing.T, notice string) (Result, *paneReed, error) {
+	t.Helper()
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, eventsFileName)
+	outputFile := filepath.Join(runDir, "out.md")
+	touchOutputFile(t, outputFile)
+	if err := os.WriteFile(eventsPath, []byte("STOP:turn1\n"), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+	gateCalls := 0
+	gate := func() (GateResult, error) {
+		gateCalls++
+		return GateResult{Passed: gateCalls > 1, Findings: "fix the thing"}, nil
+	}
+	reed := &paneReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true)}}
+	fc := newFakeClock(time.Now())
+	clock := &onceStepClock{fakeClock: fc, step: func() { appendEventsLine(t, eventsPath, "STOP:turn2") }}
+	run := newFixture(t, reed, readyAgentEngine(), withConfig(gateConfig)).newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour, KeepPane: true},
+		withRunDir(runDir),
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunClock(clock, fc.Now().Add(time.Hour)),
+		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
+
+	var noticeErr error
+	var noticeSent sync.WaitGroup
+	if notice != "" {
+		noticeSent.Add(1)
+		go func() {
+			defer noticeSent.Done()
+			noticeErr = run.Send(notice)
+		}()
+	}
+	result, err := run.Wait()
+	noticeSent.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	return result, reed, noticeErr
+}
+
+// TestRun_Send_ConcurrentSendsTypeInSequence pins the per-run send lock: two in-process sends on one run, and a Send beside a gated Wait's re-prompt, type one after the other.
+// Each send's Escape and text land together, each delivery verifies without a replay, and the notice costs the gate no attempt.
+//
+// It is not parallel: stubInputSleep replaces a package-level function.
+func TestRun_Send_ConcurrentSendsTypeInSequence(t *testing.T) {
+	const notice = "seat notice one"
+	assertWholeLines := func(t *testing.T, typed []string, wantTexts int) {
+		t.Helper()
+		if len(typed) != 2*wantTexts {
+			t.Fatalf("typed calls = %q, want %d Escape+text pairs", typed, wantTexts)
+		}
+		for i := 0; i < len(typed); i += 2 {
+			if typed[i] != "SendKey:Escape" || !strings.HasPrefix(typed[i+1], "SendText:") {
+				t.Fatalf("typed calls = %q, want each Escape followed at once by its own text", typed)
+			}
+		}
+	}
+
+	t.Run("two concurrent sends", func(t *testing.T) {
+		stubInputSleep(t)
+		reed := &paneReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true)}}
+		clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
+		run := newFixture(t, reed, readyAgentEngine(), withConfig(Config{})).newRun(Spec{}, withRunClock(clock, clock.Now().Add(time.Hour)))
+
+		lines := []string{"first line", "second line"}
+		errs := make([]error, len(lines))
+		var sent sync.WaitGroup
+		for i, line := range lines {
+			sent.Add(1)
+			go func() {
+				defer sent.Done()
+				errs[i] = run.Send(line)
+			}()
+		}
+		sent.Wait()
+
+		for i, err := range errs {
+			if err != nil {
+				t.Errorf("Send(%q) error: %v", lines[i], err)
+			}
+		}
+		typed := reed.typedCalls()
+		assertWholeLines(t, typed, len(lines))
+		if got := []string{typed[1], typed[3]}; !(reflect.DeepEqual(got, []string{"SendText:first line", "SendText:second line"}) ||
+			reflect.DeepEqual(got, []string{"SendText:second line", "SendText:first line"})) {
+			t.Errorf("typed texts = %q, want both lines once each", got)
+		}
+	})
+
+	t.Run("a send beside a gated re-prompt", func(t *testing.T) {
+		stubInputSleep(t)
+		alone, _, _ := gatedRunWithNotice(t, "")
+		if alone.Gate == nil || alone.Gate.Attempts != 1 {
+			t.Fatalf("baseline Gate = %+v, want one attempt", alone.Gate)
+		}
+
+		result, reed, noticeErr := gatedRunWithNotice(t, notice)
+		if noticeErr != nil {
+			t.Errorf("Send(notice) error: %v", noticeErr)
+		}
+		if result.Outcome != OutcomeDone || result.Gate == nil || !result.Gate.Passed {
+			t.Errorf("result = %+v, want done with a passed gate", result)
+		}
+		if result.Gate != nil && result.Gate.Attempts != alone.Gate.Attempts {
+			t.Errorf("Gate.Attempts = %d, want %d as with no concurrent send", result.Gate.Attempts, alone.Gate.Attempts)
+		}
+		typed := reed.typedCalls()
+		assertWholeLines(t, typed, 2)
+		if typed[1] != "SendText:"+notice && typed[3] != "SendText:"+notice {
+			t.Errorf("typed calls = %q, want the notice typed once", typed)
+		}
+	})
 }
