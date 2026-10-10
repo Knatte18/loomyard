@@ -8,7 +8,7 @@
 // verdict really leaves reed holding one strand rather than two, and that a dead pane's corpse is
 // removed before a relaunch rather than left beside a second, live one -- reed's own add has no
 // upsert semantics to reconcile either case for us.
-// It also pins, in the same session, that an llm-seeded start ensures one status strand while its driver strand still spawns.
+// It also pins, in the same session, that an llm-seeded start adds no status strand while its driver strand still spawns.
 //
 // Like this package's other smoke tests it drives the real built cmd/lyx binary as a subprocess,
 // never RunCLI in-process (see smoke_test.go's own header): "lyx loom start" spawns its llm driver
@@ -153,8 +153,8 @@ func waitDriverStrandDead(t *testing.T, eng *reedengine.Engine, timeout time.Dur
 // pane beside it -- the count is what distinguishes corpse removal from a second add, a distinction
 // reed's own upsert-less add cannot make for us.
 //
-// After each bootstrap it also asserts exactly one status strand exists: this is the one llm-seeded start whose driver strand really spawns,
-// so it pins that an llm-seeded start ensures the status strand while its driver strand still spawns.
+// After each bootstrap it also asserts no status strand exists: this is the one llm-seeded start whose driver strand really spawns,
+// so it pins that an llm-seeded start over a strand-free session adds no status strand while its driver strand still spawns.
 func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	exe := lyxbin.Build(t)
@@ -196,8 +196,8 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	if count := driverStrandCount(t, eng); count != 1 {
 		t.Fatalf("driver strands after the first bootstrap = %d; want exactly 1", count)
 	}
-	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {
-		t.Fatalf("status strands after the first bootstrap = %d; want exactly 1 -- an llm-seeded start keeps the status strand too", count)
+	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 0 {
+		t.Fatalf("status strands after the first bootstrap = %d; want 0 -- an llm-seeded start adds none", count)
 	}
 
 	// (2) a second bootstrap while the first driver's pane is still alive must leave exactly one
@@ -212,8 +212,8 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	if count := driverStrandCount(t, eng); count != 1 {
 		t.Fatalf("driver strands after the second bootstrap = %d; want exactly 1 -- a do-not-spawn verdict must leave reed holding one strand, not two", count)
 	}
-	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {
-		t.Fatalf("status strands after the second bootstrap = %d; want exactly 1 -- an llm-seeded start keeps the status strand too", count)
+	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 0 {
+		t.Fatalf("status strands after the second bootstrap = %d; want 0 -- an llm-seeded start adds none", count)
 	}
 	strand, found = driverStrand(t, eng)
 	if !found || !strand.Live {
@@ -246,7 +246,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 	if count := driverStrandCount(t, eng); count != 1 {
 		t.Fatalf("driver strands after the third bootstrap = %d; want exactly 1 -- corpse removal must replace the dead entry, never add a second one beside it", count)
 	}
-	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {
-		t.Fatalf("status strands after the third bootstrap = %d; want exactly 1 -- an llm-seeded start keeps the status strand too", count)
+	if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 0 {
+		t.Fatalf("status strands after the third bootstrap = %d; want 0 -- an llm-seeded start adds none", count)
 	}
 }
