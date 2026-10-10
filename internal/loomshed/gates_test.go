@@ -395,7 +395,7 @@ func TestNewPlanGate(t *testing.T) {
 		{"UneditedDoneCardReportsNothing", func(h string) *websterengine.State {
 			return batchOne(true, websterengine.DigestStatusDone, map[string]string{"01-first-card": h})
 		}, false, false, true},
-		{"EditedUnbegunCardReportsNothing", func(h string) *websterengine.State {
+		{"EditedInFlightCardReportsNothing", func(h string) *websterengine.State {
 			return batchOne(false, "", map[string]string{"01-first-card": h})
 		}, true, false, true},
 		{"NoRunRecordReportsNothing", nil, true, false, true},
