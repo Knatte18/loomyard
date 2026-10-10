@@ -37,7 +37,7 @@ func New(cfg Config) *Board {
 type noWrite struct{ result any }
 
 // boardCriticalSection runs the locked write scaffolding shared by every mutating Board method:
-// it acquires the lock, loads the store, calls fn to mutate it, saves board.json, runs afterSave when non-nil, renders outputs, and spawns a detached sync.
+// it acquires the lock, loads the store, calls fn to mutate it, refuses a net change to a run-held entry's scope, saves board.json, runs afterSave when non-nil, renders outputs, and spawns a detached sync.
 // afterSave runs under the lock after the save and before the render.
 // fn returning a noWrite skips every step after the mutation.
 func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSave func() error) (any, error) {
@@ -66,12 +66,18 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		return nil, err
 	}
 
+	loaded := cloneTasks(store.Tasks())
+
 	result, err := fn(store)
 	if err != nil {
 		return nil, err
 	}
 	if skipped, ok := result.(noWrite); ok {
 		return skipped.result, nil
+	}
+
+	if err := checkRunLocks(loaded, store.Tasks()); err != nil {
+		return nil, err
 	}
 
 	// Save before the derived .md view (JSON is authoritative).
@@ -113,6 +119,18 @@ func (b *Board) UpsertTask(fields map[string]any) (Task, error) {
 func (b *Board) SetStatus(idOrSlug any, status *string) error {
 	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		return nil, store.SetStatus(idOrSlug, status)
+	}, nil)
+	return err
+}
+
+// SetRunStatus sets status on the entry slug under the write lock, and writes nothing when the entry is absent or done.
+func (b *Board) SetRunStatus(slug, status string) error {
+	_, err := b.boardCriticalSection(func(store *Store) (any, error) {
+		task, found := store.GetTask(slug)
+		if !found || isDone(task) {
+			return noWrite{}, nil
+		}
+		return nil, store.SetStatus(slug, &status)
 	}, nil)
 	return err
 }

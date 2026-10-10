@@ -94,6 +94,13 @@ Remove every done entry:
 lyx board prune
 ```
 
+## Claimed entries
+
+An entry whose status reads `<state> · <producer>`, such as `running · Webster`, is claimed by a run.
+A claimed entry takes no scope edits: a write that changes anything but its status, or removes it, is refused.
+Record a new finding as a note of its own with `lyx board upsert` and `"kind":"note"`.
+The refusal names the way to unlock an abandoned run's entry.
+
 ## Intake
 
 GitHub is the inbox that `selfreport` files issues to, and the board is the one list.

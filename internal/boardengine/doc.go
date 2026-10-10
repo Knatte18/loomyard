@@ -48,6 +48,19 @@
 // Import writes the board first and then comments with a pointer to the entry and closes the issue, and close alone ends a noise issue with a stated reason and touches no entry.
 // boardengine imports nothing GitHub-specific: the caller converts a fetched issue into InboxIssue and makes every network call outside the board lock.
 //
+// # Run lock
+//
+// A run holds a board entry while the entry's status has the run-status form "<state> · <producer>", which RunStatus composes and IsRunStatus recognizes.
+// Nil, empty, "done", "abandoned" and a hand-set word are not run statuses, and lock nothing.
+// A held entry is the scope its run executes, so the write critical section refuses, before the save, any write whose net change on it removes it or touches a field other than status.
+// The net change runs from the entries as loaded under the board file lock to the entries after the whole mutation,
+// so a batch or merge that clears the status early and then edits the entry is still refused, and nothing reaches disk.
+// A status-only net change passes: set-status, a merge's set_status and an upsert that differs only in status.
+// set-status is itself unguarded, so a live run's status can be cleared by hand.
+// Prune passes, since a held entry's dependency on a done entry that the same write removes is not a change; every other depends_on change is refused.
+// The refusal is a *RunLockedError that matches ErrRunLocked through errors.Is.
+// Its message names the entry, its status and both ways forward: a finding goes to a note of its own, and an abandoned run's entry is unlocked by clearing its status once `lyx batten status` shows no run holds it.
+//
 // # Concurrency and sync
 //
 // Board sequences all mutating operations with a file lock: lock → load → mutate → save board.json → render → write files.

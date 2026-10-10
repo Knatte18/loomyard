@@ -10,12 +10,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -26,25 +26,17 @@ func markDoneFixtureDir(t *testing.T) (markDone func() error, board *boardengine
 	t.Setenv("BOARD_SKIP_PUSH", "1")
 
 	slug = "markdone"
-	location := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: slug, AnchorRel: "."}
+	location := &lyxcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: slug, AnchorRel: "."}
 	boardDir = fabricengine.BoardDir(location.HubPath)
-	configFile := configengine.ConfigFile(boardDir, "board")
-	if err := os.MkdirAll(filepath.Dir(configFile), 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(configFile), err)
-	}
-	if err := os.WriteFile(configFile, []byte(boardengine.ConfigTemplate()), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want nil", configFile, err)
-	}
 
 	deps := landingDeps(location, websterengine.Geometry{}, "task", "https://example.com/o.git", "main",
 		true, func() error { return nil }, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil)
 
-	bc, err := boardengine.LoadConfig(boardDir, "board")
+	board, err := boardengine.OpenHub(location.HubPath)
 	if err != nil {
-		t.Fatalf("LoadConfig error = %v; want nil", err)
+		t.Fatalf("OpenHub error = %v; want nil", err)
 	}
-	bc.Path = boardDir
-	return deps.MarkTaskDone, boardengine.New(boardengine.ApplySkipEnv(bc)), slug, boardDir
+	return deps.MarkTaskDone, board, slug, boardDir
 }
 
 func TestLandingDeps_MarkTaskDone_SetsStatusDone(t *testing.T) {

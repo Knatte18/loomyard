@@ -7,6 +7,11 @@
 // Invariant's owner set, so no identifier, literal, or comment in this package -- or in either of
 // those two it imports -- may name either side of the pair: write "the task worktree", "the pair",
 // and "the hub's prime worktree" instead.
+//
+// The Worktree-Create row opens by claiming the slug's board entry with "running · Worktree-Create", before the pair exists, so the board's run lock starts at the claim.
+// An absent or done entry is skipped, and a board failure only warns: the board is the hub's overview, never the run's bookkeeping.
+// The claim stays when the row then fails, and the stopped run resumes with the same verb.
+// No other row writes a board status; loom's transitions are the only later writer.
 package battencli
 
 import (

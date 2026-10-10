@@ -319,12 +319,16 @@ func TestIntakeImport_RefusedBeforeAnyWrite(t *testing.T) {
 		{"neither slug nor into", fakeIssue{number: 13, state: "open"}, `{"issue":13}`, "neither slug nor into"},
 		{"unknown key", fakeIssue{number: 14, state: "open"}, `{"issue":14,"slug":"x","slugg":"y"}`, "unknown field"},
 		{"pull request", fakeIssue{number: 15, state: "open", pullRequest: true}, `{"issue":15,"slug":"x"}`, "pull request"},
+		{"into a run-held entry", fakeIssue{number: 17, state: "open"}, `{"issue":17,"into":"held"}`, "lyx batten status held"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			inbox := newFakeInbox(t, tc.issue)
 			b, path := newIntakeBoard(t)
 			if _, err := b.UpsertTask(map[string]any{"slug": "taken", "labels": []string{"bug"}}); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+			if _, err := b.UpsertTask(map[string]any{"slug": "held", "labels": []string{"bug"}, "status": "running · Webster"}); err != nil {
 				t.Fatalf("seed: %v", err)
 			}
 			before := readBoard(t, path)

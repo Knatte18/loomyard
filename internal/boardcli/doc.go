@@ -20,6 +20,9 @@
 //
 // Every verb that takes a slug (`get`, `upsert`, `upsert-batch`, `set-status`, `remove`, `merge`, `promote`, `set-deps` and `intake import`) states the slug length limit in its `--help`, formatted from `boardengine.MaxSlugLength`.
 //
+// An entry whose status has the run-status form is held by a run, and `upsert`, `upsert-batch`, `remove`, `merge`, `set-deps`, `promote` and `intake import` with `into` refuse a write that changes its scope.
+// `set-status` and `prune` never refuse on it.
+//
 // `merge` carries the removed entries' issues onto the upserted entry, whether or not the payload names `issues`.
 //
 // `get` takes `--body` to write the entry's body alone, verbatim, with no envelope;
