@@ -111,6 +111,7 @@ type verifyGateSeams struct {
 // batches is the run's execution order, which orders the card hint.
 // parentBranch lets a clean parent merge made while fixing pass the commit check, and is nil in standalone mode, where no merge is accepted.
 // frictionDir is where the flaky note goes, empty when friction is off.
+// fixPromptPath is the absolute path of the verify-fix prompt, which the findings name in their way forward.
 //
 // At each arrival the closure does, in order:
 // it passes without verifying when outcome.yaml names an outcome other than done;
@@ -122,7 +123,7 @@ type verifyGateSeams struct {
 // Every failed evaluation writes the verify-gate report.
 // Attempt counts and the pre-fix head live in the closure for one shuttle run;
 // the pre-fix head is also persisted as state.json's PreFixHead when it is recorded, overwriting an earlier run's, and cleared on a passing evaluation.
-func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentBranch ParentBranchFunc, frictionDir string) (shuttleengine.Gate, *VerifyGateNotes) {
+func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentBranch ParentBranchFunc, frictionDir, fixPromptPath string) (shuttleengine.Gate, *VerifyGateNotes) {
 	paths := verifytree.NewPaths(geom.WorktreeRoot, geom.VerifyDir)
 	seams := verifyGateSeams{
 		outcome: func() (string, error) {
@@ -166,7 +167,7 @@ func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentB
 		clearPreFix:  func() error { return setPreFixHead(geom, "") },
 	}
 	notes := &VerifyGateNotes{frictionDir: frictionDir}
-	return newVerifyGate(geom.ReportsDir, attempts, notes, seams), notes
+	return newVerifyGate(geom.ReportsDir, attempts, notes, fixPromptPath, seams), notes
 }
 
 // setPreFixHead loads state.json under the state-mutation lease, sets PreFixHead and saves.
@@ -190,7 +191,7 @@ func setPreFixHead(geom Geometry, head string) error {
 }
 
 // newVerifyGate is NewVerifyGate over injected seams.
-func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s verifyGateSeams) shuttleengine.Gate {
+func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixPromptPath string, s verifyGateSeams) shuttleengine.Gate {
 	attempt := 0
 	preFix := ""
 	reportPath := VerifyGateReportPath(reportsDir)
@@ -228,7 +229,7 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, s ve
 			return shuttleengine.GateResult{}, err
 		}
 		logger.Warn("websterengine: verify gate failed", "attempt", attempt, "cap", attempts, "dirty", len(report.Dirty), "failures", len(report.Failures))
-		return shuttleengine.GateResult{Passed: false, Findings: renderVerifyGateFindings(report)}, nil
+		return shuttleengine.GateResult{Passed: false, Findings: renderVerifyGateFindings(report, fixPromptPath)}, nil
 	}
 
 	// pass clears the persisted pre-fix head and returns a passing result.

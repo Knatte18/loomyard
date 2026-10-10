@@ -265,12 +265,17 @@ func TestRecoverBatch_UncommittedPathsPrompt(t *testing.T) {
 	t.Parallel()
 	s := newSuspectScenario(t)
 	fx := s.restart(t)
-	for path, content := range map[string]string{"mine.txt": "m", "newdir/inside.go": "i", "foreign.txt": "f"} {
+	for path, content := range map[string]string{"mine.txt": "m", "newdir/inside.go": "i", "foreign.txt": "f", "earlier.txt": "e"} {
 		writeWorktreeFile(t, fx.Worktree, path, content)
 	}
 	fx.Deps.State.MasterSessionID = "s1"
-	fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed, StartSHA: s.base}
-	fx.Engine.AuditForksFn = func(string, string) (shuttleengine.ForkAudit, error) {
+	fx.Deps.State.Batches[1] = &websterengine.BatchState{Slug: "json-flag", Kind: "fork", Terminal: true, Status: websterengine.DigestStatusFailed, StartSHA: s.base, RecoverySessions: []string{"earlier-recovery"}}
+	fx.Engine.AuditForksFn = func(session, _ string) (shuttleengine.ForkAudit, error) {
+		if session == "earlier-recovery" {
+			return shuttleengine.ForkAudit{ParentWriteEvents: []shuttleengine.WriteEvent{
+				{Path: filepath.Join(fx.Worktree, "earlier.txt"), Succeeded: true},
+			}}, nil
+		}
 		return shuttleengine.ForkAudit{ParentWriteEvents: []shuttleengine.WriteEvent{
 			{Path: filepath.Join(fx.Worktree, "mine.txt"), Succeeded: true},
 			{Path: filepath.Join(fx.Worktree, "newdir", "inside.go"), Succeeded: true},
@@ -282,7 +287,7 @@ func TestRecoverBatch_UncommittedPathsPrompt(t *testing.T) {
 	if _, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk); err != nil {
 		t.Fatal(err)
 	}
-	want := "Written by this run:\n- mine.txt\n- newdir/\n\nNot written by this run:\n- foreign.txt"
+	want := "Written by this run:\n- earlier.txt\n- mine.txt\n- newdir/\n\nNot written by this run:\n- foreign.txt"
 	if !strings.Contains(fx.Engine.LastPrompt, "What the worktree holds\n\n"+want+"\n") {
 		t.Errorf("recovery prompt does not hold the grouped uncommitted paths %q; got:\n%s", want, fx.Engine.LastPrompt)
 	}

@@ -39,22 +39,28 @@
 //     Create inversion's own fail-closed arm (create.go), since a Create target is excluded from
 //     the status policy above and would otherwise have no reader at all for an answer neither
 //     policy understands.
+//     A member whose every declaration sits in files no single build environment selects together is one member, so a partitioned ambiguous answer resolves;
+//     the detail of an unpartitioned one names each candidate's file and build constraint.
 //     The passes that raise glyph-rejected are resolve.go, create.go, deleteorder.go and donecheck.go — one per fail-closed status policy in the package;
 //     each is named at its own bullet, and the double report one anomalous target can produce across two of them is accepted by design.
 //   - create-already-exists (blocking), create-new-unit (informational) — the Create inversion
 //     (create.go), over every Create group's own targets, handle-shaped or glyph-shaped alike.
 //     create-already-exists covers found, multipart and ambiguous alike: all three mean a
 //     declaration already occupies the name the card is creating.
+//     An ambiguous target is create-already-exists whether or not its candidates are partitioned by build constraints, and its detail names each candidate's file and build constraint.
 //   - delete-before-reference (blocking) — LaterDeleteReferences (deleteorder.go), a card that deletes a symbol whose reference a later card's Edit code still holds, so the delete must move after that card.
 //     glyph-rejected is additionally its own fail-closed arm, for a Delete or Edit member whose answer it cannot read.
+//     A member partitioned by build constraints is looked up through its candidates, which are its declarations.
 //   - resign-head-mismatch (blocking) — CanonicalizeHandles (handle.go), an Edit re-sign arrow whose head quarry.Name cannot name or names as a member other than the arrow's own glyph.
 //     It reads plan text alone, so it runs wherever resolvePass does, ValidateDispatch included.
 //   - redundant-file-target (blocking) — planGatePass (plangate.go), a card listing a file self glyph beside a member glyph that resolves into that file.
+//     A partitioned member's candidates are its declarations, so a file holding one of them counts.
 //     It runs at the plan gates only (ValidateFormat, ValidateFormatAfter over its cards not done, Validate and so ValidateRework), never at ValidateDispatch.
 //     The rule the pass exists for: a check whose verdict depends on state the run itself changes runs at the plan gates only, because dispatch re-validates a plan against a tree the run has already changed.
 //   - resign-interface-method (blocking) — planGatePass (plangate.go), an Edit re-sign arrow on a member that resolves to an interface method, whose own spec is no declaration.
 //     It reads the tree, so like redundant-file-target it runs at the plan gates only.
 //   - caller-uncovered (blocking for a resolved reference, informational for a name-only method match) — callerCoverageFindings (callercoverage.go), reached through planGatePass: a deleted or re-signed member that Go code still references with no admissible card's target covering that code.
+//     A partitioned member's candidates are its declarations, so each is a subject's span and a target's span alike.
 //     It runs only when a subject exists and at the plan gates only.
 //     A typesLoader (typesload.go) loads the root module's packages through go/packages, offline, with test variants and the integration, tmux and llm tags, under a timeout, and logged; an identifier whose used object is the member is a resolved reference.
 //     An index built by NewSlottedIndex with a pool slots the load: it writes a wait record into the told wait directory, acquires a hub gate slot, drops the record once the acquire returns, starts the timeout only once the slot is held, runs go list under the slot's `-p` cap and releases the slot when the load returns.
@@ -74,6 +80,8 @@
 //     same glyph.
 //   - rename-old-unresolved (blocking) — renameDeclSource (handle.go), a Rename pair's Old side
 //     that does not resolve found, so no declaration can be derived for its handle-shaped New side.
+//     An old side declared once per build-constraint set stays unresolved, since a rename derives from exactly one declaration;
+//     its detail names each candidate's file and constraint and the way forward: a Delete of the old member and one Create declaration of the new member's handle on a card that edits each of the old member's files, or an Edit of each file's body.
 //   - bind-count-mismatch (blocking) — BindHandles (handle.go), a card whose own handles (its
 //     Create declarations AND any Rename pair's still-handle-shaped New side, per cardOwnHandles)
 //     the record-batch delta matched fewer of than it owns.
@@ -84,7 +92,11 @@
 //   - create-not-done, delete-not-done, rename-not-done (all blocking) — DoneChecks (donecheck.go):
 //     a Create target that still does not resolve, a Delete target that still does, or a Rename
 //     pair whose old side still resolves or whose new side still does not, after the batch that was
-//     supposed to build, remove, or rename it. glyph-rejected is additionally DoneChecks' own
+//     supposed to build, remove, or rename it.
+//     Each detail carries the lookup: the resolve key looked up beside the card's own spelling, quarry's status, for not_found whether the unit exists, and for ambiguous each candidate's file and build constraint.
+//     An ambiguous answer whose candidates sit in files no single build environment selects together counts as resolved, so a Create or a Rename new side over such a member lands;
+//     the Delete direction and a Rename old side keep blocking on any surviving declaration.
+//     glyph-rejected is additionally DoneChecks' own
 //     fail-closed arm for a done-check answer outside quarry's four-value status vocabulary,
 //     mirroring the Create inversion's.
 package planglyph

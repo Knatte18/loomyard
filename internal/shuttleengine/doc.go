@@ -208,6 +208,8 @@
 //
 // A gated run's GateSpec entries answer passed, failed or pending (GateResult.Pending, PassOnCap or MayHold entries only).
 // A failing result flagged GateResult.Terminal finalizes the run at once with no re-prompt, and its findings text rides GateOutcome.Reason.
+// A failed entry with budget remaining is re-prompted with one default line naming the findings file, unless the entry sets GateEntry.Reprompt, whose rendered line is sent instead.
+// Every send validates its text, so a renderer returning several lines, or an empty or whitespace-only line, fails the send and ends the loop with the attempts spent so far.
 // A pending answer holds the run at a turn boundary without re-prompting or counting a failure:
 // the wait loop sends the entry's carried text once, keeps polling, and re-evaluates on poll ticks while the writer is idle.
 // The deadline and liveness checks keep running, and a deadline or liveness finalize evaluates each entry's optional Final closure in place of Gate, reporting the entry waiting.
@@ -215,12 +217,13 @@
 // A turn end that leaves background work outstanding (EventWaiting) is judged by the output files, one rule for a shell of either signal and for a fork.
 // An ungated run with every output file present finishes Done at that turn end, whatever is outstanding.
 // With an output file missing, the turn end keeps waiting on every outstanding task, never held and never notified, bounded only by the run's own Timeout and the liveness check, and lyx reaps no shell.
-// A gated run's waiting turn end with every output file present is not an arrival, because the files may predate the session's background work;
-// it finishes Done at once, through the gate, only when every outstanding task is an unawaited shell, the run was started fresh rather than attached or resumed, and no gated arrival of the run has reached the gate yet.
-// A fork or a shell whose label starts with one of Spec.AwaitedShellPrefixes holds the turn end in every other case;
+// A gated run's waiting turn end is never an arrival, because the output files may predate the session's background work;
+// it waits until the task's completion starts the next turn, bounded by the run deadline and the liveness check.
+// At the deadline classifyDeadlineExpiry ends the run OutcomeDone when the output files exist, finalize evaluates the gate once more over the tree as it stands, and the shell lands in Result.EndedShells with its result never read by the run.
+// Spec.AwaitedShellPrefixes only keeps a shell out of the background-shell wait marker;
 // the prefixes are caller data, which Spec.validate does not inspect.
 // Config.BackgroundShellWaitMin is a display and logging threshold, not an expiry: a shell outstanding that long is logged once at Warn and shown in the wait marker.
-// Result.EndedShells records each shell outstanding when the run ends, whatever ends it, with its label, id, signal and how long it was outstanding, and finalize logs the record at Info.
+// Result.EndedShells records each shell outstanding when the run ends, whatever ends it, whose result the run never read, with its label, id, signal and how long it was outstanding, and finalize logs the record at Info.
 // lyx kills no shell, since the provider reports no pid: strand removal ends the shells it can, and a shell detached from the pane's process tree survives it.
 // ShellWaitBound exports the threshold.
 //

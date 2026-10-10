@@ -30,7 +30,7 @@ func TestStatusFindings(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolveTargets(...) returned error: %v", err)
 		}
-		got := statusFindings(plan, results)
+		got := statusFindings(plan, root, results)
 		if len(got) != 0 {
 			t.Errorf("statusFindings(found) = %+v; want no findings", got)
 		}
@@ -54,7 +54,7 @@ func TestStatusFindings(t *testing.T) {
 			t.Fatalf("Status = %q; want %q (fixture assumption broken)", results[0].Status, quarry.StatusMultipart)
 		}
 		multiPlan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#init"}}}}
-		got := statusFindings(multiPlan, results)
+		got := statusFindings(multiPlan, multiRoot, results)
 		if len(got) != 0 {
 			t.Errorf("statusFindings(multipart) = %+v; want no findings", got)
 		}
@@ -77,7 +77,7 @@ func TestStatusFindings(t *testing.T) {
 			t.Fatalf("Status = %q; want %q (fixture assumption broken)", results[0].Status, quarry.StatusAmbiguous)
 		}
 		ambPlan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"amb#Foo"}}}}
-		got := statusFindings(ambPlan, results)
+		got := statusFindings(ambPlan, ambRoot, results)
 		if len(got) != 1 || got[0].Check != "glyph-ambiguous" {
 			t.Fatalf("statusFindings(ambiguous) = %+v; want one glyph-ambiguous finding", got)
 		}
@@ -97,6 +97,63 @@ func TestStatusFindings(t *testing.T) {
 		}
 	})
 
+	// A member declared once per mutually exclusive build-constraint set is one member to every
+	// target kind the policy covers; one whose declarations can coexist stays glyph-ambiguous,
+	// naming each file's constraint.
+	t.Run("PartitionedByBuildConstraints", func(t *testing.T) {
+		const dup = "\n\npackage amb\n\nfunc Foo() {}\n"
+		cards := []struct {
+			name string
+			card planparser.Card
+		}{
+			{"Edit", planparser.Card{Number: 1, Slug: "one", Targets: []string{"amb#Foo"}}},
+			{"Delete", planparser.Card{Number: 1, Slug: "one", Targets: []string{"amb#Foo"}, TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeDelete, Refs: []string{"amb#Foo"}}}}},
+			{"Rename old side", planparser.Card{Number: 1, Slug: "one", Targets: []string{"amb#Foo"}, Pairs: []planparser.MovePair{{Old: "amb#Foo", New: "amb#Bar"}}}},
+			{"Uses", planparser.Card{Number: 1, Slug: "one", Uses: []string{"amb#Foo"}}},
+		}
+		fixtures := []struct {
+			name            string
+			files           map[string]string
+			wantAmbiguous   bool
+			wantConstraints []string
+		}{
+			{"go:build linux beside go:build !linux", map[string]string{"amb/a.go": "//go:build linux" + dup, "amb/b.go": "//go:build !linux" + dup}, false, nil},
+			{"linux filename suffix beside windows filename suffix", map[string]string{"amb/a_linux.go": "package amb\n\nfunc Foo() {}\n", "amb/a_windows.go": "package amb\n\nfunc Foo() {}\n"}, false, nil},
+			{"go:build linux beside go:build amd64", map[string]string{"amb/a.go": "//go:build linux" + dup, "amb/b.go": "//go:build amd64" + dup}, true, []string{"//go:build linux", "//go:build amd64"}},
+		}
+		for _, fixture := range fixtures {
+			ambRoot := writeFixtureRepo(t, fixture.files)
+			ambRepo, err := openRepo(ambRoot)
+			if err != nil {
+				t.Fatalf("openRepo(%q) returned error: %v", ambRoot, err)
+			}
+			results, err := resolveTargets(ambRepo, []string{"amb#Foo"})
+			if err != nil {
+				t.Fatalf("resolveTargets(...) returned error: %v", err)
+			}
+			if results[0].Status != quarry.StatusAmbiguous {
+				t.Fatalf("%s: Status = %q; want %q (fixture assumption broken)", fixture.name, results[0].Status, quarry.StatusAmbiguous)
+			}
+			for _, c := range cards {
+				got := statusFindings(&planparser.Plan{Cards: []planparser.Card{c.card}}, ambRoot, results)
+				if !fixture.wantAmbiguous {
+					if len(got) != 0 {
+						t.Errorf("statusFindings(%s, %s) = %+v; want no findings for a partitioned member", fixture.name, c.name, got)
+					}
+					continue
+				}
+				if len(got) != 1 || got[0].Check != "glyph-ambiguous" {
+					t.Fatalf("statusFindings(%s, %s) = %+v; want one glyph-ambiguous finding", fixture.name, c.name, got)
+				}
+				for _, constraint := range fixture.wantConstraints {
+					if !strings.Contains(got[0].Detail, constraint) {
+						t.Errorf("statusFindings(%s, %s) detail = %q; want it to name the constraint %q", fixture.name, c.name, got[0].Detail, constraint)
+					}
+				}
+			}
+		}
+	})
+
 	t.Run("NotFoundUnitFound", func(t *testing.T) {
 		results, err := resolveTargets(repo, []string{"sub#DoesNotExist"})
 		if err != nil {
@@ -106,7 +163,7 @@ func TestStatusFindings(t *testing.T) {
 			t.Fatalf("results[0] = %+v; want not_found with unit: found", results[0])
 		}
 		nfPlan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#DoesNotExist"}}}}
-		got := statusFindings(nfPlan, results)
+		got := statusFindings(nfPlan, root, results)
 		if len(got) != 1 || got[0].Check != "glyph-not-found" {
 			t.Fatalf("statusFindings(not_found, unit: found) = %+v; want one glyph-not-found finding", got)
 		}
@@ -124,7 +181,7 @@ func TestStatusFindings(t *testing.T) {
 			t.Fatalf("results[0] = %+v; want not_found with unit: not_found", results[0])
 		}
 		nfPlan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"missing#Foo"}}}}
-		got := statusFindings(nfPlan, results)
+		got := statusFindings(nfPlan, root, results)
 		if len(got) != 1 || got[0].Check != "glyph-not-found" {
 			t.Fatalf("statusFindings(not_found, unit: not_found) = %+v; want one glyph-not-found finding", got)
 		}
@@ -142,7 +199,7 @@ func TestStatusFindings(t *testing.T) {
 			t.Fatalf("results[0] = %+v; want a pre-resolution rejection", results[0])
 		}
 		rejPlan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"/absolute#Foo"}}}}
-		got := statusFindings(rejPlan, results)
+		got := statusFindings(rejPlan, root, results)
 		if len(got) != 1 || got[0].Check != "glyph-rejected" {
 			t.Fatalf("statusFindings(rejected) = %+v; want one glyph-rejected finding", got)
 		}
@@ -183,7 +240,7 @@ func TestStatusFindings_UnrecognizedStatusFailsClosed(t *testing.T) {
 		Targets: []string{"sub#Bar"},
 	}}}
 
-	got := statusFindings(plan, []quarry.ResolveResult{{Target: "sub#Bar", Status: "partially_found"}})
+	got := statusFindings(plan, "", []quarry.ResolveResult{{Target: "sub#Bar", Status: "partially_found"}})
 	if len(got) != 1 || got[0].Check != "glyph-rejected" || got[0].Severity != SeverityBlocking {
 		t.Fatalf("statusFindings(unrecognized status) = %+v; want one blocking glyph-rejected finding", got)
 	}
@@ -194,35 +251,35 @@ func TestStatusFindings_UnrecognizedStatusFailsClosed(t *testing.T) {
 
 // TestCandidateList pins the shared ambiguous-candidate renderer both glyph-ambiguous
 // (statusFindings) and create-already-exists (createFindings) delegate to: a candidate carrying a
-// File is located as "ID (file)", one without keeps the bare ID, so identically-named declarations
+// File is located as "ID (file, constraint)", one without keeps the bare ID, so identically-named declarations
 // — which share one glyph ID — stay tellable apart by their files (crucible round fable5-high-r2,
 // F-R2-2).
 func TestCandidateList(t *testing.T) {
 	tests := []struct {
 		name       string
-		candidates []quarry.Symbol
+		candidates []constrainedCandidate
 		want       string
 	}{
 		{
 			"same ID in two files stays distinguishable",
-			[]quarry.Symbol{
-				{ID: "amb#Foo", File: "amb/a.go"},
-				{ID: "amb#Foo", File: "amb/b.go"},
+			[]constrainedCandidate{
+				{Symbol: quarry.Symbol{ID: "amb#Foo", File: "amb/a.go"}, Constraint: "//go:build linux"},
+				{Symbol: quarry.Symbol{ID: "amb#Foo", File: "amb/b.go"}, Constraint: "no constraint"},
 			},
-			"amb#Foo (amb/a.go), amb#Foo (amb/b.go)",
+			"amb#Foo (amb/a.go, //go:build linux), amb#Foo (amb/b.go, no constraint)",
 		},
 		{
 			"a candidate with no file keeps the bare ID",
-			[]quarry.Symbol{{ID: "amb#Foo"}},
+			[]constrainedCandidate{{Symbol: quarry.Symbol{ID: "amb#Foo"}, Constraint: "no constraint"}},
 			"amb#Foo",
 		},
 		{
 			"mixed presence renders each candidate on its own terms",
-			[]quarry.Symbol{
-				{ID: "amb#Foo", File: "amb/a.go"},
-				{ID: "amb#Bar"},
+			[]constrainedCandidate{
+				{Symbol: quarry.Symbol{ID: "amb#Foo", File: "amb/a.go"}, Constraint: "_linux.go"},
+				{Symbol: quarry.Symbol{ID: "amb#Bar"}, Constraint: "no constraint"},
 			},
-			"amb#Foo (amb/a.go), amb#Bar",
+			"amb#Foo (amb/a.go, _linux.go), amb#Bar",
 		},
 	}
 	for _, tt := range tests {

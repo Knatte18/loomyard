@@ -96,6 +96,18 @@ func TestRun_VerifyGate(t *testing.T) {
 				}
 				reprompts++
 				findings = first.Findings
+				fixPromptPath, err := filepath.Abs(filepath.Join(fx.Deps.Geom.PromptsDir, "verify-fix.md"))
+				if err != nil {
+					t.Fatalf("resolve verify-fix prompt path: %v", err)
+				}
+				if entry.Reprompt == nil {
+					t.Fatalf("verify entry has no Reprompt; want the renderer naming the fixer-fork way forward")
+				}
+				const findingsPath = "/scratch/gate-findings.md"
+				line := entry.Reprompt(findingsPath)
+				if strings.ContainsAny(line, "\n\r") || !strings.HasPrefix(line, "Gate findings recorded at "+findingsPath) || !strings.Contains(line, fixPromptPath) {
+					t.Errorf("re-prompt line = %q; want one line opening with the findings path and naming %s", line, fixPromptPath)
+				}
 				// Merriam's fixer makes its fix.
 				if err := os.WriteFile(okFile, nil, 0o644); err != nil {
 					t.Fatalf("write ok file: %v", err)

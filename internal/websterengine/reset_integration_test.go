@@ -220,6 +220,36 @@ func TestPlanReset(t *testing.T) {
 		}
 	})
 
+	fx.step(t, "own paths hold a recovery session's succeeded write", func(t *testing.T) {
+		t.Cleanup(func() { gitkit.Git(t, fx.root, "checkout", "--", "a.txt", "b.txt") })
+		fx.deps.State.PreFixHead = fx.first
+		fx.deps.State.Batches[1].RecoverySessions = []string{"recovery-1"}
+		for _, name := range []string{"a.txt", "b.txt"} {
+			if err := os.WriteFile(filepath.Join(fx.root, name), []byte("edited"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		fx.deps.Engine = &shuttlefake.Engine{AuditForksFn: func(session, _ string) (shuttleengine.ForkAudit, error) {
+			if session != "recovery-1" {
+				return shuttleengine.ForkAudit{}, nil
+			}
+			return shuttleengine.ForkAudit{
+				ParentWriteEvents: []shuttleengine.WriteEvent{{Path: filepath.Join(fx.root, "b.txt"), Succeeded: true}},
+			}, nil
+		}}
+		// a.txt is dirty and no session of the run wrote it, so it is foreign dirt.
+		fx.wantRefusal(t, ResetToPreFix, "a.txt")
+
+		gitkit.Git(t, fx.root, "checkout", "--", "a.txt")
+		plan, err := PlanReset(fx.deps, ResetToPreFix, 0)
+		if err != nil {
+			t.Fatalf("PlanReset error = %v, want a plan", err)
+		}
+		if want := []string{"b.txt"}; !reflect.DeepEqual(plan.OwnPaths, want) {
+			t.Errorf("OwnPaths = %v, want %v", plan.OwnPaths, want)
+		}
+	})
+
 	fx.step(t, "last-batch-head resolves to the last recorded batch head", func(t *testing.T) {
 		fx.deps.State.Batches[1].Terminal = true
 		fx.deps.State.Batches[1].Digest = &Digest{HeadSHA: fx.first}

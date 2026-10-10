@@ -82,9 +82,6 @@ func TestRunnerStart_Resume_WarningReachesRunAndRunStarts(t *testing.T) {
 	if got := run.ResumeWarning(); got != "registry unreadable" {
 		t.Errorf("ResumeWarning() = %q, want %q", got, "registry unreadable")
 	}
-	if run.startedFresh {
-		t.Error("startedFresh = true for a run started with a ResumeSessionID, want false")
-	}
 }
 
 func TestRunnerStart_Resume_EngineWithoutCapabilityRefuses(t *testing.T) {
@@ -117,8 +114,5 @@ func TestRunnerStart_NoResumeSessionID_NeverCallsCheck(t *testing.T) {
 	}
 	if run.ResumeWarning() != "" {
 		t.Errorf("ResumeWarning() = %q, want empty", run.ResumeWarning())
-	}
-	if !run.startedFresh {
-		t.Error("startedFresh = false for a run started with no ResumeSessionID, want true")
 	}
 }

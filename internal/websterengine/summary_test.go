@@ -72,7 +72,7 @@ func TestAppendSummarySections(t *testing.T) {
 					{Label: "second", Signal: shuttleengine.SignalTranscript, Outstanding: 90 * time.Second},
 				})
 			},
-			want: "# S\n\n\n## Background shells at the run's end\n\nMaster's run ended while these background shells were still outstanding; they may still be running in the session.\n\n- `first` (payload signal, outstanding 2m0s)\n- `second` (transcript signal, outstanding 1m30s)\n",
+			want: "# S\n\n\n## Background shells at the run's end\n\nMaster's run ended while these background shells were still outstanding, and the run never read their results.\n\n- `first` (payload signal, outstanding 2m0s)\n- `second` (transcript signal, outstanding 1m30s)\n",
 		},
 		{
 			name:   "integration triage: empty is a no-op",

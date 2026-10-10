@@ -127,10 +127,25 @@ func logTail(output string) string {
 	return strings.TrimSpace(output)
 }
 
+// verifyGateWayForward returns the one line naming Merriam's way forward from a verify-gate failure:
+// spawn one fixer fork with the prompt file at fixPromptPath, never fix the findings itself, then end the turn.
+func verifyGateWayForward(fixPromptPath string) string {
+	return fmt.Sprintf("Do not fix the findings yourself; spawn one fixer fork as the gate-failure section of your prompt says, with the prompt file at %s; then end your turn.", fixPromptPath)
+}
+
+// verifyGateReprompt returns the renderer for the verify entry's re-prompt line:
+// one line that opens with the `Gate findings recorded at` text Merriam's gate-failure section triggers on, then names the findings file and the way forward.
+func verifyGateReprompt(fixPromptPath string) func(findingsPath string) string {
+	return func(findingsPath string) string {
+		return fmt.Sprintf("Gate findings recorded at %s — %s", findingsPath, verifyGateWayForward(fixPromptPath))
+	}
+}
+
 // renderVerifyGateFindings returns the findings text the gate returns to Merriam:
-// the attempt and the cap, then either the dirty paths, the timeout sentence with the log path and tail, or each failing identity with its output tail, the full log path, and the hint.
-func renderVerifyGateFindings(r VerifyGateReport) string {
+// the way forward, the attempt and the cap, then either the dirty paths, the timeout sentence with the log path and tail, or each failing identity with its output tail, the full log path, and the hint.
+func renderVerifyGateFindings(r VerifyGateReport, fixPromptPath string) string {
 	var b strings.Builder
+	b.WriteString(verifyGateWayForward(fixPromptPath) + "\n")
 	fmt.Fprintf(&b, "Verify gate failed (attempt %d of %d).\n", r.Attempt, r.Cap)
 
 	if len(r.Dirty) > 0 {

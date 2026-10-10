@@ -291,10 +291,6 @@ type Run struct {
 	shellFirstSeen map[string]time.Time
 	// payloadShellLogged holds the shell ids, of either signal, already logged as outstanding past background_shell_wait_min, so each is logged once.
 	payloadShellLogged map[string]bool
-	// startedFresh is true when Runner.start built this run with no ResumeSessionID, so the output files on disk cannot predate it.
-	startedFresh bool
-	// gatedArrival is true once Wait has taken a gated Done arrival of this run to the gate; nothing clears it.
-	gatedArrival bool
 	// wait is the wait marker and pane mark this run has on show, display only.
 	wait waitState
 	// eventsRead is true when the latest pollEventsTick parsed at least one event, which ends a held wait.
@@ -528,7 +524,6 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		deadline: clk.Now().Add(spec.Timeout),
 		gate:     gate,
 
-		startedFresh:  spec.ResumeSessionID == "",
 		resumeWarning: resumeWarning,
 	}
 
