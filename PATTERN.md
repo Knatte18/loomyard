@@ -76,7 +76,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 ## Packages
 
-- `PATTERN-leaf-packages` — Importing into `gitkit`, `modelspec`, `buildinfo`, `standalonestate`, `segmentcolor`, `pattern` or `friction`: each admits a closed import set. — [background](pattern/PATTERN-leaf-packages.md)
+- `PATTERN-leaf-packages` — Importing into `gitkit`, `modelspec`, `buildinfo`, `standalonestate`, `segmentcolor`, `pattern`, `friction` or `fswatch`: each admits a closed import set. — [background](pattern/PATTERN-leaf-packages.md)
 
 ## Build and tooling
 

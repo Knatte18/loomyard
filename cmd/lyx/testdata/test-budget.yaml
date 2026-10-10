@@ -33,6 +33,7 @@ internal/fabricengine: 630
 internal/friction: 6
 internal/frictionengine: 15
 internal/fslink: 5
+internal/fswatch: 5
 internal/fsx: 3
 internal/gitexec: 6
 internal/githubclient: 11

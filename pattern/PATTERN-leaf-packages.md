@@ -36,3 +36,9 @@ Imports only the standard library, `lyxdirs`, `stencilstore` and `stencil`.
 Imports only the standard library, `internal/logger`, `internal/stencil` and `internal/stencilstore`.
 - `internal/logger` is admitted because the marker-absent helper logs rather than returning a bool for seven callers to duplicate.
   `internal/friction` already pulls `logger` transitively through `internal/stencilstore`, so the admission widens nothing in practice.
+
+## `internal/fswatch`
+
+Imports only the standard library, `github.com/fsnotify/fsnotify` and `internal/logger`.
+- Every lyx process that waits on a file event goes through it, so fsnotify is imported nowhere else.
+- `internal/logger` is admitted because fsnotify's error channel is drained and logged at Debug.
