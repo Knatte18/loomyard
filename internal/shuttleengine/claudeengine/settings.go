@@ -1,6 +1,7 @@
 // settings.go composes the Claude Code settings.json document Prepare writes for each run:
 // a Stop hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents reads).
-// The UserPromptSubmit, StopFailure, Notification and SessionEnd hooks append their payloads to the same file for ParseSessionSignals.
+// The UserPromptSubmit, StopFailure, Notification and SessionEnd hooks append their payloads to the same file for ParseSessionSignals,
+// and so does the SessionStart hook of a run whose spec sets a context-after-compaction command, which then runs that command so its output joins the session's context.
 // Every recording hook writes a stamp line with the hook-side time before its payload, which ParseEvents skips.
 // The document also carries the PreToolUse guardrails that keep a run's work visible in its own pane —
 // denying the in-process Agent tool (or, in a fork-mode run, letting fork subagents through it while still denying every other subagent type; a run with Spec.AllowAgentTool set installs no Agent deny at all),
@@ -81,6 +82,25 @@ type settingsHooks struct {
 	StopFailure      []hookEntry `json:"StopFailure"`
 	Notification     []hookEntry `json:"Notification"`
 	SessionEnd       []hookEntry `json:"SessionEnd"`
+	SessionStart     []hookEntry `json:"SessionStart,omitempty"`
+}
+
+// compactionMatcher is the SessionStart matcher for a session restarting after a compaction.
+const compactionMatcher = "compact"
+
+// SessionStartContext renders the additional-context JSON a SessionStart hook prints to add text to the session's context.
+func SessionStartContext(text string) ([]byte, error) {
+	type specificOutput struct {
+		HookEventName     string `json:"hookEventName"`
+		AdditionalContext string `json:"additionalContext"`
+	}
+	data, err := json.Marshal(struct {
+		HookSpecificOutput specificOutput `json:"hookSpecificOutput"`
+	}{specificOutput{HookEventName: hookEventSessionStart, AdditionalContext: text}})
+	if err != nil {
+		return nil, fmt.Errorf("marshal session start context: %w", err)
+	}
+	return data, nil
 }
 
 // settingsDoc is the Claude Code settings.json document Prepare writes.
@@ -205,7 +225,8 @@ func recordingCommand(hookEventName, quotedEventsPath string) string {
 // eventsPathPosix must be a git-bash POSIX path (from shuttleengine.PosixPath); it's embedded via shQuote to escape any apostrophes.
 // Agent-tool and AskUserQuestion denies are controlled by cfg; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard,
 // and allowAgentTool drops the Agent deny entirely while leaving the webster-verb guard keyed on forkSubagents alone.
-func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, forkSubagents, allowAgentTool bool) ([]byte, error) {
+// A non-empty contextAfterCompaction adds a SessionStart hook for the compaction matcher that records the event and then runs that command verbatim, so its standard output reaches the session's context; empty adds none.
+func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, forkSubagents, allowAgentTool bool, contextAfterCompaction string) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	recordingHook := func(hookEventName string, alwaysSucceeds bool) []hookEntry {
 		command := recordingCommand(hookEventName, quotedEventsPath)
@@ -223,6 +244,14 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 			Notification:     recordingHook(hookEventNotification, true),
 			SessionEnd:       recordingHook(hookEventSessionEnd, true),
 		},
+	}
+
+	if contextAfterCompaction != "" {
+		recording := recordingHook(hookEventSessionStart, true)[0].Hooks[0]
+		doc.Hooks.SessionStart = []hookEntry{{
+			Matcher: compactionMatcher,
+			Hooks:   []hookCommand{recording, {Type: "command", Command: contextAfterCompaction}},
+		}}
 	}
 
 	in := denyInputs{interactive: interactive, cfg: cfg, forkSubagents: forkSubagents, allowAgentTool: allowAgentTool}

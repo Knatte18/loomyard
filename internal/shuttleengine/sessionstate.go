@@ -100,6 +100,8 @@ type SessionFacts struct {
 type SessionFold struct {
 	newest    SessionSignal
 	hasNewest bool
+	// sessionStartAt is the time of the newest session-start signal; zero when none arrived or it had no time.
+	sessionStartAt time.Time
 
 	// derived is the state the signals alone give, before the facts' liveness and readability take precedence.
 	derived    SessionState
@@ -116,6 +118,11 @@ type SessionFold struct {
 // State returns the current state; the zero value before the first Fold.
 func (f *SessionFold) State() SessionState {
 	return f.current
+}
+
+// SessionStartAt returns the time of the newest session-start signal folded; zero when none arrived.
+func (f *SessionFold) SessionStartAt() time.Time {
+	return f.sessionStartAt
 }
 
 // History returns every state the fold has passed through, in order, with one entry per change of state or cause.
@@ -147,6 +154,9 @@ func (f *SessionFold) Fold(signals []SessionSignal, facts SessionFacts) {
 // applySignal moves the signal-derived state by one signal.
 func (f *SessionFold) applySignal(signal SessionSignal, facts SessionFacts) {
 	switch signal.Kind {
+	case SessionSignalSessionStart:
+		f.sessionStartAt = signal.At
+		return
 	case SessionSignalTurnStart:
 		if !(f.hasDerived && f.derived.Name == SessionBusy && f.derived.Cause == SessionCauseTurn) {
 			f.setDerived(SessionState{Name: SessionBusy, Cause: SessionCauseTurn, Since: signal.At}, false)

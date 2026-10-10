@@ -47,7 +47,7 @@ func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.fork, false)
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.fork, false, "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -88,7 +88,7 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, false, false)
+			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, false, false, "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -128,6 +128,66 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 	}
 }
 
+// TestBuildSettings_SessionStartHook pins the SessionStart entry: absent for an empty command, otherwise one entry with the compaction matcher whose two commands are the recording command ending in `; true` and then the given command verbatim.
+func TestBuildSettings_SessionStartHook(t *testing.T) {
+	t.Parallel()
+
+	const quoted = `'/c/run/events.jsonl'`
+	const command = "lyx orch resume-context"
+	t.Run("empty_command_renders_no_entry", func(t *testing.T) {
+		t.Parallel()
+		data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, false, false, "")
+		if err != nil {
+			t.Fatalf("buildSettings() error: %v", err)
+		}
+		if entries := hooksFor(parseSettings(t, data), "SessionStart"); entries != nil {
+			t.Errorf("SessionStart hooks = %v; want none", entries)
+		}
+	})
+	t.Run("set_command_renders_two_commands_under_the_compaction_matcher", func(t *testing.T) {
+		t.Parallel()
+		data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, false, false, command)
+		if err != nil {
+			t.Fatalf("buildSettings() error: %v", err)
+		}
+		entries := hooksFor(parseSettings(t, data), "SessionStart")
+		if len(entries) != 1 {
+			t.Fatalf("SessionStart hooks = %v; want exactly one entry", entries)
+		}
+		entry, _ := entries[0].(map[string]any)
+		if entry["matcher"] != "compact" {
+			t.Errorf("SessionStart matcher = %v; want %q", entry["matcher"], "compact")
+		}
+		inner, _ := entry["hooks"].([]any)
+		want := []string{
+			stampPrintf("SessionStart", quoted) + "; cat >> " + quoted + " && printf '\\n' >> " + quoted + "; true",
+			command,
+		}
+		if len(inner) != len(want) {
+			t.Fatalf("SessionStart commands = %v; want %d", inner, len(want))
+		}
+		for i, w := range want {
+			cmd, _ := inner[i].(map[string]any)
+			if got, _ := cmd["command"].(string); got != w {
+				t.Errorf("SessionStart command %d = %q; want %q", i, got, w)
+			}
+		}
+	})
+}
+
+// TestSessionStartContext pins the exact additional-context JSON a session-start hook prints, with the text escaped.
+func TestSessionStartContext(t *testing.T) {
+	t.Parallel()
+	got, err := SessionStartContext(`read "role.md"`)
+	if err != nil {
+		t.Fatalf("SessionStartContext() error: %v", err)
+	}
+	const want = `{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"read \"role.md\""}}`
+	if string(got) != want {
+		t.Errorf("SessionStartContext() = %s; want %s", got, want)
+	}
+}
+
 func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -157,7 +217,7 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := shuttleengine.Config{ClaudeDenyAgentTool: tt.agentDeny, ClaudeDenyAskUserQuestion: tt.askUserDeny, ClaudeDenyPython: tt.pythonDeny}
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, tt.fork, false)
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, tt.fork, false, "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -315,7 +375,7 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, tt.cfg, tt.fork, tt.allowAgent)
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, tt.cfg, tt.fork, tt.allowAgent, "")
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -517,7 +577,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 				for _, interactive := range []bool{false, true} {
 					for _, fork := range []bool{false, true} {
 						cfg := shuttleengine.Config{ClaudeDenyAgentTool: agentDeny, ClaudeDenyAskUserQuestion: askUserDeny, ClaudeDenyPython: pythonDeny}
-						data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, fork, false)
+						data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, fork, false, "")
 						if err != nil {
 							t.Fatalf("buildSettings() error: %v", err)
 						}

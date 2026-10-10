@@ -240,7 +240,8 @@
 //
 // Session state, in shadow mode: no consumer acts on it.
 // The optional SessionSignalParser capability reads the events file's hook lines as provider-neutral signals with hook-side times:
-// a turn start, a turn end (with its outstanding background tasks), an API-error turn end, an ask, an idle notice and a session end.
+// a turn start, a turn end (with its outstanding background tasks), an API-error turn end, an ask, an idle notice, a session end and a session start (with its source).
+// The fold does not move on a session start: the reading stays as it was, and the time of the newest one is read through RunSessionState.SessionStartAt, zero when none.
 // SessionFold reduces the signals in file order, with facts the caller reads, to one state: busy, idle-done, idle-stalled, asking, dead or unknown, with a cause, a since time and the history of states passed through.
 // Precedence, first that applies: a process-ending session end; a process proven dead; liveness left unproven; an unreadable events file; no signal at all; otherwise the state the signals give.
 // A turn end reads busy while it reports background tasks, idle-done when the run's output files exist, asking for an interactive run, and idle-stalled otherwise.
