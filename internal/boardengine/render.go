@@ -257,7 +257,7 @@ func renderTasksSection(ordered []TaskWithLayer, designPrefix string, types []st
 func layerSection(layer string) readmeSection {
 	switch layer {
 	case "A":
-		return readmeSection{"Layer A", "Waits on nothing open; can start now, in parallel."}
+		return readmeSection{"Layer A", "Waits on nothing that is not running; next to start."}
 	case isolatedLayer:
 		return readmeSection{"Independent", "Depends on nothing and nothing depends on it, by design."}
 	default:
