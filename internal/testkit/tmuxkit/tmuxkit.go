@@ -3,6 +3,7 @@
 // A package's TestMain calls Main, which points `TMUX_TMPDIR` at a private directory, so no test reaches the caller's own tmux server or leaves a socket in the default directory.
 // Socket hands a single test a unique `-L` key and, when the test ends, kills its server and removes its socket file.
 // KillOnCleanup does the same for a key the test did not mint.
+// PackageServer hands every test of the package that names its own sessions, kills no server and asserts nothing about the whole session set one shared server, which Main's sweep kills.
 // Both first start a hermetic server on the key from the kit's own tmux config, so no server a test uses reads `~/.tmux.conf`, starts login-shell panes or exits when it has no session.
 // The config marks its servers with the user option `@lyx_test_server`, which reed's stale-holder probe reads to leave such a server alone.
 // Reed starts a server itself, carrying no such config, only after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
@@ -100,6 +101,30 @@ func Socket(t *testing.T, tmux string) string {
 	return key
 }
 
+// PackageServer returns the `-L` key of one hermetic server shared by every test of the package that calls it, started on first use.
+// It is for a test that names its own sessions, kills no server and asserts nothing about the server's whole session set.
+// It registers no cleanup: Main's sweep kills every server under the kit's directory when the package ends.
+// tmux is the binary to run.
+func PackageServer(t *testing.T, tmux string) string {
+	t.Helper()
+	packageServerOnce.Do(func() {
+		var b [8]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			t.Fatalf("tmuxkit: random socket key: %v", err)
+		}
+		key := "lyxpkg-" + hex.EncodeToString(b[:])
+		registerKey(key)
+		if err := startServer(tmux, key); err != nil {
+			t.Fatalf("tmuxkit: %v", err)
+		}
+		packageServerKey = key
+	})
+	if packageServerKey == "" {
+		t.Fatal("tmuxkit: the package server failed to start in an earlier test")
+	}
+	return packageServerKey
+}
+
 // KillOnCleanup pre-starts a hermetic server on the `-L` key key, registers the key, and registers in t.Cleanup a `kill-server` on it, then the removal of that key's socket file.
 // It is the helper for a key a test did not mint itself, such as a `reedengine.ServerName` key of a fixture hub.
 // The server reads the kit's own config instead of `~/.tmux.conf`, starts non-login panes, and survives having no session; a start failure fails the test.
@@ -130,6 +155,11 @@ var (
 	registryMu sync.Mutex
 	// registeredKeys holds every `-L` key a test registered with the kit, for the end-of-package check.
 	registeredKeys = map[string]bool{}
+
+	// packageServerOnce guards the start of the key PackageServer hands out.
+	packageServerOnce sync.Once
+	// packageServerKey is the `-L` key of the package's shared server, empty until PackageServer starts it.
+	packageServerKey string
 
 	configOnce sync.Once
 	configPath string

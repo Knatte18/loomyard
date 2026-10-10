@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
@@ -51,6 +52,7 @@ func TestSmokeLifecycle(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	prime := h.PrimeWorktree()
 	deferHubRelease(t, prime)
+	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLIIn(prime, &buf, []string{"down"})
@@ -513,7 +515,7 @@ func TestSmokeLifecycle(t *testing.T) {
 // TestRemoveStrand_SoleStrandEmptiesSessionSucceeds (contract_integration_test.go), so running this
 // real-tmux-session variant there too would be redundant.
 func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
-	tmuxBinaryPath(t)
+	tmuxPath := tmuxBinaryPath(t)
 
 	// Windows-only for coverage economy, not because this backend behaves
 	// differently (see the doc comment above): the equivalent
@@ -526,6 +528,7 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.PrimeWorktree())
+	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
@@ -602,6 +605,7 @@ func TestSmokeUpRefusesAWorktreeNameTmuxWouldRewrite(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	prime := h.PrimeWorktree()
 	deferHubRelease(t, prime)
+	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLIIn(prime, &buf, []string{"down"})

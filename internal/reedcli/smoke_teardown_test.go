@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // TestSmokeTeardown runs the teardown claims against one hub, each step bringing up its own session on the prime worktree and ending with that session down, so the next step starts from the same cold state.
@@ -22,6 +24,7 @@ func TestSmokeTeardown(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	prime := h.PrimeWorktree()
 	deferHubRelease(t, prime)
+	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLIIn(prime, &buf, []string{"down"})

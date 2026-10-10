@@ -41,6 +41,7 @@ func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.Path)
+	registerReedServer(t, h)
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
@@ -98,6 +99,7 @@ func TestSmokeGuardrailQuestionHoldsRunUntilAnswered(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.Path)
+	registerReedServer(t, h)
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer

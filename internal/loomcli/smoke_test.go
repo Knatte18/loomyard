@@ -45,6 +45,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // tmuxBinaryPath returns the tmux binary path from the environment or resolved via PATH, skipping
@@ -75,6 +76,12 @@ func tmuxBinaryPath(t *testing.T) string {
 // either -- that key reaches the worktree-level watch goroutine, never the process start.
 func registerBootstrapTeardown(t *testing.T, loc *lyxcwd.Location, worktree string) {
 	t.Helper()
+	reedGeom, err := hubgeom.ReedGeometry(loc)
+	if err != nil {
+		t.Fatalf("reed geometry: %v", err)
+	}
+	// Registered before the first boot, so reed's boot finds the kit's hermetic server on the hub's key; the kill and socket-file removal run after the teardown below.
+	tmuxkit.KillOnCleanup(t, tmuxBinaryPath(t), reedGeom.SocketKey)
 	t.Cleanup(func() {
 		for _, pid := range findDriverPIDs(worktree) {
 			_ = proc.KillPID(pid)

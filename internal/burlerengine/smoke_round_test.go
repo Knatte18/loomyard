@@ -41,6 +41,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // smokePwshPath is the PowerShell 7 binary the smoke helpers shell out to
@@ -256,6 +257,7 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.Path)
+	registerReedServer(t, h)
 	seedHubStencils(t, h.Location.HubPath)
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
@@ -354,4 +356,14 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	if strings.TrimSpace(string(fixerReport)) == "" {
 		t.Errorf("fixer report is empty; want a non-empty account of what was fixed")
 	}
+}
+
+// registerReedServer registers the hub's reed socket key with tmuxkit before the test's first reed boot, so the boot finds the kit's hermetic server.
+func registerReedServer(t *testing.T, h *hubforge.Hub) {
+	t.Helper()
+	reedCfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
+	if err != nil {
+		t.Fatalf("load reed config: %v", err)
+	}
+	tmuxkit.KillOnCleanup(t, reedCfg.Tmux, reedengine.ServerName(h.Path))
 }

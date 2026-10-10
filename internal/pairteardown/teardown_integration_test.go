@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // livePair is a hub pair with a reed session in its task worktree and a stub driver strand in it.
@@ -119,6 +120,7 @@ func TestRun_TeardownScenario(t *testing.T) {
 	if _, err := exec.LookPath(cfg.Tmux); err != nil {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
+	tmuxkit.KillOnCleanup(t, cfg.Tmux, reedengine.ServerName(h.Path))
 
 	steps := []struct {
 		name string

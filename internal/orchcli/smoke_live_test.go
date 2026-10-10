@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -101,6 +102,8 @@ func newLiveFixture(t *testing.T, orchCfg string, extraCfg map[string]string) *l
 		t.Fatalf("reed geometry: %v", err)
 	}
 	reed := reedengine.New(reedCfg, reedGeom)
+	// Registered before the first boot, so reed's boot finds the kit's hermetic server on the hub's key.
+	tmuxkit.KillOnCleanup(t, reedCfg.Tmux, reedGeom.SocketKey)
 	shuttleCfg, err := shuttleengine.LoadConfig(prime, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)

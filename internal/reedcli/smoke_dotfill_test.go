@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
@@ -156,10 +157,11 @@ func newDotFillHarness(t *testing.T, cols, rows int) *dotFillHarness {
 	// Its mechanical consequence is that resizeSignalHookCommand answers "", so reed's window-resized array holds the resize-pane pins and no signal entry — the array shape every rewrite and readback helper below is written against.
 	t.Setenv("LYX_REED_WATCHDOG", "off")
 
-	tmuxBinaryPath(t)
+	tmuxPath := tmuxBinaryPath(t)
 	h := hubforge.NewHub(t, ".")
 	worktree := h.PrimeWorktree()
 	deferHubRelease(t, worktree)
+	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLIIn(worktree, &buf, []string{"down"})
@@ -329,10 +331,11 @@ func TestSmokeDotFill(t *testing.T) {
 	// Its mechanical consequence is that resizeSignalHookCommand answers "", so reed's window-resized array holds the resize-pane pins and no signal entry — the array shape every rewrite and readback helper below is written against.
 	t.Setenv("LYX_REED_WATCHDOG", "off")
 
-	tmuxBinaryPath(t)
+	tmuxPath := tmuxBinaryPath(t)
 	hub := hubforge.NewHub(t, ".")
 	prime := hub.PrimeWorktree()
 	deferHubRelease(t, prime)
+	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(hub.Path))
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLIIn(prime, &buf, []string{"down"})

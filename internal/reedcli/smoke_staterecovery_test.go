@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // statusStrandLive returns whether guid is reported live by `status` run in cwd, and fails the test
@@ -118,6 +119,7 @@ func TestSmokeStateRecovery(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	prime := h.PrimeWorktree()
 	deferHubRelease(t, prime)
+	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	primeStatePath := filepath.Join(prime, ".lyx", "reed.json")
 
 	// downPrime registers a best-effort teardown of the prime worktree's session for the calling step.

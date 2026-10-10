@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // reapFixture is the tagged reap tier's shared shape: a hub built through hubforge, the booted sessions of the prime worktree and one pair worktree (prime first), and the tmux binary they share.
@@ -121,6 +122,11 @@ func TestWatchdogReap(t *testing.T) {
 	t.Parallel()
 	h := hubforge.NewHub(t, ".")
 	socket := reedengine.ServerName(h.Path)
+	cfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	tmuxkit.KillOnCleanup(t, watchdogIntegrationTmux(t, cfg), socket)
 	primeEng := watchdogIntegrationEngine(t, h.PrimeWorktree())
 
 	// EndToEndAndSiblingSurvives boots a pair session next to the prime session, orphans the pair, drives the loop with compressed timing, and asserts in one step that the orphan is fully reaped (session gone, pane processes confirmed exited) while the healthy sibling on the same hub socket is untouched — a broken exact-match kill target takes out the prefix-sharing sibling, and that must fail loudly in the same run that proves the reap works.

@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // selvagePaneID reads the persisted SelvagePaneID for worktree, failing the test if it is empty —
@@ -44,6 +45,7 @@ func TestSmokeSelvage(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	prime := h.PrimeWorktree()
 	deferHubRelease(t, prime)
+	tmuxkit.KillOnCleanup(t, tmuxPath, reedengine.ServerName(h.Path))
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLIIn(prime, &buf, []string{"down"})

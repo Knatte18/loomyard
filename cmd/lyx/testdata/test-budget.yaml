@@ -111,7 +111,7 @@ internal/testkit/scankit: 10
 internal/testkit/shedfake: 9
 internal/testkit/shuttlefake: 8
 internal/testkit/stencilkit: 3
-internal/testkit/tmuxkit: 11
+internal/testkit/tmuxkit: 12
 internal/treadleengine: 34
 internal/verifyrun: 4
 internal/verifytree: 6

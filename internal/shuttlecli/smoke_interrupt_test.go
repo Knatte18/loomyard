@@ -51,6 +51,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // midTurnActivityThreshold is how many pane-capture changes (across polls of
@@ -235,6 +236,7 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.Path)
+	registerReedServer(t, h)
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
@@ -328,4 +330,14 @@ func newSmokeRunner(t *testing.T) (*shuttleengine.Runner, shuttleengine.Engine, 
 	engine := claudeengine.New()
 	runner := shuttleengine.NewRunner(reedEngine, engine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	return runner, engine, reedEngine, shuttleCfg
+}
+
+// registerReedServer registers the hub's reed socket key with tmuxkit before the test's first reed boot, so the boot finds the kit's hermetic server.
+func registerReedServer(t *testing.T, h *hubforge.Hub) {
+	t.Helper()
+	reedCfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
+	if err != nil {
+		t.Fatalf("reedengine.LoadConfig: %v", err)
+	}
+	tmuxkit.KillOnCleanup(t, reedCfg.Tmux, reedengine.ServerName(h.Path))
 }

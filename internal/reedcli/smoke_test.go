@@ -166,7 +166,7 @@ func socketAndSessionIn(t *testing.T, cwd string) (socket, session string) {
 	if socket == "" || session == "" {
 		t.Fatalf("status result missing socket/session: %v", result)
 	}
-	// The reed server's key is the hub's, not one the test minted, so its kill and socket-file removal are registered here.
+	// A no-op for a test that already registered the hub's key before its first boot, which is the one that makes the server hermetic; this late call covers one that did not.
 	tmuxkit.KillOnCleanup(t, tmuxBinaryPath(t), socket)
 	return socket, session
 }

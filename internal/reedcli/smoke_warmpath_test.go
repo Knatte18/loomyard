@@ -66,6 +66,8 @@ func TestSmokeWarmPath(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	worktree := h.PrimeWorktree()
 	deferHubRelease(t, worktree)
+	socket := reedengine.ServerName(h.Path)
+	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLIIn(worktree, &buf, []string{"down"})
@@ -77,8 +79,6 @@ func TestSmokeWarmPath(t *testing.T) {
 	}
 	guid := addStrandIn(t, worktree, smokeReapLaunchCmd(), "--name", "warm-strand")
 
-	socket := reedengine.ServerName(h.Path)
-	tmuxkit.KillOnCleanup(t, tmuxPath, socket)
 	session := reedengine.SessionName(worktree)
 	statePath := filepath.Join(worktree, ".lyx", "reed.json")
 

@@ -20,7 +20,12 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 ## tmux socket files
 
 - A test that starts a tmux server takes its `-L` key from `tmuxkit`: `Socket` mints one, and `KillOnCleanup` covers a key the test did not mint, such as a `reedengine.ServerName` key of a fixture hub.
-- Both run `kill-server` at cleanup and then remove that key's socket file, so a run leaves none behind.
+- `PackageServer` returns one key per test binary, with a hermetic server started on first use and no cleanup of its own, because `Main`'s sweep kills every server under the kit's directory.
+  A test takes it only when it names its own sessions, kills no server and asserts nothing about the server's whole session set; a test that drives reed through a hub keeps the hub's `reedengine.ServerName` key, and a test that runs `Down` or `kill-server`, or compares `list-sessions` to an exact set, keeps `Socket`.
+- A `tmux`- or `llm`-tier test that boots reed registers its key through `KillOnCleanup` where the key is known and before the first `Up`, `EnsureSession`, `Resume` or `lyx` run that arms reed, so reed's boot finds the hermetic server.
+  The registration sits in the `tmux`- or `llm`-constrained file or a helper only such files compile, never in a helper an `integration` build shares, since that would start a server in tier 2.
+  A test that asserts on the log files of a server reed starts itself registers its key after its first boot instead.
+- Both `Socket` and `KillOnCleanup` run `kill-server` at cleanup and then remove that key's socket file, so a run leaves none behind.
   The removal touches only the one path for the key, under the current `TMUX_TMPDIR`'s per-user directory, and only a socket that refuses connections.
 - A test that builds a subprocess environment from scratch passes `TMUX_TMPDIR` through, so the subprocess's tmux lands in the isolated directory.
 - Bound: socket files already in `/tmp/tmux-$UID/` from earlier runs are not cleaned.

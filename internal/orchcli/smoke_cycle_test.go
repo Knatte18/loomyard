@@ -32,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // smokeRun runs exe with args in dir, bounded by timeout, and returns the combined output and exit code.
@@ -174,7 +175,6 @@ func TestSmokeOrch_OneFullCycle(t *testing.T) {
 			t.Skip("tmux not found on PATH; set LYX_LOOM_TMUX to override")
 		}
 	}
-	_ = tmuxPath
 	llmkit.Claude(t, "LYX_SHUTTLE_CLAUDE")
 
 	exe := lyxbin.Build(t)
@@ -199,6 +199,7 @@ func TestSmokeOrch_OneFullCycle(t *testing.T) {
 		t.Fatalf("reed geometry: %v", err)
 	}
 	reed := reedengine.New(reedCfg, reedGeom)
+	tmuxkit.KillOnCleanup(t, tmuxPath, reedGeom.SocketKey)
 	shuttleCfg, err := shuttleengine.LoadConfig(prime, "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)

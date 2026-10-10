@@ -188,3 +188,21 @@ func TestSocket_StartsHermeticNonLoginServer(t *testing.T) {
 		}
 	}
 }
+
+func TestPackageServer_OneKeyPerBinary(t *testing.T) {
+	tmux := requireTmux(t)
+
+	first := PackageServer(t, tmux)
+	if second := PackageServer(t, tmux); second != first {
+		t.Errorf("second call returned key %q; want the first call's %q", second, first)
+	}
+	if out, err := exec.Command(tmux, "-L", first, "list-sessions").CombinedOutput(); err != nil && !strings.Contains(string(out), "no sessions") {
+		t.Errorf("package server does not answer list-sessions: %v\n%s", err, out)
+	}
+	registryMu.Lock()
+	registered := registeredKeys[first]
+	registryMu.Unlock()
+	if !registered {
+		t.Errorf("package server key %q is not registered", first)
+	}
+}

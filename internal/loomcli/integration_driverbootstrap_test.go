@@ -40,6 +40,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -134,6 +135,7 @@ func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.
 	const slug = "loom-integration-driver-task"
 	hubforge.AddPair(t, h, slug)
 	worktree := h.PairCodeWorktree(slug)
+	tmuxkit.KillOnCleanup(t, tmuxBinaryPath(t), reedengine.ServerName(h.Path))
 
 	loc, err := lyxcwd.Resolve(worktree)
 	if err != nil {
