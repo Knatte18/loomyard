@@ -1,6 +1,6 @@
 # Refusal contract: every refusal and its way forward
 
-> **Status: Contract — kept on landing.** This is the table of refusals that `lyx webster`, `lyx shed` and `lyx loom` can reach, each with the way forward its message names, a durable reference doc, not deleted on landing.
+> **Status: Contract — kept on landing.** This is the table of refusals that `lyx webster`, `lyx shed`, `lyx loom` and `lyx gate` can reach, each with the way forward its message names, a durable reference doc, not deleted on landing.
 > It is the lookup the loom driver and the operator use for an escalation, and it is plain markdown, not registered in `contracts/specs/specs.go`.
 
 ## What a way forward is
@@ -150,6 +150,7 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | overview frame unreadable | `rebaseline` or a verb restamping the plan baseline cannot read `00-overview.md`, or finds it without its Card Index, after the verb parsed the plan, because the file changed between the reads | transient | transient, re-run `lyx webster rebaseline` with the same `--card` flags; a restamp names re-running the verb |
 | Merriam start base unreadable | a verb forming the batch partition cannot read a present `CLAUDE.md` or `CLAUDE.local.md`, the Master stencil, the PATTERN directive or `00-overview.md` to compute Merriam's start base | transient | transient, re-run the verb |
 | recover-batch: uncommitted paths unreadable | `recover-batch` cannot list the worktree's uncommitted paths for the recovery prompt, or cannot audit the run's sessions or resolve their written paths to tell which of them the run wrote | transient | transient, re-run `lyx webster recover-batch NN` |
+| gate slot: gate.yaml absent or invalid | the verify gate, `lyx webster verify` or the card-verify rerun cannot acquire a gate slot because the hub's `gate.yaml` is absent, does not parse or holds a value below 1; the rerun reports it as a failing card line | correctness halt | run "lyx fabric reconcile" for an absent file, or fix the file with "lyx config gate" from the prime, then re-run the verb (re-step the Webster row) |
 | strand spawn: no shortname | a strand spawn on a hub whose `.lyx-shortname` records no shortname | correctness halt | `lyx fabric shortname <shortname>` records it, then retry |
 | strand spawn: worktree name not a slug | a strand spawn in a worktree whose name does not fit the name grammar | correctness halt | `lyx fabric add <slug>` creates the task under a slug that fits |
 | wiring guards | nil deps, empty paths and an invalid batcher or geometry, unreachable from any on-disk state a run can produce | wiring guard | none per row; grouped |
@@ -181,6 +182,8 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 | seed refuses here | the seed verb runs outside the worktree the recipe drives | correctness halt | run `lyx shed seed` from the worktree the recipe drives, which the cause names |
 | strand spawn: no shortname | a producer's strand spawn on a hub whose `.lyx-shortname` records no shortname | correctness halt | `lyx fabric shortname <shortname>` records it, then retry |
 | strand spawn: worktree name not a slug | a producer's strand spawn in a worktree whose name does not fit the name grammar | correctness halt | `lyx fabric add <slug>` creates the task under a slug that fits |
+| seat strand name held | a `MultiLLM` row's chair starts under a numbered strand name because an earlier strand still holds its own, so its advisors could not address it; the misnamed strand is stopped, and an advisor in the same case is recorded as not started while the step goes on without it | correctness halt | run "lyx reed remove --name <name>", then re-step the row |
+| seat not stopped | a `MultiLLM` row cannot stop a seat's strand: a misnamed seat at start, a started advisor when the step ends or fails to start its chair, or a chair whose wait errored | transient | run "lyx reed remove <guid>", then re-step the row |
 | llm driver without bootstrap | `--driver llm` on a recipe with no bootstrap verb | correctness halt | re-run with `--driver go` |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
 | raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed or lock file fails | transient | re-run the refused verb; nothing is mutated |
@@ -266,17 +269,33 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | plan-write archive: webster busy | Plan-Write's rotation archives webster's run record before moving the prior plan and finds a webster run holding its run lock | transient | wait for the run to finish, then re-step |
 | rework archive: webster busy | PR-Rework's archive of webster's run record finds a webster run holding its run lock | transient | wait for the run to finish, then re-step |
 | Webster-Burler verify gate exhausted | the Webster-Burler round's verify gate still fails after its recipe `attempts`, because its tests fail, the round added a fixed-column-wrapped comment line, or a test file carries a misplaced `//lyx:guard` marker | correctness halt | the round's Burler returns to its own recovery per the recipe; fix the failing tests on the task branch and check them with `lyx webster verify`, rewrap the comment lines `lyx loom lint-comments` names, or move the marker directly above its `func Test…` line, then re-step the row |
+| gate slot: gate.yaml absent or invalid | the Webster-Burler round gate, Publish's or Finalize's verify cannot acquire a gate slot because the hub's `gate.yaml` is absent, does not parse or holds a value below 1 | correctness halt | run "lyx fabric reconcile" for an absent file, or fix the file with "lyx config gate" from the prime, then re-step the row |
 | Publish or Finalize: dirty tree | the task worktree has uncommitted changes before or after the parent merge-in, or when the verify was about to run | correctness halt | commit or remove the named paths on the task branch, then resume (re-step the row); nothing is pushed or landed |
 | Publish: push rejected | the remote rejects the task branch's push, because the remote task branch holds commits the local branch lacks, or the remote task branch's tip could not be read to tell | correctness halt | run `git merge origin/<task-branch>` in the task worktree, then resume the run with `lyx loom start` |
 | Publish: push rejected by a remote rule | the remote rejects the task branch's push while the remote has no task branch or its task branch holds no commit the local branch lacks, because a remote hook or rule refuses it | correctness halt | clear what the remote's rule objects to, then resume the run with `lyx loom start` |
 | merge conflict session: untracked file | the conflict session left an untracked file, which a merge commit never carries | correctness halt | the merge is aborted and the step stops Stuck naming the files; remove them or commit them as their own change on the task branch, then re-step the row |
 | producer re-run: superseded strand not removed | a producer row re-run finds a live strand of an earlier run of the same outputs and reed cannot remove it, or a BurlerRound row's half stays live because reed cannot stop it | transient | run "lyx reed remove <guid>", then re-step the row |
+| hub-wide config write refused | `lyx config` writes a `HubWide` module from a task pair's worktree, or from a session whose `LYX_STRAND_NAME` carries a slug; the hub file stays unchanged and no editor opens | correctness halt | the operator or the hub orch runs the same `lyx config` write from the prime worktree |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
 | raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed, lock or records file fails | transient | re-run the refused verb; nothing is mutated |
 
+## gate
+
+`lyx gate test` is the one verb.
+Its JSON error envelopes carry the way forward as a trailing `way forward:` clause, and a run that ends in go's own exit code is the verdict of the tests, not a refusal, so it has no row here.
+
+| Refusal | Trigger | Class | Way forward |
+|---|---|---|---|
+| no package argument | `lyx gate test` names no package, or only go test flags after `--` | correctness halt | run "lyx gate test <packages...>", for example "lyx gate test ./internal/foo" |
+| -C directory missing | `-C` names a directory that does not exist or is not a directory | correctness halt | pass an existing directory to -C |
+| slot busy | every gate slot stays held past the hub's `cli_wait_sec`; the verb exits 75 and the envelope names each holder's worktree and site | transient | re-run the same command |
+| gate.yaml absent | the hub has no `gate.yaml` | correctness halt | run "lyx fabric reconcile", then re-run the same command |
+| gate.yaml unreadable or invalid | the hub's `gate.yaml` cannot be read, does not parse, or holds a value below 1 | correctness halt | fix the file with "lyx config gate" from the prime, then re-run the same command |
+| raw I/O | the working directory or the worktree cannot be resolved, a slot cannot be acquired for a reason other than the wait bound, or go cannot be started | transient | re-run the same command, or put go on PATH when go cannot be started |
+
 ## Out of scope
 
-Landing, batten, orch, fabric, burler and board refusals are not in this table, except the verify-gate, dirty-tree, conflict-session and superseded-strand rows above;
+Landing, batten, orch, fabric, burler and board refusals are not in this table, except the verify-gate, dirty-tree, conflict-session, superseded-strand and hub-wide config write rows above;
 a later audit adds each as its own section.
 Burler's own round errors stay out too, as the strict review parse and the cluster audit already do:
 a skipped handoff, a changed review, and a failed removal or write of the ready marker each name the file concerned in their message and land no row.

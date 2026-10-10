@@ -38,16 +38,18 @@ func runCapture(t *testing.T) *bytes.Buffer {
 func TestRun(t *testing.T) {
 	t.Parallel()
 
-	workingDirectory := "pwd"
+	workingDirectory, echoVariable := "pwd", "echo $VERIFYRUN_TOLD_VARIABLE"
 	if runtime.GOOS == "windows" {
-		workingDirectory = "cd"
+		workingDirectory, echoVariable = "cd", "echo %VERIFYRUN_TOLD_VARIABLE%"
 	}
 
 	tests := []struct {
 		name    string
 		command string
 		// discard sends the output to io.Discard instead of a buffer.
-		discard    bool
+		discard bool
+		// env is the told environment; nil runs with the parent's.
+		env        []string
 		wantCode   int
 		wantOutput []string
 		// wantOutputIsDir expects the whole trimmed output to be the working directory instead.
@@ -57,6 +59,12 @@ func TestRun(t *testing.T) {
 			name:       "passing command captures both streams",
 			command:    "echo to-stdout && echo to-stderr 1>&2",
 			wantOutput: []string{"to-stdout", "to-stderr"},
+		},
+		{
+			name:       "a variable set only in the told environment reaches the shell",
+			command:    echoVariable,
+			env:        append(os.Environ(), "VERIFYRUN_TOLD_VARIABLE=from-told-env"),
+			wantOutput: []string{"from-told-env"},
 		},
 		{name: "non-zero exit into a buffer", command: "exit 3", wantCode: 3},
 		{name: "non-zero exit with output discarded", command: "exit 3", discard: true, wantCode: 3},
@@ -80,7 +88,7 @@ func TestRun(t *testing.T) {
 				sink = io.Discard
 			}
 
-			code, err := Run(context.Background(), tt.command, dir, sink)
+			code, err := Run(context.Background(), tt.command, dir, tt.env, sink)
 
 			if err != nil || code != tt.wantCode {
 				t.Fatalf("Run = (%d, %v); want (%d, nil)", code, err, tt.wantCode)
@@ -103,7 +111,7 @@ func TestRun_SpawnFailure(t *testing.T) {
 	buf := runCapture(t)
 	t.Setenv("PATH", "")
 
-	code, err := Run(context.Background(), "true", t.TempDir(), &bytes.Buffer{})
+	code, err := Run(context.Background(), "true", t.TempDir(), nil, &bytes.Buffer{})
 	if err == nil || code != -1 {
 		t.Fatalf("Run = (%d, %v); want (-1, non-nil)", code, err)
 	}
@@ -126,7 +134,7 @@ func TestRun_ExpiryKillsBackgroundedDescendant(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	code, err := run(ctx, command, dir, &bytes.Buffer{}, 200*time.Millisecond)
+	code, err := run(ctx, command, dir, nil, &bytes.Buffer{}, 200*time.Millisecond)
 	if !errors.Is(err, context.DeadlineExceeded) || code != -1 {
 		t.Fatalf("run = (%d, %v); want (-1, context.DeadlineExceeded)", code, err)
 	}
@@ -167,7 +175,7 @@ func TestRun_Cancellation(t *testing.T) {
 
 	const delay = 500 * time.Millisecond
 	start := time.Now()
-	code, err := run(ctx, long, t.TempDir(), &bytes.Buffer{}, delay)
+	code, err := run(ctx, long, t.TempDir(), nil, &bytes.Buffer{}, delay)
 	if !errors.Is(err, context.Canceled) || code != -1 {
 		t.Fatalf("run = (%d, %v); want (-1, context.Canceled)", code, err)
 	}

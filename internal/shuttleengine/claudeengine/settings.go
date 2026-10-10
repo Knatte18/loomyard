@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -41,12 +43,42 @@ const steerPythonDeny = "lyx agents never run Python; edit files with Edit or Wr
 // noticePythonDeny announces the python deny in the same wording as its steer.
 const noticePythonDeny = steerPythonDeny + "."
 
-// pythonCommandPattern is the grep -E pattern the python deny matches against the raw PreToolUse payload JSON.
-// It matches python, python3 or python3.<minor>, optionally path-prefixed, as a whole word in command position:
+// commandPositionPattern is the grep -E prefix that puts the pattern after it in command position of the raw PreToolUse payload JSON, with an optional path prefix:
 // right after the "command" key's opening quote, after a JSON-escaped newline, after ; & | ( or a backtick (which also covers $( ),
 // or after one of env, exec, xargs, sudo, time.
-// The shell single quotes around it forbid a single quote in the pattern.
-const pythonCommandPattern = `("command"[[:space:]]*:[[:space:]]*"|\\n|[;&|(` + "`" + `]|(^|[^A-Za-z0-9_-])(env|exec|xargs|sudo|time)[[:space:]]+)[[:space:]]*([^[:space:]"\\;&|()` + "`" + `]*/)?python(3(\.[0-9]+)?)?([^A-Za-z0-9_./-]|$)`
+// The shell single quotes around the patterns built on it forbid a single quote in them.
+const commandPositionPattern = `("command"[[:space:]]*:[[:space:]]*"|\\n|[;&|(` + "`" + `]|(^|[^A-Za-z0-9_-])(env|exec|xargs|sudo|time)[[:space:]]+)[[:space:]]*([^[:space:]"\\;&|()` + "`" + `]*/)?`
+
+// pythonCommandPattern is the grep -E pattern the python deny matches against the raw PreToolUse payload JSON.
+// It matches python, python3 or python3.<minor>, optionally path-prefixed, as a whole word in command position.
+const pythonCommandPattern = commandPositionPattern + `python(3(\.[0-9]+)?)?([^A-Za-z0-9_./-]|$)`
+
+// steerRawGoDeny refuses a Bash go run that bypasses the gate slots; it must contain no single/double quote or backslash (checked at init).
+const steerRawGoDeny = "raw module-wide, tmux-tier and llm-tier go runs are refused here. Run the package-scoped command through lyx gate test as a background Bash call, for example lyx gate test ./internal/x, and use its --tags flag for a tag. The slot and strand environment variables belong to lyx, and a command naming either is refused"
+
+// noticeRawGoDeny announces the raw go deny in the same wording as its steer.
+const noticeRawGoDeny = steerRawGoDeny + "."
+
+// goSubcommandPattern is the grep -E prefix of a go test, build or vet command: go in command position directly before the subcommand, with an optional -C <dir> between them, then whitespace.
+const goSubcommandPattern = commandPositionPattern + `go[[:space:]]+(-C[[:space:]=]+[^[:space:]]+[[:space:]]+)?`
+
+// goArgumentsPattern matches the rest of a command line after a go subcommand and ends on whitespace: anything up to the next separator or JSON-escaped newline.
+const goArgumentsPattern = `(([^;&|\\]|\\[^n])*[[:space:]])?`
+
+// goWordPattern matches the characters of one command-line word.
+const goWordPattern = `[^[:space:]"\\;&|()` + "`" + `]*`
+
+// rawGoCommandPattern is the grep -E pattern the raw go deny matches against the raw PreToolUse payload JSON.
+// It matches three shapes.
+// A go test, build or vet whose arguments include a word holding ... or the word all.
+// A go test whose -tags value names tmux or llm.
+// Any command naming the slot-inheritance variable or the strand-name variable.
+// It sees static text only, so it is a guardrail and not a barrier:
+// a run hidden behind a script, bash -c, a cd plus a relative pattern it does not cover, or a shell variable passes, as does any raw package-scoped go test.
+// It falsely denies a matching spelling inside a quoted argument, a commit message or a grep.
+const rawGoCommandPattern = `(` + goSubcommandPattern + `(test|build|vet)[[:space:]]` + goArgumentsPattern + `(` + goWordPattern + `\.\.\.` + goWordPattern + `|all)([[:space:]"\\;&|()` + "`" + `]|$))` +
+	`|(` + goSubcommandPattern + `test[[:space:]]` + goArgumentsPattern + `-{1,2}tags[[:space:]=]+[^[:space:];&|]*(tmux|llm))` +
+	`|` + gateslot.InheritEnv + `|` + agentname.StrandNameEnv
 
 // noticeAgentDeny announces the Agent deny in a non-fork run;
 // it must hold for every session that receives it.
@@ -176,6 +208,16 @@ var standingDenies = []standingDeny{
 		steer:     steerPythonDeny,
 		notice:    noticePythonDeny,
 		installed: func(in denyInputs) bool { return in.cfg.ClaudeDenyPython },
+	},
+	{
+		// Installed for every run, the orch included, so no session reaches the gate slots around lyx gate test.
+		// A guardrail, not a barrier: rawGoCommandPattern states what it lets through and what it falsely denies.
+		// Ending with `; true` guarantees exit 0 so a non-match allows the call.
+		matcher:   "Bash",
+		command:   "grep -Eq '" + rawGoCommandPattern + "' && echo '" + denyJSON(steerRawGoDeny) + "'; true",
+		steer:     steerRawGoDeny,
+		notice:    noticeRawGoDeny,
+		installed: func(denyInputs) bool { return true },
 	},
 }
 

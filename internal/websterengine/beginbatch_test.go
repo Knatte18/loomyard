@@ -387,7 +387,7 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 			want:    []string{"none (first batch)"},
 		},
 		{
-			name: "each card carries its gate command",
+			name: "each card carries its gate steps",
 			prepare: func(t *testing.T, fx *beginFixture) {
 				if err := os.MkdirAll(filepath.Join(fx.Worktree, "internal", "alpha"), 0o755); err != nil {
 					t.Fatalf("mkdir: %v", err)
@@ -397,7 +397,7 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 				}
 			},
 			number: 1,
-			want:   []string{"`go build ./... && go test ./... && go test -tags integration ./internal/alpha && lyx loom lint-comments`"},
+			want:   []string{"  - `lyx gate test ./internal/alpha`\n  - `lyx loom lint-comments`"},
 		},
 	}
 	for _, tt := range tests {

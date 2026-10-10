@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/burlermarker"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -75,6 +76,7 @@ var pathRules = []pathRule{
 
 	{name: "websterengine.ScratchDir", class: classTransient, mirrors: "websterengine.Dir", path: func(l *lyxcwd.Location) string { return websterengine.ScratchDir(l.AnchorPath()) }},
 	{name: "websterengine.PromptsDir", class: classTransient, path: func(l *lyxcwd.Location) string { return websterengine.PromptsDir(l.AnchorPath()) }},
+	{name: "gateslot.WaitDir", class: classTransient, path: func(l *lyxcwd.Location) string { return gateslot.WaitDir(l.AnchorPath()) }},
 	{name: "verifytree.Dir", class: classTransient, path: func(l *lyxcwd.Location) string { return verifytree.Dir(l.AnchorPath()) }},
 	{name: "shedrun.StatusLock", class: classTransient, path: func(l *lyxcwd.Location) string { return shedrun.StatusLock(l, shedrun.SelfRunID) }},
 	{name: "shedrun.RunLock", class: classTransient, path: func(l *lyxcwd.Location) string { return shedrun.RunLock(l, shedrun.SelfRunID) }},
@@ -102,6 +104,8 @@ var pathRules = []pathRule{
 
 	// HubLogsDir is hub-anchored through the board, so one reed server per hub resolves to one place.
 	{name: "fabricengine.HubLogsDir", class: classHub, path: func(l *lyxcwd.Location) string { return fabricengine.HubLogsDir(l.HubPath) }},
+	// gateslot.Dir is hub-wide like HubLogsDir, over the location's board dir.
+	{name: "gateslot.Dir", class: classHub, path: func(l *lyxcwd.Location) string { return gateslot.Dir(fabricengine.BoardDir(l.HubPath)) }},
 }
 
 // under reports whether path is root or lies beneath it, by whole path segments.

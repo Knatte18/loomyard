@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -32,32 +33,37 @@ import (
 
 // nilLegal holds the dotted paths NilSeams skips: seams whose nil is a documented default rather than a missing wiring.
 var nilLegal = map[string]bool{
-	"Now":                                              true,
-	"Landing.CommitStatus":                             true,
-	"Landing.MarkTaskDone":                             true,
-	"Landing.ConfigChanges":                            true,
-	"Landing.Notify":                                   true,
-	"Landing.VerifyCommand":                            true,
-	"Landing.VerifyWaitMark":                           true,
-	"Landing.Registry":                                 true,
-	"ParentReview.Store":                               true,
-	"ParentReview.ReviewerLive":                        true,
-	"ParentReview.RenderDelivery":                      true,
-	"ParentReview.RenderBrief":                         true,
-	"WebsterDeps.Batcher":                              true,
-	"WebsterDeps.Roles":                                true,
-	"WebsterDeps.ParentBranch":                         true,
-	"WebsterDeps.Geom.Git":                             true,
+	"Now":                         true,
+	"GateSlots":                   true,
+	"PublishFailure":              true,
+	"Landing.CommitStatus":        true,
+	"Landing.MarkTaskDone":        true,
+	"Landing.ConfigChanges":       true,
+	"Landing.Notify":              true,
+	"Landing.VerifyCommand":       true,
+	"Landing.VerifyWaitMark":      true,
+	"Landing.GateSlots":           true,
+	"Landing.FailingTests":        true,
+	"Landing.Registry":            true,
+	"ParentReview.Store":          true,
+	"ParentReview.ReviewerLive":   true,
+	"ParentReview.RenderDelivery": true,
+	"ParentReview.RenderBrief":    true,
+	"WebsterDeps.Batcher":         true,
+	"WebsterDeps.Roles":           true,
+	"WebsterDeps.ParentBranch":    true,
+	"WebsterDeps.Geom.Git":        true,
+	"WebsterDeps.Geom.GateSlots":  true,
 	"WebsterDeps.ShuttleCfg.ClaudePromptCacheTTLRoles": true,
-	"InnerRun.Sleep":                                   true,
-	"InnerRun.ReviewWait":                              true,
-	"InnerRun.Now":                                     true,
-	"InnerRun.Notify":                                  true,
-	"InnerRun.AttachDir":                               true,
-	"PrimeLock.Sleep":                                  true,
-	"SegmentBounces":                                   true,
-	"RowReviewModels":                                  true,
-	"RowClusterFans":                                   true,
+	"InnerRun.Sleep":      true,
+	"InnerRun.ReviewWait": true,
+	"InnerRun.Now":        true,
+	"InnerRun.Notify":     true,
+	"InnerRun.AttachDir":  true,
+	"PrimeLock.Sleep":     true,
+	"SegmentBounces":      true,
+	"RowReviewModels":     true,
+	"RowClusterFans":      true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
@@ -147,6 +153,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		DescriptionPath:    filepath.Join(dir, "description.md"),
 		Shuttle:            &shedfake.Shuttle{},
 		Burler:             &shedfake.BurlerRunner{},
+		Seats:              &shedfake.SeatRunner{},
+		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 			return websterengine.RunResult{}, nil
 		},

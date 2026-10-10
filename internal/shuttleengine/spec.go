@@ -86,6 +86,9 @@ type Spec struct {
 	// The Agent tool deny and the python deny are included in both modes.
 	// Each deny is still individually toggleable via the shuttle config's claude_deny_agent_tool, claude_deny_ask_user_question and claude_deny_python keys.
 	Interactive bool
+	// QuietHold skips the held-turn parent notice alone.
+	// The hold itself, the wait mark, the deadline and attach behaviour are unchanged.
+	QuietHold bool
 	// Segment is the loom segment the spawning module names for its role.
 	// It is forwarded to reed, which resolves the segment's palette color for the strand's bar button and border,
 	// and shuttle types the provider's color command for that color after startup.

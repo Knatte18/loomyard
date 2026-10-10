@@ -287,8 +287,8 @@ func reconcileFabricResult(boardDir, primeBaseDir string, apply bool) (Result, e
 }
 
 // TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate pins which input each hub-wide module's
-// reconcile starts from: a present hub file is never replaced, an absent board.yaml is seeded from the
-// prime's copy when it has one, and an absent fabric.yaml never reads the prime.
+// reconcile starts from:
+// a present hub file is never replaced, an absent board.yaml or landing.yaml is seeded from the prime's copy when it has one, and an absent fabric.yaml never reads the prime.
 func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 	const primeBoard = "types:\n  spike: A time-boxed investigation\nlabels:\n  area-x: Area X\n"
 	const hubBoard = "readme: README.md\ndesign_prefix: design-\ntypes:\n  bug: Hub bug\nlabels: {}\n"
@@ -326,6 +326,19 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			wantSeed:     SeedHub,
 			wantContains: []string{"bug: Hub bug"},
 			wantAbsent:   []string{"spike:", "area-x:"},
+		},
+		{
+			name:         "landing absent with a prime copy is seeded from the prime",
+			module:       "landing",
+			primeFile:    "publish_verify: go test -tags tmux ./...\n",
+			wantSeed:     SeedPrime,
+			wantContains: []string{"go test -tags tmux ./...", "require_pr_to_base:"},
+		},
+		{
+			name:         "landing absent and no prime copy starts from the template",
+			module:       "landing",
+			wantSeed:     SeedTemplate,
+			wantContains: []string{"require_pr_to_base:"},
 		},
 		{
 			name:         "fabric absent ignores the prime copy",

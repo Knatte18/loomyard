@@ -10,6 +10,18 @@
 // a caller's own cancel is a returned error and no record.
 // While a command runs, Verify keeps a running marker that loom status reads through ReadMarker.
 //
+// Given a gate-slot pool, Verify takes a slot after the dirty and skip checks and before it spawns.
+// The marker is written in the waiting state with its wait start, then rewritten as running with a fresh start time once the slot is held, and the timeout counts only from that moment.
+// The command runs with the lease's environment, so GOFLAGS carries the slot's `-p` cap and a nested gate run inherits the held slot, and the slot is released whatever the outcome.
+// A cancelled wait is a returned error with no record.
+// A nil pool runs unslotted with the parent's environment, the form of a standalone run and of a unit test.
+// A marker written before it had a state reads as running.
+//
+// The Publish failure record is the one never-tracked file Publish leaves when its plan verify or `publish_verify` fails.
+// It names the failing verify as a FailureKind, the failing tests, a copy of the verify log that a later verify cannot overwrite, HEAD and the merge-in commit Publish made.
+// Publish writes it through WritePublishFailure, the round gate reads it through ReadPublishFailure, and a later passing Publish removes it through RemovePublishFailure.
+// Both files sit in the verify directory beside the log.
+//
 // Every site of one worktree shares one directory, Dir(anchorRoot), so a pass at one site lets the next site skip.
 // The package imports no resolver: the worktree and the directory are told through Paths.
 package verifytree

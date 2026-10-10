@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // resolver is the single-method seam both Publish and Finalize hold their constructed
@@ -168,10 +170,18 @@ type Deps struct {
 	// internal/loomcli's landingDeps fills it,
 	// and its drift guard keeps it filled.
 	VerifyWaitMark func(label string, start time.Time) error
+	// FailingTests parses a failed verify's log into the failing tests Publish's failure record names.
+	// It is told so this package stays free of the module that owns the log format.
+	// Nil records no tests.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	FailingTests func(log string) []verifytree.FailedTest
 	// VerifyDir is the told directory internal/verifytree keeps the verified-tree record, the running marker and the verify log in.
 	// Every plan-verify site of the worktree shares it, so a pass at one site lets the next skip.
 	// Told, never derived, per the Told-Geometry Invariant.
 	VerifyDir string
+	// GateSlots is the told hub gate-slot pool both producers' verifies acquire from: Publish's plan verify and `publish_verify`, and Finalize's plan verify.
+	// Nil runs every verify unslotted.
+	GateSlots *gateslot.Pool
 
 	// Shuttle is the session-runner seam, told exactly the way every existing session-driving
 	// constructor in this tree takes its own. The resolver's constructor rejects a nil value for

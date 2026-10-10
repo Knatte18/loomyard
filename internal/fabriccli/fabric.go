@@ -323,8 +323,8 @@ launcher directory (_launchers/<slug>) when either has gone missing, reporting
 portal_restored rather than already_healthy. The hub's prime worktree is
 skipped: it never had either, so there is nothing there to repair.
 
-It also heals the hub-wide config files (fabric.yaml and board.yaml) at the
-hub's board dir: an absent board.yaml is seeded from the prime worktree's copy
+It also heals every hub-wide config file, such as fabric.yaml or gate.yaml, at
+the hub's board dir: an absent board.yaml is seeded from the prime worktree's copy
 when it has one, and the written files are committed in _board and pushed. The
 board is pulled first; when it cannot be brought up to date nothing is written
 and the reason is reported under hub_config_detail without failing the verb.

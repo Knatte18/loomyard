@@ -30,9 +30,13 @@ import (
 // use.
 var shedrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/shedengine",
+	"github.com/Knatte18/loomyard/internal/gateslot",
 	"github.com/Knatte18/loomyard/internal/discussionparser",
 	"github.com/Knatte18/loomyard/internal/shedadapters",
 	"github.com/Knatte18/loomyard/internal/loomshed",
+	"github.com/Knatte18/loomyard/internal/modelspec",
+	"github.com/Knatte18/loomyard/internal/seatengine",
+	"github.com/Knatte18/loomyard/internal/segmentcolor",
 	"github.com/Knatte18/loomyard/internal/landingshed",
 	"github.com/Knatte18/loomyard/internal/parentreview",
 	"github.com/Knatte18/loomyard/internal/planindex",

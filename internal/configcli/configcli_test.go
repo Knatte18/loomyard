@@ -474,7 +474,7 @@ func TestPrint(t *testing.T) {
 			}
 
 			var out bytes.Buffer
-			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, makeNeverCalledEditor(t), nil, nil, true, nil)
+			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, makeNeverCalledEditor(t), nil, nil, true, nil, nil)
 
 			if code != tt.wantCode {
 				t.Errorf("dispatch(print=true, %v) = %d; want %d; output: %q", tt.args, code, tt.wantCode, out.String())
@@ -574,7 +574,7 @@ func TestDispatchSet(t *testing.T) {
 				syncCalls++
 				return 0
 			}
-			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, countingEditor(&editorCalls), sync, nil, tt.printOnly, tt.setFlags)
+			code := dispatch(makeLayoutAt(baseDir), &out, tt.args, countingEditor(&editorCalls), sync, nil, tt.printOnly, tt.setFlags, nil)
 
 			if code != tt.wantCode {
 				t.Fatalf("dispatch(--set) = %d; want %d; output: %q", code, tt.wantCode, out.String())
@@ -640,16 +640,60 @@ func TestDispatchHubWideBoard(t *testing.T) {
 	rows := []struct {
 		name string
 		// seed is the board dir file's starting bytes; empty means seeded.
-		seed        string
-		printOnly   bool
-		setFlags    []string
-		editor      func(fx hubFixture) configengine.EditorFunc
-		commitErr   error
+		seed      string
+		printOnly bool
+		setFlags  []string
+		editor    func(fx hubFixture) configengine.EditorFunc
+		commitErr error
+		// guard is the hub-wide write guard; nil allows the write.
+		guard       func() (string, error)
 		wantCode    int
 		wantCommits int
 		// check runs after the common assertions, with the board dir file's bytes and the output.
 		check func(t *testing.T, fx hubFixture, hubFile, out string)
 	}{
+		{
+			name:     "set refused by the write guard commits nothing and leaves the file",
+			setFlags: []string{"labels.x=desc"},
+			guard:    func() (string, error) { return "refused: write from the prime", nil },
+			wantCode: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != seeded {
+					t.Errorf("hub file changed on a refused write; got %q", hubFile)
+				}
+				assertJSONErrContains(t, out, "refused: write from the prime")
+			},
+		},
+		{
+			name:     "editor edit refused by the write guard opens no editor",
+			guard:    func() (string, error) { return "refused: write from the prime", nil },
+			wantCode: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != seeded {
+					t.Errorf("hub file changed on a refused write; got %q", hubFile)
+				}
+				assertJSONErrContains(t, out, "refused: write from the prime")
+			},
+		},
+		{
+			name:     "write guard that cannot decide fails the write",
+			setFlags: []string{"labels.x=desc"},
+			guard:    func() (string, error) { return "", errors.New("no prime worktree") },
+			wantCode: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				assertJSONErrContains(t, out, "no prime worktree")
+			},
+		},
+		{
+			name:      "print never calls the write guard",
+			printOnly: true,
+			guard:     func() (string, error) { return "refused", nil },
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if out != seeded {
+					t.Errorf("print output = %q; want %q", out, seeded)
+				}
+			},
+		},
 		{
 			name:        "set writes the board dir file and commits it",
 			setFlags:    []string{"labels.x=desc"},
@@ -799,7 +843,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			sync := &fakeSyncTracker{}
 			var out bytes.Buffer
 
-			code := dispatch(fx.layout, &out, []string{"board"}, edit, sync.syncFunc(), commit.commitFunc(), row.printOnly, row.setFlags)
+			code := dispatch(fx.layout, &out, []string{"board"}, edit, sync.syncFunc(), commit.commitFunc(), row.printOnly, row.setFlags, row.guard)
 
 			if code != row.wantCode {
 				t.Errorf("dispatch = %d; want %d; output: %q", code, row.wantCode, out.String())
