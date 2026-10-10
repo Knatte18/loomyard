@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 // TestLoomPreBootstrapPair walks one never-bootstrapped pair through the pre-bootstrap states in this order, each step building on the one before:
@@ -30,7 +31,7 @@ import (
 func TestLoomPreBootstrapPair(t *testing.T) {
 	t.Parallel()
 
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 	hub, loc, worktree, slug := newWiredPairFixture(t)
 	recordsDir := fabricengine.RecordsWorktree(loc)
 
@@ -136,7 +137,7 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 	t.Parallel()
 
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	seedGoDriverRun(t, loc)
 
@@ -181,7 +182,7 @@ func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 	t.Parallel()
 
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 	loc, worktree := newBadReedUpFixture(t, commitRetiredBatcherKey)
 	recordsDir := fabricengine.RecordsWorktree(loc)
 	batcherPath := configengine.ConfigFile(worktree, "batcher")
@@ -241,7 +242,7 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 func TestLoomFailedReedUpRefuses(t *testing.T) {
 	t.Parallel()
 
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 	const verbTimeout = 60 * time.Second
 
 	requireStartRefusal := func(t *testing.T, loc *lyxcwd.Location, worktree string) {

@@ -1,12 +1,13 @@
 // Package lyxbin builds the `lyx` binary from `./cmd/lyx` for `integration`, `tmux` and `llm` tests.
 //
 // It is the one kit exempt from the Testkit Invariant's spawn-import rule,
-// and it runs nothing but that `go build`.
+// and it runs nothing but that `go build` of ./cmd/lyx and the built binary under group kill.
 // A test binary builds `lyx` at most once, or not at all when `gateslot.PrebuiltLyxEnv` names a binary a gate run already built from the same tree.
 // Only tagged test files may call it; Test Tier Purity bans the `lyxbin.` token elsewhere.
 package lyxbin
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -15,8 +16,10 @@ import (
 	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // ErrStalePrebuilt is returned, wrapped with the path, when `gateslot.PrebuiltLyxEnv` names a file that is missing or not executable.
@@ -118,6 +121,35 @@ func buildOnce(ldflags string) (string, error) {
 		result.path, result.err = compile(dir, ldflags)
 	})
 	return result.path, result.err
+}
+
+// ErrTimeout is returned, wrapped with the arguments, when Run's command outlives its timeout.
+var ErrTimeout = errors.New("lyxbin: the command outlived its timeout")
+
+// Run runs bin with args in dir, bounded by timeout, in its own process group, and returns its combined output and exit code.
+// The process environment is inherited, so the hermetic git variables reach the child.
+// A deadline kills the whole group, so no descendant outlives the command, and answers exit code -1 with ErrTimeout.
+// Any exit of the command answers a nil error; the error is otherwise the start failure.
+// It calls no testing.TB method, so a concurrent caller can use it.
+func Run(bin, dir string, timeout time.Duration, args ...string) (output string, exitCode int, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Dir = dir
+	proc.ConfigureGroupKill(cmd, func(int, error) {})
+	out, runErr := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return string(out), -1, fmt.Errorf("%w: %v after %s in %s; output so far:\n%s", ErrTimeout, args, timeout, dir, out)
+	}
+	if runErr == nil {
+		return string(out), 0, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(runErr, &exitErr) {
+		return string(out), exitErr.ExitCode(), nil
+	}
+	return string(out), -1, fmt.Errorf("lyxbin: start %s %v: %w", bin, args, runErr)
 }
 
 // Build returns the `lyx` binary, built at most once per test binary.

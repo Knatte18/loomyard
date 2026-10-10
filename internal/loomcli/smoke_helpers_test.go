@@ -1,22 +1,18 @@
 //go:build integration || tmux
 
 // smoke_helpers_test.go holds the fixtures and subprocess helpers shared by the integration-tier and tmux-tier smoke files:
-// a real wired hub with one pair, the cached built cmd/lyx binary, the run seeds, and the bad-reed-config fixture.
-// It spawns git and builds lyx, so it carries the disjunction of its two users' tags.
+// a real wired hub with one pair, the runner of the built cmd/lyx binary, the run seeds, and the bad-reed-config fixture.
+// It spawns git and runs lyx, so it carries the disjunction of its two users' tags.
 
 package loomcli
 
 import (
-	"context"
-	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -36,56 +32,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// smokeLyxBuild caches the one cmd/lyx binary this whole test binary needs, built exactly once
-// regardless of how many tests call sharedLyxBinary -- mirroring hubforge's own bareTemplateOnce
-// pattern for an equally expensive one-time build.
-// lyxbin.Build would delete the binary when the first test ends,
-// so the cache builds into a directory of its own.
-var (
-	smokeLyxBuildOnce sync.Once
-	smokeLyxBuildPath string
-	smokeLyxBuildErr  error
-)
-
-// sharedLyxBinary returns the cached cmd/lyx binary, building it at most once per test binary.
-func sharedLyxBinary(t *testing.T) string {
-	t.Helper()
-	smokeLyxBuildOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "loomcli-smoke-lyx-*")
-		if err != nil {
-			smokeLyxBuildErr = err
-			return
-		}
-		smokeLyxBuildPath, smokeLyxBuildErr = lyxbin.BuildInto(dir, "")
-	})
-	if smokeLyxBuildErr != nil {
-		t.Fatalf("build lyx binary: %v", smokeLyxBuildErr)
-	}
-	return smokeLyxBuildPath
-}
-
 // runLoomCLINoFatal runs exe with args in dir as a real subprocess, bounded by timeout, and returns
 // its combined stdout+stderr and exit code without ever calling a *testing.T method -- the pure seam
 // case (h)'s concurrent invocations need, since t.Fatalf from a non-test goroutine is unsafe. Callers
 // on the test's own goroutine that want fail-fast behaviour check the returned err themselves.
 func runLoomCLINoFatal(exe, dir string, timeout time.Duration, args ...string) (stdout string, exitCode int, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, exe, args...)
-	cmd.Dir = dir
-	out, runErr := cmd.CombinedOutput()
-	if ctx.Err() == context.DeadlineExceeded {
-		return string(out), -1, fmt.Errorf("lyx %v timed out after %s in %s; output so far:\n%s", args, timeout, dir, out)
-	}
-	if runErr == nil {
-		return string(out), 0, nil
-	}
-	var exitErr *exec.ExitError
-	if errors.As(runErr, &exitErr) {
-		return string(out), exitErr.ExitCode(), nil
-	}
-	return string(out), -1, fmt.Errorf("lyx %v: %w; output:\n%s", args, runErr, out)
+	return lyxbin.Run(exe, dir, timeout, args...)
 }
 
 // newWiredPairFixture builds a real fabric hub, seeds every module's config template into it, and

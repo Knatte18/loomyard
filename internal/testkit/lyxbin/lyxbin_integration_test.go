@@ -7,13 +7,50 @@ package lyxbin
 import (
 	"debug/buildinfo"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
+
+const (
+	helperRoleSleeper = "sleeper"
+	helperRoleEcho    = "echo"
+
+	// helperPidFileEnv names the file the sleeper role writes its own pid and its child's to.
+	helperPidFileEnv = "LYXBIN_TEST_PIDFILE"
+	// helperEchoEnv names the variable the echo role prints.
+	helperEchoEnv = "LYXBIN_TEST_ECHO"
+)
+
+func init() {
+	helperRoles[helperRoleSleeper] = runSleeper
+	helperRoles[helperRoleEcho] = func() int {
+		fmt.Print(os.Getenv(helperEchoEnv))
+		return 0
+	}
+}
+
+// runSleeper starts a `sleep` child, records its own pid and the child's in the pid file, and sleeps until killed.
+func runSleeper() int {
+	child := exec.Command("sleep", "600")
+	if err := child.Start(); err != nil {
+		return 2
+	}
+	pids := fmt.Sprintf("%d\n%d\n", os.Getpid(), child.Process.Pid)
+	if err := os.WriteFile(os.Getenv(helperPidFileEnv), []byte(pids), 0o600); err != nil {
+		return 2
+	}
+	select {}
+}
 
 func requireExecutable(t *testing.T, bin string) {
 	t.Helper()
@@ -112,5 +149,60 @@ func TestBuildInto_UnwritableDirReturnsError(t *testing.T) {
 	bin, err := BuildInto(filepath.Join(blocker, "out"), "")
 	if err == nil {
 		t.Fatalf("BuildInto into a path under a regular file succeeded: %s", bin)
+	}
+}
+
+func TestRun_KillsTheGroupOnTimeout(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the group kill is asserted through /proc-backed liveness")
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pidFile := filepath.Join(t.TempDir(), "pids")
+	t.Setenv(helperEnv, helperRoleSleeper)
+	t.Setenv(helperPidFileEnv, pidFile)
+
+	out, code, err := Run(self, t.TempDir(), 3*time.Second)
+
+	if !errors.Is(err, ErrTimeout) || code != -1 {
+		t.Fatalf("Run = (%q, %d, %v); want ErrTimeout and exit code -1", out, code, err)
+	}
+	raw, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatalf("the sleeper never recorded its pids: %v", err)
+	}
+	fields := strings.Fields(string(raw))
+	if len(fields) != 2 {
+		t.Fatalf("pid file = %q; want the sleeper's pid and its child's", raw)
+	}
+	for _, field := range fields {
+		pid, err := strconv.Atoi(field)
+		if err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(5 * time.Second)
+		for proc.IsAlive(pid) && time.Now().Before(deadline) {
+			time.Sleep(20 * time.Millisecond)
+		}
+		if proc.IsAlive(pid) {
+			t.Errorf("pid %d survived the timeout", pid)
+		}
+	}
+}
+
+func TestRun_PassesTheEnvironment(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(helperEnv, helperRoleEcho)
+	t.Setenv(helperEchoEnv, "from-the-test")
+
+	out, code, err := Run(self, t.TempDir(), 30*time.Second)
+
+	if err != nil || code != 0 || out != "from-the-test" {
+		t.Errorf("Run = (%q, %d, %v); want the variable's value, exit code 0 and no error", out, code, err)
 	}
 }

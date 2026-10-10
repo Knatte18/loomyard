@@ -13,9 +13,7 @@ package orchcli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -38,22 +36,11 @@ import (
 // smokeRun runs exe with args in dir, bounded by timeout, and returns the combined output and exit code.
 func smokeRun(t *testing.T, exe, dir string, timeout time.Duration, args ...string) (string, int) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, exe, args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if ctx.Err() != nil {
-		t.Fatalf("lyx %v timed out after %s; output so far:\n%s", args, timeout, out)
-	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return string(out), exitErr.ExitCode()
-	}
+	out, code, err := lyxbin.Run(exe, dir, timeout, args...)
 	if err != nil {
-		t.Fatalf("lyx %v: %v; output:\n%s", args, err, out)
+		t.Fatalf("lyx %v: %v", args, err)
 	}
-	return string(out), 0
+	return out, code
 }
 
 // smokeStatus runs `lyx orch status` and decodes its envelope.

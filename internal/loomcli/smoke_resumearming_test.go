@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 )
 
 // TestLoomResumeArmsAfterReconcile asserts `loom resume` on a hub whose build has no stamp reconciles the hub config and then arms past the reed config load.
@@ -19,7 +20,7 @@ import (
 // Resume brings no reed session up, so the registered hub key holds the kit's session-less server and no session.
 func TestLoomResumeArmsAfterReconcile(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 	_, loc, worktree, slug := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)

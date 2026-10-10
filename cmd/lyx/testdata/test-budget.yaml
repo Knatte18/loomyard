@@ -105,7 +105,7 @@ internal/testkit/envkit: 4
 internal/testkit/llmkit: 1
 internal/testkit/locationkit: 2
 internal/testkit/logcapture: 5
-internal/testkit/lyxbin: 3
+internal/testkit/lyxbin: 5
 internal/testkit/plankit: 4
 internal/testkit/scankit: 10
 internal/testkit/shedfake: 9

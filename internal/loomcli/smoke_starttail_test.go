@@ -4,7 +4,7 @@
 // that the verb never attaches or switches a tmux client, and that the strand set it leaves -- on the unseeded fixture, which resolveSeedDriver seeds llm, neither a loom-operator strand nor a status strand -- is unchanged by that.
 // It also pins the watchdog spawn's gate position -- that it fires on every start, the one thing start_watchdog_test.go's Tier 1 file cannot reach through the real RunE (see its own doc comment) because reed Up needs a live tmux server.
 //
-// It reuses this package's existing smoke fixtures throughout: sharedLyxBinary, newWiredPairFixture,
+// It reuses this package's existing smoke fixtures throughout: lyxbin.Build, newWiredPairFixture,
 // registerBootstrapTeardown, probeReedEngine, statusStrandCount, and tmuxBinaryPath, rather than
 // building a second rig. Like its siblings it drives the real built cmd/lyx binary as a subprocess,
 // never RunCLI in-process, per this package's smoke suite doc comment: `lyx loom start` spawns its
@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -43,7 +44,7 @@ func reedAttachedClients(t *testing.T, tmuxPath string, eng *reedengine.Engine) 
 // so a start that still attached would exit non-zero.
 func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 
 	// A stub provider lets the llm-driven start's driver launch reach readiness,
 	// so the verb reaches its success envelope.
@@ -103,7 +104,7 @@ func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 // This is what proves the watchdog spawn fires on every start, not only on an attaching one -- the single thing a later edit is most likely to get wrong -- which is the one property start_watchdog_test.go structurally cannot reach (see its own doc comment).
 func TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon(t *testing.T) {
 	tmuxBinaryPath(t)
-	exe := sharedLyxBinary(t)
+	exe := lyxbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
 
