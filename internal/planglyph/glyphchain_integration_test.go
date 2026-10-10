@@ -6,15 +6,19 @@
 package planglyph
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"golang.org/x/tools/go/packages"
@@ -423,4 +427,73 @@ func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a slotted load waits for its slot and answers as the unslotted load", func(t *testing.T) {
+		t.Parallel()
+		root := copyGlyphChainFixture(t)
+		_, plan := writeGlyphPlan(t, []string{deleteCard("callees#Target")})
+
+		want, err := planGatePass(plan, root, goListLoader{timeout: time.Minute})
+		if err != nil {
+			t.Fatalf("unslotted planGatePass(...) returned error: %v", err)
+		}
+
+		pool := &gateslot.Pool{
+			Dir:    t.TempDir(),
+			Limits: func() (gateslot.Limits, error) { return gateslot.Limits{Slots: 1, GoParallel: 1}, nil },
+			Poll:   5 * time.Millisecond,
+		}
+		held, err := pool.Acquire(context.Background(), gateslot.Holder{Worktree: root, Site: "test holder"})
+		if err != nil {
+			t.Fatalf("Acquire(...) returned error: %v", err)
+		}
+		releaseHeld := sync.OnceFunc(func() {
+			if err := held.Release(); err != nil {
+				t.Errorf("Release() returned error: %v", err)
+			}
+		})
+		defer releaseHeld()
+
+		waitDir := t.TempDir()
+		type outcome struct {
+			findings []Finding
+			err      error
+		}
+		done := make(chan outcome, 1)
+		go func() {
+			findings, err := planGatePass(plan, root, goListLoader{timeout: time.Minute, slots: pool, waitDir: waitDir})
+			done <- outcome{findings, err}
+		}()
+
+		var waits []gateslot.Wait
+		for deadline := time.Now().Add(30 * time.Second); len(waits) == 0; {
+			if time.Now().After(deadline) {
+				t.Fatal("no wait record appeared while the slot was held")
+			}
+			if waits, err = gateslot.ReadWaits(waitDir); err != nil {
+				t.Fatalf("ReadWaits(...) returned error: %v", err)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		if waits[0].Site != typesLoadSite {
+			t.Errorf("wait record site = %q; want %q", waits[0].Site, typesLoadSite)
+		}
+		select {
+		case got := <-done:
+			t.Fatalf("the load returned %+v while the only slot was held", got)
+		default:
+		}
+
+		releaseHeld()
+		got := <-done
+		if got.err != nil {
+			t.Fatalf("slotted planGatePass(...) returned error: %v", got.err)
+		}
+		if !reflect.DeepEqual(got.findings, want) {
+			t.Errorf("slotted findings = %+v; want the unslotted %+v", got.findings, want)
+		}
+		if waits, err = gateslot.ReadWaits(waitDir); err != nil || len(waits) != 0 {
+			t.Errorf("ReadWaits after the load = (%+v, %v); want no records", waits, err)
+		}
+	})
 }
