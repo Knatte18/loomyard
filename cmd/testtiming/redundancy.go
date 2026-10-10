@@ -347,7 +347,7 @@ func runRedundancy(tags, pkgFlag, outPath string) error {
 			return fmt.Errorf("keep directive: %w", err)
 		}
 	}
-	env, cleanupLyx, err := prebuildLyx(tags, layout.dir, os.Environ(), 0)
+	env, cleanupLyx, err := prebuildLyx(tags, layout.dir, os.Environ())
 	if err != nil {
 		return err
 	}

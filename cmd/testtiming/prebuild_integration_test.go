@@ -52,7 +52,7 @@ func TestPrebuildLyx(t *testing.T) {
 			t.Parallel()
 
 			root := module(t, row.mainSource)
-			env, cleanup, err := prebuildLyx(row.tags, root, append(os.Environ(), inherited), 2)
+			env, cleanup, err := prebuildLyx(row.tags, root, append(os.Environ(), inherited))
 			if row.wantError != "" {
 				if err == nil || !strings.Contains(err.Error(), row.wantError) {
 					t.Fatalf("err = %v; want an error holding %q", err, row.wantError)
