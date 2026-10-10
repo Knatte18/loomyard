@@ -547,8 +547,9 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 // A skill the provider does not know, one still missing after the retry and one whose turn timed out are skipped with a logged warning,
 // and an unreadable turn is confirmed unverified.
 // None of these fails or hangs the launch.
-// The run's events offset ends past every load turn end, the retry's included,
-// so Wait never reads one as a held turn end of the run's own.
+// The run's events offset and the persisted prompt offset are the events file's size at the moment before the prompt is sent.
+// That lies past every load turn end, the retry's included, and past any line appended after them.
+// So Wait never reads one as a held turn end of the run's own.
 // A pane that dies meanwhile is a died startup.
 // Every other failure tears the run down through abandonStartup too: a skill-load send, a prompt-offset persist or a prompt delivery that fails returns an error wrapping ErrNotStarted beside the cause.
 // A prompt delivery that fails with ErrSubmissionNotLanded but is followed by a turn start in the events file past the pre-send offset landed late.
@@ -576,18 +577,19 @@ func (run *Run) loadSkillsThenPrompt(promptLine string) (Result, error) {
 			return run.abandonStartup(OutcomeDied, nil)
 		}
 	}
-	if run.offset > 0 {
+	sentAt := eventsSize(run.state.EventsPath)
+	if sentAt > 0 {
 		// Persisted before the prompt is sent, so a reader of the events file that never Waits on this Run
 		// (an Attach, webster's recovery classification) starts past the load turns too.
+		run.offset = sentAt
 		run.recordMu.Lock()
-		run.state.PromptOffset = run.offset
+		run.state.PromptOffset = sentAt
 		err := run.saveState()
 		run.recordMu.Unlock()
 		if err != nil {
 			return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: persist the prompt offset after loading skills: %w", err))
 		}
 	}
-	sentAt := eventsSize(run.state.EventsPath)
 	if err := sendVerified(run.newSendContext(), promptLine); err != nil {
 		if errors.Is(err, ErrSubmissionNotLanded) && turnStartedSince(run.runner.engine, run.state.EventsPath, sentAt) {
 			return Result{}, nil
