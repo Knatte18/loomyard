@@ -3,7 +3,7 @@
 // It is the single shell runner shared by plan-verify (through internal/verifytree) and the per-card `**Verify:**` rerun,
 // so shell selection lives in one place.
 // It cannot live in internal/shell: that package is stdlib-only under the Shell Mechanics Seam, and this one logs through internal/logger.
-// It imports only the standard library and internal/logger.
+// It imports only the standard library, internal/logger and internal/proc.
 package verifyrun
 
 import (
@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // waitDelay bounds Wait's read after the shell exits or its context is cancelled,
@@ -45,7 +46,16 @@ func run(ctx context.Context, command, dir string, out io.Writer, delay time.Dur
 	cmd := exec.CommandContext(ctx, shellName, flag, command)
 	cmd.Dir = dir
 	cmd.WaitDelay = delay
-	configureProcessKill(cmd, command)
+	proc.ConfigureGroupKill(cmd, func(pid int, groupErr error) {
+		switch {
+		case groupErr == nil:
+			logger.Info("verifyrun: killing verify process group", "pid", pid, "command", command)
+		case errors.Is(groupErr, proc.ErrNoProcessGroup):
+			logger.Warn("verifyrun: killed only the verify shell; its descendants may outlive it", "pid", pid, "command", command)
+		default:
+			logger.Warn("verifyrun: process group kill failed, killing the shell only", "pid", pid, "command", command, "cause", groupErr)
+		}
+	})
 	if out != io.Discard {
 		cmd.Stdout = out
 		cmd.Stderr = out

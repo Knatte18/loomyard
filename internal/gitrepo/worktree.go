@@ -22,28 +22,9 @@ import (
 // It manually reads .git/info/exclude since go-git's Worktree.Status() skips it due to path
 // chrooting.
 func (r *Repo) WorktreeChangedFiles() ([]string, error) {
-	repo, err := r.goGit()
+	status, err := r.worktreeStatus()
 	if err != nil {
 		return nil, err
-	}
-
-	r.goGitMu.Lock()
-	defer r.goGitMu.Unlock()
-
-	wt, err := repo.Worktree()
-	if err != nil {
-		return nil, fmt.Errorf("gitrepo: resolve worktree: %w", err)
-	}
-
-	excludes, err := readGitDirExcludePatterns(repo)
-	if err != nil {
-		return nil, fmt.Errorf("gitrepo: read git-dir exclude patterns: %w", err)
-	}
-	wt.Excludes = excludes
-
-	status, err := wt.Status()
-	if err != nil {
-		return nil, fmt.Errorf("gitrepo: worktree status: %w", err)
 	}
 
 	var files []string
@@ -53,35 +34,15 @@ func (r *Repo) WorktreeChangedFiles() ([]string, error) {
 		}
 	}
 	return files, nil
-
 }
 
 // UntrackedFiles returns the repo-relative paths of every untracked, non-ignored file, sorted.
 // It reads go-git's worktree status the way WorktreeChangedFiles does, with .git/info/exclude honoured, so a junctioned `_lyx` or `.lyx` listed there never appears.
 // It returns an empty, never nil, slice when there are none.
 func (r *Repo) UntrackedFiles() ([]string, error) {
-	repo, err := r.goGit()
+	status, err := r.worktreeStatus()
 	if err != nil {
 		return nil, err
-	}
-
-	r.goGitMu.Lock()
-	defer r.goGitMu.Unlock()
-
-	wt, err := repo.Worktree()
-	if err != nil {
-		return nil, fmt.Errorf("gitrepo: resolve worktree: %w", err)
-	}
-
-	excludes, err := readGitDirExcludePatterns(repo)
-	if err != nil {
-		return nil, fmt.Errorf("gitrepo: read git-dir exclude patterns: %w", err)
-	}
-	wt.Excludes = excludes
-
-	status, err := wt.Status()
-	if err != nil {
-		return nil, fmt.Errorf("gitrepo: worktree status: %w", err)
 	}
 
 	files := []string{}
@@ -92,6 +53,28 @@ func (r *Repo) UntrackedFiles() ([]string, error) {
 	}
 	sort.Strings(files)
 	return files, nil
+}
+
+// worktreeStatus returns go-git's worktree status with .git/info/exclude honoured, read whole inside one readGoGit.
+func (r *Repo) worktreeStatus() (git.Status, error) {
+	return readGoGit(r, func(repo *git.Repository) (git.Status, error) {
+		wt, err := repo.Worktree()
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: resolve worktree: %w", err)
+		}
+
+		excludes, err := readGitDirExcludePatterns(repo)
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: read git-dir exclude patterns: %w", err)
+		}
+		wt.Excludes = excludes
+
+		status, err := wt.Status()
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: worktree status: %w", err)
+		}
+		return status, nil
+	})
 }
 
 // readGitDirExcludePatterns reads repo's info/exclude file through the git-dir
