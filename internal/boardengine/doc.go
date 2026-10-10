@@ -32,7 +32,9 @@
 // a write of "normal" clears the field, and a write of any other value is refused.
 // Within each README group, a task layer, a Notes type subsection or Done, entries order high, normal, low, then in their order without priority;
 // RenderOrder applies it, so `lyx board list` and `find` follow the same order.
-// The README shows a high or low priority after the entry's title, and nothing for normal.
+// The README splits each open group, Running, Ready, a dependency layer or a Notes type subsection, into one table per priority present, in the order high, normal, low,
+// each under a fourth-level heading, `#### High priority`, `#### Normal priority` or `#### Low priority`, one level below the group's `###` heading;
+// a priority with no entry in the group gets no heading and no table, and Done stays one table.
 // Priority is part of an entry's scope, so the run lock refuses a change to it on a run-held entry.
 //
 // # Migration
@@ -52,7 +54,8 @@
 // Ready holds the open tasks with no open dependency, and is always written, as `_None._` when empty.
 // A dependency on a done task does not count, and one on a running task does, so a task waiting on a run is not Ready.
 // Layer A holds the tasks that wait only on Running or Ready entries, Layer B those that wait on something in Layer A, and so on; ComputeLayers names each task's subsection, and the same name is the layer field of `lyx board list`.
-// Each subsection is one markdown table numbered from 1: the bold title, an italic `(high priority)` or `(low priority)` after it for such an entry, with the brief as a `• ` bullet under it in the same cell, the slug linked to its design doc when the entry has a body, and the labels that are not type labels.
+// Each open subsection holds one markdown table per priority, as the Priority section describes, numbered on from 1 across them so each entry keeps one number in its subsection, and Done is one table numbered from 1.
+// A row holds the bold title, with the brief as a `• ` bullet under it in the same cell, the slug linked to its design doc when the entry has a body, and the labels that are not type labels.
 // Running adds an At column, the run status without the state when the state is `running`, and Ready and the layers add an After column, the open entries named in depends_on.
 // A pipe in a cell is escaped and a line break becomes a space, so an entry is always one row.
 //
