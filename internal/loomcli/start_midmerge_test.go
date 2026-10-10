@@ -171,7 +171,7 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 				if tc.statusBody != "" {
 					writeTestRunStateRaw(t, c, tc.statusBody)
 				}
-				marker =shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
+				marker = shedrun.ParkMarker(c.location, shedrun.ResolveRunID(c.location, c.runID))
 				if tc.staleMark {
 					if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
 						t.Fatal(err)
