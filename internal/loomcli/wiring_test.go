@@ -730,6 +730,11 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if c.env.FixStart != burlerengine.FixStartAfterReview {
 		t.Errorf("c.env.FixStart = %q; want %q", c.env.FixStart, burlerengine.FixStartAfterReview)
 	}
+	if c.env.WebsterRecord == nil {
+		t.Error("c.env.WebsterRecord = nil; want the closure over loomshed.WebsterRecordNote")
+	} else if got := c.env.WebsterRecord(); got != "none" {
+		t.Errorf("c.env.WebsterRecord() = %q; want none for an anchor with no webster run record", got)
+	}
 
 	// The template's empty fans leave every fan entry empty, and Webster rows never carry one.
 	for row, fan := range c.env.RowClusterFans {

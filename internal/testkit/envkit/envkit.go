@@ -36,6 +36,7 @@ var nilLegal = map[string]bool{
 	"Now":                                              true,
 	"GateSlots":                                        true,
 	"PublishFailure":                                   true,
+	"WebsterRecord":                                    true,
 	"Landing.CommitStatus":                             true,
 	"Landing.MergeState":                               true,
 	"Landing.AbortMerge":                               true,

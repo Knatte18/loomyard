@@ -545,6 +545,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		PublishFailure: func() string {
 			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath))
 		},
+		WebsterRecord: func() string {
+			return loomshed.WebsterRecordNote(anchorPath)
+		},
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
