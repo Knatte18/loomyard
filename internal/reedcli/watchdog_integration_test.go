@@ -255,7 +255,7 @@ func TestWatchdogDaemon(t *testing.T) {
 		return
 	}
 
-	// BootSignalWakesBackedOffDiscovery runs a discovery loop whose cadence has backed off over a live prime session, then boots the pair's session through reed and asserts the loop enters it within a base cadence of the boot, which only the discover signal the boot touches can explain.
+	// BootSignalWakesBackedOffDiscovery runs a discovery loop whose cadence has backed off over a live prime session, then boots the pair's session through reed and asserts the loop enters it before its next unsignalled cycle, which only the discover signal the boot touches can explain.
 	// The loop is in-process on its own context, so the shared loop of the steps below is untouched.
 	if !t.Run("BootSignalWakesBackedOffDiscovery", func(t *testing.T) {
 		logs := logcapture.Capture(t)
@@ -287,11 +287,13 @@ func TestWatchdogDaemon(t *testing.T) {
 			return false
 		}
 		waitForCondition(t, watchdogTestWait, func() bool { return entered(primeEng.SessionName()) })
-		// Let the cadence double past the window the assertion below allows.
-		time.Sleep(2 * time.Second)
+		// The prime's entry resets the cadence to the base, so the unsignalled cycles after it fall 63 and then 127 bases later.
+		// The pair boots past the 63rd and must be entered before the 120th, which no unsignalled cycle can do.
+		primeEnteredAt := time.Now()
+		time.Sleep(70 * watchdogSignalTestBase)
 
 		pairEng := watchdogIntegrationEngine(t, pair)
-		waitForCondition(t, watchdogSignalTestBase+3*time.Second, func() bool { return entered(pairEng.SessionName()) })
+		waitForCondition(t, time.Until(primeEnteredAt.Add(120*watchdogSignalTestBase)), func() bool { return entered(pairEng.SessionName()) })
 	}) {
 		return
 	}
