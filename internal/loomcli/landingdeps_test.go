@@ -51,6 +51,7 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		cfg,
 		"parent-session",
 		func(string, time.Time) error { return nil },
+		func() (string, error) { return "", nil },
 	)
 
 	if deps.ParentName != "parent-session" {
@@ -118,6 +119,64 @@ func TestDriverWaitMark(t *testing.T) {
 			}
 			if tt.wantGUID != "" && (gotLabel != "verify Publish" || !gotStart.Equal(start)) {
 				t.Errorf("mark = (%q, %v), want (%q, %v)", gotLabel, gotStart, "verify Publish", start)
+			}
+		})
+	}
+}
+
+// TestConflictSessionStopper asserts the seam stops every live, non-retiring conflict strand of the run by guid, numbered forms included.
+// It stops nothing for a dead, retiring or absent one, and passes a failing table read or stop through with the guid the failure belongs to.
+func TestConflictSessionStopper(t *testing.T) {
+	t.Parallel()
+
+	conflict := func(guid, role string, live, retiring bool) reedengine.StrandStatus {
+		return reedengine.StrandStatus{GUID: guid, Name: "hub:slug:" + role, Live: live, Retiring: retiring}
+	}
+	other := reedengine.StrandStatus{GUID: "other-guid", Name: "hub:slug:webster", Live: true}
+	statusErr := errors.New("reed down")
+	stopErr := errors.New("tmux gone")
+
+	tests := []struct {
+		name      string
+		strands   []reedengine.StrandStatus
+		statusErr error
+		stopErr   error
+		wantStops []string
+		wantGUID  string
+		wantErr   error
+	}{
+		{name: "live conflict strand is stopped", strands: []reedengine.StrandStatus{other, conflict("c1", "conflict", true, false)}, wantStops: []string{"c1"}},
+		{name: "live numbered conflict strand is stopped", strands: []reedengine.StrandStatus{conflict("c2", "conflict-2", true, false)}, wantStops: []string{"c2"}},
+		{name: "every live conflict strand is stopped", strands: []reedengine.StrandStatus{conflict("c1", "conflict", true, false), conflict("c2", "conflict-2", true, false)}, wantStops: []string{"c1", "c2"}},
+		{name: "dead conflict strand stops nothing", strands: []reedengine.StrandStatus{conflict("c1", "conflict", false, false)}},
+		{name: "retiring conflict strand stops nothing", strands: []reedengine.StrandStatus{conflict("c1", "conflict", true, true)}},
+		{name: "no conflict strand stops nothing", strands: []reedengine.StrandStatus{other}},
+		{name: "table read failure is passed through with an empty guid", statusErr: statusErr, wantErr: statusErr},
+		{name: "stop failure ends the pass with the failing guid", strands: []reedengine.StrandStatus{conflict("c1", "conflict", true, false), conflict("c2", "conflict-2", true, false)}, stopErr: stopErr, wantStops: []string{"c1"}, wantGUID: "c1", wantErr: stopErr},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var gotStops []string
+			stopper := conflictSessionStopper(
+				func() (reedengine.StatusResult, error) {
+					return reedengine.StatusResult{Strands: tt.strands}, tt.statusErr
+				},
+				func(guid string) error {
+					gotStops = append(gotStops, guid)
+					return tt.stopErr
+				},
+			)
+			guid, err := stopper()
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+			if guid != tt.wantGUID {
+				t.Errorf("guid = %q, want %q", guid, tt.wantGUID)
+			}
+			if !reflect.DeepEqual(gotStops, tt.wantStops) {
+				t.Errorf("stopped = %v, want %v", gotStops, tt.wantStops)
 			}
 		})
 	}

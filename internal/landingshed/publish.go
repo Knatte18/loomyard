@@ -41,6 +41,9 @@ type Publish struct {
 	deps     Deps
 	resolver resolver
 	gate     verifyGate
+	// premerge clears the merge-in a previous attempt left parked.
+	// A zero value runs no probe, so struct-literal tests run without it.
+	premerge preMerge
 }
 
 var _ shedengine.ShedProducer = (*Publish)(nil)
@@ -90,7 +93,7 @@ func NewPublish(deps Deps) (*Publish, error) {
 
 	gate := newVerifyGate(deps)
 	gate.recorder = &failureRecorder{failingTests: deps.FailingTests, head: deps.TaskHead}
-	return &Publish{deps: deps, resolver: res, gate: gate}, nil
+	return &Publish{deps: deps, resolver: res, gate: gate, premerge: newPreMerge(deps)}, nil
 }
 
 // Call runs one Publish iteration.
@@ -134,8 +137,14 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		}
 	}
 
-	// Step 3b: a dirty tree before the merge-in is Stuck, so nothing uncommitted is merged over or pushed.
-	reason, err := p.gate.clean(publishName, "before the merge-in")
+	// Step 3b: a merge-in this row left parked is aborted first, so the clean check and a fresh merge-in follow.
+	reason, err := p.premerge.clear(publishName, p.deps.ParentBranch)
+	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
+		return outcome, out, err
+	}
+
+	// Step 3c: a dirty tree before the merge-in is Stuck, so nothing uncommitted is merged over or pushed.
+	reason, err = p.gate.clean(publishName, "before the merge-in")
 	if outcome, out, err, stop := p.gateStop(ctx, reason, err); stop {
 		return outcome, out, err
 	}

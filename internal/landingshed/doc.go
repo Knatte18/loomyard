@@ -7,6 +7,14 @@
 // The PR-Gate producer in this package then owns approval, rejection and the wait for the reviewer;
 // PRGate.Call documents its decision table.
 //
+// Both producers clear the merge-in their own earlier attempt left parked before the clean-tree check that precedes each merge-in, Finalize's retry pass included.
+// A parked fabric `merge-in` of the parent branch is aborted, whoever started it, so a conflict session's resolution and a hand-started merge-in with its partial resolution are both discarded and the merge starts afresh.
+// Every live conflict-session strand of the run is stopped through Deps.StopConflictSession first, and only after every stop succeeded is the merge aborted, so no session is left writing into the redone merge;
+// a stop that fails is Stuck naming the strand, with the merge untouched.
+// Any other parked merge and git merge state fabric did not start is Stuck with its way forward, never stopped over or touched.
+// The resolver's own abort stays as crash recovery within one merge-in step.
+// The seams are nil-is-absent: a nil Deps.MergeState skips the step.
+//
 // Publish checks the task worktree is clean at three points: before the merge-in (after the status commit), after the merge-in, and after the verify.
 // A dirty tree at any of them is Stuck naming the paths, before anything is pushed;
 // a verify that dirties the tree is a non-hermetic test and halts rather than ships.
