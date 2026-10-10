@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
@@ -434,12 +435,12 @@ func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 		slotted   func(plan *planparser.Plan, root string, pool *gateslot.Pool, waitDir string) ([]Finding, error)
 	}{
 		{
-			name: "plan gate pass",
+			name: "the plan gate's ValidateFormat through a slotted index",
 			unslotted: func(plan *planparser.Plan, root string) ([]Finding, error) {
-				return planGatePass(plan, root, goListLoader{timeout: time.Minute})
+				return index{matcher: fabricengine.NewReferenceRule(), loader: goListLoader{timeout: time.Minute}}.ValidateFormat(plan, root, nil)
 			},
 			slotted: func(plan *planparser.Plan, root string, pool *gateslot.Pool, waitDir string) ([]Finding, error) {
-				return planGatePass(plan, root, goListLoader{timeout: time.Minute, slots: pool, waitDir: waitDir})
+				return NewSlottedIndex(fabricengine.NewReferenceRule(), pool, waitDir).ValidateFormat(plan, root, nil)
 			},
 		},
 		{
