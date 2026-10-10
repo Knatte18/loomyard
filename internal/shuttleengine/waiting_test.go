@@ -238,7 +238,7 @@ func TestPollEventsTick_OutstandingBackgroundWork(t *testing.T) {
 		{name: "an awaited shell keeps waiting past the bound", tasks: []BackgroundTask{awaitedShell}, spec: awaitedSpec},
 		{name: "an ungated run with outputs and a transcript-reported shell finishes done", tasks: []BackgroundTask{transcriptShellTask}, touchOutput: true, wantDone: true},
 		{name: "an ungated run with outputs and a fork finishes done", tasks: []BackgroundTask{fork}, touchOutput: true, wantDone: true},
-		{name: "a fresh gated run with outputs and a transcript-reported shell finishes done before any gated arrival", tasks: []BackgroundTask{transcriptShellTask}, gated: true, fresh: true, touchOutput: true, wantDone: true},
+		{name: "an ungated run with outputs and nothing outstanding finishes done", touchOutput: true, wantDone: true},		{name: "a fresh gated run with outputs and a transcript-reported shell finishes done before any gated arrival", tasks: []BackgroundTask{transcriptShellTask}, gated: true, fresh: true, touchOutput: true, wantDone: true},
 		{name: "a fresh gated run with outputs and a payload-reported shell finishes done before any gated arrival", tasks: []BackgroundTask{payloadShellTask}, gated: true, fresh: true, touchOutput: true, wantDone: true},
 		{name: "a gated run waits once a gated arrival has reached the gate", tasks: []BackgroundTask{transcriptShellTask}, gated: true, fresh: true, arrived: true, touchOutput: true},
 		{name: "an attached or resumed gated run waits", tasks: []BackgroundTask{transcriptShellTask}, gated: true, touchOutput: true},

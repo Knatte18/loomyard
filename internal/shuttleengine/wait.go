@@ -612,7 +612,8 @@ func (run *Run) abandonStartup(outcome Outcome, cause error) (Result, error) {
 // an EventStop and an EventAsk with output files missing return a held turn end carrying the event's message and the offset just past its line, and Wait keeps polling the same agent.
 // Kind only selects Message's source, inside ParseEvents, not this branch.
 // An EventWaiting is the one Kind that is not held at once: the session is waiting on its own background work,
-// so the tick returns what expiredTurnEnd answers, which is nothing while the work is outstanding and the files are missing.
+// so the tick returns what expiredTurnEnd answers, which is nothing while the work is outstanding and the files are missing;
+// an ungated one with an empty outstanding list and every output file present is done at once.
 // A hold never extends run.deadline, so a held run is bounded by its caller's own deadline and by the liveness check.
 // A waiting turn end never expires: a shell of either signal and a fork keep the turn waiting however long they run.
 // It is bounded only by the run's own deadline and the liveness check, so a shell that never ends ends the run OutcomeTimeout, and lyx reaps no shell.
@@ -645,6 +646,9 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	last := events[len(events)-1]
 	if last.Kind == EventWaiting {
 		run.recordWaiting(last)
+		if len(run.waitingTasks) == 0 && len(run.gate) == 0 && allOutputFilesExist(run.spec.OutputFiles) {
+			return OutcomeDone, nil, nil
+		}
 		return run.expiredTurnEnd()
 	}
 	run.waitingTasks = nil
