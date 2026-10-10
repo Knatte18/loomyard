@@ -12,6 +12,7 @@ package websterengine
 import (
 	"errors"
 
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planindex"
 )
 
@@ -63,6 +64,12 @@ type Geometry struct {
 	PlanDir string
 	// VerifyDir is the told directory of the worktree's verified-tree record, running marker and verify log, read by the webster verify gate.
 	VerifyDir string
+	// GateSlots is the told pool every webster gate run acquires a gate slot from.
+	// Nil in standalone mode, where there is no hub, and runs unslotted.
+	GateSlots *gateslot.Pool
+	// GateWaitDir is the told per-worktree directory a slotted card-verify rerun writes its wait record into.
+	// Empty in standalone mode, where no pool means no wait.
+	GateWaitDir string
 	// ParentName is the told parent agent name the master and recovery prompts render their parent directive from.
 	// Empty means no parent, which renders the no-parent variant.
 	ParentName string

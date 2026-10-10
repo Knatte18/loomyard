@@ -41,7 +41,7 @@ func TestVerifyGate_Scenario(t *testing.T) {
 	}
 	runGate := func(t *testing.T) (passed bool, findings string) {
 		t.Helper()
-		got, err := NewVerifyGate(anchor, worktree, verifyDir, "Webster-Burler gate")()
+		got, err := NewVerifyGate(anchor, worktree, verifyDir, "Webster-Burler gate", nil)()
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -75,7 +75,7 @@ func TestVerifyGate_Scenario(t *testing.T) {
 	if !t.Run("passes without running on a verified tree", func(t *testing.T) {
 		setVerifyCommand(t, "true")
 		paths := verifytree.NewPaths(worktree, verifyDir)
-		if res, err := verifytree.Verify(context.Background(), paths, verifytree.Site{Label: "Webster-Burler gate"}, "true", verifytree.Timeout); err != nil || res.Status != verifytree.StatusPassed {
+		if res, err := verifytree.Verify(context.Background(), paths, verifytree.Site{Label: "Webster-Burler gate"}, "true", verifytree.Timeout, nil); err != nil || res.Status != verifytree.StatusPassed {
 			t.Fatalf("seed Verify = %+v, %v; want a pass", res, err)
 		}
 		if err := os.Remove(paths.Log); err != nil {
@@ -129,7 +129,7 @@ func (f roundGateFixture) commitFiles(t *testing.T, files map[string]string) str
 
 func (f roundGateFixture) runGate(t *testing.T) (passed bool, findings string) {
 	t.Helper()
-	got, err := NewVerifyGate(f.anchor, f.worktree, f.verifyDir, "Webster-Burler gate")()
+	got, err := NewVerifyGate(f.anchor, f.worktree, f.verifyDir, "Webster-Burler gate", nil)()
 	if err != nil {
 		t.Fatalf("gate() error = %v; want nil", err)
 	}
@@ -218,6 +218,39 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		}
 		if _, err := os.Stat(paths.Log); err == nil {
 			t.Errorf("verify log %s exists; want the command not to have run", paths.Log)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("appends the failing tests and the impacted-set tmux pass while a publish failure record is present", func(t *testing.T) {
+		head := f.commitFiles(t, map[string]string{"b/b.go": "package b\n\nconst Changed = 2\n"})
+		derivation, err := impactset.Derive(f.worktree, planPass.Commit)
+		if err != nil || derivation.Command == "" || len(derivation.Packages) == 0 {
+			t.Fatalf("Derive() = %+v, %v; want a derived command with packages", derivation, err)
+		}
+		if err := os.WriteFile(paths.Log, []byte("verify output"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		failure := verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify, Head: head, Tests: []verifytree.FailedTest{{Package: "example.com/m/b", Test: "TestB"}}}
+		if err := verifytree.WritePublishFailure(paths, failure); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := verifytree.RemovePublishFailure(paths); err != nil {
+				t.Error(err)
+			}
+		})
+
+		if passed, findings := f.runGate(t); !passed {
+			t.Fatalf("gate() findings = %q; want a pass", findings)
+		}
+		want := derivation.Command + " && go test -tags tmux -run '^TestB$' example.com/m/b && go test -tags tmux " + strings.Join(derivation.Packages, " ")
+		if pass, ok := verifytree.LatestPass(paths, want); !ok || pass.Commit != head {
+			t.Errorf("LatestPass(extended command) = %+v, %v; want a pass at %s of %q", pass, ok, head, want)
+		}
+		if _, ok := verifytree.LatestPass(paths, derivation.Command); ok {
+			t.Errorf("a pass of the plain derived command is recorded; want the extended command to have run instead")
 		}
 	}) {
 		return

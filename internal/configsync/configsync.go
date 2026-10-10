@@ -324,8 +324,8 @@ func primeConfig(primeBaseDir, module string) []byte {
 // primeBaseDir is the prime worktree's anchor dir; empty means no prime is resolvable.
 //
 // A present hub file is the reconcile input and is never replaced.
-// An absent file of a module with open maps is seeded from the prime's copy when that copy exists and parses;
-// a module without open maps never reads the prime, since its per-worktree copy was never in effect.
+// An absent file of a module with open maps, or one marked SeedsFromPrime, is seeded from the prime's copy when that copy exists and parses;
+// any other module never reads the prime, since its per-worktree copy was never in effect.
 // Otherwise an absent file folds in the module's pre-cutover legacy files, and failing that starts from the template.
 // Legacy files are pruned only when apply succeeds.
 // When apply is false, nothing is written or removed.
@@ -350,7 +350,7 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, apply bool) ([]Result, er
 		if fileAbsent {
 			existing = nil
 			seed = SeedTemplate
-			if len(m.OpenMaps) > 0 {
+			if len(m.OpenMaps) > 0 || m.SeedsFromPrime {
 				if prime := primeConfig(primeBaseDir, m.Name); prime != nil {
 					existing = prime
 					seed = SeedPrime

@@ -7,9 +7,11 @@
 package stencils
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -163,6 +165,7 @@ var wordingClaims = []stencilClaims{
 		{must: "A line width is never inferred from the surrounding code", why: "a line width is never inferred from surrounding code"},
 		{must: "assert-no-callers", why: "the per-card mechanical check names assert-no-callers for a Delete card"},
 		{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"},
+		{must: "Raise each failing test named above as a BLOCKING finding", why: "a failing test of a Publish failure record is a BLOCKING finding"},
 	}},
 	{"loom-template-rework.md", LoomTemplateRework, []claim{
 		{must: "never plan an entry as scope", why: "a carry-over entry in the record's Open risks lists unreviewed fixes, never scope for a rework generation"},
@@ -200,6 +203,8 @@ var wordingClaims = []stencilClaims{
 			{must: "{{.specs_dir}}", why: "a normative citation names the deployed specs through the marker, so a bare path cannot creep back"},
 			{must: "tested with `go -C <module>` and module-relative package paths", why: "the plan template states the nested-module command form"},
 			{must: "`verify-nested-module` in `{{.specs_dir}}/loom/loom-plan-spec.md`", why: "the plan template points at the check rather than restating it"},
+			{must: "A card's `**Verify:**` is package-scoped", why: "the plan template states that a card Verify is package-scoped"},
+			{must: "`lyx gate test [-C <module>] [--tags <tags>] <packages>`, run as a background Bash call", why: "the plan template names the slotted route for a module-wide or tmux-tier run"},
 		},
 		wantAll("Edit lists the member glyphs a card changes, and the redundancy checks are pointed at rather than restated", "`**Edit:**` lists the member glyphs the card changes", "a file path only for a file with no symbol to name", "`redundant-package-target`", "`redundant-file-target`"),
 		wantAll("a signature change is written with the re-sign arrow, which an interface method or a struct field never takes", "the re-sign arrow, `` `<glyph>` -> `<new declaration head>` ``", "An interface method or a struct field takes no arrow"),
@@ -313,8 +318,21 @@ var wordingClaims = []stencilClaims{
 			"Read the card file",
 			"fall back to that card's one-line intent from the Card Index",
 			"unless the card FILE carries a `**Commit:**` line"),
-		wantAll("the card's gate command is Go-rendered through the card_gates marker, so the fork derives none itself",
-			"{{.card_gates}}", "Run the card's gate command from the list below"),
+		wantAll("the card's gate steps are Go-rendered through the card_gates marker, so the fork derives none itself",
+			"{{.card_gates}}", "Run each step of the card's gate from the list below"),
+		wantAll("a gate step and a card verify line run as background Bash calls the fork waits for, so a slot wait is not killed by the Bash tool's timeout",
+			"Each step runs as its own Bash call with `run_in_background`, and you wait for its exit",
+			"each line of it as its own Bash call with `run_in_background`, waited for"),
+		wantAll("the batch gate runs once after the last card's commit and its verify, before the report, and a failure counts under the self-fix bound",
+			"{{.batch_gate}}",
+			"After the last card's commit and that card's own `verify:`, and before writing the report, run the batch gate once",
+			"A failure counts as a gate failure under the self-fix bound"),
+		wantAll("a slot-busy exit is no failure and costs no self-fix attempt, spelled as the exit code the gate verb defines",
+			fmt.Sprintf("A step that exits with code `%d`", gatecli.SlotBusyExit),
+			"It costs no self-fix attempt, never makes the report `FAILED`, and you re-run the same step"),
+		wantAll("a fork runs raw go test on the batch's packages only, and any wider or tmux-tier run goes through the slot",
+			"You may run raw `go test` on the batch's listed packages only",
+			"never a raw `go` command"),
 		wantNone("the hand-derived build+unit gate wording is gone", "this card's package's unit tests", "build+unit"),
 		wantNone("the superseded report grammar is gone, the report is deliberately minimal", "out_of_scope:", "tests: green"),
 		droppedConceptClaims(),
@@ -343,8 +361,11 @@ var wordingClaims = []stencilClaims{
 			"Never touch the plan directory `{{.plan_dir}}` or anything under `_lyx`"),
 		wantAll("the fixer inherits Merriam's final-action instruction to write the contract files, so its rules name both as never written",
 			"Never write, create or delete Merriam's contract files `{{.outcome_path}}` and `{{.summary_path}}`"),
-		wantAll("the fixer commits each fix as fix: <summary> and runs the failing packages' tests with the integration tag",
-			"`fix: <summary>`", "`-tags integration`"),
+		wantAll("the fixer commits each fix as fix: <summary>",
+			"`fix: <summary>`"),
+		wantAll("the fixer runs the findings' packages through the slotted route with the integration tag, as a background call it waits for, and re-runs a slot-busy exit rather than counting it a failure",
+			"`lyx gate test --tags integration <the findings' packages>` as its own Bash call with `run_in_background`",
+			"is re-run, never counted as a failure"),
 		wantAll("the fixer does not run the plan-level verify and never drives the webster loop",
 			"never run the plan-level verify", "NEVER run any `lyx webster` command"),
 	)},

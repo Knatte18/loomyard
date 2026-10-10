@@ -12,6 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
@@ -700,6 +703,7 @@ const skippedCaller = "package caller\n\nimport \"example.com/glyphchain/callees
 
 // TestGlyphChain_CallerCoverage pins caller-uncovered over the callees fixture: a deleted or re-signed member whose references no admissible card covers is reported per file, blocking for a package-level member and informational for a method, at the plan gate and never by ValidateDispatch.
 // The untagged tier's type loader always fails, so the rows pin that the gate then answers with the scan's findings and no error.
+// One row fails the load at a slotted index's acquire instead, over an unusable gate.yaml, and pins the same answer with no wait record left.
 func TestGlyphChain_CallerCoverage(t *testing.T) {
 	t.Parallel()
 
@@ -717,6 +721,8 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 		files map[string]string
 		// subject is the card that deletes or re-signs the member, 1-card1 when empty.
 		subject string
+		// unusableGate validates through a slotted index whose hub gate.yaml holds slots: 0, so the slot acquire fails.
+		unusableGate bool
 		// want lists "<severity> <file>" for every caller-uncovered finding, sorted.
 		want []string
 		// wantDeleteOrder names the file a delete-before-reference finding must report, when any.
@@ -726,6 +732,12 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			name:  "delete with no covers",
 			cards: []string{deleteCard("callees#Target")},
 			want:  []string{"blocking callees/callees_external_test.go", "blocking callees/local.go", "blocking callers/callers.go"},
+		},
+		{
+			name:         "a gate slot that cannot be acquired leaves the slotted load to the scan",
+			cards:        []string{deleteCard("callees#Target")},
+			unusableGate: true,
+			want:         []string{"blocking callees/callees_external_test.go", "blocking callees/local.go", "blocking callers/callers.go"},
 		},
 		{
 			name:  "delete of a member listed twice",
@@ -881,6 +893,13 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			_, plan := writeGlyphPlan(t, tc.cards, tc.sections...)
 
 			findings, err := ValidateFormat(plan, root)
+			if tc.unusableGate {
+				waitDir := t.TempDir()
+				findings, err = NewSlottedIndex(fabricengine.NewReferenceRule(), unusableGatePool(t), waitDir).ValidateFormat(plan, root, nil)
+				if waits, readErr := gateslot.ReadWaits(waitDir); readErr != nil || len(waits) != 0 {
+					t.Errorf("ReadWaits after the failed acquire = (%+v, %v); want no records", waits, readErr)
+				}
+			}
 			if err != nil {
 				t.Fatalf("ValidateFormat(...) returned error: %v", err)
 			}
@@ -915,6 +934,26 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// unusableGatePool returns a gate-slot pool whose limits come from a hub gate.yaml holding slots: 0, so every acquire fails without spawning.
+func unusableGatePool(t *testing.T) *gateslot.Pool {
+	t.Helper()
+	boardDir := t.TempDir()
+	config := configengine.ConfigFile(boardDir, "gate")
+	if err := os.MkdirAll(filepath.Dir(config), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config, []byte("slots: 0\ngo_parallel: 1\ncli_wait_sec: 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return &gateslot.Pool{
+		Dir: filepath.Join(t.TempDir(), "gate"),
+		Limits: func() (gateslot.Limits, error) {
+			cfg, err := gateslot.LoadConfig(boardDir)
+			return cfg.Limits(), err
+		},
 	}
 }
 

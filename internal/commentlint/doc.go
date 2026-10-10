@@ -11,7 +11,12 @@
 // A line end an edit carries over unchanged is not new, so fixing one flagged break never makes another break of the block checked,
 // and a legacy wrapped block is flagged only where an edit creates a break.
 //
-// A checked break passes when its line ends a sentence (`.`, `!`, `?` or `:`, each optionally followed by a closing `)`, quote or backtick), a semicolon, or a comma whose next line starts with a coordinating conjunction (`and`, `but`, `or`, `nor`, `yet` or `so`; `for` is left out because `, for example` is introductory).
+// A checked break passes when its line ends a sentence (`.`, `!`, `?` or `:`, each optionally followed by a closing `)`, quote or backtick), a semicolon, or a comma whose next line starts with a coordinating conjunction (`and`, `but`, `or`, `nor`, `yet` or `so`; `for` is left out because `, for example` is introductory) that opens an independent clause.
+// The words after the conjunction, up to the next `,`, `;`, `:` or sentence end, open a clause when they start with a subject and hold a finite-verb candidate after the subject's head word.
+// A subject is a subject or demonstrative pronoun, a determiner followed by a word, or a backticked identifier.
+// A finite-verb candidate is an auxiliary or modal from a closed set, or a word ending in `s` or `ed`.
+// A comma-plus-conjunction break that opens no clause, such as one that joins a list item or a compound predicate, is a finding.
+// An uncertain case errs toward flagging, since joining the two lines always passes.
 // A finding is the line of a checked break that passes none of these.
 // A directive comment (`//go:`, `//lyx:`, `//testtiming:`, `//nolint`) ends the block it sits in, so the prose above it is still checked.
 // A paragraph, the lines of a block between blank comment lines, is skipped whole when any of its lines is indented code, a doc-comment list item or a heading.
@@ -19,6 +24,7 @@
 // A generated file is skipped whole.
 // The kinds of line skipped follow `tools/godocreflow`; this package re-implements them, since `tools/` is not importable.
 //
-// Bound: every comma-plus-conjunction break passes, compound predicates included.
-// Telling those from independent clauses needs a parser, so they go unchecked, and a comment's line breaks are never a review finding.
+// Bound: the clause check is a word-list heuristic, not a parser.
+// A plural noun read as a verb (`, and the gate tests`) passes, and a clause whose subject the opener set misses (`, and nothing runs`) is flagged and joined.
+// A comment's line breaks are never a review finding.
 package commentlint

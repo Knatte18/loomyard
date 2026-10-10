@@ -19,7 +19,9 @@
 // The Webster-Burler round gate (NewVerifyGate) runs less than the plan's `## verify:`.
 // It lints the comments added since the plan verify's last recorded pass, then runs the command impactset derives from that diff through verifytree.Verify, falling back to the plan's own command wherever impactset cannot narrow.
 // The narrowing is impactset's; Webster's gate, Publish and Finalize keep the full plan verify on the tree that lands.
-// The round compiles the `tmux` and `llm` tiers and never runs them.
+// The round compiles the `tmux` and `llm` tiers and never runs `llm`.
+// It runs the `tmux` tier only while a checked Publish failure record is present, as the failing tests the record names and, for a `publish_verify` failure, the impacted-set pass, to confirm the fix.
+// Publish reruns both verifies in full regardless, and stays the guard.
 //
 // The Plan-Write rotation archives the prior plan and appends a prior-plan block naming that archive to the respawned session's prompt.
 // It first archives webster's run record into the archive's `webster` subdirectory through a told seam, so the next Webster run starts a new run over the new plan instead of refusing the old record's plan drift.

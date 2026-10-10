@@ -27,13 +27,18 @@ import (
 // and Plan-Burler's own gates -- and the standalone verbs). Once execution is under way, use
 // ValidateDispatch instead.
 func ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
+	return validateFormat(plan, worktreeRoot, defaultTypesLoader)
+}
+
+// validateFormat is ValidateFormat's body, its caller-uncovered type load run through loader.
+func validateFormat(plan *planparser.Plan, worktreeRoot string, loader typesLoader) ([]Finding, error) {
 	findings := convertAll(planparser.ValidateFormat(plan, worktreeRoot))
 	resolveFindings, err := resolvePass(plan, worktreeRoot, nil, nil)
 	findings = append(findings, resolveFindings...)
 	if err != nil {
 		return findings, err
 	}
-	gateFindings, err := planGatePass(plan, worktreeRoot, defaultTypesLoader)
+	gateFindings, err := planGatePass(plan, worktreeRoot, loader)
 	return append(findings, gateFindings...), err
 }
 
@@ -44,21 +49,31 @@ func ValidateFormat(plan *planparser.Plan, worktreeRoot string) ([]Finding, erro
 // a run moved back to the plan review after Webster executed batches wedged its plan gate on exactly those.
 // It has ValidateFormat's error contract.
 func ValidateFormatAfter(plan *planparser.Plan, worktreeRoot string, done []planparser.Card) ([]Finding, error) {
+	return validateFormatAfter(plan, worktreeRoot, done, defaultTypesLoader)
+}
+
+// validateFormatAfter is ValidateFormatAfter's body, its caller-uncovered type load run through loader.
+func validateFormatAfter(plan *planparser.Plan, worktreeRoot string, done []planparser.Card, loader typesLoader) ([]Finding, error) {
 	if len(done) == 0 {
-		return ValidateFormat(plan, worktreeRoot)
+		return validateFormat(plan, worktreeRoot, loader)
 	}
 	findings, err := ValidateDispatch(plan, worktreeRoot, done, nil)
 	if err != nil {
 		return findings, err
 	}
-	gateFindings, err := planGatePass(PendingPlan(plan, done), worktreeRoot, defaultTypesLoader)
+	gateFindings, err := planGatePass(PendingPlan(plan, done), worktreeRoot, loader)
 	return append(findings, gateFindings...), err
 }
 
 // ValidateRework is the rework gate's check set: ValidateFormat's findings, then planparser.CheckFirstCard's finding when plan's first_card differs from told, the card number Go told the rework session to start at.
 // It has ValidateFormat's error contract.
 func ValidateRework(plan *planparser.Plan, worktreeRoot string, told int) ([]Finding, error) {
-	findings, err := ValidateFormat(plan, worktreeRoot)
+	return validateRework(plan, worktreeRoot, told, defaultTypesLoader)
+}
+
+// validateRework is ValidateRework's body, its caller-uncovered type load run through loader.
+func validateRework(plan *planparser.Plan, worktreeRoot string, told int, loader typesLoader) ([]Finding, error) {
+	findings, err := validateFormat(plan, worktreeRoot, loader)
 	findings = append(findings, convertAll(planparser.CheckFirstCard(plan, told))...)
 	return findings, err
 }
@@ -67,13 +82,18 @@ func ValidateRework(plan *planparser.Plan, worktreeRoot string, told int) ([]Fin
 // approval gate, converts every finding, and appends the same resolve-backed findings on top,
 // with the same error contract ValidateFormat documents.
 func Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, error) {
+	return validate(plan, worktreeRoot, defaultTypesLoader)
+}
+
+// validate is Validate's body, its caller-uncovered type load run through loader.
+func validate(plan *planparser.Plan, worktreeRoot string, loader typesLoader) ([]Finding, error) {
 	findings := convertAll(planparser.Validate(plan, worktreeRoot))
 	resolveFindings, err := resolvePass(plan, worktreeRoot, nil, nil)
 	findings = append(findings, resolveFindings...)
 	if err != nil {
 		return findings, err
 	}
-	gateFindings, err := planGatePass(plan, worktreeRoot, defaultTypesLoader)
+	gateFindings, err := planGatePass(plan, worktreeRoot, loader)
 	return append(findings, gateFindings...), err
 }
 

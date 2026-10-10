@@ -110,7 +110,7 @@ func TestConfigReconcileInGitRepo(t *testing.T) {
 		seedModuleConfig(t, tmpDir, "loom", "discussion_timeout_min: 480\nlegacy_key: keepme\n")
 
 		var setOut bytes.Buffer
-		setCode := dispatch(makeLayoutAt(tmpDir), &setOut, []string{"loom"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), nil, false, []string{"discussion_timeout_min=60"})
+		setCode := dispatch(makeLayoutAt(tmpDir), &setOut, []string{"loom"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), nil, false, []string{"discussion_timeout_min=60"}, nil)
 		if setCode != 0 {
 			t.Fatalf("dispatch(--set) = %d; want 0; output: %q", setCode, setOut.String())
 		}

@@ -1,6 +1,7 @@
 package loomcli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -137,20 +139,54 @@ func writeShuttleMarker(t *testing.T, runRoot, kind string, pid int) {
 	}
 }
 
-// TestShuttleWaiting asserts a live shuttle marker is reported when no verify runs,
-// a live verify marker is reported ahead of it,
-// and a dead shuttle marker falls through to the review note.
+// TestShuttleWaiting asserts the hook chain's order.
+// Gate wait records are reported ahead of a live verify marker, and a live verify marker ahead of a live shuttle marker.
+// A dead shuttle marker falls through to the review note.
 func TestShuttleWaiting(t *testing.T) {
 	t.Parallel()
 
+	started := time.Date(2026, 10, 3, 9, 15, 0, 0, time.UTC)
+	otherHolder := gateslot.Holder{Worktree: "/hub/other", Site: "lyx gate test ./z"}
 	tests := []struct {
 		name         string
 		kind         string
 		shuttlePID   int
 		verifyMarker func(t *testing.T) string
-		want         string
-		wantReview   bool
+		// waits are the live gate wait records, written in the order listed.
+		waits      []gateslot.Wait
+		holders    []gateslot.Holder
+		want       string
+		wantReview bool
 	}{
+		{
+			name:         "two live wait records render both sites oldest first, then the holders once, then the next note",
+			kind:         "gate validate-plan",
+			shuttlePID:   os.Getpid(),
+			verifyMarker: func(t *testing.T) string { return filepath.Join(t.TempDir(), "absent.yaml") },
+			waits: []gateslot.Wait{
+				{Site: "card verify 01-x", PID: os.Getpid(), Started: started.Add(3 * time.Minute)},
+				{Site: "lyx gate test ./a", PID: os.Getpid(), Started: started},
+			},
+			holders: []gateslot.Holder{otherHolder},
+			want: "Plan-Write: lyx gate test ./a waiting for a gate slot 6m; Plan-Write: card verify 01-x waiting for a gate slot 3m" +
+				" (holders: /hub/other lyx gate test ./z); Plan-Write: gate validate-plan running 6m",
+		},
+		{
+			name:         "a wait record beside a live verify marker renders the gate wait then the verify note",
+			kind:         "gate validate-plan",
+			shuttlePID:   os.Getpid(),
+			verifyMarker: func(t *testing.T) string { return writeVerifyMarker(t, os.Getpid(), 0) },
+			waits:        []gateslot.Wait{{Site: "lyx gate test ./a", PID: os.Getpid(), Started: started}},
+			want:         "Plan-Write: lyx gate test ./a waiting for a gate slot 6m; Plan-Write: verify running 6m (go test ./...)",
+		},
+		{
+			name:         "a wait record of a dead process is not reported",
+			kind:         "gate validate-plan",
+			shuttlePID:   os.Getpid(),
+			verifyMarker: func(t *testing.T) string { return filepath.Join(t.TempDir(), "absent.yaml") },
+			waits:        []gateslot.Wait{{Site: "lyx gate test ./a", PID: 2147483646, Started: started}},
+			want:         "Plan-Write: gate validate-plan running 6m",
+		},
 		{
 			name:         "live shuttle marker when no verify runs",
 			kind:         "gate validate-plan",
@@ -186,12 +222,19 @@ func TestShuttleWaiting(t *testing.T) {
 			writeShuttleMarker(t, runRoot, tt.kind, tt.shuttlePID)
 			s := reviewStore(t)
 			openReview(t, s)
-			started := time.Date(2026, 10, 3, 9, 15, 0, 0, time.UTC)
 			now := func() time.Time { return started.Add(6*time.Minute + 20*time.Second) }
 			readMarker := func() (shuttleengine.WaitMarker, bool, error) {
 				return shuttleengine.ReadWaitMarker(shuttleengine.Config{RunDir: runRoot}, t.TempDir())
 			}
-			hook := verifyWaiting(tt.verifyMarker(t), now, shuttleWaiting(readMarker, now, reviewAsNext(s)))
+			waitDir := t.TempDir()
+			for _, wait := range tt.waits {
+				if _, err := gateslot.WriteWait(waitDir, wait); err != nil {
+					t.Fatal(err)
+				}
+			}
+			holders := func() ([]gateslot.Holder, error) { return tt.holders, nil }
+			verify := verifyWaiting(tt.verifyMarker(t), holders, now, shuttleWaiting(readMarker, now, reviewAsNext(s)))
+			hook := gateWaiting(waitDir, holders, now, verify)
 			note, err := hook(shedengine.Status{CurrentProducer: "Plan-Write"})
 			if err != nil {
 				t.Fatal(err)
@@ -220,14 +263,50 @@ func writeVerifyMarker(t *testing.T, pid int, attempt int) string {
 	return path
 }
 
+// writeWaitingVerifyMarker writes a marker held by pid that still waits for a gate slot, since the same start time, and returns its path.
+func writeWaitingVerifyMarker(t *testing.T, pid int) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "running.yaml")
+	body := "site: Publish\nattempt: 0\ncommand: go test ./...\nstarted: 2026-10-03T09:15:00Z\npid: " + strconv.Itoa(pid) + "\nstate: waiting\nwait_started: 2026-10-03T09:15:00Z\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 // TestVerifyWaiting asserts a live verify marker is reported ahead of an open review, a dead marker falls through to the review note, and no marker with no review is empty.
 func TestVerifyWaiting(t *testing.T) {
 	tests := []struct {
 		name       string
 		openReview bool
 		marker     func(t *testing.T) string
-		check      func(t *testing.T, note string)
+		// holders is the told holders read; nil reads no holder.
+		holders func() ([]gateslot.Holder, error)
+		check   func(t *testing.T, note string)
 	}{
+		{
+			name:   "waiting marker names its site and the holders",
+			marker: func(t *testing.T) string { return writeWaitingVerifyMarker(t, os.Getpid()) },
+			holders: func() ([]gateslot.Holder, error) {
+				return []gateslot.Holder{{Worktree: "/hub/a", Site: "lyx gate test ./x"}, {Worktree: "/hub/b", Site: "card verify 01-x"}}, nil
+			},
+			check: func(t *testing.T, note string) {
+				want := "Webster-Burler: verify waiting for a gate slot 6m (Publish; holders: /hub/a lyx gate test ./x, /hub/b card verify 01-x)"
+				if note != want {
+					t.Errorf("note = %q; want %q", note, want)
+				}
+			},
+		},
+		{
+			name:    "waiting marker with a failing holders read renders without the holders clause",
+			marker:  func(t *testing.T) string { return writeWaitingVerifyMarker(t, os.Getpid()) },
+			holders: func() ([]gateslot.Holder, error) { return nil, errors.New("unreadable") },
+			check: func(t *testing.T, note string) {
+				if want := "Webster-Burler: verify waiting for a gate slot 6m (Publish)"; note != want {
+					t.Errorf("note = %q; want %q", note, want)
+				}
+			},
+		},
 		{
 			name:       "live marker ahead of review",
 			openReview: true,
@@ -275,7 +354,11 @@ func TestVerifyWaiting(t *testing.T) {
 			}
 			started := time.Date(2026, 10, 3, 9, 15, 0, 0, time.UTC)
 			now := func() time.Time { return started.Add(6*time.Minute + 20*time.Second) }
-			note, err := verifyWaiting(tt.marker(t), now, reviewAsNext(s))(shedengine.Status{CurrentProducer: "Webster-Burler"})
+			holders := tt.holders
+			if holders == nil {
+				holders = func() ([]gateslot.Holder, error) { return nil, nil }
+			}
+			note, err := verifyWaiting(tt.marker(t), holders, now, reviewAsNext(s))(shedengine.Status{CurrentProducer: "Webster-Burler"})
 			if err != nil {
 				t.Fatal(err)
 			}

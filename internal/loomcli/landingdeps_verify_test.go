@@ -5,8 +5,11 @@
 package loomcli
 
 import (
+	"reflect"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -65,5 +68,15 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 
 	if want := verifytree.Dir(loc.AnchorPath()); deps.VerifyDir != want {
 		t.Errorf("VerifyDir = %q, want %q", deps.VerifyDir, want)
+	}
+
+	if want := gateslot.Dir(fabricengine.BoardDir(loc.HubPath)); deps.GateSlots == nil || deps.GateSlots.Dir != want {
+		t.Errorf("GateSlots = %+v, want a pool over %q", deps.GateSlots, want)
+	}
+
+	log := "--- FAIL: TestA (0.00s)\n    --- FAIL: TestA/sub (0.00s)\nFAIL\nFAIL\texample.com/m/a\t0.01s\n"
+	wantTests := []verifytree.FailedTest{{Package: "example.com/m/a", Test: "TestA/sub"}}
+	if got := deps.FailingTests(log); !reflect.DeepEqual(got, wantTests) {
+		t.Errorf("FailingTests = %+v, want %+v", got, wantTests)
 	}
 }

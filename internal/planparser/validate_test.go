@@ -1694,6 +1694,57 @@ func TestValidate_VerifyNestedModule(t *testing.T) {
 	}
 }
 
+// TestValidate_VerifyModuleWide covers verify-module-wide: a card's Verify: must not hold a module-wide go build, test or vet, or a go test selecting the tmux or llm tier; the overview's verify chain is never read.
+func TestValidate_VerifyModuleWide(t *testing.T) {
+	t.Parallel()
+
+	withVerify := func(verify string) planparser.Card {
+		card := validCard(1, "a")
+		card.Verify = verify
+		card.HasVerify = true
+		return card
+	}
+
+	tests := []struct {
+		name     string
+		verify   string
+		overview string
+		want     []string
+	}{
+		{name: "go test dot-dot-dot fires", verify: "go test ./...", want: []string{"1-a"}},
+		{name: "go build dot-dot-dot after -C fires", verify: "go -C sub build ./...", want: []string{"1-a"}},
+		{name: "go vet all fires", verify: "go vet all", want: []string{"1-a"}},
+		{name: "subtree pattern fires", verify: "go test ./internal/...", want: []string{"1-a"}},
+		{name: "tmux tag fires", verify: "go test -tags tmux ./internal/x", want: []string{"1-a"}},
+		{name: "llm tag in a list fires", verify: "go test -tags=integration,llm ./internal/x", want: []string{"1-a"}},
+		{name: "one finding per command", verify: "go test ./... && go vet all", want: []string{"1-a", "1-a"}},
+		{name: "package-scoped test is silent", verify: "go test ./internal/x"},
+		{name: "integration tag is silent", verify: "go test -tags integration ./internal/x"},
+		{name: "tmux tag on vet is silent", verify: "go vet -tags tmux ./internal/x"},
+		{name: "fields after -args are not package arguments", verify: "go test ./internal/x -args ./..."},
+		{name: "overview chain is never read", overview: "go test ./...\ngo vet all"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var cards []planparser.Card
+			if tt.verify != "" {
+				cards = []planparser.Card{withVerify(tt.verify)}
+			}
+			plan := &planparser.Plan{Format: 5, Approved: true, Cards: cards, Verify: strings.ReplaceAll(tt.overview, "\n", " && ")}
+			var got []string
+			for _, f := range planparser.ValidateFormat(plan, t.TempDir()) {
+				if f.Check == "verify-module-wide" {
+					got = append(got, f.Card)
+				}
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("verify-module-wide cards = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestValidate_CustomCardBoundByGenericChecks proves a Custom card remains bound by the card-generic checks despite being validate.go's explicit escape hatch on the type-conditional checks (path-missing's own-target exemption, card-missing-field's ImpactSummary exemption): a malformed path-shaped target, a missing Intent:, an entry duplicated across Targets and Uses, and a badly prefixed Commit: each still fire, so a blanket-skip regression would fail this test.
 //
 //testtiming:keep pins that a Custom card stays bound by the generic checks, which its covering tests do not assert together

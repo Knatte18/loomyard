@@ -1,0 +1,3 @@
+slots: 2  # how many gate builds and test runs the hub executes at once; a lowered count takes effect on the next acquire while a running holder finishes
+go_parallel: 4  # the -p cap every slotted run gets in its GOFLAGS, bounding the packages one go command builds and tests in parallel
+cli_wait_sec: 300  # seconds lyx gate test waits for a free slot before it exits with its slot-busy code

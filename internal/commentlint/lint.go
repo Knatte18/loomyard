@@ -26,7 +26,19 @@ var (
 	listItemPattern    = regexp.MustCompile(`^([-*]\s|[0-9]{1,3}[.)]\s)`)
 	sentenceEndPattern = regexp.MustCompile("[.!?:][)\"'`]*$")
 	conjunctions       = map[string]bool{"and": true, "but": true, "or": true, "nor": true, "yet": true, "so": true}
+	subjectPronouns    = wordSet("it", "they", "we", "he", "she", "i", "you", "this", "that", "these", "those", "there")
+	determiners        = wordSet("the", "a", "an", "its", "their", "our", "his", "her", "my", "your", "each", "every", "any", "some", "no", "another", "both", "all")
+	auxiliaries        = wordSet("is", "are", "was", "were", "be", "been", "has", "have", "had", "do", "does", "did", "can", "could", "will", "would", "shall", "should", "may", "might", "must")
 )
+
+// wordSet returns the set of words.
+func wordSet(words ...string) map[string]bool {
+	set := make(map[string]bool, len(words))
+	for _, word := range words {
+		set[word] = true
+	}
+	return set
+}
 
 // Lint returns the new fixed-column-wrapped breaks in the `//` comment blocks of the `.go` files that differ in worktree.
 // An empty base compares the working tree, untracked files included, against HEAD; a base commit compares it against HEAD.
@@ -158,16 +170,67 @@ func baseLineEndPairs(src string) map[string]bool {
 	return pairs
 }
 
-// endsSemanticBreak reports whether a line may end where it does: at a sentence end, a semicolon, or a comma before a coordinating conjunction.
+// endsSemanticBreak reports whether a line may end where it does: at a sentence end, a semicolon, or a comma before a coordinating conjunction that opens a clause.
 func endsSemanticBreak(before, after commentLine) bool {
 	trimmed := strings.TrimRight(before.content, " \t")
 	if sentenceEndPattern.MatchString(trimmed) || strings.HasSuffix(trimmed, ";") {
 		return true
 	}
 	if strings.HasSuffix(trimmed, ",") {
-		return conjunctions[strings.ToLower(strings.Fields(after.content)[0])]
+		words := strings.Fields(after.content)
+		return conjunctions[strings.ToLower(words[0])] && opensClause(clauseWords(words[1:]))
 	}
 	return false
+}
+
+// clauseWords returns the words up to and including the first one that ends with `,`, `;`, `:` or a sentence end, or all of them when none does.
+func clauseWords(words []string) []string {
+	for i, word := range words {
+		if strings.HasSuffix(word, ",") || strings.HasSuffix(word, ";") || sentenceEndPattern.MatchString(word) {
+			return words[:i+1]
+		}
+	}
+	return words
+}
+
+// opensClause reports whether the words after a coordinating conjunction open an independent clause:
+// they start with a subject and hold a finite-verb candidate after the subject's head word.
+// The subject is a subject or demonstrative pronoun, a determiner followed by a word, or a backticked identifier.
+// The verb candidate is a closed set of auxiliaries and modals, or a word ending in `s` or `ed`.
+// An uncertain case reads as no clause, since joining the two lines always passes.
+func opensClause(words []string) bool {
+	if len(words) == 0 {
+		return false
+	}
+	first := strings.ToLower(trimWordPunctuation(words[0]))
+	headIndex := 0
+	switch {
+	case strings.HasPrefix(words[0], "`"):
+	case subjectPronouns[first]:
+	case determiners[first]:
+		headIndex = 1
+	default:
+		return false
+	}
+	if headIndex+1 > len(words) {
+		return false
+	}
+	for _, word := range words[headIndex+1:] {
+		if isFiniteVerbCandidate(strings.ToLower(trimWordPunctuation(word))) {
+			return true
+		}
+	}
+	return false
+}
+
+// trimWordPunctuation removes the punctuation and backticks around a word.
+func trimWordPunctuation(word string) string {
+	return strings.Trim(word, ".,;:!?()\"'`")
+}
+
+// isFiniteVerbCandidate reports whether a lower-case word may be a finite verb: an auxiliary or modal, or a word ending in `s` or `ed`.
+func isFiniteVerbCandidate(word string) bool {
+	return auxiliaries[word] || strings.HasSuffix(word, "s") || strings.HasSuffix(word, "ed")
 }
 
 // findNewWrappedBreaks returns the lines of path's new text that end at a break, new against baseText, that is not a semantic one.

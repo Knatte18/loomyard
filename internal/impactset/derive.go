@@ -26,6 +26,8 @@ var vetTags = []string{"integration", "tmux", "llm"}
 type Derivation struct {
 	// Command is the round gate's derived command; empty when Fallback is set.
 	Command string
+	// Packages are the impacted set's `go` package arguments, in the order the command lists them; empty with a fallback, and empty when only non-Go files changed.
+	Packages []string
 	// Fallback is why the caller runs the full plan verify instead; empty when Command is set.
 	Fallback string
 	// Base is the commit the diff started from, set whenever the base was usable.
@@ -67,7 +69,7 @@ func Derive(worktree, base string) (Derivation, error) {
 		return Derivation{}, err
 	}
 
-	derivation.Command, derivation.Fallback = commandFor(graph, changedPaths, guards)
+	derivation.Command, derivation.Packages, derivation.Fallback = commandFor(graph, changedPaths, guards)
 	return derivation, nil
 }
 
@@ -135,17 +137,17 @@ func listPackages(worktree string) ([]pkg, error) {
 	return parseGoList(string(output), absolute), nil
 }
 
-// commandFor is the pure core of Derive: the command for the changed paths over the graph, or the reason it falls back.
+// commandFor is the pure core of Derive: the command for the changed paths over the graph and the impacted set's package arguments, or the reason it falls back.
 // guards maps a package directory to the names of its guard tests.
-func commandFor(graph moduleGraph, changedPaths []string, guards map[string][]string) (command, fallback string) {
+func commandFor(graph moduleGraph, changedPaths []string, guards map[string][]string) (command string, packages []string, fallback string) {
 	changed := map[string]bool{}
 	for _, changedPath := range changedPaths {
 		if changedPath == "go.mod" || changedPath == "go.sum" {
-			return "", changedPath + " changed"
+			return "", nil, changedPath + " changed"
 		}
 		importPath, mapped, ok := packageOfPath(graph, changedPath)
 		if !ok {
-			return "", fmt.Sprintf("%s is neither a Markdown file nor under a Go package directory", changedPath)
+			return "", nil, fmt.Sprintf("%s is neither a Markdown file nor under a Go package directory", changedPath)
 		}
 		if mapped {
 			changed[importPath] = true
@@ -155,9 +157,12 @@ func commandFor(graph moduleGraph, changedPaths []string, guards map[string][]st
 	set := graph.impactedSet(changed)
 	command = buildCommand(graph, set, guards)
 	if len(command) > maxCommandLength {
-		return "", fmt.Sprintf("the derived command is %d characters, over the %d limit", len(command), maxCommandLength)
+		return "", nil, fmt.Sprintf("the derived command is %d characters, over the %d limit", len(command), maxCommandLength)
 	}
-	return command, ""
+	if len(set) > 0 {
+		packages = packageArgs(graph.packageDirs(set))
+	}
+	return command, packages, ""
 }
 
 // packageOfPath maps one changed path to the import path of the package it belongs to.

@@ -285,6 +285,21 @@ Do all four commands run against the sandbox's own worktree with no repository-p
 
 ---
 
+### S10 -- Slotted go test through the gate
+
+**Goal:** "Run one package's tests through `lyx gate test`, then misuse it, and confirm the exit codes and the refusal."
+
+**Covers:** gate
+
+**Watch:** Does `lyx gate test <one package of the sandbox's own module>` stream go's own test output and exit 0 when that package's tests pass?
+Does `lyx gate test` with no package argument print one `{"ok":false}` envelope whose `error` names the missing package and a way forward, and exit 1?
+Is the exit code of the first run go's own, and the second not go's?
+Does `lyx gate test <that package> -- -run NoSuchTest` pass the flag after `--` to go test and exit with go's code?
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 reed has its own dedicated suite, `SANDBOX-REED-SUITE.md` in this same directory, launched via `sandbox/reed-suite.cmd` -- reed needs a live tmux server and visual verification, a different test mode from this suite.
 
 ## Session log format
@@ -305,6 +320,7 @@ S6: <OK|WARN|FAIL> -- <one-line note if not OK>
 S7: <OK|WARN|FAIL> -- <one-line note if not OK>
 S8: <OK|WARN|FAIL> -- <one-line note if not OK>
 S9: <OK|WARN|FAIL> -- <one-line note if not OK>
+S10: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

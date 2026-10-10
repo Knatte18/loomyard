@@ -7,10 +7,15 @@
 package hubgeom
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -86,6 +91,36 @@ func TestWebsterGeometry(t *testing.T) {
 			}
 			if want := verifytree.Dir(anchorPath); got.VerifyDir != want {
 				t.Errorf("WebsterGeometry(l).VerifyDir = %q; want %q", got.VerifyDir, want)
+			}
+			if want := gateslot.WaitDir(anchorPath); got.GateWaitDir != want {
+				t.Errorf("WebsterGeometry(l).GateWaitDir = %q; want %q", got.GateWaitDir, want)
+			}
+			if got.GateSlots == nil {
+				t.Fatal("WebsterGeometry(l).GateSlots = nil; want the hub's pool")
+			}
+			boardDir := fabricengine.BoardDir(hub)
+			if want := gateslot.Dir(boardDir); got.GateSlots.Dir != want {
+				t.Errorf("WebsterGeometry(l).GateSlots.Dir = %q; want %q", got.GateSlots.Dir, want)
+			}
+			gateConfig := configengine.ConfigFile(boardDir, "gate")
+			if _, err := got.GateSlots.Limits(); err == nil || !strings.Contains(err.Error(), gateConfig) || !strings.Contains(err.Error(), `run "lyx fabric reconcile"`) {
+				t.Errorf("GateSlots.Limits() before gate.yaml exists = %v; want an error naming %q and lyx fabric reconcile", err, gateConfig)
+			}
+			if err := os.MkdirAll(filepath.Dir(gateConfig), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(gateConfig, []byte("slots: 0\ngo_parallel: 5\ncli_wait_sec: 7\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := got.GateSlots.Limits(); err == nil || !strings.Contains(err.Error(), gateConfig) || !strings.Contains(err.Error(), `fix it with "lyx config gate" from the prime`) {
+				t.Errorf("GateSlots.Limits() over slots: 0 = %v; want an error naming %q and lyx config gate", err, gateConfig)
+			}
+			if err := os.WriteFile(gateConfig, []byte("slots: 3\ngo_parallel: 5\ncli_wait_sec: 7\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			wantLimits := gateslot.Limits{Slots: 3, GoParallel: 5, CLIWait: 7 * time.Second}
+			if limits, err := got.GateSlots.Limits(); err != nil || limits != wantLimits {
+				t.Errorf("GateSlots.Limits() = (%+v, %v); want the board dir's gate.yaml as %+v", limits, err, wantLimits)
 			}
 		})
 	}

@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -278,7 +279,7 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	c.env.SupportLogPath = loomengine.DiscussionSupportLog(location)
 	c.env.DescriptionPath = summaryparser.Path(loomengine.LandingDir(location))
 	c.env.Rework.ReadCommitted = committedAnchoredReader(location)
-	c.env.PlanIndex = planglyph.NewIndex(fabricengine.NewReferenceRule())
+	c.env.PlanIndex = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), hubgeom.GateSlots(location), gateslot.WaitDir(location.AnchorPath()))
 }
 
 // committedAnchoredReader returns the seam that reads an anchor-relative file as committed at HEAD for location, with found false when HEAD has no such file.
@@ -410,7 +411,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	landingCfg, err := landingshed.LoadConfig(anchorPath, "landing")
+	// landing is hub-wide: Publish and Finalize read the hub's file, never a pair's copy.
+	landingCfg, err := landingshed.LoadConfig(fabricengine.BoardDir(location.HubPath), "landing")
 	if err != nil {
 		return err
 	}
@@ -453,7 +455,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	runner.SetNotifier(func(line string) error { return orchcli.NotifyPrime(location, line) })
 
 	websterGeom := hubgeom.WebsterGeometry(location)
-	websterGeom.Index = planglyph.NewIndex(fabricengine.NewReferenceRule())
+	websterGeom.Index = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), websterGeom.GateSlots, websterGeom.GateWaitDir)
 
 	// frictionDir is the single resolved value every told-friction consumer below reads: non-empty
 	// only when loom.yaml's friction key is set, per the "Tier 2 off is an empty path string, never a
@@ -541,11 +543,15 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	}
 
 	c.env = shedrecipe.Env{
-		ParentReview:       parentReviewCfg,
-		Cwd:                cwd,
-		AnchorPath:         anchorPath,
-		WorktreeRoot:       location.WorktreePath(),
-		VerifyDir:          verifytree.Dir(anchorPath),
+		ParentReview: parentReviewCfg,
+		Cwd:          cwd,
+		AnchorPath:   anchorPath,
+		WorktreeRoot: location.WorktreePath(),
+		VerifyDir:    verifytree.Dir(anchorPath),
+		GateSlots:    hubgeom.GateSlots(location),
+		PublishFailure: func() string {
+			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath))
+		},
 		StatusPath:         statusPath,
 		StatusLockPath:     statusLockPath,
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),

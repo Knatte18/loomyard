@@ -122,9 +122,13 @@ func TestFinalizeVerify_Lands(t *testing.T) {
 func TestFinalizeVerify_Fail(t *testing.T) {
 	fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(false)})
 	fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
+	writeVerifyLog(t, fx.gate, "verify output")
 	reason := requireFinalizeReason(t, shedfake.RequireOutcome(t, fx.fz, shedengine.Stuck))
 	if !strings.Contains(reason, "exit code 1") || !strings.Contains(reason, fx.gate.paths.Log) {
 		t.Errorf("reason %q lacks the exit code or the log path", reason)
+	}
+	if _, ok, _ := verifytree.ReadPublishFailure(fx.gate.paths); ok {
+		t.Error("Finalize wrote a Publish failure record")
 	}
 	fx.requireNotLanded(t)
 }

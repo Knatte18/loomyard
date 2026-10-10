@@ -44,11 +44,13 @@ func TestCommandFor(t *testing.T) {
 	guards := map[string][]string{"internal/d": {"TestGuardD", "TestGuardD2"}, "internal/a": {"TestGuardA"}}
 
 	tests := []struct {
-		name         string
-		graph        moduleGraph
-		changed      []string
-		guards       map[string][]string
-		wantCommand  string
+		name        string
+		graph       moduleGraph
+		changed     []string
+		guards      map[string][]string
+		wantCommand string
+		// wantPackages is the impacted set's package arguments joined by spaces.
+		wantPackages string
 		wantFallback string
 	}{
 		{
@@ -58,24 +60,28 @@ func TestCommandFor(t *testing.T) {
 			guards:  guards,
 			wantCommand: gateCommand("./cmd/lyx ./internal/a ./internal/b ./internal/c ./internal/e ./internal/tmuxonly",
 				"go test -tags integration -run '^(TestGuardD|TestGuardD2)$' ./internal/d"),
+			wantPackages: "./cmd/lyx ./internal/a ./internal/b ./internal/c ./internal/e ./internal/tmuxonly",
 		},
 		{
-			name:        "a change to a dependency of cmd/lyx pulls in every package that builds the binary",
-			graph:       testGraph(),
-			changed:     []string{"internal/b/b.go"},
-			wantCommand: gateCommand("./cmd/lyx ./internal/b ./internal/c ./internal/e"),
+			name:         "a change to a dependency of cmd/lyx pulls in every package that builds the binary",
+			graph:        testGraph(),
+			changed:      []string{"internal/b/b.go"},
+			wantCommand:  gateCommand("./cmd/lyx ./internal/b ./internal/c ./internal/e"),
+			wantPackages: "./cmd/lyx ./internal/b ./internal/c ./internal/e",
 		},
 		{
-			name:        "a change outside cmd/lyx's dependencies leaves the binary-building packages out",
-			graph:       testGraph(),
-			changed:     []string{"internal/d/d.go"},
-			wantCommand: gateCommand("./internal/d"),
+			name:         "a change outside cmd/lyx's dependencies leaves the binary-building packages out",
+			graph:        testGraph(),
+			changed:      []string{"internal/d/d.go"},
+			wantCommand:  gateCommand("./internal/d"),
+			wantPackages: "./internal/d",
 		},
 		{
-			name:        "a rename between package directories puts both in the set",
-			graph:       testGraph(),
-			changed:     []string{"internal/c/x.go", "internal/d/x.go"},
-			wantCommand: gateCommand("./internal/c ./internal/d"),
+			name:         "a rename between package directories puts both in the set",
+			graph:        testGraph(),
+			changed:      []string{"internal/c/x.go", "internal/d/x.go"},
+			wantCommand:  gateCommand("./internal/c ./internal/d"),
+			wantPackages: "./internal/c ./internal/d",
 		},
 		{
 			name:        "a Markdown-only diff outside any package yields the build and the guards",
@@ -85,10 +91,11 @@ func TestCommandFor(t *testing.T) {
 			wantCommand: "go build ./... && go test -tags integration -run '^(TestGuardA)$' ./internal/a && go test -tags integration -run '^(TestGuardD|TestGuardD2)$' ./internal/d",
 		},
 		{
-			name:        "a non-Go file maps to its nearest enclosing package",
-			graph:       testGraph(),
-			changed:     []string{"internal/d/testdata/x.yaml"},
-			wantCommand: gateCommand("./internal/d"),
+			name:         "a non-Go file maps to its nearest enclosing package",
+			graph:        testGraph(),
+			changed:      []string{"internal/d/testdata/x.yaml"},
+			wantCommand:  gateCommand("./internal/d"),
+			wantPackages: "./internal/d",
 		},
 		{
 			name:         "a file outside any package that is not Markdown falls back",
@@ -119,9 +126,12 @@ func TestCommandFor(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			command, fallback := commandFor(tt.graph, tt.changed, tt.guards)
+			command, packages, fallback := commandFor(tt.graph, tt.changed, tt.guards)
 			if command != tt.wantCommand || fallback != tt.wantFallback {
-				t.Errorf("commandFor() = (%q, %q); want (%q, %q)", command, fallback, tt.wantCommand, tt.wantFallback)
+				t.Errorf("commandFor() = (%q, _, %q); want (%q, _, %q)", command, fallback, tt.wantCommand, tt.wantFallback)
+			}
+			if got := strings.Join(packages, " "); got != tt.wantPackages {
+				t.Errorf("commandFor() packages = %q; want %q", got, tt.wantPackages)
 			}
 		})
 	}
@@ -136,9 +146,9 @@ func TestCommandFor_OverLongCommandFallsBack(t *testing.T) {
 		pkgs = append(pkgs, pkg{ImportPath: "m/" + dir, Dir: dir, Imports: []string{"m/internal/root"}})
 	}
 
-	command, fallback := commandFor(newModuleGraph(pkgs), []string{"internal/root/root.go"}, nil)
-	if command != "" || !strings.Contains(fallback, "over the 8000 limit") {
-		t.Errorf("commandFor() = (%q, %q); want a fallback naming the 8000 limit", command, fallback)
+	command, packages, fallback := commandFor(newModuleGraph(pkgs), []string{"internal/root/root.go"}, nil)
+	if command != "" || packages != nil || !strings.Contains(fallback, "over the 8000 limit") {
+		t.Errorf("commandFor() = (%q, %v, %q); want a fallback naming the 8000 limit and no packages", command, packages, fallback)
 	}
 }
 

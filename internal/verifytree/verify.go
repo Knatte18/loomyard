@@ -12,7 +12,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
@@ -25,6 +27,9 @@ const (
 	recordName = "verified-tree.yaml"
 	markerName = "running.yaml"
 	logName    = "verify.log"
+
+	publishFailureName    = "publish-failure.yaml"
+	publishFailureLogName = "publish-failure.log"
 )
 
 // Status is the outcome of one Verify call.
@@ -68,6 +73,9 @@ type Paths struct {
 	Record   string
 	Marker   string
 	Log      string
+	// PublishFailure is the Publish failure record, and PublishFailureLog the copy of the log it names.
+	PublishFailure    string
+	PublishFailureLog string
 }
 
 // Result is the outcome of one Verify call.
@@ -146,6 +154,9 @@ func NewPaths(worktree, dir string) Paths {
 		Record:   filepath.Join(dir, recordName),
 		Marker:   filepath.Join(dir, markerName),
 		Log:      filepath.Join(dir, logName),
+
+		PublishFailure:    filepath.Join(dir, publishFailureName),
+		PublishFailureLog: filepath.Join(dir, publishFailureLogName),
 	}
 }
 
@@ -181,13 +192,16 @@ func parsePorcelainZ(out string) []string {
 // A dirty tree returns StatusDirty and runs nothing.
 // A record entry of the same command naming HEAD's tree returns StatusSkipped.
 // Otherwise the marker is written, the command runs with its output in p.Log, the marker is removed whatever happened, and an exit 0 returns StatusPassed.
+// A non-nil slots pool gates the run: the marker is first written in the waiting state, a slot is acquired under ctx, and the marker is rewritten as running with a fresh start time before the timeout begins to count.
+// The command then runs with the lease's environment and the slot is released whatever the outcome.
+// A nil slots runs unslotted with the parent's environment.
 // The pass writes the record only when HEAD still names the tree and commit the run started on, so a commit that lands mid-run costs the next call a re-run rather than recording a tree the command did not run on.
 // The write replaces the entry of command and drops every other command's entry naming a different tree, except site.BaseCommand's.
 // A non-zero exit is StatusFailed with the exit code, and a shell that could not start is StatusFailed with exit code -1 and the cause in Detail.
 // A command still running after timeout is killed and returns StatusFailed with exit code -1, TimedOut set and the timeout in Detail;
 // no record is written.
 // A cancelled ctx is a returned error and writes no record.
-func Verify(ctx context.Context, p Paths, site Site, command string, timeout time.Duration) (Result, error) {
+func Verify(ctx context.Context, p Paths, site Site, command string, timeout time.Duration, slots *gateslot.Pool) (Result, error) {
 	dirty, err := DirtyPaths(p.Worktree)
 	if err != nil {
 		return Result{}, err
@@ -211,10 +225,34 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 	if err := os.MkdirAll(filepath.Dir(p.Marker), 0o755); err != nil {
 		return Result{}, fmt.Errorf("verifytree: create verify directory: %w", err)
 	}
-	if err := writeMarker(p.Marker, Marker{Site: site.Label, Attempt: site.Attempt, Command: command, Started: time.Now(), PID: os.Getpid()}); err != nil {
+	marker := Marker{Site: site.Label, Attempt: site.Attempt, Command: command, Started: time.Now(), PID: os.Getpid(), State: MarkerStateRunning}
+	if slots != nil {
+		marker.State = MarkerStateWaiting
+		marker.WaitStarted = marker.Started
+	}
+	if err := writeMarker(p.Marker, marker); err != nil {
 		return Result{}, err
 	}
 	defer os.Remove(p.Marker)
+
+	var env []string
+	if slots != nil {
+		lease, err := slots.Acquire(ctx, gateslot.Holder{Worktree: p.Worktree, Site: site.Label})
+		if err != nil {
+			return Result{}, fmt.Errorf("verifytree: wait for gate slot: %w", err)
+		}
+		defer func() {
+			if err := lease.Release(); err != nil {
+				logger.Warn("verifytree: release gate slot", "worktree", p.Worktree, "cause", err)
+			}
+		}()
+		env = lease.Env(os.Environ())
+		marker.State = MarkerStateRunning
+		marker.Started = time.Now()
+		if err := writeMarker(p.Marker, marker); err != nil {
+			return Result{}, err
+		}
+	}
 
 	logFile, err := os.Create(p.Log)
 	if err != nil {
@@ -224,7 +262,7 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	code, runErr := verifyrun.Run(runCtx, command, p.Worktree, logFile)
+	code, runErr := verifyrun.Run(runCtx, command, p.Worktree, env, logFile)
 	if runErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return Result{}, fmt.Errorf("verifytree: verify cancelled: %w", ctxErr)

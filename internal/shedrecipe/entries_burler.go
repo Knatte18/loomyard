@@ -39,7 +39,11 @@ func burlerRoundEntry(name string, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, err
 	}
 
-	profile, err := burlerRoundProfile(profileCfg, env.StencilsDir, env.SpecsDir)
+	publishFailure := ""
+	if env.PublishFailure != nil {
+		publishFailure = env.PublishFailure()
+	}
+	profile, err := burlerRoundProfile(profileCfg, env.StencilsDir, env.SpecsDir, publishFailure)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +148,7 @@ func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, 
 // empty, is a construction error naming both keys, because neither of Profile.validate's own checks
 // can say which of the two the author meant.
 //
-// The stencil route fills specs_dir at read time; the literal route passes rubric through
+// The stencil route fills specs_dir and the optional publish_failure note at read time; the literal route passes rubric through
 // unfilled, exactly as before. The asymmetry is deliberate: a literal rubric is author-written
 // prose reaching this entry through the rubric config key rather than through the stencil store,
 // and running it through Fill would turn any bare {{ in it into a parse-template error and impose
@@ -153,7 +157,7 @@ func burlerRoundFileSet(entry, field string, cfg Config) (burlerengine.FileSet, 
 // This entry does not check profile's inner required-ness beyond the mutual-exclusivity rule:
 // burlerengine.Profile.validate already rejects an empty Rubric and a Target/Fasit with neither
 // Paths nor Instructions, and duplicating that here would drift from it.
-func burlerRoundProfile(cfg Config, stencilsDir, specsDir string) (burlerengine.Profile, error) {
+func burlerRoundProfile(cfg Config, stencilsDir, specsDir, publishFailure string) (burlerengine.Profile, error) {
 	targetCfg, err := configMap(cfg, "target", false)
 	if err != nil {
 		return burlerengine.Profile{}, err
@@ -205,7 +209,7 @@ func burlerRoundProfile(cfg Config, stencilsDir, specsDir string) (burlerengine.
 		if err := requireAbsRoot("BurlerRound", "SpecsDir", specsDir); err != nil {
 			return burlerengine.Profile{}, err
 		}
-		filled, err := shedadapters.ReadRubric(stencilsDir, rubricStencil, specsDir)
+		filled, err := shedadapters.ReadRubric(stencilsDir, rubricStencil, specsDir, publishFailure)
 		if err != nil {
 			return burlerengine.Profile{}, fmt.Errorf("shedrecipe: BurlerRound: rubric_stencil %q: %w", rubricStencil, err)
 		}

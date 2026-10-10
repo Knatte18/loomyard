@@ -208,7 +208,7 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 		if err := requireAbsRoot(entry, "VerifyDir", env.VerifyDir); err != nil {
 			return nil, err
 		}
-		return loomshed.NewVerifyGate(env.AnchorPath, env.WorktreeRoot, env.VerifyDir, row+" gate"), nil
+		return loomshed.NewVerifyGate(env.AnchorPath, env.WorktreeRoot, env.VerifyDir, row+" gate", env.GateSlots), nil
 	default:
 		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "discussion", "plan", "rework-plan", "description", "verify", "parent-review", name)
 	}

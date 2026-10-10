@@ -1,0 +1,75 @@
+// config.go — the hub-wide gate config module: its keys, strict loading and conversion to pool limits.
+
+package gateslot
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"time"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/Knatte18/loomyard/internal/configengine"
+)
+
+// Config is the resolved gate.yaml.
+type Config struct {
+	// Slots is how many gate runs the hub executes at once.
+	Slots int `yaml:"slots"`
+	// GoParallel is the `-p` cap every slotted run gets.
+	GoParallel int `yaml:"go_parallel"`
+	// CLIWaitSec is how many seconds `lyx gate test` waits for a slot.
+	CLIWaitSec int `yaml:"cli_wait_sec"`
+}
+
+// ErrConfigAbsent is LoadConfig's error for a baseDir with no gate.yaml; its way forward is `lyx fabric reconcile`, which writes the file from the template.
+var ErrConfigAbsent = errors.New("gate config absent; run \"lyx fabric reconcile\"")
+
+// LoadConfig loads gate.yaml from baseDir strictly: an absent file is ErrConfigAbsent, and a value below 1 fails naming its key.
+// Every other failure names its way forward, fixing the file with `lyx config gate` from the prime, so each gate site that wraps it carries the clause.
+func LoadConfig(baseDir string) (Config, error) {
+	if _, err := os.Stat(configengine.ConfigFile(baseDir, "gate")); errors.Is(err, os.ErrNotExist) {
+		return Config{}, ErrConfigAbsent
+	}
+	resolved, err := configengine.Load(baseDir, "gate", []byte(ConfigTemplate()))
+	if err != nil {
+		return Config{}, withConfigWayForward(err)
+	}
+	cfg, err := decodeConfig(resolved)
+	if err != nil {
+		return Config{}, withConfigWayForward(err)
+	}
+	return cfg, nil
+}
+
+// withConfigWayForward appends to err the way forward for a gate.yaml that is present but unusable.
+func withConfigWayForward(err error) error {
+	return fmt.Errorf("%w; fix it with \"lyx config gate\" from the prime", err)
+}
+
+// TemplateConfig decodes the embedded template alone, the config of a run outside every hub.
+func TemplateConfig() (Config, error) {
+	return decodeConfig([]byte(ConfigTemplate()))
+}
+
+func decodeConfig(data []byte) (Config, error) {
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return Config{}, fmt.Errorf("unmarshal gate config: %w", err)
+	}
+	for _, key := range []struct {
+		name  string
+		value int
+	}{{"slots", cfg.Slots}, {"go_parallel", cfg.GoParallel}, {"cli_wait_sec", cfg.CLIWaitSec}} {
+		if key.value < 1 {
+			return Config{}, fmt.Errorf("gate config key %q: %d; want at least 1", key.name, key.value)
+		}
+	}
+	return cfg, nil
+}
+
+// Limits converts the config to the pool limits, cli_wait_sec as a duration.
+func (c Config) Limits() Limits {
+	return Limits{Slots: c.Slots, GoParallel: c.GoParallel, CLIWait: time.Duration(c.CLIWaitSec) * time.Second}
+}

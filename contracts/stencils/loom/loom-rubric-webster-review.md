@@ -37,11 +37,21 @@ nothing else states it.
 
    Earlier generations' code is context, never the subject.
 4. With no such round, review `git diff $(git merge-base <product.parent> HEAD)..HEAD` — every commit the current branch introduces over that merge base.
+5. When the `## Publish failure` section below renders a merge-in commit, the range also includes that merge's diff, `git diff <merge>^1 <merge>`, which is the parent branch's changes the merge brought in and steps 3 and 4 exclude.
+   Nothing else widens the range.
 
 All steps are read-only.
 If neither status file can be read, or its `product.parent` is empty or absent, raise a BLOCKING finding stating that the review range could not be determined, and review nothing.
 The same finding is raised when the live round's `record.json` is unreadable or its `head_sha` is empty.
 Silently reviewing a guessed range is a worse failure than an honest block.
+
+## Publish failure
+
+{{.publish_failure}}
+
+`none` means no Publish failure is on record, and this section raises nothing.
+Otherwise a Publish verify failed after the branch's last merge-in, and the failure is what this round exists to fix.
+Raise each failing test named above as a BLOCKING finding, reading the merge's diff and the log for its cause, in addition to reviewing the branch's own range.
 
 ## Do not flag
 

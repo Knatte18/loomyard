@@ -145,7 +145,7 @@ format-only check set Plan-Write's and Plan-Burler's own gate runs before
 handoff, and the mode the plan writer calls before handoff; the cards of
 batches webster's run record holds done are history, and their
 tree-dependent checks are skipped. With
---require-approved, it runs planglyph.Validate -- the same format-only set
+--require-approved, it runs the index's Validate -- the same format-only set
 plus the plan-unapproved approval check, which no gate runs at all: this
 flag is the one place an operator can still reach that check standalone,
 since its own guarantee otherwise rests on the review segment's approve
@@ -186,7 +186,7 @@ Example:
 			var findings []planglyph.Finding
 			switch {
 			case requireApproved:
-				findings, err = planglyph.Validate(plan, c.env.WorktreeRoot)
+				findings, err = c.env.PlanIndex.Validate(plan, c.env.WorktreeRoot)
 			case rework:
 				findings, err = loomshed.ValidateReworkPlan(plan, c.env.WorktreeRoot, c.env.PlanIndex, c.env.Rework.ReadCommitted)
 			default:

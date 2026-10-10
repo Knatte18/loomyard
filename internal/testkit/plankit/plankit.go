@@ -51,6 +51,8 @@ type Card struct {
 	Intent        string
 	ImpactSummary string
 	Commit        string
+	// Verify, when set, renders the card's `**Verify:**` field.
+	Verify string
 }
 
 // Group is one type label, without its colon, and its target bullets.
@@ -161,6 +163,9 @@ func renderCard(c Card) string {
 	}
 	if c.Commit != "" {
 		fmt.Fprintf(&b, "\n**Commit:** `%s`\n", c.Commit)
+	}
+	if c.Verify != "" {
+		fmt.Fprintf(&b, "**Verify:** %s\n", c.Verify)
 	}
 	return b.String()
 }

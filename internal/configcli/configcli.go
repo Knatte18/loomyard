@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
@@ -105,6 +106,9 @@ func editOne(dirs configDirs, out io.Writer, module string, edit configengine.Ed
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
 	}
 	if mod.HubWide {
+		if exitCode, refused := dirs.refuseHubWrite(out); refused {
+			return exitCode
+		}
 		return editHubWide(dirs, out, mod, edit, commit)
 	}
 
@@ -165,6 +169,9 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
 	}
 	if mod.HubWide {
+		if exitCode, refused := dirs.refuseHubWrite(out); refused {
+			return exitCode
+		}
 		return setHubWide(dirs, out, mod, pairs, commit)
 	}
 
@@ -204,8 +211,10 @@ func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine
 // The print path is evaluated before any edit logic.
 // The --set path is a fully non-interactive write: it never calls edit and is mutually exclusive with --print.
 // The worktree base dir is computed from the layout as filepath.Join(WorktreeRoot, RelPath), and the board dir is the hub's.
-func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, printOnly bool, setFlags []string) int {
+// hubWriteGuard is called before a hub-wide write and refuses it with its message; a nil guard allows every write.
+func dispatch(l *lyxcwd.Location, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc, printOnly bool, setFlags []string, hubWriteGuard func() (string, error)) int {
 	dirs := dirsOf(l)
+	dirs.hubWriteGuard = hubWriteGuard
 
 	// Handle --set before any --print/edit dispatch:
 	// it is a fully non-interactive write path that never opens the editor,
@@ -475,7 +484,14 @@ func runConfig(ctx context.Context, out io.Writer, args []string, printOnly bool
 	}
 
 	// Dispatch to the print path, --set path, or specific module.
-	return dispatch(l, out, args, configengine.DefaultEditor, realSync, realCommit, printOnly, setFlags)
+	return dispatch(l, out, args, configengine.DefaultEditor, realSync, realCommit, printOnly, setFlags, realHubWriteGuard(l))
+}
+
+// realHubWriteGuard returns the guard over l and the calling session's strand name from the environment.
+func realHubWriteGuard(l *lyxcwd.Location) func() (string, error) {
+	return func() (string, error) {
+		return hubWriteRefusal(l, os.Getenv(agentname.StrandNameEnv))
+	}
 }
 
 // runMenu is the package-private handler for the lyx config menu subcommand.
@@ -487,7 +503,9 @@ func runMenu(ctx context.Context, in io.Reader, out io.Writer) int {
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
-	return menu(dirsOf(l), in, out, configengine.DefaultEditor, realSync, realCommit)
+	dirs := dirsOf(l)
+	dirs.hubWriteGuard = realHubWriteGuard(l)
+	return menu(dirs, in, out, configengine.DefaultEditor, realSync, realCommit)
 }
 
 // resolveReal resolves the layout from the seam cwd and builds the real sync function and hub commit.

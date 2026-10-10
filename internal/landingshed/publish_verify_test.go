@@ -6,6 +6,9 @@ package landingshed
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -327,4 +330,107 @@ func TestPublishVerify_NoPRRequiredRunsNoVerify(t *testing.T) {
 	if fx.gate.fake.verifyCalls != 0 || fx.gate.fake.dirtyCalls != 0 {
 		t.Errorf("verify calls=%d clean-tree checks=%d; want 0 and 0", fx.gate.fake.verifyCalls, fx.gate.fake.dirtyCalls)
 	}
+}
+
+// writeVerifyLog makes the fake verify leave a log at the gate's log path, as a real verify run does.
+func writeVerifyLog(t *testing.T, gate *gateFixture, log string) {
+	t.Helper()
+	gate.fake.onVerify = func() {
+		if err := os.MkdirAll(filepath.Dir(gate.paths.Log), 0o755); err != nil {
+			t.Error(err)
+			return
+		}
+		if err := os.WriteFile(gate.paths.Log, []byte(log), 0o644); err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+// TestPublishVerify_FailureRecord pins the Publish failure record.
+// A failed plan verify or publish_verify writes it with its kind, tests, log copy, HEAD and merge-in commit.
+// A dirty tree or a timeout writes none, and a passing Publish removes a present one before the push.
+// It stays serial (no t.Parallel): failOnGitHubClient swaps the package-level NewGitHubClient, which is process-global state.
+func TestPublishVerify_FailureRecord(t *testing.T) {
+	const planCommand, publishCommand = "go test ./...", "go test -tags tmux ./..."
+	failed := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
+	wantTests := []verifytree.FailedTest{{Package: "example.com/m/a", Test: "TestA"}}
+	tests := []struct {
+		name            string
+		alreadyUpToDate bool
+		results         map[string]verifytree.Result
+		wantKind        verifytree.FailureKind
+		wantMerge       string
+	}{
+		{"plan verify fails", false, map[string]verifytree.Result{planCommand: failed}, verifytree.FailureKindPlanVerify, "merged-head"},
+		{"publish_verify fails", false, map[string]verifytree.Result{publishCommand: failed}, verifytree.FailureKindPublishVerify, "merged-head"},
+		{"no-op merge-in names no merge commit", true, map[string]verifytree.Result{planCommand: failed}, verifytree.FailureKindPlanVerify, ""},
+		{"dirty tree writes none", false, map[string]verifytree.Result{planCommand: {Status: verifytree.StatusDirty, Dirty: []string{"a.txt"}}}, "", ""},
+		{"timeout writes none", false, map[string]verifytree.Result{planCommand: {Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true}}, "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newPublishVerifyFixture(t, planCommand, tt.alreadyUpToDate)
+			fx.p.deps.Config.PublishVerify = publishCommand
+			fx.p.deps.TaskHead = func() (string, error) { return "merged-head", nil }
+			fx.p.gate.recorder = &failureRecorder{
+				failingTests: func(log string) []verifytree.FailedTest {
+					if log != "verify output" {
+						t.Errorf("failingTests got log %q; want the verify log", log)
+					}
+					return wantTests
+				},
+				head: fx.p.deps.TaskHead,
+			}
+			fx.gate.fake.resultByCommand = tt.results
+			writeVerifyLog(t, fx.gate, "verify output")
+			failOnGitHubClient(t)
+
+			if outcome, _, err := fx.call(t); err != nil || outcome != shedengine.Stuck {
+				t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+			}
+			got, ok, err := verifytree.ReadPublishFailure(fx.gate.paths)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.wantKind == "" {
+				if ok {
+					t.Fatalf("record = %+v; want none", got)
+				}
+				return
+			}
+			want := verifytree.PublishFailure{
+				Kind: tt.wantKind, Tests: wantTests, LogPath: fx.gate.paths.PublishFailureLog, Head: "merged-head", MergeCommit: tt.wantMerge,
+			}
+			if !ok || !reflect.DeepEqual(got, want) {
+				t.Fatalf("record = %+v, %v; want %+v", got, ok, want)
+			}
+			if copied, err := os.ReadFile(got.LogPath); err != nil || string(copied) != "verify output" {
+				t.Errorf("log copy = %q, %v; want the verify log", copied, err)
+			}
+		})
+	}
+
+	t.Run("passing publish removes a present record", func(t *testing.T) {
+		fx := newPublishVerifyFixture(t, planCommand, false)
+		fx.p.gate.recorder = &failureRecorder{}
+		if err := os.MkdirAll(filepath.Dir(fx.gate.paths.Log), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fx.gate.paths.Log, []byte("earlier output"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := verifytree.WritePublishFailure(fx.gate.paths, verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify}); err != nil {
+			t.Fatal(err)
+		}
+
+		if outcome, _, err := fx.call(t); err != nil || outcome != shedengine.Done {
+			t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
+		}
+		if _, ok, _ := verifytree.ReadPublishFailure(fx.gate.paths); ok {
+			t.Error("record still present after a passing Publish")
+		}
+		if _, err := os.Stat(fx.gate.paths.PublishFailureLog); !os.IsNotExist(err) {
+			t.Errorf("log copy still present after a passing Publish: %v", err)
+		}
+	})
 }

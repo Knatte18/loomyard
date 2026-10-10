@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -26,6 +27,44 @@ import (
 type configDirs struct {
 	worktree string
 	board    string
+
+	// hubWriteGuard, when set, is called before a hub-wide write and returns a refusal message, or "" to allow it.
+	// A print or a per-worktree write never calls it, so those spawn no git.
+	hubWriteGuard func() (string, error)
+}
+
+// hubWriteRefusal returns a refusal message when a hub-wide write from l must not go through, and "" when it may.
+// A write is refused from a worktree that is not the hub's prime, and from a session whose strandName parses as a name carrying a slug, wherever its worktree resolves;
+// the hub orch's slug-free name and an empty name pass.
+// The refusal guards a mistaken write, not a determined agent: it reads the strand name the caller passes and nothing else about the session.
+func hubWriteRefusal(l *lyxcwd.Location, strandName string) (string, error) {
+	if name, err := agentname.Parse(strandName); err == nil && name.Slug != "" {
+		return fmt.Sprintf("a hub-wide config write is refused from the task session %s; way forward: the operator or the hub orch runs the write from the prime worktree", strandName), nil
+	}
+	isPrime, err := fabricengine.IsPrimeWorktree(l)
+	if err != nil {
+		return "", fmt.Errorf("resolve the hub's prime worktree: %w", err)
+	}
+	if !isPrime {
+		return fmt.Sprintf("a hub-wide config write is refused from the task worktree %s; way forward: the operator or the hub orch runs the write from the hub's prime worktree", l.WorktreeName), nil
+	}
+	return "", nil
+}
+
+// refuseHubWrite runs the hub-wide write guard and, when it refuses or fails, writes the JSON error to out and reports true with the exit code to return.
+// A nil guard allows the write.
+func (d configDirs) refuseHubWrite(out io.Writer) (exitCode int, refused bool) {
+	if d.hubWriteGuard == nil {
+		return 0, false
+	}
+	refusal, err := d.hubWriteGuard()
+	if err != nil {
+		return output.Err(out, err.Error()), true
+	}
+	if refusal != "" {
+		return output.Err(out, refusal), true
+	}
+	return 0, false
 }
 
 // dirsOf returns the config base dirs for the worktree l resolves to.

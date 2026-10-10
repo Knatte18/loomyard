@@ -3,7 +3,7 @@
 // Derive is told the worktree and the base and resolves no cwd.
 // Git runs through `gitexec.Run`, and `go list` is a logged spawn.
 // It returns a Derivation carrying either the derived command or a fallback reason that tells the caller to run the full plan verify instead.
-// The Derivation also names the base it diffed from whenever that base was usable.
+// The Derivation also names the base it diffed from whenever that base was usable, and the impacted set's package arguments in Packages, empty with a fallback or when only non-Go files changed.
 //
 // Derive falls back when any of these holds:
 // there is no `go.mod` at the worktree root;

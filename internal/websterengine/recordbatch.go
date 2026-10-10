@@ -467,7 +467,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// a policy warning is only safe to carry once the work is evidenced.
 	// A FAILED report takes its policy findings as warnings with no re-run.
 	if report.Status == ReportStatusOK && (len(policy) > 0 || len(bs.AuditWarnings) > 0) {
-		if failures := rerunCardVerifies(batch.Cards, deps.Geom.WorktreeRoot, deps.VerifyTimeout); len(failures) > 0 {
+		if failures := rerunCardVerifies(batch.Cards, deps.Geom.WorktreeRoot, deps.VerifyTimeout, deps.Geom.GateSlots, deps.Geom.GateWaitDir); len(failures) > 0 {
 			var earlier []string
 			for _, w := range bs.AuditWarnings {
 				earlier = append(earlier, auditWarningText(w))

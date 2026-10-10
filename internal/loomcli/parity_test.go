@@ -207,6 +207,12 @@ var fabricReferenceCommand = "cat " + fabricengine.RecordsWorktree(&lyxcwd.Locat
 // verifySectionPlanFixture writes a language: none plan under <anchorPath>/_lyx/plan/ whose verify: section runs verifyBody, and returns a *loomCLI wired with anchorPath and worktreeRoot.
 func verifySectionPlanFixture(t *testing.T, anchorPath, worktreeRoot, verifyBody string) *loomCLI {
 	t.Helper()
+	return verifyPlanFixture(t, anchorPath, worktreeRoot, verifyBody, "")
+}
+
+// verifyPlanFixture is verifySectionPlanFixture with the sole card's `**Verify:**` set to cardVerify.
+func verifyPlanFixture(t *testing.T, anchorPath, worktreeRoot, verifyBody, cardVerify string) *loomCLI {
+	t.Helper()
 
 	plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
 		Approved: true,
@@ -219,6 +225,7 @@ func verifySectionPlanFixture(t *testing.T, anchorPath, worktreeRoot, verifyBody
 			Groups:  []plankit.Group{{Label: "Create", Targets: []string{"fixture-output.txt"}}},
 			Intent:  "minimal fixture card for validate-plan tests.",
 			Commit:  "1: validate-fixture",
+			Verify:  cardVerify,
 		}},
 	})
 
@@ -340,6 +347,16 @@ func TestGateParity_PlanGate(t *testing.T) {
 			wantGate:    verdictStuck,
 			wantCLI:     verdictStuck,
 			wantFinding: "verify-nested-module",
+		},
+		{
+			// VerifyModuleWide gives the card a module-wide Verify: the gate and the verb both report verify-module-wide.
+			name: "VerifyModuleWide",
+			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
+				return verifyPlanFixture(t, anchorPath, worktreeRoot, "go build ./internal/x", "go test ./...")
+			},
+			wantGate:    verdictStuck,
+			wantCLI:     verdictStuck,
+			wantFinding: "verify-module-wide",
 		},
 		{
 			// NoPlanDirectory is the one expected divergence the Gate Self-Check Parity Invariant's
