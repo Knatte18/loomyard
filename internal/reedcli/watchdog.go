@@ -313,6 +313,11 @@ func resolveWatchedSession(hub, sessionName string) (*lyxcwd.Location, error) {
 // starting one here would cost a goroutine per disabled worktree to do nothing — while keeping the
 // entry still keeps the session known and keeps departure bookkeeping (runWatchdogLoop) uniform
 // across enabled and disabled worktrees.
+//
+// The engine drives tmuxPath, the binary the daemon was told, whatever the worktree's own config names,
+// so a --tmux shim counts every subcommand of every watcher.
+// That told binary is the tmux value of the worktree whose spawn started the daemon, and the watchers ignore every other worktree's tmux value, a debugging wrapper included.
+// Nothing compares the two, since a config value and a resolved path to one binary differ as text.
 func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 	location, err := resolveWatchedSession(hub, sessionName)
 	if err != nil {
@@ -327,6 +332,7 @@ func enterSession(hub, tmuxPath, sessionName string) (watchedSession, error) {
 	if err != nil {
 		return watchedSession{}, err
 	}
+	cfg.Tmux = tmuxPath
 	eng := reedengine.New(cfg, geom)
 
 	// A worktree reaches the daemon's discovery loop only after "lyx reed up" already booted it,

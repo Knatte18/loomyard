@@ -6,6 +6,8 @@
 // When the signal file cannot be watched the loop logs that once and keeps its backed-off cadence.
 // Idle exit and orphan reap each count three consecutive cycles, so at the backed-off cadence they take up to three minutes.
 //
+// Each watched session's engine drives the daemon's told tmux binary, whatever that worktree's config names.
+//
 // The daemon logs to the durable sink in the hub logs directory, and Debug lines reach it at Debug verbosity.
 // A Debug trace comes from running `lyx reed watchdog -vv` in the foreground, or from `lyx reed up`, `attach` or `resume` run with `LYX_LOG_LEVEL=debug` while no daemon runs for the hub.
 package reedcli
