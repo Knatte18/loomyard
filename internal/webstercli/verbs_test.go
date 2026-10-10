@@ -255,6 +255,8 @@ func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
 		wantExit     int
 		wantText     []string
 		wantArchived bool
+		// wantExhausted expects the recovery_exhausted envelope flag, and its absence otherwise.
+		wantExhausted bool
 	}{
 		{name: "no begin-batch record is archived", wantExit: 0, wantText: []string{`"archived_report"`, `"batch":"01-only"`}, wantArchived: true},
 		{
@@ -268,6 +270,13 @@ func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
 			record:   &websterengine.BatchState{Slug: "only", Kind: "fork", Terminal: true, Status: "done"},
 			wantExit: 1,
 			wantText: []string{"terminal with status done", "begin the next batch"},
+		},
+		{
+			name:          "a stuck record at the cap carries recovery_exhausted",
+			record:        &websterengine.BatchState{Slug: "only", Kind: "fork", Terminal: true, Status: "stuck", Recoveries: 2},
+			wantExit:      1,
+			wantText:      []string{"terminal with status stuck", "end the run stuck naming the batch"},
+			wantExhausted: true,
 		},
 	}
 	for _, tt := range tests {
@@ -299,6 +308,9 @@ func TestBeginBatchCmd_ReportOnDisk(t *testing.T) {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("output missing %q; got %q", want, out.String())
 				}
+			}
+			if got := strings.Contains(out.String(), `"recovery_exhausted":true`); got != tt.wantExhausted {
+				t.Errorf("recovery_exhausted flag present = %v; want %v, output: %s", got, tt.wantExhausted, out.String())
 			}
 			_, statErr := os.Stat(reportPath)
 			if tt.wantArchived != os.IsNotExist(statErr) {

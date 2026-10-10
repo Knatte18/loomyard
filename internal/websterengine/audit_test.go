@@ -301,6 +301,9 @@ func TestCheckFork(t *testing.T) {
 				if v.Class != tt.wantClasses[i] {
 					t.Errorf("CheckFork()[%d].Class = %q; want %q", i, v.Class, tt.wantClasses[i])
 				}
+				if class, ok := pathlessEntryClass(pathlessEntry(v.Class, v.Detail)); !ok || class != v.Class {
+					t.Errorf("pathlessEntryClass of a %q entry = (%q, %v); want (%q, true)", v.Class, class, ok, v.Class)
+				}
 				if v.TranscriptPath != tt.fork.TranscriptPath {
 					t.Errorf("CheckFork()[%d].TranscriptPath = %q; want %q", i, v.TranscriptPath, tt.fork.TranscriptPath)
 				}
@@ -426,6 +429,9 @@ func TestCheckParent(t *testing.T) {
 			for i, v := range got {
 				if v.Class != tt.wantClasses[i] {
 					t.Errorf("CheckParent()[%d].Class = %q; want %q", i, v.Class, tt.wantClasses[i])
+				}
+				if class, ok := pathlessEntryClass(pathlessEntry(v.Class, v.Detail)); !ok || class != v.Class {
+					t.Errorf("pathlessEntryClass of a %q entry = (%q, %v); want (%q, true)", v.Class, class, ok, v.Class)
 				}
 			}
 		})

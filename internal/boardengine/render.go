@@ -4,6 +4,7 @@
 // The README reads like a roadmap: Tasks split into Running, Ready, dependency layers and Independent, Notes with one subsection per type label, then Done.
 // Each open subsection holds one markdown table per priority present, high, normal, low, each under a `#### <Priority> priority` heading, numbered on from 1 across them, and Done one table numbered from 1;
 // the rows show the bold title with the brief as a bullet under it, the linked slug, and the labels that are not type labels;
+// every Tasks table adds the recipe after the slug, loom for an empty one;
 // Running adds where its run stands, and Ready and the layers add the open entries each waits on.
 // The section names, their meaning lines and the table columns are declared here alone;
 // the data holds only the kind and the labels.
@@ -126,6 +127,7 @@ const emptySectionLine = "_None._"
 const (
 	columnNumber = "#"
 	columnSlug   = "Slug"
+	columnRecipe = "Recipe"
 	columnTask   = "Task"
 	columnNote   = "Note"
 	columnEntry  = "Entry"
@@ -133,6 +135,9 @@ const (
 	columnAfter  = "After"
 	columnLabels = "Labels"
 )
+
+// defaultRecipe is the recipe the Recipe cell shows for a task with no recipe, since an empty recipe runs loom.
+const defaultRecipe = "loom"
 
 // runningState is the run state the At cell leaves out, since the Running section already says it.
 const runningState = "running"
@@ -228,14 +233,14 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string) 
 			first += len(tier)
 		}
 	}
-	waitTable := readmeTable{[]string{columnTask, columnAfter}, func(t Task) []string {
+	waitTable := readmeTable{[]string{columnTask, columnRecipe, columnAfter}, func(t Task) []string {
 		var after []string
 		for _, dep := range t.DependsOn {
 			if !finished[dep] {
 				after = append(after, dep)
 			}
 		}
-		return []string{entryCell(t), codeList(after)}
+		return []string{entryCell(t), recipeCell(t), codeList(after)}
 	}}
 
 	lines = append(lines, "## "+tasksSection.name, "", tasksSection.meaning, "")
@@ -256,8 +261,8 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string) 
 	}
 	if running := byLayer(runningLayer); len(running) > 0 {
 		lines = append(lines, "### "+runningSection.name, "", runningSection.meaning, "")
-		writeGroup(running, readmeTable{[]string{columnTask, columnAt}, func(t Task) []string {
-			return []string{entryCell(t), atCell(*t.Status)}
+		writeGroup(running, readmeTable{[]string{columnTask, columnRecipe, columnAt}, func(t Task) []string {
+			return []string{entryCell(t), recipeCell(t), atCell(*t.Status)}
 		}})
 	}
 	lines = append(lines, "### "+readySection.name, "", readySection.meaning, "")
@@ -359,6 +364,14 @@ func entryCell(t Task) string {
 		cell += cellBullet + cellText(t.Brief)
 	}
 	return cell
+}
+
+// recipeCell is the recipe the task runs, loom when its recipe field is empty.
+func recipeCell(t Task) string {
+	if t.Recipe == "" {
+		return defaultRecipe
+	}
+	return cellText(t.Recipe)
 }
 
 // atCell is where a run stands: the producer alone while it is running, else the whole run status.

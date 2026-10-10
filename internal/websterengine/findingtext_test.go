@@ -6,6 +6,7 @@ package websterengine
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -139,6 +140,13 @@ func TestUncheckableReason(t *testing.T) {
 		wantUncheck bool
 	}{
 		{name: "no path", st: &State{}, path: "", wantReason: "the finding names no path", wantUncheck: true},
+		{
+			name:        "pathless entry longer than NAME_MAX",
+			st:          &State{},
+			path:        pathlessEntry(ClassFabricReference, "ran a fabric-referencing command ("+strings.Repeat("x", 300)+")"),
+			wantReason:  "the finding names no path",
+			wantUncheck: true,
+		},
 		{name: "plan file with no recorded plan", st: &State{}, path: filepath.Join(geom.PlanDir, "01-a.md"), wantReason: "no plan copy recorded", wantUncheck: true},
 		{name: "plan file with a recorded plan", st: &State{PlanFileHashes: map[string]string{"01-a.md": "x"}}, path: filepath.Join(geom.PlanDir, "01-a.md")},
 		{name: "outside the worktree", st: &State{}, path: outside, wantReason: "outside the task worktree", wantUncheck: true},

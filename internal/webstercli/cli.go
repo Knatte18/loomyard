@@ -272,7 +272,7 @@ func (c *websterCLI) executionBatches(plan *planparser.Plan, st *websterengine.S
 		var err error
 		base, err = websterengine.MerriamBase(c.geom)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w; way forward: transient, re-run the verb", err)
 		}
 	}
 	return websterengine.ExecutionBatches(plan, st, c.batcher, batcher.DiskSizes(c.geom.WorktreeRoot), base)
