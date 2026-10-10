@@ -32,7 +32,7 @@ Every entry carries `labels`, validated against two maps in the hub's `board.yam
 Run `lyx board labels` before choosing labels: it prints both maps in file order with their descriptions.
 Beside its type label, every entry carries a label for each lyx module it touches; an entry that spans the whole tool takes the modules its work would change first.
 A label in neither map is refused; add it with `lyx config board --set labels.<name>=<description>`, or edit the maps in the `lyx config board` editor.
-A recipe name goes in `recipe`, never in a label.
+A recipe name goes in `recipe`, never in a label: `loom` or `darn`, empty meaning `loom`.
 
 ## Verbs
 
