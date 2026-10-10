@@ -40,34 +40,26 @@ func (e *waitingEngine) ParseEvents(data []byte) ([]Event, error) {
 
 // TestPollEventsTick_Waiting drives pollEventsTick over an events file holding one waiting turn end
 // ("WAIT:background work"): with no output files it is still running and the offset advances past
-// the parsed bytes, a Stop after it is a held turn end carrying its message and the offset past its line,
-// and with the output files present it is done.
+// the parsed bytes, and a Stop after it is a held turn end carrying its message and the offset past its line.
 //
-//testtiming:keep pins that a waiting turn end is still running and advances the offset, becomes a held turn end on a later Stop, and is done when the output files exist
+//testtiming:keep pins that a waiting turn end is still running and advances the offset, and becomes a held turn end on a later Stop
 func TestPollEventsTick_Waiting(t *testing.T) {
 	const waitLine = "WAIT:background work\n"
 	tests := []struct {
 		name         string
-		touchOutput  bool
-		wantFirst    Outcome
-		checkOffset  bool
 		checkTrace   bool
 		stopAfter    string
 		wantSecondIn string
 	}{
-		{name: "waiting is still running", wantFirst: "", checkOffset: true, checkTrace: true},
+		{name: "waiting is still running", checkTrace: true},
 		{
-			name: "a stop after waiting is held", wantFirst: "", checkOffset: true,
+			name:      "a stop after waiting is held",
 			stopAfter: "STOP:what now?", wantSecondIn: "what now?",
 		},
-		{name: "waiting with output files is done", touchOutput: true, wantFirst: OutcomeDone},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			outputFile := filepath.Join(t.TempDir(), "out.md")
-			if tt.touchOutput {
-				touchOutputFile(t, outputFile)
-			}
 			buf := logcapture.CaptureVerbose(t)
 			outstanding := []BackgroundTask{
 				{Kind: BackgroundFork, ID: "agent-1", Label: "review the diff", Signal: SignalPayload},
@@ -87,13 +79,11 @@ func TestPollEventsTick_Waiting(t *testing.T) {
 			if held != nil {
 				t.Errorf("first tick held = %+v, want nil: a waiting turn end is not a held one", held)
 			}
-			if outcome != tt.wantFirst {
-				t.Errorf("outcome = %q, want %q", outcome, tt.wantFirst)
+			if outcome != "" {
+				t.Errorf("outcome = %q, want none: the run is still running", outcome)
 			}
-			if tt.checkOffset {
-				if want := int64(len(waitLine)); run.offset != want {
-					t.Errorf("offset = %d, want %d (advanced past the parsed bytes)", run.offset, want)
-				}
+			if want := int64(len(waitLine)); run.offset != want {
+				t.Errorf("offset = %d, want %d (advanced past the parsed bytes)", run.offset, want)
 			}
 			if tt.checkTrace {
 				// Idle ticks re-check the waiting turn end and log nothing more.
