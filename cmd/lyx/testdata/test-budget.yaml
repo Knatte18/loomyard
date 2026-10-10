@@ -41,7 +41,7 @@ internal/gateslot: 11
 internal/gitexec: 7
 internal/githubclient: 11
 internal/gitkit: 9
-internal/gitrepo: 40
+internal/gitrepo: 41
 internal/gitrepo/internal/gitoracle: 1
 internal/hubforge: 7
 internal/hubgeom: 11

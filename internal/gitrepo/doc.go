@@ -59,6 +59,7 @@
 //     into failure.
 //     CommitsNotIn is its listing sibling:
 //     the commits reachable from a tip and not from a base, newest first, via `git rev-list`.
+//     MergeBase returns two commits' best common ancestor, read through go-git.
 //   - UpdateRemoteBranchLeased moves a remote branch to a SHA, backwards included, only while the remote branch still sits at the SHA the caller read;
 //     a moved branch is ErrLeaseRejected, distinct from any other push failure.
 //   - ResetHard is the SHA-validated hard-reset surface (see below).
