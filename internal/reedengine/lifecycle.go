@@ -274,13 +274,17 @@ func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err err
 	return debugArgs, mouse, nil
 }
 
-// refuseOverlongSocketPath refuses a socket path over the OS limit, naming `TMUX_TMPDIR` as the way forward, before any tmux round trip.
-// It checks nothing on Windows, where psmux keeps no socket file.
-func (e *Engine) refuseOverlongSocketPath() error {
+// preflightBootHost refuses, before any tmux round trip, a socket path over the OS limit (naming `TMUX_TMPDIR`) and a configured shell that does not resolve (naming the `shell` key).
+// It returns the resolved shell path the boot pins on the session.
+// On Windows it checks nothing and returns the empty string: psmux keeps no socket file, and the boot keeps its current shell handling.
+func (e *Engine) preflightBootHost() (shellPath string, err error) {
 	if runtime.GOOS == "windows" {
-		return nil
+		return "", nil
 	}
-	return checkSocketPathLength(resolvedSocketDir(), e.Socket(), unixSocketPathLimit(runtime.GOOS))
+	if err := checkSocketPathLength(resolvedSocketDir(), e.Socket(), unixSocketPathLimit(runtime.GOOS)); err != nil {
+		return "", err
+	}
+	return resolveShellPath(e.cfg.Shell)
 }
 
 // ensureServerAndSessionLocked ensures this hub's tmux server and this
@@ -292,7 +296,8 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		return false, nil, err
 	}
 
-	if err := e.refuseOverlongSocketPath(); err != nil {
+	shellPath, err := e.preflightBootHost()
+	if err != nil {
 		return false, nil, err
 	}
 
@@ -401,20 +406,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	clean = stripTraceID(clean)
 	clean = stripAgentNameEnv(clean)
 	spawnSession := func() error {
-		// debugArgs are tmux GLOBAL flags (e.g. -v/-vv) and must precede
-		// -L/new-session on the argv; -c pins new-session's pane default cwd
-		// to Geometry.PaneCwd, the told pane spawn directory, even though
-		// the server process's own cwd (cmd.Dir) has moved to logsDir.
-		argv := append([]string{}, debugArgs...)
-		argv = append(argv,
-			"-L", e.Socket(),
-			"new-session", "-d", "-s", session,
-			"-c", e.geom.PaneCwd,
-			"-x", strconv.Itoa(e.cfg.Width),
-			"-y", strconv.Itoa(e.cfg.Height),
-			e.cfg.Shell,
-		)
-		cmd := exec.Command(e.cfg.Tmux, argv...)
+		cmd := exec.Command(e.cfg.Tmux, e.serverSpawnArgv(runtime.GOOS, debugArgs)...)
 		cmd.Dir = logsDir
 		cmd.Env = clean
 		proc.Detach(cmd)
@@ -523,9 +515,29 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// already-up path returns early, above this block), which is why
 	// AttachArgv re-pins them in its own pre-flight rather than relying on
 	// this call.
-	e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
+	e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), shellPath)
 
 	return true, stripped, nil
+}
+
+// serverSpawnArgv is the argv of the invocation that starts this hub's tmux server with its first session.
+// debugArgs are tmux GLOBAL flags (e.g. -v/-vv) and lead the argv.
+// Everywhere but Windows, `-f /dev/null` follows them, so the server reads none of the operator's `~/.tmux.conf`; a running server ignores the flag.
+// `-c` pins new-session's pane default cwd to the told pane spawn directory, even though the server process's own cwd has moved to the logs directory.
+// The configured shell is the first pane's trailing command.
+func (e *Engine) serverSpawnArgv(goos string, debugArgs []string) []string {
+	argv := append([]string{}, debugArgs...)
+	if goos != "windows" {
+		argv = append(argv, "-f", os.DevNull)
+	}
+	return append(argv,
+		"-L", e.Socket(),
+		"new-session", "-d", "-s", e.SessionName(),
+		"-c", e.geom.PaneCwd,
+		"-x", strconv.Itoa(e.cfg.Width),
+		"-y", strconv.Itoa(e.cfg.Height),
+		e.cfg.Shell,
+	)
 }
 
 // touchDiscoverSignal creates or truncates the told discover signal file, waking the watchdog daemon's discovery loop.

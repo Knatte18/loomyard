@@ -8,6 +8,8 @@ package reedengine
 
 import (
 	"fmt"
+	"os"
+	"runtime"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -127,9 +129,16 @@ func parseCommandNames(out string) map[string]bool {
 // own server when it is already up — spawning nothing at all — or otherwise by a transient server on
 // reed's OWN socket that exits as soon as it has answered, leaving behind only the socket file the
 // boot about to follow would create anyway.
+// That transient server reads `-f /dev/null` and not the operator's config.
+// Nothing the operator's config does, such as creating a session, can keep it alive for the boot's `new-session` to join.
+// Windows keeps the engine's own TmuxCmd, since psmux has no /dev/null.
 // Routing through TmuxCmd additionally puts the probe on wrapTmuxError, so a failure now carries
 // tmux's own stderr instead of a bare exit status; every other tmux call in this package already had
 // that and the probe was the one site that had opted out.
 func (e *Engine) probeCapabilityLocked() error {
-	return probeCapability(e.tmux.output)
+	probe := e.tmux
+	if runtime.GOOS != "windows" {
+		probe.configFile = os.DevNull
+	}
+	return probeCapability(probe.output)
 }

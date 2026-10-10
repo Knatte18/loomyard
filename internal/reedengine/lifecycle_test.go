@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -51,6 +52,16 @@ func TestUp_BootValidation(t *testing.T) {
 			},
 			configure: func(cfg *Config) {},
 			wantErr:   "TMUX_TMPDIR",
+		},
+		{
+			name: "ShellUnresolvable",
+			setup: func(t *testing.T) {
+				if runtime.GOOS == "windows" {
+					t.Skip("Windows keeps its current shell handling")
+				}
+			},
+			configure: func(cfg *Config) { cfg.Shell = "lyx-no-such-shell-for-this-test" },
+			wantErr:   "key shell",
 		},
 		{
 			name:      "SegmentColorOutsidePalette",
@@ -93,6 +104,36 @@ func TestUp_BootValidation(t *testing.T) {
 			}
 			if err != nil && strings.Contains(err.Error(), tt.notErr) {
 				t.Errorf("Up() error = %q, want the check to pass", err)
+			}
+		})
+	}
+}
+
+// TestServerSpawnArgv pins the argv of the server-starting invocation: the debug flags first, `-f /dev/null` ahead of `-L` everywhere but Windows, then new-session with the configured shell last.
+func TestServerSpawnArgv(t *testing.T) {
+	e := newTestEngine(t)
+	session := []string{
+		"-L", e.Socket(),
+		"new-session", "-d", "-s", e.SessionName(),
+		"-c", e.geom.PaneCwd,
+		"-x", strconv.Itoa(e.cfg.Width),
+		"-y", strconv.Itoa(e.cfg.Height),
+		e.cfg.Shell,
+	}
+	tests := []struct {
+		name      string
+		goos      string
+		debugArgs []string
+		want      []string
+	}{
+		{"LinuxWithoutDebugFlags", "linux", nil, append([]string{"-f", os.DevNull}, session...)},
+		{"LinuxWithDebugFlags", "linux", []string{"-vv"}, append([]string{"-vv", "-f", os.DevNull}, session...)},
+		{"WindowsHasNoConfigFlag", "windows", nil, session},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := e.serverSpawnArgv(tt.goos, tt.debugArgs); !slices.Equal(got, tt.want) {
+				t.Errorf("serverSpawnArgv(%q, %v) = %v, want %v", tt.goos, tt.debugArgs, got, tt.want)
 			}
 		})
 	}

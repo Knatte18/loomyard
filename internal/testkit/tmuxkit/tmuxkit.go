@@ -6,7 +6,8 @@
 // PackageServer hands one shared server, which Main's sweep kills, to every test of the package that names its own sessions, kills no server and asserts nothing about the whole session set.
 // Socket, KillOnCleanup and PackageServer each first start a hermetic server on the key from the kit's own tmux config, so no server a test uses reads `~/.tmux.conf`, starts login-shell panes or exits when it has no session.
 // The config marks its servers with the user option `@lyx_test_server`, which reed's stale-holder probe reads to leave such a server alone.
-// Reed starts a server itself, carrying no such config, only after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
+// A server reed starts itself reads no `~/.tmux.conf` either and pins the same two shell options per session, so the kit's server differs from reed's own only by the two extra lines, `exit-empty off` and the marker.
+// Reed starts a server itself only after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
 //
 // Main also points `TMPDIR` at that directory, so every temp file a test creates lands there, and after the run it sweeps the servers, killing every process their panes' sessions still hold, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory.
 // A test binary re-executed as a helper inherits that environment, and its own Main creates its directory beside the inherited one, never inside it, so its socket paths do not grow past the limit.

@@ -115,7 +115,13 @@
 // default — as its own trailing shell-command argument, the same way
 // new-session already launches the session's first pane: Selvage is an
 // ordinary, typeable interactive shell, never a re-exec of lyx and never
-// sent a command of reed's own choosing. A Selvage pane whose shell process
+// sent a command of reed's own choosing.
+// A strand pane keeps its split with no trailing command and starts the shell from the session's own pins:
+// the boot and the attach pre-flight set `default-shell` and an equal non-empty `default-command` to the resolved shell on the session, never globally, because one server serves every worktree of the hub.
+// A non-empty `default-command` makes tmux start the shell without the login flag, so a strand pane runs the shell's rc files and not the login profile.
+// The boot refuses a configured shell that does not resolve, naming the `shell` key;
+// the attach pre-flight logs a warning and leaves the session's earlier values.
+// Windows keeps its current boot and pins no session shell. A Selvage pane whose shell process
 // dies (pane_dead=1) is deliberately kept as an enumerable corpse by
 // reconcile — never killed there — and healed (corpse killed, a fresh
 // Selvage split back in at the physical bottom, carrying e.cfg.Shell on
@@ -216,6 +222,15 @@
 // the canary for both version drift in the on-box binary and the eventual
 // tmux swap, since the same test runs unmodified against whichever binary
 // LoadConfig resolves.
+//
+// Operator config: a server reed starts reads no `~/.tmux.conf`.
+// The server spawn (serverSpawnArgv) and the capability probe's two invocations carry `-f /dev/null` on every platform but Windows;
+// the probe needs it because `list-commands` can start a transient server on reed's socket, and a config that creates a session would keep that server alive for the boot's `new-session` to join.
+// A running server ignores the flag, and every other engine call keeps its argv.
+// The skip covers the operator's whole `~/.tmux.conf` on reed's per-hub servers only, every option, key binding and hook in it, and leaves the operator's own servers alone.
+// It takes effect at a hub server's next start, so a server an older lyx started keeps the operator's config until it exits.
+// Reed sets every option it depends on itself, and no `reed.yaml` key carries an operator tmux setting;
+// an operator who wants one sources it by hand into the running server, where it lasts until that server exits.
 //
 // Pane enumeration: listPanes (overlay.go) always runs
 //

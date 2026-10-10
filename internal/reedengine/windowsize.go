@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"runtime"
 	"slices"
 	"strconv"
@@ -92,6 +93,29 @@ func windowSizeAllowsChain(raw string) bool {
 	return strings.ToLower(strings.TrimSpace(raw)) == "latest"
 }
 
+// resolveShellPath is the absolute path of the configured shell, found through the executable search path.
+// An unresolvable shell is an error naming the `shell` key and its value, so the operator can set a shell that exists.
+func resolveShellPath(shell string) (string, error) {
+	path, err := exec.LookPath(shell)
+	if err != nil {
+		return "", fmt.Errorf("reed: the configured shell %q (key shell) is not an executable on PATH: %w; set shell in reed.yaml to a shell that exists", shell, err)
+	}
+	return path, nil
+}
+
+// shellOptionArgvs is the two session-scoped pins that make tmux start a pane's shell without the login flag: `default-shell` and an equal non-empty `default-command`.
+// They are never global, because one server serves every worktree of the hub.
+// An empty shellPath yields no pins.
+func shellOptionArgvs(target, shellPath string) [][]string {
+	if shellPath == "" {
+		return nil
+	}
+	return [][]string{
+		{"set-option", "-t", target, "default-shell", shellPath},
+		{"set-option", "-t", target, "default-command", shellPath},
+	}
+}
+
 // pinGeometryOptionsLocked pins the two-line status bar and the strand pane-border title (bar.go), pins this
 // session's window to "window-size latest", and owns the UNSET half of the window-resized hook's
 // lifecycle — the install half belongs to installResizePinsLocked at the bottom of this file, which
@@ -123,8 +147,9 @@ func windowSizeAllowsChain(raw string) bool {
 // them.
 // target is the strands' window, as resolved by the window seam;
 // the session-wide options ride the window's session.
+// After the option pins it issues shellOptionArgvs for shellPath, each non-fatal like them; the empty string skips both.
 // Assumes the op lock is already held.
-func (e *Engine) pinGeometryOptionsLocked(target string) {
+func (e *Engine) pinGeometryOptionsLocked(target, shellPath string) {
 	pins := []struct {
 		option string
 		argv   []string
@@ -145,6 +170,12 @@ func (e *Engine) pinGeometryOptionsLocked(target string) {
 
 	if err := e.tmux.run("set-option", "-w", "-t", target, "window-size", "latest"); err != nil {
 		logger.Warn("reed: failed to pin window-size latest", "socket", e.Socket(), "session", e.SessionName(), "option", "window-size", "err", err)
+	}
+
+	for _, argv := range shellOptionArgvs(target, shellPath) {
+		if err := e.tmux.run(argv...); err != nil {
+			logger.Warn("reed: failed to pin a session shell option", "socket", e.Socket(), "session", e.SessionName(), "option", argv[3], "err", err)
+		}
 	}
 
 	e.pinBindingsLocked()
