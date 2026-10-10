@@ -19,6 +19,10 @@
 // A seed written when it carried a top-level `parent` key still decodes; the key is discarded and never re-encoded.
 // A run's parent is resolved at use from the pair's origin record alone; see PATTERN-agent-name.
 //
+// The ephemeral run-directory contents include the loop's files, all under StepsDir:
+// the loop lock, pid file and log, the envelope the waiter prints and the per-loop-id slot it is retired into, and each step's trace copy and stderr file.
+// LoopJobName names the loop's Windows job object from a hash of the steps directory, so it is unique across hubs.
+//
 // RunsRootRel names the anchor-relative run-records root, because fabricengine's Add drops everything under it from a freshly forked pair.
 //
 // Every constructor in this package is a plain filepath.Join onto a told *lyxcwd.Location's
