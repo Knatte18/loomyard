@@ -53,6 +53,9 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if inHub {
 		pool := hubgeom.GateSlots(location)
 		limits, err := pool.Limits()
+		if errors.Is(err, gateslot.ErrConfigAbsent) {
+			return output.Err(out, fmt.Sprintf("gate test: the hub has no gate limits: %v; way forward: run \"lyx fabric reconcile\", then re-run the same command", err))
+		}
 		if err != nil {
 			return output.Err(out, fmt.Sprintf("gate test: cannot read the hub's gate limits: %v; way forward: fix the file with \"lyx config gate\" from the prime, then re-run the same command", err))
 		}

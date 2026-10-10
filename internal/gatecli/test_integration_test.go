@@ -393,6 +393,21 @@ func TestGateTest_Scenario(t *testing.T) {
 		wantError string
 	}{
 		{
+			name: "an absent gate.yaml names lyx fabric reconcile",
+			setup: func(t *testing.T) func() {
+				configPath := configengine.ConfigFile(h.BoardDir(), "gate")
+				if err := os.Remove(configPath); err != nil {
+					t.Fatal(err)
+				}
+				return func() {
+					if err := os.WriteFile(configPath, []byte(gateConfig), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+			},
+			wantError: `way forward: run "lyx fabric reconcile", then re-run the same command`,
+		},
+		{
 			name: "a gate.yaml value below 1 names lyx config gate",
 			setup: func(t *testing.T) func() {
 				configPath := configengine.ConfigFile(h.BoardDir(), "gate")

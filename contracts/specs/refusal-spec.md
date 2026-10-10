@@ -285,7 +285,8 @@ Its JSON error envelopes carry the way forward as a trailing `way forward:` clau
 | no package argument | `lyx gate test` names no package, or only go test flags after `--` | correctness halt | run "lyx gate test <packages...>", for example "lyx gate test ./internal/foo" |
 | -C directory missing | `-C` names a directory that does not exist or is not a directory | correctness halt | pass an existing directory to -C |
 | slot busy | every gate slot stays held past the hub's `cli_wait_sec`; the verb exits 75 and the envelope names each holder's worktree and site | transient | re-run the same command |
-| gate.yaml unreadable or invalid | the hub's `gate.yaml` is absent, does not parse, or holds a value below 1 | correctness halt | fix the file with "lyx config gate" from the prime, then re-run the same command |
+| gate.yaml absent | the hub has no `gate.yaml` | correctness halt | run "lyx fabric reconcile", then re-run the same command |
+| gate.yaml unreadable or invalid | the hub's `gate.yaml` cannot be read, does not parse, or holds a value below 1 | correctness halt | fix the file with "lyx config gate" from the prime, then re-run the same command |
 | raw I/O | the working directory or the worktree cannot be resolved, a slot cannot be acquired for a reason other than the wait bound, or go cannot be started | transient | re-run the same command, or put go on PATH when go cannot be started |
 
 ## Out of scope

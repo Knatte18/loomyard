@@ -23,10 +23,13 @@ type Config struct {
 	CLIWaitSec int `yaml:"cli_wait_sec"`
 }
 
-// LoadConfig loads gate.yaml from baseDir strictly: an absent file is an error that names `lyx fabric reconcile`, and a value below 1 fails naming its key.
+// ErrConfigAbsent is LoadConfig's error for a baseDir with no gate.yaml; its way forward is `lyx fabric reconcile`, which writes the file from the template.
+var ErrConfigAbsent = errors.New("gate config absent; run \"lyx fabric reconcile\"")
+
+// LoadConfig loads gate.yaml from baseDir strictly: an absent file is ErrConfigAbsent, and a value below 1 fails naming its key.
 func LoadConfig(baseDir string) (Config, error) {
 	if _, err := os.Stat(configengine.ConfigFile(baseDir, "gate")); errors.Is(err, os.ErrNotExist) {
-		return Config{}, errors.New("gate config absent; run \"lyx fabric reconcile\"")
+		return Config{}, ErrConfigAbsent
 	}
 	resolved, err := configengine.Load(baseDir, "gate", []byte(ConfigTemplate()))
 	if err != nil {
