@@ -320,6 +320,8 @@ var wordingClaims = []stencilClaims{
 			"unless the card FILE carries a `**Commit:**` line"),
 		wantAll("the card's gate steps are Go-rendered through the card_gates marker, so the fork derives none itself",
 			"{{.card_gates}}", "Run each step of the card's gate from the list below"),
+		wantAll("the fork locates a card's glyphs through quarry rather than grep, and leaves plan: handles unresolved",
+			"`lyx quarry resolve <glyph>...`", "A `plan:` handle names a member the card creates and does not resolve yet"),
 		wantAll("a gate step and a card verify line run as background Bash calls the fork waits for, so a slot wait is not killed by the Bash tool's timeout",
 			"Each step runs as its own Bash call with `run_in_background`, and you wait for its exit",
 			"each line of it as its own Bash call with `run_in_background`, waited for"),

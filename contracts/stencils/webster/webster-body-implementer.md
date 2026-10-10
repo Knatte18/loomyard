@@ -25,6 +25,8 @@ For EACH card file listed above, in the order listed:
    It is your whole instruction for that card.
    If its `**Intent:**` field is empty, fall back to that card's one-line intent from the Card Index in `_lyx/plan/00-overview.md`, matched by the same NN/slug.
 2. A card names its targets under its own type label(s) and what it reads under `**Uses:**`; see `{{.specs_dir}}/loom/loom-plan-spec.md` for the full grammar. Make exactly the changes the card describes, in exactly the targets its type labels name.
+   Locate them with one `lyx quarry resolve <glyph>...` call over the card's target and `Uses:` glyphs: each answer gives the member's `file` and its `start` and `end` lines, so read those spans instead of grepping for them or reading whole files.
+   A `plan:` handle names a member the card creates and does not resolve yet.
 3. Run each step of the card's gate from the list below, in order, from `{{.worktree_root}}`.
    Each step runs as its own Bash call with `run_in_background`, and you wait for its exit, so neither a slot wait nor the run is killed by the Bash tool's timeout.
    A failure here is the card's own gate — fix it before moving on;
