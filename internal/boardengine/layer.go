@@ -16,6 +16,8 @@ import (
 const isolatedLayer = "Z"
 
 // ComputeLayers assigns each task a bucket based on topological depth.
+// A dependency on a done or running task adds no depth, while cycle detection still follows running tasks.
+// A running task gets a layer too, which the README ignores in favor of its Running subsection.
 func ComputeLayers(tasks []Task) (map[string]string, error) {
 	layerMap := make(map[string]string)
 
@@ -97,7 +99,8 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 			if !ok {
 				continue
 			}
-			if depTask.Status != nil && *depTask.Status == "done" {
+			// A done or running dependency adds no depth, so the layers start after the Running subsection.
+			if (depTask.Status != nil && *depTask.Status == "done") || IsRunStatus(depTask.Status) {
 				continue
 			}
 			d, err := getDepth(dep)
