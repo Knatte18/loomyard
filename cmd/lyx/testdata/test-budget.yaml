@@ -79,7 +79,7 @@ internal/reedengine/render: 12
 internal/seatengine: 15
 internal/segmentcolor: 4
 internal/selfreportcli: 3
-internal/selfreportengine: 11
+internal/selfreportengine: 12
 internal/shedadapters: 159
 internal/shedbuild: 13
 internal/shedcheck: 3
