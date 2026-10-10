@@ -256,6 +256,7 @@ github.com/Knatte18/loomyard/
 ├── internal/shedcli/             the `lyx shed` subtree: a named-recipe arming table plus the three CLI seams that register it under the lyx root
 ├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, push warns) that `loomcli` and `battencli` wrap
 ├── internal/landingshed/         landing's three general ShedProducers, Publish, PR-Gate and Finalize, shared by reference across producer lists
+├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
 ├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call
 ├── internal/frictionengine/      the aggregation-and-reflection step loom's terminal Friction-Reflect row runs and loom runs after a `blocked` or `failed` halt, under `run` and `step`, except that an escalation halt writes its note and runs no reflection; it is re-entrant across a killed driving process
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
