@@ -52,7 +52,7 @@ internal/lock: 4
 internal/logger: 34
 internal/loggerconfig: 3
 internal/loomcli: 182
-internal/loomengine: 39
+internal/loomengine: 41
 internal/loomrecipe: 45
 internal/loomshed: 72
 internal/lyxcwd: 23
