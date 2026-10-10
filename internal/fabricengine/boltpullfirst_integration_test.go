@@ -65,6 +65,21 @@ func (f *boltFixture) head() string {
 	return gitkit.RevParse(f.t, f.board, "HEAD")
 }
 
+// requireCleanBoard fails the test when the board has uncommitted changes or a rebase in progress.
+func (f *boltFixture) requireCleanBoard() {
+	f.t.Helper()
+
+	if status := gitkit.GitStatusPorcelain(f.t, f.board); status != "" {
+		f.t.Errorf("board status = %q, want a clean tree", status)
+	}
+	for _, state := range []string{"rebase-merge", "rebase-apply"} {
+		path := gitkit.Git(f.t, f.board, "rev-parse", "--path-format=absolute", "--git-path", state)
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			f.t.Errorf("stat %s = %v, want no rebase in progress", path, err)
+		}
+	}
+}
+
 // writeOf returns a BoltWrite that writes rel under the board and counts its runs.
 func (f *boltFixture) writeOf(rel, content, message string, runs *int) fabricengine.BoltWrite {
 	return fabricengine.BoltWrite{
@@ -399,6 +414,7 @@ func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
 		if f.head() != tip {
 			t.Errorf("head = %s, want the original tip %s", f.head(), tip)
 		}
+		f.requireCleanBoard()
 		if n := rec.Snapshot().Len(); n != 0 {
 			t.Errorf("record holds %d entries, want none", n)
 		}
@@ -420,6 +436,7 @@ func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
 		if f.head() != tip {
 			t.Errorf("head = %s, want the original tip %s", f.head(), tip)
 		}
+		f.requireCleanBoard()
 		if n := rec.Snapshot().Len(); n != 0 {
 			t.Errorf("record holds %d entries, want none", n)
 		}
@@ -445,15 +462,7 @@ func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
 		if gitkit.IsAncestor(t, f.board, seed, "HEAD") || !gitkit.IsAncestor(t, f.board, upstream, "HEAD") {
 			t.Errorf("seed %s under HEAD or upstream %s missing from it; want the drop kept", seed, upstream)
 		}
-		if status := gitkit.GitStatusPorcelain(t, f.board); status != "" {
-			t.Errorf("board status = %q, want a clean tree", status)
-		}
-		for _, state := range []string{"rebase-merge", "rebase-apply"} {
-			path := gitkit.Git(t, f.board, "rev-parse", "--path-format=absolute", "--git-path", state)
-			if _, err := os.Stat(path); !os.IsNotExist(err) {
-				t.Errorf("stat %s = %v, want no rebase in progress", path, err)
-			}
-		}
+		f.requireCleanBoard()
 		entries := rec.Snapshot().Entries()
 		if len(entries) != 1 || entries[0].Kind != fabricengine.KindCommitsDropped || !strings.Contains(entries[0].Detail, seed) {
 			t.Errorf("record = %+v, want one commits_dropped entry naming %s", entries, seed)
