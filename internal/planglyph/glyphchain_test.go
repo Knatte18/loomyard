@@ -581,7 +581,7 @@ func TestGlyphChain_RedundantFile(t *testing.T) {
 	}
 }
 
-// TestGlyphChain_ResignScenarios pins the arrow's mismatch verdicts, which every gate reports, and that one member re-signed on two cards validates clean and leaves both card files untouched.
+// TestGlyphChain_ResignScenarios pins the arrow's verdicts: the mismatch verdicts, which every gate reports, resign-interface-method on an interface method declared once per build-constraint set, which only the plan gate reports, and that one member re-signed on two cards validates clean and leaves both card files untouched.
 func TestGlyphChain_ResignScenarios(t *testing.T) {
 	t.Parallel()
 
@@ -589,18 +589,32 @@ func TestGlyphChain_ResignScenarios(t *testing.T) {
 	tests := []struct {
 		name string
 		leg  resignLeg
+		// files are written into the fixture copy before the plan is checked.
+		files map[string]string
+		// planGate is what ValidateFormat reports, and dispatch what ValidateDispatch reports.
+		planGate, dispatch []findingKey
 	}{
-		{"a head naming another member", resignLeg{"shapes#Func", "func Other() int"}},
-		{"a head that fails to parse", resignLeg{"shapes#Func", "func ("}},
-		{"a changed receiver type", resignLeg{"shapes#Struct.ValueMethod", "func (s Plain) ValueMethod() int"}},
+		{name: "a head naming another member", leg: resignLeg{"shapes#Func", "func Other() int"}, planGate: mismatch, dispatch: mismatch},
+		{name: "a head that fails to parse", leg: resignLeg{"shapes#Func", "func ("}, planGate: mismatch, dispatch: mismatch},
+		{name: "a changed receiver type", leg: resignLeg{"shapes#Struct.ValueMethod", "func (s Plain) ValueMethod() int"}, planGate: mismatch, dispatch: mismatch},
+		{
+			name: "an interface method partitioned by build constraints",
+			leg:  resignLeg{"parted#Measurer.Measure", "func (Measurer) Measure(count int) int"},
+			files: map[string]string{
+				"parted/a.go": "//go:build linux\n\npackage parted\n\ntype Measurer interface {\n\tMeasure() int\n}\n",
+				"parted/b.go": "//go:build !linux\n\npackage parted\n\ntype Measurer interface {\n\tMeasure() int\n}\n",
+			},
+			planGate: []findingKey{{"resign-interface-method", "1-card1", SeverityBlocking}},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
+			writeFixtureFiles(t, root, tc.files)
 			_, plan := writeGlyphPlan(t, []string{resignCard(tc.leg)})
-			assertPlanGate(t, plan, root, mismatch)
-			assertDispatch(t, plan, root, mismatch)
+			assertPlanGate(t, plan, root, tc.planGate)
+			assertDispatch(t, plan, root, tc.dispatch)
 		})
 	}
 
@@ -663,6 +677,9 @@ var coverageFiles = []string{
 	"callers/clause.go",
 	"callers/nested.go",
 	"callers/more.go",
+	"callers/partuse_a.go",
+	"callers/partuse_b.go",
+	"callers/useparted.go",
 	"callers/promoted.go",
 	"callers/usev2.go",
 	"callers/value.go",
@@ -680,6 +697,12 @@ const (
 	aliasedImporter = "package callers\n\nimport c \"example.com/glyphchain/callees\"\n\nfunc aliased() int { return c.Target() }\n"
 	dotImporter     = "package dotted\n\nimport . \"example.com/glyphchain/callees\"\n\nfunc dotted() int { return Target() }\n"
 )
+
+// partitionedCaller declares callers#PartUse once per build-constraint set, and only its linux declaration calls callees.Target.
+var partitionedCaller = map[string]string{
+	"callers/partuse_a.go": "//go:build linux\n\npackage callers\n\nimport \"example.com/glyphchain/callees\"\n\nfunc PartUse() int { return callees.Target() }\n",
+	"callers/partuse_b.go": "//go:build !linux\n\npackage callers\n\nfunc PartUse() int { return 0 }\n",
+}
 
 // writeFixtureFiles writes files, by fixture-relative path, into the fixture copy at root.
 func writeFixtureFiles(t *testing.T, root string, files map[string]string) {
@@ -870,6 +893,27 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 				"callers/nested.go": "package callers\n\nimport \"example.com/nested/lib\"\n\nfunc nested() int { return lib.Func() }\n",
 			},
 			want: []string{"blocking callers/nested.go"},
+		},
+		{
+			name:  "delete of a member partitioned by build constraints is a subject through its declarations",
+			cards: []string{deleteCard("parted#Gone")},
+			files: map[string]string{
+				"parted/a.go":          "//go:build linux\n\npackage parted\n\nfunc Gone() {}\n",
+				"parted/b.go":          "//go:build !linux\n\npackage parted\n\nfunc Gone() {}\n",
+				"callers/useparted.go": "package callers\n\nimport \"example.com/glyphchain/parted\"\n\nfunc useParted() { parted.Gone() }\n",
+			},
+			want: []string{"blocking callers/useparted.go"},
+		},
+		{
+			name:  "a member partitioned by build constraints covers the callers its declarations span",
+			cards: []string{deleteWithEdit([]string{"callees#Target"}, append(slices.Clone(covers), "callers#UseTarget", "callers#PartUse"))},
+			files: partitionedCaller,
+		},
+		{
+			name:            "a later card editing a member partitioned by build constraints leaves its callers to delete-before-reference",
+			cards:           []string{coveredTargetCard(covers), editCard("callers#PartUse")},
+			files:           partitionedCaller,
+			wantDeleteOrder: "callers/partuse_a.go",
 		},
 		{
 			name:     "rename is not a subject",

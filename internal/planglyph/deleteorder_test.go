@@ -111,6 +111,16 @@ func TestLaterDeleteReferences(t *testing.T) {
 			wantRefs: []string{"part/c.go:3"},
 		},
 		{
+			name:     "a later card's Edit of a member partitioned by build constraints searches each declaration's span",
+			deleting: deleteFoo,
+			later:    groupCard(2, "edit", planparser.CardTypeEdit, "sub#Each"),
+			extraFiles: map[string]string{
+				"sub/e.go": "//go:build linux\n\npackage sub\n\nfunc Each() { Foo() }\n",
+				"sub/f.go": "//go:build !linux\n\npackage sub\n\nfunc Each() {}\n",
+			},
+			wantRefs: []string{"sub/e.go:5"},
+		},
+		{
 			name:     "a non-glyph language finds nothing and opens no repository",
 			language: "none",
 			deleting: deleteFoo,
