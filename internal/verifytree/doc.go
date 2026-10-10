@@ -17,6 +17,11 @@
 // A nil pool runs unslotted with the parent's environment, the form of a standalone run and of a unit test.
 // A marker written before it had a state reads as running.
 //
+// The Publish failure record is the one never-tracked file Publish leaves when its plan verify or `publish_verify` fails.
+// It names the failing verify as a FailureKind, the failing tests, a copy of the verify log that a later verify cannot overwrite, HEAD and the merge-in commit Publish made.
+// Publish writes it through WritePublishFailure, the round gate reads it through ReadPublishFailure, and a later passing Publish removes it through RemovePublishFailure.
+// Both files sit in the verify directory beside the log.
+//
 // Every site of one worktree shares one directory, Dir(anchorRoot), so a pass at one site lets the next site skip.
 // The package imports no resolver: the worktree and the directory are told through Paths.
 package verifytree

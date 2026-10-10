@@ -113,7 +113,7 @@ internal/testkit/stencilkit: 3
 internal/testkit/tmuxkit: 9
 internal/treadleengine: 34
 internal/verifyrun: 4
-internal/verifytree: 5
+internal/verifytree: 6
 internal/vscode: 12
 internal/webstercli: 81
 internal/websterengine: 194

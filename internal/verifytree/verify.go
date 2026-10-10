@@ -27,6 +27,9 @@ const (
 	recordName = "verified-tree.yaml"
 	markerName = "running.yaml"
 	logName    = "verify.log"
+
+	publishFailureName    = "publish-failure.yaml"
+	publishFailureLogName = "publish-failure.log"
 )
 
 // Status is the outcome of one Verify call.
@@ -70,6 +73,9 @@ type Paths struct {
 	Record   string
 	Marker   string
 	Log      string
+	// PublishFailure is the Publish failure record, and PublishFailureLog the copy of the log it names.
+	PublishFailure    string
+	PublishFailureLog string
 }
 
 // Result is the outcome of one Verify call.
@@ -148,6 +154,9 @@ func NewPaths(worktree, dir string) Paths {
 		Record:   filepath.Join(dir, recordName),
 		Marker:   filepath.Join(dir, markerName),
 		Log:      filepath.Join(dir, logName),
+
+		PublishFailure:    filepath.Join(dir, publishFailureName),
+		PublishFailureLog: filepath.Join(dir, publishFailureLogName),
 	}
 }
 
