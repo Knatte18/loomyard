@@ -498,15 +498,18 @@
 // # Background shells in Master's wait
 //
 // Master's spawn declares one awaited shell prefix, `masterAwaitedShellPrefix` (the backgrounded recovery verb of the failure ladder);
-// recovery_timeout_min already bounds that verb, so shuttle's turn-end wait treats it like a fork.
-// No background shell expires: a turn end waiting on a shell of either signal ends on Master's output files, the run's deadline or the liveness check, and `background_shell_wait_min` only sets when a long-running shell is logged and shown in the wait marker.
+// recovery_timeout_min already bounds that verb, so the prefix only keeps it out of the background-shell wait marker.
+// No background shell expires, and every shell holds a gated turn end alike: a gated turn end waiting on a shell is never an arrival.
+// The run ends on the next turn end with nothing outstanding, the run deadline, the liveness check or a stop;
+// a deadline still ends it done through shuttle's satisfied file contract with the gate run once at finalize, and the shell's result is then never read.
+// `background_shell_wait_min` only sets when a long-running shell is logged and shown in the wait marker.
 // Every shell outstanding when the run ends comes back on shuttle's `Result.EndedShells`, whatever ends the run.
 // lyx does not stop such a shell.
 // What ends the shell follows the run's final outcome.
 // When Master's turn ends shuttle-done (a webster done, Master's own stuck or paused, the verify gate's demotion, or a mapping error after that end), shuttle removes Master's strand as the run finishes, and the session and the shell end with it.
 // When the run returns a died or timeout error, Master's strand stays alive until the next `lyx webster run` reclaims it at entry.
 // Run writes one best-effort `webster-background-shell` friction note once the outcome is known, on every outcome.
-// For each shell the note states its label, signal and time outstanding, that lyx did not stop the shell, what ends it and the run's final outcome.
+// For each shell the note states its label, signal and time outstanding, that the run never read its result, that lyx did not stop the shell, what ends it and the run's final outcome.
 // Each shell is also a `RunResult.Warnings` entry with the same wording on every outcome that returns a `RunResult` (done, stuck and paused), after the verify-gate demotion, so the warning and the note cannot drift;
 // an error outcome returns no `RunResult`, so the note alone carries it.
 // summary.md's "Background shells at the run's end" section (AppendBackgroundShells) stays done-only, as does its "Plan rebaselined" section, which names an accepted auto-rebaseline beside the "Audit warnings" section so the summary a step's Done points at carries it.

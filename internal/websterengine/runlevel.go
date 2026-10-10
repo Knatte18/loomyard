@@ -40,8 +40,9 @@ import (
 // Master spawn at once.
 const runLockName = "run.lock"
 
-// masterAwaitedShellPrefix is the background shell Master's wait treats like a fork:
-// the backgrounded recovery verb of the failure ladder.
+// masterAwaitedShellPrefix is the backgrounded recovery verb of the failure ladder.
+// The prefix keeps that verb out of the background-shell wait marker;
+// it does not change when a turn end counts, since every shell holds a gated turn end alike.
 const masterAwaitedShellPrefix = "lyx webster recover-batch"
 
 // ErrRunBusy marks Run's fail-fast refusal when another invocation already holds scratchDir's
@@ -705,7 +706,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		Version:       resolved.Params["version"],
 		Skills:        roleSkills,
 		ForkSubagents: true,
-		// The failure ladder backgrounds recover-batch and recovery_timeout_min bounds it, so the gate waits on it like a fork.
+		// The failure ladder backgrounds recover-batch and recovery_timeout_min bounds it, so the wait marker leaves it out.
 		AwaitedShellPrefixes: []string{masterAwaitedShellPrefix},
 		Role:                 MerriamStrandRole,
 		Segment:              segmentcolor.Webster,

@@ -2016,7 +2016,7 @@ func expiredShellRun(t *testing.T, fx *runFixture, shells []shuttleengine.EndedS
 
 // The parts of the sentence the friction note and the warning share for `endedSleepShell`.
 const (
-	shellSentenceHead    = "background shell `sleep 9999` (reported by the transcript signal) was still running, outstanding for 1m30s, when the run ended, and lyx did not stop the shell; "
+	shellSentenceHead    = "background shell `sleep 9999` (reported by the transcript signal) was still running, outstanding for 1m30s, when the run ended; the run never read the shell's result, and lyx did not stop the shell; "
 	shellStrandRemoved   = "shuttle removes Master's strand when the run finishes, which ends the session and the shell with it where the shell is in the pane's process tree; "
 	shellStrandReclaimed = "Master's strand stays alive until the next `lyx webster run` reclaims it at entry, which ends the session and the shell with it where the shell is in the pane's process tree; "
 )

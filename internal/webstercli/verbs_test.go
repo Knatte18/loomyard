@@ -1036,6 +1036,7 @@ func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
 	for _, want := range []string{
 		"`sleep 9999`",
 		"outstanding for 1m30s",
+		"the run never read the shell's result",
 		"lyx did not stop the shell",
 		"the next `lyx webster run` reclaims it at entry",
 		"the run's final outcome: error (",

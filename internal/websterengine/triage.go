@@ -73,7 +73,7 @@ func errorShellOutcome(err error, strandReclaimed bool) backgroundShellOutcome {
 	return backgroundShellOutcome{description: "error (" + err.Error() + ")", strandReclaimed: strandReclaimed}
 }
 
-// expiredShellWarning states what happened to one background shell Master's run ended over, what ends it, and the run's final outcome.
+// expiredShellWarning states what happened to one background shell Master's run ended over: the run never read its result, lyx did not stop it, what ends it, and the run's final outcome.
 // It names the shell's label, the signal that reported it and how long it was outstanding.
 // It is both the run warning and the friction note's line for that shell, so the two carry the same wording.
 func expiredShellWarning(shell shuttleengine.EndedShell, outcome backgroundShellOutcome) string {
@@ -81,7 +81,7 @@ func expiredShellWarning(shell shuttleengine.EndedShell, outcome backgroundShell
 	if outcome.strandReclaimed {
 		ends = "Master's strand stays alive until the next `lyx webster run` reclaims it at entry, which ends the session and the shell with it where the shell is in the pane's process tree"
 	}
-	return fmt.Sprintf("background shell `%s` (reported by the %s signal) was still running, outstanding for %s, when the run ended, and lyx did not stop the shell; %s; the run's final outcome: %s", shell.Label, shell.Signal, shell.Outstanding.Round(time.Second), ends, outcome.description)
+	return fmt.Sprintf("background shell `%s` (reported by the %s signal) was still running, outstanding for %s, when the run ended; the run never read the shell's result, and lyx did not stop the shell; %s; the run's final outcome: %s", shell.Label, shell.Signal, shell.Outstanding.Round(time.Second), ends, outcome.description)
 }
 
 // writeBackgroundShellFrictionNote records the shells Master's run ended over and the run's final outcome,
