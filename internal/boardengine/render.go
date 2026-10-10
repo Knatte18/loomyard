@@ -2,7 +2,7 @@
 //
 // Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderReadme, plus design-*.md for any entry with a body).
 // The README reads like a roadmap: Tasks split into Running, Ready, dependency layers and Independent, Notes with one subsection per type label, then Done.
-// Each subsection is one markdown table numbered from 1, whose rows show the linked slug, the bold title over the brief, and the labels that are not type labels;
+// Each subsection is one markdown table numbered from 1, whose rows show the bold title with the brief as a bullet under it, the linked slug, and the labels that are not type labels;
 // Running adds where its run stands, and Ready and the layers add the open entries each waits on.
 // The section names, their meaning lines and the table columns are declared here alone;
 // the data holds only the kind and the labels.
@@ -121,7 +121,7 @@ const otherNotesHeading = "Other"
 // emptySectionLine stands in for the table of a subsection that is always rendered and has no entry.
 const emptySectionLine = "_None._"
 
-// The README table columns: each table opens with the row number, the linked slug and the entry, and closes with its labels.
+// The README table columns: each table opens with the row number, the entry and the linked slug, and closes with its labels.
 const (
 	columnNumber = "#"
 	columnSlug   = "Slug"
@@ -136,8 +136,8 @@ const (
 // runningState is the run state the At cell leaves out, since the Running section already says it.
 const runningState = "running"
 
-// cellLineBreak puts the brief under the title inside one table cell.
-const cellLineBreak = "<br>"
+// cellBullet starts one detail line under the title inside one table cell; a markdown list does not render in a table cell.
+const cellBullet = "<br>• "
 
 // kindName is the capitalised display name of an entry kind.
 func kindName(kind string) string {
@@ -177,7 +177,7 @@ func metaLine(t Task, middle ...string) string {
 	return strings.Join(parts, " · ")
 }
 
-// readmeTable is one README subsection's table: its middle column headers, and the cells under them per entry.
+// readmeTable is one README subsection's table: its middle column headers, the entry column first, and the cells under them per entry.
 type readmeTable struct {
 	columns []string
 	cells   func(t Task) []string
@@ -198,10 +198,11 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string) 
 		finished[twl.Slug] = isDone(twl.Task)
 	}
 	writeTable := func(entries []TaskWithLayer, table readmeTable) {
-		header := append(append([]string{columnNumber, columnSlug}, table.columns...), columnLabels)
+		// The slug goes second among the middle columns, right after the entry.
+		header := append(append([]string{columnNumber}, slices.Insert(slices.Clone(table.columns), 1, columnSlug)...), columnLabels)
 		lines = append(lines, tableRow(header), tableRow(slices.Repeat([]string{"---"}, len(header))))
 		for i, twl := range entries {
-			row := append([]string{fmt.Sprint(i + 1), slugCell(twl.Task, designPrefix)}, table.cells(twl.Task)...)
+			row := append([]string{fmt.Sprint(i + 1)}, slices.Insert(table.cells(twl.Task), 1, slugCell(twl.Task, designPrefix))...)
 			lines = append(lines, tableRow(append(row, labelsCell(twl.Task, types))))
 		}
 		lines = append(lines, "")
@@ -325,11 +326,11 @@ func slugCell(t Task, designPrefix string) string {
 	return "`" + t.Slug + "`"
 }
 
-// entryCell is the bold title, with the brief under it when there is one.
+// entryCell is the bold title, with the brief as one bullet under it when there is one.
 func entryCell(t Task) string {
 	cell := "**" + cellText(t.Title) + "**"
 	if t.Brief != "" {
-		cell += cellLineBreak + cellText(t.Brief)
+		cell += cellBullet + cellText(t.Brief)
 	}
 	return cell
 }

@@ -256,25 +256,25 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"Waits on nothing open; can start now.\n" +
 				"\n" +
-				"| # | Slug | Task | After | Labels |\n" +
+				"| # | Task | Slug | After | Labels |\n" +
 				"| --- | --- | --- | --- | --- |\n" +
-				"| 1 | `base` | **Base work**<br>The foundation. |  |  |\n" +
+				"| 1 | **Base work**<br>• The foundation. | `base` |  |  |\n" +
 				"\n" +
 				"### Layer A\n" +
 				"\n" +
 				"Waits only on Running or Ready entries.\n" +
 				"\n" +
-				"| # | Slug | Task | After | Labels |\n" +
+				"| # | Task | Slug | After | Labels |\n" +
 				"| --- | --- | --- | --- | --- |\n" +
-				"| 1 | [`top`](design-top.md) | **Top \\| work**<br>Builds on base. Second brief line. | `base` | area |\n" +
+				"| 1 | **Top \\| work**<br>• Builds on base. Second brief line. | [`top`](design-top.md) | `base` | area |\n" +
 				"\n" +
 				"### Independent\n" +
 				"\n" +
 				"Depends on nothing and nothing depends on it, by design.\n" +
 				"\n" +
-				"| # | Slug | Task | After | Labels |\n" +
+				"| # | Task | Slug | After | Labels |\n" +
 				"| --- | --- | --- | --- | --- |\n" +
-				"| 1 | `alone` | **Alone work** |  |  |\n" +
+				"| 1 | **Alone work** | `alone` |  |  |\n" +
 				"\n" +
 				"## Notes\n" +
 				"\n" +
@@ -282,29 +282,29 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"### Bugs\n" +
 				"\n" +
-				"| # | Slug | Note | Labels |\n" +
+				"| # | Note | Slug | Labels |\n" +
 				"| --- | --- | --- | --- |\n" +
-				"| 1 | `dropped` | **Dropped idea**<br>No longer wanted. |  |\n" +
+				"| 1 | **Dropped idea**<br>• No longer wanted. | `dropped` |  |\n" +
 				"\n" +
 				"### Enhancements\n" +
 				"\n" +
-				"| # | Slug | Note | Labels |\n" +
+				"| # | Note | Slug | Labels |\n" +
 				"| --- | --- | --- | --- |\n" +
-				"| 1 | `idea` | **An idea** | undecided |\n" +
+				"| 1 | **An idea** | `idea` | undecided |\n" +
 				"\n" +
 				"### Other\n" +
 				"\n" +
-				"| # | Slug | Note | Labels |\n" +
+				"| # | Note | Slug | Labels |\n" +
 				"| --- | --- | --- | --- |\n" +
-				"| 1 | `stray` | **Stray note** | retired |\n" +
+				"| 1 | **Stray note** | `stray` | retired |\n" +
 				"\n" +
 				"## Done\n" +
 				"\n" +
 				"Finished, awaiting `lyx board prune`.\n" +
 				"\n" +
-				"| # | Slug | Entry | Labels |\n" +
+				"| # | Entry | Slug | Labels |\n" +
 				"| --- | --- | --- | --- |\n" +
-				"| 1 | `shipped` | **Shipped work** |  |\n",
+				"| 1 | **Shipped work** | `shipped` |  |\n",
 		},
 		{
 			name:  "no done section and no empty notes subsections",
@@ -330,9 +330,9 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"### Enhancements\n" +
 				"\n" +
-				"| # | Slug | Note | Labels |\n" +
+				"| # | Note | Slug | Labels |\n" +
 				"| --- | --- | --- | --- |\n" +
-				"| 1 | `a` | **A** |  |\n",
+				"| 1 | **A** | `a` |  |\n",
 		},
 		{
 			name: "running task under Running before Ready and in no layer",
@@ -356,34 +356,34 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"Held by a run; its scope is locked until the run ends.\n" +
 				"\n" +
-				"| # | Slug | Task | At | Labels |\n" +
+				"| # | Task | Slug | At | Labels |\n" +
 				"| --- | --- | --- | --- | --- |\n" +
-				"| 1 | `held` | **Held work** | Webster | area |\n" +
-				"| 2 | `halted` | **Halted work** | paused · Plan-Write |  |\n" +
+				"| 1 | **Held work** | `held` | Webster | area |\n" +
+				"| 2 | **Halted work** | `halted` | paused · Plan-Write |  |\n" +
 				"\n" +
 				"### Ready\n" +
 				"\n" +
 				"Waits on nothing open; can start now.\n" +
 				"\n" +
-				"| # | Slug | Task | After | Labels |\n" +
+				"| # | Task | Slug | After | Labels |\n" +
 				"| --- | --- | --- | --- | --- |\n" +
-				"| 1 | `base` | **Base work** |  |  |\n" +
+				"| 1 | **Base work** | `base` |  |  |\n" +
 				"\n" +
 				"### Layer A\n" +
 				"\n" +
 				"Waits only on Running or Ready entries.\n" +
 				"\n" +
-				"| # | Slug | Task | After | Labels |\n" +
+				"| # | Task | Slug | After | Labels |\n" +
 				"| --- | --- | --- | --- | --- |\n" +
-				"| 1 | `next` | **Next work** | `held` |  |\n" +
+				"| 1 | **Next work** | `next` | `held` |  |\n" +
 				"\n" +
 				"### Layer B\n" +
 				"\n" +
 				"Starts when every entry it names under After is done.\n" +
 				"\n" +
-				"| # | Slug | Task | After | Labels |\n" +
+				"| # | Task | Slug | After | Labels |\n" +
 				"| --- | --- | --- | --- | --- |\n" +
-				"| 1 | `last` | **Last work** | `next` |  |\n" +
+				"| 1 | **Last work** | `last` | `next` |  |\n" +
 				"\n" +
 				"## Notes\n" +
 				"\n" +

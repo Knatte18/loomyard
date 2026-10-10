@@ -42,7 +42,7 @@
 // Ready holds the open tasks with no open dependency, and is always written, as `_None._` when empty.
 // A dependency on a done task does not count, and one on a running task does, so a task waiting on a run is not Ready.
 // Layer A holds the tasks that wait only on Running or Ready entries, Layer B those that wait on something in Layer A, and so on; ComputeLayers names each task's subsection, and the same name is the layer field of `lyx board list`.
-// Each subsection is one markdown table numbered from 1: the slug linked to its design doc when the entry has a body, the bold title with the brief under it, and the labels that are not type labels.
+// Each subsection is one markdown table numbered from 1: the bold title with the brief as a `• ` bullet under it in the same cell, the slug linked to its design doc when the entry has a body, and the labels that are not type labels.
 // Running adds an At column, the run status without the state when the state is `running`, and Ready and the layers add an After column, the open entries named in depends_on.
 // A pipe in a cell is escaped and a line break becomes a space, so an entry is always one row.
 //
