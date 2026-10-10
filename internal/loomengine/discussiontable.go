@@ -59,6 +59,7 @@ func resolveModelChoice(raw string, reg modelspec.Registry) (model, effort, vers
 // DiscussionTable builds the seatengine.Table of one seat-table Discussion-Write run: a chair that writes the decision record and the support log, and one advisor per entry of cfg.DiscussionAdvisors that writes its notes file for the chair to read.
 // The seats' opening stencils are read at call time from stencilsDir, and every seat's parent directive is rendered by the seat engine from its geometry.
 // The table carries no gate; the producer entry sets it.
+// An empty cfg.DiscussionAdvisors builds a chair-only table; the chair's prompt covers that case, so the chair decides each question itself.
 // A PATTERN directive or Tier 2 friction directive that cannot be rendered is left empty, the friction failure logged, and never fails the table.
 func DiscussionTable(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg modelspec.Registry, slug string) (seatengine.Table, error) {
 	if slug == "" {

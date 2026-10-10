@@ -9,6 +9,7 @@
 // There is no webster_fan key: Webster-Review always runs solo.
 // discussion_producer selects the Discussion-Write row's producer and must be single or seats.
 // discussion_advisors lists the seats producer's advisor model-specs; every entry is resolved through the model registry at load, whatever discussion_producer holds, and an unset list loads as no advisors.
+// Under seats, no advisors runs the chair alone, deciding each question itself.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
 // driver, and both must load cleanly, unlike the other role keys, which are always required.
