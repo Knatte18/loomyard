@@ -69,7 +69,7 @@ internal/pairteardown: 6
 internal/parentdirective: 4
 internal/parentreview: 53
 internal/pattern: 7
-internal/planglyph: 83
+internal/planglyph: 84
 internal/planparser: 86
 internal/preflight: 7
 internal/preflightshed: 8
