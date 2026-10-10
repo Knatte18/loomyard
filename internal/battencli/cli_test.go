@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/termwindow"
 	"github.com/spf13/cobra"
 )
 
@@ -168,7 +169,8 @@ func TestCommand_HelpCarriesNoTeardownGotoExample(t *testing.T) {
 	walk(Command())
 }
 
-// TestRunInWindow covers the run verb's --window body with a fake window opener: the envelope of a fresh and of an already-live window, what the opener is asked for, the way forward each refusal names, and that a done slug is refused before the opener is ever called.
+// TestRunInWindow covers the run verb's --window body with a fake window opener and terminal launcher: the envelope of a fresh and of an already-live window, what the opener is asked for, the terminal window the envelope reports, the way forward each refusal names, and that a done slug is refused before the opener is ever called.
+// Every opened run carries --open-terminal unless the case has no launcher.
 func TestRunInWindow(t *testing.T) {
 	t.Parallel()
 
@@ -177,18 +179,28 @@ func TestRunInWindow(t *testing.T) {
 		status       shedengine.State
 		driverSet    bool
 		childSet     bool
+		noLauncher   bool
 		opened       reedengine.WindowResult
 		openErr      error
 		wantNoOpen   bool
 		wantArgs     []string
 		wantExisting bool
 		wantNote     string
+		wantTerminal string
 		wantErr      []string
 	}{
 		{
-			name:     "FreshWindowPrintsItsId",
-			opened:   reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
-			wantArgs: []string{"batten", "run", "some-slug"},
+			name:         "FreshWindowPrintsItsId",
+			opened:       reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
+			wantArgs:     []string{"batten", "run", "some-slug"},
+			wantTerminal: "opens through konsole",
+		},
+		{
+			name:         "NoLauncherStartsTheRunWithoutATerminal",
+			noLauncher:   true,
+			opened:       reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
+			wantArgs:     []string{"batten", "run", "some-slug"},
+			wantTerminal: "none opened: no terminal window launcher known here: no launcher for plan9",
 		},
 		{
 			name:         "ExistingLiveWindowStartsNothing",
@@ -198,11 +210,12 @@ func TestRunInWindow(t *testing.T) {
 			wantNote:     "already running; nothing started",
 		},
 		{
-			name:      "TypedDriversAreCarriedThrough",
-			driverSet: true,
-			childSet:  true,
-			opened:    reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
-			wantArgs:  []string{"batten", "run", "some-slug", "--driver", "go", "--child-driver", "go"},
+			name:         "TypedDriversAreCarriedThrough",
+			driverSet:    true,
+			childSet:     true,
+			opened:       reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
+			wantArgs:     []string{"batten", "run", "some-slug", "--driver", "go", "--child-driver", "go"},
+			wantTerminal: "opens through konsole",
 		},
 		{
 			name:     "NoSessionNamesOrchStartOrATerminal",
@@ -235,10 +248,11 @@ func TestRunInWindow(t *testing.T) {
 			wantErr:    []string{"has already completed", "delete its run directory", "different slug"},
 		},
 		{
-			name:     "BlockedStatusOpensTheWindowAsBefore",
-			status:   shedengine.StateBlocked,
-			opened:   reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
-			wantArgs: []string{"batten", "run", "some-slug"},
+			name:         "BlockedStatusOpensTheWindowAsBefore",
+			status:       shedengine.StateBlocked,
+			opened:       reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
+			wantArgs:     []string{"batten", "run", "some-slug"},
+			wantTerminal: "opens through konsole",
 		},
 	}
 	for _, tt := range tests {
@@ -263,6 +277,16 @@ func TestRunInWindow(t *testing.T) {
 					gotName, gotArgs = name, lyxArgs
 					return tt.opened, tt.openErr
 				},
+				terminalLauncher: func() (string, error) {
+					if tt.noLauncher {
+						return "", fmt.Errorf("%w: no launcher for plan9", termwindow.ErrNoLauncher)
+					}
+					return "konsole", nil
+				},
+			}
+			wantArgs := tt.wantArgs
+			if !tt.noLauncher && wantArgs != nil {
+				wantArgs = append(slices.Clone(wantArgs), "--open-terminal")
 			}
 			if tt.status != "" {
 				writeStatus(t, c, shedengine.Status{CurrentProducer: battenrecipe.NameWorktreeTeardown, State: tt.status})
@@ -280,8 +304,8 @@ func TestRunInWindow(t *testing.T) {
 				if gotName != "batten:some-slug" {
 					t.Errorf("opener asked for window %q, want %q", gotName, "batten:some-slug")
 				}
-				if !slices.Equal(gotArgs, tt.wantArgs) {
-					t.Errorf("opener asked to run %v, want %v", gotArgs, tt.wantArgs)
+				if !slices.Equal(gotArgs, wantArgs) {
+					t.Errorf("opener asked to run %v, want %v", gotArgs, wantArgs)
 				}
 			}
 			var envelope map[string]any
@@ -307,6 +331,10 @@ func TestRunInWindow(t *testing.T) {
 			}
 			if note, _ := envelope["note"].(string); note != tt.wantNote {
 				t.Errorf("envelope note = %q, want %q", note, tt.wantNote)
+			}
+			terminal, hasTerminal := envelope["terminal_window"].(string)
+			if hasTerminal != (tt.wantTerminal != "") || !strings.Contains(terminal, tt.wantTerminal) {
+				t.Errorf("envelope terminal_window = %q (present %v), want it to contain %q", terminal, hasTerminal, tt.wantTerminal)
 			}
 		})
 	}
