@@ -14,8 +14,9 @@ import (
 // discussionSeatsEngine is the engine New gives the Discussion-Write row when env.DiscussionSeats is true.
 const discussionSeatsEngine = "DiscussionSeats"
 
-// RecipeEngines parses recipes.LoomRecipe, collects each row's engine name, adds discussionSeatsEngine, which New substitutes for the Discussion-Write row's engine and so a loom row can reach, de-duplicates, and
-// returns the result sorted. It exists as the input to the cross-consumer coverage guard, which
+// RecipeEngines parses recipes.LoomRecipe, collects each row's engine name, adds discussionSeatsEngine, de-duplicates, and returns the result sorted.
+// discussionSeatsEngine joins the set because New substitutes it for the Discussion-Write row's engine, so a loom row can reach it.
+// It exists as the input to the cross-consumer coverage guard, which
 // unions every recipe consumer's engine set -- deriving the set from the recipe rather than
 // writing it down is what keeps that union honest without a second hand-maintained table alongside
 // the one row table in shape_test.go.
