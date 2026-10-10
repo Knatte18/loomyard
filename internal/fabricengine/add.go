@@ -143,22 +143,15 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	weftBranchAlreadyExists := weftBranchExists(l, weftBranch)
 
 	// Resolve parent warp branch before worktree creation to avoid partial state on failure.
-	// This is a compound guard, not a two-message merge: the second disjunct of the old
-	// exitCode != 0 || TrimSpace(stdout) == "HEAD" condition fires on a *successful* git call
-	// (a detached HEAD), so there is no error to wrap on that arm — the two conditions stay
-	// apart rather than collapsing into one errors.As recovery.
-	headStdout, headErr := gitexec.Run([]string{"rev-parse", "--abbrev-ref", "HEAD"}, l.WorktreePath())
+	// A detached HEAD and an unborn branch are both refusals, and neither is a read error.
+	warpRepo := gitrepo.New(l.WorktreePath())
+	parentBranch, detached, headErr := warpRepo.HeadRef()
 	if headErr != nil {
-		var headGitErr *gitexec.GitError
-		if !errors.As(headErr, &headGitErr) {
-			return AddResult{}, fmt.Errorf("rev-parse abbrev-ref HEAD: %w", headErr)
-		}
+		return AddResult{}, fmt.Errorf("read warp HEAD: %w", headErr)
+	}
+	if _, shaErr := warpRepo.CurrentSHA(); detached || errors.Is(shaErr, gitrepo.ErrNoCommits) {
 		return AddResult{}, fmt.Errorf("cannot spawn weft branch: warp worktree is on a detached HEAD or unborn branch")
 	}
-	if strings.TrimSpace(headStdout) == "HEAD" {
-		return AddResult{}, fmt.Errorf("cannot spawn weft branch: warp worktree is on a detached HEAD or unborn branch")
-	}
-	parentBranch := strings.TrimSpace(headStdout)
 	parentWeftBranch := RecordsBranchName(parentBranch)
 
 	// Probe both origins before the first mutation: decide whether the pair is live, and refuse an unreplaceable leftover here rather than at step 11 or 12's push.
