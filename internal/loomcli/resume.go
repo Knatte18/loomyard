@@ -179,55 +179,25 @@ func noLiveDriverMessage(driver reedengine.DirectoryRow, driverFound bool) strin
 // resumeCmd builds the `resume` subcommand.
 func (c *loomCLI) resumeCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "resume",
-		Short: "wake this task's parked loom driver after a halt, without starting anything",
+		Use:         "resume",
+		Short:       "wake this task's parked loom driver after a halt, without starting anything",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `resume wakes a halted run's live, parked driver by typing the resume line into
-its pane and removing the park marker, the same step "lyx loom start" takes for a
-parked driver. It never spawns a driver, never adds or attaches a strand, never
-brings reed up and never switches a tmux client.
+its pane and removing the park marker. It never spawns a driver, adds or
+attaches a strand, brings reed up or switches a tmux client.
 
-It takes the bootstrap lock "lyx loom start" takes, so the two never run at once,
-and decides by the run's state first:
+Reach for it in the task worktree after "lyx loom circling accept" or
+"lyx loom circling continue", or whenever a run halted at a hand-back should
+carry on with the driver it already has. A done run, and a running run whose
+driver is live, are a no-op success; a resumed run's envelope names the
+stop-report path.
 
-  no status file    refused; "lyx loom start" in the task worktree begins the run
-  done              a no-op success saying the run is done
-  awaiting, at a review segment's Bouncer row, a circling decision recorded
-                    taken as a halted run is below: a live, parked driver is
-                    woken and its step acts on the decision
-  awaiting, at a Bouncer row, no decision recorded
-                    refused; "lyx loom circling accept <slug>" or "lyx loom
-                    circling continue <slug>", then "lyx loom resume"
-  awaiting, at a Bouncer row, the decision unreadable
-                    refused naming the file; fix it, or delete it and record the
-                    decision again, then "lyx loom resume"
-  awaiting, at any other row
-                    refused; "lyx loom approve" or "lyx loom reject" in the task
-                    worktree, after which a batten run watching the child resumes
-                    it, or "lyx batten run <slug>" from the prime when none does
-  running           a no-op success when the driver is live or holds the run
-                    lock; refused as below when neither
-  halted, run lock held
-                    refused with the kind "driver_not_parked": the driver is
-                    still finishing its post-run work; run resume again shortly
-  halted, live driver, no park marker
-                    refused with the kind "driver_not_parked"; run resume again
-                    shortly
-  halted, live driver, park marker
-                    resumed; the envelope names the stop-report path; refused
-                    with the kind "merge_in_progress" over an unfinished merge,
-                    except a parked merge-in of the run's own parent branch at
-                    Publish or Finalize, which that row aborts and redoes
-  halted, no live driver
-                    refused over an unfinished merge with "merge_in_progress"
-                    (same exception), otherwise with the way forward its driver
-                    strand calls for:
-                    a dead strand takes "lyx batten run <slug>" from the prime
-                    and then resume again, a retiring strand or none takes
-                    "lyx loom start"
-
-The driver strand is read from reed's directory, which a session that died with
-the machine still lists, never from the run's seed. A resume line that cannot be
-delivered is refused, naming "lyx loom status" and a re-run of "lyx loom resume".
+Each refusal names its way forward: "lyx loom start" when no run or no usable
+driver strand exists, the circling verbs at a review segment awaiting a
+decision, "lyx loom approve" or "lyx loom reject" at any other awaiting row,
+and a retry shortly for the kind "driver_not_parked", while the driver
+finishes its post-run work. An unfinished merge in the worktree is refused
+with the kind "merge_in_progress".
 
 Example:
   lyx loom resume`,

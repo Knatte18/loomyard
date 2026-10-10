@@ -21,8 +21,9 @@ const absentContractNext = "re-run `lyx webster run` (in a shed-driven run, re-s
 func (c *websterCLI) acceptAuditCmd() *cobra.Command {
 	var batch int
 	cmd := &cobra.Command{
-		Use:   "accept-audit",
-		Short: "clear the pending run-exit audit findings once their paths are restored",
+		Use:         "accept-audit",
+		Short:       "clear the pending run-exit audit findings once their paths are restored",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `accept-audit clears the run-exit audit findings the last run left pending.
 It checks every suspect path against the last batch head and refuses, changing
 nothing, while any differs or cannot be checked.

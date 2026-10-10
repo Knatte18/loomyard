@@ -20,10 +20,13 @@
 // A verify command never sees gateslot.PrebuiltLyxEnv, slotted or not: Verify strips an inherited value, so the command's own `go test` builds lyx once per test binary.
 // A marker written before it had a state reads as running.
 //
+// Each run that spawns its command writes its own log, `verify-<n>.log` in the verify directory with n one above the highest existing number, and names it on Result.Log, so a later verify never overwrites an earlier run's evidence.
+// After each such run the directory keeps the newest verifyLogKeep logs plus the one the Publish failure record names, and removes the rest.
+//
 // The Publish failure record is the one never-tracked file Publish leaves when its plan verify or `publish_verify` fails.
-// It names the failing verify as a FailureKind, the failing tests, a copy of the verify log that a later verify cannot overwrite, HEAD and the merge-in commit Publish made.
-// Publish writes it through WritePublishFailure, the round gate reads it through ReadPublishFailure, and a later passing Publish removes it through RemovePublishFailure.
-// Both files sit in the verify directory beside the log.
+// It names the failing verify as a FailureKind, the failing tests, the failing run's own log, HEAD and the merge-in commit Publish made.
+// Publish writes it through WritePublishFailure, the round gate reads it through ReadPublishFailure and checks its log path with IsLogPath, and a later passing Publish removes it through RemovePublishFailure, which leaves the log to pruning.
+// The record sits in the verify directory beside the logs.
 //
 // Every site of one worktree shares one directory, Dir(anchorRoot), so a pass at one site lets the next site skip.
 // The package imports no resolver: the worktree and the directory are told through Paths.

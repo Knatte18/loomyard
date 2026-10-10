@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 )
@@ -24,6 +25,16 @@ func newIntakeBoard(t *testing.T) (*boardengine.Board, string) {
 
 func testIssue(number int, labels ...string) boardengine.InboxIssue {
 	return boardengine.InboxIssue{Number: number, Title: "Issue title", Body: "Issue body.", URL: "https://example.test/issues/1", Labels: labels, Open: true}
+}
+
+// testIssueWithComments is testIssue carrying two comments, oldest first; the first is created late on 2 January in UTC-5, so on 3 January in UTC.
+func testIssueWithComments(number int, labels ...string) boardengine.InboxIssue {
+	issue := testIssue(number, labels...)
+	issue.Comments = []boardengine.IssueComment{
+		{Body: "First comment.", CreatedAt: time.Date(2026, 1, 2, 23, 30, 0, 0, time.FixedZone("UTC-5", -5*60*60))},
+		{Body: "Second comment.\n\nWith a paragraph.", CreatedAt: time.Date(2026, 2, 1, 8, 0, 0, 0, time.UTC)},
+	}
+	return issue
 }
 
 func readBoardJSON(t *testing.T, boardPath string) string {
@@ -43,8 +54,10 @@ func mustUpsert(t *testing.T, b *boardengine.Board, fields map[string]any) {
 }
 
 // TestImportIssueNewEntry asserts importing an issue creates a note carrying the issue's title, body link, number and configured labels, drops the labels the vocabulary lacks, and honours an explicit title, brief and label set.
+// The issue's comments follow its body as second-level sections in order, and an issue without comments keeps the body without any.
 func TestImportIssueNewEntry(t *testing.T) {
 	t.Parallel()
+	const plainBody = "Imported from [issue #7](https://example.test/issues/1).\n\nIssue body."
 	tests := []struct {
 		name        string
 		req         boardengine.ImportRequest
@@ -52,6 +65,7 @@ func TestImportIssueNewEntry(t *testing.T) {
 		wantBrief   string
 		wantLabels  []string
 		wantDropped []string
+		wantBody    string
 	}{
 		{
 			name:        "issue labels filtered to the vocabulary",
@@ -59,6 +73,7 @@ func TestImportIssueNewEntry(t *testing.T) {
 			wantTitle:   "Issue title",
 			wantLabels:  []string{"bug", "undecided"},
 			wantDropped: []string{"stray"},
+			wantBody:    plainBody,
 		},
 		{
 			name:       "explicit title, brief and labels win",
@@ -66,6 +81,16 @@ func TestImportIssueNewEntry(t *testing.T) {
 			wantTitle:  "Mine",
 			wantBrief:  "b",
 			wantLabels: []string{"enhancement"},
+			wantBody:   plainBody,
+		},
+		{
+			name:       "comments follow the body as second-level sections",
+			req:        boardengine.ImportRequest{Issue: testIssueWithComments(7, "bug"), Slug: "commented"},
+			wantTitle:  "Issue title",
+			wantLabels: []string{"bug"},
+			wantBody: plainBody +
+				"\n\n## Issue comment, 2026-01-03\n\nFirst comment." +
+				"\n\n## Issue comment, 2026-02-01\n\nSecond comment.\n\nWith a paragraph.",
 		},
 	}
 	for _, tt := range tests {
@@ -80,9 +105,8 @@ func TestImportIssueNewEntry(t *testing.T) {
 			if e.Kind != boardengine.KindNote || e.Title != tt.wantTitle || e.Brief != tt.wantBrief || !slices.Equal(e.Labels, tt.wantLabels) || !slices.Equal(e.Issues, []int{7}) {
 				t.Errorf("entry = %+v", e)
 			}
-			wantBody := "Imported from [issue #7](https://example.test/issues/1).\n\nIssue body."
-			if e.Body != wantBody {
-				t.Errorf("body = %q, want %q", e.Body, wantBody)
+			if e.Body != tt.wantBody {
+				t.Errorf("body = %q, want %q", e.Body, tt.wantBody)
 			}
 			if !slices.Equal(res.Dropped, tt.wantDropped) {
 				t.Errorf("dropped = %v, want %v", res.Dropped, tt.wantDropped)
@@ -123,6 +147,18 @@ func TestImportIssueFold(t *testing.T) {
 	}
 	if !slices.Equal(res.Entry.Labels, []string{"bug", "undecided"}) || !slices.Equal(res.Dropped, []string{"enhancement"}) {
 		t.Errorf("note fold = %+v", res)
+	}
+
+	mustUpsert(t, b, map[string]any{"slug": "commented", "kind": "task", "labels": bugLabels})
+	res, err = b.ImportIssue(boardengine.ImportRequest{Issue: testIssueWithComments(6), Into: "commented"})
+	if err != nil {
+		t.Fatalf("fold an issue with comments: %v", err)
+	}
+	wantBody = "## From issue #6\n\nImported from [issue #6](https://example.test/issues/1).\n\nIssue body." +
+		"\n\n### Issue comment, 2026-01-03\n\nFirst comment." +
+		"\n\n### Issue comment, 2026-02-01\n\nSecond comment.\n\nWith a paragraph."
+	if res.Entry.Body != wantBody {
+		t.Errorf("body with comments = %q, want %q", res.Entry.Body, wantBody)
 	}
 }
 

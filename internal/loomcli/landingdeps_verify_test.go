@@ -6,6 +6,7 @@ package loomcli
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -44,7 +45,11 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	deps := landingDeps(loc, websterengine.Geometry{StencilsDir: "/stencils"}, "task/foo",
 		"https://example.com/origin.git", "main", true, func() error { return nil },
-		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil)
+		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, planVerifySource(loc))
+
+	if want := planVerifySource(loc).failedWayForward; deps.VerifyFailedWayForward != want || !strings.Contains(want, `"lyx loom goto --to Webster-Burler"`) {
+		t.Errorf("VerifyFailedWayForward = %q, want the plan source's Webster-Burler clause %q", deps.VerifyFailedWayForward, want)
+	}
 
 	if _, err := deps.VerifyCommand(); err == nil {
 		t.Fatal("VerifyCommand before any plan exists: want an error, got nil")

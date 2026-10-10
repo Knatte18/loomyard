@@ -95,10 +95,10 @@ func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	loc := &lyxcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
 
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor("main", shedrun.DriverGo)); err != nil {
+	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor(shedrun.RecipeLoom, "main", shedrun.DriverGo)); err != nil {
 		t.Fatalf("first WriteSeed(...) = %v; want nil", err)
 	}
-	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor("main", shedrun.DriverGo)); err != nil {
+	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, loomSeedFor(shedrun.RecipeLoom, "main", shedrun.DriverGo)); err != nil {
 		t.Errorf("second WriteSeed(...) = %v; want nil (idempotent against a byte-identical seed)", err)
 	}
 
@@ -146,8 +146,34 @@ func TestResolveSeedDriver(t *testing.T) {
 			}
 			// The signature takes only the existing seed and whether it was found -- no flag, no config --
 			// so a recorded driver survives this step's write: the seed built from the result carries it.
-			if seed := loomSeedFor("main", got); seed.Driver != tt.want {
+			if seed := loomSeedFor(shedrun.RecipeLoom, "main", got); seed.Driver != tt.want {
 				t.Errorf("loomSeedFor(%q, %q).Driver = %q; want %q", "main", got, seed.Driver, tt.want)
+			}
+		})
+	}
+}
+
+// TestResolveSeedRecipe covers resolveSeedRecipe's read-through: an unseeded worktree takes loom, and a recorded recipe is preserved, so `lyx loom start` never writes a recipe over an existing seed.
+func TestResolveSeedRecipe(t *testing.T) {
+	tests := []struct {
+		name     string
+		existing shedrun.Seed
+		found    bool
+		want     string
+	}{
+		{"Unseeded_DefaultsToLoom", shedrun.Seed{}, false, shedrun.RecipeLoom},
+		{"AlreadySeededLoom_Preserved", shedrun.Seed{Recipe: shedrun.RecipeLoom}, true, shedrun.RecipeLoom},
+		{"AlreadySeededDarn_Preserved", shedrun.Seed{Recipe: shedrun.RecipeDarn}, true, shedrun.RecipeDarn},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveSeedRecipe(tt.existing, tt.found)
+			if got != tt.want {
+				t.Errorf("resolveSeedRecipe(%+v, %v) = %q; want %q", tt.existing, tt.found, got, tt.want)
+			}
+			if seed := loomSeedFor(got, "main", shedrun.DriverGo); seed.Recipe != tt.want {
+				t.Errorf("loomSeedFor(%q, ...).Recipe = %q; want %q", got, seed.Recipe, tt.want)
 			}
 		})
 	}

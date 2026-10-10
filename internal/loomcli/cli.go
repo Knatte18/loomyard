@@ -8,6 +8,7 @@
 // seed into, so there is no meaningful standalone mode (see the plan's
 // hub-only-resolution-for-loom decision). The resolved value is named "location" throughout, never
 // "loc" or "cwd".
+
 package loomcli
 
 import (
@@ -99,6 +100,9 @@ type loomCLI struct {
 	// recordedParentBranch is the seam through which start and resume read the pair's recorded parent branch, to tell a parked merge-in of that branch from any other merge state.
 	// A test substitutes a canned branch or error.
 	recordedParentBranch func(*lyxcwd.Location) (string, error)
+	// parentDirtyPaths is the seam through which a halt whose reason names a dirty worktree reads the parent pair's dirty tracked paths for its halt note.
+	// A test substitutes canned paths or an error; a nil value adds no section.
+	parentDirtyPaths func() ([]string, error)
 	// spec is the shedverbs.Spec the pre-run fills in place (arm.go) and the four shedverbs
 	// verbs read at run time. It is always non-nil after newLoomCLI, so Command() can hand the
 	// same pointer to shedverbs.Verbs before the pre-run has ever run.
@@ -113,6 +117,10 @@ type loomCLI struct {
 	// read it back to build every shedrun.* path, in place of a hardcoded shedrun.SelfRunID, so a
 	// later card and batch 7's addressing surface can read it too.
 	runID string
+	// recipe is the name of the recipe the run's seed records, read once in armAt right after the run-id (resolveRecipe);
+	// shedrun.RecipeLoom when the run has no seed yet.
+	// The routing, the shed builder, the wiring branch, the landing verify source and the reject rework row all read it.
+	recipe string
 	// routing is the recipe's producer-graph projection armAt loads (loadRouting) and specFor copies
 	// onto the Spec; zero on a hand-populated receiver, which reports no progress.
 	routing shedengine.Routing
@@ -151,13 +159,15 @@ type loomCLI struct {
 // of this package's two constructors (Command, StartAliasCommand) can forget one and leave a nil
 // spawnWatchdog to panic rather than degrade.
 func newLoomCLI() *loomCLI {
-	return &loomCLI{
+	c := &loomCLI{
 		suppressWatchdogSpawn: testing.Testing(),
 		spawnWatchdog:         reedengine.SpawnWatchdog,
 		midMerge:              fabricengine.MidMerge,
 		recordedParentBranch:  readRecordedParentBranch,
 		spec:                  &shedverbs.Spec{},
 	}
+	c.parentDirtyPaths = c.parentDirtyPathsFromFabric
+	return c
 }
 
 // runnerMasterStarter adapts *shuttleengine.Runner to websterengine.MasterStarter.
@@ -270,14 +280,12 @@ func verbUsesLightweightWiring(name string) bool {
 	}
 }
 
-// loomVerbTexts carries loom's four shedverbs-driven verbs' Use/Short/Long text, lifted verbatim
-// from their original hand-written constructors (run.go, step.go, status.go, pause.go, since
-// deleted) before shedverbs.Verbs took over their bodies -- including every Example: block and
-// every embedded newline, byte-for-byte.
+// loomVerbTexts carries the help text and audience of loom's shedverbs-driven verbs under the loom mount.
 var loomVerbTexts = shedverbs.VerbTexts{
 	Run: shedverbs.VerbText{
-		Use:   "run [run-id]",
-		Short: "run loom's phase machine in the foreground, with no status strand and no detached driver",
+		Use:      "run [<run-id>]",
+		Audience: clihelp.AudienceRole,
+		Short:    "run loom's phase machine in the foreground, with no status strand and no detached driver",
 		Long: `run runs loom's phase machine in the foreground: no status strand and
 no detached driver. It is the escape hatch for debugging and CI.
 
@@ -299,8 +307,9 @@ Example:
   lyx loom run <run-id>`,
 	},
 	Step: shedverbs.VerbText{
-		Use:   "step [run-id]",
-		Short: "bootstrap idempotently and drive exactly one producer, reporting a JSON envelope",
+		Use:      "step [<run-id>]",
+		Audience: clihelp.AudienceRole,
+		Short:    "bootstrap idempotently and drive exactly one producer, reporting a JSON envelope",
 		Long: `step bootstraps this worktree's loom task exactly as "lyx loom start" does --
 seeding the status file when absent and committing it into the fabric --
 and then drives exactly one producer through shedengine.Shed's own Step.
@@ -326,8 +335,9 @@ Example:
   lyx loom step <run-id>`,
 	},
 	Status: shedverbs.VerbText{
-		Use:   "status [run-id]",
-		Short: "report loom's current phase, once or as a live-tailed watch",
+		Use:      "status [<run-id>]",
+		Audience: clihelp.AudienceOperator,
+		Short:    "report loom's current phase, once or as a live-tailed watch",
 		Long: `status reports the current phase-machine state.
 
 Without --watch, it reads the status file once and emits a single JSON
@@ -354,8 +364,9 @@ Example:
   lyx loom status <run-id>`,
 	},
 	Pause: shedverbs.VerbText{
-		Use:   "pause [run-id]",
-		Short: "request a pause at loom's next producer boundary",
+		Use:      "pause [<run-id>]",
+		Audience: clihelp.AudienceOperator,
+		Short:    "request a pause at loom's next producer boundary",
 		Long: `pause sets a request the running phase machine consumes at its next
 producer boundary. It does not kill anything -- the machine itself clears
 the flag in the persist that records the paused state.
@@ -377,8 +388,9 @@ Example:
   lyx loom pause --clear`,
 	},
 	Goto: shedverbs.VerbText{
-		Use:   "goto [run-id] --to <producer>",
-		Short: "move a halted run onto a named row, paused, with a fresh segment budget",
+		Use:      "goto [<run-id>]",
+		Audience: clihelp.AudienceOperator,
+		Short:    "move a halted run onto a named row, paused, with a fresh segment budget",
 		Long: `goto moves a halted run onto the row named by --to and leaves it paused.
 It records a "goto" history entry that resets that row's segment bounce
 budget. It refuses while a driver holds the run lock and on a done run, and
@@ -401,66 +413,23 @@ func Command() *cobra.Command {
 	parent := &cobra.Command{
 		Use:   "loom",
 		Short: "bootstrap and drive one loom task's phase machine for this worktree",
-		Long: `loom drives one task's phase machine over a per-worktree status.json,
-on the generic shed engine. The machine walks its producer rows: a
-two-row preflight, then Discussion, Plan, and Webster, each of the three
-followed by its own LLM review segment that loops until it approves or
-escalates, then Describe, which writes the change description, then Publish and Finalize, and last Friction-Reflect, which runs
-the Tier 2 friction reflection, under "run" and under "step" alike, before the run records done. "start" is
-the bootstrap verb: it seeds the status file, commits the seed, and spawns/attaches the
-detached driver session; "run" is the no-tmux escape hatch that runs the
-phase machine in the foreground for debugging and CI; "step" bootstraps
-idempotently and drives exactly one producer, reporting a JSON envelope --
-the single-producer primitive an external supervisor drives; "status"
-reports the current phase and, with --watch, tails it, printing a line
-only when the activity changes; "pause" requests a pause at the next
-producer boundary; "goto" moves a halted run onto a named row, paused, with a
-fresh segment budget. "validate-discussion" and "validate-plan" are the
-standalone form of the mechanical gates Discussion-Write's and Plan-Write's
-own rows carry, callable by the writer agent before handoff ("validate-plan
---rework" is PR-Rework's), and
-"validate-description" does the same for the Describe row's change description.
-"lint-comments" finds the fixed-column wraps a change creates in comment line breaks, as every card gate does.
-"approve" records the operator's approval of the open pull request for a run
-awaiting or blocked at PR-Gate, removing any pending rejection; "lyx loom start" then lands it.
-"reject <review-file>" records the operator's rejection with the findings in that file, for a run
-awaiting or blocked at PR-Gate or blocked at PR-Rework, removing any approval; "lyx loom start" then
-sends the findings to PR-Rework. "commit-records" commits and
-pushes the run's records (status, reviews, friction notes, drive reports), pushing the
-task branch along with them; the
-loom driver's end-of-session command runs it after the driver writes its stop report.
-"review" is the subtree through which a run's parent answers Discussion-Write's
-parent-review gate: "review notify", "review delivered", "review approve" and
-"review reject <review-file>", each taking an optional task slug (required from
-the prime). They never collide with PR-Gate's "approve" and "reject".
-"circling" is the subtree through which the operator resolves a review segment's
-circling halt: "circling accept" ends the loop and lets the run proceed, "circling
-continue" runs another round. Each takes an optional task slug (required from the
-prime), and "lyx loom resume" then resumes the run.
-"decision add" appends one design call made after the Discussion to the decision
-record and commits it; it takes an optional task slug (required from the prime) and
-resumes nothing.
+		Long: `loom drives one task's phase machine over a per-worktree status.json, on
+the generic shed engine. The machine walks its producer rows: a two-row
+preflight, then Discussion, Plan and Webster, each followed by its own LLM
+review segment that loops until it approves or escalates, then Describe,
+Publish and Finalize, and last Friction-Reflect, before the run records done.
+
+Reach for it to start a task in its worktree, watch and steer the run, and
+answer the gates that wait on the operator or the run's parent.
+
+A verb taking an optional <slug> addresses the task worktree it runs in; from
+the prime the slug is required.
 
 Example:
   lyx loom start
-  lyx loom run
-  lyx loom step
-  lyx loom status
   lyx loom status --watch
-  lyx loom pause
-  lyx loom goto --to Plan-Write
-  lyx loom validate-discussion
-  lyx loom validate-plan
-  lyx loom validate-description
-  lyx loom lint-comments
   lyx loom approve
-  lyx loom reject review.md
-  lyx loom commit-records
-  lyx loom review approve <slug>
-  lyx loom review reject <slug> review.md
-  lyx loom circling accept <slug>
-  lyx loom circling continue <slug>
-  lyx loom decision add <slug> --by parent --title "..." --decision "..." --rationale "..."`,
+  lyx loom review approve <slug>`,
 		// RunE is set so that bare "lyx loom" lists subcommands and "lyx
 		// loom bogus" emits a JSON error envelope instead of falling
 		// through to cobra's plain-text help.

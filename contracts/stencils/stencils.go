@@ -23,6 +23,11 @@ var LandingTemplateConflict []byte
 //go:embed landing/landing-template-describe.md
 var LandingTemplateDescribe []byte
 
+// DarnTemplateWrite is the darn writer's shipped-default prompt: the whole instruction set of the one session that makes a board entry's change.
+//
+//go:embed darn/darn-template-write.md
+var DarnTemplateWrite []byte
+
 // LoomTemplateDiscussion is the loom Discussion producer's shipped-default interview prompt.
 //
 //go:embed loom/loom-template-discussion.md
@@ -333,6 +338,7 @@ type registryEntry struct {
 var entries = []registryEntry{
 	{"landing-template-conflict", &LandingTemplateConflict},
 	{"landing-template-describe", &LandingTemplateDescribe},
+	{"darn-template-write", &DarnTemplateWrite},
 	{"loom-template-discussion", &LoomTemplateDiscussion},
 	{"loom-template-discussion-chair", &LoomTemplateDiscussionChair},
 	{"loom-template-discussion-advisor", &LoomTemplateDiscussionAdvisor},
@@ -413,6 +419,7 @@ var roleOpeningStencils = map[string][]string{
 	"treadle-judge":      {"treadle-template-judge-circling", "treadle-template-judge-milestone"},
 	"friction":           {"friction-template-reflection"},
 	"describe":           {"landing-template-describe"},
+	"darn":               {"darn-template-write"},
 }
 
 // askOperatorPhrases is the closed list of phrases that tell an agent to put a question to the operator in its pane.

@@ -61,6 +61,11 @@ var recipes = map[string]entry{
 		BootstrapVerb: battencli.BootstrapVerb,
 		RefuseSeedAt:  battencli.RefuseUnlessPrime,
 	},
+	"darn": {
+		Arm:           loomcli.ArmAt,
+		Verbs:         []string{"run", "step", "status", "pause", "goto"},
+		BootstrapVerb: loomcli.BootstrapVerb,
+	},
 }
 
 // lookup resolves name against recipes, returning its entry.

@@ -28,6 +28,7 @@ import (
 // envkit.NilSeams already skips the seams whose nil is a documented default, so only wire's own gaps are listed.
 // batten wires only its own producers, so every loom seam of shedrecipe.Env stays nil here.
 var intentionallyNil = map[string]string{
+	"VerifyCommand":             "loom-only seam, batten runs no verify gate",
 	"Shuttle":                   "loom-only seam, batten drives no agent itself",
 	"Burler":                    "loom-only seam, batten runs no review round",
 	"Seats":                     "loom-only seam, batten runs no seat table",
@@ -64,6 +65,12 @@ var intentionallyNil = map[string]string{
 	"Rework.ClearRejection":     "loom-only seam, batten has no rework segment",
 	"Rework.ArchiveWebster":     "loom-only seam, batten has no rework segment",
 	"Rework.Commit":             "loom-only seam, batten has no rework segment",
+	"DarnSpec":                  "darn-only seam, batten has no darn segment",
+	"Darn.ReadRejection":        "darn-only seam, batten has no darn segment",
+	"Darn.ClearRejection":       "darn-only seam, batten has no darn segment",
+	"Darn.Commit":               "darn-only seam, batten has no darn segment",
+	"Darn.LatestOutcome":        "darn-only seam, batten has no darn segment",
+	"Darn.PublishFailure":       "darn-only seam, batten has no darn segment",
 }
 
 func TestWire_EverySeamFilled(t *testing.T) {

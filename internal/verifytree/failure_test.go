@@ -26,39 +26,26 @@ func TestPublishFailureRecord(t *testing.T) {
 		}
 	})
 
-	t.Run("round trip keeps a log copy that survives a rewrite of the log", func(t *testing.T) {
+	t.Run("round trip keeps the caller's log path", func(t *testing.T) {
 		t.Parallel()
 		p := newPaths(t)
-		if err := os.WriteFile(p.Log, []byte("first run output"), 0o644); err != nil {
-			t.Fatal(err)
-		}
 		want := PublishFailure{
 			Kind:        FailureKindPublishVerify,
 			Tests:       []FailedTest{{Package: "example.com/m/a", Test: "TestA/sub"}},
+			LogPath:     filepath.Join(p.Dir, "verify-3.log"),
 			Head:        "abc123",
 			MergeCommit: "def456",
 		}
 		if err := WritePublishFailure(p, want); err != nil {
 			t.Fatalf("WritePublishFailure: %v", err)
 		}
-		if err := os.WriteFile(p.Log, []byte("later run output"), 0o644); err != nil {
-			t.Fatal(err)
-		}
 
 		got, ok, err := ReadPublishFailure(p)
 		if !ok || err != nil {
 			t.Fatalf("ReadPublishFailure = (_, %v, %v); want (_, true, nil)", ok, err)
 		}
-		want.LogPath = p.PublishFailureLog
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("record = %+v; want %+v", got, want)
-		}
-		copied, err := os.ReadFile(got.LogPath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(copied) != "first run output" {
-			t.Fatalf("log copy = %q; want the log as it was when the record was written", copied)
 		}
 	})
 
@@ -73,13 +60,14 @@ func TestPublishFailureRecord(t *testing.T) {
 		}
 	})
 
-	t.Run("removal clears both files and is idempotent", func(t *testing.T) {
+	t.Run("removal clears the record, leaves its log and is idempotent", func(t *testing.T) {
 		t.Parallel()
 		p := newPaths(t)
-		if err := os.WriteFile(p.Log, []byte("output"), 0o644); err != nil {
+		log := filepath.Join(p.Dir, "verify-1.log")
+		if err := os.WriteFile(log, []byte("output"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := WritePublishFailure(p, PublishFailure{Kind: FailureKindPlanVerify, Head: "abc123"}); err != nil {
+		if err := WritePublishFailure(p, PublishFailure{Kind: FailureKindPlanVerify, LogPath: log, Head: "abc123"}); err != nil {
 			t.Fatal(err)
 		}
 		for range 2 {
@@ -87,10 +75,11 @@ func TestPublishFailureRecord(t *testing.T) {
 				t.Fatalf("RemovePublishFailure: %v", err)
 			}
 		}
-		for _, path := range []string{p.PublishFailure, p.PublishFailureLog} {
-			if _, err := os.Stat(path); !os.IsNotExist(err) {
-				t.Fatalf("%s still present after removal: %v", path, err)
-			}
+		if _, err := os.Stat(p.PublishFailure); !os.IsNotExist(err) {
+			t.Fatalf("%s still present after removal: %v", p.PublishFailure, err)
+		}
+		if _, err := os.Stat(log); err != nil {
+			t.Fatalf("the record's log was removed with it: %v", err)
 		}
 	})
 }

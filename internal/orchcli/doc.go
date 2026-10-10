@@ -7,6 +7,9 @@
 // `start` renders it to `.lyx/orch/role.md` and launches the session with a one-line pointer at it; skills (`scribe:prose`, `scribe:conversation`, `ly:board`) are loaded by shuttle before that pointer on every launch path, `--adopt` included.
 // A context cycle asks the session for an orch note at the path it names, following `.lyx/orch/note-template.md`, in place of a general handoff skill.
 // `lyx orch refresh` requests a clear cycle and `lyx orch distill` a compact cycle, whatever `cycle_mode` says; both write the note first.
+// The role file's `## Commands` section holds the operator command index.
+// `start` and `resume-context` render it in-process from the binary they run as, which the pane names;
+// the watcher outlives a deploy, so it runs `help index` from the `lyx` path the orch strand recorded and goes idle with a reason naming `lyx orch stop` when that path is missing or gone.
 //
 // # The orchestrator acts and fixes
 //

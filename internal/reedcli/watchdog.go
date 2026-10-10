@@ -644,8 +644,9 @@ func (c *reedCLI) watchdogCmd() *cobra.Command {
 	var hubPath, tmuxPath, shellPath string
 
 	cmd := &cobra.Command{
-		Use:   "watchdog",
-		Short: "run the blocking, single-instance, per-hub watchdog daemon",
+		Use:         "watchdog",
+		Short:       "run the blocking, single-instance, per-hub watchdog daemon",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		Long: `watchdog is the detached, single-instance, per-hub daemon that hosts reed's
 resize self-heal watch loop for every worktree session on the hub named by
 --hub-path. It is told its hub path, the tmux binary to use, and (optionally)

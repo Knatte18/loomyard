@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/helpcli"
 	"github.com/Knatte18/loomyard/internal/idecli"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomcli"
@@ -80,7 +81,7 @@ func newRoot() *cobra.Command {
 
 	root := &cobra.Command{
 		Use:   "lyx",
-		Short: "Loomyard task-tracker CLI",
+		Short: "drive the loomyard task board, worktrees, agents and runs",
 		Long: `lyx is the CLI for the Loomyard task tracker.
 
 It assembles every module's cobra command tree under a single root so that
@@ -88,7 +89,7 @@ all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output; --json prints the help as JSON and
 never runs the command.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, gate.`,
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, gate, help.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Modules' PersistentPreRunE hooks run after root's via EnableTraverseRunHooks.
@@ -137,6 +138,10 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 		quarrycli.Command(),
 		gatecli.Command(),
 	)
+
+	// SetHelpCommand replaces cobra's built-in help command; InitDefaultHelpCmd adds it now, because cobra would add it only at execution and the tree walks read root.Commands() before that.
+	root.SetHelpCommand(helpcli.Command())
+	root.InitDefaultHelpCmd()
 
 	return root
 }

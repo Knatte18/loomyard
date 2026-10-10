@@ -18,8 +18,9 @@ import (
 func newGlyphsCmd(root func() string) *cobra.Command {
 	var text bool
 	cmd := &cobra.Command{
-		Use:   "glyphs <dir>",
-		Short: "List every glyph under a repository-relative directory, flat and depth-first",
+		Use:         "glyphs <dir>",
+		Short:       "list every glyph under a repository-relative directory, flat and depth-first",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `glyphs answers a glyphs query for dir -- a repository-relative directory path, with
 "" and "." both meaning the repository root -- under quarry's own frozen preset
 (depth all, symbols on), and emits quarry's own JSON rendering unchanged. This is

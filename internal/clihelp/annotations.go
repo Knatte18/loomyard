@@ -16,3 +16,22 @@ const SkipStencilSeedAnnotation = "lyx.skip-stencil-seed"
 // AnnotationEnabled is the one value that reads as "on" for any annotation key in this package,
 // SkipStencilSeedAnnotation included.
 const AnnotationEnabled = "true"
+
+// AudienceAnnotation is the cobra-annotation key an invocable command carries to name who calls it.
+// Its value is one of Audiences; the command index lists a command only under the audience it names.
+const AudienceAnnotation = "lyx.audience"
+
+// AudienceOperator marks a command the operator, or the orch acting for them, runs by hand.
+const AudienceOperator = "operator"
+
+// AudienceRole marks a command a spawned role agent runs, named by that role's prompt.
+const AudienceRole = "role"
+
+// AudienceInternal marks a command lyx itself runs, such as a daemon or a pinned key binding.
+const AudienceInternal = "internal"
+
+// Audiences is the closed set of AudienceAnnotation values, in index order.
+var Audiences = []string{AudienceOperator, AudienceRole, AudienceInternal}
+
+// IndexNoteAnnotation is the cobra-annotation key whose value the command index appends, after one space, to the line of the command carrying it.
+const IndexNoteAnnotation = "lyx.index-note"

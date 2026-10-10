@@ -40,7 +40,7 @@
 // Publish alone persists its failure.
 // When its plan verify or `publish_verify` fails with a non-zero exit, it writes the verifytree Publish failure record with the failing kind, the failing tests the told Deps.FailingTests parses from the log, HEAD, and the merge-in commit, which is HEAD after a merge-in that was not already up to date and empty otherwise.
 // A dirty tree, a timeout and a shell that could not start write no record, and a write failure is logged and never changes the Stuck verdict.
-// The Stuck reason of a failed verify names the `lyx loom goto --to Webster-Burler` then `lyx loom resume` route only when the record was written; otherwise it asks to fix forward on the task branch.
+// The Stuck reason of a failed verify ends with the way-forward clause the recipe tells in Deps.VerifyFailedWayForward only when the record was written; otherwise, and when none is told, it asks to fix forward on the task branch.
 // A Publish that passes both verifies removes the record before its push, and Finalize neither writes nor removes it.
 //
 // The push that follows is never retried when the remote rejects it, because the remote task branch moved and a repeat would be rejected again.
@@ -61,6 +61,8 @@
 // merges the task branch into the parent pair itself.
 // Each catch-up merge-in, the retry after the parent moved included, runs the same three clean-tree checks and the same post-merge verify gate as Publish before the parent-side merge,
 // and a dirty tree or a failure is Stuck with the parent branch untouched.
+// After each catch-up merge-in and before the parent-side merge, Finalize commits the parent pair's own run records through the told Deps.CommitParentRecords, so a sibling run's uncommitted status record does not trip the merge guard;
+// a clean subtree is a no-op, an absent seam skips the step, and a commit failure is Stuck naming the parent pair and its run records, with nothing merged.
 // The landing commit carries the change description and exactly one Co-Authored-By trailer, appended from landing.yaml's co_authored_by.
 // Before the catch-up merge-in, Finalize reads the per-worktree config files the task changed away from both its fork point and the parent's current tip, so a parent-side change never reads as a task edit, and, at Done, queues one notice about them naming the base, task tip and parent tip for the hub's orchestrator;
 // it never carries those files to the parent,

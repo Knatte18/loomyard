@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
@@ -31,16 +32,31 @@ const (
 	reloadStencilName      = "orch-template-reload"
 )
 
-// RenderRoleFile renders the role stencil to path, creating its directory.
+// commandIndexMarker is the role stencil's marker that index fills.
+const commandIndexMarker = "command_index"
+
+// RenderRoleFile renders the role stencil to path with index filling its command-index marker, creating its directory.
+// A role stencil that lacks the marker fails the render naming the stencil, so an operator-edited copy never silently renders without the index.
 // The write is a temporary file and a rename, so a reader never sees a partial file when two renders overlap.
 // The session reads the file through the one-line pointers, so a stencil edit applies from the next delivery.
-func RenderRoleFile(stencilsDir, path string) error {
-	return renderFile(stencilsDir, roleStencilName, path)
+func RenderRoleFile(stencilsDir, path, index string) error {
+	template, err := stencilstore.Read(stencilsDir, roleStencilName)
+	if err != nil {
+		return fmt.Errorf("orch: read %s: %w", roleStencilName, err)
+	}
+	markers, err := stencil.TopLevelMarkers(template)
+	if err != nil {
+		return fmt.Errorf("orch: read markers of %s: %w", roleStencilName, err)
+	}
+	if !slices.Contains(markers, commandIndexMarker) {
+		return fmt.Errorf("orch: %s declares no {{.%s}} marker: restore the marker, or delete the override so the shipped stencil applies", roleStencilName, commandIndexMarker)
+	}
+	return renderFile(stencilsDir, roleStencilName, path, map[string]string{commandIndexMarker: index})
 }
 
 // RenderNoteTemplateFile renders the note template stencil to path, creating its directory.
 func RenderNoteTemplateFile(stencilsDir, path string) error {
-	return renderFile(stencilsDir, noteStencilName, path)
+	return renderFile(stencilsDir, noteStencilName, path, nil)
 }
 
 // RenderStartPrompt renders the one-line fresh-launch pointer, with rolePath filled in.
@@ -78,9 +94,9 @@ func RenderCompactFocus(stencilsDir string) (string, error) {
 	return render(stencilsDir, compactStencilName, nil, true)
 }
 
-// renderFile renders one marker-free stencil and writes it to path, creating the directory.
-func renderFile(stencilsDir, name, path string) error {
-	out, err := render(stencilsDir, name, nil, false)
+// renderFile renders one stencil with values and writes it to path, creating the directory.
+func renderFile(stencilsDir, name, path string, values map[string]string) error {
+	out, err := render(stencilsDir, name, values, false)
 	if err != nil {
 		return err
 	}

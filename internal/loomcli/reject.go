@@ -20,7 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -45,8 +44,13 @@ type rejectDeps struct {
 	removeApproval func() error
 	// writeRejection records the rejection, replacing any earlier one.
 	writeRejection func(landingshed.Rejection) error
-	// routing is the loom recipe's routing, read for the PR-Gate bounce budget.
+	// routing is the run's recipe's routing, read for the PR-Gate bounce budget.
 	routing shedengine.Routing
+	// reworkRow is the recipe's row that answers a rejection: PR-Rework in loom, Darn in darn.
+	reworkRow string
+	// rejectionPending reports whether a rejection record is pending.
+	// Only a run blocked at the Darn row reads it.
+	rejectionPending func() (bool, error)
 	// now supplies the rejection time.
 	now func() time.Time
 }
@@ -63,9 +67,19 @@ func rejectVerb(ctx context.Context, out io.Writer, d rejectDeps, reviewFile str
 	}
 	halted := st.State == shedengine.StateAwaiting || st.State == shedengine.StateBlocked
 	atGate := halted && st.CurrentProducer == loomshed.NamePRGate
-	atRework := st.State == shedengine.StateBlocked && st.CurrentProducer == loomshed.NamePRRework
+	atRework := st.State == shedengine.StateBlocked && st.CurrentProducer == d.reworkRow
 	if !atGate && !atRework {
-		return output.Err(out, fmt.Sprintf("loom: reject: the run is not awaiting or blocked at %s, nor blocked at %s (state %q, producer %q)", loomshed.NamePRGate, loomshed.NamePRRework, st.State, st.CurrentProducer))
+		return output.Err(out, fmt.Sprintf("loom: reject: the run is not awaiting or blocked at %s, nor blocked at %s (state %q, producer %q)", loomshed.NamePRGate, d.reworkRow, st.State, st.CurrentProducer))
+	}
+	// A Darn row that halted on its own gate has no pull request yet, so only a pending rejection gives a rejection something to replace.
+	if atRework && d.reworkRow == loomshed.NameDarn {
+		pending, err := d.rejectionPending()
+		if err != nil {
+			return output.Err(out, "loom: reject: read the pending rejection: "+err.Error())
+		}
+		if !pending {
+			return output.Err(out, fmt.Sprintf("loom: reject: the run is blocked at %s with no rejection pending, so it has no pull request to reject; fix the cause the status names, then run \"lyx loom resume\"", loomshed.NameDarn))
+		}
 	}
 	if atGate {
 		count, budget, inSegment := d.routing.Bounces(loomshed.NamePRGate, st.History)
@@ -134,15 +148,19 @@ func rejectVerb(ctx context.Context, out io.Writer, d rejectDeps, reviewFile str
 // rejectCmd builds the `reject` subcommand.
 func (c *loomCLI) rejectCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "reject <review-file>",
-		Short: "record rejection of the task's open pull request with findings from a file so the next lyx loom start reworks it",
+		Use:         "reject <review-file>",
+		Short:       "record rejection of the task's open pull request with findings from a file so the next lyx loom start reworks it",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `reject records the operator's rejection of the task's open pull request,
 with the review findings read from <review-file>, and removes any approval.
-It applies to a run awaiting or blocked at PR-Gate, or blocked at PR-Rework
-(the rework session stopped; a new rejection replaces the pending one). The
-next "lyx loom start" sends the findings to PR-Rework, which archives the
-built plan generation into the round and plans a new one, then re-runs the
-main line.
+It applies to a run awaiting or blocked at PR-Gate, or blocked at the recipe's
+rework row (the rework session stopped; a new rejection replaces the pending
+one). In the loom recipe the rework row is PR-Rework: the next "lyx loom start"
+sends the findings to it, and it archives the built plan generation into the
+round and plans a new one, then re-runs the main line. In the darn recipe the
+rework row is Darn: the next "lyx loom start" spawns a fresh Darn session
+that is told the findings, and a run blocked at Darn needs a pending rejection
+for a new one to replace.
 
 It refuses unless the pull request is open, the local task HEAD equals the
 pull request's head commit, and the review file is readable and non-empty.
@@ -161,12 +179,7 @@ Example:
 			ctx := cmd.Context()
 			location := c.location
 
-			budget, err := c.reviewBudget()
-			if err != nil {
-				clihelp.SetExit(ctx, output.Err(cmd.OutOrStdout(), "loom: reject: "+err.Error()))
-				return nil
-			}
-			routing, err := loomrecipe.Routing(budget)
+			routing, err := c.recipeRouting()
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(cmd.OutOrStdout(), "loom: reject: "+err.Error()))
 				return nil
@@ -231,8 +244,12 @@ Example:
 				writeRejection: func(r landingshed.Rejection) error {
 					return landingshed.WriteRejection(loomengine.LoomRejectionPath(location), r)
 				},
-				routing: routing,
-				now:     time.Now,
+				routing:   routing,
+				reworkRow: reworkRowFor(c.recipe),
+				rejectionPending: func() (bool, error) {
+					return rejectionPending(location), nil
+				},
+				now: time.Now,
 			}
 			clihelp.SetExit(ctx, rejectVerb(ctx, cmd.OutOrStdout(), d, args[0]))
 			return nil

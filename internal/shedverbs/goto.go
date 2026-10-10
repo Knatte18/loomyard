@@ -16,9 +16,10 @@ import (
 // goto never calls spec.BuildShed -- a nil one is legal here, exactly as on status and pause.
 func gotoCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   texts.Goto.Use,
-		Short: texts.Goto.Short,
-		Long:  texts.Goto.Long,
+		Use:         texts.Goto.Use,
+		Short:       texts.Goto.Short,
+		Long:        texts.Goto.Long,
+		Annotations: map[string]string{clihelp.AudienceAnnotation: texts.Goto.Audience},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

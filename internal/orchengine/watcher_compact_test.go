@@ -2,6 +2,7 @@ package orchengine
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -281,6 +282,9 @@ func TestCompact_CycleReloadsPluginsThenPointerNamingTheNote(t *testing.T) {
 	e.tick() // the pointer
 	e.endTurn("resumed")
 	e.assertReload("compact:", e.state().LastHandoff, false)
+	if role, err := os.ReadFile(e.paths.RolePath); err != nil || !strings.Contains(string(role), testIndex) {
+		t.Errorf("role file = %q, %v; want it rendered with the index", role, err)
+	}
 	if st := e.state(); st.Phase != PhaseIdle {
 		t.Errorf("phase = %s, want idle", st.Phase)
 	}

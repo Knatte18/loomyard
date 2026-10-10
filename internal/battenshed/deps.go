@@ -20,7 +20,7 @@ var ErrUnknownRecipe = errors.New("battenshed: unknown recipe name")
 
 // ErrUnsupportedChildRecipe is the sentinel a SeedChildDeps.WriteSeed closure wraps when recipe is a
 // registered recipe the task worktree's bootstrap cannot run -- InnerRun spawns the one bootstrap verb
-// that exists, loom's. SeedChild routes it to Stuck exactly as ErrUnknownRecipe, before any seed is
+// that exists, `lyx loom start`, which serves the loom and darn recipes. SeedChild routes it to Stuck exactly as ErrUnknownRecipe, before any seed is
 // written or committed, so a Board task typed with such a recipe halts at Seed-Child with the recipe
 // named rather than failing inside the child after a wrong seed has already been pushed.
 var ErrUnsupportedChildRecipe = errors.New("battenshed: recipe cannot be a task worktree's own run")

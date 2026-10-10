@@ -36,6 +36,20 @@ func (f *Fabric) IsAncestor(sha, ref string) (bool, error) {
 	return f.code.IsAncestor(sha, ref)
 }
 
+// MergeBase returns the SHA of the best common ancestor of the warp checkout's HEAD and ref, where ref is a branch, a remote-tracking ref or a SHA.
+// It is a read-only delegation to gitrepo.Repo.MergeBase on f.code, so a caller reads the task branch's fork point without naming a fabric side.
+func (f *Fabric) MergeBase(ref string) (string, error) {
+	head, err := f.code.CurrentSHA()
+	if err != nil {
+		return "", err
+	}
+	refSHA, err := f.code.ResolveSHA(ref)
+	if err != nil {
+		return "", err
+	}
+	return f.code.MergeBase(head, refSHA)
+}
+
 // HeadContains reports whether sha is the commit at HEAD of the worktree at worktreePath, or one of its ancestors.
 // It reads in-process through gitrepo.Repo.HeadContains and takes a path rather than a *Fabric, so a caller running from any worktree of a hub, paired or not, can ask.
 func HeadContains(worktreePath, sha string) (bool, error) {

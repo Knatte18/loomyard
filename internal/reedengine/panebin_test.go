@@ -168,8 +168,15 @@ func TestComposePaneLaunchLine(t *testing.T) {
 			for _, sh := range launchScriptDialects() {
 				buf := logcapture.CaptureVerbose(t)
 
-				got := composePaneLaunchLine(sh, tt.cmd, guid, tt.strand, tt.parent)
+				got, gotExe := composePaneLaunchLine(sh, tt.cmd, guid, tt.strand, tt.parent)
 
+				wantExe := exe
+				if tt.executable != nil {
+					wantExe = ""
+				}
+				if gotExe != wantExe {
+					t.Errorf("composePaneLaunchLine(...) executable = %q, want %q", gotExe, wantExe)
+				}
 				if want := tt.want(sh); got != want {
 					t.Errorf("composePaneLaunchLine(...) = %q, want %q", got, want)
 				}

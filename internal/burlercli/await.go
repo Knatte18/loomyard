@@ -34,8 +34,9 @@ const defaultAwaitCap = 250 * time.Second
 func (c *burlerCLI) awaitReviewCmd() *cobra.Command {
 	var awaitCap time.Duration
 	cmd := &cobra.Command{
-		Use:   awaitReviewVerb + " <marker-path>",
-		Short: "wait, capped, for a round's review-ready marker to exist",
+		Use:         awaitReviewVerb + " <marker-path>",
+		Short:       "wait, capped, for a round's review-ready marker to exist",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `await-review polls for one marker path and returns as soon as it exists,
 printing ok with ready true and the absolute marker path. When --cap elapses
 first it prints ok with ready false and exits 0, telling the caller to run the
