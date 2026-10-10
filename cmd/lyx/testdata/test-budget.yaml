@@ -57,7 +57,7 @@ internal/loomshed: 69
 internal/lyxcwd: 23
 internal/mergeresolve: 17
 internal/modelspec: 11
-internal/orchcli: 24
+internal/orchcli: 25
 internal/orchengine: 131
 internal/output: 4
 internal/pairteardown: 4

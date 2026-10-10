@@ -20,6 +20,7 @@
 //     Both verbs report `requested` and `watcher_live`, and with no watcher live they withdraw the marker again, so no later watcher acts on a request made while none ran.
 //   - stop: removes the orchestrator strand; the watcher notices and exits on its own.
 //   - watch: the hidden daemon verb `start` spawns detached; it is not an operator verb.
+//   - resume-context: the hidden verb the orch run's session-start hook runs after every compaction; it prints the resume pointer as the provider's additional-context JSON and writes the delivery mark.
 //
 // The verbs, the reed and shuttle wiring, and the strand-identity rules live in internal/orchcli.
 // This package holds what sits behind the seam: the config, the stencil renders, the persisted state, `start`'s two decisions, and the watcher.

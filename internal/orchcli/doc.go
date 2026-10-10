@@ -45,6 +45,14 @@
 // `start` reconciles the hub's config after a binary change, once per build, before it loads any module config or launches anything; a failure stops it with the reconcile's own message and way forward.
 // No other orch verb reconciles.
 //
+// # The session-start hook
+//
+// The orch run's spec is the one that installs the provider's context-after-compaction hook.
+// Its command is built through the POSIX shell dialect, which the provider runs hooks under on every OS: a change of directory to the prime's anchor, then the bare hidden verb `lyx orch resume-context`.
+// The verb therefore runs in the prime whatever directory the session has moved to, and its own prime refusal bounds a failed change of directory.
+// It prints the resume pointer as the provider's additional-context JSON and nothing else, and writes the delivery mark the watcher reads.
+// A failure prints the JSON error envelope and writes no mark, so the watcher types the pointer itself.
+//
 // # Reaching the orch from another module
 //
 // `PrimePaths` is the one accessor other modules use for the orch's told paths, so the notice queue and the orch state are reached without re-deriving either.
