@@ -202,8 +202,9 @@ var substitutionMarkers = []string{"$(", "`", "<(", ">("}
 // It is false for any output redirection (`>`, `>>`, `>|`, `&>`, a numbered descriptor redirection, `<>`), for command or process substitution, for backgrounding, and for any other command or form, `sort`, `tee`, `find`, `env`, `xargs`, an interpreter, `go` and every other `lyx` or `git` invocation included.
 // A `lyx`, `git` or `sed` segment is split into shell words, honouring single and double quotes, and judged on the dequoted text.
 // Such a word may hold neither `$` nor a backslash, quoted or not, nor an unquoted brace or parenthesis; a leading `~` is text.
-// A quoted word starting with `-` is still a flag, so a quoted writing flag is rejected, and a quoted glob character is text wherever a positional is admitted.
-// An unquoted glob character (`*`, `?`, `[`, `#`, or `^` at a word's start) is rejected in every `lyx` word, and in every `git` word except after the `--` of `log`, `show`, `diff` and `status`, where every word is a pathspec.
+// A quoted word starting with `-` is still a flag, so a quoted writing flag is rejected.
+// A glob character (`*`, `?`, `[`, `#`, or `^` at a word's start) is rejected in every `lyx` word, quoted or not.
+// In a `git` word a quoted one is text wherever a positional is admitted, and an unquoted one is rejected except after the `--` of `log`, `show`, `diff` and `status`, where every word is a pathspec.
 // `sed` is read-only only as `-n`, one line number or range of two line numbers followed by `p`, and file words.
 // The two stderr redirections `2>&1` and `2>/dev/null`, each a whole token that does not open its segment, are dropped before the redirection scan; every other redirection fails it.
 // A separator or redirection character inside a quoted span is text.
