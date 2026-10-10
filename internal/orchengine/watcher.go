@@ -839,8 +839,8 @@ func (w *Watcher) removeSatisfiedRequest(mode string, effectAt time.Time) error 
 
 // startAutoReload reloads the plugins and the role after an auto-compaction read at a turn end, once the idle probe passes.
 // The baseline moves to the boundary when the phase is entered, so no boundary reloads twice.
-// A role-file render failure, the command index's included, returns to idle with the reason, as a clear cycle's does,
-// and forgets the boundary so the failure is reported once and the next turn end retries it.
+// A role-file render failure, the command index's included, returns to idle with the reason, as a clear cycle's does.
+// It also forgets the boundary, so the failure is reported once and the next turn end retries it.
 func (w *Watcher) startAutoReload(st State, now time.Time) error {
 	probe, err := w.probeIdle(&st)
 	if err != nil {
