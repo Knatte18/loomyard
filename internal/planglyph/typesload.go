@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"golang.org/x/tools/go/packages"
@@ -25,21 +26,45 @@ type typesLoader interface {
 	load(root string, dirs []string) ([]*packages.Package, error)
 }
 
+// typesLoadTimeout bounds one go list load, counted from the moment its slot is held.
+const typesLoadTimeout = 3 * time.Minute
+
+// typesLoadSite names the load in its slot holder record and its wait record.
+const typesLoadSite = "plan gate caller-uncovered"
+
 // goListLoader is the typesLoader that runs go list through go/packages, offline and bounded by timeout.
+// With a slot pool it waits for a slot before the load, noting the wait in waitDir, and runs the load under the slot's `-p` cap; without one it loads at once.
 type goListLoader struct {
 	timeout time.Duration
+	slots   *gateslot.Pool
+	waitDir string
 }
 
 // defaultTypesLoader is the loader the exported plan gate entry points use.
-var defaultTypesLoader typesLoader = goListLoader{timeout: 3 * time.Minute}
+var defaultTypesLoader typesLoader = goListLoader{timeout: typesLoadTimeout}
 
 // load runs packages.Load over dirs from root, test variants and the integration, tmux and llm build tags included.
 // Imports come from compiler export data, so only the packages of dirs are type-checked from source.
-// It returns an error when the load fails or outlives the loader's timeout.
+// It returns an error when no slot is acquired, or when the load fails or outlives the loader's timeout, which starts once the slot is held.
 func (l goListLoader) load(root string, dirs []string) ([]*packages.Package, error) {
 	patterns := make([]string, len(dirs))
 	for i, dir := range dirs {
 		patterns[i] = "./" + dir
+	}
+
+	env := append(os.Environ(), "GOPROXY=off", "GOFLAGS=-mod=readonly")
+	if l.slots != nil {
+		lease, err := l.acquireSlot(root)
+		if err != nil {
+			logger.Warn("planglyph: gate slot for caller-uncovered not acquired", "worktree_root", root, "error", err)
+			return nil, err
+		}
+		defer func() {
+			if err := lease.Release(); err != nil {
+				logger.Warn("planglyph: release gate slot", "worktree_root", root, "error", err)
+			}
+		}()
+		env = lease.Env(env)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), l.timeout)
@@ -47,7 +72,7 @@ func (l goListLoader) load(root string, dirs []string) ([]*packages.Package, err
 	config := &packages.Config{
 		Context:    ctx,
 		Dir:        root,
-		Env:        append(os.Environ(), "GOPROXY=off", "GOFLAGS=-mod=readonly"),
+		Env:        env,
 		Tests:      true,
 		BuildFlags: []string{"-tags=integration,tmux,llm"},
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles | packages.NeedImports |
@@ -66,6 +91,20 @@ func (l goListLoader) load(root string, dirs []string) ([]*packages.Package, err
 	}
 	logger.Info("planglyph: go list for caller-uncovered finished", "worktree_root", root, "packages", len(loaded), "elapsed", time.Since(started))
 	return loaded, nil
+}
+
+// acquireSlot waits for a slot for a load over root and keeps a wait record in the loader's waitDir until the acquire returns, held or failed.
+// A wait record that cannot be written is logged and skipped, since it only feeds the status display.
+func (l goListLoader) acquireSlot(root string) (*gateslot.Lease, error) {
+	if l.waitDir != "" {
+		waitPath, err := gateslot.WriteWait(l.waitDir, gateslot.Wait{Site: typesLoadSite, PID: os.Getpid(), Started: time.Now()})
+		if err != nil {
+			logger.Warn("planglyph: write gate wait record", "worktree_root", root, "error", err)
+		} else {
+			defer os.Remove(waitPath)
+		}
+	}
+	return l.slots.Acquire(context.Background(), gateslot.Holder{Worktree: root, Site: typesLoadSite})
 }
 
 // loadTypedReferences loads the packages that can hold a subject's references and returns, from them, the checked files and the typed and unresolved references per subject.

@@ -10,6 +10,8 @@
 // websterengine.Geometry respectively.
 // ReconcileGeometry converts a Location into the hubreconcile.Geometry the start verbs and the Preflight row hand to hubreconcile.Ensure,
 // and reports false for a repository with no hub-level board lyx dir, which never reconciles.
+// GateSlots is the one constructor of a hub's gate-slot pool, over the board dir's slot directory, with its limits read from the board dir's gate.yaml at each acquire;
+// WebsterGeometry hands that pool to webster.
 // Later waves add their own siblings here rather than spawning per-engine packages or re-deriving the
 // construction inline at each call site.
 //

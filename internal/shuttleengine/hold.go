@@ -66,12 +66,12 @@ func holdNotice(strandName string, held *heldTurnEnd) string {
 }
 
 // notifyHeld sends the parent one notice for a held turn end of an autonomous run on a runner with a notifier.
-// An interactive run, a runner with no notifier and a turn end at or below RunState.NotifiedOffset are skipped.
+// An interactive run, a quiet-hold run, a runner with no notifier and a turn end at or below RunState.NotifiedOffset are skipped.
 // The offset is persisted before the notifier is called, so a crash between the write and the call loses that one notice and never repeats it.
 // A write that fails skips the notice, and a notifier error is only logged.
 func (run *Run) notifyHeld(held *heldTurnEnd) {
 	notify := run.runner.notifier
-	if notify == nil || run.spec.Interactive || held.offset <= run.state.NotifiedOffset {
+	if notify == nil || run.spec.Interactive || run.spec.QuietHold || held.offset <= run.state.NotifiedOffset {
 		return
 	}
 	run.recordMu.Lock()

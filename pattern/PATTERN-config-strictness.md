@@ -3,7 +3,7 @@
 `internal/configengine` offers `Load` (strict) and `LoadOrTemplate` (degrades to the embedded template); a caller adopts exactly one.
 
 - Degrading callers: `{shuttleengine, reedengine, websterengine, batcher, orchengine, loggerconfig}`.
-- Strict callers: `{fabricengine, boardengine, loomengine, landingshed, configcli}`.
+- Strict callers: `{fabricengine, boardengine, loomengine, landingshed, gateslot, configcli}`.
   `configcli` loads strictly only to validate a hub-wide module's file before committing it.
 - A template list is a default, not a minimum length.
 - A key missing from a present config file resolves to its template default and is logged.

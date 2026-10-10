@@ -213,12 +213,12 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 // readmeTypes is the type-label order the README goldens render Notes sections in.
 var readmeTypes = []string{"bug", "enhancement"}
 
-// readmeFixture holds tasks and notes with labels, plus a done task that another task depends on, an abandoned note, a body, an isolated task, a two-layer chain, and a note whose type label is not in readmeTypes.
+// readmeFixture holds tasks and notes with labels, plus a done task that another task depends on, an abandoned note, a body, an isolated task, a two-layer chain, a title with a pipe, a two-line brief, and a note whose type label is not in readmeTypes.
 func readmeFixture() []boardengine.Task {
 	task, note := boardengine.KindTask, boardengine.KindNote
 	return []boardengine.Task{
 		{ID: 1, Slug: "base", Title: "Base work", Kind: task, Labels: []string{"enhancement"}, Brief: "The foundation."},
-		{ID: 2, Slug: "top", Title: "Top work", Kind: task, Labels: []string{"bug", "area"}, Status: stringPtr("running"), Brief: "Builds on base.", Body: "Design.\nSecond line.", DependsOn: []string{"base", "shipped"}},
+		{ID: 2, Slug: "top", Title: "Top | work", Kind: task, Labels: []string{"bug", "area"}, Status: stringPtr("running"), Brief: "Builds on base.\nSecond brief line.", Body: "Design.\nSecond line.", DependsOn: []string{"base", "shipped"}},
 		{ID: 6, Slug: "alone", Title: "Alone work", Kind: task, Labels: []string{"enhancement"}, Isolated: true},
 		{ID: 3, Slug: "idea", Title: "An idea", Kind: note, Labels: []string{"enhancement", "undecided"}},
 		{ID: 4, Slug: "dropped", Title: "Dropped idea", Kind: note, Labels: []string{"bug"}, Status: stringPtr("abandoned"), Brief: "No longer wanted."},
@@ -227,11 +227,12 @@ func readmeFixture() []boardengine.Task {
 	}
 }
 
-// TestRenderReadmeGolden pins the README for a fixture with tasks and notes, notes grouped by type in Outputs.Types order and an Other group, a done entry, an abandoned note, a slug linked to its design doc, labels on every line, After and Before lines that leave out a done dependency, an isolated task, and a two-layer chain.
-// A second row pins that the Done section and every empty Notes subsection are omitted when no entry is done and no note exists for them.
+// TestRenderReadmeGolden pins the README tables for a fixture with tasks and notes, notes grouped by type in Outputs.Types order and an Other group, a done entry, an abandoned note, a slug linked to its design doc, only non-type labels, an After cell that leaves out a done dependency, an isolated task, and a Ready task with one in Layer A after it.
+// The same row pins that a pipe in a title is escaped and a line break in a brief becomes a space, so each row stays one table row.
+// A second row pins that Ready renders _None._ when empty, and that the Done section and every empty Notes subsection are omitted when no entry is done and no note exists for them.
 // Neither row has a run status, the first only the hand-set word "running", so neither renders a Running subsection.
-// A third row pins that a task with a run status renders under Running, before Layer A and in no layer, with its After and Before lines.
-// The same row pins that a task waiting only on it lands in Layer A, still naming it under After, and that a task after that one lands in Layer B.
+// A third row pins that a task with a run status renders under Running, before Ready and in no layer, its At cell dropping the state `running` and keeping any other.
+// The same row pins that a task waiting on a running one lands in Layer A, not Ready, still naming it under After, and that a task after that one lands in Layer B.
 func TestRenderReadmeGolden(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -251,27 +252,29 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"Concrete and claimable; only a task can run.\n" +
 				"\n" +
+				"### Ready\n" +
+				"\n" +
+				"Waits on nothing open; can start now.\n" +
+				"\n" +
+				"| # | Task | Slug | After | Labels |\n" +
+				"| --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Base work**<br>• The foundation. | `base` |  |  |\n" +
+				"\n" +
 				"### Layer A\n" +
 				"\n" +
-				"Waits on nothing that is not running; next to start.\n" +
+				"Waits only on Running or Ready entries.\n" +
 				"\n" +
-				"1. **Base work** — `base` · enhancement\n" +
-				"   - The foundation.\n" +
-				"   - **Before:** `top`\n" +
-				"\n" +
-				"### Layer B\n" +
-				"\n" +
-				"Starts when every entry it names under After is done.\n" +
-				"\n" +
-				"1. **Top work** — [`top`](design-top.md) · bug, area · running\n" +
-				"   - Builds on base.\n" +
-				"   - **After:** `base`\n" +
+				"| # | Task | Slug | After | Labels |\n" +
+				"| --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Top \\| work**<br>• Builds on base. Second brief line. | [`top`](design-top.md) | `base` | area |\n" +
 				"\n" +
 				"### Independent\n" +
 				"\n" +
 				"Depends on nothing and nothing depends on it, by design.\n" +
 				"\n" +
-				"1. **Alone work** — `alone` · enhancement\n" +
+				"| # | Task | Slug | After | Labels |\n" +
+				"| --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Alone work** | `alone` |  |  |\n" +
 				"\n" +
 				"## Notes\n" +
 				"\n" +
@@ -279,22 +282,29 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"### Bugs\n" +
 				"\n" +
-				"1. **Dropped idea** — `dropped` · bug · abandoned\n" +
-				"   - No longer wanted.\n" +
+				"| # | Note | Slug | Labels |\n" +
+				"| --- | --- | --- | --- |\n" +
+				"| 1 | **Dropped idea**<br>• No longer wanted. | `dropped` |  |\n" +
 				"\n" +
 				"### Enhancements\n" +
 				"\n" +
-				"1. **An idea** — `idea` · enhancement, undecided\n" +
+				"| # | Note | Slug | Labels |\n" +
+				"| --- | --- | --- | --- |\n" +
+				"| 1 | **An idea** | `idea` | undecided |\n" +
 				"\n" +
 				"### Other\n" +
 				"\n" +
-				"1. **Stray note** — `stray` · retired\n" +
+				"| # | Note | Slug | Labels |\n" +
+				"| --- | --- | --- | --- |\n" +
+				"| 1 | **Stray note** | `stray` | retired |\n" +
 				"\n" +
 				"## Done\n" +
 				"\n" +
 				"Finished, awaiting `lyx board prune`.\n" +
 				"\n" +
-				"1. **Shipped work** — `shipped` · enhancement · done\n",
+				"| # | Entry | Slug | Labels |\n" +
+				"| --- | --- | --- | --- |\n" +
+				"| 1 | **Shipped work** | `shipped` |  |\n",
 		},
 		{
 			name:  "no done section and no empty notes subsections",
@@ -308,21 +318,30 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"Concrete and claimable; only a task can run.\n" +
 				"\n" +
+				"### Ready\n" +
+				"\n" +
+				"Waits on nothing open; can start now.\n" +
+				"\n" +
+				"_None._\n" +
+				"\n" +
 				"## Notes\n" +
 				"\n" +
 				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
 				"\n" +
 				"### Enhancements\n" +
 				"\n" +
-				"1. **A** — `a` · enhancement\n",
+				"| # | Note | Slug | Labels |\n" +
+				"| --- | --- | --- | --- |\n" +
+				"| 1 | **A** | `a` |  |\n",
 		},
 		{
-			name: "running task under Running before Layer A and in no layer",
+			name: "running task under Running before Ready and in no layer",
 			tasks: []boardengine.Task{
 				{ID: 1, Slug: "base", Title: "Base work", Kind: boardengine.KindTask, Labels: []string{"enhancement"}},
-				{ID: 2, Slug: "held", Title: "Held work", Kind: boardengine.KindTask, Labels: []string{"bug"}, Status: stringPtr(boardengine.RunStatus("plan", "burler")), DependsOn: []string{"base"}},
+				{ID: 2, Slug: "held", Title: "Held work", Kind: boardengine.KindTask, Labels: []string{"bug", "area"}, Status: stringPtr(boardengine.RunStatus("running", "Webster")), DependsOn: []string{"base"}},
 				{ID: 3, Slug: "next", Title: "Next work", Kind: boardengine.KindTask, DependsOn: []string{"held"}},
 				{ID: 4, Slug: "last", Title: "Last work", Kind: boardengine.KindTask, DependsOn: []string{"next"}},
+				{ID: 5, Slug: "halted", Title: "Halted work", Kind: boardengine.KindTask, Labels: []string{"bug"}, Status: stringPtr(boardengine.RunStatus("paused", "Plan-Write"))},
 			},
 			want: "# Board\n" +
 				"\n" +
@@ -337,26 +356,34 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"Held by a run; its scope is locked until the run ends.\n" +
 				"\n" +
-				"1. **Held work** — `held` · bug · plan · burler\n" +
-				"   - **After:** `base`\n" +
-				"   - **Before:** `next`\n" +
+				"| # | Task | Slug | At | Labels |\n" +
+				"| --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Held work** | `held` | Webster | area |\n" +
+				"| 2 | **Halted work** | `halted` | paused · Plan-Write |  |\n" +
+				"\n" +
+				"### Ready\n" +
+				"\n" +
+				"Waits on nothing open; can start now.\n" +
+				"\n" +
+				"| # | Task | Slug | After | Labels |\n" +
+				"| --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Base work** | `base` |  |  |\n" +
 				"\n" +
 				"### Layer A\n" +
 				"\n" +
-				"Waits on nothing that is not running; next to start.\n" +
+				"Waits only on Running or Ready entries.\n" +
 				"\n" +
-				"1. **Base work** — `base` · enhancement\n" +
-				"   - **Before:** `held`\n" +
-				"1. **Next work** — `next`\n" +
-				"   - **After:** `held`\n" +
-				"   - **Before:** `last`\n" +
+				"| # | Task | Slug | After | Labels |\n" +
+				"| --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Next work** | `next` | `held` |  |\n" +
 				"\n" +
 				"### Layer B\n" +
 				"\n" +
 				"Starts when every entry it names under After is done.\n" +
 				"\n" +
-				"1. **Last work** — `last`\n" +
-				"   - **After:** `next`\n" +
+				"| # | Task | Slug | After | Labels |\n" +
+				"| --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Last work** | `last` | `next` |  |\n" +
 				"\n" +
 				"## Notes\n" +
 				"\n" +
@@ -374,7 +401,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("README mismatch\nwant:\n%s\ngot:\n%s", tt.want, got)
 			}
-			for _, retired := range []string{"Next Up", "tier", "Tier"} {
+			for _, retired := range []string{"Next Up", "tier", "Tier", "Before"} {
 				if strings.Contains(got, retired) {
 					t.Errorf("README still mentions %q", retired)
 				}

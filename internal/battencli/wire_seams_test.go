@@ -30,6 +30,8 @@ import (
 var intentionallyNil = map[string]string{
 	"Shuttle":                   "loom-only seam, batten drives no agent itself",
 	"Burler":                    "loom-only seam, batten runs no review round",
+	"Seats":                     "loom-only seam, batten runs no seat table",
+	"Models":                    "loom-only seam, batten resolves no seat model",
 	"WebsterRun":                "loom-only seam, batten runs no webster",
 	"WebsterDeps.Starter":       "loom-only seam, batten runs no webster",
 	"WebsterDeps.Stopper":       "loom-only seam, batten runs no webster",

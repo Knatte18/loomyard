@@ -6,6 +6,11 @@
 // only the copy into `_board`, its validation and its commit run under it, and the copy is refused when the hub file changed while the editor was open.
 // `--print` and `lyx config menu` read a hub-wide module at the board dir too.
 //
+// A write to a hub-wide module, by `--set`, by an editor edit or through the menu, is refused from any worktree that is not the hub's prime and from a session whose `LYX_STRAND_NAME` parses as a name carrying a slug, wherever its worktree resolves.
+// The refusal names the way forward, the operator or the hub orch running the write from the prime, and leaves the hub file unchanged with no editor opened.
+// The hub orch's slug-free name and an unset name pass; a print and a per-worktree write never consult the guard.
+// The bound: it guards a mistaken write, not a determined agent, so a direct file write to the board dir's config, an environment cleared without naming the variable, and an unset hidden behind a script still pass.
+//
 // With a module name, `lyx config <module>` opens the file in the editor ($VISUAL, then $EDITOR, then `code --wait` when `code` is on PATH, then notepad on Windows or nano and then vi elsewhere) through `configengine.Edit`.
 // With no module and neither `--print` nor `--set`, it prints its help, which names `reconcile` and every known module, and resolves no cwd.
 // An argument that is neither a subcommand nor a module is refused as an unknown subcommand.

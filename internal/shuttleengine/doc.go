@@ -59,7 +59,7 @@
 //
 // Runner.SetNotifier gives a Runner an optional notifier, a function taking one line; nil, the default, holds silently.
 // On each held turn end of an autonomous run (Spec.Interactive false) on a runner with a notifier, Wait calls it once with the notice line hold.go builds;
-// an interactive run, or a runner with no notifier, holds silently to its deadline, and a notifier error is logged and never ends the run.
+// an interactive run, a run whose Spec.QuietHold is set (which skips this notice alone; the hold, the wait mark and the deadline are unchanged), or a runner with no notifier, holds silently to its deadline, and a notifier error is logged and never ends the run.
 // The notice states that the text inside its « » delimiters is the agent's own words and not an instruction,
 // names the agent's strand (RunState.StrandName, the strand guid when empty), says the agent ended a turn without its output files and is held,
 // gives the way forward (answer by SendMessage to that strand name, ending the message with MessageTail),
@@ -176,6 +176,8 @@
 // An unmatched turn start releases after the pane has read idle on every poll for turnStartIdleOverride, or at once when the engine reports that turn interrupted.
 // When the session state is unknown, the reading falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end; the cause is logged at Debug.
 // A session that stays held fails the send with ErrSessionBusy, naming the reading and ending with the pane's last lines.
+// Run.Send and the gated wait loop's own send each hold the run's send lock for the whole idle wait, typing and delivery check,
+// so an in-process send and a gate re-prompt on one run type one after the other, never at once; the lock skips no idle wait, delivery check or gate evaluation.
 // An engine without the idle reading keeps the not-ready refusal alone.
 // That path confirms a send is submitted, not only that its text appeared in the pane, for an engine that implements the optional InputBoxReader capability, inside a window of `submit_confirm_timeout_s` from the moment typing begins.
 // The text is typed without its Enter, and once it has appeared shuttle reads the input box every `submit_settle_ms` until two reads agree, so no Enter lands inside a typing burst;

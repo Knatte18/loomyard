@@ -11,8 +11,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -50,6 +52,12 @@ type Env struct {
 	WorktreeRoot string
 	// VerifyDir is the told verify directory, read by the gate resolver's "verify" gate.
 	VerifyDir string
+	// GateSlots is the hub gate-slot pool every Go-side verify a row runs acquires from, read by the gate resolver's "verify" gate.
+	// Nil where no hub is wired, which runs the verify unslotted.
+	GateSlots *gateslot.Pool
+	// PublishFailure returns the Publish failure note the Webster-Review rubric renders, read by the BurlerRound and Bouncer entries each time a segment builds its producers.
+	// Nil renders `none`.
+	PublishFailure func() string
 	// StatusPath is the told status file path, read by LoomPreflight.
 	StatusPath string
 	// StatusLockPath is the told status lock file path, read by LoomPreflight.
@@ -105,6 +113,12 @@ type Env struct {
 	Shuttle shedadapters.Shuttle
 	// Burler is the injected shedadapters.BurlerRunner seam.
 	Burler shedadapters.BurlerRunner
+	// Seats is the injected shedadapters.SeatRunner seam, the seat engine over the caller's shuttle runner, read by the MultiLLM entry.
+	// Nil is legal when no row uses that entry.
+	Seats shedadapters.SeatRunner
+	// Models is the model registry a seat's model spec resolves against, read by the MultiLLM entry.
+	// It is run-wide, since one registry serves every row.
+	Models modelspec.Registry
 	// WebsterRun is the injected shedadapters.WebsterRunner seam.
 	WebsterRun shedadapters.WebsterRunner
 	// WebsterDeps is the already-resolved websterengine.RunDeps value passed through to

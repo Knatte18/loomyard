@@ -19,6 +19,9 @@ The writing rules, guidance for whoever writes or changes a comment:
 
 ## Lint bound
 
-The lint flags a break the diff creates that ends neither a sentence, nor at a semicolon, nor at a comma before a coordinating conjunction.
-It lets every comma-plus-conjunction break through, compound predicates included, because telling those from independent clauses needs a parser.
-Such a break goes unchecked; it is writer guidance, never a review finding.
+The lint flags a break the diff creates that ends neither a sentence, nor at a semicolon, nor at a comma before a coordinating conjunction that opens a clause.
+A comma-plus-conjunction break passes only when the words after the conjunction, up to the next `,`, `;`, `:` or sentence end, start with a subject and hold a finite-verb candidate after the subject's head word.
+A subject is a subject or demonstrative pronoun, a determiner followed by a word, or a backticked identifier; a finite-verb candidate is an auxiliary or modal from a closed set, or a word ending in `s` or `ed`.
+Any other comma-plus-conjunction break, such as one that joins a list item or a compound predicate, is a finding, and an uncertain case errs toward flagging, since joining the two lines always passes.
+The check is a word-list heuristic, so a plural noun read as a verb (`, and the gate tests`) passes, and a clause whose subject the opener set misses (`, and nothing runs`) is flagged and joined.
+Only a break the diff creates is checked, and it is writer guidance, never a review finding.

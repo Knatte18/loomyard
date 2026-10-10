@@ -7,12 +7,14 @@ package loomcli
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -130,12 +132,30 @@ func landingDeps(
 			}
 			return plan.Verify, nil
 		},
+		FailingTests:   failingTestsOf,
 		VerifyDir:      verifytree.Dir(l.AnchorPath()),
+		GateSlots:      hubgeom.GateSlots(l),
 		VerifyWaitMark: verifyWaitMark,
 		Shuttle:        runner,
 		Registry:       registry,
 		Config:         cfg,
 	}
+}
+
+// failingTestsOf returns the test identities of a failed verify's log as import path and test path, in first-seen order.
+// Package and opaque identities name no test and are left out.
+func failingTestsOf(log string) []verifytree.FailedTest {
+	var tests []verifytree.FailedTest
+	for _, failure := range websterengine.ParseVerifyFailures(log) {
+		if failure.Kind != websterengine.FailureKindTest {
+			continue
+		}
+		tests = append(tests, verifytree.FailedTest{
+			Package: failure.Package,
+			Test:    strings.TrimPrefix(failure.ID, failure.Package+"."),
+		})
+	}
+	return tests
 }
 
 // driverWaitMark returns the callback landingshed marks the verify wait through, built over two seams so a test needs no tmux:

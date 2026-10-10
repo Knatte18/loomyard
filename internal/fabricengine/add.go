@@ -76,6 +76,8 @@ func (e *ErrBranchExists) Error() string {
 // so a task moved between machines keeps its recorded parent.
 // Under SkipGit or SkipPush no origin is consulted: the pair is live only by a local weft branch,
 // and the warp branch forks from HEAD.
+// Once its pre-flight refusals have passed and before its first mutation, Add sets gc.auto=0 and maintenance.auto=false in both hub stores;
+// a failure there is logged and never fails the Add.
 func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res AddResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -175,6 +177,11 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 		if err != nil {
 			return AddResult{}, err
 		}
+	}
+
+	// The pre-flight refusals have passed: switch both stores' auto gc off before the first mutation.
+	if gcErr := disableStoreAutoGC(l); gcErr != nil {
+		logger.Warn("fabricengine: disabling store auto gc failed (non-fatal)", "verb", "add", "slug", slug, "error", gcErr)
 	}
 
 	// An adopted warp branch is a local branch tracking origin's, created from the remote-tracking ref this fetch writes.

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
@@ -28,7 +30,7 @@ func newScratch(t *testing.T) Paths {
 
 func mustVerify(t *testing.T, p Paths, command string) Result {
 	t.Helper()
-	res, err := Verify(context.Background(), p, Site{Label: "webster verify"}, command, Timeout)
+	res, err := Verify(context.Background(), p, Site{Label: "webster verify"}, command, Timeout, nil)
 	if err != nil {
 		t.Fatalf("Verify(%q): %v", command, err)
 	}
@@ -49,7 +51,7 @@ func TestVerify_PerCommandRecord(t *testing.T) {
 	const plan, roundA, roundB = "true", ": round a", ": round b"
 	verifyWithBase := func(command string) Result {
 		t.Helper()
-		res, err := Verify(context.Background(), p, Site{Label: "Webster-Burler gate", BaseCommand: plan}, command, Timeout)
+		res, err := Verify(context.Background(), p, Site{Label: "Webster-Burler gate", BaseCommand: plan}, command, Timeout, nil)
 		if err != nil {
 			t.Fatalf("Verify(%q): %v", command, err)
 		}
@@ -176,7 +178,7 @@ func TestVerify_Scenario(t *testing.T) {
 	}
 
 	if !t.Run("a command outliving the timeout fails as timed out with no record and no marker", func(t *testing.T) {
-		res, err := Verify(context.Background(), p, Site{Label: "webster verify"}, "sleep 30", 300*time.Millisecond)
+		res, err := Verify(context.Background(), p, Site{Label: "webster verify"}, "sleep 30", 300*time.Millisecond, nil)
 		if err != nil {
 			t.Fatalf("Verify with an expired timeout returned an error: %v", err)
 		}
@@ -211,7 +213,7 @@ func TestVerify_Scenario(t *testing.T) {
 	if !t.Run("a cancelled run leaves no record and no marker, and a pass then writes the record", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if _, err := Verify(ctx, p, Site{Label: "Publish"}, "true", Timeout); err == nil {
+		if _, err := Verify(ctx, p, Site{Label: "Publish"}, "true", Timeout, nil); err == nil {
 			t.Fatal("Verify with a cancelled ctx returned no error")
 		}
 		if fileExists(p.Record) {
@@ -291,4 +293,116 @@ func TestVerify_Scenario(t *testing.T) {
 			t.Errorf("DirtyPaths = %q; want %q", got, want)
 		}
 	})
+}
+
+// TestVerify_SlotGate covers a slotted Verify over a one-slot pool the test holds: the marker reads as waiting while the slot is held, a timeout shorter than the wait does not fire during it, the command runs once the slot is released, and it sees the slot's `-p` cap appended to an existing GOFLAGS plus the inheritance variable.
+// A pool over an unusable gate.yaml then fails the acquire: Verify returns an error naming the way forward, runs nothing and leaves no marker.
+// It sets GOFLAGS in the process environment, so it is not parallel.
+func TestVerify_SlotGate(t *testing.T) {
+	t.Setenv("GOFLAGS", "-count=1")
+	p := newScratch(t)
+	pool := &gateslot.Pool{
+		Dir:    filepath.Join(t.TempDir(), "gate"),
+		Limits: func() (gateslot.Limits, error) { return gateslot.Limits{Slots: 1, GoParallel: 7}, nil },
+		Poll:   10 * time.Millisecond,
+	}
+	held, err := pool.Acquire(context.Background(), gateslot.Holder{Site: "test holder"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seenEnv := filepath.Join(t.TempDir(), "env")
+	command := "printf '%s\\n%s\\n' \"$GOFLAGS\" \"$LYX_GATE_SLOT\" > " + seenEnv
+	const timeout = 300 * time.Millisecond
+	type outcome struct {
+		res Result
+		err error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		res, err := Verify(context.Background(), p, Site{Label: "webster verify"}, command, timeout, pool)
+		done <- outcome{res, err}
+	}()
+
+	deadline := time.Now().Add(10 * time.Second)
+	var waiting Marker
+	for {
+		m, ok, err := ReadMarker(p.Marker)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok && m.State == MarkerStateWaiting {
+			waiting = m
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no waiting marker while the only slot was held")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if waiting.WaitStarted.IsZero() || waiting.Command != command || waiting.Site != "webster verify" {
+		t.Errorf("waiting marker = %+v; want the site and command with a wait start", waiting)
+	}
+
+	// The wait outlasts the timeout, which must not start counting before the slot is held.
+	time.Sleep(2 * timeout)
+	select {
+	case got := <-done:
+		t.Fatalf("Verify returned (%+v, %v) while the slot was held", got.res, got.err)
+	default:
+	}
+
+	if err := held.Release(); err != nil {
+		t.Fatal(err)
+	}
+	got := <-done
+	if got.err != nil || got.res.Status != StatusPassed {
+		t.Fatalf("Verify after the release = (%+v, %v); want a pass", got.res, got.err)
+	}
+	if _, ok := LatestPass(p, command); !ok {
+		t.Error("no record after the slotted pass")
+	}
+	if fileExists(p.Marker) {
+		t.Error("the marker survived the slotted run")
+	}
+	holders, err := pool.Holders()
+	if err != nil || len(holders) != 0 {
+		t.Errorf("Holders() after the run = (%v, %v); want the slot released", holders, err)
+	}
+
+	data, err := os.ReadFile(seenEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "-count=1 -p=7\n" + filepath.Join(pool.Dir, "slot-1.lock") + "\n"
+	if string(data) != want {
+		t.Errorf("command saw GOFLAGS and slot variable %q; want %q", data, want)
+	}
+
+	unusableBoard := t.TempDir()
+	unusableConfig := configengine.ConfigFile(unusableBoard, "gate")
+	if err := os.MkdirAll(filepath.Dir(unusableConfig), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(unusableConfig, []byte("slots: 0\ngo_parallel: 7\ncli_wait_sec: 300\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	unusable := &gateslot.Pool{
+		Dir: filepath.Join(t.TempDir(), "gate"),
+		Limits: func() (gateslot.Limits, error) {
+			cfg, err := gateslot.LoadConfig(unusableBoard)
+			return cfg.Limits(), err
+		},
+	}
+	ranMarker := filepath.Join(t.TempDir(), "ran")
+	_, err = Verify(context.Background(), p, Site{Label: "webster verify"}, "touch "+ranMarker, timeout, unusable)
+	if err == nil || !strings.Contains(err.Error(), `fix it with "lyx config gate" from the prime`) {
+		t.Errorf("Verify over an unusable gate.yaml = %v; want an error naming lyx config gate", err)
+	}
+	if fileExists(ranMarker) {
+		t.Error("the command ran without a gate slot")
+	}
+	if fileExists(p.Marker) {
+		t.Error("the marker survived the failed acquire")
+	}
 }
