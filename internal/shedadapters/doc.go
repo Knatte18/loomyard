@@ -1,9 +1,9 @@
-// Package shedadapters holds the four shedengine.ShedProducer adapters that let a Shed-built
-// product drive shuttle, Webster, one burlerengine round, and the generic review-gate
+// Package shedadapters holds the shedengine.ShedProducer adapters that let a Shed-built
+// product drive shuttle, Webster, one burlerengine round, a seatengine table of seats, and the generic review-gate
 // Bouncer as ordinary producers in its own flat producer list.
 // SingleLLMProducer wraps one shuttleengine run, WebsterProducer wraps one websterengine
-// multi-spawn run, and BurlerProducer wraps one burlerengine round, a reviewer strand and a fixer strand, as a single Shed
-// row: each of these three is a thin translation layer over an already-shipped engine, never a
+// multi-spawn run, BurlerProducer wraps one burlerengine round, a reviewer strand and a fixer strand, and MultiLLMProducer wraps one seatengine table, a chair strand and its advisors' strands, as a single Shed
+// row: each of these is a thin translation layer over an already-shipped engine, never a
 // second implementation of that engine's own loop.
 // Bouncer is the one member of this package for which that is false: it is new logic over
 // shuttleengine, composing its own prompt from stencils rather than translating an already-shipped
@@ -51,6 +51,15 @@
 //     engine-level error, not Stuck, because the Bouncer tells its seed call from its judge call by
 //     the round artifacts on disk, and a failed round returning Stuck with no review written would
 //     be misread as a seed call.
+//   - MultiLLMProducer: the chair's result maps exactly as SingleLLMProducer's single run does:
+//     shuttleengine.OutcomeDone maps to Done with the chair's first output as the pointer's path,
+//     a done chair whose gate failed maps to Stuck with that pointer and the gate's attempts and reason,
+//     and OutcomeDied and OutcomeTimeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair's provider never came up.
+//     The advisors' results are logged and never judged, since an advisor's death weakens nothing the chair decided.
+//     Before archiving anything Call probes the table's seats through its SeatRunner: a live chair is resumed and its result mapped,
+//     and otherwise the probe has stopped every live advisor, so Call archives every seat's stale outputs and runs the table fresh.
+//     A probe, resume or run error returns the context error when the context is cancelled and otherwise the error wrapped with the producer's name and engine label;
+//     an error wrapping seatengine.ErrSeatNotStopped keeps its way forward and is returned without archiving.
 //   - Bouncer: Call clears an already-approved round ahead of its own four-mode branch -- seed, re-bounce, judge, or replay --
 //     and its harvest step acts on a judgment that provably happened (a verdict and ledger that both exist and parse) regardless of what the shuttle run itself reported.
 //     The judge's verdict is exactly CONVERGED, CONTINUE or CIRCLING.
@@ -125,6 +134,7 @@
 // BurlerProducer is told an absolute run directory and an already-constructed runner, and takes the
 // same injected clock SingleLLMProducer does, resolving only the archive filename's same-second
 // collision suffix the same way.
+// MultiLLMProducer is told a seatengine.Table and an already-constructed SeatRunner, and takes the same injected clock for the same purpose.
 // Bouncer's own told inputs are RunDir, StencilsDir, the resolved (Model, Effort, Version) triple,
 // and the report-name convention as a function. NewBouncer is the package's one validating,
 // error-returning constructor, in contrast with the two
@@ -208,7 +218,7 @@
 // outcome, or arrived after the context was cancelled.
 // For BurlerProducer, the completion exception is narrower: a completed round's artifacts survive
 // cancellation, but the verdict itself is not returned as Stuck (see the note below).
-// No adapter installs a mid-run cancellation bridge: none of the four engines they wrap exposes a
+// No adapter installs a mid-run cancellation bridge: none of the engines they wrap exposes a
 // pause seam shaped as a caller-supplied callback.
 //
 // BurlerProducer's cancellation behavior is governed by the seam obligation in
@@ -221,12 +231,13 @@
 //
 // # Every spawning adapter probes for a live agent first
 //
-// All four adapters answer the same question before they start anything: is an agent for this exact
-// step still alive? They answer it in two different ways, and the difference is the engine's, not a
+// Every adapter answers the same question before it starts anything: is an agent for this exact
+// step still alive? They answer it in different ways, and the difference is the engine's, not a
 // policy choice here.
 // SingleLLMProducer and Bouncer call shuttleengine's Attach seam with the step's own OutputFiles and wait on a match.
 // The Bouncer does so on its seed pass, on its judge pass, on the re-bounce, and once more at Call entry (see below).
 // BurlerProducer probes its round's two halves through its runner (see below).
+// MultiLLMProducer probes its table's seats through its SeatRunner: with the chair live it resumes the table, and otherwise the probe has already stopped every live advisor, so the archive that follows runs beside no live seat.
 // WebsterProducer inherits websterengine's own entry-time reclaim, which stops a leftover Master rather than attaching to it.
 //
 // "Every mode" is meant literally, and was not always true. The re-bounce -- an already-seeded
@@ -238,7 +249,7 @@
 // round producer began reading the very file it might still be rewriting. Reproduced live, and
 // closed by giving the branch the same probe the seed pass already had.
 //
-// The probe always runs BEFORE the archive, in all three probing adapters. Archiving renames the
+// The probe always runs BEFORE the archive, in every probing adapter. Archiving renames the
 // very files a live agent is about to write, and shuttle's Wait polls for bare existence at those
 // paths, so archiving first would make an attached run unable to ever classify done -- in exactly
 // the case the probe exists to protect.
