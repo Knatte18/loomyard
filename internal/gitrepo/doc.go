@@ -16,13 +16,9 @@
 // form that treats a non-zero exit as failure and returns it as *GitError.
 // gitrepo used to route every CLI-bound method through a single unexported
 // run helper over RunGit; it now has a matching pair, run and runChecked.
-// The read surface — CurrentSHA, SHAExists, ChangedFilesSince, and
-// CurrentBranch — resolves state entirely through go-git's own object and
-// ref access (see gogit.go), bypassing both of them completely. Of the
-// CLI-bound methods, only Pull and Fetch sit on the raw run — a non-zero
-// exit is a failure at both sites too, but the package's test-enforced
-// no-`fatal:`-leak surface forbids folding git's stderr into their
-// messages, which is what run's raw form lets them keep working around.
+// The read surface — CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch, BranchExists, RefSHA, HeadRef, RefTree, and Upstream — resolves state entirely through go-git's own object and ref access (see gogit.go), bypassing both of them completely.
+// Of the CLI-bound methods, only Pull and Fetch sit on the raw run — a non-zero exit is a failure at both sites too,
+// but the package's test-enforced no-`fatal:`-leak surface forbids folding git's stderr into their messages, which is what run's raw form lets them keep working around.
 // The geometry reads — GitDir, CommonDir, and Toplevel — are the one local read beside go-git:
 // they resolve the checkout's `.git` entry through internal/dotgit, spawning nothing, and GitDir and CommonDir read it once per handle.
 // Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push, PushCoalesced, ResetHard, ResetKeep, IsAncestor, CommitsNotIn, UpdateRemoteBranchLeased, HasUnpulled, and HasUnpushed (measured and reverted from a go-git ancestry walk; see HasUnpushed's own godoc in push.go for the reversal criterion) — sits on runChecked.
