@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
@@ -199,11 +200,16 @@ var substitutionMarkers = []string{"$(", "`", "<(", ">("}
 // IsReadOnlyCommand reports whether cmd is built only from allow-listed read forms, each in command position, joined by `|`, `||`, `;`, `&&` or a newline.
 // The forms are the readers cat, head, tail, ls, wc, grep, jq and cut; `lyx` help (command words then `--help` or `-h`); the `lyx fabric` readers list, pairs, status, shortname, diff with one revision, prune and cleanup without flags; and a closed set of `git` reads, optionally behind `-C <dir>`.
 // It is false for any output redirection (`>`, `>>`, `>|`, `&>`, a numbered descriptor redirection, `<>`), for command or process substitution, for backgrounding, and for any other command or form, `sort`, `tee`, `find`, `env`, `xargs`, an interpreter, `go` and every other `lyx` or `git` invocation included.
-// Every word of a `lyx` or `git` segment must be plain: no quote, backslash, `$`, brace, glob character or leading `~`, so no word can expand into something else.
+// A `lyx`, `git` or `sed` segment is split into shell words, honouring single and double quotes, and judged on the dequoted text.
+// Such a word may hold neither `$` nor a backslash, quoted or not, nor an unquoted brace or parenthesis; a leading `~` is text.
+// A quoted word starting with `-` is still a flag, so a quoted writing flag is rejected, and a quoted glob character is text wherever a positional is admitted.
+// An unquoted glob character (`*`, `?`, `[`, `#`, or `^` at a word's start) is rejected in every `lyx` word, and in every `git` word except after the `--` of `log`, `show`, `diff` and `status`, where every word is a pathspec.
+// `sed` is read-only only as `-n`, one line number or range of two line numbers followed by `p`, and file words.
+// The two stderr redirections `2>&1` and `2>/dev/null`, each a whole token that does not open its segment, are dropped before the redirection scan; every other redirection fails it.
 // A separator or redirection character inside a quoted span is text.
 // A substitution is found with only single-quoted spans blanked, because a shell runs one inside double quotes.
 // A command word is read in its original spelling, so a first word holding a quote or a backslash, quoted whole or only in part, is never read-only: it is not a name the list can match.
-// The classifier sees static shape only and admits nothing outside these forms.
+// The classifier assumes bash or zsh with any glob option set and sees static shape only, so a loop, an expansion, a substitution, a zsh glob qualifier, a bash extglob and a command behind `bash -c` stay non-read-only.
 func IsReadOnlyCommand(cmd string) bool {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
@@ -215,6 +221,7 @@ func IsReadOnlyCommand(cmd string) bool {
 			return false
 		}
 	}
+	cmd = dropStderrRedirections(cmd)
 	unquoted := blankQuoted(cmd)
 	if strings.Contains(unquoted, ">") {
 		return false
@@ -230,8 +237,7 @@ func IsReadOnlyCommand(cmd string) bool {
 		if i < len(hidden) && hidden[i] != ';' {
 			continue
 		}
-		words := strings.Fields(string(original[segmentStart:i]))
-		if len(words) == 0 || !readOnlySegment(words) {
+		if !readOnlySegment(string(original[segmentStart:i])) {
 			return false
 		}
 		segmentStart = i + 1
@@ -239,53 +245,177 @@ func IsReadOnlyCommand(cmd string) bool {
 	return true
 }
 
-// readOnlySegment reports whether one separated segment is a listed reader, a read-only lyx form or a read-only git form.
-func readOnlySegment(words []string) bool {
-	if readOnlyCommands[words[0]] {
-		return true
-	}
-	if words[0] != "lyx" && words[0] != "git" {
-		return false
-	}
-	if !slices.ContainsFunc(words, plainWordFails) {
-		if words[0] == "lyx" {
-			return readOnlyLyxSegment(words)
+// stderrRedirections are the two redirections of standard error that write nothing a reader could change.
+var stderrRedirections = []string{"2>&1", "2>/dev/null"}
+
+// dropStderrRedirections blanks, in cmd, each whitespace-delimited unquoted token spelled exactly as one of stderrRedirections that does not open its segment.
+// The blanks keep cmd's length in runes, so the result stays aligned with a quote-blanked copy of itself.
+func dropStderrRedirections(cmd string) string {
+	original, view := []rune(cmd), []rune(blankQuoted(cmd))
+	for i := 0; i < len(view); {
+		if unicode.IsSpace(view[i]) {
+			i++
+			continue
 		}
-		return readOnlyGitSegment(words)
+		start := i
+		for i < len(view) && !unicode.IsSpace(view[i]) {
+			i++
+		}
+		// A real space must border the token, since a blanked quote also reads as a space in view.
+		bordered := (start == 0 || unicode.IsSpace(original[start-1])) && (i == len(original) || unicode.IsSpace(original[i]))
+		if bordered && slices.Contains(stderrRedirections, string(view[start:i])) && !opensSegment(view, start) {
+			for j := start; j < i; j++ {
+				original[j] = ' '
+			}
+		}
 	}
-	return false
+	return string(original)
 }
 
-// plainWordFails is the negation of plainWord, for slices.ContainsFunc.
-func plainWordFails(word string) bool { return !plainWord(word) }
+// opensSegment reports whether only blanks separate view[at] from the start of the command or a segment separator.
+func opensSegment(view []rune, at int) bool {
+	for j := at - 1; j >= 0; j-- {
+		switch {
+		case strings.ContainsRune(";&|\n", view[j]):
+			return true
+		case !unicode.IsSpace(view[j]):
+			return false
+		}
+	}
+	return true
+}
 
-// plainWord reports whether word holds no quote, backslash, `$`, brace or glob character (`*`, `?`, `[`) and no leading `~`, so a shell passes it through as the literal text it spells.
-func plainWord(word string) bool {
-	return !strings.HasPrefix(word, "~") && !strings.ContainsAny(word, "'\"\\${}*?[")
+// readOnlySegment reports whether one separated segment, in its raw text, is a listed reader, a read-only lyx form, a read-only git form or a read-only sed print.
+func readOnlySegment(segment string) bool {
+	fields := strings.Fields(segment)
+	if len(fields) == 0 {
+		return false
+	}
+	if readOnlyCommands[fields[0]] {
+		return true
+	}
+	if fields[0] != "lyx" && fields[0] != "git" && fields[0] != "sed" {
+		return false
+	}
+	words, ok := splitShellWords(segment)
+	if !ok {
+		return false
+	}
+	switch fields[0] {
+	case "lyx":
+		return readOnlyLyxSegment(words)
+	case "git":
+		return readOnlyGitSegment(words)
+	}
+	return readOnlySedSegment(words)
+}
+
+// shellWord is one word of a segment after the shell's quote removal.
+type shellWord struct {
+	// text is the word with its quotes removed.
+	text string
+	// quoted is whether any part of the word was quoted.
+	quoted bool
+	// glob is whether the word holds an unquoted glob character: `*`, `?`, `[` or `#` anywhere, or `^` at its start, which zsh's extended globbing reads as a glob.
+	glob bool
+}
+
+// splitShellWords splits one segment into shellWords, honouring single and double quotes, with adjacent quoted and unquoted parts joining into one word.
+// It reports false when any word holds `$` or a backslash, quoted or not, an unquoted brace or parenthesis, or an unterminated quote, since the shell would expand or reinterpret it.
+func splitShellWords(segment string) ([]shellWord, bool) {
+	var words []shellWord
+	var current strings.Builder
+	var word shellWord
+	var quote rune
+	inWord := false
+	for _, r := range segment {
+		if r == '$' || r == '\\' {
+			return nil, false
+		}
+		switch {
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			} else {
+				current.WriteRune(r)
+			}
+		case r == '\'' || r == '"':
+			quote, inWord, word.quoted = r, true, true
+		case unicode.IsSpace(r):
+			if inWord {
+				word.text = current.String()
+				words = append(words, word)
+				current.Reset()
+				word, inWord = shellWord{}, false
+			}
+		case strings.ContainsRune("{}()", r):
+			return nil, false
+		default:
+			if strings.ContainsRune("*?[#", r) || (r == '^' && !inWord) {
+				word.glob = true
+			}
+			inWord = true
+			current.WriteRune(r)
+		}
+	}
+	if quote != 0 {
+		return nil, false
+	}
+	if inWord {
+		word.text = current.String()
+		words = append(words, word)
+	}
+	return words, true
+}
+
+// holdsGlobCharacter reports whether text holds a glob character, wherever it came from.
+func holdsGlobCharacter(text string) bool {
+	return strings.ContainsAny(text, "*?[#") || strings.HasPrefix(text, "^")
 }
 
 // lyxCommandWord matches a cobra verb name: lowercase letters with inner hyphens.
 var lyxCommandWord = regexp.MustCompile(`^[a-z]+(-[a-z]+)*$`)
 
-// readOnlyLyxSegment reports whether words, the plain words of one `lyx` segment, are a help form or a `lyx fabric` reader.
+// isLyxCommandWord reports whether word is an unquoted cobra verb name.
+func isLyxCommandWord(word shellWord) bool {
+	return !word.quoted && lyxCommandWord.MatchString(word.text)
+}
+
+// readOnlyLyxSegment reports whether words, the words of one `lyx` segment, are a help form or a `lyx fabric` reader.
 // The help form is command words then `--help` or `-h` as the last word.
 // A fabric reader is one of FabricReaderVerbs under the argument rule that keeps it from mutating: `diff` takes exactly one word not starting with `-`, and the rest take none.
-func readOnlyLyxSegment(words []string) bool {
+// A word holding a glob character, quoted or not, rejects the segment.
+func readOnlyLyxSegment(words []shellWord) bool {
+	if slices.ContainsFunc(words, func(word shellWord) bool { return word.glob || holdsGlobCharacter(word.text) }) {
+		return false
+	}
 	rest := words[1:]
 	if len(rest) > 0 {
-		last := rest[len(rest)-1]
+		last := rest[len(rest)-1].text
 		if last == "--help" || last == "-h" {
-			return !slices.ContainsFunc(rest[:len(rest)-1], func(word string) bool { return !lyxCommandWord.MatchString(word) })
+			return !slices.ContainsFunc(rest[:len(rest)-1], func(word shellWord) bool { return !isLyxCommandWord(word) })
 		}
 	}
-	if len(rest) < 2 || rest[0] != "fabric" || !slices.Contains(FabricReaderVerbs(), rest[1]) {
+	if len(rest) < 2 || !isLyxCommandWord(rest[0]) || rest[0].text != "fabric" || !isLyxCommandWord(rest[1]) || !slices.Contains(FabricReaderVerbs(), rest[1].text) {
 		return false
 	}
 	args := rest[2:]
-	if rest[1] == "diff" {
-		return len(args) == 1 && !strings.HasPrefix(args[0], "-")
+	if rest[1].text == "diff" {
+		return len(args) == 1 && !strings.HasPrefix(args[0].text, "-")
 	}
 	return len(args) == 0
+}
+
+// sedPrintScript matches a print of one line or of a range of two lines.
+var sedPrintScript = regexp.MustCompile(`^[0-9]+(,[0-9]+)?p$`)
+
+// readOnlySedSegment reports whether words, the words of one `sed` segment, are `-n`, a print script of a line or a line range, then file words.
+// A file word may not start with `-` or hold an unquoted glob character, so no flag can follow the script; with no file word, sed prints its standard input.
+func readOnlySedSegment(words []shellWord) bool {
+	if len(words) < 3 || words[1].text != "-n" || !sedPrintScript.MatchString(words[2].text) {
+		return false
+	}
+	return !slices.ContainsFunc(words[3:], func(word shellWord) bool { return strings.HasPrefix(word.text, "-") || word.glob })
 }
 
 // gitForm is the shape of one read-only git subcommand's words after the subcommand.
@@ -298,6 +428,8 @@ type gitForm struct {
 	anyDigitsFlag bool
 	// flagPrefixes admit a word starting with one of them, `--format=`.
 	flagPrefixes []string
+	// globAfterDoubleDash admits an unquoted glob character in a word after `--`, where the form reads every word as a pathspec.
+	globAfterDoubleDash bool
 }
 
 // gitFlagSet returns the set of the given words.
@@ -315,6 +447,8 @@ var historyForm = gitForm{
 	digitsFlag:    "-n",
 	anyDigitsFlag: true,
 	flagPrefixes:  []string{"--format=", "--pretty="},
+
+	globAfterDoubleDash: true,
 }
 
 // gitForms are the read-only git subcommands that take flags and then free positionals.
@@ -323,26 +457,30 @@ var gitForms = map[string]gitForm{
 	"rev-parse": {flags: gitFlagSet("--abbrev-ref", "--short", "--verify", "-q", "--show-toplevel", "--git-dir")},
 	"log":       historyForm,
 	"show":      historyForm,
-	"diff":      {flags: gitFlagSet("--stat", "--name-only", "--name-status", "--cached", "--staged", "--no-color")},
-	"status":    {flags: gitFlagSet("-s", "--short", "--porcelain", "-b", "--branch")},
+	"diff":      {flags: gitFlagSet("--stat", "--name-only", "--name-status", "--cached", "--staged", "--no-color"), globAfterDoubleDash: true},
+	"status":    {flags: gitFlagSet("-s", "--short", "--porcelain", "-b", "--branch"), globAfterDoubleDash: true},
 }
 
 // admits reports whether args, the words after a subcommand, are made only of flags the form lists and positionals; every word after a `--` is a positional.
-func (f gitForm) admits(args []string) bool {
+// A word with an unquoted glob character is rejected before the `--`, and after it unless the form admits one there.
+func (f gitForm) admits(args []shellWord) bool {
 	for i := 0; i < len(args); i++ {
 		word := args[i]
+		text := word.text
 		switch {
-		case word == "--":
-			return true
-		case !strings.HasPrefix(word, "-"):
-		case f.flags[word]:
-		case word == f.digitsFlag && f.digitsFlag != "":
+		case text == "--":
+			return f.globAfterDoubleDash || !slices.ContainsFunc(args[i+1:], func(w shellWord) bool { return w.glob })
+		case word.glob:
+			return false
+		case !strings.HasPrefix(text, "-"):
+		case f.flags[text]:
+		case text == f.digitsFlag && f.digitsFlag != "":
 			i++
-			if i >= len(args) || !allDigits(args[i]) {
+			if i >= len(args) || !allDigits(args[i].text) {
 				return false
 			}
-		case f.anyDigitsFlag && allDigits(word[1:]):
-		case slices.ContainsFunc(f.flagPrefixes, func(prefix string) bool { return strings.HasPrefix(word, prefix) }):
+		case f.anyDigitsFlag && allDigits(text[1:]):
+		case slices.ContainsFunc(f.flagPrefixes, func(prefix string) bool { return strings.HasPrefix(text, prefix) }):
 		default:
 			return false
 		}
@@ -363,21 +501,24 @@ func allDigits(s string) bool {
 	return true
 }
 
-// readOnlyGitSegment reports whether words, the plain words of one `git` segment, are a listed read form.
-// The only global option admitted is `-C <dir>`.
+// readOnlyGitSegment reports whether words, the words of one `git` segment, are a listed read form.
+// The only global option admitted is `-C <dir>`, both words unquoted and the directory free of a glob character.
 // Every word starting with `-` before a `--` must be a flag the subcommand's form lists, matched exactly, and every other word a positional the form admits.
-func readOnlyGitSegment(words []string) bool {
+// The subcommand word is unquoted, and so is each word that selects a `remote` or `branch` form.
+// A word the form does not judge, in `cat-file` and `config`, rejects an unquoted glob character, since the shell would expand it into names that could spell a flag.
+func readOnlyGitSegment(words []shellWord) bool {
 	rest := words[1:]
-	if len(rest) >= 2 && rest[0] == "-C" {
-		if strings.HasPrefix(rest[1], "-") {
+	if len(rest) >= 2 && rest[0].text == "-C" && !rest[0].quoted {
+		dir := rest[1]
+		if dir.quoted || dir.glob || strings.HasPrefix(dir.text, "-") {
 			return false
 		}
 		rest = rest[2:]
 	}
-	if len(rest) == 0 {
+	if len(rest) == 0 || rest[0].quoted {
 		return false
 	}
-	subcommand, args := rest[0], rest[1:]
+	subcommand, args := rest[0].text, rest[1:]
 	if form, ok := gitForms[subcommand]; ok {
 		return form.admits(args)
 	}
@@ -387,23 +528,24 @@ func readOnlyGitSegment(words []string) bool {
 	case "branch":
 		return readOnlyGitBranch(args)
 	case "cat-file":
-		return len(args) == 2 && slices.Contains([]string{"-t", "-s", "-e", "-p"}, args[0]) && !strings.HasPrefix(args[1], "-")
+		return len(args) == 2 && slices.Contains([]string{"-t", "-s", "-e", "-p"}, args[0].text) && !args[0].glob &&
+			!strings.HasPrefix(args[1].text, "-") && !args[1].glob
 	case "config":
-		return len(args) >= 2 && len(args) <= 3 && slices.Contains([]string{"--get", "--get-regexp"}, args[0]) &&
-			!slices.ContainsFunc(args[1:], func(word string) bool { return strings.HasPrefix(word, "-") })
+		return len(args) >= 2 && len(args) <= 3 && slices.Contains([]string{"--get", "--get-regexp"}, args[0].text) && !args[0].glob &&
+			!slices.ContainsFunc(args[1:], func(word shellWord) bool { return strings.HasPrefix(word.text, "-") || word.glob })
 	}
 	return false
 }
 
 // readOnlyGitRemote reports whether args, the words after `git remote`, are `-v` alone, `get-url` with `--push` or `--all` then one name, or `show` with `-n` then names.
-func readOnlyGitRemote(args []string) bool {
-	if len(args) == 1 && args[0] == "-v" {
+func readOnlyGitRemote(args []shellWord) bool {
+	if len(args) == 1 && args[0].text == "-v" {
 		return true
 	}
-	if len(args) == 0 {
+	if len(args) == 0 || args[0].quoted {
 		return false
 	}
-	switch args[0] {
+	switch args[0].text {
 	case "get-url":
 		return gitForm{flags: gitFlagSet("--push", "--all")}.admits(args[1:]) && countPositionals(args[1:]) == 1
 	case "show":
@@ -413,19 +555,20 @@ func readOnlyGitRemote(args []string) bool {
 }
 
 // readOnlyGitBranch reports whether args, the words after `git branch`, are listing flags with no positional, or `--list` then patterns.
-func readOnlyGitBranch(args []string) bool {
-	if len(args) > 0 && args[0] == "--list" {
-		return !slices.ContainsFunc(args[1:], func(word string) bool { return strings.HasPrefix(word, "-") })
+// A pattern may hold a quoted glob character, which is text, but not an unquoted one.
+func readOnlyGitBranch(args []shellWord) bool {
+	if len(args) > 0 && args[0].text == "--list" {
+		return !args[0].quoted && !slices.ContainsFunc(args[1:], func(word shellWord) bool { return strings.HasPrefix(word.text, "-") || word.glob })
 	}
 	listing := gitFlagSet("-a", "--all", "-r", "--remotes", "-v", "-vv", "--show-current")
-	return !slices.ContainsFunc(args, func(word string) bool { return !listing[word] })
+	return !slices.ContainsFunc(args, func(word shellWord) bool { return !listing[word.text] })
 }
 
 // countPositionals returns how many words do not start with `-`.
-func countPositionals(words []string) int {
+func countPositionals(words []shellWord) int {
 	count := 0
 	for _, word := range words {
-		if !strings.HasPrefix(word, "-") {
+		if !strings.HasPrefix(word.text, "-") {
 			count++
 		}
 	}
