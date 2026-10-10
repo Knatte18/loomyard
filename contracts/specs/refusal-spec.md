@@ -1,6 +1,6 @@
 # Refusal contract: every refusal and its way forward
 
-> **Status: Contract — kept on landing.** This is the table of refusals that `lyx webster`, `lyx shed` and `lyx loom` can reach, each with the way forward its message names, a durable reference doc, not deleted on landing.
+> **Status: Contract — kept on landing.** This is the table of refusals that `lyx webster`, `lyx shed`, `lyx loom` and `lyx gate` can reach, each with the way forward its message names, a durable reference doc, not deleted on landing.
 > It is the lookup the loom driver and the operator use for an escalation, and it is plain markdown, not registered in `contracts/specs/specs.go`.
 
 ## What a way forward is
@@ -273,6 +273,19 @@ The `validate-*` verbs' findings envelopes are each verb's verdict on its artifa
 | producer re-run: superseded strand not removed | a producer row re-run finds a live strand of an earlier run of the same outputs and reed cannot remove it, or a BurlerRound row's half stays live because reed cannot stop it | transient | run "lyx reed remove <guid>", then re-step the row |
 | wiring guards | nil deps, an invalid producer list, empty paths | wiring guard | none per row; grouped |
 | raw I/O | `stat`, `mkdir`, `read` or `write` of a status, seed, lock or records file fails | transient | re-run the refused verb; nothing is mutated |
+
+## gate
+
+`lyx gate test` is the one verb.
+Its JSON error envelopes carry the way forward as a trailing `way forward:` clause, and a run that ends in go's own exit code is the verdict of the tests, not a refusal, so it has no row here.
+
+| Refusal | Trigger | Class | Way forward |
+|---|---|---|---|
+| no package argument | `lyx gate test` names no package, or only go test flags after `--` | correctness halt | run "lyx gate test <packages...>", for example "lyx gate test ./internal/foo" |
+| -C directory missing | `-C` names a directory that does not exist or is not a directory | correctness halt | pass an existing directory to -C |
+| slot busy | every gate slot stays held past the hub's `cli_wait_sec`; the verb exits 75 and the envelope names each holder's worktree and site | transient | re-run the same command |
+| gate.yaml unreadable or invalid | the hub's `gate.yaml` is absent, does not parse, or holds a value below 1 | correctness halt | fix the file with "lyx config gate" from the prime, then re-run the same command |
+| raw I/O | the working directory or the worktree cannot be resolved, a slot cannot be acquired for a reason other than the wait bound, or go cannot be started | transient | re-run the same command, or put go on PATH when go cannot be started |
 
 ## Out of scope
 

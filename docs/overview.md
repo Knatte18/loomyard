@@ -226,6 +226,7 @@ github.com/Knatte18/loomyard/
 ├── internal/boardengine/         the board domain kernel
 ├── internal/fabriccli/           the fabric CLI command (git coordination of code and records)
 ├── internal/fabricengine/        the fabric domain kernel
+├── internal/gatecli/             the gate CLI command (`lyx gate test`, the slotted route for an agent's go test)
 ├── internal/idecli/              the ide CLI command
 ├── internal/ideengine/           the ide domain kernel
 ├── internal/pairteardown/        the one sequence that ends a pair: quiet wait, refusal probe, reed session end, then fabric removal
@@ -366,6 +367,7 @@ User-facing modules each get one `lyx <module>` namespace:
   no other package reads that tree directly, and it also declares where that tree *is* — the worktree-relative form (`PlanDirName`/`PlanDirRel`) and the absolute told-anchor form (`PlanDir`/`PlanOverview`), with the caller supplying the anchor path (`internal/planparser`). ✅ Implemented.
 - **planglyph** — the sole owner of every `quarry.Repo` call (`Open`, `Resolve`, `DeltaGit`) and of the package-level `quarry.Name`, plus the resolve-backed validation pass layered on top of `planparser`'s pure checks: `planglyph.ValidateFormat`/`Validate` call `planparser.ValidateFormat`/`Validate` and append only resolve findings, composing rather than reimplementing (`internal/planglyph`). ✅ Implemented.
 - **planindex** — the cgo-free seam over `planglyph`: the plan gates' finding types, `ErrQuarryUnavailable` and the `Index` and `Delta` interfaces a package receives instead of importing the package that links tree-sitter (`internal/planindex`). ✅ Implemented.
+- **gate** — the one sanctioned route for an agent's slotted `go test`: it waits for a free slot of the hub-wide gate pool, runs `go test` inside it under the slot's `-p` cap and exits with go's code, or with 75 when the hub stays busy past `cli_wait_sec` (`internal/gatecli`; `lyx gate test [-C <dir>] [--tags <tags>] <packages...> [-- <go test flags>]`). A run inside a slot an enclosing gate run holds takes no second one, and a target outside every hub runs unslotted. ✅ Implemented. See the `internal/gatecli` package documentation.
 - **quarry** — the planner's only source of glyph spellings: four read-only repository queries over the current worktree's own glyph alphabet, each delegating to a `planglyph` wrapper and emitting quarry's own rendering verbatim, with no repository-path flag on any of them (`internal/quarrycli`; `lyx quarry toc|glyphs|resolve|expand`).
   `toc` answers a table-of-contents query for a path;
   `glyphs` answers the same query under quarry's frozen depth-all/symbols-on preset, projected into a flat, depth-first index — the spelling the planner copies verbatim, and with `--text` quarry's own one-line-per-symbol view, which a line filter can cut whole symbols from;
