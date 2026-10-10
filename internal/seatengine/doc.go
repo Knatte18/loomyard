@@ -54,6 +54,20 @@
 // A stop that fails is an error wrapping ErrSeatNotStopped whose message names the way forward; it is never retried and the seat is not waited for.
 // The result carries the chair's outcome, gate and NotStarted as shuttle reported them: the engine judges nothing about finishing itself (PATTERN-completion-signal).
 //
+// # Probe before archive
+//
+// Engine.Probe reports which seats have a live run, the chair probed with the table's gate and each advisor ungated, and archives and starts nothing.
+// A terminal advisor whose strand is still up, a done one kept by its pane or a timed-out one, is removed by the probe itself, keeping its record's outcome and its output file, and answers not found.
+// With the chair live, Probe returns its handle and every advisor found.
+// With the chair not live, Probe stops every live advisor and returns an empty LiveTable, so a caller archives stale outputs and starts fresh only once no seat is live.
+// The engine never archives: the caller owns that step, between Probe and Run.
+//
+// # Resume
+//
+// Engine.Resume attaches to a live chair and the advisors the probe found, and joins them as a fresh run does; an advisor the probe did not find is never restarted.
+// The chair is told of each such advisor once: one whose outputs all exist is finished and the line says its output stands and the seat no longer answers, any other has ended and the line says so as a mid-step death does.
+// A notice sent before the interruption may land again, which costs the chair nothing.
+//
 // # Imports
 //
 // The package imports shuttleengine, stencil, stencilstore, agentname, segmentcolor, logger, the directive renderers and the standard library.
