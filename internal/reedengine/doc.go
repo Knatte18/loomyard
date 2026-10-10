@@ -484,6 +484,8 @@
 //     A server restarting on the same key between the check and the removal is the accepted residual race.
 //     A removal failure is logged at Debug and never fails the teardown.
 //     It is a no-op on Windows, where psmux keeps no socket file.
+//     The boot path also measures the socket path, with the base's symlinks resolved, before any tmux round trip, and refuses one over the OS limit (107 bytes on linux, 103 elsewhere) naming `TMUX_TMPDIR` as the way forward.
+//     The bound: the check runs on the boot path only, so a verb run later under a longer `TMUX_TMPDIR` than the server booted with still gets tmux's own error.
 //   - Mouse boot pin (lifecycle.go): the engine pins "-g mouse" to the
 //     configured mouse value (default "on") on a fresh boot, right
 //     alongside remain-on-exit. Like remain-on-exit and debug_log, this is

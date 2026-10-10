@@ -11,6 +11,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -38,7 +39,19 @@ func TestUp_BootValidation(t *testing.T) {
 		configure func(cfg *Config)
 		wantErr   string // the validation error Up must fail with before any tmux contact; empty when the value must pass the check
 		notErr    string // an error text Up must not fail with
+		setup     func(t *testing.T)
 	}{
+		{
+			name: "SocketPathTooLong",
+			setup: func(t *testing.T) {
+				if runtime.GOOS == "windows" {
+					t.Skip("psmux keeps no socket file")
+				}
+				t.Setenv("TMUX_TMPDIR", filepath.Join(t.TempDir(), strings.Repeat("a", unixSocketPathLimit("linux"))))
+			},
+			configure: func(cfg *Config) {},
+			wantErr:   "TMUX_TMPDIR",
+		},
 		{
 			name:      "SegmentColorOutsidePalette",
 			configure: func(cfg *Config) { cfg.SegmentColors = map[string]string{"review": "crimson"} },
@@ -52,6 +65,9 @@ func TestUp_BootValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup(t)
+			}
 			e := newTestEngine(t)
 			e.cfg.DebugLog = "0"
 			e.cfg.Mouse = "off"

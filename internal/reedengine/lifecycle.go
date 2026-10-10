@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -273,12 +274,25 @@ func (e *Engine) validateBootConfig() (debugArgs []string, mouse string, err err
 	return debugArgs, mouse, nil
 }
 
+// refuseOverlongSocketPath refuses a socket path over the OS limit, naming `TMUX_TMPDIR` as the way forward, before any tmux round trip.
+// It checks nothing on Windows, where psmux keeps no socket file.
+func (e *Engine) refuseOverlongSocketPath() error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	return checkSocketPathLength(resolvedSocketDir(), e.Socket(), unixSocketPathLimit(runtime.GOOS))
+}
+
 // ensureServerAndSessionLocked ensures this hub's tmux server and this
 // worktree's session exist. Reports booted=true on fresh spawn; validates
 // capability, debug_log, mouse, watchdog and segment colors before any tmux round trip.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
 	debugArgs, mouse, err := e.validateBootConfig()
 	if err != nil {
+		return false, nil, err
+	}
+
+	if err := e.refuseOverlongSocketPath(); err != nil {
 		return false, nil, err
 	}
 

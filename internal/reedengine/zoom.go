@@ -76,10 +76,13 @@ func (e *Engine) withOpLockKeepingZoom(fn func() error) error {
 	return e.withOpLock(func() error { return e.keepZoomLocked(fn) })
 }
 
-// withBootOpLockKeepingZoom is withOpLockKeepingZoom for an op that always boots: a boot-time config error is refused before the bracket's first tmux read.
+// withBootOpLockKeepingZoom is withOpLockKeepingZoom for an op that always boots: a boot-time config error or an over-long socket path is refused before the bracket's first tmux read.
 func (e *Engine) withBootOpLockKeepingZoom(fn func() error) error {
 	return e.withOpLock(func() error {
 		if _, _, err := e.validateBootConfig(); err != nil {
+			return err
+		}
+		if err := e.refuseOverlongSocketPath(); err != nil {
 			return err
 		}
 		return e.keepZoomLocked(fn)
