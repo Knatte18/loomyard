@@ -30,6 +30,10 @@ const verifyLogTailBytes = 4096
 // With no usable base the lint passes and the round command is the plan's own verify command, as it is wherever impactset names a fallback.
 // The pass of the round command keeps the plan verify command's record entry, so the next round still diffs from it.
 //
+// While a Publish failure record is present, the round command also runs the `tmux` tier to confirm the fix:
+// each failing test the checked record names, by name in its package, and for a `publish_verify` failure the impacted set under `tmux`, or `./...` where the round fell back to the plan's verify.
+// The record's fields are shape-checked first, and a field that fails is dropped and logged, so no record text reaches the command as shell.
+//
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
 // `StatusFailed` fails with the exit code, the log path and the log's tail.
@@ -77,6 +81,16 @@ func NewVerifyGate(anchorPath, worktreeRoot, verifyDir, siteLabel string, slots 
 		if command == "" {
 			command = plan.Verify
 			logger.Info("loomshed: verify gate runs the plan's verify command", "gate", siteLabel, "attempt", attempt, "reason", derivation.Fallback)
+		}
+		if failure, ok := checkedPublishFailure(paths, worktreeRoot); ok {
+			tmuxPackages := derivation.Packages
+			if derivation.Fallback != "" {
+				tmuxPackages = []string{"./..."}
+			}
+			if extra := publishFailureCommand(failure, tmuxPackages); extra != "" {
+				command += " && " + extra
+				logger.Info("loomshed: verify gate confirms a publish failure", "gate", siteLabel, "attempt", attempt, "kind", failure.Kind)
+			}
 		}
 
 		site := verifytree.Site{Label: siteLabel, Attempt: attempt, BaseCommand: plan.Verify}

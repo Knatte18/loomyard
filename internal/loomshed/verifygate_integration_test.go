@@ -223,6 +223,39 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		return
 	}
 
+	if !t.Run("appends the failing tests and the impacted-set tmux pass while a publish failure record is present", func(t *testing.T) {
+		head := f.commitFiles(t, map[string]string{"b/b.go": "package b\n\nconst Changed = 2\n"})
+		derivation, err := impactset.Derive(f.worktree, planPass.Commit)
+		if err != nil || derivation.Command == "" || len(derivation.Packages) == 0 {
+			t.Fatalf("Derive() = %+v, %v; want a derived command with packages", derivation, err)
+		}
+		if err := os.WriteFile(paths.Log, []byte("verify output"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		failure := verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify, Head: head, Tests: []verifytree.FailedTest{{Package: "example.com/m/b", Test: "TestB"}}}
+		if err := verifytree.WritePublishFailure(paths, failure); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := verifytree.RemovePublishFailure(paths); err != nil {
+				t.Error(err)
+			}
+		})
+
+		if passed, findings := f.runGate(t); !passed {
+			t.Fatalf("gate() findings = %q; want a pass", findings)
+		}
+		want := derivation.Command + " && go test -tags tmux -run '^TestB$' example.com/m/b && go test -tags tmux " + strings.Join(derivation.Packages, " ")
+		if pass, ok := verifytree.LatestPass(paths, want); !ok || pass.Commit != head {
+			t.Errorf("LatestPass(extended command) = %+v, %v; want a pass at %s of %q", pass, ok, head, want)
+		}
+		if _, ok := verifytree.LatestPass(paths, derivation.Command); ok {
+			t.Errorf("a pass of the plain derived command is recorded; want the extended command to have run instead")
+		}
+	}) {
+		return
+	}
+
 	if !t.Run("fails with the file and line of a misplaced marker", func(t *testing.T) {
 		f.commitFiles(t, map[string]string{"a/a_test.go": "package a\n\nimport \"testing\"\n\n//lyx:guard\nvar misplaced = 1\n\nfunc TestA(t *testing.T) {}\n"})
 		passed, findings := f.runGate(t)
