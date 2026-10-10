@@ -21,6 +21,14 @@ type Usage struct {
 	Output      int `json:"output_tokens"`
 	CacheCreate int `json:"cache_creation_input_tokens"`
 	CacheRead   int `json:"cache_read_input_tokens"`
+	// CacheCreation splits CacheCreate by cache lifetime, which sets a cache write's price.
+	CacheCreation CacheCreation `json:"cache_creation"`
+}
+
+// CacheCreation is the part of a tally's cache writes made with the one-hour lifetime;
+// the rest of the writes have the default five-minute lifetime.
+type CacheCreation struct {
+	OneHour int `json:"ephemeral_1h_input_tokens"`
 }
 
 func (u *Usage) add(o Usage) {
@@ -28,6 +36,12 @@ func (u *Usage) add(o Usage) {
 	u.Output += o.Output
 	u.CacheCreate += o.CacheCreate
 	u.CacheRead += o.CacheRead
+	u.CacheCreation.OneHour += o.CacheCreation.OneHour
+}
+
+// Total is every token of the tally: input, cache write, cache read and output.
+func (u Usage) Total() int {
+	return u.Input + u.CacheCreate + u.CacheRead + u.Output
 }
 
 // Weight ranks a tally by rough relative cost; see the package doc for what it ignores.
@@ -40,7 +54,9 @@ type RoleTally struct {
 	Role     string
 	Sessions int
 	Usage    Usage
-	Models   map[string]int // assistant messages per model
+	// Cost is the usage priced per message at the message's model.
+	Cost   Cost
+	Models map[string]int // assistant messages per model
 }
 
 // ForkTally is the usage of one Webster fork: one sub-agent transcript of a session whose role is webster.
@@ -90,6 +106,35 @@ type RunTally struct {
 	BaseSHA string
 	// baseAt is the timestamp of the result BaseSHA came from.
 	baseAt time.Time
+	// First and Last bound the run's active window: the earliest and latest timestamp of a user or assistant line in any of its transcripts;
+	// both are zero when no such line carries one.
+	First, Last time.Time
+}
+
+// Cost is the run's estimated cost, summed over its roles.
+func (run RunTally) Cost() Cost {
+	var total Cost
+	for _, t := range run.Roles {
+		total.add(t.Cost)
+	}
+	return total
+}
+
+// observeTime widens the run's active window to hold a user or assistant line's timestamp.
+func (run *RunTally) observeTime(l line) {
+	if l.Type != "user" && l.Type != "assistant" {
+		return
+	}
+	at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
+	if err != nil {
+		return
+	}
+	if run.First.IsZero() || at.Before(run.First) {
+		run.First = at
+	}
+	if at.After(run.Last) {
+		run.Last = at
+	}
 }
 
 // line is the part of a transcript line tokencount reads.
@@ -512,6 +557,7 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *Fo
 		if fork != nil {
 			fork.observe(l)
 		}
+		run.observeTime(l)
 		if l.Type != "assistant" || l.Message == nil || l.Message.Usage == nil {
 			return
 		}
@@ -525,6 +571,7 @@ func (run *RunTally) countFile(path, role string, seen map[string]bool, fork *Fo
 		}
 		seen[id] = true
 		tally.Usage.add(*l.Message.Usage)
+		tally.Cost.add(messageCost(l.Message.Model, *l.Message.Usage))
 		tally.Models[l.Message.Model]++
 		if fork != nil {
 			fork.Messages++
@@ -578,6 +625,8 @@ func eachLine(path string, fn func(line)) error {
 // Report is every run counted in one invocation.
 type Report struct {
 	Runs []RunTally
+	// Orch is the hub orchestrator's usage charged to the runs, nil when it was not counted.
+	Orch *OrchTally
 }
 
 // WriteMarkdown writes the total first, each role summed over all runs, then one table per run.
@@ -596,6 +645,7 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 			}
 			sum.Sessions += t.Sessions
 			sum.Usage.add(t.Usage)
+			sum.Cost.add(t.Cost)
 			for model, n := range t.Models {
 				sum.Models[model] += n
 			}
@@ -605,6 +655,13 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 	fmt.Fprintf(w, "## All runs\n\n")
 	writeTable(w, total)
 	fmt.Fprintf(w, "Total weight %.1fM; %d repeated transcript lines skipped.\n\n", grand/1e6, duplicates)
+	var cost Cost
+	for _, t := range total {
+		cost.add(t.Cost)
+	}
+	if len(cost.Unpriced) > 0 {
+		fmt.Fprintf(w, "Unpriced models (messages), in no cost figure: %s.\n\n", models(cost.Unpriced))
+	}
 
 	for _, run := range r.Runs {
 		fmt.Fprintf(w, "## %s\n\n", run.Slug)
@@ -624,6 +681,9 @@ func (r Report) WriteMarkdown(w io.Writer) error {
 		}
 	}
 	fmt.Fprintln(w)
+	if r.Orch != nil {
+		r.Orch.WriteMarkdown(w, r.Runs)
+	}
 	return nil
 }
 
@@ -642,16 +702,16 @@ func writeTable(w io.Writer, roles map[string]*RoleTally) {
 	for _, t := range tallies {
 		tableWeight += t.Usage.Weight()
 	}
-	fmt.Fprintln(w, "| role | sessions | output | cache write | cache read | input | weight | share | models (messages) |")
-	fmt.Fprintln(w, "|---|---|---|---|---|---|---|---|---|")
+	fmt.Fprintln(w, "| role | sessions | output | cache write | cache read | input | weight | share | est. cost | models (messages) |")
+	fmt.Fprintln(w, "|---|---|---|---|---|---|---|---|---|---|")
 	for _, t := range tallies {
 		u := t.Usage
 		share := 0.0
 		if tableWeight > 0 {
 			share = 100 * u.Weight() / tableWeight
 		}
-		fmt.Fprintf(w, "| %s | %d | %d | %d | %d | %d | %.1fM | %.1f%% | %s |\n",
-			t.Role, t.Sessions, u.Output, u.CacheCreate, u.CacheRead, u.Input, u.Weight()/1e6, share, models(t.Models))
+		fmt.Fprintf(w, "| %s | %d | %d | %d | %d | %d | %.1fM | %.1f%% | %s | %s |\n",
+			t.Role, t.Sessions, u.Output, u.CacheCreate, u.CacheRead, u.Input, u.Weight()/1e6, share, t.Cost, models(t.Models))
 	}
 	fmt.Fprintln(w)
 }
@@ -661,7 +721,12 @@ func models(counts map[string]int) string {
 	for name := range counts {
 		names = append(names, name)
 	}
-	sort.Slice(names, func(i, j int) bool { return counts[names[i]] > counts[names[j]] })
+	sort.Slice(names, func(i, j int) bool {
+		if counts[names[i]] != counts[names[j]] {
+			return counts[names[i]] > counts[names[j]]
+		}
+		return names[i] < names[j]
+	})
 	parts := make([]string, 0, len(names))
 	for _, name := range names {
 		parts = append(parts, fmt.Sprintf("%s: %d", name, counts[name]))
