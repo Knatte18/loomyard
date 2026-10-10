@@ -74,14 +74,13 @@ func run(dev bool) error {
 	tag := gitTag(root)
 	fmt.Printf("Building lyx @ %s -> %s\n", tag, dest)
 
-	args := []string{"build", "-o", dest}
+	// Stamp internal/buildinfo.Channel so a dev-installed binary seeds but does not refresh an untouched stencil,
+	// and only a production-stamped binary refreshes one.
+	ldflags := "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=production"
 	if dev {
-		// Stamp internal/buildinfo.Channel=dev so a dev-installed binary seeds but does not
-		// refresh an untouched stencil (see the dev-builds-seed-but-do-not-refresh Shared
-		// Decision).
-		args = append(args, "-ldflags", "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev")
+		ldflags = "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev"
 	}
-	args = append(args, "./cmd/lyx")
+	args := []string{"build", "-o", dest, "-ldflags", ldflags, "./cmd/lyx"}
 	build := exec.Command("go", args...)
 	build.Dir = root
 	// lyx links quarry's tree-sitter grammars through cgo, so pin CGO_ENABLED=1

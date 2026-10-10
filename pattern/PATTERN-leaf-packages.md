@@ -16,7 +16,7 @@ Imports only the standard library, `configengine` and `gopkg.in/yaml.v3`.
 ## `internal/buildinfo`
 
 Imports nothing at all, not even the standard library.
-It exposes `Channel` and `IsDev()` only.
+It exposes `Channel`, its two values `ChannelProduction` and `ChannelDev`, and the accessors `IsDev()` and `IsProduction()` only.
 
 ## `internal/standalonestate`
 

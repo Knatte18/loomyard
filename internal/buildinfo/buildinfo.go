@@ -1,18 +1,24 @@
-// buildinfo.go declares the ldflags-stamped build-channel variable and the exact-match accessor
-// that reads it.
+// buildinfo.go declares the ldflags-stamped build-channel variable and the exact-match accessors that read it.
 
 package buildinfo
 
-// Channel is set by tools/deploy -dev via
-// -ldflags "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev".
-// An unstamped binary -- a plain `go build`, a `go install`, or a `go test` binary -- leaves it
-// empty, and empty means production.
-// Production is the conservative default because it keeps shipped defaults converging;
-// dev is the exception and must opt in explicitly.
+const (
+	// ChannelProduction is the Channel value tools/deploy stamps on the production route.
+	ChannelProduction = "production"
+	// ChannelDev is the Channel value tools/deploy -dev stamps.
+	ChannelDev = "dev"
+)
+
+// Channel is set by tools/deploy through the linker's -X flag, to ChannelDev under -dev and to ChannelProduction on the production route.
+// An unstamped binary -- a plain `go build`, a `go install`, or a `go test` binary -- leaves it empty, and empty is neither dev nor production.
 var Channel string
 
-// IsDev reports whether Channel is exactly "dev" -- an exact comparison, never a prefix match and
-// never case-insensitive.
+// IsDev reports whether Channel is exactly ChannelDev -- an exact comparison, never a prefix match and never case-insensitive.
 func IsDev() bool {
-	return Channel == "dev"
+	return Channel == ChannelDev
+}
+
+// IsProduction reports whether Channel is exactly ChannelProduction -- an exact comparison, never a prefix match and never case-insensitive.
+func IsProduction() bool {
+	return Channel == ChannelProduction
 }
