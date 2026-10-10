@@ -409,7 +409,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `pause` requests a pause at the next producer boundary.
   `validate-discussion` runs the same checks Discussion-Write's and Discussion-Burler's own gates run, standalone, exiting 0 on a clean gate and 1 otherwise, with findings in the failure envelope so a writer agent can self-check before handing off.
   `decision add [<slug>] --by parent|operator --title <t> --decision <d> --rationale <r>` appends one design call made after the Discussion to the decision record under an `Added after Discussion` heading, re-runs the discussion check (restoring the record on a finding) and commits the record.
-  It is refused while Discussion-Write is running, checks no caller identity and resumes nothing.
+  It is refused while Discussion-Write is running, refuses a named session other than the run's recorded parent (the operator's own unnamed shell always passes) and resumes nothing.
   `validate-plan` runs the same checks Plan-Write's and Plan-Burler's own gates run, standalone, with the same exit-code and findings-envelope contract, over the current worktree's plan instead of its discussion.
   `validate-plan --rework` runs the check `PR-Rework`'s own gate runs: the format-only checks over the whole new plan, plus a check that its `first_card` equals the card number the session was told.
   `validate-description` runs the same checks the `Describe` row's `description` gate runs over `_lyx/landing/summary.md`, standalone, with the same exit-code and findings-envelope contract.

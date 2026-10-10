@@ -190,7 +190,9 @@ var wordingClaims = []stencilClaims{
 			"you copy a line verbatim out of a quarry answer"),
 		wantNone("delta and name are pipeline-internal and are never named to the planner", "lyx quarry delta", "lyx quarry name"),
 		wantAll("the closing step runs validate-plan until it exits 0", "lyx loom validate-plan", "re-run it until it exits 0"),
-		wantAll("a scope addition after the Discussion is recorded with decision add, never written as an operator addition", "lyx loom decision add", "`--by`", "Never write such an addition into the plan as an operator addition"),
+		wantNone("a task session never records a design call itself, so the stencil does not name the verb", "lyx loom decision add"),
+		wantAll("a scope addition after the Discussion is the parent's to record, never written as an operator addition, and with no parent the planner stops and reports it",
+			"ask your parent to record it", "Never write such an addition into the plan as an operator addition", "stop and report the addition"),
 		wantAll("a carry-over entry in the record's Open risks is checked against the code and never planned as scope", "never plan an entry as scope"),
 		[]claim{
 			{must: "ends with a `Prior plan` section", why: "the template tells the agent to act on a trailing Prior plan section before writing"},
