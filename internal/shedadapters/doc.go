@@ -135,6 +135,7 @@
 // same injected clock SingleLLMProducer does, resolving only the archive filename's same-second
 // collision suffix the same way.
 // MultiLLMProducer is told a seatengine.Table and an already-constructed SeatRunner, and takes the same injected clock for the same purpose.
+// NewMultiLLMProducerSourced is told a TableSource instead of a table: the source builds the table once per Call, so stencils and directives are read at call time.
 // Bouncer's own told inputs are RunDir, StencilsDir, the resolved (Model, Effort, Version) triple,
 // and the report-name convention as a function. NewBouncer is the package's one validating,
 // error-returning constructor, in contrast with the two
@@ -238,6 +239,7 @@
 // The Bouncer does so on its seed pass, on its judge pass, on the re-bounce, and once more at Call entry (see below).
 // BurlerProducer probes its round's two halves through its runner (see below).
 // MultiLLMProducer probes its table's seats through its SeatRunner: with the chair live it resumes the table, and otherwise the probe has already stopped every live advisor, so the archive that follows runs beside no live seat.
+// A MultiLLMProducer built with a fresh-spawn preparation runs it on the fresh path only, after the probe and before the archive; its error fails the call with nothing archived and no seat started.
 // WebsterProducer inherits websterengine's own entry-time reclaim, which stops a leftover Master rather than attaching to it.
 //
 // "Every mode" is meant literally, and was not always true. The re-bounce -- an already-seeded
