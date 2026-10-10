@@ -174,7 +174,7 @@ func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
 
 	stubPath := writeStubDriverScript(t)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedConfig(t, h, map[string]string{
 		"loom":    fastDeadlineLoomConfig(),
 		"reed":    reedengine.ConfigTemplate(),

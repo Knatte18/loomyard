@@ -380,7 +380,7 @@ func parityLightweightWiringStatusSucceedsWhenRunRefuses(t *testing.T, h *hubfor
 // The scenario calls t.Parallel as a whole: its steps share the hub fixture and the process-global durable sink dir the busy step sets, so no step does.
 func TestParity_Scenario(t *testing.T) {
 	t.Parallel()
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	steps := []struct {
 		name string
 		run  func(t *testing.T, h *hubforge.Hub)

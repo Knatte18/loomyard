@@ -126,7 +126,7 @@ func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.
 	const stubSettleDelay = 5 * time.Second
 	stubPath := integrationWriteStubDriverScript(t, stubSettleDelay)
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedConfig(t, h, map[string]string{
 		"reed":    reedengine.ConfigTemplate(),
 		"shuttle": integrationDriverShuttleConfig(stubPath),

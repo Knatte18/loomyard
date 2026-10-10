@@ -185,7 +185,7 @@ func pathExists(path string) bool {
 func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "batten-reconcile-pair"
 	stampPath := hubreconcile.Geometry{BoardDir: h.BoardDir()}.StampPath()
 	stamp, err := json.Marshal(map[string]string{"build_key": hubreconcile.BuildKey(buildvcs.Running(), configreg.Fingerprint())})
@@ -258,7 +258,7 @@ func gitShow(t *testing.T, dir, spec string) []byte {
 func TestBattenIntegration_Rows(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	steps := []struct {
 		name string
 		run  func(t *testing.T, h *hubforge.Hub)
@@ -942,7 +942,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 	// Not a step of TestBattenIntegration_Rows: seeding a branch prefix into the fabric config changes the hub for every pair created after it.
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: r4/\npathspec: \"\"\n")
 	slug := "batten-incomplete-prefixed"
 	branch := "r4/" + slug

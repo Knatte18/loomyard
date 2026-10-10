@@ -49,7 +49,7 @@ func runLoomCLINoFatal(exe, dir string, timeout time.Duration, args ...string) (
 func newWiredPairFixture(t *testing.T) (h *hubforge.Hub, loc *lyxcwd.Location, worktree, slug string) {
 	t.Helper()
 
-	h = hubforge.NewHub(t, ".")
+	h = hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedConfig(t, h, map[string]string{
 		"loom":    fastDeadlineLoomConfig(),
 		"reed":    reedengine.ConfigTemplate(),
@@ -210,7 +210,7 @@ func newBadReedUpFixture(t *testing.T, seed func(*testing.T, *lyxcwd.Location)) 
 		t.Fatalf("reed config template drift: no mouse: line found")
 	}
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedConfig(t, h, map[string]string{
 		"loom":    fastDeadlineLoomConfig(),
 		"reed":    strings.Join(lines, "\n"),

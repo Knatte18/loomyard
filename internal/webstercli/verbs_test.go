@@ -959,7 +959,7 @@ func TestRunCmd_DiedMasterNotesExpiredShellOutcome(t *testing.T) {
 // explicitly rather than relying on a chdir'd process cwd.
 func seedPersistentPreRunFixture(t *testing.T, anchor, batcherConfig string) *hubforge.Hub {
 	t.Helper()
-	h := hubforge.NewHub(t, anchor)
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
 	seedPersistentPreRunConfig(t, h, batcherConfig)
 	// validate with no run state computes Merriam's start base, which reads the Master stencil.
 	seedHubStencils(t, h.Path)
@@ -985,7 +985,7 @@ func seedPersistentPreRunConfig(t *testing.T, h *hubforge.Hub, batcherConfig str
 func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	if !t.Run("unknown batcher fails fast", func(t *testing.T) {
 		seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), `active: "cautious"`, `active: "bogus"`, 1))
@@ -1226,7 +1226,7 @@ func TestPersistentPreRunE_PlanDirAnchoredAtSubpath(t *testing.T) {
 // The per-verb tests below reach each refusal through a failing opener, which needs no hub.
 func TestFabricSyncWayForward_NextSyncCommitsSavedState(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "")
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	geom := hubgeom.WebsterGeometry(h.Location)
 	st := &websterengine.State{PlanFingerprint: "fp", Batches: map[int]*websterengine.BatchState{1: {Slug: "only", Kind: "fork"}}}
 	if err := websterengine.SaveState(geom.WebsterDir, geom.ScratchDir, st); err != nil {
