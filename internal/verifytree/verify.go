@@ -3,10 +3,14 @@
 package verifytree
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,11 +30,15 @@ const (
 	dirName    = "verify"
 	recordName = "verified-tree.yaml"
 	markerName = "running.yaml"
-	logName    = "verify.log"
 
-	publishFailureName    = "publish-failure.yaml"
-	publishFailureLogName = "publish-failure.log"
+	publishFailureName = "publish-failure.yaml"
+
+	logPrefix = "verify-"
+	logSuffix = ".log"
 )
+
+// verifyLogKeep is how many of the newest verify logs a run's pruning keeps, beside the one the Publish failure record names.
+const verifyLogKeep = 20
 
 // Status is the outcome of one Verify call.
 type Status string
@@ -67,15 +75,15 @@ type Pass struct {
 	VerifiedAt time.Time
 }
 
-// Paths names the worktree Verify checks and the files it keeps in the verify directory.
+// Paths names the worktree Verify checks, the verify directory and the fixed files it keeps there.
 type Paths struct {
 	Worktree string
-	Record   string
-	Marker   string
-	Log      string
-	// PublishFailure is the Publish failure record, and PublishFailureLog the copy of the log it names.
-	PublishFailure    string
-	PublishFailureLog string
+	// Dir is the verify directory, which also holds one `verify-<n>.log` per run.
+	Dir    string
+	Record string
+	Marker string
+	// PublishFailure is the Publish failure record.
+	PublishFailure string
 }
 
 // Result is the outcome of one Verify call.
@@ -92,6 +100,8 @@ type Result struct {
 	TimedOut bool
 	// Detail carries the cause of a shell that could not start, or names the timeout of a timed-out run.
 	Detail string
+	// Log is this run's own verify log, empty for a dirty or skipped result.
+	Log string
 }
 
 // record is the verified-tree record Verify writes after a pass: one entry per command.
@@ -150,14 +160,98 @@ func Dir(anchorRoot string) string {
 // NewPaths names the verify files inside dir for worktree.
 func NewPaths(worktree, dir string) Paths {
 	return Paths{
-		Worktree: worktree,
-		Record:   filepath.Join(dir, recordName),
-		Marker:   filepath.Join(dir, markerName),
-		Log:      filepath.Join(dir, logName),
-
-		PublishFailure:    filepath.Join(dir, publishFailureName),
-		PublishFailureLog: filepath.Join(dir, publishFailureLogName),
+		Worktree:       worktree,
+		Dir:            dir,
+		Record:         filepath.Join(dir, recordName),
+		Marker:         filepath.Join(dir, markerName),
+		PublishFailure: filepath.Join(dir, publishFailureName),
 	}
+}
+
+// IsLogPath reports whether path names a `verify-<n>.log` directly inside p.Dir.
+func IsLogPath(p Paths, path string) bool {
+	clean := filepath.Clean(path)
+	if filepath.Dir(clean) != filepath.Clean(p.Dir) {
+		return false
+	}
+	_, ok := logNumber(filepath.Base(clean))
+	return ok
+}
+
+// logNumber returns n for a file named `verify-<n>.log` with n a positive integer in canonical decimal form.
+func logNumber(name string) (int, bool) {
+	digits, ok := strings.CutPrefix(name, logPrefix)
+	if !ok {
+		return 0, false
+	}
+	digits, ok = strings.CutSuffix(digits, logSuffix)
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(digits)
+	if err != nil || n < 1 || strconv.Itoa(n) != digits {
+		return 0, false
+	}
+	return n, true
+}
+
+// numberedLog is one verify log in the verify directory and its sequence number.
+type numberedLog struct {
+	path   string
+	number int
+}
+
+// listLogs returns the verify logs in dir, newest first.
+func listLogs(dir string) ([]numberedLog, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("verifytree: list verify directory %s: %w", dir, err)
+	}
+	var logs []numberedLog
+	for _, e := range entries {
+		if n, ok := logNumber(e.Name()); ok && e.Type().IsRegular() {
+			logs = append(logs, numberedLog{path: filepath.Join(dir, e.Name()), number: n})
+		}
+	}
+	slices.SortFunc(logs, func(a, b numberedLog) int { return cmp.Compare(b.number, a.number) })
+	return logs, nil
+}
+
+// nextLogPath returns the path of the next run's log in dir: `verify-<n>.log`, n one above the highest existing number.
+func nextLogPath(dir string) (string, error) {
+	logs, err := listLogs(dir)
+	if err != nil {
+		return "", err
+	}
+	next := 1
+	if len(logs) > 0 {
+		next = logs[0].number + 1
+	}
+	return filepath.Join(dir, logPrefix+strconv.Itoa(next)+logSuffix), nil
+}
+
+// pruneLogs removes every verify log in p.Dir beyond the newest verifyLogKeep, except the one the Publish failure record names.
+func pruneLogs(p Paths) error {
+	logs, err := listLogs(p.Dir)
+	if err != nil {
+		return err
+	}
+	if len(logs) <= verifyLogKeep {
+		return nil
+	}
+	failure, _, err := ReadPublishFailure(p)
+	if err != nil {
+		return err
+	}
+	for _, log := range logs[verifyLogKeep:] {
+		if failure.LogPath != "" && filepath.Clean(failure.LogPath) == log.path {
+			continue
+		}
+		if err := os.Remove(log.path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("verifytree: remove verify log %s: %w", log.path, err)
+		}
+	}
+	return nil
 }
 
 // DirtyPaths returns the paths `git status --porcelain -z` reports in worktree, ignored files excluded.
@@ -191,7 +285,9 @@ func parsePorcelainZ(out string) []string {
 // Verify runs command in p.Worktree unless the tree is dirty or already verified.
 // A dirty tree returns StatusDirty and runs nothing.
 // A record entry of the same command naming HEAD's tree returns StatusSkipped.
-// Otherwise the marker is written, the command runs with its output in p.Log, the marker is removed whatever happened, and an exit 0 returns StatusPassed.
+// Otherwise the marker is written, the command runs with its output in a fresh `verify-<n>.log` in p.Dir that the result names, the marker is removed whatever happened, and an exit 0 returns StatusPassed.
+// Once the log is written, whatever the exit, every log beyond the newest verifyLogKeep is pruned except the one the Publish failure record names;
+// a prune failure is logged and leaves the result unchanged.
 // A non-nil slots pool gates the run: the marker is first written in the waiting state, a slot is acquired under ctx, and the marker is rewritten as running with a fresh start time before the timeout begins to count.
 // The command then runs with the lease's environment and the slot is released whatever the outcome.
 // A nil slots runs unslotted with the parent's environment.
@@ -255,11 +351,20 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 		}
 	}
 
-	logFile, err := os.Create(p.Log)
+	logPath, err := nextLogPath(p.Dir)
 	if err != nil {
-		return Result{}, fmt.Errorf("verifytree: create verify log %s: %w", p.Log, err)
+		return Result{}, err
 	}
-	defer logFile.Close()
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		return Result{}, fmt.Errorf("verifytree: create verify log %s: %w", logPath, err)
+	}
+	defer func() {
+		logFile.Close()
+		if err := pruneLogs(p); err != nil {
+			logger.Warn("verifytree: prune verify logs", "dir", p.Dir, "cause", err)
+		}
+	}()
 
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -270,12 +375,12 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 		}
 		if runCtx.Err() != nil {
 			detail := fmt.Sprintf("the verify command did not finish within %s and was killed", timeout)
-			return Result{Status: StatusFailed, ExitCode: -1, Tree: tree, TimedOut: true, Detail: detail}, nil
+			return Result{Status: StatusFailed, ExitCode: -1, Tree: tree, TimedOut: true, Detail: detail, Log: logPath}, nil
 		}
-		return Result{Status: StatusFailed, ExitCode: -1, Tree: tree, Detail: runErr.Error()}, nil
+		return Result{Status: StatusFailed, ExitCode: -1, Tree: tree, Detail: runErr.Error(), Log: logPath}, nil
 	}
 	if code != 0 {
-		return Result{Status: StatusFailed, ExitCode: code, Tree: tree}, nil
+		return Result{Status: StatusFailed, ExitCode: code, Tree: tree, Log: logPath}, nil
 	}
 
 	// A commit that landed mid-run means the command read a tree that was not the recorded one, so the pass is not recorded.
@@ -288,14 +393,14 @@ func Verify(ctx context.Context, p Paths, site Site, command string, timeout tim
 		return Result{}, err
 	}
 	if afterTree != tree || afterCommit != commit {
-		return Result{Status: StatusPassed, Tree: tree}, nil
+		return Result{Status: StatusPassed, Tree: tree, Log: logPath}, nil
 	}
 
 	next := readRecord(p.Record).withPass(command, site.BaseCommand, Pass{Tree: tree, Commit: commit, VerifiedAt: time.Now()})
 	if err := writeRecord(p.Record, next); err != nil {
 		return Result{}, err
 	}
-	return Result{Status: StatusPassed, Tree: tree}, nil
+	return Result{Status: StatusPassed, Tree: tree, Log: logPath}, nil
 }
 
 // headTree returns HEAD's tree SHA in worktree.

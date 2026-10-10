@@ -18,6 +18,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
+// verifyLogs returns the per-run verify logs in verifyDir, so a step can tell whether a command ran.
+func verifyLogs(t *testing.T, verifyDir string) []string {
+	t.Helper()
+	logs, err := filepath.Glob(filepath.Join(verifyDir, "verify-*.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return logs
+}
+
 // TestVerifyGate_Scenario drives NewVerifyGate over one one-commit repo, a separate anchor holding the plan and a verify directory outside the worktree.
 // The steps run in order and each rewrites the plan's `## verify:` section; the last step dirties the worktree, so it must stay last.
 // The scenario calls no t.Parallel in its steps because they share the repo, and the top level calls it because nothing else touches that fixture.
@@ -63,7 +73,7 @@ func TestVerifyGate_Scenario(t *testing.T) {
 		if passed {
 			t.Fatalf("gate() passed; want a failure")
 		}
-		for _, want := range []string{"exit code 3", filepath.Join(verifyDir, "verify.log"), "boom-marker"} {
+		for _, want := range []string{"exit code 3", filepath.Join(verifyDir, "verify-1.log"), "boom-marker"} {
 			if !strings.Contains(findings, want) {
 				t.Errorf("Findings = %q; want it to contain %q", findings, want)
 			}
@@ -78,15 +88,13 @@ func TestVerifyGate_Scenario(t *testing.T) {
 		if res, err := verifytree.Verify(context.Background(), paths, verifytree.Site{Label: "Webster-Burler gate"}, "true", verifytree.Timeout, nil); err != nil || res.Status != verifytree.StatusPassed {
 			t.Fatalf("seed Verify = %+v, %v; want a pass", res, err)
 		}
-		if err := os.Remove(paths.Log); err != nil {
-			t.Fatalf("remove the seeded log: %v", err)
-		}
+		logsBefore := verifyLogs(t, verifyDir)
 
 		if passed, findings := runGate(t); !passed {
 			t.Errorf("gate() findings = %q; want a pass on a tree the record names", findings)
 		}
-		if _, err := os.Stat(paths.Log); err == nil {
-			t.Errorf("verify log %s exists; want the command not to have run", paths.Log)
+		if logs := verifyLogs(t, verifyDir); len(logs) != len(logsBefore) {
+			t.Errorf("verify logs = %q; want %q, the command not to have run", logs, logsBefore)
 		}
 	}) {
 		return
@@ -210,14 +218,12 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 	}
 
 	if !t.Run("skips on a second arrival at the same tree", func(t *testing.T) {
-		if err := os.Remove(paths.Log); err != nil {
-			t.Fatalf("remove the log: %v", err)
-		}
+		logsBefore := verifyLogs(t, f.verifyDir)
 		if passed, findings := f.runGate(t); !passed {
 			t.Fatalf("gate() findings = %q; want a pass", findings)
 		}
-		if _, err := os.Stat(paths.Log); err == nil {
-			t.Errorf("verify log %s exists; want the command not to have run", paths.Log)
+		if logs := verifyLogs(t, f.verifyDir); len(logs) != len(logsBefore) {
+			t.Errorf("verify logs = %q; want %q, the command not to have run", logs, logsBefore)
 		}
 	}) {
 		return
@@ -228,9 +234,6 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		derivation, err := impactset.Derive(f.worktree, planPass.Commit)
 		if err != nil || derivation.Command == "" || len(derivation.Packages) == 0 {
 			t.Fatalf("Derive() = %+v, %v; want a derived command with packages", derivation, err)
-		}
-		if err := os.WriteFile(paths.Log, []byte("verify output"), 0o644); err != nil {
-			t.Fatal(err)
 		}
 		failure := verifytree.PublishFailure{Kind: verifytree.FailureKindPublishVerify, Head: head, Tests: []verifytree.FailedTest{{Package: "example.com/m/b", Test: "TestB"}}}
 		if err := verifytree.WritePublishFailure(paths, failure); err != nil {
@@ -271,15 +274,13 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 			"a/a_test.go": "package a\n\nimport \"testing\"\n\nfunc TestA(t *testing.T) {}\n",
 			"a/a.go":      "package a\n\n// Wrapped comment that breaks in the\n// middle of a sentence.\nfunc Wrapped() {}\n",
 		})
-		if err := os.Remove(paths.Log); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
+		logsBefore := verifyLogs(t, f.verifyDir)
 		passed, findings := f.runGate(t)
 		if passed || !strings.Contains(findings, "a/a.go:3") {
 			t.Errorf("gate() passed = %v, findings = %q; want a failure naming a/a.go:3", passed, findings)
 		}
-		if _, err := os.Stat(paths.Log); err == nil {
-			t.Errorf("verify log %s exists; want the lint to fail before any command ran", paths.Log)
+		if logs := verifyLogs(t, f.verifyDir); len(logs) != len(logsBefore) {
+			t.Errorf("verify logs = %q; want %q, the lint to fail before any command ran", logs, logsBefore)
 		}
 	}) {
 		return

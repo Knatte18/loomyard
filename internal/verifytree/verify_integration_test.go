@@ -8,6 +8,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -127,7 +128,7 @@ func TestVerify_PerCommandRecord(t *testing.T) {
 	})
 }
 
-// TestVerify_Scenario is a scenario over one scratch repo, run as named steps in one order, each reaching one rule of Verify: a dirty tree is refused, a record is written only after a pass and only when HEAD did not move during the run, the marker is present only while the command runs, a skip needs a record naming HEAD's tree and the same command, and DirtyPaths names special and renamed paths verbatim.
+// TestVerify_Scenario is a scenario over one scratch repo, run as named steps in one order, each reaching one rule of Verify: a dirty tree is refused, a record is written only after a pass and only when HEAD did not move during the run, the marker is present only while the command runs, a skip needs a record naming HEAD's tree and the same command, each run writes its own log and pruning bounds them while keeping the failure record's, and DirtyPaths names special and renamed paths verbatim.
 // The steps share one repo, so the test is parallel as a whole and no step is.
 // The steps up to the first pass rely on no record existing yet, so they run before it; each step after it relies on the record the one before left, and the last step relies on being last because it dirties the tree.
 func TestVerify_Scenario(t *testing.T) {
@@ -142,8 +143,8 @@ func TestVerify_Scenario(t *testing.T) {
 		}
 		ran := filepath.Join(t.TempDir(), "ran")
 		res := mustVerify(t, p, "touch "+ran)
-		if res.Status != StatusDirty {
-			t.Fatalf("Verify = %q; want %q", res.Status, StatusDirty)
+		if res.Status != StatusDirty || res.Log != "" {
+			t.Fatalf("Verify = (%q, log %q); want (%q, no log)", res.Status, res.Log, StatusDirty)
 		}
 		if len(res.Dirty) != 1 || res.Dirty[0] != "stray.txt" {
 			t.Errorf("Dirty = %v; want [stray.txt]", res.Dirty)
@@ -237,8 +238,8 @@ func TestVerify_Scenario(t *testing.T) {
 	}
 
 	if !t.Run("a record naming the tree and the command skips the run", func(t *testing.T) {
-		if res := mustVerify(t, p, "true"); res.Status != StatusSkipped {
-			t.Errorf("second Verify = %q; want %q", res.Status, StatusSkipped)
+		if res := mustVerify(t, p, "true"); res.Status != StatusSkipped || res.Log != "" {
+			t.Errorf("second Verify = (%q, log %q); want (%q, no log)", res.Status, res.Log, StatusSkipped)
 		}
 	}) {
 		return
@@ -273,6 +274,77 @@ func TestVerify_Scenario(t *testing.T) {
 		gitkit.CommitFile(t, p.Worktree, "b.txt", "b\n", "second")
 		if res := mustVerify(t, p, "true"); res.Status != StatusPassed {
 			t.Errorf("Verify after a new commit = %q; want %q", res.Status, StatusPassed)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("two consecutive runs each leave their own log", func(t *testing.T) {
+		first := mustVerify(t, p, "echo first; exit 1")
+		second := mustVerify(t, p, "echo second; exit 1")
+		if first.Log == "" || first.Log == second.Log {
+			t.Fatalf("logs = %q and %q; want two distinct logs", first.Log, second.Log)
+		}
+		for _, tc := range []struct {
+			res  Result
+			want string
+		}{{first, "first\n"}, {second, "second\n"}} {
+			if !IsLogPath(p, tc.res.Log) {
+				t.Errorf("IsLogPath(%q) = false; want a verify log in %s", tc.res.Log, p.Dir)
+			}
+			got, err := os.ReadFile(tc.res.Log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != tc.want {
+				t.Errorf("log %s = %q; want %q", tc.res.Log, got, tc.want)
+			}
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("a run past the retention bound prunes the oldest log but keeps the one the failure record names", func(t *testing.T) {
+		logs, err := listLogs(p.Dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for n := logs[0].number + 1; n <= logs[0].number+verifyLogKeep-len(logs); n++ {
+			if err := os.WriteFile(filepath.Join(p.Dir, logPrefix+strconv.Itoa(n)+logSuffix), nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		oldest := logs[len(logs)-1].path
+
+		res := mustVerify(t, p, "exit 1")
+		if fileExists(oldest) {
+			t.Errorf("oldest log %s survived the run past the bound", oldest)
+		}
+		if !fileExists(res.Log) {
+			t.Errorf("the run's own log %s was pruned", res.Log)
+		}
+
+		logs, err = listLogs(p.Dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		named := logs[len(logs)-1].path
+		if err := WritePublishFailure(p, PublishFailure{Kind: FailureKindPlanVerify, LogPath: named, Head: "abc"}); err != nil {
+			t.Fatal(err)
+		}
+		mustVerify(t, p, "exit 1")
+		if !fileExists(named) {
+			t.Errorf("log %s the failure record names was pruned", named)
+		}
+		after, err := listLogs(p.Dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(after) != verifyLogKeep+1 {
+			t.Errorf("%d logs after pruning; want %d, the newest plus the named one", len(after), verifyLogKeep+1)
+		}
+		if err := RemovePublishFailure(p); err != nil {
+			t.Fatal(err)
 		}
 	}) {
 		return

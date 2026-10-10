@@ -106,8 +106,8 @@ func NewVerifyGate(anchorPath, worktreeRoot, verifyDir, siteLabel string, slots 
 			logger.Warn("loomshed: verify gate found a dirty tree", "gate", siteLabel, "attempt", attempt, "paths", strings.Join(res.Dirty, ", "))
 			return shuttleengine.GateResult{Passed: false, Findings: findings}, nil
 		default:
-			findings := verifyFailureFindings(res, paths.Log)
-			logger.Warn("loomshed: verify gate failed", "gate", siteLabel, "attempt", attempt, "exitCode", res.ExitCode, "log", paths.Log)
+			findings := verifyFailureFindings(res, res.Log)
+			logger.Warn("loomshed: verify gate failed", "gate", siteLabel, "attempt", attempt, "exitCode", res.ExitCode, "log", res.Log)
 			return shuttleengine.GateResult{Passed: false, Findings: findings}, nil
 		}
 	}

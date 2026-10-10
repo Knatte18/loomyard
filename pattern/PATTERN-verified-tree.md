@@ -10,7 +10,9 @@ Every plan-verify site runs the plan's verify command through `verifytree.Verify
 - The sites are the webster gate, the Webster-Burler gate, Publish, Finalize and `lyx webster verify`.
 - Publish also runs landing config's `publish_verify`, when set, through `Verify` after the plan verify, with `BaseCommand` set to the plan's verify command; Finalize never runs it.
 - The Webster-Burler gate runs the derived round command through `Verify`, with `BaseCommand` set to the plan's verify command so its pass keeps the plan-verify entry the next round diffs from.
-- Publish alone leaves a failure record in the verify directory when its plan verify or `publish_verify` fails with a non-zero exit: the failing kind, the failing tests, a copy of the log, HEAD and the merge-in commit.
+- Each run that spawns its command writes its own `verify-<n>.log` in the verify directory and names it on its result, so no later verify overwrites an earlier run's log.
+  After each such run, `Verify` keeps the newest logs up to its retention bound plus the one the failure record names, and removes the rest.
+- Publish alone leaves a failure record in the verify directory when its plan verify or `publish_verify` fails with a non-zero exit: the failing kind, the failing tests, the failing run's own log, HEAD and the merge-in commit.
   A Publish that passes both verifies removes it before its push, and Finalize and the other sites neither write nor remove it.
 - `internal/websterengine/cardverify.go` reruns a card's own `**Verify:**` command through `verifyrun` directly and is no plan-verify site.
 

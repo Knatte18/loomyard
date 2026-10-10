@@ -48,7 +48,7 @@ func (g verifyGate) recordFailure(kind verifytree.FailureKind, result verifytree
 	if g.recorder == nil || result.Status != verifytree.StatusFailed || result.TimedOut || result.ExitCode < 0 {
 		return false
 	}
-	failure := verifytree.PublishFailure{Kind: kind, MergeCommit: g.recorder.mergeCommit}
+	failure := verifytree.PublishFailure{Kind: kind, LogPath: result.Log, MergeCommit: g.recorder.mergeCommit}
 	if g.recorder.head != nil {
 		head, err := g.recorder.head()
 		if err != nil {
@@ -57,7 +57,7 @@ func (g verifyGate) recordFailure(kind verifytree.FailureKind, result verifytree
 		failure.Head = head
 	}
 	if g.recorder.failingTests != nil {
-		if log, err := os.ReadFile(g.paths.Log); err == nil {
+		if log, err := os.ReadFile(result.Log); err == nil {
 			failure.Tests = g.recorder.failingTests(string(log))
 		}
 	}
@@ -211,15 +211,15 @@ func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBran
 		return dirtyReason("when the "+what+" was about to run", result.Dirty), nil
 	case verifytree.StatusFailed:
 		if result.TimedOut {
-			return fmt.Sprintf("verify did not finish within %s after merging parent branch %q; output: %s; fix the hanging test on the task branch, then resume", verifytree.Timeout, parentBranch, g.paths.Log), nil
+			return fmt.Sprintf("verify did not finish within %s after merging parent branch %q; output: %s; fix the hanging test on the task branch, then resume", verifytree.Timeout, parentBranch, result.Log), nil
 		}
 		if result.ExitCode < 0 {
-			return fmt.Sprintf("%s could not start after merging parent branch %q: %s; output: %s", what, parentBranch, result.Detail, g.paths.Log), nil
+			return fmt.Sprintf("%s could not start after merging parent branch %q: %s; output: %s", what, parentBranch, result.Detail, result.Log), nil
 		}
 		if recorded {
-			return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s; way forward: run \"lyx loom goto --to Webster-Burler\", then \"lyx loom resume\", in the task worktree; the Webster-Review round reads the Publish failure record and its gate runs the failing tests", what, parentBranch, result.ExitCode, g.paths.Log), nil
+			return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s; way forward: run \"lyx loom goto --to Webster-Burler\", then \"lyx loom resume\", in the task worktree; the Webster-Review round reads the Publish failure record and its gate runs the failing tests", what, parentBranch, result.ExitCode, result.Log), nil
 		}
-		return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s; fix forward on the task branch, then resume", what, parentBranch, result.ExitCode, g.paths.Log), nil
+		return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s; fix forward on the task branch, then resume", what, parentBranch, result.ExitCode, result.Log), nil
 	default:
 		return "", fmt.Errorf("landingshed: %s: unknown %s status %q", producer, what, result.Status)
 	}

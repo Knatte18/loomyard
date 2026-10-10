@@ -5,7 +5,6 @@ package loomshed
 
 import (
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -28,7 +27,7 @@ var (
 //
 // The merge-in commit is kept only as a full hex object name that resolves, through worktreeRoot's git objects, to a commit with two or more parents.
 // A failing test is kept only when its path is a top-level Test identifier followed by optional subtest segments of safe characters and its package is an import path that starts with a letter or digit, so it never reads as a flag.
-// The log path is kept only when it is the verify directory's failure log copy.
+// The log path is kept only when it names a verify log directly inside the verify directory.
 func checkedPublishFailure(paths verifytree.Paths, worktreeRoot string) (verifytree.PublishFailure, bool) {
 	failure, ok, err := verifytree.ReadPublishFailure(paths)
 	if err != nil {
@@ -58,8 +57,8 @@ func checkedPublishFailure(paths verifytree.Paths, worktreeRoot string) (verifyt
 	}
 	failure.Tests = kept
 
-	if failure.LogPath != "" && filepath.Clean(failure.LogPath) != paths.PublishFailureLog {
-		logger.Warn("loomshed: publish failure record's log path dropped, it is not the verify directory's failure log copy", "logPath", failure.LogPath)
+	if failure.LogPath != "" && !verifytree.IsLogPath(paths, failure.LogPath) {
+		logger.Warn("loomshed: publish failure record's log path dropped, it is not a verify log in the verify directory", "logPath", failure.LogPath)
 		failure.LogPath = ""
 	}
 	return failure, true

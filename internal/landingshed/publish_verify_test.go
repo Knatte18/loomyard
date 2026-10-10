@@ -6,6 +6,7 @@ package landingshed
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -106,7 +107,7 @@ func TestPublishVerify_HaltsOnVerifyResult(t *testing.T) {
 		result     verifytree.Result
 		wantInReas []string
 	}{
-		{"failed", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 3}, []string{`"main"`, "exit code 3", "{Log}"}},
+		{"failed", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 3, Log: "/verify/verify-1.log"}, []string{`"main"`, "exit code 3", "/verify/verify-1.log"}},
 		{"dirty result", verifytree.Result{Status: verifytree.StatusDirty, Dirty: []string{"late.txt"}}, []string{"late.txt"}},
 		{"could not start", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, Detail: "no shell"}, []string{"no shell"}},
 	}
@@ -121,7 +122,6 @@ func TestPublishVerify_HaltsOnVerifyResult(t *testing.T) {
 				t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
 			}
 			for _, want := range tt.wantInReas {
-				want = strings.ReplaceAll(want, "{Log}", fx.gate.paths.Log)
 				if !strings.Contains(reason, want) {
 					t.Errorf("reason %q lacks %q", reason, want)
 				}
@@ -147,7 +147,7 @@ func TestPublishVerify_PublishVerifyCommand(t *testing.T) {
 		wantChecks int
 	}{
 		{"pass", verifytree.Result{Status: verifytree.StatusPassed}, false, 3},
-		{"failure", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 4}, true, 2},
+		{"failure", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 4, Log: "/verify/verify-2.log"}, true, 2},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -180,7 +180,7 @@ func TestPublishVerify_PublishVerifyCommand(t *testing.T) {
 			if outcome != shedengine.Stuck {
 				t.Fatalf("Call() = %q; want Stuck", outcome)
 			}
-			for _, want := range []string{"publish_verify", "exit code 4", fx.gate.paths.Log} {
+			for _, want := range []string{"publish_verify", "exit code 4", tt.result.Log} {
 				if !strings.Contains(reason, want) {
 					t.Errorf("reason %q lacks %q", reason, want)
 				}
@@ -332,22 +332,22 @@ func TestPublishVerify_NoPRRequiredRunsNoVerify(t *testing.T) {
 	}
 }
 
-// writeVerifyLog makes the fake verify leave a log at the gate's log path, as a real verify run does.
+// writeVerifyLog makes every passed or failed fake verify write log to its own log path and name it on its result, as a real verify run does.
 func writeVerifyLog(t *testing.T, gate *gateFixture, log string) {
 	t.Helper()
-	gate.fake.onVerify = func() {
-		if err := os.MkdirAll(filepath.Dir(gate.paths.Log), 0o755); err != nil {
+	gate.fake.writeLog = func(path string) {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Error(err)
 			return
 		}
-		if err := os.WriteFile(gate.paths.Log, []byte(log), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(log), 0o644); err != nil {
 			t.Error(err)
 		}
 	}
 }
 
 // TestPublishVerify_FailureRecord pins the Publish failure record.
-// A failed plan verify or publish_verify writes it with its kind, tests, log copy, HEAD and merge-in commit.
+// A failed plan verify or publish_verify writes it with its kind, tests, the failing run's own log, HEAD and merge-in commit.
 // A dirty tree or a timeout writes none, and a passing Publish removes a present one before the push.
 // It stays serial (no t.Parallel): failOnGitHubClient swaps the package-level NewGitHubClient, which is process-global state.
 func TestPublishVerify_FailureRecord(t *testing.T) {
@@ -427,14 +427,13 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 				}
 				return
 			}
+			// The failing verify is the last call, since Publish stops at it.
+			failingLog := filepath.Join(fx.gate.paths.Dir, fmt.Sprintf("verify-%d.log", fx.gate.fake.verifyCalls))
 			want := verifytree.PublishFailure{
-				Kind: tt.wantKind, Tests: wantTests, LogPath: fx.gate.paths.PublishFailureLog, Head: "merged-head", MergeCommit: tt.wantMerge,
+				Kind: tt.wantKind, Tests: wantTests, LogPath: failingLog, Head: "merged-head", MergeCommit: tt.wantMerge,
 			}
 			if !ok || !reflect.DeepEqual(got, want) {
 				t.Fatalf("record = %+v, %v; want %+v", got, ok, want)
-			}
-			if copied, err := os.ReadFile(got.LogPath); err != nil || string(copied) != "verify output" {
-				t.Errorf("log copy = %q, %v; want the verify log", copied, err)
 			}
 		})
 	}
@@ -442,10 +441,7 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 	t.Run("passing publish removes a present record", func(t *testing.T) {
 		fx := newPublishVerifyFixture(t, planCommand, false)
 		fx.p.gate.recorder = &failureRecorder{}
-		if err := os.MkdirAll(filepath.Dir(fx.gate.paths.Log), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(fx.gate.paths.Log, []byte("earlier output"), 0o644); err != nil {
+		if err := os.MkdirAll(fx.gate.paths.Dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
 		if err := verifytree.WritePublishFailure(fx.gate.paths, verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify}); err != nil {
@@ -457,9 +453,6 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 		}
 		if _, ok, _ := verifytree.ReadPublishFailure(fx.gate.paths); ok {
 			t.Error("record still present after a passing Publish")
-		}
-		if _, err := os.Stat(fx.gate.paths.PublishFailureLog); !os.IsNotExist(err) {
-			t.Errorf("log copy still present after a passing Publish: %v", err)
 		}
 	})
 }
