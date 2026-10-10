@@ -103,11 +103,17 @@ func TestWebsterGeometry(t *testing.T) {
 				t.Errorf("WebsterGeometry(l).GateSlots.Dir = %q; want %q", got.GateSlots.Dir, want)
 			}
 			gateConfig := configengine.ConfigFile(boardDir, "gate")
-			if _, err := got.GateSlots.Limits(); err == nil || !strings.Contains(err.Error(), gateConfig) {
-				t.Errorf("GateSlots.Limits() before gate.yaml exists = %v; want an error naming %q", err, gateConfig)
+			if _, err := got.GateSlots.Limits(); err == nil || !strings.Contains(err.Error(), gateConfig) || !strings.Contains(err.Error(), `run "lyx fabric reconcile"`) {
+				t.Errorf("GateSlots.Limits() before gate.yaml exists = %v; want an error naming %q and lyx fabric reconcile", err, gateConfig)
 			}
 			if err := os.MkdirAll(filepath.Dir(gateConfig), 0o755); err != nil {
 				t.Fatal(err)
+			}
+			if err := os.WriteFile(gateConfig, []byte("slots: 0\ngo_parallel: 5\ncli_wait_sec: 7\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := got.GateSlots.Limits(); err == nil || !strings.Contains(err.Error(), gateConfig) || !strings.Contains(err.Error(), `fix it with "lyx config gate" from the prime`) {
+				t.Errorf("GateSlots.Limits() over slots: 0 = %v; want an error naming %q and lyx config gate", err, gateConfig)
 			}
 			if err := os.WriteFile(gateConfig, []byte("slots: 3\ngo_parallel: 5\ncli_wait_sec: 7\n"), 0o644); err != nil {
 				t.Fatal(err)

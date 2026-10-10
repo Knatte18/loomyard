@@ -5,13 +5,13 @@
 package websterengine
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
@@ -55,6 +55,14 @@ func TestRerunCardVerifies_Slotted(t *testing.T) {
 	t.Parallel()
 
 	const requireCap = `case "$GOFLAGS" in *-p=6*) true;; *) exit 9;; esac`
+	unusableBoard := t.TempDir()
+	unusableConfig := configengine.ConfigFile(unusableBoard, "gate")
+	if err := os.MkdirAll(filepath.Dir(unusableConfig), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(unusableConfig, []byte("slots: 0\ngo_parallel: 6\ncli_wait_sec: 300\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	tests := []struct {
 		name        string
 		limits      func() (gateslot.Limits, error)
@@ -65,9 +73,12 @@ func TestRerunCardVerifies_Slotted(t *testing.T) {
 			limits: func() (gateslot.Limits, error) { return gateslot.Limits{Slots: 1, GoParallel: 6}, nil },
 		},
 		{
-			name:        "a failed acquire is a failing card line",
-			limits:      func() (gateslot.Limits, error) { return gateslot.Limits{}, errors.New("gate.yaml unreadable") },
-			wantFailure: "card 07-slotted verify " + requireCap + " could not acquire a gate slot: read gate limits: gate.yaml unreadable",
+			name: "an unusable gate.yaml is a failing card line naming its way forward",
+			limits: func() (gateslot.Limits, error) {
+				cfg, err := gateslot.LoadConfig(unusableBoard)
+				return cfg.Limits(), err
+			},
+			wantFailure: "card 07-slotted verify " + requireCap + ` could not acquire a gate slot: read gate limits: gate config key "slots": 0; want at least 1; fix it with "lyx config gate" from the prime`,
 		},
 	}
 	for _, tc := range tests {

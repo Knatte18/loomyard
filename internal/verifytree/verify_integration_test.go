@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
@@ -295,6 +296,7 @@ func TestVerify_Scenario(t *testing.T) {
 }
 
 // TestVerify_SlotGate covers a slotted Verify over a one-slot pool the test holds: the marker reads as waiting while the slot is held, a timeout shorter than the wait does not fire during it, the command runs once the slot is released, and it sees the slot's `-p` cap appended to an existing GOFLAGS plus the inheritance variable.
+// A pool over an unusable gate.yaml then fails the acquire: Verify returns an error naming the way forward, runs nothing and leaves no marker.
 // It sets GOFLAGS in the process environment, so it is not parallel.
 func TestVerify_SlotGate(t *testing.T) {
 	t.Setenv("GOFLAGS", "-count=1")
@@ -375,5 +377,32 @@ func TestVerify_SlotGate(t *testing.T) {
 	want := "-count=1 -p=7\n" + filepath.Join(pool.Dir, "slot-1.lock") + "\n"
 	if string(data) != want {
 		t.Errorf("command saw GOFLAGS and slot variable %q; want %q", data, want)
+	}
+
+	unusableBoard := t.TempDir()
+	unusableConfig := configengine.ConfigFile(unusableBoard, "gate")
+	if err := os.MkdirAll(filepath.Dir(unusableConfig), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(unusableConfig, []byte("slots: 0\ngo_parallel: 7\ncli_wait_sec: 300\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	unusable := &gateslot.Pool{
+		Dir: filepath.Join(t.TempDir(), "gate"),
+		Limits: func() (gateslot.Limits, error) {
+			cfg, err := gateslot.LoadConfig(unusableBoard)
+			return cfg.Limits(), err
+		},
+	}
+	ranMarker := filepath.Join(t.TempDir(), "ran")
+	_, err = Verify(context.Background(), p, Site{Label: "webster verify"}, "touch "+ranMarker, timeout, unusable)
+	if err == nil || !strings.Contains(err.Error(), `fix it with "lyx config gate" from the prime`) {
+		t.Errorf("Verify over an unusable gate.yaml = %v; want an error naming lyx config gate", err)
+	}
+	if fileExists(ranMarker) {
+		t.Error("the command ran without a gate slot")
+	}
+	if fileExists(p.Marker) {
+		t.Error("the marker survived the failed acquire")
 	}
 }
