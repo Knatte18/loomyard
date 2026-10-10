@@ -25,16 +25,15 @@ import (
 )
 
 // TestWatchState pins the watcher's pure timing contracts against a synthetic clock, each a named step below:
-// the default timing, the per-mode ticker cadence, the poll wake's per-outcome rule, and watchState's debounce, coalescing and per-event retry-cap behaviour.
+// the default timing, the poll wake's per-outcome rule, and watchState's debounce, coalescing and per-event retry-cap behaviour.
 //
-//testtiming:keep pins the watcher's pure contracts on a synthetic clock: default timing, per-mode ticker cadence, debounce and coalescing of signals, one follow-up for signals during an apply, the escalating retry cap with per-streak reset, deferral costing no budget and a fresh signal re-arming an exhausted streak; its covering tests run this code without asserting it
+//testtiming:keep pins the watcher's pure contracts on a synthetic clock: default timing, the poll wake's per-outcome rule, debounce and coalescing of signals, one follow-up for signals during an apply, the escalating retry cap with per-streak reset, deferral costing no budget and a fresh signal re-arming an exhausted streak; its covering tests run this code without asserting it
 func TestWatchState(t *testing.T) {
 	steps := []struct {
 		name string
 		run  func(t *testing.T)
 	}{
 		{"DefaultTimingMatchesTheSixConstants", watchDefaultTimingMatchesTheSixConstants},
-		{"TickerPeriodForAnswersPerModeCadence", tickerPeriodForAnswersPerModeCadence},
 		{"PollWakeChangedPerOutcome", watchPollWakeChangedPerOutcome},
 		{"SingleSignalWaitsThenApplies", watchStateSingleSignalWaitsThenApplies},
 		{"CoalescesABurstIntoOneApply", watchStateCoalescesABurstIntoOneApply},
@@ -97,29 +96,6 @@ func watchPollWakeChangedPerOutcome(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := pollWakeChanged(tt.res, tt.err, last); got != tt.want {
 				t.Errorf("pollWakeChanged(%+v, %v, %+v) = %v, want %v", tt.res, tt.err, last, got, tt.want)
-			}
-		})
-	}
-}
-
-// tickerPeriodForAnswersPerModeCadence pins tickerPeriodFor's cadence-per-mode contract
-// directly: while dormant the loop refuses before any tmux round trip, so the recording hook
-// observes nothing and cannot measure the interval, which is why this is pinned as a pure
-// function test rather than through a driver-test timing measurement.
-func tickerPeriodForAnswersPerModeCadence(t *testing.T) {
-	timing := watchdogTestTiming()
-	tests := []struct {
-		name string
-		mode watchMode
-		want time.Duration
-	}{
-		{"Dormant", watchModeDormant, timing.Dormant},
-		{"Poll", watchModePoll, timing.PollCycle},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tickerPeriodFor(tt.mode, timing); got != tt.want {
-				t.Errorf("tickerPeriodFor(%v, timing) = %v, want %v", tt.mode, got, tt.want)
 			}
 		})
 	}

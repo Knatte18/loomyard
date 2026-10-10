@@ -196,15 +196,6 @@ func (e *Engine) Watch(ctx context.Context) error {
 	return e.watchLoop(ctx, watchDefaultTiming(), OpenFileWatch)
 }
 
-// tickerPeriodFor returns the ticker period the loop should run at while in a ticking mode.
-// Signal mode runs no ticker.
-func tickerPeriodFor(mode watchMode, t watchTiming) time.Duration {
-	if mode == watchModeDormant {
-		return t.Dormant
-	}
-	return t.PollCycle
-}
-
 // pollWakeChanged reports whether one poll tick observed a change, which returns the next wait to the base.
 // It is judged before handleWatchOutcome moves lastApplied.
 // A deferral counts as a change because another op is changing the session.
