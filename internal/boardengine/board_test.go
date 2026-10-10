@@ -614,3 +614,47 @@ func TestFilterLabelValidation(t *testing.T) {
 		}
 	})
 }
+
+// TestSetRunStatus pins SetRunStatus's skip: an entry with no status is set, a done entry and an absent slug are left alone.
+func TestSetRunStatus(t *testing.T) {
+	t.Parallel()
+
+	rows := []struct {
+		name   string
+		seed   map[string]any
+		slug   string
+		want   *string
+		absent bool
+	}{
+		{name: "entry with no status is set", seed: map[string]any{"slug": "x", "labels": bugLabels}, slug: "x", want: strPtr("running · Webster")},
+		{name: "done entry is left done", seed: map[string]any{"slug": "x", "labels": bugLabels, "status": "done"}, slug: "x", want: strPtr("done")},
+		{name: "absent slug creates nothing", seed: map[string]any{"slug": "x", "labels": bugLabels}, slug: "ghost", absent: true},
+	}
+	for _, tc := range rows {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			b := boardengine.New(boardengine.Config{Path: t.TempDir(), Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
+			if _, err := b.UpsertTask(tc.seed); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+
+			if err := b.SetRunStatus(tc.slug, "running · Webster"); err != nil {
+				t.Fatalf("SetRunStatus = %v; want nil", err)
+			}
+
+			task, found, err := b.GetTask(tc.slug)
+			if err != nil {
+				t.Fatalf("GetTask: %v", err)
+			}
+			if tc.absent {
+				if found {
+					t.Fatalf("entry %q was created", tc.slug)
+				}
+				return
+			}
+			if !found || task.Status == nil || *task.Status != *tc.want {
+				t.Errorf("status = %v, want %q", task.Status, *tc.want)
+			}
+		})
+	}
+}
