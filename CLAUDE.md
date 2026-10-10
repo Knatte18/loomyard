@@ -28,7 +28,8 @@ Put durable notes in this file, `_lyx/raddle/` or code comments.
 ## Worktrees
 
 - Push to `main` only from the worktree checked out on `main`; never from a task pair (`<hub>/<slug>`).
-- Push to `main` only after `go test ./...` and `go test -tags integration ./...` are green, the same tiers the verify gates run; code under `tools/` follows PATTERN and its scans like everything else.
+- Push to `main` only after `lyx gate test ./...` and `lyx gate test --tags integration ./...` are green, each run as its own background Bash call, the same tiers the verify gates run; code under `tools/` follows PATTERN and its scans like everything else.
+  A commit that changes only text no build or test reads, such as `docs/` and this file, is pushed without the test run.
 - Work only in your own worktree: never edit, commit or push in another, and never create one, unless the user says so for that case.
   If work belongs elsewhere, say so and ask.
 
