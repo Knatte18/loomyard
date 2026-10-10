@@ -241,6 +241,7 @@ func scripted[T any](entries []T, i int) T {
 // SeatRunner is a fake seat runner: Results[i] and Errs[i] answer the (i+1)th Run, and once either slice is exhausted its last entry repeats.
 // Probe and Resume answer their own scripted slices the same way, and an unscripted Probe answers a table with no seat live.
 // RunFn, ProbeFn and ResumeFn, when set, replace the scripted answer of their verb.
+// Run and Resume follow the "every test fake evaluates the gate once" contract: a done chair whose answered result carries no GateOutcome has the table's gate evaluated once and the outcome stamped onto it.
 type SeatRunner struct {
 	mu sync.Mutex
 
@@ -267,6 +268,27 @@ type SeatRunner struct {
 	GotProbeTables  []seatengine.Table
 	GotResumeTables []seatengine.Table
 	GotLive         []seatengine.LiveTable
+
+	// GateAttempts is stamped onto the GateOutcome a gated Run or Resume builds, and GateReason onto it as Reason when the gate did not pass.
+	GateAttempts int
+	GateReason   string
+}
+
+// stampGate evaluates table's gate once for a done chair whose result carries no GateOutcome, stamping the outcome onto result.Chair.
+// A non-empty err, an empty gate, a chair that is not done and a result already carrying a GateOutcome are returned unchanged; a closure's error is returned with result.
+func (f *SeatRunner) stampGate(table seatengine.Table, result seatengine.Result, err error) (seatengine.Result, error) {
+	if err != nil || len(table.Gate) == 0 || result.Chair.Outcome != shuttleengine.OutcomeDone || result.Chair.Gate != nil {
+		return result, err
+	}
+	passed, gerr := evalGateList(table.Gate)
+	if gerr != nil {
+		return result, gerr
+	}
+	result.Chair.Gate = &shuttleengine.GateOutcome{Passed: passed, Attempts: f.GateAttempts}
+	if !passed {
+		result.Chair.Gate.Reason = f.GateReason
+	}
+	return result, nil
 }
 
 // Run records table, then answers RunFn, else the scripted entry for this invocation.
@@ -277,9 +299,10 @@ func (f *SeatRunner) Run(table seatengine.Table) (seatengine.Result, error) {
 	f.GotTables = append(f.GotTables, table)
 	f.mu.Unlock()
 	if f.RunFn != nil {
-		return f.RunFn(table)
+		result, err := f.RunFn(table)
+		return f.stampGate(table, result, err)
 	}
-	return scripted(f.Results, i), scripted(f.Errs, i)
+	return f.stampGate(table, scripted(f.Results, i), scripted(f.Errs, i))
 }
 
 // Probe counts the call, records table, then answers ProbeFn, else the scripted LiveTable and error for this invocation.
@@ -304,9 +327,10 @@ func (f *SeatRunner) Resume(table seatengine.Table, live seatengine.LiveTable) (
 	f.GotLive = append(f.GotLive, live)
 	f.mu.Unlock()
 	if f.ResumeFn != nil {
-		return f.ResumeFn(table, live)
+		result, err := f.ResumeFn(table, live)
+		return f.stampGate(table, result, err)
 	}
-	return scripted(f.ResumeResults, i), scripted(f.ResumeErrs, i)
+	return f.stampGate(table, scripted(f.ResumeResults, i), scripted(f.ResumeErrs, i))
 }
 
 // MergeShuttle is a Run-only fake shuttle: Results[i] and Errs[i] answer the (i+1)th call, and a call past the scripted entries answers a zero Result and a nil error, so an unscripted MergeShuttle is a no-op.

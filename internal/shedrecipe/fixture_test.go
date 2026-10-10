@@ -12,6 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planindex"
+	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -29,7 +31,7 @@ var fakeWebsterRun shedadapters.WebsterRunner = func(websterengine.RunDeps, webs
 type placeholderIndex struct{ planindex.Index }
 
 // newTestEnv builds an Env whose every path field is an absolute path derived from a single t.TempDir(), one subdirectory per field: a directory field (Cwd, WorktreeRoot, StencilsDir, SpecsDir, RunRoot, AnchorPath, ScratchDir) is created with os.MkdirAll, while a file field (StatusPath, StatusLockPath, DecisionRecordPath, SupportLogPath, PrimeLock.Path) is left as a joined path nobody creates.
-// It fills Shuttle and Burler with shedfake's fakes and WebsterRun with this file's fake, fills WebsterDeps with shedfake.WebsterSeams, fills DiscussionSpec with a closure returning a shuttleengine.Spec over one absolute output path under the same temp root, fills CommitDiscussion with a closure returning nil, fills PlanSpec with a closure returning a shuttleengine.Spec over one absolute output path under the same temp root, fills CommitPlan with a closure returning nil, leaves Landing zero, and leaves Now nil.
+// It fills Shuttle and Burler with shedfake's fakes and WebsterRun with this file's fake, fills WebsterDeps with shedfake.WebsterSeams, fills DiscussionSpec with a closure returning a shuttleengine.Spec over one absolute output path under the same temp root, fills DiscussionTable with a closure returning a one-chair seatengine.Table over one absolute output path under the same temp root, fills CommitDiscussion with a closure returning nil, fills PlanSpec with a closure returning a shuttleengine.Spec over one absolute output path under the same temp root, fills CommitPlan with a closure returning nil, leaves Landing zero, and leaves Now nil.
 //
 // It also fills the six batten fields: a non-empty Slug, CreateWorktree returning nil, InnerRun
 // and Teardown whose own closures return nil or zero values, and a PrimeLock whose Path sits under
@@ -78,6 +80,17 @@ func newTestEnv(t *testing.T) Env {
 				Prompt:      "test discussion prompt",
 				OutputFiles: []string{filepath.Join(dir, "discussion-output.md")},
 				Interactive: false,
+			}, nil
+		},
+		DiscussionTable: func() (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "discussion",
+				Segment:    segmentcolor.Discussion,
+				Seats: []seatengine.Seat{{
+					Name:    seatengine.RoleChair,
+					Stencil: "loom-template-discussion-chair",
+					Outputs: []string{filepath.Join(dir, "discussion-output.md")},
+				}},
 			}, nil
 		},
 		CommitDiscussion: func() error { return nil },

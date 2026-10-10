@@ -94,8 +94,7 @@ func windowPollCap(window, minInterval time.Duration) int {
 // awaitIdleSession returns nil once the strand's session is idle in fact, and fails with an error wrapping ErrSessionBusy when it stays busy past the send-ready window, sc's deadline or the window's poll count.
 // An engine without the SessionCycler idle reading keeps requireReadyAgentPane alone, with no wait.
 // Otherwise every poll takes the session's readiness reading, which is built on the hook-derived session state;
-// when that state is unknown the poll falls back to the pane, which must classify ready and idle,
-// and for an engine that parses session signals no turn start may be left unmatched by a later turn end, unless the pane has read idle for turnStartIdleOverride or the engine reports that turn interrupted.
+// when that state is unknown the poll falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end, unless the pane has read idle for turnStartIdleOverride or the engine reports that turn interrupted.
 func awaitIdleSession(sc sendContext) error {
 	cycler, ok := sc.engine.(SessionCycler)
 	if !ok {

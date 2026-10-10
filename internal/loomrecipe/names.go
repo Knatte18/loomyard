@@ -11,8 +11,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 )
 
-// RecipeEngines parses recipes.LoomRecipe, collects each row's engine name, de-duplicates, and
-// returns the result sorted. It exists as the input to the cross-consumer coverage guard, which
+// discussionSeatsEngine is the engine New gives the Discussion-Write row when env.DiscussionSeats is true.
+const discussionSeatsEngine = "DiscussionSeats"
+
+// RecipeEngines parses recipes.LoomRecipe, collects each row's engine name, adds discussionSeatsEngine, de-duplicates, and returns the result sorted.
+// discussionSeatsEngine joins the set because New substitutes it for the Discussion-Write row's engine, so a loom row can reach it.
+// It exists as the input to the cross-consumer coverage guard, which
 // unions every recipe consumer's engine set -- deriving the set from the recipe rather than
 // writing it down is what keeps that union honest without a second hand-maintained table alongside
 // the one row table in shape_test.go.
@@ -26,8 +30,8 @@ func RecipeEngines() []string {
 		panic(fmt.Sprintf("loomrecipe: RecipeEngines: %v", err))
 	}
 
-	seen := make(map[string]bool, len(recipe.Producers))
-	engines := make([]string, 0, len(recipe.Producers))
+	seen := map[string]bool{discussionSeatsEngine: true}
+	engines := []string{discussionSeatsEngine}
 	for _, row := range recipe.Producers {
 		if seen[row.Engine] {
 			continue

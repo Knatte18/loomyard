@@ -39,6 +39,7 @@ func minimalEntries() map[string]minimalEntry {
 		"LoomPreflight":   {newTestEnv, emptyConfig},
 		"Batchifier":      {newTestEnv, emptyConfig},
 		"DiscussionWrite": {newTestEnv, emptyConfig},
+		"DiscussionSeats": {newTestEnv, emptyConfig},
 		"Describe": {
 			env: newDescribeTestEnv,
 			cfg: func(*testing.T, Env) Config { return gatesCfg("description", 3) },

@@ -9,6 +9,9 @@
 // set it on every row of those segments.
 // PR-Gate keeps the recipe's own max_bounces.
 //
+// The second value New takes from the env is the Discussion-Write producer: when shedrecipe.Env.DiscussionSeats is true, New runs that row on the DiscussionSeats engine instead of the recipe's DiscussionWrite.
+// The row keeps its name, gates and routing, and Routing never reads the choice.
+//
 // This package sits above internal/loomshed rather than inside it because internal/shedrecipe's
 // registry already imports loomshed for six of its constructors -- a loomshed -> shedbuild ->
 // shedrecipe -> loomshed production import cycle would not compile.

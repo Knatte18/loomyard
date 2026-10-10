@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
@@ -199,6 +200,35 @@ func newLoomShuttle(planDir string, writeOutputs bool) *shedfake.Shuttle {
 	return &shedfake.Shuttle{
 		RunFn: func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
 			return runLoomShuttle(planDir, writeOutputs, spec)
+		},
+	}
+}
+
+// newLoomSeats returns the shedfake.SeatRunner serving the Discussion-Write row when it runs on the seat engine.
+// Its RunFn writes the chair's outputs with the fixture's valid discussion content when writeOutputs is true and reports a done chair carrying no GateOutcome, so the fake evaluates the table's own gate once.
+func newLoomSeats(writeOutputs bool) *shedfake.SeatRunner {
+	return &shedfake.SeatRunner{
+		RunFn: func(table seatengine.Table) (seatengine.Result, error) {
+			outputs := table.Chair().Outputs
+			if writeOutputs {
+				contents := []string{validDecisionRecord, "support log"}
+				for i, path := range outputs {
+					if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+						return seatengine.Result{}, fmt.Errorf("loom seats: mkdir %s: %w", filepath.Dir(path), err)
+					}
+					content := ""
+					if i < len(contents) {
+						content = contents[i]
+					}
+					if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+						return seatengine.Result{}, fmt.Errorf("loom seats: write %s: %w", path, err)
+					}
+				}
+			}
+			return seatengine.Result{
+				Chair:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+				ChairOutputs: outputs,
+			}, nil
 		},
 	}
 }

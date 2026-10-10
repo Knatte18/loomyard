@@ -2,10 +2,13 @@ package loomrecipe
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -179,5 +182,82 @@ func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	}
 	if !plan.Approved {
 		t.Errorf("ParsePlan().Approved = false; want true after a clean run")
+	}
+}
+
+// TestNew_DiscussionSeatsRunsTheWriterRowOnSeats runs the whole sequence with the Discussion-Write row on the seat engine and asserts the row still ends Done, runs its own gates on the chair and spawns no single-agent discussion session.
+// With the choice off it asserts only that the seat runner saw no table; the default build's shape and its discussion shuttle role are pinned by the sequence tests above.
+func TestNew_DiscussionSeatsRunsTheWriterRowOnSeats(t *testing.T) {
+	tests := []struct {
+		name  string
+		seats bool
+	}{
+		{"SeatsChosen", true},
+		{"SingleChosen", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, env, paths := buildSequenceFixture(t)
+
+			commitDiscussionCalls := 0
+			env.CommitDiscussion = func() error {
+				commitDiscussionCalls++
+				return nil
+			}
+			seatFake := newLoomSeats(true)
+			env.Seats = seatFake
+			env.DiscussionSeats = tt.seats
+			env.DiscussionTable = func() (seatengine.Table, error) {
+				return seatengine.Table{
+					RolePrefix: "discussion",
+					Segment:    segmentcolor.Discussion,
+					Seats:      []seatengine.Seat{{Name: seatengine.RoleChair, Stencil: "loom-template-discussion-chair", Outputs: []string{env.DecisionRecordPath, env.SupportLogPath}}},
+				}, nil
+			}
+
+			shed, err := New(env, paths)
+			if err != nil {
+				t.Fatalf("New() error = %v; want nil", err)
+			}
+			shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+			result, err := shed.Run(context.Background())
+			if err != nil {
+				t.Fatalf("Run() error = %v; want nil", err)
+			}
+
+			if !tt.seats {
+				if len(seatFake.GotTables) != 0 {
+					t.Errorf("seat runner saw %d tables; want none while the single-agent producer is chosen", len(seatFake.GotTables))
+				}
+				return
+			}
+
+			var writeOutcome shedengine.Outcome
+			for _, entry := range result.History {
+				if entry.Producer == loomshed.NameDiscussionWrite {
+					writeOutcome = entry.Outcome
+					break
+				}
+			}
+			if writeOutcome != shedengine.Done {
+				t.Fatalf("Discussion-Write history outcome = %q; want %q (History: %+v)", writeOutcome, shedengine.Done, result.History)
+			}
+			if len(seatFake.GotTables) != 1 {
+				t.Fatalf("seat runner saw %d tables; want exactly 1", len(seatFake.GotTables))
+			}
+			var gateNames []string
+			for _, entry := range seatFake.GotTables[0].Gate {
+				gateNames = append(gateNames, entry.Name)
+			}
+			if want := []string{"discussion", "parent-review"}; !reflect.DeepEqual(gateNames, want) {
+				t.Errorf("table gate = %v; want the row's gates %v", gateNames, want)
+			}
+			if spawns := countRole(env.Shuttle.(*shedfake.Shuttle), "discussion"); spawns != 0 {
+				t.Errorf("loom shuttle ran %d discussion sessions; want none on the seat engine", spawns)
+			}
+			if commitDiscussionCalls != 2 {
+				t.Errorf("CommitDiscussion calls = %d; want 2 (Discussion-Write's commit plus Discussion-Bouncer's approval commit)", commitDiscussionCalls)
+			}
+		})
 	}
 }

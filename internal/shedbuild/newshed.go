@@ -65,7 +65,14 @@ func NewShed(recipe []byte, env shedrecipe.Env, paths ShedPaths) (*shedengine.Sh
 		return nil, err
 	}
 
-	producers, err := Build(parsed, env)
+	return NewShedFrom(parsed, env, paths)
+}
+
+// NewShedFrom builds an already-parsed recipe against env and returns a *shedengine.Shed carrying the built []shedengine.ProducerDef plus paths' five fields.
+// It lets a caller change the parsed recipe before it is built, which NewShed's bytes argument does not allow.
+// It returns the build error unwrapped and never calls Check, for the reasons NewShed does.
+func NewShedFrom(recipe Recipe, env shedrecipe.Env, paths ShedPaths) (*shedengine.Shed, error) {
+	producers, err := Build(recipe, env)
 	if err != nil {
 		return nil, err
 	}

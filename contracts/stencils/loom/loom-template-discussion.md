@@ -4,6 +4,7 @@
      and is read from there at call time by composePrompt (internal/loomengine/prompt.go) via internal/stencil.
      loomengine.DiscussionSpec wraps the filled result into a shuttleengine.Spec,
      which shedadapters.SingleLLMProducer drives through the shuttle seam as recipe row 3.
+     The loom-template-discussion-chair stencil includes this one whole, and internal/seatengine fills it through stencil.FillWith as its second filler, from the chair's value map.
      Every marker below is a top-level {{.X}} substitution;
      stencil.FillOptional requires the four original markers non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive (PATTERN for pattern_directive, Tier 2 for friction_directive).
      parent_directive is a third optional marker, rendered by internal/parentdirective.

@@ -26,6 +26,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -517,6 +519,117 @@ func TestWire_DiscussionSpecEvaluatesToExpectedShape(t *testing.T) {
 			}
 			if strings.Contains(spec.Prompt, "{{") {
 				t.Errorf("spec.Prompt contains an unrendered {{ marker: %q", spec.Prompt)
+			}
+		})
+	}
+}
+
+// TestWire_DiscussionTableEvaluatesToExpectedShape evaluates c.env.DiscussionTable() for both discussion_interactive values and asserts the table's settings, the chair's seat, one advisor per configured entry, and a chair prompt over the wired geometry that names the parent and carries no unrendered marker.
+func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                  string
+		discussionInteractive bool
+	}{
+		{"Autonomous", false},
+		{"Interactive", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := hubLocation(t, "pair", ".")
+			if tt.discussionInteractive {
+				seedLoomConfigWithInteractive(t, loc.AnchorPath(), true)
+			}
+
+			c := &loomCLI{runID: shedrun.SelfRunID}
+			if err := c.wire(loc, loc.AnchorPath()); err != nil {
+				t.Fatalf("wire() = %v; want nil", err)
+			}
+
+			table, err := c.env.DiscussionTable()
+			if err != nil {
+				t.Fatalf("c.env.DiscussionTable() = %v; want nil", err)
+			}
+
+			if table.Interactive != tt.discussionInteractive {
+				t.Errorf("table.Interactive = %v; want %v", table.Interactive, tt.discussionInteractive)
+			}
+			if table.RolePrefix != "discussion" {
+				t.Errorf("table.RolePrefix = %q; want %q", table.RolePrefix, "discussion")
+			}
+			if table.Segment != segmentcolor.Discussion {
+				t.Errorf("table.Segment = %q; want %q", table.Segment, segmentcolor.Discussion)
+			}
+			wantTimeout := time.Duration(c.cfg.DiscussionTimeoutMin) * time.Minute
+			if table.Timeout != wantTimeout {
+				t.Errorf("table.Timeout = %s; want %s", table.Timeout, wantTimeout)
+			}
+
+			chair := table.Chair()
+			if want := []string{"scribe:prose", "scribe:conversation"}; !reflect.DeepEqual(chair.Skills, want) {
+				t.Errorf("chair.Skills = %v; want %v", chair.Skills, want)
+			}
+			wantOutputs := []string{loomengine.DiscussionDecisionRecord(loc), loomengine.DiscussionSupportLog(loc)}
+			if !reflect.DeepEqual(chair.Outputs, wantOutputs) {
+				t.Errorf("chair.Outputs = %v; want %v", chair.Outputs, wantOutputs)
+			}
+			if chair.Model == "" {
+				t.Error("chair.Model = \"\"; want non-empty")
+			}
+			if wantSeats := 1 + len(c.cfg.DiscussionAdvisors); len(table.Seats) != wantSeats {
+				t.Errorf("table has %d seats; want %d, the chair and one advisor per configured entry", len(table.Seats), wantSeats)
+			}
+
+			// The fixture hub records no shortname, so the wired parent is empty; the geometry tells a parent and shortname instead.
+			const parentName = "hub:orch"
+			prompts, err := seatengine.Prompts(seatengine.Geometry{
+				WorktreeRoot: loc.WorktreePath(),
+				AnchorPath:   loc.AnchorPath(),
+				StencilsDir:  fabricengine.StencilsDir(loc.HubPath),
+				ParentName:   parentName,
+				Shortname:    "hub",
+				Slug:         "pair",
+			}, table)
+			if err != nil {
+				t.Fatalf("seatengine.Prompts() = %v; want nil", err)
+			}
+			chairPrompt := prompts[seatengine.RoleChair]
+			if !strings.Contains(chairPrompt, "## Your parent") || !strings.Contains(chairPrompt, parentName) {
+				t.Errorf("chair prompt does not name the parent %q under its parent directive", parentName)
+			}
+			if strings.Contains(chairPrompt, "{{") {
+				t.Errorf("chair prompt contains an unrendered {{ marker: %q", chairPrompt)
+			}
+		})
+	}
+
+	// discussion_producer selects which producer the Discussion-Write row runs; the table closure is wired either way.
+	producerTests := []struct {
+		name      string
+		seed      bool
+		wantSeats bool
+	}{
+		{"TemplateKeepsTheSingleAgentProducer", false, false},
+		{"SeatsKeySelectsTheSeatProducer", true, true},
+	}
+	for _, tt := range producerTests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := hubLocation(t, "pair", ".")
+			if tt.seed {
+				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"discussion_producer": loomengine.DiscussionProducerSeats})
+			}
+
+			c := &loomCLI{runID: shedrun.SelfRunID}
+			if err := c.wire(loc, loc.AnchorPath()); err != nil {
+				t.Fatalf("wire() = %v; want nil", err)
+			}
+
+			if c.env.DiscussionSeats != tt.wantSeats {
+				t.Errorf("c.env.DiscussionSeats = %v; want %v", c.env.DiscussionSeats, tt.wantSeats)
 			}
 		})
 	}

@@ -83,6 +83,19 @@ func TestTable_Validate(t *testing.T) {
 		{name: "a seat value naming a reserved marker", mutate: func(tb *Table) { tb.Seats[1].Values = map[string]string{"seat_name": "x"} }, wantErr: `seat "advisor-1": value "seat_name" collides with a reserved marker`},
 		{name: "a whitespace-only table value", mutate: func(tb *Table) { tb.Values = map[string]string{"topic": " \n"} }, wantErr: `table: value "topic" is empty`},
 		{name: "an empty seat value", mutate: func(tb *Table) { tb.Seats[0].Values = map[string]string{"topic": ""} }, wantErr: `seat "chair": value "topic" is empty`},
+		{name: "a blank table value named optional", mutate: func(tb *Table) {
+			tb.Values = map[string]string{"topic": " "}
+			tb.Optional = []string{"topic"}
+		}},
+		{name: "a blank table value beside an optional name", mutate: func(tb *Table) {
+			tb.Values = map[string]string{"topic": "", "focus": "x"}
+			tb.Optional = []string{"focus"}
+		}, wantErr: `table: value "topic" is empty`},
+		{name: "an optional name naming a reserved marker", mutate: func(tb *Table) { tb.Optional = []string{"inputs"} }, wantErr: `table: optional value "inputs" collides with a reserved marker`},
+		{name: "a blank seat value whose name is optional", mutate: func(tb *Table) {
+			tb.Seats[0].Values = map[string]string{"topic": ""}
+			tb.Optional = []string{"topic"}
+		}, wantErr: `seat "chair": value "topic" is empty`},
 		{name: "unreserved non-blank values", mutate: func(tb *Table) {
 			tb.Values = map[string]string{"topic": "x"}
 			tb.Seats[0].Values = map[string]string{"focus": "y"}

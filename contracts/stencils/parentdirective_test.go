@@ -17,7 +17,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// openingStencilViolations returns one description per mapped stencil that is not registered or whose body lacks marker.
+// carriesMarker reports whether body holds marker itself or through a registered stencil it includes.
+func carriesMarker(body string, bodies map[string]string, marker string) bool {
+	if strings.Contains(body, marker) {
+		return true
+	}
+	included, err := stencil.IncludeNames([]byte(body))
+	if err != nil {
+		return false
+	}
+	for _, name := range included {
+		if strings.Contains(bodies[name], marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// openingStencilViolations returns one description per mapped stencil that is not registered or whose body lacks marker, itself or through a registered stencil it includes.
 // bodies maps a registered stencil name to its agent-facing body.
 func openingStencilViolations(opening map[string][]string, bodies map[string]string, marker string) []string {
 	var violations []string
@@ -28,7 +45,7 @@ func openingStencilViolations(opening map[string][]string, bodies map[string]str
 				violations = append(violations, "role "+role+": stencil "+name+" is not registered")
 				continue
 			}
-			if !strings.Contains(body, marker) {
+			if !carriesMarker(body, bodies, marker) {
 				violations = append(violations, "role "+role+": stencil "+name+" lacks the "+marker+" marker")
 			}
 		}
@@ -174,6 +191,21 @@ func TestParentDirectiveScans_SyntheticRows(t *testing.T) {
 		got := openingStencilViolations(map[string][]string{"a": {"with"}, "b": {"without"}}, bodies, editMarker)
 		if len(got) != 1 || !strings.Contains(got[0], "without") {
 			t.Errorf("openingStencilViolations = %v; want one violation naming %q", got, "without")
+		}
+	})
+
+	t.Run("opening stencil carrying the marker only through an include", func(t *testing.T) {
+		t.Parallel()
+
+		bodies := map[string]string{
+			"outer":  "# T\n{{template \"inner\"}}\nbody",
+			"inner":  "# I\n{{.parent_directive}}\nbody",
+			"bare":   "# T\n{{template \"hollow\"}}\nbody",
+			"hollow": "# H\nbody",
+		}
+		got := openingStencilViolations(map[string][]string{"a": {"outer"}, "b": {"bare"}}, bodies, parentMarker)
+		if len(got) != 1 || !strings.Contains(got[0], "bare") {
+			t.Errorf("openingStencilViolations = %v; want one violation naming %q", got, "bare")
 		}
 	})
 

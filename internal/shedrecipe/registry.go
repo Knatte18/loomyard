@@ -27,6 +27,7 @@ var registry = map[string]Constructor{
 	"LoomPreflight":    loomPreflightEntry,
 	"Batchifier":       batchifierEntry,
 	"DiscussionWrite":  discussionWriteEntry,
+	"DiscussionSeats":  discussionSeatsEntry,
 	"Describe":         describeEntry,
 	"PlanWrite":        planWriteEntry,
 	"Stub":             stubEntry,
