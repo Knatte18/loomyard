@@ -64,6 +64,16 @@
 // The waiter looks again on a timer that starts at one second, doubles to thirty while nothing changes and returns to one second on a change.
 // A file event in the steps directory, or the exit of its own spawn, only cuts the current wait short, so a loop that dies without touching a file is still seen at the next tick.
 //
+// The loop watches each child step for activity and kills one that shows none for the idle window, Spec.Loop.IdleTimeout;
+// a zero window disarms the watch, and one below a minute is raised to a minute with one Warn.
+// Activity is a write to any of the child's trace files, listed through Spec.Loop.TraceFiles on each wake since a child opens its trace after it starts, or a newer reading of Spec.Loop.Activity, the arming module's report of the run's agent activity.
+// The watch counts the idle time from the child's start until the first activity, wakes at most once a second, doubles its wake to a minute while nothing changes and returns to a second on a change.
+// When the window passes the loop asks the child to dump its goroutines with Quit so the dump lands in its captured stderr, gives it five seconds to exit, then kills it with its descendants.
+// The stop is interrupted with cause watchdog and loop.detail naming the idle time.
+// The loop never re-steps an interrupted step itself; loop.interrupt_policy and loop.status_moved let the driver's rule decide.
+// A child that exits on its own with a non-zero status and no record keeps cause exited with the exit status.
+// The watch kills only the loop's own in-flight child and its process group or job.
+//
 // A loop that is gone without an envelope ends in the dead-loop stop.
 // It kills what is left of the loop's step tree from the pid file's child record, writes the run failed while the status file still reads running, and reports an interrupted stop with cause loop-exited and loop.status_moved from the recorded producer and history length against the status file.
 // It writes that stop as the loop's envelope under the dead loop's id, delivers it and retires the pid file.

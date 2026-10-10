@@ -122,6 +122,8 @@ type childResult struct {
 	full    map[string]any
 	path    string
 	cause   string
+	// note is a line the stop's detail carries, such as what the watchdog saw.
+	note string
 }
 
 // ok reports whether the iteration produced a success envelope.
@@ -172,6 +174,7 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 		return 1
 	}
 	logger.Info("shed: loop started", "loop_id", loopID, "pid", pid.Loop.PID)
+	idleWindow := idleWindowOf(loop)
 	obj := loopObject{FirstProducer: first.CurrentProducer}
 
 	var (
@@ -188,7 +191,7 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 		if present {
 			before = current
 			lastKnown = current.CurrentProducer
-			res = runChild(ctx, spec, argv, traceID, func(child proc.TreeRecord) {
+			res = runChild(ctx, spec, argv, traceID, idleWindow, func(child proc.TreeRecord) {
 				pid.Child, pid.CurrentProducer, pid.HistoryLength = child, current.CurrentProducer, len(current.History)
 				if err := WriteLoopPIDRecord(loop.PIDPath, pid); err != nil {
 					logger.Warn("shed: loop could not update its pid file", "loop_id", loopID, "error", err.Error())
@@ -297,7 +300,7 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 	if obj.State == string(shedengine.StateDone) || stop == LoopStopCondition || obj.State == string(shedengine.StatePaused) {
 		detailFiles = nil
 	}
-	obj.Detail = stopDetail(errText, stopReason, transient, detailFiles)
+	obj.Detail = stopDetail(errText, stopReason, transient, res.note, detailFiles)
 
 	var buf bytes.Buffer
 	var code int
@@ -337,9 +340,10 @@ func loopStartRefusal(loop LoopSpec) string {
 // runChild runs one child step under a fresh trace id and reads back what it left.
 // The child's own record, <StepsDir>/<traceID>.json, is its full envelope;
 // a child that refused before its step body ran left an error envelope on stdout instead;
-// a child that left neither is reported interrupted for the cause its exit gives.
+// a child that left neither is reported interrupted for the cause its exit gives, or for the cause watchdog when the idle watch killed it.
 // record is told the child's process tree when it starts and the zero record when it has exited.
-func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, record func(proc.TreeRecord)) childResult {
+// idleWindow is the window of the child's idle watch, and zero disarms it.
+func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, idleWindow time.Duration, record func(proc.TreeRecord)) childResult {
 	loop := spec.Loop
 	var stdout bytes.Buffer
 	stderrPath := ""
@@ -361,8 +365,14 @@ func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, re
 		return childResult{traceID: traceID, cause: "start-failed: " + err.Error()}
 	}
 	record(child.Record())
-	waitErr := child.Wait()
-	logger.Info("shed: loop child exited", "pid", child.Record().PID, "trace_id", traceID, "error", errorText(waitErr))
+	now := loop.Now
+	if now == nil {
+		now = time.Now
+	}
+	waitDone := make(chan error, 1)
+	go func() { waitDone <- child.Wait() }()
+	idled, waitErr := waitForChild(ctx, loop, child, now(), traceID, idleWindow, waitDone)
+	logger.Info("shed: loop child exited", "pid", child.Record().PID, "trace_id", traceID, "idle_kill", idled > 0, "error", errorText(waitErr))
 	record(proc.TreeRecord{})
 	appendLoopLog(loop.LogPath, stdout.Bytes())
 
@@ -377,6 +387,9 @@ func runChild(ctx context.Context, spec *Spec, argv []string, traceID string, re
 	}
 	if full, ok := stdoutErrEnvelope(stdout.Bytes()); ok {
 		return childResult{traceID: traceID, full: full}
+	}
+	if idled > 0 {
+		return childResult{traceID: traceID, cause: "watchdog", note: "watchdog: the step showed no trace write or agent activity for " + idled.Round(time.Second).String() + " and was killed"}
 	}
 	cause := "exited"
 	if waitErr != nil {

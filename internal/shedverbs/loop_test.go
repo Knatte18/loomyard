@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -608,6 +609,178 @@ func TestLoop_RefusalsBeforeAnyStep(t *testing.T) {
 			}
 			if _, present := env["loop"]; present || len(fx.requests) != 0 {
 				t.Errorf("envelope %v and %d children; want no loop object and no child, since the refusal ran no loop", env, len(fx.requests))
+			}
+		})
+	}
+}
+
+// fakeClock is a clock whose Sleep advances it at once, so a watch of minutes runs in no time.
+// onAdvance, when set, runs after each advance with the time elapsed since the clock's start.
+type fakeClock struct {
+	mu        sync.Mutex
+	start     time.Time
+	now       time.Time
+	sleeps    int
+	onAdvance func(elapsed time.Duration)
+}
+
+func newFakeClock() *fakeClock {
+	start := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	return &fakeClock{start: start, now: start}
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *fakeClock) Sleep(ctx context.Context, delay time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.now = c.now.Add(delay)
+	c.sleeps++
+	elapsed := c.now.Sub(c.start)
+	hook := c.onAdvance
+	c.mu.Unlock()
+	if hook != nil {
+		hook(elapsed)
+	}
+	return ctx.Err()
+}
+
+func (c *fakeClock) sleepCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sleeps
+}
+
+// hangingChild is a child step that never exits until it is released by Kill, by Quit when exitOnQuit is set, or by the test.
+type hangingChild struct {
+	exitOnQuit bool
+	mu         sync.Mutex
+	calls      []string
+	exit       chan struct{}
+	once       sync.Once
+}
+
+func newHangingChild(exitOnQuit bool) *hangingChild {
+	return &hangingChild{exitOnQuit: exitOnQuit, exit: make(chan struct{})}
+}
+
+func (c *hangingChild) release() { c.once.Do(func() { close(c.exit) }) }
+
+func (c *hangingChild) record(call string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.calls = append(c.calls, call)
+}
+
+func (c *hangingChild) Wait() error {
+	<-c.exit
+	return errors.New("signal: killed")
+}
+
+func (c *hangingChild) Quit() error {
+	c.record("quit")
+	if c.exitOnQuit {
+		c.release()
+	}
+	return nil
+}
+
+func (c *hangingChild) Kill() error {
+	c.record("kill")
+	c.release()
+	return nil
+}
+
+func (c *hangingChild) Record() proc.TreeRecord { return proc.TreeRecord{PID: 4242, PGID: 4242} }
+
+func (c *hangingChild) recorded() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.calls...)
+}
+
+func TestLoop_WatchdogKillsAnIdleChild(t *testing.T) {
+	const window = 10 * time.Minute
+	tests := []struct {
+		name        string
+		idleTimeout time.Duration
+		exitOnQuit  bool
+		// activity, when set, is the activity reading: it answers the clock's time until elapsed passes the window twice over, when the child finishes its step on its own.
+		activity bool
+		// quiet is a child that exits at once with a record, under a watchdog that is disarmed.
+		quiet     bool
+		wantStop  LoopStop
+		wantCalls []string
+		wantIdle  string
+	}{
+		{name: "an idle child is quit, then killed", idleTimeout: window, wantStop: LoopStopInterrupted, wantCalls: []string{"quit", "kill"}, wantIdle: "10m0s"},
+		{name: "a child that exits within the grace after quit is still reported watchdog", idleTimeout: window, exitOnQuit: true, wantStop: LoopStopInterrupted, wantCalls: []string{"quit", "kill"}, wantIdle: "10m0s"},
+		{name: "a window below the floor is raised to a minute", idleTimeout: 10 * time.Second, wantStop: LoopStopInterrupted, wantCalls: []string{"quit", "kill"}, wantIdle: "1m0s"},
+		{name: "advancing agent activity keeps the child alive past the window", idleTimeout: window, activity: true, wantStop: LoopStopHalted},
+		{name: "a zero window never kills", quiet: true, wantStop: LoopStopHalted},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newLoopFixture(t)
+			clock := newFakeClock()
+			child := newHangingChild(tt.exitOnQuit)
+			fx.spec.Loop.IdleTimeout = tt.idleTimeout
+			fx.spec.Loop.Now = clock.Now
+			fx.spec.Loop.Sleep = clock.Sleep
+			fx.spec.Loop.Runner = func(_ context.Context, req ChildRequest) (Child, error) {
+				fx.mu.Lock()
+				fx.requests = append(fx.requests, req)
+				fx.mu.Unlock()
+				if tt.quiet {
+					return fakeChild{waitErr: halting(shedengine.StateDone, "", 1)(fx, traceIDOf(req), req)}, nil
+				}
+				return child, nil
+			}
+			if tt.activity {
+				fx.spec.Loop.Activity = func() (time.Time, bool, error) { return clock.Now(), true, nil }
+				clock.onAdvance = func(elapsed time.Duration) {
+					if elapsed > 2*window {
+						_ = halting(shedengine.StateDone, "", 1)(fx, traceIDOf(fx.requests[0]), fx.requests[0])
+						child.release()
+					}
+				}
+			}
+
+			env, code := fx.execute()
+
+			loop := loopOf(t, env)
+			if loop["stop"] != string(tt.wantStop) {
+				t.Fatalf("loop stop = %v; want %s (%v)", loop["stop"], tt.wantStop, env)
+			}
+			if got := child.recorded(); !reflect.DeepEqual(got, tt.wantCalls) {
+				t.Errorf("child calls = %v; want %v", got, tt.wantCalls)
+			}
+			if tt.quiet && clock.sleepCount() != 0 {
+				t.Errorf("clock slept %d times; want none under a disarmed watchdog", clock.sleepCount())
+			}
+			if tt.wantStop != LoopStopInterrupted {
+				return
+			}
+
+			wantText := "shedverbs: step A interrupted (watchdog); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lyx shed step run-1 --until-stop"
+			_, wantStderr := fx.spec.Loop.StopFiles(fx.childIDs()[0])
+			if code != 1 || env["kind"] != KindInterrupted || env["error"] != wantText {
+				t.Errorf("exit/kind/error = %d/%v/%v; want the interrupted watchdog stop %q", code, env["kind"], env["error"], wantText)
+			}
+			if loop["interrupt_policy"] != "policy-A" || loop["stderr_path"] != wantStderr || loop["state"] != "failed" {
+				t.Errorf("loop interrupt_policy/stderr_path/state = %v/%v/%v; want policy-A/%s/failed", loop["interrupt_policy"], loop["stderr_path"], loop["state"], wantStderr)
+			}
+			if detail, _ := loop["detail"].(string); !strings.Contains(detail, "watchdog") || !strings.Contains(detail, "for "+tt.wantIdle+" ") {
+				t.Errorf("loop detail = %q; want it naming the watchdog and the idle time %s", detail, tt.wantIdle)
+			}
+			if st := fx.readStatus(); st.State != shedengine.StateFailed || st.Error != wantText {
+				t.Errorf("status state/error = %s/%q; want failed with the stop's text", st.State, st.Error)
 			}
 		})
 	}

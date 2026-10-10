@@ -126,9 +126,9 @@ func stdoutErrEnvelope(stdout []byte) (map[string]any, bool) {
 	return envelope, true
 }
 
-// stopDetail composes the detail of a stop: the step's error or reason, the transient class, then the WARN and ERROR lines of the told trace files and their last lines.
+// stopDetail composes the detail of a stop: the step's error or reason, the transient class, a note on how the stop came about, then the WARN and ERROR lines of the told trace files and their last lines.
 // The detail is capped at detailLineBudget lines and detailByteBudget bytes.
-func stopDetail(stepErr, reason, transient string, traceFiles []string) string {
+func stopDetail(stepErr, reason, transient, note string, traceFiles []string) string {
 	var lines []string
 	if stepErr != "" {
 		lines = append(lines, "error: "+stepErr)
@@ -138,6 +138,9 @@ func stopDetail(stepErr, reason, transient string, traceFiles []string) string {
 	}
 	if transient != "" {
 		lines = append(lines, "transient: "+transient)
+	}
+	if note != "" {
+		lines = append(lines, note)
 	}
 	seen := map[string]bool{}
 	for _, file := range traceFiles {
