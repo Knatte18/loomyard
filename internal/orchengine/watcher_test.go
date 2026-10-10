@@ -397,7 +397,11 @@ func TestWatcher_TooShortProbeRecordsStuckInIdlePhaseAndPassingProbeClearsIt(t *
 	}
 	e.assertNoCalls()
 
+	// A restarted watcher has no hold in memory, and the passing probe still clears the hold's reason.
+	e.w = e.newWatcher()
 	e.s.idle = true
+	e.tick()
+	e.clock.advance(11 * time.Second)
 	e.tick()
 	if st := e.state(); st.Stuck != "" {
 		t.Errorf("Stuck = %q after a passing probe, want cleared", st.Stuck)

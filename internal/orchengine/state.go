@@ -78,6 +78,7 @@ type State struct {
 	CycleCount      int    `json:"cycle_count"`       // Cycles that reached /clear, plus compactions that completed.
 	LastAbortReason string `json:"last_abort_reason"` // Why the last cycle aborted.
 	Stuck           string `json:"stuck"`             // Why the current phase is overdue and waiting on the session; empty while on time.
+	StuckByHold     bool   `json:"stuck_by_hold"`     // Whether Stuck is an idle probe's hold reason, which a passing probe clears.
 	WatcherExit     string `json:"watcher_exit"`      // Why the last watcher exited; empty while one runs.
 	// WatcherStopping is set by a watcher that has received SIGINT or SIGTERM and not yet released watch.lock,
 	// so `start` waits for it instead of reading it as live.
@@ -289,7 +290,7 @@ func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {
 	s.PhaseInjected = false
 	s.PendingHandoff = ""
 	s.PendingResume = ""
-	s.Stuck = ""
+	s.Stuck, s.StuckByHold = "", false
 	s.WatcherExit = ""
 	return s
 }

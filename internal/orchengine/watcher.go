@@ -102,7 +102,7 @@ type Watcher struct {
 	idleDisagreement    idleStatePair
 	hasIdleDisagreement bool
 
-	// lastHeld is the reason the idle probe last held an injection for, as logged and recorded in State.Stuck; empty when none.
+	// lastHeld is the reason the idle probe last held an injection for, as logged; empty when none.
 	// heldSince is when that hold began, zero when none, and sessionStartLogged the newest session-start time logged.
 	// All three are memory only: binding to another strand clears them, and a restarted watcher logs again.
 	lastHeld           string
@@ -351,7 +351,7 @@ func (w *Watcher) toIdle(st State, abortReason string) error {
 	st.PhaseInjected = false
 	st.PendingHandoff, st.PendingResume = "", ""
 	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry, st.ReloadSkipsSkills = ReloadStepSkills, time.Time{}, nil, false
-	st.Stuck = ""
+	st.Stuck, st.StuckByHold = "", false
 	st.LastInjectionOffset = w.cursor
 	if abortReason != "" {
 		st.LastAbortReason = abortReason
@@ -370,7 +370,7 @@ func (w *Watcher) enter(st State, phase Phase, now time.Time) (State, error) {
 	st.PhaseEnteredAt = now
 	st.PhaseEventsOffset = w.cursor
 	st.PhaseInjected = false
-	st.Stuck = ""
+	st.Stuck, st.StuckByHold = "", false
 	w.heldSince = time.Time{}
 	w.seen = phaseEvents{}
 	return st, w.save(st)
@@ -389,7 +389,7 @@ func (w *Watcher) markStuck(st State, reason string) error {
 		return nil
 	}
 	logger.Warn("orch: cycle phase stuck", "phase", string(st.Phase), "reason", reason, "strandGUID", st.Strand)
-	st.Stuck = reason
+	st.Stuck, st.StuckByHold = reason, false
 	return w.save(st)
 }
 
@@ -422,8 +422,8 @@ func (w *Watcher) probeIdle(st *State) (shuttleengine.IdleProbe, error) {
 	if !probe.Idle {
 		return probe, w.logHeld(st, probe)
 	}
-	if w.lastHeld != "" && st.Stuck == w.lastHeld {
-		st.Stuck = ""
+	if st.StuckByHold {
+		st.Stuck, st.StuckByHold = "", false
 		return probe, w.save(*st)
 	}
 	return probe, nil
@@ -440,12 +440,11 @@ func (w *Watcher) logHeld(st *State, probe shuttleengine.IdleProbe) error {
 	if reason != w.lastHeld {
 		logger.Info("orch: injection held", "strandGUID", st.Strand, "phase", string(st.Phase), "step", w.stepName(*st), "reason", reason, "sincePhase", w.sincePhase(*st, now))
 	}
-	record := st.Stuck == "" || st.Stuck == w.lastHeld
 	w.lastHeld = reason
-	if !record || st.Stuck == reason {
+	if st.Stuck != "" && !st.StuckByHold || st.Stuck == reason {
 		return nil
 	}
-	st.Stuck = reason
+	st.Stuck, st.StuckByHold = reason, true
 	return w.save(*st)
 }
 

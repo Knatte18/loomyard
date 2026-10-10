@@ -128,6 +128,7 @@
 // its own reason when the reading decided, `orch pane too short for the idle probe; resize or use the larger client` for a pane too short to draw an input box, else a fixed pane text.
 // The reason is saved and logged as `orch: injection held` at Info with the phase, the reload step, the reason and the time since the phase began, once per change of reason; the last reason is watcher memory and not State.
 // A passing probe clears a State.Stuck that a hold wrote and only that, so `lyx orch status` shows the hold in the idle phase too, and a Stuck written by anything else is never overwritten by a hold.
+// State.StuckByHold records that a hold wrote it, so a restarted watcher clears it too.
 //
 // Session.SessionState reads the orch session's state from its shuttle run record, which is interactive with a never-written sentinel output, so its turn ends read `asking`.
 // The watcher only logs it: after a successful probe that is not too short, a probe that reads idle beside the state `busy`, or not idle beside `idle-done`, `idle-stalled` or `asking`, logs `orch: session state disagrees with the idle probe` at Warn.
