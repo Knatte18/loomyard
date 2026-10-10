@@ -60,9 +60,67 @@ func (b *Bolt) CommitWritten(message string, write func() ([]string, error), opt
 	return gitrepo.New(b.path).StageAndCommit(message, ScopedPathspec(".", writtenPaths))
 }
 
-// Push pushes any unpushed commits in the Bolt's repo.
+// Push pushes any unpushed commits in the Bolt's repo, dropping seed commits that conflict at the push as PushRecorded does.
+// A drop is logged at Info, since a caller without a mutation record has nowhere else to show it.
 func (b *Bolt) Push(opts SyncOptions) error {
+	rec := NewMutations(filepath.Dir(b.path))
+	err := b.PushRecorded(opts, rec)
+	for _, entry := range rec.Snapshot().Entries() {
+		if entry.Kind == KindCommitsDropped {
+			logger.Info("fabricengine: dropped seed commits from the board at push", "path", b.path, "commits", entry.Detail)
+		}
+	}
+	return err
+}
+
+// PushRecorded pushes any unpushed commits in the Bolt's repo and records a seed-commit drop in rec.
+// A push whose recovery rebase conflicted is retried once after the board's seed commits ahead of its upstream are dropped and its other commits replayed, under the board write lock and then the push lock.
+// With no seed commits ahead, or when the drop refuses or its replay conflicts, the original push error is returned.
+// A second failure is returned and never retried.
+func (b *Bolt) PushRecorded(opts SyncOptions, rec *Mutations) error {
+	err := pushWeftAt(b.path, opts)
+	if !errors.Is(err, gitrepo.ErrPullRebaseFailed) {
+		return err
+	}
+	if !b.dropSeedCommitsAfterConflict(rec) {
+		return err
+	}
 	return pushWeftAt(b.path, opts)
+}
+
+// dropSeedCommitsAfterConflict drops the seed commits the board holds over its upstream and reports whether it did.
+// The locks are taken in pullFirst's order, so the two cannot deadlock, and are released before the caller retries the push.
+// A refused drop, a conflicting replay or a failed read leaves the board as it was and reports false.
+func (b *Bolt) dropSeedCommitsAfterConflict(rec *Mutations) bool {
+	writeLock, err := lock.AcquireWriteLock(filepath.Join(b.path, BoardWriteLockFile))
+	if err != nil {
+		return false
+	}
+	defer func() { _ = writeLock.Release() }()
+	pushLock, err := lock.AcquireWriteLock(filepath.Join(b.path, gitrepo.PushLockFileName))
+	if err != nil {
+		return false
+	}
+	defer func() { _ = pushLock.Release() }()
+
+	repo := gitrepo.New(b.path)
+	upstream, err := repo.UpstreamSHA()
+	if err != nil {
+		return false
+	}
+	head, err := repo.CurrentSHA()
+	if err != nil {
+		return false
+	}
+	ahead, err := repo.CommitsNotIn(head, upstream)
+	if err != nil {
+		return false
+	}
+	seed, _, touched, err := seedCommitsAhead(repo, ahead)
+	if err != nil || len(seed) == 0 {
+		return false
+	}
+	return dropSeedCommits(rec, boardDropRequest(b.path, touched), repo, upstream, ahead) == nil
 }
 
 // Sync drives step to completion under an absorbing push lock, looping while step reports progress.

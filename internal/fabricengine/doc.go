@@ -749,6 +749,10 @@
 // The lock order is the board write lock, then the push lock (`gitrepo.PushLockFileName`) in the board dir, across every reset, replay and fast-forward of Bolt;
 // a coalesced push holds the push lock across its own rebase and never takes the board write lock, so the order cannot deadlock.
 //
+// **Push retry.** `Bolt.PushRecorded(opts, rec)` retries a push once when its recovery rebase conflicted (`gitrepo.ErrPullRebaseFailed`).
+// Under the same lock order it drops the seed commits ahead of the upstream by the executor above, then pushes again; with no seed commits ahead, or when the drop refuses or its replay conflicts, the original error is returned, and a second failure is never retried.
+// A push whose caller holds a mutation record passes it to `PushRecorded`, which records the drop there as `commits_dropped`; `Bolt.Push` takes no record, so it only logs the drop at Info.
+//
 // **Why a chokepoint at all.**
 // Eight data-loss defects across five review rounds were one shape, not eight mistakes: a
 // destructive operation acting on a path it does not own, or destroying it without checking

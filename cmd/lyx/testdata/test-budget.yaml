@@ -29,7 +29,7 @@ internal/discussionparser: 16
 internal/editdirective: 2
 internal/envsource: 3
 internal/fabriccli: 20
-internal/fabricengine: 634
+internal/fabricengine: 635
 internal/friction: 6
 internal/frictionengine: 15
 internal/fslink: 5

@@ -8,6 +8,7 @@
 package fabricengine_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -346,6 +347,62 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 		}
 		if !gitkit.IsAncestor(t, f.board, upstream, "HEAD") || runs != 1 {
 			t.Errorf("after release: upstream under HEAD = false or %d write runs, want the drop and one write", runs)
+		}
+	})
+}
+
+func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
+	t.Parallel()
+
+	stencilPath := fabricengine.StencilsSubtreeRel() + "/loom/s.md"
+
+	t.Run("a conflicting seed commit is dropped and the board commit lands", func(t *testing.T) {
+		t.Parallel()
+		f := newBoltFixture(t)
+		seed := f.seedCommitLocal(stencilPath, "local\n")
+		gitkit.CommitFile(t, f.board, "notes/a.md", "a\n", "board change")
+		upstream := f.moveUpstream(stencilPath, "upstream\n")
+		rec := fabricengine.NewMutations(f.hub.Path)
+
+		if err := f.bolt.PushRecorded(fabricengine.SyncOptions{}, rec); err != nil {
+			t.Fatalf("PushRecorded: %v", err)
+		}
+
+		if gitkit.IsAncestor(t, f.board, seed, "HEAD") || !gitkit.IsAncestor(t, f.board, upstream, "HEAD") {
+			t.Errorf("seed %s under HEAD or upstream %s missing from it; want the seed dropped and the board commit on top of upstream", seed, upstream)
+		}
+		if got, want := gitkit.RevParse(t, f.hub.RecordsBare, "refs/heads/"+f.branch), f.head(); got != want {
+			t.Errorf("origin tip = %s, want the pushed board tip %s", got, want)
+		}
+		entries := rec.Snapshot().Entries()
+		if len(entries) != 1 || entries[0].Kind != fabricengine.KindCommitsDropped || !strings.Contains(entries[0].Detail, seed) {
+			t.Errorf("record = %+v, want one commits_dropped entry naming %s", entries, seed)
+		}
+	})
+
+	t.Run("a conflicting board commit leaves the board at its tip with the error and no record", func(t *testing.T) {
+		t.Parallel()
+		f := newBoltFixture(t)
+		f.seedCommitLocal(stencilPath, "local\n")
+		gitkit.CommitFile(t, f.board, "notes/a.md", "mine\n", "board change")
+		tip := f.head()
+		f.moveUpstream(stencilPath, "upstream\n")
+		other := filepath.Join(t.TempDir(), "other")
+		gitkit.Git(t, filepath.Dir(other), "clone", "--branch", f.branch, f.hub.RecordsBare, other)
+		gitkit.CommitFile(t, other, "notes/a.md", "theirs\n", "upstream: notes/a.md")
+		gitkit.Git(t, other, "push", "origin", f.branch)
+		rec := fabricengine.NewMutations(f.hub.Path)
+
+		err := f.bolt.PushRecorded(fabricengine.SyncOptions{}, rec)
+
+		if !errors.Is(err, gitrepo.ErrPullRebaseFailed) {
+			t.Errorf("PushRecorded error = %v, want one satisfying ErrPullRebaseFailed", err)
+		}
+		if f.head() != tip {
+			t.Errorf("head = %s, want the original tip %s", f.head(), tip)
+		}
+		if n := rec.Snapshot().Len(); n != 0 {
+			t.Errorf("record holds %d entries, want none", n)
 		}
 	})
 }

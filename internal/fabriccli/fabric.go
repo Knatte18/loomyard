@@ -779,7 +779,7 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	case healed.Skipped != "":
 		hubConfigDetail = healed.SkipDetail
 	default:
-		if pushErr := hubConfigBolt.Push(fabricengine.SyncOptions{}); pushErr != nil {
+		if pushErr := hubConfigBolt.PushRecorded(fabricengine.SyncOptions{}, rec); pushErr != nil {
 			hubConfigDetail = fmt.Sprintf("hub-wide config committed but push failed: %v", pushErr)
 			firstFailure = hubConfigFailure(hubConfigDetail, boardDir)
 		}
@@ -851,13 +851,12 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		// with no upstream at all. The attempt is harmless: it either succeeds or yields
 		// record_failed with the error in the detail.
 		//
-		// This push records nothing, and that is deliberate: a nil error from Bolt.Push means either
-		// a push landed or nothing was unpushed to begin with, an unobservable-outcome distinction
-		// that makes a KindBranchPushed entry here a lie of commission — the commit above is already
-		// recorded, and branch_pushed is exempt from the truthfulness oracle's commission direction,
-		// so omitting it costs the cross-check nothing.
+		// This push records no branch_pushed entry, and that is deliberate:
+		// a nil error from Bolt.PushRecorded means either a push landed or nothing was unpushed to begin with, an unobservable-outcome distinction that makes a KindBranchPushed entry here a lie of commission.
+		// The commit above is already recorded, and branch_pushed is exempt from the truthfulness oracle's commission direction, so omitting it costs the cross-check nothing.
+		// A seed-commit drop behind the push is recorded in rec as commits_dropped.
 		if binding == fabricengine.WarpBindingOutcomeRecorded || binding == fabricengine.WarpBindingOutcomePresent {
-			if pushErr := b.Push(fabricengine.SyncOptions{}); pushErr != nil {
+			if pushErr := b.PushRecorded(fabricengine.SyncOptions{}, rec); pushErr != nil {
 				wasPresent := binding == fabricengine.WarpBindingOutcomePresent
 				binding = fabricengine.WarpBindingOutcomeRecordFailed
 				if wasPresent {
