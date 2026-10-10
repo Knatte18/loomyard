@@ -37,6 +37,8 @@ func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 	seed.Error = "stuck on B"
 	seed.Transient = "network"
 	seed.PauseRequested = true
+	seed.PauseBefore = "B"
+	seed.PauseAfter = "A"
 	seedStatus(t, shed.StatusPath, shed.StatusLockPath, seed)
 
 	returned, err := Goto(gotoRequest(shed, "A"))
@@ -51,8 +53,8 @@ func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 	if got.CurrentProducer != "A" || got.State != StatePaused {
 		t.Errorf("CurrentProducer, State = %q, %q; want A, paused", got.CurrentProducer, got.State)
 	}
-	if got.Error != "" || got.Transient != "" || got.PauseRequested {
-		t.Errorf("Error, Transient, PauseRequested = %q, %q, %v; want all cleared", got.Error, got.Transient, got.PauseRequested)
+	if got.Error != "" || got.Transient != "" || got.PauseRequested || got.PauseBefore != "" || got.PauseAfter != "" {
+		t.Errorf("Error, Transient, PauseRequested, PauseBefore, PauseAfter = %q, %q, %v, %q, %q; want all cleared", got.Error, got.Transient, got.PauseRequested, got.PauseBefore, got.PauseAfter)
 	}
 	if len(got.History) != 1 || got.History[0].Producer != "A" || got.History[0].Outcome != OutcomeGoto {
 		t.Fatalf("History = %+v; want one goto entry for A", got.History)
