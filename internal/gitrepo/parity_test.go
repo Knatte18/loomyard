@@ -214,7 +214,7 @@ func TestParity(t *testing.T) {
 			}
 		}},
 		// The linked worktree's git dir sits under the primary's common dir, so the two reads differ there and agree on the primary.
-		{"GitDir, CommonDir and Toplevel agree on the primary and on a linked worktree", func(t *testing.T) {
+		{"GitDir and CommonDir agree on the primary and on a linked worktree", func(t *testing.T) {
 			linkedDir := filepath.Join(t.TempDir(), "linked")
 			gitkit.MustRun(t, dir, "git", "worktree", "add", "-b", "linked-geometry", linkedDir)
 
@@ -230,7 +230,6 @@ func TestParity(t *testing.T) {
 				}{
 					{"GitDir", gitoracle.GitDir, handle.GitDir},
 					{"CommonDir", gitoracle.CommonDir, handle.CommonDir},
-					{"Toplevel", gitoracle.Toplevel, handle.Toplevel},
 				}
 				for _, read := range reads {
 					oracleValue, oracleErr := read.oracle(t, checkout.dir)

@@ -109,12 +109,6 @@ func CommonDir(t testing.TB, dir string) (string, error) {
 	return revParsePath(dir, "--git-common-dir")
 }
 
-// Toplevel reimplements gitrepo's Toplevel on `git rev-parse --show-toplevel`.
-func Toplevel(t testing.TB, dir string) (string, error) {
-	t.Helper()
-	return revParsePath(dir, "--show-toplevel")
-}
-
 // BranchExists reimplements gitrepo's BranchExists on `git rev-parse --verify --quiet refs/heads/<branch>`: exit 0 means present, exit 1 absent.
 func BranchExists(t testing.TB, dir, branch string) bool {
 	t.Helper()

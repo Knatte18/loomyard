@@ -99,10 +99,6 @@ var enforcementAllowlist = []scankit.Entry{
 		Why: "the sole cwd owner",
 	},
 	{
-		Key: "internal/gitrepo/internal/gitoracle/",
-		Why: "the parity oracle answers Toplevel through `git rev-parse --show-toplevel`, the reference gitrepo's own read is compared against",
-	},
-	{
 		Key: "cmd/lyx/main.go",
 		Why: "the CLI entry point resolves the process cwd once",
 	},

@@ -105,15 +105,6 @@ func (r *Repo) CommonDir() (string, error) {
 	return g.CommonDir, nil
 }
 
-// Toplevel returns the absolute root of the worktree containing this handle's path, found by walking up to the nearest repository.
-func (r *Repo) Toplevel() (string, error) {
-	root, _, err := dotgit.FindRoot(r.path)
-	if err != nil {
-		return "", fmt.Errorf("gitrepo: toplevel of %s: %w", r.path, err)
-	}
-	return root, nil
-}
-
 // CurrentSHA returns the SHA of HEAD, or ErrNoCommits if no commits exist.
 func (r *Repo) CurrentSHA() (string, error) {
 	return readGoGit(r, func(repo *git.Repository) (string, error) {
