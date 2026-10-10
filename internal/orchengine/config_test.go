@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // seedLyxConfig creates <tmpDir>/_lyx/config/<module>.yaml with content.
@@ -64,11 +65,15 @@ func TestLoadConfig_TemplateResolvesWithNoFile(t *testing.T) {
 
 func TestLoadConfig_PresentFileOverrides(t *testing.T) {
 	tmpDir := t.TempDir()
-	seedLyxConfig(t, tmpDir, "orch", "model: opus\neffort: high\npermission_mode: bypass\ncycle_mode: clear\nsoft_threshold_tokens: 70000\nsoft_idle_s: 7\nthreshold_tokens: 90000\nidle_grace_s: 5\nhandoff_timeout_s: 60\npoll_interval_ms: 250\n")
+	seedLyxConfig(t, tmpDir, "orch", "model: opus\neffort: high\npermission_mode: bypass\ncycle_mode: clear\nsoft_threshold_tokens: 70000\nsoft_idle_s: 7\nthreshold_tokens: 90000\nidle_grace_s: 5\nhandoff_timeout_s: 60\npoll_interval_ms: 1500\n")
 
+	logs := logcapture.Capture(t)
 	cfg, err := orchengine.LoadConfig(tmpDir, "orch")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(logs.String(), "poll_interval_ms") {
+		t.Errorf("a poll interval at or above the floor warned: %q", logs.String())
 	}
 	if cfg.Model != "opus" || cfg.Effort != "high" {
 		t.Errorf("Model/Effort = %q/%q, want opus/high", cfg.Model, cfg.Effort)
@@ -94,8 +99,22 @@ func TestLoadConfig_PresentFileOverrides(t *testing.T) {
 	if got := cfg.HandoffTimeout(); got != 60*time.Second {
 		t.Errorf("HandoffTimeout() = %v, want 60s", got)
 	}
-	if got := cfg.PollInterval(); got != 250*time.Millisecond {
-		t.Errorf("PollInterval() = %v, want 250ms", got)
+	if got := cfg.PollInterval(); got != 1500*time.Millisecond {
+		t.Errorf("PollInterval() = %v, want 1.5s", got)
+	}
+
+	belowDir := t.TempDir()
+	seedLyxConfig(t, belowDir, "orch", "poll_interval_ms: 250\n")
+	logs.Reset()
+	below, err := orchengine.LoadConfig(belowDir, "orch")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := below.PollInterval(); got != time.Second {
+		t.Errorf("PollInterval() below the floor = %v, want 1s", got)
+	}
+	if got := strings.Count(logs.String(), "level=WARN"); got != 1 || !strings.Contains(logs.String(), "key=poll_interval_ms") || !strings.Contains(logs.String(), "floor_ms=1000") {
+		t.Errorf("below-floor load logged %q, want one warning naming poll_interval_ms and the floor", logs.String())
 	}
 }
 
@@ -190,8 +209,8 @@ func TestConfig_AccessorsFloorNonPositive(t *testing.T) {
 		if got := cfg.HandoffTimeout(); got != 600*time.Second {
 			t.Errorf("HandoffTimeout() with %d = %v, want 600s", v, got)
 		}
-		if got := cfg.PollInterval(); got != 2000*time.Millisecond {
-			t.Errorf("PollInterval() with %d = %v, want 2s", v, got)
+		if got := cfg.PollInterval(); got != time.Second {
+			t.Errorf("PollInterval() with %d = %v, want 1s", v, got)
 		}
 	}
 }

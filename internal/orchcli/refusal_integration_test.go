@@ -1,6 +1,6 @@
 //go:build integration
 
-// refusal_integration_test.go proves the orch refusals end to end over one hub: the prime-only rule (`status` and `start` from a task worktree or the prime's records sibling) and the config refusal (a non-bypass permission_mode makes `status` and the watcher start fail with the fix named), each landing before any .lyx/orch is created.
+// refusal_integration_test.go proves the orch refusals end to end over one hub: the prime-only rule (`status`, `start` and `resume-context` from a task worktree or the prime's records sibling) and the config refusal (a non-bypass permission_mode makes `status` and the watcher start fail with the fix named), each landing before any .lyx/orch is created.
 
 package orchcli
 
@@ -33,7 +33,7 @@ func TestOrchIntegration_Refusals(t *testing.T) {
 			"records prime": h.PrimeRecords(),
 		}
 		for name, cwd := range cases {
-			for _, verb := range []string{"status", "start"} {
+			for _, verb := range []string{"status", "start", resumeContextVerb} {
 				t.Run(name+"/"+verb, func(t *testing.T) {
 					refusalCase(t, cwd, verb)
 				})

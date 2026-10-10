@@ -4,11 +4,13 @@ package shuttleengine
 
 import (
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -145,20 +147,142 @@ func TestRunner_SessionIdle_DeadStrandErrors(t *testing.T) {
 	}
 }
 
+// TestRunner_SessionIdle_ReturnsScriptedClassification drives Runner.SessionIdle over a fake reed and an engine with the signal parser, the cycler and the box reader.
+// Each row is a series of probes of one strand on one runner, each appending events and moving the clock before it reads one pane capture:
+// a ready, held or unknown readiness reading and its fallback to the pane, a draft, a pane too short, a hook turn end beside a pane needle, a turn start held then released by a later turn end, an interrupt report and the idle override across polls.
+// An engine without the signal parser falls back to the pane probe, whose TooShort is reported only for a pane that is not idle.
+//
+// It is not parallel: logcapture redirects the process-global logger.
 func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
-	// TooShort is reported only for a pane that is not idle.
-	for _, want := range []IdleProbe{{Idle: true}, {}, {TooShort: true}} {
-		reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"the pane"}}
-		engine := &cyclerEngine{idle: want.Idle, tooShort: want.TooShort || want.Idle}
-		runner := newFixture(t, reed, engine, withStrand("strand-1")).Runner
-		got, err := runner.SessionIdle("strand-1")
-		if err != nil || got != want {
-			t.Errorf("SessionIdle = %+v, %v; want %+v, nil", got, err, want)
-		}
-		if !reflect.DeepEqual(engine.captures, []string{"the pane"}) {
-			t.Errorf("classified captures = %v, want [the pane]", engine.captures)
-		}
+	type probe struct {
+		// events is appended to the run's events file before the probe.
+		events string
+		// advance moves the fake clock before the probe.
+		advance time.Duration
+		capture string
+		want    IdleProbe
+		// wantReason is a substring of the held reason; empty when the probe is not held by the reading.
+		wantReason string
 	}
+	const (
+		idleFrame   = "IDLE\n❯ "
+		needleFrame = "working (esc to interrupt)\n❯ "
+		turnEnded   = "START\nSTOP:done\n"
+	)
+	shell := BackgroundTask{Kind: BackgroundShell, ID: "bsh1", Label: "sleep 600", Signal: SignalPayload}
+	tests := []struct {
+		name string
+		// engine settings; the zero value is a live process.
+		dead, unproven, interrupted, tooShort bool
+		interactive, outputsExist             bool
+		outstanding                           []BackgroundTask
+		probes                                []probe
+		// wantLog is a substring the probes' log must hold.
+		wantLog string
+	}{
+		{name: "idle-done is ready", outputsExist: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Idle: true}}}},
+		{name: "idle-stalled is ready", probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Idle: true}}}},
+		{name: "asking at an awaited turn end is ready", interactive: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Idle: true}}}},
+		{name: "busy on background work is ready", outstanding: []BackgroundTask{shell}, probes: []probe{{events: "START\nWAIT:bg\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
+		{name: "a running turn is held", probes: []probe{{events: "START\n", capture: idleFrame, want: IdleProbe{Reason: "a turn is running"}, wantReason: "a turn is running"}}},
+		{name: "an ask is held", probes: []probe{{events: "START\nASK\n", capture: idleFrame, want: IdleProbe{Reason: "the session waits on an answer"}, wantReason: "waits on an answer"}}},
+		{name: "a dead process is held", dead: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Reason: "the session's process is gone"}, wantReason: "process is gone"}}},
+		{name: "an unknown reading falls back to an idle pane", unproven: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Idle: true}}}},
+		{name: "an unknown reading falls back to a busy pane, too short or not", unproven: true, tooShort: true, probes: []probe{{events: turnEnded, capture: needleFrame, want: IdleProbe{TooShort: true}}}},
+		{name: "a draft in the box is held with its reason", probes: []probe{{events: turnEnded, capture: "IDLE\n❯ half a draft", want: IdleProbe{Reason: `the input box holds a draft: "half a draft"`}, wantReason: "draft"}}},
+		{name: "a pane too short is held and reported too short", tooShort: true, probes: []probe{{events: turnEnded, capture: "IDLE", want: IdleProbe{TooShort: true, Reason: readinessReasonPaneTooShort}, wantReason: "too short"}}},
+		{
+			name:    "a hook turn end beside a pane needle reads idle and logs the disagreement",
+			probes:  []probe{{events: turnEnded, capture: needleFrame, want: IdleProbe{Idle: true}}},
+			wantLog: "readiness reads ready beside a pane that does not show idle",
+		},
+		{name: "a hook turn end beside a pane with no box reads idle", probes: []probe{{events: turnEnded, capture: "no box here", want: IdleProbe{Idle: true}}}},
+		{
+			name: "a turn start with no turn end is held, then released by a later turn end",
+			probes: []probe{
+				{events: "START\n", capture: idleFrame, want: IdleProbe{Reason: "a turn is running"}, wantReason: "a turn is running"},
+				{events: "STOP:done\n", capture: idleFrame, want: IdleProbe{Idle: true}},
+			},
+		},
+		{name: "a reported interrupt releases the turn start", interrupted: true, probes: []probe{{events: "START\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
+		{
+			name: "the idle override releases a turn start the pane has read idle across polls",
+			probes: []probe{
+				{events: "START\n", capture: idleFrame, want: IdleProbe{Reason: "a turn is running"}, wantReason: "a turn is running"},
+				{advance: turnStartIdleOverride, capture: idleFrame, want: IdleProbe{Idle: true}},
+			},
+			wantLog: "released an unmatched turn start",
+		},
+		{name: "a session start after a turn end leaves it idle", probes: []probe{{events: turnEnded + "SESSIONSTART\n", capture: idleFrame, want: IdleProbe{Idle: true}}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := logcapture.Capture(t)
+			logger.SetVerbosity(2)
+			clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
+			reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
+			engine := &readinessEngine{tooShort: tt.tooShort}
+			engine.StartupScript = []StartupState{StartupReady}
+			engine.liveness = LivenessAlive
+			if tt.dead {
+				engine.liveness = LivenessDead
+			}
+			if tt.unproven {
+				engine.liveness = LivenessUnproven
+			}
+			engine.interrupted = tt.interrupted
+			engine.outstanding = tt.outstanding
+			fx := newFixture(t, reed, engine, withStrand("strand-1"), withClock(clock))
+			runDir := filepath.Dir(fx.EventsPath)
+			state := RunState{RunID: "run-1", StrandGUID: "strand-1", EventsPath: fx.EventsPath, Interactive: tt.interactive}
+			if tt.outputsExist {
+				output := filepath.Join(runDir, "report.md")
+				if err := os.WriteFile(output, []byte("done"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				state.OutputFiles = []string{output}
+			}
+			if err := saveRunState(runDir, state); err != nil {
+				t.Fatalf("saveRunState: %v", err)
+			}
+
+			events := ""
+			for i, p := range tt.probes {
+				events += p.events
+				if err := os.WriteFile(fx.EventsPath, []byte(events), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				clock.Sleep(p.advance)
+				reed.CaptureQueue = []string{p.capture}
+				got, err := fx.Runner.SessionIdle("strand-1")
+				if err != nil || got != p.want {
+					t.Errorf("probe %d: SessionIdle = %+v, %v; want %+v, nil", i, got, err, p.want)
+				}
+				if p.wantReason != "" && !strings.Contains(got.Reason, p.wantReason) {
+					t.Errorf("probe %d: reason %q does not contain %q", i, got.Reason, p.wantReason)
+				}
+			}
+			if tt.wantLog != "" && !strings.Contains(buf.String(), tt.wantLog) {
+				t.Errorf("log does not contain %q: %s", tt.wantLog, buf.String())
+			}
+		})
+	}
+
+	t.Run("an engine without the signal parser reads the pane", func(t *testing.T) {
+		// TooShort is reported only for a pane that is not idle.
+		for _, want := range []IdleProbe{{Idle: true}, {}, {TooShort: true}} {
+			reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"the pane"}}
+			engine := &cyclerEngine{idle: want.Idle, tooShort: want.TooShort || want.Idle}
+			runner := newFixture(t, reed, engine, withStrand("strand-1")).Runner
+			got, err := runner.SessionIdle("strand-1")
+			if err != nil || got != want {
+				t.Errorf("SessionIdle = %+v, %v; want %+v, nil", got, err, want)
+			}
+			if !reflect.DeepEqual(engine.captures, []string{"the pane"}) {
+				t.Errorf("classified captures = %v, want [the pane]", engine.captures)
+			}
+		}
+	})
 }
 
 func TestRunner_ClearSession_PlaysScriptedSequence(t *testing.T) {

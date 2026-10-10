@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
@@ -31,6 +32,7 @@ const (
 )
 
 // RenderRoleFile renders the role stencil to path, creating its directory.
+// The write is a temporary file and a rename, so a reader never sees a partial file when two renders overlap.
 // The session reads the file through the one-line pointers, so a stencil edit applies from the next delivery.
 func RenderRoleFile(stencilsDir, path string) error {
 	return renderFile(stencilsDir, roleStencilName, path)
@@ -85,7 +87,7 @@ func renderFile(stencilsDir, name, path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("orch: create dir for %s: %w", name, err)
 	}
-	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+	if err := fsx.AtomicWriteBytes(path, []byte(out)); err != nil {
 		return fmt.Errorf("orch: write %s: %w", name, err)
 	}
 	return nil

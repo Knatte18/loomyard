@@ -13,7 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// ErrSessionBusy marks a verified send that found the session still busy when its idle wait ran out: a turn running, a draft in the input box or an unmatched turn start.
+// ErrSessionBusy marks a verified send that found the session still held by its readiness reading when its idle wait ran out: a turn running, a question awaiting an answer, a draft in the input box, an unmatched turn start or, when the reading is unknown, a pane that is not idle.
 // Nothing was typed, so the caller may retry the send later.
 var ErrSessionBusy = errors.New("shuttle: the session is not idle")
 
@@ -32,12 +32,13 @@ const (
 	paneTailLines = 15
 )
 
-// sendContext is what one verified send needs: the pane it types into, the run's events file, the config and the clock its timed waits read.
+// sendContext is what one verified send needs: the pane it types into, the run's record and events file, the config and the clock its timed waits read.
 // A zero deadline means none, and a nil hold starts the idle wait's turn-start hold afresh.
 type sendContext struct {
 	reed       ReedOps
 	engine     Engine
 	guid       string
+	state      RunState
 	eventsPath string
 	cfg        Config
 	clock      Clock
@@ -51,6 +52,7 @@ func (run *Run) newSendContext() sendContext {
 		reed:       run.runner.reed,
 		engine:     run.runner.engine,
 		guid:       run.state.StrandGUID,
+		state:      run.state,
 		eventsPath: run.state.EventsPath,
 		cfg:        run.runner.cfg,
 		clock:      run.clock,
@@ -63,6 +65,7 @@ func (r *Runner) newSendContext(state RunState) sendContext {
 		reed:       r.reed,
 		engine:     r.engine,
 		guid:       state.StrandGUID,
+		state:      state,
 		eventsPath: state.EventsPath,
 		cfg:        r.cfg,
 		clock:      r.clock,
@@ -90,8 +93,9 @@ func windowPollCap(window, minInterval time.Duration) int {
 
 // awaitIdleSession returns nil once the strand's session is idle in fact, and fails with an error wrapping ErrSessionBusy when it stays busy past the send-ready window, sc's deadline or the window's poll count.
 // An engine without the SessionCycler idle reading keeps requireReadyAgentPane alone, with no wait.
-// Otherwise the pane must classify ready and idle.
-// For an engine that parses session signals, no turn start may be left unmatched by a later turn end either, unless the pane has read idle for turnStartIdleOverride or the engine reports that turn interrupted.
+// Otherwise every poll takes the session's readiness reading, which is built on the hook-derived session state;
+// when that state is unknown the poll falls back to the pane, which must classify ready and idle,
+// and for an engine that parses session signals no turn start may be left unmatched by a later turn end, unless the pane has read idle for turnStartIdleOverride or the engine reports that turn interrupted.
 func awaitIdleSession(sc sendContext) error {
 	cycler, ok := sc.engine.(SessionCycler)
 	if !ok {
@@ -126,11 +130,22 @@ func awaitIdleSession(sc sendContext) error {
 }
 
 // busyReading polls the pane and the events file once and returns what keeps the session from being idle, or "" when it is idle.
+// The readiness reading decides: a ready reading returns "" and a held one its reason.
+// An unknown reading falls back to the pane, logging its cause at Debug.
 func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold) string {
 	capture, err := sc.reed.CapturePane(sc.guid)
 	if err != nil {
 		return fmt.Sprintf("the pane could not be captured: %v", err)
 	}
+	reading := sessionReadiness(sc, cycler, hold, capture)
+	switch {
+	case reading.ready:
+		return ""
+	case !reading.unknown:
+		return reading.reason
+	}
+	logger.Debug("shuttle: send readiness unknown, reading the pane", "strandGUID", sc.guid, "cause", reading.cause)
+
 	ready := sc.engine.Startup(capture) == StartupReady
 	paneIdle := ready && cycler.IdleSession(capture)
 

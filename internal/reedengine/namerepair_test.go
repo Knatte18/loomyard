@@ -3,11 +3,13 @@
 package reedengine
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -101,8 +103,12 @@ func TestRepairNames_PaneTitle(t *testing.T) {
 				[]Strand{repairStrand("g1", "tc:s:worker", "%1", "")},
 				[]LivePane{{ID: "%1", Title: tt.title}})
 
-			if err := e.repairNames(nil); err != nil {
+			repaired, err := e.repairNames(nil)
+			if err != nil {
 				t.Fatalf("repairNames: %v", err)
+			}
+			if repaired != tt.wantRepair {
+				t.Errorf("repairNames repaired = %v, want %v", repaired, tt.wantRepair)
 			}
 
 			sel := fake.ArgvFor("select-pane")
@@ -146,8 +152,12 @@ func TestRepairNames_SessionName(t *testing.T) {
 				[]LivePane{{ID: "%1", Title: "tc:s:worker"}})
 			namer := tt.namer
 
-			if err := e.repairNames(&namer); err != nil {
+			repaired, err := e.repairNames(&namer)
+			if err != nil {
 				t.Fatalf("repairNames: %v", err)
+			}
+			if repaired != tt.wantRename {
+				t.Errorf("repairNames repaired = %v, want %v", repaired, tt.wantRename)
 			}
 
 			keys := fake.ArgvFor("send-keys")
@@ -182,7 +192,7 @@ func TestRepairNames_SkipsSessionCheckWithoutNamerOrSessionID(t *testing.T) {
 		e, fake := newRepairTestEngine(t,
 			[]Strand{repairStrand("g1", "tc:s:worker", "%1", "sess-1")},
 			[]LivePane{{ID: "%1", Title: "tc:s:worker"}})
-		if err := e.repairNames(nil); err != nil {
+		if _, err := e.repairNames(nil); err != nil {
 			t.Fatalf("repairNames: %v", err)
 		}
 		if got := fake.ArgvFor("capture-pane"); len(got) != 0 {
@@ -194,7 +204,7 @@ func TestRepairNames_SkipsSessionCheckWithoutNamerOrSessionID(t *testing.T) {
 			[]Strand{repairStrand("g1", "tc:s:worker", "%1", "")},
 			[]LivePane{{ID: "%1", Title: "tc:s:worker"}})
 		namer := &fakeNamer{drift: true, idle: true}
-		if err := e.repairNames(namer); err != nil {
+		if _, err := e.repairNames(namer); err != nil {
 			t.Fatalf("repairNames: %v", err)
 		}
 		if len(namer.queries) != 0 {
@@ -209,10 +219,46 @@ func TestRepairNames_UnanswerableSessionCheckRepairsNothing(t *testing.T) {
 		[]LivePane{{ID: "%1", Title: "claude"}})
 	fake.answer("has-session", "", errors.New("tmux unreachable"))
 
-	if err := e.repairNames(nil); err == nil {
+	if _, err := e.repairNames(nil); err == nil {
 		t.Fatal("repairNames: want the session-check error")
 	}
 	if sel := fake.ArgvFor("select-pane"); len(sel) != 0 {
 		t.Errorf("select-pane calls = %v, want none on a down session", sel)
+	}
+}
+
+// TestWatchNames_RepairedAnswerChoosesTheNextWait pins that the waits climb to the ceiling while no pass repairs anything, and return to the base after a pass that repaired a title.
+func TestWatchNames_RepairedAnswerChoosesTheNextWait(t *testing.T) {
+	e, fake := newRepairTestEngine(t,
+		[]Strand{repairStrand("g1", "tc:s:worker", "%1", "")},
+		[]LivePane{{ID: "%1", Title: "tc:s:worker"}})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var waits []time.Duration
+	timing := nameRepairTiming{
+		Base:    time.Second,
+		Ceiling: 4 * time.Second,
+		After: func(d time.Duration) <-chan time.Time {
+			waits = append(waits, d)
+			switch len(waits) {
+			case 4:
+				fake.answer("list-panes", encodeTitledPanes([]LivePane{{ID: "%1", Title: "claude"}}), nil)
+			case 5:
+				cancel()
+				return nil
+			}
+			fired := make(chan time.Time, 1)
+			fired <- time.Time{}
+			return fired
+		},
+	}
+
+	if err := e.watchNames(ctx, nil, timing); !errors.Is(err, context.Canceled) {
+		t.Fatalf("watchNames = %v, want context.Canceled", err)
+	}
+	want := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 4 * time.Second, time.Second}
+	if !reflect.DeepEqual(waits, want) {
+		t.Errorf("waits = %v, want %v", waits, want)
 	}
 }

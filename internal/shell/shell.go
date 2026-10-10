@@ -32,6 +32,8 @@ type Shell interface {
 	// the calling Go process, and it must not leave a trailing empty PATH entry when PATH is
 	// unset or empty.
 	PrependPathEntry(dir string) string
+	// ChangeDir returns a standalone statement that changes the shell's current directory to dir.
+	ChangeDir(dir string) string
 	// Chain joins statements into one single-line string safe to hand to a send-keys literal
 	// payload.
 	// The separator is ";" rather than "&&", so a rejected earlier statement cannot suppress a

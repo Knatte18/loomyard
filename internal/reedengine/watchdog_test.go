@@ -10,9 +10,34 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/shell"
 )
+
+// TestNextWakeCadence pins the shared backoff rule: base on a changed cycle, otherwise double the current wait up to the ceiling.
+func TestNextWakeCadence(t *testing.T) {
+	const base, ceiling = time.Second, 8 * time.Second
+	tests := []struct {
+		name    string
+		current time.Duration
+		changed bool
+		want    time.Duration
+	}{
+		{"changed resets to base", 4 * time.Second, true, base},
+		{"unchanged doubles", 2 * time.Second, false, 4 * time.Second},
+		{"unchanged from base doubles", base, false, 2 * time.Second},
+		{"unchanged caps at ceiling", 6 * time.Second, false, ceiling},
+		{"unchanged at ceiling stays", ceiling, false, ceiling},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NextWakeCadence(tt.current, base, ceiling, tt.changed); got != tt.want {
+				t.Errorf("NextWakeCadence(%v, %v, %v, %v) = %v, want %v", tt.current, base, ceiling, tt.changed, got, tt.want)
+			}
+		})
+	}
+}
 
 //testtiming:keep pins the watchdog option validating and normalizing: on and off in any case or padding, and an empty, numeric, true, yes or misspelled value rejected naming the offending value; its covering tests run this code without asserting it
 func TestWatchdogOption(t *testing.T) {

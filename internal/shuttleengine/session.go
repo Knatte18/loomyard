@@ -123,8 +123,12 @@ func (r *Runner) CompactedSince(turnEnd Event, since time.Time) (CompactionBound
 	return boundary, found, nil
 }
 
-// SessionIdle probes the live pane of the run identified by guid for the provider idle.
-// TooShort is filled only for a pane that is not idle.
+// SessionIdle reports whether the run identified by guid can take typed input.
+// The answer is the readiness reading over the run's hook-derived session state and one pane capture:
+// a ready reading is idle and a held one is not idle with its Reason, and the runner keeps one turn-start hold per strand across calls.
+// A ready reading beside a pane that does not show the provider idle still answers idle, and logs the disagreement with the pane's last lines at Debug.
+// An unknown reading, and a strand with no run record, fall back to the pane probe, which logs the cause at Debug.
+// TooShort is filled only for an answer that is not idle.
 func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	if r.toldErr != nil {
 		return IdleProbe{}, r.toldErr
@@ -139,6 +143,20 @@ func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	capture, err := r.reed.CapturePane(guid)
 	if err != nil {
 		return IdleProbe{}, fmt.Errorf("shuttle: capture strand %q's pane to probe idleness: %w", guid, err)
+	}
+	if state, _, findErr := FindRun(r.cfg, r.anchorPath, guid); findErr == nil {
+		reading := sessionReadiness(r.newSendContext(state), cycler, r.holdFor(guid), capture)
+		switch {
+		case reading.ready:
+			if !cycler.IdleSession(capture) {
+				logger.Debug("shuttle: readiness reads ready beside a pane that does not show idle", "strandGUID", guid, "paneTail", paneTail(r.reed, guid))
+			}
+			return IdleProbe{Idle: true}, nil
+		case !reading.unknown:
+			logger.Debug("shuttle: session idle probe held", "strandGUID", guid, "reason", reading.reason)
+			return IdleProbe{Reason: reading.reason, TooShort: reading.reason == readinessReasonPaneTooShort}, nil
+		}
+		logger.Debug("shuttle: session readiness unknown, reading the pane", "strandGUID", guid, "cause", reading.cause)
 	}
 	probe := IdleProbe{Idle: cycler.IdleSession(capture)}
 	if !probe.Idle {

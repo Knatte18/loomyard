@@ -28,6 +28,7 @@ func orchPaths(location *lyxcwd.Location) orchengine.Paths {
 		WatchLockPath:    filepath.Join(dir, "watch.lock"),
 		StartLockPath:    filepath.Join(dir, "start.lock"),
 		CycleRequestPath: filepath.Join(dir, "cycle-request"),
+		ResumeMarkPath:   filepath.Join(dir, "resume-mark"),
 		HandoffsDir:      filepath.Join(dir, "handoffs"),
 		NoticesDir:       filepath.Join(dir, "notices"),
 		WatchLogPath:     filepath.Join(dir, "watch.log"),

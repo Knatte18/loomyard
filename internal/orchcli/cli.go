@@ -155,7 +155,7 @@ Every verb runs from the hub's prime worktree only.`,
 		},
 	}
 
-	parent.AddCommand(c.startCmd(), c.statusCmd(), c.refreshCmd(), c.distillCmd(), c.stopCmd(), c.watchCmd())
+	parent.AddCommand(c.startCmd(), c.statusCmd(), c.refreshCmd(), c.distillCmd(), c.stopCmd(), c.watchCmd(), c.resumeContextCmd())
 	return parent
 }
 

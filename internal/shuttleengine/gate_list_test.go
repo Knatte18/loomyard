@@ -187,7 +187,7 @@ func TestGateList_FinalArrivalAtFailingPassOnCapEntry(t *testing.T) {
 			StatusQueue:  liveStrandStatus(true),
 			CaptureQueue: repromptCaptureSequence(findingsPath, 1),
 		}
-		fx := newFixture(t, reed, readyAgentEngine(), withConfig(Config{PollIntervalMS: 5, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30}))
+		fx := newFixture(t, reed, readyAgentEngine(), withConfig(Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1_000_000, StartupTimeoutS: 30}))
 		stubInputSleep(t)
 		spec, rCalls := newSpec()
 		fc := newFakeClock(time.Now())

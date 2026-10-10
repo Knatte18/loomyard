@@ -28,6 +28,7 @@ type fakeSession struct {
 	idle       bool
 	idleSeq    []bool // Consumed before idle.
 	tooShort   bool   // Reported with every probe that is not idle.
+	reason     string // Reported with every probe that is not idle.
 	sendErrs   []error
 	clearErr   error // Returned by every ClearSession while set.
 	clearErrs  []error
@@ -44,13 +45,14 @@ type fakeSession struct {
 
 	sessionState    shuttleengine.SessionState // Answered by SessionState while stateErr is nil.
 	sessionStateErr error                      // Returned by every SessionState while set.
+	sessionStartAt  time.Time                  // Answered by SessionState as the newest session-start time.
 }
 
 func (f *fakeSession) SessionState(string) (shuttleengine.RunSessionState, error) {
 	if f.sessionStateErr != nil {
 		return shuttleengine.RunSessionState{}, f.sessionStateErr
 	}
-	return shuttleengine.RunSessionState{State: f.sessionState}, nil
+	return shuttleengine.RunSessionState{State: f.sessionState, SessionStartAt: f.sessionStartAt}, nil
 }
 
 func (f *fakeSession) LoadSkills(_ string, skills []string) error {
@@ -96,7 +98,11 @@ func (f *fakeSession) SessionIdle(string) (shuttleengine.IdleProbe, error) {
 		idle = f.idleSeq[0]
 		f.idleSeq = f.idleSeq[1:]
 	}
-	return shuttleengine.IdleProbe{Idle: idle, TooShort: !idle && f.tooShort}, nil
+	probe := shuttleengine.IdleProbe{Idle: idle}
+	if !idle {
+		probe.TooShort, probe.Reason = f.tooShort, f.reason
+	}
+	return probe, nil
 }
 
 func (f *fakeSession) Send(_, text string) error {
@@ -386,13 +392,20 @@ func TestWatcher_TooShortProbeRecordsStuckInIdlePhaseAndPassingProbeClearsIt(t *
 
 	e.s.tooShort = false
 	e.tick()
-	if st := e.state(); st.Stuck != "" {
-		t.Errorf("Stuck = %q after a probe that is not too short, want cleared", st.Stuck)
+	if st := e.state(); st.Stuck != paneNotIdleReason {
+		t.Errorf("Stuck = %q after a probe that is not too short, want the pane fallback reason", st.Stuck)
 	}
 	e.assertNoCalls()
 
+	// A restarted watcher has no hold in memory, and the passing probe still clears the hold's reason.
+	e.w = e.newWatcher()
 	e.s.idle = true
 	e.tick()
+	e.clock.advance(11 * time.Second)
+	e.tick()
+	if st := e.state(); st.Stuck != "" {
+		t.Errorf("Stuck = %q after a passing probe, want cleared", st.Stuck)
+	}
 	if e.s.count("send:") != 1 {
 		t.Errorf("calls = %v, want the handoff request once the pane is idle", e.s.calls)
 	}
@@ -1261,6 +1274,134 @@ func TestWatcher_ReloadTypesNothingWhenIdleProbeFails(t *testing.T) {
 	}
 }
 
+func TestWatcher_HeldInjectionRecordsReasonLogsOncePerChangeWithinAHoldAndTypedLogsWait(t *testing.T) {
+	// Not parallel: it captures the process-global logger.
+	buf := logcapture.CaptureVerbose(t)
+	e := newWatchEnv(t)
+	count := func(msg string) int { return strings.Count(buf.String(), msg) }
+
+	// A hold that a passing probe ends before an injection that is no reload step is still over.
+	e.injectHandoff()
+	e.writeHandoff()
+	e.s.events = append(e.s.events, stop("handoff"))
+	e.s.idle, e.s.reason = false, "a turn is running"
+	e.tick()
+	e.s.idle, e.s.reason = true, ""
+	e.tick()
+	if st := e.state(); st.Phase != PhaseClearing {
+		t.Fatalf("phase = %s, want clearing", st.Phase)
+	}
+
+	e.s.idle, e.s.reason = false, "a turn is running"
+	e.s.sessionStartAt = e.clock.now
+	e.tick()
+	e.tick()
+	if st := e.state(); st.Stuck != "a turn is running" {
+		t.Errorf("Stuck = %q, want the probe's reason", st.Stuck)
+	}
+	if got := count("orch: injection held"); got != 2 {
+		t.Errorf("held logged %d times over two holds for an unchanged reason, want once per hold", got)
+	}
+	if got := count("orch: session start signal read"); got != 1 {
+		t.Errorf("session start logged %d times for one time, want once", got)
+	}
+
+	e.s.reason = "a tool is running"
+	e.tick()
+	if st := e.state(); st.Stuck != "a tool is running" {
+		t.Errorf("Stuck = %q, want the changed reason", st.Stuck)
+	}
+	if got := count("orch: injection held"); got != 3 {
+		t.Errorf("held logged %d times after the reason changed, want 3", got)
+	}
+
+	e.s.idle = true
+	e.tick() // the color step
+	e.s.sessionStartAt = e.clock.now.Add(time.Second)
+	e.s.idle = false
+	e.tick()
+	if got := count("orch: session start signal read"); got != 2 {
+		t.Errorf("session start logged %d times for a second time, want 2", got)
+	}
+	e.clock.advance(7 * time.Second)
+	e.s.idle = true
+	e.tick() // the plugins step, held for 7s
+	if st := e.state(); st.Stuck != "" {
+		t.Errorf("Stuck = %q after the step was typed, want cleared", st.Stuck)
+	}
+	for _, want := range []string{"orch: injection typed", "step=plugins", "waited=7s"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("log lacks %q:\n%s", want, buf.String())
+		}
+	}
+}
+
+func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// mark returns the mark written before the reload starts, and false for none.
+		mark      func(boundary time.Time, pointer string) (ResumeMark, bool)
+		wantTyped bool
+	}{
+		{"a mark after the boundary holding the pointer skips it", func(boundary time.Time, pointer string) (ResumeMark, bool) {
+			return ResumeMark{At: boundary.Add(time.Second), Text: pointer}, true
+		}, false},
+		{"no mark types the pointer", func(time.Time, string) (ResumeMark, bool) { return ResumeMark{}, false }, true},
+		{"a mark older than the boundary types the pointer", func(boundary time.Time, pointer string) (ResumeMark, bool) {
+			return ResumeMark{At: boundary.Add(-time.Second), Text: pointer}, true
+		}, true},
+		{"a mark with other text types the pointer", func(boundary time.Time, _ string) (ResumeMark, bool) {
+			return ResumeMark{At: boundary.Add(time.Second), Text: "something else"}, true
+		}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.withSkills()
+			boundary := e.clock.now.Add(time.Second)
+			e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(boundary)}
+			e.s.usage["a"] = 100
+			// A draft in the input box holds the reload until after the hook has delivered.
+			e.s.idle, e.s.reason = false, "a draft is in the input box"
+			e.endTurn("a")
+			pointer, err := RenderReloadPrompt(e.stDir, e.paths.RolePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mark, ok := tt.mark(boundary, pointer); ok {
+				if err := WriteResumeMark(e.paths, mark); err != nil {
+					t.Fatal(err)
+				}
+			}
+			e.s.idle = true
+			e.tick() // the color step
+			e.tick() // the plugins step
+			e.tick() // the pointer step
+
+			wantCalls := []string{reloadPluginsCall}
+			if tt.wantTyped {
+				wantCalls = append(wantCalls, "send:"+pointer)
+				if st := e.state(); st.Phase != PhaseResuming {
+					t.Fatalf("phase = %s, want resuming until a turn end", st.Phase)
+				}
+				e.endTurn("resumed")
+			}
+			if !slices.Equal(e.s.calls, wantCalls) {
+				t.Errorf("calls = %q, want %q", e.s.calls, wantCalls)
+			}
+			if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "" {
+				t.Errorf("state = %+v, want idle with no abort reason", st)
+			}
+			if _, found, err := ReadResumeMark(e.paths); err != nil || found {
+				t.Errorf("mark found = %v, %v after the reload ended; want none", found, err)
+			}
+		})
+	}
+}
+
 func TestWatcher_AutoCompactionReloadsPluginsThenPointer(t *testing.T) {
 	t.Parallel()
 
@@ -1312,17 +1453,20 @@ func TestWatcher_AutoCompactionBoundaryAtOrBeforeBaselineTriggersNothing(t *test
 }
 
 func TestWatcher_AutoCompactionWaitsForIdleProbe(t *testing.T) {
-	t.Parallel()
-
+	// Not parallel: it captures the process-global logger.
+	buf := logcapture.CaptureVerbose(t)
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.s.autoCompact = map[string]shuttleengine.CompactionBoundary{"a": freshBoundary(e.clock.now.Add(time.Second))}
 	e.s.usage["a"] = 100
-	e.s.idle = false
+	e.s.idle, e.s.reason = false, "a turn is running"
 	e.endTurn("a")
 	e.assertNoCalls()
-	if st := e.state(); st.Phase != PhaseIdle || !st.CompactionBaseline.IsZero() {
-		t.Fatalf("state = %+v, want idle with the baseline unmoved", st)
+	if st := e.state(); st.Phase != PhaseIdle || !st.CompactionBaseline.IsZero() || st.Stuck != "a turn is running" {
+		t.Fatalf("state = %+v, want idle with the baseline unmoved and the hold recorded", st)
+	}
+	if got := strings.Count(buf.String(), "orch: compaction boundary found"); got != 1 {
+		t.Errorf("boundary found logged %d times, want once when read at the turn end", got)
 	}
 	e.s.idle = true
 	e.tick()

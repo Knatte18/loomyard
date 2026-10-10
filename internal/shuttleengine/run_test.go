@@ -1412,7 +1412,10 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		failCaptureAfter time.Duration
 		events           string
 		interrupted      bool
-		viaRunner        bool
+		// reading gives the engine a live process, so the hook-derived readiness reading decides instead of the pane;
+		// reader also gives it an input-box reader, for a row that fails before anything is typed.
+		reading, reader bool
+		viaRunner       bool
 		// frozen gives the run a clock that never advances, so only the poll count can end the wait.
 		frozen bool
 		// wantTypedBetween is the window the first typed key lands in; ignored when wantBusy is set.
@@ -1426,10 +1429,14 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		{name: "draft that never clears fails busy", idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the pane is not idle", "a half-typed draft"}},
 		{name: "failed final capture is said so", idleAfter: never, busyFrame: "working", failCaptureAfter: 59 * time.Second, wantBusy: []string{"the final pane capture failed"}},
 		{name: "a busy pane under a clock that never advances fails busy at the poll count", idleAfter: never, busyFrame: "working", frozen: true, wantBusy: []string{"the pane is not idle"}},
-		{name: "unmatched turn start is released by the idle override", events: "START\n", wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
-		{name: "unmatched turn start is released by an interrupt report", events: "START\n", interrupted: true},
+		{name: "unmatched turn start is released by the idle override", events: "START\n", reading: true, wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
+		{name: "unmatched turn start is released by an interrupt report", events: "START\n", reading: true, interrupted: true},
+		{name: "unmatched turn start against a busy pane fails busy with the reading's reason", events: "START\n", reading: true, idleAfter: never, busyFrame: "working", wantBusy: []string{"a turn is running"}},
+		{name: "draft in the box fails busy with the reading's reason", events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}},
 		{name: "turn end after the turn start releases at once", events: "START\nSTOP:done\n"},
 		{name: "api error turn end counts as a turn end", events: "START\nAPIERR\n"},
+		{name: "a hook turn end beside a pane needle types at once", events: "START\nSTOP:done\n", reading: true, idleAfter: time.Second, busyFrame: "working (esc to interrupt)\n❯ "},
+		{name: "unmatched turn start under an unknown reading is released by the idle override", events: "START\n", wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1443,9 +1450,19 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 			if tt.failCaptureAfter > 0 {
 				reed.failAt = start.Add(tt.failCaptureAfter)
 			}
-			engine := &idleEngine{}
-			engine.StartupScript = []StartupState{StartupReady}
-			engine.interrupted = tt.interrupted
+			var engine Engine
+			idle := &idleEngine{}
+			engine = idle
+			if tt.reader {
+				box := &readinessEngine{}
+				idle = &box.idleEngine
+				engine = box
+			}
+			idle.StartupScript = []StartupState{StartupReady}
+			idle.interrupted = tt.interrupted
+			if tt.reading {
+				idle.liveness = LivenessAlive
+			}
 			cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5, SendReadyTimeoutS: 60}
 
 			var err error

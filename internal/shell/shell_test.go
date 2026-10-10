@@ -111,6 +111,31 @@ func TestShell_Touch(t *testing.T) {
 	}
 }
 
+func TestShell_ChangeDir(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		sh   Shell
+		in   string
+		want string
+	}{
+		{"pwsh/plain", Pwsh(), `C:\a\prime`, `Set-Location -LiteralPath 'C:\a\prime'`},
+		{"pwsh/space", Pwsh(), `C:\a b\prime`, `Set-Location -LiteralPath 'C:\a b\prime'`},
+		{"pwsh/single_quote", Pwsh(), `C:\a'b\prime`, `Set-Location -LiteralPath 'C:\a''b\prime'`},
+		{"posix/plain", Posix(), "/a/prime", "cd '/a/prime'"},
+		{"posix/space", Posix(), "/a b/prime", "cd '/a b/prime'"},
+		{"posix/single_quote", Posix(), "/a'b/prime", `cd '/a'\''b/prime'`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.sh.ChangeDir(tt.in); got != tt.want {
+				t.Errorf("%s ChangeDir(%q) = %q; want %q", tt.name, tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestShell_ExportEnv pins that each dialect's export stands alone: a bare assignment with no trailing command fragment.
 func TestShell_ExportEnv(t *testing.T) {
 	t.Parallel()

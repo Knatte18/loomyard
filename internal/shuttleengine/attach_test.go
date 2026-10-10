@@ -1042,7 +1042,7 @@ func TestAttach_StartedSeededTrue(t *testing.T) {
 	// StartupScript deliberately left empty: fakeEngine.Startup would return StartupPending for
 	// every call, and any call at all is the regression this test exists to catch.
 	engine := &fakeEngine{}
-	fx := newFixture(t, reed, engine, withConfig(Config{StartupTimeoutS: 1, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1}), withSeparateRunDir())
+	fx := newFixture(t, reed, engine, withConfig(Config{StartupTimeoutS: 1, RunTimeoutMin: 5, PollIntervalMS: 1000, LivenessEveryNPolls: 1}), withSeparateRunDir())
 	runner, dotLyxDir, runRoot := fx.Runner, fx.DotLyx, fx.RunRoot
 	seedPresentReedState(t, dotLyxDir)
 

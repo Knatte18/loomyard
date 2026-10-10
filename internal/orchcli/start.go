@@ -80,6 +80,8 @@ func (c *orchCLI) orchSpec(prompt string, now time.Time) shuttleengine.Spec {
 
 		Skills:           orchSkills,
 		SkillLoadTimeout: c.cfg.HandoffTimeout(),
+
+		ContextAfterCompaction: resumeContextCommand(c.location.AnchorPath()),
 	}
 }
 

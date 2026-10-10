@@ -71,17 +71,19 @@
 // An unreadable transcript makes the whole reading unknown, and a missing `subagents/` directory is zero forks.
 //
 // The session-signal parse (SessionSignalParser) reads the same events file as ParseEvents but yields a separate stream, in signals.go, and leaves ParseEvents unchanged.
-// A `Stop` line is a turn end with its outstanding tasks read exactly as ParseEvents reads them, a `StopFailure` an API-error turn end, a `UserPromptSubmit` a turn start, a `PreToolUse` for `AskUserQuestion` an ask, a `Notification` of type permission prompt or elicitation dialog an ask and `idle_prompt` an idle notice (any other type is skipped), and a `SessionEnd` a session end with its reason.
+// A `Stop` line is a turn end with its outstanding tasks read exactly as ParseEvents reads them, a `StopFailure` an API-error turn end, a `UserPromptSubmit` a turn start, a `PreToolUse` for `AskUserQuestion` an ask, a `Notification` of type permission prompt or elicitation dialog an ask and `idle_prompt` an idle notice (any other type is skipped), a `SessionEnd` a session end with its reason, and a `SessionStart` a session start carrying the payload's `source`.
 // A `SessionEnd` reason of `logout`, `prompt_input_exit` or `other` ends the process; `clear`, `resume` and an unknown reason do not.
 // A recording hook writes a stamp line `{"lyx_stamp":"<hook>","lyx_at":"<RFC 3339 UTC>"}` before its payload, and the parser gives a payload the time of the nearest preceding untaken stamp naming its hook.
 // A payload with no such stamp, or whose stamp's time is empty or malformed, reads a zero time.
 // The count the parser reports as consumed stops before the trailing run of stamp lines with no payload after them, so an incremental reader sees each stamp with its payload at its next read.
 // A transcript-fallback turn end's tasks are read from the transcript at parse time, so the same line parsed again later can read fewer.
 //
-// The events file holds, per recording hook (Stop, UserPromptSubmit, StopFailure, Notification, SessionEnd and, in an interactive run, the AskUserQuestion record), a stamp line and then the hook's payload line.
+// The events file holds, per recording hook (Stop, UserPromptSubmit, StopFailure, Notification, SessionEnd, SessionStart for a run whose spec sets a context-after-compaction command and, in an interactive run, the AskUserQuestion record), a stamp line and then the hook's payload line.
 // The hook command is plain POSIX `sh`, `date`, `cat` and `printf`: one `printf` writes the stamp, `;` joins it to the unchanged payload append so a failed stamp never blocks the payload, and the four newer hooks end in `; true` so they exit 0 whatever the append does.
 // A failed `date` leaves the stamp's time empty, which the parser reads as no time.
 // No recording hook prints to standard output.
+// The one exception is the second command of the `SessionStart` entry, which Spec.ContextAfterCompaction sets: the entry carries the `compact` matcher, records the event with the recording command and then runs that command verbatim, whose output joins the session's context after every compaction.
+// SessionStartContext renders the additional-context JSON such a command prints.
 // Two accepted races follow from the append order.
 // Hooks that fire at once can interleave their stamps ahead of both payloads, which the pairing by hook name absorbs;
 // and a reader can see a payload without its newline, or a stamp without its payload, which the parser leaves unconsumed until the line completes.

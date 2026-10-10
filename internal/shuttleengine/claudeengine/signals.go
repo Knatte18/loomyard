@@ -26,6 +26,7 @@ const (
 	hookEventPreToolUse       = "PreToolUse"
 	hookEventNotification     = "Notification"
 	hookEventSessionEnd       = "SessionEnd"
+	hookEventSessionStart     = "SessionStart"
 )
 
 // askUserQuestionToolName is the tool whose PreToolUse payload is an ask.
@@ -163,6 +164,9 @@ func signalFromPayload(hookName string, fields map[string]any) (shuttleengine.Se
 			Reason:      reason,
 			EndsProcess: sessionEndReasonEndsProcess(reason),
 		}, true
+	case hookEventSessionStart:
+		source, _ := fields["source"].(string)
+		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalSessionStart, Source: source}, true
 	}
 	return shuttleengine.SessionSignal{}, false
 }

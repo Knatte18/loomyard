@@ -15,11 +15,13 @@
 // Later waves add their own siblings here rather than spawning per-engine packages or re-deriving the
 // construction inline at each call site.
 //
+// ReedGeometry tells reed the hub-level discover signal file in DiscoverSignalPath, beside LogsDir: reedengine.DiscoverSignalFileName under fabricengine.HubScratchDir.
+//
 // ReedGeometry also tells reed the hub's spawn order (spawnorder.go), as a lazy closure over the Location that does nothing until a revival is due:
 // it lists the hub's worktrees with fabricengine.List, skips prunable and unresolvable ones, and orders the prime first, then each pair by its run's start time, then pairs without one by name.
-// A pair's start time is the modification time of its own run seed, which is written once when the run is seeded.
-// The seed sits in the fabric-synced _lyx tree, so the order holds on the machine where each pair was seeded;
-// a checkout, rebase or re-materialized worktree that rewrites the file resets its modification time and sorts that pair as if its run started then, which can misorder that pair's revived session and nothing else.
+// A pair's start time is the `started_at` stamp of its own run seed, which shedrun.WriteSeed writes once when the run is seeded; the file's modification time is never read, so a checkout, rebase or re-materialized worktree cannot move it.
+// A pair whose seed is absent, has no stamp or has one that does not parse is undated.
+// Runs seeded before the stamp existed are undated once, and sort by name after the dated pairs.
 // Each entry's Revive builds that worktree's own reed engine from its reed.yaml and its own ReedGeometry.
 //
 // The tellers do I/O only for Board and run state that no Location carries, and spawn nothing.

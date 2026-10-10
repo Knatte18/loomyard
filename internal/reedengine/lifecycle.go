@@ -479,6 +479,8 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		}
 	}
 
+	e.touchDiscoverSignal()
+
 	// remain-on-exit keeps a pane whose command exits around as
 	// pane_dead=1 instead of vanishing (which would also kill the session
 	// if it were the last pane) — the mechanism reconcile's dead-pane
@@ -510,6 +512,18 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()))
 
 	return true, stripped, nil
+}
+
+// touchDiscoverSignal creates or truncates the told discover signal file, waking the watchdog daemon's discovery loop.
+// It does nothing when no path is told, and a failure is logged at Warn, never failing the boot.
+func (e *Engine) touchDiscoverSignal() {
+	path := e.geom.DiscoverSignalPath
+	if path == "" {
+		return
+	}
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		logger.Warn("reed: could not touch the discover signal", "socket", e.Socket(), "path", path, "err", err)
+	}
 }
 
 // stripTraceID removes LYX_TRACE_ID from env before the tmux server inherits it.

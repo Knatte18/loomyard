@@ -39,8 +39,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// watchdogHubDiscoveryCycle is how often the daemon's outer loop runs one list-sessions round trip
-// against its hub socket.
+// watchdogHubDiscoveryCycle is the base cadence of the daemon's outer loop: how often it runs one list-sessions round trip against its hub socket while the session set keeps changing.
+// Across cycles that find the set unchanged the cadence doubles up to watchdogHubDiscoveryCeiling, and a changed set or a discover signal returns it to this base.
 //
 // It lives here, beside the discovery loop that consumes it, rather than alongside
 // internal/reedengine/watchdog.go's existing unexported watchdog* constants: those govern
@@ -48,10 +48,11 @@ import (
 // package purely so another package could read them would put the timings somewhere their only
 // consumer is not.
 //
-// Five seconds is well below any human `down` + `up` gap while being an order of magnitude slower
-// than the 100ms signal tick a per-worktree Engine.Watch already polls at, so discovery costs one
-// list-sessions round trip per hub every five seconds rather than riding the per-worktree tick.
+// Five seconds is well below any human `down` + `up` gap, so discovery costs one list-sessions round trip per hub every five seconds at most.
 const watchdogHubDiscoveryCycle = 5 * time.Second
+
+// watchdogHubDiscoveryCeiling is the longest wait the discovery loop backs off to across unchanged cycles.
+const watchdogHubDiscoveryCeiling = 60 * time.Second
 
 // watchdogHubIdleCycles is how many consecutive idle discovery cycles (see sessionsAreIdle) the
 // daemon tolerates before exiting.
@@ -77,10 +78,12 @@ const watchdogOrphanGoneCycles = 3
 // already uses for its own watchTiming/watchDefaultTiming pair, so the repo carries one idiom for
 // loop-timing injection rather than two.
 //
+// DiscoveryCycle is the base cadence and DiscoveryCeiling the cap it backs off to across unchanged cycles; a ceiling equal to the cycle means no backoff.
 // ReapTimeout bounds the reap's graceful wait before it force-kills.
 // Zero selects reedengine's own 15s reap budget, which is what production runs.
 type watchdogTiming struct {
 	DiscoveryCycle   time.Duration
+	DiscoveryCeiling time.Duration
 	IdleCycles       int
 	OrphanGoneCycles int
 	ReapTimeout      time.Duration
@@ -91,9 +94,76 @@ type watchdogTiming struct {
 func watchdogDefaultTiming() watchdogTiming {
 	return watchdogTiming{
 		DiscoveryCycle:   watchdogHubDiscoveryCycle,
+		DiscoveryCeiling: watchdogHubDiscoveryCeiling,
 		IdleCycles:       watchdogHubIdleCycles,
 		OrphanGoneCycles: watchdogOrphanGoneCycles,
 	}
+}
+
+// discoveryWake plans when the discovery loop runs its next cycle.
+// It holds the last cycle's time and the current cadence, which backs off while cycles find the session set unchanged.
+// A consumed discover signal runs a cycle sooner, but never sooner than the base after the last one, so a process touching the signal in a loop costs one cycle per base.
+type discoveryWake struct {
+	base    time.Duration
+	ceiling time.Duration
+	// cadence is the wait that follows the last cycle.
+	cadence   time.Duration
+	lastCycle time.Time
+	// signalAt is when the pending signal was consumed; zero when none is pending.
+	signalAt time.Time
+}
+
+// afterCycle records a cycle that ran at now and moves the cadence: back to the base when the session set changed, otherwise doubled up to the ceiling.
+// It clears a pending signal, which the cycle served.
+func (d *discoveryWake) afterCycle(now time.Time, changed bool) {
+	d.lastCycle = now
+	d.cadence = reedengine.NextWakeCadence(d.cadence, d.base, d.ceiling, changed)
+	d.signalAt = time.Time{}
+}
+
+// onSignal marks a discover signal consumed at now and returns the cadence to the base.
+func (d *discoveryWake) onSignal(now time.Time) {
+	d.signalAt = now
+	d.cadence = d.base
+}
+
+// next returns how long to wait from now before the next cycle.
+// A pending signal's cycle is due at the later of the signal and the base after the last cycle; otherwise the cycle is due when the cadence ends.
+func (d *discoveryWake) next(now time.Time) time.Duration {
+	due := d.lastCycle.Add(d.cadence)
+	if !d.signalAt.IsZero() {
+		due = d.lastCycle.Add(d.base)
+		if d.signalAt.After(due) {
+			due = d.signalAt
+		}
+	}
+	return max(due.Sub(now), 0)
+}
+
+// sameSessionSet reports whether a and b list the same session names, order and repeats aside.
+func sameSessionSet(a, b []string) bool {
+	set := make(map[string]bool, len(a))
+	for _, name := range a {
+		set[name] = true
+	}
+	other := make(map[string]bool, len(b))
+	for _, name := range b {
+		if !set[name] {
+			return false
+		}
+		other[name] = true
+	}
+	return len(set) == len(other)
+}
+
+// consumeDiscoverSignal removes the discover signal file at path and reports whether it was there.
+// An absent file answers false with no error.
+func consumeDiscoverSignal(path string) (bool, error) {
+	err := os.Remove(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // sessionsAreIdle reports whether one discovery cycle's list-sessions round trip counts toward the
@@ -316,10 +386,13 @@ func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPa
 	}()
 }
 
-// runWatchdogLoop is the daemon's outer loop: it polls hub for live sessions every
-// timing.DiscoveryCycle, enters newly-appeared sessions, tears down departed ones, reaps orphaned
+// runWatchdogLoop is the daemon's outer loop: it polls hub for live sessions, enters newly-appeared sessions, tears down departed ones, reaps orphaned
 // ones, and returns once timing.IdleCycles consecutive cycles are idle (see sessionsAreIdle) or ctx
 // is done.
+//
+// The wait between cycles starts at timing.DiscoveryCycle, doubles up to timing.DiscoveryCeiling across cycles that find the session set unchanged, and returns to the base when the set changes (discoveryWake).
+// The loop also waits on the hub-level discover signal file, opened through open: a consumed signal runs a cycle at once, never sooner than the base after the previous one.
+// When open fails the loop logs that once at Warn and keeps its backed-off cadence with no event wake.
 //
 // shellPath sits immediately after tmuxPath because the two are told together and travel together —
 // both are told-not-derived values the reap pass needs. An empty shellPath is logged once at Warn,
@@ -363,7 +436,7 @@ func dispatchReap(wg *sync.WaitGroup, done chan<- string, hub, tmuxPath, shellPa
 // watchLoop reads cfg.Watchdog exactly once at start, so a flipped watchdog: value only takes
 // effect once the entry leaves (this departure teardown) and re-enters (enterSession, on the next
 // appearance) — there is no other re-read path.
-func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timing watchdogTiming) error {
+func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timing watchdogTiming, open reedengine.FileWatchOpener) error {
 	logger.Info("reed: watchdog daemon starting", "hub", hub)
 	if shellPath == "" {
 		logger.Warn("reed: watchdog daemon starting with no shell path; the reap will kill pane root pids without their descendants on Windows", "hub", hub)
@@ -386,18 +459,51 @@ func runWatchdogLoop(ctx context.Context, hub, tmuxPath, shellPath string, timin
 		wg.Wait()
 	}()
 
-	ticker := time.NewTicker(timing.DiscoveryCycle)
-	defer ticker.Stop()
+	signalDir := fabricengine.HubScratchDir(hub)
+	signalPath := filepath.Join(signalDir, reedengine.DiscoverSignalFileName)
+	// A failed open leaves events nil, a channel that never delivers.
+	events, closeWatch, err := open(signalDir, reedengine.DiscoverSignalFileName)
+	if err != nil {
+		logger.Warn("reed: watchdog could not watch the discover signal file, keeping its backed-off cadence", "hub", hub, "err", err)
+	} else {
+		defer closeWatch()
+	}
 
+	start := time.Now()
+	wake := &discoveryWake{base: timing.DiscoveryCycle, ceiling: timing.DiscoveryCeiling, cadence: timing.DiscoveryCycle, lastCycle: start}
+	timer := time.NewTimer(wake.next(start))
+	defer timer.Stop()
+
+	var previousLive []string
 	idleCycles := 0
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-ticker.C:
+		case <-timer.C:
+		case _, ok := <-events:
+			if !ok {
+				events = nil
+				continue
+			}
+			consumed, err := consumeDiscoverSignal(signalPath)
+			if err != nil {
+				logger.Warn("reed: watchdog could not consume the discover signal", "hub", hub, "err", err)
+				continue
+			}
+			if consumed {
+				now := time.Now()
+				wake.onSignal(now)
+				timer.Reset(wake.next(now))
+			}
+			continue
 		}
 
 		live, err := reedengine.ListSessions(tmuxPath, reedengine.ServerName(hub))
+		now := time.Now()
+		wake.afterCycle(now, !sameSessionSet(live, previousLive))
+		previousLive = live
+		timer.Reset(wake.next(now))
 		if sessionsAreIdle(live, err) {
 			idleCycles++
 			if idleCycles >= timing.IdleCycles {
@@ -593,7 +699,7 @@ Example:
 			if c.watchdogTiming != nil {
 				timing = *c.watchdogTiming
 			}
-			if err := runWatchdogLoop(cmd.Context(), hubPath, tmuxPath, shellPath, timing); err != nil {
+			if err := runWatchdogLoop(cmd.Context(), hubPath, tmuxPath, shellPath, timing, reedengine.OpenFileWatch); err != nil {
 				logger.Warn("reed: watchdog daemon's loop returned", "hub", hubPath, "err", err)
 			}
 			return nil

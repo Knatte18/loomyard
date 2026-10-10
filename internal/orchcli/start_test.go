@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
@@ -57,6 +58,7 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	c.paths.NoteTemplatePath = filepath.Join(c.paths.Dir, "note-template.md")
 	c.cfg.Model, c.cfg.Effort = "opus", "high"
 	c.stencilsDir = stencilkit.Seed(t)
+	c.location = locationkit.Location(t.TempDir(), "main", "")
 	h := &startHarness{cli: c, strands: fake, starter: &fakeStarter{guid: "new-guid"}}
 	c.starter = h.starter
 	c.reedUp = func() error { return nil }
@@ -135,6 +137,9 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	}
 	if spec.SkillLoadTimeout != h.cli.cfg.HandoffTimeout() {
 		t.Errorf("SkillLoadTimeout = %v; want the handoff timeout %v", spec.SkillLoadTimeout, h.cli.cfg.HandoffTimeout())
+	}
+	if want := "cd '" + h.cli.location.AnchorPath() + "'; lyx orch resume-context"; spec.ContextAfterCompaction != want {
+		t.Errorf("ContextAfterCompaction = %q; want %q", spec.ContextAfterCompaction, want)
 	}
 	if spec.Model != "opus" || spec.Effort != "high" {
 		t.Errorf("model/effort = %q/%q; want opus/high", spec.Model, spec.Effort)

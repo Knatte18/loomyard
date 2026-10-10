@@ -13,9 +13,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -49,12 +51,11 @@ func TestWatchState(t *testing.T) {
 	}
 }
 
-// watchDefaultTimingMatchesTheSixConstants pins that watchDefaultTiming returns exactly the
-// six package constants, so a later tuning change moves one line and does not break the suite.
+// watchDefaultTimingMatchesTheSixConstants pins that watchDefaultTiming returns exactly the package constants, so a later tuning change moves one line and does not break the suite.
+// It also pins that its periodic cadences are at or above the one-second floor.
 func watchDefaultTimingMatchesTheSixConstants(t *testing.T) {
 	got := watchDefaultTiming()
 	want := watchTiming{
-		SignalTick:  watchdogSignalTick,
 		PollCycle:   watchdogPollCycle,
 		Quiet:       watchdogDebounceQuiet,
 		BaseDelay:   watchdogRetryBaseDelay,
@@ -63,6 +64,9 @@ func watchDefaultTimingMatchesTheSixConstants(t *testing.T) {
 	}
 	if got != want {
 		t.Errorf("watchDefaultTiming() = %+v, want %+v", got, want)
+	}
+	if got.PollCycle < time.Second || got.Dormant < time.Second {
+		t.Errorf("watchDefaultTiming() periodic cadences = poll %v, dormant %v; want each at or above one second", got.PollCycle, got.Dormant)
 	}
 }
 
@@ -78,7 +82,6 @@ func tickerPeriodForAnswersPerModeCadence(t *testing.T) {
 		want time.Duration
 	}{
 		{"Dormant", watchModeDormant, timing.Dormant},
-		{"Signal", watchModeSignal, timing.SignalTick},
 		{"Poll", watchModePoll, timing.PollCycle},
 	}
 	for _, tt := range tests {
@@ -363,7 +366,6 @@ func watchStateFreshSignalAfterExhaustedStreakReArms(t *testing.T) {
 // wait anywhere near a second.
 func watchdogTestTiming() watchTiming {
 	return watchTiming{
-		SignalTick:  2 * time.Millisecond,
 		PollCycle:   5 * time.Millisecond,
 		Quiet:       5 * time.Millisecond,
 		BaseDelay:   2 * time.Millisecond,
@@ -390,16 +392,52 @@ func newWatchLoopTestEngine(t *testing.T, watchdog string) (*Engine, *fakeTmux) 
 	return e, fake
 }
 
-// startWatchLoop runs e.watchLoop(ctx, timing) in a goroutine, cancels ctx and drains the
+// feedWatch is a FileWatchOpener over a channel the test feeds, recording how often it was opened;
+// a non-nil openErr makes every open fail.
+type feedWatch struct {
+	events  chan fswatch.Event
+	openErr error
+
+	mu    sync.Mutex
+	opens int
+}
+
+func newFeedWatch() *feedWatch {
+	return &feedWatch{events: make(chan fswatch.Event, 16)}
+}
+
+func (f *feedWatch) open(string, ...string) (<-chan fswatch.Event, func() error, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.opens++
+	if f.openErr != nil {
+		return nil, nil, f.openErr
+	}
+	return f.events, func() error { return nil }, nil
+}
+
+// opened is how many times the loop opened the watcher.
+func (f *feedWatch) opened() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.opens
+}
+
+// send feeds one event for the signal file, as the watcher raises on each write of it.
+func (f *feedWatch) send() {
+	f.events <- fswatch.Event{Name: resizeSignalFileName, Op: "write"}
+}
+
+// startWatchLoop runs e.watchLoop(ctx, timing, open) in a goroutine, cancels ctx and drains the
 // completion channel in a t.Cleanup (bounded, so a stuck loop cannot hang the test suite), and
 // returns the cancel func and the completion channel for tests that want to assert on them
 // directly.
-func startWatchLoop(t *testing.T, e *Engine, timing watchTiming) (cancel context.CancelFunc, done chan error) {
+func startWatchLoop(t *testing.T, e *Engine, timing watchTiming, open FileWatchOpener) (cancel context.CancelFunc, done chan error) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	done = make(chan error, 1)
 	go func() {
-		done <- e.watchLoop(ctx, timing)
+		done <- e.watchLoop(ctx, timing, open)
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -434,7 +472,7 @@ func TestWatchLoop_ParkedWhenNotEnabled(t *testing.T) {
 	for _, watchdog := range []string{"off", "garbage"} {
 		t.Run(watchdog, func(t *testing.T) {
 			e, fake := newWatchLoopTestEngine(t, watchdog)
-			cancel, done := startWatchLoop(t, e, watchdogTestTiming())
+			cancel, done := startWatchLoop(t, e, watchdogTestTiming(), newFeedWatch().open)
 
 			select {
 			case err := <-done:
@@ -471,7 +509,7 @@ func TestWatchLoop_StaleSignalFileRemovedAtStart(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	startWatchLoop(t, e, watchdogTestTiming())
+	startWatchLoop(t, e, watchdogTestTiming(), newFeedWatch().open)
 
 	if !eventually(t, 200*time.Millisecond, func() bool {
 		_, err := os.Stat(signalPath)
@@ -489,7 +527,7 @@ func TestWatchLoop_PollModeByDefault(t *testing.T) {
 	e, fake := newWatchLoopTestEngine(t, "on")
 	fake.answer("show-options", "", nil)
 
-	startWatchLoop(t, e, watchdogTestTiming())
+	startWatchLoop(t, e, watchdogTestTiming(), newFeedWatch().open)
 
 	if !eventually(t, 300*time.Millisecond, func() bool { return fake.Count("list-panes") >= 3 }) {
 		t.Fatalf("list-panes calls = %d, want at least 3 poll cycles", fake.Count("list-panes"))
@@ -522,16 +560,22 @@ func waitForPromotion(t *testing.T, fake *fakeTmux) int {
 // With show-options returning reed's own command string the loop promotes and stops issuing per-cycle reapplyLayout calls.
 // Each later step builds on the state the earlier ones left.
 // Signal mode never re-probes, so scripting show-options to return the empty string afterwards produces no further probe round trips.
-// A signal file then causes exactly one select-layout after the quiet period, and the file is gone before that select-layout appears in the recorded argv.
+// A signal file is not looked at until an event arrives: with none, the file stays and no tmux call is made.
+// An event then causes exactly one select-layout after the quiet period, and the file is gone before that select-layout appears in the recorded argv.
+// An event that finds no file runs nothing.
 //
-//testtiming:keep pins promotion into signal mode stopping per-cycle polling, a signal file producing exactly one select-layout after the file is removed, and signal mode never re-probing the hook; its covering tests run this code without asserting it
+//testtiming:keep pins promotion into signal mode stopping per-cycle polling, no stat or tmux call without an event, a signal file and its event producing exactly one select-layout after the file is removed, an event with no file running nothing, and signal mode never re-probing the hook; its covering tests run this code without asserting it
 func TestWatchLoop_SignalMode(t *testing.T) {
 	e, fake := newWatchLoopTestEngine(t, "on")
 	ownCommand := resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath())
 	fake.answer("show-options", ownCommand, nil)
-	startWatchLoop(t, e, watchdogTestTiming())
+	feed := newFeedWatch()
+	startWatchLoop(t, e, watchdogTestTiming(), feed.open)
 
 	stable := waitForPromotion(t, fake)
+	if got := feed.opened(); got != 1 {
+		t.Errorf("watcher opened %d times, want once at promotion", got)
+	}
 	probesAtPromotion := fake.Count("show-options")
 	// The promotion tick's own first-ever apply (lastApplied starts as the zero box, which never
 	// equals a live box) already issued one select-layout; the baseline below is what the
@@ -547,6 +591,15 @@ func TestWatchLoop_SignalMode(t *testing.T) {
 	if err := os.WriteFile(signalPath, nil, 0o644); err != nil {
 		t.Fatalf("WriteFile signal: %v", err)
 	}
+	// No event has arrived, so the loop neither stats the file nor calls tmux.
+	time.Sleep(30 * time.Millisecond)
+	if _, err := os.Stat(signalPath); err != nil {
+		t.Errorf("signal file stat = %v with no event sent, want it left in place", err)
+	}
+	if got := fake.Count("list-panes"); got != stable {
+		t.Errorf("list-panes calls = %d with no event sent, want unchanged at %d", got, stable)
+	}
+	feed.send()
 	if !eventually(t, 300*time.Millisecond, func() bool { return fake.Count("list-panes") > stable }) {
 		t.Errorf("list-panes calls = %d, want more than %d after the signal file appeared", fake.Count("list-panes"), stable)
 	}
@@ -559,7 +612,13 @@ func TestWatchLoop_SignalMode(t *testing.T) {
 	if got := fake.Count("select-layout"); got != baseline+1 {
 		t.Errorf("select-layout calls = %d, want exactly %d for one signal", got, baseline+1)
 	}
+	// The event the loop's own remove raised finds no file and runs nothing.
+	listPanes := fake.Count("list-panes")
+	feed.send()
 	time.Sleep(30 * time.Millisecond)
+	if got := fake.Count("list-panes"); got != listPanes {
+		t.Errorf("list-panes calls = %d after an event with no file, want unchanged at %d", got, listPanes)
+	}
 	if got := fake.Count("show-options"); got != probesAtPromotion {
 		t.Errorf("show-options calls = %d after clearing the hook, want unchanged from %d (signal mode never re-probes)", got, probesAtPromotion)
 	}
@@ -585,7 +644,7 @@ func TestWatchLoop_UndecidedProbeDoesNotGuess(t *testing.T) {
 		t.Fatalf("AcquireWriteLock: %v", err)
 	}
 
-	startWatchLoop(t, e, watchdogTestTiming())
+	startWatchLoop(t, e, watchdogTestTiming(), newFeedWatch().open)
 
 	time.Sleep(30 * time.Millisecond)
 	if got := len(fake.Calls()); got != 0 {
@@ -611,7 +670,7 @@ func TestWatchLoop_TakeEffectBoundary(t *testing.T) {
 	e, fake := newWatchLoopTestEngine(t, "on")
 	fake.answer("show-options", "", nil)
 
-	_, done := startWatchLoop(t, e, watchdogTestTiming())
+	_, done := startWatchLoop(t, e, watchdogTestTiming(), newFeedWatch().open)
 
 	if !eventually(t, 200*time.Millisecond, func() bool { return fake.Count("list-panes") >= 2 }) {
 		t.Fatalf("list-panes calls = %d, want at least 2 poll cycles before flipping the config", fake.Count("list-panes"))
@@ -639,7 +698,8 @@ func TestWatchLoop_FailuresNeverKillTheLoop(t *testing.T) {
 	fake.answer("show-options", ownCommand, nil)
 
 	timing := watchdogTestTiming()
-	_, done := startWatchLoop(t, e, timing)
+	feed := newFeedWatch()
+	_, done := startWatchLoop(t, e, timing, feed.open)
 	waitForPromotion(t, fake)
 	// The promotion tick's own first-ever apply already issued one (successful) select-layout;
 	// baseline is what this failing streak's timing.MaxAttempts attempts must add on top of.
@@ -650,6 +710,7 @@ func TestWatchLoop_FailuresNeverKillTheLoop(t *testing.T) {
 	if err := os.WriteFile(e.resizeSignalPath(), nil, 0o644); err != nil {
 		t.Fatalf("WriteFile signal: %v", err)
 	}
+	feed.send()
 
 	// timing.MaxAttempts failing attempts, each escalating by timing.BaseDelay<<(n-1), plus generous
 	// scheduling slack.
@@ -679,6 +740,7 @@ func TestWatchLoop_FailuresNeverKillTheLoop(t *testing.T) {
 	if err := os.WriteFile(e.resizeSignalPath(), nil, 0o644); err != nil {
 		t.Fatalf("WriteFile fresh signal: %v", err)
 	}
+	feed.send()
 	if !eventually(t, 200*time.Millisecond, func() bool { return fake.Count("select-layout") > exhausted }) {
 		t.Errorf("select-layout attempts = %d, want more than %d after a fresh signal", fake.Count("select-layout"), exhausted)
 	}
@@ -693,7 +755,8 @@ func TestWatchLoop_DeferralCostsNoBudget(t *testing.T) {
 	fake.answer("show-options", ownCommand, nil)
 
 	timing := watchdogTestTiming()
-	startWatchLoop(t, e, timing)
+	feed := newFeedWatch()
+	startWatchLoop(t, e, timing, feed.open)
 	waitForPromotion(t, fake)
 	// The promotion tick's own first-ever apply already issued one select-layout; baseline is what
 	// the once-unblocked deferred signal below must exceed.
@@ -710,6 +773,7 @@ func TestWatchLoop_DeferralCostsNoBudget(t *testing.T) {
 	if err := os.WriteFile(e.resizeSignalPath(), nil, 0o644); err != nil {
 		t.Fatalf("WriteFile signal: %v", err)
 	}
+	feed.send()
 
 	// Hold the lock across (well beyond) the whole quiet period: every tick's try-lock fails, so no
 	// tmux call of any kind can happen. Hardcoded to double watchdogTestTiming's fixed 5ms Quiet
@@ -746,7 +810,7 @@ func TestWatchLoop_PollModeGoesDormantOnVanishedWorktreeRoot(t *testing.T) {
 	e, fake := newWatchLoopTestEngine(t, "on")
 	fake.answer("show-options", "", nil)
 
-	_, done := startWatchLoop(t, e, watchdogTestTiming())
+	_, done := startWatchLoop(t, e, watchdogTestTiming(), newFeedWatch().open)
 
 	if !eventually(t, 200*time.Millisecond, func() bool { return fake.Count("list-panes") >= 2 }) {
 		t.Fatalf("list-panes calls = %d, want at least 2 poll cycles before the worktree root vanishes", fake.Count("list-panes"))
@@ -788,13 +852,15 @@ func TestWatchLoop_RecoversFromDormancyToItsPriorMode(t *testing.T) {
 	timing := watchdogTestTiming()
 	timing.Quiet = 30 * time.Millisecond
 
-	_, done := startWatchLoop(t, e, timing)
+	feed := newFeedWatch()
+	_, done := startWatchLoop(t, e, timing, feed.open)
 	waitForPromotion(t, fake)
 
 	signalPath := e.resizeSignalPath()
 	if err := os.WriteFile(signalPath, nil, 0o644); err != nil {
 		t.Fatalf("WriteFile signal: %v", err)
 	}
+	feed.send()
 	if !eventually(t, 200*time.Millisecond, func() bool {
 		_, err := os.Stat(signalPath)
 		return os.IsNotExist(err)
@@ -850,12 +916,38 @@ func TestWatchLoop_NonSentinelFailureDoesNotGoDormant(t *testing.T) {
 	fake.answer("show-options", "", nil)
 	fake.answer("select-layout", "", errors.New("select-layout boom"))
 
-	startWatchLoop(t, e, watchdogTestTiming())
+	startWatchLoop(t, e, watchdogTestTiming(), newFeedWatch().open)
 
 	if !eventually(t, 300*time.Millisecond, func() bool { return fake.Count("list-panes") >= 5 }) {
 		t.Fatalf("list-panes calls = %d, want continued poll-cadence reapply attempts despite the non-sentinel failure", fake.Count("list-panes"))
 	}
 	if strings.Contains(buf.String(), "told worktree root is gone") {
 		t.Errorf("dormancy warning logged for a non-sentinel failure, want only the sentinel to trigger dormancy:\n%s", buf.String())
+	}
+}
+
+// TestWatchLoop_OpenerFailureStaysInPollMode pins that when the hook is installed but the signal file cannot be watched, the loop logs that once, keeps polling at the poll cadence, and never probes or promotes again.
+//
+//testtiming:keep pins a failed watcher open at promotion leaving the loop in poll mode with exactly one warning and no later probe; its covering tests run this code without asserting it
+func TestWatchLoop_OpenerFailureStaysInPollMode(t *testing.T) {
+	buf := logcapture.CaptureVerbose(t)
+	e, fake := newWatchLoopTestEngine(t, "on")
+	fake.answer("show-options", resizeHookCommand(shell.ForGOOS(), e.resizeSignalPath()), nil)
+	feed := newFeedWatch()
+	feed.openErr = errors.New("inotify limit")
+
+	startWatchLoop(t, e, watchdogTestTiming(), feed.open)
+
+	if !eventually(t, 300*time.Millisecond, func() bool { return fake.Count("list-panes") >= 5 }) {
+		t.Fatalf("list-panes calls = %d, want the poll cadence to continue after the failed open", fake.Count("list-panes"))
+	}
+	if got := feed.opened(); got != 1 {
+		t.Errorf("watcher open attempts = %d, want one, with no later promotion", got)
+	}
+	if got := fake.Count("show-options"); got != 1 {
+		t.Errorf("show-options probes = %d, want one, with no probe once promotion is blocked", got)
+	}
+	if got := strings.Count(buf.String(), "could not watch the resize signal file"); got != 1 {
+		t.Errorf("open-failure warnings = %d, want exactly 1; log:\n%s", got, buf.String())
 	}
 }

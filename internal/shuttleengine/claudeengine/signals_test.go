@@ -146,6 +146,11 @@ func TestParseSessionSignals(t *testing.T) {
 			},
 		},
 		{
+			name:   "session_start_is_a_signal_carrying_its_source",
+			chunks: []string{signalStamp("SessionStart", stampTime) + signalPayload(t, "SessionStart", map[string]any{"source": "compact"})},
+			want:   []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalSessionStart, At: at, SessionID: "sess-1", Source: "compact"}},
+		},
+		{
 			name: "two_stamps_pair_each_payload_with_its_own_hook",
 			chunks: []string{
 				signalStamp("UserPromptSubmit", stampTime) + signalStamp("Stop", otherStampTime) + stop + userPrompt,

@@ -13,8 +13,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// nameRepairCycle is how often WatchNames runs one repair pass.
+// nameRepairCycle is the name-repair loop's base wait between passes, the wait after a pass that repaired something.
 const nameRepairCycle = 10 * time.Second
+
+// nameRepairCeiling is the longest wait the name-repair loop backs off to while nothing drifts.
+const nameRepairCeiling = 60 * time.Second
+
+// nameRepairTiming is the name-repair loop's cadence and its timer seam.
+type nameRepairTiming struct {
+	// Base is the wait after a pass that repaired something, and the first wait.
+	Base time.Duration
+	// Ceiling caps the backed-off wait.
+	Ceiling time.Duration
+	// After returns a channel that fires once the given wait has passed.
+	After func(time.Duration) <-chan time.Time
+}
+
+// nameRepairDefaultTiming is the production timing: the base and ceiling constants over the wall clock.
+func nameRepairDefaultTiming() nameRepairTiming {
+	return nameRepairTiming{Base: nameRepairCycle, Ceiling: nameRepairCeiling, After: time.After}
+}
 
 // SessionNamer is the provider seam through which the watchdog reads and repairs a provider session's own name.
 // reedengine declares it and never implements it; the provider implementation is wired in by the CLI layer.
@@ -61,28 +79,35 @@ func planTitleRepairs(strands []Strand, live []LivePane) []titleRepair {
 	return repairs
 }
 
-// WatchNames runs the name-repair loop until ctx ends, one repairNames pass per nameRepairCycle.
+// WatchNames runs the name-repair loop until ctx ends, one repairNames pass per wake.
+// The wait starts at nameRepairCycle, doubles up to nameRepairCeiling across passes that repair nothing, and returns to nameRepairCycle after one that repairs something.
 // A held op lock defers a tick rather than queueing behind it, as reapplyLayout does.
 // namer may be nil, which skips the session-name half.
 // It never writes to stdout or stderr, and a failure inside a pass is logged, never returned.
 func (e *Engine) WatchNames(ctx context.Context, namer SessionNamer) error {
-	ticker := time.NewTicker(nameRepairCycle)
-	defer ticker.Stop()
+	return e.watchNames(ctx, namer, nameRepairDefaultTiming())
+}
+
+// watchNames is WatchNames over an injected timing.
+func (e *Engine) watchNames(ctx context.Context, namer SessionNamer, t nameRepairTiming) error {
+	wait := t.Base
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-ticker.C:
-			if err := e.repairNames(namer); err != nil {
-				logger.Warn("reed: name repair pass failed", "socket", e.Socket(), "session", e.SessionName(), "err", err)
-			}
+		case <-t.After(wait):
 		}
+		repaired, err := e.repairNames(namer)
+		if err != nil {
+			logger.Warn("reed: name repair pass failed", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		}
+		wait = NextWakeCadence(wait, t.Base, t.Ceiling, repaired)
 	}
 }
 
-// repairNames runs one repair pass under the try-lock.
+// repairNames runs one repair pass under the try-lock and reports whether it repaired any pane title or session name.
 // A session that is not up, or a held op lock, makes the pass do nothing.
-func (e *Engine) repairNames(namer SessionNamer) error {
+func (e *Engine) repairNames(namer SessionNamer) (repaired bool, err error) {
 	acquired, err := e.withTryOpLock(func() error {
 		up, err := e.tmux.hasSession(e.SessionName())
 		if err != nil {
@@ -106,6 +131,7 @@ func (e *Engine) repairNames(namer SessionNamer) error {
 				continue
 			}
 			logger.Info("reed: repaired pane title", "socket", e.Socket(), "session", e.SessionName(), "guid", r.GUID, "old", r.OldTitle, "name", r.Name)
+			repaired = true
 		}
 
 		if namer == nil {
@@ -119,38 +145,41 @@ func (e *Engine) repairNames(namer SessionNamer) error {
 			if s.PaneID == "" || !alive[s.PaneID] {
 				continue
 			}
-			e.repairSessionName(namer, s)
+			if e.repairSessionName(namer, s) {
+				repaired = true
+			}
 		}
 		return nil
 	})
 	if !acquired && err == nil {
 		logger.Debug("reed: op lock held, deferring this name repair tick", "socket", e.Socket(), "session", e.SessionName())
 	}
-	return err
+	return repaired, err
 }
 
-// repairSessionName renames s's provider session by typing the namer's rename text into its pane, when the session name has drifted and the pane is idle.
+// repairSessionName renames s's provider session by typing the namer's rename text into its pane, when the session name has drifted and the pane is idle, and reports whether it typed the rename.
 // A busy pane is left alone and retried on the next tick.
-func (e *Engine) repairSessionName(namer SessionNamer, s Strand) {
+func (e *Engine) repairSessionName(namer SessionNamer, s Strand) bool {
 	if !namer.SessionNameDrift(s.SessionID, e.geom.PaneCwd, s.Name) {
-		return
+		return false
 	}
 	capture, err := e.tmux.output("capture-pane", "-p", "-t", s.PaneID)
 	if err != nil {
 		logger.Warn("reed: could not capture pane for session name repair", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "err", err)
-		return
+		return false
 	}
 	if !namer.SessionIdle(capture) {
 		logger.Debug("reed: session busy, deferring session name repair", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID)
-		return
+		return false
 	}
 	if err := e.tmux.run("send-keys", "-t", s.PaneID, "-l", sendKeysLiteralArg(namer.RenameText(s.Name))); err != nil {
 		logger.Warn("reed: could not type the session rename", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "err", err)
-		return
+		return false
 	}
 	if err := e.tmux.run("send-keys", "-t", s.PaneID, "Enter"); err != nil {
 		logger.Warn("reed: could not submit the session rename", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "err", err)
-		return
+		return false
 	}
 	logger.Info("reed: repaired session name", "socket", e.Socket(), "session", e.SessionName(), "guid", s.GUID, "name", s.Name)
+	return true
 }

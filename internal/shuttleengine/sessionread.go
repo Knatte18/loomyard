@@ -24,6 +24,8 @@ type RunSessionState struct {
 	State SessionState
 	// History is every state the reading passed through, in order.
 	History []SessionState
+	// SessionStartAt is the time of the newest session-start signal read; zero when none.
+	SessionStartAt time.Time
 }
 
 // ReadSessionStates returns the session state of every run under the run-directory root of anchorPath whose record reads running.
@@ -86,7 +88,7 @@ func readRunSessionState(rs RunState, engine Engine, now time.Time) RunSessionSt
 	facts.EventsUnreadable = eventsUnreadable
 	var fold SessionFold
 	fold.Fold(signals, facts)
-	reading.State, reading.History = fold.State(), fold.History()
+	reading.State, reading.History, reading.SessionStartAt = fold.State(), fold.History(), fold.SessionStartAt()
 	return reading
 }
 

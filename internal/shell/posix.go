@@ -44,6 +44,11 @@ func (p posixShell) PrependPathEntry(dir string) string {
 	return "export PATH=" + p.Quote(dir) + `${PATH:+:$PATH}`
 }
 
+// ChangeDir returns the POSIX `cd <quoted dir>` statement.
+func (p posixShell) ChangeDir(dir string) string {
+	return "cd " + p.Quote(dir)
+}
+
 // Source returns the POSIX `. <quoted path>` statement, which runs the file's statements in the current shell's own scope.
 func (p posixShell) Source(path string) string {
 	return ". " + p.Quote(path)

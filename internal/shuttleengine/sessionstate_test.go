@@ -98,6 +98,12 @@ func TestSessionFold(t *testing.T) {
 			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1)), state(SessionDead, "logout", at(2))},
 		},
 		{
+			name:        "a session start after a turn end leaves the state and cause unchanged",
+			steps:       []step{{[]SessionSignal{turnEnd(1), {Kind: SessionSignalSessionStart, At: at(2), Source: "compact"}}, factsWith(outputs)}},
+			wantState:   state(SessionIdleDone, SessionCauseDone, at(1)),
+			wantHistory: []SessionState{state(SessionIdleDone, SessionCauseDone, at(1))},
+		},
+		{
 			name:        "a clear session end is unknown with its reason until the next signal",
 			steps:       []step{{[]SessionSignal{turnEnd(1), sessionEnd(2, "clear", false)}, factsWith(outputs)}},
 			wantState:   state(SessionUnknown, "clear", at(2)),

@@ -13,6 +13,9 @@
 // When _lyx/shed/<slug>/ is absent and _lyx/shed/self/ exists, both spellings join the legacy "self"
 // directory, so a run started before the rename keeps working with no on-disk migration.
 //
+// WriteSeed stamps `started_at`, the RFC 3339 UTC time the run was seeded, when the seed has none and keeps a given one;
+// a re-written agreeing seed keeps its original stamp, and a seed written before the field existed has none.
+//
 // A seed written when it carried a top-level `parent` key still decodes; the key is discarded and never re-encoded.
 // A run's parent is resolved at use from the pair's origin record alone; see PATTERN-agent-name.
 //

@@ -41,3 +41,4 @@ their mechanics are documented there per the [doc-lifecycle convention](../overv
   the mapping to a stencil mode lives in `stencilstore.ModeFor`
 - `internal/buildvcs` — the running binary's VCS identity (`Identity`, `Running`), a stdlib-only leaf beside `internal/buildinfo`
 - `internal/standalonestate` — pure derivation from an absolute target path to a `hash8` and its per-OS state directory, creating nothing on disk
+- `internal/fswatch` — the one file-change event source over fsnotify: `Watch` delivers one event per create, write, rename or remove of a named entry, coalescing nothing, and returns an fsnotify failure so the caller falls back to polling

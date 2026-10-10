@@ -56,6 +56,7 @@ func newReapFixture(t *testing.T, h *hubforge.Hub, primeEngine *reedengine.Engin
 func compressedReapTiming() watchdogTiming {
 	return watchdogTiming{
 		DiscoveryCycle:   30 * time.Millisecond,
+		DiscoveryCeiling: 30 * time.Millisecond,
 		IdleCycles:       watchdogHubIdleCycles,
 		OrphanGoneCycles: watchdogOrphanGoneCycles,
 		ReapTimeout:      time.Second,
@@ -110,7 +111,7 @@ func startReapLoop(fx reapFixture, shellPath string, timing watchdogTiming) (con
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- runWatchdogLoop(ctx, fx.hub.Path, fx.tmuxPath, shellPath, timing)
+		done <- runWatchdogLoop(ctx, fx.hub.Path, fx.tmuxPath, shellPath, timing, reedengine.OpenFileWatch)
 	}()
 	return cancel, done
 }

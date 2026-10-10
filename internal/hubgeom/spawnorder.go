@@ -3,7 +3,6 @@
 package hubgeom
 
 import (
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -50,15 +49,18 @@ func sortSpawnOrder(candidates []spawnCandidate) []spawnCandidate {
 	return ordered
 }
 
-// runStartTime reads the start time of l's run as the modification time of the run's seed, written once when the run is seeded.
-// A pair whose seed is absent or unreadable has none.
-// The seed sits in the fabric-synced _lyx tree, so a checkout or re-materialization that rewrites it moves the time.
+// runStartTime reads the start time of l's run from the started_at stamp of the run's seed.
+// A pair whose seed is absent, unreadable, without the stamp or with one that does not parse has none.
 func runStartTime(l *lyxcwd.Location) (time.Time, bool) {
-	info, err := os.Stat(shedrun.SeedFile(l, shedrun.SelfRunID))
+	seed, found, err := shedrun.ReadSeed(l, shedrun.SelfRunID)
+	if err != nil || !found {
+		return time.Time{}, false
+	}
+	started, err := time.Parse(time.RFC3339, seed.StartedAt)
 	if err != nil {
 		return time.Time{}, false
 	}
-	return info.ModTime(), true
+	return started, true
 }
 
 // spawnOrder returns the function reed calls, only when a revival is due, to list the hub's worktrees in spawn order.

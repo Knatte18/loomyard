@@ -88,6 +88,9 @@ func TestReedGeometry(t *testing.T) {
 			if want := fabricengine.HubLogsDir(hub); got.LogsDir != want {
 				t.Errorf("ReedGeometry(l).LogsDir = %q; want %q", got.LogsDir, want)
 			}
+			if want := filepath.Join(fabricengine.HubScratchDir(hub), reedengine.DiscoverSignalFileName); got.DiscoverSignalPath != want {
+				t.Errorf("ReedGeometry(l).DiscoverSignalPath = %q; want %q", got.DiscoverSignalPath, want)
+			}
 			if got.WorktreeName != l.WorktreeName {
 				t.Errorf("ReedGeometry(l).WorktreeName = %q; want %q", got.WorktreeName, l.WorktreeName)
 			}

@@ -155,9 +155,9 @@ func TestStartup_TrustPromptThenReady(t *testing.T) {
 // TestStartup_ReadyProbeTiming covers the ready paths' timing on the virtual clock. Ready on the
 // first probe is the fast path: no dismissal ever attempted and no Sleep call before the handle is
 // returned. The startup step probes at pollInterval x LivenessEveryNPolls, never at the bare poll
-// interval: with PollIntervalMS 100 and LivenessEveryNPolls 10, a ready-on-third-Status-call script
-// must advance the virtual clock by exactly two probe intervals (2 x 100ms x 10 = 2s), never by a
-// bare 100ms step.
+// interval: with PollIntervalMS 1000 and LivenessEveryNPolls 10, a ready-on-third-Status-call script
+// must advance the virtual clock by exactly two probe intervals (2 x 1s x 10 = 20s), never by a
+// bare 1s step.
 //
 //testtiming:keep pins the ready path's virtual-clock timing: no Sleep when ready on the first probe, and exactly two probe intervals otherwise
 func TestStartup_ReadyProbeTiming(t *testing.T) {
@@ -171,10 +171,10 @@ func TestStartup_ReadyProbeTiming(t *testing.T) {
 		{name: "ready on the first probe never sleeps", cfg: fastConfig, script: []StartupState{StartupReady}, wantStatusCalls: 1},
 		{
 			name:            "probe cadence matches Wait",
-			cfg:             Config{PollIntervalMS: 100, LivenessEveryNPolls: 10, StartupTimeoutS: 30, RunTimeoutMin: 5},
+			cfg:             Config{PollIntervalMS: 1000, LivenessEveryNPolls: 10, StartupTimeoutS: 60, RunTimeoutMin: 5},
 			script:          []StartupState{StartupPending, StartupPending, StartupReady},
 			wantStatusCalls: 3,
-			wantElapsed:     2 * 100 * time.Millisecond * 10,
+			wantElapsed:     2 * 1000 * time.Millisecond * 10,
 		},
 	}
 	for _, tt := range tests {
@@ -694,7 +694,7 @@ func TestStartup_RunDeadlineShorterThanWindow_NeverReady(t *testing.T) {
 			StatusQueue:     []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}},
 		}
 		engine := &fakeEngine{StartupScript: []StartupState{StartupPending}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
-		cfg := Config{PollIntervalMS: 500, LivenessEveryNPolls: 1, StartupTimeoutS: 3600, RunTimeoutMin: 5}
+		cfg := Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1, StartupTimeoutS: 3600, RunTimeoutMin: 5}
 		fc := newFakeClock(time.Now())
 		runner := newFixture(t, reed, engine, withConfig(cfg), withClock(fc)).Runner
 		return runner, reed, fc.Now()
@@ -734,7 +734,7 @@ func TestStartup_RunDeadlineShorterThanWindow_NeverReady(t *testing.T) {
 		}
 		elapsed := fc.Now().Sub(start)
 		// "Near Spec.Timeout" rather than exact: the loop only samples the deadline once per probe
-		// interval (500ms here), so it can overshoot by up to one interval, but must land nowhere
+		// interval (1s here), so it can overshoot by up to one interval, but must land nowhere
 		// close to the 3600s startup window.
 		if elapsed < specTimeout || elapsed > specTimeout+5*time.Second {
 			t.Errorf("virtual elapsed = %s; want it near Spec.Timeout (%s), not the startup window", elapsed, specTimeout)
@@ -753,7 +753,7 @@ func TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline(t *tes
 			StatusQueue:     []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}},
 		}
 		engine := &fakeEngine{StartupScript: []StartupState{StartupPending}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
-		cfg := Config{PollIntervalMS: 500, LivenessEveryNPolls: 1, StartupTimeoutS: 3600, RunTimeoutMin: 5}
+		cfg := Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1, StartupTimeoutS: 3600, RunTimeoutMin: 5}
 		fc := newFakeClock(time.Now())
 		mc := &multiStepClock{fakeClock: fc, steps: []func(){
 			func() { touchOutputFile(t, outputFile) },

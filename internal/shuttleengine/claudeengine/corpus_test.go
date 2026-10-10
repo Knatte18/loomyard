@@ -227,7 +227,7 @@ func replayCorpusCase(t *testing.T, name string) {
 		SkillLoadMessageFn:  claude.SkillLoadMessage,
 		ClassifySkillLoadFn: claude.ClassifySkillLoad,
 	}
-	cfg := shuttleengine.Config{PollIntervalMS: 500, LivenessEveryNPolls: 1, RunTimeoutMin: 60, StartupTimeoutS: 30, BackgroundShellWaitMin: 10}
+	cfg := shuttleengine.Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1, RunTimeoutMin: 60, StartupTimeoutS: 30, BackgroundShellWaitMin: 10}
 	runner := shuttleengine.NewRunner(reed, engine, worktree, worktree, cfg)
 	runner.SetClock(replay)
 	runner.SetNotifier(func(string) error {

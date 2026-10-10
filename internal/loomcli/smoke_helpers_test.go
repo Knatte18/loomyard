@@ -65,11 +65,20 @@ func sharedLyxBinary(t *testing.T) string {
 // case (h)'s concurrent invocations need, since t.Fatalf from a non-test goroutine is unsafe. Callers
 // on the test's own goroutine that want fail-fast behaviour check the returned err themselves.
 func runLoomCLINoFatal(exe, dir string, timeout time.Duration, args ...string) (stdout string, exitCode int, err error) {
+	return runLoomCLIWithEnvNoFatal(exe, dir, nil, timeout, args...)
+}
+
+// runLoomCLIWithEnvNoFatal is runLoomCLINoFatal with extraEnv appended to the inherited environment of the subprocess alone,
+// so a parallel test can set a variable such as FABRIC_SKIP_PUSH for one invocation without t.Setenv.
+func runLoomCLIWithEnvNoFatal(exe, dir string, extraEnv []string, timeout time.Duration, args ...string) (stdout string, exitCode int, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, exe, args...)
 	cmd.Dir = dir
+	if extraEnv != nil {
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
 	out, runErr := cmd.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
 		return string(out), -1, fmt.Errorf("lyx %v timed out after %s in %s; output so far:\n%s", args, timeout, dir, out)

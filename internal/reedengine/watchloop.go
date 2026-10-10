@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
@@ -28,7 +29,6 @@ const (
 // in milliseconds while production wires the fixed package constants through
 // watchDefaultTiming.
 type watchTiming struct {
-	SignalTick  time.Duration
 	PollCycle   time.Duration
 	Quiet       time.Duration
 	BaseDelay   time.Duration
@@ -40,7 +40,6 @@ type watchTiming struct {
 // watchdog* constants and nothing else.
 func watchDefaultTiming() watchTiming {
 	return watchTiming{
-		SignalTick:  watchdogSignalTick,
 		PollCycle:   watchdogPollCycle,
 		Quiet:       watchdogDebounceQuiet,
 		BaseDelay:   watchdogRetryBaseDelay,
@@ -132,7 +131,7 @@ const (
 	// watchModePoll re-applies once per cycle and re-probes hook availability
 	// each cycle. It is the safe default: it works whether or not the hook exists.
 	watchModePoll watchMode = iota
-	// watchModeSignal waits on the hook-written signal file and performs no
+	// watchModeSignal waits on file events for the hook-written signal file and performs no
 	// geometry polling at all.
 	watchModeSignal
 	// watchModeDormant is the mode a watcher enters when reapplyLayout reports the told worktree
@@ -142,6 +141,48 @@ const (
 	watchModeDormant
 )
 
+// FileWatchOpener opens a file-event source on dir for the entries called names, returning its event channel and the func that closes it.
+// It is the seam the daemon's wait loops block on, so a test passes an opener returning a channel it feeds.
+type FileWatchOpener func(dir string, names ...string) (<-chan fswatch.Event, func() error, error)
+
+// OpenFileWatch is the production FileWatchOpener: it opens an fswatch watcher on dir for names.
+func OpenFileWatch(dir string, names ...string) (<-chan fswatch.Event, func() error, error) {
+	watcher, err := fswatch.Watch(dir, names...)
+	if err != nil {
+		return nil, nil, err
+	}
+	return watcher.Events(), watcher.Close, nil
+}
+
+// oneShot is a re-armable one-shot timer whose channel blocks forever until the first arm.
+type oneShot struct {
+	timer *time.Timer
+}
+
+// arm schedules one firing d from now, replacing any firing still pending.
+func (o *oneShot) arm(d time.Duration) {
+	if o.timer == nil {
+		o.timer = time.NewTimer(d)
+		return
+	}
+	o.timer.Reset(d)
+}
+
+// stop cancels a firing still pending.
+func (o *oneShot) stop() {
+	if o.timer != nil {
+		o.timer.Stop()
+	}
+}
+
+// fired is the channel the timer's firing arrives on, nil before the first arm.
+func (o *oneShot) fired() <-chan time.Time {
+	if o.timer == nil {
+		return nil
+	}
+	return o.timer.C
+}
+
 // Watch runs reed's resize self-heal loop for this worktree's session.
 //
 // Watch never returns while ctx is live, including the disabled cases, where it parks internally
@@ -150,24 +191,41 @@ const (
 // never for display. It is the only exported symbol this feature adds to the engine: the re-apply
 // op, the state machine, and every helper stay package-internal.
 func (e *Engine) Watch(ctx context.Context) error {
-	return e.watchLoop(ctx, watchDefaultTiming())
+	return e.watchLoop(ctx, watchDefaultTiming(), OpenFileWatch)
 }
 
-// tickerPeriodFor returns the ticker period the loop should run at while in mode.
+// tickerPeriodFor returns the ticker period the loop should run at while in a ticking mode.
+// Signal mode runs no ticker.
 func tickerPeriodFor(mode watchMode, t watchTiming) time.Duration {
-	switch mode {
-	case watchModeSignal:
-		return t.SignalTick
-	case watchModeDormant:
+	if mode == watchModeDormant {
 		return t.Dormant
-	default:
-		return t.PollCycle
 	}
+	return t.PollCycle
+}
+
+// consumeResizeSignal removes the signal file when it exists and records the signal on state at now, reporting whether a signal was found.
+// Removing before the apply is what makes a resize arriving mid-apply re-signal rather than be swallowed.
+func (e *Engine) consumeResizeSignal(state *watchState, now time.Time) bool {
+	if _, statErr := os.Stat(e.resizeSignalPath()); statErr != nil {
+		if !errors.Is(statErr, fs.ErrNotExist) {
+			logger.Warn("reed: failed to stat resize signal file, treating as no signal", "socket", e.Socket(), "session", e.SessionName(), "err", statErr)
+		}
+		return false
+	}
+	if removeErr := os.Remove(e.resizeSignalPath()); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) {
+		logger.Warn("reed: failed to remove resize signal file", "socket", e.Socket(), "session", e.SessionName(), "err", removeErr)
+	}
+	state.Signal(now)
+	return true
 }
 
 // watchLoop is Watch's driver. It reads e.cfg.Watchdog exactly once, at the top, and never again:
 // flipping the key on disk changes nothing until the process restarts.
-func (e *Engine) watchLoop(ctx context.Context, t watchTiming) error {
+//
+// Poll and dormant mode run a ticker.
+// Signal mode runs none: it blocks on the events open delivers for the signal file, a one-shot debounce timer armed from the quiet window, a one-shot retry timer armed from the escalating failure delay, and ctx.
+// When open fails at promotion the loop logs that once, stays in poll mode and never promotes again.
+func (e *Engine) watchLoop(ctx context.Context, t watchTiming, open FileWatchOpener) error {
 	enabled, err := watchdogOption(e.cfg.Watchdog)
 	if err != nil {
 		// This consumer has no error channel a caller could survive — returning here would let this
@@ -202,46 +260,122 @@ func (e *Engine) watchLoop(ctx context.Context, t watchTiming) error {
 	// therefore always runs.
 	var lastApplied render.Box
 
-	ticker := time.NewTicker(tickerPeriodFor(mode, t))
-	defer ticker.Stop()
+	// events is nil until promotion opens the watcher, and a nil channel never fires.
+	var events <-chan fswatch.Event
+	var closeWatch func() error
+	defer func() {
+		if closeWatch != nil {
+			if err := closeWatch(); err != nil {
+				logger.Warn("reed: failed to close the resize signal watcher", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+			}
+		}
+	}()
+	promotionBlocked := false
+	var debounce, retry oneShot
+	defer debounce.stop()
+	defer retry.stop()
+
+	var ticker *time.Ticker
+	var tick <-chan time.Time
+	restartTicker := func() {
+		if ticker != nil {
+			ticker.Stop()
+			ticker, tick = nil, nil
+		}
+		if mode != watchModeSignal {
+			ticker = time.NewTicker(tickerPeriodFor(mode, t))
+			tick = ticker.C
+		}
+	}
+	defer func() {
+		if ticker != nil {
+			ticker.Stop()
+		}
+	}()
+	restartTicker()
+
+	// signalFound is the one place a signal is consumed and its debounce armed.
+	signalFound := func() {
+		now := time.Now()
+		if e.consumeResizeSignal(state, now) {
+			retry.stop()
+			debounce.arm(state.readyAt.Sub(now))
+		}
+	}
+
+	// switchMode moves the loop to newMode, opening the signal watcher on promotion and parking the timers on dormancy.
+	switchMode := func(newMode watchMode) {
+		if newMode == mode {
+			return
+		}
+		if newMode == watchModeSignal && events == nil {
+			watched, closer, err := open(e.stateDir(), resizeSignalFileName)
+			if err != nil {
+				logger.Warn("reed: could not watch the resize signal file, staying in poll mode", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+				promotionBlocked = true
+				return
+			}
+			events, closeWatch = watched, closer
+		}
+		if newMode == watchModeDormant {
+			debounce.stop()
+			retry.stop()
+		}
+		mode = newMode
+		restartTicker()
+		if mode == watchModeSignal {
+			// A signal that landed while no watcher was listening, or before dormancy, is owed an apply.
+			signalFound()
+			if state.pending {
+				debounce.arm(max(state.readyAt.Sub(time.Now()), 0))
+			}
+		}
+	}
+
+	// applyOwed runs the coalesced re-apply once the debounce or retry timer fires.
+	applyOwed := func() {
+		now := time.Now()
+		if mode != watchModeSignal || state.Plan(now) != watchPlanApply {
+			return
+		}
+		// Signal mode passes false because it never re-probes: the probeHook argument is what
+		// makes that rule literally true rather than merely suppressing the mode transition
+		// while still paying the show-options round trip on every resize.
+		res, applyErr := e.reapplyLayout(lastApplied, false)
+		switchMode(e.handleWatchOutcome(mode, state, t, res, applyErr, &lastApplied, &dormantFrom))
+		if mode == watchModeSignal && state.pending {
+			// A failed apply is retried after its escalating delay and a deferred one after the base delay.
+			retry.arm(max(state.readyAt.Sub(time.Now()), t.BaseDelay))
+		}
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-ticker.C:
+		case <-events:
+			// An event that finds no file, such as the one this loop's own remove raises, runs nothing.
+			if mode == watchModeSignal {
+				signalFound()
+			}
+		case <-debounce.fired():
+			applyOwed()
+		case <-retry.fired():
+			applyOwed()
+		case <-tick:
 			var res ReapplyResult
 			var applyErr error
-			now := time.Now()
 
 			switch mode {
 			case watchModePoll:
 				// Poll mode always asks for the probe: re-probing each cycle is what lets a watcher
 				// that started on a hook-less already-up session promote itself once the operator's
 				// next attach installs the hook, and it costs nothing extra in a mode that is already
-				// making a round trip per cycle. Poll mode uses neither the debouncer nor the retry
-				// streak — the cycle interval is its own cadence, and this is the fallback platform's
-				// only self-heal, so a per-event cap that could stop it permanently must not apply
-				// here.
-				res, applyErr = e.reapplyLayout(lastApplied, true)
-			case watchModeSignal:
-				if _, statErr := os.Stat(e.resizeSignalPath()); statErr == nil {
-					// Removing before the apply is what makes a resize arriving mid-apply re-signal
-					// rather than be swallowed.
-					if removeErr := os.Remove(e.resizeSignalPath()); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) {
-						logger.Warn("reed: failed to remove resize signal file", "socket", e.Socket(), "session", e.SessionName(), "err", removeErr)
-					}
-					state.Signal(now)
-				} else if !errors.Is(statErr, fs.ErrNotExist) {
-					logger.Warn("reed: failed to stat resize signal file, treating as no signal", "socket", e.Socket(), "session", e.SessionName(), "err", statErr)
-				}
-				if state.Plan(now) != watchPlanApply {
-					continue
-				}
-				// Signal mode passes false because it never re-probes: the probeHook argument is what
-				// makes that rule literally true rather than merely suppressing the mode transition
-				// while still paying the show-options round trip on every resize.
-				res, applyErr = e.reapplyLayout(lastApplied, false)
+				// making a round trip per cycle.
+				// A watcher whose signal file could not be watched has nothing to promote to, so it probes no more.
+				// Poll mode uses neither the debouncer nor the retry streak:
+				// the cycle interval is its own cadence, and this is the fallback platform's only self-heal, so a per-event cap that could stop it permanently must not apply here.
+				res, applyErr = e.reapplyLayout(lastApplied, !promotionBlocked)
 			case watchModeDormant:
 				// A dormant tick asks for no probe, and it does not use the debouncer or the retry
 				// streak — dormancy is not a resize-event failure mode, it is a wait for the told
@@ -249,12 +383,7 @@ func (e *Engine) watchLoop(ctx context.Context, t watchTiming) error {
 				res, applyErr = e.reapplyLayout(lastApplied, false)
 			}
 
-			newMode := e.handleWatchOutcome(mode, state, t, res, applyErr, &lastApplied, &dormantFrom)
-			if newMode != mode {
-				mode = newMode
-				ticker.Stop()
-				ticker = time.NewTicker(tickerPeriodFor(mode, t))
-			}
+			switchMode(e.handleWatchOutcome(mode, state, t, res, applyErr, &lastApplied, &dormantFrom))
 		}
 	}
 }

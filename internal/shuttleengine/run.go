@@ -52,6 +52,25 @@ type Runner struct {
 	clock Clock
 	// notifier receives the notice line of each held turn end of an autonomous run; nil, the default, holds silently.
 	notifier func(line string) error
+	// holdsMu guards holds.
+	holdsMu sync.Mutex
+	// holds keeps one turn-start hold per strand guid, so a caller probing the same strand tick after tick keeps one hold across them.
+	holds map[string]*turnStartHold
+}
+
+// holdFor returns the turn-start hold the runner keeps for the strand guid, creating it on first use.
+func (r *Runner) holdFor(guid string) *turnStartHold {
+	r.holdsMu.Lock()
+	defer r.holdsMu.Unlock()
+	if r.holds == nil {
+		r.holds = make(map[string]*turnStartHold)
+	}
+	hold, ok := r.holds[guid]
+	if !ok {
+		hold = &turnStartHold{}
+		r.holds[guid] = hold
+	}
+	return hold
 }
 
 // SetNotifier sets the function Wait calls once with a notice line for each held turn end of an autonomous run.

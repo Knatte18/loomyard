@@ -9,8 +9,10 @@ package shuttleengine
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"gopkg.in/yaml.v3"
 )
 
@@ -18,7 +20,7 @@ import (
 // and claude engine denies.
 type Config struct {
 	RunDir         string `yaml:"run_dir"`
-	PollIntervalMS int    `yaml:"poll_interval_ms"` // Wait loop's tick interval; non-positive is floored to template default.
+	PollIntervalMS int    `yaml:"poll_interval_ms"` // Wait loop's tick interval; a value below one second is floored to it.
 
 	LivenessEveryNPolls int `yaml:"liveness_every_n_polls"`
 	RunTimeoutMin       int `yaml:"run_timeout_min"` // Fallback run deadline in minutes; 0 means deadline equals start time, not "unlimited".
@@ -65,6 +67,10 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		return Config{}, fmt.Errorf("unmarshal shuttle config: %w", err)
+	}
+
+	if time.Duration(cfg.PollIntervalMS)*time.Millisecond < pollFloor {
+		logger.Warn("shuttle config: poll_interval_ms is below the floor and is raised to it", "key", "poll_interval_ms", "value", cfg.PollIntervalMS, "floor_ms", pollFloor.Milliseconds())
 	}
 
 	if cfg.BackgroundShellWaitMin <= 0 {

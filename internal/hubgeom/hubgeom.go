@@ -83,18 +83,19 @@ func reedGeometry(l *lyxcwd.Location, prime bool) reedengine.Geometry {
 		parent = parentNameOrEmpty(l, "strands")
 	}
 	return reedengine.Geometry{
-		SpawnOrder:    spawnOrder(l),
-		SocketKey:     reedengine.ServerName(l.HubPath),
-		SessionName:   reedengine.SessionName(l.WorktreePath()),
-		AnchorPath:    l.AnchorPath(),
-		PaneCwd:       l.AnchorPath(),
-		WorktreeRoot:  l.WorktreePath(),
-		LogsDir:       fabricengine.HubLogsDir(l.HubPath),
-		WorktreeName:  l.WorktreeName,
-		HubPath:       l.HubPath,
-		NameShortname: shortname,
-		NameSlug:      slug,
-		ParentName:    parent,
+		SpawnOrder:         spawnOrder(l),
+		SocketKey:          reedengine.ServerName(l.HubPath),
+		SessionName:        reedengine.SessionName(l.WorktreePath()),
+		AnchorPath:         l.AnchorPath(),
+		PaneCwd:            l.AnchorPath(),
+		WorktreeRoot:       l.WorktreePath(),
+		LogsDir:            fabricengine.HubLogsDir(l.HubPath),
+		WorktreeName:       l.WorktreeName,
+		HubPath:            l.HubPath,
+		NameShortname:      shortname,
+		NameSlug:           slug,
+		ParentName:         parent,
+		DiscoverSignalPath: filepath.Join(fabricengine.HubScratchDir(l.HubPath), reedengine.DiscoverSignalFileName),
 	}
 }
 

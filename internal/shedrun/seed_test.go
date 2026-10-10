@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
@@ -18,6 +19,7 @@ func TestWriteSeed_ReadSeed_RoundTrip(t *testing.T) {
 	}{
 		{"go driver with params", Seed{Recipe: RecipeBatten, Driver: DriverGo, Params: map[string]string{"slug": "example"}}},
 		{"llm driver", Seed{Recipe: RecipeLoom, Driver: DriverLLM}},
+		{"a given start stamp is kept verbatim", Seed{Recipe: RecipeLoom, Driver: DriverGo, StartedAt: "2026-01-02T03:04:05Z"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -36,6 +38,25 @@ func TestWriteSeed_ReadSeed_RoundTrip(t *testing.T) {
 			}
 			if got.Recipe != tt.seed.Recipe || got.Driver != tt.seed.Driver || got.Params["slug"] != tt.seed.Params["slug"] {
 				t.Errorf("ReadSeed() = %+v; want %+v", got, tt.seed)
+			}
+			if tt.seed.StartedAt != "" {
+				if got.StartedAt != tt.seed.StartedAt {
+					t.Errorf("StartedAt = %q; want the given stamp %q", got.StartedAt, tt.seed.StartedAt)
+				}
+				return
+			}
+			started, err := time.Parse(time.RFC3339, got.StartedAt)
+			if err != nil || started.IsZero() {
+				t.Fatalf("StartedAt = %q (%v); want a parseable, non-zero stamp", got.StartedAt, err)
+			}
+
+			// A second agreeing write keeps the first stamp.
+			if err := WriteSeed(l, "self", tt.seed); err != nil {
+				t.Fatalf("second WriteSeed() = %v; want nil", err)
+			}
+			again, _, err := ReadSeed(l, "self")
+			if err != nil || again.StartedAt != got.StartedAt {
+				t.Errorf("StartedAt after a second write = %q (%v); want the first stamp %q", again.StartedAt, err, got.StartedAt)
 			}
 		})
 	}
@@ -74,6 +95,9 @@ func TestReadSeed_AbsentDriverDefaultsToGo(t *testing.T) {
 	}
 	if got.Driver != DriverGo {
 		t.Errorf("ReadSeed() Driver = %q; want %q", got.Driver, DriverGo)
+	}
+	if got.StartedAt != "" {
+		t.Errorf("ReadSeed() StartedAt = %q; want none for a seed written before the field existed", got.StartedAt)
 	}
 }
 

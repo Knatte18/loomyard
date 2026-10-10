@@ -36,15 +36,13 @@ func watchdogOption(raw string) (bool, error) {
 const (
 	// watchdogDebounceQuiet is how long the loop waits for resize signals to stop arriving before
 	// treating a burst as one settled event.
-	watchdogDebounceQuiet = 200 * time.Millisecond
-	// watchdogSignalTick is how often the loop polls for the signal file's presence.
-	watchdogSignalTick = 100 * time.Millisecond
+	watchdogDebounceQuiet = 200 * time.Millisecond //lyx:one-shot a debounce armed once after a resize event
 	// watchdogPollCycle is the poll-mode reconcile cadence, used only where the signal-file
 	// mechanism is unavailable.
 	watchdogPollCycle = 2 * time.Second
 	// watchdogRetryBaseDelay is the base of one debounced event's escalating retry delay
 	// (watchdogRetryBaseDelay << (attempt-1)).
-	watchdogRetryBaseDelay = 200 * time.Millisecond
+	watchdogRetryBaseDelay = 200 * time.Millisecond //lyx:one-shot a bounded retry after a failed apply, capped by watchdogMaxAttempts
 	// watchdogMaxAttempts caps one debounced event's retries, never the watcher itself.
 	watchdogMaxAttempts = 3
 	// watchdogDormantCycle is the cadence a watcher runs at once it is told its worktree root is
@@ -57,6 +55,19 @@ const (
 // The file's existence alone is the signal — the watcher consumes it by removing it, so no
 // timestamp comparison is ever involved.
 const resizeSignalFileName = "reed-resize.signal"
+
+// DiscoverSignalFileName is the discover signal file's name inside the hub scratch directory.
+// A cold session boot touches it, and the watchdog daemon's discovery loop wakes on it, so the teller and the daemon spell it once.
+const DiscoverSignalFileName = "reed-discover.signal"
+
+// NextWakeCadence is the backoff rule the daemon loops share: the wait after a cycle.
+// It returns base when the cycle changed something, otherwise twice current capped at ceiling.
+func NextWakeCadence(current, base, ceiling time.Duration, changed bool) time.Duration {
+	if changed {
+		return base
+	}
+	return min(2*current, ceiling)
+}
 
 // windowResizedHookName is the tmux hook option name the watchdog installs, unsets, and reads
 // back. Declared once so the three call sites cannot drift.
