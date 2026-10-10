@@ -388,13 +388,12 @@ func (e *Engine) resizeSignalHookCommand() string {
 // this worktree's resize-signal entry, issuing each argv resizePinHookArgvs builds through
 // e.tmux.run. It returns nothing.
 //
-// This is the ONLY install site for the watchdog's signal entry, and it is one deliberately, because
+// This is the ONLY function that writes the watchdog's signal entry, and it is one deliberately, because
 // the array is a whole-snapshot rebuild: any second writer would have to either clear the pins this
-// one just installed or accumulate a duplicate touch per attach. The consequence is that the signal
-// entry reaches exactly the sessions an apply reaches — a session the apply guards skip (fewer than
-// two panes, or no strand owning a present pane) keeps whatever array it already had, and a session
-// that has never had one keeps its watcher in poll mode until the first real apply, which is the same
-// degrade every other hook failure takes.
+// one just installed or accumulate a duplicate touch per attach.
+// The boot installs the signal entry for every session, as a zero-pin rebuild,
+// so a session the apply guards skip (fewer than two panes, or no strand owning a present pane) still has it;
+// a later apply or successful attach rebuilds the array with its pins.
 //
 // This follows the Shared Decision hook-failure-is-non-fatal-everywhere, which already governs
 // pinGeometryOptionsLocked in this same file: each failure is logged via logger.Warn naming the

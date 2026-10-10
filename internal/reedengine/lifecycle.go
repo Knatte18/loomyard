@@ -487,37 +487,48 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 
 	e.touchDiscoverSignal()
 
+	if err := e.pinBootOptionsLocked(mouse, shellPath); err != nil {
+		return false, nil, err
+	}
+
+	return true, stripped, nil
+}
+
+// pinBootOptionsLocked pins the options a fresh boot sets on the server and session it just spawned.
+// The `remain-on-exit` and `mouse` pins are correctness dependencies and fail the boot; the geometry pins and the hook install are non-fatal.
+// Boot options never re-apply to an already-up session, which is why the attach pre-flight re-pins the geometry ones itself.
+// When the watchdog is on (POSIX only), it ends with a zero-pin rebuild of the window-resized hook array, the clear and the signal entry alone, so a session with fewer than two panes or no placed strand promotes its watcher out of poll mode without waiting for a layout apply.
+// That install sits here and not in pinGeometryOptionsLocked, which the attach pre-flight also runs: a degrading attach returns before its own install, and a zero-pin rebuild there would wipe the session's resize pins.
+// Assumes the op lock is already held.
+func (e *Engine) pinBootOptionsLocked(mouse, shellPath string) error {
 	// remain-on-exit keeps a pane whose command exits around as
 	// pane_dead=1 instead of vanishing (which would also kill the session
 	// if it were the last pane) — the mechanism reconcile's dead-pane
 	// detection depends on.
 	if err := e.tmux.run("set-option", "-g", "remain-on-exit", "on"); err != nil {
-		return false, nil, fmt.Errorf("set remain-on-exit: %w", err)
+		return fmt.Errorf("set remain-on-exit: %w", err)
 	}
 	// Pin the mouse mode explicitly, in both directions: this call always
 	// runs on this fresh-boot path, even to set "off", so the live mouse
 	// state is deterministic regardless of the tmux backend's own
-	// default (Shared Decision explicit-set-both-ways-at-boot). Like
-	// remain-on-exit, this never re-applies on an already-up session — the
-	// early return above skips this whole path in that case.
+	// default (Shared Decision explicit-set-both-ways-at-boot).
 	if err := e.tmux.run("set-option", "-g", "mouse", mouse); err != nil {
-		return false, nil, fmt.Errorf("set mouse: %w", err)
+		return fmt.Errorf("set mouse: %w", err)
 	}
 
-	// Unlike the two set-option calls above, this one is non-fatal by design:
-	// remain-on-exit and mouse are correctness dependencies, while status and
-	// window-size are geometry-quality options whose absence degrades to
+	// Unlike the two set-option calls above, the geometry pins are non-fatal by design:
+	// status and window-size are geometry-quality options whose absence degrades to
 	// tmux's own proportional rescale — a working session — and psmux's
 	// support for both is unverified anywhere in this repo, so a capability
 	// reed cannot confirm must not be able to take the boot down (Shared
 	// Decision geometry-tmux-failures-are-non-fatal-everywhere).
-	// Boot options never re-apply to an already-up session (the healthy
-	// already-up path returns early, above this block), which is why
-	// AttachArgv re-pins them in its own pre-flight rather than relying on
-	// this call.
-	e.pinGeometryOptionsLocked(exactSessionWindowTarget(e.SessionName()), shellPath)
+	target := exactSessionWindowTarget(e.SessionName())
+	e.pinGeometryOptionsLocked(target, shellPath)
 
-	return true, stripped, nil
+	if e.resizeSignalHookCommand() != "" {
+		e.installResizePinsLocked(target, nil)
+	}
+	return nil
 }
 
 // serverSpawnArgv is the argv of the invocation that starts this hub's tmux server with its first session.

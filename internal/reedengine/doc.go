@@ -607,6 +607,9 @@
 //     return, issue no set-hook at all — not even the clear — so a
 //     previously installed array survives them on purpose, since a clear
 //     with no rebuild behind it would drift on the very next resize.
+//     The boot (pinBootOptionsLocked) is the one path that installs for every session:
+//     with the watchdog on, a fresh boot rebuilds the array with no pins, the clear and the signal entry alone.
+//     That install sits in the boot path and not in pinGeometryOptionsLocked, which the attach pre-flight also runs, because a degrading attach returns before its own install and a zero-pin rebuild there would wipe the session's resize pins.
 //     That is safe in both guard cases. resize-pane -y against a window's
 //     sole pane is a verified silent no-op (exit 0, height unchanged), so
 //     the len(live) < 2 case's surviving Selvage pin cannot contradict
@@ -618,10 +621,9 @@
 //     collapsed placements at the budgets reed last
 //     computed for them.
 //     Since the signal entry rides the same array, the same rule decides it:
-//     a session that has never reached an install keeps no touch entry and
-//     so keeps its watcher in poll mode until the first real apply, and a
-//     session that has reached one keeps it across every later guard-skip
-//     and degrade.
+//     the boot installs it for every session, so a session with fewer than two panes or no placed strand
+//     promotes its watcher out of poll mode without waiting for a layout apply,
+//     and a session keeps it across every later guard-skip and degrade until an apply or a successful attach rebuilds the array with its pins.
 //     The ~50-row threshold in the original bug report is
 //     template_posix.yaml's "height: 50" boot box showing through the BARE
 //     (unchained) attach path, not evidence of a miscomputed layout — a
