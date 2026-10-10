@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -29,6 +30,39 @@ var (
 	warpBareTemplate string
 	weftBareTemplate string
 )
+
+// fixtureBuildMu guards fixtureBuilds, the number of hub builds in flight.
+// The process environment carries gitkit.FixtureGitEnv exactly while that count is above zero.
+var (
+	fixtureBuildMu sync.Mutex
+	fixtureBuilds  int
+)
+
+// markFixtureBuild marks the process environment as building a fixture, so the git a build spawns through production code carries gitkit.FixtureGitEnv.
+// Concurrent builds share the mark: the first starter sets it and the last release unsets it.
+func markFixtureBuild() func() {
+	fixtureBuildMu.Lock()
+	defer fixtureBuildMu.Unlock()
+
+	fixtureBuilds++
+	if fixtureBuilds == 1 {
+		if err := os.Setenv(gitkit.FixtureGitEnv, "1"); err != nil {
+			panic(err)
+		}
+	}
+
+	return func() {
+		fixtureBuildMu.Lock()
+		defer fixtureBuildMu.Unlock()
+
+		fixtureBuilds--
+		if fixtureBuilds == 0 {
+			if err := os.Unsetenv(gitkit.FixtureGitEnv); err != nil {
+				panic(err)
+			}
+		}
+	}
+}
 
 // TestShortname is the repo shortname every hub NewHub builds is cloned with, recorded as .lyx-shortname, so every hub fixture has a shortname.
 const TestShortname = "tst"
@@ -55,6 +89,8 @@ const TestShortname = "tst"
 // trip CloneHub's bootstrap guard at clone.go:172 (`!probe.WeftLooksLikeWeft`), which refuses a weft
 // candidate whose history looks warp-shaped — the warp bare, by contrast, must have content pushed.
 func buildBareTemplate() (warpBare, weftBare string) {
+	defer markFixtureBuild()()
+
 	bareTemplateOnce.Do(func() {
 		tmpDir, err := os.MkdirTemp("", "hubforge-bare-*")
 		if err != nil {
@@ -225,6 +261,8 @@ func (h *Hub) PairLauncherDir(slug string) string {
 func NewHub(tb testing.TB, anchor string) *Hub {
 	tb.Helper()
 
+	defer markFixtureBuild()()
+
 	warpBare, weftBare := copyBares(tb)
 	container := tb.TempDir()
 
@@ -334,6 +372,8 @@ func AddPair(tb testing.TB, h *Hub, slug string) fabricengine.AddResult {
 func AddPairWith(tb testing.TB, h *Hub, slug string, opts fabricengine.AddOptions) fabricengine.AddResult {
 	tb.Helper()
 
+	defer markFixtureBuild()()
+
 	res, err := h.Topology.Add(h.Location, slug, opts)
 	if err != nil {
 		tb.Fatalf("AddPairWith(%s): %v", slug, err)
@@ -396,6 +436,7 @@ func commitAll(dir, message string) {
 func mustGit(dir string, args ...string) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), gitkit.FixtureGitEnv+"=1")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		panic("git " + strings.Join(args, " ") + ": " + err.Error() + "; " + string(output))
 	}

@@ -26,6 +26,11 @@
 // SeedConfig commits with an empty stage allowed: a seed byte-identical to the already-committed
 // file stages nothing, and a bare commit over nothing would otherwise fail.
 //
+// Fixture marker: git a hub build spawns carries gitkit.FixtureGitEnv, set two ways.
+// The local mustGit helper sets it on its own child's environment.
+// NewHub, AddPairWith and buildBareTemplate also hold a mark on the process environment for their body, because production code spawns git there and no helper reaches it;
+// the first concurrent build sets the variable and the last one to finish unsets it.
+//
 // Teardown contract: junctions are discovered by walking the hub root with fslink.IsLink, never by
 // slug, and removed with fslink.Remove — a tb.Cleanup registered before tb.TempDir()'s own cleanup
 // runs, so every junction is unwired before Go's os.RemoveAll ever walks into it.

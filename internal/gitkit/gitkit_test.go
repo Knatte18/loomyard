@@ -165,6 +165,38 @@ func TestCopiedRepoScenario(t *testing.T) {
 	})
 }
 
+// TestFixtureGitMarker_ReachesHelperChildren verifies that git spawned by Git carries the fixture marker, read back through git's trace2 env-var events.
+// It sets process environment variables through t.Setenv, so it does not call t.Parallel.
+func TestFixtureGitMarker_ReachesHelperChildren(t *testing.T) {
+	traceDir := t.TempDir()
+	t.Setenv("GIT_TRACE2_EVENT", traceDir)
+	t.Setenv("GIT_TRACE2_ENV_VARS", FixtureGitEnv)
+
+	Git(t, t.TempDir(), "version")
+
+	files, err := os.ReadDir(traceDir)
+	if err != nil {
+		t.Fatalf("read trace dir: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("trace dir holds %d event files; want 1", len(files))
+	}
+	events, err := os.ReadFile(filepath.Join(traceDir, files[0].Name()))
+	if err != nil {
+		t.Fatalf("read event file: %v", err)
+	}
+
+	var found bool
+	for _, line := range strings.Split(string(events), "\n") {
+		if strings.Contains(line, `"event":"def_param"`) && strings.Contains(line, `"param":"`+FixtureGitEnv+`"`) && strings.Contains(line, `"value":"1"`) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("trace2 events carry no def_param for %s=1:\n%s", FixtureGitEnv, events)
+	}
+}
+
 // TestMustRun_Failure verifies that MustRun calls tb.Fatalf on failure using the subprocess pattern
 // to confirm non-zero exit.
 func TestMustRun_Failure(t *testing.T) {

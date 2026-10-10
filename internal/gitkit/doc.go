@@ -27,6 +27,10 @@
 // map[string]string (module name to YAML content), converting configreg.Modules() or a feature's
 // ConfigTemplate() at the test site instead of inside gitkit.
 //
+// Fixture marker: git spawned to build a fixture is told apart from git the code under test runs by the environment variable FixtureGitEnv, value "1".
+// The spawn helpers in gitkit.go set it on the child's environment, and hubforge sets it process-wide for the duration of a hub build.
+// A census of git processes reads it through git's trace2 env-var events.
+//
 // Hermetic Git Test Environment: gitkit also implements the two-layer mechanism that keeps
 // git-spawning tests from depending on the operator's global or system gitconfig.
 // Layer A (template quiet-config) sets core.fsmonitor=false, maintenance.auto=false, and gc.auto=0

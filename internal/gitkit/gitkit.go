@@ -17,6 +17,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
+// FixtureGitEnv is the name of the environment variable that marks a git process as fixture setup rather than code under test.
+// A marked child carries the value "1".
+const FixtureGitEnv = "LYX_FIXTURE_GIT"
+
+// fixtureGitEnviron returns the process environment with the fixture marker appended.
+func fixtureGitEnviron() []string {
+	return append(os.Environ(), FixtureGitEnv+"=1")
+}
+
 // GitStatusPorcelain returns `git status --porcelain`'s raw output for repoPath, calling tb.Fatalf on
 // failure — non-empty output means the worktree has uncommitted changes (staged, unstaged, or
 // untracked).
@@ -25,6 +34,7 @@ func GitStatusPorcelain(tb testing.TB, repoPath string) string {
 
 	cmd := exec.Command("git", "status", "--porcelain")
 	cmd.Dir = repoPath
+	cmd.Env = fixtureGitEnviron()
 	out, err := cmd.Output()
 	if err != nil {
 		tb.Fatalf("git status --porcelain in %s: %v", repoPath, err)
@@ -38,6 +48,7 @@ func MustRun(tb testing.TB, dir string, args ...string) {
 
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = dir
+	cmd.Env = fixtureGitEnviron()
 
 	if output, err := cmd.CombinedOutput(); err != nil {
 		tb.Fatalf("command failed: %v; output: %s", err, output)
@@ -64,6 +75,7 @@ func Git(tb testing.TB, dir string, args ...string) string {
 func gitExit(dir string, args ...string) (stdout string, code int, err error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = fixtureGitEnviron()
 	out, runErr := cmd.Output()
 	if runErr == nil {
 		return string(out), 0, nil
@@ -153,6 +165,7 @@ func initBareRemote(dir, repoDir string) {
 func mustGit(dir string, args ...string) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = fixtureGitEnviron()
 	if output, err := cmd.CombinedOutput(); err != nil {
 		panic("git " + strings.Join(args, " ") + ": " + err.Error() + "; " + string(output))
 	}

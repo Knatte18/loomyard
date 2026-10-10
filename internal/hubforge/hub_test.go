@@ -321,9 +321,9 @@ func assertRealHub(t *testing.T, h *Hub) {
 // is independently a real hub and that no two share a Path, Container, CodeBare, or RecordsBare — the
 // structural parallel safety a sync.Once template read followed by per-call tb.TempDir() is supposed
 // to guarantee.
+// It also pins the fixture-build counter: gitkit.FixtureGitEnv is unset in the process environment once the last build has returned.
+// It does not call t.Parallel, because the marker is process-global state and parallel tests build hubs too.
 func TestNewHub_Concurrent(t *testing.T) {
-	t.Parallel()
-
 	const n = 8
 
 	hubs := make([]*Hub, n)
@@ -336,6 +336,10 @@ func TestNewHub_Concurrent(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+
+	if value, set := os.LookupEnv(gitkit.FixtureGitEnv); set {
+		t.Errorf("%s = %q after every build returned; want it unset", gitkit.FixtureGitEnv, value)
+	}
 
 	seenPaths := make(map[string]int, n*4)
 	recordUnique := func(field, value string, hubIndex int) {
