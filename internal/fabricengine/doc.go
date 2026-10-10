@@ -1356,7 +1356,8 @@
 // `Topology.Add` therefore sets `gc.auto=0` and `maintenance.auto=false` in both stores' shared config once its pre-flight refusals have passed, and `Topology.Remove` sets them again and runs a foreground `git gc --auto` in each store after a successful teardown.
 // `maintenance.auto=false` is what stops git's post-command `git maintenance run --auto`, whose repack tasks under a `geometric` or `incremental` `maintenance.strategy` `gc.auto` does not govern.
 // The removal's gc is best-effort: a failure is logged as a warning and never fails the Remove, and a store another gc already holds is skipped silently until a later removal.
-// It never prunes a worktree's admin entry, so what it deletes is unreachable objects and expired reflog entries past git's own default expiry, nothing `destroy.go`'s gate protects.
+// The gc is skipped, with the keys still written, while the `InFlightProbe` set through `Topology.SetInFlightProbe` reports another pair's live reed session, logged at Info with the sessions, or fails, logged at Warn; a nil probe reports none, and production sets the real probe through `pairteardown`, the only route to `Remove`.
+// It prunes unreachable loose objects older than a day (`gc.pruneExpire=1.day.ago`) and never prunes a worktree's admin entry, so what it deletes is unreachable objects past that expiry and reflog entries past git's own default expiry, nothing `destroy.go`'s gate protects.
 // An existing hub picks the keys up at its next pair create or removal.
 // The keys disable git's automatic gc and maintenance for everyone using the store, the operator's manual git included: lyx's housekeeping is the replacement, a manual `git gc` still works, and maintenance an operator registers with `git maintenance start` stays outside lyx's control.
 // The gc threshold is not operator configuration.

@@ -139,6 +139,20 @@ func ListSessions(tmuxPath, socketKey string) ([]string, error) {
 	return listSessionsVia(NewTmuxCmd(tmuxPath, socketKey))
 }
 
+// IsNoServer reports whether err is a tmux error for a socket with no server behind it:
+// `no server running on`, for a socket file that refuses connections,
+// or `error connecting to` followed by `(No such file or directory)`, for an absent socket, as after a reboot or on a hub whose server never started.
+func IsNoServer(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	if strings.Contains(message, "no server running on") {
+		return true
+	}
+	return strings.Contains(message, "error connecting to") && strings.Contains(message, "(No such file or directory)")
+}
+
 // listSessionsVia is ListSessions' implementation, taking an already-built TmuxCmd rather than raw
 // binary/socket strings — the split exists so a test can drive the parsing half through TmuxCmd's
 // execHook seam directly, without a live server.
