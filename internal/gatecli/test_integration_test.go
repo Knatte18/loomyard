@@ -1,7 +1,7 @@
 //go:build integration
 
 // test_integration_test.go drives `lyx gate test` over one hubforge hub and a stand-in go binary, each run in a process of its own so a test can signal the gate it started:
-// the slot, the wait bound, inheritance, hub resolution from -C, the unslotted run outside every hub, and the child's lifetime under a catchable signal and a SIGKILL.
+// the slot, the wait bound, inheritance, hub resolution from -C, the unslotted run outside every hub, the child's lifetime under a catchable signal and a SIGKILL, and the refusals that need a hub.
 // It is Tier 2: it builds a real hub and spawns git, the stand-in and one real go test, so it needs the integration build tag.
 
 package gatecli
@@ -384,4 +384,81 @@ func TestGateTest_Scenario(t *testing.T) {
 		eventually(t, "go to end with its killed parent", func() bool { return processGone(record.PID) })
 		requireFree(t)
 	})
+
+	// Each row breaks the shared hub in its setup and repairs it in the returned restore, so the rows run in order.
+	refusals := []struct {
+		name      string
+		setup     func(t *testing.T) (restore func())
+		env       []string
+		wantError string
+	}{
+		{
+			name: "a gate.yaml value below 1 names lyx config gate",
+			setup: func(t *testing.T) func() {
+				configPath := configengine.ConfigFile(h.BoardDir(), "gate")
+				if err := os.WriteFile(configPath, []byte("slots: 0\ngo_parallel: 3\ncli_wait_sec: 1\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return func() {
+					if err := os.WriteFile(configPath, []byte(gateConfig), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+			},
+			wantError: `fix the file with "lyx config gate" from the prime`,
+		},
+		{
+			name: "a slot directory that cannot be created is a re-run refusal",
+			setup: func(t *testing.T) func() {
+				aside := pool.Dir + ".aside"
+				if err := os.MkdirAll(pool.Dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(pool.Dir, aside); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(pool.Dir, nil, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return func() {
+					if err := os.Remove(pool.Dir); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Rename(aside, pool.Dir); err != nil {
+						t.Fatal(err)
+					}
+				}
+			},
+			wantError: "cannot acquire a gate slot",
+		},
+		{
+			name:      "a go binary that cannot start names putting go on PATH",
+			setup:     func(t *testing.T) func() { return func() {} },
+			env:       []string{helperGoEnv + "=" + filepath.Join(t.TempDir(), "absent-go")},
+			wantError: "put go on PATH",
+		},
+	}
+	for _, tc := range refusals {
+		t.Run(tc.name, func(t *testing.T) {
+			restore := tc.setup(t)
+			g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg"}, env: tc.env})
+			code := g.wait(t)
+			restore()
+
+			var envelope struct {
+				OK    bool   `json:"ok"`
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(g.stdout.Bytes(), &envelope); err != nil {
+				t.Fatalf("stdout %q is not a JSON envelope: %v", g.stdout.String(), err)
+			}
+			if code != 1 || envelope.OK || !strings.Contains(envelope.Error, tc.wantError) {
+				t.Errorf("gate = exit %d, %+v; want exit 1, ok false and an error holding %q", code, envelope, tc.wantError)
+			}
+			if _, err := os.Stat(g.record); err == nil {
+				t.Error("the stand-in ran although the gate refused")
+			}
+			requireFree(t)
+		})
+	}
 }
