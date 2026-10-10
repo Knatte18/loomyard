@@ -97,7 +97,7 @@ Example:
 
 			base, err := websterengine.MerriamBase(c.geom)
 			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()+"; way forward: transient, re-run the verb"))
 				return nil
 			}
 
