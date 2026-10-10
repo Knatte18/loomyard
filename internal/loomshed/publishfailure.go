@@ -19,16 +19,16 @@ var (
 	fullObjectName = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 	// failedTestPath is a top-level Test identifier followed by `/`-separated subtest segments of letters, digits and `_.=,:+@-`.
 	failedTestPath = regexp.MustCompile(`^Test[\p{L}\p{N}_]*(/[\p{L}\p{N}_.=,:+@-]+)*$`)
-	// failedTestPackage is an import path: segments of letters, digits and `_.~-` joined by `/`.
-	failedTestPackage = regexp.MustCompile(`^[\p{L}\p{N}_.~-]+(/[\p{L}\p{N}_.~-]+)*$`)
+	// failedTestPackage is an import path that starts with a letter or digit: segments of letters, digits and `_.~-` joined by `/`.
+	failedTestPackage = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N}_.~-]*(/[\p{L}\p{N}_.~-]+)*$`)
 )
 
 // checkedPublishFailure reads the Publish failure record at paths and returns it with every field that fails its shape check dropped, each drop logged.
 // It returns false when there is no record, when it cannot be read, or when its kind is not one of the closed set.
 //
 // The merge-in commit is kept only as a full hex object name that resolves, through worktreeRoot's git objects, to a commit with two or more parents.
-// A failing test is kept only when its path is a top-level Test identifier followed by optional subtest segments of safe characters and its package is an import path.
-// The log path is kept only when it lies in the verify directory.
+// A failing test is kept only when its path is a top-level Test identifier followed by optional subtest segments of safe characters and its package is an import path that starts with a letter or digit, so it never reads as a flag.
+// The log path is kept only when it is the verify directory's failure log copy.
 func checkedPublishFailure(paths verifytree.Paths, worktreeRoot string) (verifytree.PublishFailure, bool) {
 	failure, ok, err := verifytree.ReadPublishFailure(paths)
 	if err != nil {
@@ -58,8 +58,8 @@ func checkedPublishFailure(paths verifytree.Paths, worktreeRoot string) (verifyt
 	}
 	failure.Tests = kept
 
-	if failure.LogPath != "" && filepath.Dir(filepath.Clean(failure.LogPath)) != filepath.Dir(paths.Log) {
-		logger.Warn("loomshed: publish failure record's log path dropped, it lies outside the verify directory", "logPath", failure.LogPath)
+	if failure.LogPath != "" && filepath.Clean(failure.LogPath) != paths.PublishFailureLog {
+		logger.Warn("loomshed: publish failure record's log path dropped, it is not the verify directory's failure log copy", "logPath", failure.LogPath)
 		failure.LogPath = ""
 	}
 	return failure, true
