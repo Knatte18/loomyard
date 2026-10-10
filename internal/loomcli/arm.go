@@ -108,11 +108,9 @@ func (c *loomCLI) resolveRunID(location *lyxcwd.Location, verb string, args []st
 		return err
 	}
 	// Rendered through shedrun.MissingSeedMessage, the shared renderer batch 1 card 3 declares, so
-	// this refusal words identically to battencli's own. The rendered text carries no "kind" field:
-	// it surfaces through resolvePersistentPreRun's own output.Err(out, err.Error()) path, which is
-	// kind-less by construction, never through step's own output.ErrFields envelope -- this refusal
-	// fires before PreStep ever runs.
-	return errors.New(shedrun.MissingSeedMessage("loom", runID, existing, `run "lyx loom start" first to bootstrap this task`))
+	// this refusal words identically to battencli's own.
+	// KindlessRefusal keeps it kind-less on step too, since resolvePersistentPreRun reports it through shedverbs.ReportArmError.
+	return shedverbs.KindlessRefusal{Err: errors.New(shedrun.MissingSeedMessage("loom", runID, existing, `run "lyx loom start" first to bootstrap this task`))}
 }
 
 // arm resolves cwd into a *lyxcwd.Location and delegates to armAt with the raw positional args,

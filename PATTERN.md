@@ -43,7 +43,7 @@ The structural invariants of the loomyard code, one line per entry: when it appl
 
 - `PATTERN-shed-producer-seam` — Importing into `internal/shedengine`: only stdlib, `state` and `lock`, and its status and lock paths are caller-supplied.
 - `PATTERN-shed-recipe-registry` — Registering a shed producer: one `map[string]Constructor` in `internal/shedrecipe`, reached through `Lookup`/`Names`, with no `init()`, no `Register`, no `lyxcwd`.
-- `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: the generic bodies live in `internal/shedverbs` only, which derives no path. (test) — [background](pattern/PATTERN-shed-verb-set.md)
+- `PATTERN-shed-verb-set` — Adding a run, step, status, pause or goto verb: the generic bodies live in `internal/shedverbs` only, which derives no path and closes the step kinds at six. (test) — [background](pattern/PATTERN-shed-verb-set.md)
 - `PATTERN-shed-run-directory` — Touching run directories or `seed.json`: `internal/shedrun` is the sole declarer of the `shed` segment, the run-id vocabulary and the `Seed` codec. — [background](pattern/PATTERN-shed-run-directory.md)
 - `PATTERN-transient-stop` — Marking a failure transient: the mark is declared in `internal/shedengine` and set only at a producer or step-bootstrap boundary, never on a verdict. — [background](pattern/PATTERN-transient-stop.md)
 - `PATTERN-driver-choice-single-site` — Reading a recorded seed driver: once per recipe, in its own bootstrap verb, selecting the driving surface and nothing else. (test) — [background](pattern/PATTERN-driver-choice-single-site.md)

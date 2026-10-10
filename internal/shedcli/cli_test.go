@@ -5,15 +5,17 @@ package shedcli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/spf13/cobra"
 )
 
@@ -42,31 +44,112 @@ func TestArmFromSeed_RunIDDefaultsToSelf(t *testing.T) {
 	}
 }
 
-// TestArmFromSeed_MissingRunRefusalCarriesNoKindField pins that a missing-run refusal, rendered
-// through the same output.Err envelope resolvePersistentPreRun itself uses, carries no "kind" field
-// -- the regression the Shed Verb-Set Invariant's five-value step vocabulary most invites, since
-// armFromSeed's own doc comment states every error it returns is a plain error, never a
-// fields-carrying envelope.
-func TestArmFromSeed_MissingRunRefusalCarriesNoKindField(t *testing.T) {
-	loc := fixtureLocation(t)
-
-	_, err := armFromSeed(loc, "status", nil)
-	if err == nil {
-		t.Fatal("armFromSeed over an unseeded worktree = nil; want a refusal")
+// TestArmFromSeed_RefusalEnvelopeKinds renders armFromSeed's refusal through shedverbs.ReportArmError, the path resolvePersistentPreRun uses, and pins the envelope's kind per verb.
+// A missing run stays kind-less on step, since a missing run is not a step kind and a driver never re-seeds;
+// every other arming refusal on step is a bootstrap error with a trace file and a way forward, and on any other verb it stays kind-less.
+// Rows replace an entry of the package-global recipes table, so neither the rows nor this test run in parallel.
+func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
+	const genericWayForward = "escalating when the fix lies outside the repair verbs"
+	// The durable sink is package-level state, which is why the test stays serial.
+	logger.SetDurableSinkDir(t.TempDir())
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+	seedRecipe := func(recipe string) func(t *testing.T, loc *lyxcwd.Location) {
+		return func(t *testing.T, loc *lyxcwd.Location) {
+			if err := os.MkdirAll(shedrun.RunDir(loc, shedrun.SelfRunID), 0o755); err != nil {
+				t.Fatalf("MkdirAll(RunDir) = %v; want nil", err)
+			}
+			if err := os.WriteFile(shedrun.SeedFile(loc, shedrun.SelfRunID), []byte(`{"recipe":"`+recipe+`","driver":"go"}`), 0o644); err != nil {
+				t.Fatalf("write raw seed.json = %v; want nil", err)
+			}
+		}
 	}
 
-	var buf bytes.Buffer
-	output.Err(&buf, err.Error())
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, loc *lyxcwd.Location)
+		verb  string
+		// wantKind is the envelope's kind; empty means the envelope carries only "ok" and "error".
+		wantKind string
+		// wantSuffix is what the error message must end with, when non-empty.
+		wantSuffix string
+		// wantWayForwardCount is how many "way forward:" clauses the error message holds, when kind is bootstrap.
+		wantWayForwardCount int
+	}{
+		{
+			name:  "missing run on step",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {},
+			verb:  "step",
+		},
+		{
+			name:                "unknown recipe on step",
+			setup:               seedRecipe("bogus-recipe"),
+			verb:                "step",
+			wantKind:            "bootstrap",
+			wantSuffix:          genericWayForward,
+			wantWayForwardCount: 1,
+		},
+		{
+			name: "error naming its own way forward on step",
+			setup: func(t *testing.T, loc *lyxcwd.Location) {
+				seedRecipe("loom")(t, loc)
+				original := recipes["loom"]
+				recipes["loom"] = entry{
+					Arm: func(*lyxcwd.Location, string, string) (shedverbs.Spec, error) {
+						return shedverbs.Spec{}, errors.New("hub config missing; way forward: run it in the hub")
+					},
+					Verbs: original.Verbs,
+				}
+				t.Cleanup(func() { recipes["loom"] = original })
+			},
+			verb:                "step",
+			wantKind:            "bootstrap",
+			wantSuffix:          "way forward: run it in the hub",
+			wantWayForwardCount: 1,
+		},
+		{
+			name:  "unknown recipe on status",
+			setup: seedRecipe("bogus-recipe"),
+			verb:  "status",
+		},
+	}
 
-	var envelope map[string]any
-	if unmarshalErr := json.Unmarshal(buf.Bytes(), &envelope); unmarshalErr != nil {
-		t.Fatalf("json.Unmarshal(%q) = %v; want nil", buf.String(), unmarshalErr)
-	}
-	if _, present := envelope["kind"]; present {
-		t.Errorf("missing-run refusal envelope = %v; must carry no \"kind\" field", envelope)
-	}
-	if len(envelope) != 2 {
-		t.Errorf("missing-run refusal envelope = %v; want exactly the two keys \"ok\" and \"error\"", envelope)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loc := fixtureLocation(t)
+			tt.setup(t, loc)
+
+			_, err := armFromSeed(loc, tt.verb, nil)
+			if err == nil {
+				t.Fatalf("armFromSeed(%q) = nil; want a refusal", tt.verb)
+			}
+
+			var buf bytes.Buffer
+			shedverbs.ReportArmError(&buf, tt.verb, err)
+			var envelope map[string]any
+			if unmarshalErr := json.Unmarshal(buf.Bytes(), &envelope); unmarshalErr != nil {
+				t.Fatalf("json.Unmarshal(%q) = %v; want nil", buf.String(), unmarshalErr)
+			}
+
+			if tt.wantKind == "" {
+				if len(envelope) != 2 {
+					t.Errorf("envelope = %v; want exactly the two keys \"ok\" and \"error\"", envelope)
+				}
+				return
+			}
+			if envelope["kind"] != tt.wantKind {
+				t.Errorf("kind = %v; want %q (%v)", envelope["kind"], tt.wantKind, envelope)
+			}
+			if traceFile, _ := envelope["trace_file"].(string); traceFile == "" {
+				t.Errorf("trace_file = %v; want the logger's trace file", envelope["trace_file"])
+			}
+			msg, _ := envelope["error"].(string)
+			if !strings.HasSuffix(msg, tt.wantSuffix) {
+				t.Errorf("error = %q; want it to end with %q", msg, tt.wantSuffix)
+			}
+			if got := strings.Count(msg, "way forward:"); got != tt.wantWayForwardCount {
+				t.Errorf("error = %q holds %d way-forward clauses; want %d", msg, got, tt.wantWayForwardCount)
+			}
+		})
 	}
 }
 

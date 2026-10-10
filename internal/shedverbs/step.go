@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -18,7 +19,7 @@ import (
 )
 
 // The closed refusal-kind vocabulary step reports on the envelope's "kind" field. This set is
-// closed at five: StepKinds below lists all of them, and a test asserts the set is exactly this and
+// closed at six: StepKinds below lists all of them, and a test asserts the set is exactly this and
 // no larger.
 // The driver stencil (contracts/stencils/shed/shed-template-driver.md) is the single place a driver's
 // disposition per kind is stated.
@@ -36,12 +37,46 @@ const (
 	KindBootstrap = "bootstrap"
 	// KindProducer means shed.Step's own producer call returned a hard error.
 	KindProducer = "producer"
+	// KindInterrupted means a child step ended without writing an envelope: it was killed, or it exited without one.
+	KindInterrupted = "interrupted"
 )
 
 // StepKinds lists every value step's RunE can emit as the envelope's "kind" field. A test asserts
-// this set is exactly the five declared constants above, so an undeclared sixth kind cannot ship
+// this set is exactly the six declared constants above, so an undeclared seventh kind cannot ship
 // silently.
-var StepKinds = []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, KindProducer}
+var StepKinds = []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, KindProducer, KindInterrupted}
+
+// KindlessRefusal wraps an arming error whose envelope must carry no kind.
+// ReportArmError prints it as a bare error line on every verb, step included.
+type KindlessRefusal struct {
+	Err error
+}
+
+// Error passes the wrapped error's text through.
+func (r KindlessRefusal) Error() string { return r.Err.Error() }
+
+// Unwrap returns the wrapped error.
+func (r KindlessRefusal) Unwrap() error { return r.Err }
+
+// armWayForward is the way-forward clause ReportArmError appends to a step arming refusal that names none of its own.
+const armWayForward = "way forward: fix the cause this error names, then run the step again, escalating when the fix lies outside the repair verbs"
+
+// ReportArmError prints the refusal err raised while verb was being armed, and returns the exit code.
+// A KindlessRefusal, or any verb but step, prints a bare error envelope.
+// For step it logs the refusal, then prints an error envelope carrying kind bootstrap and the trace file holding the log.
+// That envelope's message is err's text followed by a way-forward clause, unless the text names one already.
+func ReportArmError(out io.Writer, verb string, err error) int {
+	var kindless KindlessRefusal
+	if verb != "step" || errors.As(err, &kindless) {
+		return output.Err(out, err.Error())
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "way forward:") {
+		msg += "; " + armWayForward
+	}
+	logger.Warn("shed: step arming refused", "error", msg)
+	return output.ErrFields(out, msg, map[string]any{"kind": KindBootstrap, "trace_file": logger.TraceFile()})
+}
 
 // StepEnvelope builds step's full success envelope, held by the step record and printed under --full or when no record is kept, from res -- the StepResult shed.Step returned -- alongside nextPolicy (spec.Hooks.InterruptPolicyFor(res.Next), or the empty string when the hook is nil), statusFile (the shed's own StatusPath), friction (Hooks.AfterStep's return, or the empty string when the hook is nil) and progress (the recipe progress for res.Next, or nil when none is known).
 // The returned map carries exactly the documented keys below;
@@ -133,7 +168,7 @@ type StepLocations struct {
 // stepErrFields builds an error envelope's extra fields: kind, transient, friction and the five location keys.
 // friction is the AfterStep hook's status, or the empty string where no step ran.
 // transient is the class name shedengine.TransientOf reports for the failure, or the empty string when it is not transient;
-// it is a key, not a sixth kind.
+// it is a key, not a kind.
 func stepErrFields(kind, transient, friction string, loc StepLocations) map[string]any {
 	return map[string]any{
 		"kind":         kind,

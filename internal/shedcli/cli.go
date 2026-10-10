@@ -189,8 +189,7 @@ func (c *shedCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 
 	armed, err := armFromSeed(location, cmd.Name(), args)
 	if err != nil {
-		output.Err(out, err.Error())
-		clihelp.Abort(ctx, 1)
+		clihelp.Abort(ctx, shedverbs.ReportArmError(out, cmd.Name(), err))
 		return nil
 	}
 	*c.spec = armed
@@ -205,12 +204,10 @@ func (c *shedCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 // resolvePersistentPreRun -- which is what lets cli_test.go drive this directly against a hand-built
 // *lyxcwd.Location, with no real git repository behind it, and stay Tier 1.
 //
-// Every error it returns is a plain error, never a fields-carrying envelope: resolvePersistentPreRun
-// reports every one of them through output.Err, never output.ErrFields, so the missing-run refusal
-// this function returns can never pick up a "kind" field by accident -- unlike shedverbs' own step
-// body, whose PreStep errors round-trip through output.ErrFields with a "kind" key. A missing run is
-// not a sixth value in that closed vocabulary, and this function's own return type is what keeps it
-// that way structurally rather than by review discipline alone.
+// The missing-seed refusal and the unsupported-verb refusal are wrapped in shedverbs.KindlessRefusal.
+// shedverbs.ReportArmError prints them with no "kind" field even on step.
+// A missing run is not a seventh value in the closed step vocabulary, and a driver never re-seeds a run.
+// Every other error it returns reaches the driver on step as a bootstrap refusal.
 func armFromSeed(location *lyxcwd.Location, verb string, args []string) (shedverbs.Spec, error) {
 	runID := shedrun.SelfRunID
 	if len(args) > 0 {
@@ -226,7 +223,7 @@ func armFromSeed(location *lyxcwd.Location, verb string, args []string) (shedver
 		if listErr != nil {
 			return shedverbs.Spec{}, listErr
 		}
-		return shedverbs.Spec{}, errors.New(shedrun.MissingSeedMessage("shedcli", runID, existing, `run "lyx shed seed `+runID+` --recipe <name>" first`))
+		return shedverbs.Spec{}, shedverbs.KindlessRefusal{Err: errors.New(shedrun.MissingSeedMessage("shedcli", runID, existing, `run "lyx shed seed `+runID+` --recipe <name>" first`))}
 	}
 
 	e, err := lookup(seed.Recipe)
@@ -235,7 +232,7 @@ func armFromSeed(location *lyxcwd.Location, verb string, args []string) (shedver
 	}
 
 	if !verbSupported(e.Verbs, verb) {
-		return shedverbs.Spec{}, errors.New(unsupportedVerbMessage(verb, seed.Recipe, e.Verbs))
+		return shedverbs.Spec{}, shedverbs.KindlessRefusal{Err: errors.New(unsupportedVerbMessage(verb, seed.Recipe, e.Verbs))}
 	}
 
 	armed, err := e.Arm(location, verb, runID)

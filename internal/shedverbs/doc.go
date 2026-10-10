@@ -15,6 +15,10 @@
 // The --full flag, or a record that could not be written, makes step print the full envelope instead, byte-identical to the record.
 // The record, the exit code and the run's state are the same with or without --full.
 //
+// step's refusal-kind vocabulary is closed at six: busy, unseeded, ownership, bootstrap, producer and interrupted.
+// A module arming a step subtree reports an arming error through ReportArmError, which prints a bootstrap error on step, with a trace file and a way forward, and a bare error line on any other verb.
+// An error wrapped in KindlessRefusal, such as a missing seed, prints the bare line on step too.
+//
 // progress has two shapes.
 // The step envelope's progress is compact: step, steps and name, with a zero step or steps and an empty name omitted, and no remaining list.
 // The status envelope's progress keeps the full form including remaining, since the driver names producers from it.

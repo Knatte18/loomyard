@@ -19,7 +19,7 @@ Enforced by `internal/shedcli/table_test.go`.
 
 ## Step envelope
 
-- The `step` refusal-kind vocabulary stays closed at its five values.
+- The `step` refusal-kind vocabulary stays closed at its six values; `KindInterrupted` is the one the loop emits, for a child step that ended without an envelope.
 - The full step envelope's key set is closed by doc comment and test, and is the one the step record holds.
   Stdout prints a short envelope by default, whose two closed key sets (success and error) are stated in `internal/shedverbs`; `--full`, or a record that could not be written, prints the full envelope instead.
   The full envelope carries `trace_file`, `friction_dir`, `scratch_dir`, `trace_id` and `run_id` on the success and every error envelope.

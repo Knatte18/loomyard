@@ -162,6 +162,8 @@ A correctness halt clears only on evidence that HEAD and every suspect path matc
 |---|---|---|---|
 | shed busy | another driver holds the run lock, at `run`, `step` or `goto` | transient | `lyx shed pause <run-id>` asks the live driver to stop at its next producer boundary; check the holder with `lyx shed status <run-id>`, then retry |
 | seed missing | a verb addresses a run-id with no seed | correctness halt | run `lyx shed seed <run-id> --recipe <name>` first |
+| step arming refused | `step` fails while arming the run's recipe before any producer ran, such as an unknown recipe or a config the recipe cannot load; the envelope carries `kind: bootstrap` and a trace file | correctness halt | fix the cause the error names, then run the step again, escalating when the fix lies outside the repair verbs |
+| hub config missing | arming a loom run finds the hub-wide `landing.yaml` absent or unreadable | correctness halt | run `lyx config reconcile --apply` in the hub, then step again |
 | status file missing | `step` or `goto` finds no status file; Shed never seeds one | correctness halt | the recipe's own, as the message names it: `lyx loom start` for loom, `lyx batten run <slug>` for batten, `lyx shed seed` otherwise |
 | current producer missing | the status file's `current_producer` names no row in the list | correctness halt | `lyx shed goto <run-id> --to <producer>` moves the run onto a row that exists |
 | bounce budget exhausted | a segment's bounce budget runs out and the run halts Stuck | correctness halt | `lyx shed goto <run-id> --to <row>` gives the segment or row a fresh budget |

@@ -198,8 +198,7 @@ func (c *loomCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) err
 		// arm's own lyxcwd.Resolve error is already self-describing (it IS the "not a git
 		// repository" sentinel); pass it through bare rather than doubling that same text on
 		// top of it -- exactly as every other arm/wire error is reported.
-		output.Err(out, err.Error())
-		clihelp.Abort(ctx, 1)
+		clihelp.Abort(ctx, shedverbs.ReportArmError(out, cmd.Name(), err))
 		return nil
 	}
 	*c.spec = armed
