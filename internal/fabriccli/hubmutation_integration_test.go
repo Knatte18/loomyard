@@ -30,7 +30,8 @@ import (
 func TestRunCLI_HubMutationScenario(t *testing.T) {
 	t.Parallel()
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	// A copy's relocation rewrites the tracked .lyx-warp binding, which the clean-tree assertions would find dirty.
+	h := hubforge.NewHub(t, ".")
 
 	steps := []struct {
 		name string
